@@ -56,17 +56,9 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import type { ModelMessage } from "ai";
-import type {
-  ApprovalIntent,
-  ApprovalResult,
-  RejectionIntent,
-} from "@/lib/proposals/types";
+import type { ApprovalIntent, ApprovalResult, RejectionIntent } from "@/lib/proposals/types";
 import type { ClarifyingQuestion } from "@/types/stakwork";
-import type {
-  StreamTimelineItem,
-  StreamToolCall,
-  ToolCallStatus,
-} from "@/types/streaming";
+import type { StreamTimelineItem, StreamToolCall, ToolCallStatus } from "@/types/streaming";
 import type { TokenUsage } from "@/types/usage";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,9 +246,7 @@ export interface CanvasChatMessage {
  * output, status, error); `inputText` is derived from `input` for the
  * expandable "Input" section.
  */
-export function timelineFromToolCalls(
-  toolCalls: ToolCall[],
-): StreamTimelineItem[] {
+export function timelineFromToolCalls(toolCalls: ToolCall[]): StreamTimelineItem[] {
   return toolCalls.map((tc) => {
     const data: StreamToolCall = {
       id: tc.id,
@@ -422,7 +412,9 @@ interface CanvasChatState {
    * Lives at the store level (not local input state) so any caller
    * can write to it without imperative refs into `<SidebarChat />`.
    * The input owns the consumption — `<SidebarChatInput />` watches
-   * for non-null values and applies + clears them in an effect.
+   * for non-null values and applies + clears them in an effect. An
+   * empty string only focuses the input and leaves its text alone
+   * (the control panel's "New chat" uses it).
    */
   pendingInputDraft: string | null;
 
@@ -501,16 +493,10 @@ interface CanvasChatState {
   /** Drop the active conversation and start fresh. */
   resetActiveConversation: () => void;
   /** Record the server-assigned `SharedConversation` id (auto-save creation). */
-  setServerConversationId: (
-    conversationId: string,
-    serverId: string,
-  ) => void;
+  setServerConversationId: (conversationId: string, serverId: string) => void;
 
   // ─── Message actions ─────────────────────────────────────────────────
-  appendUserMessage: (
-    conversationId: string,
-    message: CanvasChatMessage,
-  ) => void;
+  appendUserMessage: (conversationId: string, message: CanvasChatMessage) => void;
   /**
    * Replace a conversation's entire message list with the authoritative
    * server copy. Used by the live-sync (`useCanvasChatAutoSave` Pusher
@@ -519,20 +505,10 @@ interface CanvasChatState {
    * only invoke this when the conversation has no unsaved local messages,
    * so the server copy is a strict superset and nothing local is lost.
    */
-  setConversationMessages: (
-    conversationId: string,
-    messages: CanvasChatMessage[],
-  ) => void;
+  setConversationMessages: (conversationId: string, messages: CanvasChatMessage[]) => void;
   /** Replace any messages whose id starts with `prefix` with `next`. */
-  replaceAssistantStream: (
-    conversationId: string,
-    prefix: string,
-    next: CanvasChatMessage[],
-  ) => void;
-  setActiveToolCalls: (
-    conversationId: string,
-    toolCalls: ToolCall[],
-  ) => void;
+  replaceAssistantStream: (conversationId: string, prefix: string, next: CanvasChatMessage[]) => void;
+  setActiveToolCalls: (conversationId: string, toolCalls: ToolCall[]) => void;
   setIsLoading: (conversationId: string, isLoading: boolean) => void;
   /** Mirror of `setIsLoading` but for the streaming gate. See `CanvasConversation.isStreaming`. */
   setIsStreaming: (conversationId: string, streaming: boolean) => void;
@@ -553,16 +529,9 @@ interface CanvasChatState {
    * Stop all in-flight repo_agent runs for the active conversation.
    * POSTs to /api/ask/abort. Does NOT expose request_id to the client.
    */
-  stopRun: (opts: {
-    serverConversationId: string;
-    orgId: string;
-    turnId?: string;
-  }) => Promise<void>;
+  stopRun: (opts: { serverConversationId: string; orgId: string; turnId?: string }) => Promise<void>;
   /** Append a synthetic assistant error message to a conversation. */
-  appendAssistantError: (
-    conversationId: string,
-    content: string,
-  ) => void;
+  appendAssistantError: (conversationId: string, content: string) => void;
 
   /**
    * Queue text for the chat input to adopt on its next render. Pass
@@ -588,13 +557,7 @@ interface CanvasChatState {
     x?: number;
     y?: number;
   } | null;
-  triggerDeeplink: (dl: {
-    nodeId: string;
-    canvasRef: string;
-    label: string;
-    x?: number;
-    y?: number;
-  }) => void;
+  triggerDeeplink: (dl: { nodeId: string; canvasRef: string; label: string; x?: number; y?: number }) => void;
   clearDeeplink: () => void;
 
   // ─── Artifact actions ────────────────────────────────────────────────
@@ -615,8 +578,7 @@ interface CanvasChatState {
 // ─────────────────────────────────────────────────────────────────────────────
 
 let conversationCounter = 0;
-const newConversationId = () =>
-  `conv-${Date.now().toString(36)}-${(++conversationCounter).toString(36)}`;
+const newConversationId = () => `conv-${Date.now().toString(36)}-${(++conversationCounter).toString(36)}`;
 
 export const useCanvasChatStore = create<CanvasChatState>()(
   devtools(
@@ -633,13 +595,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       artifacts: {},
       dismissedArtifactIds: {},
 
-      startConversation: (
-        context,
-        seedMessages,
-        forkedFromShareId,
-        ephemeralSeedCount,
-        serverConversationId,
-      ) => {
+      startConversation: (context, seedMessages, forkedFromShareId, ephemeralSeedCount, serverConversationId) => {
         const id = newConversationId();
         const conv: CanvasConversation = {
           id,
@@ -658,9 +614,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           (s) => ({
             conversations: { ...s.conversations, [id]: conv },
             activeConversationId: id,
-            ephemeralSeedCounts: seedSkip > 0
-              ? { ...s.ephemeralSeedCounts, [id]: seedSkip }
-              : s.ephemeralSeedCounts,
+            ephemeralSeedCounts: seedSkip > 0 ? { ...s.ephemeralSeedCounts, [id]: seedSkip } : s.ephemeralSeedCounts,
           }),
           false,
           "startConversation",
@@ -803,9 +757,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           (s) => {
             const conv = s.conversations[conversationId];
             if (!conv) return s;
-            const filtered = conv.messages.filter(
-              (m) => !m.id.startsWith(prefix),
-            );
+            const filtered = conv.messages.filter((m) => !m.id.startsWith(prefix));
             return {
               conversations: {
                 ...s.conversations,
@@ -961,17 +913,13 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           "dismissArtifact",
         ),
 
-      setPendingInputDraft: (draft) =>
-        set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
+      setPendingInputDraft: (draft) => set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
 
-      triggerDeeplink: (dl) =>
-        set({ pendingDeeplink: dl }, false, "triggerDeeplink"),
+      triggerDeeplink: (dl) => set({ pendingDeeplink: dl }, false, "triggerDeeplink"),
 
-      clearDeeplink: () =>
-        set({ pendingDeeplink: null }, false, "clearDeeplink"),
+      clearDeeplink: () => set({ pendingDeeplink: null }, false, "clearDeeplink"),
 
-      setCanvasViewport: (v) =>
-        set({ canvasViewport: v }, false, "setCanvasViewport"),
+      setCanvasViewport: (v) => set({ canvasViewport: v }, false, "setCanvasViewport"),
     }),
     { name: "canvas-chat-store" },
   ),
@@ -987,21 +935,15 @@ export const useCanvasChatStore = create<CanvasChatState>()(
  * shape with separate entries for tool-call / tool-result / text
  * blocks.
  */
-export function toModelMessages(
-  messages: CanvasChatMessage[],
-): ModelMessage[] {
+export function toModelMessages(messages: CanvasChatMessage[]): ModelMessage[] {
   return messages
     .filter((m) => m.content.trim() || m.toolCalls || m.attachments?.length)
     .flatMap((m): ModelMessage[] => {
       // Multimodal: user messages with image attachments get a content array
       if (m.role === "user" && m.attachments?.length) {
-        const imageAttachments = m.attachments.filter((a) =>
-          a.mimeType.startsWith("image/"),
-        );
+        const imageAttachments = m.attachments.filter((a) => a.mimeType.startsWith("image/"));
         if (imageAttachments.length > 0) {
-          const contentParts: Array<
-            { type: "text"; text: string } | { type: "image"; image: string }
-          > = [];
+          const contentParts: Array<{ type: "text"; text: string } | { type: "image"; image: string }> = [];
           if (m.content.trim()) {
             contentParts.push({ type: "text", text: m.content });
           }
@@ -1026,19 +968,13 @@ export function toModelMessages(
             input: tc.input || {},
           })),
         });
-        const toolResults = m.toolCalls.filter(
-          (tc) => tc.output !== undefined || tc.errorText !== undefined,
-        );
+        const toolResults = m.toolCalls.filter((tc) => tc.output !== undefined || tc.errorText !== undefined);
         if (toolResults.length > 0) {
           out.push({
             role: "tool" as const,
             content: toolResults.map((tc) => {
               let wrappedOutput = tc.output;
-              if (
-                tc.output &&
-                typeof tc.output === "object" &&
-                !("type" in tc.output)
-              ) {
+              if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
                 wrappedOutput = { type: "json", value: tc.output };
               }
               return {

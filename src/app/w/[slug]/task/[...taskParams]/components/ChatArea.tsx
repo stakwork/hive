@@ -12,7 +12,17 @@ import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, FlaskConical, Loader2, Monitor, Pencil, Server, ServerOff, UserPlus } from "lucide-react";
+import {
+  ArrowLeft,
+  FlaskConical,
+  Loader2,
+  Maximize2,
+  Monitor,
+  Pencil,
+  Server,
+  ServerOff,
+  UserPlus,
+} from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { TypingIndicator } from "@/components/chat/TypingIndicator";
@@ -27,7 +37,10 @@ import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
-  onSend: (message: string, attachments?: Array<{ path: string, filename: string, mimeType: string, size: number }>) => Promise<void>;
+  onSend: (
+    message: string,
+    attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>,
+  ) => Promise<void>;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
@@ -56,6 +69,10 @@ interface ChatAreaProps {
   onRetry?: () => Promise<void>;
   isRetrying?: boolean;
   isPlanChat?: boolean;
+  /** Where the back arrow goes instead of navigating (the plan embedded on the org control panel). */
+  onBack?: () => void;
+  /** When set, a link to the page this view comes from — for an embedded view. */
+  fullPageHref?: string;
   onTitleSave?: (newTitle: string) => Promise<void>;
   stakworkProjectId?: string | null;
   isPrototypeTask?: boolean;
@@ -65,7 +82,14 @@ interface ChatAreaProps {
   isSuperAdmin?: boolean;
   selectedModel?: string;
   onModelChange?: (m: string) => void;
-  llmModels?: { id: string; name: string; provider: string; providerLabel: string | null; isPlanDefault: boolean; isTaskDefault: boolean }[];
+  llmModels?: {
+    id: string;
+    name: string;
+    provider: string;
+    providerLabel: string | null;
+    isPlanDefault: boolean;
+    isTaskDefault: boolean;
+  }[];
   hasMessages?: boolean;
   typingUsers?: string[];
   onTypingStart?: () => void;
@@ -107,6 +131,8 @@ export function ChatArea({
   onRetry,
   isRetrying = false,
   isPlanChat = false,
+  onBack,
+  fullPageHref,
   onTitleSave,
   stakworkProjectId,
   isPrototypeTask = false,
@@ -210,6 +236,10 @@ export function ChatArea({
   };
 
   const handleBackToTasks = () => {
+    if (onBack) {
+      onBack();
+      return;
+    }
     const fromParam = searchParams.get("from");
     if (fromParam) {
       router.push(decodeURIComponent(fromParam));
@@ -218,9 +248,7 @@ export function ChatArea({
     if (isPlanChat) {
       router.push(`/w/${workspaceSlug}/plan`);
     } else if (workspaceSlug) {
-      const path = featureId
-        ? `/w/${workspaceSlug}/plan/${featureId}?tab=tasks`
-        : `/w/${workspaceSlug}/tasks`;
+      const path = featureId ? `/w/${workspaceSlug}/plan/${featureId}?tab=tasks` : `/w/${workspaceSlug}/tasks`;
       router.push(path);
     } else {
       router.back();
@@ -237,7 +265,12 @@ export function ChatArea({
     >
       {/* Task Title Header */}
       {taskTitle && (
-        <div className={cn("px-4 py-3 border-b bg-muted/20", isMobile && "fixed top-0 left-0 right-0 z-20 bg-background border-b")}>
+        <div
+          className={cn(
+            "px-4 py-3 border-b bg-muted/20",
+            isMobile && "fixed top-0 left-0 right-0 z-20 bg-background border-b",
+          )}
+        >
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {/* Back Button */}
@@ -266,11 +299,7 @@ export function ChatArea({
                       />
                     )}
                     <div className="flex items-center gap-2 w-full min-w-0">
-                      <span
-                        className="truncate cursor-pointer"
-                        title={taskTitle}
-                        onClick={handleTitleEdit}
-                      >
+                      <span className="truncate cursor-pointer" title={taskTitle} onClick={handleTitleEdit}>
                         {taskTitle && taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
                       </span>
                       {featureId && onTitleSave && (
@@ -298,6 +327,15 @@ export function ChatArea({
             </div>
 
             {/* Presence Avatars */}
+            {/* Embedded on the org control panel: the way to the full page. */}
+            {fullPageHref && (
+              <Button asChild variant="ghost" size="sm" className="flex-shrink-0" title="Open the full page">
+                <a href={fullPageHref} target="_blank" rel="noopener noreferrer" aria-label="Open the full page">
+                  <Maximize2 className="w-4 h-4" />
+                </a>
+              </Button>
+            )}
+
             {collaborators && collaborators.length > 0 && (
               <div className="flex-shrink-0 self-center">
                 <CollaboratorAvatars collaborators={collaborators} />
@@ -351,7 +389,10 @@ export function ChatArea({
                       className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
                     >
                       <span className="relative w-4 h-4">
-                        <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" data-testid="server-icon" />
+                        <Server
+                          className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0"
+                          data-testid="server-icon"
+                        />
                         <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
                       </span>
                     </Button>
@@ -382,7 +423,11 @@ export function ChatArea({
       {/* Messages */}
       <div
         ref={messagesContainerRef}
-        className={cn("flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40", isMobile && "pb-28", isMobile && taskTitle && "pt-16")}
+        className={cn(
+          "flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40",
+          isMobile && "pb-28",
+          isMobile && taskTitle && "pt-16",
+        )}
       >
         {(() => {
           const visibleMessages = messages.filter((msg) => !msg.replyId);
@@ -394,8 +439,7 @@ export function ChatArea({
             }
             return -1;
           })();
-          const showChips =
-            isPlanChat && !isLoading && !!suggestions?.length && !!onSuggestionSelect;
+          const showChips = isPlanChat && !isLoading && !!suggestions?.length && !!onSuggestionSelect;
 
           return visibleMessages.map((msg, i) => {
             const prev = visibleMessages[i - 1];
@@ -404,9 +448,7 @@ export function ChatArea({
             const dockChipsHere = showChips && i === lastAssistantIdx;
             return (
               <React.Fragment key={msg.id}>
-                {showSeparator && (
-                  <DateSeparator label={formatDaySeparatorLabelInTz(msg.createdAt, timezone)} />
-                )}
+                {showSeparator && <DateSeparator label={formatDaySeparatorLabelInTz(msg.createdAt, timezone)} />}
                 <ChatMessage
                   message={msg}
                   replyMessage={replyMessage}
