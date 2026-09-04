@@ -73,10 +73,23 @@ export type RawJarvisNode = {
  */
 export function graphEpochToIso(raw: number | string | null | undefined): string | null {
   if (raw == null || raw === "") return null;
-  const value = typeof raw === "number" ? raw : parseFloat(raw);
+  let value: number;
+  if (typeof raw === "number") {
+    value = raw;
+  } else {
+    const trimmed = raw.trim();
+    if (trimmed === "") return null;
+    // Whole-string parse: Number() rejects ISO-like / prefix-numeric
+    // garbage that parseFloat would silently accept (e.g. "2024-07-03T…" → 2024).
+    value = Number(trimmed);
+  }
   if (!Number.isFinite(value) || value <= 0) return null;
   const ms = value > 1e12 ? value : value * 1000;
-  return new Date(ms).toISOString();
+  try {
+    return new Date(ms).toISOString();
+  } catch {
+    return null;
+  }
 }
 
 /**
