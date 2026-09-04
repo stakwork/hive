@@ -48,10 +48,12 @@ input keys, how each input is consumed, and the deliverable):
 1. **Makes a call to an external LLM provider** — any step type that
    demonstrably sends data to a model service and receives a response. The
    former conditional "if an HTTP step is used, the verb is POST" is folded in
-   (a raw API request must be well-formed for creating a completion; a native
-   model step manages its own transport) instead of scoring as a free pass.
+   (a raw API request must be well-formed for the inference it requests; a
+   native model step manages its own transport) instead of scoring as a free
+   pass. Phrased as model inference, not chat completion — the audio and
+   vision tasks call other model kinds.
 2. **A model/deployment identifier is specified** — non-empty; provider and
-   family unasserted.
+   family unasserted; an engine-defaulted model is not a failure.
 3. **Credentials are referenced by name, never as an inline literal** —
    through the engine's secret mechanism; a plaintext key in a header, URL,
    body or step configuration hard-fails; an engine that binds the provider
@@ -61,10 +63,11 @@ input keys, how each input is consumed, and the deliverable):
    and the provider's request-body schema are not asserted.
 5. **Workflow accepts caller-supplied input(s) named exactly `…`** — under
    the task's declared names, in whatever form the engine declares inputs.
-6. **Workflow is structurally valid for its engine and ran to completion** —
-   the engine's static validation passes, the rerun reached a COMPLETED state
-   (not errored/halted/timed out), and the run's output is the deliverable
-   the instructions describe.
+6. **Workflow is structurally valid for its engine** — the engine's static
+   validation passes (parses, well-formed steps, every reference resolves,
+   no unreachable/orphaned steps). Static evidence ONLY: whether the rerun
+   completed and what it returned is what the `evaluates: "output"` criteria
+   assert, so it is not double-counted here.
 
 Task-specific workflow criteria sit **ahead** of the block and keep their
 engine-neutral wording: the multimodal/retrieval/reasoning opener on every

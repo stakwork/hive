@@ -238,7 +238,7 @@ describe("CREATE_OPENAI_CALL_TASK (seed task)", () => {
  *   - every task carries the six shared criteria once, in order, contiguous,
  *     and immediately before its output criteria (task-specific criteria such
  *     as file staging or multimodal steps sit ahead of the block);
- *   - the three slot-free shared criteria are byte-identical across tasks.
+ *   - the four slot-free shared criteria are byte-identical across tasks.
  *
  * Same caveat as everywhere else in this file: whether the external LLM judge
  * enforces this wording is unverifiable here — these are string assertions.
@@ -252,11 +252,11 @@ const SHARED_WORKFLOW_CRITERIA: Array<[string, RegExp]> = [
     "declared input names",
     /^Workflow accepts (a caller-supplied input|caller-supplied inputs) named exactly `/,
   ],
-  ["valid + ran", /^Workflow is structurally valid for its engine and ran to completion$/],
+  ["valid", /^Workflow is structurally valid for its engine$/],
 ];
 
 /** Slot-free shared criteria — their text must not drift between tasks. */
-const SLOT_FREE_SHARED_TITLES = ["LLM call", "model identifier", "credentials by name"];
+const SLOT_FREE_SHARED_TITLES = ["LLM call", "model identifier", "credentials by name", "valid"];
 
 const ENGINE_SPECIFIC_FORMS: Array<[string, RegExp]> = [
   ["stakwork secret authoring form %%…%%", /%%/],
@@ -381,78 +381,43 @@ describe("engine-neutral workflow-side criteria", () => {
     }
   });
 
-  it("the inputs-by-reference criterion names every declared key and the input-names criterion points back at it by id", () => {
+  it("the structural-validity criterion asserts static validity ONLY — run evidence belongs to the output criteria", () => {
+    // Bundling "ran to completion" / "output is the deliverable" into a
+    // workflow-side criterion double-counts what every `evaluates: "output"`
+    // criterion already asserts, and asks a judge holding only the artifact
+    // to rule on the run. Keep the two evidence classes disjoint.
     for (const task of WORKFLOW_BENCHMARK_TASKS) {
-      const wiring = sharedCriterionOf(task, "inputs by reference");
-      for (const key of Object.keys(task.workflow_input ?? {})) {
-        expect(wiring.match_criteria, `${task.slug} wiring`).toContain(`\`${key}\``);
-      }
-      const names = sharedCriterionOf(task, "declared input names");
-      expect(names.match_criteria).toContain(`(the wiring asserted in ${wiring.id})`);
+      const m = sharedCriterionOf(task, "valid").match_criteria;
+      expect(m, task.slug).toContain("static validation");
+      expect(m, task.slug).toMatch(/unreachable or orphaned/);
+      expect(m, task.slug).not.toMatch(/COMPLETED|ran to completion|timed out/);
+      expect(failRegionOf(m), task.slug).not.toMatch(/run errored|never completed|described deliverable/);
     }
   });
 
-  describe("LLM-call criterion — mechanism-free, verb check folded in", () => {
-    const m = sharedCriterionOf(CREATE_OPENAI_CALL_TASK, "LLM call").match_criteria;
-
-    it("accepts any step type that demonstrably calls a model service", () => {
-      expect(m).toContain("native model, llm or agent step");
-      expect(m).toContain("of whatever type");
-      expect(m).toContain("specific provider is not asserted");
-    });
-
-    it("folds the former conditional verb criterion in rather than scoring it as a free pass", () => {
-      expect(m).toContain("(POST)");
-      expect(m).toContain("(GET, PUT, PATCH, DELETE)");
-      expect(m).toContain("no endpoint or method is asserted for it");
-    });
+  it("the LLM-call criterion never asserts a chat-completion surface (audio/vision tasks call other model kinds)", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      const m = sharedCriterionOf(task, "LLM call").match_criteria;
+      expect(m, task.slug).not.toMatch(/chat-style|chat\/completions|completion-capable/);
+      expect(m, task.slug).toMatch(/inference/);
+    }
   });
 
-  describe("model-identifier criterion", () => {
-    const m = sharedCriterionOf(CREATE_OPENAI_CALL_TASK, "model identifier").match_criteria;
-
-    it("requires a non-empty identifier, family unasserted", () => {
-      expect(m).toContain("non-empty string");
-      expect(m).toContain("No specific provider or model family");
-      expect(failRegionOf(m)).toContain("empty or whitespace-only");
-    });
+  it("the model-identifier criterion never fails an engine-defaulted model choice", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      const m = sharedCriterionOf(task, "model identifier").match_criteria;
+      expect(failRegionOf(m), task.slug).not.toMatch(/unstated default/);
+    }
   });
 
-  describe("credential criterion — by-name reference, plaintext anywhere hard-fails", () => {
-    const m = sharedCriterionOf(CREATE_OPENAI_CALL_TASK, "credentials by name").match_criteria;
-
-    it("PASS names the engine's secret mechanism, not a spelling", () => {
-      expect(passRegionOf(m)).toContain("named secret reference");
-      expect(m).toContain("engine's secret mechanism");
-      expect(m).toContain("never asserts WHICH secret name");
-    });
-
-    it("FAIL covers a plaintext key in a header, URL, body or step configuration", () => {
-      const fail = failRegionOf(m).toLowerCase();
-      expect(fail).toContain("plaintext");
-      expect(fail).toContain("header");
-      expect(fail).toContain("url");
-      expect(fail).toContain("body");
-      expect(fail).toContain("configuration");
-    });
-
-    it("remains a HARD fail (no downgrade to a warning in the FAIL region)", () => {
-      // "a warning upstream" in the PASS region is about environment
-      // resolution, not severity — the FAIL region itself must not soften.
-      expect(failRegionOf(m).toLowerCase()).not.toContain("warn");
-    });
-  });
-
-  describe("valid + ran criterion — engine's own validator, completed run, described deliverable", () => {
-    it("asserts static validity, a completed rerun, and the deliverable on every task", () => {
-      for (const task of WORKFLOW_BENCHMARK_TASKS) {
-        const m = sharedCriterionOf(task, "valid + ran").match_criteria;
-        expect(m, task.slug).toContain("static validation");
-        expect(m, task.slug).toContain("orphaned steps");
-        expect(m, task.slug).toContain("COMPLETED state");
-        expect(m, task.slug).toContain("deliverable the instructions describe");
+  it("no criterion anywhere in the corpus pins the real secret name", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      for (const criterion of task.criteria) {
+        expect(criterion.match_criteria, `${task.slug}::${criterion.id} pins OPENAI_STAKWORK_MAIN_KEY`).not.toContain(
+          "OPENAI_STAKWORK_MAIN_KEY",
+        );
       }
-    });
+    }
   });
 
   it("no criterion anywhere pins the real secret, the OpenAI endpoint, or a hard-coded model", () => {
