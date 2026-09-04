@@ -4,11 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useShallow } from "zustand/react/shallow";
 import {
-  activeChatItem,
+  buildArchivedRows,
   buildControlPanelGroups,
   matchesControlPanelQuery,
-  overlayActiveChat,
+  resolveControlPanelLists,
   unlistedOnStageChatTitle,
+  visibleControlPanelItems,
   type ActiveChatSnapshot,
 } from "@/services/orgs/control-panel-state";
 import type { ControlPanelItem } from "@/types/control-panel";
@@ -51,13 +52,23 @@ export interface ControlPanelState {
 export function useControlPanel(githubLogin: string, enabled: boolean): ControlPanelState {
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const { items, remaining, loading, refetch, showMore } = useControlPanelItems(githubLogin, enabled);
+  const {
+    items,
+    archivedItems,
+    remaining,
+    loading,
+    refetch,
+    showMore,
+    archiveConversation,
+    restoreConversation,
+  } = useControlPanelItems(githubLogin, enabled);
 
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<ControlPanelFocus>(() => focusFromParams(searchParams));
   const [cursorKey, setCursorKey] = useState<string | null>(null);
   // Chats start collapsed: the row is the chat, its plans open on demand.
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
   const toggleExpanded = useCallback((key: string) => {
     setExpandedKeys((prev) => {
       const next = new Set(prev);
@@ -66,6 +77,7 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
       return next;
     });
   }, []);
+  const toggleArchived = useCallback(() => setArchivedExpanded((open) => !open), []);
 
   // Leaving the control panel puts the chat back on stage, so coming
   // back starts clean (the URL's `?plan=`/`?task=` go with it).
@@ -137,29 +149,33 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
     if (prev.server === null && activeServerConversationId) void refetch();
   }, [enabled, activeLocalId, activeServerConversationId, changeFocus, refetch]);
 
-  // The chat on stage is always in the list, and the list already knows
+  // The chat on stage is always in a list, and the list already knows
   // what the store knows about it: a fresh chat has no server row until
   // its first turn lands, so until the server lists it the row is built
   // from the store; once listed, the server's row is brought up to date
   // (read, working while Jamie replies, a message the fetch missed).
+  // An archived on-stage chat stays in Archive — never re-prepended into
+  // Active after a poll drops it from `items`.
   const chatOnStage = focus.kind === "chat";
-  const displayItems = useMemo(() => {
-    if (!activeChat || !activeChatKey) return items;
-    const listed = items.some((item) => item.key === activeChatKey);
-    if (listed) {
-      return items.map((item) => (item.key === activeChatKey ? overlayActiveChat(item, activeChat) : item));
-    }
-    if (!activeChat.hasMessages && !chatOnStage) return items;
-    const conv = useCanvasChatStore.getState().conversations[activeChat.localId];
-    const title = unlistedOnStageChatTitle(activeChat, conv?.messages);
-    return [activeChatItem(activeChat, newChatStartedAtRef.current, title), ...items];
-  }, [items, activeChat, activeChatKey, chatOnStage]);
+  const { displayItems, displayArchivedItems } = useMemo(() => {
+    const conv = activeChat ? useCanvasChatStore.getState().conversations[activeChat.localId] : undefined;
+    const title = activeChat ? unlistedOnStageChatTitle(activeChat, conv?.messages) : "New chat";
+    return resolveControlPanelLists(items, archivedItems, activeChat, {
+      chatOnStage,
+      startedAt: newChatStartedAtRef.current,
+      titleForNew: title,
+    });
+  }, [items, archivedItems, activeChat, chatOnStage]);
 
   const focusedKey = focus.kind === "chat" ? activeChatKey : `${focus.kind}:${focus.id}`;
-  const focusedItem = useMemo(
-    () => (focusedKey ? (items.find((i) => i.key === focusedKey) ?? null) : null),
-    [items, focusedKey],
-  );
+  const focusedItem = useMemo(() => {
+    if (!focusedKey) return null;
+    return (
+      displayItems.find((i) => i.key === focusedKey) ??
+      displayArchivedItems.find((i) => i.key === focusedKey) ??
+      null
+    );
+  }, [displayItems, displayArchivedItems, focusedKey]);
 
   const openItem = useCallback(
     async (item: ControlPanelItem) => {
@@ -184,6 +200,7 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
     () => buildControlPanelGroups(displayItems, (item) => matchesControlPanelQuery(item, query)),
     [displayItems, query],
   );
+  const archivedRows = useMemo(() => buildArchivedRows(displayArchivedItems), [displayArchivedItems]);
   // A search is asking to see matches, so every chat with a match opens;
   // otherwise what the user opened holds.
   const effectiveExpanded = useMemo(
@@ -194,13 +211,11 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
     [query, groups, expandedKeys],
   );
 
-  // Rows the keyboard can land on: collapsed chats hide their plans.
+  // Rows the keyboard can land on: collapsed chats hide their plans;
+  // a collapsed Archive is skipped entirely.
   const visible = useMemo(
-    () =>
-      groups.flatMap((g) =>
-        g.rows.filter((r) => !(r.parentKey && !effectiveExpanded.has(r.parentKey))).map((r) => r.item),
-      ),
-    [groups, effectiveExpanded],
+    () => visibleControlPanelItems(groups, archivedRows, effectiveExpanded, archivedExpanded),
+    [groups, archivedRows, effectiveExpanded, archivedExpanded],
   );
 
   useEffect(() => {
@@ -224,6 +239,21 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
   );
 
   const onOpen = useCallback((item: ControlPanelItem) => void openItem(item), [openItem]);
+  const onArchive = useCallback(
+    (item: ControlPanelItem) => {
+      if (item.kind !== "chat") return;
+      setArchivedExpanded(true);
+      void archiveConversation(item.id);
+    },
+    [archiveConversation],
+  );
+  const onRestore = useCallback(
+    (item: ControlPanelItem) => {
+      if (item.kind !== "chat") return;
+      void restoreConversation(item.id);
+    },
+    [restoreConversation],
+  );
 
   useEffect(() => {
     if (!enabled) return;
@@ -271,6 +301,11 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
       onOpen,
       remaining,
       onShowMore: showMore,
+      archivedRows,
+      archivedExpanded,
+      onToggleArchived: toggleArchived,
+      onArchive,
+      onRestore,
     },
     stage: {
       focus,
