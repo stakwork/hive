@@ -16,6 +16,8 @@ import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { getWorkflowJsonFromNode } from "@/lib/workflow/get-workflow-json-from-node";
 import { resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { getDefaultModel, getApiKeyForModel } from "@/lib/ai/models";
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 /**
  * Fetch the latest workflow JSON from the graph API for a given workflow ID.
@@ -207,6 +209,7 @@ export async function triggerWorkflowEditorRun(params: {
       workspaceId: true,
       featureId: true,
       autoMerge: true,
+      model: true,
       workspace: {
         select: {
           slug: true,
@@ -318,6 +321,28 @@ export async function triggerWorkflowEditorRun(params: {
   if (subAgents.length) {
     vars.subAgents = subAgents;
     console.log("[triggerWorkflowEditorRun] forwarding subAgents:", subAgents.map((a) => a.name));
+  }
+
+  const effectiveModel = task.model?.trim() || (await getDefaultModel("plan"));
+  if (effectiveModel) {
+    vars.model = effectiveModel;
+    const resolvedApiKey = getApiKeyForModel(effectiveModel);
+    if (resolvedApiKey) vars.apiKey = resolvedApiKey;
+
+    const isXaiModel = effectiveModel.startsWith("xai/");
+    const bifrost = isXaiModel
+      ? undefined
+      : await getBifrostForLLM(
+          { workspaceId: task.workspaceId, workspaceSlug: task.workspace.slug, userId },
+          { agentName: "wfe-plan-agent", model: effectiveModel },
+        );
+    if (bifrost) {
+      vars.apiKey = bifrost.apiKey;
+      vars.baseUrl = bifrost.baseUrl;
+      if (Object.keys(bifrost.headers).length > 0) {
+        vars.headers = bifrost.headers;
+      }
+    }
   }
 
   const stakworkPayload = {
