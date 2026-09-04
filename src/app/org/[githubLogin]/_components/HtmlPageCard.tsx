@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Check, ExternalLink, FileCode2, Loader2, XCircle } from "lucide-react";
-import { CopyButton } from "@/components/agent-logs/LogDetailContent";
+import { CopyButton } from "@/components/ui/copy-button";
 import { HtmlArtifactFrame } from "@/components/html-artifact/HtmlArtifactFrame";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 
