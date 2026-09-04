@@ -856,6 +856,29 @@ describe("RecursionCard — relative enrollment and last-run times", () => {
     expect(lastRun.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 
+  it("converts leftover millisecond stamps instead of showing year-58000 copy", () => {
+    const msStamp = "1788527805693";
+    const expected = formatDistanceToNow(new Date(1788527805693), { addSuffix: true });
+
+    expect(() => {
+      renderEntries([
+        makeEntry({
+          dateAddedToGraph: msStamp,
+          latestRun: { n_passed: 7, n_total: 10, runAt: msStamp },
+        }),
+      ]);
+    }).not.toThrow();
+
+    const enrollment = screen.getByTestId("original-enrollment-time");
+    expect(enrollment.textContent).toBe(`Original task · ${expected}`);
+    expect(enrollment.textContent).not.toMatch(/in about \d+ years/);
+
+    const lastRun = screen.getByTestId("last-recursion-time");
+    expect(lastRun.textContent).toBe(`Last recursion · ${expected}`);
+    expect(lastRun.textContent).not.toMatch(/in about \d+ years/);
+    expect(lastRun.textContent).not.toMatch(/58000/);
+  });
+
   it("falls back to latestRun.runAt when expanded attempts have no convertible stamp", async () => {
     mockHistoryLoaded([
       { ...makeOutput(28, 42, 0), date_added_to_graph: "not-an-epoch" },
