@@ -225,6 +225,27 @@ describe("CanvasHistoryPopover", () => {
     });
   });
 
+  it("only ever renders the conversations the history endpoint returns (active-only)", async () => {
+    // The GET /chat/conversations list filters archivedAt: null server-side.
+    // The popover must not invent archived rows or request ?archived=1.
+    global.fetch = buildFetch(mockItems, {});
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Planning session")).toBeInTheDocument();
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/orgs/my-org/chat/conversations?limit=10"),
+    );
+    const urls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes("archived="))).toBe(false);
+    expect(screen.queryByText("Archive")).not.toBeInTheDocument();
+    expect(screen.getByText("What are the key milestones?")).toBeInTheDocument();
+  });
+
   it("calls startConversation with ephemeralSeedCount=messages.length and the server id on item click", async () => {
     global.fetch = buildFetch(mockItems, { "conv-a": mockConversationDetail });
 
