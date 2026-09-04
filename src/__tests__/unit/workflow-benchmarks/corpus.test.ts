@@ -3,28 +3,26 @@
  *
  * Asserts:
  *   - Corpus invariants (slug, criteria count, baseline completeness)
- *   - Criterion wording: required/rejected literal forms named explicitly
- *   - Seed task specifics: no baseline, 10 criteria with unique ids
+ *   - Seed task specifics: no baseline, 7 criteria with contiguous ids
  *   - TASK_SLUG_RE: namespaced slug matches the regex
- *   - Slice 2 secret cleanup: `expectedSecrets` is fully removed; C-004 and
- *     C-005 narrowed to SHAPE-ONLY secret checks using generic placeholders;
- *     generate-time invariants for %%…%% well-formedness and
- *     credential-shape rejection; FAIL-condition disjointness between the two
+ *   - Engine-neutral workflow-side criteria: the shared six-criterion block
+ *     (model call, model id, credentials by name, inputs by reference,
+ *     declared input names, valid + ran) is present on every task, in order,
+ *     and no workflow-side criterion names one engine's artifact form
+ *     (%%…%%, {{ }}, [#(step).output], system.succeed, "HTTP Request step");
+ *     task-specific criteria (file staging, multimodal steps) sit ahead of it
+ *   - Generate-time secret invariants on `instructions`/`workflow_input`:
+ *     %%…%% well-formedness and credential-shape rejection
  *   - workflow_input / expected_output contract (Slice 1): value types, INPUT
  *     block injection presence/position, rejection of a hand-authored block,
  *     index/map agreement, declared input keys referenced in criteria
- *   - Intent-statement rewrite (follow-up correction): `instructions` are
- *     ONE-LINE intents with no endpoint URL / secret name / model name /
- *     structural requirement; no criterion anywhere pins a value the prose no
- *     longer states (`OPENAI_STAKWORK_MAIN_KEY`, `api.openai.com`,
- *     named OpenAI models); C-001..C-003 and C-006 carry their re-aligned,
- *     mechanism-free semantics; C-008 remains VERBATIM
+ *   - Intent-statement prose: `instructions` are ONE-LINE intents with no
+ *     endpoint URL / secret name / model name / structural requirement; no
+ *     criterion anywhere pins a value the prose does not state
  *
  * NOTE: whether an LLM judge actually enforces any criterion's wording is NOT
  * verifiable in this repo (the judge lives in Stakwork's pipeline) — these
- * tests assert corpus data/strings only. Specifically, whether the NARROWED
- * C-004/C-005 wording still makes that judge hard-fail a plaintext key is a
- * behavioural question with no fixture here — what IS machine-checked are the
+ * tests assert corpus data/strings only. What IS machine-checked are the
  * criterion strings themselves plus the generate-time secret invariants.
  */
 
@@ -173,27 +171,38 @@ describe("CREATE_OPENAI_CALL_TASK (seed task)", () => {
     expect(task.slug).toBe("wfbench/create-openai-call");
   });
 
-  it("has exactly 10 criteria (8 original + input-name C-009 + run-output C-010)", () => {
-    expect(task.criteria.length).toBe(10);
+  it("has exactly 7 criteria (the six shared workflow criteria + run-output C-007)", () => {
+    expect(task.criteria.length).toBe(7);
   });
 
-  it("criterion ids are C-001 through C-010", () => {
-    const ids = task.criteria.map((c) => c.id);
-    for (let i = 1; i <= 10; i++) {
-      const expected = `C-${String(i).padStart(3, "0")}`;
-      expect(ids).toContain(expected);
-    }
+  it("criterion ids are C-001 through C-007, with the output criterion last", () => {
+    expect(task.criteria.map((c) => c.id)).toEqual([
+      "C-001",
+      "C-002",
+      "C-003",
+      "C-004",
+      "C-005",
+      "C-006",
+      "C-007",
+    ]);
+    expect(task.criteria.map((c) => c.evaluates)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "output",
+    ]);
   });
 
   it("has NO baseline (CREATE-flavour — no prior artifact to pin)", () => {
     expect(task.baseline).toBeUndefined();
   });
 
-  // NOTE: the instructions are now a ONE-LINE intent statement. The old
-  // assertions that instructions NAME a secret / enumerate body fields were
-  // dropped with that rewrite — an agent following pure intent cannot know a
-  // specific secret name, so naming one would make every credential criterion
-  // telepathy. See "intent-statement prose" describe below.
+  // NOTE: the instructions are a ONE-LINE intent statement. An agent following
+  // pure intent cannot know a specific secret name, so naming one would make
+  // every credential criterion telepathy.
   it("instructions are authored as a single-line intent statement", () => {
     const authored = authoredInstructionsOf(task);
     expect(authored).not.toContain("\n");
@@ -213,234 +222,238 @@ describe("CREATE_OPENAI_CALL_TASK (seed task)", () => {
   });
 });
 
-// ── Criterion wording: substitution forms ──────────────────────────────────────
+// ── Engine-neutral workflow-side criteria (the shared block) ──────────────────
 
-describe("criterion wording: substitution form literals", () => {
-  const task = CREATE_OPENAI_CALL_TASK;
+/**
+ * Workflow-side criteria (every criterion WITHOUT `evaluates: "output"`) are
+ * judged against workflows built by more than one engine — stakwork's JSON
+ * artifact and vein's YAML workflows, which spell secrets (`%%NAME%%` vs a
+ * named secret store), templates (`[#(step).output.x]` vs `{{ }}`), model
+ * calls (an HTTP step vs a native llm/agent step) and terminal states
+ * (`system.succeed` vs "the run completed") differently. A rubric written in
+ * one engine's spelling fails a correct workflow from the other, so the shared
+ * block asserts BEHAVIOUR and EVIDENCE only. These tests pin that contract:
+ *
+ *   - no engine-specific spelling may reappear in any workflow-side criterion;
+ *   - every task carries the six shared criteria once, in order, contiguous,
+ *     and immediately before its output criteria (task-specific criteria such
+ *     as file staging or multimodal steps sit ahead of the block);
+ *   - the three slot-free shared criteria are byte-identical across tasks.
+ *
+ * Same caveat as everywhere else in this file: whether the external LLM judge
+ * enforces this wording is unverifiable here — these are string assertions.
+ */
+const SHARED_WORKFLOW_CRITERIA: Array<[string, RegExp]> = [
+  ["LLM call", /^Makes a call to an external LLM provider$/],
+  ["model identifier", /^A model\/deployment identifier is specified$/],
+  ["credentials by name", /^Credentials are referenced by name, never as an inline literal$/],
+  ["inputs by reference", /^Caller-supplied inputs reach the call by reference, not as literals$/],
+  [
+    "declared input names",
+    /^Workflow accepts (a caller-supplied input|caller-supplied inputs) named exactly `/,
+  ],
+  ["valid + ran", /^Workflow is structurally valid for its engine and ran to completion$/],
+];
 
-  /**
-   * Criteria that touch secret substitution must name:
-   *   - Required authoring form:  %%SECRET_NAME%%
-   *   - Rejected runtime form:    {{ ... }}
-   *
-   * C-004 and C-005 are the relevant criteria.
-   */
+/** Slot-free shared criteria — their text must not drift between tasks. */
+const SLOT_FREE_SHARED_TITLES = ["LLM call", "model identifier", "credentials by name"];
 
-  describe("C-004 — credential hygiene (no plaintext key, no raw key in URL)", () => {
-    const c004 = task.criteria.find((c) => c.id === "C-004")!;
+const ENGINE_SPECIFIC_FORMS: Array<[string, RegExp]> = [
+  ["stakwork secret authoring form %%…%%", /%%/],
+  ["runtime template form {{ … }}", /\{\{/],
+  ["stakwork step-output reference [#(step).output]", /\[#\(/],
+  ["stakwork terminal node system.succeed", /system\.succeed/],
+  ["stakwork start connection", /source is "start"/],
+  ["stakwork step type name", /HTTP Request step/i],
+  ["engine-specific artifact name", /workflow JSON/i],
+  ["free-pass conditional criterion", /not applicable|CONDITIONAL criterion/i],
+];
 
-    it("exists", () => {
-      expect(c004).toBeDefined();
-    });
+type CorpusTask = (typeof WORKFLOW_BENCHMARK_TASKS)[number];
+type CorpusCriterion = CorpusTask["criteria"][number];
 
-    it("match_criteria contains a %%…%% authoring-form reference", () => {
-      // The criterion must name %%…%% so a judge has a copy-comparable string.
-      expect(c004.match_criteria).toContain("%%");
-    });
+const workflowCriteriaOf = (task: CorpusTask): CorpusCriterion[] =>
+  task.criteria.filter((c) => c.evaluates !== "output");
 
-    it("match_criteria uses ONLY a generic placeholder secret name", () => {
-      // Slice 2 narrowing: no specific secret name may be pinned.
-      expect(c004.match_criteria).toContain("%%SOME_SECRET_NAME%%");
-    });
+const outputCriteriaOf = (task: CorpusTask): CorpusCriterion[] =>
+  task.criteria.filter((c) => c.evaluates === "output");
 
-    it("match_criteria does NOT contain the real secret name", () => {
-      expect(c004.match_criteria).not.toContain("OPENAI_STAKWORK_MAIN_KEY");
-    });
-
-    it("match_criteria explicitly states WHICH secret is used is not asserted", () => {
-      expect(c004.match_criteria).toContain("never asserts WHICH secret name");
-    });
-
-    it("match_criteria states any well-formed [A-Z0-9_] reference passes", () => {
-      expect(c004.match_criteria).toContain("[A-Z0-9_]");
-    });
-
-    it("match_criteria explicitly distinguishes PASS from FAIL cases", () => {
-      // Criterion wording must give a judge unambiguous signal.
-      expect(c004.match_criteria.toLowerCase()).toContain("pass");
-      expect(c004.match_criteria.toLowerCase()).toContain("fail");
-    });
-
-    it("FAIL clause hard-fails on a plaintext key", () => {
-      const failRegion = failRegionOf(c004.match_criteria);
-      expect(failRegion.toLowerCase()).toContain("plaintext");
-    });
-
-    it("FAIL clause hard-fails on a raw key embedded in the URL", () => {
-      const failRegion = failRegionOf(c004.match_criteria);
-      expect(failRegion.toLowerCase()).toContain("url");
-    });
-  });
-
-  describe("C-005 — reference form (authoring %%[A-Z0-9_]+%%, never {{ ... }})", () => {
-    const c005 = task.criteria.find((c) => c.id === "C-005")!;
-
-    it("exists", () => {
-      expect(c005).toBeDefined();
-    });
-
-    it("match_criteria names the required authoring pattern %%[A-Z0-9_]+%%", () => {
-      expect(c005.match_criteria).toContain("%%");
-      expect(c005.match_criteria).toContain("[A-Z0-9_]");
-    });
-
-    it("match_criteria names the rejected runtime form {{ ... }}", () => {
-      expect(c005.match_criteria).toMatch(/\{\{/);
-    });
-
-    it("match_criteria explicitly labels the rejected form", () => {
-      expect(c005.match_criteria.toLowerCase()).toContain("rejected");
-    });
-
-    it("match_criteria differentiates authoring vs runtime spelling", () => {
-      // The criterion must explain WHY the runtime form is rejected.
-      expect(c005.match_criteria).toContain("runtime");
-    });
-
-    it("match_criteria uses ONLY a generic placeholder secret name", () => {
-      expect(c005.match_criteria).toContain("%%SOME_SECRET_NAME%%");
-      expect(c005.match_criteria).not.toContain("OPENAI_STAKWORK_MAIN_KEY");
-    });
-
-    it("match_criteria explicitly states WHICH secret is used is not asserted", () => {
-      expect(c005.match_criteria).toContain("never asserts WHICH secret name");
-    });
-
-    it("match_criteria explicitly distinguishes PASS from FAIL cases", () => {
-      expect(c005.match_criteria.toLowerCase()).toContain("pass");
-      expect(c005.match_criteria.toLowerCase()).toContain("fail");
-    });
-  });
-
-  describe("C-007 — messages array includes a user turn with the prompt", () => {
-    const c007 = task.criteria.find((c) => c.id === "C-007")!;
-
-    it("exists", () => {
-      expect(c007).toBeDefined();
-    });
-
-    it("match_criteria names the required step-output form [#(step_id).output.variable_name]", () => {
-      // If a criterion mentions step-output references, it must use the canonical form.
-      expect(c007.match_criteria).toContain("[#(step_id).output.variable_name]");
-    });
-  });
-});
-
-// ── C-004/C-005: narrowing + FAIL-condition disjointness ─────────────────────
+const sharedCriterionOf = (task: CorpusTask, label: string): CorpusCriterion => {
+  const re = SHARED_WORKFLOW_CRITERIA.find(([l]) => l === label)![1];
+  const found = task.criteria.find((c) => re.test(c.title));
+  expect(found, `${task.slug} is missing the shared "${label}" criterion`).toBeDefined();
+  return found!;
+};
 
 /**
  * Everything from a criterion's "FAIL:" marker onward — its failure
- * conditions, in the authors' own words. Disjointness is asserted on THIS
- * region (never on whole-string vocabulary: C-004 legitimately names the
- * authoring %%…%% form as its passing alternative, so a blunt "must not
- * contain %%" check would be wrong).
+ * conditions, in the authors' own words. Assertions about what a criterion
+ * REJECTS are made on this region, never on whole-string vocabulary.
  */
 function failRegionOf(matchCriteria: string): string {
   const idx = matchCriteria.indexOf("FAIL:");
   return idx === -1 ? "" : matchCriteria.slice(idx);
 }
 
-describe("C-004 / C-005 narrowing (Slice 2)", () => {
-  const task = CREATE_OPENAI_CALL_TASK;
-  const c004 = task.criteria.find((c) => c.id === "C-004")!;
-  const c005 = task.criteria.find((c) => c.id === "C-005")!;
+/** Everything between the "PASS:" and "FAIL:" markers. */
+function passRegionOf(matchCriteria: string): string {
+  const start = matchCriteria.indexOf("PASS:");
+  const end = matchCriteria.indexOf("FAIL:");
+  if (start === -1) return "";
+  return matchCriteria.slice(start, end === -1 ? undefined : end);
+}
 
-  /**
-   * We cannot execute the criteria against candidate JSON (the validators
-   * live in the Stakwork Rails codebase). We assert wording only.
-   */
-
-  it("wording still names a well-formed %%…%% reference as a PASS case", () => {
-    // A %%SOME_SECRET_NAME%% reference must be acknowledged as passing —
-    // with a GENERIC placeholder now that the real name is unpinned.
-    expect(c004.match_criteria).toMatch(/PASS:[^]*?%%[A-Z0-9_]+%%/);
-    expect(c005.match_criteria).toMatch(/PASS:[^]*?%%[A-Z0-9_]+%%/);
-  });
-
-  it("no criterion anywhere in the corpus pins the real secret name", () => {
-    for (const t of WORKFLOW_BENCHMARK_TASKS) {
-      for (const criterion of t.criteria) {
-        expect(
-          criterion.match_criteria,
-          `${t.slug}::${criterion.id} pins OPENAI_STAKWORK_MAIN_KEY`,
-        ).not.toContain("OPENAI_STAKWORK_MAIN_KEY");
+describe("engine-neutral workflow-side criteria", () => {
+  it("no workflow-side criterion anywhere names an engine-specific artifact form", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      for (const criterion of workflowCriteriaOf(task)) {
+        for (const [label, re] of ENGINE_SPECIFIC_FORMS) {
+          expect(
+            re.test(criterion.title) || re.test(criterion.match_criteria),
+            `${task.slug}::${criterion.id} asserts ${label}`,
+          ).toBe(false);
+        }
       }
     }
   });
 
-  it("C-004's FAIL conditions and C-005's FAIL conditions are DISJOINT", () => {
-    // Property split: C-004 owns plaintext/raw-key-in-URL; C-005 owns the
-    // reference FORM (malformed authoring spellings + the runtime {{ }}
-    // family). Overlapping failure clauses would double-weight one property
-    // in the fixed criteria-count denominator.
-    const c004Fail = failRegionOf(c004.match_criteria);
-    const c005Fail = failRegionOf(c005.match_criteria);
-
-    // Each clause actually covers what its id now means…
-    expect(c004Fail.toLowerCase()).toContain("plaintext");
-    expect(c004Fail.toLowerCase()).toContain("url");
-    expect(c005Fail.toLowerCase()).toContain("{{");
-    expect(c005Fail.toLowerCase()).toContain("malformed reference");
-
-    // …and neither clause claims the other id's property. Runtime-form
-    // rejection belongs to C-005 alone (the old shared wording double-
-    // covered it); credential-hygiene rejection belongs to C-004 alone.
-    expect(c004Fail).not.toContain("{{");
-    expect(c005Fail.toLowerCase()).not.toContain("plaintext");
-    expect(c005Fail.toLowerCase()).not.toContain("url");
-  });
-
-  it("both criteria remain HARD fails (neither is softened to a warning)", () => {
-    // "warning" must not appear as a downgrade of the FAIL outcomes themselves
-    // ("a warning upstream" is about environment resolution, not severity).
-    for (const criterion of [c004, c005]) {
-      const failRegion = failRegionOf(criterion.match_criteria).toLowerCase();
-      expect(failRegion).not.toContain("warn");
+  it("every workflow-side criterion states both a PASS and a FAIL condition", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      for (const criterion of workflowCriteriaOf(task)) {
+        const label = `${task.slug}::${criterion.id}`;
+        expect(criterion.match_criteria, `${label} has no PASS condition`).toMatch(/PASS/);
+        expect(criterion.match_criteria, `${label} has no FAIL condition`).toMatch(/FAIL/);
+      }
     }
   });
-});
 
-// ── Structural criteria: C-008 ────────────────────────────────────────────────
-
-describe("C-008 — Workflow is structurally valid", () => {
-  const c008 = CREATE_OPENAI_CALL_TASK.criteria.find((c) => c.id === "C-008")!;
-
-  it("exists", () => {
-    expect(c008).toBeDefined();
+  it("criterion ids are contiguous C-001..C-N with every output criterion last", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      const ids = task.criteria.map((c) => c.id);
+      expect(ids, task.slug).toEqual(
+        ids.map((_, i) => `C-${String(i + 1).padStart(3, "0")}`),
+      );
+      const firstOutput = task.criteria.findIndex((c) => c.evaluates === "output");
+      expect(firstOutput, `${task.slug} declares no output criterion`).toBeGreaterThan(0);
+      expect(
+        task.criteria.slice(firstOutput).every((c) => c.evaluates === "output"),
+        `${task.slug}: a workflow criterion follows an output criterion`,
+      ).toBe(true);
+    }
   });
 
-  it("match_criteria mentions a start connection", () => {
-    expect(c008.match_criteria.toLowerCase()).toContain("start");
+  it("every task carries the six shared criteria once, in order, contiguous, immediately before its output criteria", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      const wf = workflowCriteriaOf(task);
+      const positions = SHARED_WORKFLOW_CRITERIA.map(([label, re]) => {
+        const hits = wf.filter((c) => re.test(c.title));
+        expect(hits.length, `${task.slug}: shared "${label}" criterion count`).toBe(1);
+        return wf.indexOf(hits[0]);
+      });
+      const first = positions[0];
+      expect(positions, `${task.slug}: shared block is not contiguous/in order`).toEqual(
+        positions.map((_, i) => first + i),
+      );
+      expect(positions[positions.length - 1], `${task.slug}: shared block must end the workflow criteria`).toBe(
+        wf.length - 1,
+      );
+      // Whatever precedes the block is a task-specific capability criterion.
+      expect(wf.length - SHARED_WORKFLOW_CRITERIA.length, `${task.slug}: task-specific count`).toBe(first);
+    }
   });
 
-  it("match_criteria mentions an edge to system.succeed", () => {
-    expect(c008.match_criteria).toContain("system.succeed");
+  it("slot-free shared criteria are byte-identical across every task (no per-task drift)", () => {
+    for (const label of SLOT_FREE_SHARED_TITLES) {
+      const variants = new Set(
+        WORKFLOW_BENCHMARK_TASKS.map((t) => sharedCriterionOf(t, label).match_criteria),
+      );
+      expect(variants.size, `shared "${label}" criterion has ${variants.size} variants`).toBe(1);
+    }
   });
 
-  it("match_criteria mentions an unbroken chain", () => {
-    expect(c008.match_criteria.toLowerCase()).toContain("unbroken");
+  it("the declared-input-names criterion names every declared workflow_input key in backticked form, in title and body", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      const c = sharedCriterionOf(task, "declared input names");
+      for (const key of Object.keys(task.workflow_input ?? {})) {
+        expect(c.title, `${task.slug} title`).toContain(`\`${key}\``);
+        expect(c.match_criteria, `${task.slug} body`).toContain(`\`${key}\``);
+      }
+    }
   });
-});
 
-// ── Intent-statement rewrite: rubric re-alignment (follow-up correction) ─────
+  it("the inputs-by-reference criterion names every declared key and the input-names criterion points back at it by id", () => {
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      const wiring = sharedCriterionOf(task, "inputs by reference");
+      for (const key of Object.keys(task.workflow_input ?? {})) {
+        expect(wiring.match_criteria, `${task.slug} wiring`).toContain(`\`${key}\``);
+      }
+      const names = sharedCriterionOf(task, "declared input names");
+      expect(names.match_criteria).toContain(`(the wiring asserted in ${wiring.id})`);
+    }
+  });
 
-/**
- * Both tasks' authored `instructions` are now ONE-LINE intents, so every
- * criterion was audited: none may pin a value the prose no longer states.
- * On the seed task C-001..C-007 were rewritten (C-004/C-005 only minimally —
- * the shape-only wording shipped in the secret-cleanup slice was already
- * intent-compatible); C-008 structural validity kept VERBATIM. On
- * generate-capital-city the input-name and structural-validity criteria were
- * already correct and stand verbatim; everything else was re-authored against
- * the narrowed prose.
- *
- * Same caveat as everywhere else in this file: whether an external LLM judge
- * enforces this wording is unverifiable here — these assertions are about
- * criterion STRINGS only.
- */
-describe("intent-statement rewrite & provider-agnostic criteria audit", () => {
-  const byId = (slug: string, id: string) =>
-    findBenchmarkTask(slug)!.criteria.find((x) => x.id === id)!;
+  describe("LLM-call criterion — mechanism-free, verb check folded in", () => {
+    const m = sharedCriterionOf(CREATE_OPENAI_CALL_TASK, "LLM call").match_criteria;
+
+    it("accepts any step type that demonstrably calls a model service", () => {
+      expect(m).toContain("native model, llm or agent step");
+      expect(m).toContain("of whatever type");
+      expect(m).toContain("specific provider is not asserted");
+    });
+
+    it("folds the former conditional verb criterion in rather than scoring it as a free pass", () => {
+      expect(m).toContain("(POST)");
+      expect(m).toContain("(GET, PUT, PATCH, DELETE)");
+      expect(m).toContain("no endpoint or method is asserted for it");
+    });
+  });
+
+  describe("model-identifier criterion", () => {
+    const m = sharedCriterionOf(CREATE_OPENAI_CALL_TASK, "model identifier").match_criteria;
+
+    it("requires a non-empty identifier, family unasserted", () => {
+      expect(m).toContain("non-empty string");
+      expect(m).toContain("No specific provider or model family");
+      expect(failRegionOf(m)).toContain("empty or whitespace-only");
+    });
+  });
+
+  describe("credential criterion — by-name reference, plaintext anywhere hard-fails", () => {
+    const m = sharedCriterionOf(CREATE_OPENAI_CALL_TASK, "credentials by name").match_criteria;
+
+    it("PASS names the engine's secret mechanism, not a spelling", () => {
+      expect(passRegionOf(m)).toContain("named secret reference");
+      expect(m).toContain("engine's secret mechanism");
+      expect(m).toContain("never asserts WHICH secret name");
+    });
+
+    it("FAIL covers a plaintext key in a header, URL, body or step configuration", () => {
+      const fail = failRegionOf(m).toLowerCase();
+      expect(fail).toContain("plaintext");
+      expect(fail).toContain("header");
+      expect(fail).toContain("url");
+      expect(fail).toContain("body");
+      expect(fail).toContain("configuration");
+    });
+
+    it("remains a HARD fail (no downgrade to a warning in the FAIL region)", () => {
+      // "a warning upstream" in the PASS region is about environment
+      // resolution, not severity — the FAIL region itself must not soften.
+      expect(failRegionOf(m).toLowerCase()).not.toContain("warn");
+    });
+  });
+
+  describe("valid + ran criterion — engine's own validator, completed run, described deliverable", () => {
+    it("asserts static validity, a completed rerun, and the deliverable on every task", () => {
+      for (const task of WORKFLOW_BENCHMARK_TASKS) {
+        const m = sharedCriterionOf(task, "valid + ran").match_criteria;
+        expect(m, task.slug).toContain("static validation");
+        expect(m, task.slug).toContain("orphaned steps");
+        expect(m, task.slug).toContain("COMPLETED state");
+        expect(m, task.slug).toContain("deliverable the instructions describe");
+      }
+    });
+  });
 
   it("no criterion anywhere pins the real secret, the OpenAI endpoint, or a hard-coded model", () => {
     for (const t of WORKFLOW_BENCHMARK_TASKS) {
@@ -459,133 +472,76 @@ describe("intent-statement rewrite & provider-agnostic criteria audit", () => {
       }
     }
   });
+});
 
-  describe("wfbench/create-openai-call — audit table applied (7 rewritten, C-008 verbatim)", () => {
-    it("has ids C-001..C-010 (audit-table C-001..C-008 unchanged; C-009 input-name and C-010 run-output appended)", () => {
-      const task = CREATE_OPENAI_CALL_TASK;
-      expect(task.criteria.length).toBe(10);
-      expect(task.criteria.map((c) => c.id)).toEqual([
-        "C-001",
-        "C-002",
-        "C-003",
-        "C-004",
-        "C-005",
-        "C-006",
-        "C-007",
-        "C-008",
-        "C-009",
-        "C-010",
-      ]);
-    });
+// ── Task-specific workflow criteria sit ahead of the shared block ─────────────
 
-    it("C-001 — broadened to artifact level: Request step OR equivalent provider/skill step", () => {
-      const m = byId("wfbench/create-openai-call", "C-001").match_criteria;
-      expect(m).toContain("LLM provider");
-      expect(m).toContain("Request step or an equivalent provider/skill step");
-      // No longer telegraphs a concrete step type spelling.
-      expect(m).not.toMatch(/type '(request|http_request)'/);
-    });
+describe("task-specific workflow criteria (kept, engine-neutral)", () => {
+  const RESOURCE_KEYS = ["image_url", "audio_url", "spreadsheet_url", "video_url"];
 
-    it("C-002 — provider-agnostic chat/completions target; specific provider unasserted", () => {
-      const m = byId("wfbench/create-openai-call", "C-002").match_criteria;
-      expect(m).toContain("chat/completions endpoint");
-      expect(m).toContain("specific provider is not asserted");
-      expect(m).not.toContain("https://");
-      expect(m).not.toContain("attributes.url");
-    });
-
-    it("C-003 — conditional: verb asserted ONLY when an HTTP request step performs the call", () => {
-      const m = byId("wfbench/create-openai-call", "C-003").match_criteria;
-      expect(m.toUpperCase()).toContain("CONDITIONAL");
-      expect(m).toContain("POST");
-      expect(m).toContain("(GET, PUT, PATCH, DELETE)");
-      expect(m).toContain("Not applicable");
-      expect(m).toContain("provider/skill step");
-    });
-
-    it("C-006 — repurposed to ANY non-empty model/deployment identifier, family unasserted", () => {
-      const criterion = byId("wfbench/create-openai-call", "C-006");
-      expect(criterion.title).not.toContain("OpenAI");
-      expect(criterion.match_criteria).toContain("non-empty string");
-      expect(criterion.match_criteria).toContain("No specific provider or model family");
-      expect(criterion.match_criteria).toMatch(/FAIL:/);
-    });
-
-    it("C-007 — artifact-level wiring assertion; provider request-body schema no longer asserted", () => {
-      const m = byId("wfbench/create-openai-call", "C-007").match_criteria;
-      expect(m).toContain("not hard-coded");
-      expect(m).toContain("request-body schema");
-      expect(m).toContain("is not asserted");
-      expect(m).toContain("[#(step_id).output.variable_name]");
-    });
-
-    it("C-008 — KEPT VERBATIM: genuine structural correctness", () => {
-      const m = byId("wfbench/create-openai-call", "C-008").match_criteria;
-      expect(m).toContain('"start"');
-      expect(m).toContain("no orphaned steps");
-      expect(m).toContain('"system.succeed"');
-    });
+  it("every GAIA-derived task opens with a capability criterion for its section", () => {
+    const OPENERS: Record<string, RegExp> = {
+      vision: /^Performs image understanding on the retrieved image$/,
+      audio: /^Transcribes or interprets the retrieved audio$/,
+      spreadsheet: /^Parses the retrieved spreadsheet's cell data$/,
+      video: /^Obtains the video's content rather than reasoning from its address$/,
+      research: /^Consults an external source to obtain the answer$/,
+      reasoning: /^Derives the answer by reasoning, not by retrieval$/,
+    };
+    for (const task of WORKFLOW_BENCHMARK_TASKS) {
+      const opener = OPENERS[task.section];
+      if (!opener) continue;
+      expect(task.criteria[0].title, task.slug).toMatch(opener);
+    }
   });
 
-  describe("wfbench/generate-capital-city — roster covers the four required categories", () => {
-    const task = findBenchmarkTask("wfbench/generate-capital-city")!;
-    const all = () => task.criteria.map((c) => c.match_criteria).join("\n\n");
+  it("file-staging tasks keep an authenticated-fetch criterion that references the secret by name, not by spelling", () => {
+    const staged = WORKFLOW_BENCHMARK_TASKS.filter((t) =>
+      ["vision", "audio", "spreadsheet"].includes(t.section),
+    );
+    expect(staged.length).toBeGreaterThan(0);
+    for (const task of staged) {
+      const key = Object.keys(task.workflow_input ?? {}).find((k) => RESOURCE_KEYS.includes(k));
+      expect(key, `${task.slug} declares no resource-address input`).toBeDefined();
+      const fetch = task.criteria[1];
+      expect(fetch.title, task.slug).toMatch(/is retrieved with an authenticated request$/);
+      expect(fetch.match_criteria, task.slug).toContain(`\`${key}\``);
+      expect(fetch.match_criteria, task.slug).toContain("drawn from a named secret");
+      expect(fetch.match_criteria, task.slug).toContain("nor which step type performs the fetch");
+    }
+  });
+});
 
-    it("roster is non-empty and ids remain contiguous C-001..C-011", () => {
-      expect(task.criteria.length).toBeGreaterThan(0);
-      expect(task.criteria.map((c) => c.id)).toEqual([
-        "C-001",
-        "C-002",
-        "C-003",
-        "C-004",
-        "C-005",
-        "C-006",
-        "C-007",
-        "C-008",
-        "C-009",
-        "C-010",
-        "C-011",
-      ]);
-    });
+// ── wfbench/generate-capital-city ─────────────────────────────────────────────
 
-    it("input-name criterion: `country`, hard-coded Wales FAILS, other names FAIL", () => {
-      const matches = task.criteria.filter((c) => c.match_criteria.includes("`country`"));
-      expect(matches.length).toBeGreaterThanOrEqual(1);
-      const joined = matches.map((m) => m.match_criteria).join("\n");
-      expect(joined).toContain('"Wales"');
-      expect(joined.toLowerCase()).toContain("fail");
-    });
+describe("wfbench/generate-capital-city — shared block + two output criteria", () => {
+  const task = findBenchmarkTask("wfbench/generate-capital-city")!;
 
-    it("structural-validity criterion present and unweakened", () => {
-      const structural = task.criteria.filter((c) => c.match_criteria.includes("system.succeed"));
-      expect(structural.length).toBe(1);
-      const m = structural[0].match_criteria;
-      expect(m).toContain('"start"');
-      expect(m).toContain("no orphaned steps");
-      expect(m).toContain("unbroken chain");
-    });
+  it("ids are contiguous C-001..C-008 with C-007/C-008 judged on run output", () => {
+    expect(task.criteria.map((c) => c.id)).toEqual([
+      "C-001",
+      "C-002",
+      "C-003",
+      "C-004",
+      "C-005",
+      "C-006",
+      "C-007",
+      "C-008",
+    ]);
+    expect(outputCriteriaOf(task).map((c) => c.id)).toEqual(["C-007", "C-008"]);
+  });
 
-    it("exactly two shape-only secret criteria (credential hygiene + reference form)", () => {
-      const secretCriteria = task.criteria.filter((c) =>
-        c.match_criteria.includes("%%SOME_SECRET_NAME%%"),
-      );
-      expect(secretCriteria.map((c) => c.id)).toEqual(["C-004", "C-005"]);
-    });
+  it("wiring criterion: `country` drives the call, a fixed \"Wales\" FAILS", () => {
+    const m = sharedCriterionOf(task, "inputs by reference").match_criteria;
+    expect(m).toContain("`country`");
+    expect(m).toContain("not just one");
+    expect(failRegionOf(m)).toContain('"Wales"');
+  });
 
-    it("LLM-provider-call criterion present, mechanism-free and endpoint-free everywhere", () => {
-      const m = byId("wfbench/generate-capital-city", "C-001").match_criteria;
-      expect(m).toContain("LLM provider");
-      expect(m).toContain("provider/skill step");
-      expect(all()).not.toContain("api.openai.com");
-      expect(all()).not.toContain("https://");
-    });
-
-    it("country-reach criterion: value drives the call, never a fixed literal", () => {
-      const m = task.criteria.find((c) => c.id === "C-007")!.match_criteria;
-      expect(m).toContain("`country`");
-      expect(m).toContain("not just one");
-      expect(m).toContain('"Wales"');
-    });
+  it("input-name criterion: `country` exactly, other names FAIL", () => {
+    const m = sharedCriterionOf(task, "declared input names").match_criteria;
+    expect(m).toContain("`country`");
+    expect(failRegionOf(m)).toContain("`nation`");
   });
 });
 
@@ -800,8 +756,8 @@ describe("secret-reference-form invariant (every %%…%% token well-formed)", ()
   // Scope note: a lone single-% spelling (%NAME%) is deliberately NOT
   // mechanically detectable — paired-token scanning sees only complete %%…%%
   // groups, and blanket %-counting would false-positive on prose like
-  // "reply with 90% confidence". That case stays with the C-005 criterion
-  // wording (judge-side), which names %NAME% as a FAIL example.
+  // "reply with 90% confidence". Judge-side, the engine-neutral credential
+  // criterion catches the resulting literal token in the produced workflow.
 
   it.each([
     ["lowercase name", "Use %%my-secret-name%% here."],
