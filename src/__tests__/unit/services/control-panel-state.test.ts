@@ -16,12 +16,17 @@ import { describe, expect, test } from "vitest";
 import type { ControlPanelItem } from "@/types/control-panel";
 import {
   activeChatItem,
+  buildArchivedRows,
   buildControlPanelGroups,
   derivePlanState,
   matchesControlPanelQuery,
+  moveChatToActive,
+  moveChatToArchive,
   overlayActiveChat,
   previewLine,
+  resolveControlPanelLists,
   sortControlPanelItems,
+  visibleControlPanelItems,
 } from "@/services/orgs/control-panel-state";
 
 const noMessage = null;
@@ -348,5 +353,122 @@ describe("buildControlPanelGroups", () => {
     const old = makeItem({ kind: "chat", id: "c9", lastActivityAt: new Date(2025, 11, 20, 9).toISOString() });
     const groups = buildControlPanelGroups([old], () => true, now);
     expect(groups[0].label).toBe("December 20, 2025");
+  });
+});
+
+describe("archive move and on-stage gating", () => {
+  const startedAt = "2026-09-04T09:00:00.000Z";
+  const archivedAt = "2026-09-04T12:00:00.000Z";
+  const chat = makeItem({ kind: "chat", id: "c1", title: "Kickoff", lastActivityAt: startedAt });
+  const plan = makeItem({
+    kind: "plan",
+    id: "p1",
+    title: "Spawned",
+    parentChatId: "c1",
+    lastActivityAt: "2026-09-04T10:00:00.000Z",
+  });
+  const other = makeItem({ kind: "chat", id: "c2", title: "Other", lastActivityAt: startedAt });
+  const snapshot = {
+    localId: "local-1",
+    serverId: "c1",
+    lastMessageAt: "2026-09-04T11:00:00.000Z",
+    lastReply: "Done.",
+    hasMessages: true,
+    isStreaming: false,
+  };
+
+  test("moveChatToArchive takes nested plans with the chat and inserts them at the top of Archive", () => {
+    const moved = moveChatToArchive([chat, plan, other], [], "c1", archivedAt);
+    expect(moved.items.map((i) => i.id)).toEqual(["c2"]);
+    expect(moved.archivedItems.map((i) => i.id)).toEqual(["c1", "p1"]);
+    expect(moved.archivedItems[0].archivedAt).toBe(archivedAt);
+    expect(moved.items.some((i) => i.id === "p1")).toBe(false);
+  });
+
+  test("moveChatToActive restores the chat and its plans to the top of Active", () => {
+    const archived = moveChatToArchive([chat, plan, other], [], "c1", archivedAt);
+    const restored = moveChatToActive(archived.items, archived.archivedItems, "c1");
+    expect(restored.items.map((i) => i.id)).toEqual(["c1", "p1", "c2"]);
+    expect(restored.archivedItems).toEqual([]);
+    expect(restored.items[0].archivedAt).toBeNull();
+  });
+
+  test("an archived on-stage chat is not injected into active displayItems; nested plans stay in Archive", () => {
+    const archived = moveChatToArchive([chat, plan, other], [], "c1", archivedAt);
+    const resolved = resolveControlPanelLists(archived.items, archived.archivedItems, snapshot, {
+      chatOnStage: true,
+      startedAt,
+      titleForNew: "Kickoff",
+    });
+    expect(resolved.displayItems.map((i) => i.id)).toEqual(["c2"]);
+    expect(resolved.displayArchivedItems.map((i) => i.id)).toEqual(["c1", "p1"]);
+    expect(resolved.displayArchivedItems[0]).toMatchObject({
+      id: "c1",
+      unread: false,
+      lastActivityAt: snapshot.lastMessageAt,
+    });
+    const groups = buildControlPanelGroups(resolved.displayItems);
+    expect(groups.flatMap((g) => g.rows).map((r) => r.item.id)).toEqual(["c2"]);
+  });
+
+  test("a brand-new on-stage chat not in either list is prepended into Active", () => {
+    const fresh = {
+      localId: "local-new",
+      serverId: null,
+      lastMessageAt: null,
+      lastReply: null,
+      hasMessages: false,
+      isStreaming: false,
+    };
+    const resolved = resolveControlPanelLists([other], [], fresh, {
+      chatOnStage: true,
+      startedAt,
+      titleForNew: "New chat",
+    });
+    expect(resolved.displayItems[0]).toMatchObject({ key: "chat:local-new", title: "New chat" });
+    expect(resolved.displayItems.map((i) => i.id)).toEqual(["local-new", "c2"]);
+    expect(resolved.displayArchivedItems).toEqual([]);
+  });
+
+  test("buildArchivedRows is a flat archivedAt-desc list with plans nested under their parent, not day-grouped", () => {
+    const older = makeItem({
+      kind: "chat",
+      id: "c-old",
+      title: "Older",
+      archivedAt: "2026-09-01T00:00:00.000Z",
+      lastActivityAt: "2026-09-04T18:00:00.000Z",
+    });
+    const newer = makeItem({
+      kind: "chat",
+      id: "c-new",
+      title: "Newer",
+      archivedAt: "2026-09-03T00:00:00.000Z",
+      lastActivityAt: "2026-09-02T00:00:00.000Z",
+    });
+    const nested = makeItem({
+      kind: "plan",
+      id: "p-old",
+      parentChatId: "c-old",
+      lastActivityAt: "2026-09-04T19:00:00.000Z",
+    });
+    const rows = buildArchivedRows([older, nested, newer]);
+    expect(rows.map((r) => [r.item.id, r.depth])).toEqual([
+      ["c-new", 0],
+      ["c-old", 0],
+      ["p-old", 1],
+    ]);
+    expect(rows[1].childCount).toBe(1);
+    expect(rows[2].parentKey).toBe("chat:c-old");
+  });
+
+  test("visibleControlPanelItems appends Archive rows only when the section is expanded", () => {
+    const groups = buildControlPanelGroups([other]);
+    const rows = buildArchivedRows([{ ...chat, archivedAt }, plan]);
+    const collapsed = visibleControlPanelItems(groups, rows, new Set(), false);
+    expect(collapsed.map((i) => i.id)).toEqual(["c2"]);
+    const expanded = visibleControlPanelItems(groups, rows, new Set(), true);
+    expect(expanded.map((i) => i.id)).toEqual(["c2", "c1"]);
+    const withPlans = visibleControlPanelItems(groups, rows, new Set(["chat:c1"]), true);
+    expect(withPlans.map((i) => i.id)).toEqual(["c2", "c1", "p1"]);
   });
 });
