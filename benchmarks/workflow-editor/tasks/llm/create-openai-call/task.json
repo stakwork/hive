@@ -7,51 +7,36 @@
   "criteria": [
     {
       "id": "C-001",
-      "title": "Performs an outbound call to an LLM provider",
-      "match_criteria": "The workflow performs an outbound call to an external LLM provider to obtain generated text — whether via an HTTP Request step or an equivalent provider/skill step of the builder environment. PASS: at least one step, of whatever type, demonstrably sends data out to an LLM service and would receive the model's response back. FAIL: no step contacts any external model/provider (e.g. the workflow merely echoes a canned local value with no provider interaction)."
+      "title": "Makes a call to an external LLM provider",
+      "match_criteria": "The workflow sends data to an external LLM/model service and receives the model's generated response — through whichever step type its engine provides for this: a native model, llm or agent step, a provider/skill step, or a request to a provider's API. PASS: at least one step, of whatever type, is configured to send an inference request to a model service — a text, chat, vision, or audio model, whichever the task needs — and the workflow uses what comes back. If the call is made as a raw request to the provider's API, that request is well-formed for that inference: it targets a resource that serves it and uses the request method that resource accepts for creating an inference (POST). A native model step manages its own transport, so no endpoint or method is asserted for it. The specific provider is not asserted: any credible model service passes. FAIL: no step contacts any model service (the workflow returns a canned or locally computed value with no provider interaction), the call targets a resource incapable of serving a model inference, or a raw API request uses a method the endpoint would reject (GET, PUT, PATCH, DELETE)."
     },
     {
       "id": "C-002",
-      "title": "The call targets a chat-completion style endpoint",
-      "match_criteria": "The outbound call targets a valid LLM provider's chat/completions endpoint (a resource serving chat-completion requests). The specific provider is not asserted: any credible LLM API offering a chat/completions surface passes. FAIL: the call targets an endpoint incapable of producing a chat-style completion (an unrelated or purely auxiliary resource), or the target cannot be determined from the artifact."
+      "title": "A model/deployment identifier is specified",
+      "match_criteria": "The step that performs the model call specifies a model or deployment identifier as a non-empty string — a model name, a deployment name, or the equivalent setting for its engine. PASS: any plausible model/deployment name for whatever provider the agent chose. No specific provider or model family is asserted: choosing them is the agent's judgment from the intent alone. FAIL: no model/deployment identifier appears anywhere in the produced workflow, the identifier field exists but is empty or whitespace-only."
     },
     {
       "id": "C-003",
-      "title": "If an HTTP request step is used, its verb suits a chat completion",
-      "match_criteria": "CONDITIONAL criterion: applies ONLY when the workflow performs its provider call through an HTTP Request step. In that case the request verb must be the correct one for creating a chat completion (POST); any other verb (GET, PUT, PATCH, DELETE) fails this criterion. Not applicable when the call is made through a native provider/skill step — such steps manage their own transport and expose no user-visible verb to assert."
+      "title": "Credentials are referenced by name, never as an inline literal",
+      "match_criteria": "Every credential the workflow needs — for the model call and for any other authenticated request — is referenced by NAME through its engine's secret mechanism (a secret store, a named secret reference, an environment binding), so no credential value appears in the produced workflow. PASS: wherever a credential is supplied — an Authorization header, an API-key field, a key-bearing URL or body field, a step's provider configuration — it is populated from a named secret reference, optionally scheme-wrapped (a Bearer prefix) provided the token portion is itself the reference; a step whose engine binds the provider credential implicitly, with no credential field in the artifact at all, also passes. This criterion never asserts WHICH secret name is used, and a secret name that resolves to nothing in the judging environment is a warning upstream, never a failure here. FAIL: a plaintext credential appears anywhere in the produced workflow — a literal API key (for example a literal beginning sk-) or other live token in a header, in a URL query string or path, in a request body, or in a step's configuration."
     },
     {
       "id": "C-004",
-      "title": "Authorization header contains no plaintext credential",
-      "match_criteria": "On whatever step makes the outbound provider call, the Authorization header value must not embed live credential material of any kind. PASS: the Authorization value is a secret reference in the authoring form %%SOME_SECRET_NAME%% — optionally Bearer-wrapped, provided the wrapped token is itself a %%SOME_SECRET_NAME%%-form reference rather than a literal string. Any well-formed %%[A-Z0-9_]+%% name passes; this criterion never asserts WHICH secret name is used. FAIL: the Authorization header contains a plaintext API key (for example a literal beginning sk-) or a raw key embedded directly in the URL query string or path."
+      "title": "Caller-supplied inputs reach the call by reference, not as literals",
+      "match_criteria": "Each caller-supplied input genuinely reaches the step that consumes it, by reference rather than as a hard-coded literal: the `prompt` value is the request the model call sends, so the workflow produces a different exchange for different prompts. The reference may take whatever form the engine uses to read inputs and prior step outputs — a template expression, a variable binding, a step-output reference — and neither that syntax nor the provider's request-body schema (field names, message-array shapes) is asserted. What is asserted is that a different supplied value would produce a different call and therefore a different result. PASS: every declared input is read by reference at its point of use, as described above. FAIL: the prompt never enters the call, or it is embedded as a fixed literal (the workflow answers identically no matter what the caller supplies), or it is empty."
     },
     {
       "id": "C-005",
-      "title": "Secret references use the required authoring form",
-      "match_criteria": "The Authorization header's secret reference (on whatever step performs the outbound provider call) must use the required authoring form %%[A-Z0-9_]+%% — uppercase letters, digits and underscores between paired %% markers — and never the rejected runtime form {{ SOME_SECRET_NAME }}. The authoring form %%…%% and the runtime form {{ … }} are two spellings of the same secret-substitution mechanism; %%…%% is required in authored workflow JSON. This criterion asserts only the SHAPE of the reference: it never asserts WHICH secret name is used, and an unresolved %%SOME_SECRET_NAME%% is a warning upstream, never a failure here. PASS: a well-formed reference such as %%SOME_SECRET_NAME%% appears in the Authorization header. FAIL: any malformed reference — a lowercase or hyphenated name such as %%my-secret-name%%, surrounding spaces such as %% NAME %%, or a single-percent variant such as %NAME% — or the rejected runtime form {{ SOME_SECRET_NAME }}, including defaulted variants such as {{ SOME_SECRET_NAME | default: '' }}, appears in the Authorization header."
+      "title": "Workflow accepts a caller-supplied input named exactly `prompt`",
+      "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `prompt`, in whatever form its engine declares inputs (an inputs/parameters section, declared variables, or equivalent), and its behavior is driven by that input's value rather than by literals (the wiring asserted in C-004). PASS: an input with exactly that name is declared and read. FAIL: the input is declared under a different name (e.g. `query`, `userPrompt`), not declared at all, or replaced by a fixed literal — a rerun supplies values under exactly this name and cannot drive a workflow that reads different ones."
     },
     {
       "id": "C-006",
-      "title": "A model/deployment identifier is specified",
-      "match_criteria": "A model or deployment identifier is specified visibly in the artifact (e.g. in the configuration of the step that performs the provider call) as a non-empty string — any plausible model/deployment name for whatever provider the agent chose passes. No specific provider or model family is asserted: choosing them is the agent's judgment from the intent alone. FAIL: no model/deployment identifier appears anywhere in the produced workflow, or the identifier field exists but is empty or whitespace-only."
+      "title": "Workflow is structurally valid for its engine",
+      "match_criteria": "The workflow is valid for the engine it was authored for. PASS: it passes that engine's static validation — it parses, every step is well-formed, every referenced step, input, and secret resolves, and control flow proceeds from the entry point through every step to a successful terminal state with no unreachable or orphaned steps. Whether the rerun completed and what it returned are judged by the output criteria, not here. FAIL: the engine's validator rejects the workflow, a referenced step, input, or secret does not resolve, or a step is unreachable or orphaned."
     },
     {
       "id": "C-007",
-      "title": "The caller-supplied prompt reaches the provider call, un-hard-coded",
-      "match_criteria": "The caller-supplied prompt genuinely reaches the provider call and is not hard-coded: wherever the call's input payload is assembled, the prompt text arrives by reference — [#(step_id).output.variable_name] step-output form or equivalent variable wiring — so the workflow produces a different exchange for different prompts. The provider request-body schema (field names, message-array shapes) is not asserted. FAIL: the prompt never enters the call, or it is embedded as a fixed literal (the workflow answers identically no matter what the user supplies), or it is empty."
-    },
-    {
-      "id": "C-008",
-      "title": "Workflow is structurally valid",
-      "match_criteria": "The workflow JSON satisfies all three structural requirements: (1) there is at least one connection whose source is \"start\" (or the workflow has a designated start node/step); (2) every step is reachable via an unbroken chain of connections from start (no orphaned steps); (3) there is at least one edge whose target is \"system.succeed\" (or the equivalent terminal node), ensuring the workflow can reach a successful completion state. A workflow missing any one of these three is structurally invalid and fails this criterion."
-    },
-    {
-      "id": "C-009",
-      "title": "Workflow accepts a caller-supplied input named exactly `prompt`",
-      "match_criteria": "The workflow declares and consumes a caller-supplied workflow input named exactly `prompt`, and the artifact's behavior (the request built in C-007) is driven by that input's value rather than a literal. This is assessed at the artifact level: PASS if the produced workflow JSON references an input/variable named `prompt` and uses it to build the request. FAIL if the workflow hard-codes the prompt text directly in the request body with no `prompt` input reference, or if it declares the input under any other name (e.g. `query`, `userPrompt`) — a rerun supplies the value under the name `prompt` and cannot drive a workflow that reads a different name."
-    },
-    {
-      "id": "C-010",
       "title": "The run output is a plausible LLM response to the supplied prompt",
       "match_criteria": "Judged against the RUN OUTPUT produced by executing the workflow with the supplied `prompt` input — not against the workflow JSON. There is no single correct answer; what is asserted is that the output reads as a plausible LLM-generated response to the supplied prompt: coherent text that is responsive to what the prompt asked. PASS: coherent generated text addressing the prompt. FAIL: the output is empty, an error message or stack-trace payload, raw request/response scaffolding with no generated text, a verbatim echo of the prompt with no answer, or content unresponsive to the prompt.",
       "evaluates": "output"
