@@ -159,6 +159,7 @@ export async function openOrgConversation(
       undefined,
       messages.length, // already persisted — never re-save
       conversationId,
+      typeof conv.title === "string" ? conv.title : null,
     );
 
     if (opts.syncUrl && typeof window !== "undefined") {
