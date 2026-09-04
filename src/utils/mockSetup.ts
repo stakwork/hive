@@ -2,10 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import {
-  HTML_PAGE_FIXTURES,
-  htmlPageFixtureS3Key,
-} from "@/lib/mock/html-fixtures";
+import { HTML_PAGE_FIXTURES, htmlPageFixtureS3Key } from "@/lib/mock/html-fixtures";
 import {
   InitiativeStatus,
   LlmProvider,
@@ -17,6 +14,7 @@ import {
   SwarmStatus,
 } from "@prisma/client";
 import { seedMockData, seedPublicMockWorkspace } from "./mockSeedData";
+import { ensureMockOrgConversations } from "./mockOrgConversations";
 import { slugify } from "./slugify";
 
 // Mock GitHub user ID counter (starts high to avoid conflicts)
@@ -29,9 +27,7 @@ let mockGitHubIdCounter = 100000;
  * Returns the workspace slug.
  * All DB operations wrapped in transaction for atomicity.
  */
-export async function ensureMockWorkspaceForUser(
-  userId: string,
-): Promise<string> {
+export async function ensureMockWorkspaceForUser(userId: string): Promise<string> {
   const existing = await db.workspace.findFirst({
     where: { ownerId: userId, deleted: false },
     select: { id: true, slug: true },
@@ -53,9 +49,8 @@ export async function ensureMockWorkspaceForUser(
   });
 
   // Generate mock GitHub username from user's name or email
-  const mockGitHubUsername = user?.name?.toLowerCase().replace(/\s+/g, "-")
-    || user?.email?.split("@")[0]
-    || "mock-user";
+  const mockGitHubUsername =
+    user?.name?.toLowerCase().replace(/\s+/g, "-") || user?.email?.split("@")[0] || "mock-user";
   const mockGitHubUserId = String(mockGitHubIdCounter++);
   const mockInstallationId = mockGitHubIdCounter++;
 
@@ -67,17 +62,13 @@ export async function ensureMockWorkspaceForUser(
 
   try {
     const encryptionService = EncryptionService.getInstance();
-    encryptedPoolApiKey = JSON.stringify(
-      encryptionService.encryptField("poolApiKey", "mock-pool-api-key")
-    );
-    encryptedSwarmApiKey = JSON.stringify(
-      encryptionService.encryptField("swarmApiKey", "mock-swarm-api-key")
-    );
+    encryptedPoolApiKey = JSON.stringify(encryptionService.encryptField("poolApiKey", "mock-pool-api-key"));
+    encryptedSwarmApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "mock-swarm-api-key"));
     encryptedGitHubToken = JSON.stringify(
-      encryptionService.encryptField("access_token", `gho_mock_token_${mockGitHubUserId}`)
+      encryptionService.encryptField("access_token", `gho_mock_token_${mockGitHubUserId}`),
     );
     encryptedGitHubRefreshToken = JSON.stringify(
-      encryptionService.encryptField("refresh_token", `ghr_mock_refresh_${mockGitHubUserId}`)
+      encryptionService.encryptField("refresh_token", `ghr_mock_refresh_${mockGitHubUserId}`),
     );
   } catch {
     // Encryption not available (e.g., TOKEN_ENCRYPTION_KEY not set)
@@ -233,9 +224,7 @@ export async function ensureMockWorkspaceForUser(
  * Returns the workspace slug ("stakwork").
  * All DB operations wrapped in transaction for atomicity.
  */
-export async function ensureStakworkMockWorkspace(
-  userId: string,
-): Promise<string> {
+export async function ensureStakworkMockWorkspace(userId: string): Promise<string> {
   const STAKWORK_WORKSPACE_ID = "cmh4vrcj70001id04idolu9br";
   const STAKWORK_SLUG = "stakwork";
 
@@ -265,14 +254,12 @@ export async function ensureStakworkMockWorkspace(
 
   try {
     const encryptionService = EncryptionService.getInstance();
-    encryptedPoolApiKey = JSON.stringify(
-      encryptionService.encryptField("poolApiKey", "mock-stakwork-pool-api-key")
-    );
+    encryptedPoolApiKey = JSON.stringify(encryptionService.encryptField("poolApiKey", "mock-stakwork-pool-api-key"));
     encryptedGitHubToken = JSON.stringify(
-      encryptionService.encryptField("access_token", `gho_mock_stakwork_token_${mockGitHubUserId}`)
+      encryptionService.encryptField("access_token", `gho_mock_stakwork_token_${mockGitHubUserId}`),
     );
     encryptedGitHubRefreshToken = JSON.stringify(
-      encryptionService.encryptField("refresh_token", `ghr_mock_stakwork_refresh_${mockGitHubUserId}`)
+      encryptionService.encryptField("refresh_token", `ghr_mock_stakwork_refresh_${mockGitHubUserId}`),
     );
   } catch {
     // Encryption not available (e.g., TOKEN_ENCRYPTION_KEY not set)
@@ -425,6 +412,28 @@ export async function ensureStakworkMockWorkspace(
 }
 
 /**
+ * Control panel demo chats, on `mock-org` and on the user's personal
+ * mock org (the one their `mock-stakgraph` workspace belongs to). A
+ * mock user who didn't create `mock-org` has no workspace in it, cannot
+ * open its org page, and lands on their personal org instead — so that
+ * is where the demo has to be. Non-fatal per org.
+ */
+async function ensureMockConversationsForUser(mockOrgId: string, userId: string): Promise<void> {
+  const personal = await db.workspace.findFirst({
+    where: { ownerId: userId, deleted: false, sourceControlOrgId: { not: null } },
+    select: { sourceControlOrgId: true },
+  });
+  const orgIds = new Set([mockOrgId, personal?.sourceControlOrgId].filter((id): id is string => !!id));
+  for (const orgId of orgIds) {
+    try {
+      await ensureMockOrgConversations(orgId, userId);
+    } catch (error) {
+      console.error("[MockSetup] Failed to seed org conversations:", error);
+    }
+  }
+}
+
+/**
  * Ensures a second "mock-org" SourceControlOrg (type=ORG) exists with 2 workspaces and 2 team
  * members, giving the org page meaningful multi-workspace data.
  * Idempotent — safe to call on every sign-in.
@@ -447,12 +456,8 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
     // org-canvas ask flow. Cheap upsert on every login.
     try {
       const encryptionService = EncryptionService.getInstance();
-      const encryptedToken = JSON.stringify(
-        encryptionService.encryptField("access_token", `gho_mock_org_token`)
-      );
-      const encryptedRefresh = JSON.stringify(
-        encryptionService.encryptField("refresh_token", `ghr_mock_org_refresh`)
-      );
+      const encryptedToken = JSON.stringify(encryptionService.encryptField("access_token", `gho_mock_org_token`));
+      const encryptedRefresh = JSON.stringify(encryptionService.encryptField("refresh_token", `ghr_mock_org_refresh`));
       await db.sourceControlToken.upsert({
         where: {
           userId_sourceControlOrgId: {
@@ -496,6 +501,7 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
     await ensureMockConnectionData(existing.id, userId);
     await ensureMockOrgInitiatives(existing.id, userId);
     await ensureMockHtmlPages(existing.id, userId);
+    await ensureMockConversationsForUser(existing.id, userId);
     return;
   }
 
@@ -504,9 +510,7 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
   let encryptedOrgGitHubRefreshToken: string | null = null;
   try {
     const encryptionService = EncryptionService.getInstance();
-    encryptedPoolApiKey = JSON.stringify(
-      encryptionService.encryptField("poolApiKey", "mock-org-pool-api-key")
-    );
+    encryptedPoolApiKey = JSON.stringify(encryptionService.encryptField("poolApiKey", "mock-org-pool-api-key"));
     // Mock GitHub App tokens for the (user × mock-org) pair. The
     // org-canvas chat (`/api/ask/quick`) calls
     // `getGithubUsernameAndPAT(userId, slug)` for every workspace it
@@ -514,11 +518,9 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
     // the workspace's `SourceControlOrg`. Without this, the ask flow
     // 404s before reaching the LLM. Token value is opaque — local
     // canvas tools never call the GitHub API with it.
-    encryptedOrgGitHubToken = JSON.stringify(
-      encryptionService.encryptField("access_token", `gho_mock_org_token`)
-    );
+    encryptedOrgGitHubToken = JSON.stringify(encryptionService.encryptField("access_token", `gho_mock_org_token`));
     encryptedOrgGitHubRefreshToken = JSON.stringify(
-      encryptionService.encryptField("refresh_token", `ghr_mock_org_refresh`)
+      encryptionService.encryptField("refresh_token", `ghr_mock_org_refresh`),
     );
   } catch {
     // Encryption not required for mock
@@ -649,6 +651,7 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
   await ensureMockConnectionData(workspace.orgId, userId);
   await ensureMockOrgInitiatives(workspace.orgId, userId);
   await ensureMockHtmlPages(workspace.orgId, userId);
+  await ensureMockConversationsForUser(workspace.orgId, userId);
 }
 
 async function ensureMockConnectionData(orgId: string, userId: string): Promise<void> {
@@ -829,10 +832,7 @@ async function ensureMockHtmlPages(orgId: string, userId: string): Promise<void>
   }
 }
 
-async function ensureMockOrgInitiatives(
-  orgId: string,
-  userId: string,
-): Promise<void> {
+async function ensureMockOrgInitiatives(orgId: string, userId: string): Promise<void> {
   // Idempotency check — if any initiative exists for this org we
   // assume seeding has already run. A repeated seed would create
   // duplicate timeline rows and a `sequence` unique-constraint
@@ -871,8 +871,7 @@ async function ensureMockOrgInitiatives(
   // (Past Due / This Quarter / Next Quarter / Later) get a card
   // each on every fresh seed.
   const now = new Date();
-  const daysFromNow = (d: number) =>
-    new Date(now.getTime() + d * 24 * 60 * 60 * 1000);
+  const daysFromNow = (d: number) => new Date(now.getTime() + d * 24 * 60 * 60 * 1000);
 
   // ── Initiative 1: "Q4 Platform Modernization" — actively in flight ──
   // Mix of done, in-progress, and upcoming milestones. The first
@@ -966,8 +965,7 @@ async function ensureMockOrgInitiatives(
     data: {
       orgId,
       name: "Trust & Safety",
-      description:
-        "Rate-limit abuse vectors, ship audit logs, and start an incident-response runbook.",
+      description: "Rate-limit abuse vectors, ship audit logs, and start an incident-response runbook.",
       status: InitiativeStatus.ACTIVE,
       assigneeId: userId,
       startDate: daysFromNow(-7),

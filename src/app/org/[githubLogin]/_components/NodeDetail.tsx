@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { ArrowUpRight, Loader2, MessageSquare } from "lucide-react";
-import { useCanvasChatStore } from "../_state/canvasChatStore";
+import { openOrgConversation } from "../_state/openOrgConversation";
 import type { CanvasNode } from "system-canvas";
 import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
@@ -12,13 +12,7 @@ import { TaskChat } from "./TaskChat";
 import { ResearchViewer } from "./ResearchViewer";
 import { HtmlArtifactFrame } from "@/components/html-artifact/HtmlArtifactFrame";
 import type { OrgMemberResponse } from "@/types/workspace";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /**
  * Right-panel detail card for the currently-selected canvas node.
@@ -80,8 +74,11 @@ export function NodeDetail({ node, githubLogin, onSwitchToChat }: NodeDetailProp
           {convId && (
             <button
               onClick={() => {
-                useCanvasChatStore.getState().setActiveConversation(convId);
-                onSwitchToChat?.();
+                // Hydrate the plan's canvas chat into the store the way every
+                // other "open this chat" does, then let the parent show it.
+                void openOrgConversation(githubLogin, convId, { syncUrl: true }).then((opened) => {
+                  if (opened) onSwitchToChat?.();
+                });
               }}
               className="flex items-center gap-1 text-xs text-primary hover:underline shrink-0 mt-0.5"
             >
@@ -107,11 +104,7 @@ export function NodeDetail({ node, githubLogin, onSwitchToChat }: NodeDetailProp
 export function AuthoredNodeBody({ node }: { node: CanvasNode }) {
   const text = node.text?.trim();
   if (!text) {
-    return (
-      <p className="text-sm text-muted-foreground italic">
-        Empty note. Click the node on the canvas to edit it.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground italic">Empty note. Click the node on the canvas to edit it.</p>;
   }
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none">
@@ -139,9 +132,7 @@ export function LiveNodeBody({
     setError(null);
     setDetail(null);
     onConversationIdResolved?.(null);
-    fetch(
-      `/api/orgs/${githubLogin}/canvas/node/${encodeURIComponent(nodeId)}`,
-    )
+    fetch(`/api/orgs/${githubLogin}/canvas/node/${encodeURIComponent(nodeId)}`)
       .then(async (res) => {
         if (cancelled) return;
         if (!res.ok) {
@@ -153,9 +144,7 @@ export function LiveNodeBody({
           setDetail(body);
           if (body.kind === "feature") {
             const extras = (body.extras ?? {}) as Record<string, unknown>;
-            onConversationIdResolved?.(
-              (extras.parentCanvasConversationId as string | null) ?? null,
-            );
+            onConversationIdResolved?.((extras.parentCanvasConversationId as string | null) ?? null);
           }
         }
       })
@@ -215,11 +204,7 @@ export function LiveNodeBody({
           ? extras.updatedAt
           : undefined;
     if (!slug) {
-      return (
-        <p className="text-sm text-muted-foreground">
-          This page is missing a slug.
-        </p>
-      );
+      return <p className="text-sm text-muted-foreground">This page is missing a slug.</p>;
     }
     return (
       <div className="h-full min-h-[24rem]">
@@ -240,9 +225,7 @@ export function LiveNodeBody({
           <ReactMarkdown>{detail.description}</ReactMarkdown>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground italic">
-          No description set.
-        </p>
+        <p className="text-sm text-muted-foreground italic">No description set.</p>
       )}
 
       <KindExtras detail={detail} githubLogin={githubLogin} />
@@ -271,9 +254,7 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
               { label: "Members", value: String(memberCount) },
             ]}
           />
-          {slug && (
-            <FooterLink href={`/w/${slug}`} label="Open workspace" />
-          )}
+          {slug && <FooterLink href={`/w/${slug}`} label="Open workspace" />}
         </div>
       );
     }
@@ -301,10 +282,7 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
       const startDate = extras.startDate as string | null | undefined;
       const targetDate = extras.targetDate as string | null | undefined;
       const completedAt = extras.completedAt as string | null | undefined;
-      const assignee = extras.assignee as
-        | { name: string | null }
-        | null
-        | undefined;
+      const assignee = extras.assignee as { name: string | null } | null | undefined;
       return (
         <div className="space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
@@ -315,47 +293,25 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
           </div>
           <StatGrid
             stats={[
-              ...(assignee?.name
-                ? [{ label: "Owner", value: assignee.name }]
-                : []),
-              ...(startDate
-                ? [{ label: "Started", value: formatDate(startDate) }]
-                : []),
-              ...(targetDate
-                ? [{ label: "Target", value: formatDate(targetDate) }]
-                : []),
-              ...(completedAt
-                ? [{ label: "Completed", value: formatDate(completedAt) }]
-                : []),
+              ...(assignee?.name ? [{ label: "Owner", value: assignee.name }] : []),
+              ...(startDate ? [{ label: "Started", value: formatDate(startDate) }] : []),
+              ...(targetDate ? [{ label: "Target", value: formatDate(targetDate) }] : []),
+              ...(completedAt ? [{ label: "Completed", value: formatDate(completedAt) }] : []),
             ]}
           />
-          <FooterLink
-            href={`/org/${githubLogin}/initiatives`}
-            label="Open in Initiatives"
-          />
+          <FooterLink href={`/org/${githubLogin}/initiatives`} label="Open in Initiatives" />
         </div>
       );
     }
     case "milestone": {
-      return (
-        <MilestoneExtras
-          extras={extras}
-          nodeId={detail.id}
-          githubLogin={githubLogin}
-        />
-      );
+      return <MilestoneExtras extras={extras} nodeId={detail.id} githubLogin={githubLogin} />;
     }
     case "feature": {
       const status = (extras.status ?? "") as string;
       const taskCount = Number(extras.taskCount ?? 0);
       const slug = extras.workspaceSlug as string | undefined;
-      const workflowStatus = (extras.workflowStatus ?? null) as
-        | WorkflowStatus
-        | null;
-      const assignee = extras.assignee as
-        | { name: string | null }
-        | null
-        | undefined;
+      const workflowStatus = (extras.workflowStatus ?? null) as WorkflowStatus | null;
+      const assignee = extras.assignee as { name: string | null } | null | undefined;
       return (
         <div className="space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
@@ -364,15 +320,8 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
               {taskCount} task{taskCount === 1 ? "" : "s"}
             </span>
           </div>
-          {assignee?.name && (
-            <StatGrid stats={[{ label: "Owner", value: assignee.name }]} />
-          )}
-          {slug && (
-            <FooterLink
-              href={`/w/${slug}/plan/${detail.id}`}
-              label="Open feature"
-            />
-          )}
+          {assignee?.name && <StatGrid stats={[{ label: "Owner", value: assignee.name }]} />}
+          {slug && <FooterLink href={`/w/${slug}/plan/${detail.id}`} label="Open feature" />}
           {/*
            * Inline plan chat — reads/writes the same feature-chat API
            * the full plan page uses, subscribes to the same Pusher
@@ -382,11 +331,7 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
            * hatch to the artifacts panel (PLAN/TASKS/VERIFY).
            */}
           {slug && (
-            <FeaturePlanChat
-              featureId={detail.id}
-              workspaceSlug={slug}
-              initialWorkflowStatus={workflowStatus}
-            />
+            <FeaturePlanChat featureId={detail.id} workspaceSlug={slug} initialWorkflowStatus={workflowStatus} />
           )}
         </div>
       );
@@ -395,31 +340,20 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
       const status = (extras.status ?? "") as string;
       const workflowStatusStr = (extras.workflowStatus ?? "") as string;
       const slug = extras.workspaceSlug as string | undefined;
-      const assignee = extras.assignee as
-        | { name: string | null }
-        | null
-        | undefined;
+      const assignee = extras.assignee as { name: string | null } | null | undefined;
       // Typed copy of `workflowStatus` for the chat seed. The string
       // form above is what we display in the pill; `TaskChat` wants
       // the enum (or null). Keep both — the pill stays string-driven
       // so unknown future statuses still render their raw label.
-      const workflowStatus = (extras.workflowStatus ?? null) as
-        | WorkflowStatus
-        | null;
+      const workflowStatus = (extras.workflowStatus ?? null) as WorkflowStatus | null;
       return (
         <div className="space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             {status && <StatusPill value={status} />}
-            {workflowStatusStr && (
-              <StatusPill value={workflowStatusStr} variant="muted" />
-            )}
+            {workflowStatusStr && <StatusPill value={workflowStatusStr} variant="muted" />}
           </div>
-          {assignee?.name && (
-            <StatGrid stats={[{ label: "Owner", value: assignee.name }]} />
-          )}
-          {slug && (
-            <FooterLink href={`/w/${slug}/task/${detail.id}`} label="Open task" />
-          )}
+          {assignee?.name && <StatGrid stats={[{ label: "Owner", value: assignee.name }]} />}
+          {slug && <FooterLink href={`/w/${slug}/task/${detail.id}`} label="Open task" />}
           {/*
            * Inline task chat — symmetric to the feature plan chat
            * embedded in `case "feature":` above. Reads from
@@ -429,13 +363,7 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
            * agent's clarifying questions without leaving the canvas
            * — the AttentionList card's primary use case.
            */}
-          {slug && (
-            <TaskChat
-              taskId={detail.id}
-              workspaceSlug={slug}
-              initialWorkflowStatus={workflowStatus}
-            />
-          )}
+          {slug && <TaskChat taskId={detail.id} workspaceSlug={slug} initialWorkflowStatus={workflowStatus} />}
         </div>
       );
     }
@@ -455,19 +383,11 @@ function MilestoneExtras({ extras, nodeId, githubLogin }: MilestoneExtrasProps) 
   const dueDate = extras.dueDate as string | null | undefined;
   const completedAt = extras.completedAt as string | null | undefined;
   const featureCount = Number(extras.featureCount ?? 0);
-  const assigneeExtras = extras.assignee as
-    | { id: string; name: string | null }
-    | null
-    | undefined;
-  const initiative = extras.initiative as
-    | { id: string; name: string | null }
-    | null
-    | undefined;
+  const assigneeExtras = extras.assignee as { id: string; name: string | null } | null | undefined;
+  const initiative = extras.initiative as { id: string; name: string | null } | null | undefined;
 
   const [members, setMembers] = useState<OrgMemberResponse[]>([]);
-  const [assigneeId, setAssigneeId] = useState<string>(
-    assigneeExtras?.id ?? "__none__",
-  );
+  const [assigneeId, setAssigneeId] = useState<string>(assigneeExtras?.id ?? "__none__");
 
   useEffect(() => {
     if (!githubLogin) return;
@@ -480,37 +400,30 @@ function MilestoneExtras({ extras, nodeId, githubLogin }: MilestoneExtrasProps) 
         }
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [githubLogin]);
 
   async function handleAssigneeChange(value: string) {
     const prev = assigneeId;
     setAssigneeId(value);
 
-    const milestoneId = nodeId.startsWith("milestone:")
-      ? nodeId.slice("milestone:".length)
-      : nodeId;
+    const milestoneId = nodeId.startsWith("milestone:") ? nodeId.slice("milestone:".length) : nodeId;
     const initiativeId = (initiative as { id: string } | null | undefined)?.id;
     if (!initiativeId) return;
 
     try {
-      const res = await fetch(
-        `/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones/${milestoneId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            assigneeId: value === "__none__" ? null : value,
-          }),
-        },
-      );
+      const res = await fetch(`/api/orgs/${githubLogin}/initiatives/${initiativeId}/milestones/${milestoneId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assigneeId: value === "__none__" ? null : value,
+        }),
+      });
       if (!res.ok) {
         const detail = await res.text().catch(() => "");
-        console.error(
-          "[NodeDetail] PATCH milestone assignee failed",
-          res.status,
-          detail,
-        );
+        console.error("[NodeDetail] PATCH milestone assignee failed", res.status, detail);
         setAssigneeId(prev);
       }
     } catch (err) {
@@ -529,13 +442,9 @@ function MilestoneExtras({ extras, nodeId, githubLogin }: MilestoneExtrasProps) 
       </div>
       <StatGrid
         stats={[
-          ...(initiative?.name
-            ? [{ label: "Initiative", value: initiative.name }]
-            : []),
+          ...(initiative?.name ? [{ label: "Initiative", value: initiative.name }] : []),
           ...(dueDate ? [{ label: "Due", value: formatDate(dueDate) }] : []),
-          ...(completedAt
-            ? [{ label: "Completed", value: formatDate(completedAt) }]
-            : []),
+          ...(completedAt ? [{ label: "Completed", value: formatDate(completedAt) }] : []),
         ]}
       />
       <div className="space-y-1">
@@ -554,10 +463,7 @@ function MilestoneExtras({ extras, nodeId, githubLogin }: MilestoneExtrasProps) 
           </SelectContent>
         </Select>
       </div>
-      <FooterLink
-        href={`/org/${githubLogin}/initiatives`}
-        label="Open in Initiatives"
-      />
+      <FooterLink href={`/org/${githubLogin}/initiatives`} label="Open in Initiatives" />
     </div>
   );
 }
@@ -576,13 +482,7 @@ function StatGrid({ stats }: { stats: { label: string; value: string }[] }) {
   );
 }
 
-function StatusPill({
-  value,
-  variant = "default",
-}: {
-  value: string;
-  variant?: "default" | "muted";
-}) {
+function StatusPill({ value, variant = "default" }: { value: string; variant?: "default" | "muted" }) {
   return (
     <Badge variant={variant === "muted" ? "outline" : "secondary"} className="text-[10px] uppercase">
       {value.replace(/_/g, " ").toLowerCase()}
@@ -610,14 +510,7 @@ function StatusPill({
  * The `external` prop is preserved as a no-op for API compatibility
  * with existing call sites that pass it explicitly for GitHub URLs.
  */
-function FooterLink({
-  href,
-  label,
-}: {
-  href: string;
-  label: string;
-  external?: boolean;
-}) {
+function FooterLink({ href, label }: { href: string; label: string; external?: boolean }) {
   return (
     <a
       href={href}

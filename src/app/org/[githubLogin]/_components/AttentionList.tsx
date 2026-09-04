@@ -22,6 +22,7 @@
  */
 import { AlertTriangle, MessageCircleQuestion, CheckCircle2, ChevronRight, X } from "lucide-react";
 import type { AttentionItem } from "@/services/attention/topItems";
+import { formatAge } from "@/lib/date-utils";
 
 interface AttentionListProps {
   items: AttentionItem[];
@@ -70,27 +71,10 @@ const TYPE_META: Record<AttentionItem["type"], TypeMeta> = {
  * Format an age in ms as a compact human-readable string. Mirrors
  * the convention used in dashboard widgets ("2h ago", "yesterday").
  */
-function formatAge(ms: number): string {
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return "just now";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day === 1) return "yesterday";
-  if (day < 7) return `${day}d ago`;
-  const wk = Math.floor(day / 7);
-  if (wk < 5) return `${wk}w ago`;
-  const mo = Math.floor(day / 30);
-  return `${mo}mo ago`;
-}
 
 export function AttentionList({ items, total, onDismiss }: AttentionListProps) {
   if (items.length === 0) return null;
-  const overflow = total !== undefined && total > items.length
-    ? total - items.length
-    : 0;
+  const overflow = total !== undefined && total > items.length ? total - items.length : 0;
 
   return (
     <div className="rounded-lg border bg-card text-card-foreground">
@@ -141,12 +125,9 @@ export function AttentionList({ items, total, onDismiss }: AttentionListProps) {
                     <span aria-hidden>·</span>
                     <span className="truncate">{item.workspaceName}</span>
                   </div>
-                  <div className="mt-0.5 break-words text-sm font-medium leading-snug">
-                    {item.title}
-                  </div>
+                  <div className="mt-0.5 break-words text-sm font-medium leading-snug">{item.title}</div>
                   <div className="mt-0.5 text-[11px] text-muted-foreground">
-                    {item.entityKind === "feature" ? "Feature" : "Task"} ·{" "}
-                    {formatAge(item.ageMs)}
+                    {item.entityKind === "feature" ? "Feature" : "Task"} · {formatAge(item.ageMs)}
                   </div>
                 </div>
                 <ChevronRight className="mt-1 h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
