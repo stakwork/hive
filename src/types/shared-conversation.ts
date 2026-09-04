@@ -2,6 +2,9 @@
 
 export interface ConversationSettings {
   extraWorkspaceSlugs?: string[];
+  // Set to "llm" after a successful generateConversationTitle write.
+  // Once present, later turns must not overwrite SharedConversation.title.
+  titleSource?: "llm";
   // Cached swarm concepts (the expensive `listConcepts` result) for
   // org-canvas conversations. Written server-side by `/api/ask/quick` on
   // the first turn and reused on later turns to skip the swarm fetch. The
