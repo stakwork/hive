@@ -1,18 +1,26 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FileIcon, GitFork, Loader2, Mic, MicOff, OctagonX, Paperclip, Plus, RefreshCw, Send, Share2, X } from "lucide-react";
+import {
+  FileIcon,
+  Loader2,
+  Mic,
+  MicOff,
+  OctagonX,
+  Paperclip,
+  Plus,
+  RefreshCw,
+  Send,
+  Share2,
+  Split,
+  X,
+} from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
 import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CanvasHistoryPopover } from "./CanvasHistoryPopover";
 import { CanvasAgentSettingsPopover } from "./CanvasAgentSettingsPopover";
 import { toast } from "sonner";
@@ -23,19 +31,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { SidebarChatMessage } from "./SidebarChatMessage";
 import { ProposalCard, getProposalsFromMessage, sortProposalsByDependency } from "./ProposalCard";
-import {
-  PROPOSE_FEATURE_TOOL,
-  PROPOSE_INITIATIVE_TOOL,
-  PROPOSE_MILESTONE_TOOL,
-} from "@/lib/proposals/types";
-import {
-  SubAgentRunCard,
-  getSubAgentRunsFromMessages,
-} from "./SubAgentRunCard";
-import {
-  ResearchRunCard,
-  getResearchRunsFromMessages,
-} from "./ResearchRunCard";
+import { PROPOSE_FEATURE_TOOL, PROPOSE_INITIATIVE_TOOL, PROPOSE_MILESTONE_TOOL } from "@/lib/proposals/types";
+import { SubAgentRunCard, getSubAgentRunsFromMessages } from "./SubAgentRunCard";
+import { ResearchRunCard, getResearchRunsFromMessages } from "./ResearchRunCard";
 import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
@@ -51,6 +49,8 @@ import {
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import { forkCanvasConversation } from "../_state/forkCanvasConversation";
+import { startNewOrgConversation } from "../_state/openOrgConversation";
+import { ActionTip } from "./ActionTip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
@@ -76,14 +76,19 @@ import { StreamScrollIndicator } from "@/components/dashboard/DashboardChat/Stre
  * want user messages right-aligned and assistant messages left-
  * aligned.
  */
+/** Chat input grows with its content (Shift+Enter adds lines) up to this, then scrolls. */
+
 interface SidebarChatProps {
   /** Slug of the org. Used by the Share button to scope the POST. */
   githubLogin: string;
+  /**
+   * Hide the history popover and the new-chat button in the header.
+   * The control panel lists every chat and owns "New" in its own
+   * column, so those controls would be duplicates there.
+   */
 }
 
 export function SidebarChat({ githubLogin }: SidebarChatProps) {
-
-
   // ─── Selectors — narrow on purpose ─────────────────────────────────
   // Each selector returns a primitive or a stable reference so
   // streaming text-deltas don't trigger re-renders in selectors that
@@ -94,9 +99,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   const messages = useCanvasChatStore(
     (s) => (activeId ? s.conversations[activeId]?.messages : undefined) ?? EMPTY_MESSAGES,
   );
-  const isLoading = useCanvasChatStore(
-    (s) => (activeId ? s.conversations[activeId]?.isLoading : false) ?? false,
-  );
+  const isLoading = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isLoading : false) ?? false);
   // Refcount of unsettled agent turns in this conversation — unlike
   // `isLoading` (cleared on the first stream chunk), this stays > 0 for
   // the full send→finally lifetime of every in-flight turn, so the
@@ -104,51 +107,27 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   // justified while a second overlapping turn (e.g. a proposal
   // approval) is still streaming. See `CanvasConversation.agentTurnsInProgress`.
   const agentTurnsInProgress = useCanvasChatStore(
-    (s) =>
-      (activeId ? s.conversations[activeId]?.agentTurnsInProgress : 0) ?? 0,
+    (s) => (activeId ? s.conversations[activeId]?.agentTurnsInProgress : 0) ?? 0,
   );
   const activeToolCalls = useCanvasChatStore(
-    (s) =>
-      (activeId ? s.conversations[activeId]?.activeToolCalls : undefined) ??
-      EMPTY_TOOL_CALLS,
+    (s) => (activeId ? s.conversations[activeId]?.activeToolCalls : undefined) ?? EMPTY_TOOL_CALLS,
   );
-  // The persisted row id. Sharing flips this row to `isShared` and hands
-  // out its id, so the sharer and every joiner live in the *same* room.
-  // Null until autosave has created the row — Share/Fork is gated on it.
-  const serverConversationId = useCanvasChatStore(
-    (s) =>
-      (activeId ? s.conversations[activeId]?.serverConversationId : null) ??
-      null,
-  );
-  // True for the full lifetime of a streaming response (source must be
-  // persisted before we fork it, so fork stays disabled until streaming ends).
-  const isStreaming = useCanvasChatStore(
-    (s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false,
-  );
-
-  // runActive: driven by local tool-call detection (via setRunActive called from
-  // useSendCanvasChatMessage) AND by the Pusher CANVAS_RUN_ACTIVE event (for
-  // all participants including non-initiators, bound in useCanvasChatAutoSave).
-  const runActive = useCanvasChatStore(
-    (s) => (activeId ? s.conversations[activeId]?.runActive : false) ?? false,
-  );
-  // stopRun action — posts to /api/ask/abort without exposing request_id.
-  const stopRun = useCanvasChatStore((s) => s.stopRun);
-  const setRunActive = useCanvasChatStore((s) => s.setRunActive);
-
-  // Org context for Stop — needed by the abort endpoint.
-  const orgContext = useCanvasChatStore(
-    (s) => (activeId ? s.conversations[activeId]?.context : null) ?? null,
-  );
+  // True for the full lifetime of a streaming response (the last message
+  // renders as streaming until it settles).
+  const isStreaming = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false);
 
   const { id: workspaceId } = useWorkspace();
-  const { isActive } = useCanvasAgentActivity(activeId, workspaceId);
-
-  const [isForking, setIsForking] = useState(false);
 
   const sendMessage = useSendCanvasChatMessage();
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // The whole chat is the drop target — header, messages and composer —
+  // not just the textarea. Dropped files land in the composer as
+  // attachments through its handle.
+  const composerRef = useRef<SidebarChatInputHandle>(null);
+  const { isDragging, dragProps } = useFileDrop<HTMLDivElement>({
+    onDrop: (files) => composerRef.current?.addFiles(files),
+  });
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const isProgrammaticScrollRef = useRef(false);
   const mouseDownRef = useRef(false); // true while primary mouse button is held
@@ -216,11 +195,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
     setUserScrolledUp(!atBottom);
   };
 
-  const handleSend = async (
-    content: string,
-    attachments: CanvasAttachment[],
-    clearInput: () => void,
-  ) => {
+  const handleSend = async (content: string, attachments: CanvasAttachment[], clearInput: () => void) => {
     if (!activeId) return;
     await sendMessage({
       conversationId: activeId,
@@ -228,97 +203,6 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       attachments,
       onResponseStart: () => clearInput(),
     });
-  };
-
-  const handleClear = () => {
-    // Start a brand-new conversation in its own slot rather than wiping
-    // the active one in place. An in-flight stream stays bound to its
-    // original slot (closed over in `useSendCanvasChatMessage`), so it
-    // can't bleed into this fresh chat. The new chat inherits the current
-    // canvas scope (context) so its first turn targets the right canvas.
-    const store = useCanvasChatStore.getState();
-    const activeId = store.activeConversationId;
-    const context = activeId
-      ? store.conversations[activeId]?.context
-      : undefined;
-    store.startConversation(
-      context ?? {
-        orgId: "",
-        githubLogin: githubLogin ?? "",
-        workspaceSlug: null,
-        workspaceSlugs: [],
-        currentCanvasRef: "",
-        currentCanvasBreadcrumb: "",
-        selectedNodeId: null,
-        selectedNodeIds: [],
-      },
-      [],
-      undefined,
-      0,
-    );
-    // Drop the stale `?chat=<id>` deep link so a reload/preload doesn't
-    // re-adopt the conversation we just left. `history.replaceState`
-    // (NOT `router.replace`) to avoid a Next navigation / RSC refetch on
-    // this `protected` route — same reasoning as `setUrlSlug` (`?c=`) and
-    // `setUrlResearchSlug` (`?r=`) in OrgCanvasView, and the `?chat=`
-    // writer in useSendCanvasChatMessage.
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      params.delete("chat");
-      const qs = params.toString();
-      window.history.replaceState(
-        null,
-        "",
-        `${window.location.pathname}${qs ? `?${qs}` : ""}`,
-      );
-    }
-  };
-
-  const handleShare = async () => {
-    if (!serverConversationId) return;
-    try {
-      // Every org-canvas row is already a joinable room (`isShared`
-      // defaults true) and the URL tracks the live row, so sharing is
-      // just copying the `?chat=<id>` link — no flag to flip, no
-      // snapshot, no fork. Anyone in the org who opens it adopts the same
-      // row and live-sync keeps everyone in step.
-      const url = `${window.location.origin}/org/${githubLogin}?chat=${serverConversationId}`;
-      await navigator.clipboard.writeText(url);
-      toast.success("Share link copied to clipboard!");
-    } catch (error) {
-      console.error("Error sharing conversation:", error);
-      toast.error("Failed to copy share link", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  };
-
-  const handleFork = async () => {
-    if (!serverConversationId || isStreaming || isForking) return;
-    setIsForking(true);
-    try {
-      const forkId = await forkCanvasConversation(githubLogin, serverConversationId);
-      // Swap the URL to the fork without a Next.js navigation / RSC refetch —
-      // same pattern as handleClear (strip ?chat=) and useSendCanvasChatMessage
-      // (set ?chat=).
-      if (typeof window !== "undefined") {
-        const params = new URLSearchParams(window.location.search);
-        params.set("chat", forkId);
-        window.history.replaceState(
-          null,
-          "",
-          `${window.location.pathname}?${params.toString()}`,
-        );
-      }
-      toast.success("Chat forked — you're now in your own copy.");
-    } catch (error) {
-      console.error("Error forking conversation:", error);
-      toast.error("Failed to fork chat", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    } finally {
-      setIsForking(false);
-    }
   };
 
   const hasMessages = messages.length > 0;
@@ -413,329 +297,392 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
             count and surfaces the button live. Suppressed while a FORM
             is pending — answer the planner first.
           */}
-          {!run.pendingForm &&
-            run.messages.some((m) => m.direction === "in") && (
-              <StartTasksSlot
-                featureId={run.featureId}
-                featureTitle={run.featureTitle}
-                revalidateKey={run.anchorMessageId}
-              />
-            )}
+          {!run.pendingForm && run.messages.some((m) => m.direction === "in") && (
+            <StartTasksSlot
+              featureId={run.featureId}
+              featureTitle={run.featureTitle}
+              revalidateKey={run.anchorMessageId}
+            />
+          )}
         </div>
       ))}
     </div>
   );
 
   return (
-    <div className="flex h-full flex-col min-h-0">
-      <div className="flex items-center justify-between px-3 py-2 border-b">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground">Ask Jamie</span>
-          {isActive && (
-            <span
-              className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
-              aria-label="agent active"
-            />
-          )}
+    <div className="relative flex h-full flex-col min-h-0" {...dragProps}>
+      {isDragging && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center border-2 border-dashed border-primary bg-primary/5"
+        >
+          <span className="rounded-lg border bg-background/95 px-3 py-1.5 text-sm font-medium text-primary shadow-sm">
+            Drop files to attach
+          </span>
         </div>
-        <div className="flex items-center gap-1">
-          {runActive && (
-            <button
-              type="button"
-              onClick={() => {
-                if (serverConversationId && orgContext) {
-                  void stopRun({
-                    serverConversationId,
-                    orgId: orgContext.orgId,
-                    // We optimistically clear local runActive immediately
-                    // so the button disappears; the server will confirm.
-                  });
-                  // Optimistic local clear — the Pusher event will confirm.
-                  if (activeId) setRunActive(activeId, false);
-                }
-              }}
-              title="Stop investigation"
-              className="flex items-center gap-1 px-2 py-1 rounded bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-medium transition-colors"
-            >
-              <OctagonX className="w-3.5 h-3.5" />
-              Stop
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={handleShare}
-            disabled={!serverConversationId}
-            title="Copy share link"
-            className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            <Share2 className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={handleFork}
-            disabled={!serverConversationId || isStreaming || isForking}
-            title="Fork chat"
-            className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            <GitFork className="w-4 h-4" />
-          </button>
-          <CanvasAgentSettingsPopover githubLogin={githubLogin} />
-          <CanvasHistoryPopover githubLogin={githubLogin} />
-          <button
-            type="button"
-            onClick={handleClear}
-            disabled={!hasMessages}
-            title="New chat"
-            className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
+      )}
       <div className="relative flex-1 min-h-0">
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto h-full px-4 py-3">
-        <DailyRecapCard dismissible showActivityLink />
-        {!hasMessages && activeToolCalls.length === 0 && (
-          <div className="h-full flex items-center justify-center px-4 text-center text-muted-foreground text-sm">
-            Ask the agent about anything on this canvas.
-          </div>
-        )}
-        <div className="space-y-2">
-          {messages.map((message, index) => {
-            const isLastMessage = index === messages.length - 1;
-            // `isStreaming` (true until the stream settles), NOT `isLoading`
-            // (cleared on the first chunk) — with isLoading every row
-            // rendered as "done" the moment anything streamed in.
-            const isMessageStreaming = isLastMessage && isStreaming;
+        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto h-full px-4 py-3">
+          <DailyRecapCard dismissible showActivityLink />
+          {!hasMessages && activeToolCalls.length === 0 && (
+            <div className="h-full flex items-center justify-center px-4 text-center text-muted-foreground text-sm">
+              Ask the agent about anything on this canvas.
+            </div>
+          )}
+          <div className="space-y-2">
+            {messages.map((message, index) => {
+              const isLastMessage = index === messages.length - 1;
+              // `isStreaming` (true until the stream settles), NOT `isLoading`
+              // (cleared on the first chunk) — with isLoading every row
+              // rendered as "done" the moment anything streamed in.
+              const isMessageStreaming = isLastMessage && isStreaming;
 
-            // User messages that ride structured Approve / Reject
-            // intents are not chat content for the user — the proposal
-            // card transition is the visual feedback. Suppress the
-            // bubble entirely; the message stays in the JSON for the
-            // route handler to detect on subsequent clicks and for
-            // status derivation across forks.
-            if (
-              message.role === "user" &&
-              (message.approval || message.rejection)
-            ) {
-              return null;
-            }
-
-            const subAgentRuns = subAgentRunsByAnchor.get(message.id);
-
-            // Fan-out messages from planners (and Phase 4's planner-
-            // form answers) don't render as top-level chat bubbles —
-            // BUT they're the anchor for inbound-only runs (the approval
-            // flow: the agent never made an outbound
-            // `send_to_feature_planner` call, so the planner's reply is
-            // the only activity and thus the anchor). Suppress the
-            // bubble, but still render any SubAgentRunCard anchored
-            // here, otherwise the card disappears the moment the planner
-            // replies. They stay in the messages array so
-            // `getSubAgentRunsFromMessages` can walk them and so they
-            // round-trip through autosave / share. See
-            // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
-            const researchRuns = researchRunsByAnchor.get(message.id);
-            const htmlPages = htmlPagesByAnchor.get(message.id);
-
-            if (
-              message.source?.kind === "planner" ||
-              message.source?.kind === "user-answered-planner-form" ||
-              message.source?.kind === "research"
-            ) {
-              if (
-                (!subAgentRuns || subAgentRuns.length === 0) &&
-                (!researchRuns || researchRuns.length === 0)
-              )
+              // User messages that ride structured Approve / Reject
+              // intents are not chat content for the user — the proposal
+              // card transition is the visual feedback. Suppress the
+              // bubble entirely; the message stays in the JSON for the
+              // route handler to detect on subsequent clicks and for
+              // status derivation across forks.
+              if (message.role === "user" && (message.approval || message.rejection)) {
                 return null;
-              return (
-                <div key={message.id} className="space-y-1.5">
-                  {subAgentRuns && renderSubAgentRuns(subAgentRuns)}
-                  {researchRuns?.map((run) => (
-                    <ResearchRunCard
-                      key={run.researchId}
-                      run={run}
-                      githubLogin={githubLogin}
-                    />
-                  ))}
-                </div>
-              );
-            }
-
-            const proposals = getProposalsFromMessage(message);
-
-            // Collect tool-call IDs that produced a ProposalCard (successful
-            // proposal outputs only — failed calls stay in the timeline).
-            const proposalToolCallIds = new Set<string>();
-            if (proposals.length > 0) {
-              for (const tc of message.toolCalls ?? []) {
-                if (
-                  tc.toolName !== PROPOSE_FEATURE_TOOL &&
-                  tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
-                  tc.toolName !== PROPOSE_MILESTONE_TOOL
-                )
-                  continue;
-                const o = tc.output;
-                if (!o || typeof o !== "object" || "error" in o) continue;
-                proposalToolCallIds.add(tc.id);
               }
-            }
 
-            // The streamed (live) path attaches a rich `timeline` to
-            // tool-call rows. The server only persists `toolCalls`, so a
-            // reloaded / shared / live-synced row has `toolCalls` but no
-            // `timeline` — synthesize one from `toolCalls` so its tool
-            // cards render identically to a live turn.
-            const effectiveTimeline =
-              message.timeline ??
-              (message.toolCalls?.length
-                ? timelineFromToolCalls(message.toolCalls)
-                : undefined);
+              const subAgentRuns = subAgentRunsByAnchor.get(message.id);
 
-            const filteredTimeline =
-              proposalToolCallIds.size > 0
-                ? effectiveTimeline?.filter(
-                    (item) =>
-                      item.type !== "toolCall" ||
-                      !proposalToolCallIds.has(item.id),
-                  )
-                : effectiveTimeline;
+              // Fan-out messages from planners (and Phase 4's planner-
+              // form answers) don't render as top-level chat bubbles —
+              // BUT they're the anchor for inbound-only runs (the approval
+              // flow: the agent never made an outbound
+              // `send_to_feature_planner` call, so the planner's reply is
+              // the only activity and thus the anchor). Suppress the
+              // bubble, but still render any SubAgentRunCard anchored
+              // here, otherwise the card disappears the moment the planner
+              // replies. They stay in the messages array so
+              // `getSubAgentRunsFromMessages` can walk them and so they
+              // round-trip through autosave / share. See
+              // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
+              const researchRuns = researchRunsByAnchor.get(message.id);
+              const htmlPages = htmlPagesByAnchor.get(message.id);
 
-            // A streamed tool-call row carries a `timeline` (and empty
-            // text content). Render it as rich, expandable tool cards via
-            // the shared `<StreamingMessage>` — names, args, outputs, and
-            // live status, in order with any interleaved text. Plain text
-            // rows fall through to `SidebarChatMessage` so the bubble look
-            // and the `?r=`/`?c=` deep-link interceptor are preserved.
-            const hasTimeline = !!filteredTimeline?.length;
-
-            return (
-              <div key={message.id} className="space-y-1.5">
-                {hasTimeline ? (
-                  <div className="w-full text-foreground/90">
-                    <StreamingMessage
-                      message={{
-                        id: message.id,
-                        content: message.content,
-                        timeline: filteredTimeline,
-                        isStreaming: isMessageStreaming,
-                        usage: message.usage,
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <SidebarChatMessage
-                    message={message}
-                    isStreaming={isMessageStreaming}
-                  />
-                )}
-                {proposals.length > 0 && (
-                  <div className="space-y-1.5">
-                    {sortProposalsByDependency(proposals).map((p) => (
-                      <ProposalCard
-                        key={p.proposalId}
-                        proposal={p}
-                        messageId={message.id}
-                        githubLogin={githubLogin}
-                        messageTimestamp={message.timestamp}
-                      />
+              if (
+                message.source?.kind === "planner" ||
+                message.source?.kind === "user-answered-planner-form" ||
+                message.source?.kind === "research"
+              ) {
+                if ((!subAgentRuns || subAgentRuns.length === 0) && (!researchRuns || researchRuns.length === 0))
+                  return null;
+                return (
+                  <div key={message.id} className="space-y-1.5">
+                    {subAgentRuns && renderSubAgentRuns(subAgentRuns)}
+                    {researchRuns?.map((run) => (
+                      <ResearchRunCard key={run.researchId} run={run} githubLogin={githubLogin} />
                     ))}
                   </div>
-                )}
-                {message.deferredCheck && (
-                  <DeferredCheckCard
-                    deferredCheck={message.deferredCheck}
-                    githubLogin={githubLogin}
-                  />
-                )}
-                {subAgentRuns &&
-                  subAgentRuns.length > 0 &&
-                  renderSubAgentRuns(subAgentRuns)}
-                {researchRuns &&
-                  researchRuns.length > 0 &&
-                  researchRuns.map((run) => (
-                    <ResearchRunCard
-                      key={run.researchId}
-                      run={run}
-                      githubLogin={githubLogin}
-                    />
-                  ))}
-                {htmlPages &&
-                  htmlPages.length > 0 &&
-                  htmlPages.map((page) => (
-                    <HtmlPageCard
-                      key={page.slug}
-                      page={page}
-                      githubLogin={githubLogin}
-                    />
-                  ))}
-                <MessageArtifacts artifactIds={message.artifactIds} />
-              </div>
-            );
-          })}
-          <AnimatePresence>
-            {agentTurnsInProgress > 0 && activeToolCalls.length === 0 && (
-              <motion.div
-                key="thinking-dots"
-                data-testid="thinking-dots"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="flex justify-start"
-              >
-                <div className="rounded-2xl px-3 py-2 bg-muted/40 shadow-sm">
-                  <div className="flex gap-1 items-center h-4">
-                    <motion.span
-                      animate={{ opacity: [0.3, 1, 0.3] }}
-                      transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
-                      className="text-sm text-foreground/60"
-                    >.</motion.span>
-                    <motion.span
-                      animate={{ opacity: [0.3, 1, 0.3] }}
-                      transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
-                      className="text-sm text-foreground/60"
-                    >.</motion.span>
-                    <motion.span
-                      animate={{ opacity: [0.3, 1, 0.3] }}
-                      transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
-                      className="text-sm text-foreground/60"
-                    >.</motion.span>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-          <div ref={messagesEndRef} />
-        </div>
-      </div>
-      <StreamScrollIndicator
-        isStreaming={isLoading}
-        userScrolledUp={userScrolledUp}
-        showBackButton={false}
-        onStreamingClick={() => {
-          isProgrammaticScrollRef.current = true;
-          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-          setUserScrolledUp(false);
-        }}
-        onLatestClick={() => {
-          isProgrammaticScrollRef.current = true;
-          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-          setUserScrolledUp(false);
-        }}
-        onBackClick={() => {}}
-      />
-      </div>  {/* end relative wrapper */}
+                );
+              }
 
+              const proposals = getProposalsFromMessage(message);
+
+              // Collect tool-call IDs that produced a ProposalCard (successful
+              // proposal outputs only — failed calls stay in the timeline).
+              const proposalToolCallIds = new Set<string>();
+              if (proposals.length > 0) {
+                for (const tc of message.toolCalls ?? []) {
+                  if (
+                    tc.toolName !== PROPOSE_FEATURE_TOOL &&
+                    tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
+                    tc.toolName !== PROPOSE_MILESTONE_TOOL
+                  )
+                    continue;
+                  const o = tc.output;
+                  if (!o || typeof o !== "object" || "error" in o) continue;
+                  proposalToolCallIds.add(tc.id);
+                }
+              }
+
+              // The streamed (live) path attaches a rich `timeline` to
+              // tool-call rows. The server only persists `toolCalls`, so a
+              // reloaded / shared / live-synced row has `toolCalls` but no
+              // `timeline` — synthesize one from `toolCalls` so its tool
+              // cards render identically to a live turn.
+              const effectiveTimeline =
+                message.timeline ?? (message.toolCalls?.length ? timelineFromToolCalls(message.toolCalls) : undefined);
+
+              const filteredTimeline =
+                proposalToolCallIds.size > 0
+                  ? effectiveTimeline?.filter((item) => item.type !== "toolCall" || !proposalToolCallIds.has(item.id))
+                  : effectiveTimeline;
+
+              // A streamed tool-call row carries a `timeline` (and empty
+              // text content). Render it as rich, expandable tool cards via
+              // the shared `<StreamingMessage>` — names, args, outputs, and
+              // live status, in order with any interleaved text. Plain text
+              // rows fall through to `SidebarChatMessage` so the bubble look
+              // and the `?r=`/`?c=` deep-link interceptor are preserved.
+              const hasTimeline = !!filteredTimeline?.length;
+
+              return (
+                <div key={message.id} className="space-y-1.5">
+                  {hasTimeline ? (
+                    <div className="w-full text-foreground/90">
+                      <StreamingMessage
+                        message={{
+                          id: message.id,
+                          content: message.content,
+                          timeline: filteredTimeline,
+                          isStreaming: isMessageStreaming,
+                          usage: message.usage,
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <SidebarChatMessage message={message} isStreaming={isMessageStreaming} />
+                  )}
+                  {proposals.length > 0 && (
+                    <div className="space-y-1.5">
+                      {sortProposalsByDependency(proposals).map((p) => (
+                        <ProposalCard
+                          key={p.proposalId}
+                          proposal={p}
+                          messageId={message.id}
+                          githubLogin={githubLogin}
+                          messageTimestamp={message.timestamp}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {message.deferredCheck && (
+                    <DeferredCheckCard deferredCheck={message.deferredCheck} githubLogin={githubLogin} />
+                  )}
+                  {subAgentRuns && subAgentRuns.length > 0 && renderSubAgentRuns(subAgentRuns)}
+                  {researchRuns &&
+                    researchRuns.length > 0 &&
+                    researchRuns.map((run) => (
+                      <ResearchRunCard key={run.researchId} run={run} githubLogin={githubLogin} />
+                    ))}
+                  {htmlPages &&
+                    htmlPages.length > 0 &&
+                    htmlPages.map((page) => <HtmlPageCard key={page.slug} page={page} githubLogin={githubLogin} />)}
+                  <MessageArtifacts artifactIds={message.artifactIds} />
+                </div>
+              );
+            })}
+            <AnimatePresence>
+              {agentTurnsInProgress > 0 && activeToolCalls.length === 0 && (
+                <motion.div
+                  key="thinking-dots"
+                  data-testid="thinking-dots"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex justify-start"
+                >
+                  <div className="rounded-2xl px-3 py-2 bg-muted/40 shadow-sm">
+                    <div className="flex gap-1 items-center h-4">
+                      <motion.span
+                        animate={{ opacity: [0.3, 1, 0.3] }}
+                        transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
+                        className="text-sm text-foreground/60"
+                      >
+                        .
+                      </motion.span>
+                      <motion.span
+                        animate={{ opacity: [0.3, 1, 0.3] }}
+                        transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
+                        className="text-sm text-foreground/60"
+                      >
+                        .
+                      </motion.span>
+                      <motion.span
+                        animate={{ opacity: [0.3, 1, 0.3] }}
+                        transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
+                        className="text-sm text-foreground/60"
+                      >
+                        .
+                      </motion.span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+        <StreamScrollIndicator
+          isStreaming={isLoading}
+          userScrolledUp={userScrolledUp}
+          showBackButton={false}
+          onStreamingClick={() => {
+            isProgrammaticScrollRef.current = true;
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            setUserScrolledUp(false);
+          }}
+          onLatestClick={() => {
+            isProgrammaticScrollRef.current = true;
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            setUserScrolledUp(false);
+          }}
+          onBackClick={() => {}}
+        />
+      </div>{" "}
+      {/* end relative wrapper */}
       <div className="border-t p-2">
         <SidebarChatInput
+          ref={composerRef}
           onSend={handleSend}
           disabled={isLoading}
           workspaceId={workspaceId}
           orgId={githubLogin}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The chat header's actions — the agent-active dot, Stop, the share
+ * link, Fork, agent settings, history (unless `hideHistory`: the control
+ * panel's list is the history) and New chat. Reads the store itself, so
+ * the chat's own header and the org page's one bar can both place it.
+ */
+export function SidebarChatActions({
+  githubLogin,
+  hideHistory = false,
+}: {
+  githubLogin: string;
+  hideHistory?: boolean;
+}) {
+  const activeId = useCanvasChatStore((s) => s.activeConversationId);
+  const hasMessages = useCanvasChatStore((s) => ((activeId ? s.conversations[activeId]?.messages.length : 0) ?? 0) > 0);
+  // The persisted row id. Sharing flips this row to `isShared` and hands
+  // out its id, so the sharer and every joiner live in the *same* room.
+  // Null until the first turn has created the row — Share/Fork are gated on it.
+  const serverConversationId = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.serverConversationId : null) ?? null,
+  );
+  // The source must be persisted before it is forked, so Fork stays
+  // disabled until streaming ends.
+  const isStreaming = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false);
+  // runActive: driven by local tool-call detection (via setRunActive called from
+  // useSendCanvasChatMessage) AND by the Pusher CANVAS_RUN_ACTIVE event (for
+  // all participants including non-initiators, bound in useCanvasChatAutoSave).
+  const runActive = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.runActive : false) ?? false);
+  // stopRun action — posts to /api/ask/abort without exposing request_id.
+  const stopRun = useCanvasChatStore((s) => s.stopRun);
+  const setRunActive = useCanvasChatStore((s) => s.setRunActive);
+  // Org context for Stop — needed by the abort endpoint.
+  const orgContext = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.context : null) ?? null);
+  const { id: workspaceId } = useWorkspace();
+  const { isActive } = useCanvasAgentActivity(activeId, workspaceId);
+  const [isForking, setIsForking] = useState(false);
+
+  const handleShare = async () => {
+    if (!serverConversationId) return;
+    try {
+      // Every org-canvas row is already a joinable room (`isShared`
+      // defaults true) and the URL tracks the live row, so sharing is
+      // just copying the `?chat=<id>` link — no flag to flip, no
+      // snapshot, no fork. Anyone in the org who opens it adopts the same
+      // row and live-sync keeps everyone in step.
+      const url = `${window.location.origin}/org/${githubLogin}?chat=${serverConversationId}`;
+      await navigator.clipboard.writeText(url);
+      toast.success("Share link copied to clipboard!");
+    } catch (error) {
+      console.error("Error sharing conversation:", error);
+      toast.error("Failed to copy share link", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  };
+
+  const handleFork = async () => {
+    if (!serverConversationId || isStreaming || isForking) return;
+    setIsForking(true);
+    try {
+      const forkId = await forkCanvasConversation(githubLogin, serverConversationId);
+      // Swap the URL to the fork without a Next.js navigation / RSC refetch —
+      // same pattern as handleClear (strip ?chat=) and useSendCanvasChatMessage
+      // (set ?chat=).
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        params.set("chat", forkId);
+        window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+      }
+      toast.success("Chat forked — you're now in your own copy.");
+    } catch (error) {
+      console.error("Error forking conversation:", error);
+      toast.error("Failed to fork chat", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsForking(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      {isActive && (
+        <span
+          className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
+          aria-label="agent active"
+        />
+      )}
+      {runActive && (
+        <button
+          type="button"
+          onClick={() => {
+            if (serverConversationId && orgContext) {
+              void stopRun({
+                serverConversationId,
+                orgId: orgContext.orgId,
+              });
+              // Optimistic local clear — the Pusher event will confirm.
+              if (activeId) setRunActive(activeId, false);
+            }
+          }}
+          title="Stop investigation"
+          className="flex items-center gap-1 px-2 py-1 rounded bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-medium transition-colors"
+        >
+          <OctagonX className="w-3.5 h-3.5" />
+          Stop
+        </button>
+      )}
+      <ActionTip label="Copy share link">
+        <button
+          type="button"
+          onClick={handleShare}
+          disabled={!serverConversationId}
+          aria-label="Copy share link"
+          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <Share2 className="w-4 h-4" />
+        </button>
+      </ActionTip>
+      <ActionTip label="Fork chat">
+        <button
+          type="button"
+          onClick={handleFork}
+          disabled={!serverConversationId || isStreaming || isForking}
+          aria-label="Fork chat"
+          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <Split className="w-4 h-4" />
+        </button>
+      </ActionTip>
+      <CanvasAgentSettingsPopover githubLogin={githubLogin} />
+      {!hideHistory && <CanvasHistoryPopover githubLogin={githubLogin} />}
+      <ActionTip label="New chat">
+        <button
+          type="button"
+          onClick={() => startNewOrgConversation(githubLogin)}
+          disabled={!hasMessages}
+          aria-label="New chat"
+          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+      </ActionTip>
     </div>
   );
 }
@@ -801,12 +748,14 @@ interface PendingFile {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
+/** What the chat surface can ask of its composer. */
+interface SidebarChatInputHandle {
+  /** Queue files as pending attachments — how a drop anywhere on the chat gets in. */
+  addFiles: (files: FileList | File[]) => void;
+}
+
 interface SidebarChatInputProps {
-  onSend: (
-    message: string,
-    attachments: CanvasAttachment[],
-    clearInput: () => void,
-  ) => Promise<void>;
+  onSend: (message: string, attachments: CanvasAttachment[], clearInput: () => void) => Promise<void>;
   disabled?: boolean;
   /** Workspace id for the S3 upload context. */
   workspaceId: string;
@@ -817,48 +766,56 @@ interface SidebarChatInputProps {
 /**
  * Minimal chat input for the sidebar. Auto-growing textarea (CSS
  * field-sizing-content), Enter-to-send, Shift+Enter for newline.
- * Supports file attachments via paperclip button, drag-and-drop,
- * and clipboard paste. Intentionally separate from
+ * Supports file attachments via paperclip button, clipboard paste,
+ * and drag-and-drop anywhere on the chat (the parent owns the drop
+ * zone and hands files in through `addFiles`). Intentionally separate from
  * `DashboardChat/ChatInput` — the prop surface diverges enough that
  * sharing would require ugly conditionals (workspace pills, etc.).
  */
-function SidebarChatInput({
-  onSend,
-  disabled = false,
-  workspaceId,
-  orgId,
-}: SidebarChatInputProps) {
+const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProps>(function SidebarChatInput(
+  { onSend, disabled = false, workspaceId, orgId },
+  ref,
+) {
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Grow with the content; the class list's `max-h` caps it and it
+  // scrolls from there. `field-sizing: content` covers Chromium; this
+  // covers every other browser and keeps the two in agreement. An empty
+  // box is left to CSS: measuring it while it is narrow or not laid out
+  // (its placeholder wrapped, or no width at all) would lock in a tall
+  // height that nothing resets until the next keystroke.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    if (!input || el.clientWidth === 0) {
+      el.style.height = "";
+      return;
+    }
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
+
   // Derived — no extra state needed
   const isUploading = pendingFiles.some((f) => f.uploading);
 
-  const {
-    isListening,
-    transcript,
-    isSupported,
-    startListening,
-    stopListening,
-    resetTranscript,
-  } = useSpeechRecognition();
+  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
+    useSpeechRecognition();
 
   const preVoiceInputRef = useRef("");
   const { nudgeIfNeeded } = useVoiceLearningPreference();
   const { capture } = useVoiceCorrectionCapture({
     surface: "sidebar",
     workspaceId: workspaceId || undefined, // empty string → absent
-    orgGithubLogin: orgId,                 // orgId prop is already githubLogin
+    orgGithubLogin: orgId, // orgId prop is already githubLogin
   });
 
   // Append transcript to existing input (do not overwrite)
   useEffect(() => {
     if (transcript) {
-      const newValue = preVoiceInputRef.current
-        ? `${preVoiceInputRef.current} ${transcript}`.trim()
-        : transcript;
+      const newValue = preVoiceInputRef.current ? `${preVoiceInputRef.current} ${transcript}`.trim() : transcript;
       setInput(newValue);
     }
   }, [transcript]);
@@ -887,7 +844,8 @@ function SidebarChatInput({
   const pendingDraft = useCanvasChatStore((s) => s.pendingInputDraft);
   useEffect(() => {
     if (pendingDraft === null) return;
-    setInput(pendingDraft);
+    // An empty draft only asks for focus; the text already there stays.
+    if (pendingDraft) setInput(pendingDraft);
     requestAnimationFrame(() => {
       const el = inputRef.current;
       if (el) {
@@ -912,28 +870,16 @@ function SidebarChatInput({
 
   const uploadFile = useCallback(
     async (pf: PendingFile) => {
-      setPendingFiles((prev) =>
-        prev.map((f) =>
-          f.id === pf.id ? { ...f, uploading: true, error: undefined } : f,
-        ),
-      );
+      setPendingFiles((prev) => prev.map((f) => (f.id === pf.id ? { ...f, uploading: true, error: undefined } : f)));
       try {
         const uploadContext = workspaceId ? { workspaceId } : { orgId: orgId! };
         const result = await uploadFileToS3(pf.file, uploadContext);
         setPendingFiles((prev) =>
-          prev.map((f) =>
-            f.id === pf.id
-              ? { ...f, uploading: false, s3Path: result.path }
-              : f,
-          ),
+          prev.map((f) => (f.id === pf.id ? { ...f, uploading: false, s3Path: result.path } : f)),
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Upload failed";
-        setPendingFiles((prev) =>
-          prev.map((f) =>
-            f.id === pf.id ? { ...f, uploading: false, error: msg } : f,
-          ),
-        );
+        setPendingFiles((prev) => prev.map((f) => (f.id === pf.id ? { ...f, uploading: false, error: msg } : f)));
         toast.error(`Failed to upload ${pf.filename}`, { description: msg });
       }
     },
@@ -965,6 +911,8 @@ function SidebarChatInput({
     },
     [uploadFile],
   );
+
+  useImperativeHandle(ref, () => ({ addFiles: handleFiles }), [handleFiles]);
 
   const removeFile = useCallback((id: string) => {
     setPendingFiles((prev) => {
@@ -1040,12 +988,6 @@ function SidebarChatInput({
     }
   };
 
-  // ─── Drag-and-drop ──────────────────────────────────────────────────
-
-  const { isDragging, dragProps } = useFileDrop({
-    onDrop: (files) => handleFiles(files),
-  });
-
   // Button column count: send is always present, mic is conditional, paperclip is always present
   // right-1.5 = send, right-9 = mic (when supported), right-[3.75rem] = paperclip (when mic present), right-9 = paperclip (when no mic)
   const sendRight = "right-1.5";
@@ -1059,26 +1001,16 @@ function SidebarChatInput({
     <div className="flex flex-col gap-1.5">
       {/* ── Pending file chips ─────────────────────────────────────────── */}
       {pendingFiles.length > 0 && (
-        <div
-          className="grid grid-cols-3 gap-1.5 px-1 pb-1.5"
-          data-testid="pending-files-grid"
-        >
+        <div className="grid grid-cols-3 gap-1.5 px-1 pb-1.5" data-testid="pending-files-grid">
           {pendingFiles.map((pf) => (
             <div
               key={pf.id}
-              className={cn(
-                "relative rounded-lg border overflow-hidden bg-muted",
-                pf.error && "border-red-500",
-              )}
+              className={cn("relative rounded-lg border overflow-hidden bg-muted", pf.error && "border-red-500")}
               data-testid={`pending-file-${pf.id}`}
             >
               <div className="aspect-square relative">
                 {pf.mimeType.startsWith("image/") ? (
-                  <img
-                    src={pf.preview}
-                    alt={pf.filename}
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={pf.preview} alt={pf.filename} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <FileIcon className="w-6 h-6 text-muted-foreground" />
@@ -1086,10 +1018,7 @@ function SidebarChatInput({
                 )}
                 {pf.uploading && (
                   <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
-                    <Loader2
-                      className="h-5 w-5 animate-spin text-primary"
-                      data-testid={`uploading-spinner-${pf.id}`}
-                    />
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" data-testid={`uploading-spinner-${pf.id}`} />
                   </div>
                 )}
                 {pf.error && (
@@ -1116,20 +1045,14 @@ function SidebarChatInput({
                   <X className="h-2.5 w-2.5" />
                 </button>
               </div>
-              <div className="px-1 py-0.5 text-[10px] truncate text-center text-muted-foreground">
-                {pf.filename}
-              </div>
+              <div className="px-1 py-0.5 text-[10px] truncate text-center text-muted-foreground">{pf.filename}</div>
             </div>
           ))}
         </div>
       )}
 
       {/* ── Input form ─────────────────────────────────────────────────── */}
-      <form
-        onSubmit={handleSubmit}
-        className="flex items-end gap-2"
-        {...dragProps}
-      >
+      <form onSubmit={handleSubmit} className="flex items-end gap-2">
         <div className="relative flex-1 min-w-0">
           <Textarea
             ref={inputRef}
@@ -1139,10 +1062,9 @@ function SidebarChatInput({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             disabled={disabled}
-            isDragging={isDragging}
             isUploading={isUploading}
             rows={1}
-            className={`w-full px-3 py-2 ${textareaPaddingRight} rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-[color,border-color,box-shadow,opacity] resize-none field-sizing-content max-h-[100px] overflow-y-auto min-h-0 ${
+            className={`w-full px-3 py-2 ${textareaPaddingRight} rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-[color,border-color,box-shadow,opacity] resize-none field-sizing-content max-h-[200px] overflow-y-auto min-h-0 ${
               disabled ? "opacity-50 cursor-not-allowed" : ""
             }`}
           />
@@ -1158,7 +1080,7 @@ function SidebarChatInput({
                   onClick={() => fileInputRef.current?.click()}
                   disabled={disabled}
                   data-testid="paperclip-button"
-                  className={`absolute ${paperclipRight} top-1/2 -translate-y-[60%] h-7 w-7 rounded-full text-muted-foreground hover:text-foreground`}
+                  className={`absolute ${paperclipRight} bottom-[5px] h-7 w-7 rounded-full text-muted-foreground hover:text-foreground`}
                 >
                   <Paperclip className="w-3.5 h-3.5" />
                 </Button>
@@ -1193,23 +1115,17 @@ function SidebarChatInput({
                     onClick={toggleListening}
                     disabled={disabled}
                     data-testid="mic-button"
-                    className={`absolute ${micRight} top-1/2 -translate-y-[60%] h-7 w-7 rounded-full ${
+                    className={`absolute ${micRight} bottom-[5px] h-7 w-7 rounded-full ${
                       isListening
                         ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    {isListening ? (
-                      <MicOff className="w-3.5 h-3.5" />
-                    ) : (
-                      <Mic className="w-3.5 h-3.5" />
-                    )}
+                    {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top">
-                  {isListening
-                    ? "Stop recording"
-                    : "Start voice input (or hold Ctrl)"}
+                  {isListening ? "Stop recording" : "Start voice input (or hold Ctrl)"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -1220,7 +1136,7 @@ function SidebarChatInput({
             type="submit"
             size="icon"
             disabled={!input.trim() || disabled || isUploading}
-            className={`absolute ${sendRight} top-1/2 -translate-y-[60%] h-7 w-7 rounded-full`}
+            className={`absolute ${sendRight} bottom-[5px] h-7 w-7 rounded-full`}
           >
             <Send className="w-3.5 h-3.5" />
           </Button>
@@ -1228,4 +1144,4 @@ function SidebarChatInput({
       </form>
     </div>
   );
-}
+});
