@@ -47,6 +47,15 @@ vi.mock("@/lib/runtime", () => ({
   isDevelopmentMode: vi.fn(() => false),
 }));
 
+vi.mock("@/lib/ai/models", () => ({
+  getDefaultModel: vi.fn().mockResolvedValue(null),
+  getApiKeyForModel: vi.fn().mockReturnValue(undefined),
+}));
+
+vi.mock("@/services/bifrost/orchestrator", () => ({
+  getBifrostForLLM: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/config/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/config/env")>();
   return {
@@ -67,10 +76,15 @@ import { db } from "@/lib/db";
 import { WorkflowStatus, TaskStatus } from "@prisma/client";
 import { resolveExtraSwarms, resolveSubAgents } from "@/services/roadmap/feature-chat";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { getDefaultModel, getApiKeyForModel } from "@/lib/ai/models";
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 
 const mockResolveExtraSwarms = vi.mocked(resolveExtraSwarms);
 const mockResolveSubAgents = vi.mocked(resolveSubAgents);
 const mockIsDevelopmentMode = vi.mocked(isDevelopmentMode);
+const mockGetDefaultModel = vi.mocked(getDefaultModel);
+const mockGetApiKeyForModel = vi.mocked(getApiKeyForModel);
+const mockGetBifrostForLLM = vi.mocked(getBifrostForLLM);
 
 const mockedDb = vi.mocked(db);
 
@@ -143,6 +157,9 @@ describe("triggerWorkflowEditorRun", () => {
     vi.clearAllMocks();
     originalFetch = global.fetch;
     mockIsDevelopmentMode.mockReturnValue(false);
+    mockGetDefaultModel.mockResolvedValue(null);
+    mockGetApiKeyForModel.mockReturnValue(undefined);
+    mockGetBifrostForLLM.mockResolvedValue(undefined);
     mockedDb.task.findFirst = vi.fn().mockResolvedValue(makeTask()) as never;
     mockedDb.task.update = vi.fn().mockResolvedValue({}) as never;
     mockedDb.chatMessage.create = vi.fn().mockResolvedValue({ id: "msg-1" }) as never;
@@ -590,6 +607,227 @@ describe("triggerWorkflowEditorRun", () => {
       const body = JSON.parse(fetchCall[1].body as string);
       const vars = body.workflow_params.set_var.attributes.vars;
       expect(vars.autoMergePr).toBe(false);
+    });
+  });
+
+  describe("model and Bifrost credentials in vars", () => {
+    function getVars() {
+      const fetchCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      return body.workflow_params.set_var.attributes.vars as Record<string, unknown>;
+    }
+
+    test("task model wins over plan default", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({
+        ...makeTask(),
+        model: "anthropic/claude-sonnet-4-6",
+      }) as never;
+      mockGetDefaultModel.mockResolvedValue("openai/gpt-4o");
+      mockGetApiKeyForModel.mockReturnValue("sk-task");
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const vars = getVars();
+      expect(vars.model).toBe("anthropic/claude-sonnet-4-6");
+      expect(vars.apiKey).toBe("sk-task");
+      expect(mockGetDefaultModel).not.toHaveBeenCalled();
+    });
+
+    test("uses plan default when task.model is null", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({
+        ...makeTask(),
+        model: null,
+      }) as never;
+      mockGetDefaultModel.mockResolvedValue("openai/gpt-4o");
+      mockGetApiKeyForModel.mockReturnValue("sk-plan");
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      expect(mockGetDefaultModel).toHaveBeenCalledWith("plan");
+      const vars = getVars();
+      expect(vars.model).toBe("openai/gpt-4o");
+      expect(vars.apiKey).toBe("sk-plan");
+    });
+
+    test("treats whitespace-only task.model as missing and falls through to plan default", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({
+        ...makeTask(),
+        model: "   ",
+      }) as never;
+      mockGetDefaultModel.mockResolvedValue("openai/gpt-4o");
+      mockGetApiKeyForModel.mockReturnValue("sk-plan");
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      expect(mockGetDefaultModel).toHaveBeenCalledWith("plan");
+      const vars = getVars();
+      expect(vars.model).toBe("openai/gpt-4o");
+    });
+
+    test("omits all four keys when whitespace-only task.model and plan default is null", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({
+        ...makeTask(),
+        model: "   ",
+      }) as never;
+      mockGetDefaultModel.mockResolvedValue(null);
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const vars = getVars();
+      expect(Object.prototype.hasOwnProperty.call(vars, "model")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(vars, "apiKey")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(vars, "baseUrl")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(vars, "headers")).toBe(false);
+      expect(mockGetBifrostForLLM).not.toHaveBeenCalled();
+    });
+
+    test("omits all four keys when both task.model and plan default are missing, and does not call Bifrost", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({
+        ...makeTask(),
+        model: null,
+      }) as never;
+      mockGetDefaultModel.mockResolvedValue(null);
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const vars = getVars();
+      expect(Object.prototype.hasOwnProperty.call(vars, "model")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(vars, "apiKey")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(vars, "baseUrl")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(vars, "headers")).toBe(false);
+      expect(mockGetBifrostForLLM).not.toHaveBeenCalled();
+    });
+
+    test("Bifrost overrides apiKey/baseUrl and is invoked with agentName wfe-plan-agent", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({
+        ...makeTask(),
+        model: "anthropic/claude-sonnet-4-6",
+      }) as never;
+      mockGetApiKeyForModel.mockReturnValue("sk-direct");
+      mockGetBifrostForLLM.mockResolvedValue({
+        apiKey: "vk-bifrost",
+        baseUrl: "https://gateway.example/anthropic/v1",
+        headers: {},
+      });
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      expect(mockGetBifrostForLLM).toHaveBeenCalledWith(
+        { workspaceId: "ws-1", workspaceSlug: "stakwork", userId: "user-1" },
+        { agentName: "wfe-plan-agent", model: "anthropic/claude-sonnet-4-6" },
+      );
+      const vars = getVars();
+      expect(vars.model).toBe("anthropic/claude-sonnet-4-6");
+      expect(vars.apiKey).toBe("vk-bifrost");
+      expect(vars.baseUrl).toBe("https://gateway.example/anthropic/v1");
+      expect(Object.prototype.hasOwnProperty.call(vars, "headers")).toBe(false);
+    });
+
+    test("attaches headers only when non-empty", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({
+        ...makeTask(),
+        model: "anthropic/claude-sonnet-4-6",
+      }) as never;
+      mockGetApiKeyForModel.mockReturnValue("sk-direct");
+      mockGetBifrostForLLM.mockResolvedValue({
+        apiKey: "vk-bifrost",
+        baseUrl: "https://gateway.example/anthropic/v1",
+        headers: { "x-macaroon": "mac-1" },
+      });
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const vars = getVars();
+      expect(vars.headers).toEqual({ "x-macaroon": "mac-1" });
+    });
+
+    test("omits headers when Bifrost returns an empty headers map", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({
+        ...makeTask(),
+        model: "anthropic/claude-sonnet-4-6",
+      }) as never;
+      mockGetApiKeyForModel.mockReturnValue("sk-direct");
+      mockGetBifrostForLLM.mockResolvedValue({
+        apiKey: "vk-bifrost",
+        baseUrl: "https://gateway.example/anthropic/v1",
+        headers: {},
+      });
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      const vars = getVars();
+      expect(Object.prototype.hasOwnProperty.call(vars, "headers")).toBe(false);
+    });
+
+    test("xai/ skips Bifrost and keeps direct apiKey", async () => {
+      mockedDb.task.findFirst = vi.fn().mockResolvedValue({
+        ...makeTask(),
+        model: "xai/grok-3",
+      }) as never;
+      mockGetApiKeyForModel.mockReturnValue("xai-direct-key");
+      mockFetchSuccess();
+
+      await triggerWorkflowEditorRun({
+        taskId: "task-1",
+        userId: "user-1",
+        message: "Edit the workflow",
+        workflowTask: { workflowId: 99, workflowName: "My Workflow", workflowRefId: "ref-abc" },
+      });
+
+      expect(mockGetBifrostForLLM).not.toHaveBeenCalled();
+      const vars = getVars();
+      expect(vars.model).toBe("xai/grok-3");
+      expect(vars.apiKey).toBe("xai-direct-key");
+      expect(Object.prototype.hasOwnProperty.call(vars, "baseUrl")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(vars, "headers")).toBe(false);
     });
   });
 });
