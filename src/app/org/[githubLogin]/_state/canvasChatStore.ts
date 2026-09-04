@@ -271,6 +271,12 @@ export interface CanvasConversation {
   /** Server-side `SharedConversation.id`, if auto-save has created one. */
   serverConversationId: string | null;
   /**
+   * Persisted conversation title (`SharedConversation.title`). `null`
+   * until an LLM title (or a seeded legacy/share/fork title) lands —
+   * the chat chrome falls back to "Ask Jamie" in that case.
+   */
+  title: string | null;
+  /**
    * Provenance: the `?chat=<shareId>` this conversation originated
    * from, if any. Informational only — by default we *join* that
    * shared row (see `serverConversationId`), so this is not a fork
@@ -475,6 +481,11 @@ interface CanvasChatState {
    * landing on `?chat=<shareId>` passes the shared row's id here. Omit
    * it to fork (start a brand-new row from the seed) — kept reachable
    * for a future explicit "Fork" action.
+   *
+   * `title` (default = null) seeds the chrome/list label so a share-link
+   * recipient, reopen, or fork sees the persisted title without waiting
+   * on live-sync. Omit it for a fresh chat ("Ask Jamie" until the LLM
+   * title arrives).
    */
   startConversation: (
     context: ConversationContext,
@@ -482,6 +493,7 @@ interface CanvasChatState {
     forkedFromShareId?: string,
     ephemeralSeedCount?: number,
     serverConversationId?: string,
+    title?: string | null,
   ) => string;
   setActiveConversation: (conversationId: string | null) => void;
   /** Record a turn id this client just sent (see `locallyAuthoredTurnIds`). */
@@ -494,6 +506,8 @@ interface CanvasChatState {
   resetActiveConversation: () => void;
   /** Record the server-assigned `SharedConversation` id (auto-save creation). */
   setServerConversationId: (conversationId: string, serverId: string) => void;
+  /** Record the persisted conversation title (LLM live-sync / seed). */
+  setConversationTitle: (conversationId: string, title: string | null) => void;
 
   // ─── Message actions ─────────────────────────────────────────────────
   appendUserMessage: (conversationId: string, message: CanvasChatMessage) => void;
@@ -595,12 +609,13 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       artifacts: {},
       dismissedArtifactIds: {},
 
-      startConversation: (context, seedMessages, forkedFromShareId, ephemeralSeedCount, serverConversationId) => {
+      startConversation: (context, seedMessages, forkedFromShareId, ephemeralSeedCount, serverConversationId, title) => {
         const id = newConversationId();
         const conv: CanvasConversation = {
           id,
           serverConversationId: serverConversationId ?? null,
           forkedFromShareId: forkedFromShareId ?? null,
+          title: title ?? null,
           messages: seedMessages ?? [],
           isLoading: false,
           isStreaming: false,
@@ -674,6 +689,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
                   // on the next user message — not an append to the old
                   // auto-save row that still has the wiped messages.
                   serverConversationId: null,
+                  title: null,
                 },
               },
             };
@@ -715,6 +731,22 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           },
           false,
           "setServerConversationId",
+        ),
+
+      setConversationTitle: (conversationId, title) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: { ...conv, title },
+              },
+            };
+          },
+          false,
+          "setConversationTitle",
         ),
 
       appendUserMessage: (conversationId, message) =>

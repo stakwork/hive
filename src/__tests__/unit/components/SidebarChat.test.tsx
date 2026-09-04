@@ -865,7 +865,8 @@ describe("SidebarChat — Fork chat button", () => {
                 { id: "m1", role: "user", content: "hello" },
                 { id: "m2", role: "assistant", content: "hi" },
               ],
-              settings: {},
+              title: "Auth token refresh",
+              settings: { titleSource: "llm" },
             }),
         });
       }
@@ -957,14 +958,19 @@ describe("SidebarChat — Fork chat button", () => {
     const postCall = fetchMock.mock.calls.find((c) => c[1]?.method === "POST");
     expect(postCall).toBeTruthy();
     expect(postCall![0]).toBe("/api/orgs/test-org/chat/conversations");
+    const postBody = JSON.parse((postCall![1] as RequestInit).body as string);
+    expect(postBody.title).toBe("Auth token refresh");
+    expect(postBody.settings).toEqual({ titleSource: "llm" });
 
     // 3. store.startConversation was called with forkedFromShareId = "srv-1",
     //    ephemeralSeedCount = 2 (two messages), serverConversationId = "fork-srv-1"
     expect(startConversationMock).toHaveBeenCalledTimes(1);
-    const [, hydrated, forkedFromShareId, ephemeralSeedCount, serverConvId] = startConversationMock.mock.calls[0];
+    const [, hydrated, forkedFromShareId, ephemeralSeedCount, serverConvId, title] =
+      startConversationMock.mock.calls[0];
     expect(forkedFromShareId).toBe("srv-1");
     expect(ephemeralSeedCount).toBe(2);
     expect(serverConvId).toBe("fork-srv-1");
+    expect(title).toBe("Auth token refresh");
     expect(Array.isArray(hydrated)).toBe(true);
     expect(hydrated).toHaveLength(2);
 
