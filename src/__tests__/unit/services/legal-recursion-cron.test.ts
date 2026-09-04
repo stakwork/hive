@@ -204,6 +204,32 @@ describe("executeScheduledLegalBenchmarkRecursion", () => {
     expect(mockDispatchLegalBenchmarkEvalRun).not.toHaveBeenCalled();
   });
 
+  it("calls listRecursionEvalSets with dispatch mode (not workspace id)", async () => {
+    await executeScheduledLegalBenchmarkRecursion();
+
+    expect(mockListRecursionEvalSets).toHaveBeenCalledWith(MOCK_JARVIS_CONFIG, "dispatch");
+    expect(mockListRecursionEvalSets).not.toHaveBeenCalledWith(
+      expect.anything(),
+      MOCK_WORKSPACE.id,
+    );
+  });
+
+  it("logs the dispatch count as recursion=true EvalSets", async () => {
+    mockListRecursionEvalSets.mockResolvedValue({
+      ok: true,
+      nodes: [MOCK_EVAL_SET],
+    });
+    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
+
+    await executeScheduledLegalBenchmarkRecursion();
+
+    const { logger } = await import("@/lib/logger");
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("discovered 1 recursion=true EvalSet(s)"),
+      "legal",
+    );
+  });
+
   // ── Swarm access failure ────────────────────────────────────────────────────
 
   it("returns error result and does not dispatch when swarm access fails", async () => {
@@ -754,6 +780,25 @@ describe("executeScheduledLegalBenchmarkRecursion — attempt/plateau cap gate",
     expect(result.plateauCapped).toBe(0);
     // Generic skipped must NOT be incremented for capped EvalSets
     expect(result.skipped).toBe(0);
+  });
+
+  it("passes copied recursionEnabledAt as plateau cutoff to computeAttemptStats", async () => {
+    const evalSet = { ...MOCK_EVAL_SET, recursionEnabledAt: 1700000000 };
+    mockListRecursionEvalSets.mockResolvedValue({
+      ok: true,
+      nodes: [evalSet],
+    });
+    mockDbStakworkRunFindMany.mockResolvedValue([MOCK_RUNNER_RUN]);
+    mockWalkFixChain.mockResolvedValue({ nodes: [], edges: [], partial: false });
+    mockComputeAttemptStats.mockReturnValue({ attemptCount: 0, plateauStreak: 0, rawFixCount: 0 });
+
+    await executeScheduledLegalBenchmarkRecursion();
+
+    expect(mockComputeAttemptStats).toHaveBeenCalledWith(
+      expect.anything(),
+      evalSet.ref_id,
+      expect.objectContaining({ cutoff: new Date(1700000000 * 1000) }),
+    );
   });
 
   it("skips and disables recursion when plateauStreak >= plateauLimit cap", async () => {

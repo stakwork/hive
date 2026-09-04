@@ -40,7 +40,6 @@ import { db } from "@/lib/db";
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const CONFIG = { jarvisUrl: "https://jarvis.example.com", apiKey: "test-key" };
-const WORKSPACE_ID = "ws-openlaw-123";
 
 const EVAL_SET_NODE = {
   ref_id: "ref-abc-123",
@@ -53,47 +52,61 @@ const EVAL_SET_NODE = {
   },
 };
 
-// ── listRecursionEvalSets — three-source merge ────────────────────────────────
+type SearchParams = {
+  nodeTypes: string[];
+  filters: Array<{ attribute: string; value: unknown; comparator: string }>;
+  includeProperties: boolean;
+  skipCache?: boolean;
+};
 
-describe("listRecursionEvalSets — three-source merge", () => {
+function recursionCalls(): SearchParams[] {
+  return (mockSearchNodesByAttributes.mock.calls as [unknown, SearchParams][]).map(([, p]) => p);
+}
+
+function makeNode(ref_id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    ref_id,
+    node_type: "EvalSet",
+    properties: { id: `task/${ref_id}`, name: `Task ${ref_id}`, ...overrides },
+  };
+}
+
+// ── listRecursionEvalSets — dispatch vs list ──────────────────────────────────
+
+describe("listRecursionEvalSets — dispatch vs list", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(db.stakworkRun.groupBy).mockResolvedValue([]);
   });
 
-  const makeNode = (ref_id: string, overrides: Record<string, unknown> = {}) => ({
-    ref_id,
-    node_type: "EvalSet",
-    properties: { id: `task/${ref_id}`, name: `Task ${ref_id}`, ...overrides },
-  });
+  test("dispatch: recursion=true appears with reason 'active' even when property bag omits recursion", async () => {
+    const node = makeNode("ref-active"); // no recursion property
+    mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: true, nodes: [node] });
 
-  // ── Source 1 (active) ───────────────────────────────────────────────────
-
-  test("Source 1: node with recursion=true appears with reason 'active'", async () => {
-    const node = makeNode("ref-active");
-    // Source 1 returns node; Source 2 returns empty; Source 3 returns no DB rows
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [node] })  // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [] });      // Source 2
-    vi.mocked(db.stakworkRun.groupBy).mockResolvedValue([]);
-
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.ok).toBe(true);
     const entry = result.nodes?.find((n) => n.ref_id === "ref-active");
     expect(entry).toBeDefined();
     expect(entry?.reason).toBe("active");
+    expect(entry?.recursion).toBe(true);
   });
 
-  test("Source 1: dateAddedToGraph comes from the node's top-level date_added_to_graph", async () => {
-    const stamped = { ...makeNode("ref-stamped"), date_added_to_graph: 1756000000 };
-    const unstamped = makeNode("ref-unstamped");
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [stamped, unstamped] })  // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [] });                    // Source 2
-    vi.mocked(db.stakworkRun.groupBy).mockResolvedValue([]);
+  test("dispatch: copies recursionEnabledAt so plateau cutoff can read it", async () => {
+    const node = makeNode("ref-active", { recursion: true, recursionEnabledAt: 1700000000 });
+    mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: true, nodes: [node] });
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
+
+    expect(result.nodes?.[0].recursionEnabledAt).toBe(1700000000);
+  });
+
+  test("dispatch: dateAddedToGraph comes from the node's top-level date_added_to_graph", async () => {
+    const stamped = { ...makeNode("ref-stamped", { recursion: true }), date_added_to_graph: 1756000000 };
+    const unstamped = makeNode("ref-unstamped", { recursion: true });
+    mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: true, nodes: [stamped, unstamped] });
+
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.nodes?.find((n) => n.ref_id === "ref-stamped")?.dateAddedToGraph).toBe(
       new Date(1756000000 * 1000).toISOString(),
@@ -101,238 +114,180 @@ describe("listRecursionEvalSets — three-source merge", () => {
     expect(result.nodes?.find((n) => n.ref_id === "ref-unstamped")?.dateAddedToGraph).toBeNull();
   });
 
-  test("Source 1 failure returns { ok: false } (authoritative)", async () => {
+  test("dispatch: true-query failure returns { ok: false }", async () => {
     mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: false, nodes: [], error: "Jarvis down" });
-    // Source 2 + 3 would still run but result should still be failure
-    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/Jarvis down|Graph query failed/);
   });
 
-  // ── Source 2 (wasEnabled) ───────────────────────────────────────────────
+  test("dispatch sends only recursion=true (boolean), skipCache, includeProperties", async () => {
+    mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: true, nodes: [] });
 
-  test("Source 2: node with recursionEnabledAt set appears with reason 'wasEnabled'", async () => {
-    const node = makeNode("ref-was-enabled", { recursionEnabledAt: 1700000000 });
-    // Source 1 returns empty; Source 2 returns the wasEnabled node
+    await listRecursionEvalSets(CONFIG, "dispatch");
+
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledTimes(1);
+    const params = recursionCalls()[0];
+    expect(params.nodeTypes).toEqual(EVALSET_NODE_LABELS);
+    expect(params.includeProperties).toBe(true);
+    expect(params.skipCache).toBe(true);
+    expect(params.filters).toEqual([{ attribute: "recursion", value: true, comparator: "=" }]);
+  });
+
+  test("list: recursion=false + leftover recursionEnabledAt is listed, reason omitted, timestamp copied", async () => {
+    const liveOff = makeNode("ref-off", { recursion: false, recursionEnabledAt: 1700000000 });
     mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [] })       // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [node] }); // Source 2
+      .mockResolvedValueOnce({ ok: true, nodes: [] })
+      .mockResolvedValueOnce({ ok: true, nodes: [liveOff] });
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "list");
 
     expect(result.ok).toBe(true);
-    const entry = result.nodes?.find((n) => n.ref_id === "ref-was-enabled");
+    const entry = result.nodes?.find((n) => n.ref_id === "ref-off");
     expect(entry).toBeDefined();
-    expect(entry?.reason).toBe("wasEnabled");
+    expect(entry?.recursion).toBe(false);
+    expect(entry?.reason).toBeUndefined();
+    expect(entry).not.toHaveProperty("reason");
+    expect(entry?.recursionEnabledAt).toBe(1700000000);
   });
 
-  test("Source 2 sends recursionEnabledAt != null filter", async () => {
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [] }) // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [] }); // Source 2
+  test("dispatch: recursion=false + leftover timestamp is not a candidate", async () => {
+    mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: true, nodes: [] });
 
-    await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
-
-    // Source 2 call is the second call
-    const [, params] = mockSearchNodesByAttributes.mock.calls[1] as [
-      unknown,
-      { filters: Array<{ attribute: string; value: unknown; comparator: string }> },
-    ];
-    expect(params.filters[0].attribute).toBe("recursionEnabledAt");
-    expect(params.filters[0].value).toBeNull();
-    expect(params.filters[0].comparator).toBe("!=");
-  });
-
-  test("Source 2 failure: partial=true, Source 1 results preserved", async () => {
-    const s1Node = makeNode("ref-active");
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [s1Node] }) // Source 1
-      .mockResolvedValueOnce({ ok: false, nodes: [], error: "Jarvis unreachable" }); // Source 2 fails
-
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.ok).toBe(true);
-    expect(result.partial).toBe(true);
+    expect(result.nodes).toEqual([]);
+    expect(result.nodes?.find((n) => n.ref_id === "ref-off")).toBeUndefined();
+    expect(recursionCalls().every((p) => p.filters[0].value === true)).toBe(true);
+  });
+
+  test("list: recursion=false is listed; reason omitted so Runs-tab active check would not badge it", async () => {
+    const liveOff = makeNode("ref-off", { recursion: false });
+    mockSearchNodesByAttributes
+      .mockResolvedValueOnce({ ok: true, nodes: [] })
+      .mockResolvedValueOnce({ ok: true, nodes: [liveOff] });
+
+    const result = await listRecursionEvalSets(CONFIG, "list");
+
     expect(result.nodes).toHaveLength(1);
-    expect(result.nodes![0].ref_id).toBe("ref-active");
-    expect(result.nodes![0].reason).toBe("active");
+    expect(result.nodes![0].reason).toBeUndefined();
+    expect(result.nodes![0].reason === "active").toBe(false);
   });
 
-  test("Source 2 rejection (throws): partial=true, Source 1 results preserved", async () => {
-    const s1Node = makeNode("ref-active");
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [s1Node] }) // Source 1 ok
-      .mockRejectedValueOnce(new Error("Network error"));   // Source 2 throws
+  test("unset recursion appears in neither list nor dispatch", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const dispatched = await listRecursionEvalSets(CONFIG, "dispatch");
+    const listed = await listRecursionEvalSets(CONFIG, "list");
 
-    expect(result.ok).toBe(true);
-    expect(result.partial).toBe(true);
-    expect(result.nodes![0].reason).toBe("active");
+    expect(dispatched.nodes).toEqual([]);
+    expect(listed.nodes).toEqual([]);
   });
 
-  // ── Source 3 (multipleRuns) ─────────────────────────────────────────────
-
-  test("Source 3: evalSetId with >1 LEGAL_BENCHMARK_RUNNER runs appears with reason 'multipleRuns'", async () => {
-    const s3Node = makeNode("ref-multi");
-    // Source 1: empty; Source 2: empty; Source 3: DB returns one multi-run evalSetId
+  test("same ref_id from both filters → one row, true wins (reason: active)", async () => {
+    const liveOn = makeNode("ref-dup", { recursion: true });
+    const liveOff = makeNode("ref-dup", { recursion: false, recursionEnabledAt: 1700000000 });
     mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [] })        // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [] })        // Source 2
-      .mockResolvedValueOnce({ ok: true, nodes: [s3Node] }); // Source 3 graph lookup
-    vi.mocked(db.stakworkRun.groupBy).mockResolvedValue([
-      { evalSetId: "task/ref-multi", _count: { evalSetId: 2 } } as never,
-    ]);
+      .mockResolvedValueOnce({ ok: true, nodes: [liveOn] })
+      .mockResolvedValueOnce({ ok: true, nodes: [liveOff] });
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
-
-    expect(result.ok).toBe(true);
-    const entry = result.nodes?.find((n) => n.ref_id === "ref-multi");
-    expect(entry).toBeDefined();
-    expect(entry?.reason).toBe("multipleRuns");
-  });
-
-  test("Source 3 is skipped when workspaceId is absent (one-arg cron call)", async () => {
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [] }) // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [] }); // Source 2
-
-    await listRecursionEvalSets(CONFIG); // no workspaceId
-
-    // groupBy must NOT have been called
-    expect(db.stakworkRun.groupBy).not.toHaveBeenCalled();
-  });
-
-  test("Source 3 DB failure: partial=true, Sources 1+2 preserved", async () => {
-    const s1Node = makeNode("ref-active");
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [s1Node] }) // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [] });       // Source 2
-    vi.mocked(db.stakworkRun.groupBy).mockRejectedValue(new Error("DB connection error"));
-
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
-
-    expect(result.ok).toBe(true);
-    expect(result.partial).toBe(true);
-    expect(result.nodes).toHaveLength(1);
-    expect(result.nodes![0].reason).toBe("active");
-  });
-
-  test("Source 3 cap: 51 IDs → only 50 resolved, logger.warn emitted", async () => {
-    const ids = Array.from({ length: 51 }, (_, i) => `eval-set-${i}`);
-    vi.mocked(db.stakworkRun.groupBy).mockResolvedValue(
-      ids.map((id) => ({ evalSetId: id, _count: { evalSetId: 2 } }) as never),
-    );
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [] }) // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [] }) // Source 2
-      .mockResolvedValue({ ok: true, nodes: [] }); // Source 3 per-ID lookups
-
-    await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
-
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("capping eval set ID resolution at 50"),
-      "legal",
-      expect.objectContaining({ workspaceId: WORKSPACE_ID }),
-    );
-    // 50 graph lookups (+ 2 for Source 1 & 2)
-    expect(mockSearchNodesByAttributes).toHaveBeenCalledTimes(52);
-  });
-
-  // ── Deduplication ───────────────────────────────────────────────────────
-
-  test("Dedup: node qualifying under both 'active' and 'wasEnabled' appears once with reason 'active'", async () => {
-    const node = makeNode("ref-dup");
-    // Source 1 returns the node (active); Source 2 also returns it (wasEnabled)
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [node] }) // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [node] }); // Source 2
-
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "list");
 
     const matching = result.nodes?.filter((n) => n.ref_id === "ref-dup") ?? [];
     expect(matching).toHaveLength(1);
     expect(matching[0].reason).toBe("active");
+    expect(matching[0].recursion).toBe(true);
   });
 
-  test("Dedup: node qualifying under 'wasEnabled' and 'multipleRuns' appears once with reason 'wasEnabled'", async () => {
-    const node = makeNode("ref-dup2", { recursionEnabledAt: 1700000000 });
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [] })        // Source 1: not active
-      .mockResolvedValueOnce({ ok: true, nodes: [node] })   // Source 2: wasEnabled
-      .mockResolvedValueOnce({ ok: true, nodes: [node] });  // Source 3 graph lookup
-    vi.mocked(db.stakworkRun.groupBy).mockResolvedValue([
-      { evalSetId: `task/ref-dup2`, _count: { evalSetId: 2 } } as never,
+  test("Postgres multi-run (groupBy) is never called in either mode", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+
+    await listRecursionEvalSets(CONFIG, "dispatch");
+    await listRecursionEvalSets(CONFIG, "list");
+
+    expect(db.stakworkRun.groupBy).not.toHaveBeenCalled();
+  });
+
+  test("list sends exactly two filters (true then false), boolean values, skipCache, includeProperties", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+
+    await listRecursionEvalSets(CONFIG, "list");
+
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledTimes(2);
+    const calls = recursionCalls();
+    expect(calls.map((p) => p.filters[0])).toEqual([
+      { attribute: "recursion", value: true, comparator: "=" },
+      { attribute: "recursion", value: false, comparator: "=" },
     ]);
-
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
-
-    const matching = result.nodes?.filter((n) => n.ref_id === "ref-dup2") ?? [];
-    expect(matching).toHaveLength(1);
-    expect(matching[0].reason).toBe("wasEnabled");
+    for (const params of calls) {
+      expect(params.nodeTypes).toEqual(EVALSET_NODE_LABELS);
+      expect(params.includeProperties).toBe(true);
+      expect(params.skipCache).toBe(true);
+      expect(typeof params.filters[0].value).toBe("boolean");
+    }
   });
 
-  test("Dedup: all three conditions → appears once with reason 'active'", async () => {
-    const node = makeNode("ref-all-three");
-    mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [node] })   // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [node] })   // Source 2
-      .mockResolvedValueOnce({ ok: true, nodes: [node] });  // Source 3 graph lookup
-    vi.mocked(db.stakworkRun.groupBy).mockResolvedValue([
-      { evalSetId: "task/ref-all-three", _count: { evalSetId: 3 } } as never,
-    ]);
+  test("list true-query failure → { ok: false }", async () => {
+    mockSearchNodesByAttributes.mockResolvedValueOnce({ ok: false, nodes: [], error: "Jarvis down" });
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "list");
 
-    const matching = result.nodes?.filter((n) => n.ref_id === "ref-all-three") ?? [];
-    expect(matching).toHaveLength(1);
-    expect(matching[0].reason).toBe("active");
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/Jarvis down|Graph query failed/);
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledTimes(1);
   });
 
-  // ── selectEvalSetByTieBreak + property extraction ──────────────────────
-
-  test("Source 3: id/name/projectId come from node.properties, not bare ref_id", async () => {
-    const node = {
-      ref_id: "ref-s3",
-      node_type: "EvalSet",
-      properties: {
-        id: "contracts/draft-sla",
-        name: "Draft SLA",
-        project_id: 42,
-      },
-    };
+  test("list false-query failure → { ok: true } with the true nodes (no partial)", async () => {
+    const liveOn = makeNode("ref-active", { recursion: true });
     mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [] })        // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [] })        // Source 2
-      .mockResolvedValueOnce({ ok: true, nodes: [node] });  // Source 3 graph lookup
-    vi.mocked(db.stakworkRun.groupBy).mockResolvedValue([
-      { evalSetId: "contracts/draft-sla", _count: { evalSetId: 2 } } as never,
-    ]);
+      .mockResolvedValueOnce({ ok: true, nodes: [liveOn] })
+      .mockResolvedValueOnce({ ok: false, nodes: [], error: "Jarvis unreachable" });
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "list");
 
-    const entry = result.nodes?.find((n) => n.ref_id === "ref-s3");
-    expect(entry?.id).toBe("contracts/draft-sla");
-    expect(entry?.name).toBe("Draft SLA");
-    expect(entry?.projectId).toBe(42);
-    // id must NOT be the bare ref_id string
-    expect(entry?.id).not.toBe("ref-s3");
+    expect(result.ok).toBe(true);
+    expect(result).not.toHaveProperty("partial");
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes![0].ref_id).toBe("ref-active");
+    expect(result.nodes![0].reason).toBe("active");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("recursion=false query failed"),
+      "legal",
+      expect.anything(),
+    );
   });
 
-  // ── no partial when all sources succeed ────────────────────────────────
-
-  test("partial is absent when all sources succeed", async () => {
+  test("list false-query throw → { ok: true } with the true nodes (no partial)", async () => {
+    const liveOn = makeNode("ref-active", { recursion: true });
     mockSearchNodesByAttributes
-      .mockResolvedValueOnce({ ok: true, nodes: [] }) // Source 1
-      .mockResolvedValueOnce({ ok: true, nodes: [] }); // Source 2
-    vi.mocked(db.stakworkRun.groupBy).mockResolvedValue([]);
+      .mockResolvedValueOnce({ ok: true, nodes: [liveOn] })
+      .mockRejectedValueOnce(new Error("Network error"));
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "list");
 
-    expect(result.partial).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(result).not.toHaveProperty("partial");
+    expect(result.nodes![0].reason).toBe("active");
+  });
+
+  test("list true empty + false non-empty → no possibleMissingAttribute log", async () => {
+    const liveOff = makeNode("ref-off", { recursion: false });
+    mockSearchNodesByAttributes
+      .mockResolvedValueOnce({ ok: true, nodes: [] })
+      .mockResolvedValueOnce({ ok: true, nodes: [liveOff] });
+
+    const result = await listRecursionEvalSets(CONFIG, "list");
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(1);
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.stringContaining("zero nodes"),
+      "legal",
+      expect.objectContaining({ possibleMissingAttribute: true }),
+    );
   });
 });
 
@@ -343,26 +298,14 @@ describe("listRecursionEvalSets", () => {
     vi.clearAllMocks();
   });
 
-  test("calls searchNodesByAttributes with correct Source 1 filter shape (recursion=true)", async () => {
-    // Source 2 (wasEnabled) must be mocked to return ok so it doesn't throw
+  test("calls searchNodesByAttributes with correct dispatch filter shape (recursion=true)", async () => {
     mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [EVAL_SET_NODE] });
 
-    await listRecursionEvalSets(CONFIG);
+    await listRecursionEvalSets(CONFIG, "dispatch");
 
-    // Now called at least twice: Source 1 (recursion=true) + Source 2 (recursionEnabledAt!=null)
-    expect(mockSearchNodesByAttributes).toHaveBeenCalled();
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledTimes(1);
+    const [, params] = mockSearchNodesByAttributes.mock.calls[0] as [unknown, SearchParams];
 
-    // Source 1 is the first call — find it by its filter attribute
-    const source1Call = (mockSearchNodesByAttributes.mock.calls as [unknown, {
-      nodeTypes: string[];
-      filters: Array<{ attribute: string; value: unknown; comparator: string }>;
-      includeProperties: boolean;
-      skipCache?: boolean;
-    }][]).find(([, params]) => params.filters[0]?.attribute === "recursion");
-    expect(source1Call).toBeDefined();
-    const [, params] = source1Call!;
-
-    // Both casings must be present — regression guard against reverting to a single casing
     expect(params.nodeTypes).toContain("EvalSet");
     expect(params.nodeTypes).toContain("Evalset");
     expect(params.nodeTypes).toEqual(EVALSET_NODE_LABELS);
@@ -372,14 +315,13 @@ describe("listRecursionEvalSets", () => {
     expect(filter.attribute).toBe("recursion");
     expect(filter.value).toBe(true);           // boolean, not string
     expect(filter.comparator).toBe("=");        // exact match, not "eq"
-    // Must bypass jarvis response cache — admin toggle list must always be fresh
     expect(params.skipCache).toBe(true);
   });
 
   test("returns normalized result with ok: true and whitelisted nodes", async () => {
     mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [EVAL_SET_NODE] });
 
-    const result = await listRecursionEvalSets(CONFIG);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.ok).toBe(true);
     expect(result.nodes).toHaveLength(1);
@@ -388,7 +330,6 @@ describe("listRecursionEvalSets", () => {
     expect(node.id).toBe("practice-area/task-slug");
     expect(node.name).toBe("Draft a contract");
 
-    // Whitelist check — no raw properties leaked
     expect(node).not.toHaveProperty("extra_secret");
     expect(node).not.toHaveProperty("properties");
     expect(node).not.toHaveProperty("node_type");
@@ -398,25 +339,38 @@ describe("listRecursionEvalSets", () => {
     const nodeNoId = { ...EVAL_SET_NODE, properties: { name: "No ID node" } };
     mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [nodeNoId] });
 
-    const result = await listRecursionEvalSets(CONFIG);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.ok).toBe(true);
     expect(result.nodes![0].id).toBe("ref-abc-123");
   });
 
-  test("returns empty nodes array and logs distinct signal on zero results", async () => {
+  test("dispatch: returns empty nodes array and logs distinct signal on zero results", async () => {
     mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
 
-    const result = await listRecursionEvalSets(CONFIG);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.ok).toBe(true);
     expect(result.nodes).toEqual([]);
 
-    // Distinct signal for possible missing attribute
     expect(logger.info).toHaveBeenCalledWith(
       expect.stringContaining("zero nodes"),
       "legal",
       expect.objectContaining({ possibleMissingAttribute: true }),
+    );
+  });
+
+  test("list: logs possibleMissingAttribute only when both queries return empty", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+
+    const result = await listRecursionEvalSets(CONFIG, "list");
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toEqual([]);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("zero nodes"),
+      "legal",
+      expect.objectContaining({ possibleMissingAttribute: true, mode: "list" }),
     );
   });
 
@@ -428,7 +382,7 @@ describe("listRecursionEvalSets", () => {
       error: "Upstream timeout",
     });
 
-    const result = await listRecursionEvalSets(CONFIG);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.ok).toBe(false);
     expect(result.error).toBe("Upstream timeout");
@@ -443,9 +397,8 @@ describe("listRecursionEvalSets", () => {
       endpointMissing: false,
     });
 
-    const result = await listRecursionEvalSets(CONFIG);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
-    // Service result only exposes { ok, nodes?, error? } — no raw status/endpointMissing
     expect(result).toHaveProperty("ok", true);
     expect(result).toHaveProperty("nodes");
     expect(result).not.toHaveProperty("status");
@@ -744,7 +697,7 @@ describe("enableRecursionForTaskSlug", () => {
       nodes: [EVAL_SET_NODE],
     });
 
-    const listResult = await listRecursionEvalSets(CONFIG);
+    const listResult = await listRecursionEvalSets(CONFIG, "dispatch");
 
     // Both calls use the both-casing nodeTypes list and must send skipCache: true
     for (const [, params] of mockSearchNodesByAttributes.mock.calls as [unknown, { nodeTypes: string[]; skipCache?: boolean }][]) {
@@ -882,327 +835,174 @@ describe("resolveEvalSetRefIdBySlug", () => {
   });
 });
 
-// ── listRecursionEvalSets — three-source merge ────────────────────────────────
+// ── listRecursionEvalSets — dispatch vs list (implementation-style) ───────────
 
-describe("listRecursionEvalSets — three-source merge", () => {
+describe("listRecursionEvalSets — dispatch vs list (implementation-style)", () => {
   const ACTIVE_NODE = {
     ref_id: "ref-active",
     node_type: "EvalSet",
-    properties: { id: "tax/task-1", name: "Tax Task 1", recursion: true },
+    properties: { id: "tax/task-1", name: "Tax Task 1", recursion: true, project_id: 42 },
   };
-  const WAS_ENABLED_NODE = {
-    ref_id: "ref-was-enabled",
+  const LIVE_OFF_NODE = {
+    ref_id: "ref-live-off",
     node_type: "EvalSet",
-    properties: { id: "contracts/task-2", name: "Contracts Task 2", recursionEnabledAt: 1700000000 },
-  };
-  const MULTI_RUN_NODE = {
-    ref_id: "ref-multi-run",
-    node_type: "EvalSet",
-    properties: { id: "antitrust/task-3", name: "Antitrust Task 3" },
+    properties: {
+      id: "contracts/task-2",
+      name: "Contracts Task 2",
+      recursion: false,
+      recursionEnabledAt: 1700000000,
+    },
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // By default Source 3 (Prisma groupBy) returns no multi-run groups
     mockGroupBy.mockResolvedValue([]);
   });
 
-  // ── Source 1: active ──────────────────────────────────────────────────────
+  function byRecursionValue(trueNodes: unknown[], falseNodes: unknown[] = []) {
+    return (
+      _config: unknown,
+      params: { filters: Array<{ attribute: string; value: unknown }> },
+    ) => {
+      const filter = params.filters[0];
+      if (filter?.attribute === "recursion" && filter.value === true) {
+        return Promise.resolve({ ok: true, nodes: trueNodes });
+      }
+      if (filter?.attribute === "recursion" && filter.value === false) {
+        return Promise.resolve({ ok: true, nodes: falseNodes });
+      }
+      return Promise.resolve({ ok: true, nodes: [] });
+    };
+  }
 
-  test("Source 1: nodes where recursion=true have reason 'active'", async () => {
-    // Source 1 returns active node
-    mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string }> }) => {
-        const attr = params.filters[0]?.attribute;
-        if (attr === "recursion") return Promise.resolve({ ok: true, nodes: [ACTIVE_NODE] });
-        // Source 2 (wasEnabled) returns empty
-        return Promise.resolve({ ok: true, nodes: [] });
-      },
-    );
+  test("dispatch: nodes where recursion=true have reason 'active'", async () => {
+    mockSearchNodesByAttributes.mockImplementation(byRecursionValue([ACTIVE_NODE]));
 
-    const result = await listRecursionEvalSets(CONFIG);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.ok).toBe(true);
     const active = result.nodes?.find((n) => n.ref_id === "ref-active");
     expect(active?.reason).toBe("active");
+    expect(active?.recursion).toBe(true);
+    expect(active?.id).toBe("tax/task-1");
+    expect(active?.name).toBe("Tax Task 1");
+    expect(active?.projectId).toBe(42);
   });
 
-  test("Source 1 failure returns ok: false (authoritative)", async () => {
+  test("dispatch true-query failure returns ok: false", async () => {
     mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string }> }) => {
-        if (params.filters[0]?.attribute === "recursion") {
+      (_config: unknown, params: { filters: Array<{ attribute: string; value: unknown }> }) => {
+        if (params.filters[0]?.attribute === "recursion" && params.filters[0]?.value === true) {
           return Promise.resolve({ ok: false, nodes: [], error: "Graph unavailable" });
         }
         return Promise.resolve({ ok: true, nodes: [] });
       },
     );
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/Graph unavailable/);
   });
 
-  // ── Source 2: wasEnabled ──────────────────────────────────────────────────
+  test("list: live-off node with leftover timestamp is listed without reason", async () => {
+    mockSearchNodesByAttributes.mockImplementation(byRecursionValue([], [LIVE_OFF_NODE]));
 
-  test("Source 2: nodes where recursionEnabledAt is set have reason 'wasEnabled'", async () => {
-    mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string }> }) => {
-        const attr = params.filters[0]?.attribute;
-        if (attr === "recursion") return Promise.resolve({ ok: true, nodes: [] });
-        if (attr === "recursionEnabledAt") return Promise.resolve({ ok: true, nodes: [WAS_ENABLED_NODE] });
-        return Promise.resolve({ ok: true, nodes: [] });
-      },
-    );
-
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "list");
 
     expect(result.ok).toBe(true);
-    const wasEnabled = result.nodes?.find((n) => n.ref_id === "ref-was-enabled");
-    expect(wasEnabled?.reason).toBe("wasEnabled");
+    const liveOff = result.nodes?.find((n) => n.ref_id === "ref-live-off");
+    expect(liveOff).toBeDefined();
+    expect(liveOff?.reason).toBeUndefined();
+    expect(liveOff?.recursion).toBe(false);
+    expect(liveOff?.recursionEnabledAt).toBe(1700000000);
   });
 
-  test("Source 2 failure: partial=true, Source 1 results still returned", async () => {
-    mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string }> }) => {
-        const attr = params.filters[0]?.attribute;
-        if (attr === "recursion") return Promise.resolve({ ok: true, nodes: [ACTIVE_NODE] });
-        // Source 2 "!=" attempt fails, fallback also fails
-        return Promise.resolve({ ok: false, nodes: [], error: "Jarvis rejected !=" });
-      },
-    );
+  test("dispatch never selects a leftover-timestamp live-off node", async () => {
+    mockSearchNodesByAttributes.mockImplementation(byRecursionValue([], [LIVE_OFF_NODE]));
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "dispatch");
 
     expect(result.ok).toBe(true);
-    expect(result.partial).toBe(true);
-    expect(result.nodes?.find((n) => n.ref_id === "ref-active")?.reason).toBe("active");
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Source 2"),
-      expect.anything(),
-      expect.anything(),
-    );
+    expect(result.nodes?.find((n) => n.ref_id === "ref-live-off")).toBeUndefined();
+    expect(recursionCalls().every((p) => p.filters[0].value === true)).toBe(true);
   });
 
-  // ── Source 3: multipleRuns ────────────────────────────────────────────────
+  test("groupBy is never called in either mode even when mock is primed", async () => {
+    mockGroupBy.mockResolvedValue([{ evalSetId: "antitrust/task-3", _count: { evalSetId: 3 } }]);
+    mockSearchNodesByAttributes.mockImplementation(byRecursionValue([ACTIVE_NODE], [LIVE_OFF_NODE]));
 
-  test("Source 3: eval sets with multiple runs have reason 'multipleRuns'", async () => {
-    mockGroupBy.mockResolvedValue([
-      { evalSetId: "antitrust/task-3", _count: { evalSetId: 3 } },
-    ]);
-    mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string; value: unknown }> }) => {
-        const attr = params.filters[0]?.attribute;
-        const val = params.filters[0]?.value;
-        if (attr === "recursion") return Promise.resolve({ ok: true, nodes: [] });
-        if (attr === "recursionEnabledAt") return Promise.resolve({ ok: true, nodes: [] });
-        // Source 3 lookup by id
-        if (attr === "id" && val === "antitrust/task-3") {
-          return Promise.resolve({ ok: true, nodes: [MULTI_RUN_NODE] });
-        }
-        return Promise.resolve({ ok: true, nodes: [] });
-      },
-    );
+    await listRecursionEvalSets(CONFIG, "dispatch");
+    await listRecursionEvalSets(CONFIG, "list");
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
-
-    expect(result.ok).toBe(true);
-    const multiRun = result.nodes?.find((n) => n.ref_id === "ref-multi-run");
-    expect(multiRun?.reason).toBe("multipleRuns");
-    // id/name/projectId come from node.properties, not bare ref_id
-    expect(multiRun?.id).toBe("antitrust/task-3");
-    expect(multiRun?.name).toBe("Antitrust Task 3");
-  });
-
-  test("Source 3: skipped entirely when workspaceId is absent", async () => {
-    mockGroupBy.mockResolvedValue([
-      { evalSetId: "antitrust/task-3", _count: { evalSetId: 3 } },
-    ]);
-    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
-
-    // Call without workspaceId (one-arg form — cron call site)
-    const result = await listRecursionEvalSets(CONFIG);
-
-    expect(result.ok).toBe(true);
     expect(mockGroupBy).not.toHaveBeenCalled();
   });
 
-  test("Source 3: Prisma groupBy throw yields partial=true, Sources 1+2 still returned", async () => {
-    mockGroupBy.mockRejectedValue(new Error("DB connection failed"));
+  test("list false-query failure still returns true nodes with no partial flag", async () => {
     mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string }> }) => {
-        const attr = params.filters[0]?.attribute;
-        if (attr === "recursion") return Promise.resolve({ ok: true, nodes: [ACTIVE_NODE] });
-        if (attr === "recursionEnabledAt") return Promise.resolve({ ok: true, nodes: [WAS_ENABLED_NODE] });
-        return Promise.resolve({ ok: true, nodes: [] });
+      (_config: unknown, params: { filters: Array<{ attribute: string; value: unknown }> }) => {
+        if (params.filters[0]?.attribute === "recursion" && params.filters[0]?.value === true) {
+          return Promise.resolve({ ok: true, nodes: [ACTIVE_NODE] });
+        }
+        return Promise.resolve({ ok: false, nodes: [], error: "Jarvis rejected false" });
       },
     );
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "list");
 
     expect(result.ok).toBe(true);
-    expect(result.partial).toBe(true);
-    expect(result.nodes?.find((n) => n.ref_id === "ref-active")).toBeDefined();
-    expect(result.nodes?.find((n) => n.ref_id === "ref-was-enabled")).toBeDefined();
+    expect(result).not.toHaveProperty("partial");
+    expect(result.nodes?.find((n) => n.ref_id === "ref-active")?.reason).toBe("active");
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Source 3"),
+      expect.stringContaining("recursion=false query failed"),
       expect.anything(),
       expect.anything(),
     );
   });
 
-  test("Source 3: synchronous throw inside async thunk is treated as rejected settlement", async () => {
-    // groupBy resolves, but the resulting IDs cause a synchronous error somewhere in the chain.
-    // We simulate this by making groupBy return a value that causes an issue in the
-    // Promise.allSettled flow — here we make groupBy itself throw synchronously.
-    // Since source3 is an async thunk, synchronous throws become rejections.
-    mockGroupBy.mockImplementation(() => { throw new Error("Sync throw"); });
+  test("list true-query failure returns ok: false even if false query would succeed", async () => {
     mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string }> }) => {
-        if (params.filters[0]?.attribute === "recursion") return Promise.resolve({ ok: true, nodes: [ACTIVE_NODE] });
-        return Promise.resolve({ ok: true, nodes: [] });
+      (_config: unknown, params: { filters: Array<{ attribute: string; value: unknown }> }) => {
+        if (params.filters[0]?.value === true) {
+          return Promise.resolve({ ok: false, nodes: [], error: "Graph unavailable" });
+        }
+        return Promise.resolve({ ok: true, nodes: [LIVE_OFF_NODE] });
       },
     );
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "list");
 
-    // Sync throw inside async thunk → rejected settlement → non-fatal
-    expect(result.ok).toBe(true);
-    expect(result.partial).toBe(true);
-    expect(result.nodes?.find((n) => n.ref_id === "ref-active")).toBeDefined();
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/Graph unavailable/);
+    expect(mockSearchNodesByAttributes).toHaveBeenCalledTimes(1);
   });
 
-  test("Source 3: caps at 50 IDs and logs a warning when groupBy returns >50 rows", async () => {
-    const fiftyOneGroups = Array.from({ length: 51 }, (_, i) => ({
-      evalSetId: `task-${i}`,
-      _count: { evalSetId: 2 },
-    }));
-    mockGroupBy.mockResolvedValue(fiftyOneGroups);
-    mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string }> }) => {
-        if (params.filters[0]?.attribute === "recursion") return Promise.resolve({ ok: true, nodes: [] });
-        if (params.filters[0]?.attribute === "recursionEnabledAt") return Promise.resolve({ ok: true, nodes: [] });
-        return Promise.resolve({ ok: true, nodes: [] });
-      },
-    );
-
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
-
-    expect(result.ok).toBe(true);
-    // searchNodesByAttributes called for: Source 1 (1) + Source 2 (1) + Source 3 (50 max) = 52 calls
-    const idLookupCalls = mockSearchNodesByAttributes.mock.calls.filter(
-      ([, params]: [unknown, { filters: Array<{ attribute: string }> }]) =>
-        params.filters[0]?.attribute === "id",
-    );
-    expect(idLookupCalls.length).toBeLessThanOrEqual(50);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("capping"),
-      expect.anything(),
-      expect.objectContaining({ workspaceId: WORKSPACE_ID }),
-    );
-  });
-
-  // ── Deduplication ─────────────────────────────────────────────────────────
-
-  test("deduplication: node qualifying under all three conditions appears once with reason 'active'", async () => {
-    // The same ref_id appears in all three sources
+  test("dedup: same ref_id from true and false filters appears once with reason active", async () => {
     const sharedNode = {
       ref_id: "ref-shared",
       node_type: "EvalSet",
       properties: { id: "shared/task", name: "Shared Task", recursion: true, recursionEnabledAt: 1700000000 },
     };
-    mockGroupBy.mockResolvedValue([{ evalSetId: "shared/task", _count: { evalSetId: 2 } }]);
-    mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string; value: unknown }> }) => {
-        const attr = params.filters[0]?.attribute;
-        if (attr === "recursion") return Promise.resolve({ ok: true, nodes: [sharedNode] });
-        if (attr === "recursionEnabledAt") return Promise.resolve({ ok: true, nodes: [sharedNode] });
-        // Source 3 id lookup
-        if (attr === "id") return Promise.resolve({ ok: true, nodes: [sharedNode] });
-        return Promise.resolve({ ok: true, nodes: [] });
-      },
-    );
+    mockSearchNodesByAttributes.mockImplementation(byRecursionValue([sharedNode], [sharedNode]));
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "list");
 
-    expect(result.ok).toBe(true);
     const sharedEntries = result.nodes?.filter((n) => n.ref_id === "ref-shared");
-    // Must appear exactly once
     expect(sharedEntries).toHaveLength(1);
-    // Highest-priority reason wins
     expect(sharedEntries![0].reason).toBe("active");
   });
 
-  test("deduplication: 'active' beats 'wasEnabled' beats 'multipleRuns'", async () => {
-    const activeNode = { ref_id: "ref-x", node_type: "EvalSet", properties: { id: "area/task", name: "Task", recursion: true, recursionEnabledAt: 1700000000 } };
-    mockGroupBy.mockResolvedValue([{ evalSetId: "area/task", _count: { evalSetId: 2 } }]);
-    mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string }> }) => {
-        const attr = params.filters[0]?.attribute;
-        if (attr === "recursion") return Promise.resolve({ ok: true, nodes: [activeNode] });
-        if (attr === "recursionEnabledAt") return Promise.resolve({ ok: true, nodes: [activeNode] });
-        if (attr === "id") return Promise.resolve({ ok: true, nodes: [activeNode] });
-        return Promise.resolve({ ok: true, nodes: [] });
-      },
-    );
+  test("list true empty + false non-empty does not log possibleMissingAttribute", async () => {
+    mockSearchNodesByAttributes.mockImplementation(byRecursionValue([], [LIVE_OFF_NODE]));
 
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
-
-    const entries = result.nodes?.filter((n) => n.ref_id === "ref-x");
-    expect(entries).toHaveLength(1);
-    expect(entries![0].reason).toBe("active");
-  });
-
-  // ── Property extraction from node.properties, not bare ref_id ─────────────
-
-  test("selectEvalSetByTieBreak + property extraction: id/name/projectId from node.properties", async () => {
-    const evalsetNode = {
-      ref_id: "ref-old",
-      node_type: "Evalset",
-      properties: { id: "area/task", name: "Old Name", project_id: 999 },
-    };
-    const canonicalNode = {
-      ref_id: "ref-new",
-      node_type: "EvalSet",
-      properties: { id: "area/task", name: "Canonical Name", project_id: 42 },
-    };
-    mockGroupBy.mockResolvedValue([{ evalSetId: "area/task", _count: { evalSetId: 2 } }]);
-    mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string }> }) => {
-        const attr = params.filters[0]?.attribute;
-        if (attr === "recursion") return Promise.resolve({ ok: true, nodes: [] });
-        if (attr === "recursionEnabledAt") return Promise.resolve({ ok: true, nodes: [] });
-        // Source 3: two nodes for the same id — tie-break selects canonical "EvalSet"
-        if (attr === "id") return Promise.resolve({ ok: true, nodes: [evalsetNode, canonicalNode] });
-        return Promise.resolve({ ok: true, nodes: [] });
-      },
-    );
-
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
-
-    const entry = result.nodes?.find((n) => n.ref_id === "ref-new");
-    expect(entry).toBeDefined();
-    // Properties come from node.properties, not the bare ref_id string
-    expect(entry?.id).toBe("area/task");
-    expect(entry?.name).toBe("Canonical Name");
-    expect(entry?.projectId).toBe(42);
-    // The Evalset node was NOT picked
-    expect(result.nodes?.find((n) => n.ref_id === "ref-old")).toBeUndefined();
-  });
-
-  // ── Partial result signalling ─────────────────────────────────────────────
-
-  test("partial is undefined when all sources succeed", async () => {
-    mockSearchNodesByAttributes.mockImplementation(
-      (_config: unknown, params: { filters: Array<{ attribute: string }> }) => {
-        if (params.filters[0]?.attribute === "recursion") return Promise.resolve({ ok: true, nodes: [ACTIVE_NODE] });
-        return Promise.resolve({ ok: true, nodes: [] });
-      },
-    );
-
-    const result = await listRecursionEvalSets(CONFIG, WORKSPACE_ID);
+    const result = await listRecursionEvalSets(CONFIG, "list");
 
     expect(result.ok).toBe(true);
-    expect(result.partial).toBeUndefined();
+    expect(result.nodes).toHaveLength(1);
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.stringContaining("zero nodes"),
+      "legal",
+      expect.objectContaining({ possibleMissingAttribute: true }),
+    );
   });
 });
