@@ -43,6 +43,7 @@ import {
 import {
   emitFollowUpQuestions,
   emitProvenance,
+  maybeGenerateAndPersistTitle,
 } from "@/services/canvas-turn-enrichments";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
@@ -813,6 +814,36 @@ export async function POST(request: NextRequest) {
               idPrefix: assistantPrefix,
               reason: "user-turn",
             });
+            // Nested try: an LLM throw must never fall into the persist
+            // catch (that catch writes a fake assistant error row).
+            // Not gated on isFirstTurn — the helper no-ops once
+            // settings.titleSource === "llm", and retries if a prior
+            // after() died before the title write.
+            try {
+              const assistantIsError =
+                errMsg !== null ||
+                abnormalFinish !== null ||
+                rows.length === 0 ||
+                rows.some((r) => r.source?.kind === "error");
+              const assistantText = rows
+                .filter(
+                  (r) =>
+                    r.role === "assistant" && r.source?.kind !== "error",
+                )
+                .map((r) => (typeof r.content === "string" ? r.content : ""))
+                .join("\n");
+              await maybeGenerateAndPersistTitle({
+                rowId,
+                userText: newUserContent,
+                assistantText,
+                assistantIsError,
+              });
+            } catch (titleErr) {
+              console.error(
+                "❌ [quick-ask] Title generation failed:",
+                titleErr,
+              );
+            }
           } catch (err) {
             console.error("❌ [quick-ask] Turn persist failed:", err);
             // Persist a trailing error row so a reopened tab sees the
