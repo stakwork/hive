@@ -3,15 +3,16 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  ArrowUp,
   FileIcon,
   Loader2,
+  MessageCircle,
   Mic,
   MicOff,
   OctagonX,
   Paperclip,
   Plus,
   RefreshCw,
-  Send,
   Share2,
   Split,
   X,
@@ -20,7 +21,6 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
 import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CanvasHistoryPopover } from "./CanvasHistoryPopover";
 import { CanvasAgentSettingsPopover } from "./CanvasAgentSettingsPopover";
 import { toast } from "sonner";
@@ -52,6 +52,7 @@ import { forkCanvasConversation } from "../_state/forkCanvasConversation";
 import { startNewOrgConversation } from "../_state/openOrgConversation";
 import { ActionTip } from "./ActionTip";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { jamieName } from "@/lib/constants/jamie";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
 import { useFileDrop } from "@/hooks/useFileDrop";
@@ -325,8 +326,14 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto h-full px-4 py-3">
           <DailyRecapCard dismissible showActivityLink />
           {!hasMessages && activeToolCalls.length === 0 && (
-            <div className="h-full flex items-center justify-center px-4 text-center text-muted-foreground text-sm">
-              Ask the agent about anything on this canvas.
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/10 text-sky-500">
+                <MessageCircle className="h-4 w-4" />
+              </span>
+              <p className="text-sm font-medium">Message {jamieName}</p>
+              <p className="max-w-[260px] text-xs text-muted-foreground">
+                Ask about the org, start a plan, or check on what&apos;s running.
+              </p>
             </div>
           )}
           <div className="space-y-2">
@@ -764,11 +771,12 @@ interface SidebarChatInputProps {
 }
 
 /**
- * Minimal chat input for the sidebar. Auto-growing textarea (CSS
- * field-sizing-content), Enter-to-send, Shift+Enter for newline.
- * Supports file attachments via paperclip button, clipboard paste,
- * and drag-and-drop anywhere on the chat (the parent owns the drop
- * zone and hands files in through `addFiles`). Intentionally separate from
+ * The chat's composer: one rounded shell holding an auto-growing textarea
+ * (CSS field-sizing-content) with attach, voice and send sitting at its
+ * end, so the buttons never overlap the text. Enter sends, Shift+Enter
+ * adds a line. Files arrive through the paperclip, the clipboard, or a
+ * drop anywhere on the chat (the parent owns the drop zone and hands them
+ * in through `addFiles`). Intentionally separate from
  * `DashboardChat/ChatInput` — the prop surface diverges enough that
  * sharing would require ugly conditionals (workspace pills, etc.).
  */
@@ -988,15 +996,6 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
     }
   };
 
-  // Button column count: send is always present, mic is conditional, paperclip is always present
-  // right-1.5 = send, right-9 = mic (when supported), right-[3.75rem] = paperclip (when mic present), right-9 = paperclip (when no mic)
-  const sendRight = "right-1.5";
-  const micRight = "right-9";
-  const paperclipRight = isSupported ? "right-[3.75rem]" : "right-9";
-  const textareaPaddingRight = isSupported
-    ? "pr-[calc(theme(space.7)*3+theme(space.5))]"
-    : "pr-[calc(theme(space.7)*2+theme(space.5))]";
-
   return (
     <div className="flex flex-col gap-1.5">
       {/* ── Pending file chips ─────────────────────────────────────────── */}
@@ -1051,12 +1050,19 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
         </div>
       )}
 
-      {/* ── Input form ─────────────────────────────────────────────────── */}
-      <form onSubmit={handleSubmit} className="flex items-end gap-2">
-        <div className="relative flex-1 min-w-0">
+      {/* ── Composer ──────────────────────────────────────────────────── */}
+      <form
+        onSubmit={handleSubmit}
+        className={cn(
+          "flex items-end gap-1 rounded-2xl border bg-background px-1.5 py-1.5 transition-[border-color,box-shadow,opacity]",
+          "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10",
+          disabled && "opacity-70",
+        )}
+      >
+        <div className="min-w-0 flex-1">
           <Textarea
             ref={inputRef}
-            placeholder={isListening ? "Listening…" : "Ask the agent…"}
+            placeholder={isListening ? "Listening…" : `Message ${jamieName}`}
             value={input}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
@@ -1064,32 +1070,25 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
             disabled={disabled}
             isUploading={isUploading}
             rows={1}
-            className={`w-full px-3 py-2 ${textareaPaddingRight} rounded-xl bg-background border border-muted-foreground/70 text-sm text-foreground/95 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-[color,border-color,box-shadow,opacity] resize-none field-sizing-content max-h-[200px] overflow-y-auto min-h-0 ${
-              disabled ? "opacity-50 cursor-not-allowed" : ""
-            }`}
+            className="field-sizing-content max-h-[200px] min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-1.5 text-sm shadow-none placeholder:text-muted-foreground/60 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed md:text-sm dark:bg-transparent"
           />
+        </div>
 
-          {/* Paperclip button */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={disabled}
-                  data-testid="paperclip-button"
-                  className={`absolute ${paperclipRight} bottom-[5px] h-7 w-7 rounded-full text-muted-foreground hover:text-foreground`}
-                >
-                  <Paperclip className="w-3.5 h-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Attach file</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Hidden file input */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          <ActionTip label="Attach file" side="top">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled}
+              aria-label="Attach file"
+              data-testid="paperclip-button"
+              className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+            >
+              <Paperclip className="h-3.5 w-3.5" />
+            </Button>
+          </ActionTip>
           <input
             ref={fileInputRef}
             type="file"
@@ -1102,44 +1101,38 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
               e.target.value = "";
             }}
           />
-
-          {/* Mic button */}
           {isSupported && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    onClick={toggleListening}
-                    disabled={disabled}
-                    data-testid="mic-button"
-                    className={`absolute ${micRight} bottom-[5px] h-7 w-7 rounded-full ${
-                      isListening
-                        ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {isListening ? "Stop recording" : "Start voice input (or hold Ctrl)"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <ActionTip label={isListening ? "Stop recording" : "Voice input (or hold Ctrl)"} side="top">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={toggleListening}
+                disabled={disabled}
+                aria-label={isListening ? "Stop recording" : "Voice input"}
+                data-testid="mic-button"
+                className={cn(
+                  "h-7 w-7 rounded-full",
+                  isListening
+                    ? "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+              </Button>
+            </ActionTip>
           )}
-
-          {/* Send button */}
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!input.trim() || disabled || isUploading}
-            className={`absolute ${sendRight} bottom-[5px] h-7 w-7 rounded-full`}
-          >
-            <Send className="w-3.5 h-3.5" />
-          </Button>
+          <ActionTip label="Send" side="top">
+            <Button
+              type="submit"
+              size="icon"
+              aria-label="Send"
+              disabled={!input.trim() || disabled || isUploading}
+              className="h-7 w-7 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground/60 disabled:opacity-100"
+            >
+              <ArrowUp className="h-4 w-4" />
+            </Button>
+          </ActionTip>
         </div>
       </form>
     </div>
