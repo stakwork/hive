@@ -1,12 +1,12 @@
 /**
  * Mock org-canvas Jamie chats for the control panel demo.
  *
- * Seeds three conversations for the mock user on an org they can open,
- * wired the way real ones are: two of them spawned plans (the plans
- * point back via `Feature.parentCanvasConversationId`, the chat carries
- * the outbound `send_to_feature_planner` tool call and the planner's
- * fan-out rows), one plan has tasks, and one planner is waiting on a
- * clarifying question. So chat → plan → task is a real chain on the
+ * Seeds three active conversations (and one archived) for the mock user
+ * on an org they can open, wired the way real ones are: two of them spawned
+ * plans (the plans point back via `Feature.parentCanvasConversationId`, the
+ * chat carries the outbound `send_to_feature_planner` tool call and the
+ * planner's fan-out rows), one plan has tasks, and one planner is waiting
+ * on a clarifying question. So chat → plan → task is a real chain on the
  * control panel, and the state glyphs light up for real reasons.
  *
  * The plans hang off the seeded features (`seedMockData`) in whichever
@@ -14,17 +14,20 @@
  * mock org has one (`mock-stakgraph`), `mock-org` has two. Idempotent
  * on its own chats (they carry a `settings.seed` marker), so a user who
  * started chats of their own first still gets the demo on the next mock
- * sign-in.
+ * sign-in. The archived seed uses a distinct marker so already-seeded
+ * local DBs still get Archive without duplicating the three active chats.
  */
 import { db } from "@/lib/db";
 import { ArtifactType, ChatRole, Priority, TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
 
 const SEND_TO_FEATURE_PLANNER = "send_to_feature_planner";
 const SEED_SETTINGS = { seed: "control-panel" };
+const ARCHIVED_SEED_SETTINGS = { seed: "control-panel-archived" };
 const SEED_TITLES = {
   kickoff: "Q4 platform kickoff",
   rollout: "Advanced search rollout",
   today: "What needs me today",
+  archived: "Q3 launch recap",
 };
 
 interface FeatureRef {
@@ -118,17 +121,7 @@ async function backdateOrgThreads(workspaces: WorkspaceRef[]): Promise<void> {
   );
 }
 
-export async function ensureMockOrgConversations(orgId: string, userId: string): Promise<void> {
-  const existing = await db.sharedConversation.count({
-    where: {
-      sourceControlOrgId: orgId,
-      userId,
-      source: "org-canvas",
-      settings: { path: ["seed"], equals: SEED_SETTINGS.seed },
-    },
-  });
-  if (existing > 0) return;
-
+async function loadMockWorkspaces(orgId: string, userId: string): Promise<WorkspaceRef[]> {
   const rows = await db.workspace.findMany({
     where: {
       sourceControlOrgId: orgId,
@@ -151,14 +144,52 @@ export async function ensureMockOrgConversations(orgId: string, userId: string):
       },
     },
   });
-  const workspaces: WorkspaceRef[] = rows.map((w) => ({
+  return rows.map((w) => ({
     id: w.id,
     slug: w.slug,
     name: w.name,
     features: w.features.map((f) => ({ id: f.id, title: f.title, taskCount: f._count.tasks })),
   }));
-  if (workspaces.length === 0) return;
+}
 
+async function countSeedConversations(
+  orgId: string,
+  userId: string,
+  seed: string,
+): Promise<number> {
+  return db.sharedConversation.count({
+    where: {
+      sourceControlOrgId: orgId,
+      userId,
+      source: "org-canvas",
+      settings: { path: ["seed"], equals: seed },
+    },
+  });
+}
+
+export async function ensureMockOrgConversations(orgId: string, userId: string): Promise<void> {
+  const [existingActive, existingArchived] = await Promise.all([
+    countSeedConversations(orgId, userId, SEED_SETTINGS.seed),
+    countSeedConversations(orgId, userId, ARCHIVED_SEED_SETTINGS.seed),
+  ]);
+  if (existingActive > 0 && existingArchived > 0) return;
+
+  if (existingActive === 0) {
+    const workspaces = await loadMockWorkspaces(orgId, userId);
+    if (workspaces.length > 0) {
+      await seedActiveConversations(orgId, userId, workspaces);
+    }
+  }
+  if (existingArchived === 0) {
+    await seedArchivedConversation(orgId, userId);
+  }
+}
+
+async function seedActiveConversations(
+  orgId: string,
+  userId: string,
+  workspaces: WorkspaceRef[],
+): Promise<void> {
   // Spread the plans across the org's workspaces when it has more than
   // one; otherwise they all live in the one it has.
   const planFor = (title: string, slot: number): PlanRef | null => {
@@ -423,6 +454,33 @@ export async function ensureMockOrgConversations(orgId: string, userId: string):
           "today-2",
           "Three things:\n\n1. **API Rate Limiting** — the planner is waiting on a limits decision.\n2. **Saved filter presets** — the agent finished; it's ready for your review.\n3. **Fix login redirect bug** — halted on a failing test.\n\nWant me to open any of them?",
           hoursAgo(0.68),
+        ),
+      ],
+    },
+  });
+}
+
+async function seedArchivedConversation(orgId: string, userId: string): Promise<void> {
+  await db.sharedConversation.create({
+    data: {
+      sourceControlOrgId: orgId,
+      userId,
+      workspaceId: null,
+      source: "org-canvas",
+      title: SEED_TITLES.archived,
+      isShared: false,
+      followUpQuestions: [],
+      settings: ARCHIVED_SEED_SETTINGS,
+      createdAt: hoursAgo(240),
+      lastMessageAt: hoursAgo(168),
+      ownerSeenAt: hoursAgo(167),
+      archivedAt: hoursAgo(48),
+      messages: [
+        userRow("archived-1", "Wrap up the Q3 launch recap and close out remaining follow-ups.", hoursAgo(240)),
+        assistantRow(
+          "archived-2",
+          "Done. Launch recap is filed, follow-ups closed. Nothing left open on this thread.",
+          hoursAgo(168),
         ),
       ],
     },

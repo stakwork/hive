@@ -120,93 +120,96 @@ function summarizeLast(last: { role: ChatRole; artifacts: { type: string }[] } |
   return { role: last.role, hasForm: last.artifacts.some((a) => a.type === "FORM") };
 }
 
-export async function getControlPanelItems(params: {
-  githubLogin: string;
-  orgId: string;
-  userId: string;
-  /** How many chats to return (newest activity first). */
-  limit?: number;
-}): Promise<ControlPanelResponse> {
-  const { githubLogin, orgId, userId } = params;
-  const limit = Math.min(Math.max(params.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
-  const chatWhere = { sourceControlOrgId: orgId, userId, source: "org-canvas" };
+type ConversationRow = {
+  id: string;
+  title: string | null;
+  createdAt: Date;
+  lastMessageAt: Date | null;
+  ownerSeenAt: Date | null;
+  archivedAt: Date | null;
+  messages: unknown;
+  activeRuns: unknown;
+};
 
-  const [workspaces, conversations, chatTotal] = await Promise.all([
-    getAccessibleWorkspaces(githubLogin, userId),
-    db.sharedConversation.findMany({
-      where: chatWhere,
-      orderBy: { lastMessageAt: "desc" },
-      take: limit,
+type PlanFeatureRow = {
+  id: string;
+  title: string;
+  status: string;
+  workflowStatus: string | null;
+  createdAt: Date;
+  workspaceId: string;
+  parentCanvasConversationId: string | null;
+  tasks: { status: string; workflowStatus: string | null; mode: string | null }[];
+  chatMessages: { role: ChatRole; timestamp: Date; artifacts: { type: string }[] }[];
+};
+
+interface WorkspaceRef {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+async function loadPlansForConversations(
+  conversationIds: string[],
+  wsIds: string[],
+  userId: string,
+): Promise<{ features: PlanFeatureRow[]; planTouches: ThreadTouchRow[] }> {
+  const hasPlans = conversationIds.length > 0 && wsIds.length > 0;
+  if (!hasPlans) return { features: [], planTouches: [] };
+
+  const [features, planTouches] = await Promise.all([
+    db.feature.findMany({
+      where: {
+        parentCanvasConversationId: { in: conversationIds },
+        workspaceId: { in: wsIds },
+        deleted: false,
+      },
       select: {
         id: true,
         title: true,
+        status: true,
+        workflowStatus: true,
         createdAt: true,
-        lastMessageAt: true,
-        ownerSeenAt: true,
-        messages: true,
-        activeRuns: true,
+        workspaceId: true,
+        parentCanvasConversationId: true,
+        tasks: {
+          where: { deleted: false, archived: false },
+          select: { status: true, workflowStatus: true, mode: true },
+        },
+        chatMessages: {
+          orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+          take: 1,
+          select: {
+            role: true,
+            timestamp: true,
+            artifacts: { select: { type: true } },
+          },
+        },
       },
     }),
-    db.sharedConversation.count({ where: chatWhere }),
+    db.$queryRaw<ThreadTouchRow[]>(Prisma.sql`
+      SELECT cm.feature_id AS "id", MAX(cm.timestamp) AS "lastMessageAt"
+      FROM chat_messages cm
+      WHERE cm.user_id = ${userId}
+        AND cm.role = ${ChatRole.USER}::"ChatRole"
+        AND cm.feature_id IN (
+          SELECT f.id FROM features f
+          WHERE f.parent_canvas_conversation_id IN (${Prisma.join(conversationIds)})
+            AND f.workspace_id IN (${Prisma.join(wsIds)})
+            AND f.deleted = false
+        )
+      GROUP BY cm.feature_id
+    `),
   ]);
-  const wsIds = workspaces.map((w) => w.id);
-  const wsById = new Map(workspaces.map((w) => [w.id, w]));
-  const conversationIds = conversations.map((c) => c.id);
-  const hasPlans = conversationIds.length > 0 && wsIds.length > 0;
+  return { features, planTouches };
+}
 
-  // Plans these chats spawned, in workspaces the user can see — and the
-  // user's latest plan-chat message per plan (same GROUP BY shape as the
-  // My Activity feed in `services/roadmap/user-activity.ts`), selected by
-  // the same criteria so the two run side by side.
-  const [features, planTouches] = await Promise.all([
-    hasPlans
-      ? db.feature.findMany({
-          where: {
-            parentCanvasConversationId: { in: conversationIds },
-            workspaceId: { in: wsIds },
-            deleted: false,
-          },
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            workflowStatus: true,
-            createdAt: true,
-            workspaceId: true,
-            parentCanvasConversationId: true,
-            tasks: {
-              where: { deleted: false, archived: false },
-              select: { status: true, workflowStatus: true, mode: true },
-            },
-            // Latest message; id tiebreaker because timestamp has ms precision.
-            chatMessages: {
-              orderBy: [{ timestamp: "desc" }, { id: "desc" }],
-              take: 1,
-              select: {
-                role: true,
-                timestamp: true,
-                artifacts: { select: { type: true } },
-              },
-            },
-          },
-        })
-      : [],
-    hasPlans
-      ? db.$queryRaw<ThreadTouchRow[]>(Prisma.sql`
-          SELECT cm.feature_id AS "id", MAX(cm.timestamp) AS "lastMessageAt"
-          FROM chat_messages cm
-          WHERE cm.user_id = ${userId}
-            AND cm.role = ${ChatRole.USER}::"ChatRole"
-            AND cm.feature_id IN (
-              SELECT f.id FROM features f
-              WHERE f.parent_canvas_conversation_id IN (${Prisma.join(conversationIds)})
-                AND f.workspace_id IN (${Prisma.join(wsIds)})
-                AND f.deleted = false
-            )
-          GROUP BY cm.feature_id
-        `)
-      : [],
-  ]);
+function shapeControlPanelItems(
+  conversations: ConversationRow[],
+  features: PlanFeatureRow[],
+  planTouches: ThreadTouchRow[],
+  wsById: Map<string, WorkspaceRef>,
+): ControlPanelItem[] {
   const planTouch = new Map<string, Date>();
   for (const row of planTouches) planTouch.set(row.id, new Date(row.lastMessageAt));
 
@@ -235,6 +238,7 @@ export async function getControlPanelItems(params: {
       state: countLiveRuns(c.activeRuns) > 0 ? "running" : hasPendingPlannerForm(messages) ? "question" : "none",
       // Same rule as the history list: content arrived since the owner last opened it.
       unread: c.lastMessageAt ? !c.ownerSeenAt || c.lastMessageAt > c.ownerSeenAt : false,
+      archivedAt: c.archivedAt?.toISOString() ?? null,
     });
   }
 
@@ -270,8 +274,85 @@ export async function getControlPanelItems(params: {
     });
   }
 
+  return items;
+}
+
+export async function getControlPanelItems(params: {
+  githubLogin: string;
+  orgId: string;
+  userId: string;
+  /** How many chats to return (newest activity first). */
+  limit?: number;
+}): Promise<ControlPanelResponse> {
+  const { githubLogin, orgId, userId } = params;
+  const limit = Math.min(Math.max(params.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
+  const chatWhere = { sourceControlOrgId: orgId, userId, source: "org-canvas", archivedAt: null };
+
+  const [workspaces, conversations, chatTotal, archivedConversations] = await Promise.all([
+    getAccessibleWorkspaces(githubLogin, userId),
+    db.sharedConversation.findMany({
+      where: chatWhere,
+      orderBy: { lastMessageAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        title: true,
+        createdAt: true,
+        lastMessageAt: true,
+        ownerSeenAt: true,
+        archivedAt: true,
+        messages: true,
+        activeRuns: true,
+      },
+    }),
+    db.sharedConversation.count({ where: chatWhere }),
+    db.sharedConversation.findMany({
+      where: {
+        sourceControlOrgId: orgId,
+        userId,
+        source: "org-canvas",
+        archivedAt: { not: null },
+      },
+      orderBy: { archivedAt: "desc" },
+      take: MAX_LIMIT,
+      select: {
+        id: true,
+        title: true,
+        createdAt: true,
+        lastMessageAt: true,
+        ownerSeenAt: true,
+        archivedAt: true,
+        messages: true,
+        activeRuns: true,
+      },
+    }),
+  ]);
+  const wsIds = workspaces.map((w) => w.id);
+  const wsById = new Map(workspaces.map((w) => [w.id, w]));
+  const conversationIds = conversations.map((c) => c.id);
+  const archivedConversationIds = archivedConversations.map((c) => c.id);
+
+  // Plans these chats spawned, in workspaces the user can see — and the
+  // user's latest plan-chat message per plan (same GROUP BY shape as the
+  // My Activity feed in `services/roadmap/user-activity.ts`), selected by
+  // the same criteria so the two run side by side.
+  const [activePlans, archivedPlans] = await Promise.all([
+    loadPlansForConversations(conversationIds, wsIds, userId),
+    loadPlansForConversations(archivedConversationIds, wsIds, userId),
+  ]);
+
   return {
-    items: sortControlPanelItems(items),
+    items: sortControlPanelItems(
+      shapeControlPanelItems(conversations, activePlans.features, activePlans.planTouches, wsById),
+    ),
+    // Keep the query's archivedAt-desc order for chats; plans ride along
+    // after (the client nests them under their parent, outside day grouping).
+    archivedItems: shapeControlPanelItems(
+      archivedConversations,
+      archivedPlans.features,
+      archivedPlans.planTouches,
+      wsById,
+    ),
     chats: { shown: conversations.length, total: chatTotal },
   };
 }
