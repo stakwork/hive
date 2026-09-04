@@ -60,6 +60,9 @@ const WORKSPACE_ID = "ws-1";
 const WORKSPACE_SLUG = "hive";
 const OTHER_WORKSPACE_ID = "ws-other";
 const OTHER_WORKSPACE_SLUG = "sphinx-voice";
+const PUBKEY_A = "pubkey-hive";
+const PUBKEY_B = "pubkey-sphinx-voice";
+const PUBKEY_SHARED = "pubkey-shared";
 
 const CONNECTED_WORKSPACE = {
   sphinxEnabled: true,
@@ -69,12 +72,34 @@ const CONNECTED_WORKSPACE = {
 };
 
 const SINGLE_TARGET: SphinxToolTarget[] = [
-  { workspaceId: WORKSPACE_ID, workspaceSlug: WORKSPACE_SLUG },
+  {
+    workspaceId: WORKSPACE_ID,
+    workspaceSlug: WORKSPACE_SLUG,
+    sphinxChatPubkey: PUBKEY_A,
+    workspaceName: "Hive",
+  },
 ];
 
 const TWO_TARGETS: SphinxToolTarget[] = [
-  { workspaceId: WORKSPACE_ID, workspaceSlug: WORKSPACE_SLUG },
-  { workspaceId: OTHER_WORKSPACE_ID, workspaceSlug: OTHER_WORKSPACE_SLUG },
+  {
+    workspaceId: WORKSPACE_ID,
+    workspaceSlug: WORKSPACE_SLUG,
+    sphinxChatPubkey: PUBKEY_A,
+    workspaceName: "Hive",
+    swarmDomain: "swarm38.sphinx.chat",
+  },
+  {
+    workspaceId: OTHER_WORKSPACE_ID,
+    workspaceSlug: OTHER_WORKSPACE_SLUG,
+    sphinxChatPubkey: PUBKEY_B,
+    workspaceName: "Sphinx Voice",
+    swarmDomain: "swarm39.sphinx.chat",
+  },
+];
+
+const SHARED_PUBKEY_TARGETS: SphinxToolTarget[] = [
+  { ...TWO_TARGETS[0], sphinxChatPubkey: PUBKEY_SHARED },
+  { ...TWO_TARGETS[1], sphinxChatPubkey: PUBKEY_SHARED },
 ];
 
 type SendTool = {
@@ -83,7 +108,10 @@ type SendTool = {
     safeParse: (v: unknown) => { success: boolean; error?: unknown };
     shape?: Record<string, unknown>;
   };
-  execute: (args: { message: string }) => Promise<unknown>;
+  execute: (args: {
+    message: string;
+    destinations?: string[];
+  }) => Promise<unknown>;
 };
 
 function getTool(opts?: {
@@ -96,6 +124,21 @@ function getTool(opts?: {
     actorLabel: opts?.actorLabel,
   });
   return tools[SEND_SPHINX_MESSAGE_TOOL] as unknown as SendTool;
+}
+
+function sentWorkspaceIds(): string[] {
+  return (validateWorkspaceAccessById as ReturnType<typeof vi.fn>).mock.calls.map(
+    (call) => call[0] as string,
+  );
+}
+
+const SEND_OK = { success: true, messageId: "msg-1" };
+
+function executeSend(targets: SphinxToolTarget[], destinations?: string[]) {
+  return getTool({ targets }).execute({
+    message: "Hello tribe.",
+    ...(destinations !== undefined ? { destinations } : {}),
+  });
 }
 
 describe("buildSphinxTools / send_sphinx_message", () => {
@@ -125,6 +168,23 @@ describe("buildSphinxTools / send_sphinx_message", () => {
     expect(schema.safeParse({ message: "Hello tribe.", workspaceSlug: "other" }).success).toBe(
       true,
     );
+  });
+
+  it("accepts an optional destinations array on the schema", () => {
+    const schema = getTool().inputSchema;
+    expect(schema.shape).toHaveProperty("destinations");
+    expect(schema.safeParse({ message: "Hello tribe." }).success).toBe(true);
+    expect(schema.safeParse({ message: "Hello tribe.", destinations: ["hive"] }).success).toBe(
+      true,
+    );
+    expect(schema.safeParse({ message: "Hello tribe.", destinations: [] }).success).toBe(true);
+    expect(schema.safeParse({ message: "Hello tribe.", destinations: [""] }).success).toBe(false);
+    expect(
+      schema.safeParse({ message: "Hello tribe.", destinations: Array(32).fill("hive") }).success,
+    ).toBe(true);
+    expect(
+      schema.safeParse({ message: "Hello tribe.", destinations: Array(33).fill("hive") }).success,
+    ).toBe(false);
   });
 
   it("returns no tools when there are no targets", () => {
@@ -280,20 +340,25 @@ describe("buildSphinxTools / send_sphinx_message", () => {
     expect(sendToSphinx).not.toHaveBeenCalled();
   });
 
-  it("describes ASD-STE100, current-workspace-only, and immediate send for a single target", () => {
-    const { description } = getTool({ targets: SINGLE_TARGET });
+  it("describes ask-to-post, one-tribe default, named destinations, and ASD-STE100", () => {
+    const { description } = getTool({ targets: TWO_TARGETS });
     expect(description).toMatch(/ASD-STE100/i);
-    expect(description).toMatch(/current workspace/i);
+    expect(description).toMatch(/only when the user asks/i);
+    expect(description).toMatch(/one tribe/i);
     expect(description).toMatch(/immediately/i);
     expect(description).toMatch(/no draft/i);
+    expect(description).toMatch(/destinations/i);
+    expect(description).toMatch(/org-wide tribe/i);
+    expect(description).not.toMatch(/fans out/i);
+    expect(description).not.toMatch(/every writable/i);
+    expect(description).not.toMatch(/cannot pick a workspace/i);
+    expect(description).not.toMatch(/Post ONLY to the current workspace/i);
   });
 
-  it("describes fan-out to every writable Sphinx-connected workspace for multiple targets", () => {
-    const { description } = getTool({ targets: TWO_TARGETS });
-    expect(description).toMatch(/every/i);
-    expect(description).toMatch(/cannot pick a workspace|you cannot pick a workspace/i);
-    expect(description).toMatch(/org-wide tribe/i);
-    expect(description).not.toMatch(/Post ONLY to the current workspace/i);
+  it("uses the same description for single-target and multi-target pools", () => {
+    expect(getTool({ targets: SINGLE_TARGET }).description).toBe(
+      getTool({ targets: TWO_TARGETS }).description,
+    );
   });
 
   describe("actor attribution", () => {
@@ -337,65 +402,144 @@ describe("buildSphinxTools / send_sphinx_message", () => {
     });
   });
 
-  describe("fan-out (multiple targets)", () => {
-    it("sends to every target in parallel via Promise.all and returns success with the first messageId", async () => {
-      (sendToSphinx as ReturnType<typeof vi.fn>).mockImplementation(async (creds: unknown) => {
-        const c = creds as { chatPubkey: string };
-        return { success: true, messageId: `msg-${c.chatPubkey}` };
-      });
-      (db.workspace.findFirst as ReturnType<typeof vi.fn>).mockImplementation(
-        async ({ where }: { where: { id: string } }) => ({
-          ...CONNECTED_WORKSPACE,
-          sphinxChatPubkey: where.id,
-        }),
+  describe("one-tribe default and named destinations", () => {
+    it("sends a default 2-target-pool call to exactly one tribe (conversation-order first)", async () => {
+      const result = await executeSend(TWO_TARGETS);
+
+      expect(sendToSphinx).toHaveBeenCalledTimes(1);
+      expect(sentWorkspaceIds()).toEqual([WORKSPACE_ID]);
+      expect(result).toEqual(SEND_OK);
+    });
+
+    it("treats an empty destinations array as the default one tribe", async () => {
+      const result = await executeSend(TWO_TARGETS, []);
+
+      expect(sendToSphinx).toHaveBeenCalledTimes(1);
+      expect(sentWorkspaceIds()).toEqual([WORKSPACE_ID]);
+      expect(result).toEqual(SEND_OK);
+    });
+
+    it("collapses two targets that share a sphinxChatPubkey to exactly one send", async () => {
+      const result = await executeSend(SHARED_PUBKEY_TARGETS);
+
+      expect(sendToSphinx).toHaveBeenCalledTimes(1);
+      expect(sentWorkspaceIds()).toEqual([WORKSPACE_ID]);
+      expect(result).toEqual(SEND_OK);
+    });
+
+    it("sends a single named destination that is not conversation-order [0] to that tribe only", async () => {
+      const result = await executeSend(TWO_TARGETS, [OTHER_WORKSPACE_SLUG]);
+
+      expect(sendToSphinx).toHaveBeenCalledTimes(1);
+      expect(sentWorkspaceIds()).toEqual([OTHER_WORKSPACE_ID]);
+      expect(result).toEqual(SEND_OK);
+    });
+
+    it("sends 2+ named destinations sequentially and attempts every selected target after an early success", async () => {
+      let inFlight = 0;
+      let maxInFlight = 0;
+      const order: string[] = [];
+      (validateWorkspaceAccessById as ReturnType<typeof vi.fn>).mockImplementation(
+        async (workspaceId: string) => {
+          order.push(workspaceId);
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          await new Promise((resolve) => setTimeout(resolve, 15));
+          inFlight -= 1;
+          return { canWrite: true };
+        },
       );
 
-      const result = await getTool({ targets: TWO_TARGETS }).execute({ message: "Hello tribe." });
+      const result = await executeSend(TWO_TARGETS, [WORKSPACE_SLUG, OTHER_WORKSPACE_SLUG]);
 
       expect(sendToSphinx).toHaveBeenCalledTimes(2);
-      expect(checkRateLimit).toHaveBeenCalledWith(
-        `send_sphinx_message:${USER_ID}:${WORKSPACE_ID}`,
-        5,
-        600,
-      );
-      expect(checkRateLimit).toHaveBeenCalledWith(
-        `send_sphinx_message:${USER_ID}:${OTHER_WORKSPACE_ID}`,
-        5,
-        600,
-      );
-      expect(result).toEqual({ success: true, messageId: `msg-${WORKSPACE_ID}` });
+      expect(order).toEqual([WORKSPACE_ID, OTHER_WORKSPACE_ID]);
+      expect(maxInFlight).toBe(1);
+      expect(result).toEqual(SEND_OK);
     });
 
-    it("partial success (one target fails) still returns success", async () => {
-      (validateWorkspaceAccessById as ReturnType<typeof vi.fn>).mockImplementation(
-        async (workspaceId: string) => ({ canWrite: workspaceId !== OTHER_WORKSPACE_ID }),
-      );
+    it("skips unknown destination names, sends nothing, and returns a generic error", async () => {
+      const result = await executeSend(TWO_TARGETS, ["unknown-tribe"]);
 
-      const result = await getTool({ targets: TWO_TARGETS }).execute({ message: "Hello tribe." });
-
-      expect(result).toEqual({ success: true, messageId: "msg-1" });
+      expect(sendToSphinx).not.toHaveBeenCalled();
+      expect(validateWorkspaceAccessById).not.toHaveBeenCalled();
+      expect(result).toEqual({ error: "Failed to send Sphinx message" });
     });
 
-    it("returns a generic error when every target fails", async () => {
+    it("matches a destination by workspace name, case-insensitively", async () => {
+      const result = await executeSend(TWO_TARGETS, ["sphinx voice"]);
+
+      expect(sendToSphinx).toHaveBeenCalledTimes(1);
+      expect(sentWorkspaceIds()).toEqual([OTHER_WORKSPACE_ID]);
+      expect(result).toEqual(SEND_OK);
+    });
+
+    it("matches a duplicate display name to the first bound target only", async () => {
+      const duplicateNameTargets: SphinxToolTarget[] = [
+        { ...TWO_TARGETS[0], workspaceName: "Hive" },
+        { ...TWO_TARGETS[1], workspaceName: "Hive" },
+      ];
+
+      const result = await executeSend(duplicateNameTargets, ["Hive"]);
+
+      expect(sendToSphinx).toHaveBeenCalledTimes(1);
+      expect(sentWorkspaceIds()).toEqual([WORKSPACE_ID]);
+      expect(result).toEqual(SEND_OK);
+    });
+
+    it.each(["swarm38", "swarm38.sphinx.chat"])(
+      "matches swarm host %s to the bound target",
+      async (destination) => {
+        const result = await executeSend(TWO_TARGETS, [destination]);
+
+        expect(sendToSphinx).toHaveBeenCalledTimes(1);
+        expect(sentWorkspaceIds()).toEqual([WORKSPACE_ID]);
+        expect(result).toEqual(SEND_OK);
+      },
+    );
+
+    it("returns a generic SEND_FAILED_ERROR for a named unwritable match, not NOT_FOUND", async () => {
+      (validateWorkspaceAccessById as ReturnType<typeof vi.fn>).mockResolvedValue({
+        canWrite: false,
+      });
+
+      const result = await executeSend(TWO_TARGETS, [OTHER_WORKSPACE_SLUG]);
+
+      expect(sendToSphinx).not.toHaveBeenCalled();
+      expect(result).toEqual({ error: "Failed to send Sphinx message" });
+      expect(JSON.stringify(result)).not.toContain("not found");
+    });
+
+    it("ignores destinations on a single-target bound pool and still sends to that workspace", async () => {
+      const result = await executeSend(SINGLE_TARGET, [OTHER_WORKSPACE_SLUG]);
+
+      expect(sendToSphinx).toHaveBeenCalledTimes(1);
+      expect(sentWorkspaceIds()).toEqual([WORKSPACE_ID]);
+      expect(result).toEqual(SEND_OK);
+    });
+
+    it("returns a generic error when every selected named destination fails", async () => {
       (sendToSphinx as ReturnType<typeof vi.fn>).mockResolvedValue({
         success: false,
         error: "boom",
       });
 
-      const result = await getTool({ targets: TWO_TARGETS }).execute({ message: "Hello tribe." });
+      const result = await executeSend(TWO_TARGETS, [WORKSPACE_SLUG, OTHER_WORKSPACE_SLUG]);
 
+      expect(sendToSphinx).toHaveBeenCalledTimes(2);
       expect(result).toEqual({ error: "Failed to send Sphinx message" });
     });
 
-    it("a rate-limited target is skipped without blocking the other tribe", async () => {
-      (checkRateLimit as ReturnType<typeof vi.fn>).mockImplementation(
-        async (key: string) => ({ allowed: !key.includes(OTHER_WORKSPACE_ID) }),
+    it("returns success from the first successful named destination after attempting all matches", async () => {
+      (validateWorkspaceAccessById as ReturnType<typeof vi.fn>).mockImplementation(
+        async (workspaceId: string) => ({ canWrite: workspaceId !== WORKSPACE_ID }),
       );
 
-      const result = await getTool({ targets: TWO_TARGETS }).execute({ message: "Hello tribe." });
+      const result = await executeSend(TWO_TARGETS, [WORKSPACE_SLUG, OTHER_WORKSPACE_SLUG]);
 
+      expect(sentWorkspaceIds()).toEqual([WORKSPACE_ID, OTHER_WORKSPACE_ID]);
       expect(sendToSphinx).toHaveBeenCalledTimes(1);
-      expect(result).toEqual({ success: true, messageId: "msg-1" });
+      expect(result).toEqual(SEND_OK);
     });
   });
 });
