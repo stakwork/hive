@@ -400,6 +400,7 @@ describe("archive move and on-stage gating", () => {
     lastReply: "Done.",
     hasMessages: true,
     isStreaming: false,
+    title: null,
   };
 
   test("moveChatToArchive takes nested plans with the chat and inserts them at the top of Archive", () => {
@@ -444,6 +445,7 @@ describe("archive move and on-stage gating", () => {
       lastReply: null,
       hasMessages: false,
       isStreaming: false,
+      title: null,
     };
     const resolved = resolveControlPanelLists([other], [], fresh, {
       chatOnStage: true,

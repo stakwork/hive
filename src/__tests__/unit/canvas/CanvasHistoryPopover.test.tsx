@@ -268,6 +268,7 @@ describe("CanvasHistoryPopover", () => {
         undefined, // forkedFromShareId
         2, // ephemeralSeedCount = messages.length
         "conv-a", // the persisted row it joins
+        "Planning session", // persisted title seeded onto the slot
       );
       expect(mockSetServerConversationId).not.toHaveBeenCalled();
     });
@@ -404,6 +405,7 @@ describe("CanvasHistoryPopover", () => {
         undefined,
         2,
         "conv-a",
+        "Planning session",
       );
     });
 
@@ -496,6 +498,7 @@ describe("CanvasHistoryPopover", () => {
         undefined,
         2,
         "conv-a",
+        "Planning session",
       ),
     );
 
