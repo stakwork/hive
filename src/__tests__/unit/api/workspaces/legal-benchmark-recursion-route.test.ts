@@ -98,9 +98,8 @@ const MOCK_RECURSION_LIST = [
 ];
 
 const MOCK_RECURSION_LIST_WITH_REASONS = [
-  { ref_id: "ref-evalset-1", id: "practice-area/draft-contract", name: "Draft a contract", reason: "active" },
-  { ref_id: "ref-evalset-2", id: "antitrust/task-2", name: "Antitrust Task", reason: "wasEnabled" },
-  { ref_id: "ref-evalset-3", id: "contracts/task-3", name: "Contracts Task", reason: "multipleRuns" },
+  { ref_id: "ref-evalset-1", id: "practice-area/draft-contract", name: "Draft a contract", reason: "active", recursion: true },
+  { ref_id: "ref-evalset-2", id: "antitrust/task-2", name: "Antitrust Task", recursion: false, recursionEnabledAt: 1700000000 },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -219,10 +218,10 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion", () => {
     expect(res.status).toBe(403);
   });
 
-  test("returns 200 with entries that include reason field from Source 1 (active)", async () => {
+  test("returns 200 with live-on entries that include reason 'active'", async () => {
     mockListRecursionEvalSets.mockResolvedValue({
       ok: true,
-      nodes: [{ ref_id: "ref-1", id: "task/1", name: "Task 1", reason: "active" }],
+      nodes: [{ ref_id: "ref-1", id: "task/1", name: "Task 1", reason: "active", recursion: true }],
     });
 
     const res = await GET(makeGetRequest(), makeParams());
@@ -231,57 +230,35 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion", () => {
     expect(body.data[0].reason).toBe("active");
   });
 
-  test("returns 200 with entries that include reason field from Source 2 (wasEnabled)", async () => {
+  test("returns 200 with live-off entries that omit reason", async () => {
     mockListRecursionEvalSets.mockResolvedValue({
       ok: true,
-      nodes: [{ ref_id: "ref-2", id: "task/2", name: "Task 2", reason: "wasEnabled" }],
+      nodes: [{ ref_id: "ref-2", id: "task/2", name: "Task 2", recursion: false, recursionEnabledAt: 1700000000 }],
     });
 
     const res = await GET(makeGetRequest(), makeParams());
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data[0].reason).toBe("wasEnabled");
+    expect(body.data[0].reason).toBeUndefined();
+    expect(body.data[0].recursion).toBe(false);
   });
 
-  test("returns 200 with entries that include reason field from Source 3 (multipleRuns)", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: [{ ref_id: "ref-3", id: "task/3", name: "Task 3", reason: "multipleRuns" }],
-    });
-
-    const res = await GET(makeGetRequest(), makeParams());
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data[0].reason).toBe("multipleRuns");
-  });
-
-  test("passes workspaceId from swarmResult.data to listRecursionEvalSets", async () => {
+  test("calls listRecursionEvalSets with list mode (not workspaceId)", async () => {
     mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes: [] });
 
     await GET(makeGetRequest(), makeParams());
 
-    // workspaceId from MOCK_SWARM_ACCESS.data.workspaceId should be forwarded
     expect(mockListRecursionEvalSets).toHaveBeenCalledWith(
       expect.objectContaining({ apiKey: "swarm-key" }),
+      "list",
+    );
+    expect(mockListRecursionEvalSets).not.toHaveBeenCalledWith(
+      expect.anything(),
       "ws-openlaw",
     );
   });
 
-  test("returns 200 when partial=true (non-authoritative source failed), warns in log", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      nodes: MOCK_RECURSION_LIST,
-      partial: true,
-    });
-
-    const res = await GET(makeGetRequest(), makeParams());
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.data).toHaveLength(1);
-  });
-
-  test("partial=true dedup: all three conditions → each entry appears once with highest-priority reason", async () => {
+  test("returns 200 with mixed live-on and live-off entries", async () => {
     mockListRecursionEvalSets.mockResolvedValue({
       ok: true,
       nodes: MOCK_RECURSION_LIST_WITH_REASONS,
@@ -289,10 +266,9 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion", () => {
 
     const res = await GET(makeGetRequest(), makeParams());
     const body = await res.json();
-    expect(body.data).toHaveLength(3);
-    // Each ref_id appears exactly once
+    expect(body.data).toHaveLength(2);
     const refIds = body.data.map((d: { ref_id: string }) => d.ref_id);
-    expect(new Set(refIds).size).toBe(3);
+    expect(new Set(refIds).size).toBe(2);
   });
 });
 
@@ -549,45 +525,28 @@ describe("PATCH /api/workspaces/[slug]/legal/benchmarks/recursion/[refId]", () =
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET — three-source merge / partial-result scenarios
+// GET — list-mode call site
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion — three-source merge", () => {
-  const { logger: mockLogger } = vi.hoisted(() => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }));
-
+describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion — list mode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetWorkspaceSwarmAccess.mockResolvedValue(MOCK_SWARM_ACCESS);
     mockCheckRateLimit.mockResolvedValue({ allowed: true });
   });
 
-  test("passes workspaceId from swarmResult.data to listRecursionEvalSets", async () => {
+  test("passes list mode (not workspaceId) to listRecursionEvalSets", async () => {
     mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes: MOCK_RECURSION_LIST });
 
     await GET(makeGetRequest(), makeParams());
 
-    // workspaceId "ws-openlaw" comes from MOCK_SWARM_ACCESS.data.workspaceId
     expect(mockListRecursionEvalSets).toHaveBeenCalledWith(
       expect.objectContaining({ apiKey: "swarm-key" }),
-      "ws-openlaw",
+      "list",
     );
   });
 
-  test("returns 200 with data when partial=true (non-authoritative sources failed)", async () => {
-    mockListRecursionEvalSets.mockResolvedValue({
-      ok: true,
-      partial: true,
-      nodes: MOCK_RECURSION_LIST,
-    });
-
-    const res = await GET(makeGetRequest(), makeParams());
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.data).toEqual(MOCK_RECURSION_LIST);
-  });
-
-  test("returns reason field on nodes with reason='active'", async () => {
+  test("returns reason field on live-on nodes with reason='active'", async () => {
     const nodesWithReason = [
       { ref_id: "ref-evalset-1", id: "practice-area/draft-contract", name: "Draft a contract", reason: "active" },
     ];
@@ -598,25 +557,15 @@ describe("GET /api/workspaces/[slug]/legal/benchmarks/recursion — three-source
     expect(body.data[0].reason).toBe("active");
   });
 
-  test("returns reason field on nodes with reason='wasEnabled'", async () => {
-    const nodesWithReason = [
-      { ref_id: "ref-evalset-2", id: "area/task-2", name: "Task 2", reason: "wasEnabled" },
+  test("returns live-off nodes without reason", async () => {
+    const nodes = [
+      { ref_id: "ref-evalset-2", id: "area/task-2", name: "Task 2", recursion: false },
     ];
-    mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes: nodesWithReason });
+    mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes });
 
     const res = await GET(makeGetRequest(), makeParams());
     const body = await res.json();
-    expect(body.data[0].reason).toBe("wasEnabled");
-  });
-
-  test("returns reason field on nodes with reason='multipleRuns'", async () => {
-    const nodesWithReason = [
-      { ref_id: "ref-evalset-3", id: "area/task-3", name: "Task 3", reason: "multipleRuns" },
-    ];
-    mockListRecursionEvalSets.mockResolvedValue({ ok: true, nodes: nodesWithReason });
-
-    const res = await GET(makeGetRequest(), makeParams());
-    const body = await res.json();
-    expect(body.data[0].reason).toBe("multipleRuns");
+    expect(body.data[0].reason).toBeUndefined();
+    expect(body.data[0].recursion).toBe(false);
   });
 });
