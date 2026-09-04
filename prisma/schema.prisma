@@ -695,6 +695,9 @@ model SharedConversation {
   // live-sync of the active chat. Org-canvas chats are single-owner, so a
   // per-row timestamp is sufficient (no per-viewer read table needed).
   ownerSeenAt        DateTime?         @map("owner_seen_at")
+  // When the owner archived this org-canvas chat (null = active). Restore
+  // clears it. Server-set only — clients never write this timestamp.
+  archivedAt         DateTime?         @map("archived_at")
   source             String?
   settings           Json?             @default("{}")
   // Map of in-flight repo_agent runs keyed by request_id.
@@ -715,6 +718,10 @@ model SharedConversation {
   // Per-workspace public-traffic cap: sum tokens for all anonymous
   // chats on a workspace in the last 24h.
   @@index([workspaceId, anonymousId, createdAt])
+  // Active org-canvas list (`sourceControlOrgId + userId + source +
+  // archivedAt: null`, ordered by lastMessageAt) and the archive list
+  // share this composite.
+  @@index([sourceControlOrgId, userId, source, archivedAt, lastMessageAt])
   @@map("shared_conversations")
 }
 
