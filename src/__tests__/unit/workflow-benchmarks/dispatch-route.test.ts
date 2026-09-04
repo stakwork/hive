@@ -915,6 +915,171 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — dispatch failu
   });
 });
 
+// ── runner toggle: vein ──────────────────────────────────────────────────────
+// ADDITIVE: an absent `runner` is stakwork (every test above). `runner: "vein"`
+// sends the same task to the workspace swarm's vein lab (stakgraph :3355,
+// `wfbench-run`) instead of creating a Stakwork project.
+
+describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=vein", () => {
+  const SWARM_KEY = "swarm-api-key";
+  const VEIN_RUN_ID = "1788554443025";
+
+  function setupVein() {
+    setupHappyPath();
+    mockGetWorkspaceSwarmAccess.mockResolvedValue({
+      success: true,
+      data: {
+        workspaceId: WORKSPACE_ID,
+        swarmUrl: "https://swarm.example.com/api",
+        swarmApiKey: SWARM_KEY,
+        swarmName: "swarm",
+      },
+    });
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ runId: VEIN_RUN_ID }) });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupVein();
+  });
+
+  it("rejects an unknown runner with 400 before any DB write", async () => {
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "stakworkk" });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(400);
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches to the swarm's vein lab with the swarm API key, never to Stakwork", async () => {
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "vein" });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ run_id: RUN_ID, runner: "vein" });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://swarm.example.com:3355/lab/workflows/wfbench-run/run");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>)["x-api-token"]).toBe(SWARM_KEY);
+    expect(JSON.stringify(init)).not.toContain("jobs.stakwork.com");
+
+    const body = JSON.parse(init.body as string);
+    const input = body.input;
+    expect(input.task_slug).toBe(TASK_SLUG);
+    expect(typeof input.task_title).toBe("string");
+    expect(typeof input.instructions).toBe("string");
+    expect(Array.isArray(input.criteria)).toBe(true);
+    expect(input.criteria.length).toBeGreaterThan(0);
+    expect(input.workflow_input_json).toEqual({ prompt: expect.any(String) });
+    expect(input.webhook_url).toContain(`run_id=${RUN_ID}`);
+    expect(input.webhook_url).toContain("run_token=");
+    // No credentials ride along.
+    expect(JSON.stringify(body)).not.toContain(SWARM_KEY);
+    expect(JSON.stringify(body)).not.toContain("jarvis-api-key");
+  });
+
+  it("does not require STAKWORK_WORKFLOW_BENCHMARK_WORKFLOW_ID for a vein run", async () => {
+    delete process.env.STAKWORK_WORKFLOW_BENCHMARK_WORKFLOW_ID;
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "vein" });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(201);
+  });
+
+  it("stores runner + vein run id/url on the row and leaves projectId null", async () => {
+    let createdResult: Record<string, unknown> = {};
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const tx = {
+        stakworkRun: {
+          findMany: vi.fn().mockResolvedValue([]),
+          update: vi.fn().mockResolvedValue({}),
+          create: vi.fn().mockImplementation(({ data }: { data: { result: string } }) => {
+            createdResult = JSON.parse(data.result);
+            return { id: RUN_ID };
+          }),
+        },
+      };
+      return fn(tx);
+    });
+    let updateData: { projectId?: number | null; result?: string } | undefined;
+    mockDbStakworkRunUpdate.mockImplementation(({ data }: { data: typeof updateData }) => {
+      if (data && "result" in data) updateData = data;
+      return {};
+    });
+
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "vein" });
+    await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+
+    // The initial row already says vein (visible mid-flight in the history).
+    expect(createdResult.runner).toBe("vein");
+    expect(updateData).toBeDefined();
+    expect(updateData!.projectId).toBeNull();
+    const merged = JSON.parse(updateData!.result!);
+    expect(merged.runner).toBe("vein");
+    expect(merged.veinRunId).toBe(VEIN_RUN_ID);
+    expect(merged.veinRunUrl).toBe(
+      `https://swarm.example.com:3355/lab/?wf=wfbench-run&run=${VEIN_RUN_ID}`,
+    );
+    expect(merged.projectId).toBeUndefined();
+  });
+
+  it("a stakwork run (no runner) writes no runner marker — existing rows unchanged", async () => {
+    setupHappyPath();
+    let createdResult: Record<string, unknown> = {};
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const tx = {
+        stakworkRun: {
+          findMany: vi.fn().mockResolvedValue([]),
+          update: vi.fn().mockResolvedValue({}),
+          create: vi.fn().mockImplementation(({ data }: { data: { result: string } }) => {
+            createdResult = JSON.parse(data.result);
+            return { id: RUN_ID };
+          }),
+        },
+      };
+      return fn(tx);
+    });
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ run_id: RUN_ID, runner: "stakwork" });
+    expect("runner" in createdResult).toBe(false);
+    const [url] = mockFetch.mock.calls[0] as [string];
+    expect(url).toContain("/projects");
+  });
+
+  it("returns 503 when the swarm has no API key, before any DB write", async () => {
+    mockGetWorkspaceSwarmAccess.mockResolvedValue({
+      success: true,
+      data: { workspaceId: WORKSPACE_ID, swarmUrl: "https://swarm.example.com/api" },
+    });
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "vein" });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(503);
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 and cleans up the run row on vein dispatch failure", async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+    let deletedId: string | undefined;
+    mockDbStakworkRunDelete.mockImplementation(({ where }: { where: { id: string } }) => {
+      deletedId = where.id;
+      return {};
+    });
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "vein" });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(502);
+    expect(deletedId).toBe(RUN_ID);
+  });
+});
+
 // ── Roster upsert non-fatal ───────────────────────────────────────────────────
 
 describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — roster upsert non-fatal", () => {

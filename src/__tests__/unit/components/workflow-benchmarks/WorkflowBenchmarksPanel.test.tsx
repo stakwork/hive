@@ -16,7 +16,7 @@
  */
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 
 globalThis.React = React;
 
@@ -115,6 +115,37 @@ describe("WorkflowBenchmarksPanel", () => {
     const expandButtons = screen.getAllByLabelText("Expand task details");
     fireEvent.click(expandButtons[0]);
     expect(screen.queryByText(/Cardiff/)).not.toBeInTheDocument();
+  });
+
+  it("runner toggle defaults to Stakwork and the request body is unchanged (no runner key)", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ run_id: "run-1" }) } as Response);
+    render(<WorkflowBenchmarksPanel />);
+    const toggle = screen.getAllByTestId(/^wf-runner-toggle-/)[0];
+    expect(within(toggle).getByLabelText("Run on Stakwork")).toHaveAttribute("data-state", "on");
+    expect(within(toggle).getByLabelText("Run on vein")).toHaveAttribute("data-state", "off");
+
+    fireEvent.click(screen.getAllByText("Run Benchmark")[0]);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ taskSlug: WITH_INPUT_TASK.slug });
+  });
+
+  it("choosing vein sends runner: \"vein\" with the same taskSlug", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ run_id: "run-2", runner: "vein" }) } as Response);
+    render(<WorkflowBenchmarksPanel />);
+    const toggle = screen.getAllByTestId(/^wf-runner-toggle-/)[0];
+    fireEvent.click(within(toggle).getByLabelText("Run on vein"));
+    expect(within(toggle).getByLabelText("Run on vein")).toHaveAttribute("data-state", "on");
+
+    fireEvent.click(screen.getAllByText("Run Benchmark")[0]);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/workspaces/stakwork/workflow-benchmarks/run");
+    expect(JSON.parse(init.body as string)).toEqual({ taskSlug: WITH_INPUT_TASK.slug, runner: "vein" });
   });
 
   it("shows a loading state when the workspace is not yet resolved", () => {

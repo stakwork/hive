@@ -110,6 +110,8 @@ export function useWorkflowBenchmarkRunList(
             jamieChatPath: parsed?.jamieChatPath,
             generateRunReport: parsed?.generateRunReport,
             hasReport: r.hasReport === true,
+            runner: parsed?.runner === "vein" ? "vein" : undefined,
+            veinRunUrl: typeof parsed?.veinRunUrl === "string" ? parsed.veinRunUrl : undefined,
             judgeNotes:
               nPassed != null && nTotal != null
                 ? `${nPassed}/${nTotal} criteria passed${

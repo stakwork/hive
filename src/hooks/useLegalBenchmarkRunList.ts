@@ -75,6 +75,10 @@ export interface BenchmarkRunListRow {
   generateRunReport?: boolean;
   /** This run has a report bundle. Derived server-side from reportUrl. */
   hasReport?: boolean;
+  /** Where the run executed. Absent = Stakwork; "vein" = the swarm's vein lab. */
+  runner?: "vein";
+  /** vein lab UI link (runner === "vein" only). */
+  veinRunUrl?: string;
 }
 
 interface UseLegalBenchmarkRunListResult {

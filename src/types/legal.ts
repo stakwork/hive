@@ -24,6 +24,12 @@ export interface BenchmarkRunResult {
   evalOutputRef?: string;
   /** Project ID returned by Stakwork on runner dispatch */
   runnerProjectId?: number;
+  /** Where the run executed. Absent = Stakwork; "vein" = the swarm's vein lab (wfbench-run). */
+  runner?: "vein";
+  /** vein lab run id (the run's identity when runner === "vein"; there is no Stakwork project). */
+  veinRunId?: string;
+  /** vein lab UI link for the run — rendered in place of the Stakwork admin link. */
+  veinRunUrl?: string;
   /** S3 URL of the runner's output document */
   runnerOutputUrl?: string;
   /** Plain-text runner output */

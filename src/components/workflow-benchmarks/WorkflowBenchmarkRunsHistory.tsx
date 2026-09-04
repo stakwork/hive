@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { WorkflowStatus } from "@prisma/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -24,6 +24,26 @@ import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { SafeMarkdown } from "@/components/run-report/SafeMarkdown";
 import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 import type { BenchmarkRunResult } from "@/types/legal";
+
+// ─── vein run link ────────────────────────────────────────────────────────────
+
+/** The vein lab UI for a run executed by the vein runner — the counterpart
+ *  of StakworkRunLink (there is no Stakwork project for these rows). */
+function VeinRunLink({ url }: { url: string | undefined }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      title="View on vein (lab)"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+    >
+      <ExternalLink className="h-3.5 w-3.5" />
+      View on vein
+    </a>
+  );
+}
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -355,8 +375,17 @@ export function WorkflowBenchmarkRunsHistory() {
                           {run.taskTitle || run.taskSlug || "(Unknown task)"}
                         </div>
                         {run.taskSlug && (
-                          <div className="font-mono text-xs text-muted-foreground mt-0.5">
+                          <div className="font-mono text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
                             {run.taskSlug}
+                            {run.runner === "vein" && (
+                              <Badge
+                                variant="outline"
+                                className="h-4 px-1 text-[10px] font-sans"
+                                title="Executed by the vein runner"
+                              >
+                                vein
+                              </Badge>
+                            )}
                           </div>
                         )}
                       </div>
@@ -386,10 +415,14 @@ export function WorkflowBenchmarkRunsHistory() {
                   {/* Stakwork admin link — super-admin only */}
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <StakworkRunLink
-                        projectId={run.projectId}
-                        isSuperAdmin={isSuperAdmin}
-                      />
+                      {run.runner === "vein" ? (
+                        <VeinRunLink url={run.veinRunUrl} />
+                      ) : (
+                        <StakworkRunLink
+                          projectId={run.projectId}
+                          isSuperAdmin={isSuperAdmin}
+                        />
+                      )}
                     </td>
                   )}
                 </tr>
