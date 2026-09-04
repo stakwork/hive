@@ -627,6 +627,10 @@ model Task {
   // and is verified against this secret on receipt (mirrors
   // `agentWebhookSecret`, kept separate so the names stay honest).
   codeChangeWebhookSecret String?              @map("code_change_webhook_secret")
+  // Encrypted one-time key authenticating the pod-resident auditor's verdict
+  // callback (mirrors `agentPassword`/`codeChangeWebhookSecret`). Cleared once
+  // the verdict lands.
+  auditCallbackKey       String?               @map("audit_callback_key")
   agentLogs              AgentLog[]
   chatMessages           ChatMessage[]
   deployments            Deployment[]

@@ -513,6 +513,26 @@ export function useSendCanvasChatMessage() {
             }
           }
 
+          // Register any mid-stream chat artifacts (e.g. verification verdicts)
+          // and attach their ids to the latest assistant message so
+          // MessageArtifacts renders them in the chat.
+          if (updatedMessage.artifacts?.length) {
+            const registerArtifact = useCanvasChatStore.getState().registerArtifact;
+            for (const art of updatedMessage.artifacts) {
+              registerArtifact({ id: art.id, type: art.type, conversationId, messageId, data: art.data });
+              for (let i = timelineMessages.length - 1; i >= 0; i--) {
+                const m = timelineMessages[i];
+                if (m.role === "assistant") {
+                  const ids = m.artifactIds ?? [];
+                  if (!ids.includes(art.id)) {
+                    timelineMessages[i] = { ...m, artifactIds: [...ids, art.id] };
+                  }
+                  break;
+                }
+              }
+            }
+          }
+
           const lastMsg = timelineMessages[timelineMessages.length - 1];
           if (lastMsg?.toolCalls && lastMsg.toolCalls.length > 0) {
             setActiveToolCalls(conversationId, lastMsg.toolCalls);

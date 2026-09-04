@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FileIcon, GitFork, Loader2, Mic, MicOff, OctagonX, Paperclip, Plus, RefreshCw, Send, Share2, X } from "lucide-react";
+import { VerdictPill, isAuditVerdict } from "@/app/w/[slug]/task/[...taskParams]/artifacts/verdict";
+import type { Artifact } from "@/lib/chat";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
@@ -773,8 +775,12 @@ function MessageArtifacts({ artifactIds }: { artifactIds?: string[] }) {
   return (
     <div className="space-y-1.5">
       {artifacts.map((artifact) => {
+        if (artifact.type === "VERIFY" && isAuditVerdict(artifact.data)) {
+          return (
+            <VerdictPill key={artifact.id} artifact={{ content: artifact.data } as Artifact} />
+          );
+        }
         // Unknown artifact type — render nothing rather than crash.
-        void artifact;
         return null;
       })}
     </div>

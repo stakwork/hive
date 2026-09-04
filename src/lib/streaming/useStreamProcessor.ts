@@ -73,6 +73,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
       const timeline: Array<{ type: "text" | "reasoning" | "toolCall"; id: string }> = []; // Unified timeline
       let error: string | undefined;
       let capturedUsage: TokenUsage | undefined;
+      const capturedArtifacts: Array<{ id: string; type: string; data: unknown }> = [];
 
       // Track text part sequence to generate unique IDs when stream reuses IDs
       let textPartSequence = 0;
@@ -138,6 +139,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
           timeline: timelineItems,
           error,
           usage: capturedUsage,
+          artifacts: capturedArtifacts,
           ...additionalFields,
         } as T;
       };
@@ -405,6 +407,13 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
               // so this is a dumb passthrough — no field-name fallback chain needed.
               capturedUsage = data.data;
               debouncedUpdate();
+            } else if (data.type === "data-artifact") {
+              // A chat artifact (e.g. a verification verdict) emitted mid-stream.
+              const a = data.data as { id: string; type: string; data: unknown };
+              if (a?.id && !capturedArtifacts.some((x) => x.id === a.id)) {
+                capturedArtifacts.push(a);
+                debouncedUpdate();
+              }
             } else if (data.type === "finish") {
               // Capture aggregated per-turn token usage from the AI SDK finish event.
               // Delegate field-name normalization to the shared utility so this
