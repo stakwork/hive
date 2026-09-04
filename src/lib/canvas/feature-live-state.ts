@@ -69,6 +69,52 @@ export interface ProjectionSnapshot {
   agentsRunningCount: number;
 }
 
+export interface FeatureRunState {
+  plannerRunning: boolean;
+  agentsRunningCount: number;
+  /** True when any child task FAILED / ERROR — the halt condition that forces `plannerRunning` false. */
+  hasErrorTask: boolean;
+}
+
+/**
+ * Canonical "is this feature running?" predicate, shared by the canvas
+ * projector (`buildFeatureNode` in `projectors.ts`) and the org control panel so
+ * every surface agrees on what "running" means:
+ *
+ *   - `plannerRunning`: true ONLY when `workflowStatus === "IN_PROGRESS"`.
+ *     Deliberately excludes "PENDING" (the Prisma schema default) so a
+ *     brand-new, never-started feature never false-positives as running.
+ *     Forced false when any child task has FAILED/ERROR — the same halt
+ *     condition `updateFeatureStatusFromTasks` recognises, so a feature
+ *     sitting on a stale IN_PROGRESS read with broken tasks doesn't pulse
+ *     indefinitely.
+ *   - `agentsRunningCount`: TaskCard.tsx's in-flight convention —
+ *     `workflowStatus === "IN_PROGRESS"`, OR `mode === "agent"` AND
+ *     `workflowStatus === "PENDING"` (agent-mode tasks are active from
+ *     PENDING until completion). Non-agent PENDING tasks are NOT counted.
+ */
+export function deriveFeatureRunState(
+  workflowStatus: string | null,
+  tasks: ReadonlyArray<{ workflowStatus: string | null; mode?: string | null }>,
+): FeatureRunState {
+  const hasErrorTask = tasks.some((t) => t.workflowStatus === "FAILED" || t.workflowStatus === "ERROR");
+  const plannerRunning = !hasErrorTask && workflowStatus === "IN_PROGRESS";
+  const agentsRunningCount = tasks.filter(
+    (t) => t.workflowStatus === "IN_PROGRESS" || (t.mode === "agent" && t.workflowStatus === "PENDING"),
+  ).length;
+  return { plannerRunning, agentsRunningCount, hasErrorTask };
+}
+
+/** "Planner working", "N agent(s) running", or both joined — the one label for a running state. */
+export function formatRunningLabel(running: Pick<FeatureRunState, "plannerRunning" | "agentsRunningCount">): string {
+  const parts: string[] = [];
+  if (running.plannerRunning) parts.push("Planner working");
+  if (running.agentsRunningCount > 0) {
+    parts.push(running.agentsRunningCount === 1 ? "1 agent running" : `${running.agentsRunningCount} agents running`);
+  }
+  return parts.join(" · ");
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -116,10 +162,7 @@ function toTimestampMs(ts: Date | string | number | undefined): number {
  * Create an initial FeatureLiveState from the projector's snapshot.
  * Called once when the canvas node is first rendered.
  */
-export function initFeatureLiveState(
-  featureId: string,
-  snapshot: ProjectionSnapshot,
-): FeatureLiveState {
+export function initFeatureLiveState(featureId: string, snapshot: ProjectionSnapshot): FeatureLiveState {
   const agentTasksById = new Map<string, AgentTaskState>(
     snapshot.agentTasks.map((t) => [t.id, { id: t.id, workflowStatus: t.workflowStatus }]),
   );
@@ -142,10 +185,7 @@ export function initFeatureLiveState(
  * Returns a new state object (immutable update) or the same reference if
  * nothing changed (allows React to bail out of re-renders).
  */
-export function mergeWorkflowStatusUpdate(
-  state: FeatureLiveState,
-  event: WorkflowStatusUpdateEvent,
-): FeatureLiveState {
+export function mergeWorkflowStatusUpdate(state: FeatureLiveState, event: WorkflowStatusUpdateEvent): FeatureLiveState {
   const { taskId, workflowStatus } = event;
 
   // --- Planner branch: event targets the feature itself ---
@@ -185,10 +225,7 @@ export function mergeWorkflowStatusUpdate(
  * Uses the event timestamp for basic dedup: if a duplicate broadcast arrives
  * with the same or older timestamp, skip it.
  */
-export function mergeStakworkRunUpdate(
-  state: FeatureLiveState,
-  event: StakworkRunUpdateEvent,
-): FeatureLiveState {
+export function mergeStakworkRunUpdate(state: FeatureLiveState, event: StakworkRunUpdateEvent): FeatureLiveState {
   // Filter: only act on events for this feature
   if (!event.featureId || event.featureId !== state.featureId) return state;
 
@@ -220,10 +257,7 @@ export function mergeStakworkRunUpdate(
  * This is the designated "supersede" path — the projector output is
  * authoritative and clears any optimistic overlay.
  */
-export function resetFromProjection(
-  state: FeatureLiveState,
-  snapshot: ProjectionSnapshot,
-): FeatureLiveState {
+export function resetFromProjection(state: FeatureLiveState, snapshot: ProjectionSnapshot): FeatureLiveState {
   const agentTasksById = new Map<string, AgentTaskState>(
     snapshot.agentTasks.map((t) => [t.id, { id: t.id, workflowStatus: t.workflowStatus }]),
   );

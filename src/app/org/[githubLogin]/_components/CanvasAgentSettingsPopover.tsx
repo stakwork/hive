@@ -3,19 +3,10 @@
 import React, { useEffect, useState } from "react";
 import { Settings } from "lucide-react";
 import { toast } from "sonner";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "@/components/ui/popover";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import { AutomationsSection } from "./AutomationsSection";
 
@@ -38,11 +29,7 @@ import { AutomationsSection } from "./AutomationsSection";
  * via `/api/user/preferences`. Fetched once on mount; changes are saved
  * optimistically with a rollback on failure.
  */
-export function CanvasAgentSettingsPopover({
-  githubLogin,
-}: {
-  githubLogin: string;
-}) {
+export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: string }) {
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
@@ -130,67 +117,66 @@ export function CanvasAgentSettingsPopover({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          title="Agent settings"
-          className="p-1.5 rounded hover:bg-muted transition-colors"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-0.5">
-            <p className="text-sm font-medium leading-none">
-              Auto-respond to planners
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Let the agent reply to lower-level planner agents on its own,
-              without prompting you.
-            </p>
-          </div>
-          <Switch
-            checked={enabled ?? false}
-            onCheckedChange={handleToggle}
-            disabled={enabled === null || saving}
-            aria-label="Auto-respond to planners"
-          />
-        </div>
-
-        {models.length > 0 && (
-          <div className="border-t pt-3 space-y-1.5">
-            <p className="text-sm font-medium leading-none">Model</p>
-            <p className="text-xs text-muted-foreground">
-              The default model the canvas agent chats with.
-            </p>
-            <Select
-              value={selectedModel ?? ""}
-              onValueChange={handleModelChange}
-              disabled={selectedModel === null || savingModel}
+    <Tooltip delayDuration={200}>
+      <Popover open={open} onOpenChange={setOpen}>
+        {/* The popover's trigger stays its direct child; the tooltip's trigger
+          composes onto the same button through Radix's Slot chain. */}
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Agent settings"
+              className="p-1.5 rounded hover:bg-muted transition-colors"
             >
-              <SelectTrigger
-                className="h-8 text-xs"
-                data-testid="chat-agent-model-selector"
-              >
-                <SelectValue placeholder="Default" />
-              </SelectTrigger>
-              <SelectContent>
-                {models.map((m) => (
-                  <SelectItem key={m.id} value={getModelValue(m)}>
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Settings className="w-4 h-4" />
+            </button>
+          </TooltipTrigger>
+        </PopoverTrigger>
+        <TooltipContent side="bottom">Agent settings</TooltipContent>
+        <PopoverContent align="end" className="w-80 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium leading-none">Auto-respond to planners</p>
+              <p className="text-xs text-muted-foreground">
+                Let the agent reply to lower-level planner agents on its own, without prompting you.
+              </p>
+            </div>
+            <Switch
+              checked={enabled ?? false}
+              onCheckedChange={handleToggle}
+              disabled={enabled === null || saving}
+              aria-label="Auto-respond to planners"
+            />
           </div>
-        )}
 
-        <div className="border-t pt-3">
-          <AutomationsSection githubLogin={githubLogin} />
-        </div>
-      </PopoverContent>
-    </Popover>
+          {models.length > 0 && (
+            <div className="border-t pt-3 space-y-1.5">
+              <p className="text-sm font-medium leading-none">Model</p>
+              <p className="text-xs text-muted-foreground">The default model the canvas agent chats with.</p>
+              <Select
+                value={selectedModel ?? ""}
+                onValueChange={handleModelChange}
+                disabled={selectedModel === null || savingModel}
+              >
+                <SelectTrigger className="h-8 text-xs" data-testid="chat-agent-model-selector">
+                  <SelectValue placeholder="Default" />
+                </SelectTrigger>
+                <SelectContent>
+                  {models.map((m) => (
+                    <SelectItem key={m.id} value={getModelValue(m)}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="border-t pt-3">
+            <AutomationsSection githubLogin={githubLogin} />
+          </div>
+        </PopoverContent>
+      </Popover>
+    </Tooltip>
   );
 }
