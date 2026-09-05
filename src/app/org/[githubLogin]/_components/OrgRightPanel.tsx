@@ -18,8 +18,6 @@ import { formatRelativeTime } from "./CanvasHistoryPopover";
 import { PlanStage, taskNodeFor, type ControlPanelStageProps } from "./control-panel/ControlPanelStage";
 import type { ControlPanelFocus } from "./control-panel/types";
 import { ActionTip } from "./ActionTip";
-import { useCanvasChatStore } from "../_state/canvasChatStore";
-import { orgChatChromeTitle } from "@/lib/ai/conversationHelpers";
 
 type Tab = "chat" | "details" | "connections";
 
@@ -179,11 +177,6 @@ export function OrgRightPanel({
   }, [selectedEdge?.edge.id]);
 
   const { count, runs, openRun } = useAutomationInbox(githubLogin, { chatReady });
-  const conversationTitle = useCanvasChatStore((s) => {
-    const id = s.activeConversationId;
-    return id ? (s.conversations[id]?.title ?? null) : null;
-  });
-  const chatHeaderTitle = orgChatChromeTitle(conversationTitle);
 
   // On the control panel what shows follows its focus, not the tabs. The
   // last plan/task on stage stays mounted (hidden) while the chat is up —
@@ -307,11 +300,6 @@ export function OrgRightPanel({
             />
           )}
         </div>
-        {activeTab === "chat" && (
-          <div className="min-w-0 flex-1 flex items-center px-3">
-            <span className="truncate text-sm font-medium">{chatHeaderTitle}</span>
-          </div>
-        )}
         <div className="ml-auto flex items-center gap-1 pr-2">
           {/* Kept mounted: its settings popover and activity hook fetch on mount. */}
           <div className={cn("flex items-center", activeTab !== "chat" && "hidden")}>
