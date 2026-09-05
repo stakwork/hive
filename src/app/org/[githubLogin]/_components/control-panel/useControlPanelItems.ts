@@ -39,6 +39,7 @@ export function useControlPanelItems(
   const [remaining, setRemaining] = useState(0);
   const [loading, setLoading] = useState(true);
   const inFlightRef = useRef(false);
+  const pendingRefetchRef = useRef(false);
   const genRef = useRef(0);
   const limitRef = useRef(CONTROL_PANEL_PAGE);
   const itemsRef = useRef(items);
@@ -47,7 +48,12 @@ export function useControlPanelItems(
   archivedItemsRef.current = archivedItems;
 
   const refetch = useCallback(async () => {
-    if (!githubLogin || !enabled || inFlightRef.current) return;
+    if (!githubLogin || !enabled) return;
+    if (inFlightRef.current) {
+      pendingRefetchRef.current = true;
+      return;
+    }
+    pendingRefetchRef.current = false;
     const gen = ++genRef.current;
     inFlightRef.current = true;
     try {
@@ -63,6 +69,10 @@ export function useControlPanelItems(
     } finally {
       if (gen === genRef.current) inFlightRef.current = false;
       setLoading(false);
+      if (gen === genRef.current && pendingRefetchRef.current) {
+        pendingRefetchRef.current = false;
+        void refetch();
+      }
     }
   }, [githubLogin, enabled]);
 

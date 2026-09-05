@@ -2,8 +2,9 @@
 /**
  * Unit tests for the control-panel `StateDot` tone mapping.
  *
- * Four tones: green filled for done (plans only), amber pulse while
- * running, amber ring while waiting on you, grey when idle.
+ * Four tones: green filled for done (a plan, or a Jamie parent whose
+ * nested features are all COMPLETED), amber pulse while running, amber
+ * ring while waiting on you, grey when idle.
  */
 import React from "react";
 import { describe, expect, test } from "vitest";
