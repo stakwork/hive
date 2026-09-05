@@ -96,7 +96,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams());
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars.tokenReference).toBe(
         "{{HIVE_STAGING}}"
@@ -112,7 +112,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams());
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars.tokenReference).toBe(
         "{{HIVE_PROD}}"
@@ -271,7 +271,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(params);
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars).toMatchObject({
         message: "Test message content",
@@ -295,7 +295,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams());
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body).toHaveProperty("name", "hive-task-test-task-123");
       expect(body).toHaveProperty("workflow_id");
@@ -311,7 +311,7 @@ describe("callStakworkAPI", () => {
       );
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars.taskSource).toBe(
         "codebase_recommendation"
@@ -565,7 +565,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams({ mode: "plan_mode" }));
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars.model).toBe(
         "claude-3-5-sonnet"
@@ -588,7 +588,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams({ mode: "plan_mode" }));
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars.model).toBeUndefined();
 
@@ -606,7 +606,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams({ contextTags: [] }));
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars.contextTags).toEqual(
         []
@@ -619,7 +619,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams({ attachments: [] }));
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars.attachments).toEqual(
         []
@@ -632,7 +632,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams({ userName: null }));
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars.alias).toBeNull();
       expect(body.workflow_params.set_var.attributes.vars.username).toBeNull();
@@ -644,7 +644,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams({ accessToken: null }));
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars.accessToken).toBeNull();
     });
@@ -655,7 +655,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams({ swarmSecretAlias: null }));
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(
         body.workflow_params.set_var.attributes.vars.swarmSecretAlias
@@ -668,7 +668,7 @@ describe("callStakworkAPI", () => {
       await callStakworkAPI(createTestParams({ poolName: null }));
 
       const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1]?.body as string);
+      const body = JSON.parse(fetchCall[1]?.body as string).project;
 
       expect(body.workflow_params.set_var.attributes.vars.poolName).toBeNull();
     });
