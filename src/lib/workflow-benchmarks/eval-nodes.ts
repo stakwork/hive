@@ -79,10 +79,16 @@ export async function ensureWorkflowBenchmarkEvalNodes(
     // Fetch any existing node whose `id` attribute equals the task slug.
     // If one exists and lacks our corpus marker, abort to prevent blindly
     // overwriting a foreign EvalSet.
+    // skipCache on EVERY lookup here: Jarvis caches attribute searches
+    // in-process, including misses. This read-before-write ran seconds
+    // before the write and cached "no such EvalSet"; the post-upsert resolve
+    // below then served that miss, returned null, and the caller recorded
+    // rosterUpsertOutcome "ok" with no roster in the graph (swarm38).
     const existingSearch = await searchNodesByAttributes(config, {
       nodeTypes: ["EvalSet", "Evalset"],
       filters: [{ attribute: "id", value: taskSlug, comparator: "=" }],
       includeProperties: true,
+      skipCache: true,
     });
 
     if (existingSearch.ok && existingSearch.nodes.length > 0) {
@@ -130,6 +136,7 @@ export async function ensureWorkflowBenchmarkEvalNodes(
       nodeTypes: ["EvalSet", "Evalset"],
       filters: [{ attribute: "id", value: taskSlug, comparator: "=" }],
       includeProperties: false,
+      skipCache: true,
     });
 
     if (!evalSetSearch.ok || evalSetSearch.nodes.length === 0) {
@@ -193,6 +200,7 @@ export async function ensureWorkflowBenchmarkEvalNodes(
       nodeTypes: ["EvalRequirement", "Evalrequirement"],
       filters: [{ attribute: "corpus", value: CORPUS_MARKER, comparator: "=" }],
       includeProperties: true,
+      skipCache: true,
     });
 
     const requirementRefs: string[] = [];

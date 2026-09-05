@@ -321,10 +321,15 @@ export async function resolveEvalSetRefIdBySlug(
   config: JarvisConnectionConfig,
   taskSlug: string,
 ): Promise<string | null> {
+  // skipCache: Jarvis caches attribute searches in-process, misses
+  // included. The rubrics reader calls this right after a run creates the
+  // roster; a cached "No data found" from before the write made every
+  // score cell read "No rubric roster" until the cache expired (swarm38).
   const searchResult = await searchNodesByAttributes(config, {
     nodeTypes: EVALSET_NODE_LABELS,
     filters: [{ attribute: "id", value: taskSlug, comparator: "=" }],
     includeProperties: true,
+    skipCache: true,
   });
 
   if (!searchResult.ok || searchResult.nodes.length === 0) {

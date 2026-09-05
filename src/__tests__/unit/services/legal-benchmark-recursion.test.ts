@@ -780,6 +780,13 @@ describe("resolveEvalSetRefIdBySlug", () => {
     expect(result).toBe("ref-abc-123");
   });
 
+  test("bypasses Jarvis's search cache (a cached miss from before the roster write must not stick)", async () => {
+    mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
+    await resolveEvalSetRefIdBySlug(CONFIG, "wfbench/generate-capital-city");
+    const [, params] = mockSearchNodesByAttributes.mock.calls[0] as [unknown, { skipCache?: boolean }];
+    expect(params.skipCache).toBe(true);
+  });
+
   test("sends both EvalSet casings in search", async () => {
     mockSearchNodesByAttributes.mockResolvedValue({ ok: true, nodes: [] });
 
