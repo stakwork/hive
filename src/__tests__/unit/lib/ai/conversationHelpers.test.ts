@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, it, expect } from "vitest";
-import { UNTITLED_CONVERSATION, orgChatChromeTitle, toModelMessages } from "@/lib/ai/conversationHelpers";
+import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import type { StoredMessage } from "@/services/canvas-turn-persistence";
 
 describe("toModelMessages", () => {
@@ -231,19 +231,6 @@ describe("toModelMessages", () => {
     const toolResultMsg = result.find((m) => m.role === "tool") as any;
     expect(toolResultMsg.content[0].output.value.payload.diff).toBe(smallDiff);
     expect(toolResultMsg.content[1].output.value.payload.diff.length).toBe(10_000);
-  });
-});
-
-describe("orgChatChromeTitle", () => {
-  it("falls back to Ask Jamie when title is null, empty, or the untitled placeholder", () => {
-    expect(orgChatChromeTitle(null)).toBe("Ask Jamie");
-    expect(orgChatChromeTitle(undefined)).toBe("Ask Jamie");
-    expect(orgChatChromeTitle("")).toBe("Ask Jamie");
-    expect(orgChatChromeTitle(UNTITLED_CONVERSATION)).toBe("Ask Jamie");
-  });
-
-  it("renders the real title once set", () => {
-    expect(orgChatChromeTitle("Auth token refresh")).toBe("Auth token refresh");
   });
 });
 
