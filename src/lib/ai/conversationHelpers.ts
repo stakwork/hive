@@ -99,15 +99,6 @@ export function toModelMessages(messages: StoredMessage[]): ModelMessage[] {
 export const UNTITLED_CONVERSATION = "Untitled Conversation";
 
 /**
- * Org-canvas chat chrome label. Real titles display as-is; null / empty /
- * {@link UNTITLED_CONVERSATION} fall back to "Ask Jamie" while a title is
- * still generating (or on a brand-new chat).
- */
-export function orgChatChromeTitle(title: string | null | undefined): string {
-  return title && title !== UNTITLED_CONVERSATION ? title : "Ask Jamie";
-}
-
-/**
  * Upper bound for stored titles. This is a storage guard, not a display
  * concern — UIs truncate titles visually (CSS `truncate`) so the title is
  * stored whole (no trailing ellipsis) up to this generous single-line cap.
