@@ -813,6 +813,7 @@ export async function POST(request: NextRequest) {
               rows,
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              turnId: turnIdStr ?? undefined,
             });
             // Nested try: an LLM throw must never fall into the persist
             // catch (that catch writes a fake assistant error row).
@@ -862,6 +863,7 @@ export async function POST(request: NextRequest) {
               rows: [errorRow],
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              turnId: turnIdStr ?? undefined,
             }).catch(() => {});
           }
         });
