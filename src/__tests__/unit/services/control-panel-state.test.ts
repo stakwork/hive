@@ -6,6 +6,9 @@
  *   - Plan state precedence: done → halted → question (only if not
  *     running) → awaiting-reply (only if not running) → review →
  *     running → plain status.
+ *   - Chat state precedence: running → question → done (every nested
+ *     feature COMPLETED) → none. Cancelled nested features do not green
+ *     the parent. overlayActiveChat streaming outranks a server "done".
  *   - Running labels: planner only, agents only, both.
  *   - Search, newest-activity ordering, the stand-in row for the chat
  *     on stage, and the one-line preview.
@@ -18,6 +21,7 @@ import {
   activeChatItem,
   buildArchivedRows,
   buildControlPanelGroups,
+  deriveChatState,
   derivePlanState,
   matchesControlPanelQuery,
   moveChatToActive,
@@ -176,6 +180,66 @@ describe("derivePlanState", () => {
   });
 });
 
+describe("deriveChatState", () => {
+  test("all nested COMPLETED is done", () => {
+    expect(
+      deriveChatState({
+        isRunning: false,
+        hasPendingQuestion: false,
+        nestedStatuses: ["COMPLETED", "COMPLETED"],
+      }),
+    ).toBe("done");
+  });
+
+  test("empty nested is none", () => {
+    expect(deriveChatState({ isRunning: false, hasPendingQuestion: false, nestedStatuses: [] })).toBe("none");
+  });
+
+  test("any non-COMPLETED nested status is none, including CANCELLED", () => {
+    expect(
+      deriveChatState({
+        isRunning: false,
+        hasPendingQuestion: false,
+        nestedStatuses: ["COMPLETED", "CANCELLED"],
+      }),
+    ).toBe("none");
+    expect(
+      deriveChatState({
+        isRunning: false,
+        hasPendingQuestion: false,
+        nestedStatuses: ["COMPLETED", "BACKLOG"],
+      }),
+    ).toBe("none");
+    expect(
+      deriveChatState({ isRunning: false, hasPendingQuestion: false, nestedStatuses: ["CANCELLED"] }),
+    ).toBe("none");
+  });
+
+  test("isRunning and hasPendingQuestion beat done", () => {
+    expect(
+      deriveChatState({
+        isRunning: true,
+        hasPendingQuestion: false,
+        nestedStatuses: ["COMPLETED"],
+      }),
+    ).toBe("running");
+    expect(
+      deriveChatState({
+        isRunning: false,
+        hasPendingQuestion: true,
+        nestedStatuses: ["COMPLETED"],
+      }),
+    ).toBe("question");
+    expect(
+      deriveChatState({
+        isRunning: true,
+        hasPendingQuestion: true,
+        nestedStatuses: ["COMPLETED"],
+      }),
+    ).toBe("running");
+  });
+});
+
 function makeItem(overrides: Partial<ControlPanelItem>): ControlPanelItem {
   const id = overrides.id ?? "x";
   const kind = overrides.kind ?? "plan";
@@ -273,6 +337,30 @@ describe("search, ordering and the chat on stage", () => {
     expect(
       overlayActiveChat(server, { ...fresh, serverId: "srv-1", hasMessages: true, isStreaming: true }),
     ).toMatchObject({ state: "running", sinceYou: "Jamie is replying" });
+    // Streaming over a server "done" still forces running; settled overlay keeps done.
+    const doneServer = makeItem({
+      kind: "chat",
+      id: "srv-1",
+      lastActivityAt: "2026-09-04T09:00:00.000Z",
+      sinceYou: "All plans done",
+      state: "done",
+    });
+    expect(
+      overlayActiveChat(doneServer, {
+        ...fresh,
+        serverId: "srv-1",
+        hasMessages: true,
+        isStreaming: true,
+      }),
+    ).toMatchObject({ state: "running" });
+    expect(
+      overlayActiveChat(doneServer, {
+        ...fresh,
+        serverId: "srv-1",
+        hasMessages: true,
+        isStreaming: false,
+      }),
+    ).toMatchObject({ state: "done" });
     // Store title wins so the live list row updates without a refetch.
     expect(
       overlayActiveChat(server, {

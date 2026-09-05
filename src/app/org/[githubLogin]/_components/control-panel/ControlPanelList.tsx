@@ -54,8 +54,8 @@ const STEM_TOP = ROW_PAD_Y + ICON_TOP + CHAT_ICON + 2;
 /**
  * One dot, four meanings: amber and pulsing while an agent or planner
  * is working, an amber ring while the thread waits on you, a green
- * filled dot when a plan is done, grey when nothing is happening.
- * Chats never emit "done"; only plans can reach the green state.
+ * filled dot when a plan is done or when a Jamie parent has nested
+ * features and every one is COMPLETED, grey when nothing is happening.
  */
 export function StateDot({ state, className }: { state: ControlPanelItemState; className?: string }) {
   const tone =

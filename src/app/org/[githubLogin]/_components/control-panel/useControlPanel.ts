@@ -133,10 +133,18 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
   // owns the stage then). A fresh chat gets its server row on its first
   // turn: fetch then, so the stand-in row hands over to the real one.
   const newChatStartedAtRef = useRef(new Date().toISOString());
-  const prevChatRef = useRef<{ local: string | null; server: string | null }>({ local: null, server: null });
+  const prevChatRef = useRef<{ local: string | null; server: string | null; streaming: boolean }>({
+    local: null,
+    server: null,
+    streaming: false,
+  });
   useEffect(() => {
     const prev = prevChatRef.current;
-    prevChatRef.current = { local: activeLocalId, server: activeServerConversationId };
+    prevChatRef.current = {
+      local: activeLocalId,
+      server: activeServerConversationId,
+      streaming: activeChat?.isStreaming ?? false,
+    };
     if (!enabled || !activeLocalId) return;
     if (prev.local !== activeLocalId) {
       if (!activeServerConversationId) newChatStartedAtRef.current = new Date().toISOString();
@@ -147,7 +155,8 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
       return;
     }
     if (prev.server === null && activeServerConversationId) void refetch();
-  }, [enabled, activeLocalId, activeServerConversationId, changeFocus, refetch]);
+    if (prev.streaming && !activeChat?.isStreaming) void refetch();
+  }, [enabled, activeLocalId, activeServerConversationId, activeChat?.isStreaming, changeFocus, refetch]);
 
   // The chat on stage is always in a list, and the list already knows
   // what the store knows about it: a fresh chat has no server row until

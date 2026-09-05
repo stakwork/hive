@@ -24,7 +24,13 @@ import { ChatRole, Prisma } from "@prisma/client";
 import { getAccessibleWorkspaces } from "@/services/attention/topItems";
 import { countLiveRuns } from "@/services/canvas-active-runs";
 import type { ControlPanelItem, ControlPanelResponse } from "@/types/control-panel";
-import { derivePlanState, previewLine, sortControlPanelItems, type LastMessageSummary } from "./control-panel-state";
+import {
+  deriveChatState,
+  derivePlanState,
+  previewLine,
+  sortControlPanelItems,
+  type LastMessageSummary,
+} from "./control-panel-state";
 
 /** `limit` counts chats; their plans ride along. */
 const DEFAULT_LIMIT = 30;
@@ -214,9 +220,14 @@ function shapeControlPanelItems(
   for (const row of planTouches) planTouch.set(row.id, new Date(row.lastMessageAt));
 
   const planCountByConversation = new Map<string, number>();
+  const nestedStatusesByConversation = new Map<string, string[]>();
   for (const f of features) {
     const parent = f.parentCanvasConversationId;
-    if (parent) planCountByConversation.set(parent, (planCountByConversation.get(parent) ?? 0) + 1);
+    if (!parent) continue;
+    planCountByConversation.set(parent, (planCountByConversation.get(parent) ?? 0) + 1);
+    const statuses = nestedStatusesByConversation.get(parent);
+    if (statuses) statuses.push(f.status);
+    else nestedStatusesByConversation.set(parent, [f.status]);
   }
 
   const items: ControlPanelItem[] = [];
@@ -234,8 +245,11 @@ function shapeControlPanelItems(
       workspaceName: null,
       lastActivityAt: laterOf(c.createdAt, c.lastMessageAt).toISOString(),
       sinceYou: chatSinceYou(messages, yourLastAt, planCountByConversation.get(c.id) ?? 0),
-      // A chat is never "done": it's working, waiting on the user, or idle.
-      state: countLiveRuns(c.activeRuns) > 0 ? "running" : hasPendingPlannerForm(messages) ? "question" : "none",
+      state: deriveChatState({
+        isRunning: countLiveRuns(c.activeRuns) > 0,
+        hasPendingQuestion: hasPendingPlannerForm(messages),
+        nestedStatuses: nestedStatusesByConversation.get(c.id) ?? [],
+      }),
       // Same rule as the history list: content arrived since the owner last opened it.
       unread: c.lastMessageAt ? !c.ownerSeenAt || c.lastMessageAt > c.ownerSeenAt : false,
       archivedAt: c.archivedAt?.toISOString() ?? null,
