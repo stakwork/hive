@@ -151,6 +151,124 @@ describe("GET /api/orgs/[githubLogin]/control-panel", () => {
     expect(archivedPlans[0].parentChatId).toBe(archived.id);
   });
 
+  it("sets Jamie parent state to done only when every nested feature is COMPLETED", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    const org = await createOrg(`test-org-cp-done-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const ws = await createWorkspaceInOrg(user.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+
+    const allDoneChat = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: user.id,
+        workspaceId: null,
+        messages: sampleMessages as object[],
+        title: "All done chat",
+        source: "org-canvas",
+        followUpQuestions: [],
+        lastMessageAt: new Date("2026-03-01T00:00:00Z"),
+      },
+    });
+    createdConversationIds.push(allDoneChat.id);
+
+    const mixedChat = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: user.id,
+        workspaceId: null,
+        messages: sampleMessages as object[],
+        title: "Mixed chat",
+        source: "org-canvas",
+        followUpQuestions: [],
+        lastMessageAt: new Date("2026-03-02T00:00:00Z"),
+      },
+    });
+    createdConversationIds.push(mixedChat.id);
+
+    const emptyChat = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: user.id,
+        workspaceId: null,
+        messages: sampleMessages as object[],
+        title: "Empty chat",
+        source: "org-canvas",
+        followUpQuestions: [],
+        lastMessageAt: new Date("2026-03-03T00:00:00Z"),
+      },
+    });
+    createdConversationIds.push(emptyChat.id);
+
+    const doneA = await createTestFeature({
+      title: "Done plan A",
+      workspaceId: ws.id,
+      createdById: user.id,
+      updatedById: user.id,
+    });
+    const doneB = await createTestFeature({
+      title: "Done plan B",
+      workspaceId: ws.id,
+      createdById: user.id,
+      updatedById: user.id,
+    });
+    const mixedDone = await createTestFeature({
+      title: "Mixed done plan",
+      workspaceId: ws.id,
+      createdById: user.id,
+      updatedById: user.id,
+    });
+    const mixedCancelled = await createTestFeature({
+      title: "Mixed cancelled plan",
+      workspaceId: ws.id,
+      createdById: user.id,
+      updatedById: user.id,
+    });
+    createdFeatureIds.push(doneA.id, doneB.id, mixedDone.id, mixedCancelled.id);
+
+    await db.feature.update({
+      where: { id: doneA.id },
+      data: { parentCanvasConversationId: allDoneChat.id, status: "COMPLETED" },
+    });
+    await db.feature.update({
+      where: { id: doneB.id },
+      data: { parentCanvasConversationId: allDoneChat.id, status: "COMPLETED" },
+    });
+    await db.feature.update({
+      where: { id: mixedDone.id },
+      data: { parentCanvasConversationId: mixedChat.id, status: "COMPLETED" },
+    });
+    await db.feature.update({
+      where: { id: mixedCancelled.id },
+      data: { parentCanvasConversationId: mixedChat.id, status: "CANCELLED" },
+    });
+
+    const req = createAuthenticatedGetRequest(
+      `http://localhost/api/orgs/${org.githubLogin}/control-panel`,
+      { id: user.id, email: user.email ?? "", name: user.name ?? "" },
+    );
+    const res = await getControlPanel(req, { params: listParams(org.githubLogin) });
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    const chats = body.items.filter((i: { kind: string }) => i.kind === "chat");
+    const plans = body.items.filter((i: { kind: string }) => i.kind === "plan");
+
+    const allDoneItem = chats.find((i: { id: string }) => i.id === allDoneChat.id);
+    expect(allDoneItem?.state).toBe("done");
+
+    const mixedItem = chats.find((i: { id: string }) => i.id === mixedChat.id);
+    expect(mixedItem?.state).toBe("none");
+
+    const emptyItem = chats.find((i: { id: string }) => i.id === emptyChat.id);
+    expect(emptyItem?.state).toBe("none");
+
+    const cancelledPlan = plans.find((i: { id: string }) => i.id === mixedCancelled.id);
+    expect(cancelledPlan?.state).toBe("done");
+    expect(cancelledPlan?.parentChatId).toBe(mixedChat.id);
+  });
+
   it("returns 404 for a non-member", async () => {
     const owner = await createTestUser();
     createdUserIds.push(owner.id);

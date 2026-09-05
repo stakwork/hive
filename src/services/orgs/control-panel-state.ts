@@ -41,6 +41,39 @@ function featureStatusLabel(status: string): string {
 }
 
 /**
+ * Input for a Jamie chat parent's control-panel StateDot.
+ *
+ * `nestedStatuses` are raw Feature `status` values (not nested plan
+ * `state`). `derivePlanState` maps `CANCELLED` to `done`; cancelled
+ * nested features must not green the parent.
+ */
+export interface ChatStateInput {
+  isRunning: boolean;
+  hasPendingQuestion: boolean;
+  nestedStatuses: readonly string[];
+}
+
+/**
+ * Derive a Jamie chat's control panel state. Precedence: running →
+ * question → done (every nested feature `COMPLETED`) → none.
+ *
+ * Applied to every conversation `getControlPanelItems` emits
+ * (`source: "org-canvas"` only). `shapeControlPanelItems` has no
+ * `source` on `ConversationRow`, so if the shaper is ever reused for
+ * other chat sources, pass empty `nestedStatuses` (or gate the `done`
+ * clause) so non-Jamie rows cannot go green.
+ */
+export function deriveChatState(input: ChatStateInput): ControlPanelItemState {
+  const { isRunning, hasPendingQuestion, nestedStatuses } = input;
+  if (isRunning) return "running";
+  if (hasPendingQuestion) return "question";
+  if (nestedStatuses.length > 0 && nestedStatuses.every((status) => status === "COMPLETED")) {
+    return "done";
+  }
+  return "none";
+}
+
+/**
  * Derive a plan's control panel state. Precedence: done → halted →
  * question (only if not running) → awaiting-reply (only if not running) →
  * review → running → status.
