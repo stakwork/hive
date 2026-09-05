@@ -255,17 +255,35 @@ export function RecursionActivityRail({
                 : "—"}
             </span>
             <span className="flex items-center gap-2 justify-end">
-              {/* The snapshot diff control renders only when the row's fix
-                  actually carries a snapshot — eval-output and legacy rows
-                  leave fixSnapshot unset, so the hide rule falls out of the
-                  data rather than a series-kind check here. */}
-              {row.fixSnapshot && (
-                <FixSnapshotDiffControl
-                  fix={row.fixSnapshot}
-                  workspaceSlug={workspaceSlug || null}
-                  testId={`rail-fix-snapshot-${row.key}`}
-                />
-              )}
+              {/* Sibling diffs: render one icon per sibling, cap at 3 then show +K */}
+              {row.fixSnapshots.length > 0 && (() => {
+                const MAX_VISIBLE = 3;
+                const visible = row.fixSnapshots.slice(0, MAX_VISIBLE);
+                const overflow = row.fixSnapshots.length - MAX_VISIBLE;
+                const siblingLabel = row.siblingCount > 1 ? `${row.siblingCount} fixes` : null;
+                return (
+                  <>
+                    {siblingLabel && (
+                      <span className="text-[10px] text-muted-foreground/70 whitespace-nowrap" data-testid={`rail-sibling-label-${row.key}`}>
+                        {siblingLabel}
+                      </span>
+                    )}
+                    {visible.map((snapshot, i) => (
+                      <FixSnapshotDiffControl
+                        key={snapshot.ref_id ?? i}
+                        fix={snapshot}
+                        workspaceSlug={workspaceSlug || null}
+                        testId={row.fixSnapshots.length === 1 ? `rail-fix-snapshot-${row.key}` : `rail-fix-snapshot-${row.key}-${i}`}
+                      />
+                    ))}
+                    {overflow > 0 && (
+                      <span className="text-[10px] text-muted-foreground/70 tabular-nums whitespace-nowrap" data-testid={`rail-fix-overflow-${row.key}`}>
+                        +{overflow}
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
               <RowReport
                 row={row}
                 workspaceSlug={workspaceSlug}

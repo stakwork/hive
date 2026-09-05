@@ -969,3 +969,232 @@ export const RECURSION_NODE_IDS = {
   FIX_REJECTED_UNSCORED_ID,
   FIX_REJECTED_ID,
 } as const;
+
+// ── Concept-sibling fixture (opt-in only) ─────────────────────────────────────
+//
+// A single eval run emitting 6 sibling concept ProposedFix nodes, all sharing
+// one EvalTriggerOutput via PRODUCED_BY and all hanging off the same EvalTrigger
+// via HAS_PROPOSED_FIX.  Three variant groups cover the reconciliation and
+// fallback-tier test cases.
+//
+// SECURITY NOTE: Do NOT fold these into the default buildRecursionNodes/Edges
+// arrays.  The mock Jarvis graph route (`api/mock/jarvis/graph/route.ts`) has
+// no requireAuth/workspace guard of its own — it relies solely on the
+// production-path block in `src/middleware.ts`.  Anything folded into the
+// default payload is therefore served unauthenticated on every non-production
+// deployment.  The `withConceptSiblings` composer is activated only when
+// `NODE_ENV !== "production"` AND the request carries `?fixture=concept-siblings`.
+
+// ── Group A: 6 fully-materialized sibling concept fixes ──────────────────────
+export const CONCEPT_SIBLING_EVALSET_ID = "mock-evalset-concept-siblings-001";
+const CONCEPT_SIBLING_TRIGGER_ID = "mock-evaltrigger-concept-siblings-001";
+const CONCEPT_SIBLING_OUTPUT_ID = "mock-evaltriggeroutput-concept-siblings-001";
+
+// 6 ProposedFix nodes — all PRODUCED_BY the same EvalTriggerOutput, all
+// HAS_PROPOSED_FIX from the same EvalTrigger, all target_type:"concept",
+// eval_status:"accepted", distinct target_name, no criterion_id/prompt_id.
+// The LAST sibling (index 5) deliberately has NO snapshot-bearing properties
+// so tests can assert siblingCount===6 while fixSnapshots.length===5.
+const CONCEPT_SIBLING_FIX_IDS = Array.from({ length: 6 }, (_, i) =>
+  `mock-proposedfix-concept-sibling-${i + 1}-001`,
+);
+export const CONCEPT_SIBLING_FIX_NO_SNAPSHOT_ID = CONCEPT_SIBLING_FIX_IDS[5];
+
+const CONCEPT_SIBLING_TARGET_NAMES = [
+  "Limitation of Liability",
+  "Indemnification Scope",
+  "Force Majeure Triggers",
+  "Governing Law",
+  "Assignment Restrictions",
+  "Arbitration Venue", // ← this one has no snapshot properties
+];
+
+const SHARED_RUN_ID = "concept-siblings-run-001";
+
+// ── Group B: 2 pending siblings (no output, shared run id) ───────────────────
+export const CONCEPT_PENDING_EVALSET_ID = "mock-evalset-concept-pending-001";
+const CONCEPT_PENDING_TRIGGER_ID = "mock-evaltrigger-concept-pending-001";
+const CONCEPT_PENDING_FIX_IDS = ["mock-proposedfix-concept-pending-1", "mock-proposedfix-concept-pending-2"];
+const PENDING_RUN_ID = "concept-pending-run-001";
+
+// ── Group C: 3+3 mixed-materialization siblings ───────────────────────────────
+export const CONCEPT_MIXED_EVALSET_ID = "mock-evalset-concept-mixed-001";
+const CONCEPT_MIXED_TRIGGER_ID = "mock-evaltrigger-concept-mixed-001";
+const CONCEPT_MIXED_OUTPUT_ID = "mock-evaltriggeroutput-concept-mixed-001";
+const CONCEPT_MIXED_FIX_IDS = Array.from({ length: 6 }, (_, i) =>
+  `mock-proposedfix-concept-mixed-${i + 1}-001`,
+);
+const MIXED_RUN_ID = "concept-mixed-run-001";
+
+export const CONCEPT_SIBLING_NODE_IDS = {
+  CONCEPT_SIBLING_EVALSET_ID,
+  CONCEPT_SIBLING_TRIGGER_ID,
+  CONCEPT_SIBLING_OUTPUT_ID,
+  CONCEPT_SIBLING_FIX_IDS,
+  CONCEPT_SIBLING_FIX_NO_SNAPSHOT_ID,
+  CONCEPT_PENDING_EVALSET_ID,
+  CONCEPT_PENDING_TRIGGER_ID,
+  CONCEPT_PENDING_FIX_IDS,
+  CONCEPT_MIXED_EVALSET_ID,
+  CONCEPT_MIXED_TRIGGER_ID,
+  CONCEPT_MIXED_OUTPUT_ID,
+  CONCEPT_MIXED_FIX_IDS,
+} as const;
+
+/** Concept-sibling nodes for Groups A, B, and C. */
+export const CONCEPT_SIBLING_NODES: JarvisNode[] = [
+  // ── Group A EvalSet + trigger + shared output ─────────────────────────────
+  {
+    ref_id: CONCEPT_SIBLING_EVALSET_ID,
+    node_type: "EvalSet",
+    date_added_to_graph: "1760100000",
+    properties: { name: "Concept Sibling EvalSet", task_slug: "mock-concept-sibling-task" },
+  },
+  {
+    ref_id: CONCEPT_SIBLING_TRIGGER_ID,
+    node_type: "EvalTrigger",
+    date_added_to_graph: "1760100001",
+    properties: { agent: "concept-fix-agent", start_point: "start", end_point: "end" },
+  },
+  {
+    ref_id: CONCEPT_SIBLING_OUTPUT_ID,
+    node_type: "EvalTriggerOutput",
+    date_added_to_graph: "1760100002",
+    properties: { n_passed: 60, n_total: 74, result: "partial", score: 60 / 74 },
+  },
+  // 6 sibling ProposedFix nodes (last one has no snapshot fields)
+  ...CONCEPT_SIBLING_FIX_IDS.map((ref_id, i): JarvisNode => ({
+    ref_id,
+    node_type: "ProposedFix",
+    date_added_to_graph: String(1760100010 + i),
+    properties: {
+      eval_status: "accepted",
+      target_type: "concept",
+      target_name: CONCEPT_SIBLING_TARGET_NAMES[i],
+      stakwork_run_id: SHARED_RUN_ID,
+      // All but the last carry a snapshot (the last one has none — by design)
+      ...(i < 5 ? {
+        ...FIX_SNAPSHOT_SHAPES.conceptEditDocs,
+        target_name: CONCEPT_SIBLING_TARGET_NAMES[i],
+      } : {}),
+    },
+  })),
+
+  // ── Group B: 2 pending siblings (no output, no after_score) ──────────────
+  {
+    ref_id: CONCEPT_PENDING_EVALSET_ID,
+    node_type: "EvalSet",
+    date_added_to_graph: "1760200000",
+    properties: { name: "Concept Pending EvalSet", task_slug: "mock-concept-pending-task" },
+  },
+  {
+    ref_id: CONCEPT_PENDING_TRIGGER_ID,
+    node_type: "EvalTrigger",
+    date_added_to_graph: "1760200001",
+    properties: { agent: "concept-fix-agent", start_point: "start", end_point: "end" },
+  },
+  ...CONCEPT_PENDING_FIX_IDS.map((ref_id, i): JarvisNode => ({
+    ref_id,
+    node_type: "ProposedFix",
+    date_added_to_graph: String(1760200010 + i),
+    properties: {
+      eval_status: "pending",
+      target_type: "concept",
+      target_name: `Pending Fix ${i + 1}`,
+      stakwork_run_id: PENDING_RUN_ID,
+      // No after_score, no PRODUCED_BY output — exercises tier-3/4 grouping
+    },
+  })),
+
+  // ── Group C: 3 materialized + 3 non-materialized siblings (same run id) ──
+  {
+    ref_id: CONCEPT_MIXED_EVALSET_ID,
+    node_type: "EvalSet",
+    date_added_to_graph: "1760300000",
+    properties: { name: "Concept Mixed EvalSet", task_slug: "mock-concept-mixed-task" },
+  },
+  {
+    ref_id: CONCEPT_MIXED_TRIGGER_ID,
+    node_type: "EvalTrigger",
+    date_added_to_graph: "1760300001",
+    properties: { agent: "concept-fix-agent", start_point: "start", end_point: "end" },
+  },
+  {
+    ref_id: CONCEPT_MIXED_OUTPUT_ID,
+    node_type: "EvalTriggerOutput",
+    date_added_to_graph: "1760300002",
+    properties: { n_passed: 55, n_total: 74, result: "partial", score: 55 / 74 },
+  },
+  ...CONCEPT_MIXED_FIX_IDS.map((ref_id, i): JarvisNode => ({
+    ref_id,
+    node_type: "ProposedFix",
+    date_added_to_graph: String(1760300010 + i),
+    properties: {
+      eval_status: "accepted",
+      target_type: "concept",
+      target_name: `Mixed Fix ${i + 1}`,
+      stakwork_run_id: MIXED_RUN_ID,
+    },
+  })),
+];
+
+/** Concept-sibling edges for Groups A, B, and C. */
+export const CONCEPT_SIBLING_EDGES = [
+  // ── Group A ──────────────────────────────────────────────────────────────
+  { source: CONCEPT_SIBLING_EVALSET_ID, target: CONCEPT_SIBLING_TRIGGER_ID, edge_type: "HAS_BASELINE_TRIGGER" },
+  { source: CONCEPT_SIBLING_TRIGGER_ID, target: CONCEPT_SIBLING_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
+  // All 6 fixes hang off the same trigger
+  ...CONCEPT_SIBLING_FIX_IDS.map((fixId) => ({
+    source: CONCEPT_SIBLING_TRIGGER_ID,
+    target: fixId,
+    edge_type: "HAS_PROPOSED_FIX",
+  })),
+  // All 6 fixes PRODUCED_BY the same output
+  ...CONCEPT_SIBLING_FIX_IDS.map((fixId) => ({
+    source: fixId,
+    target: CONCEPT_SIBLING_OUTPUT_ID,
+    edge_type: "PRODUCED_BY",
+  })),
+
+  // ── Group B ──────────────────────────────────────────────────────────────
+  { source: CONCEPT_PENDING_EVALSET_ID, target: CONCEPT_PENDING_TRIGGER_ID, edge_type: "HAS_BASELINE_TRIGGER" },
+  ...CONCEPT_PENDING_FIX_IDS.map((fixId) => ({
+    source: CONCEPT_PENDING_TRIGGER_ID,
+    target: fixId,
+    edge_type: "HAS_PROPOSED_FIX",
+  })),
+  // No PRODUCED_BY edges (pending — output not yet written)
+
+  // ── Group C ──────────────────────────────────────────────────────────────
+  { source: CONCEPT_MIXED_EVALSET_ID, target: CONCEPT_MIXED_TRIGGER_ID, edge_type: "HAS_BASELINE_TRIGGER" },
+  { source: CONCEPT_MIXED_TRIGGER_ID, target: CONCEPT_MIXED_OUTPUT_ID, edge_type: "HAS_OUTPUT" },
+  ...CONCEPT_MIXED_FIX_IDS.map((fixId) => ({
+    source: CONCEPT_MIXED_TRIGGER_ID,
+    target: fixId,
+    edge_type: "HAS_PROPOSED_FIX",
+  })),
+  // Only the first 3 fixes are PRODUCED_BY the output (mid-rerun state)
+  ...CONCEPT_MIXED_FIX_IDS.slice(0, 3).map((fixId) => ({
+    source: fixId,
+    target: CONCEPT_MIXED_OUTPUT_ID,
+    edge_type: "PRODUCED_BY",
+  })),
+];
+
+/**
+ * Compose the concept-sibling fixture groups onto a base node/edge set.
+ *
+ * IMPORTANT: Activate this ONLY in non-production + `?fixture=concept-siblings`
+ * requests.  See the security note above — the mock Jarvis graph route has no
+ * auth guard of its own, so anything folded into the default payload would be
+ * served unauthenticated on every non-production deployment.
+ */
+export function withConceptSiblings(base: {
+  nodes: JarvisNode[];
+  edges: { source: string; target: string; edge_type: string }[];
+}): { nodes: JarvisNode[]; edges: { source: string; target: string; edge_type: string }[] } {
+  return {
+    nodes: [...base.nodes, ...CONCEPT_SIBLING_NODES],
+    edges: [...base.edges, ...CONCEPT_SIBLING_EDGES],
+  };
+}
