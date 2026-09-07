@@ -300,7 +300,7 @@ export default function SwarmsTable() {
             const userAssignedName = getUserAssignedName(instance.tags);
             const swarmUrl = userAssignedName ? `https://${userAssignedName}.sphinx.chat` : null;
             const isRunning = instance.state === "running";
-            const isClickable = isRunning && !!userAssignedName;
+            const isClickable = isRunning;
             const isUpdating = updatingSwarms.has(instance.instanceId);
 
             return (
