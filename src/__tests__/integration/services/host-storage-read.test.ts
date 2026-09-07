@@ -159,6 +159,7 @@ describe("readHostStorage - Integration Tests", () => {
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("WORKSPACE_DELETED");
+    expect(result.workspaceId).toBeUndefined();
     expect(mockGetJwt).not.toHaveBeenCalled();
     expect(mockCmdRequest).not.toHaveBeenCalled();
   });
@@ -175,6 +176,7 @@ describe("readHostStorage - Integration Tests", () => {
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("DECRYPT_FAILED");
+    expect(result.workspaceId).toBe(swarm.workspaceId);
     expect(mockGetJwt).not.toHaveBeenCalled();
   });
 
