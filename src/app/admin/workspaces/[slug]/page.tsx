@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import CopySwarmPasswordButton from "./CopySwarmPasswordButton";
+import WorkspaceSwarmPasswordForm from "./WorkspaceSwarmPasswordForm";
 import AdminJanitorToggles from "./AdminJanitorToggles";
 import WorkspacePRStats from "./WorkspacePRStats";
 import AdminPodScaleControl from "./AdminPodScaleControl";
@@ -192,8 +193,12 @@ export default async function AdminWorkspaceDetailPage({
             )}
             <div>
               <p className="text-sm text-muted-foreground mb-2">Password</p>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <CopySwarmPasswordButton
+                  workspaceId={workspaceId}
+                  hasPassword={hasPassword}
+                />
+                <WorkspaceSwarmPasswordForm
                   workspaceId={workspaceId}
                   hasPassword={hasPassword}
                 />
