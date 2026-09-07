@@ -15,7 +15,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatBytes } from "@/lib/utils/format";
-import type { HostStorageReading } from "@/services/swarm/host-storage";
+import type {
+  HostStorageReading,
+  HostStorageService,
+  HostStorageVolume,
+} from "@/services/swarm/host-storage";
 import type {
   HostStorageReadResult,
   HostStorageReadReasonCode,
@@ -37,8 +41,113 @@ type StorageResponse = HostStorageReadResult;
  * never dangerouslySetInnerHTML, never attribute injection.
  */
 const MAX_DISPLAY_LENGTH = 80;
+const ANONYMOUS_VOLUME_NAME = /^[0-9a-f]{64}$/i;
+const ANONYMOUS_HASH_PREFIX = 12;
+const UNATTRIBUTED_LABEL = "Unattributed";
+
 function truncateForDisplay(text: string): string {
   return text.length > MAX_DISPLAY_LENGTH ? `${text.slice(0, MAX_DISPLAY_LENGTH)}…` : text;
+}
+
+/** Parser already null-normalizes owners; coerce undefined/blank defensively. */
+function ownerKey(service: string | null | undefined): string | null {
+  if (service == null) return null;
+  const trimmed = service.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+function isAnonymousVolumeName(name: string): boolean {
+  return ANONYMOUS_VOLUME_NAME.test(name);
+}
+
+function shortenAnonymousName(name: string): string {
+  return `${name.slice(0, ANONYMOUS_HASH_PREFIX)}…`;
+}
+
+/** Header total from visible rows only — never a partial rollup. */
+function groupTotal(volumes: HostStorageVolume[]): number | null {
+  let total = 0;
+  for (const volume of volumes) {
+    if (volume.sizeKnown === false || volume.sizeBytes === null) {
+      return null;
+    }
+    total += volume.sizeBytes;
+  }
+  return total;
+}
+
+interface VolumeGroup {
+  key: string | null;
+  label: string;
+  volumes: HostStorageVolume[];
+  total: number | null;
+}
+
+function toGroup(key: string | null, label: string, members: HostStorageVolume[]): VolumeGroup {
+  const volumes = [...members].sort((a, b) => a.name.localeCompare(b.name));
+  return { key, label, volumes, total: groupTotal(volumes) };
+}
+
+/**
+ * Group non-Neo4j volumes by owning service. Order follows `reading.services`
+ * (skipping empty buckets, which drops the redundant neo4j rollup). Named
+ * owners missing from that list are appended alphabetically; Unattributed last.
+ */
+function groupVolumesByService(
+  otherVolumes: HostStorageVolume[],
+  services: HostStorageService[],
+): VolumeGroup[] {
+  const buckets = new Map<string | null, HostStorageVolume[]>();
+  for (const volume of otherVolumes) {
+    const key = ownerKey(volume.service);
+    const list = buckets.get(key);
+    if (list) {
+      list.push(volume);
+    } else {
+      buckets.set(key, [volume]);
+    }
+  }
+
+  const groups: VolumeGroup[] = [];
+
+  for (const service of services) {
+    const members = buckets.get(service.name);
+    if (!members || members.length === 0) continue;
+    buckets.delete(service.name);
+    groups.push(toGroup(service.name, service.name, members));
+  }
+
+  const unlisted = [...buckets.keys()].filter((key): key is string => key !== null);
+  unlisted.sort((a, b) => a.localeCompare(b));
+  for (const key of unlisted) {
+    const members = buckets.get(key);
+    if (!members) continue;
+    buckets.delete(key);
+    groups.push(toGroup(key, key, members));
+  }
+
+  const unattributed = buckets.get(null);
+  if (unattributed && unattributed.length > 0) {
+    groups.push(toGroup(null, UNATTRIBUTED_LABEL, unattributed));
+  }
+
+  return groups;
+}
+
+function volumeDisplayName(volume: HostStorageVolume, owner: string | null): React.ReactNode {
+  if (!isAnonymousVolumeName(volume.name)) {
+    return truncateForDisplay(volume.name);
+  }
+  const shortened = shortenAnonymousName(volume.name);
+  if (!owner) {
+    return shortened;
+  }
+  return (
+    <>
+      {shortened}
+      <span className="ml-2 font-sans text-muted-foreground">{truncateForDisplay(owner)}</span>
+    </>
+  );
 }
 
 /** Deterministic UTC rendering of the swarm's unix-seconds collection stamp. */
@@ -154,6 +263,7 @@ export default function HostStorageCard({ instanceId }: HostStorageCardProps) {
 
   const neo4jVolumeNames = new Set(reading?.neo4j?.volumes ?? []);
   const otherVolumes = (reading?.volumes ?? []).filter((v) => !neo4jVolumeNames.has(v.name));
+  const volumeGroups = groupVolumesByService(otherVolumes, reading?.services ?? []);
 
   return (
     <Card>
@@ -347,9 +457,9 @@ export default function HostStorageCard({ instanceId }: HostStorageCardProps) {
               )}
             </div>
 
-            {/* Other docker volumes */}
-            {otherVolumes.length > 0 ? (
-              <div>
+            {/* Other docker volumes, grouped by owning service */}
+            {volumeGroups.length > 0 ? (
+              <div data-testid="docker-volumes">
                 <div className="mb-1 text-sm font-medium">Docker volumes</div>
                 <Table>
                   <TableHeader>
@@ -359,15 +469,30 @@ export default function HostStorageCard({ instanceId }: HostStorageCardProps) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {otherVolumes.map((volume) => (
-                      <TableRow key={volume.name}>
-                        <TableCell className="font-mono text-sm">
-                          {truncateForDisplay(volume.name)}
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          {formatBytes(volume.sizeBytes)}
-                        </TableCell>
-                      </TableRow>
+                    {volumeGroups.map((group) => (
+                      <React.Fragment key={group.key ?? UNATTRIBUTED_LABEL}>
+                        <TableRow data-testid={`volume-group-header-${group.label}`}>
+                          <TableCell className="bg-muted/40 text-sm font-medium">
+                            {group.label}
+                          </TableCell>
+                          <TableCell
+                            className="bg-muted/40 text-right text-sm font-medium"
+                            data-testid={`volume-group-total-${group.label}`}
+                          >
+                            {formatBytes(group.total)}
+                          </TableCell>
+                        </TableRow>
+                        {group.volumes.map((volume) => (
+                          <TableRow key={volume.name} data-testid={`volume-row-${volume.name}`}>
+                            <TableCell className="font-mono text-sm">
+                              {volumeDisplayName(volume, group.key)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm">
+                              {formatBytes(volume.sizeBytes)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </React.Fragment>
                     ))}
                   </TableBody>
                 </Table>
