@@ -20,6 +20,7 @@ import type {
   HostStorageReadResult,
   HostStorageReadReasonCode,
 } from "@/services/swarm/host-storage-read";
+import SwarmPasswordUpdateForm from "@/app/admin/components/SwarmPasswordUpdateForm";
 
 interface HostStorageCardProps {
   instanceId: string;
@@ -215,15 +216,27 @@ export default function HostStorageCard({ instanceId }: HostStorageCardProps) {
         ) : data?.outcome === "failed" ? (
           (() => {
             const copy = failedStateCopy(data.reasonCode);
+            const workspaceId = data.workspaceId;
+            const showPasswordForm =
+              data.reasonCode === "DECRYPT_FAILED" && Boolean(workspaceId);
             return (
               <div className="flex items-start gap-3 py-6">
                 <Info className="mt-0.5 h-5 w-5 text-muted-foreground" />
-                <div>
-                  <div className="font-medium">{copy.title}</div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {copy.detail}
-                    {data.reasonCode ? ` (${data.reasonCode})` : ""}
-                  </p>
+                <div className="space-y-4">
+                  <div>
+                    <div className="font-medium">{copy.title}</div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {copy.detail}
+                      {data.reasonCode ? ` (${data.reasonCode})` : ""}
+                    </p>
+                  </div>
+                  {showPasswordForm && workspaceId ? (
+                    <SwarmPasswordUpdateForm
+                      workspaceId={workspaceId}
+                      hasPassword={true}
+                      onSuccess={fetchStorage}
+                    />
+                  ) : null}
                 </div>
               </div>
             );

@@ -64,6 +64,26 @@ vi.mock("@/components/ui/table", () => ({
   TableRow: ({ children }: { children: React.ReactNode }) => <tr>{children}</tr>,
 }));
 
+vi.mock("@/app/admin/components/SwarmPasswordUpdateForm", () => ({
+  default: ({
+    workspaceId,
+    hasPassword,
+    onSuccess,
+  }: {
+    workspaceId: string;
+    hasPassword: boolean;
+    onSuccess: () => void;
+  }) => (
+    <div data-testid="swarm-password-update-form">
+      <span data-testid="form-workspace-id">{workspaceId}</span>
+      <span data-testid="form-has-password">{String(hasPassword)}</span>
+      <button type="button" onClick={onSuccess} data-testid="form-success">
+        Simulate success
+      </button>
+    </div>
+  ),
+}));
+
 import HostStorageCard from "@/app/admin/swarms/[instanceId]/HostStorageCard";
 
 // ---------------------------------------------------------------------------
@@ -282,6 +302,71 @@ describe("HostStorageCard", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/admin/swarms/i-0abc123def/storage", {
+      method: "GET",
+    });
+  });
+
+  it("renders SwarmPasswordUpdateForm only for DECRYPT_FAILED with a workspaceId", async () => {
+    await renderWithFetch(
+      fetchResponse({
+        outcome: "failed",
+        reasonCode: "DECRYPT_FAILED",
+        workspaceId: "ws-decrypt",
+        cached: false,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not be decrypted/i)).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("swarm-password-update-form")).toBeInTheDocument();
+    expect(screen.getByTestId("form-workspace-id")).toHaveTextContent("ws-decrypt");
+    expect(screen.getByTestId("form-has-password")).toHaveTextContent("true");
+  });
+
+  it("does not render SwarmPasswordUpdateForm for other failed reason codes", async () => {
+    await renderWithFetch(
+      fetchResponse({ outcome: "failed", reasonCode: "CONFIG_INVALID", cached: false }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/not configured for host storage reads/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("swarm-password-update-form")).not.toBeInTheDocument();
+  });
+
+  it("does not render SwarmPasswordUpdateForm for DECRYPT_FAILED without workspaceId", async () => {
+    await renderWithFetch(
+      fetchResponse({ outcome: "failed", reasonCode: "DECRYPT_FAILED", cached: false }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not be decrypted/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("swarm-password-update-form")).not.toBeInTheDocument();
+  });
+
+  it("re-fetches storage when SwarmPasswordUpdateForm succeeds", async () => {
+    const fetchMock = await renderWithFetch(
+      fetchResponse({
+        outcome: "failed",
+        reasonCode: "DECRYPT_FAILED",
+        workspaceId: "ws-decrypt",
+        cached: false,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("swarm-password-update-form")).toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId("form-success"));
+
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
