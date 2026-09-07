@@ -17,10 +17,10 @@
   "docker_root_dir": "/var/lib/docker",
   "docker_root_filesystem": "/",
   "volumes": [
-    { "name": "neo4j.sphinx", "size_bytes": -1, "size_known": false },
-    { "name": "sphinx-data", "size_bytes": 536870912, "size_known": true }
+    { "name": "neo4j.sphinx", "size_bytes": null, "size_known": false, "service": null },
+    { "name": "sphinx-data", "size_bytes": 536870912, "size_known": true, "service": null }
   ],
-  "neo4j": { "volumes": ["neo4j.sphinx"], "size_bytes": -1, "size_known": false },
+  "neo4j": { "volumes": ["neo4j.sphinx"], "size_bytes": null, "size_known": false },
   "errors": [
     { "collector": "volumes", "reason": "docker df timed out after 8s" }
   ]
