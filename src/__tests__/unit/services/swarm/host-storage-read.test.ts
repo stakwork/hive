@@ -71,6 +71,7 @@ function swarmRow(overrides: Record<string, unknown> = {}) {
     id: "swarm-1",
     swarmUrl: "https://swarm40.sphinx.chat",
     swarmPassword: envelopeJson(),
+    workspaceId: "workspace-1",
     workspace: { deleted: false },
     ...overrides,
   };
@@ -196,6 +197,7 @@ describe("readHostStorage", () => {
 
     expect(result.outcome).toBe("fresh");
     expect(result.cached).toBe(false);
+    expect(result.workspaceId).toBeUndefined();
     expect(result.collectedAt).toBe(1730000000); // swarm-side collected_at, not restamped
     expect(mockRedisSetex).toHaveBeenCalledTimes(1);
     const [key, ttl, payload] = mockRedisSetex.mock.calls[0];
@@ -225,6 +227,7 @@ describe("readHostStorage", () => {
 
     expect(result.outcome).toBe("no_swarm_record");
     expect(result.reasonCode).toBe("NO_SWARM_RECORD");
+    expect(result.workspaceId).toBeUndefined();
     expect(mockDecryptField).not.toHaveBeenCalled();
     expect(mockGetJwt).not.toHaveBeenCalled();
   });
@@ -251,6 +254,7 @@ describe("readHostStorage", () => {
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("CONFIG_INVALID");
+    expect(result.workspaceId).toBeUndefined();
     expect(mockDecryptField).not.toHaveBeenCalled();
     expect(mockGetJwt).not.toHaveBeenCalled();
     expect(mockCmdRequest).not.toHaveBeenCalled();
@@ -274,6 +278,7 @@ describe("readHostStorage", () => {
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("WORKSPACE_DELETED");
+    expect(result.workspaceId).toBeUndefined();
     expect(mockDecryptField).not.toHaveBeenCalled();
     expect(mockGetJwt).not.toHaveBeenCalled();
     expect(mockCmdRequest).not.toHaveBeenCalled();
@@ -290,6 +295,7 @@ describe("readHostStorage", () => {
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("DECRYPT_FAILED");
+    expect(result.workspaceId).toBe("workspace-1");
     expect(mockDecryptField).not.toHaveBeenCalled();
     expect(mockGetJwt).not.toHaveBeenCalled();
   });
@@ -304,6 +310,7 @@ describe("readHostStorage", () => {
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("DECRYPT_FAILED");
+    expect(result.workspaceId).toBe("workspace-1");
     expect(mockGetJwt).not.toHaveBeenCalled();
   });
 
@@ -432,6 +439,7 @@ describe("readHostStorage", () => {
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("AUTH_FAILED");
+    expect(result.workspaceId).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain("RAW_JWT_ERROR_MARKER");
     expect(consoleOutput()).not.toContain("RAW_JWT_ERROR_MARKER");
   });
