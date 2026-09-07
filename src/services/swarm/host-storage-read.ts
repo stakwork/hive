@@ -94,6 +94,8 @@ export interface HostStorageReadResult {
   reasonCode?: HostStorageReadReasonCode;
   /** True only when the reading was served from the Hive cooldown cache. */
   cached: boolean;
+  /** Present only on DECRYPT_FAILED so the admin recovery UI can target the workspace. */
+  workspaceId?: string;
 }
 
 const encryptionService = EncryptionService.getInstance();
@@ -117,9 +119,12 @@ function result(
   reasonCode: HostStorageReadReasonCode | undefined,
   swarmId: string | null,
   instanceId: string,
+  workspaceId?: string,
 ): HostStorageReadResult {
   if (reasonCode) logFailure(swarmId, instanceId, reasonCode);
-  return { outcome, reasonCode, cached: false };
+  return workspaceId
+    ? { outcome, reasonCode, cached: false, workspaceId }
+    : { outcome, reasonCode, cached: false };
 }
 
 export function isAbortErrorLike(error: unknown): boolean {
@@ -239,6 +244,7 @@ export async function readHostStorage(instanceId: string): Promise<HostStorageRe
       id: true,
       swarmUrl: true,
       swarmPassword: true,
+      workspaceId: true,
       workspace: { select: { deleted: true } },
     },
   });
@@ -272,13 +278,13 @@ export async function readHostStorage(instanceId: string): Promise<HostStorageRe
 
   // 6. Credentials — DB path only.
   if (!isEncryptedEnvelope(swarm.swarmPassword)) {
-    return result("failed", "DECRYPT_FAILED", swarm.id, instanceId);
+    return result("failed", "DECRYPT_FAILED", swarm.id, instanceId, swarm.workspaceId);
   }
   let password: string;
   try {
     password = encryptionService.decryptField("swarmPassword", swarm.swarmPassword);
   } catch {
-    return result("failed", "DECRYPT_FAILED", swarm.id, instanceId);
+    return result("failed", "DECRYPT_FAILED", swarm.id, instanceId, swarm.workspaceId);
   }
 
   // 7. Login. getSwarmCmdJwt throws with the swarm's raw response text
