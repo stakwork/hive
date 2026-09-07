@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, cleanup, within } from "@testing-library/react";
 import React from "react";
 
 // ---------------------------------------------------------------------------
@@ -52,16 +52,26 @@ vi.mock("@/components/ui/progress", () => ({
 }));
 
 vi.mock("@/components/ui/table", () => ({
-  Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
+  Table: ({ children, ...props }: { children: React.ReactNode } & Record<string, unknown>) => (
+    <table {...props}>{children}</table>
+  ),
   TableBody: ({ children }: { children: React.ReactNode }) => <tbody>{children}</tbody>,
-  TableCell: ({ children, className }: { children: React.ReactNode; className?: string }) => (
-    <td className={className}>{children}</td>
+  TableCell: ({
+    children,
+    className,
+    ...props
+  }: { children: React.ReactNode; className?: string } & Record<string, unknown>) => (
+    <td className={className} {...props}>
+      {children}
+    </td>
   ),
   TableHead: ({ children, className }: { children: React.ReactNode; className?: string }) => (
     <th className={className}>{children}</th>
   ),
   TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,
-  TableRow: ({ children }: { children: React.ReactNode }) => <tr>{children}</tr>,
+  TableRow: ({ children, ...props }: { children: React.ReactNode } & Record<string, unknown>) => (
+    <tr {...props}>{children}</tr>
+  ),
 }));
 
 vi.mock("@/app/admin/components/SwarmPasswordUpdateForm", () => ({
@@ -92,6 +102,32 @@ import HostStorageCard from "@/app/admin/swarms/[instanceId]/HostStorageCard";
 
 type Json = Record<string, unknown>;
 
+function volume(opts: {
+  name: string;
+  sizeBytes?: number | null;
+  sizeKnown?: boolean;
+  service?: string | null;
+}): Json {
+  return {
+    name: opts.name,
+    // Preserve explicit null — `?? 0` would fabricate a true-zero size.
+    sizeBytes: opts.sizeBytes === undefined ? 0 : opts.sizeBytes,
+    sizeKnown: opts.sizeKnown ?? true,
+    service: opts.service === undefined ? null : opts.service,
+  };
+}
+
+function serviceRollup(
+  name: string,
+  sizeBytes: number | null = 0,
+  sizeKnown = true,
+): Json {
+  return { name, sizeBytes, sizeKnown };
+}
+
+const ANON_VOLUME =
+  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
 function okReading(overrides: Json = {}): Json {
   const gov = {
     mount: "/",
@@ -112,11 +148,25 @@ function okReading(overrides: Json = {}): Json {
     dockerRootDir: "/var/lib/docker",
     dockerRootFilesystem: "/",
     governingFilesystem: gov,
-    volumes: [{ name: "neo4j.sphinx", sizeBytes: 10737418240, sizeKnown: true }], // 10 GB
+    volumes: [
+      volume({
+        name: "neo4j.sphinx",
+        sizeBytes: 10737418240,
+        sizeKnown: true,
+        service: "neo4j",
+      }),
+    ],
     neo4j: { volumes: ["neo4j.sphinx"], sizeBytes: 10737418240, sizeKnown: true },
+    services: [],
     errors: [],
     ...overrides,
   };
+}
+
+function groupLabels(): string[] {
+  return screen
+    .getAllByTestId(/^volume-group-header-/)
+    .map((el) => el.getAttribute("data-testid")!.slice("volume-group-header-".length));
 }
 
 function freshResponse(reading: Json): Json {
@@ -185,8 +235,8 @@ describe("HostStorageCard", () => {
     expect(screen.queryByText(/0 B/)).not.toBeInTheDocument();
     // No progress bar without known capacity.
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-    // Known volume sizes still render precisely.
-    expect(screen.getByText("512 MB")).toBeInTheDocument();
+    // Known volume sizes still render precisely (row, not the group header).
+    expect(screen.getByTestId("volume-row-sphinx-data")).toHaveTextContent("512 MB");
   });
 
   it("renders 'Not present' when neo4j is null, not an error", async () => {
@@ -221,7 +271,7 @@ describe("HostStorageCard", () => {
     expect(screen.queryByTestId("free-bytes")).not.toBeInTheDocument();
     // Container-level readings stay visible:
     expect(screen.getByText(/Size: 10 GB/)).toBeInTheDocument();
-    expect(screen.getByText("512 MB")).toBeInTheDocument();
+    expect(screen.getByTestId("volume-row-sphinx-data")).toHaveTextContent("512 MB");
   });
 
   it("renders errors[] as inline warnings alongside a valid PARTIAL reading", async () => {
@@ -378,7 +428,7 @@ describe("HostStorageCard", () => {
   it("truncates over-long swarm-derived strings for display (plain text only)", async () => {
     const longName = "v".repeat(200);
     const reading = okReading({
-      volumes: [{ name: longName, sizeBytes: 1024, sizeKnown: true }],
+      volumes: [volume({ name: longName, sizeBytes: 1024, sizeKnown: true, service: "alice" })],
       neo4j: null,
     });
     await renderWithFetch(fetchResponse(freshResponse(reading)));
@@ -387,5 +437,176 @@ describe("HostStorageCard", () => {
       const cell = screen.getByText(/^v+…$/);
       expect(cell.textContent?.length).toBe(81); // 80 chars + ellipsis
     });
+  });
+
+  it("does not render a second Neo4j group for a services[] entry named neo4j", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({
+          name: "neo4j.sphinx",
+          sizeBytes: 10737418240,
+          sizeKnown: true,
+          service: "neo4j",
+        }),
+        volume({ name: "alice-data", sizeBytes: 1024, sizeKnown: true, service: "alice" }),
+      ],
+      neo4j: { volumes: ["neo4j.sphinx"], sizeBytes: 10737418240, sizeKnown: true },
+      services: [serviceRollup("neo4j"), serviceRollup("alice")],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("docker-volumes")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("neo4j-size")).toBeInTheDocument();
+    expect(screen.queryByTestId("volume-group-header-neo4j")).not.toBeInTheDocument();
+    expect(groupLabels()).toEqual(["alice"]);
+  });
+
+  it("groups volumes sharing a service under one header, ordered by reading.services", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({ name: "bob-vol", sizeBytes: 2048, sizeKnown: true, service: "bob" }),
+        volume({ name: "alice-b", sizeBytes: 512, sizeKnown: true, service: "alice" }),
+        volume({ name: "alice-a", sizeBytes: 256, sizeKnown: true, service: "alice" }),
+      ],
+      neo4j: null,
+      services: [serviceRollup("bob"), serviceRollup("alice")],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("volume-group-header-bob")).toBeInTheDocument();
+    });
+    expect(groupLabels()).toEqual(["bob", "alice"]);
+    const aliceHeader = screen.getByTestId("volume-group-header-alice");
+    expect(aliceHeader).toHaveTextContent("alice");
+    expect(screen.getByTestId("volume-row-alice-a")).toBeInTheDocument();
+    expect(screen.getByTestId("volume-row-alice-b")).toBeInTheDocument();
+  });
+
+  it("still renders a volume whose owner is absent from services[] in its own group", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({ name: "listed-vol", sizeBytes: 1024, sizeKnown: true, service: "alice" }),
+        volume({ name: "orphan-owner", sizeBytes: 2048, sizeKnown: true, service: "charlie" }),
+      ],
+      neo4j: null,
+      services: [serviceRollup("alice")],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("volume-row-orphan-owner")).toBeInTheDocument();
+    });
+    expect(groupLabels()).toEqual(["alice", "charlie"]);
+  });
+
+  it("renders null-owner volumes under Unattributed, last", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({ name: "orphan-null", sizeBytes: 4096, sizeKnown: true, service: null }),
+        volume({ name: "orphan-empty", sizeBytes: 2048, sizeKnown: true, service: "" }),
+        volume({ name: "alice-data", sizeBytes: 1024, sizeKnown: true, service: "alice" }),
+      ],
+      neo4j: null,
+      services: [serviceRollup("alice")],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("volume-group-header-Unattributed")).toBeInTheDocument();
+    });
+    expect(groupLabels()).toEqual(["alice", "Unattributed"]);
+    expect(screen.getByTestId("volume-row-orphan-null")).toBeInTheDocument();
+    expect(screen.getByTestId("volume-row-orphan-empty")).toBeInTheDocument();
+  });
+
+  it("shows header total unknown when any member is unmeasurable, and 0 B for true-zero groups", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({ name: "bob-known", sizeBytes: 1024, sizeKnown: true, service: "bob" }),
+        volume({ name: "bob-unknown", sizeBytes: null, sizeKnown: false, service: "bob" }),
+        volume({ name: "empty-a", sizeBytes: 0, sizeKnown: true, service: "empty" }),
+        volume({ name: "empty-b", sizeBytes: 0, sizeKnown: true, service: "empty" }),
+      ],
+      neo4j: null,
+      services: [serviceRollup("bob"), serviceRollup("empty")],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("volume-group-total-bob")).toHaveTextContent("unknown");
+    });
+    expect(screen.getByTestId("volume-group-total-empty")).toHaveTextContent("0 B");
+    expect(screen.getByTestId("volume-row-empty-a")).toHaveTextContent("0 B");
+    expect(screen.getByTestId("volume-row-bob-unknown")).toHaveTextContent("unknown");
+  });
+
+  it("sorts rows within a group by name ascending", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({ name: "zeta", sizeBytes: 1, sizeKnown: true, service: "alice" }),
+        volume({ name: "alpha", sizeBytes: 2, sizeKnown: true, service: "alice" }),
+        volume({ name: "mid", sizeBytes: 3, sizeKnown: true, service: "alice" }),
+      ],
+      neo4j: null,
+      services: [serviceRollup("alice")],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("volume-row-alpha")).toBeInTheDocument();
+    });
+    const rows = screen.getAllByTestId(/^volume-row-/);
+    expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
+      "volume-row-alpha",
+      "volume-row-mid",
+      "volume-row-zeta",
+    ]);
+  });
+
+  it("shortens a 64-hex volume name and shows the owning service inline", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({ name: ANON_VOLUME, sizeBytes: 1024, sizeKnown: true, service: "alice" }),
+      ],
+      neo4j: null,
+      services: [serviceRollup("alice")],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`volume-row-${ANON_VOLUME}`)).toBeInTheDocument();
+    });
+    const row = screen.getByTestId(`volume-row-${ANON_VOLUME}`);
+    expect(row).toHaveTextContent("0123456789ab…");
+    expect(row).toHaveTextContent("alice");
+    expect(row.textContent).not.toContain(ANON_VOLUME);
+    expect(within(row).getByText("alice")).toBeInTheDocument();
+  });
+
+  it("renders formatBytes(null) as unknown and formatBytes(0) as 0 B, distinguishable in the DOM", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({ name: "zero-vol", sizeBytes: 0, sizeKnown: true, service: "alice" }),
+        volume({ name: "unknown-vol", sizeBytes: null, sizeKnown: false, service: "bob" }),
+      ],
+      neo4j: null,
+      services: [serviceRollup("alice"), serviceRollup("bob")],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("volume-row-zero-vol")).toBeInTheDocument();
+    });
+    const zeroRow = screen.getByTestId("volume-row-zero-vol");
+    const unknownRow = screen.getByTestId("volume-row-unknown-vol");
+    expect(within(zeroRow).getByText("0 B")).toBeInTheDocument();
+    expect(within(unknownRow).getByText("unknown")).toBeInTheDocument();
+    expect(screen.getByTestId("volume-group-total-alice")).toHaveTextContent("0 B");
+    expect(screen.getByTestId("volume-group-total-bob")).toHaveTextContent("unknown");
+    expect(within(zeroRow).queryByText("unknown")).not.toBeInTheDocument();
+    expect(within(unknownRow).queryByText("0 B")).not.toBeInTheDocument();
   });
 });
