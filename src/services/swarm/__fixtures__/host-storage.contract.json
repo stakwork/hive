@@ -17,9 +17,40 @@
   "docker_root_dir": "/var/lib/docker",
   "docker_root_filesystem": "/",
   "volumes": [
-    { "name": "neo4j.sphinx", "size_bytes": 0, "size_known": true }
+    { "name": "neo4j.sphinx", "size_bytes": 0, "size_known": true, "service": "neo4j" },
+    { "name": "alice-data", "size_bytes": 536870912, "size_known": true, "service": "alice" },
+    { "name": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "size_bytes": 1024, "size_known": true, "service": "alice" },
+    { "name": "unmeasured", "size_bytes": null, "size_known": false, "service": "bob" },
+    { "name": "orphan-null", "size_bytes": 4096, "size_known": true, "service": null },
+    { "name": "orphan-empty", "size_bytes": 0, "size_known": true, "service": "" }
   ],
   "neo4j": { "volumes": ["neo4j.sphinx"], "size_bytes": 0, "size_known": true },
+  "services": [
+    {
+      "name": "neo4j",
+      "typ": "Internal",
+      "volumes": ["neo4j.sphinx"],
+      "size_bytes": 0,
+      "size_known": true
+    },
+    {
+      "name": "alice",
+      "typ": "Internal",
+      "volumes": [
+        "alice-data",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      ],
+      "size_bytes": 536871936,
+      "size_known": true
+    },
+    {
+      "name": "bob",
+      "typ": "Internal",
+      "volumes": ["unmeasured"],
+      "size_bytes": null,
+      "size_known": false
+    }
+  ],
   "errors": [
     { "collector": "volumes", "reason": "docker df timed out after 8s" }
   ]
