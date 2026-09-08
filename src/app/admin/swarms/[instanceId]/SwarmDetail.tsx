@@ -26,6 +26,39 @@ interface Container {
   image: string;
 }
 
+/**
+ * Raw shape returned by the Docker API (via the sphinx-swarm `ListContainers`
+ * command). Keys are capitalized and, for the name, nested in an array —
+ * unlike the flat lowercase `Container` shape the UI renders.
+ */
+interface RawDockerContainer {
+  Names?: string[];
+  State?: string;
+  Status?: string;
+  Image?: string;
+  name?: string;
+  status?: string;
+  image?: string;
+}
+
+/**
+ * Normalizes a container object — which may come back from the swarm host
+ * either as a raw Docker API object (capitalized, nested keys) or already in
+ * the flat lowercase UI shape — into the `Container` shape the table renders.
+ *
+ * `status` intentionally carries the Docker *state* (e.g. "running",
+ * "created") rather than the human-readable `Status` string (e.g. "Up 4
+ * hours"), since the UI's `isRunning` check compares against `"running"`.
+ */
+export function normalizeContainer(raw: RawDockerContainer): Container {
+  const rawName = Array.isArray(raw?.Names) ? raw.Names[0] : undefined;
+  const name = rawName ? rawName.replace(/^\//, "") : raw?.name ?? "";
+  const status = raw?.State ?? raw?.status ?? "";
+  const image = raw?.Image ?? raw?.image ?? "";
+
+  return { name, status, image };
+}
+
 interface SwarmDetailProps {
   instanceId: string;
   swarmUrl?: string;
@@ -93,7 +126,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
         : Array.isArray((body as any)?.containers)
           ? (body as any).containers
           : [];
-      setContainers(list as Container[]);
+      setContainers((list as RawDockerContainer[]).map(normalizeContainer));
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load containers");
     } finally {
