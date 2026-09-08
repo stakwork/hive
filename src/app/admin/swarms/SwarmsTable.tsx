@@ -26,6 +26,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatBytes } from "@/lib/utils/format";
+import type {
+  SwarmStorageHistoryPoint,
+  SwarmStorageHistoryResponse,
+  SwarmStorageInstancePayload,
+} from "@/app/api/admin/swarms/storage/route";
 
 interface Ec2Instance {
   instanceId: string;
@@ -61,9 +67,207 @@ function StateBadge({ state }: { state: string }) {
 }
 
 const TRANSITIONAL_STATES = new Set(["pending", "stopping", "shutting-down", "rebooting"]);
+const MAX_SERVICE_NAME_DISPLAY = 32;
+const SPARKLINE_WIDTH = 72;
+const SPARKLINE_HEIGHT = 24;
+const SERVICES_PREVIEW_LIMIT = 3;
 
 function getUserAssignedName(tags: { key: string; value: string }[]): string | null {
   return tags.find((t) => t.key === "UserAssignedName")?.value ?? null;
+}
+
+function truncateServiceName(name: string): string {
+  return name.length > MAX_SERVICE_NAME_DISPLAY ? `${name.slice(0, MAX_SERVICE_NAME_DISPLAY)}…` : name;
+}
+
+function usagePercent(used: number | null, total: number | null): number | null {
+  if (used == null || total == null || total <= 0 || !Number.isFinite(used) || !Number.isFinite(total)) {
+    return null;
+  }
+  return Math.min(100, Math.max(0, (used / total) * 100));
+}
+
+function formatCollectedAt(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+function snapshotStatusClass(status: string): string {
+  const normalized = status.toUpperCase();
+  if (normalized === "OK") {
+    return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+  }
+  if (normalized === "PARTIAL") {
+    return "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200";
+  }
+  if (normalized === "UNREACHABLE" || normalized === "FAILED" || normalized === "AMBIGUOUS") {
+    return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+  }
+  return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+}
+
+function StorageUsageCell({
+  instanceId,
+  payload,
+}: {
+  instanceId: string;
+  payload: SwarmStorageInstancePayload | undefined;
+}) {
+  const latest = payload?.latest;
+  if (!latest) {
+    return (
+      <span className="text-muted-foreground" data-testid={`storage-usage-${instanceId}`}>
+        No snapshots
+      </span>
+    );
+  }
+
+  const pct = usagePercent(latest.usedBytes, latest.totalBytes);
+  if (latest.usedBytes == null && latest.totalBytes == null) {
+    return (
+      <span className="text-muted-foreground" data-testid={`storage-usage-${instanceId}`}>
+        —
+      </span>
+    );
+  }
+
+  return (
+    <div className="text-sm whitespace-nowrap" data-testid={`storage-usage-${instanceId}`}>
+      <span className="font-medium">
+        {formatBytes(latest.usedBytes)} / {formatBytes(latest.totalBytes)}
+      </span>
+      {pct != null ? <span className="ml-1 text-muted-foreground">({pct.toFixed(0)}%)</span> : null}
+    </div>
+  );
+}
+
+function StorageServicesCell({
+  instanceId,
+  payload,
+}: {
+  instanceId: string;
+  payload: SwarmStorageInstancePayload | undefined;
+}) {
+  const services = payload?.latest?.services ?? [];
+  if (services.length === 0) {
+    return (
+      <span className="text-muted-foreground" data-testid={`storage-services-${instanceId}`}>
+        —
+      </span>
+    );
+  }
+
+  const shown = services.slice(0, SERVICES_PREVIEW_LIMIT);
+  const rest = services.length - shown.length;
+
+  return (
+    <div className="max-w-[200px] space-y-0.5 text-xs" data-testid={`storage-services-${instanceId}`}>
+      {shown.map((service, index) => (
+        <div key={`${index}:${service.name}`} className="flex items-baseline justify-between gap-2">
+          <span className="truncate font-medium">{truncateServiceName(service.name)}</span>
+          <span className="shrink-0 text-muted-foreground">
+            {service.sizeKnown ? formatBytes(service.sizeBytes) : "unknown"}
+          </span>
+        </div>
+      ))}
+      {rest > 0 ? <div className="text-muted-foreground">+{rest} more</div> : null}
+      <Link
+        href={`/admin/swarms/${instanceId}`}
+        className="text-muted-foreground underline hover:text-foreground"
+        onClick={(e) => e.stopPropagation()}
+      >
+        Details
+      </Link>
+    </div>
+  );
+}
+
+function StorageStatusCell({
+  instanceId,
+  payload,
+}: {
+  instanceId: string;
+  payload: SwarmStorageInstancePayload | undefined;
+}) {
+  const latest = payload?.latest;
+  if (!latest) {
+    return (
+      <span className="text-muted-foreground" data-testid={`storage-status-${instanceId}`}>
+        —
+      </span>
+    );
+  }
+
+  return (
+    <div className="space-y-1" data-testid={`storage-status-${instanceId}`}>
+      <Badge className={snapshotStatusClass(latest.status)}>{latest.status}</Badge>
+      {latest.collectedAt ? (
+        <div className="text-xs text-muted-foreground whitespace-nowrap">
+          {formatCollectedAt(latest.collectedAt)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function UsageSparkline({
+  instanceId,
+  history,
+}: {
+  instanceId: string;
+  history: SwarmStorageHistoryPoint[] | undefined;
+}) {
+  const points = (history ?? []).filter(
+    (point): point is SwarmStorageHistoryPoint & { usedBytes: number } =>
+      point.usedBytes != null && Number.isFinite(point.usedBytes),
+  );
+
+  if (points.length === 0) {
+    return (
+      <span className="text-muted-foreground" data-testid={`storage-sparkline-${instanceId}`}>
+        —
+      </span>
+    );
+  }
+
+  const values = points.map((point) => point.usedBytes);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const lastX = Math.max(points.length - 1, 1);
+
+  const coords = values.map((value, index) => {
+    const x = (index / lastX) * SPARKLINE_WIDTH;
+    const y = SPARKLINE_HEIGHT - 2 - ((value - min) / range) * (SPARKLINE_HEIGHT - 4);
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+
+  return (
+    <svg
+      width={SPARKLINE_WIDTH}
+      height={SPARKLINE_HEIGHT}
+      viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`}
+      role="img"
+      aria-label="Storage usage trend"
+      data-testid={`storage-sparkline-${instanceId}`}
+      className="text-foreground/70"
+    >
+      {points.length === 1 ? (
+        <circle cx={SPARKLINE_WIDTH / 2} cy={SPARKLINE_HEIGHT / 2} r="2" fill="currentColor" />
+      ) : (
+        <polyline
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          points={coords.join(" ")}
+        />
+      )}
+    </svg>
+  );
 }
 
 export default function SwarmsTable() {
@@ -81,14 +285,25 @@ export default function SwarmsTable() {
     direction: "desc",
   });
   const [updatingSwarms, setUpdatingSwarms] = useState<Set<string>>(new Set());
+  const [storageByInstance, setStorageByInstance] = useState<SwarmStorageHistoryResponse>({});
 
   const fetchInstances = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/swarms");
-      if (!res.ok) throw new Error(`Failed to fetch instances (${res.status})`);
-      const data = await res.json();
+      const [instancesRes, storageRes] = await Promise.all([
+        fetch("/api/admin/swarms"),
+        fetch("/api/admin/swarms/storage").catch(() => null),
+      ]);
+      if (!instancesRes.ok) throw new Error(`Failed to fetch instances (${instancesRes.status})`);
+      const data = await instancesRes.json();
       setInstances(data);
       setError(null);
+
+      if (storageRes?.ok) {
+        const storage = (await storageRes.json()) as SwarmStorageHistoryResponse;
+        setStorageByInstance(storage && typeof storage === "object" ? storage : {});
+      } else {
+        setStorageByInstance({});
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -289,6 +504,10 @@ export default function SwarmsTable() {
             <TableHead>Private IP</TableHead>
             <TableHead>In Hive</TableHead>
             <TableHead>URL</TableHead>
+            <TableHead>Storage</TableHead>
+            <TableHead>Services</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Trend</TableHead>
             <TableHead>Tags</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
@@ -302,6 +521,7 @@ export default function SwarmsTable() {
             const isRunning = instance.state === "running";
             const isClickable = isRunning;
             const isUpdating = updatingSwarms.has(instance.instanceId);
+            const storage = storageByInstance[instance.instanceId];
 
             return (
               <TableRow
@@ -335,6 +555,18 @@ export default function SwarmsTable() {
                 </TableCell>
                 <TableCell className="font-mono text-sm">
                   {userAssignedName ? `${userAssignedName}.sphinx.chat` : "—"}
+                </TableCell>
+                <TableCell>
+                  <StorageUsageCell instanceId={instance.instanceId} payload={storage} />
+                </TableCell>
+                <TableCell>
+                  <StorageServicesCell instanceId={instance.instanceId} payload={storage} />
+                </TableCell>
+                <TableCell>
+                  <StorageStatusCell instanceId={instance.instanceId} payload={storage} />
+                </TableCell>
+                <TableCell>
+                  <UsageSparkline instanceId={instance.instanceId} history={storage?.history} />
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                   {visibleTags.map((t) => `${t.key}=${t.value}`).join(", ") || "—"}

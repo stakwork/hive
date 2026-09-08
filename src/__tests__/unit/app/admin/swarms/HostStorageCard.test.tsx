@@ -254,15 +254,15 @@ describe("HostStorageCard", () => {
     expect(screen.getByTestId("volume-row-sphinx-data")).toHaveTextContent("512 MB");
   });
 
-  it("renders 'Not present' when neo4j is null, not an error", async () => {
+  it("omits neo4j from the service-usage summary when neo4j is null", async () => {
     const reading = okReading({ neo4j: null });
     // The neo4j volume stays in the volumes list, so "other volumes" = all.
     await renderWithFetch(fetchResponse(freshResponse(reading)));
 
     await waitFor(() => {
-      expect(screen.getByTestId("neo4j-absent")).toHaveTextContent("Not present");
+      expect(screen.getByTestId("host-capacity")).toBeInTheDocument();
     });
-    expect(screen.queryByTestId("neo4j-size")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("service-usage-row-neo4j")).not.toBeInTheDocument();
   });
 
   it("with host_visible: false, suppresses host-capacity figures and the Progress bar but keeps volume and Neo4j sizes", async () => {
@@ -285,7 +285,9 @@ describe("HostStorageCard", () => {
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.queryByTestId("free-bytes")).not.toBeInTheDocument();
     // Container-level readings stay visible:
-    expect(screen.getByText(/Size: 10 GB/)).toBeInTheDocument();
+    expect(screen.getByTestId("service-usage-row-neo4j")).toHaveTextContent(
+      formatBytes(10737418240),
+    );
     expect(screen.getByTestId("volume-row-sphinx-data")).toHaveTextContent("512 MB");
   });
 
@@ -473,9 +475,11 @@ describe("HostStorageCard", () => {
     await waitFor(() => {
       expect(screen.getByTestId("docker-volumes")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("neo4j-size")).toBeInTheDocument();
+    expect(screen.getByTestId("service-usage-row-neo4j")).toHaveTextContent(
+      formatBytes(10737418240),
+    );
+    expect(screen.getByTestId("service-usage-row-neo4j")).not.toHaveTextContent("0 B");
     expect(screen.queryByTestId("volume-group-header-neo4j")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("service-usage-row-neo4j")).not.toBeInTheDocument();
     expect(screen.getByTestId("volume-row-alice-data")).toBeInTheDocument();
     expect(screen.queryByTestId("volume-group-header-alice")).not.toBeInTheDocument();
   });
@@ -639,7 +643,7 @@ describe("HostStorageCard", () => {
     expect(within(unknownRow).queryByText("0 B")).not.toBeInTheDocument();
   });
 
-  it("renders a per-service summary largest-first, unknown last, excluding neo4j", async () => {
+  it("renders a per-service summary largest-first, unknown last, including neo4j", async () => {
     const reading = okReading({
       volumes: [
         volume({
@@ -663,7 +667,10 @@ describe("HostStorageCard", () => {
     await waitFor(() => {
       expect(screen.getByTestId("service-usage-summary")).toBeInTheDocument();
     });
-    expect(summaryRowNames()).toEqual(["bitcoind", "lnd", "runner", "cln"]);
+    expect(summaryRowNames()).toEqual(["neo4j", "bitcoind", "lnd", "runner", "cln"]);
+    expect(screen.getByTestId("service-usage-row-neo4j")).toHaveTextContent(
+      formatBytes(NEO4J_BYTES),
+    );
     expect(screen.getByTestId("service-usage-row-bitcoind")).toHaveTextContent(
       formatBytes(BITCOIND_BYTES),
     );
@@ -672,7 +679,6 @@ describe("HostStorageCard", () => {
       formatBytes(RUNNER_BYTES),
     );
     expect(screen.getByTestId("service-usage-row-cln")).toHaveTextContent("unknown");
-    expect(screen.queryByTestId("service-usage-row-neo4j")).not.toBeInTheDocument();
   });
 
   it("does not render a residual neo4j table group for volumes named outside neo4j.volumes", async () => {
@@ -703,11 +709,12 @@ describe("HostStorageCard", () => {
     await renderWithFetch(fetchResponse(freshResponse(reading)));
 
     await waitFor(() => {
-      expect(screen.getByTestId("neo4j-size")).toHaveTextContent(formatBytes(NEO4J_BYTES));
+      expect(screen.getByTestId("service-usage-row-neo4j")).toHaveTextContent(
+        formatBytes(NEO4J_BYTES),
+      );
     });
-    expect(screen.getByTestId("neo4j-size")).toHaveTextContent("14.1 GB");
+    expect(screen.getByTestId("service-usage-row-neo4j")).toHaveTextContent("14.1 GB");
     expect(screen.queryByTestId("volume-group-header-neo4j")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("service-usage-row-neo4j")).not.toBeInTheDocument();
     expect(screen.queryByTestId("volume-row-neo4j-logs")).not.toBeInTheDocument();
     expect(screen.getByTestId("docker-volumes")).not.toHaveTextContent("572 KB");
   });
@@ -800,13 +807,16 @@ describe("HostStorageCard", () => {
     expect(groupLabels()).toEqual(["Unattributed"]);
   });
 
-  it("does not render a service-usage summary when services is empty", async () => {
+  it("renders a neo4j-only service-usage summary when services is empty", async () => {
     const reading = okReading();
     await renderWithFetch(fetchResponse(freshResponse(reading)));
 
     await waitFor(() => {
-      expect(screen.getByTestId("neo4j-size")).toBeInTheDocument();
+      expect(screen.getByTestId("service-usage-summary")).toBeInTheDocument();
     });
-    expect(screen.queryByTestId("service-usage-summary")).not.toBeInTheDocument();
+    expect(summaryRowNames()).toEqual(["neo4j"]);
+    expect(screen.getByTestId("service-usage-row-neo4j")).toHaveTextContent(
+      formatBytes(10737418240),
+    );
   });
 });
