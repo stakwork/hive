@@ -48,6 +48,50 @@ function mapMockInstance(inst: MockEc2Instance): Ec2InstanceInfo {
   };
 }
 
+function mapAwsInstance(instance: {
+  InstanceId?: string;
+  State?: { Name?: string };
+  InstanceType?: string;
+  LaunchTime?: Date;
+  Tags?: { Key?: string; Value?: string }[];
+  PublicIpAddress?: string;
+  PrivateIpAddress?: string;
+}): Ec2InstanceInfo | null {
+  if (!instance.InstanceId) return null;
+
+  const tags = (instance.Tags ?? []).map((t) => ({
+    key: t.Key ?? '',
+    value: t.Value ?? '',
+  }));
+
+  const nameTag = tags.find((t) => t.key === 'Name');
+
+  return {
+    instanceId: instance.InstanceId,
+    name: nameTag?.value ?? instance.InstanceId,
+    state: instance.State?.Name ?? 'unknown',
+    instanceType: instance.InstanceType ?? 'unknown',
+    launchTime: instance.LaunchTime ?? null,
+    tags,
+    publicIp: instance.PublicIpAddress ?? null,
+    privateIp: instance.PrivateIpAddress ?? null,
+    hiveWorkspace: null,
+  };
+}
+
+function isInvalidInstanceIdError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { name?: string; Code?: string; code?: string };
+  const identifiers = [candidate.name, candidate.Code, candidate.code];
+  return identifiers.some(
+    (id) =>
+      id === 'InvalidInstanceID.NotFound' ||
+      id === 'InvalidInstanceID.Malformed' ||
+      id === 'InvalidInstanceIDNotFound' ||
+      id === 'InvalidInstanceIDMalformed',
+  );
+}
+
 export async function listSuperadminInstances(): Promise<Ec2InstanceInfo[]> {
   if (config.USE_MOCKS) {
     return mockEc2State.listInstances().map(mapMockInstance);
@@ -63,30 +107,43 @@ export async function listSuperadminInstances(): Promise<Ec2InstanceInfo[]> {
 
   for (const reservation of response.Reservations ?? []) {
     for (const instance of reservation.Instances ?? []) {
-      if (!instance.InstanceId) continue;
-
-      const tags = (instance.Tags ?? []).map((t) => ({
-        key: t.Key ?? '',
-        value: t.Value ?? '',
-      }));
-
-      const nameTag = tags.find((t) => t.key === 'Name');
-
-      instances.push({
-        instanceId: instance.InstanceId,
-        name: nameTag?.value ?? instance.InstanceId,
-        state: instance.State?.Name ?? 'unknown',
-        instanceType: instance.InstanceType ?? 'unknown',
-        launchTime: instance.LaunchTime ?? null,
-        tags,
-        publicIp: instance.PublicIpAddress ?? null,
-        privateIp: instance.PrivateIpAddress ?? null,
-        hiveWorkspace: null,
-      });
+      const mapped = mapAwsInstance(instance);
+      if (mapped) instances.push(mapped);
     }
   }
 
   return instances;
+}
+
+export async function describeInstance(instanceId: string): Promise<Ec2InstanceInfo | null> {
+  if (config.USE_MOCKS) {
+    const inst = mockEc2State.listInstances().find((i) => i.instanceId === instanceId);
+    return inst ? mapMockInstance(inst) : null;
+  }
+
+  const client = getEc2Client();
+  try {
+    const response = await client.send(
+      new DescribeInstancesCommand({
+        InstanceIds: [instanceId],
+        Filters: [{ Name: 'tag:Swarm', Values: ['superadmin'] }],
+      }),
+    );
+
+    for (const reservation of response.Reservations ?? []) {
+      for (const instance of reservation.Instances ?? []) {
+        const mapped = mapAwsInstance(instance);
+        if (mapped) return mapped;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    if (isInvalidInstanceIdError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function startInstance(instanceId: string): Promise<void> {
