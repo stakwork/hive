@@ -86,6 +86,10 @@
     {
       "path": "/api/cron/legal-recursion",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/swarm-storage-janitor",
+      "schedule": "0 3 * * *"
     }
   ]
 }
