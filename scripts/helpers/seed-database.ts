@@ -2521,8 +2521,6 @@ async function seedSwarmStorageSnapshots() {
     usedBytes: bigint | null;
     freeBytes: bigint | null;
     mount: string | null;
-    neo4jSizeBytes: bigint | null;
-    neo4jSizeKnown: boolean;
     services: Array<{ name: string; sizeBytes: number | null; sizeKnown: boolean }>;
     hostVisible: boolean | null;
     source: string | null;
@@ -2547,8 +2545,6 @@ async function seedSwarmStorageSnapshots() {
       usedBytes: isPartialDay ? null : BigInt(steadyUsed),
       freeBytes: isPartialDay ? null : BigInt(totalBytes - steadyUsed),
       mount: isPartialDay ? null : "/",
-      neo4jSizeBytes: isPartialDay ? null : BigInt(neo4jSteady),
-      neo4jSizeKnown: !isPartialDay,
       services: isPartialDay
         ? []
         : [
@@ -2572,8 +2568,6 @@ async function seedSwarmStorageSnapshots() {
         usedBytes: null,
         freeBytes: null,
         mount: null,
-        neo4jSizeBytes: null,
-        neo4jSizeKnown: false,
         services: [],
         hostVisible: null,
         source: null,
@@ -2592,8 +2586,6 @@ async function seedSwarmStorageSnapshots() {
         usedBytes: BigInt(used),
         freeBytes: BigInt(totalBytes - used),
         mount: "/",
-        neo4jSizeBytes: BigInt(neo4j),
-        neo4jSizeKnown: true,
         services: [
           { name: "neo4j", sizeBytes: neo4j, sizeKnown: true },
           { name: "elasticsearch", sizeBytes: 6 * 1024 * 1024 * 1024, sizeKnown: true },

@@ -59,8 +59,6 @@ interface SnapshotValues {
   usedBytes: bigint | null;
   freeBytes: bigint | null;
   mount: string | null;
-  neo4jSizeBytes: bigint | null;
-  neo4jSizeKnown: boolean;
   services: HostStorageService[];
   hostVisible: boolean | null;
   source: string | null;
@@ -91,8 +89,6 @@ function emptyMetrics(overrides: Partial<SnapshotValues> = {}): Omit<SnapshotVal
     usedBytes: null,
     freeBytes: null,
     mount: null,
-    neo4jSizeBytes: null,
-    neo4jSizeKnown: false,
     services: [],
     hostVisible: null,
     source: null,
@@ -111,23 +107,18 @@ function metricsFromReading(
   | "usedBytes"
   | "freeBytes"
   | "mount"
-  | "neo4jSizeBytes"
-  | "neo4jSizeKnown"
   | "services"
   | "hostVisible"
   | "source"
   | "collectedAt"
 > {
   const fs = reading.governingFilesystem;
-  const neo4j = reading.neo4j;
   return {
     status: reading.status,
     totalBytes: toBigInt(fs?.totalBytes),
     usedBytes: toBigInt(fs?.usedBytes),
     freeBytes: toBigInt(fs?.freeBytes),
     mount: fs?.mount ?? null,
-    neo4jSizeBytes: toBigInt(neo4j?.sizeBytes),
-    neo4jSizeKnown: neo4j?.sizeKnown ?? false,
     services: reading.services ?? [],
     hostVisible: reading.hostVisible,
     source: reading.source,
@@ -232,8 +223,6 @@ async function upsertSnapshot(row: SnapshotValues): Promise<void> {
       usedBytes: row.usedBytes,
       freeBytes: row.freeBytes,
       mount: row.mount,
-      neo4jSizeBytes: row.neo4jSizeBytes,
-      neo4jSizeKnown: row.neo4jSizeKnown,
       services,
       hostVisible: row.hostVisible,
       source: row.source,

@@ -149,7 +149,7 @@ describe("runSwarmStorageJanitor", () => {
     errorSpy.mockRestore();
   });
 
-  it("maps a fresh OK reading onto governing-filesystem and neo4j BigInt columns", async () => {
+  it("maps a fresh OK reading onto governing-filesystem metrics and services", async () => {
     mockListSuperadminInstances.mockResolvedValue([instance(RUNNING_A, "running")]);
     mockReadHostStorage.mockResolvedValue(freshResult());
 
@@ -167,8 +167,6 @@ describe("runSwarmStorageJanitor", () => {
     expect(row.usedBytes).toBe(200_000_000_000n);
     expect(row.freeBytes).toBe(300_000_000_000n);
     expect(row.mount).toBe("/");
-    expect(row.neo4jSizeBytes).toBe(12_000_000_000n);
-    expect(row.neo4jSizeKnown).toBe(true);
     expect(row.services).toEqual(DEFAULT_SERVICES);
     expect(row.hostVisible).toBe(true);
     expect(row.source).toBe("node_exporter");
@@ -217,8 +215,6 @@ describe("runSwarmStorageJanitor", () => {
     expect(row.usedBytes).toBeNull();
     expect(row.freeBytes).toBeNull();
     expect(row.mount).toBeNull();
-    expect(row.neo4jSizeBytes).toBeNull();
-    expect(row.neo4jSizeKnown).toBe(false);
     expect(row.services).toEqual(DEFAULT_SERVICES);
   });
 
