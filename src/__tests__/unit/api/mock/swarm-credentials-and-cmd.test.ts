@@ -115,7 +115,7 @@ describe("GET /api/mock/swarm-super-admin/api/cmd", () => {
     expect(data).toMatchObject({ error: "Unauthorized" });
   });
 
-  it("returns container array for ListContainers", async () => {
+  it("returns a bare container array for ListContainers (matching sphinx-swarm's Vec<ContainerSummary> serialization)", async () => {
     const { GET } = await import(
       "@/app/api/mock/swarm-super-admin/api/cmd/route"
     );
@@ -130,13 +130,14 @@ describe("GET /api/mock/swarm-super-admin/api/cmd", () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data).toMatchObject({
-      containers: expect.arrayContaining([
+    expect(Array.isArray(data)).toBe(true);
+    expect(data).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({ name: "sphinx", status: "running" }),
         expect.objectContaining({ name: "lnd", status: "stopped" }),
-      ]),
-    });
-    expect(data.containers).toHaveLength(3);
+      ])
+    );
+    expect(data).toHaveLength(3);
   });
 
   it("returns { success: true } for StartContainer", async () => {
