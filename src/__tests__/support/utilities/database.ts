@@ -98,6 +98,7 @@ export async function resetDatabase() {
     await db.feature.deleteMany();
     await db.repository.deleteMany();
     await db.pod.deleteMany();
+    try { await db.swarmStorageSnapshot.deleteMany(); } catch { /* table may not exist */ }
     await db.swarm.deleteMany();
     await db.workspaceTransaction.deleteMany();
     await db.lightningPayment.deleteMany();
@@ -148,6 +149,7 @@ const RESET_TABLES = [
   "features",
   "repositories",
   "pods",
+  "swarm_storage_snapshots",
   "swarms",
   "workspace_transactions",
   "lightning_payments",
