@@ -24,6 +24,7 @@ import { scoutOrgContext } from "@/services/roadmap/orgContextScout";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
 import { mintWorkspaceToken } from "@/lib/mcp/workspaceTokenMint";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { healFeatureModel } from "@/lib/ai/resolve-model";
 import type { McpServerConfig } from "@/services/mcpServers";
 
 /**
@@ -396,6 +397,13 @@ export async function sendFeatureChatMessage({
   if (!feature) {
     throw new Error("Feature not found");
   }
+
+  // `Feature.model` is stamped at creation from whatever the picker
+  // produced at the time. Resolve it against the live catalog (healing
+  // a stale prefix in place) so a provider cutover can't pin the
+  // planner to a value with no API key. Unresolvable → fall through to
+  // the caller's `model`, then the admin plan default.
+  const featureModel = await healFeatureModel(featureId, feature.model);
 
   // Authorization: caller must be workspace owner or member before any write
   const isOwner = feature.workspace.ownerId === userId;
@@ -792,7 +800,7 @@ export async function sendFeatureChatMessage({
       isPrototype: isPrototype && isFirstMessage,
       subAgents: extraSwarms,
       attachments: attachmentUrls,
-      taskModel: feature.model || model || undefined,
+      taskModel: featureModel || model || undefined,
       mcpServers: combinedMcpServers,
     });
 

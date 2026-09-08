@@ -8,6 +8,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getApiKeyForModel, getDefaultModel, PROVIDER_API_KEY_ENV_VARS } from "@/lib/ai/models";
+import { resolveModelAgainstCatalog } from "@/lib/ai/resolve-model";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { isDevelopmentMode } from "@/lib/runtime";
 import type { McpServerConfig } from "@/services/mcpServers";
@@ -824,7 +825,25 @@ export async function callStakworkAPI(params: {
       console.log(`[PlanMode] workflowPlanningEnabled injected for workspace ${workspaceId}`);
     }
   }
-  const effectiveModel = taskModel || await getDefaultModel(mode === "plan_mode" ? "plan" : "task");
+  // Last line of defense for the model selection: resolve the stored
+  // value against the live catalog by (unique) name so a prefix left
+  // behind by a provider cutover (e.g. "grok4.6/grok-4.6" after the
+  // row moved to XAI) routes to the provider that owns it today. A
+  // value matching no live row falls back to the admin default rather
+  // than going out key-less.
+  let resolvedTaskModel = taskModel;
+  if (taskModel) {
+    const { value, healed } = await resolveModelAgainstCatalog(taskModel);
+    if (healed && value) {
+      console.log(`[callStakworkAPI] task model "${taskModel}" resolved to "${value}" via catalog`);
+    } else if (!value) {
+      console.warn(
+        `[callStakworkAPI] task model "${taskModel}" matches no live catalog row; falling back to the ${mode === "plan_mode" ? "plan" : "task"} default`,
+      );
+    }
+    resolvedTaskModel = value ?? undefined;
+  }
+  const effectiveModel = resolvedTaskModel || await getDefaultModel(mode === "plan_mode" ? "plan" : "task");
   if (effectiveModel) {
     vars.model = effectiveModel;
     const resolvedApiKey = getApiKeyForModel(effectiveModel);
@@ -900,6 +919,7 @@ export async function callStakworkAPI(params: {
   // model prefix) replaces the Google-only `googleKeySet` so a missing
   // key is visible for any provider, not just Google.
   const routingProvider = effectiveModel?.includes("/") ? effectiveModel.split("/")[0].toUpperCase() : null;
+  const routingProviderKnown = routingProvider ? routingProvider in PROVIDER_API_KEY_ENV_VARS : true;
   const routingEnvVar = routingProvider ? PROVIDER_API_KEY_ENV_VARS[routingProvider] : null;
   console.log("[callStakworkAPI] model routing", {
     taskId,
@@ -907,6 +927,7 @@ export async function callStakworkAPI(params: {
     effectiveModel,
     bifrostActive: Boolean(bifrost),
     baseUrl: vars.baseUrl,
+    providerKnown: routingProviderKnown,
     providerKeySet: routingEnvVar ? Boolean(process.env[routingEnvVar]) : null,
   });
 
@@ -918,13 +939,19 @@ export async function callStakworkAPI(params: {
   // is a log-only change; control flow is unaffected and any subsequent
   // `{ error }` this function returns must stay generic ("model
   // provider not configured") with no env-var names in the HTTP response.
-  if (routingEnvVar && !vars.apiKey) {
+  //
+  // Also fires for a prefix that maps to no provider at all
+  // (`providerKnown: false`) — previously that case was silent because
+  // there was no env var to check, which is exactly how a stale
+  // "grok4.6/..." prefix shipped key-less without a trace.
+  if ((routingEnvVar || !routingProviderKnown) && !vars.apiKey) {
     console.error("[callStakworkAPI] model provider key missing", {
       taskId,
       mode,
       effectiveModel,
+      providerKnown: routingProviderKnown,
       envVar: routingEnvVar,
-      envVarSet: Boolean(process.env[routingEnvVar]),
+      envVarSet: routingEnvVar ? Boolean(process.env[routingEnvVar]) : null,
     });
   }
 
