@@ -95,6 +95,7 @@ vi.mock("@/app/admin/components/SwarmPasswordUpdateForm", () => ({
 }));
 
 import HostStorageCard from "@/app/admin/swarms/[instanceId]/HostStorageCard";
+import { formatBytes } from "@/lib/utils/format";
 
 // ---------------------------------------------------------------------------
 // Response builders (the wire shape of GET …/storage)
@@ -168,6 +169,20 @@ function groupLabels(): string[] {
     .getAllByTestId(/^volume-group-header-/)
     .map((el) => el.getAttribute("data-testid")!.slice("volume-group-header-".length));
 }
+
+function summaryRowNames(): string[] {
+  return screen
+    .getAllByTestId(/^service-usage-row-/)
+    .map((el) => el.getAttribute("data-testid")!.slice("service-usage-row-".length));
+}
+
+const RUNNER_BYTES = 1.5 * 1024 * 1024; // 1.5 MB
+const BITCOIND_BYTES = 7.2 * 1024 * 1024 * 1024; // 7.2 GB
+const NEO4J_BYTES = 14.1 * 1024 * 1024 * 1024; // 14.1 GB
+const RESIDUAL_NEO4J_BYTES = 572 * 1024; // 572 KB
+const LND_BYTES = 100 * 1024 * 1024; // 100 MB
+const LND_VOL_A = 60 * 1024 * 1024;
+const LND_VOL_B = 40 * 1024 * 1024;
 
 function freshResponse(reading: Json): Json {
   return { outcome: "fresh", reading, collectedAt: reading.collectedAt, cached: false };
@@ -460,7 +475,9 @@ describe("HostStorageCard", () => {
     });
     expect(screen.getByTestId("neo4j-size")).toBeInTheDocument();
     expect(screen.queryByTestId("volume-group-header-neo4j")).not.toBeInTheDocument();
-    expect(groupLabels()).toEqual(["alice"]);
+    expect(screen.queryByTestId("service-usage-row-neo4j")).not.toBeInTheDocument();
+    expect(screen.getByTestId("volume-row-alice-data")).toBeInTheDocument();
+    expect(screen.queryByTestId("volume-group-header-alice")).not.toBeInTheDocument();
   });
 
   it("groups volumes sharing a service under one header, ordered by reading.services", async () => {
@@ -476,13 +493,21 @@ describe("HostStorageCard", () => {
     await renderWithFetch(fetchResponse(freshResponse(reading)));
 
     await waitFor(() => {
-      expect(screen.getByTestId("volume-group-header-bob")).toBeInTheDocument();
+      expect(screen.getByTestId("volume-row-bob-vol")).toBeInTheDocument();
     });
-    expect(groupLabels()).toEqual(["bob", "alice"]);
-    const aliceHeader = screen.getByTestId("volume-group-header-alice");
-    expect(aliceHeader).toHaveTextContent("alice");
-    expect(screen.getByTestId("volume-row-alice-a")).toBeInTheDocument();
-    expect(screen.getByTestId("volume-row-alice-b")).toBeInTheDocument();
+    // Single-volume summarized services collapse (no header); multi-volume keep a label-only header.
+    // Group order still follows reading.services (bob, then alice).
+    expect(screen.queryByTestId("volume-group-header-bob")).not.toBeInTheDocument();
+    expect(screen.getByTestId("volume-group-header-alice")).toHaveTextContent("alice");
+    expect(screen.queryByTestId("volume-group-total-alice")).not.toBeInTheDocument();
+    const tableRows = screen.getByTestId("docker-volumes").querySelectorAll("tbody tr");
+    expect([...tableRows].map((row) => row.getAttribute("data-testid"))).toEqual([
+      "volume-row-bob-vol",
+      "volume-group-header-alice",
+      "volume-row-alice-a",
+      "volume-row-alice-b",
+    ]);
+    expect(screen.getByTestId("volume-row-alice-a").querySelector("td")?.className).toContain("pl-6");
   });
 
   it("still renders a volume whose owner is absent from services[] in its own group", async () => {
@@ -499,7 +524,9 @@ describe("HostStorageCard", () => {
     await waitFor(() => {
       expect(screen.getByTestId("volume-row-orphan-owner")).toBeInTheDocument();
     });
-    expect(groupLabels()).toEqual(["alice", "charlie"]);
+    expect(screen.queryByTestId("volume-group-header-alice")).not.toBeInTheDocument();
+    expect(groupLabels()).toEqual(["charlie"]);
+    expect(screen.getByTestId("volume-group-total-charlie")).toHaveTextContent("2 KB");
   });
 
   it("renders null-owner volumes under Unattributed, last", async () => {
@@ -517,7 +544,8 @@ describe("HostStorageCard", () => {
     await waitFor(() => {
       expect(screen.getByTestId("volume-group-header-Unattributed")).toBeInTheDocument();
     });
-    expect(groupLabels()).toEqual(["alice", "Unattributed"]);
+    expect(groupLabels()).toEqual(["Unattributed"]);
+    expect(screen.getByTestId("volume-group-total-Unattributed")).toHaveTextContent("6 KB");
     expect(screen.getByTestId("volume-row-orphan-null")).toBeInTheDocument();
     expect(screen.getByTestId("volume-row-orphan-empty")).toBeInTheDocument();
   });
@@ -531,7 +559,8 @@ describe("HostStorageCard", () => {
         volume({ name: "empty-b", sizeBytes: 0, sizeKnown: true, service: "empty" }),
       ],
       neo4j: null,
-      services: [serviceRollup("bob"), serviceRollup("empty")],
+      // Unlisted services keep header totals (summarized services no longer print a rollup).
+      services: [],
     });
     await renderWithFetch(fetchResponse(freshResponse(reading)));
 
@@ -604,9 +633,180 @@ describe("HostStorageCard", () => {
     const unknownRow = screen.getByTestId("volume-row-unknown-vol");
     expect(within(zeroRow).getByText("0 B")).toBeInTheDocument();
     expect(within(unknownRow).getByText("unknown")).toBeInTheDocument();
-    expect(screen.getByTestId("volume-group-total-alice")).toHaveTextContent("0 B");
-    expect(screen.getByTestId("volume-group-total-bob")).toHaveTextContent("unknown");
+    expect(screen.queryByTestId("volume-group-total-alice")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("volume-group-total-bob")).not.toBeInTheDocument();
     expect(within(zeroRow).queryByText("unknown")).not.toBeInTheDocument();
     expect(within(unknownRow).queryByText("0 B")).not.toBeInTheDocument();
+  });
+
+  it("renders a per-service summary largest-first, unknown last, excluding neo4j", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({
+          name: "neo4j.sphinx",
+          sizeBytes: NEO4J_BYTES,
+          sizeKnown: true,
+          service: "neo4j",
+        }),
+      ],
+      neo4j: { volumes: ["neo4j.sphinx"], sizeBytes: NEO4J_BYTES, sizeKnown: true },
+      services: [
+        serviceRollup("runner", RUNNER_BYTES, true),
+        serviceRollup("cln", null, false),
+        serviceRollup("bitcoind", BITCOIND_BYTES, true),
+        serviceRollup("neo4j", NEO4J_BYTES, true),
+        serviceRollup("lnd", LND_BYTES, true),
+      ],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("service-usage-summary")).toBeInTheDocument();
+    });
+    expect(summaryRowNames()).toEqual(["bitcoind", "lnd", "runner", "cln"]);
+    expect(screen.getByTestId("service-usage-row-bitcoind")).toHaveTextContent(
+      formatBytes(BITCOIND_BYTES),
+    );
+    expect(screen.getByTestId("service-usage-row-lnd")).toHaveTextContent(formatBytes(LND_BYTES));
+    expect(screen.getByTestId("service-usage-row-runner")).toHaveTextContent(
+      formatBytes(RUNNER_BYTES),
+    );
+    expect(screen.getByTestId("service-usage-row-cln")).toHaveTextContent("unknown");
+    expect(screen.queryByTestId("service-usage-row-neo4j")).not.toBeInTheDocument();
+  });
+
+  it("does not render a residual neo4j table group for volumes named outside neo4j.volumes", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({
+          name: "neo4j.sphinx",
+          sizeBytes: NEO4J_BYTES,
+          sizeKnown: true,
+          service: "neo4j",
+        }),
+        volume({
+          name: "neo4j-logs",
+          sizeBytes: RESIDUAL_NEO4J_BYTES,
+          sizeKnown: true,
+          service: "neo4j",
+        }),
+        volume({
+          name: "runner.sphinx",
+          sizeBytes: RUNNER_BYTES,
+          sizeKnown: true,
+          service: "runner",
+        }),
+      ],
+      neo4j: { volumes: ["neo4j.sphinx"], sizeBytes: NEO4J_BYTES, sizeKnown: true },
+      services: [serviceRollup("neo4j", NEO4J_BYTES, true), serviceRollup("runner", RUNNER_BYTES, true)],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("neo4j-size")).toHaveTextContent(formatBytes(NEO4J_BYTES));
+    });
+    expect(screen.getByTestId("neo4j-size")).toHaveTextContent("14.1 GB");
+    expect(screen.queryByTestId("volume-group-header-neo4j")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("service-usage-row-neo4j")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("volume-row-neo4j-logs")).not.toBeInTheDocument();
+    expect(screen.getByTestId("docker-volumes")).not.toHaveTextContent("572 KB");
+  });
+
+  it("collapses a single-volume summarized service into one row with the size printed once", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({
+          name: "runner.sphinx",
+          sizeBytes: RUNNER_BYTES,
+          sizeKnown: true,
+          service: "runner",
+        }),
+      ],
+      neo4j: null,
+      services: [serviceRollup("runner", RUNNER_BYTES, true)],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("volume-row-runner.sphinx")).toBeInTheDocument();
+    });
+    const table = screen.getByTestId("docker-volumes");
+    expect(within(table).queryByTestId("volume-group-header-runner")).not.toBeInTheDocument();
+    expect(within(table).getAllByText(formatBytes(RUNNER_BYTES))).toHaveLength(1);
+    expect(screen.getByTestId("volume-row-runner.sphinx")).toHaveTextContent("runner");
+    expect(screen.getByTestId("volume-row-runner.sphinx")).toHaveTextContent("runner.sphinx");
+  });
+
+  it("renders a label-only header and indented members for a multi-volume summarized service", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({ name: "lnd-macaroon", sizeBytes: LND_VOL_A, sizeKnown: true, service: "lnd" }),
+        volume({ name: "lnd-data", sizeBytes: LND_VOL_B, sizeKnown: true, service: "lnd" }),
+      ],
+      neo4j: null,
+      services: [serviceRollup("lnd", LND_BYTES, true)],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("volume-group-header-lnd")).toBeInTheDocument();
+    });
+    const header = screen.getByTestId("volume-group-header-lnd");
+    expect(header).toHaveTextContent("lnd");
+    expect(screen.queryByTestId("volume-group-total-lnd")).not.toBeInTheDocument();
+    expect(header).not.toHaveTextContent(formatBytes(LND_BYTES));
+    expect(header).not.toHaveTextContent(formatBytes(LND_VOL_A));
+    expect(header).not.toHaveTextContent(formatBytes(LND_VOL_B));
+
+    const macaroon = screen.getByTestId("volume-row-lnd-macaroon");
+    const dataRow = screen.getByTestId("volume-row-lnd-data");
+    expect(macaroon.querySelector("td")?.className).toContain("pl-6");
+    expect(dataRow.querySelector("td")?.className).toContain("pl-6");
+    expect(macaroon).toHaveTextContent(formatBytes(LND_VOL_A));
+    expect(dataRow).toHaveTextContent(formatBytes(LND_VOL_B));
+    expect(screen.getByTestId("service-usage-row-lnd")).toHaveTextContent(formatBytes(LND_BYTES));
+  });
+
+  it("keeps the Unattributed group header with formatBytes(group.total) unchanged", async () => {
+    const reading = okReading({
+      volumes: [
+        volume({
+          name: "bitcoind.sphinx",
+          sizeBytes: BITCOIND_BYTES,
+          sizeKnown: true,
+          service: null,
+        }),
+        volume({
+          name: "runner.sphinx",
+          sizeBytes: RUNNER_BYTES,
+          sizeKnown: true,
+          service: "runner",
+        }),
+      ],
+      neo4j: null,
+      services: [serviceRollup("runner", RUNNER_BYTES, true)],
+    });
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("volume-group-header-Unattributed")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("volume-group-total-Unattributed")).toHaveTextContent(
+      formatBytes(BITCOIND_BYTES),
+    );
+    expect(screen.getByTestId("volume-row-bitcoind.sphinx")).toHaveTextContent(
+      formatBytes(BITCOIND_BYTES),
+    );
+    expect(groupLabels()).toEqual(["Unattributed"]);
+  });
+
+  it("does not render a service-usage summary when services is empty", async () => {
+    const reading = okReading();
+    await renderWithFetch(fetchResponse(freshResponse(reading)));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("neo4j-size")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("service-usage-summary")).not.toBeInTheDocument();
   });
 });
