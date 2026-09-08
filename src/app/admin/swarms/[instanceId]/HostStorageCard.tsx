@@ -336,6 +336,11 @@ export default function HostStorageCard({ instanceId }: HostStorageCardProps) {
   const volumeGroups = groupVolumesByService(otherVolumes, reading?.services ?? []);
   const summaryServices = [...(reading?.services ?? [])]
     .filter((service) => service.name !== "neo4j")
+    .concat(
+      reading?.neo4j
+        ? [{ name: "neo4j", sizeBytes: reading.neo4j.sizeBytes, sizeKnown: true }]
+        : [],
+    )
     .sort(compareServicesLargestFirst);
   const summarizedServiceNames = new Set(summaryServices.map((service) => service.name));
 
@@ -507,29 +512,6 @@ export default function HostStorageCard({ instanceId }: HostStorageCardProps) {
                 </div>
               </div>
             ) : null}
-
-            {/* Neo4j */}
-            <div className="space-y-1">
-              <div className="text-sm font-medium">Neo4j volume</div>
-              {reading.neo4j === null ? (
-                <div className="text-sm text-muted-foreground" data-testid="neo4j-absent">
-                  Not present
-                </div>
-              ) : (
-                <div className="text-sm" data-testid="neo4j-size">
-                  Size: {formatBytes(reading.neo4j.sizeBytes)}
-                  {reading.neo4j.volumes.length > 0 ? (
-                    <span className="ml-2 text-muted-foreground">
-                      (
-                      {reading.neo4j.volumes
-                        .map((name) => truncateForDisplay(name))
-                        .join(", ")}
-                      )
-                    </span>
-                  ) : null}
-                </div>
-              )}
-            </div>
 
             {summaryServices.length > 0 ? (
               <div data-testid="service-usage-summary">
