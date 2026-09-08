@@ -16,6 +16,7 @@ import { getMiddlewareContext } from "@/lib/middleware/utils";
 import { getBaseUrl } from "@/lib/utils";
 import { validateApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
+import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
 import { resolveMessageImageUrls } from "@/lib/ai/resolveMessageImages";
 import {
   runCanvasAgent,
@@ -341,13 +342,7 @@ export async function POST(request: NextRequest) {
 
     // Per-user canvas-chat model preference (set from the Agent settings
     // gear). Null/absent → aieo default.
-    const chatAgentModel =
-      (
-        await db.user.findUnique({
-          where: { id: userId },
-          select: { chatAgentModel: true },
-        })
-      )?.chatAgentModel ?? undefined;
+    const chatAgentModel = await loadUserChatAgentModel(userId);
 
     try {
       const learnedConceptIds = new Set<string>();
