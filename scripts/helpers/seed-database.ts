@@ -2523,6 +2523,7 @@ async function seedSwarmStorageSnapshots() {
     mount: string | null;
     neo4jSizeBytes: bigint | null;
     neo4jSizeKnown: boolean;
+    services: Array<{ name: string; sizeBytes: number | null; sizeKnown: boolean }>;
     hostVisible: boolean | null;
     source: string | null;
     collectedAt: Date | null;
@@ -2548,6 +2549,13 @@ async function seedSwarmStorageSnapshots() {
       mount: isPartialDay ? null : "/",
       neo4jSizeBytes: isPartialDay ? null : BigInt(neo4jSteady),
       neo4jSizeKnown: !isPartialDay,
+      services: isPartialDay
+        ? []
+        : [
+            { name: "neo4j", sizeBytes: neo4jSteady, sizeKnown: true },
+            { name: "elasticsearch", sizeBytes: 8 * 1024 * 1024 * 1024, sizeKnown: true },
+            { name: "redis", sizeBytes: 512 * 1024 * 1024, sizeKnown: true },
+          ],
       hostVisible: isPartialDay ? null : true,
       source: isPartialDay ? null : "node_exporter",
       collectedAt,
@@ -2566,6 +2574,7 @@ async function seedSwarmStorageSnapshots() {
         mount: null,
         neo4jSizeBytes: null,
         neo4jSizeKnown: false,
+        services: [],
         hostVisible: null,
         source: null,
         collectedAt: null,
@@ -2585,6 +2594,11 @@ async function seedSwarmStorageSnapshots() {
         mount: "/",
         neo4jSizeBytes: BigInt(neo4j),
         neo4jSizeKnown: true,
+        services: [
+          { name: "neo4j", sizeBytes: neo4j, sizeKnown: true },
+          { name: "elasticsearch", sizeBytes: 6 * 1024 * 1024 * 1024, sizeKnown: true },
+          { name: "redis", sizeBytes: 256 * 1024 * 1024, sizeKnown: true },
+        ],
         hostVisible: true,
         source: "node_exporter",
         collectedAt,

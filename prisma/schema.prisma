@@ -510,6 +510,7 @@ model SwarmStorageSnapshot {
   mount          String?
   neo4jSizeBytes BigInt?   @map("neo4j_size_bytes")
   neo4jSizeKnown Boolean   @default(false) @map("neo4j_size_known")
+  services       Json      @default("[]")
   hostVisible    Boolean?  @map("host_visible")
   source         String?
   collectedAt    DateTime? @map("collected_at")

@@ -39,6 +39,12 @@ import {
 } from "@/services/swarm/storage-janitor";
 import { GET } from "@/app/api/cron/swarm-storage-janitor/route";
 
+const DEFAULT_SERVICES = [
+  { name: "neo4j", sizeBytes: 12_000_000_000, sizeKnown: true },
+  { name: "elasticsearch", sizeBytes: 8_000_000_000, sizeKnown: true },
+  { name: "redis", sizeBytes: 512_000_000, sizeKnown: true },
+];
+
 function instance(
   instanceId: string,
   state: string,
@@ -83,7 +89,7 @@ function reading(overrides: Partial<HostStorageReading> = {}): HostStorageReadin
       sizeBytes: 12_000_000_000,
       sizeKnown: true,
     },
-    services: [],
+    services: [...DEFAULT_SERVICES],
     errors: [],
     ...overrides,
   };
@@ -163,6 +169,7 @@ describe("runSwarmStorageJanitor", () => {
     expect(row.mount).toBe("/");
     expect(row.neo4jSizeBytes).toBe(12_000_000_000n);
     expect(row.neo4jSizeKnown).toBe(true);
+    expect(row.services).toEqual(DEFAULT_SERVICES);
     expect(row.hostVisible).toBe(true);
     expect(row.source).toBe("node_exporter");
     expect(row.collectedAt).toEqual(new Date(1_700_000_000 * 1000));
@@ -186,6 +193,7 @@ describe("runSwarmStorageJanitor", () => {
     expect(row.status).toBe("OK");
     expect(row.collectedAt).toEqual(new Date(older * 1000));
     expect(row.collectedAt.getTime()).toBeLessThan(NOW.getTime());
+    expect(row.services).toEqual(DEFAULT_SERVICES);
   });
 
   it("writes null host metrics when governingFilesystem is null (PARTIAL)", async () => {
@@ -211,6 +219,40 @@ describe("runSwarmStorageJanitor", () => {
     expect(row.mount).toBeNull();
     expect(row.neo4jSizeBytes).toBeNull();
     expect(row.neo4jSizeKnown).toBe(false);
+    expect(row.services).toEqual(DEFAULT_SERVICES);
+  });
+
+  it("persists reading.services for fresh/cached and defaults to [] on failure", async () => {
+    const services = [
+      { name: "neo4j", sizeBytes: 12_000_000_000, sizeKnown: true },
+      { name: "elasticsearch", sizeBytes: null, sizeKnown: false },
+    ];
+    mockListSuperadminInstances.mockResolvedValue([
+      instance(RUNNING_A, "running"),
+      instance(RUNNING_B, "running"),
+      instance("i-0aaaa00000000001", "running"),
+    ]);
+    mockReadHostStorage.mockImplementation(async (id: string) => {
+      if (id === RUNNING_A) {
+        return freshResult({ reading: reading({ services }) });
+      }
+      if (id === RUNNING_B) {
+        return {
+          outcome: "cached",
+          reading: reading({ services, collectedAt: 1_699_000_000 }),
+          collectedAt: 1_699_000_000,
+          cached: true,
+        };
+      }
+      return { outcome: "failed", reasonCode: "AUTH_FAILED", cached: false };
+    });
+
+    await runSwarmStorageJanitor(NOW);
+
+    const byId = Object.fromEntries(createdRows().map((row) => [row.instanceId, row]));
+    expect(byId[RUNNING_A].services).toEqual(services);
+    expect(byId[RUNNING_B].services).toEqual(services);
+    expect(byId["i-0aaaa00000000001"].services).toEqual([]);
   });
 
   it("maps unreachable / no_swarm_record / ambiguous / failed without raw error text", async () => {
@@ -264,6 +306,7 @@ describe("runSwarmStorageJanitor", () => {
 
     for (const row of createdRows()) {
       expect(row.totalBytes).toBeNull();
+      expect(row.services).toEqual([]);
       expect(row).not.toHaveProperty("error");
       const logged = logSpy.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
       expect(logged).not.toMatch(/stack|password|exception/i);

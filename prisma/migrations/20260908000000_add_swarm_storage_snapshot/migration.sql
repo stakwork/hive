@@ -12,6 +12,7 @@ CREATE TABLE "swarm_storage_snapshots" (
     "mount" TEXT,
     "neo4j_size_bytes" BIGINT,
     "neo4j_size_known" BOOLEAN NOT NULL DEFAULT false,
+    "services" JSONB NOT NULL DEFAULT '[]',
     "host_visible" BOOLEAN,
     "source" TEXT,
     "collected_at" TIMESTAMP(3),

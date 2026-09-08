@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { listSuperadminInstances, type Ec2InstanceInfo } from "@/services/ec2";
 import {
@@ -5,7 +6,7 @@ import {
   type HostStorageReadOutcome,
   type HostStorageReadResult,
 } from "@/services/swarm/host-storage-read";
-import type { HostStorageReading } from "@/services/swarm/host-storage";
+import type { HostStorageReading, HostStorageService } from "@/services/swarm/host-storage";
 
 /**
  * Daily host-storage snapshot janitor.
@@ -60,6 +61,7 @@ interface SnapshotValues {
   mount: string | null;
   neo4jSizeBytes: bigint | null;
   neo4jSizeKnown: boolean;
+  services: HostStorageService[];
   hostVisible: boolean | null;
   source: string | null;
   collectedAt: Date | null;
@@ -91,6 +93,7 @@ function emptyMetrics(overrides: Partial<SnapshotValues> = {}): Omit<SnapshotVal
     mount: null,
     neo4jSizeBytes: null,
     neo4jSizeKnown: false,
+    services: [],
     hostVisible: null,
     source: null,
     collectedAt: null,
@@ -110,6 +113,7 @@ function metricsFromReading(
   | "mount"
   | "neo4jSizeBytes"
   | "neo4jSizeKnown"
+  | "services"
   | "hostVisible"
   | "source"
   | "collectedAt"
@@ -124,6 +128,7 @@ function metricsFromReading(
     mount: fs?.mount ?? null,
     neo4jSizeBytes: toBigInt(neo4j?.sizeBytes),
     neo4jSizeKnown: neo4j?.sizeKnown ?? false,
+    services: reading.services ?? [],
     hostVisible: reading.hostVisible,
     source: reading.source,
     // Cached outcomes carry the original older collectedAt — persist as-is.
@@ -210,6 +215,7 @@ function mapResult(
 }
 
 async function upsertSnapshot(row: SnapshotValues): Promise<void> {
+  const services = row.services as unknown as Prisma.InputJsonValue;
   await db.swarmStorageSnapshot.upsert({
     where: {
       instanceId_date: {
@@ -217,7 +223,7 @@ async function upsertSnapshot(row: SnapshotValues): Promise<void> {
         date: row.date,
       },
     },
-    create: row,
+    create: { ...row, services },
     update: {
       swarmId: row.swarmId,
       status: row.status,
@@ -228,6 +234,7 @@ async function upsertSnapshot(row: SnapshotValues): Promise<void> {
       mount: row.mount,
       neo4jSizeBytes: row.neo4jSizeBytes,
       neo4jSizeKnown: row.neo4jSizeKnown,
+      services,
       hostVisible: row.hostVisible,
       source: row.source,
       collectedAt: row.collectedAt,
