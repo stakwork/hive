@@ -484,10 +484,43 @@ model Swarm {
   gatewayHiveKeyId        String?               @map("gateway_hive_key_id")
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
+  storageSnapshots        SwarmStorageSnapshot[]
   workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([swarmId])
   @@map("swarms")
+}
+
+/// Daily host-storage snapshot for a swarm EC2 instance. One row per
+/// (instanceId, UTC calendar day); re-runs upsert in place. swarmId is
+/// optional with onDelete: SetNull so deleting/recreating a swarm never
+/// orphans retained history. Byte columns are BigInt (host totals exceed
+/// Prisma Int). No raw error text and no filesystems Json — those would
+/// leak discarded swarm/credential detail or bloat the retention window.
+model SwarmStorageSnapshot {
+  id             String    @id @default(cuid())
+  instanceId     String    @map("instance_id")
+  swarmId        String?   @map("swarm_id")
+  date           DateTime  @db.Date
+  status         String
+  reasonCode     String?   @map("reason_code")
+  totalBytes     BigInt?   @map("total_bytes")
+  usedBytes      BigInt?   @map("used_bytes")
+  freeBytes      BigInt?   @map("free_bytes")
+  mount          String?
+  neo4jSizeBytes BigInt?   @map("neo4j_size_bytes")
+  neo4jSizeKnown Boolean   @default(false) @map("neo4j_size_known")
+  hostVisible    Boolean?  @map("host_visible")
+  source         String?
+  collectedAt    DateTime? @map("collected_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  swarm          Swarm?    @relation(fields: [swarmId], references: [id], onDelete: SetNull)
+
+  @@unique([instanceId, date])
+  @@index([date])
+  @@index([instanceId])
+  @@map("swarm_storage_snapshots")
 }
 
 model Pod {
