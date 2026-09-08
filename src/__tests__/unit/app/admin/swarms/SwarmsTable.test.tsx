@@ -223,11 +223,23 @@ function makeInstance(overrides: Partial<{
   };
 }
 
-function makeFetchResponse(instances: ReturnType<typeof makeInstance>[]) {
+function makeFetchResponse(body: unknown) {
   return {
     ok: true,
-    json: async () => instances,
+    json: async () => body,
   };
+}
+
+function stubFetches(
+  instances: ReturnType<typeof makeInstance>[],
+  storage: Record<string, unknown> = {},
+) {
+  mockFetch.mockImplementation(async (url: string) => {
+    if (String(url).includes("/api/admin/swarms/storage")) {
+      return makeFetchResponse(storage);
+    }
+    return makeFetchResponse(instances);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -246,7 +258,7 @@ describe("SwarmsTable", () => {
 
   describe("running instance", () => {
     it("renders Start (disabled), Stop (enabled), and Update Swarm buttons", async () => {
-      mockFetch.mockResolvedValueOnce(makeFetchResponse([makeInstance({ state: "running" })]));
+      stubFetches([makeInstance({ state: "running" })]);
 
       render(<SwarmsTable />);
 
@@ -264,9 +276,7 @@ describe("SwarmsTable", () => {
 
   describe("stopped instance", () => {
     it("renders Start (enabled), Stop (disabled), and no Update Swarm button", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([makeInstance({ state: "stopped" })])
-      );
+      stubFetches([makeInstance({ state: "stopped" })]);
 
       render(<SwarmsTable />);
 
@@ -283,9 +293,7 @@ describe("SwarmsTable", () => {
 
   describe("pending (transitional) instance", () => {
     it("renders Start (disabled) and Stop (disabled)", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([makeInstance({ state: "pending" })])
-      );
+      stubFetches([makeInstance({ state: "pending" })]);
 
       render(<SwarmsTable />);
 
@@ -301,9 +309,7 @@ describe("SwarmsTable", () => {
 
   describe("stopping (transitional) instance", () => {
     it("renders Start (disabled) and Stop (disabled)", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([makeInstance({ state: "stopping" })])
-      );
+      stubFetches([makeInstance({ state: "stopping" })]);
 
       render(<SwarmsTable />);
 
@@ -319,7 +325,7 @@ describe("SwarmsTable", () => {
 
   describe("clicking Stop on running instance", () => {
     it("opens confirmation dialog", async () => {
-      mockFetch.mockResolvedValueOnce(makeFetchResponse([makeInstance({ state: "running" })]));
+      stubFetches([makeInstance({ state: "running" })]);
 
       render(<SwarmsTable />);
 
@@ -333,9 +339,7 @@ describe("SwarmsTable", () => {
 
   describe("clicking Start on stopped instance", () => {
     it("opens confirmation dialog", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([makeInstance({ state: "stopped" })])
-      );
+      stubFetches([makeInstance({ state: "stopped" })]);
 
       render(<SwarmsTable />);
 
@@ -349,9 +353,7 @@ describe("SwarmsTable", () => {
 
   describe("state filter", () => {
     it("renders the state filter with All states, Running, Stopped options", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([makeInstance({ state: "running" })])
-      );
+      stubFetches([makeInstance({ state: "running" })]);
 
       render(<SwarmsTable />);
 
@@ -365,12 +367,10 @@ describe("SwarmsTable", () => {
     });
 
     it("shows all instances when 'all' is selected (default)", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([
-          makeInstance({ instanceId: "i-1", name: "instance-1", state: "running" }),
-          makeInstance({ instanceId: "i-2", name: "instance-2", state: "stopped" }),
-        ])
-      );
+      stubFetches([
+        makeInstance({ instanceId: "i-1", name: "instance-1", state: "running" }),
+        makeInstance({ instanceId: "i-2", name: "instance-2", state: "stopped" }),
+      ]);
 
       render(<SwarmsTable />);
 
@@ -379,12 +379,10 @@ describe("SwarmsTable", () => {
     });
 
     it("filters to only running instances when 'running' is selected", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([
-          makeInstance({ instanceId: "i-1", name: "instance-running", state: "running" }),
-          makeInstance({ instanceId: "i-2", name: "instance-stopped", state: "stopped" }),
-        ])
-      );
+      stubFetches([
+        makeInstance({ instanceId: "i-1", name: "instance-running", state: "running" }),
+        makeInstance({ instanceId: "i-2", name: "instance-stopped", state: "stopped" }),
+      ]);
 
       render(<SwarmsTable />);
 
@@ -397,12 +395,10 @@ describe("SwarmsTable", () => {
     });
 
     it("filters to only stopped instances when 'stopped' is selected", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([
-          makeInstance({ instanceId: "i-1", name: "instance-running", state: "running" }),
-          makeInstance({ instanceId: "i-2", name: "instance-stopped", state: "stopped" }),
-        ])
-      );
+      stubFetches([
+        makeInstance({ instanceId: "i-1", name: "instance-running", state: "running" }),
+        makeInstance({ instanceId: "i-2", name: "instance-stopped", state: "stopped" }),
+      ]);
 
       render(<SwarmsTable />);
 
@@ -415,13 +411,11 @@ describe("SwarmsTable", () => {
     });
 
     it("applies name search and state filter together", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([
-          makeInstance({ instanceId: "i-1", name: "alpha-running", state: "running" }),
-          makeInstance({ instanceId: "i-2", name: "alpha-stopped", state: "stopped" }),
-          makeInstance({ instanceId: "i-3", name: "beta-running", state: "running" }),
-        ])
-      );
+      stubFetches([
+        makeInstance({ instanceId: "i-1", name: "alpha-running", state: "running" }),
+        makeInstance({ instanceId: "i-2", name: "alpha-stopped", state: "stopped" }),
+        makeInstance({ instanceId: "i-3", name: "beta-running", state: "running" }),
+      ]);
 
       render(<SwarmsTable />);
 
@@ -438,11 +432,9 @@ describe("SwarmsTable", () => {
     });
 
     it("shows empty state message when combined filters yield no results", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([
-          makeInstance({ instanceId: "i-1", name: "my-instance", state: "running" }),
-        ])
-      );
+      stubFetches([
+        makeInstance({ instanceId: "i-1", name: "my-instance", state: "running" }),
+      ]);
 
       render(<SwarmsTable />);
 
@@ -456,7 +448,7 @@ describe("SwarmsTable", () => {
 
   describe("clicking disabled buttons", () => {
     it("does not open dialog when Start is disabled (running instance)", async () => {
-      mockFetch.mockResolvedValueOnce(makeFetchResponse([makeInstance({ state: "running" })]));
+      stubFetches([makeInstance({ state: "running" })]);
 
       render(<SwarmsTable />);
 
@@ -470,9 +462,7 @@ describe("SwarmsTable", () => {
     });
 
     it("does not open dialog when Stop is disabled (stopped instance)", async () => {
-      mockFetch.mockResolvedValueOnce(
-        makeFetchResponse([makeInstance({ state: "stopped" })])
-      );
+      stubFetches([makeInstance({ state: "stopped" })]);
 
       render(<SwarmsTable />);
 
@@ -483,6 +473,106 @@ describe("SwarmsTable", () => {
       fireEvent.click(stopBtn);
 
       expect(screen.queryByRole("dialog")).toBeNull();
+    });
+  });
+
+  describe("storage history", () => {
+    const GB = 1024 * 1024 * 1024;
+
+    function storagePayload(instanceId: string, overrides: Record<string, unknown> = {}) {
+      const latest = {
+        date: "2026-09-08",
+        usedBytes: 200 * GB,
+        totalBytes: 500 * GB,
+        freeBytes: 300 * GB,
+        status: "OK",
+        instanceId,
+        reasonCode: null,
+        mount: "/",
+        services: [
+          { name: "neo4j", sizeBytes: 12 * GB, sizeKnown: true },
+          { name: "elasticsearch", sizeBytes: 8 * GB, sizeKnown: true },
+        ],
+        collectedAt: "2026-09-08T03:00:00.000Z",
+        ...overrides,
+      };
+      return {
+        [instanceId]: {
+          latest,
+          history: [
+            { date: "2026-09-06", usedBytes: 180 * GB, totalBytes: 500 * GB, freeBytes: 320 * GB, status: "OK" },
+            { date: "2026-09-07", usedBytes: 190 * GB, totalBytes: 500 * GB, freeBytes: 310 * GB, status: "OK" },
+            {
+              date: latest.date,
+              usedBytes: latest.usedBytes,
+              totalBytes: latest.totalBytes,
+              freeBytes: latest.freeBytes,
+              status: latest.status,
+            },
+          ],
+        },
+      };
+    }
+
+    it("renders current usage, per-service breakdown, and a trend sparkline", async () => {
+      const instance = makeInstance({ instanceId: "i-abc123", state: "running" });
+      stubFetches([instance], storagePayload("i-abc123"));
+
+      render(<SwarmsTable />);
+
+      await waitFor(() => expect(screen.getByText("test-instance")).toBeInTheDocument());
+
+      const usage = screen.getByTestId("storage-usage-i-abc123");
+      expect(usage).toHaveTextContent("200 GB");
+      expect(usage).toHaveTextContent("500 GB");
+      expect(usage).toHaveTextContent("40%");
+
+      const services = screen.getByTestId("storage-services-i-abc123");
+      expect(services).toHaveTextContent("neo4j");
+      expect(services).toHaveTextContent("12 GB");
+      expect(services).toHaveTextContent("elasticsearch");
+
+      expect(screen.getByTestId("storage-status-i-abc123")).toHaveTextContent("OK");
+      expect(screen.getByTestId("storage-sparkline-i-abc123").tagName.toLowerCase()).toBe("svg");
+    });
+
+    it("renders a sane empty state when an instance has no snapshots", async () => {
+      stubFetches([makeInstance({ instanceId: "i-empty", name: "empty-host" })], {});
+
+      render(<SwarmsTable />);
+
+      await waitFor(() => expect(screen.getByText("empty-host")).toBeInTheDocument());
+
+      expect(screen.getByTestId("storage-usage-i-empty")).toHaveTextContent("No snapshots");
+      expect(screen.getByTestId("storage-services-i-empty")).toHaveTextContent("—");
+      expect(screen.getByTestId("storage-status-i-empty")).toHaveTextContent("—");
+      expect(screen.getByTestId("storage-sparkline-i-empty")).toHaveTextContent("—");
+    });
+
+    it("renders a service name containing markup as inert text", async () => {
+      const instance = makeInstance({ instanceId: "i-xss", name: "xss-host" });
+      stubFetches(
+        [instance],
+        storagePayload("i-xss", {
+          services: [
+            {
+              name: "<img src=x onerror=alert(1)>",
+              sizeBytes: 1024,
+              sizeKnown: true,
+            },
+          ],
+        }),
+      );
+
+      const { container } = render(<SwarmsTable />);
+
+      await waitFor(() => expect(screen.getByText("xss-host")).toBeInTheDocument());
+
+      const services = screen.getByTestId("storage-services-i-xss");
+      expect(services).toHaveTextContent("<img src=x onerror=alert(1)>");
+      expect(services.querySelector("img")).toBeNull();
+      expect(container.querySelector("img[onerror]")).toBeNull();
+      expect(container.innerHTML).not.toContain("<img src=x");
     });
   });
 });
