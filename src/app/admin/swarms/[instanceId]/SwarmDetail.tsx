@@ -87,7 +87,13 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
         type: "Swarm",
         data: { cmd: "ListContainers" },
       });
-      setContainers(data?.containers ?? data?.data?.containers ?? []);
+      const body = (data as any)?.data ?? data;
+      const list = Array.isArray(body)
+        ? body
+        : Array.isArray((body as any)?.containers)
+          ? (body as any).containers
+          : [];
+      setContainers(list as Container[]);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load containers");
     } finally {
