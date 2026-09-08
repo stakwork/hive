@@ -130,10 +130,14 @@ const MOCK_CONTAINERS = [
   { name: "lnd", status: "stopped", image: "lightninglabs/lnd:v0.18" },
 ];
 
-function makeListContainersResponse(containers = MOCK_CONTAINERS) {
+// The real /api/admin/swarms/[instanceId]/cmd route returns the full
+// SwarmCmdResponse envelope `{ ok, status, data, rawText }`. For
+// ListContainers, sphinx-swarm serializes `Vec<ContainerSummary>` directly,
+// so `.data` is a BARE ARRAY of containers (not `{ containers: [...] }`).
+function makeListContainersResponse(containers: unknown = MOCK_CONTAINERS) {
   return {
     ok: true,
-    json: async () => ({ containers }),
+    json: async () => ({ ok: true, status: 200, data: containers }),
   };
 }
 
@@ -238,6 +242,34 @@ describe("SwarmDetail", () => {
   });
 
   describe("container table", () => {
+    it("renders container rows when the swarm host returns a bare array under data", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, status: 200, data: MOCK_CONTAINERS }),
+      });
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => {
+        expect(screen.getByText("sphinx")).toBeInTheDocument();
+        expect(screen.getByText("neo4j")).toBeInTheDocument();
+        expect(screen.getByText("lnd")).toBeInTheDocument();
+      });
+    });
+
+    it('renders "No containers found." when the swarm host returns an empty array', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, status: 200, data: [] }),
+      });
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => {
+        expect(screen.getByText("No containers found.")).toBeInTheDocument();
+      });
+    });
+
     it("renders container rows with correct Name, Status, and Image", async () => {
       mockFetch.mockResolvedValueOnce(makeListContainersResponse());
 

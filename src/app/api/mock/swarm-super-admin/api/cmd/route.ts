@@ -7,7 +7,7 @@ const MOCK_CONTAINERS = [
 ];
 
 const MOCK_RESPONSES: Record<string, unknown> = {
-  ListContainers: { containers: MOCK_CONTAINERS },
+  ListContainers: MOCK_CONTAINERS,
   StartContainer: { success: true },
   StopContainer: { success: true },
   RestartContainer: { success: true },
