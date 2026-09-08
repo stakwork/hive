@@ -11,6 +11,7 @@ import {
 import { resolveDbSwarmCredentials } from "@/services/swarm/cmd-credentials";
 import { resolveSwarmHost, isAllowedSwarmHost, isAbortErrorLike } from "@/services/swarm/host-storage-read";
 import { redis } from "@/lib/redis";
+import { swarmUrlFromTags } from "@/lib/swarm/swarm-url";
 
 export const runtime = "nodejs";
 
@@ -59,10 +60,7 @@ export async function POST(
         tags?: Array<{ key: string; value: string }>;
       }>;
       const instance = instances.find((i) => i.instanceId === instanceId);
-      const userAssignedName = instance?.tags?.find((t) => t.key === "UserAssignedName")?.value;
-      if (userAssignedName) {
-        resolvedSwarmUrl = `https://${userAssignedName}.sphinx.chat`;
-      }
+      resolvedSwarmUrl = swarmUrlFromTags(instance?.tags) ?? undefined;
     }
   }
 
