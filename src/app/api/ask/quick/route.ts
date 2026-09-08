@@ -12,6 +12,7 @@ import {
   recordTurnTokens,
 } from "@/lib/ai/publicChatBudget";
 import { db } from "@/lib/db";
+import { healUserChatAgentModel, loadUserChatAgentModel } from "@/lib/ai/resolve-model";
 import { resolveMessageImageUrls } from "@/lib/ai/resolveMessageImages";
 import type { MessageLike } from "@/lib/proposals/handleApproval";
 import { runProposalIntent } from "@/lib/proposals/runProposalIntent";
@@ -259,13 +260,9 @@ export async function POST(request: NextRequest) {
       // so it can be forwarded to the feature planner via runProposalIntent.
       // The same fetch happens below for the non-approval path; keeping
       // them separate avoids re-ordering a large amount of existing code.
-      const approvalChatAgentModel =
-        (
-          await db.user.findUnique({
-            where: { id: userId },
-            select: { chatAgentModel: true },
-          })
-        )?.chatAgentModel ?? undefined;
+      // Resolved against the live catalog (stale prefixes healed) so the
+      // planner never inherits a value that maps to no provider key.
+      const approvalChatAgentModel = await loadUserChatAgentModel(userId);
       console.log("[quick-ask] timing", { stage: "early-exit:approval-rejection", ms: Date.now() - t0, workspaces: slugs, orgId: orgId ?? null });
       return await runProposalIntent({
         orgId,
@@ -421,7 +418,12 @@ export async function POST(request: NextRequest) {
         })
       : null;
     console.log("[quick-ask] timing", { stage: "loadUserPrefs", ms: Date.now() - tUserPrefs, skipped: !userId, workspaces: slugs, orgId: orgId ?? null });
-    const chatAgentModel = userPrefs?.chatAgentModel ?? undefined;
+    // Resolved against the live catalog (stale prefixes healed) so both
+    // Jamie's own run and anything it forwards to the feature planner
+    // carry a value that maps to a provider key.
+    const chatAgentModel = userId
+      ? await healUserChatAgentModel(userId, userPrefs?.chatAgentModel)
+      : undefined;
     const userTimezone = userPrefs?.timezone ?? "UTC";
 
     // ============================================================

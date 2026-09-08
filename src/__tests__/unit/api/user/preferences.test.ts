@@ -13,7 +13,7 @@ vi.mock("@/lib/auth/nextauth", () => ({
 
 const mockUserFindUnique = vi.fn();
 const mockUserUpdate = vi.fn();
-const mockLlmModelFindMany = vi.fn();
+const mockLlmModelFindFirst = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -22,7 +22,7 @@ vi.mock("@/lib/db", () => ({
       update: (...args: unknown[]) => mockUserUpdate(...args),
     },
     llmModel: {
-      findMany: (...args: unknown[]) => mockLlmModelFindMany(...args),
+      findFirst: (...args: unknown[]) => mockLlmModelFindFirst(...args),
     },
   },
 }));
@@ -122,7 +122,7 @@ describe("GET /api/user/preferences", () => {
       timezone: "UTC",
       dailyRecapEnabled: true,
     });
-    mockLlmModelFindMany.mockResolvedValue([]);
+    mockLlmModelFindFirst.mockResolvedValue(null);
 
     const res = await GET();
     const body = await res.json();
@@ -138,15 +138,42 @@ describe("GET /api/user/preferences", () => {
       timezone: "UTC",
       dailyRecapEnabled: true,
     });
-    mockLlmModelFindMany.mockResolvedValue([
+    mockLlmModelFindFirst.mockResolvedValue(
       { id: "m1", name: "grok-4", provider: "XAI", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
-    ]);
+    );
 
     const res = await GET();
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(body.chatAgentModel).toBe("xai/grok-4");
+  });
+
+  test("heals a stale provider prefix to the live catalog value and persists it", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: "grok4.6/grok-4.6",
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+    // The row named "grok-4.6" is now first-class XAI.
+    mockLlmModelFindFirst.mockResolvedValue(
+      { id: "m1", name: "grok-4.6", provider: "XAI", providerLabel: null, isPlanDefault: true, isTaskDefault: true },
+    );
+    mockUserUpdate.mockResolvedValue({});
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.chatAgentModel).toBe("xai/grok-4.6");
+    expect(mockLlmModelFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ name: "grok-4.6", isPublic: true }) }),
+    );
+    expect(mockUserUpdate).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { chatAgentModel: "xai/grok-4.6" },
+    });
   });
 
   test("passes null through unchanged (no catalog lookup needed)", async () => {
@@ -162,7 +189,7 @@ describe("GET /api/user/preferences", () => {
 
     expect(res.status).toBe(200);
     expect(body.chatAgentModel).toBeNull();
-    expect(mockLlmModelFindMany).not.toHaveBeenCalled();
+    expect(mockLlmModelFindFirst).not.toHaveBeenCalled();
   });
 });
 
