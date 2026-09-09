@@ -2,7 +2,8 @@
  * Unit tests for HtmlArtifactFrame — the single renderer for stored HTML.
  *
  * Asserts the security posture, not the styling:
- *   - sandbox grants nothing (no allow-scripts / allow-same-origin / …)
+ *   - sandbox grants only allow-scripts (never allow-same-origin / …)
+ *   - the blob is the page with the CSP meta tag injected, typed text/html
  *   - `dangerouslySetInnerHTML` is never used (props + source text)
  *   - `src` is only ever a blob: URL (never the proxy or an S3 URL)
  *   - the blob URL is revoked on unmount
@@ -18,6 +19,7 @@ import {
   HtmlArtifactFrame,
   HTML_FRAME_SANDBOX,
 } from "@/components/html-artifact/HtmlArtifactFrame";
+import { injectHtmlArtifactCsp } from "@/lib/utils/html-artifact-csp";
 
 // JSX compiles to React.createElement (tsconfig jsx: preserve) — the
 // component under test relies on a global React, as other component
@@ -27,17 +29,19 @@ globalThis.React = React;
 const BLOB_URL = "blob:http://localhost/abc-123";
 
 const mockFetch = vi.fn();
-const createObjectURL = vi.fn(() => BLOB_URL);
+const createObjectURL = vi.fn<(blob: Blob) => string>(() => BLOB_URL);
 const revokeObjectURL = vi.fn();
 
 const ORG_SOURCE = { githubLogin: "acme-org", slug: "my-page" };
 const TASK_SOURCE = { taskId: "task-1", artifactId: "artifact-1" };
 
-function htmlResponse(html = "<!DOCTYPE html><html><body>hi</body></html>") {
+const PAGE_HTML = "<!DOCTYPE html><html><body>hi</body></html>";
+
+function htmlResponse(html = PAGE_HTML) {
   return {
     ok: true,
     status: 200,
-    blob: async () => new Blob([html], { type: "application/octet-stream" }),
+    text: async () => html,
   };
 }
 
@@ -64,22 +68,51 @@ describe("HtmlArtifactFrame", () => {
     vi.unstubAllGlobals();
   });
 
-  test("sandbox grants nothing dangerous", async () => {
+  test("sandbox grants allow-scripts and nothing else", async () => {
     render(<HtmlArtifactFrame source={ORG_SOURCE} />);
     const iframe = await findIframe();
     const sandbox = iframe.getAttribute("sandbox") ?? "";
 
     expect(iframe.hasAttribute("sandbox")).toBe(true);
+    expect(sandbox.trim().split(/\s+/)).toEqual(["allow-scripts"]);
+    expect(HTML_FRAME_SANDBOX).toBe("allow-scripts");
+  });
+
+  test("sandbox never grants same-origin, navigation, popups, forms, or modals", async () => {
+    render(<HtmlArtifactFrame source={ORG_SOURCE} />);
+    const iframe = await findIframe();
+    const sandbox = iframe.getAttribute("sandbox") ?? "";
+
+    // `allow-same-origin` in particular must never be combined with
+    // `allow-scripts`: the blob is minted on Hive's origin, so the pair
+    // would let the page remove its own sandbox.
     for (const token of [
-      "allow-scripts",
       "allow-same-origin",
       "allow-top-navigation",
+      "allow-top-navigation-by-user-activation",
+      "allow-popups",
       "allow-popups-to-escape-sandbox",
+      "allow-forms",
+      "allow-modals",
+      "allow-downloads",
     ]) {
       expect(sandbox).not.toContain(token);
     }
-    expect(sandbox.trim()).toBe("");
-    expect(HTML_FRAME_SANDBOX).toBe("");
+  });
+
+  test("blob is the page with the CSP meta injected, typed as HTML", async () => {
+    render(<HtmlArtifactFrame source={ORG_SOURCE} />);
+    await findIframe();
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0];
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe("text/html; charset=utf-8");
+    // Same bytes the CSP helper produces for this page — i.e. the meta
+    // tag was prepended rather than the raw body being framed as-is.
+    const expected = new Blob([injectHtmlArtifactCsp(PAGE_HTML)]);
+    expect(blob.size).toBe(expected.size);
+    expect(blob.size).toBeGreaterThan(new Blob([PAGE_HTML]).size);
   });
 
   test("iframe src is a blob: URL, never the proxy or an S3 URL", async () => {
@@ -152,7 +185,7 @@ describe("HtmlArtifactFrame", () => {
   });
 
   test("renders the error state and no iframe on a 404 response", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 404, blob: async () => null });
+    mockFetch.mockResolvedValue({ ok: false, status: 404, text: async () => "" });
     render(<HtmlArtifactFrame source={ORG_SOURCE} />);
 
     expect(
@@ -163,7 +196,7 @@ describe("HtmlArtifactFrame", () => {
   });
 
   test("renders an access error on a 403 response", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 403, blob: async () => null });
+    mockFetch.mockResolvedValue({ ok: false, status: 403, text: async () => "" });
     render(<HtmlArtifactFrame source={ORG_SOURCE} />);
 
     expect(

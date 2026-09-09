@@ -40,6 +40,7 @@ import {
 } from "@/services/html-pages";
 import { applyExactEdits, type TextEdit } from "@/services/text-edits";
 import { notifyCanvasesUpdatedByLogin, ROOT_REF } from "@/lib/canvas";
+import { HTML_ARTIFACT_CDN_HOSTS } from "@/lib/utils/html-artifact-csp";
 
 /** Cap on edits per `update_html` call — mirrors `MAX_PROMPT_EDITS`. */
 export const MAX_HTML_EDITS = 50;
@@ -72,6 +73,17 @@ const slugSchema = z
     "slug must be short kebab-case: lowercase letters, digits, and single hyphens only (e.g. 'hive-vs-workspaces-story').",
   )
   .describe("Short kebab-case identifier, unique within the org.");
+
+/**
+ * What the rendered page can and cannot do, stated once and appended to
+ * the `save_html` / `update_html` descriptions so the model authors pages
+ * that actually work inside `HtmlArtifactFrame`'s sandbox + CSP.
+ */
+const HTML_RUNTIME_GUIDANCE =
+  "Runtime: the page renders in a sandboxed iframe with JavaScript ENABLED. Inline <script> works, and libraries may be loaded only from " +
+  HTML_ARTIFACT_CDN_HOSTS.map((h) => h.replace("https://", "")).join(", ") +
+  " (e.g. Chart.js, D3, Mermaid via <script src> or ESM import). The page CANNOT fetch other hosts or Hive APIs, submit forms, open popups, " +
+  "navigate the parent, or embed <iframe>s — inline any data it needs. Images may load from any https URL.";
 
 function sharePath(githubLogin: string, slug: string): string {
   return `/org/${githubLogin}/h/${slug}`;
@@ -157,7 +169,8 @@ export function buildHtmlArtifactTools(orgId: string, userId: string): ToolSet {
         "Required fields:\n" +
         "  - slug: short kebab-case identifier unique within the org (e.g. 'hive-vs-workspaces-story').\n" +
         "  - title: polished title shown on the preview card and share page.\n" +
-        "  - html: complete HTML document (include <!DOCTYPE html> and a full document). Do not pass s3Key, orgId, or url.",
+        "  - html: complete HTML document (include <!DOCTYPE html> and a full document). Do not pass s3Key, orgId, or url.\n\n" +
+        HTML_RUNTIME_GUIDANCE,
       inputSchema: z.object({
         slug: slugSchema,
         title: z
@@ -287,7 +300,8 @@ export function buildHtmlArtifactTools(orgId: string, userId: string): ToolSet {
         "Patch an existing HTML page artifact. Looks up the page by slug in this org and overwrites the same S3 object — slug, storage location, and share URL never change. " +
         "Supply EITHER `edits` (targeted find/replace — prefer this for anything short of a full rewrite) OR `html` (the complete replacement document), never both. " +
         "Use `get_html` first if you don't already have the current text to build exact `edits` from. " +
-        "Returns `{ slug, status: \"updated\", updatedAt }`. Do not pass s3Key, orgId, or url.",
+        "Returns `{ slug, status: \"updated\", updatedAt }`. Do not pass s3Key, orgId, or url.\n\n" +
+        HTML_RUNTIME_GUIDANCE,
       inputSchema: z
         .object({
           slug: slugSchema.describe("The slug of the HTML page to update."),

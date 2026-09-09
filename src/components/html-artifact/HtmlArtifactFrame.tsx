@@ -5,27 +5,37 @@
  *
  * Untrusted markup is never injected into Hive's DOM. Instead the bytes are
  * fetched from an authenticated body proxy, wrapped in a blob URL, and shown
- * in an iframe whose `sandbox` grants **nothing**:
+ * in an iframe whose `sandbox` grants **only** `allow-scripts`:
  *
- *   - no `allow-scripts`      — the page cannot run JS
+ *   - `allow-scripts`          — the page may run JS, so charts and
+ *                               interactive widgets work
  *   - no `allow-same-origin`  — it is a unique opaque origin, so it cannot
- *                               reach Hive's cookies, storage, or DOM
- *   - no `allow-top-navigation` / `allow-popups-to-escape-sandbox`
+ *                               reach Hive's cookies, storage, or DOM. This
+ *                               flag must NEVER be added: together with
+ *                               `allow-scripts` on a blob minted by Hive's
+ *                               origin it would let the page strip its own
+ *                               sandbox.
+ *   - no `allow-top-navigation` / `allow-popups` /
+ *     `allow-popups-to-escape-sandbox` / `allow-forms` / `allow-modals`
+ *
+ * Before the blob is built, `injectHtmlArtifactCsp` prepends a
+ * Content-Security-Policy meta tag that limits where the sandboxed page may
+ * load code and assets from (a fixed CDN allowlist) and what it may talk to.
+ * See `@/lib/utils/html-artifact-csp` for the policy and its rationale.
  *
  * The blob URL is the only value ever assigned to `src`; the proxy URL and
  * raw S3 URLs are never navigated to. `dangerouslySetInnerHTML` and `srcDoc`
  * are deliberately unused.
- *
- * Interactive charts/scripts are out of scope for this locked frame.
  */
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { htmlArtifactProxyUrl, type HtmlArtifactSource } from "@/lib/utils/html-body-proxy";
+import { injectHtmlArtifactCsp } from "@/lib/utils/html-artifact-csp";
 
 export type { HtmlArtifactSource };
 
-export const HTML_FRAME_SANDBOX = "";
+export const HTML_FRAME_SANDBOX = "allow-scripts";
 
 interface HtmlArtifactFrameProps {
   source: HtmlArtifactSource;
@@ -73,11 +83,14 @@ export function HtmlArtifactFrame({ source, title, className, updatedAt }: HtmlA
               : "You don't have access to this page.",
           );
         }
-        const bytes = await res.blob();
+        const html = await res.text();
         if (cancelled) return;
         // Re-type the opaque download as HTML only inside the blob, which
-        // renders in the sandboxed frame's opaque origin.
-        const htmlBlob = new Blob([bytes], { type: "text/html" });
+        // renders in the sandboxed frame's opaque origin, with the CSP
+        // meta tag prepended so the policy governs everything in the page.
+        const htmlBlob = new Blob([injectHtmlArtifactCsp(html)], {
+          type: "text/html; charset=utf-8",
+        });
         revoke();
         const next = URL.createObjectURL(htmlBlob);
         objectUrlRef.current = next;
