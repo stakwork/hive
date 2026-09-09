@@ -108,6 +108,50 @@ export interface SingleWorkspaceOrgContext {
    * the full `getCanvasPromptSuffix()` composition (back-compat).
    */
   promptSuffix?: string;
+  /**
+   * Identity of the ONE workspace this org-scope turn is bound to.
+   * When present, the system prompt gains an "Available Workspaces &
+   * Repositories" section naming it — the same section the
+   * multi-workspace prompt always carries. The roadmap tools
+   * (`propose_feature`, `assign_feature_to_workspace`, …) take a
+   * `workspaceSlug` "from the Available Workspaces list"; without this
+   * section a single-workspace org prompt never states the slug at all,
+   * so the agent has to guess it (typically from the repo name), and a
+   * wrong guess fails the org-scoped lookup at proposal time.
+   */
+  workspace?: {
+    name: string;
+    slug: string;
+    /** Swarm vanity host (see `WorkspaceConfig.swarmDomain`). */
+    swarmDomain?: string;
+  };
+}
+
+/**
+ * The single-workspace counterpart of the multi-workspace prompt's
+ * "Available Workspaces & Repositories" section: one entry, in the same
+ * shape (`**Name** (slug: \`slug\`, swarm: \`host\`) — desc: repos`), plus
+ * an explicit instruction to pass that exact slug to any org tool that
+ * takes one. Rendered only for org-scope single-workspace turns.
+ */
+function formatSingleWorkspaceOrgList(
+  workspace: NonNullable<SingleWorkspaceOrgContext["workspace"]>,
+  repoUrls: string[],
+  description?: string,
+): string {
+  const repos =
+    repoUrls.length > 0 ? repoUrls.join(", ") : "(no repositories linked)";
+  const desc = description ? ` — ${description}` : "";
+  const swarmSegment = workspace.swarmDomain
+    ? `, swarm: \`${workspace.swarmDomain}\``
+    : "";
+  return `
+
+## Available Workspaces & Repositories
+- **${workspace.name}** (slug: \`${workspace.slug}\`${swarmSegment})${desc}: ${repos}
+
+**This is the only workspace in this organization, and every tool call is already scoped to it.** Whenever an org-level tool takes a \`workspaceSlug\` (\`propose_feature\`, \`assign_feature_to_workspace\`, \`unassign_feature_from_workspace\`, …), pass exactly \`${workspace.slug}\` — never an opaque id, and never a slug guessed from a repository name. Tool names on this surface are bare (\`list_concepts\`, \`repo_agent\`, \`propose_feature\`, …); there is no \`{workspace}__\` prefix here.
+`;
 }
 
 export function getQuickAskPrefixMessages(
@@ -121,8 +165,18 @@ export function getQuickAskPrefixMessages(
   userTimezone?: string,
 ): ModelMessage[] {
   const baseSystem = getQuickAskSystemPrompt(repoUrls, description, members, currentUserGithubUsername, userTimezone);
+  // Section order matters: the workspace list goes BEFORE the capability
+  // suffix, because the roadmap snippet refers back to "the Available
+  // Workspaces list at the top of the system prompt".
   const systemContent = orgContext
     ? baseSystem +
+      (orgContext.workspace
+        ? formatSingleWorkspaceOrgList(
+            orgContext.workspace,
+            repoUrls,
+            description,
+          )
+        : "") +
       (orgContext.promptSuffix ?? getCanvasPromptSuffix()) +
       CANVAS_SCOPE_POINTER
     : baseSystem;

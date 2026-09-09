@@ -267,7 +267,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const isMultiWorkspace = slugs.length > 1;
     const turnId = randomUUID();
 
     // ── Build the ModelMessage[] for this turn ───────────────────────
@@ -353,13 +352,20 @@ export async function POST(request: NextRequest) {
       // (kept so evals can read the proposed feature/initiative), and with
       // the `planner` capability dropped so `send_to_feature_planner` (a
       // real Stakwork dispatch) is absent. A live turn runs the full agent.
+      //
+      // Both branches pass `orgId` unconditionally: this endpoint is
+      // org-scoped by construction (an orgId is required above), and the
+      // org toolset must NOT depend on how many workspaces the org has —
+      // many orgs have exactly one. The live branch used to gate on
+      // `slugs.length > 1` (mirroring an old `/api/ask/quick` gate), which
+      // silently ran single-workspace orgs as the plain per-workspace
+      // agent with no `propose_feature`.
       const agentOptions = dryRun
         ? {
-            // Always enable the org toolset in dryRun so `propose_*` exists,
-            // regardless of single- vs multi-workspace. `roadmap` pulls in
-            // the loadable trio (whiteboard/research/connections) via the
-            // registry `includes` but deliberately NOT `planner`, so
-            // `send_to_feature_planner` (a real Stakwork dispatch) is absent.
+            // `roadmap` pulls in the loadable trio (whiteboard/research/
+            // connections) via the registry `includes` but deliberately
+            // NOT `planner`, so `send_to_feature_planner` (a real Stakwork
+            // dispatch) is absent.
             orgId,
             capabilities: ["roadmap"] as readonly OrgCapability[],
             readonly: true,
@@ -367,10 +373,7 @@ export async function POST(request: NextRequest) {
             silentPusher: true,
           }
         : {
-            // Org tools merge only for the multi-workspace org canvas —
-            // matches `/api/ask/quick`. A single-workspace live turn runs
-            // the plain per-workspace agent.
-            orgId: isMultiWorkspace ? orgId : undefined,
+            orgId,
             silentPusher: false,
           };
 

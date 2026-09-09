@@ -137,7 +137,9 @@ Corollaries:
   per-workspace `validateWorkspaceAccess`.
 - **Org-canvas, multi-workspace** is the primary target (the canvas agent
   with `buildCanvasTools`/`buildInitiativeTools`/`buildConnectionTools`).
-  Single-workspace works too; it just doesn't merge the org toolset.
+  Single-workspace orgs get the same org toolset (many orgs have exactly
+  one workspace); the agent runs its single-workspace branch with the org
+  overlay merged in.
 - **No enrichments.** `skipEnrichments` is implicit: no follow-up questions,
   no provenance broadcast. The tool caller renders neither.
 - **Approvals: out of scope for v1.** Approve/Reject is a web-card

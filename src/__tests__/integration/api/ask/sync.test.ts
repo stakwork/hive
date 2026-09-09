@@ -658,4 +658,33 @@ describe('POST /api/ask/sync', () => {
       expect(data.messages[0].content).toBe('the single next step');
     });
   });
+
+  describe('Org toolset for single-workspace orgs', () => {
+    it('a live single-workspace turn merges the org toolset (not only dryRun)', async () => {
+      // The live branch used to gate `orgId` on `slugs.length > 1`, so a
+      // one-workspace org's turn ran with no `propose_feature` at all.
+      const { owner, workspace } = await setupOrgWorkspace();
+
+      vi.mocked(streamText).mockReturnValue(
+        mockFinishedStream([{ text: 'ok', toolCalls: [], toolResults: [] }]) as any,
+      );
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          { message: 'create a milestone for arm64 support', workspaceSlug: workspace.slug },
+          owner,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
+      const toolNames = Object.keys(callArgs.tools ?? {});
+      expect(toolNames).toContain('propose_feature');
+      expect(toolNames).toContain('read_canvas');
+      // Live (non-dryRun): mutators and the planner are present too.
+      expect(toolNames).toContain('assign_feature_to_initiative');
+      expect(toolNames).toContain('send_to_feature_planner');
+    });
+  });
 });
