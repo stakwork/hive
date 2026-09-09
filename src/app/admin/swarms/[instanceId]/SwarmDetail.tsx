@@ -198,7 +198,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
         start: { type: "Swarm", data: { cmd: "StartContainer", content: container.name } },
         stop: { type: "Swarm", data: { cmd: "StopContainer", content: container.name } },
         restart: { type: "Swarm", data: { cmd: "RestartContainer", content: container.name } },
-        logs: { type: "Swarm", data: { cmd: "GetContainerLogs", content: container.name } },
+        logs: { type: "Swarm", data: { cmd: "GetContainerLogs", content: { name: container.name, before_timestamp: null, since_timestamp: null } } },
       };
 
       const data = await postCmd(instanceId, resolvedUrl, cmdMap[action]);
