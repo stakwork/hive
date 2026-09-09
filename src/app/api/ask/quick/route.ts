@@ -281,7 +281,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const isMultiWorkspace = slugs.length > 1;
     const primarySlug = slugs[0];
     const isPublicViewerRequest = publicViewerWorkspaceId !== null;
 
@@ -548,7 +547,17 @@ export async function POST(request: NextRequest) {
         promptResolutions,
       } = await runCanvasAgent({
           userId,
-          orgId: orgId && isMultiWorkspace ? orgId : undefined,
+          // Any org-scoped request (the org canvas SidebarChat) gets the org
+          // toolset — roadmap / planner / research / etc. — regardless of
+          // how many workspaces the org has. This used to be gated on
+          // `slugs.length > 1`, which silently ran every single-workspace
+          // org's canvas chat as the plain per-workspace agent (no
+          // `propose_feature`, no `read_canvas`, no capability prompt).
+          // `runCanvasAgent`'s single-workspace branch merges the same
+          // capability tools + prompt suffix when handed an orgId. Public
+          // viewers never carry an orgId (rejected above), and membership
+          // was validated above, so this is member-auth only.
+          orgId: orgId || undefined,
           workspaceSlugs: slugs,
           modelName: chatAgentModel,
           // Reuse cached concepts (skips the swarm `listConcepts` call)
@@ -879,8 +888,7 @@ export async function POST(request: NextRequest) {
           primarySlug,
           primaryWorkspaceId,
           primaryUserId,
-          agentName:
-            orgId && isMultiWorkspace ? "canvas-agent" : "chat-agent",
+          agentName: orgId ? "canvas-agent" : "chat-agent",
         });
         await emitProvenance({
           conceptIds: Array.from(learnedConceptIds),

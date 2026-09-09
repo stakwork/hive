@@ -1049,9 +1049,9 @@ export async function runCanvasAgent(
       };
     }
 
-    // Do not gate Sphinx merge on `orgId` — a one-workspace org canvas
-    // (and dashboard chat) never pass orgId. Destination is the bound
-    // workspace, not an org-level tribe.
+    // Do not gate Sphinx merge on `orgId` — the dashboard chat never
+    // passes one. Destination is the bound workspace, not an org-level
+    // tribe.
     const tSphinxMergeSingle = Date.now();
     tools = await mergeSphinxTools(tools, {
       userId,
@@ -1077,6 +1077,14 @@ export async function runCanvasAgent(
         ? {
             orgId,
             promptSuffix: orgPromptSuffix,
+            // Name the one workspace so the roadmap tools' `workspaceSlug`
+            // has a stated source (the multi-workspace prompt lists every
+            // workspace up-front; this is the single-workspace equivalent).
+            workspace: {
+              name: ws.name,
+              slug: ws.slug,
+              swarmDomain: ws.swarmDomain,
+            },
           }
         : undefined,
       ws.currentUserGithubUsername,
