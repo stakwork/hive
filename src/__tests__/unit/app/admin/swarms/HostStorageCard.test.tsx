@@ -393,18 +393,59 @@ describe("HostStorageCard", () => {
     expect(screen.getByTestId("swarm-password-update-form")).toBeInTheDocument();
     expect(screen.getByTestId("form-workspace-id")).toHaveTextContent("ws-decrypt");
     expect(screen.getByTestId("form-has-password")).toHaveTextContent("true");
+    expect(screen.queryByTestId("password-recovery-needs-workspace")).not.toBeInTheDocument();
   });
 
-  it("does not render SwarmPasswordUpdateForm for other failed reason codes", async () => {
+  it("renders SwarmPasswordUpdateForm for AUTH_FAILED with a workspaceId", async () => {
     await renderWithFetch(
-      fetchResponse({ outcome: "failed", reasonCode: "CONFIG_INVALID", cached: false }),
+      fetchResponse({
+        outcome: "failed",
+        reasonCode: "AUTH_FAILED",
+        workspaceId: "ws-auth",
+        cached: false,
+      }),
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/not configured for host storage reads/i)).toBeInTheDocument();
+      expect(screen.getByText(/swarm authentication failed/i)).toBeInTheDocument();
     });
-    expect(screen.queryByTestId("swarm-password-update-form")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/the stored credentials were rejected by the swarm/i),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("swarm-password-update-form")).toBeInTheDocument();
+    expect(screen.getByTestId("form-workspace-id")).toHaveTextContent("ws-auth");
+    expect(screen.getByTestId("form-has-password")).toHaveTextContent("true");
+    expect(screen.queryByTestId("password-recovery-needs-workspace")).not.toBeInTheDocument();
   });
+
+  it.each(["CONFIG_INVALID", "STACK_ERROR", "MALFORMED", "WORKSPACE_DELETED"] as const)(
+    "does not render SwarmPasswordUpdateForm for %s",
+    async (reasonCode) => {
+      await renderWithFetch(fetchResponse({ outcome: "failed", reasonCode, cached: false }));
+
+      await waitFor(() => {
+        expect(screen.getByText(new RegExp(reasonCode))).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId("swarm-password-update-form")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("password-recovery-needs-workspace")).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(["UNREACHABLE", "HTTP_502"] as const)(
+    "keeps %s on the unreachable branch with no password form",
+    async (reasonCode) => {
+      await renderWithFetch(
+        fetchResponse({ outcome: "unreachable", reasonCode, cached: false }),
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/couldn't reach the swarm just now/i)).toBeInTheDocument();
+      });
+      expect(screen.getByText(new RegExp(`reason: ${reasonCode}`))).toBeInTheDocument();
+      expect(screen.queryByTestId("swarm-password-update-form")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("password-recovery-needs-workspace")).not.toBeInTheDocument();
+    },
+  );
 
   it("does not render SwarmPasswordUpdateForm for DECRYPT_FAILED without workspaceId", async () => {
     await renderWithFetch(
@@ -415,6 +456,23 @@ describe("HostStorageCard", () => {
       expect(screen.getByText(/could not be decrypted/i)).toBeInTheDocument();
     });
     expect(screen.queryByTestId("swarm-password-update-form")).not.toBeInTheDocument();
+    expect(screen.getByTestId("password-recovery-needs-workspace")).toHaveTextContent(
+      "Password recovery needs a linked workspace.",
+    );
+  });
+
+  it("does not render SwarmPasswordUpdateForm for AUTH_FAILED without workspaceId", async () => {
+    await renderWithFetch(
+      fetchResponse({ outcome: "failed", reasonCode: "AUTH_FAILED", cached: false }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/swarm authentication failed/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("swarm-password-update-form")).not.toBeInTheDocument();
+    expect(screen.getByTestId("password-recovery-needs-workspace")).toHaveTextContent(
+      "Password recovery needs a linked workspace.",
+    );
   });
 
   it("re-fetches storage when SwarmPasswordUpdateForm succeeds", async () => {
