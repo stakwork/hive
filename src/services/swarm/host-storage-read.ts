@@ -4,6 +4,7 @@ import { EncryptionService, isEncrypted } from "@/lib/encryption";
 import {
   getSwarmCmdJwt,
   swarmCmdRequest,
+  SwarmAuthError,
   SwarmCmdConfigError,
   type SwarmCmdResponse,
 } from "./cmd";
@@ -94,7 +95,7 @@ export interface HostStorageReadResult {
   reasonCode?: HostStorageReadReasonCode;
   /** True only when the reading was served from the Hive cooldown cache. */
   cached: boolean;
-  /** Present only on DECRYPT_FAILED so the admin recovery UI can target the workspace. */
+  /** Present on recovery-eligible failures (`DECRYPT_FAILED`, `AUTH_FAILED`) so the admin recovery UI can target the workspace. */
   workspaceId?: string;
 }
 
@@ -119,7 +120,7 @@ function result(
   reasonCode: HostStorageReadReasonCode | undefined,
   swarmId: string | null,
   instanceId: string,
-  workspaceId?: string,
+  workspaceId?: string | null,
 ): HostStorageReadResult {
   if (reasonCode) logFailure(swarmId, instanceId, reasonCode);
   return workspaceId
@@ -299,7 +300,13 @@ export async function readHostStorage(instanceId: string): Promise<HostStorageRe
     if (isAbortErrorLike(error)) {
       return result("unreachable", "TIMEOUT", swarm.id, instanceId);
     }
-    return result("failed", "AUTH_FAILED", swarm.id, instanceId);
+    if (error instanceof SwarmAuthError && error.status === 401) {
+      return result("failed", "AUTH_FAILED", swarm.id, instanceId, swarm.workspaceId);
+    }
+    if (error instanceof SwarmAuthError) {
+      return result("unreachable", `HTTP_${error.status}`, swarm.id, instanceId);
+    }
+    return result("unreachable", "UNREACHABLE", swarm.id, instanceId);
   }
 
   // 8. Read + parse via the foundation ticket. `swarmCmdRequest` and
