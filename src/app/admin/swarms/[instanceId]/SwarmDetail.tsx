@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import HostStorageCard from "./HostStorageCard";
+import FluentbitStatsCard from "./FluentbitStatsCard";
 import { swarmUrlFromTags } from "@/lib/swarm/swarm-url";
 
 interface Container {
@@ -488,8 +489,10 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
         </CardContent>
       </Card>
 
-      {/* Host Storage Card */}
-      <HostStorageCard instanceId={instanceId} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <HostStorageCard instanceId={instanceId} />
+        <FluentbitStatsCard instanceId={instanceId} />
+      </div>
 
       {/* Logs Dialog */}
       <Dialog open={logsDialog !== null} onOpenChange={(open) => !open && setLogsDialog(null)}>
