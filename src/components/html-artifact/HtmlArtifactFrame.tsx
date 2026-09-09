@@ -21,20 +21,11 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { htmlArtifactProxyUrl, type HtmlArtifactSource } from "@/lib/utils/html-body-proxy";
 
-/** Two address shapes — never a raw `s3Key`. */
-export type HtmlArtifactSource =
-  | { githubLogin: string; slug: string }
-  | { taskId: string; artifactId: string };
+export type { HtmlArtifactSource };
 
 export const HTML_FRAME_SANDBOX = "";
-
-function proxyUrl(source: HtmlArtifactSource): string {
-  if ("githubLogin" in source) {
-    return `/api/orgs/${encodeURIComponent(source.githubLogin)}/html-pages/${encodeURIComponent(source.slug)}`;
-  }
-  return `/api/tasks/${encodeURIComponent(source.taskId)}/artifacts/${encodeURIComponent(source.artifactId)}/html`;
-}
 
 interface HtmlArtifactFrameProps {
   source: HtmlArtifactSource;
@@ -55,7 +46,7 @@ export function HtmlArtifactFrame({ source, title, className, updatedAt }: HtmlA
   const [loading, setLoading] = useState(true);
   const objectUrlRef = useRef<string | null>(null);
 
-  const url = proxyUrl(source);
+  const url = htmlArtifactProxyUrl(source);
 
   useEffect(() => {
     let cancelled = false;
