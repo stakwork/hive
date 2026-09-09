@@ -168,6 +168,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/ec2/alerts", strategy: "prefix", access: "webhook" },
   { path: "/api/tasks/*/title", strategy: "pattern", access: "webhook" },
   { path: "/api/tasks/*/recording", strategy: "pattern", access: "webhook" },
+  { path: "/api/tasks/*/audit/callback", strategy: "pattern", access: "webhook" },
   { path: "/api/tasks/*/webhook", strategy: "pattern", access: "webhook" },
   { path: "/api/webhook/pool-manager", strategy: "prefix", access: "webhook" },
   { path: "/api/w/*/pool/workspaces", strategy: "pattern", access: "webhook" },

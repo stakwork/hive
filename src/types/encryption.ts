@@ -31,6 +31,7 @@ export type EncryptableField =
   | "agentPassword"
   | "agentWebhookSecret"
   | "codeChangeWebhookSecret"
+  | "auditCallbackKey"
   | "vercelApiToken"
   | "vercelWebhookSecret"
   | "sphinxBotSecret"

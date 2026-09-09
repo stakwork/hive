@@ -59,6 +59,33 @@ export interface LongformContent {
   title?: string;
 }
 
+export type VerifyOutcome = "works" | "broken" | "unknown";
+
+export interface VerifyEvidence {
+  id: string;
+  kind: "screenshot" | "http" | "log" | "timing" | "dom" | "network" | "console" | "db" | "note";
+  summary: string;
+  data: string;
+}
+
+export interface VerifyClaim {
+  claim: string;
+  verdict: VerifyOutcome;
+  proof: string[];
+  reasoning: string;
+}
+
+export interface VerifyContent {
+  overall: VerifyOutcome;
+  claims: VerifyClaim[];
+  observations: string[];
+  summary: string;
+  evidence: VerifyEvidence[];
+  startedAt?: string;
+  finishedAt?: string;
+  error?: string;
+}
+
 export interface BugReportContent {
   bugDescription: string;
   iframeUrl: string;
@@ -332,7 +359,8 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | PublishPromptContent
     | PublishSkillContent
     | BountyContent
-    | StreamContent;
+    | StreamContent
+    | VerifyContent;
 }
 
 // Using Prisma Attachment type directly (no additional fields needed)
@@ -425,7 +453,8 @@ export function createArtifact(data: {
     | PublishPromptContent
     | PublishSkillContent
     | BountyContent
-    | StreamContent;
+    | StreamContent
+    | VerifyContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {
