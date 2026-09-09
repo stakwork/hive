@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { Loader2, RefreshCw, ChevronDown, ChevronUp, AlertCircle, ExternalLink, TrendingUp, Network, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -14,12 +15,11 @@ import { graphExplorerHref as graphHref } from "@/components/run-report/NodePeek
 import { canReadRunReport } from "@/lib/run-report/types";
 import { rosterSummary, type GraphRubric, type RosterSummary } from "@/lib/harvey-lab/rubric-scoring";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
-import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
-import { useLegalBenchmarkRunList, type BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
+import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 import { RecursionGraphPanel } from "@/components/legal/RecursionGraphPanel";
-import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
+import { graphEpochToIso, type EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
-import { StakworkRunType, WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus } from "@prisma/client";
 
 /** Edge types the recursion loop writes — the subgraph query's whole alphabet. */
 const LOOP_EDGE_TYPES =
@@ -240,6 +240,40 @@ function collectClimbTargets(rows: AttemptRailRow[]): ClimbTarget[] {
   return [...seen.values()];
 }
 
+/**
+ * Convert a graph/summary timestamp to epoch milliseconds.
+ * Never returns NaN — callers may pass the result straight to
+ * `formatDistanceToNow(new Date(ms))`. date-fns v4 throws RangeError on
+ * Invalid Date, so unparseable input must omit rather than throw.
+ *
+ * Numeric values (and numeric strings) go through `graphEpochToIso`, which
+ * treats values above `1e12` as epoch milliseconds and `1e12` and below as
+ * legacy Unix epoch seconds. Non-numeric strings are Date.parse'd as ISO.
+ * Empty / null / still-unparseable → null (omit the label).
+ */
+function parseStampMs(raw: number | string | null | undefined): number | null {
+  if (raw == null || raw === "") return null;
+
+  const asEpochSeconds =
+    typeof raw === "number" ||
+    (typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw)));
+
+  if (asEpochSeconds) {
+    const iso = graphEpochToIso(raw);
+    if (!iso) return null;
+    const ms = Date.parse(iso);
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  if (typeof raw !== "string") return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function relativeTimeLabel(ms: number): string {
+  return formatDistanceToNow(new Date(ms), { addSuffix: true });
+}
+
 // ─── RecursionCard ────────────────────────────────────────────────────────────
 
 interface RecursionCardProps {
@@ -378,6 +412,30 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
       ? (summaryLatest ?? historyDerived)
       : (historyDerived ?? summaryLatest);
 
+  // Original enrollment: EvalSet dateAddedToGraph only — never latestRun.runAt.
+  const enrollmentMs = parseStampMs(entry.dateAddedToGraph);
+
+  // Most recent recursion: max converted attempt date_added_to_graph while
+  // expanded; collapsed cards keep history gated so they use latestRun.runAt.
+  const lastRecursionMs = useMemo(() => {
+    if (expanded) {
+      let maxMs: number | null = null;
+      for (const pt of attempts) {
+        const iso = graphEpochToIso(pt.date_added_to_graph);
+        if (!iso) continue;
+        const ms = Date.parse(iso);
+        if (!Number.isFinite(ms)) continue;
+        if (maxMs == null || ms > maxMs) maxMs = ms;
+      }
+      if (maxMs != null) return maxMs;
+    }
+    return parseStampMs(entry.latestRun?.runAt);
+  }, [expanded, attempts, entry.latestRun?.runAt]);
+
+  const enrollmentRelative = enrollmentMs != null ? relativeTimeLabel(enrollmentMs) : null;
+  const lastRecursionRelative =
+    lastRecursionMs != null ? relativeTimeLabel(lastRecursionMs) : null;
+
   // Headline climb: best-so-far minus the baseline score. Only a real climb
   // renders — a flat or regressing series keeps the header quiet.
   const climbDelta = useMemo(() => {
@@ -395,11 +453,11 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
 
   // Find the most recent CONSOLIDATED run for this taskSlug.
   const existingConsolidated = useMemo(() => {
-    return (allRuns ?? [])
+    return allRuns
       .filter(
         (r) =>
           r.taskSlug === entry.id &&
-          r.runType === "recursion" &&
+          r.runType === "consolidated" &&
           (r.status === WorkflowStatus.PENDING ||
             r.status === WorkflowStatus.IN_PROGRESS) &&
           !r.hasReport,
@@ -410,11 +468,13 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
   // Seed state from the run list on first render so refreshing doesn't lose the run.
   const effectiveConsolidatedRunId = consolidatedRunId ?? existingConsolidated?.id ?? null;
 
-  // Poll the consolidated run's status.
-  const { run: consolidatedRun } = useLegalBenchmarkRun(
-    effectiveConsolidatedRunId,
-    StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED,
-  );
+  // The run's live row comes from the shared list, which already carries
+  // CONSOLIDATED rows and refetches on every STAKWORK_RUN_UPDATE — the card
+  // never issues its own /api/stakwork/runs request. Until a trigger in this
+  // session, that row is the seeded in-flight one.
+  const consolidatedRun = consolidatedRunId
+    ? (allRuns.find((r) => r.id === consolidatedRunId) ?? null)
+    : existingConsolidated;
 
   const handleToggle = async (enabled: boolean) => {
     setToggling(true);
@@ -571,6 +631,20 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
               )}
             </button>
           </span>
+          {(enrollmentRelative || lastRecursionRelative) && (
+            <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap text-xs text-muted-foreground">
+              {enrollmentRelative && (
+                <span data-testid="original-enrollment-time">
+                  Original task · {enrollmentRelative}
+                </span>
+              )}
+              {lastRecursionRelative && (
+                <span data-testid="last-recursion-time">
+                  Last recursion · {lastRecursionRelative}
+                </span>
+              )}
+            </div>
+          )}
           {toggleError && (
             <span className="text-xs text-destructive mt-1">{toggleError}</span>
           )}
@@ -787,6 +861,17 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
   );
 }
 
+/**
+ * List-order key: when the EvalSet was added to the graph, i.e. when the task
+ * was first requested. Nodes that predate the timestamp fall back to their
+ * latest run time; entries with neither sink to the bottom.
+ */
+function entryRecencyMs(entry: RecursionEntry): number {
+  const iso = entry.dateAddedToGraph ?? entry.latestRun?.runAt;
+  const ms = iso ? Date.parse(iso) : NaN;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 // ─── RecursionList ────────────────────────────────────────────────────────────
 
 interface RecursionListProps {
@@ -805,6 +890,13 @@ export function RecursionList({
   refetch,
   allRuns,
 }: RecursionListProps) {
+  // Newest first. Declared before the early returns so the hook count is the
+  // same on every render.
+  const sortedEntries = useMemo(
+    () => [...entries].sort((a, b) => entryRecencyMs(b) - entryRecencyMs(a)),
+    [entries],
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground">
@@ -838,16 +930,6 @@ export function RecursionList({
       </div>
     );
   }
-
-  const sortedEntries = useMemo(
-    () =>
-      [...entries].sort((a, b) => {
-        const aTime = a.latestRun?.runAt ? new Date(a.latestRun.runAt).getTime() : -Infinity;
-        const bTime = b.latestRun?.runAt ? new Date(b.latestRun.runAt).getTime() : -Infinity;
-        return bTime - aTime;
-      }),
-    [entries],
-  );
 
   return (
     <div className="flex flex-col gap-3">

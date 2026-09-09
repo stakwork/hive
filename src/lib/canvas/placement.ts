@@ -42,6 +42,8 @@ import {
   SMALL_W,
   RESEARCH_W,
   RESEARCH_H,
+  HTML_W,
+  HTML_H,
 } from "./geometry";
 import type { Placement } from "@/lib/proposals/types";
 import type { CanvasNode } from "./types";
@@ -82,6 +84,8 @@ function dimsForCategory(c: string | undefined): Dims {
       return { w: SMALL_W, h: CARD_H };
     case "research":
       return { w: RESEARCH_W, h: RESEARCH_H };
+    case "html":
+      return { w: HTML_W, h: HTML_H };
     default:
       return { w: FEATURE_W, h: FEATURE_H };
   }

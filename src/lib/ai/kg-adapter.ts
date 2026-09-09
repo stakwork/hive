@@ -30,6 +30,24 @@ export interface KgNode {
    * opted in via `includeEdgeCounts`.
    */
   edges?: Record<string, number>;
+  /**
+   * The node's PARENT_OF hierarchy up to the root(s), nearest first. A flat
+   * DAG (each entry carries its own `parents`) rather than a chain, because
+   * Concept PARENT_OF is many-to-many. Present only when the call opted in via
+   * `includeAncestors` AND the node has at least one parent.
+   */
+  ancestors?: KgAncestor[];
+}
+
+/** One entry of `KgNode.ancestors`. */
+export interface KgAncestor {
+  ref_id: string;
+  name: string;
+  node_type: string;
+  /** Shortest hop count from the resolved node; 1 = direct parent. */
+  depth: number;
+  /** ref_ids of this ancestor's own direct parents; empty means it is a root. */
+  parents: string[];
 }
 
 interface JarvisEdge {
@@ -299,6 +317,78 @@ async function fetchConnectionCounts(
   }
 }
 
+/**
+ * Hierarchy edge `includeAncestors` walks toward the root(s) via Jarvis
+ * `/v2/nodes/:ref_id/ancestors`. Concept/Class/Claim all use
+ * `(parent)-[:PARENT_OF]->(child)`, so the walk follows incoming edges.
+ */
+const KG_ANCESTOR_EDGE_TYPE = "PARENT_OF";
+const KG_ANCESTOR_MAX_DEPTH = 10;
+
+/**
+ * Cap on ancestor entries attached to one node. The live Concept graph tops
+ * out at 27 ancestors (depth 3), so this only bites on a pathological
+ * hierarchy; nearest ancestors are kept because Jarvis orders by depth.
+ */
+const KG_ANCESTOR_CAP = 60;
+
+/**
+ * Normalize the Jarvis `/v2/nodes/:ref_id/ancestors` payload into the compact
+ * list attached to a node. Drops malformed rows, dedupes, keeps Jarvis'
+ * depth-then-name ordering, and truncates at `KG_ANCESTOR_CAP` so a runaway
+ * hierarchy cannot flood the context.
+ */
+export function normalizeAncestors(data: unknown, cap: number = KG_ANCESTOR_CAP): KgAncestor[] {
+  const rows = (data as { ancestors?: unknown })?.ancestors;
+  if (!Array.isArray(rows)) return [];
+  const out: KgAncestor[] = [];
+  const seen = new Set<string>();
+  for (const r of rows as Array<Record<string, unknown> | null>) {
+    if (!r || typeof r.ref_id !== "string" || r.ref_id.length === 0) continue;
+    if (seen.has(r.ref_id)) continue;
+    seen.add(r.ref_id);
+    const depth = Number(r.depth);
+    out.push({
+      ref_id: r.ref_id,
+      name: typeof r.name === "string" ? r.name.slice(0, LABEL_MAX) : "",
+      node_type: typeof r.node_type === "string" ? r.node_type : "unknown",
+      depth: Number.isFinite(depth) && depth >= 1 ? depth : 1,
+      parents: Array.isArray(r.parents)
+        ? (r.parents as unknown[]).filter(
+            (p): p is string => typeof p === "string" && p.length > 0,
+          )
+        : [],
+    });
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+/**
+ * Fetch the node's PARENT_OF ancestors from the dedicated hierarchy endpoint.
+ * Best-effort — returns `[]` on any error (including a 404 from a Jarvis that
+ * predates the endpoint), never throws.
+ */
+async function fetchAncestors(
+  jarvisUrl: string,
+  swarmApiKey: string,
+  refId: string,
+): Promise<KgAncestor[]> {
+  try {
+    const params = new URLSearchParams({
+      edge_type: KG_ANCESTOR_EDGE_TYPE,
+      direction: "in",
+      max_depth: String(KG_ANCESTOR_MAX_DEPTH),
+    });
+    const url = `${jarvisUrl.replace(/\/$/, "")}/v2/nodes/${encodeURIComponent(refId)}/ancestors?${params.toString()}`;
+    const res = await kgFetch(url, swarmApiKey);
+    if (!res.ok) return [];
+    return normalizeAncestors(await res.json());
+  } catch {
+    return [];
+  }
+}
+
 export interface KgGetNodeOpts {
   /**
    * When true, also fetch `/connection-counts` and attach an `edges`
@@ -306,6 +396,12 @@ export interface KgGetNodeOpts {
    * aggregation-only) request; failures leave `edges` as `{}`.
    */
   includeEdgeCounts?: boolean;
+  /**
+   * When true, also fetch `/ancestors` (PARENT_OF, toward the roots) and
+   * attach `ancestors` when the node has any. One extra request, fired in
+   * parallel with connection-counts; failures leave the field absent.
+   */
+  includeAncestors?: boolean;
 }
 
 /**
@@ -356,9 +452,19 @@ export async function kgGetNode(
       name: deriveNodeName(raw, properties),
       properties: raw.properties,
     };
-    if (opts?.includeEdgeCounts) {
-      node.edges = await fetchConnectionCounts(jarvisUrl, swarmApiKey, refId);
-    }
+    // Both side lookups are independent and best-effort; fire them together.
+    const [edges, ancestors] = await Promise.all([
+      opts?.includeEdgeCounts
+        ? fetchConnectionCounts(jarvisUrl, swarmApiKey, refId)
+        : Promise.resolve(undefined),
+      opts?.includeAncestors
+        ? fetchAncestors(jarvisUrl, swarmApiKey, refId)
+        : Promise.resolve(undefined),
+    ]);
+    if (edges !== undefined) node.edges = edges;
+    // Only attached when the node sits under something, so leaf/flat nodes
+    // (the vast majority) don't pay for an empty field.
+    if (ancestors !== undefined && ancestors.length > 0) node.ancestors = ancestors;
     return node;
   } catch (err) {
     logKgReadThrew("kg-adapter:kgGetNode", err);

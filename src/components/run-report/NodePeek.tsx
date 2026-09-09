@@ -102,8 +102,11 @@ export function NodePeekBody({ payload }: { payload: unknown }) {
   const CONTENT_KEYS = ["docs", "documentation", "description", "definition", "body", "content", "text", "summary"];
 
   const added = merged.date_added_to_graph ?? base.date_added_to_graph;
-  const addedSec =
+  const addedRaw =
     typeof added === "number" ? added : typeof added === "string" && /^\d+$/.test(added) ? Number(added) : null;
+  // Nodes carry this in seconds or milliseconds; anything past year 5138 in
+  // seconds can only be milliseconds.
+  const addedSec = addedRaw === null ? null : addedRaw > 1e11 ? Math.floor(addedRaw / 1000) : addedRaw;
 
   const asProse = (v: unknown): string | null => {
     if (typeof v === "string" && v.trim().length > 0) return v;

@@ -2,17 +2,11 @@
 
 import React, { useState, useCallback } from "react";
 import { History, PlusCircle } from "lucide-react";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "@/components/ui/popover";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ConversationListItem } from "@/types/shared-conversation";
 import { UNTITLED_CONVERSATION } from "@/lib/ai/conversationHelpers";
-import {
-  useCanvasChatStore,
-  type CanvasChatMessage,
-} from "../_state/canvasChatStore";
+import { openOrgConversation, startNewOrgConversation } from "../_state/openOrgConversation";
 
 interface CanvasHistoryPopoverProps {
   githubLogin: string;
@@ -43,9 +37,7 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
   const fetchList = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(
-        `/api/orgs/${githubLogin}/chat/conversations?limit=10`,
-      );
+      const res = await fetch(`/api/orgs/${githubLogin}/chat/conversations?limit=10`);
       if (res.ok) {
         const data = await res.json();
         setItems(data.items ?? []);
@@ -67,229 +59,112 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
   const handleItemClick = async (item: ConversationListItem) => {
     setLoadingItemId(item.id);
     try {
-      const res = await fetch(
-        `/api/orgs/${githubLogin}/chat/conversations/${item.id}`,
-      );
-      if (!res.ok) return;
-      const conv = await res.json();
+      // Hydrates the store, syncs `?chat=<id>` (shareable, survives a
+      // refresh) and fires the `seen` POST so the next list load agrees
+      // with the optimistic unread clear below.
+      const opened = await openOrgConversation(githubLogin, item.id, {
+        syncUrl: true,
+        markSeen: true,
+      });
+      if (!opened) return;
 
-      const rawMessages: unknown[] = Array.isArray(conv.messages)
-        ? conv.messages
-        : [];
-      const messages: CanvasChatMessage[] = rawMessages
-        .filter((m: any) => m.role === "user" || m.role === "assistant")
-        .map((m: any, idx: number) => ({
-          id: m.id || `loaded-${idx}`,
-          role: m.role as "user" | "assistant",
-          content: typeof m.content === "string" ? m.content : "",
-          timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
-          toolCalls: m.toolCalls,
-          timeline: m.timeline,
-          artifactIds: m.artifactIds,
-          attachments: m.attachments,
-          approval: m.approval,
-          rejection: m.rejection,
-          approvalResult: m.approvalResult,
-          source: m.source,
-        }));
-
-      const store = useCanvasChatStore.getState();
-      const activeId = store.activeConversationId;
-      const context = activeId
-        ? store.conversations[activeId]?.context
-        : undefined;
-
-      // Use a fallback context if none exists yet
-      const resolvedContext: Parameters<typeof store.startConversation>[0] = context ?? {
-        orgId: "",
-        githubLogin,
-        workspaceSlug: null,
-        workspaceSlugs: conv.settings?.extraWorkspaceSlugs ?? [],
-        currentCanvasRef: "",
-        currentCanvasBreadcrumb: "",
-        selectedNodeId: null,
-        selectedNodeIds: [],
-      };
-
-      const newId = store.startConversation(
-        resolvedContext,
-        messages,
-        undefined,
-        messages.length, // ephemeralSeedCount prevents re-saving already-persisted messages
-      );
-      store.setServerConversationId(newId, item.id);
-
-      // Sync ?chat=<id> to the URL so the loaded conversation is shareable
-      // and survives a refresh — mirroring the new-chat path in
-      // useSendCanvasChatMessage.ts. The isActive guard handles the
-      // concurrent-click case (two rapid clicks can resolve out of order).
-      const isActive =
-        useCanvasChatStore.getState().activeConversationId === newId;
-      if (isActive && typeof window !== "undefined") {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("chat") !== item.id) {
-          params.set("chat", item.id);
-          window.history.replaceState(
-            null,
-            "",
-            `${window.location.pathname}?${params.toString()}`,
-          );
-        }
-      }
-
-      // Opening the chat clears its unread flag — optimistically locally,
-      // and persisted so the next list load agrees. Fire-and-forget.
-      setItems((prev) =>
-        prev.map((it) => (it.id === item.id ? { ...it, unread: false } : it)),
-      );
-      void fetch(
-        `/api/orgs/${githubLogin}/chat/conversations/${item.id}/seen`,
-        { method: "POST" },
-      ).catch(() => {});
-
+      setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, unread: false } : it)));
       setOpen(false);
-    } catch {
-      // silently fail
     } finally {
       setLoadingItemId(null);
     }
   };
 
   const handleNewConversation = () => {
-    // Start a fresh conversation in its own slot instead of wiping the
-    // active one in place — an in-flight stream on the previous chat
-    // keeps writing to its own slot and can't bleed into this new chat.
-    const store = useCanvasChatStore.getState();
-    const activeId = store.activeConversationId;
-    const context = activeId
-      ? store.conversations[activeId]?.context
-      : undefined;
-    store.startConversation(
-      context ?? {
-        orgId: "",
-        githubLogin,
-        workspaceSlug: null,
-        workspaceSlugs: [],
-        currentCanvasRef: "",
-        currentCanvasBreadcrumb: "",
-        selectedNodeId: null,
-        selectedNodeIds: [],
-      },
-      [],
-      undefined,
-      0,
-    );
-
-    // Clear ?chat= so a refresh lands in the fresh empty chat, not the
-    // previously loaded one. Mirrors the ?r=/slug strip in OrgCanvasView.
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      if (params.has("chat")) {
-        params.delete("chat");
-        window.history.replaceState(
-          null,
-          "",
-          params.toString()
-            ? `${window.location.pathname}?${params.toString()}`
-            : window.location.pathname,
-        );
-      }
-    }
-
+    startNewOrgConversation(githubLogin);
     setOpen(false);
   };
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          title="Conversation history"
-          className="p-1.5 rounded hover:bg-muted transition-colors"
-        >
-          <History className="w-4 h-4" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        className="w-80 p-0 overflow-hidden"
-        sideOffset={8}
-      >
-        <div className="flex items-center justify-between px-3 py-2 border-b border-border/50">
-          <p className="text-xs font-medium text-foreground">
-            Recent Conversations
-          </p>
-          <button
-            type="button"
-            onClick={handleNewConversation}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-            title="New conversation"
-          >
-            <PlusCircle className="w-3 h-3" />
-            New
-          </button>
-        </div>
+    <Tooltip delayDuration={200}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        {/* The popover's trigger stays its direct child; the tooltip's trigger
+          composes onto the same button through Radix's Slot chain. */}
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Conversation history"
+              className="p-1.5 rounded hover:bg-muted transition-colors"
+            >
+              <History className="w-4 h-4" />
+            </button>
+          </TooltipTrigger>
+        </PopoverTrigger>
+        <TooltipContent side="bottom">Conversation history</TooltipContent>
+        <PopoverContent align="end" className="w-80 p-0 overflow-hidden" sideOffset={8}>
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border/50">
+            <p className="text-xs font-medium text-foreground">Recent Conversations</p>
+            <button
+              type="button"
+              onClick={handleNewConversation}
+              className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              title="New conversation"
+            >
+              <PlusCircle className="w-3 h-3" />
+              New
+            </button>
+          </div>
 
-        <div className="max-h-[300px] overflow-y-auto">
-          {isLoading ? (
-            <div className="p-3 space-y-2">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="space-y-1 animate-pulse">
-                  <div className="h-3 bg-muted rounded w-3/4" />
-                  <div className="h-2.5 bg-muted/60 rounded w-1/3" />
-                </div>
-              ))}
-            </div>
-          ) : items.length === 0 ? (
-            <div className="px-3 py-6 text-center">
-              <History className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
-              <p className="text-xs text-muted-foreground">
-                No previous conversations
-              </p>
-            </div>
-          ) : (
-            <div className="py-1">
-              {items.map((item) => {
-                // A stored placeholder title (legacy rows created before
-                // title self-heal) is treated as empty so the first-user-
-                // message preview wins.
-                const meaningfulTitle =
-                  item.title && item.title !== UNTITLED_CONVERSATION
-                    ? item.title
-                    : null;
-                const label = meaningfulTitle || item.preview || "Untitled";
-                const isLoadingThis = loadingItemId === item.id;
+          <div className="max-h-[300px] overflow-y-auto">
+            {isLoading ? (
+              <div className="p-3 space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="space-y-1 animate-pulse">
+                    <div className="h-3 bg-muted rounded w-3/4" />
+                    <div className="h-2.5 bg-muted/60 rounded w-1/3" />
+                  </div>
+                ))}
+              </div>
+            ) : items.length === 0 ? (
+              <div className="px-3 py-6 text-center">
+                <History className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">No previous conversations</p>
+              </div>
+            ) : (
+              <div className="py-1">
+                {items.map((item) => {
+                  // A stored placeholder title (legacy rows created before
+                  // title self-heal) is treated as empty so the first-user-
+                  // message preview wins.
+                  const meaningfulTitle = item.title && item.title !== UNTITLED_CONVERSATION ? item.title : null;
+                  const label = meaningfulTitle || item.preview || "Untitled";
+                  const isLoadingThis = loadingItemId === item.id;
 
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleItemClick(item)}
-                    disabled={isLoadingThis}
-                    className="w-full px-3 py-2 text-left hover:bg-muted/50 transition-colors flex flex-col gap-0.5 disabled:opacity-60"
-                  >
-                    <span className="flex items-center gap-1.5 min-w-0">
-                      {item.unread && (
-                        <span
-                          aria-label="Unread"
-                          title="New activity since you last viewed"
-                          className="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500"
-                        />
-                      )}
-                      <span className="text-xs font-medium text-foreground truncate block">
-                        {label}
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleItemClick(item)}
+                      disabled={isLoadingThis}
+                      className="w-full px-3 py-2 text-left hover:bg-muted/50 transition-colors flex flex-col gap-0.5 disabled:opacity-60"
+                    >
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        {item.unread && (
+                          <span
+                            aria-label="Unread"
+                            title="New activity since you last viewed"
+                            className="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500"
+                          />
+                        )}
+                        <span className="text-xs font-medium text-foreground truncate block">{label}</span>
                       </span>
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatRelativeTime(item.lastMessageAt)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
+                      <span className="text-[10px] text-muted-foreground">
+                        {formatRelativeTime(item.lastMessageAt)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </Tooltip>
   );
 }

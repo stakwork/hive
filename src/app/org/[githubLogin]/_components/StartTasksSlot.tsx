@@ -1,15 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Loader2,
   Play,
   CheckCircle2,
   ChevronRight,
   ChevronDown,
+  Sparkles,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
+import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import {
   buildTaskList,
   countTasks,
@@ -81,6 +92,50 @@ function bucketOf(
   return null; // CANCELLED
 }
 
+function getTaskRoute(slug: string, task: TaskView): string {
+  if (task.status === "IN_PROGRESS" || task.status === "DONE") {
+    return `/w/${slug}/task/${task.id}`;
+  }
+  return `/w/${slug}/tickets/${task.id}`;
+}
+
+/** Copied from CompactTasksList — do not import/extract. */
+function MiniToggle({
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      data-testid="mini-toggle"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled) onChange(!checked);
+      }}
+      className={[
+        "relative inline-flex items-center shrink-0 rounded-full border transition-colors h-4 w-7",
+        disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer",
+        checked ? "bg-emerald-500 border-emerald-500" : "bg-muted border-border",
+      ].join(" ")}
+    >
+      <span
+        className={[
+          "pointer-events-none block rounded-full bg-white shadow-sm transition-transform h-3 w-3",
+          checked ? "translate-x-3" : "translate-x-0.5",
+        ].join(" ")}
+      />
+    </button>
+  );
+}
+
 /** A thin segmented progress bar, proportional to the three buckets. */
 function SegmentedBar({ counts }: { counts: TaskCounts }) {
   const { done, inProgress, pending, total } = counts;
@@ -127,18 +182,37 @@ export function StartTasksSlot({
 }: StartTasksSlotProps) {
   const [readyCount, setReadyCount] = useState<number | null>(null);
   const [tasks, setTasks] = useState<TaskView[] | null>(null);
+  const [workspaceSlug, setWorkspaceSlug] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [startedCount, setStartedCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [optimisticUpdates, setOptimisticUpdates] = useState<
+    Record<string, Partial<TaskView>>
+  >({});
+  const [llmModels, setLlmModels] = useState<LlmModelOption[]>([]);
+  const { updateTicket } = useRoadmapTaskMutations();
 
   // Use the shared hook for the total task count (drives the bar + checklist).
   const taskTotal = useFeatureTaskCount(featureId, revalidateKey);
+
+  useEffect(() => {
+    fetch("/api/llm-models")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.models) setLlmModels(data.models);
+      })
+      .catch(() => {
+        /* silently ignore — empty models means no picker */
+      });
+  }, []);
 
   // Keep a local copy of the task list for bar/checklist rendering.
   // We still need the raw TaskView[] for the segmented bar and checklist,
   // which the shared hook doesn't expose directly — so we fetch the list
   // separately here and keep it in sync.
+  // Overlay in-flight optimistic flips after replace so a refresh doesn't
+  // drop a toggle the user just flipped.
   const refreshList = useCallback(async () => {
     try {
       const res = await fetch(
@@ -146,7 +220,12 @@ export function StartTasksSlot({
       );
       if (!res.ok) return;
       const json = (await res.json()) as FeatureTasksResponse;
-      if (json.data) setTasks(buildTaskList(json.data));
+      if (json.data) {
+        if (typeof json.data.workspace?.slug === "string") {
+          setWorkspaceSlug(json.data.workspace.slug);
+        }
+        setTasks(buildTaskList(json.data));
+      }
     } catch {
       // leave as-is
     }
@@ -184,6 +263,36 @@ export function StartTasksSlot({
     () => (tasks ? countTasks(tasks) : null),
     [tasks],
   );
+
+  const handleUpdateTask = async (
+    taskId: string,
+    updates: { autoMerge?: boolean; model?: string | null },
+  ) => {
+    setOptimisticUpdates((prev) => ({
+      ...prev,
+      [taskId]: { ...prev[taskId], ...updates },
+    }));
+    try {
+      await updateTicket({ taskId, updates });
+      setTasks((prev) =>
+        prev
+          ? prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+          : prev,
+      );
+      setOptimisticUpdates((prev) => {
+        const next = { ...prev };
+        delete next[taskId];
+        return next;
+      });
+    } catch (err) {
+      setOptimisticUpdates((prev) => {
+        const next = { ...prev };
+        delete next[taskId];
+        return next;
+      });
+      toast.error(err instanceof Error ? err.message : "Failed to update task");
+    }
+  };
 
   const handleStart = async () => {
     setStarting(true);
@@ -273,38 +382,102 @@ export function StartTasksSlot({
 
           {counts && <SegmentedBar counts={counts} />}
 
-          {/* Expanded: the per-task checklist (name + status-colored dot). */}
+          {/* Expanded: two-line per-task rows (title + auto-merge/model). */}
           {expanded && tasks && tasks.length > 0 && (
             <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto pr-1">
               {tasks.map((t, i) => {
                 const bucket = bucketOf(t.status);
                 if (!bucket) return null; // skip CANCELLED
+                const displayTask = { ...t, ...optimisticUpdates[t.id] };
+                const isWorkflowTask = !!t.workflowTask;
+                const controlsDisabled = t.status !== "TODO";
+                const slug = workspaceSlug ?? "";
                 return (
-                  <li
-                    key={`${i}-${t.title}`}
-                    className="flex items-center gap-2 text-xs"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${STATUS_BG[bucket]}`}
-                    />
-                    <span
-                      className={
-                        bucket === "done"
-                          ? "truncate text-muted-foreground line-through"
-                          : "truncate text-foreground/80"
-                      }
-                    >
-                      {t.title}
-                    </span>
-                    {t.prArtifact && (
-                      <PRStatusBadge
-                        url={t.prArtifact.url}
-                        status={t.prArtifact.status}
-                        ciStatus={t.prArtifact.ciStatus}
-                        ciSummary={t.prArtifact.ciSummary}
+                  <li key={t.id || `${i}-${t.title}`}>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span
+                        aria-hidden="true"
+                        className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${STATUS_BG[bucket]}`}
                       />
-                    )}
+                      {slug && t.id ? (
+                        <a
+                          href={getTaskRoute(slug, t)}
+                          className={
+                            bucket === "done"
+                              ? "truncate text-muted-foreground line-through hover:underline"
+                              : "truncate text-foreground/80 hover:underline"
+                          }
+                        >
+                          {t.title}
+                        </a>
+                      ) : (
+                        <span
+                          className={
+                            bucket === "done"
+                              ? "truncate text-muted-foreground line-through"
+                              : "truncate text-foreground/80"
+                          }
+                        >
+                          {t.title}
+                        </span>
+                      )}
+                      {t.prArtifact && (
+                        <PRStatusBadge
+                          url={t.prArtifact.url}
+                          status={t.prArtifact.status}
+                          ciStatus={t.prArtifact.ciStatus}
+                          ciSummary={t.prArtifact.ciSummary}
+                        />
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-3 pl-[18px] text-[10px] text-muted-foreground">
+                      {!isWorkflowTask && (
+                        <div
+                          className="flex items-center gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MiniToggle
+                            checked={displayTask.autoMerge ?? false}
+                            onChange={(autoMerge) =>
+                              handleUpdateTask(t.id, { autoMerge })
+                            }
+                            disabled={controlsDisabled}
+                          />
+                          <span className="text-xs">auto-merge</span>
+                        </div>
+                      )}
+                      {llmModels.length > 0 && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <Select
+                            value={displayTask.model ?? ""}
+                            onValueChange={(value) =>
+                              handleUpdateTask(t.id, { model: value || null })
+                            }
+                            disabled={controlsDisabled}
+                          >
+                            <SelectTrigger className="h-5 text-[10px] px-1.5 py-0 w-auto max-w-[140px] border-muted bg-muted/50 gap-1 [&>svg]:h-3 [&>svg]:w-3">
+                              <div className="flex items-center gap-1 overflow-hidden min-w-0">
+                                <Sparkles className="h-3 w-3 shrink-0" />
+                                <span className="truncate min-w-0 block">
+                                  <SelectValue placeholder="Model" />
+                                </span>
+                              </div>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {llmModels.map((m) => (
+                                <SelectItem
+                                  key={m.id}
+                                  value={getModelValue(m)}
+                                  className="text-xs"
+                                >
+                                  {m.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
                   </li>
                 );
               })}

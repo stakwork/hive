@@ -43,6 +43,7 @@ vi.mock("lucide-react", () => ({
   ShieldCheck: () => React.createElement("span", null, "shieldcheck"),
   ScrollText: () => React.createElement("span", null, "scrolltext"),
   Download: () => React.createElement("span", null, "download"),
+  Globe: () => React.createElement("span", null, "globe"),
 }));
 
 vi.mock("react-icons/pi", () => ({

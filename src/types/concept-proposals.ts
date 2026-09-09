@@ -99,3 +99,35 @@ export function conceptProposalLabel(proposal: ConceptProposal): string {
       return proposal.conceptId ?? proposal.id;
   }
 }
+
+/** Closed set of per-id outcomes from POST /api/learnings/concepts/proposals/bulk. */
+export type BulkProposalDecisionCode =
+  | "stale_base"
+  | "already_decided"
+  | "not_found"
+  | "not_attempted"
+  | "upstream_error";
+
+export interface BulkProposalDecisionResult {
+  id: string;
+  ok: boolean;
+  code?: BulkProposalDecisionCode;
+  message?: string;
+  createdConceptId?: string;
+}
+
+export interface BulkProposalDecisionResponse {
+  results: BulkProposalDecisionResult[];
+}
+
+/** Maximum number of proposals in a single bulk decision request. */
+export const BULK_PROPOSAL_DECISION_CAP = 25;
+
+/** Reviewer-facing copy for each closed bulk-decision failure code. */
+export const BULK_PROPOSAL_FAILURE_MESSAGE: Record<BulkProposalDecisionCode, string> = {
+  stale_base: "Needs re-review",
+  already_decided: "Already decided",
+  not_found: "No longer available",
+  not_attempted: "Not attempted — try again",
+  upstream_error: "Something went wrong — try again",
+};

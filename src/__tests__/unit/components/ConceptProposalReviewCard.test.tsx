@@ -10,6 +10,14 @@ vi.mock("@/hooks/useWorkspaceAccess", () => ({
   useWorkspaceAccess: () => mockUseWorkspaceAccess(),
 }));
 
+vi.mock("@/lib/date-utils", () => ({
+  formatRelativeOrDateInTz: (d: string) => d,
+}));
+
+vi.mock("@/hooks/useUserTimezone", () => ({
+  useUserTimezone: () => ({ timezone: "UTC" }),
+}));
+
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -137,6 +145,9 @@ describe("ConceptProposalReviewCard — per-action rendering", () => {
     expect(screen.getByText("Concepts drifted from the code.")).toBeTruthy();
     expect(screen.getByTestId("proposal-pr-numbers").textContent).toContain("#201");
     expect(screen.getByTestId("proposal-action-badge").textContent).toBe("Update");
+    const createdAt = screen.getByTestId("proposal-created-at");
+    expect(createdAt.textContent).toBe(base.createdAt);
+    expect(createdAt.parentElement?.textContent).toContain("Created");
   });
 
   it("create: shows name and proposed docs verbatim, no diff", () => {

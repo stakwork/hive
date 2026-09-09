@@ -16,7 +16,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // ---------------------------------------------------------------------------
 // Module mocks — must come before any import that transitively loads them.
 // ---------------------------------------------------------------------------
-vi.mock("@/lib/db", () => ({ db: {} }));
+vi.mock("@/lib/db", () => ({
+  db: {
+    workspace: { findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []) },
+  },
+}));
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn() },
   getWorkspaceChannelName: vi.fn(() => "ch"),
@@ -50,6 +54,7 @@ vi.mock("@/lib/ai/connectionTools", () => ({ buildConnectionTools: vi.fn(() => (
 vi.mock("@/lib/ai/canvasTools", () => ({ buildCanvasTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/initiativeTools", () => ({ buildInitiativeTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/researchTools", () => ({ buildResearchTools: vi.fn(() => ({})) }));
+vi.mock("@/lib/ai/htmlArtifactTools", () => ({ buildHtmlArtifactTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/infraTools", () => ({ buildInfraTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/graphWalkerTools", () => ({ buildGraphWalkerTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/graphWalkDispatchTools", () => ({ buildGraphWalkDispatchTools: vi.fn(() => ({})) }));
@@ -65,6 +70,16 @@ vi.mock("@/lib/ai/message-sanitizer", () => ({
 vi.mock("@/lib/ai/provider", () => ({
   getModel: vi.fn(() => ({ modelId: "mock-model" })),
   getApiKeyForProvider: vi.fn(() => "api-key"),
+  WEB_SEARCH_TOOL_NAME: "web_search",
+  createWebSearch: vi.fn(() => ({
+    tool: { description: "mock web_search", execute: vi.fn() },
+    backend: "anthropic",
+    native: true,
+    results: [],
+    capture: vi.fn(),
+    promptSnippet: "",
+    formatOutput: (markdown: string) => ({ content: markdown, converted: 0, skipped: 0 }),
+  })),
 }));
 vi.mock("aieo", () => ({ getProviderOptions: vi.fn(() => ({})) }));
 vi.mock("@/services/bifrost/orchestrator", () => ({
@@ -87,6 +102,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getPlannerCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
+  getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
   getWorkflowsCapabilitySnippet: vi.fn(() => ""),
@@ -417,8 +433,37 @@ describe("runCanvasAgent — stage-timing logs", () => {
 
   // -------------------------------------------------------------------------
   // 8. Cache-hit path logs `skipped: "cache hit"` instead of a fetch time
+  //    (only reachable with CANVAS_CONCEPT_SEEDING on — the cache is
+  //    ignored while seeding is disabled).
   // -------------------------------------------------------------------------
   it("logs skipped=cache-hit for listConcepts when concepts cache is supplied", async () => {
+    vi.stubEnv("CANVAS_CONCEPT_SEEDING", "true");
+    try {
+      mockStreamText.mockImplementation(makeStreamResult([]));
+
+      await runCanvasAgent(
+        baseOpts({
+          cachedConcepts: {
+            concepts: [{ id: "c1", name: "Auth" }],
+          },
+        }),
+      );
+
+      const conceptLog = timingLogs().find((l) => l.stage === "listConcepts (single)");
+      expect(conceptLog).toBeDefined();
+      expect(conceptLog!.skipped).toBe("cache hit");
+      // ms is 0 on a cache hit, not a real measurement.
+      expect(conceptLog!.ms).toBe(0);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // 9. Seeding disabled (the default): the swarm fetch is skipped and any
+  //    supplied concept cache is ignored.
+  // -------------------------------------------------------------------------
+  it("logs skipped=seeding-disabled for listConcepts by default, even with a cache", async () => {
     mockStreamText.mockImplementation(makeStreamResult([]));
 
     await runCanvasAgent(
@@ -431,8 +476,7 @@ describe("runCanvasAgent — stage-timing logs", () => {
 
     const conceptLog = timingLogs().find((l) => l.stage === "listConcepts (single)");
     expect(conceptLog).toBeDefined();
-    expect(conceptLog!.skipped).toBe("cache hit");
-    // ms is 0 on a cache hit, not a real measurement.
+    expect(conceptLog!.skipped).toBe("seeding disabled");
     expect(conceptLog!.ms).toBe(0);
   });
 });

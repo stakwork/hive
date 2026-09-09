@@ -108,6 +108,7 @@ export async function getUserActivityFeed(params: {
           where: {
             userId,
             source: { in: ["dashboard", "org-canvas", "logs-agent"] },
+            archivedAt: null,
             lastMessageAt: timeFilter,
             ...(q ? { title: { contains: q, mode: "insensitive" } } : {}),
           },

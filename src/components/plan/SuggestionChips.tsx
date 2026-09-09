@@ -18,7 +18,8 @@ export function SuggestionChips({ suggestions, onSelect }: SuggestionChipsProps)
       <AnimatePresence>
         {suggestions.map((suggestion, index) => (
           <motion.button
-            key={suggestion}
+            // Index-suffixed so a repeated suggestion can't collide on key
+            key={`${suggestion}-${index}`}
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }}

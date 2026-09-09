@@ -144,6 +144,11 @@ describe("runResearchSubAgent", () => {
         currentCanvasConversationId: BASE_ARGS.conversationId,
       }),
     );
+    const call = (runCanvasAgent as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      keepWriteToolNames: string[];
+    };
+    expect(call.keepWriteToolNames).not.toContain("save_html");
+    expect(call.keepWriteToolNames).not.toContain("update_html");
   });
 
   test("happy path: fans out 'ready' when content was written", async () => {

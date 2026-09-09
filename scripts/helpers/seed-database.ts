@@ -2467,6 +2467,155 @@ async function seedWorkflowBenchmarkRuns() {
   console.log("✓ Seeded 5 BENCHMARK_RUNNER StakworkRun rows on dev-mock");
 }
 
+async function seedSwarmStorageSnapshots() {
+  const swarms = await prisma.swarm.findMany({
+    where: { name: { in: ["alpha-swarm", "beta-swarm"] } },
+    select: { id: true, name: true, ec2Id: true },
+    orderBy: { name: "asc" },
+  });
+
+  if (swarms.length < 2) {
+    console.log("Fewer than 2 swarms found, skipping storage snapshot seeding");
+    return;
+  }
+
+  const retentionDays = 90;
+  const today = new Date();
+  const utcToday = new Date(
+    Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
+  );
+
+  const totalBytes = 500 * 1024 * 1024 * 1024; // 500 GiB
+  const steadyUsed = 200 * 1024 * 1024 * 1024; // 200 GiB, flat
+  const climbStart = 80 * 1024 * 1024 * 1024; // 80 GiB
+  const climbPerDay = 2 * 1024 * 1024 * 1024; // +2 GiB/day
+  const neo4jSteady = 12 * 1024 * 1024 * 1024;
+  const neo4jClimbStart = 4 * 1024 * 1024 * 1024;
+
+  const steady = swarms.find((s) => s.name === "alpha-swarm") ?? swarms[0];
+  const climbing = swarms.find((s) => s.name === "beta-swarm") ?? swarms[1];
+
+  const steadyInstanceId = steady.ec2Id ?? "i-0aaa1111bbb2222c";
+  const climbingInstanceId = climbing.ec2Id ?? "i-0ccc3333ddd4444e";
+
+  if (!steady.ec2Id) {
+    await prisma.swarm.update({
+      where: { id: steady.id },
+      data: { ec2Id: steadyInstanceId },
+    });
+  }
+  if (!climbing.ec2Id) {
+    await prisma.swarm.update({
+      where: { id: climbing.id },
+      data: { ec2Id: climbingInstanceId },
+    });
+  }
+
+  const rows: Array<{
+    instanceId: string;
+    swarmId: string;
+    date: Date;
+    status: string;
+    reasonCode: string | null;
+    totalBytes: bigint | null;
+    usedBytes: bigint | null;
+    freeBytes: bigint | null;
+    mount: string | null;
+    services: Array<{ name: string; sizeBytes: number | null; sizeKnown: boolean }>;
+    hostVisible: boolean | null;
+    source: string | null;
+    collectedAt: Date | null;
+  }> = [];
+
+  for (let offset = retentionDays - 1; offset >= 0; offset--) {
+    const date = new Date(utcToday);
+    date.setUTCDate(date.getUTCDate() - offset);
+    const collectedAt = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+
+    const isPartialDay = offset === 7;
+    const isUnreachableDay = offset === 3;
+
+    rows.push({
+      instanceId: steadyInstanceId,
+      swarmId: steady.id,
+      date,
+      status: isPartialDay ? "PARTIAL" : "OK",
+      reasonCode: null,
+      totalBytes: BigInt(totalBytes),
+      usedBytes: isPartialDay ? null : BigInt(steadyUsed),
+      freeBytes: isPartialDay ? null : BigInt(totalBytes - steadyUsed),
+      mount: isPartialDay ? null : "/",
+      services: isPartialDay
+        ? []
+        : [
+            { name: "neo4j", sizeBytes: neo4jSteady, sizeKnown: true },
+            { name: "elasticsearch", sizeBytes: 8 * 1024 * 1024 * 1024, sizeKnown: true },
+            { name: "redis", sizeBytes: 512 * 1024 * 1024, sizeKnown: true },
+          ],
+      hostVisible: isPartialDay ? null : true,
+      source: isPartialDay ? null : "node_exporter",
+      collectedAt,
+    });
+
+    if (isUnreachableDay) {
+      rows.push({
+        instanceId: climbingInstanceId,
+        swarmId: climbing.id,
+        date,
+        status: "UNREACHABLE",
+        reasonCode: "TIMEOUT",
+        totalBytes: null,
+        usedBytes: null,
+        freeBytes: null,
+        mount: null,
+        services: [],
+        hostVisible: null,
+        source: null,
+        collectedAt: null,
+      });
+    } else {
+      const used = climbStart + climbPerDay * (retentionDays - 1 - offset);
+      const neo4j = neo4jClimbStart + Math.floor(climbPerDay / 4) * (retentionDays - 1 - offset);
+      rows.push({
+        instanceId: climbingInstanceId,
+        swarmId: climbing.id,
+        date,
+        status: "OK",
+        reasonCode: null,
+        totalBytes: BigInt(totalBytes),
+        usedBytes: BigInt(used),
+        freeBytes: BigInt(totalBytes - used),
+        mount: "/",
+        services: [
+          { name: "neo4j", sizeBytes: neo4j, sizeKnown: true },
+          { name: "elasticsearch", sizeBytes: 6 * 1024 * 1024 * 1024, sizeKnown: true },
+          { name: "redis", sizeBytes: 256 * 1024 * 1024, sizeKnown: true },
+        ],
+        hostVisible: true,
+        source: "node_exporter",
+        collectedAt,
+      });
+    }
+  }
+
+  await prisma.swarmStorageSnapshot.deleteMany({
+    where: {
+      instanceId: { in: [steadyInstanceId, climbingInstanceId] },
+    },
+  });
+
+  const BATCH = 50;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    await prisma.swarmStorageSnapshot.createMany({
+      data: rows.slice(i, i + BATCH),
+    });
+  }
+
+  console.log(
+    `✓ Seeded ${rows.length} SwarmStorageSnapshot rows (${retentionDays} days × 2 instances)`,
+  );
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -2490,6 +2639,7 @@ async function main() {
   await seedFeatureErrorIssueLink();
   await seedLegalBenchmarkRuns();
   await seedWorkflowBenchmarkRuns();
+  await seedSwarmStorageSnapshots();
 
   console.log("Seed completed.");
 }

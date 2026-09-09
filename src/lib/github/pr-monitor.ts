@@ -23,7 +23,7 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { fetchChatHistory } from "@/lib/helpers/chat-history";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
-import { fetchCIStatus } from "./pr-ci";
+import { fetchCIStatus, inferFailedCommand } from "./pr-ci";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { releaseTaskPod } from "@/lib/pods/utils";
@@ -40,6 +40,70 @@ const PR_FIX_STALE_TIMEOUT_MS = parseInt(process.env.PR_FIX_STALE_TIMEOUT_MS || 
 // (perpetual conflicts or CI failures) otherwise occupy the per-run slot limit
 // forever and starve newer PRs from other workspaces. 0 disables the cutoff.
 const PR_MONITOR_MAX_AGE_DAYS = parseInt(process.env.PR_MONITOR_MAX_AGE_DAYS || "30", 10);
+
+/**
+ * Parse `Failed steps: ...` and `### Failed Step: ...` markers out of a
+ * check's log blob, for use as a naming fallback when
+ * `inferFailedCommand` can't identify an executable command.
+ */
+function extractFailedStepNames(logs: string): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const line of logs.split("\n")) {
+    const failedStepsMatch = line.match(/^Failed steps:\s*(.+)$/);
+    if (failedStepsMatch) {
+      for (const name of failedStepsMatch[1].split(",")) {
+        const trimmed = name.trim();
+        if (trimmed && !seen.has(trimmed)) {
+          seen.add(trimmed);
+          names.push(trimmed);
+        }
+      }
+    }
+    const stepMatch = line.match(/^### Failed Step:\s*(.+)$/);
+    if (stepMatch) {
+      const trimmed = stepMatch[1].trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        names.push(trimmed);
+      }
+    }
+  }
+  return names;
+}
+
+/**
+ * Build the "verify before finishing" instructions for a CI failure fix,
+ * naming the command that failed for each failed check (inferred from that
+ * check's logs) and requiring the agent to re-run it locally before
+ * finishing. Falls back to naming the check/step and asking the agent to
+ * identify the command from the logs when it can't be inferred.
+ */
+function buildVerifyInstructions(result: PRCheckResult): string {
+  const failedChecks = result.failedChecks ?? [];
+  const lines: string[] = [];
+
+  for (const checkName of failedChecks) {
+    const logs = result.failedCheckLogs?.[checkName] ?? "";
+    const commands = inferFailedCommand(checkName, logs);
+
+    if (commands && commands.length > 0) {
+      for (const command of commands) {
+        lines.push(
+          `- "${checkName}" failed running \`${command}\`. Re-run that exact command locally (same args/paths as CI) on the changed files or the repo, and confirm it passes before finishing. Do not narrow it to a changed-files subset if CI ran it more broadly.`,
+        );
+      }
+    } else {
+      const failedSteps = extractFailedStepNames(logs);
+      const stepNote = failedSteps.length > 0 ? ` (failed step(s): ${failedSteps.join(", ")})` : "";
+      lines.push(
+        `- "${checkName}"${stepNote} failed but the exact command could not be inferred. Identify the command CI ran for this check/step from the logs below and re-run it locally, exactly as CI did, before finishing.`,
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
 
 /**
  * Build the prompt for the agent to fix a PR issue
@@ -69,6 +133,11 @@ Please:
 (if the error is from playwright, you might just need to increase playwright timeouts a bit... github CI can be slow sometimes)
 
 ${result.problemDetails || ""}`;
+
+    const verifyInstructions = buildVerifyInstructions(result);
+    if (verifyInstructions) {
+      prompt += `\n\nBefore finishing, verify your fix:\n${verifyInstructions}`;
+    }
 
     // Append log excerpts if available
     if (result.failedCheckLogs && Object.keys(result.failedCheckLogs).length > 0) {

@@ -33,6 +33,8 @@ export interface CascadeAccess {
   /** stakgraph base URL (`:3355`), empty string in USE_MOCKS mode. */
   baseUrl: string;
   apiKey: string;
+  /** Swarm name — resolves the Jarvis URL for concept peeks (export). */
+  swarmName: string;
   useMocks: boolean;
 }
 
@@ -92,7 +94,7 @@ export async function resolveCascadeAccess(
   if (!swarmResult.success) {
     return handleSwarmAccessError(swarmResult.error);
   }
-  const { workspaceId, swarmUrl, swarmApiKey } = swarmResult.data;
+  const { workspaceId, swarmUrl, swarmApiKey, swarmName } = swarmResult.data;
 
   // Step 6: IDOR guard — id, workspaceId AND type in the WHERE clause, so a
   // cross-workspace or wrong-type runId 404s with no post-fetch check.
@@ -116,6 +118,7 @@ export async function resolveCascadeAccess(
     projectId: run.projectId,
     baseUrl: transformSwarmUrlToRepo2Graph(swarmUrl),
     apiKey: swarmApiKey,
+    swarmName,
     useMocks: process.env.USE_MOCKS === "true",
   };
 }

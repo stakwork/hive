@@ -12,6 +12,7 @@ import {
   recordTurnTokens,
 } from "@/lib/ai/publicChatBudget";
 import { db } from "@/lib/db";
+import { healUserChatAgentModel, loadUserChatAgentModel } from "@/lib/ai/resolve-model";
 import { resolveMessageImageUrls } from "@/lib/ai/resolveMessageImages";
 import type { MessageLike } from "@/lib/proposals/handleApproval";
 import { runProposalIntent } from "@/lib/proposals/runProposalIntent";
@@ -43,6 +44,7 @@ import {
 import {
   emitFollowUpQuestions,
   emitProvenance,
+  maybeGenerateAndPersistTitle,
 } from "@/services/canvas-turn-enrichments";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
@@ -258,13 +260,9 @@ export async function POST(request: NextRequest) {
       // so it can be forwarded to the feature planner via runProposalIntent.
       // The same fetch happens below for the non-approval path; keeping
       // them separate avoids re-ordering a large amount of existing code.
-      const approvalChatAgentModel =
-        (
-          await db.user.findUnique({
-            where: { id: userId },
-            select: { chatAgentModel: true },
-          })
-        )?.chatAgentModel ?? undefined;
+      // Resolved against the live catalog (stale prefixes healed) so the
+      // planner never inherits a value that maps to no provider key.
+      const approvalChatAgentModel = await loadUserChatAgentModel(userId);
       console.log("[quick-ask] timing", { stage: "early-exit:approval-rejection", ms: Date.now() - t0, workspaces: slugs, orgId: orgId ?? null });
       return await runProposalIntent({
         orgId,
@@ -293,6 +291,7 @@ export async function POST(request: NextRequest) {
     let convertedMessages: ModelMessage[];
 
     if (isServerHistoryMode) {
+      const tHistory = Date.now();
       const memberAccess = await validateWorkspaceAccess(primarySlug, userId!);
       if (!memberAccess.hasAccess) {
         throw forbiddenError("Access denied for workspace");
@@ -316,6 +315,7 @@ export async function POST(request: NextRequest) {
       if (!stored) {
         throw validationError("Conversation not found or access denied");
       }
+      console.log("[quick-ask] timing", { stage: "loadConversationHistory", ms: Date.now() - tHistory, messages: stored.length, workspaces: slugs, orgId: orgId ?? null });
       convertedMessages = [
         ...toModelMessages(stored),
         { role: "user", content: body.message.trim() } as ModelMessage,
@@ -340,7 +340,9 @@ export async function POST(request: NextRequest) {
 
     // Rewrite relative image-attachment URLs to absolute signed S3 URLs
     // the AI SDK can actually download (see `resolveMessageImageUrls`).
+    const tImages = Date.now();
     await resolveMessageImageUrls(convertedMessages);
+    console.log("[quick-ask] timing", { stage: "resolveMessageImageUrls", ms: Date.now() - tImages, workspaces: slugs, orgId: orgId ?? null });
 
     // Org-membership gating for any request that carries an orgId
     // (canvas chat, single- or multi-workspace). Validated here so
@@ -349,11 +351,13 @@ export async function POST(request: NextRequest) {
     // buildDeferredCheckTools) to prevent IDOR: an unauthenticated or
     // non-member caller could otherwise associate DB rows with an arbitrary org.
     if (orgId) {
+      const tOrgGate = Date.now();
       const orgBelongsToCaller = await validateUserBelongsToOrg(
         orgId,
         userId!,
         "id",
       );
+      console.log("[quick-ask] timing", { stage: "validateUserBelongsToOrg", ms: Date.now() - tOrgGate, workspaces: slugs, orgId });
       if (!orgBelongsToCaller) {
         throw forbiddenError("Access denied for the specified organization");
       }
@@ -369,12 +373,14 @@ export async function POST(request: NextRequest) {
     // row. For public viewers that means the next request's budget
     // gate sees one turn's worth less of recorded usage; acceptable
     // softness for the very first send of a session.
+    const tAttribution = Date.now();
     const tokenAttributionRowId = await resolveTokenAttributionRowId({
       conversationId,
       userId,
       workspaceSlug: primarySlug,
       anonymousId: publicAnonymousId,
     });
+    console.log("[quick-ask] timing", { stage: "resolveTokenAttributionRowId", ms: Date.now() - tAttribution, matched: tokenAttributionRowId != null, workspaces: slugs, orgId: orgId ?? null });
 
     // Org-canvas prompt-prefix cache. The prefix (system prompt + the
     // pre-seeded `list_concepts` results) is identical turn-to-turn for a
@@ -404,13 +410,20 @@ export async function POST(request: NextRequest) {
     // gear). Threaded into `runCanvasAgent`, which only honors Anthropic
     // selections today. Null/absent → aieo default. Public viewers have
     // no user row, so they always get the default.
+    const tUserPrefs = Date.now();
     const userPrefs = userId
       ? await db.user.findUnique({
           where: { id: userId },
           select: { chatAgentModel: true, timezone: true },
         })
       : null;
-    const chatAgentModel = userPrefs?.chatAgentModel ?? undefined;
+    console.log("[quick-ask] timing", { stage: "loadUserPrefs", ms: Date.now() - tUserPrefs, skipped: !userId, workspaces: slugs, orgId: orgId ?? null });
+    // Resolved against the live catalog (stale prefixes healed) so both
+    // Jamie's own run and anything it forwards to the feature planner
+    // carry a value that maps to a provider key.
+    const chatAgentModel = userId
+      ? await healUserChatAgentModel(userId, userPrefs?.chatAgentModel)
+      : undefined;
     const userTimezone = userPrefs?.timezone ?? "UTC";
 
     // ============================================================
@@ -518,6 +531,11 @@ export async function POST(request: NextRequest) {
         null;
 
       const tAgent = Date.now();
+      // Everything the route did before handing off to the agent: auth,
+      // history load, org gate, attribution, prompt cache, user prefs,
+      // user-message persist. Subtract from `setup-to-stream` to get the
+      // agent's own share.
+      console.log("[quick-ask] timing", { stage: "route-pre-agent-setup", ms: tAgent - t0, workspaces: slugs, orgId: orgId ?? null });
       const {
         result,
         primarySwarmUrl,
@@ -798,6 +816,36 @@ export async function POST(request: NextRequest) {
               idPrefix: assistantPrefix,
               reason: "user-turn",
             });
+            // Nested try: an LLM throw must never fall into the persist
+            // catch (that catch writes a fake assistant error row).
+            // Not gated on isFirstTurn — the helper no-ops once
+            // settings.titleSource === "llm", and retries if a prior
+            // after() died before the title write.
+            try {
+              const assistantIsError =
+                errMsg !== null ||
+                abnormalFinish !== null ||
+                rows.length === 0 ||
+                rows.some((r) => r.source?.kind === "error");
+              const assistantText = rows
+                .filter(
+                  (r) =>
+                    r.role === "assistant" && r.source?.kind !== "error",
+                )
+                .map((r) => (typeof r.content === "string" ? r.content : ""))
+                .join("\n");
+              await maybeGenerateAndPersistTitle({
+                rowId,
+                userText: newUserContent,
+                assistantText,
+                assistantIsError,
+              });
+            } catch (titleErr) {
+              console.error(
+                "❌ [quick-ask] Title generation failed:",
+                titleErr,
+              );
+            }
           } catch (err) {
             console.error("❌ [quick-ask] Turn persist failed:", err);
             // Persist a trailing error row so a reopened tab sees the

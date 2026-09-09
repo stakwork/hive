@@ -28,6 +28,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { escapeForInlineScript } from "./json-escape";
+import { firstExistingPath } from "./generated-artifact";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -37,8 +38,11 @@ let cachedViewerScript: string | null = null;
 function getViewerScript(): string {
   if (cachedViewerScript !== null) return cachedViewerScript;
   try {
-    // Path relative to this file's location at build/run time.
-    const scriptPath = join(__dirname, "viewer.js");
+    // Literal paths only — see firstExistingPath.
+    const scriptPath = firstExistingPath(
+      join(process.cwd(), "src/lib/run-report/export/viewer.js"),
+      join(__dirname, "viewer.js"),
+    );
     cachedViewerScript = readFileSync(scriptPath, "utf8");
   } catch {
     // Fallback: empty enhancement (the report still renders, just no toggle).
@@ -69,7 +73,11 @@ let cachedOfflineCss: string | null = null;
  */
 function getOfflineCss(): string {
   if (cachedOfflineCss !== null) return cachedOfflineCss;
-  const cssPath = join(__dirname, "offline-report.css");
+  // Literal paths only — see firstExistingPath.
+  const cssPath = firstExistingPath(
+    join(process.cwd(), "src/lib/run-report/export/offline-report.css"),
+    join(__dirname, "offline-report.css"),
+  );
   try {
     cachedOfflineCss = readFileSync(cssPath, "utf8");
   } catch (err) {

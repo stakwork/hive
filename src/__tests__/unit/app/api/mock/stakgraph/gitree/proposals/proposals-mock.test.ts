@@ -5,9 +5,10 @@
  * NextRequest objects — no HTTP server or DB required.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
+import { config } from "@/config/env";
 import { GET as listGet } from "@/app/api/mock/stakgraph/gitree/proposals/route";
 import { GET as detailGet } from "@/app/api/mock/stakgraph/gitree/proposals/[id]/route";
 import { POST as acceptPost } from "@/app/api/mock/stakgraph/gitree/proposals/[id]/accept/route";
@@ -17,6 +18,12 @@ import {
   mockProposals,
   mockConceptDocs,
 } from "@/app/api/mock/stakgraph/gitree/proposals/fixtures";
+
+const mutableConfig = config as { USE_MOCKS: boolean };
+
+afterEach(() => {
+  mutableConfig.USE_MOCKS = false;
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -57,7 +64,10 @@ function makeParams(id: string): Promise<{ id: string }> {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("GET /api/mock/stakgraph/gitree/proposals (list)", () => {
-  beforeEach(() => resetMockProposals());
+  beforeEach(() => {
+    mutableConfig.USE_MOCKS = true;
+    resetMockProposals();
+  });
 
   it("returns 401 when x-api-token is missing", async () => {
     const req = new NextRequest("http://localhost/api/mock/.../proposals");
@@ -69,8 +79,8 @@ describe("GET /api/mock/stakgraph/gitree/proposals (list)", () => {
     const res = await listGet(makeListReq());
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.proposals).toHaveLength(5); // create, update, delete, merge, stale
-    expect(body.count).toBe(5);
+    expect(body.proposals).toHaveLength(9); // original 5 + 4 bulk-selection fixtures
+    expect(body.count).toBe(9);
     // Real swarm returns repo: "all" when no repo filter is given
     expect(body.repo).toBe("all");
   });
@@ -130,7 +140,10 @@ describe("GET /api/mock/stakgraph/gitree/proposals (list)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("GET /api/mock/stakgraph/gitree/proposals/[id] (detail)", () => {
-  beforeEach(() => resetMockProposals());
+  beforeEach(() => {
+    mutableConfig.USE_MOCKS = true;
+    resetMockProposals();
+  });
 
   it("returns 401 when x-api-token is missing", async () => {
     const req = new NextRequest("http://localhost/api/mock/.../proposals/proposal-create-1");
@@ -174,7 +187,10 @@ describe("GET /api/mock/stakgraph/gitree/proposals/[id] (detail)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("POST /api/mock/stakgraph/gitree/proposals/[id]/accept", () => {
-  beforeEach(() => resetMockProposals());
+  beforeEach(() => {
+    mutableConfig.USE_MOCKS = true;
+    resetMockProposals();
+  });
 
   it("returns 401 when x-api-token is missing", async () => {
     const req = new NextRequest("http://localhost/.../accept", { method: "POST" });
@@ -366,12 +382,25 @@ describe("POST /api/mock/stakgraph/gitree/proposals/[id]/accept", () => {
     expect(mockConceptDocs["stakwork/hive/swarm"]).toBe(body.proposal.documentation);
     expect(mockConceptDocs["stakwork/hive/janitors"]).toBeUndefined();
   });
+
+  it("returns 404 when USE_MOCKS is false", async () => {
+    mutableConfig.USE_MOCKS = false;
+    const res = await acceptPost(
+      makeActionReq("proposal-create-1", "accept", { decidedBy: "u" }),
+      { params: makeParams("proposal-create-1") },
+    );
+    expect(res.status).toBe(404);
+    expect(mockProposals.find((p) => p.id === "proposal-create-1")?.status).toBe("pending");
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("POST /api/mock/stakgraph/gitree/proposals/[id]/reject", () => {
-  beforeEach(() => resetMockProposals());
+  beforeEach(() => {
+    mutableConfig.USE_MOCKS = true;
+    resetMockProposals();
+  });
 
   it("returns 401 when x-api-token is missing", async () => {
     const req = new NextRequest("http://localhost/.../reject", { method: "POST" });
@@ -462,5 +491,15 @@ describe("POST /api/mock/stakgraph/gitree/proposals/[id]/reject", () => {
     });
     const body = await res.json();
     expect(body.proposal.status).toBe("rejected");
+  });
+
+  it("returns 404 when USE_MOCKS is false", async () => {
+    mutableConfig.USE_MOCKS = false;
+    const res = await rejectPost(
+      makeActionReq("proposal-create-1", "reject", { decidedBy: "u" }),
+      { params: makeParams("proposal-create-1") },
+    );
+    expect(res.status).toBe(404);
+    expect(mockProposals.find((p) => p.id === "proposal-create-1")?.status).toBe("pending");
   });
 });

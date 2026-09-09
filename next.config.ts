@@ -46,7 +46,12 @@ const nextConfig: NextConfig = {
   // it so `next build`'s output-file-tracing copies it into
   // `.next/standalone`, and therefore into the Docker runner image.
   outputFileTracingIncludes: {
-    "/**": ["src/lib/run-report/export/offline-report.css"],
+    "/**": [
+      "src/lib/run-report/export/offline-report.css",
+      "src/lib/run-report/export/viewer.js",
+      "src/lib/legal-cascade/export/cascade-offline.css",
+      "src/lib/legal-cascade/export/cascade-offline.js",
+    ],
   },
   eslint: {
     ignoreDuringBuilds: true,

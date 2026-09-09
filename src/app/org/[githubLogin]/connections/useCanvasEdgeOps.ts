@@ -521,6 +521,12 @@ export function useCanvasEdgeOps({
           return true;
         }
 
+        // html: nodes have no initiativeId this round, so there is
+        // no research-style reassignment drop. They fall through
+        // as non-droppable (correct — dropping an HTML card onto
+        // an initiative would silently no-op without this comment
+        // making the decision reviewable).
+
         return false;
       });
     },
@@ -752,6 +758,9 @@ export function useCanvasEdgeOps({
           continue;
         }
 
+        // html: has no initiative reassignment this round — see
+        // canDropNodeOn. Fall through so an html card dropped on
+        // an initiative is a no-op rather than a half-wired PATCH.
         if (
           source.category === "research" &&
           target.category === "initiative" &&

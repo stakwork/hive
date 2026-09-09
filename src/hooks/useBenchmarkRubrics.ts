@@ -116,15 +116,15 @@ export function createBenchmarkRubricsHook(endpointFn: EndpointFn) {
       let cancelled = false;
       const slugs = slugKey.split("\n");
 
-      (async () => {
-        const entries = await Promise.all(
-          slugs.map(async (taskSlug) => {
-            const roster = await fetchRoster(workspaceSlug, taskSlug, endpointFn);
-            return [taskSlug, roster] as const;
-          }),
-        );
-        if (!cancelled) setRosters(new Map(entries));
-      })();
+      // Each roster is merged in as it lands rather than through one
+      // Promise.all: a task's Total paints as soon as its own graph read
+      // returns, instead of every row waiting on the slowest one.
+      for (const taskSlug of slugs) {
+        fetchRoster(workspaceSlug, taskSlug, endpointFn).then((roster) => {
+          if (cancelled) return;
+          setRosters((prev) => new Map(prev).set(taskSlug, roster));
+        });
+      }
 
       return () => {
         cancelled = true;
@@ -162,7 +162,7 @@ export interface UseBenchmarkRubricsResult {
 /**
  * Fetch rosters for a set of task slugs (the runs table's distinct tasks).
  * Returns a map keyed by task slug; entries are absent until resolved and
- * `null` when no roster exists.
+ * `null` when no roster exists — see `isRosterPending` in rubric-scoring.
  */
 export const useBenchmarkRubricsMap = legalHooks.useBenchmarkRubricsMap;
 

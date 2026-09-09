@@ -59,9 +59,9 @@
  *                      generator injects the INPUT block mechanically.
  *
  *   What `wfbench/create-openai-call` therefore tests: given ONLY an intent,
- *   does the agent produce a structurally valid workflow that makes a
- *   provider call, references its credential in the correct `%%AUTHORING%%`
- *   form below, and leaks no plaintext secret. It is not an
+ *   does the agent produce a workflow that is valid for its engine, makes a
+ *   provider call, references its credential by name through the engine's
+ *   secret mechanism, and leaks no plaintext secret. It is not an
  *   instruction-following test — the days of instructing exact endpoint,
  *   model and header are gone on purpose.
  *
@@ -77,16 +77,27 @@
  *                       supplied; a partial baseline is invalid (enforced by
  *                       `checkBaselineCompleteness` below).
  *
- * Criterion wording conventions (copy-comparable ground truth for an LLM judge):
+ * Criterion wording conventions — ENGINE-NEUTRAL:
  *
- *   Step-output reference — REQUIRED form:  [#(step_id).output.variable_name]
- *   Secret reference      — REQUIRED authoring form:  %%SECRET_NAME%%
- *   REJECTED runtime form — bare {{ … }} (same mechanism as %%…%%, just the
- *                           runtime spelling — accepting it would score a
- *                           broken workflow as correct).
+ *   Workflow-side criteria (every criterion without `evaluates: "output"`)
+ *   are judged against workflows built by more than one engine: stakwork's
+ *   JSON artifact (`%%SECRET%%` references, `[#(step).output.x]` wiring,
+ *   HTTP Request steps, start/system.succeed connections) and vein's YAML
+ *   workflows (`{{ }}` templates, native llm/agent steps that call the
+ *   provider directly, secrets named through a secret store, validity = the
+ *   engine's validator passes and the run completes). A rubric written in one
+ *   engine's spelling fails a correct workflow from the other, so criteria
+ *   assert BEHAVIOUR and EVIDENCE only — a model call is made, a model id is
+ *   set, credentials are referenced by name, declared inputs reach the call
+ *   by reference, the engine's validator passes and the rerun completed —
+ *   and never one engine's artifact form. `corpus.test.ts` pins this: no
+ *   `%%…%%`, `{{ }}`, step-output syntax, step-type name or terminal-node
+ *   name may appear in a workflow-side criterion. The shared six-criterion
+ *   block is identical across tasks apart from its per-task slots (declared
+ *   input keys, how each input is consumed, the deliverable).
  *
- * These three forms are named explicitly inside the criterion bodies so a
- * judge has a copy-comparable string, not prose to interpret.
+ *   The `%%SECRET_NAME%%` form below is still the sanctioned way to NAME a
+ *   secret in `instructions`; the two invariants that follow police it there.
  *
  * Two generate-time invariants police secret handling MECHANICALLY (moving
  * authoring from type-checked TS to hand-written JSON makes a pasted-in live
@@ -105,9 +116,9 @@
  *     See `checkNoCredentialShapedContent`.
  *
  * Scoping asymmetry, deliberate: both invariants scan `instructions` and
- * `workflow_input` only — NOT criterion bodies — because criteria
- * legitimately quote malformed/runtime examples (`{{ … }}`, lowercase
- * names) verbatim to teach the judge what to reject.
+ * `workflow_input` only — NOT criterion bodies. Criteria are prose for the
+ * judge and never carry a credential; keeping them out of scope also leaves
+ * the rubric free to quote example spellings without tripping the checks.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * Adding a task
@@ -156,7 +167,7 @@ export const criterionSchema = z.object({
     .optional()
     .describe(
       'Which evidence this criterion judges. "workflow" (the default when ' +
-        "absent) — the static workflow JSON the agent produced. \"output\" — " +
+        "absent) — the static workflow artifact the agent produced. \"output\" — " +
         "the run output produced by executing that workflow with the task's " +
         "`workflow_input`; requires the task to declare `workflow_input` " +
         "(enforced by checkOutputCriteriaRequireWorkflowInput).",
@@ -283,7 +294,7 @@ export interface WorkflowBenchmarkCriterion {
   match_criteria: string;
   /**
    * Which evidence this criterion judges. `"workflow"` (the default when
-   * absent) — the static workflow JSON. `"output"` — the run output produced
+   * absent) — the static workflow artifact. `"output"` — the run output produced
    * by executing the workflow with the task's `workflow_input`. Sits in the
    * same `criteria` array as workflow criteria: one roster, one denominator.
    * A task may only declare `"output"` criteria when it declares
@@ -720,8 +731,9 @@ export function checkOutputCriteriaRequireWorkflowInput(
  * Well-formed authoring-form secret reference: paired %% around ONE OR MORE
  * uppercase letters / digits / underscores — nothing else.
  *
- * This is the machine-checked contract behind criteria like C-005 ("reference
- * form"). It is deliberately strict: lowercase names (`%%my-secret%%`),
+ * This is the machine-checked guard on `instructions` (the rubric itself is
+ * engine-neutral and prescribes no spelling — see the header). It is
+ * deliberately strict: lowercase names (`%%my-secret%%`),
  * surrounding whitespace (`%% NAME %%`), empty tokens (`%%%%`) and any other
  * garbage inside a %%…%% pair all fail, so a hand-typo in a secret reference
  * is a build error rather than an undetected prompt defect handed to an
@@ -730,7 +742,8 @@ export function checkOutputCriteriaRequireWorkflowInput(
  * Scope note: a lone single-% spelling (%NAME%) is NOT detectable here —
  * paired-token scanning only sees complete %%…%% groups, and blanket
  * %-counting would false-positive on prose like "reply with 90% confidence".
- * That case stays with the C-005 criterion wording (judge-side).
+ * Judge-side, the engine-neutral credential criterion catches the resulting
+ * literal token in the produced workflow.
  */
 const WELL_FORMED_SECRET_REFERENCE_RE = /^%%[A-Z0-9_]+%%$/;
 /** Scan pattern for candidate %%…%% tokens inside a larger text blob. */
@@ -742,10 +755,9 @@ const SECRET_REFERENCE_TOKEN_SCAN_RE = /%%[^%]*%%/g;
  * markers (a partially-deleted token), which paired extraction alone would
  * silently pass.
  *
- * Scope: `instructions` ONLY. Criterion bodies are exempt — they quote
- * malformed/runtime spellings verbatim to teach the judge what to reject
- * (see the schema-header note on scoping asymmetry). Error messages never
- * echo the offending token.
+ * Scope: `instructions` ONLY. Criterion bodies are exempt (see the
+ * schema-header note on scoping asymmetry). Error messages never echo the
+ * offending token.
  */
 export function checkSecretReferenceForm(
   task: InvariantCheckableTask,

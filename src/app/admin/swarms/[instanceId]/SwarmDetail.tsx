@@ -17,11 +17,46 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import HostStorageCard from "./HostStorageCard";
+import { swarmUrlFromTags } from "@/lib/swarm/swarm-url";
 
 interface Container {
   name: string;
   status: string;
   image: string;
+}
+
+/**
+ * Raw shape returned by the Docker API (via the sphinx-swarm `ListContainers`
+ * command). Keys are capitalized and, for the name, nested in an array —
+ * unlike the flat lowercase `Container` shape the UI renders.
+ */
+interface RawDockerContainer {
+  Names?: string[];
+  State?: string;
+  Status?: string;
+  Image?: string;
+  name?: string;
+  status?: string;
+  image?: string;
+}
+
+/**
+ * Normalizes a container object — which may come back from the swarm host
+ * either as a raw Docker API object (capitalized, nested keys) or already in
+ * the flat lowercase UI shape — into the `Container` shape the table renders.
+ *
+ * `status` intentionally carries the Docker *state* (e.g. "running",
+ * "created") rather than the human-readable `Status` string (e.g. "Up 4
+ * hours"), since the UI's `isRunning` check compares against `"running"`.
+ */
+export function normalizeContainer(raw: RawDockerContainer): Container {
+  const rawName = Array.isArray(raw?.Names) ? raw.Names[0] : undefined;
+  const name = rawName ? rawName.replace(/^\//, "") : raw?.name ?? "";
+  const status = raw?.State ?? raw?.status ?? "";
+  const image = raw?.Image ?? raw?.image ?? "";
+
+  return { name, status, image };
 }
 
 interface SwarmDetailProps {
@@ -67,6 +102,7 @@ async function postCmd(instanceId: string, swarmUrl: string | undefined, cmd: Re
 }
 
 export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailProps) {
+  const [resolvedUrl, setResolvedUrl] = useState<string | undefined>(swarmUrl);
   const [containers, setContainers] = useState<Container[]>([]);
   const [loadingContainers, setLoadingContainers] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -76,25 +112,81 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
   const [updateNodeDialog, setUpdateNodeDialog] = useState(false);
   const [updateNodePayload, setUpdateNodePayload] = useState("{}");
 
-  const fetchContainers = useCallback(async () => {
+  const fetchContainers = useCallback(async (url: string) => {
     setLoadingContainers(true);
     setLoadError(null);
     try {
-      const data = await postCmd(instanceId, swarmUrl, {
+      const data = await postCmd(instanceId, url, {
         type: "Swarm",
         data: { cmd: "ListContainers" },
       });
-      setContainers(data?.containers ?? data?.data?.containers ?? []);
+      const body = (data as any)?.data ?? data;
+      const list = Array.isArray(body)
+        ? body
+        : Array.isArray((body as any)?.containers)
+          ? (body as any).containers
+          : [];
+      setContainers((list as RawDockerContainer[]).map(normalizeContainer));
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load containers");
     } finally {
       setLoadingContainers(false);
     }
-  }, [instanceId, swarmUrl]);
+  }, [instanceId]);
 
   useEffect(() => {
-    fetchContainers();
-  }, [fetchContainers]);
+    let cancelled = false;
+
+    async function resolveThenFetch() {
+      if (swarmUrl) {
+        setResolvedUrl(swarmUrl);
+        await fetchContainers(swarmUrl);
+        return;
+      }
+
+      setLoadingContainers(true);
+      setLoadError(null);
+      try {
+        const res = await fetch(`/api/admin/swarms/${instanceId}`);
+        if (cancelled) return;
+
+        if (res.status === 404) {
+          setLoadError("Instance not found");
+          setLoadingContainers(false);
+          return;
+        }
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          setLoadError(data?.error ?? `Failed to resolve swarm URL (${res.status})`);
+          setLoadingContainers(false);
+          return;
+        }
+
+        const instance = await res.json();
+        if (cancelled) return;
+
+        const url = swarmUrlFromTags(instance?.tags);
+        if (!url) {
+          setLoadError("Could not resolve swarm URL — UserAssignedName tag is missing");
+          setLoadingContainers(false);
+          return;
+        }
+
+        setResolvedUrl(url);
+        await fetchContainers(url);
+      } catch (err) {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : "Failed to resolve swarm URL");
+        setLoadingContainers(false);
+      }
+    }
+
+    resolveThenFetch();
+    return () => {
+      cancelled = true;
+    };
+  }, [instanceId, swarmUrl, fetchContainers]);
 
   async function handleContainerAction(
     container: Container,
@@ -106,17 +198,17 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
         start: { type: "Swarm", data: { cmd: "StartContainer", content: container.name } },
         stop: { type: "Swarm", data: { cmd: "StopContainer", content: container.name } },
         restart: { type: "Swarm", data: { cmd: "RestartContainer", content: container.name } },
-        logs: { type: "Swarm", data: { cmd: "GetContainerLogs", content: container.name } },
+        logs: { type: "Swarm", data: { cmd: "GetContainerLogs", content: { name: container.name, before_timestamp: null, since_timestamp: null } } },
       };
 
-      const data = await postCmd(instanceId, swarmUrl, cmdMap[action]);
+      const data = await postCmd(instanceId, resolvedUrl, cmdMap[action]);
 
       if (action === "logs") {
         const logs = data?.logs ?? data?.data?.logs ?? data?.rawText ?? JSON.stringify(data, null, 2);
         setLogsDialog({ containerName: container.name, logs: String(logs) });
       } else {
         toast.success(`Container ${action} successful`);
-        await fetchContainers();
+        if (resolvedUrl) await fetchContainers(resolvedUrl);
       }
     } catch (err) {
       toast.error(`Failed to ${action} container`, {
@@ -140,7 +232,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
       getAllImageVersions: "Get All Image Versions",
     };
     try {
-      const data = await postCmd(instanceId, swarmUrl, cmdMap[action]);
+      const data = await postCmd(instanceId, resolvedUrl, cmdMap[action]);
       const result = data?.data ?? data;
       setResultDialog({
         title: titles[action],
@@ -166,7 +258,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
     setUpdateNodeDialog(false);
     setActionLoading({ type: "swarm", action: "updateNode" });
     try {
-      const data = await postCmd(instanceId, swarmUrl, {
+      const data = await postCmd(instanceId, resolvedUrl, {
         type: "Swarm",
         data: { cmd: "UpdateNode", content: payload },
       });
@@ -217,7 +309,12 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Containers</CardTitle>
-          <Button variant="outline" size="sm" onClick={fetchContainers} disabled={loadingContainers}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => resolvedUrl && fetchContainers(resolvedUrl)}
+            disabled={loadingContainers || !resolvedUrl}
+          >
             {loadingContainers ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
@@ -238,7 +335,12 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
                 <AlertCircle className="h-5 w-5" />
                 <span>{loadError}</span>
               </div>
-              <Button variant="outline" size="sm" onClick={fetchContainers}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => resolvedUrl && fetchContainers(resolvedUrl)}
+                disabled={!resolvedUrl}
+              >
                 Retry
               </Button>
             </div>
@@ -280,7 +382,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={actionLoading !== null}
+                              disabled={actionLoading !== null || !resolvedUrl}
                               onClick={() => handleContainerAction(container, "start")}
                             >
                               {isContainerActionLoading(container.name, "start") ? (
@@ -294,7 +396,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
                             <Button
                               variant="destructive"
                               size="sm"
-                              disabled={actionLoading !== null}
+                              disabled={actionLoading !== null || !resolvedUrl}
                               onClick={() => handleContainerAction(container, "stop")}
                             >
                               {isContainerActionLoading(container.name, "stop") ? (
@@ -307,7 +409,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={actionLoading !== null}
+                            disabled={actionLoading !== null || !resolvedUrl}
                             onClick={() => handleContainerAction(container, "restart")}
                           >
                             {isContainerActionLoading(container.name, "restart") ? (
@@ -319,7 +421,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
                           <Button
                             variant="ghost"
                             size="sm"
-                            disabled={actionLoading !== null}
+                            disabled={actionLoading !== null || !resolvedUrl}
                             onClick={() => handleContainerAction(container, "logs")}
                           >
                             {isContainerActionLoading(container.name, "logs") ? (
@@ -349,7 +451,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
             <Button
               variant="outline"
               size="sm"
-              disabled={actionLoading !== null}
+              disabled={actionLoading !== null || !resolvedUrl}
               onClick={() => handleSwarmAction("getConfig")}
             >
               {isSwarmActionLoading("getConfig") ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
@@ -358,7 +460,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
             <Button
               variant="outline"
               size="sm"
-              disabled={actionLoading !== null}
+              disabled={actionLoading !== null || !resolvedUrl}
               onClick={() => handleSwarmAction("listVersions")}
             >
               {isSwarmActionLoading("listVersions") ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
@@ -367,7 +469,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
             <Button
               variant="outline"
               size="sm"
-              disabled={actionLoading !== null}
+              disabled={actionLoading !== null || !resolvedUrl}
               onClick={() => handleSwarmAction("getAllImageVersions")}
             >
               {isSwarmActionLoading("getAllImageVersions") ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
@@ -376,7 +478,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
             <Button
               variant="outline"
               size="sm"
-              disabled={actionLoading !== null}
+              disabled={actionLoading !== null || !resolvedUrl}
               onClick={() => setUpdateNodeDialog(true)}
             >
               {isSwarmActionLoading("updateNode") ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
@@ -385,6 +487,9 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
           </div>
         </CardContent>
       </Card>
+
+      {/* Host Storage Card */}
+      <HostStorageCard instanceId={instanceId} />
 
       {/* Logs Dialog */}
       <Dialog open={logsDialog !== null} onOpenChange={(open) => !open && setLogsDialog(null)}>

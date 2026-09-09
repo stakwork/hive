@@ -17,7 +17,7 @@ import {
   MessageSquare,
   Zap,
 } from "lucide-react";
-import { type Artifact, type ArtifactType } from "@/lib/chat";
+import { type Artifact, type ArtifactType, type HtmlContent } from "@/lib/chat";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +39,7 @@ import { PublishWorkflowArtifact } from "@/app/w/[slug]/task/[...taskParams]/art
 import { PublishScriptArtifact } from "@/app/w/[slug]/task/[...taskParams]/artifacts/publish-script";
 import { PublishPromptArtifact } from "@/app/w/[slug]/task/[...taskParams]/artifacts/publish-prompt";
 import { PublishSkillArtifact } from "@/app/w/[slug]/task/[...taskParams]/artifacts/publish-skill";
+import { HtmlArtifactFrame } from "@/components/html-artifact/HtmlArtifactFrame";
 
 /**
  * Compact pill-as-button for a non-FORM, non-PULL_REQUEST artifact in
@@ -99,6 +100,7 @@ const KIND_META: Partial<Record<ArtifactType | string, PillKind>> = {
   PUBLISH_SCRIPT: { Icon: FileCode2, label: "Publish script", iconClass: "text-blue-500", mode: "inModal" },
   PUBLISH_PROMPT: { Icon: MessageSquare, label: "Publish prompt", iconClass: "text-violet-500", mode: "inModal" },
   PUBLISH_SKILL: { Icon: Zap, label: "Publish skill", iconClass: "text-amber-500", mode: "inModal" },
+  HTML: { Icon: Globe, label: "Page", iconClass: "text-sky-500", mode: "inModal" },
   BROWSER: { Icon: Globe, label: "Browser session", iconClass: "text-sky-500", mode: "external" },
   IDE: { Icon: Code, label: "IDE session", iconClass: "text-sky-500", mode: "external" },
   MEDIA: { Icon: ImageIcon, label: "Media", iconClass: "text-pink-500", mode: "external" },
@@ -218,6 +220,23 @@ function renderModalBody(artifact: Artifact, workflowUrl?: string | null, taskId
       return <PublishPromptArtifact artifact={artifact} />;
     case "PUBLISH_SKILL":
       return <PublishSkillArtifact artifact={artifact} />;
+    case "HTML":
+      // Pointer-only artifact: the frame streams the stored bytes through the
+      // authenticated task-scoped proxy, so a taskId is required.
+      if (!taskId) {
+        return (
+          <div className="text-sm text-muted-foreground italic">
+            No preview available for this artifact type.
+          </div>
+        );
+      }
+      return (
+        <HtmlArtifactFrame
+          source={{ taskId, artifactId: artifact.id }}
+          title={(artifact.content as HtmlContent | undefined)?.title}
+          className="h-[70vh] w-full"
+        />
+      );
     default:
       return (
         <div className="text-sm text-muted-foreground italic">

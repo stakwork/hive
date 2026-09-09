@@ -3010,7 +3010,12 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
         json: async () => TestDataFactory.createStakworkSuccessResponse(),
       } as Response);
 
-      const customWebhookUrl = "https://custom-stakwork.com/api/continue-workflow";
+      // Must be same-origin as the mocked STAKWORK_BASE_URL
+      // ("https://test-stakwork.com") — callStakworkAPI only honors a
+      // caller-supplied `webhook` override when its origin matches,
+      // since that URL receives the Stakwork API key and the resolved
+      // provider LLM key (see isAllowedStakworkWebhook).
+      const customWebhookUrl = "https://test-stakwork.com/api/continue-workflow";
       const params = TestDataFactory.createCallStakworkAPIParams({
         webhook: customWebhookUrl,
       });
@@ -3020,6 +3025,28 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         customWebhookUrl,
+        expect.objectContaining({
+          method: "POST",
+        })
+      );
+    });
+
+    test("should fall back to /projects endpoint when webhook has a different origin than STAKWORK_BASE_URL", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const foreignWebhookUrl = "https://attacker.example.com/api/continue-workflow";
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        webhook: foreignWebhookUrl,
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://test-stakwork.com/projects",
         expect.objectContaining({
           method: "POST",
         })

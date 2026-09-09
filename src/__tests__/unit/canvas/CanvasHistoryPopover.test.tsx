@@ -43,11 +43,16 @@ vi.mock("lucide-react", () => ({
 const mockStartConversation = vi.fn(() => "new-conv-id");
 const mockSetServerConversationId = vi.fn();
 const mockClearActiveConversation = vi.fn();
+const mockSetPendingInputDraft = vi.fn();
 
 const mockStoreState = {
   activeConversationId: "active-conv-1",
   conversations: {
     "active-conv-1": {
+      // Persisted, so it counts as touched: "New" mints a fresh slot rather
+      // than reusing this one.
+      serverConversationId: "srv-active",
+      messages: [],
       context: {
         orgId: "org-1",
         canvasRef: null,
@@ -58,6 +63,7 @@ const mockStoreState = {
   startConversation: mockStartConversation,
   setServerConversationId: mockSetServerConversationId,
   clearActiveConversation: mockClearActiveConversation,
+  setPendingInputDraft: mockSetPendingInputDraft,
 };
 
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
@@ -219,7 +225,28 @@ describe("CanvasHistoryPopover", () => {
     });
   });
 
-  it("calls startConversation with ephemeralSeedCount=messages.length and setServerConversationId on item click", async () => {
+  it("only ever renders the conversations the history endpoint returns (active-only)", async () => {
+    // The GET /chat/conversations list filters archivedAt: null server-side.
+    // The popover must not invent archived rows or request ?archived=1.
+    global.fetch = buildFetch(mockItems, {});
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Planning session")).toBeInTheDocument();
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/orgs/my-org/chat/conversations?limit=10"),
+    );
+    const urls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes("archived="))).toBe(false);
+    expect(screen.queryByText("Archive")).not.toBeInTheDocument();
+    expect(screen.getByText("What are the key milestones?")).toBeInTheDocument();
+  });
+
+  it("calls startConversation with ephemeralSeedCount=messages.length and the server id on item click", async () => {
     global.fetch = buildFetch(mockItems, { "conv-a": mockConversationDetail });
 
     render(<CanvasHistoryPopover githubLogin="my-org" />);
@@ -240,11 +267,10 @@ describe("CanvasHistoryPopover", () => {
         ]),
         undefined, // forkedFromShareId
         2, // ephemeralSeedCount = messages.length
+        "conv-a", // the persisted row it joins
+        "Planning session", // persisted title seeded onto the slot
       );
-      expect(mockSetServerConversationId).toHaveBeenCalledWith(
-        "new-conv-id",
-        "conv-a",
-      );
+      expect(mockSetServerConversationId).not.toHaveBeenCalled();
     });
   });
 
@@ -269,6 +295,8 @@ describe("CanvasHistoryPopover", () => {
       0,
     );
     expect(mockClearActiveConversation).not.toHaveBeenCalled();
+    // A fresh chat is for typing: an empty draft only focuses the composer.
+    expect(mockSetPendingInputDraft).toHaveBeenCalledWith("");
   });
 
   it("renders an amber unread dot only on unread conversations", async () => {
@@ -371,7 +399,14 @@ describe("CanvasHistoryPopover", () => {
     fireEvent.click(screen.getByText("Planning session"));
 
     await waitFor(() => {
-      expect(mockSetServerConversationId).toHaveBeenCalledWith("new-conv-id", "conv-a");
+      expect(mockStartConversation).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        undefined,
+        2,
+        "conv-a",
+        "Planning session",
+      );
     });
 
     // replaceState must NOT have been called for a chat= write (no-op when already equal)
@@ -457,7 +492,14 @@ describe("CanvasHistoryPopover", () => {
     // Click a history item
     fireEvent.click(screen.getByText("Planning session"));
     await waitFor(() =>
-      expect(mockSetServerConversationId).toHaveBeenCalledWith("new-conv-id", "conv-a"),
+      expect(mockStartConversation).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        undefined,
+        2,
+        "conv-a",
+        "Planning session",
+      ),
     );
 
     expect(mockRouterReplace).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, type ReactNode } from "react";
+import React, { useMemo, useState, type ReactNode } from "react";
 import {
   Tooltip,
   TooltipContent,
@@ -42,24 +42,53 @@ export const RAIL_RIGHT = 8;
 export const MIN_W = 980;
 
 /**
- * Workspace slug for the trace being rendered. The concept chips fetch their
- * own node to fill the peek, and threading the slug through sections and rows
- * to reach them would be pure prop drilling. Null outside a workspace (tests,
- * embeds): the chip still opens, and the peek says why it cannot fetch.
+ * Where the concept chips get their peek from. Threading this through
+ * sections and rows to reach them would be pure prop drilling.
+ *
+ * - `slug`: workspace of the trace being rendered; the chip fetches the node
+ *   live through the workspace route. Null outside a workspace (tests,
+ *   embeds): the chip still opens, and the peek says why it cannot fetch.
+ * - `peeks`: pre-captured peeks keyed by ref_id (the offline HTML export,
+ *   which must never touch the network). When set, it wins over fetching.
  */
-const CascadeWorkspaceContext = React.createContext<string | null>(null);
+interface CascadePeekSource {
+  slug: string | null;
+  peeks: ReadonlyMap<string, NodePeek> | null;
+}
+
+const CascadeWorkspaceContext = React.createContext<CascadePeekSource>({
+  slug: null,
+  peeks: null,
+});
 
 export function CascadeWorkspaceProvider({
   slug,
+  peeks = null,
   children,
 }: {
   slug: string | null;
+  peeks?: ReadonlyMap<string, NodePeek> | null;
   children: ReactNode;
 }) {
+  const value = useMemo(() => ({ slug, peeks }), [slug, peeks]);
   return (
-    <CascadeWorkspaceContext.Provider value={slug}>
+    <CascadeWorkspaceContext.Provider value={value}>
       {children}
     </CascadeWorkspaceContext.Provider>
+  );
+}
+
+/** The peek a chip shows when reading from an embedded map (no fetch). */
+export function embeddedPeek(
+  peeks: ReadonlyMap<string, NodePeek>,
+  refId: string | null,
+): NodePeek {
+  if (!refId) return { state: "error", note: "The run recorded no ref_id for this node." };
+  return (
+    peeks.get(refId) ?? {
+      state: "error",
+      note: "This concept was not captured when the trace was exported.",
+    }
   );
 }
 
@@ -446,11 +475,15 @@ function renderContent(
  * than the thin identity the trace recorded.
  */
 function ConceptChip({ row }: { row: ConceptRow }) {
-  const workspaceSlug = React.useContext(CascadeWorkspaceContext);
+  const { slug: workspaceSlug, peeks } = React.useContext(CascadeWorkspaceContext);
   const [peek, setPeek] = useState<NodePeek | null>(null);
   const created = row.verb !== "READ";
 
   const openPeek = async () => {
+    if (peeks) {
+      setPeek(embeddedPeek(peeks, row.refId));
+      return;
+    }
     setPeek({ state: "loading" });
     setPeek(await fetchNodePeek(workspaceSlug, row.refId));
   };

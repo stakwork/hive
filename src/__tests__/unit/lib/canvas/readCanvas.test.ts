@@ -35,6 +35,8 @@ vi.mock("@/lib/db", () => ({
     feature: { findMany: vi.fn() },
     // The research projector pulls rows on root and initiative scopes.
     research: { findMany: vi.fn() },
+    // The HTML-page projector pulls rows on root only.
+    htmlPage: { findMany: vi.fn() },
   },
 }));
 
@@ -63,6 +65,7 @@ const dbMock = db as unknown as {
   };
   feature: { findMany: ReturnType<typeof vi.fn> };
   research: { findMany: ReturnType<typeof vi.fn> };
+  htmlPage: { findMany: ReturnType<typeof vi.fn> };
 };
 
 function mockBlob(blob: CanvasBlob | null) {
@@ -119,6 +122,7 @@ beforeEach(() => {
   dbMock.milestone.findMany.mockResolvedValue([]);
   dbMock.feature.findMany.mockResolvedValue([]);
   dbMock.research.findMany.mockResolvedValue([]);
+  dbMock.htmlPage.findMany.mockResolvedValue([]);
   // `findFirst` calls in projectors are scope-gated; default to null
   // (no-such-record) so unintended calls fail fast and surface as a
   // test bug rather than a silent leak.

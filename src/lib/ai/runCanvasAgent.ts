@@ -51,6 +51,7 @@ import {
 import type { CanvasScopeHint } from "@/lib/constants/prompt";
 import { getCanvasSystemPrompt } from "@/lib/ai/canvas-system-prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
+import { isConceptSeedingEnabled } from "@/lib/ai/concepts";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
 import {
   buildWorkspaceConfigs,
@@ -58,7 +59,7 @@ import {
   fetchConceptsForWorkspaces,
   markOrgDefaultWorkspace,
 } from "@/lib/ai/workspaceConfig";
-import type { CapturedSearchResult, DispatchedResearchIntent } from "@/lib/ai/researchTools";
+import type { DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import type { DispatchedGraphWalkIntent } from "@/lib/ai/graphWalkDispatchTools";
 import {
   ALL_CAPABILITIES,
@@ -69,9 +70,16 @@ import {
   type OrgCapability,
 } from "@/lib/ai/capabilities";
 import { isGraphWriteCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
+import { connectExternalMcpTools } from "@/lib/ai/externalMcpTools";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
-import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
+import {
+  getModel,
+  getApiKeyForProvider,
+  createWebSearch,
+  WEB_SEARCH_TOOL_NAME,
+  type Provider,
+} from "@/lib/ai/provider";
 import { getProviderOptions, hasApiKeyForProvider, PROVIDERS } from "aieo";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
@@ -79,6 +87,12 @@ import {
   startCanvasSessionIngest,
   type CanvasSessionIngest,
 } from "@/services/stakgraph-session-ingest";
+import {
+  buildSphinxTools,
+  resolveSphinxToolTarget,
+  SEND_SPHINX_MESSAGE_TOOL,
+} from "@/lib/ai/sphinxTools";
+import type { WorkspaceConfig } from "@/lib/ai/types";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 
@@ -106,7 +120,8 @@ export function filterReadonly(
   keepWriteToolNames?: string[],
   stripToolNames?: ReadonlySet<string>,
 ): ToolSet {
-  const strip = stripToolNames ?? getDefaultReadonlyStrip();
+  const strip = new Set(stripToolNames ?? getDefaultReadonlyStrip());
+  strip.add(SEND_SPHINX_MESSAGE_TOOL);
   const out: ToolSet = {};
   for (const [name, def] of Object.entries(tools)) {
     if (strip.has(name)) {
@@ -116,6 +131,49 @@ export function filterReadonly(
     out[name] = def;
   }
   return out;
+}
+
+/**
+ * Merge `send_sphinx_message` when the in-scope workspace is Sphinx-connected.
+ * Destination is bound at merge time; the model never chooses a workspace.
+ */
+async function mergeSphinxTools(
+  tools: ToolSet,
+  args: {
+    userId: string | null;
+    readonly: boolean;
+    silentPusher: boolean;
+    publicViewer: boolean;
+    workspaceConfigs: Array<
+      Pick<WorkspaceConfig, "workspaceId" | "slug" | "currentUserGithubUsername">
+    >;
+    currentCanvasRef?: string;
+  },
+): Promise<ToolSet> {
+  const targets = await resolveSphinxToolTarget({
+    readonly: args.readonly,
+    silentPusher: args.silentPusher,
+    userId: args.userId,
+    publicViewer: args.publicViewer,
+    workspaceConfigs: args.workspaceConfigs,
+    currentCanvasRef: args.currentCanvasRef,
+  });
+  if (targets.length === 0 || !args.userId) {
+    return tools;
+  }
+  // Same acting user across every bound target — take the first
+  // non-empty GitHub handle among the conversation's workspace configs.
+  const actorLabel = args.workspaceConfigs.find(
+    (c) => typeof c.currentUserGithubUsername === "string" && c.currentUserGithubUsername,
+  )?.currentUserGithubUsername;
+  return {
+    ...tools,
+    ...buildSphinxTools({
+      userId: args.userId,
+      targets,
+      actorLabel,
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +383,7 @@ export interface RunCanvasAgentOptions {
    *
    * **Important:** the spared tool must be one of the *internally-wired*
    * tools (built inside `runCanvasAgent` with shared closures like
-   * `capturedWebSearchResults`). Passing an external tool name here that
+   * `webSearch.results`). Passing an external tool name here that
    * is NOT in the internal toolset is a no-op — the tool is already
    * absent; nothing is restored.
    */
@@ -352,7 +410,7 @@ export interface RunCanvasAgentOptions {
    * Mutable collector for `dispatch_research` intents. When provided, the
    * internally-wired `dispatch_research` tool will push each dispatched
    * intent here so the caller's `after()` block can schedule workers.
-   * Sibling pattern to `capturedWebSearchResults`.
+   * Sibling pattern to `dispatchedGraphWalks`.
    */
   dispatchedResearch?: DispatchedResearchIntent[];
   /**
@@ -362,6 +420,18 @@ export interface RunCanvasAgentOptions {
    * graph-walk workers. Sibling pattern to `dispatchedResearch`.
    */
   dispatchedGraphWalks?: DispatchedGraphWalkIntent[];
+  /**
+   * Ask the model to cite `web_search` results as `<cite index="N">` tags
+   * so `update_research` can linkify them. Defaults to false.
+   *
+   * Leave it off for anything that STREAMS its text to a UI: the tags
+   * would reach the client as raw markup mid-stream, before any
+   * server-side rewrite could run. Only non-streaming surfaces whose
+   * output lands via a tool call (the research worker) should set it —
+   * and note Claude honors the instruction unreliably even then, so
+   * treat links as best-effort. See aieo's `npm run cite-rate`.
+   */
+  webSearchCitations?: boolean;
   /**
    * Sink for the sub-agent's synthesized graph-walk answer. Only
    * meaningful in a graph-walk sub-agent context (set by the worker);
@@ -499,53 +569,6 @@ function extractConceptIdsFromStep(contents: unknown): string[] {
     }
   }
   return conceptIds;
-}
-
-/**
- * Walk a step's tool-result entries for `web_search` outputs and
- * append each `{ url, title }` (in order) to `target`. Order is
- * load-bearing: Anthropic's `<cite index="N-M">` tags reference this
- * flat list 1-indexed across the whole turn.
- *
- * Tolerates two AI-SDK result shapes (`result` vs `output`) and any
- * non-array body silently — adapters vary across versions.
- */
-function captureWebSearchResultsFromStep(
-  contents: unknown,
-  target: CapturedSearchResult[],
-): void {
-  if (!Array.isArray(contents)) return;
-  for (const content of contents) {
-    if (content?.type !== "tool-result") continue;
-    const toolName: string = content.toolName || "";
-    if (toolName !== "web_search") continue;
-    const body = content.output ?? content.result ?? null;
-    const results = Array.isArray(body) ? body : null;
-    if (!results) {
-      console.log(
-        `[runCanvasAgent] web_search tool-result had non-array body; skipping`,
-        { keys: body && typeof body === "object" ? Object.keys(body) : typeof body },
-      );
-      continue;
-    }
-    let added = 0;
-    for (const r of results) {
-      if (
-        r &&
-        typeof r === "object" &&
-        typeof (r as { url?: unknown }).url === "string"
-      ) {
-        target.push({
-          url: (r as CapturedSearchResult).url,
-          title: (r as CapturedSearchResult).title,
-        });
-        added++;
-      }
-    }
-    console.log(
-      `[runCanvasAgent] captured ${added} web_search results from this step (total now ${target.length})`,
-    );
-  }
 }
 
 /**
@@ -752,10 +775,16 @@ export async function runCanvasAgent(
     string,
     { prompt_id: string; prompt_version_id: string | null }
   > = {};
-  // Per-call web_search capture, used by `update_research`'s execute
-  // closure to linkify Anthropic `<cite index="N-M">` tags. Empty
-  // (and unused) when no org-tool branch is built.
-  const capturedWebSearchResults: CapturedSearchResult[] = [];
+  // Per-run web_search handle. Owns the tool itself (native on
+  // Anthropic, Exa-backed shim elsewhere), the ordered result list
+  // `update_research` cites into, and the citation treatment applied to
+  // written-up text. Built here — after provider/apiKey resolution,
+  // before either tool branch — so both branches register the same one.
+  const webSearch = createWebSearch({
+    provider,
+    apiKey,
+    citations: !!opts.webSearchCitations,
+  });
 
   // Turn-level cancellation flag, shared with the repo_agent tool
   // executes (via AskToolsContext). When the user stops a run, the
@@ -785,6 +814,14 @@ export async function runCanvasAgent(
   let firstTokenLogged = false;
   const toolCallStartTimes = new Map<string, number>();
 
+  // Concept pre-seeding master switch (CANVAS_CONCEPT_SEEDING, off by
+  // default). When off, both branches below skip the up-front swarm
+  // concept fetch, ignore any per-conversation concept cache, emit no
+  // pre-seeded `list_concepts` pairs into the prefix (the prompt
+  // builders check the same flag), and leave `cacheableConcepts` empty
+  // so callers never persist a concept cache.
+  const conceptSeedingEnabled = isConceptSeedingEnabled();
+
   if (isMultiWorkspace) {
     // Multi-workspace mode is auth-only — public-viewer requests are
     // rejected by the caller before reaching here. The non-null
@@ -804,9 +841,13 @@ export async function runCanvasAgent(
     // cached concepts still flow into `askToolsMulti` (so the 3+ workspace
     // `read_concepts_for_repo` tool keeps working) AND into the prefix
     // builder below.
-    const multiCacheHit = !!cachedConcepts?.conceptsByWorkspace;
+    const multiCacheHit =
+      conceptSeedingEnabled && !!cachedConcepts?.conceptsByWorkspace;
     let conceptsByWorkspace: Record<string, Record<string, unknown>[]>;
-    if (multiCacheHit) {
+    if (!conceptSeedingEnabled) {
+      conceptsByWorkspace = {};
+      console.log("[runCanvasAgent] timing", { stage: "fetchConceptsForWorkspaces (multi)", ms: 0, skipped: "seeding disabled", workspaces: workspaceSlugs, orgId: orgId ?? null });
+    } else if (multiCacheHit) {
       conceptsByWorkspace = cachedConcepts!.conceptsByWorkspace!;
       console.log("[runCanvasAgent] timing", { stage: "fetchConceptsForWorkspaces (multi)", ms: 0, skipped: "cache hit", workspaces: workspaceSlugs, orgId: orgId ?? null });
     } else {
@@ -815,7 +856,11 @@ export async function runCanvasAgent(
       console.log("[runCanvasAgent] timing", { stage: "fetchConceptsForWorkspaces (multi)", ms: Date.now() - tConcepts, workspaces: workspaceSlugs, orgId: orgId ?? null });
     }
 
-    tools = askToolsMulti(workspaceConfigs, apiKey, conceptsByWorkspace, {
+    // With seeding off there is no pre-fetched catalog, so pass
+    // `undefined` — this keeps `{slug}__read_concepts_for_repo` (which
+    // serves that catalog) unregistered, matching the prompt's
+    // untrimmed tool lines.
+    tools = askToolsMulti(workspaceConfigs, apiKey, conceptSeedingEnabled ? conceptsByWorkspace : undefined, {
       conversationId: currentCanvasConversationId,
       turnId,
       cancellation,
@@ -833,7 +878,7 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
-          capturedWebSearchResults,
+          webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
           graphWalkAnswerSink,
@@ -842,6 +887,17 @@ export async function runCanvasAgent(
         }),
       };
     }
+
+    const tSphinxMerge = Date.now();
+    tools = await mergeSphinxTools(tools, {
+      userId,
+      readonly,
+      silentPusher,
+      publicViewer: isPublicViewer,
+      workspaceConfigs,
+      currentCanvasRef: scope?.currentCanvasRef,
+    });
+    console.log("[runCanvasAgent] timing", { stage: "mergeSphinxTools (multi)", ms: Date.now() - tSphinxMerge, merged: SEND_SPHINX_MESSAGE_TOOL in tools, workspaces: workspaceSlugs, orgId: orgId ?? null });
 
     features = [];
     for (const ws of workspaceConfigs) {
@@ -860,10 +916,12 @@ export async function runCanvasAgent(
     ) {
       const initiativeId = scope.currentCanvasRef.slice("initiative:".length);
       if (initiativeId) {
+        const tLinked = Date.now();
         linkedWorkspaces = await getLinkedWorkspacesForInitiative(
           orgId,
           initiativeId,
         );
+        console.log("[runCanvasAgent] timing", { stage: "getLinkedWorkspacesForInitiative", ms: Date.now() - tLinked, linked: linkedWorkspaces.length, workspaces: workspaceSlugs, orgId });
       }
     }
 
@@ -902,7 +960,9 @@ export async function runCanvasAgent(
     console.log("[runCanvasAgent] timing", { stage: "getCanvasSystemPrompt (multi)", ms: tPrefixMessages - tSystemPrompt, workspaces: workspaceSlugs, orgId: orgId ?? null });
     console.log("[runCanvasAgent] timing", { stage: "getMultiWorkspacePrefixMessages (multi)", ms: Date.now() - tPrefixMessages, workspaces: workspaceSlugs, orgId: orgId ?? null });
     cacheHit = multiCacheHit;
-    cacheableConcepts = { conceptsByWorkspace };
+    // Empty when seeding is off — `hasConcepts({})` is false, so callers
+    // never persist a concept cache while the feature is disabled.
+    cacheableConcepts = conceptSeedingEnabled ? { conceptsByWorkspace } : {};
     primarySwarmUrl = workspaceConfigs[0].swarmUrl;
     primarySwarmApiKey = workspaceConfigs[0].swarmApiKey;
     primaryWorkspaceId = workspaceConfigs[0].workspaceId;
@@ -935,8 +995,11 @@ export async function runCanvasAgent(
     // multi-workspace path's `fetchConceptsForWorkspaces`, which
     // already swallows per-workspace failures.
     // Cache hit → reuse cached concepts and skip the swarm fetch.
-    const singleCacheHit = !!cachedConcepts?.concepts;
-    if (singleCacheHit) {
+    const singleCacheHit = conceptSeedingEnabled && !!cachedConcepts?.concepts;
+    if (!conceptSeedingEnabled) {
+      features = [];
+      console.log("[runCanvasAgent] timing", { stage: "listConcepts (single)", ms: 0, skipped: "seeding disabled", workspaces: workspaceSlugs, orgId: orgId ?? null });
+    } else if (singleCacheHit) {
       features = cachedConcepts!.concepts!;
       console.log("[runCanvasAgent] timing", { stage: "listConcepts (single)", ms: 0, skipped: "cache hit", workspaces: workspaceSlugs, orgId: orgId ?? null });
     } else {
@@ -954,7 +1017,8 @@ export async function runCanvasAgent(
       features = (concepts.concepts as Record<string, unknown>[]) || [];
     }
     cacheHit = singleCacheHit;
-    cacheableConcepts = { concepts: features };
+    // Empty when seeding is off — see the multi-workspace branch above.
+    cacheableConcepts = conceptSeedingEnabled ? { concepts: features } : {};
 
     // Single-workspace + orgId: an org-scope caller (e.g. the org-MCP
     // `org_agent` tool, or the org SidebarChat for an org that
@@ -975,7 +1039,7 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
-          capturedWebSearchResults,
+          webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
           graphWalkAnswerSink,
@@ -984,6 +1048,20 @@ export async function runCanvasAgent(
         }),
       };
     }
+
+    // Do not gate Sphinx merge on `orgId` — a one-workspace org canvas
+    // (and dashboard chat) never pass orgId. Destination is the bound
+    // workspace, not an org-level tribe.
+    const tSphinxMergeSingle = Date.now();
+    tools = await mergeSphinxTools(tools, {
+      userId,
+      readonly,
+      silentPusher,
+      publicViewer: isPublicViewer,
+      workspaceConfigs: [ws],
+      currentCanvasRef: scope?.currentCanvasRef,
+    });
+    console.log("[runCanvasAgent] timing", { stage: "mergeSphinxTools (single)", ms: Date.now() - tSphinxMergeSingle, merged: SEND_SPHINX_MESSAGE_TOOL in tools, workspaces: workspaceSlugs, orgId: orgId ?? null });
 
     canvasScope = orgId ? buildScopeHint(scope, []) : undefined;
 
@@ -1015,14 +1093,42 @@ export async function runCanvasAgent(
     primaryRepoUrls = ws.repoUrls ?? [];
   }
 
+  // ------------------------------------------------------------------
+  // External MCP servers (admin-registered per org). Connected up-front
+  // because streamText fixes the toolset at call start; each connect is
+  // bounded by MCP_CLIENT_TIMEOUT_MS and a failed server is skipped.
+  // Skipped entirely on readonly runs: external tools are opaque — we
+  // can't tell reads from writes, so readonly means none at all.
+  // Clients stay open for the whole stream; closed in onFinish/onError.
+  // ------------------------------------------------------------------
+  let externalMcpCleanup: (() => Promise<void>) | undefined;
+  if (orgId && !readonly) {
+    const tExternalMcp = Date.now();
+    const externalMcp = await connectExternalMcpTools(orgId);
+    externalMcpCleanup = externalMcp.closeAll;
+    const externalCount = Object.keys(externalMcp.tools).length;
+    // Logged even when nothing came back — the handshake cost is paid
+    // either way, and a slow zero-tool connect should still be visible.
+    console.log("[runCanvasAgent] timing", { stage: "connectExternalMcpTools", ms: Date.now() - tExternalMcp, tools: externalCount, workspaces: workspaceSlugs, orgId });
+    if (externalCount > 0) {
+      // External tools spread FIRST so a name collision with a built-in
+      // resolves in the built-in's favor.
+      tools = { ...externalMcp.tools, ...tools };
+    }
+  }
+
   if (readonly) {
     // Strip set derived from the composed capabilities — a tool family
     // we never merged contributes nothing, so the strip always matches
-    // what's actually present.
+    // what's actually present. `send_sphinx_message` is not a registered
+    // capability, so always union it in explicitly.
+    const capabilityStrip = orgId
+      ? composeWriteToolNames(orgCapabilities)
+      : getDefaultReadonlyStrip();
     tools = filterReadonly(
       tools,
       keepWriteToolNames,
-      orgId ? composeWriteToolNames(orgCapabilities) : undefined,
+      new Set([...capabilityStrip, SEND_SPHINX_MESSAGE_TOOL]),
     );
   }
 
@@ -1033,12 +1139,23 @@ export async function runCanvasAgent(
     tools = { ...tools, ...additionalTools };
   }
 
-  // `web_search` (built in askTools/askToolsMulti) is an Anthropic
-  // server-executed provider tool — other providers can't serialize or
-  // run it, so drop it rather than fail the whole request.
-  if (provider !== "anthropic" && "web_search" in tools) {
-    const { web_search: _webSearch, ...rest } = tools;
-    tools = rest;
+  // `web_search` is registered LAST so it survives the readonly strip
+  // (searching the web reads nothing of ours) and can't be shadowed by
+  // a caller's `additionalTools`.
+  //
+  // This used to be the opposite: askTools built an Anthropic-only
+  // provider tool and we DELETED it off-Anthropic, so every non-Anthropic
+  // model silently lost web search. The handle now picks the backend —
+  // native on Anthropic, Exa-backed shim elsewhere — and both speak the
+  // same tool name and result shape. `tool` is undefined only when the
+  // chosen backend has no key configured (e.g. no EXA_API_KEY on a
+  // non-Anthropic run), in which case we drop it as before.
+  if (webSearch.tool) {
+    tools = { ...tools, [WEB_SEARCH_TOOL_NAME]: webSearch.tool };
+  } else {
+    console.warn(
+      `[runCanvasAgent] no web_search backend for provider "${provider}"; continuing without it`,
+    );
   }
 
   // ------------------------------------------------------------------
@@ -1254,7 +1371,7 @@ export async function runCanvasAgent(
       // route's `onStepFinish` was a sync arrow function. We do NOT
       // want to add the Pusher round-trip (50-200ms) to every agent
       // step's wall-clock time.
-      captureWebSearchResultsFromStep(sf.content, capturedWebSearchResults);
+      webSearch.capture(sf.content);
       if (!silentPusher) {
         maybeHighlightLearnedConcept(sf.content, primarySlug, features);
       }
@@ -1356,6 +1473,9 @@ export async function runCanvasAgent(
           : {}),
         usage,
       });
+      // Close external MCP clients — the loop is over, no more tool
+      // calls can arrive. Idempotent (onError may have closed already).
+      void externalMcpCleanup?.();
       if (hooks?.onFinish) {
         await hooks.onFinish({
           usage,
@@ -1390,6 +1510,9 @@ export async function runCanvasAgent(
       // records the failure. Token totals are omitted: they may be
       // unreliable on a torn stream, and `/end` accumulates them.
       sessionIngest?.end({ status: "error", errorMessage: message });
+      // Stream errors are terminal for the turn — release external MCP
+      // clients here too (idempotent with the onFinish close).
+      void externalMcpCleanup?.();
       // Caller hook runs last; its failures must not disturb the
       // stream's own error handling.
       try {

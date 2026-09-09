@@ -40,7 +40,10 @@ interface PendingImage {
 }
 
 interface ChatInputProps {
-  onSend: (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => Promise<void>;
+  onSend: (
+    message: string,
+    attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>,
+  ) => Promise<void>;
   disabled?: boolean;
   isLoading?: boolean;
   pendingDebugAttachment?: Artifact | null;
@@ -65,7 +68,14 @@ interface ChatInputProps {
   isSuperAdmin?: boolean;
   selectedModel?: string;
   onModelChange?: (m: string) => void;
-  llmModels?: { id: string; name: string; provider: string; providerLabel: string | null; isPlanDefault: boolean; isTaskDefault: boolean }[];
+  llmModels?: {
+    id: string;
+    name: string;
+    provider: string;
+    providerLabel: string | null;
+    isPlanDefault: boolean;
+    isTaskDefault: boolean;
+  }[];
   hasMessages?: boolean;
   onStop?: () => Promise<void>;
   isStopping?: boolean;
@@ -128,30 +138,27 @@ export function ChatInput({
 
   const mentionsEnabled = isPlanChat || taskMode === "workflow_editor";
 
-  const filteredWorkspaces = mentionsEnabled && mentionQuery !== null
-    ? workspaces.filter(
-        (ws) =>
-          ws.slug !== currentWorkspaceSlug &&
-          ws.slug.toLowerCase().includes(mentionQuery.toLowerCase())
-      )
-    : [];
+  const filteredWorkspaces =
+    mentionsEnabled && mentionQuery !== null
+      ? workspaces.filter(
+          (ws) => ws.slug !== currentWorkspaceSlug && ws.slug.toLowerCase().includes(mentionQuery.toLowerCase()),
+        )
+      : [];
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
   // Image upload is disabled in agent mode
   const isImageUploadEnabled = taskMode !== "agent";
-  
+
   // Feature flags
   const codeFormattingEnabled = useFeatureFlag(FEATURE_FLAGS.CHAT_CODE_FORMATTING);
 
-  const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  const ALLOWED_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
   useEffect(() => {
     if (transcript) {
-      const newValue = preVoiceInputRef.current
-        ? `${preVoiceInputRef.current} ${transcript}`.trim()
-        : transcript;
+      const newValue = preVoiceInputRef.current ? `${preVoiceInputRef.current} ${transcript}`.trim() : transcript;
       setInput(newValue);
     }
   }, [transcript]);
@@ -166,7 +173,7 @@ export function ChatInput({
   // Cleanup preview URLs on unmount
   useEffect(() => {
     return () => {
-      pendingImages.forEach(img => URL.revokeObjectURL(img.preview));
+      pendingImages.forEach((img) => URL.revokeObjectURL(img.preview));
     };
   }, [pendingImages]);
 
@@ -225,7 +232,7 @@ export function ChatInput({
   const handleFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
     const newImages: PendingImage[] = [];
-    
+
     for (const file of fileArray) {
       const error = validateFile(file);
       if (error) {
@@ -248,44 +255,42 @@ export function ChatInput({
     }
 
     if (newImages.length > 0) {
-      setPendingImages(prev => [...prev, ...newImages]);
+      setPendingImages((prev) => [...prev, ...newImages]);
       // Start uploading immediately
-      newImages.forEach(img => uploadImage(img));
+      newImages.forEach((img) => uploadImage(img));
     }
   };
 
   const uploadImage = async (image: PendingImage) => {
-    setPendingImages(prev => prev.map(img => 
-      img.id === image.id ? { ...img, uploading: true, error: undefined } : img
-    ));
+    setPendingImages((prev) =>
+      prev.map((img) => (img.id === image.id ? { ...img, uploading: true, error: undefined } : img)),
+    );
 
     try {
       const s3Path = await uploadToS3(image);
-      setPendingImages(prev => prev.map(img => 
-        img.id === image.id ? { ...img, uploading: false, s3Path } : img
-      ));
+      setPendingImages((prev) => prev.map((img) => (img.id === image.id ? { ...img, uploading: false, s3Path } : img)));
     } catch (error) {
       console.error("Upload error:", error);
       const errorMessage = error instanceof Error ? error.message : "Upload failed";
-      setPendingImages(prev => prev.map(img => 
-        img.id === image.id ? { ...img, uploading: false, error: errorMessage } : img
-      ));
+      setPendingImages((prev) =>
+        prev.map((img) => (img.id === image.id ? { ...img, uploading: false, error: errorMessage } : img)),
+      );
       toast.error(`Failed to upload ${image.filename}`, { description: errorMessage });
     }
   };
 
   const removeImage = (id: string) => {
-    setPendingImages(prev => {
-      const image = prev.find(img => img.id === id);
+    setPendingImages((prev) => {
+      const image = prev.find((img) => img.id === id);
       if (image) {
         URL.revokeObjectURL(image.preview);
       }
-      return prev.filter(img => img.id !== id);
+      return prev.filter((img) => img.id !== id);
     });
   };
 
   const retryUpload = (id: string) => {
-    const image = pendingImages.find(img => img.id === id);
+    const image = pendingImages.find((img) => img.id === id);
     if (image) {
       uploadImage(image);
     }
@@ -304,7 +309,7 @@ export function ChatInput({
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-        if (item.type.startsWith('image/')) {
+        if (item.type.startsWith("image/")) {
           const file = item.getAsFile();
           if (file) {
             files.push(file);
@@ -320,12 +325,12 @@ export function ChatInput({
 
     // Handle code/JSON paste if feature is enabled
     if (codeFormattingEnabled) {
-      const text = e.clipboardData.getData('text');
+      const text = e.clipboardData.getData("text");
       if (text) {
         const wrapped = detectAndWrapCode(text);
         if (wrapped !== text) {
           e.preventDefault();
-          setInput(prev => prev + wrapped);
+          setInput((prev) => prev + wrapped);
         }
       }
     }
@@ -335,7 +340,7 @@ export function ChatInput({
     if (e.target.files && e.target.files.length > 0) {
       handleFiles(e.target.files);
       // Reset input value to allow selecting the same file again
-      e.target.value = '';
+      e.target.value = "";
     }
   };
 
@@ -361,16 +366,16 @@ export function ChatInput({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Check if any images are still uploading
-    const uploadingImages = pendingImages.filter(img => img.uploading);
+    const uploadingImages = pendingImages.filter((img) => img.uploading);
     if (uploadingImages.length > 0) {
       toast.error("Please wait for all images to finish uploading");
       return;
     }
 
     // Check if any images have errors
-    const errorImages = pendingImages.filter(img => img.error);
+    const errorImages = pendingImages.filter((img) => img.error);
     if (errorImages.length > 0) {
       toast.error("Please remove or retry failed uploads before sending");
       return;
@@ -408,8 +413,8 @@ export function ChatInput({
 
     // Construct attachments from pending images
     const attachments = pendingImages
-      .filter(img => img.s3Path)
-      .map(img => ({
+      .filter((img) => img.s3Path)
+      .map((img) => ({
         path: img.s3Path!,
         filename: img.filename,
         mimeType: img.mimeType,
@@ -417,7 +422,7 @@ export function ChatInput({
       }));
 
     // Cleanup preview URLs
-    pendingImages.forEach(img => URL.revokeObjectURL(img.preview));
+    pendingImages.forEach((img) => URL.revokeObjectURL(img.preview));
 
     // Clear state
     setInput("");
@@ -437,7 +442,7 @@ export function ChatInput({
       const before = input.slice(0, cursor);
       const after = input.slice(cursor);
       const replaced = before.replace(/\B@[\w-]*$/, `@${slug}`);
-      const newValue = replaced + ' ' + after;
+      const newValue = replaced + " " + after;
       setInput(newValue);
       setMentionQuery(null);
       setMentionIndex(0);
@@ -448,7 +453,7 @@ export function ChatInput({
         textarea.setSelectionRange(pos, pos);
       });
     },
-    [input]
+    [input],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -489,18 +494,19 @@ export function ChatInput({
     }
   };
 
-  const isTerminalState = workflowStatus === WorkflowStatus.HALTED ||
+  const isTerminalState =
+    workflowStatus === WorkflowStatus.HALTED ||
     workflowStatus === WorkflowStatus.FAILED ||
     workflowStatus === WorkflowStatus.ERROR;
 
-  const showStatusIndicator =
-    workflowStatus === WorkflowStatus.IN_PROGRESS ||
-    isTerminalState;
+  const showStatusIndicator = workflowStatus === WorkflowStatus.IN_PROGRESS || isTerminalState;
 
   return (
-    <div className={cn(
-      isMobile && "fixed bottom-0 left-0 right-0 z-10 bg-background border-t pt-2 pb-[env(safe-area-inset-bottom)]"
-    )}>
+    <div
+      className={cn(
+        isMobile && "fixed bottom-0 left-0 right-0 z-10 bg-background border-t pt-2 pb-[env(safe-area-inset-bottom)]",
+      )}
+    >
       {/* Animated status indicator */}
       <AnimatePresence>
         {showStatusIndicator && (
@@ -514,15 +520,37 @@ export function ChatInput({
             <div className={cn("px-4 py-2 md:px-6")}>
               {isTerminalState && onRetry ? (
                 <div className="flex items-center gap-2">
-                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} isSuperAdmin={isSuperAdmin} />
-                  <Button size="sm" variant="outline" onClick={onRetry} disabled={isRetrying} className="h-6 px-2 text-xs">
-                    {isRetrying ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                  <WorkflowStatusBadge
+                    status={workflowStatus}
+                    stakworkProjectId={stakworkProjectId}
+                    lastLogLine={lastLogLine}
+                    streamContext={streamContext}
+                    isSuperAdmin={isSuperAdmin}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onRetry}
+                    disabled={isRetrying}
+                    className="h-6 px-2 text-xs"
+                  >
+                    {isRetrying ? (
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                    )}
                     Retry
                   </Button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <WorkflowStatusBadge status={workflowStatus} stakworkProjectId={stakworkProjectId} lastLogLine={lastLogLine} streamContext={streamContext} isSuperAdmin={isSuperAdmin} />
+                  <WorkflowStatusBadge
+                    status={workflowStatus}
+                    stakworkProjectId={stakworkProjectId}
+                    lastLogLine={lastLogLine}
+                    streamContext={streamContext}
+                    isSuperAdmin={isSuperAdmin}
+                  />
                 </div>
               )}
             </div>
@@ -533,20 +561,14 @@ export function ChatInput({
       {/* Debug attachment display */}
       {pendingDebugAttachment && (
         <div className="px-6 pt-3">
-          <InputDebugAttachment
-            attachment={pendingDebugAttachment}
-            onRemove={onRemoveDebugAttachment || (() => {})}
-          />
+          <InputDebugAttachment attachment={pendingDebugAttachment} onRemove={onRemoveDebugAttachment || (() => {})} />
         </div>
       )}
 
       {/* Step attachment display */}
       {pendingStepAttachment && (
         <div className="px-6 pt-3">
-          <InputStepAttachment
-            step={pendingStepAttachment}
-            onRemove={onRemoveStepAttachment || (() => {})}
-          />
+          <InputStepAttachment step={pendingStepAttachment} onRemove={onRemoveStepAttachment || (() => {})} />
         </div>
       )}
 
@@ -557,17 +579,10 @@ export function ChatInput({
             {pendingImages.map((image, index) => (
               <div
                 key={image.id}
-                className={cn(
-                  "relative rounded-lg border overflow-hidden bg-muted",
-                  image.error && "border-red-500"
-                )}
+                className={cn("relative rounded-lg border overflow-hidden bg-muted", image.error && "border-red-500")}
               >
                 <div className="aspect-square relative">
-                  <img
-                    src={image.preview}
-                    alt={image.filename}
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={image.preview} alt={image.filename} className="w-full h-full object-cover" />
                   {image.uploading && (
                     <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -599,9 +614,7 @@ export function ChatInput({
                     <X className="h-3 w-3" />
                   </button>
                 </div>
-                <div className="p-1 text-xs truncate text-center">
-                  Image #{index + 1}
-                </div>
+                <div className="p-1 text-xs truncate text-center">Image #{index + 1}</div>
               </div>
             ))}
           </div>
@@ -625,9 +638,9 @@ export function ChatInput({
         onSubmit={handleSubmit}
         {...dragProps}
         className={cn(
-          "relative flex items-end gap-2 px-4 py-3 md:px-6 md:py-4 border-t bg-background",
+          "@container relative flex items-end gap-2 px-4 py-3 md:px-6 md:py-4 border-t bg-background",
           !isMobile && "sticky bottom-0 z-10",
-          isDragging && "ring-2 ring-primary ring-offset-2"
+          isDragging && "ring-2 ring-primary ring-offset-2",
         )}
       >
         {/* Drop zone overlay */}
@@ -652,14 +665,12 @@ export function ChatInput({
                     onSelect={() => insertMention(ws.slug)}
                     className={cn(
                       "cursor-pointer px-3 py-2 text-sm",
-                      idx === mentionIndex && "bg-accent text-accent-foreground"
+                      idx === mentionIndex && "bg-accent text-accent-foreground",
                     )}
                     data-testid={`mention-item-${ws.slug}`}
                   >
                     <span className="font-medium">@{ws.slug}</span>
-                    {ws.name && ws.name !== ws.slug && (
-                      <span className="ml-2 text-muted-foreground">{ws.name}</span>
-                    )}
+                    {ws.name && ws.name !== ws.slug && <span className="ml-2 text-muted-foreground">{ws.name}</span>}
                   </CommandItem>
                 ))}
               </CommandList>
@@ -717,7 +728,7 @@ export function ChatInput({
           }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          className="flex-1 resize-none min-h-[36px]"
+          className="flex-1 min-w-0 resize-none min-h-[36px]"
           style={{
             maxHeight: "8em", // About 5 lines
             overflowY: "auto",
@@ -726,23 +737,31 @@ export function ChatInput({
           rows={1}
           data-testid="chat-message-input"
         />
+        {/* In a narrow column (the plan embedded on the org control panel) the
+            model picker goes first, then the image and mic buttons; Send stays. */}
         <div className="flex gap-2 shrink-0">
           {isPlanChat && !hasMessages && onModelChange && llmModels.length > 0 && (
-            <Select value={selectedModel} onValueChange={(v) => onModelChange(v)}>
-              <SelectTrigger className="w-auto h-8 text-xs rounded-lg shadow-sm whitespace-nowrap">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 shrink-0" />
-                  <span>{selectedModel ? (llmModels.find(m => getModelValue(m) === selectedModel)?.name || selectedModel) : "Model"}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {llmModels.map((m) => (
-                  <SelectItem key={m.id} value={getModelValue(m)}>
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="hidden @[560px]:block">
+              <Select value={selectedModel} onValueChange={(v) => onModelChange(v)}>
+                <SelectTrigger className="w-auto h-8 text-xs rounded-lg shadow-sm whitespace-nowrap">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 shrink-0" />
+                    <span>
+                      {selectedModel
+                        ? llmModels.find((m) => getModelValue(m) === selectedModel)?.name || selectedModel
+                        : "Model"}
+                    </span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {llmModels.map((m) => (
+                    <SelectItem key={m.id} value={getModelValue(m)}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
           {isImageUploadEnabled && (
             <TooltipProvider>
@@ -754,7 +773,7 @@ export function ChatInput({
                     variant="outline"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={disabled}
-                    className="h-9 w-9 rounded-full shrink-0"
+                    className="hidden @[420px]:inline-flex h-9 w-9 rounded-full shrink-0"
                   >
                     <ImageIcon className="w-5 h-5" />
                   </Button>
@@ -775,7 +794,7 @@ export function ChatInput({
                     variant={isListening ? "default" : "outline"}
                     onClick={toggleListening}
                     disabled={disabled}
-                    className="h-9 w-9 rounded-full shrink-0"
+                    className="hidden @[480px]:inline-flex h-9 w-9 rounded-full shrink-0"
                   >
                     {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                   </Button>
@@ -794,7 +813,7 @@ export function ChatInput({
               disabled={isStopping}
               className={cn(
                 isMobile ? "h-9 w-9 rounded-full shrink-0" : "h-9 shrink-0",
-                "bg-foreground hover:bg-foreground/80"
+                "bg-foreground hover:bg-foreground/80",
               )}
               data-testid="chat-stop-button"
               aria-label="Stop generating"
@@ -816,16 +835,12 @@ export function ChatInput({
                 (!input.trim() && pendingImages.length === 0 && !pendingDebugAttachment && !pendingStepAttachment) ||
                 isLoading ||
                 disabled ||
-                pendingImages.some(img => img.uploading || img.error)
+                pendingImages.some((img) => img.uploading || img.error)
               }
               className={isMobile ? "h-9 w-9 rounded-full shrink-0" : "h-9 shrink-0"}
               data-testid="chat-message-submit"
             >
-              {isMobile ? (
-                <ArrowUp className="w-5 h-5" />
-              ) : (
-                isLoading ? "Sending..." : "Send"
-              )}
+              {isMobile ? <ArrowUp className="w-5 h-5" /> : isLoading ? "Sending..." : "Send"}
             </Button>
           )}
         </div>
@@ -834,11 +849,7 @@ export function ChatInput({
       {/* Bounty request link */}
       {onOpenBountyRequest && (
         <div className="flex justify-end px-4 pb-2 md:px-6">
-          <button
-            type="button"
-            onClick={onOpenBountyRequest}
-            className="text-xs"
-          >
+          <button type="button" onClick={onOpenBountyRequest} className="text-xs">
             <span className="text-muted-foreground">Stuck? </span>
             <span className="text-blue-600 hover:underline">Post a bounty</span>
           </button>

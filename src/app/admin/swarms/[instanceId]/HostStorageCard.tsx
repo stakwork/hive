@@ -1,0 +1,601 @@
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
+import { Loader2, RefreshCw, AlertTriangle, Info, ShieldAlert, HardDrive } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { formatBytes } from "@/lib/utils/format";
+import type {
+  HostStorageReading,
+  HostStorageService,
+  HostStorageVolume,
+} from "@/services/swarm/host-storage";
+import type {
+  HostStorageReadResult,
+  HostStorageReadReasonCode,
+} from "@/services/swarm/host-storage-read";
+import SwarmPasswordUpdateForm from "@/app/admin/components/SwarmPasswordUpdateForm";
+
+interface HostStorageCardProps {
+  instanceId: string;
+}
+
+/** Response body of GET /api/admin/swarms/[instanceId]/storage — the service
+ * result serialized directly. */
+type StorageResponse = HostStorageReadResult;
+
+/**
+ * Display-side truncation on top of the 256-char cap the parser applies. All
+ * swarm-derived strings (mount paths, docker_root_dir, volume names, error
+ * text) are third-party-controlled and render as plain React text nodes only —
+ * never dangerouslySetInnerHTML, never attribute injection.
+ */
+const MAX_DISPLAY_LENGTH = 80;
+const ANONYMOUS_VOLUME_NAME = /^[0-9a-f]{64}$/i;
+const ANONYMOUS_HASH_PREFIX = 12;
+const UNATTRIBUTED_LABEL = "Unattributed";
+
+function truncateForDisplay(text: string): string {
+  return text.length > MAX_DISPLAY_LENGTH ? `${text.slice(0, MAX_DISPLAY_LENGTH)}…` : text;
+}
+
+/** Parser already null-normalizes owners; coerce undefined/blank defensively. */
+function ownerKey(service: string | null | undefined): string | null {
+  if (service == null) return null;
+  const trimmed = service.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+function isAnonymousVolumeName(name: string): boolean {
+  return ANONYMOUS_VOLUME_NAME.test(name);
+}
+
+function shortenAnonymousName(name: string): string {
+  return `${name.slice(0, ANONYMOUS_HASH_PREFIX)}…`;
+}
+
+/** Header total from visible rows only — never a partial rollup. */
+function groupTotal(volumes: HostStorageVolume[]): number | null {
+  let total = 0;
+  for (const volume of volumes) {
+    if (volume.sizeKnown === false || volume.sizeBytes === null) {
+      return null;
+    }
+    total += volume.sizeBytes;
+  }
+  return total;
+}
+
+interface VolumeGroup {
+  key: string | null;
+  label: string;
+  volumes: HostStorageVolume[];
+  total: number | null;
+}
+
+function toGroup(key: string | null, label: string, members: HostStorageVolume[]): VolumeGroup {
+  const volumes = [...members].sort((a, b) => a.name.localeCompare(b.name));
+  return { key, label, volumes, total: groupTotal(volumes) };
+}
+
+function serviceHasKnownSize(service: HostStorageService): boolean {
+  return service.sizeKnown !== false && service.sizeBytes !== null;
+}
+
+/** Largest-first; unknown (`sizeKnown === false` or `sizeBytes === null`) last. Stable for ties. */
+function compareServicesLargestFirst(a: HostStorageService, b: HostStorageService): number {
+  const aKnown = serviceHasKnownSize(a);
+  const bKnown = serviceHasKnownSize(b);
+  if (aKnown && bKnown) {
+    return (b.sizeBytes as number) - (a.sizeBytes as number);
+  }
+  if (aKnown !== bKnown) {
+    return aKnown ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Group non-Neo4j volumes by owning service. Order follows `reading.services`
+ * (skipping empty buckets, which drops the redundant neo4j rollup). Named
+ * owners missing from that list are appended alphabetically; Unattributed last.
+ */
+function groupVolumesByService(
+  otherVolumes: HostStorageVolume[],
+  services: HostStorageService[],
+): VolumeGroup[] {
+  const buckets = new Map<string | null, HostStorageVolume[]>();
+  for (const volume of otherVolumes) {
+    const key = ownerKey(volume.service);
+    const list = buckets.get(key);
+    if (list) {
+      list.push(volume);
+    } else {
+      buckets.set(key, [volume]);
+    }
+  }
+
+  const groups: VolumeGroup[] = [];
+
+  for (const service of services) {
+    const members = buckets.get(service.name);
+    if (!members || members.length === 0) continue;
+    buckets.delete(service.name);
+    groups.push(toGroup(service.name, service.name, members));
+  }
+
+  const unlisted = [...buckets.keys()].filter((key): key is string => key !== null);
+  unlisted.sort((a, b) => a.localeCompare(b));
+  for (const key of unlisted) {
+    const members = buckets.get(key);
+    if (!members) continue;
+    buckets.delete(key);
+    groups.push(toGroup(key, key, members));
+  }
+
+  const unattributed = buckets.get(null);
+  if (unattributed && unattributed.length > 0) {
+    groups.push(toGroup(null, UNATTRIBUTED_LABEL, unattributed));
+  }
+
+  return groups;
+}
+
+function renderVolumeGroup(group: VolumeGroup, summarized: boolean): React.ReactElement {
+  const fragmentKey = group.key ?? UNATTRIBUTED_LABEL;
+
+  if (summarized && group.volumes.length === 1) {
+    const volume = group.volumes[0];
+    return (
+      <TableRow key={fragmentKey} data-testid={`volume-row-${volume.name}`}>
+        <TableCell className="text-sm">
+          <span className="font-medium">{group.label}</span>
+          <span className="ml-2 font-mono text-muted-foreground">
+            {volumeDisplayName(volume, null)}
+          </span>
+        </TableCell>
+        <TableCell className="text-right text-sm">{formatBytes(volume.sizeBytes)}</TableCell>
+      </TableRow>
+    );
+  }
+
+  const indentMembers = summarized && group.volumes.length > 1;
+
+  return (
+    <React.Fragment key={fragmentKey}>
+      <TableRow data-testid={`volume-group-header-${group.label}`}>
+        <TableCell className="bg-muted/40 text-sm font-medium">{group.label}</TableCell>
+        <TableCell
+          className="bg-muted/40 text-right text-sm font-medium"
+          {...(!summarized ? { "data-testid": `volume-group-total-${group.label}` } : {})}
+        >
+          {summarized ? null : formatBytes(group.total)}
+        </TableCell>
+      </TableRow>
+      {group.volumes.map((volume) => (
+        <TableRow key={volume.name} data-testid={`volume-row-${volume.name}`}>
+          <TableCell
+            className={
+              indentMembers ? "pl-6 font-mono text-sm text-muted-foreground" : "font-mono text-sm"
+            }
+          >
+            {volumeDisplayName(volume, group.key)}
+          </TableCell>
+          <TableCell
+            className={indentMembers ? "text-right text-sm text-muted-foreground" : "text-right text-sm"}
+          >
+            {formatBytes(volume.sizeBytes)}
+          </TableCell>
+        </TableRow>
+      ))}
+    </React.Fragment>
+  );
+}
+
+function volumeDisplayName(volume: HostStorageVolume, owner: string | null): React.ReactNode {
+  if (!isAnonymousVolumeName(volume.name)) {
+    return truncateForDisplay(volume.name);
+  }
+  const shortened = shortenAnonymousName(volume.name);
+  if (!owner) {
+    return shortened;
+  }
+  return (
+    <>
+      {shortened}
+      <span className="ml-2 font-sans text-muted-foreground">{truncateForDisplay(owner)}</span>
+    </>
+  );
+}
+
+/** Deterministic UTC rendering of the swarm's unix-seconds collection stamp. */
+function formatCollectedAt(unixSeconds: number | null | undefined): string {
+  if (unixSeconds === null || unixSeconds === undefined || !Number.isFinite(unixSeconds)) {
+    return "unknown";
+  }
+  const iso = new Date(unixSeconds * 1000).toISOString();
+  return `${iso.slice(0, 16).replace("T", " ")} UTC`;
+}
+
+/** Human copy for the service's failure/skip reason codes. */
+function failedStateCopy(reasonCode: HostStorageReadReasonCode | undefined): {
+  title: string;
+  detail: string;
+} {
+  switch (reasonCode) {
+    case "CONFIG_INVALID":
+      return {
+        title: "This swarm is not configured for host storage reads",
+        detail: "It has no swarm URL or no stored password, so storage cannot be read.",
+      };
+    case "WORKSPACE_DELETED":
+      return {
+        title: "The workspace linked to this swarm is deleted",
+        detail: "Storage reads are disabled for offboarded workspaces.",
+      };
+    case "DECRYPT_FAILED":
+      return {
+        title: "The stored swarm password could not be decrypted",
+        detail: "Fix the stored credential to restore storage telemetry.",
+      };
+    case "AUTH_FAILED":
+      return {
+        title: "Swarm authentication failed",
+        detail: "The stored credentials were rejected by the swarm.",
+      };
+    case "STACK_ERROR":
+      return {
+        title: "The swarm reported a transport-level error",
+        detail: "It returned a stack_error instead of a storage reading.",
+      };
+    case "MALFORMED":
+      return {
+        title: "The swarm returned an invalid storage response",
+        detail: "The response failed validation and cannot be displayed.",
+      };
+    default:
+      return {
+        title: "Host storage read failed",
+        detail: reasonCode ? `Reason: ${reasonCode}` : "No reason code was returned.",
+      };
+  }
+}
+
+/** Source trust badge copy: where the numbers came from. */
+const SOURCE_LABELS: Record<string, string> = {
+  node_exporter: "node_exporter",
+  container_bind: "container_bind",
+  none: "none",
+};
+
+export default function HostStorageCard({ instanceId }: HostStorageCardProps) {
+  const [data, setData] = useState<StorageResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchStorage = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/swarms/${instanceId}/storage`, {
+        method: "GET",
+      });
+      let body: unknown = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+      if (body && typeof body === "object" && "outcome" in (body as Record<string, unknown>)) {
+        setData(body as StorageResponse);
+      } else if (!res.ok) {
+        setError(`Request failed (${res.status})`);
+      } else {
+        setError("Unexpected response from the storage endpoint");
+      }
+    } catch {
+      setError("Network error while fetching host storage");
+    } finally {
+      setLoading(false);
+    }
+  }, [instanceId]);
+
+  useEffect(() => {
+    fetchStorage();
+  }, [fetchStorage]);
+
+  const reading: HostStorageReading | undefined =
+    data?.reading && (data.reading.status === "OK" || data.reading.status === "PARTIAL")
+      ? data.reading
+      : undefined;
+
+  const gov = reading?.governingFilesystem ?? null;
+  const hostVisible = reading?.hostVisible ?? true;
+  const totalKnown = gov?.totalBytes != null;
+  const usedKnown = gov?.usedBytes != null;
+  const showHostCapacity = Boolean(reading) && hostVisible;
+  const usedPct =
+    totalKnown && usedKnown && (gov?.totalBytes ?? 0) > 0
+      ? Math.min(100, Math.max(0, ((gov?.usedBytes ?? 0) / (gov?.totalBytes ?? 1)) * 100))
+      : null;
+
+  const neo4jVolumeNames = new Set(reading?.neo4j?.volumes ?? []);
+  const otherVolumes = (reading?.volumes ?? []).filter(
+    (v) => !neo4jVolumeNames.has(v.name) && v.service !== "neo4j",
+  );
+  const volumeGroups = groupVolumesByService(otherVolumes, reading?.services ?? []);
+  const summaryServices = [...(reading?.services ?? [])]
+    .filter((service) => service.name !== "neo4j")
+    .concat(
+      reading?.neo4j
+        ? [{ name: "neo4j", sizeBytes: reading.neo4j.sizeBytes, sizeKnown: true }]
+        : [],
+    )
+    .sort(compareServicesLargestFirst);
+  const summarizedServiceNames = new Set(summaryServices.map((service) => service.name));
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>Host Storage</CardTitle>
+        <Button variant="outline" size="sm" onClick={fetchStorage} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          <span className="ml-1">Refresh</span>
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {loading && !data ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Reading host storage…
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-8">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              <span>{error}</span>
+            </div>
+            <Button variant="outline" size="sm" onClick={fetchStorage}>
+              Retry
+            </Button>
+          </div>
+        ) : data?.outcome === "no_swarm_record" ? (
+          <div className="flex items-start gap-3 py-6">
+            <Info className="mt-0.5 h-5 w-5 text-muted-foreground" />
+            <div>
+              <div className="font-medium">No linked swarm record</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                This EC2 instance has no matching swarm record, so host storage telemetry is
+                unavailable. This is a normal state for unlinked instances on the swarms list.
+              </p>
+            </div>
+          </div>
+        ) : data?.outcome === "ambiguous" ? (
+          <div className="flex items-start gap-3 py-6">
+            <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" />
+            <div>
+              <div className="font-medium text-destructive">Multiple linked swarm records</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                More than one swarm record points at this EC2 instance, so no reading is shown
+                rather than an arbitrary one. Fix the linkage first.
+              </p>
+            </div>
+          </div>
+        ) : data?.outcome === "unreachable" ? (
+          <div className="flex items-start gap-3 py-6">
+            <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-500" />
+            <div>
+              <div className="font-medium">Couldn&apos;t reach the swarm just now</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                The swarm exists but did not answer this moment
+                {data.reasonCode ? ` (reason: ${data.reasonCode})` : ""}. Try Refresh to retry.
+              </p>
+            </div>
+          </div>
+        ) : data?.outcome === "failed" ? (
+          (() => {
+            const copy = failedStateCopy(data.reasonCode);
+            const workspaceId = data.workspaceId;
+            const isRecoveryEligible =
+              data.reasonCode === "DECRYPT_FAILED" || data.reasonCode === "AUTH_FAILED";
+            const showPasswordForm = isRecoveryEligible && Boolean(workspaceId);
+            return (
+              <div className="flex items-start gap-3 py-6">
+                <Info className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                <div className="space-y-4">
+                  <div>
+                    <div className="font-medium">{copy.title}</div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {copy.detail}
+                      {data.reasonCode ? ` (${data.reasonCode})` : ""}
+                    </p>
+                    {isRecoveryEligible && !showPasswordForm ? (
+                      <p
+                        className="mt-1 text-sm text-muted-foreground"
+                        data-testid="password-recovery-needs-workspace"
+                      >
+                        Password recovery needs a linked workspace.
+                      </p>
+                    ) : null}
+                  </div>
+                  {showPasswordForm && workspaceId ? (
+                    <SwarmPasswordUpdateForm
+                      workspaceId={workspaceId}
+                      hasPassword={true}
+                      onSuccess={fetchStorage}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            );
+          })()
+        ) : reading ? (
+          <div className="space-y-4">
+            {/* Meta row: status, source trust badge, collected time, cached label */}
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Badge
+                className={
+                  reading.status === "OK"
+                    ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                    : "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+                }
+              >
+                {reading.status}
+              </Badge>
+              <Badge variant="outline" data-testid="source-badge">
+                {SOURCE_LABELS[reading.source] ?? reading.source}
+              </Badge>
+              <span className="text-muted-foreground">
+                Collected: {formatCollectedAt(reading.collectedAt)}
+              </span>
+              {data?.cached ? (
+                <span className="text-amber-600 dark:text-amber-400" data-testid="cached-label">
+                  Cached reading from {formatCollectedAt(data.collectedAt ?? reading.collectedAt)}
+                </span>
+              ) : null}
+            </div>
+
+            {reading.status === "PARTIAL" ? (
+              <p className="text-sm text-muted-foreground">
+                Partial reading — some collectors reported problems (see warnings below).
+              </p>
+            ) : null}
+
+            {/* host_visible: false — prominent notice; host-capacity figures suppressed */}
+            {!hostVisible ? (
+              <div
+                className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950"
+                data-testid="host-invisible-notice"
+              >
+                <div className="flex items-start gap-2">
+                  <ShieldAlert className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <div>
+                    <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                      The swarm could not see the host
+                    </div>
+                    <p className="mt-1 text-sm text-amber-800/80 dark:text-amber-200/80">
+                      Host capacity figures are unavailable (host_visible: false). The volume sizes
+                      below are container-level readings and may still be valid.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Headline: governing filesystem (host-capacity figures) */}
+            {showHostCapacity ? (
+              <div className="space-y-2" data-testid="host-capacity">
+                <div className="flex items-center gap-2">
+                  <HardDrive className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    Free space on filesystem{" "}
+                    <span className="font-mono">
+                      {truncateForDisplay(reading.dockerRootFilesystem) || "unknown"}
+                    </span>{" "}
+                    (docker root{" "}
+                    <span className="font-mono">
+                      {truncateForDisplay(reading.dockerRootDir) || "unknown"}
+                    </span>
+                    ):
+                  </span>
+                  <span className="text-lg font-semibold" data-testid="free-bytes">
+                    {formatBytes(gov?.freeBytes ?? null)}
+                  </span>
+                </div>
+                {usedPct !== null ? (
+                  <Progress value={usedPct} data-testid="capacity-progress" />
+                ) : null}
+                <div className="text-sm text-muted-foreground">
+                  Total: {formatBytes(gov?.totalBytes ?? null)} · Used:{" "}
+                  {formatBytes(gov?.usedBytes ?? null)} · Free: {formatBytes(gov?.freeBytes ?? null)}
+                </div>
+              </div>
+            ) : null}
+
+            {summaryServices.length > 0 ? (
+              <div data-testid="service-usage-summary">
+                <div className="mb-1 text-sm font-medium">Service usage</div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Service</TableHead>
+                      <TableHead className="text-right">Size</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {summaryServices.map((service) => (
+                      <TableRow
+                        key={service.name}
+                        data-testid={`service-usage-row-${service.name}`}
+                      >
+                        <TableCell className="text-sm">{service.name}</TableCell>
+                        <TableCell className="text-right text-sm">
+                          {formatBytes(service.sizeBytes)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : null}
+
+            {/* Other docker volumes, grouped by owning service */}
+            {volumeGroups.length > 0 ? (
+              <div data-testid="docker-volumes">
+                <div className="mb-1 text-sm font-medium">Docker volumes</div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="text-right">Size</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {volumeGroups.map((group) =>
+                      renderVolumeGroup(
+                        group,
+                        group.key !== null && summarizedServiceNames.has(group.key),
+                      ),
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : null}
+
+            {/* Partial-failure warnings — a populated errors[] is a normal
+                partial success, surfaced not discarded */}
+            {reading.errors.length > 0 ? (
+              <div className="space-y-1" data-testid="errors-warnings">
+                {reading.errors.map((err, idx) => (
+                  <div
+                    key={`${err.collector}-${idx}`}
+                    className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800 dark:bg-amber-950"
+                  >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span className="text-amber-800 dark:text-amber-200">
+                      {truncateForDisplay(err.collector)}: {truncateForDisplay(err.reason)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="py-8 text-center text-muted-foreground">
+            No host storage reading available.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { isValidModel, getApiKeyForModel, VALID_MODELS, PROVIDER_API_KEY_ENV_VARS, getStoredPlanModelPreference, setStoredPlanModelPreference, PLAN_MODEL_PREFERENCE_KEY } from "@/lib/ai/models";
+import { isValidModel, getApiKeyForModel, getModelValue, VALID_MODELS, PROVIDER_API_KEY_ENV_VARS, PROVIDER_DISPLAY_LABELS, getStoredPlanModelPreference, setStoredPlanModelPreference, PLAN_MODEL_PREFERENCE_KEY } from "@/lib/ai/models";
 
 describe("models", () => {
   describe("isValidModel", () => {
@@ -27,6 +27,10 @@ describe("models", () => {
 
     test("returns false for provider/name format with unknown provider", () => {
       expect(isValidModel("unknown/some-model")).toBe(false);
+    });
+
+    test("returns true for xai/name format", () => {
+      expect(isValidModel("xai/grok-4")).toBe(true);
     });
 
     test("returns false for non-string values", () => {
@@ -98,6 +102,62 @@ describe("models", () => {
     test("alias format still works for gemini", () => {
       process.env.GOOGLE_API_KEY = "test-google-key";
       expect(getApiKeyForModel("gemini")).toBe("test-google-key");
+    });
+
+    test("returns XAI_API_KEY for provider/name format (xai/...)", () => {
+      process.env.XAI_API_KEY = "test-xai-key";
+      expect(getApiKeyForModel("xai/grok-4")).toBe("test-xai-key");
+    });
+
+    test("returns undefined for xai/... when XAI_API_KEY is not set", () => {
+      delete process.env.XAI_API_KEY;
+      expect(getApiKeyForModel("xai/grok-4")).toBeUndefined();
+    });
+
+    test("still resolves OpenRouter multi-segment ids via first-segment split", () => {
+      process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+      expect(getApiKeyForModel("openrouter/stealth/ox-alpha")).toBe("test-openrouter-key");
+    });
+  });
+
+  describe("getModelValue", () => {
+    test("builds xai/<name> for an XAI provider row", () => {
+      expect(
+        getModelValue({
+          id: "1",
+          name: "grok-4",
+          provider: "XAI",
+          providerLabel: null,
+          isPlanDefault: false,
+          isTaskDefault: false,
+        }),
+      ).toBe("xai/grok-4");
+    });
+
+    test("builds anthropic/<name> for an ANTHROPIC provider row (regression)", () => {
+      expect(
+        getModelValue({
+          id: "2",
+          name: "claude-sonnet-4-6",
+          provider: "ANTHROPIC",
+          providerLabel: null,
+          isPlanDefault: false,
+          isTaskDefault: false,
+        }),
+      ).toBe("anthropic/claude-sonnet-4-6");
+    });
+
+    test("uses providerLabel prefix for OTHER rows (regression)", () => {
+      expect(
+        getModelValue({
+          id: "3",
+          name: "stealth/ox-alpha",
+          provider: "OTHER",
+          providerLabel: "OpenRouter",
+          isPlanDefault: false,
+          isTaskDefault: false,
+        }),
+      ).toBe("openrouter/stealth/ox-alpha");
     });
   });
 

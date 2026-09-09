@@ -98,7 +98,7 @@ describe("fetchRecursionTaskSummary", () => {
     it("passes name, reason, and recursion directly from entry without extra Jarvis calls", async () => {
       const entry = makeEntry({
         name: "My Task",
-        reason: "wasEnabled",
+        reason: undefined,
         recursion: false,
       });
       mockFetchEvalSetRubrics.mockResolvedValue({ ok: true, rubrics: [] });
@@ -107,7 +107,7 @@ describe("fetchRecursionTaskSummary", () => {
       const [result] = await fetchRecursionTaskSummary(CONFIG, [entry]);
 
       expect(result.name).toBe("My Task");
-      expect(result.reason).toBe("wasEnabled");
+      expect(result.reason).toBeNull();
       expect(result.recursion).toBe(false);
       expect(result.taskSlug).toBe("task-slug-1");
       expect(result.refId).toBe("evalset-ref-1");
@@ -264,7 +264,7 @@ describe("fetchRecursionTaskSummary", () => {
       expect(result.latestRun).toEqual({
         n_passed: 6,
         n_total: 10,
-        runAt: "1700000050",
+        runAt: "2023-11-14T22:14:10.000Z",
       });
     });
   });

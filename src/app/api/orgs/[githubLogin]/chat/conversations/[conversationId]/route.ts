@@ -8,7 +8,45 @@ import {
   UNTITLED_CONVERSATION,
 } from "@/lib/ai/conversationHelpers";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
+import {
+  redactHtmlToolInput,
+  redactHtmlToolOutput,
+} from "@/services/canvas-turn-persistence";
 import type { ConversationDetail, UpdateConversationRequest } from "@/types/shared-conversation";
+
+/**
+ * The client autosave PUT is a second writer into
+ * `SharedConversation.messages` alongside the server-side turn
+ * persistence path (`canvas-turn-persistence.ts`'s `messagesFromSteps`).
+ * It carries the same risk: a client-supplied `toolCalls[].input`/
+ * `[].output` for `save_html`/`update_html`/`get_html` can contain a raw
+ * HTML page body (or, for `update_html`'s edit mode, verbatim
+ * `edits[].oldStr`/`newStr` fragments of the page). Apply the same
+ * redactors here so this path can't reintroduce the leak the server
+ * turn writer closes.
+ */
+function redactIncomingMessages(messages: unknown[]): unknown[] {
+  return messages.map((message) => {
+    if (!message || typeof message !== "object") return message;
+    const record = message as Record<string, unknown>;
+    if (!Array.isArray(record.toolCalls)) return message;
+    const toolCalls = record.toolCalls.map((tc) => {
+      if (!tc || typeof tc !== "object") return tc;
+      const call = tc as Record<string, unknown>;
+      const toolName = typeof call.toolName === "string" ? call.toolName : "";
+      return {
+        ...call,
+        ...("input" in call
+          ? { input: redactHtmlToolInput(toolName, call.input) }
+          : {}),
+        ...("output" in call
+          ? { output: redactHtmlToolOutput(toolName, call.output) }
+          : {}),
+      };
+    });
+    return { ...record, toolCalls };
+  });
+}
 
 async function resolveOrg(githubLogin: string) {
   return db.sourceControlOrg.findUnique({
@@ -180,7 +218,10 @@ export async function PUT(
       }
 
       const existingMessages = (locked[0].messages as any[]) ?? [];
-      const updatedMessages = [...existingMessages, ...body.messages];
+      const updatedMessages = [
+        ...existingMessages,
+        ...redactIncomingMessages(body.messages),
+      ];
 
       // Self-heal placeholder titles. The title is generated once at
       // create time from the first user message; if the creating POST's

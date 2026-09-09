@@ -244,6 +244,30 @@ describe("chat", () => {
         expect(artifact.type).toBe(ArtifactType.CODE);
       });
 
+      it("should create an HTML pointer-only artifact", () => {
+        const htmlContent = {
+          s3Key: "orgs/org-1/canvas/page.html",
+          slug: "team-story",
+          title: "Team Story",
+          size: 128,
+          contentType: "text/html; charset=utf-8",
+          uploadedAt: "2024-01-01T00:00:00.000Z",
+        };
+
+        const artifact = createArtifact({
+          id: "artifact-html",
+          messageId: "msg-1",
+          type: ArtifactType.HTML,
+          content: htmlContent,
+        });
+
+        expect(artifact.type).toBe(ArtifactType.HTML);
+        expect(artifact.content).toEqual(htmlContent);
+        expect(artifact.content).not.toHaveProperty("html");
+        expect(artifact.content).not.toHaveProperty("url");
+        expect(artifact.content).not.toHaveProperty("body");
+      });
+
       it("should create CODE artifact with minimal content", () => {
         const codeContent = {
           content: "console.log('test')",

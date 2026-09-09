@@ -13,6 +13,8 @@
  *   with correct href, target="_blank", rel, and aria-label
  * - null runId rows in attemptRows are silently excluded (console.warn)
  * - triggerError displayed when POST fails
+ * - Consolidated run state (in-flight / report link) is read from the shared
+ *   `allRuns` list; the card issues no run fetch of its own
  */
 
 import React from "react";
@@ -96,15 +98,6 @@ vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
 // usePusherChannel — required by useLegalBenchmarkRunList internals; stub it out.
 vi.mock("@/hooks/usePusherChannel", () => ({
   usePusherChannel: () => null,
-}));
-
-// ─── useLegalBenchmarkRun mock ─────────────────────────────────────────────────
-
-const mockUseLegalBenchmarkRun = vi.fn();
-
-vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
-  useLegalBenchmarkRun: (runId: string | null, type: string) =>
-    mockUseLegalBenchmarkRun(runId, type),
 }));
 
 // ─── Other hooks mocks ─────────────────────────────────────────────────────────
@@ -198,24 +191,6 @@ function setupEvalHistory(attemptRows: ReturnType<typeof makeAttemptRow>[] = [ma
   });
 }
 
-function setupConsolidatedRun(overrides: { hasReport?: boolean } = {}) {
-  mockUseLegalBenchmarkRun.mockReturnValue({
-    run: { hasReport: overrides.hasReport ?? false },
-    isLoading: false,
-    isStale: false,
-    refetch: vi.fn(),
-  });
-}
-
-function setupNoConsolidatedRun() {
-  // null runId → no-op state
-  mockUseLegalBenchmarkRun.mockReturnValue({
-    run: null,
-    isLoading: false,
-    isStale: false,
-    refetch: vi.fn(),
-  });
-}
 
 function mockFetchConsolidated(runId = "consolidated-xyz") {
   vi.mocked(global.fetch).mockResolvedValueOnce({
@@ -240,39 +215,45 @@ function mockFetchToggleOk() {
 }
 
 import { RecursionList } from "@/components/legal/RecursionBox";
+import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
+import { makeConsolidatedRunRow } from "@/__tests__/support/factories";
+import { WorkflowStatus } from "@prisma/client";
+
+const mockRefetch = vi.fn();
+
+/**
+ * Render one card. `expand` opens the collapsible body, where the
+ * "Consolidated Report" button lives (moved there in PR #5137).
+ */
+function renderCard(
+  overrides: Partial<{ refId: string; id: string; name: string }> = {},
+  allRuns: BenchmarkRunListRow[] = [],
+  { expand = true } = {},
+) {
+  render(
+    <RecursionList
+      entries={[makeEntry(overrides)]}
+      isLoading={false}
+      error={null}
+      refetch={mockRefetch}
+      allRuns={allRuns}
+    />,
+  );
+  if (!expand) return;
+  const toggle = screen.queryByTestId("expand-toggle");
+  if (toggle) fireEvent.click(toggle);
+}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("RecursionCard — consolidated report trigger", () => {
-  const mockRefetch = vi.fn();
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockRefetch.mockResolvedValue(undefined);
     mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
     setupEvalHistory();
-    setupNoConsolidatedRun();
     mockFetchToggleOk(); // default: toggle fetch ok
   });
-
-  function renderCard(
-    overrides: Partial<{ refId: string; id: string; name: string }> = {},
-  ) {
-    const entry = makeEntry(overrides);
-    render(
-      <RecursionList
-        entries={[entry]}
-        isLoading={false}
-        error={null}
-        refetch={mockRefetch}
-        allRuns={[]}
-      />,
-    );
-    // The "Consolidated Report" button was moved into the CollapsibleContent
-    // (expanded body) in PR #5137. Expand the card so it is reachable.
-    const toggle = screen.queryByTestId("expand-toggle");
-    if (toggle) fireEvent.click(toggle);
-  }
 
   it("renders the 'Consolidated Report' button in the card header", () => {
     renderCard();
@@ -294,15 +275,6 @@ describe("RecursionCard — consolidated report trigger", () => {
     ];
     setupEvalHistory(rows);
     mockFetchConsolidated("consolidated-xyz");
-    // After the consolidated dispatch, useLegalBenchmarkRun is called with the run_id.
-    // The mock returns run=null for null runId (initial) and run with hasReport=false for the new id.
-    mockUseLegalBenchmarkRun.mockImplementation((runId) => ({
-      run: runId ? { hasReport: false } : null,
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
-    }));
-
     renderCard();
     fireEvent.click(screen.getByTestId("consolidated-report-button"));
 
@@ -331,14 +303,7 @@ describe("RecursionCard — consolidated report trigger", () => {
   it("shows spinner and disables button while run is in-flight (hasReport=false)", async () => {
     setupEvalHistory([makeAttemptRow({ runId: "run-001", hasReport: true })]);
     mockFetchConsolidated("consolidated-xyz");
-    // Simulate: after POST, the run exists but hasReport=false
-    mockUseLegalBenchmarkRun.mockImplementation((runId) => ({
-      run: runId ? { hasReport: false } : null,
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
-    }));
-
+    // The new run has not reached the shared list yet — still in flight.
     renderCard();
     fireEvent.click(screen.getByTestId("consolidated-report-button"));
 
@@ -353,15 +318,8 @@ describe("RecursionCard — consolidated report trigger", () => {
   it("shows 'View Consolidated Report' link when hasReport=true", async () => {
     setupEvalHistory([makeAttemptRow({ runId: "run-001", hasReport: true })]);
     mockFetchConsolidated("consolidated-xyz");
-    // After POST, useLegalBenchmarkRun returns hasReport=true
-    mockUseLegalBenchmarkRun.mockImplementation((runId) => ({
-      run: runId ? { hasReport: true } : null,
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
-    }));
-
-    renderCard();
+    // The shared list carries the completed run with its report.
+    renderCard({}, [makeConsolidatedRunRow({ id: "consolidated-xyz", hasReport: true })]);
     fireEvent.click(screen.getByTestId("consolidated-report-button"));
 
     await waitFor(() => {
@@ -450,14 +408,6 @@ describe("RecursionCard — consolidated report trigger", () => {
   it("does not dispatch a second POST if a run is already in-flight", async () => {
     setupEvalHistory([makeAttemptRow({ runId: "run-001", hasReport: true })]);
     mockFetchConsolidated("consolidated-xyz");
-    // After POST, run has hasReport=false (in-flight)
-    mockUseLegalBenchmarkRun.mockImplementation((runId) => ({
-      run: runId ? { hasReport: false } : null,
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
-    }));
-
     renderCard();
     fireEvent.click(screen.getByTestId("consolidated-report-button"));
 
@@ -477,5 +427,25 @@ describe("RecursionCard — consolidated report trigger", () => {
       String(c[0]).includes("consolidated-report"),
     ).length;
     expect(callsAfter).toBe(callsBefore);
+  });
+
+  // ── Consolidated state comes from the shared run list ──────────────────────
+
+  it("seeds the in-flight state from a PENDING consolidated row after a page refresh", () => {
+    renderCard({}, [makeConsolidatedRunRow()], { expand: false });
+    expect(screen.getByTestId("consolidated-generating")).toBeTruthy();
+  });
+
+  it("ignores consolidated rows that belong to another task", () => {
+    renderCard({}, [makeConsolidatedRunRow({ taskSlug: "other/task" })], { expand: false });
+    expect(screen.queryByTestId("consolidated-generating")).toBeNull();
+  });
+
+  it("never fetches /api/stakwork/runs from the card itself", () => {
+    renderCard({}, [makeConsolidatedRunRow({ status: WorkflowStatus.IN_PROGRESS })], { expand: false });
+    const runsCalls = vi.mocked(global.fetch).mock.calls.filter((c) =>
+      String(c[0]).includes("/api/stakwork/runs"),
+    );
+    expect(runsCalls).toHaveLength(0);
   });
 });

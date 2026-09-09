@@ -47,3 +47,19 @@ describe("NodePeekBody — content keys", () => {
     expect(screen.getByText(/identity only/i)).toBeInTheDocument();
   });
 });
+
+describe("NodePeekBody — date_added_to_graph", () => {
+  it("reads seconds", () => {
+    render(
+      <NodePeekBody payload={{ ref_id: "c-s", node_type: "Concept", date_added_to_graph: 1755449000 }} />,
+    );
+    expect(screen.getByText("added to graph 2025-08-17")).toBeInTheDocument();
+  });
+
+  it("reads milliseconds without overflowing the date", () => {
+    render(
+      <NodePeekBody payload={{ ref_id: "c-ms", node_type: "Concept", date_added_to_graph: 1755449000000 }} />,
+    );
+    expect(screen.getByText("added to graph 2025-08-17")).toBeInTheDocument();
+  });
+});

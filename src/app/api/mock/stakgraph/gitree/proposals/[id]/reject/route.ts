@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { config } from "@/config/env";
 import { mockProposals } from "../../fixtures";
 
 export const runtime = "nodejs";
@@ -18,6 +19,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (!config.USE_MOCKS) {
+    return NextResponse.json({ error: "Mock endpoints are disabled" }, { status: 404 });
+  }
+
   const apiToken = request.headers.get("x-api-token");
   if (!apiToken) {
     return NextResponse.json({ error: "Missing x-api-token header" }, { status: 401 });

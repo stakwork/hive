@@ -26,6 +26,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatBytes } from "@/lib/utils/format";
+import type {
+  SwarmStorageHistoryResponse,
+  SwarmStorageInstancePayload,
+} from "@/app/api/admin/swarms/storage/route";
 
 interface Ec2Instance {
   instanceId: string;
@@ -66,6 +71,97 @@ function getUserAssignedName(tags: { key: string; value: string }[]): string | n
   return tags.find((t) => t.key === "UserAssignedName")?.value ?? null;
 }
 
+function usagePercent(used: number | null, total: number | null): number | null {
+  if (used == null || total == null || total <= 0 || !Number.isFinite(used) || !Number.isFinite(total)) {
+    return null;
+  }
+  return Math.min(100, Math.max(0, (used / total) * 100));
+}
+
+function formatCollectedAt(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+function snapshotStatusClass(status: string): string {
+  const normalized = status.toUpperCase();
+  if (normalized === "OK") {
+    return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+  }
+  if (normalized === "PARTIAL") {
+    return "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200";
+  }
+  if (normalized === "UNREACHABLE" || normalized === "FAILED" || normalized === "AMBIGUOUS") {
+    return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+  }
+  return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+}
+
+function StorageUsageCell({
+  instanceId,
+  payload,
+}: {
+  instanceId: string;
+  payload: SwarmStorageInstancePayload | undefined;
+}) {
+  const latest = payload?.latest;
+  if (!latest) {
+    return (
+      <span className="text-muted-foreground" data-testid={`storage-usage-${instanceId}`}>
+        No snapshots
+      </span>
+    );
+  }
+
+  const pct = usagePercent(latest.usedBytes, latest.totalBytes);
+  if (latest.usedBytes == null && latest.totalBytes == null) {
+    return (
+      <span className="text-muted-foreground" data-testid={`storage-usage-${instanceId}`}>
+        —
+      </span>
+    );
+  }
+
+  return (
+    <div className="text-sm whitespace-nowrap" data-testid={`storage-usage-${instanceId}`}>
+      <span className="font-medium">
+        {formatBytes(latest.usedBytes)} / {formatBytes(latest.totalBytes)}
+      </span>
+      {pct != null ? <span className="ml-1 text-muted-foreground">({pct.toFixed(0)}%)</span> : null}
+    </div>
+  );
+}
+
+function StorageStatusCell({
+  instanceId,
+  payload,
+}: {
+  instanceId: string;
+  payload: SwarmStorageInstancePayload | undefined;
+}) {
+  const latest = payload?.latest;
+  if (!latest) {
+    return (
+      <span className="text-muted-foreground" data-testid={`storage-status-${instanceId}`}>
+        —
+      </span>
+    );
+  }
+
+  return (
+    <div className="space-y-1" data-testid={`storage-status-${instanceId}`}>
+      <Badge className={snapshotStatusClass(latest.status)}>{latest.status}</Badge>
+      {latest.collectedAt ? (
+        <div className="text-xs text-muted-foreground whitespace-nowrap">
+          {formatCollectedAt(latest.collectedAt)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function SwarmsTable() {
   const router = useRouter();
   const [instances, setInstances] = useState<Ec2Instance[]>([]);
@@ -81,14 +177,25 @@ export default function SwarmsTable() {
     direction: "desc",
   });
   const [updatingSwarms, setUpdatingSwarms] = useState<Set<string>>(new Set());
+  const [storageByInstance, setStorageByInstance] = useState<SwarmStorageHistoryResponse>({});
 
   const fetchInstances = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/swarms");
-      if (!res.ok) throw new Error(`Failed to fetch instances (${res.status})`);
-      const data = await res.json();
+      const [instancesRes, storageRes] = await Promise.all([
+        fetch("/api/admin/swarms"),
+        fetch("/api/admin/swarms/storage").catch(() => null),
+      ]);
+      if (!instancesRes.ok) throw new Error(`Failed to fetch instances (${instancesRes.status})`);
+      const data = await instancesRes.json();
       setInstances(data);
       setError(null);
+
+      if (storageRes?.ok) {
+        const storage = (await storageRes.json()) as SwarmStorageHistoryResponse;
+        setStorageByInstance(storage && typeof storage === "object" ? storage : {});
+      } else {
+        setStorageByInstance({});
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -280,28 +387,27 @@ export default function SwarmsTable() {
       <Table>
         <TableHeader>
           <TableRow>
-            <SortableHeader field="name">Name</SortableHeader>
-            <TableHead>Instance ID</TableHead>
+            <SortableHeader field="name">Swarm</SortableHeader>
             <TableHead>State</TableHead>
             <TableHead>Type</TableHead>
             <SortableHeader field="launchTime">Launch Time</SortableHeader>
-            <TableHead>Public IP</TableHead>
-            <TableHead>Private IP</TableHead>
+            <TableHead>IP</TableHead>
             <TableHead>In Hive</TableHead>
             <TableHead>URL</TableHead>
-            <TableHead>Tags</TableHead>
+            <TableHead>Storage</TableHead>
+            <TableHead>Status</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {filteredAndSorted.map((instance) => {
             const isTransitional = TRANSITIONAL_STATES.has(instance.state);
-            const visibleTags = instance.tags.filter((t) => t.key !== "Name" && t.key !== "UserAssignedName");
             const userAssignedName = getUserAssignedName(instance.tags);
             const swarmUrl = userAssignedName ? `https://${userAssignedName}.sphinx.chat` : null;
             const isRunning = instance.state === "running";
-            const isClickable = isRunning && !!userAssignedName;
+            const isClickable = isRunning;
             const isUpdating = updatingSwarms.has(instance.instanceId);
+            const storage = storageByInstance[instance.instanceId];
 
             return (
               <TableRow
@@ -309,8 +415,10 @@ export default function SwarmsTable() {
                 className={isClickable ? "cursor-pointer hover:bg-muted/30" : undefined}
                 onClick={isClickable ? () => router.push(`/admin/swarms/${instance.instanceId}`) : undefined}
               >
-                <TableCell className="font-medium">{instance.name}</TableCell>
-                <TableCell className="font-mono text-sm">{instance.instanceId}</TableCell>
+                <TableCell className="font-medium">
+                  <div>{instance.name}</div>
+                  <div className="text-xs text-muted-foreground font-mono">{instance.instanceId}</div>
+                </TableCell>
                 <TableCell>
                   <StateBadge state={instance.state} />
                 </TableCell>
@@ -318,8 +426,10 @@ export default function SwarmsTable() {
                 <TableCell className="text-sm text-muted-foreground">
                   {instance.launchTime ? new Date(instance.launchTime).toLocaleString() : "—"}
                 </TableCell>
-                <TableCell className="font-mono text-sm">{instance.publicIp ?? "—"}</TableCell>
-                <TableCell className="font-mono text-sm">{instance.privateIp ?? "—"}</TableCell>
+                <TableCell className="font-mono text-sm">
+                  <div>{instance.publicIp ?? "—"}</div>
+                  <div className="text-xs text-muted-foreground">{instance.privateIp ?? "—"}</div>
+                </TableCell>
                 <TableCell className="text-sm">
                   {instance.hiveWorkspace ? (
                     <Link
@@ -336,8 +446,11 @@ export default function SwarmsTable() {
                 <TableCell className="font-mono text-sm">
                   {userAssignedName ? `${userAssignedName}.sphinx.chat` : "—"}
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                  {visibleTags.map((t) => `${t.key}=${t.value}`).join(", ") || "—"}
+                <TableCell>
+                  <StorageUsageCell instanceId={instance.instanceId} payload={storage} />
+                </TableCell>
+                <TableCell>
+                  <StorageStatusCell instanceId={instance.instanceId} payload={storage} />
                 </TableCell>
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-2">

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { isValidTimezone } from "@/lib/automations/schedule";
+import { healUserChatAgentModel } from "@/lib/ai/resolve-model";
 
 /**
  * Authenticated user's UI preferences. Currently:
@@ -30,9 +31,13 @@ export async function GET() {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
+  // Re-validate against the live catalog (and heal a stale prefix left
+  // behind by a provider cutover) — see `healUserChatAgentModel`.
+  const chatAgentModel = (await healUserChatAgentModel(session.user.id, user.chatAgentModel)) ?? null;
+
   return NextResponse.json({
     canvasAutonomousTurns: user.canvasAutonomousTurns,
-    chatAgentModel: user.chatAgentModel,
+    chatAgentModel,
     timezone: user.timezone ?? "UTC",
     dailyRecapEnabled: user.dailyRecapEnabled,
     voiceLearningEnabled: user.voiceLearningEnabled,

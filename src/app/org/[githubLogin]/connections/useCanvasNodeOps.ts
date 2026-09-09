@@ -1018,6 +1018,11 @@ export function useCanvasNodeOps({
       // instead of "". Instead, we fire on the FIRST text edit per
       // authored node id (tracked in `firedResearchKickoffsRef`),
       // skipping spurious updates where text didn't actually change.
+      // html: nodes are projected live (`html:<cuid>`) with
+      // `userCreatable: false` — there is no authored-placeholder
+      // kickoff equivalent. Text edits on live html cards are
+      // dropped by the splitter (`isLiveId`); title changes go
+      // through `update_html`, not this path.
       if (
         prevNode &&
         prevNode.category === "research" &&

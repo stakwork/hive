@@ -285,6 +285,14 @@ describe("getUserActivityFeed — q search", () => {
     });
   });
 
+  it("filters archived conversations out of the activity feed", async () => {
+    setupEmptyMocks();
+    await getUserActivityFeed({ userId: USER_ID });
+
+    const convCall = mockedDb.sharedConversation.findMany.mock.calls[0][0];
+    expect(convCall.where.archivedAt).toBeNull();
+  });
+
   it("does not add title filter when q is empty string", async () => {
     setupEmptyMocks();
     await getUserActivityFeed({ userId: USER_ID, q: "" });

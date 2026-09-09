@@ -145,6 +145,7 @@ describe("splitCanvas", () => {
       nodes: [
         node("initiative:abc", 100, 200),
         node("milestone:xyz", 300, 400),
+        node("html:page1", 40, 500),
       ],
       edges: [],
     };
@@ -153,6 +154,7 @@ describe("splitCanvas", () => {
     expect(blob.positions).toEqual({
       "initiative:abc": { x: 100, y: 200 },
       "milestone:xyz": { x: 300, y: 400 },
+      "html:page1": { x: 40, y: 500 },
     });
   });
 

@@ -275,6 +275,16 @@ export interface MediaContent {
   uploadedAt: string; // ISO timestamp
 }
 
+/** Pointer-only HTML page artifact. Never persist raw HTML here. */
+export interface HtmlContent {
+  s3Key: string;
+  slug: string;
+  title: string;
+  size: number;
+  contentType: string;
+  uploadedAt: string;
+}
+
 export interface StreamContent {
   agent?: string; // e.g. "plan-agent-abced" — optional for backwards compat
   requestId: string;
@@ -316,6 +326,7 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | PullRequestContent
     | DiffContent
     | MediaContent
+    | HtmlContent
     | PublishWorkflowContent
     | PublishScriptContent
     | PublishPromptContent
@@ -408,6 +419,7 @@ export function createArtifact(data: {
     | PullRequestContent
     | DiffContent
     | MediaContent
+    | HtmlContent
     | PublishWorkflowContent
     | PublishScriptContent
     | PublishPromptContent

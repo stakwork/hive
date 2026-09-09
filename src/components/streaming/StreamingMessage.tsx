@@ -1,13 +1,14 @@
 "use client";
 
+import { useMemo } from "react";
 import type {
   BaseStreamingMessage,
   StreamTextPart as StreamTextPartType,
   StreamReasoningPart as StreamReasoningPartType,
-  StreamToolCall as StreamToolCallType,
 } from "@/types/streaming";
+import { chunkTimeline, type TimelineChunk } from "./chunkTimeline";
 import { StreamTextPart } from "./StreamTextPart";
-import { StreamToolCall } from "./StreamToolCall";
+import { StreamToolCallGroup } from "./StreamToolCallGroup";
 import { StreamReasoningPart } from "./StreamReasoningPart";
 import { TurnTokenUsage } from "@/components/agent-logs/TurnTokenUsage";
 
@@ -50,8 +51,13 @@ export function StreamingMessage({
   // Separate final text part from regular timeline
   const finalTextPart = finalTextPartId ? message.textParts?.find((part) => part.id === finalTextPartId) : undefined;
 
-  // Filter timeline to exclude final text part
-  const regularTimeline = message.timeline?.filter((item) => !(item.type === "text" && item.id === finalTextPartId));
+  // The timeline without the final text part, folded into chunks — once per
+  // timeline, not per token, so settled tool groups skip re-rendering.
+  const chunks = useMemo(
+    () =>
+      chunkTimeline((message.timeline ?? []).filter((item) => !(item.type === "text" && item.id === finalTextPartId))),
+    [message.timeline, finalTextPartId],
+  );
 
   // Determine if we should show "Thinking..."
   const shouldShowThinking = () => {
@@ -66,22 +72,21 @@ export function StreamingMessage({
     return !message.timeline?.length;
   };
 
-  // Render a timeline item
-  const renderTimelineItem = (item: NonNullable<typeof message.timeline>[0]) => {
-    // Use unique key based on type and id, not index
-    const key = `${item.type}-${item.id}`;
-
+  const renderChunk = (chunk: TimelineChunk) => {
+    if (chunk.type === "toolCalls") {
+      return <StreamToolCallGroup key={chunk.key} toolCalls={chunk.toolCalls} expectsOutput={toolCallsExpectOutput} />;
+    }
+    const { item } = chunk;
     if (item.type === "text") {
-      return <StreamTextPart key={key} part={item.data as StreamTextPartType} className={textPartClassName} />;
-    } else if (item.type === "reasoning") {
+      return <StreamTextPart key={chunk.key} part={item.data as StreamTextPartType} className={textPartClassName} />;
+    }
+    if (item.type === "reasoning") {
       return (
-        <StreamReasoningPart key={key} part={item.data as StreamReasoningPartType} className={reasoningPartClassName} />
-      );
-    } else if (item.type === "toolCall") {
-      return (
-        <div key={key} className="bg-muted/50 border border-border/50 rounded-lg p-2 my-1">
-          <StreamToolCall toolCall={item.data as StreamToolCallType} expectsOutput={toolCallsExpectOutput} />
-        </div>
+        <StreamReasoningPart
+          key={chunk.key}
+          part={item.data as StreamReasoningPartType}
+          className={reasoningPartClassName}
+        />
       );
     }
     return null;
@@ -92,11 +97,9 @@ export function StreamingMessage({
       {message.error && <div className="text-xs text-destructive bg-destructive/10 rounded p-2">{message.error}</div>}
 
       {/* Render timeline items in order */}
-      {regularTimeline?.map((item) => renderTimelineItem(item))}
+      {chunks.map(renderChunk)}
 
-      {message.usage && (
-        <TurnTokenUsage usage={message.usage} />
-      )}
+      {message.usage && <TurnTokenUsage usage={message.usage} />}
 
       {shouldShowThinking() && (
         <div className="flex items-center space-x-1 text-muted-foreground">

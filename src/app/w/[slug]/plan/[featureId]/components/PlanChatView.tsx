@@ -8,15 +8,12 @@ import { usePlanPresence } from "@/hooks/usePlanPresence";
 import { usePlanFavicon } from "@/hooks/usePlanFavicon";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
-import { usePusherConnection, type FeatureTitleUpdateEvent, type WorkflowStatusUpdate } from "@/hooks/usePusherConnection";
 import {
-  ArtifactType,
-  ChatMessage,
-  ChatRole,
-  ChatStatus,
-  createChatMessage,
-  WorkflowStatus,
-} from "@/lib/chat";
+  usePusherConnection,
+  type FeatureTitleUpdateEvent,
+  type WorkflowStatusUpdate,
+} from "@/hooks/usePusherConnection";
+import { ArtifactType, ChatMessage, ChatRole, ChatStatus, createChatMessage, WorkflowStatus } from "@/lib/chat";
 import { useStreamContext } from "@/hooks/useStreamContext";
 import { useStreamedAgentLog } from "@/hooks/useStreamedAgentLog";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
@@ -62,10 +59,7 @@ function computeDiffTokens(prevVal: string, nextVal: string): DiffToken[] {
   });
 }
 
-export function computeSectionHighlights(
-  prev: FeatureDetail,
-  next: FeatureDetail
-): SectionHighlights | null {
+export function computeSectionHighlights(prev: FeatureDetail, next: FeatureDetail): SectionHighlights | null {
   const highlights: SectionHighlights = {};
 
   for (const key of PLAN_SECTION_KEYS) {
@@ -87,9 +81,17 @@ interface PlanChatViewProps {
   featureId: string;
   workspaceSlug: string;
   workspaceId: string;
+  /**
+   * On the org control panel's stage rather than its own page: the tab
+   * stays out of the URL, the favicon is left alone, and a missing plan
+   * is said rather than navigated away from.
+   */
+  embedded?: boolean;
+  /** Embedded only: where the header's back arrow goes. */
+  onBack?: () => void;
 }
 
-export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChatViewProps) {
+export function PlanChatView({ featureId, workspaceSlug, workspaceId, embedded = false, onBack }: PlanChatViewProps) {
   const router = useRouter();
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
@@ -108,9 +110,22 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const [sphinxReady, setSphinxReady] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
-  const [llmModels, setLlmModels] = useState<{ id: string; name: string; provider: string; providerLabel: string | null; isPlanDefault: boolean; isTaskDefault: boolean }[]>([]);
+  const [llmModels, setLlmModels] = useState<
+    {
+      id: string;
+      name: string;
+      provider: string;
+      providerLabel: string | null;
+      isPlanDefault: boolean;
+      isTaskDefault: boolean;
+    }[]
+  >([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
-  const { streamContext, onMessage: onStreamMessage, onWorkflowStatusUpdate: onStreamStatusUpdate } = useStreamContext();
+  const {
+    streamContext,
+    onMessage: onStreamMessage,
+    onWorkflowStatusUpdate: onStreamStatusUpdate,
+  } = useStreamContext();
   const streamedLog = useStreamedAgentLog(streamContext);
 
   // Project log WebSocket for live thinking logs
@@ -151,24 +166,30 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const handleTabChange = useCallback(
     (tab: ArtifactType) => {
       setActiveTab(tab);
-      const params = new URLSearchParams(window.location.search);
-      params.set("tab", tab.toLowerCase());
-      router.replace(`?${params.toString()}`, { scroll: false });
+      if (!embedded) {
+        const params = new URLSearchParams(window.location.search);
+        params.set("tab", tab.toLowerCase());
+        router.replace(`?${params.toString()}`, { scroll: false });
+      }
       if (typeof window !== "undefined") {
         localStorage.setItem(`plan_tab_${featureId}`, tab);
       }
     },
-    [featureId, router]
+    [featureId, router, embedded],
   );
 
   // Real-time presence tracking
   const { collaborators, typingUsers, sendTyping } = usePlanPresence({ featureId });
 
   // Update favicon based on feature workflow status
-  usePlanFavicon({ workflowStatus });
+  usePlanFavicon({ workflowStatus: embedded ? null : workflowStatus });
 
   // Stakwork generation control for plan chat stop functionality
-  const { stopRun, isStopping, querying: isQueryingRun } = useStakworkGeneration({
+  const {
+    stopRun,
+    isStopping,
+    querying: isQueryingRun,
+  } = useStakworkGeneration({
     featureId,
     type: "PLAN_CHAT",
     enabled: true,
@@ -213,10 +234,10 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
 
   // Redirect to plan list if feature not found
   useEffect(() => {
-    if (!loading && error) {
+    if (!loading && error && !embedded) {
       router.push(`/w/${workspaceSlug}/plan`);
     }
-  }, [loading, error, router, workspaceSlug]);
+  }, [loading, error, router, workspaceSlug, embedded]);
 
   const refetchFeature = useCallback(async () => {
     try {
@@ -259,7 +280,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     if (feature?.stakworkProjectId && !projectId) {
       setProjectId(feature.stakworkProjectId.toString());
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feature?.stakworkProjectId]);
 
   // Load existing messages - promoted to useCallback for visibility refetch
@@ -289,12 +310,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const response = await fetch(`/api/workspaces/${workspaceSlug}/settings/sphinx-integration`);
         if (response.ok) {
           const data = await response.json();
-          const isReady = !!(
-            data.sphinxEnabled &&
-            data.sphinxChatPubkey &&
-            data.sphinxBotId &&
-            data.hasBotSecret
-          );
+          const isReady = !!(data.sphinxEnabled && data.sphinxChatPubkey && data.sphinxBotId && data.hasBotSecret);
           setSphinxReady(isReady);
         }
       } catch (error) {
@@ -345,15 +361,15 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   // Refetch on tab visibility change
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         refetchFeature();
         loadMessages();
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [refetchFeature, loadMessages]);
 
@@ -369,25 +385,25 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     }
     for (const artifact of last.artifacts ?? []) {
       const content = artifact.content as unknown;
-      const xml =
-        typeof content === "string"
-          ? content
-          : (content as { plan?: string } | null)?.plan;
+      const xml = typeof content === "string" ? content : (content as { plan?: string } | null)?.plan;
       const nextSteps = xml ? parsePlanXml(xml).nextSteps : undefined;
       if (nextSteps?.length) return nextSteps;
     }
     return [];
   }, [messages, isLoading, chipsHiddenForId]);
 
-  const handleSSEMessage = useCallback((message: ChatMessage) => {
-    setMessages((msgs) => {
-      const exists = msgs.some((m) => m.id === message.id);
-      if (exists) return msgs;
-      return [...msgs, message];
-    });
-    setIsLoading(false);
-    onStreamMessage(message);
-  }, [onStreamMessage]);
+  const handleSSEMessage = useCallback(
+    (message: ChatMessage) => {
+      setMessages((msgs) => {
+        const exists = msgs.some((m) => m.id === message.id);
+        if (exists) return msgs;
+        return [...msgs, message];
+      });
+      setIsLoading(false);
+      onStreamMessage(message);
+    },
+    [onStreamMessage],
+  );
 
   const handleWorkflowStatusUpdate = useCallback(
     (update: WorkflowStatusUpdate) => {
@@ -427,7 +443,10 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   });
 
   const sendMessage = useCallback(
-    async (messageText: string, attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>) => {
+    async (
+      messageText: string,
+      attachments?: Array<{ path: string; filename: string; mimeType: string; size: number }>,
+    ) => {
       const newMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
@@ -435,11 +454,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         status: ChatStatus.SENDING,
         createdBy: session?.user
           ? {
-            id: session.user.id,
-            name: session.user.name || null,
-            email: session.user.email || null,
-            image: session.user.image || null,
-          }
+              id: session.user.id,
+              name: session.user.name || null,
+              email: session.user.email || null,
+              image: session.user.image || null,
+            }
           : undefined,
       });
 
@@ -451,7 +470,12 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         const res = await fetch(`/api/features/${featureId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: messageText, attachments, sourceWebsocketID: getPusherClient().connection.socket_id, model: selectedModel }),
+          body: JSON.stringify({
+            message: messageText,
+            attachments,
+            sourceWebsocketID: getPusherClient().connection.socket_id,
+            model: selectedModel,
+          }),
         });
 
         if (res.ok) {
@@ -467,16 +491,12 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
             clearLogs();
           }
         } else {
-          setMessages((msgs) =>
-            msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
-          );
+          setMessages((msgs) => msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)));
           setIsLoading(false);
         }
       } catch (error) {
         console.error("Error sending message:", error);
-        setMessages((msgs) =>
-          msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
-        );
+        setMessages((msgs) => msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)));
         setIsLoading(false);
       }
     },
@@ -493,11 +513,11 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
         replyId: messageId,
         createdBy: session?.user
           ? {
-            id: session.user.id,
-            name: session.user.name || null,
-            email: session.user.email || null,
-            image: session.user.image || null,
-          }
+              id: session.user.id,
+              name: session.user.name || null,
+              email: session.user.email || null,
+              image: session.user.image || null,
+            }
           : undefined,
       });
 
@@ -529,23 +549,22 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
             clearLogs();
           }
         } else {
-          setMessages((msgs) =>
-            msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
-          );
+          setMessages((msgs) => msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)));
           setIsLoading(false);
         }
       } catch (error) {
         console.error("Error sending message:", error);
-        setMessages((msgs) =>
-          msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)),
-        );
+        setMessages((msgs) => msgs.map((m) => (m.id === newMessage.id ? { ...m, status: ChatStatus.ERROR } : m)));
         setIsLoading(false);
       }
     },
     [featureId, session, clearLogs, selectedModel],
   );
 
-  const allArtifacts = useMemo(() => (Array.isArray(messages) ? messages.flatMap((m) => m.artifacts || []) : []), [messages]);
+  const allArtifacts = useMemo(
+    () => (Array.isArray(messages) ? messages.flatMap((m) => m.artifacts || []) : []),
+    [messages],
+  );
 
   const planData: PlanData = useMemo(() => {
     const stories = feature?.userStories ?? [];
@@ -572,10 +591,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
   const featureTitle = feature?.title || null;
 
   const inputDisabled =
-    isLoading ||
-    loading ||
-    workflowStatus === WorkflowStatus.IN_PROGRESS ||
-    feature?.status === "CANCELLED";
+    isLoading || loading || workflowStatus === WorkflowStatus.IN_PROGRESS || feature?.status === "CANCELLED";
 
   const togglePreview = useCallback(() => setShowPreview((v) => !v), []);
 
@@ -588,7 +604,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
       });
       updateFeature({ title: newTitle });
     },
-    [featureId, updateFeature]
+    [featureId, updateFeature],
   );
 
   const handleRetry = useCallback(async () => {
@@ -651,6 +667,8 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     onTypingStop: () => sendTyping(false),
     onStop: handleStop,
     isStopping: isStopping || isQueryingRun,
+    onBack: embedded ? onBack : undefined,
+    fullPageHref: embedded ? `/w/${workspaceSlug}/plan/${featureId}` : undefined,
   };
 
   const artifactsPanelProps = {
@@ -669,6 +687,10 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     isAgentActive: inputDisabled,
   };
 
+  if (embedded && !loading && error) {
+    return <p className="px-4 py-8 text-center text-sm text-muted-foreground">This plan is gone.</p>;
+  }
+
   if (!initialLoadDone) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -681,11 +703,7 @@ export function PlanChatView({ featureId, workspaceSlug, workspaceId }: PlanChat
     return (
       <div className="flex flex-col h-full">
         {showPreview ? (
-          <ArtifactsPanel
-            {...artifactsPanelProps}
-            isMobile
-            onTogglePreview={togglePreview}
-          />
+          <ArtifactsPanel {...artifactsPanelProps} isMobile onTogglePreview={togglePreview} />
         ) : (
           <ChatArea
             {...chatAreaProps}

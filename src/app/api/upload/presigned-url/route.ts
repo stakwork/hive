@@ -4,6 +4,7 @@ import { getS3Service } from '@/services/s3'
 import { db } from '@/lib/db'
 import { validateWorkspaceAccessById, validateUserBelongsToOrg } from '@/services/workspace'
 import { z } from 'zod'
+import { extractS3KeyInfo } from '@/lib/utils/s3-key-info'
 
 const uploadRequestSchema = z.object({
   filename: z.string().min(1, 'Filename is required'),
@@ -16,41 +17,6 @@ const uploadRequestSchema = z.object({
 }).refine(d => !!(d.taskId || d.workspaceId || d.orgId), {
   message: 'One of taskId, workspaceId, or orgId is required',
 })
-
-/**
- * Extract the owning workspaceId from a well-known S3 key prefix.
- *
- * Returns `null` when the key doesn't match a supported prefix — callers
- * should treat that as a 404 rather than silently falling through.
- *
- * Supported prefixes mirror the generators on `S3Service`:
- *   - uploads/<workspaceId>/<swarmId>/<taskId>/...
- *   - workspace-logos/<workspaceId>/...
- *   - whiteboards/<workspaceId>/...
- *   - screenshots/<workspaceId>/...
- *   - features/<workspaceId>/...
- *   - diagrams/<workspaceId>/...
- */
-type S3KeyInfo =
-  | { type: 'workspace'; id: string }
-  | { type: 'org'; id: string }
-
-function extractS3KeyInfo(s3Key: string): S3KeyInfo | null {
-  const parts = s3Key.split('/').filter(Boolean)
-  if (parts.length < 2) return null
-  const [prefix, id] = parts
-  const WORKSPACE_PREFIXES = new Set([
-    'uploads',
-    'workspace-logos',
-    'whiteboards',
-    'screenshots',
-    'features',
-    'diagrams',
-  ])
-  if (WORKSPACE_PREFIXES.has(prefix)) return { type: 'workspace', id: id || '' }
-  if (prefix === 'orgs') return { type: 'org', id: id || '' }
-  return null
-}
 
 export async function GET(request: NextRequest) {
   try {

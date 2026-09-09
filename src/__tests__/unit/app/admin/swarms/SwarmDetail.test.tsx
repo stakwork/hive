@@ -130,10 +130,28 @@ const MOCK_CONTAINERS = [
   { name: "lnd", status: "stopped", image: "lightninglabs/lnd:v0.18" },
 ];
 
-function makeListContainersResponse(containers = MOCK_CONTAINERS) {
+// The real /api/admin/swarms/[instanceId]/cmd route returns the full
+// SwarmCmdResponse envelope `{ ok, status, data, rawText }`. For
+// ListContainers, sphinx-swarm serializes `Vec<ContainerSummary>` directly,
+// so `.data` is a BARE ARRAY of containers (not `{ containers: [...] }`).
+function makeListContainersResponse(containers: unknown = MOCK_CONTAINERS) {
   return {
     ok: true,
-    json: async () => ({ containers }),
+    json: async () => ({ ok: true, status: 200, data: containers }),
+  };
+}
+
+
+function makeInstanceResponse(tags = [{ key: "UserAssignedName", value: "swarm-node-1" }]) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      instanceId: "i-123",
+      name: "swarm-node-1",
+      state: "running",
+      tags,
+    }),
   };
 }
 
@@ -150,6 +168,15 @@ function makeErrorResponse(status = 500, error = "Internal server error") {
 // ---------------------------------------------------------------------------
 import SwarmDetail from "@/app/admin/swarms/[instanceId]/SwarmDetail";
 import { toast } from "sonner";
+
+// HostStorageCard is its own component with its own suite; mocked here so the
+// SwarmDetail tests stay scoped to the containers/actions behaviour (its
+// on-mount storage GET would otherwise become mockFetch's first call).
+vi.mock("@/app/admin/swarms/[instanceId]/HostStorageCard", () => ({
+  default: ({ instanceId }: { instanceId: string }) => (
+    <div data-testid="host-storage-card-mock" data-instance-id={instanceId} />
+  ),
+}));
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -194,6 +221,17 @@ describe("SwarmDetail", () => {
       expect(body.swarmUrl).toBe("https://swarm-node-2.sphinx.chat");
     });
 
+    it("renders the Host Storage card for the instance", async () => {
+      mockFetch.mockResolvedValueOnce(makeListContainersResponse());
+
+      render(<SwarmDetail instanceId="i-abc" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+
+      const card = screen.getByTestId("host-storage-card-mock");
+      expect(card).toHaveAttribute("data-instance-id", "i-abc");
+    });
+
     it("shows loading spinner while fetching", () => {
       // Never resolves
       mockFetch.mockImplementation(() => new Promise(() => {}));
@@ -204,6 +242,34 @@ describe("SwarmDetail", () => {
   });
 
   describe("container table", () => {
+    it("renders container rows when the swarm host returns a bare array under data", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, status: 200, data: MOCK_CONTAINERS }),
+      });
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => {
+        expect(screen.getByText("sphinx")).toBeInTheDocument();
+        expect(screen.getByText("neo4j")).toBeInTheDocument();
+        expect(screen.getByText("lnd")).toBeInTheDocument();
+      });
+    });
+
+    it('renders "No containers found." when the swarm host returns an empty array', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, status: 200, data: [] }),
+      });
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => {
+        expect(screen.getByText("No containers found.")).toBeInTheDocument();
+      });
+    });
+
     it("renders container rows with correct Name, Status, and Image", async () => {
       mockFetch.mockResolvedValueOnce(makeListContainersResponse());
 
@@ -424,8 +490,33 @@ describe("SwarmDetail", () => {
       const logsBody = JSON.parse(mockFetch.mock.calls[1][1].body as string);
       expect(logsBody.cmd).toEqual({
         type: "Swarm",
-        data: { cmd: "GetContainerLogs", content: "sphinx" },
+        data: {
+          cmd: "GetContainerLogs",
+          content: { name: "sphinx", before_timestamp: null, since_timestamp: null },
+        },
       });
+    });
+
+    it("sends content as an object (not a bare string) for GetContainerLogs", async () => {
+      mockFetch
+        .mockResolvedValueOnce(makeListContainersResponse())
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ logs: "log data" }) });
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => expect(screen.getByText("neo4j")).toBeInTheDocument());
+
+      fireEvent.click(screen.getAllByText("Logs")[1]);
+
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+
+      const logsBody = JSON.parse(mockFetch.mock.calls[1][1].body as string);
+      expect(logsBody.cmd.data.content).toEqual({
+        name: "neo4j",
+        before_timestamp: null,
+        since_timestamp: null,
+      });
+      expect(typeof logsBody.cmd.data.content).not.toBe("string");
     });
   });
 
@@ -595,11 +686,106 @@ describe("SwarmDetail", () => {
     });
   });
 
+
+  describe("swarmUrl resolution", () => {
+    it("with swarmUrl prop present, does not GET the instance and fires ListContainers once", async () => {
+      mockFetch.mockResolvedValueOnce(makeListContainersResponse());
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => expect(screen.getByText("sphinx")).toBeInTheDocument());
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/admin/swarms/i-123/cmd",
+        expect.objectContaining({ method: "POST" })
+      );
+      expect(mockFetch.mock.calls.some(([url]) => url === "/api/admin/swarms/i-123")).toBe(false);
+    });
+
+    it("with swarmUrl absent, waits for GET then fires ListContainers once", async () => {
+      let resolveGet: (value: unknown) => void = () => {};
+      const getPromise = new Promise((resolve) => {
+        resolveGet = resolve;
+      });
+
+      mockFetch.mockImplementation((url: string, init?: { method?: string }) => {
+        if (!init?.method || init.method === "GET") {
+          return getPromise;
+        }
+        return Promise.resolve(makeListContainersResponse());
+      });
+
+      render(<SwarmDetail instanceId="i-123" />);
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith("/api/admin/swarms/i-123");
+      });
+
+      const cmdCalls = mockFetch.mock.calls.filter(
+        ([url, init]) => typeof url === "string" && url.endsWith("/cmd")
+      );
+      expect(cmdCalls).toHaveLength(0);
+      expect(screen.getByText("Loading containers…")).toBeInTheDocument();
+
+      resolveGet(makeInstanceResponse());
+
+      await waitFor(() => expect(screen.getByText("sphinx")).toBeInTheDocument());
+
+      const listCalls = mockFetch.mock.calls.filter(([url, init]) => {
+        if (typeof url !== "string" || !url.endsWith("/cmd")) return false;
+        try {
+          const body = JSON.parse((init as { body: string }).body);
+          return body.cmd?.data?.cmd === "ListContainers";
+        } catch {
+          return false;
+        }
+      });
+      expect(listCalls).toHaveLength(1);
+      const body = JSON.parse((listCalls[0][1] as { body: string }).body);
+      expect(body.swarmUrl).toBe("https://swarm-node-1.sphinx.chat");
+    });
+
+    it("surfaces a non-blocking error on 404 and issues no commands", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: async () => ({ error: "Instance not found" }),
+      });
+
+      render(<SwarmDetail instanceId="i-missing" />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Instance not found")).toBeInTheDocument();
+      });
+
+      expect(mockFetch.mock.calls.some(([url]) => typeof url === "string" && url.endsWith("/cmd"))).toBe(
+        false
+      );
+    });
+
+    it("surfaces a non-blocking error when UserAssignedName is missing and issues no commands", async () => {
+      mockFetch.mockResolvedValueOnce(makeInstanceResponse([]));
+
+      render(<SwarmDetail instanceId="i-123" />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Could not resolve swarm URL — UserAssignedName tag is missing")
+        ).toBeInTheDocument();
+      });
+
+      expect(mockFetch.mock.calls.some(([url]) => typeof url === "string" && url.endsWith("/cmd"))).toBe(
+        false
+      );
+    });
+  });
+
   describe("layout", () => {
     it("shows instanceId as title when name is not provided", async () => {
       mockFetch.mockResolvedValueOnce(makeListContainersResponse());
 
-      render(<SwarmDetail instanceId="i-123abc" />);
+      render(<SwarmDetail instanceId="i-123abc" swarmUrl="https://swarm-node-1.sphinx.chat" />);
 
       await waitFor(() => expect(screen.getByText("i-123abc")).toBeInTheDocument());
     });
@@ -607,7 +793,7 @@ describe("SwarmDetail", () => {
     it("shows name prop as title when provided", async () => {
       mockFetch.mockResolvedValueOnce(makeListContainersResponse());
 
-      render(<SwarmDetail instanceId="i-123abc" name="swarm-node-1" />);
+      render(<SwarmDetail instanceId="i-123abc" name="swarm-node-1" swarmUrl="https://swarm-node-1.sphinx.chat" />);
 
       await waitFor(() => expect(screen.getByText("swarm-node-1")).toBeInTheDocument());
     });
@@ -615,10 +801,12 @@ describe("SwarmDetail", () => {
     it("renders back link to /admin/swarms", async () => {
       mockFetch.mockResolvedValueOnce(makeListContainersResponse());
 
-      render(<SwarmDetail instanceId="i-123" />);
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
 
       const link = screen.getByRole("link", { name: /swarms/i });
       expect(link).toHaveAttribute("href", "/admin/swarms");
+
+      await waitFor(() => expect(screen.getByText("sphinx")).toBeInTheDocument());
     });
   });
 });

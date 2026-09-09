@@ -1,0 +1,35 @@
+/**
+ * Offline trace export CSS entry point.
+ *
+ * Built by `scripts/build-offline-css.mjs` (the same script, same PostCSS
+ * pipeline as the run report's offline bundle) into the gitignored
+ * `cascade-offline.css`, which offline-html.ts inlines into the document.
+ *
+ *   1. Pull in the real `@theme`/oklch tokens from globals.css via @import.
+ *   2. Class-based `dark:` compilation, scoped to this bundle — the exported
+ *      page toggles `.dark` on <html> from prefers-color-scheme itself.
+ *   3. Declare exactly the files Tailwind should scan: the import graph
+ *      reachable from offline.entry.tsx (guarded by
+ *      src/__tests__/unit/lib/legal-cascade/export/offline-css.test.ts).
+ */
+
+@import "../../../app/globals.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The app loads Geist through next/font; offline, fall back to system faces. */
+:root {
+  --font-geist-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-geist-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@source "./offline.entry.tsx";
+@source "./offline-html.ts";
+@source "../../../components/legal/CascadeTrace.tsx";
+@source "../../../components/legal/CascadeRow.tsx";
+@source "../../../components/legal/CascadeHeader.tsx";
+@source "../../../components/run-report/chrome.tsx";
+@source "../../../components/run-report/NodePeek.tsx";
+@source "../../../components/run-report/SafeMarkdown.tsx";
+@source "../../../components/ui/dialog.tsx";
+@source "../../../components/ui/tooltip.tsx";
