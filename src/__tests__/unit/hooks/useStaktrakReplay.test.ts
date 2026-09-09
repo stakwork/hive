@@ -621,7 +621,7 @@ describe('usePlaywrightReplay', () => {
     });
 
     describe('staktrak-playwright-replay-error', () => {
-      test('should accumulate errors without stopping replay', async () => {
+      test('should accumulate non-fatal errors without stopping replay', async () => {
         const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
 
         act(() => {
@@ -641,6 +641,39 @@ describe('usePlaywrightReplay', () => {
             action: 'click button',
             timestamp: expect.any(String),
           });
+        });
+      });
+
+      test('should halt replay on a fatal error (issue #756)', async () => {
+        const { result } = renderHook(() => usePlaywrightReplay(mockIframeRef));
+
+        // Put the hook into a playing state first.
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-progress',
+            current: 2,
+            total: 5,
+            action: 'click button',
+          });
+        });
+
+        act(() => {
+          TestUtils.simulateMessageEvent({
+            type: 'staktrak-playwright-replay-error',
+            error: 'Element not found',
+            actionIndex: 2,
+            action: 'click button',
+            fatal: true,
+            screenshotId: 'shot-123',
+          });
+        });
+
+        await waitFor(() => {
+          expect(result.current.replayErrors).toHaveLength(1);
+          expect(result.current.isPlaywrightReplaying).toBe(false);
+          expect(result.current.isPlaywrightPaused).toBe(false);
+          expect(result.current.playwrightStatus).toBe('error');
+          expect(result.current.currentAction).toBeNull();
         });
       });
 
