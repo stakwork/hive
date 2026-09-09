@@ -65,7 +65,7 @@ interface SnapshotValues {
   collectedAt: Date | null;
 }
 
-/** UTC-normalized calendar day of `now` (matches the 03:00 UTC cron). */
+/** UTC-normalized calendar day of `now` (one row per day, regardless of cron cadence). */
 export function utcCalendarDate(now: Date = new Date()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }

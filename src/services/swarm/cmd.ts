@@ -7,7 +7,7 @@ export type SwarmCmd =
   | { type: "Swarm"; data: { cmd: "ListContainers" } }
   | { type: "Swarm"; data: { cmd: "StartContainer"; content: string } }
   | { type: "Swarm"; data: { cmd: "StopContainer"; content: string } }
-  | { type: "Swarm"; data: { cmd: "GetContainerLogs"; content: string } }
+  | { type: "Swarm"; data: { cmd: "GetContainerLogs"; content: { name: string; before_timestamp: string | null; since_timestamp: string | null } } }
   | { type: "Swarm"; data: { cmd: "UpdateSwarm" } }
   | { type: "Swarm"; data: { cmd: "GetConfig" } }
   | { type: "Swarm"; data: { cmd: "UpdateNode"; content: Record<string, unknown> } }

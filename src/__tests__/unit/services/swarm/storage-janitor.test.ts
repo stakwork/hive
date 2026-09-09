@@ -476,7 +476,7 @@ describe("GET /api/cron/swarm-storage-janitor", () => {
 });
 
 describe("vercel.json swarm-storage-janitor cron", () => {
-  it("registers the daily 03:00 UTC schedule", () => {
+  it("registers the hourly schedule", () => {
     const vercelPath = path.join(process.cwd(), "vercel.json");
     const vercelConfig = JSON.parse(fs.readFileSync(vercelPath, "utf8"));
     const cron = vercelConfig.crons.find(
@@ -484,6 +484,6 @@ describe("vercel.json swarm-storage-janitor cron", () => {
         entry.path === "/api/cron/swarm-storage-janitor",
     );
     expect(cron).toBeDefined();
-    expect(cron.schedule).toBe("0 3 * * *");
+    expect(cron.schedule).toBe("0 * * * *");
   });
 });
