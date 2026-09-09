@@ -28,7 +28,8 @@ export type SwarmCmd =
   | { type: "Swarm"; data: { cmd: "UpdateUser"; content: { id: number; pubkey: string; name: string; role: number } } }
   | { type: "Swarm"; data: { cmd: "GetSecondBrainAboutDetails" } }
   | { type: "Swarm"; data: { cmd: "UpdateSecondBrainAbout"; content: { title: string; description: string } } }
-  | { type: "Swarm"; data: { cmd: "GetHostStorage" } };
+  | { type: "Swarm"; data: { cmd: "GetHostStorage" } }
+  | { type: "Swarm"; data: { cmd: "GetFluentbitStats" } };
 
 export type SwarmCmdErrorCode = "TIMEOUT" | "CONFIG_INVALID";
 
