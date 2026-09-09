@@ -10,6 +10,7 @@
  * `next/navigation`'s `notFound()` marker rather than returning a response.
  */
 import React from "react";
+import { render, screen } from "@testing-library/react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
 
 // The page component under test is an async server component that returns
@@ -148,5 +149,18 @@ describe("HtmlSharePage", () => {
     await renderOrCatch();
     const call = mockFindUnique.mock.calls[0][0];
     expect(call.select).not.toHaveProperty("shareRef");
+  });
+
+  test("renders a Download link to the body proxy that saves <slug>.html", async () => {
+    const { result, error } = await renderOrCatch();
+    expect(error).toBeUndefined();
+    render(result as React.ReactElement);
+
+    const link = screen.getByTestId("html-page-download");
+    expect(link.tagName).toBe("A");
+    // Same-origin proxy path — never a raw S3 URL or presigned link.
+    expect(link.getAttribute("href")).toBe(`/api/orgs/${GITHUB_LOGIN}/html-pages/${SLUG}`);
+    expect(link.getAttribute("download")).toBe(`${SLUG}.html`);
+    expect(link.textContent).toContain("Download");
   });
 });
