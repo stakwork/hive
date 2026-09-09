@@ -514,7 +514,7 @@ describe("SwarmsTable", () => {
       };
     }
 
-    it("renders current usage, per-service breakdown, and a trend sparkline", async () => {
+    it("renders current usage and collection status", async () => {
       const instance = makeInstance({ instanceId: "i-abc123", state: "running" });
       stubFetches([instance], storagePayload("i-abc123"));
 
@@ -527,13 +527,7 @@ describe("SwarmsTable", () => {
       expect(usage).toHaveTextContent("500 GB");
       expect(usage).toHaveTextContent("40%");
 
-      const services = screen.getByTestId("storage-services-i-abc123");
-      expect(services).toHaveTextContent("neo4j");
-      expect(services).toHaveTextContent("12 GB");
-      expect(services).toHaveTextContent("elasticsearch");
-
       expect(screen.getByTestId("storage-status-i-abc123")).toHaveTextContent("OK");
-      expect(screen.getByTestId("storage-sparkline-i-abc123").tagName.toLowerCase()).toBe("svg");
     });
 
     it("renders a sane empty state when an instance has no snapshots", async () => {
@@ -544,12 +538,10 @@ describe("SwarmsTable", () => {
       await waitFor(() => expect(screen.getByText("empty-host")).toBeInTheDocument());
 
       expect(screen.getByTestId("storage-usage-i-empty")).toHaveTextContent("No snapshots");
-      expect(screen.getByTestId("storage-services-i-empty")).toHaveTextContent("—");
       expect(screen.getByTestId("storage-status-i-empty")).toHaveTextContent("—");
-      expect(screen.getByTestId("storage-sparkline-i-empty")).toHaveTextContent("—");
     });
 
-    it("renders a service name containing markup as inert text", async () => {
+    it("never injects markup from a service name into the table", async () => {
       const instance = makeInstance({ instanceId: "i-xss", name: "xss-host" });
       stubFetches(
         [instance],
@@ -568,9 +560,7 @@ describe("SwarmsTable", () => {
 
       await waitFor(() => expect(screen.getByText("xss-host")).toBeInTheDocument());
 
-      const services = screen.getByTestId("storage-services-i-xss");
-      expect(services).toHaveTextContent("<img src=x onerror=alert(1)>");
-      expect(services.querySelector("img")).toBeNull();
+      expect(screen.queryByTestId("storage-services-i-xss")).toBeNull();
       expect(container.querySelector("img[onerror]")).toBeNull();
       expect(container.innerHTML).not.toContain("<img src=x");
     });

@@ -5,7 +5,7 @@ import { runSwarmStorageJanitor } from "@/services/swarm/storage-janitor";
 /**
  * GET /api/cron/swarm-storage-janitor
  * Vercel cron: capture one host-storage snapshot per running swarm instance.
- * Schedule: "0 3 * * *" (03:00 UTC daily)
+ * Schedule: "0 * * * *" (hourly, on the hour UTC)
  *
  * Auth is hardened vs the naive `Bearer ${CRON_SECRET}` equality check:
  * missing/empty secret is rejected (never compared against `Bearer undefined`),

@@ -89,7 +89,7 @@
     },
     {
       "path": "/api/cron/swarm-storage-janitor",
-      "schedule": "0 3 * * *"
+      "schedule": "0 * * * *"
     }
   ]
 }
