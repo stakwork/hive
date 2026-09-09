@@ -95,6 +95,6 @@ export async function GET(
 
   return new NextResponse(new Uint8Array(result.bytes), {
     status: 200,
-    headers: htmlBodyProxyHeaders(),
+    headers: htmlBodyProxyHeaders(slug),
   });
 }
