@@ -199,7 +199,12 @@ describe("GET /api/mock/swarm-super-admin/api/cmd", () => {
       "@/app/api/mock/swarm-super-admin/api/cmd/route"
     );
 
-    const txt = encodeURIComponent(JSON.stringify({ cmd: "GetContainerLogs", content: "sphinx" }));
+    const txt = encodeURIComponent(
+      JSON.stringify({
+        cmd: "GetContainerLogs",
+        content: { name: "sphinx", before_timestamp: null, since_timestamp: null },
+      })
+    );
     const res = await GET(
       makeRequest(
         `http://localhost/api/mock/swarm-super-admin/api/cmd?txt=${txt}`,
