@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/dialog";
 import { formatBytes } from "@/lib/utils/format";
 import type {
-  SwarmStorageHistoryPoint,
   SwarmStorageHistoryResponse,
   SwarmStorageInstancePayload,
 } from "@/app/api/admin/swarms/storage/route";
@@ -67,17 +66,9 @@ function StateBadge({ state }: { state: string }) {
 }
 
 const TRANSITIONAL_STATES = new Set(["pending", "stopping", "shutting-down", "rebooting"]);
-const MAX_SERVICE_NAME_DISPLAY = 32;
-const SPARKLINE_WIDTH = 72;
-const SPARKLINE_HEIGHT = 24;
-const SERVICES_PREVIEW_LIMIT = 3;
 
 function getUserAssignedName(tags: { key: string; value: string }[]): string | null {
   return tags.find((t) => t.key === "UserAssignedName")?.value ?? null;
-}
-
-function truncateServiceName(name: string): string {
-  return name.length > MAX_SERVICE_NAME_DISPLAY ? `${name.slice(0, MAX_SERVICE_NAME_DISPLAY)}…` : name;
 }
 
 function usagePercent(used: number | null, total: number | null): number | null {
@@ -143,47 +134,6 @@ function StorageUsageCell({
   );
 }
 
-function StorageServicesCell({
-  instanceId,
-  payload,
-}: {
-  instanceId: string;
-  payload: SwarmStorageInstancePayload | undefined;
-}) {
-  const services = payload?.latest?.services ?? [];
-  if (services.length === 0) {
-    return (
-      <span className="text-muted-foreground" data-testid={`storage-services-${instanceId}`}>
-        —
-      </span>
-    );
-  }
-
-  const shown = services.slice(0, SERVICES_PREVIEW_LIMIT);
-  const rest = services.length - shown.length;
-
-  return (
-    <div className="max-w-[200px] space-y-0.5 text-xs" data-testid={`storage-services-${instanceId}`}>
-      {shown.map((service, index) => (
-        <div key={`${index}:${service.name}`} className="flex items-baseline justify-between gap-2">
-          <span className="truncate font-medium">{truncateServiceName(service.name)}</span>
-          <span className="shrink-0 text-muted-foreground">
-            {service.sizeKnown ? formatBytes(service.sizeBytes) : "unknown"}
-          </span>
-        </div>
-      ))}
-      {rest > 0 ? <div className="text-muted-foreground">+{rest} more</div> : null}
-      <Link
-        href={`/admin/swarms/${instanceId}`}
-        className="text-muted-foreground underline hover:text-foreground"
-        onClick={(e) => e.stopPropagation()}
-      >
-        Details
-      </Link>
-    </div>
-  );
-}
-
 function StorageStatusCell({
   instanceId,
   payload,
@@ -209,64 +159,6 @@ function StorageStatusCell({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function UsageSparkline({
-  instanceId,
-  history,
-}: {
-  instanceId: string;
-  history: SwarmStorageHistoryPoint[] | undefined;
-}) {
-  const points = (history ?? []).filter(
-    (point): point is SwarmStorageHistoryPoint & { usedBytes: number } =>
-      point.usedBytes != null && Number.isFinite(point.usedBytes),
-  );
-
-  if (points.length === 0) {
-    return (
-      <span className="text-muted-foreground" data-testid={`storage-sparkline-${instanceId}`}>
-        —
-      </span>
-    );
-  }
-
-  const values = points.map((point) => point.usedBytes);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const lastX = Math.max(points.length - 1, 1);
-
-  const coords = values.map((value, index) => {
-    const x = (index / lastX) * SPARKLINE_WIDTH;
-    const y = SPARKLINE_HEIGHT - 2 - ((value - min) / range) * (SPARKLINE_HEIGHT - 4);
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
-  });
-
-  return (
-    <svg
-      width={SPARKLINE_WIDTH}
-      height={SPARKLINE_HEIGHT}
-      viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`}
-      role="img"
-      aria-label="Storage usage trend"
-      data-testid={`storage-sparkline-${instanceId}`}
-      className="text-foreground/70"
-    >
-      {points.length === 1 ? (
-        <circle cx={SPARKLINE_WIDTH / 2} cy={SPARKLINE_HEIGHT / 2} r="2" fill="currentColor" />
-      ) : (
-        <polyline
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          points={coords.join(" ")}
-        />
-      )}
-    </svg>
   );
 }
 
@@ -495,27 +387,21 @@ export default function SwarmsTable() {
       <Table>
         <TableHeader>
           <TableRow>
-            <SortableHeader field="name">Name</SortableHeader>
-            <TableHead>Instance ID</TableHead>
+            <SortableHeader field="name">Swarm</SortableHeader>
             <TableHead>State</TableHead>
             <TableHead>Type</TableHead>
             <SortableHeader field="launchTime">Launch Time</SortableHeader>
-            <TableHead>Public IP</TableHead>
-            <TableHead>Private IP</TableHead>
+            <TableHead>IP</TableHead>
             <TableHead>In Hive</TableHead>
             <TableHead>URL</TableHead>
             <TableHead>Storage</TableHead>
-            <TableHead>Services</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>Trend</TableHead>
-            <TableHead>Tags</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {filteredAndSorted.map((instance) => {
             const isTransitional = TRANSITIONAL_STATES.has(instance.state);
-            const visibleTags = instance.tags.filter((t) => t.key !== "Name" && t.key !== "UserAssignedName");
             const userAssignedName = getUserAssignedName(instance.tags);
             const swarmUrl = userAssignedName ? `https://${userAssignedName}.sphinx.chat` : null;
             const isRunning = instance.state === "running";
@@ -529,8 +415,10 @@ export default function SwarmsTable() {
                 className={isClickable ? "cursor-pointer hover:bg-muted/30" : undefined}
                 onClick={isClickable ? () => router.push(`/admin/swarms/${instance.instanceId}`) : undefined}
               >
-                <TableCell className="font-medium">{instance.name}</TableCell>
-                <TableCell className="font-mono text-sm">{instance.instanceId}</TableCell>
+                <TableCell className="font-medium">
+                  <div>{instance.name}</div>
+                  <div className="text-xs text-muted-foreground font-mono">{instance.instanceId}</div>
+                </TableCell>
                 <TableCell>
                   <StateBadge state={instance.state} />
                 </TableCell>
@@ -538,8 +426,10 @@ export default function SwarmsTable() {
                 <TableCell className="text-sm text-muted-foreground">
                   {instance.launchTime ? new Date(instance.launchTime).toLocaleString() : "—"}
                 </TableCell>
-                <TableCell className="font-mono text-sm">{instance.publicIp ?? "—"}</TableCell>
-                <TableCell className="font-mono text-sm">{instance.privateIp ?? "—"}</TableCell>
+                <TableCell className="font-mono text-sm">
+                  <div>{instance.publicIp ?? "—"}</div>
+                  <div className="text-xs text-muted-foreground">{instance.privateIp ?? "—"}</div>
+                </TableCell>
                 <TableCell className="text-sm">
                   {instance.hiveWorkspace ? (
                     <Link
@@ -560,16 +450,7 @@ export default function SwarmsTable() {
                   <StorageUsageCell instanceId={instance.instanceId} payload={storage} />
                 </TableCell>
                 <TableCell>
-                  <StorageServicesCell instanceId={instance.instanceId} payload={storage} />
-                </TableCell>
-                <TableCell>
                   <StorageStatusCell instanceId={instance.instanceId} payload={storage} />
-                </TableCell>
-                <TableCell>
-                  <UsageSparkline instanceId={instance.instanceId} history={storage?.history} />
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                  {visibleTags.map((t) => `${t.key}=${t.value}`).join(", ") || "—"}
                 </TableCell>
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-2">
