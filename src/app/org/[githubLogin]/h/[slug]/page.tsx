@@ -15,13 +15,20 @@
  * are all deliberately indistinguishable — all three `notFound()`.
  *
  * The body itself is never rendered here — `HtmlArtifactFrame` fetches it
- * from the authenticated proxy into a locked sandbox.
+ * from the authenticated proxy into a locked sandbox. The header's
+ * Download link points at that same proxy: the response is an opaque
+ * `attachment` named `<slug>.html`, so following the link saves a file
+ * the member can open locally and never renders the markup on Hive's
+ * origin.
  */
 import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
+import { Download } from "lucide-react";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
+import { htmlArtifactProxyUrl, htmlDownloadFilename } from "@/lib/utils/html-body-proxy";
+import { Button } from "@/components/ui/button";
 import { HtmlArtifactFrame } from "@/components/html-artifact/HtmlArtifactFrame";
 
 interface HtmlSharePageProps {
@@ -68,21 +75,33 @@ export default async function HtmlSharePage({ params }: HtmlSharePageProps) {
     notFound();
   }
 
+  const source = { githubLogin, slug };
+  const downloadFilename = htmlDownloadFilename(slug);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-col gap-1 border-b px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">{page.title}</h1>
-        <p className="text-xs text-muted-foreground">
-          Shared with your organization · updated{" "}
-          {page.uploadedAt.toLocaleDateString()}
-        </p>
+      <header className="flex items-start justify-between gap-4 border-b px-6 py-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="truncate text-lg font-semibold tracking-tight">{page.title}</h1>
+          <p className="text-xs text-muted-foreground">
+            Shared with your organization · updated{" "}
+            {page.uploadedAt.toLocaleDateString()}
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="shrink-0">
+          <a
+            href={htmlArtifactProxyUrl(source)}
+            download={downloadFilename}
+            data-testid="html-page-download"
+            aria-label={`Download ${downloadFilename}`}
+          >
+            <Download />
+            Download
+          </a>
+        </Button>
       </header>
       <div className="min-h-0 flex-1">
-        <HtmlArtifactFrame
-          source={{ githubLogin, slug }}
-          title={page.title}
-          className="h-full w-full"
-        />
+        <HtmlArtifactFrame source={source} title={page.title} className="h-full w-full" />
       </div>
     </div>
   );

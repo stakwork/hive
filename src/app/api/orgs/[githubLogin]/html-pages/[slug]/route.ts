@@ -10,9 +10,10 @@
  * The response is served as an **opaque download**, never as
  * `text/html`: a cookie-authenticated HTML response on Hive's own origin
  * is stored XSS the moment anyone navigates to it or uses it as an
- * iframe `src`. `HtmlArtifactFrame` is the only intended caller — it
+ * iframe `src`. The intended callers are `HtmlArtifactFrame` — which
  * fetches with credentials and renders the bytes from a blob URL inside
- * a locked sandbox.
+ * a locked sandbox — and the share page's Download link, a same-origin
+ * `<a download>` that saves the attachment as `<slug>.html`.
  *
  * Authorization goes through `resolveAuthorizedOrgId` (shared with the
  * research/initiative/mcp-servers org-resource routes) rather than
@@ -99,6 +100,6 @@ export async function GET(
 
   return new NextResponse(new Uint8Array(result.bytes), {
     status: 200,
-    headers: htmlBodyProxyHeaders(),
+    headers: htmlBodyProxyHeaders(slug),
   });
 }
