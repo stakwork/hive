@@ -490,8 +490,33 @@ describe("SwarmDetail", () => {
       const logsBody = JSON.parse(mockFetch.mock.calls[1][1].body as string);
       expect(logsBody.cmd).toEqual({
         type: "Swarm",
-        data: { cmd: "GetContainerLogs", content: "sphinx" },
+        data: {
+          cmd: "GetContainerLogs",
+          content: { name: "sphinx", before_timestamp: null, since_timestamp: null },
+        },
       });
+    });
+
+    it("sends content as an object (not a bare string) for GetContainerLogs", async () => {
+      mockFetch
+        .mockResolvedValueOnce(makeListContainersResponse())
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ logs: "log data" }) });
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => expect(screen.getByText("neo4j")).toBeInTheDocument());
+
+      fireEvent.click(screen.getAllByText("Logs")[1]);
+
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+
+      const logsBody = JSON.parse(mockFetch.mock.calls[1][1].body as string);
+      expect(logsBody.cmd.data.content).toEqual({
+        name: "neo4j",
+        before_timestamp: null,
+        since_timestamp: null,
+      });
+      expect(typeof logsBody.cmd.data.content).not.toBe("string");
     });
   });
 
