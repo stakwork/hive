@@ -177,7 +177,7 @@ describe("GET /api/tasks/[taskId]/artifacts/[artifactId]/html", () => {
     expect(res.status).toBe(200);
     expect(Buffer.from(await res.arrayBuffer()).toString("utf8")).toBe(HTML);
     expect(res.headers.get("Content-Type")).toBe("application/octet-stream");
-    expect(res.headers.get("Content-Disposition")).toBe("attachment");
+    expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="my-page.html"');
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(res.headers.get("X-Frame-Options")).toBe("DENY");
     expect(res.headers.get("Cache-Control")).toBe("private, no-store");
