@@ -19,7 +19,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockUseEvalRunHistory = vi.hoisted(() => vi.fn());
 const mockUseBenchmarkRubrics = vi.hoisted(() => vi.fn());
 const mockUseWorkspace = vi.hoisted(() => vi.fn());
-const mockUseLegalBenchmarkRun = vi.hoisted(() => vi.fn());
 const mockUseLegalBenchmarkRunList = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useEvalRunHistory", () => ({
@@ -32,10 +31,6 @@ vi.mock("@/hooks/useBenchmarkRubrics", () => ({
 
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: mockUseWorkspace,
-}));
-
-vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
-  useLegalBenchmarkRun: mockUseLegalBenchmarkRun,
 }));
 
 vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
@@ -113,7 +108,6 @@ function setupHappyPathMocks() {
   mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
 
   // Default: no consolidated run
-  mockUseLegalBenchmarkRun.mockReturnValue({ run: null });
   mockUseLegalBenchmarkRunList.mockReturnValue({ runs: [] });
 }
 
@@ -129,6 +123,7 @@ function renderRecursionList(entries: RecursionEntry[]) {
       isLoading={false}
       error={null}
       refetch={async () => {}}
+      allRuns={[]}
     />,
   );
 }
@@ -359,6 +354,7 @@ describe("RecursionList — loading and error states", () => {
         isLoading={true}
         error={null}
         refetch={async () => {}}
+        allRuns={[]}
       />,
     );
 
@@ -373,6 +369,7 @@ describe("RecursionList — loading and error states", () => {
         isLoading={false}
         error="Failed to fetch"
         refetch={async () => {}}
+        allRuns={[]}
       />,
     );
 
@@ -386,6 +383,7 @@ describe("RecursionList — loading and error states", () => {
         isLoading={false}
         error={null}
         refetch={async () => {}}
+        allRuns={[]}
       />,
     );
 

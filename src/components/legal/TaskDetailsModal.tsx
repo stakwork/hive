@@ -153,8 +153,13 @@ export function TaskDetailsModal({
         if (cancelled || !data?.models) return;
         // Only providers with a known API key env var can be dispatched.
         // OTHER models resolve through their providerLabel (e.g. OpenRouter).
+        // XAI is excluded here specifically: the standard/reasoning pair
+        // shares a single apiKey, and the judge model is Anthropic-only —
+        // pairing a single xAI apiKey with an Anthropic-only judge model
+        // isn't supported by this run route yet (see validatePairedModel
+        // in the run route, which rejects XAI for the same reason).
         const usable = (data.models as LlmModelOption[]).filter(
-          (m) => !!PROVIDER_API_KEY_ENV_VARS[effectiveProvider(m)],
+          (m) => effectiveProvider(m) !== "XAI" && !!PROVIDER_API_KEY_ENV_VARS[effectiveProvider(m)],
         );
         setLlmModels(usable);
         // Initialise the judge model here, off the local `usable` array —

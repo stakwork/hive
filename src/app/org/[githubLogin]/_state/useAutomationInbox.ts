@@ -11,10 +11,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import {
-  useCanvasChatStore,
-  type CanvasChatMessage,
-} from "./canvasChatStore";
+import { openOrgConversation } from "./openOrgConversation";
 
 export interface InboxRun {
   automationId: string;
@@ -26,79 +23,6 @@ export interface InboxRun {
 interface InboxState {
   count: number;
   runs: InboxRun[];
-}
-
-/**
- * Fetch the conversation from the server and load it into the chat
- * store. Returns `true` on success, `false` on any failure.
- */
-async function openServerConversation(
-  githubLogin: string,
-  conversationId: string,
-): Promise<boolean> {
-  try {
-    const res = await fetch(
-      `/api/orgs/${githubLogin}/chat/conversations/${conversationId}`,
-    );
-    if (!res.ok) return false;
-    const conv = await res.json();
-
-    const rawMessages: unknown[] = Array.isArray(conv.messages)
-      ? conv.messages
-      : [];
-    const messages: CanvasChatMessage[] = rawMessages
-      .filter(
-        (m): m is Record<string, unknown> =>
-          !!m &&
-          typeof m === "object" &&
-          ((m as { role?: string }).role === "user" ||
-            (m as { role?: string }).role === "assistant"),
-      )
-      .map((m, idx) => ({
-        id: (m.id as string) || `automation-${idx}`,
-        role: m.role as "user" | "assistant",
-        content: typeof m.content === "string" ? m.content : "",
-        timestamp: m.timestamp ? new Date(m.timestamp as string) : new Date(),
-        toolCalls: m.toolCalls as CanvasChatMessage["toolCalls"],
-        timeline: m.timeline as CanvasChatMessage["timeline"],
-        artifactIds: m.artifactIds as string[] | undefined,
-        attachments: m.attachments as CanvasChatMessage["attachments"],
-        approval: m.approval as CanvasChatMessage["approval"],
-        rejection: m.rejection as CanvasChatMessage["rejection"],
-        approvalResult: m.approvalResult as CanvasChatMessage["approvalResult"],
-        deferredCheck: m.deferredCheck as CanvasChatMessage["deferredCheck"],
-        source: m.source as CanvasChatMessage["source"],
-      }));
-
-    const store = useCanvasChatStore.getState();
-    const activeId = store.activeConversationId;
-    const context = activeId
-      ? store.conversations[activeId]?.context
-      : undefined;
-
-    const resolvedContext: Parameters<typeof store.startConversation>[0] =
-      context ?? {
-        orgId: "",
-        githubLogin,
-        workspaceSlug: null,
-        workspaceSlugs: conv.settings?.extraWorkspaceSlugs ?? [],
-        currentCanvasRef: "",
-        currentCanvasBreadcrumb: "",
-        selectedNodeId: null,
-        selectedNodeIds: [],
-      };
-
-    const newId = store.startConversation(
-      resolvedContext,
-      messages,
-      undefined,
-      messages.length, // already-persisted — don't re-save
-    );
-    store.setServerConversationId(newId, conversationId);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export function useAutomationInbox(
@@ -151,17 +75,16 @@ export function useAutomationInbox(
       if (!chatReady) return;
 
       // Step 1: load the conversation. If this fails, leave the run unseen.
-      const opened = await openServerConversation(githubLogin, run.conversationId);
+      const opened = await openOrgConversation(githubLogin, run.conversationId);
       if (!opened) return;
 
       // Step 2: mark seen on the server. If this fails, warn and bail —
       // the conversation is open but the badge will still show this run
       // so the user can try again (state-integrity gap visible in console).
       try {
-        const seenRes = await fetch(
-          `/api/orgs/${githubLogin}/automations/${run.automationId}/seen`,
-          { method: "POST" },
-        );
+        const seenRes = await fetch(`/api/orgs/${githubLogin}/automations/${run.automationId}/seen`, {
+          method: "POST",
+        });
         if (!seenRes.ok) {
           console.warn(
             "[useAutomationInbox] openRun: conversation opened but POST .../seen failed " +

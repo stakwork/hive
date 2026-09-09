@@ -81,6 +81,7 @@ describe("parseHostStorage — status classification", () => {
     expect(reading.reason).toBe("STACK_ERROR");
     expect(reading.filesystems).toEqual([]);
     expect(reading.governingFilesystem).toBeNull();
+    expect(reading.services).toEqual([]);
   });
 
   test("ERROR: body that fails validation is MALFORMED, with no raw body echoed through", () => {
@@ -297,6 +298,25 @@ describe("parseHostStorage — pinned contract fixtures", () => {
     expect(reading.hostVisible).toBe(true);
     expect(reading.governingFilesystem?.mount).toBe("/");
     expect(reading.neo4j).toEqual({ volumes: ["neo4j.sphinx"], sizeBytes: 0, sizeKnown: true });
+    expect(reading.volumes).toEqual([
+      { name: "neo4j.sphinx", sizeBytes: 0, sizeKnown: true, service: "neo4j" },
+      { name: "alice-data", sizeBytes: 536870912, sizeKnown: true, service: "alice" },
+      {
+        name: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        sizeBytes: 1024,
+        sizeKnown: true,
+        service: "alice",
+      },
+      { name: "unmeasured", sizeBytes: null, sizeKnown: false, service: "bob" },
+      { name: "orphan-null", sizeBytes: 4096, sizeKnown: true, service: null },
+      { name: "orphan-empty", sizeBytes: 0, sizeKnown: true, service: null },
+    ]);
+    // Parser does not drop the neo4j rollup — dedup is a UI-layer concern.
+    expect(reading.services).toEqual([
+      { name: "neo4j", sizeBytes: 0, sizeKnown: true },
+      { name: "alice", sizeBytes: 536871936, sizeKnown: true },
+      { name: "bob", sizeBytes: null, sizeKnown: false },
+    ]);
     expect(reading.errors).toEqual([
       { collector: "volumes", reason: "docker df timed out after 8s" },
     ]);
@@ -315,9 +335,135 @@ describe("parseHostStorage — pinned contract fixtures", () => {
     expect(reading.status).toBe("PARTIAL");
     expect(reading.source).toBe("container_bind");
     expect(reading.governingFilesystem?.freeBytes).toBe(64424509440);
-    expect(reading.volumes[0]).toEqual({ name: "neo4j.sphinx", sizeBytes: null, sizeKnown: false });
-    expect(reading.volumes[1]).toEqual({ name: "sphinx-data", sizeBytes: 536870912, sizeKnown: true });
+    expect(reading.volumes[0]).toEqual({
+      name: "neo4j.sphinx",
+      sizeBytes: null,
+      sizeKnown: false,
+      service: null,
+    });
+    expect(reading.volumes[1]).toEqual({
+      name: "sphinx-data",
+      sizeBytes: 536870912,
+      sizeKnown: true,
+      service: null,
+    });
     expect(reading.neo4j?.sizeBytes).toBeNull();
+    expect(reading.services).toEqual([]);
+  });
+});
+
+describe("parseHostStorage — service attribution and unknown sizes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("null size_bytes maps to sizeBytes: null, never 0", () => {
+    const body = cleanContractBody();
+    body.volumes = [{ name: "a", size_bytes: null, size_known: false }];
+    body.neo4j = { volumes: ["a"], size_bytes: null, size_known: false };
+
+    const reading = parseHostStorage(okResponse(body));
+
+    expect(reading.volumes[0]).toEqual({
+      name: "a",
+      sizeBytes: null,
+      sizeKnown: false,
+      service: null,
+    });
+    expect(reading.neo4j?.sizeBytes).toBeNull();
+    expect(reading.status).toBe("OK");
+  });
+
+  test("legacy -1 sentinel maps to sizeBytes: null (defensive guard)", () => {
+    const body = cleanContractBody();
+    body.volumes = [{ name: "a", size_bytes: -1, size_known: true }];
+    body.neo4j = { volumes: ["a"], size_bytes: -1, size_known: true };
+
+    const reading = parseHostStorage(okResponse(body));
+
+    expect(reading.volumes[0]).toEqual({
+      name: "a",
+      sizeBytes: null,
+      sizeKnown: true,
+      service: null,
+    });
+    expect(reading.neo4j?.sizeBytes).toBeNull();
+  });
+
+  test("a body with no service/services fields still parses (additive defaults)", () => {
+    const body = cleanContractBody();
+    delete body.services;
+    body.volumes = [
+      { name: "a", size_bytes: 1, size_known: true },
+      { name: "b", size_bytes: 0, size_known: true },
+    ];
+
+    const reading = parseHostStorage(okResponse(body));
+
+    expect(reading.status).toBe("OK");
+    expect(reading.volumes[0]).toEqual({
+      name: "a",
+      sizeBytes: 1,
+      sizeKnown: true,
+      service: null,
+    });
+    expect(reading.volumes[1]).toEqual({
+      name: "b",
+      sizeBytes: 0,
+      sizeKnown: true,
+      service: null,
+    });
+    expect(reading.services).toEqual([]);
+  });
+
+  test('service: "" (and whitespace-only) normalizes to service: null', () => {
+    const body = cleanContractBody();
+    body.volumes = [
+      { name: "empty", size_bytes: 1, size_known: true, service: "" },
+      { name: "ws", size_bytes: 1, size_known: true, service: "   " },
+      { name: "named", size_bytes: 1, size_known: true, service: "alice" },
+    ];
+
+    const reading = parseHostStorage(okResponse(body));
+
+    expect(reading.volumes[0].service).toBeNull();
+    expect(reading.volumes[1].service).toBeNull();
+    expect(reading.volumes[2].service).toBe("alice");
+  });
+
+  test("services[] rollup normalizes; size_known: false never surfaces a fabricated number", () => {
+    const body = cleanContractBody();
+    body.services = [
+      {
+        name: "alice",
+        typ: "Internal",
+        volumes: ["alice-data"],
+        size_bytes: 100,
+        size_known: true,
+      },
+      {
+        name: "bob",
+        typ: "Internal",
+        volumes: ["unmeasured"],
+        size_bytes: 999,
+        size_known: false,
+      },
+      {
+        name: "carol",
+        typ: "Internal",
+        volumes: [],
+        size_bytes: null,
+        size_known: false,
+      },
+    ];
+
+    const reading = parseHostStorage(okResponse(body));
+
+    expect(reading.services).toEqual([
+      { name: "alice", sizeBytes: 100, sizeKnown: true },
+      { name: "bob", sizeBytes: null, sizeKnown: false },
+      { name: "carol", sizeBytes: null, sizeKnown: false },
+    ]);
   });
 });
 

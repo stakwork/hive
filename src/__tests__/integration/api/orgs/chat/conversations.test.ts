@@ -403,6 +403,104 @@ describe("PUT /api/orgs/[githubLogin]/chat/conversations/[conversationId]", () =
     expect(msgs[2].content).toBe("Follow-up question");
   });
 
+  it("redacts save_html/update_html/get_html tool call bodies before persisting client-supplied messages", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    const org = await createOrg(`test-org-put-redact-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const ws = await createWorkspaceInOrg(user.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+
+    const conv = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: user.id,
+        workspaceId: null,
+        messages: sampleMessages as any,
+        title: "Conv to update",
+        source: "org-canvas",
+        followUpQuestions: [],
+      },
+    });
+    createdConversationIds.push(conv.id);
+
+    const rawHtml = "<!DOCTYPE html><html><body>a live page body</body></html>";
+    const oldFragment = "<body>a live page body</body>";
+    const newFragment = "<body>a replaced fragment</body>";
+
+    const clientMessages = [
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "tc-save",
+            toolName: "save_html",
+            input: { slug: "story", title: "Story", html: rawHtml },
+            output: { slug: "story", id: "page-1", sharePath: "/org/acme/h/story" },
+          },
+          {
+            id: "tc-update",
+            toolName: "update_html",
+            input: {
+              slug: "story",
+              edits: [{ oldStr: oldFragment, newStr: newFragment }],
+            },
+            output: { slug: "story", status: "updated" },
+          },
+          {
+            id: "tc-get",
+            toolName: "get_html",
+            input: { slug: "story" },
+            output: { slug: "story", html: rawHtml, size: rawHtml.length },
+          },
+        ],
+      },
+    ];
+
+    const req = createAuthenticatedPutRequest(
+      `http://localhost/api/orgs/${org.githubLogin}/chat/conversations/${conv.id}`,
+      { id: user.id, email: user.email ?? "", name: user.name ?? "" },
+      { messages: clientMessages },
+    );
+
+    const res = await putConversation(req, {
+      params: detailParams(org.githubLogin, conv.id),
+    });
+    expect(res.status).toBe(200);
+
+    const updated = await db.sharedConversation.findUnique({ where: { id: conv.id } });
+    const msgs = updated!.messages as any[];
+    const persisted = msgs[msgs.length - 1];
+    const [saveCall, updateCall, getCall] = persisted.toolCalls;
+
+    // save_html input: html redacted to a pointer marker.
+    expect(saveCall.input.html).toEqual({
+      redacted: true,
+      bytes: Buffer.byteLength(rawHtml, "utf8"),
+    });
+    // update_html input: edits[].oldStr/newStr redacted, not just top-level html/body.
+    expect(updateCall.input.edits[0].oldStr).toEqual({
+      redacted: true,
+      bytes: Buffer.byteLength(oldFragment, "utf8"),
+    });
+    expect(updateCall.input.edits[0].newStr).toEqual({
+      redacted: true,
+      bytes: Buffer.byteLength(newFragment, "utf8"),
+    });
+    // get_html output: the tool's return value IS the page — must be redacted.
+    expect(getCall.output.html).toEqual({
+      redacted: true,
+      bytes: Buffer.byteLength(rawHtml, "utf8"),
+    });
+    expect(getCall.output.slug).toBe("story");
+
+    // No raw page fragment survives anywhere in the persisted row.
+    const serialized = JSON.stringify(persisted);
+    expect(serialized).not.toContain("a live page body");
+    expect(serialized).not.toContain("a replaced fragment");
+  });
+
   it("returns 404 (IDOR) when a different user tries to PUT", async () => {
     const owner = await createTestUser();
     createdUserIds.push(owner.id);

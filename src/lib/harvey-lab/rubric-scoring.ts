@@ -267,6 +267,23 @@ export function rosterSummary(
   };
 }
 
+/**
+ * Whether a task's roster read is still in flight, for the per-task maps the
+ * `useBenchmarkRubrics` hooks return.
+ *
+ * Rosters resolve one task at a time, so an ABSENT key means "not back yet"
+ * and a key holding `null` means "resolved, and the graph has no roster".
+ * Consumers that distinguish loading from absent must go through this rather
+ * than re-deriving it — a whole-map test like `size === 0` reads as resolved
+ * the moment the first task lands.
+ */
+export function isRosterPending(
+  rosters: Map<string, GraphRubric[] | null>,
+  taskSlug: string,
+): boolean {
+  return Boolean(taskSlug) && !rosters.has(taskSlug);
+}
+
 export interface BenchmarkScore {
   /** Criteria that passed, excluding contested ones — the score numerator. */
   passed: number;

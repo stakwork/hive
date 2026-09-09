@@ -7,7 +7,7 @@ export type SwarmCmd =
   | { type: "Swarm"; data: { cmd: "ListContainers" } }
   | { type: "Swarm"; data: { cmd: "StartContainer"; content: string } }
   | { type: "Swarm"; data: { cmd: "StopContainer"; content: string } }
-  | { type: "Swarm"; data: { cmd: "GetContainerLogs"; content: string } }
+  | { type: "Swarm"; data: { cmd: "GetContainerLogs"; content: { name: string; before_timestamp: string | null; since_timestamp: string | null } } }
   | { type: "Swarm"; data: { cmd: "UpdateSwarm" } }
   | { type: "Swarm"; data: { cmd: "GetConfig" } }
   | { type: "Swarm"; data: { cmd: "UpdateNode"; content: Record<string, unknown> } }
@@ -54,6 +54,22 @@ export class SwarmCmdConfigError extends Error {
   constructor(message = "CONFIG_INVALID: swarmUrl is not a valid http(s) URL") {
     super(message);
     this.name = "SwarmCmdConfigError";
+  }
+}
+
+/**
+ * Thrown by `getSwarmCmdJwt` when the swarm login responds with a non-OK
+ * HTTP status. Carries only the numeric `status` — never the swarm's raw
+ * response body/text, which must not leak to callers (it can contain
+ * arbitrary upstream error content).
+ */
+export class SwarmAuthError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`Swarm login failed (${status})`);
+    this.name = "SwarmAuthError";
+    this.status = status;
   }
 }
 
@@ -154,7 +170,7 @@ export async function getSwarmCmdJwt(
     }
 
     if (!res.ok) {
-      throw new Error(`Swarm login failed (${res.status}): ${rawText || res.statusText}`);
+      throw new SwarmAuthError(res.status);
     }
 
     const jwt = data.token ?? data.jwt ?? data.access_token;

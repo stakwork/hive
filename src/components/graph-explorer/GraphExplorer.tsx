@@ -248,6 +248,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId, initialCypher }: Gr
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
   const [queryResult, setQueryResult] = useState<StakgraphResult | null>(null);
   const [tab, setTab] = useState("table");
@@ -327,6 +328,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId, initialCypher }: Gr
       if (!q.trim()) return;
       setLoading(true);
       setError(null);
+      setErrorDetails(null);
       setNotConfigured(false);
       setQueryResult(null);
       setRawGraph({ nodes: [], edges: [] });
@@ -351,6 +353,10 @@ export function GraphExplorer({ workspaceSlug, initialRefId, initialCypher }: Gr
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setError((data as { message?: string }).message || `Request failed (${res.status})`);
+          const rawDetails = (data as { details?: unknown }).details;
+          if (rawDetails !== undefined) {
+            setErrorDetails(typeof rawDetails === "string" ? rawDetails : JSON.stringify(rawDetails, null, 2));
+          }
           return;
         }
 
@@ -936,7 +942,14 @@ export function GraphExplorer({ workspaceSlug, initialRefId, initialCypher }: Gr
         {error && (
           <Alert variant="destructive" data-testid="error-state">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>
+              {error}
+              {errorDetails && (
+                <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs opacity-90">
+                  {errorDetails}
+                </pre>
+              )}
+            </AlertDescription>
           </Alert>
         )}
 

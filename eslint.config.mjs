@@ -19,6 +19,8 @@ const eslintConfig = [
       "src/generated/prisma/runtime/**",
       "src/generated/prisma/wasm*.js",
       "src/lib/**/*.generated.ts",
+      // esbuild output of scripts/build-cascade-bundle.mjs (gitignored)
+      "src/lib/legal-cascade/export/cascade-offline.js",
     ],
   },
   // Enforce no unused imports

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { type ReactNode } from "react";
 import { Chip } from "@/components/run-report/chrome";
 import { formatTokens } from "@/components/legal/CascadeRow";
 import type { CascadeSummary } from "@/lib/legal-cascade/types";
@@ -9,10 +9,17 @@ interface CascadeHeaderProps {
   summary: CascadeSummary;
   allExpanded: boolean;
   onToggleExpandAll: () => void;
+  /** Extra control rendered to the left of "expand all" (e.g. the export button). */
+  action?: ReactNode;
 }
 
 /** Run-level summary strip above the stacked agent cascades. */
-export function CascadeHeader({ summary, allExpanded, onToggleExpandAll }: CascadeHeaderProps) {
+export function CascadeHeader({
+  summary,
+  allExpanded,
+  onToggleExpandAll,
+  action,
+}: CascadeHeaderProps) {
   return (
     <div
       className="flex flex-wrap items-center gap-2 px-4 py-3"
@@ -29,14 +36,17 @@ export function CascadeHeader({ summary, allExpanded, onToggleExpandAll }: Casca
       <Chip label="concepts" value={summary.concepts} />
       <Chip label="tool calls" value={summary.toolCalls} />
       <Chip label="tok" value={formatTokens(summary.totalTokens)} />
-      <button
-        type="button"
-        onClick={onToggleExpandAll}
-        data-testid="cascade-expand-all"
-        className="ml-auto rounded-md border border-border px-3 py-1 font-mono text-[11px] tracking-wide text-muted-foreground transition-colors hover:border-muted-foreground/60 hover:text-foreground"
-      >
-        {allExpanded ? "collapse all" : "expand all"}
-      </button>
+      <span className="ml-auto inline-flex items-center gap-2">
+        {action}
+        <button
+          type="button"
+          onClick={onToggleExpandAll}
+          data-testid="cascade-expand-all"
+          className="rounded-md border border-border px-3 py-1 font-mono text-[11px] tracking-wide text-muted-foreground transition-colors hover:border-muted-foreground/60 hover:text-foreground"
+        >
+          {allExpanded ? "collapse all" : "expand all"}
+        </button>
+      </span>
     </div>
   );
 }

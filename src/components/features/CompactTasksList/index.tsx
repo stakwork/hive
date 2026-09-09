@@ -2,19 +2,23 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ExternalLink, Play, Trash2, RefreshCw, Copy, Sparkles, CheckCircle, RotateCcw } from "lucide-react";
+import {
+  ChevronDown,
+  ExternalLink,
+  Play,
+  Trash2,
+  RefreshCw,
+  Copy,
+  Sparkles,
+  CheckCircle,
+  RotateCcw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
 import { RoadmapTaskNode } from "@/components/features/DependencyGraph/nodes";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
@@ -24,7 +28,11 @@ import { TargetSelector, encodeTargetValue, type TargetSelection } from "@/compo
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
-import { usePusherConnection, type TaskTitleUpdateEvent, type DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
+import {
+  usePusherConnection,
+  type TaskTitleUpdateEvent,
+  type DeploymentStatusChangeEvent,
+} from "@/hooks/usePusherConnection";
 import type { FeatureDetail, PrArtifact, PublishArtifact } from "@/types/roadmap";
 import type { TaskStatus, WorkflowStatus, WorkflowTaskType } from "@prisma/client";
 import { toast } from "sonner";
@@ -91,7 +99,6 @@ function MiniToggle({
   );
 }
 
-
 export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }: CompactTasksListProps) {
   const router = useRouter();
   const { slug: workspaceSlug, workspace } = useWorkspace();
@@ -107,11 +114,13 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
 
   useEffect(() => {
     fetch("/api/llm-models")
-      .then((res) => res.ok ? res.json() : null)
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.models) setLlmModels(data.models);
       })
-      .catch(() => {/* silently ignore */});
+      .catch(() => {
+        /* silently ignore */
+      });
   }, []);
 
   useEffect(() => {
@@ -119,7 +128,9 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       .then((res) => {
         if (res.ok) return refetchFeature();
       })
-      .catch(() => {/* silently suppress — best-effort background fix */});
+      .catch(() => {
+        /* silently suppress — best-effort background fix */
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -127,7 +138,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
 
   const tasks = useMemo(() => {
     return [...((defaultPhase?.tasks || []) as TaskWithPrArtifact[])].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
   }, [defaultPhase?.tasks]);
 
@@ -141,10 +152,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
     prevTasksLengthRef.current = tasks.length;
   }, [tasks.length]);
 
-  const hasDependencies = useMemo(
-    () => tasks.some((t) => (t.dependsOnTaskIds ?? []).length > 0),
-    [tasks]
-  );
+  const hasDependencies = useMemo(() => tasks.some((t) => (t.dependsOnTaskIds ?? []).length > 0), [tasks]);
 
   const workspaceRepos = useMemo(
     () =>
@@ -152,7 +160,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
         id: r.id,
         name: r.name,
       })),
-    [workspace?.repositories]
+    [workspace?.repositories],
   );
   const isStakwork = workspace?.slug === "stakwork" || isDevelopmentMode();
   const showTargetSelector = workspaceRepos.length > 1 || isStakwork;
@@ -175,10 +183,12 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
           if (task.id === update.taskId) {
             return {
               ...task,
-              ...(optimisticUpdates[task.id] ?? {}),   // preserve pending optimistic values
+              ...(optimisticUpdates[task.id] ?? {}), // preserve pending optimistic values
               ...(update.newTitle !== undefined && { title: update.newTitle }),
               ...(update.status !== undefined && { status: update.status as TaskStatus }),
-              ...(update.workflowStatus !== undefined && { workflowStatus: update.workflowStatus as WorkflowStatus | null }),
+              ...(update.workflowStatus !== undefined && {
+                workflowStatus: update.workflowStatus as WorkflowStatus | null,
+              }),
             };
           }
           return task;
@@ -186,7 +196,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       }));
       onUpdate({ ...feature, phases: updatedPhases });
     },
-    [feature, optimisticUpdates, onUpdate]
+    [feature, optimisticUpdates, onUpdate],
   );
 
   const handlePRStatusChange = useCallback(
@@ -208,7 +218,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       };
       onUpdate(updatedFeature);
     },
-    [feature, onUpdate]
+    [feature, onUpdate],
   );
 
   const handleDeploymentStatusChange = useCallback(
@@ -233,7 +243,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       };
       onUpdate(updatedFeature);
     },
-    [feature, onUpdate]
+    [feature, onUpdate],
   );
 
   usePusherConnection({
@@ -276,22 +286,24 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       workflowRefId?: string;
       isNewWorkflow?: boolean;
       workflowTaskType?: WorkflowTaskType;
-    }
+    },
   ) => {
     // Optimistically apply the update immediately
-    setOptimisticUpdates(prev => ({ ...prev, [taskId]: { ...prev[taskId], ...updates } }));
+    setOptimisticUpdates((prev) => ({ ...prev, [taskId]: { ...prev[taskId], ...updates } }));
     try {
       const updatedTask = await updateTicket({ taskId, updates });
       // Clear optimistic state — server state now in sync via onUpdate
-      setOptimisticUpdates(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+      setOptimisticUpdates((prev) => {
+        const n = { ...prev };
+        delete n[taskId];
+        return n;
+      });
       if (updatedTask && defaultPhase) {
         const updatedPhases = feature.phases.map((phase) => {
           if (phase.id === defaultPhase.id) {
             return {
               ...phase,
-              tasks: phase.tasks.map((task) =>
-                task.id === taskId ? { ...task, ...updatedTask } : task
-              ),
+              tasks: phase.tasks.map((task) => (task.id === taskId ? { ...task, ...updatedTask } : task)),
             };
           }
           return phase;
@@ -300,7 +312,11 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
       }
     } catch (err) {
       // Revert optimistic update on failure
-      setOptimisticUpdates(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+      setOptimisticUpdates((prev) => {
+        const n = { ...prev };
+        delete n[taskId];
+        return n;
+      });
       toast.error(err instanceof Error ? err.message : "Failed to update task");
     }
   };
@@ -413,9 +429,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
         const newTaskId = result.data.id;
 
         // Wire downstream tasks: any task that depends on the original should also depend on the duplicate
-        const downstreamTasks = tasks.filter((t) =>
-          (t.dependsOnTaskIds ?? []).includes(task.id)
-        );
+        const downstreamTasks = tasks.filter((t) => (t.dependsOnTaskIds ?? []).includes(task.id));
 
         if (downstreamTasks.length > 0) {
           const patchResults = await Promise.allSettled(
@@ -426,8 +440,8 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                 body: JSON.stringify({
                   dependsOnTaskIds: [...(t.dependsOnTaskIds ?? []), newTaskId],
                 }),
-              })
-            )
+              }),
+            ),
           );
 
           const anyFailed = patchResults.some((r) => r.status === "rejected");
@@ -457,7 +471,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
         body: JSON.stringify({ retryWorkflow: true }),
       });
       if (!response.ok) throw new Error("Failed to retry task");
-      
+
       // Refresh feature data to get updated workflowStatus
       const featureResponse = await fetch(`/api/features/${featureId}`);
       const featureResult = await featureResponse.json();
@@ -513,11 +527,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
   };
 
   if (!defaultPhase || (tasks.length === 0 && !isGenerating)) {
-    return (
-      <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        No tasks yet.
-      </div>
-    );
+    return <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">No tasks yet.</div>;
   }
 
   if (tasks.length === 0 && isGenerating) {
@@ -533,7 +543,9 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
     <div className="space-y-3">
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{doneCount} of {activeTotal} complete</span>
+          <span>
+            {doneCount} of {activeTotal} complete
+          </span>
           <span className="tabular-nums">{completePercent}%</span>
         </div>
         <div className="h-1.5 rounded-full bg-muted overflow-hidden flex">
@@ -610,7 +622,8 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
 
       {queueStats !== null && queueStats.queuedCount > 0 && (
         <p className="text-xs text-muted-foreground text-center">
-          {queueStats.queuedCount} {queueStats.queuedCount === 1 ? "task" : "tasks"} in workspace queue · {queueStats.unusedVms} pod{queueStats.unusedVms !== 1 ? "s" : ""} available
+          {queueStats.queuedCount} {queueStats.queuedCount === 1 ? "task" : "tasks"} in workspace queue ·{" "}
+          {queueStats.unusedVms} pod{queueStats.unusedVms !== 1 ? "s" : ""} available
         </p>
       )}
 
@@ -620,12 +633,11 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
           const prArtifact = task.prArtifact;
           const isDimmed = task.status === "DONE" || task.status === "CANCELLED";
           const isQueued = task.status === "TODO" && task.systemAssigneeType === "TASK_COORDINATOR";
-          const deployedAtRaw = task.deploymentStatus === "production"
-            ? task.deployedToProductionAt
-            : task.deployedToStagingAt;
+          const deployedAtRaw =
+            task.deploymentStatus === "production" ? task.deployedToProductionAt : task.deployedToStagingAt;
 
           const getTaskRoute = (task: TaskWithPrArtifact) => {
-            if (task.status === 'IN_PROGRESS' || task.status === 'DONE') {
+            if (task.status === "IN_PROGRESS" || task.status === "DONE") {
               return `/w/${workspaceSlug}/task/${task.id}`;
             }
             return `/w/${workspaceSlug}/tickets/${task.id}`;
@@ -688,7 +700,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
             });
           }
 
-          const isTerminalWorkflow = ['ERROR', 'FAILED', 'HALTED'].includes(task.workflowStatus ?? '');
+          const isTerminalWorkflow = ["ERROR", "FAILED", "HALTED"].includes(task.workflowStatus ?? "");
           const isRetrying = retryingTaskId === task.id;
 
           return (
@@ -698,17 +710,15 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
               onClick={() => router.push(getTaskRoute(task))}
             >
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${isQueued ? "bg-blue-500 animate-pulse" : STATUS_DOT[task.status] || "bg-zinc-400"}`} />
+                <div
+                  className={`w-2 h-2 rounded-full shrink-0 ${isQueued ? "bg-blue-500 animate-pulse" : STATUS_DOT[task.status] || "bg-zinc-400"}`}
+                />
                 <span
                   className={`text-sm truncate flex-1 min-w-0 ${isDimmed ? "line-through text-muted-foreground" : ""}`}
                 >
                   {task.title}
                 </span>
-                {isQueued && (
-                  <span className="text-xs text-blue-500 font-medium shrink-0">
-                    Queued
-                  </span>
-                )}
+                {isQueued && <span className="text-xs text-blue-500 font-medium shrink-0">Queued</span>}
                 {isWorkflowTask && task.workflowTask?.workflowTaskType && (
                   <span className="inline-flex items-center rounded px-1 py-0 text-[9px] font-medium bg-muted text-muted-foreground uppercase tracking-wide shrink-0">
                     {task.workflowTask.workflowTaskType}
@@ -746,23 +756,24 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                     disabled={isRetrying}
                     className="h-6 w-6 shrink-0"
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-3.5 w-3.5 ${isRetrying ? "animate-spin" : ""}`} />
                   </Button>
                 )}
-                <ActionMenu
-                  actions={actionMenuItems}
-                  triggerSize="icon"
-                  triggerVariant="ghost"
-                />
+                <ActionMenu actions={actionMenuItems} triggerSize="icon" triggerVariant="ghost" />
               </div>
 
-              <div className="flex items-center gap-3 mt-1.5 pl-[18px] text-[10px] text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 pl-[18px] text-[10px] text-muted-foreground">
                 {showTargetSelector && (
                   <div onClick={(e) => e.stopPropagation()}>
                     <TargetSelector
                       value={
                         task.workflowTask && task.workflowTask.workflowId != null
-                          ? encodeTargetValue({ type: "workflow", workflowId: task.workflowTask.workflowId, workflowName: task.workflowTask.workflowName ?? "", workflowRefId: task.workflowTask.workflowRefId ?? "" })
+                          ? encodeTargetValue({
+                              type: "workflow",
+                              workflowId: task.workflowTask.workflowId,
+                              workflowName: task.workflowTask.workflowName ?? "",
+                              workflowRefId: task.workflowTask.workflowRefId ?? "",
+                            })
                           : isWorkflowTask && task.workflowTask?.workflowId == null
                             ? encodeTargetValue({ type: "new-workflow" })
                             : !isWorkflowTask && task.repository?.id
@@ -817,10 +828,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   </div>
                 )}
                 {!isWorkflowTask && (
-                  <div
-                    className="flex items-center gap-1.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     <MiniToggle
                       checked={displayTask.autoMerge ?? false}
                       onChange={(autoMerge) => handleUpdateTask(task.id, { autoMerge })}
@@ -830,10 +838,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   </div>
                 )}
                 {!isWorkflowTask && (
-                  <div
-                    className="flex items-center gap-1.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     <MiniToggle
                       checked={displayTask.runBuild ?? true}
                       onChange={(runBuild) => handleUpdateTask(task.id, { runBuild })}
@@ -843,10 +848,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   </div>
                 )}
                 {!isWorkflowTask && (
-                  <div
-                    className="flex items-center gap-1.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     <MiniToggle
                       checked={displayTask.runTestSuite ?? true}
                       onChange={(runTestSuite) => handleUpdateTask(task.id, { runTestSuite })}
@@ -859,9 +861,7 @@ export function CompactTasksList({ featureId, feature, onUpdate, isGenerating }:
                   <div onClick={(e) => e.stopPropagation()}>
                     <Select
                       value={displayTask.model ?? ""}
-                      onValueChange={(value) =>
-                        handleUpdateTask(task.id, { model: value || null })
-                      }
+                      onValueChange={(value) => handleUpdateTask(task.id, { model: value || null })}
                       disabled={task.status !== "TODO"}
                     >
                       <SelectTrigger className="h-5 text-[10px] px-1.5 py-0 w-auto max-w-[140px] border-muted bg-muted/50 gap-1 [&>svg]:h-3 [&>svg]:w-3">

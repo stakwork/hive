@@ -4,13 +4,14 @@ import { swarmCmdRequest, type SwarmCmd, type SwarmCmdResponse } from "./cmd";
 /**
  * Host storage telemetry (GetHostStorage).
  *
- * The swarm-side command does not exist yet — the response shape is a PROPOSED
- * contract pinned in `__fixtures__/host-storage.contract.json`. That fixture is
- * the only place these external field names may appear outside this parser;
- * when the real sphinx-swarm contract lands, reconciling is: update the
- * fixture, update the schema below, re-run the parser tests.
+ * Response shape is pinned in `__fixtures__/host-storage.contract.json` to the
+ * merged sphinx-swarm contract (`VolumeUsage` + `ServiceStorage`). That fixture
+ * is the only place these external field names may appear outside this parser;
+ * when the swarm contract changes, reconciling is: update the fixture, update
+ * the schema below, re-run the parser tests.
  *
  * Never fabricate a number: unknown sizes map to null, never 0.
+ * `service` / `services` are additive — bodies without them still parse.
  */
 
 /** Outbound command, built server-side from this constant only — never from request input. */
@@ -47,13 +48,22 @@ const contractFilesystemSchema = z.object({
 
 const contractVolumeSchema = z.object({
   name: cappedString,
-  size_bytes: byteCount,
+  size_bytes: z.nullable(byteCount),
   size_known: z.boolean(),
+  service: z.nullable(cappedString).default(null),
 });
 
 const contractNeo4jSchema = z.object({
   volumes: z.array(cappedString).transform(capArray),
-  size_bytes: byteCount,
+  size_bytes: z.nullable(byteCount),
+  size_known: z.boolean(),
+});
+
+const contractServiceSchema = z.object({
+  name: cappedString,
+  typ: cappedString,
+  volumes: z.array(cappedString).transform(capArray),
+  size_bytes: z.nullable(byteCount),
   size_known: z.boolean(),
 });
 
@@ -68,10 +78,11 @@ export const hostStorageSchema = z.object({
   collected_at: z.number().int(),
   cached: z.boolean(),
   filesystems: z.array(contractFilesystemSchema).transform(capArray),
-  docker_root_dir: cappedString,
-  docker_root_filesystem: cappedString,
+  docker_root_dir: z.nullable(cappedString),
+  docker_root_filesystem: z.nullable(cappedString),
   volumes: z.array(contractVolumeSchema).transform(capArray),
   neo4j: z.nullable(contractNeo4jSchema),
+  services: z.array(contractServiceSchema).transform(capArray).default([]),
   errors: z.array(contractErrorSchema).transform(capArray),
 });
 
@@ -93,6 +104,13 @@ export interface HostStorageFilesystem {
 }
 
 export interface HostStorageVolume {
+  name: string;
+  sizeBytes: number | null;
+  sizeKnown: boolean;
+  service: string | null;
+}
+
+export interface HostStorageService {
   name: string;
   sizeBytes: number | null;
   sizeKnown: boolean;
@@ -124,6 +142,7 @@ export interface HostStorageReading {
   governingFilesystem: HostStorageFilesystem | null;
   volumes: HostStorageVolume[];
   neo4j: HostStorageNeo4j | null;
+  services: HostStorageService[];
   errors: HostStorageError[];
 }
 
@@ -136,9 +155,19 @@ function fsBytes(value: number): number | null {
   return value >= 0 ? value : null;
 }
 
-/** Volume/neo4j bytes: unknown when `size_known` is false or the sentinel -1 is used. */
-function sizeBytes(value: number, sizeKnown: boolean): number | null {
-  return sizeKnown && value >= 0 ? value : null;
+/**
+ * Volume/neo4j/service bytes: unknown when `size_known` is false, the value is
+ * null, or the legacy -1 sentinel is used. Never fabricates 0.
+ */
+function sizeBytes(value: number | null, sizeKnown: boolean): number | null {
+  return sizeKnown && value !== null && value >= 0 ? value : null;
+}
+
+/** Empty / whitespace-only owners are unattributed, not a blank-named group. */
+function normalizeOwner(s: string | null): string | null {
+  if (s === null) return null;
+  const trimmed = s.trim();
+  return trimmed === "" ? null : trimmed;
 }
 
 function normalizeFilesystem(fs: HostStorageContract["filesystems"][number]): HostStorageFilesystem {
@@ -158,6 +187,17 @@ function normalizeVolume(volume: HostStorageContract["volumes"][number]): HostSt
     name: volume.name,
     sizeBytes: sizeBytes(volume.size_bytes, volume.size_known),
     sizeKnown: volume.size_known,
+    service: normalizeOwner(volume.service),
+  };
+}
+
+function normalizeService(
+  service: HostStorageContract["services"][number],
+): HostStorageService {
+  return {
+    name: service.name,
+    sizeBytes: sizeBytes(service.size_bytes, service.size_known),
+    sizeKnown: service.size_known,
   };
 }
 
@@ -187,6 +227,7 @@ function failureReading(
     governingFilesystem: null,
     volumes: [],
     neo4j: null,
+    services: [],
     errors: [],
   };
 }
@@ -230,6 +271,7 @@ export function parseHostStorage(response: SwarmCmdResponse): HostStorageReading
 
   const filesystems = contract.filesystems.map(normalizeFilesystem);
   const volumes = contract.volumes.map(normalizeVolume);
+  const services = contract.services.map(normalizeService);
   const neo4j: HostStorageNeo4j | null = contract.neo4j
     ? {
         volumes: contract.neo4j.volumes,
@@ -268,11 +310,12 @@ export function parseHostStorage(response: SwarmCmdResponse): HostStorageReading
     collectedAt: contract.collected_at,
     cached: contract.cached,
     filesystems,
-    dockerRootDir: contract.docker_root_dir,
-    dockerRootFilesystem: contract.docker_root_filesystem,
+    dockerRootDir: contract.docker_root_dir ?? "",
+    dockerRootFilesystem: contract.docker_root_filesystem ?? "",
     governingFilesystem,
     volumes,
     neo4j,
+    services,
     errors,
   };
 }

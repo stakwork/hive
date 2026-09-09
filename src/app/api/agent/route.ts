@@ -62,9 +62,9 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
+import { ChatRole, ChatStatus, ArtifactType, LlmProvider } from "@prisma/client";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
-import { isValidModel, getApiKeyForModel } from "@/lib/ai/models";
+import { isValidModel, getApiKeyForModel, PROVIDER_API_KEY_ENV_VARS } from "@/lib/ai/models";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodById } from "@/lib/pods";
 // Deep import — see comment in services/task-workflow.ts.
@@ -342,8 +342,35 @@ async function createAgentSession(
     headers["Authorization"] = `Bearer ${agentPassword}`;
   }
 
-  // Determine API key based on model
+  // Determine API key based on model. The Anthropic fallback only fires
+  // when `effectiveModel` is absent — a resolved-but-keyless model (e.g.
+  // xai/* with no XAI_API_KEY set) yields `undefined` here, not a
+  // fallback key, so the session below can end up key-less. Log that
+  // case (env-var name + boolean only, never the value) so it's
+  // diagnosable without leaking secret material.
   const apiKey = effectiveModel ? getApiKeyForModel(effectiveModel) : process.env.ANTHROPIC_API_KEY;
+  if (effectiveModel?.includes("/") && !apiKey) {
+    const provider = effectiveModel.split("/")[0].toUpperCase();
+    const envVar = PROVIDER_API_KEY_ENV_VARS[provider];
+    if (envVar) {
+      console.error("[Agent] model provider key missing", {
+        taskId,
+        effectiveModel,
+        envVar,
+        envVarSet: Boolean(process.env[envVar]),
+      });
+    }
+  }
+
+  // xAI bypass: the Bifrost VK provider allow-list (DEFAULT_PROVIDERS in
+  // src/services/bifrost/constants.ts) doesn't include xai, and the
+  // swarm gateways have no xai provider key configured — routing an
+  // xai/* session through Bifrost today would fail. Skip the call for
+  // xai/* and use the direct XAI_API_KEY resolved above instead. Remove
+  // once the gateways carry an xai key and DEFAULT_PROVIDERS lists it
+  // (aieo already maps xai onto the /openai/v1 gateway path). See
+  // src/services/task-workflow.ts for the matching bypass.
+  const isXaiModel = effectiveModel?.startsWith("xai/") ?? false;
 
   // Bifrost routing for the goose-side LLM calls. When the rollout
   // flag covers this workspace, mint a per-session VK + macaroon and
@@ -351,13 +378,15 @@ async function createAgentSession(
   // body. The agent forwards them onto every LLM call so the spend
   // shows up on `logs.db` as `agent-name=coding-agent`. When the flag
   // is off, falls back to the model-resolved key (unchanged).
-  const bifrost = await getBifrostForLLM(bifrostAuth, {
-    agentName: "coding-agent",
-    // Pass the selected model so the Bifrost VK reconciler resolves
-    // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
-    // for google/* models). Without this it defaults to anthropic.
-    model: effectiveModel,
-  });
+  const bifrost = isXaiModel
+    ? undefined
+    : await getBifrostForLLM(bifrostAuth, {
+        agentName: "coding-agent",
+        // Pass the selected model so the Bifrost VK reconciler resolves
+        // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
+        // for google/* models). Without this it defaults to anthropic.
+        model: effectiveModel,
+      });
 
   const sessionPayload: Record<string, unknown> = {
     sessionId: taskId,
@@ -434,8 +463,38 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { message, taskId, artifacts = [], model } = body;
 
-  // Validate model parameter if provided
-  const requestModel: string | undefined = isValidModel(model) ? model : undefined;
+  // Validate model parameter if provided. `isValidModel` only checks that
+  // the prefix maps to a known provider — it does NOT check catalog
+  // membership, so it returns true for any "provider/anything" string.
+  // Short aliases (sonnet, gpt, …) aren't admin-catalog rows and skip the
+  // DB check below; "provider/name" strings must exist as a public,
+  // unexpired `LlmModel` row or an authenticated caller could force Hive
+  // to spend a direct provider key (e.g. XAI_API_KEY) on an unregistered
+  // model, bypassing the isPublic/dateEnd gate that /api/llm-models enforces.
+  let requestModel: string | undefined = isValidModel(model) ? model : undefined;
+  if (requestModel?.includes("/")) {
+    const [prefix, ...rest] = requestModel.split("/");
+    const namePart = rest.join("/");
+    const isEnumProvider = prefix.toUpperCase() in LlmProvider;
+    const catalogMatch = await db.llmModel.findFirst({
+      where: {
+        name: namePart,
+        isPublic: true,
+        OR: [{ dateEnd: null }, { dateEnd: { gt: new Date() } }],
+        ...(isEnumProvider
+          ? { provider: prefix.toUpperCase() as LlmProvider }
+          : {
+              provider: LlmProvider.OTHER,
+              providerLabel: { equals: prefix, mode: "insensitive" as const },
+            }),
+      },
+      select: { id: true },
+    });
+    if (!catalogMatch) {
+      console.warn("[Agent] rejected non-catalog model", { model: requestModel });
+      requestModel = undefined;
+    }
+  }
 
   // 1. Authenticate user
   const session = await getServerSession(authOptions);

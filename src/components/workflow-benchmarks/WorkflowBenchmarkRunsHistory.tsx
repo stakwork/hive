@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { WorkflowStatus } from "@prisma/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -11,6 +11,7 @@ import { useWorkflowBenchmarkRubricsMap } from "@/hooks/useBenchmarkRubrics";
 import {
   computeBenchmarkScore,
   formatBenchmarkScore,
+  isRosterPending,
   criterionStatus,
   buildContestedIndex,
   type GraphRubric,
@@ -23,6 +24,26 @@ import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
 import { SafeMarkdown } from "@/components/run-report/SafeMarkdown";
 import type { BenchmarkRunListRow } from "@/hooks/useLegalBenchmarkRunList";
 import type { BenchmarkRunResult } from "@/types/legal";
+
+// ─── strut run link ────────────────────────────────────────────────────────────
+
+/** The strut lab UI for a run executed by the strut runner — the counterpart
+ *  of StakworkRunLink (there is no Stakwork project for these rows). */
+function StrutRunLink({ url }: { url: string | undefined }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      title="View on strut (lab)"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+    >
+      <ExternalLink className="h-3.5 w-3.5" />
+      View on strut
+    </a>
+  );
+}
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -83,15 +104,9 @@ function RunnerStatusBadge({ status }: { status: WorkflowStatus }) {
 interface ScoreCellProps {
   run: BenchmarkRunListRow;
   rubrics: ReturnType<typeof useWorkflowBenchmarkRubricsMap>;
-  /**
-   * True when the rubrics map has not yet resolved (still loading).
-   * Distinct from the rubrics map having an entry for this task — if
-   * the map has no entry at all, rubrics are still in-flight.
-   */
-  rubricsLoading: boolean;
 }
 
-function ScoreCell({ run, rubrics, rubricsLoading }: ScoreCellProps) {
+function ScoreCell({ run, rubrics }: ScoreCellProps) {
   const isActive =
     run.status === WorkflowStatus.PENDING ||
     run.status === WorkflowStatus.IN_PROGRESS;
@@ -100,14 +115,13 @@ function ScoreCell({ run, rubrics, rubricsLoading }: ScoreCellProps) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  // The rubrics map has the task's entry.
-  const hasEntry = rubrics.has(run.taskSlug);
-
-  // Still waiting for the rubrics fetch to resolve.
-  if (!hasEntry && rubricsLoading) {
+  // Still waiting for THIS task's fetch — rosters resolve one task at a time,
+  // so a whole-map test would call the rest resolved as soon as one lands.
+  if (isRosterPending(rubrics, run.taskSlug)) {
     return <span className="text-muted-foreground">—</span>;
   }
 
+  const hasEntry = rubrics.has(run.taskSlug);
   const roster = hasEntry ? rubrics.get(run.taskSlug) ?? null : null;
 
   // Roster confirmed absent (graph has no EvalSet for this task). Use amber
@@ -276,11 +290,6 @@ export function WorkflowBenchmarkRunsHistory() {
   const taskSlugs = runs.map((r) => r.taskSlug).filter(Boolean);
   const rubrics = useWorkflowBenchmarkRubricsMap(taskSlugs);
 
-  // The map is "still loading" until it has at least one entry (or the runs
-  // list is empty). This keeps the score cells showing "—" rather than
-  // "unavailable" while the network request is in flight.
-  const rubricsLoading = taskSlugs.length > 0 && rubrics.size === 0;
-
   const handleToggleExpand = (runId: string) => {
     const next = expandedRunId === runId ? null : runId;
     setExpandedRunIdLocal(next);
@@ -366,8 +375,17 @@ export function WorkflowBenchmarkRunsHistory() {
                           {run.taskTitle || run.taskSlug || "(Unknown task)"}
                         </div>
                         {run.taskSlug && (
-                          <div className="font-mono text-xs text-muted-foreground mt-0.5">
+                          <div className="font-mono text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
                             {run.taskSlug}
+                            {run.runner === "strut" && (
+                              <Badge
+                                variant="outline"
+                                className="h-4 px-1 text-[10px] font-sans"
+                                title="Executed by the strut runner"
+                              >
+                                strut
+                              </Badge>
+                            )}
                           </div>
                         )}
                       </div>
@@ -384,7 +402,6 @@ export function WorkflowBenchmarkRunsHistory() {
                     <ScoreCell
                       run={run}
                       rubrics={rubrics}
-                      rubricsLoading={rubricsLoading}
                     />
                   </td>
 
@@ -398,10 +415,14 @@ export function WorkflowBenchmarkRunsHistory() {
                   {/* Stakwork admin link — super-admin only */}
                   {isSuperAdmin && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <StakworkRunLink
-                        projectId={run.projectId}
-                        isSuperAdmin={isSuperAdmin}
-                      />
+                      {run.runner === "strut" ? (
+                        <StrutRunLink url={run.strutRunUrl} />
+                      ) : (
+                        <StakworkRunLink
+                          projectId={run.projectId}
+                          isSuperAdmin={isSuperAdmin}
+                        />
+                      )}
                     </td>
                   )}
                 </tr>

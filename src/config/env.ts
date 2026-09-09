@@ -161,6 +161,14 @@ export const optionalEnvVars = {
   // Callers MUST go through `isPromptsCapabilityEnabledForOrgLogin(login)`.
   PROMPTS_CAPABILITY_ORG_LOGINS:
     process.env.PROMPTS_CAPABILITY_ORG_LOGINS || "stakwork",
+  // Direct xAI credential for Grok models (LlmProvider.XAI rows resolve to
+  // `xai/<name>` and use this key). Registered here — rather than left as a
+  // raw `process.env` read — so it's a typed, discoverable config value like
+  // its sibling provider keys. Absence is a normal, expected state in any
+  // environment that hasn't onboarded xAI yet: `/api/llm-models` filters out
+  // XAI rows when this is unset, so pickers
+  // stay empty rather than erroring.
+  XAI_API_KEY: process.env.XAI_API_KEY || "",
 } as const;
 
 /**

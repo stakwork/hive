@@ -1096,6 +1096,11 @@ export function buildGraphWalkerTools(
         "`kg` URNs are resolved live from the swarm knowledge graph (Jarvis), " +
         "including an `edges` map ({EDGE_TYPE: count}) showing how connected the " +
         "node is and which relationship types graph_neighbors can traverse next. " +
+        "When a kg node sits in a PARENT_OF hierarchy (e.g. a Concept), it also carries " +
+        "`ancestors`: every node above it up to the root(s), each with {ref_id, name, node_type, depth, parents}. " +
+        "`depth` 1 = direct parent; `parents` is that ancestor's own parents (empty = root). " +
+        "A node can have several parents, so treat it as a DAG, not a chain — read the " +
+        "depth-1 entries first, then graph_get whichever ancestor you need (kg URN with its ref_id). " +
         "The `pg` realm is DISABLED (its entities now live in the kg). " +
         "Note: URNs obtained from a namespaced graph_search are dereferenced here WITHOUT that " +
         "namespace filter (this tool does not yet accept namespace), so the resolved node can sit outside the originally-requested partition. " +
@@ -1130,6 +1135,7 @@ export function buildGraphWalkerTools(
             if (!seam) return { error: "swarm not configured or access denied" };
             const node = await kgGetNode(seam.jarvisUrl, seam.swarmApiKey, parsed.id, {
               includeEdgeCounts: true,
+              includeAncestors: true,
             });
             if (!node) return { error: "node not found" };
             return node;

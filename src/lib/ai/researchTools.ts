@@ -46,6 +46,7 @@ import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { notifyCanvasUpdated, notifyResearchEvent } from "@/lib/canvas";
+import type { WebSearchHandle } from "@/lib/ai/provider";
 
 /**
  * One web_search result captured from Anthropic's `webSearch` provider
@@ -81,25 +82,24 @@ export interface DispatchedResearchIntent {
  * the agent when to reach for them (external/web research, vs
  * connection docs which are integration-focused).
  *
- * `webSearchResults` is a closure-shared array that the route
- * populates inside `streamText`'s `onStepFinish` callback as
- * `web_search` calls return. By the time the agent reaches
- * `update_research`, every search result it can cite is in this
- * array \u2014 in the SAME ORDER Anthropic emitted them, which is
- * exactly the order the `<cite index="N-M">` indices reference.
+ * `webSearch` is the run's search handle (see `createWebSearch`). Its
+ * `results` array is populated as `web_search` calls return \u2014 by the
+ * agent loop's `onStepFinish` on the Anthropic path, by the tool's own
+ * `execute` on the Exa path \u2014 so by the time the agent reaches
+ * `update_research` every citable result is present, in the order the
+ * citation indices reference.
  *
- * Why a closure-shared array instead of plumbing through tool input:
- * Anthropic's `<cite>` indices reference a flat list of ALL search
- * results from ALL `web_search` calls in the turn, in stream order.
- * The agent doesn't reliably know how to align its `sources` array
- * with those indices (we tried; it sent only the URLs it cited from,
- * which broke the index alignment). Capturing on the server side is
- * deterministic.
+ * Why a shared handle instead of plumbing sources through tool input:
+ * citation indices reference a flat list of ALL search results from ALL
+ * `web_search` calls in the turn, in order. The agent doesn't reliably
+ * know how to align a `sources` array with those indices (we tried; it
+ * sent only the URLs it cited from, which broke the alignment).
+ * Capturing on the server side is deterministic.
  */
 export function buildResearchTools(
   orgId: string,
   userId: string,
-  webSearchResults: CapturedSearchResult[],
+  webSearch: WebSearchHandle,
   dispatchedResearch?: DispatchedResearchIntent[],
   conversationId?: string,
 ): ToolSet {
@@ -494,58 +494,27 @@ export function buildResearchTools(
             };
           }
 
-          // Citation linkification. Anthropic's web_search emits
-          // `<cite index="N-M">anchor</cite>` where `N` is 1-indexed
-          // into the flat list of ALL search results from EVERY
-          // web_search call in this turn (in stream order). The
-          // route's `onStepFinish` populates `webSearchResults` as
-          // those calls return, so by the time we run here the array
-          // is the exact reference list those indices point into.
+          // Citation handling is the handle's job — it differs by
+          // backend and by whether citations were requested at all.
           //
-          // Out-of-range indices (or empty results) collapse to the
-          // anchor text. The doc stays readable; that span just isn't
-          // a link. Same fallback for any future tag shape we don't
-          // recognize \u2014 we never want to leave raw `<cite>` markup
-          // in the persisted markdown, since the viewer renders
-          // standard GFM and would show it as literal text.
-          const citationMatches = content.match(/<cite index="\d+/g) ?? [];
-          let convertedCount = 0;
-          let skippedCount = 0;
-          const linkifiedContent = content.replace(
-            /<cite index="(\d+)(?:-\d+(?:,\d+-\d+)*)?">(.*?)<\/cite>/g,
-            (_match, indexStr: string, anchor: string) => {
-              if (webSearchResults.length === 0) {
-                skippedCount++;
-                return anchor;
-              }
-              const idx = parseInt(indexStr, 10) - 1;
-              const r = webSearchResults[idx];
-              if (!r || typeof r.url !== "string") {
-                skippedCount++;
-                return anchor;
-              }
-              convertedCount++;
-              // Anchor text is model-generated and could contain `]`
-              // characters that would break markdown link parsing.
-              // Cheap escape: replace any `]` in the anchor with `\]`.
-              const safeAnchor = anchor.replace(/\]/g, "\\]");
-              return `[${safeAnchor}](${r.url})`;
-            },
-          );
+          // With citations ON (the research worker), `<cite index="N">`
+          // tags become markdown links against the run's ordered result
+          // list; out-of-range indices collapse to their anchor text, so
+          // the doc stays readable minus one link.
+          //
+          // With citations OFF (interactive chat, the default), any tag
+          // the model emitted anyway is stripped to plain prose. Either
+          // way no raw `<cite>` markup reaches the database — the viewer
+          // renders standard GFM and would show it as literal text.
+          const {
+            content: linkifiedContent,
+            converted,
+            skipped,
+          } = webSearch.formatOutput(content);
 
           console.log(
-            `[researchTools] update_research citation conversion: slug=${slug} citations=${citationMatches.length} converted=${convertedCount} skipped=${skippedCount} availableSources=${webSearchResults.length}`,
+            `[researchTools] update_research citation conversion: slug=${slug} converted=${converted} skipped=${skipped} availableSources=${webSearch.results.length} backend=${webSearch.backend ?? "none"}`,
           );
-          if (skippedCount > 0 && webSearchResults.length > 0) {
-            // Log the first few out-of-range indices to help debug.
-            const indices = (content.match(/<cite index="(\d+)/g) ?? [])
-              .slice(0, 10)
-              .map((s) => s.match(/\d+/)?.[0])
-              .filter(Boolean);
-            console.log(
-              `[researchTools] sample citation indices encountered: [${indices.join(", ")}], available range: 1..${webSearchResults.length}`,
-            );
-          }
 
           await db.research.update({
             where: { orgId_slug: { orgId, slug } },

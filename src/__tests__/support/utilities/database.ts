@@ -93,10 +93,12 @@ export async function resetDatabase() {
     try { await db.agentLog.deleteMany(); } catch { /* table may not exist */ }
     try { await db.stakworkRun.deleteMany(); } catch { /* table may not exist */ }
     try { await db.whiteboard.deleteMany(); } catch { /* table may not exist */ }
+    try { await db.htmlPage.deleteMany(); } catch { /* table may not exist */ }
     await db.phase.deleteMany();
     await db.feature.deleteMany();
     await db.repository.deleteMany();
     await db.pod.deleteMany();
+    try { await db.swarmStorageSnapshot.deleteMany(); } catch { /* table may not exist */ }
     await db.swarm.deleteMany();
     await db.workspaceTransaction.deleteMany();
     await db.lightningPayment.deleteMany();
@@ -147,6 +149,7 @@ const RESET_TABLES = [
   "features",
   "repositories",
   "pods",
+  "swarm_storage_snapshots",
   "swarms",
   "workspace_transactions",
   "lightning_payments",

@@ -13,12 +13,16 @@ vi.mock("@/lib/auth/nextauth", () => ({
 
 const mockUserFindUnique = vi.fn();
 const mockUserUpdate = vi.fn();
+const mockLlmModelFindFirst = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   db: {
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
+    },
+    llmModel: {
+      findFirst: (...args: unknown[]) => mockLlmModelFindFirst(...args),
     },
   },
 }));
@@ -109,6 +113,83 @@ describe("GET /api/user/preferences", () => {
 
     const res = await GET();
     expect(res.status).toBe(401);
+  });
+
+  test("falls back to null chatAgentModel when the stored preference no longer matches any catalog row", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: "openrouter/grok-4",
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+    mockLlmModelFindFirst.mockResolvedValue(null);
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.chatAgentModel).toBeNull();
+  });
+
+  test("keeps chatAgentModel when it still matches a public, unexpired catalog row", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: "xai/grok-4",
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+    mockLlmModelFindFirst.mockResolvedValue(
+      { id: "m1", name: "grok-4", provider: "XAI", providerLabel: null, isPlanDefault: false, isTaskDefault: false },
+    );
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.chatAgentModel).toBe("xai/grok-4");
+  });
+
+  test("heals a stale provider prefix to the live catalog value and persists it", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: "grok4.6/grok-4.6",
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+    // The row named "grok-4.6" is now first-class XAI.
+    mockLlmModelFindFirst.mockResolvedValue(
+      { id: "m1", name: "grok-4.6", provider: "XAI", providerLabel: null, isPlanDefault: true, isTaskDefault: true },
+    );
+    mockUserUpdate.mockResolvedValue({});
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.chatAgentModel).toBe("xai/grok-4.6");
+    expect(mockLlmModelFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ name: "grok-4.6", isPublic: true }) }),
+    );
+    expect(mockUserUpdate).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { chatAgentModel: "xai/grok-4.6" },
+    });
+  });
+
+  test("passes null through unchanged (no catalog lookup needed)", async () => {
+    mockUserFindUnique.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+
+    const res = await GET();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.chatAgentModel).toBeNull();
+    expect(mockLlmModelFindFirst).not.toHaveBeenCalled();
   });
 });
 

@@ -314,9 +314,8 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
     return result;
   }
 
-  // ── Discover recursion-enabled EvalSets ────────────────────────────────────
-  // Pass workspaceId so Source 3 (multi-run detection) is included in the results.
-  const listResult = await listRecursionEvalSets(jarvisConfig, openlawWorkspace.id);
+  // ── Discover live-on EvalSets (recursion=true only) ────────────────────────
+  const listResult = await listRecursionEvalSets(jarvisConfig, "dispatch");
   if (!listResult.ok || !listResult.nodes) {
     logger.warn(
       `${LOG_PREFIX} listRecursionEvalSets failed: ${listResult.error ?? "unknown"} — aborting pass`,
@@ -513,7 +512,7 @@ export async function executeScheduledLegalBenchmarkRecursion(): Promise<Recursi
         // Full, complete walk — apply attempt/plateau cap gate.
 
         // Resolve cutoff from the EvalSet's recursionEnabledAt property (if present)
-        const recursionEnabledAtRaw = (evalSet as RecursionEvalSetEntry & { recursionEnabledAt?: number | string | null }).recursionEnabledAt;
+        const recursionEnabledAtRaw = evalSet.recursionEnabledAt;
         let cutoff: Date | undefined;
         if (recursionEnabledAtRaw != null) {
           const ts = typeof recursionEnabledAtRaw === "number"

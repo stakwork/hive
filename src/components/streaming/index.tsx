@@ -3,3 +3,4 @@ export * from "./StreamTextPart";
 export * from "./StreamReasoningPart";
 export * from "./StreamToolCall";
 export * from "./StreamErrorBoundary";
+export * from "./StreamToolCallGroup";

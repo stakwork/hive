@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
 import {
   conceptProposalLabel,
   type ConceptProposal,
@@ -81,6 +83,7 @@ export function ConceptProposalReviewCard({
   // canWrite = DEVELOPER and above — same threshold the accept/reject
   // proxy routes enforce server-side.
   const { canWrite } = useWorkspaceAccess();
+  const { timezone } = useUserTimezone();
 
   const [submitting, setSubmitting] = useState<"accept" | "reject" | null>(null);
   const [staleBase, setStaleBase] = useState<StaleBaseState | null>(null);
@@ -262,6 +265,14 @@ export function ConceptProposalReviewCard({
             <span data-testid="proposal-pr-numbers">
               <span className={SECTION_LABEL_CLASS}>PRs&nbsp;</span>
               {proposal.prNumbers.map((n) => `#${n}`).join(", ")}
+            </span>
+          )}
+          {!Number.isNaN(new Date(proposal.createdAt).getTime()) && (
+            <span>
+              <span className={SECTION_LABEL_CLASS}>Created&nbsp;</span>
+              <span data-testid="proposal-created-at">
+                {formatRelativeOrDateInTz(proposal.createdAt, timezone)}
+              </span>
             </span>
           )}
           <span className="font-mono">{proposal.repo}</span>

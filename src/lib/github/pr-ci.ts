@@ -85,20 +85,135 @@ function isGroupLine(line: string): boolean {
 }
 
 /**
+ * Strip a leading GitHub Actions timestamp prefix (e.g.
+ * "2024-01-15T10:30:00.0000000Z ...") from a log line, if present.
+ *
+ * All the classifiers below match against the line *after* this strip, since
+ * anchoring patterns at column 0 of the raw line would otherwise never match
+ * (every real GHA log line starts with a timestamp).
+ */
+export function stripGhaTimestamp(line: string): string {
+  return line.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s/, "");
+}
+
+/**
+ * "Process completed with exit code N" — the generic runner line GitHub Actions
+ * always appends when a step's process exits non-zero, with or without a
+ * ##[error]/::error:: wrapper. It carries no information about *why* the
+ * command failed, so it should never be the primary excerpt anchor when a
+ * stronger (stdout) failure line exists in the same section.
+ *
+ * Note the overlap with `isErrorLine`: a wrapped weak-exit line (e.g.
+ * "##[error]Process completed with exit code 1") is still an error for the
+ * purposes of "did this step fail", but it is not a *strong* failure line.
+ */
+export function isWeakRunnerExitLine(line: string): boolean {
+  const stripped = stripGhaTimestamp(line);
+  return /Process completed with exit code \d+/.test(stripped);
+}
+
+/**
+ * Generic (tool-agnostic) stdout failure diagnostics — not a per-tool
+ * allowlist. Matches the shapes that real linter/test stdout takes across
+ * eslint (stylish), flake8 (with --show-source), pytest, and black --check,
+ * without hardcoding any single tool's invocation.
+ *
+ * Deliberately does NOT match: start-anchored "E " (pytest traceback lines),
+ * bare "ERROR", black's "Oh no!", "warning"/"warnings", or runner
+ * ##[error]/::error:: annotations (those are handled by `isErrorLine`).
+ */
+export function isStdoutFailureLine(line: string): boolean {
+  const stripped = stripGhaTimestamp(line);
+
+  // File diagnostics: "path:line:" or "path:line:col:" followed by whitespace
+  // (flake8 --show-source, tsc, etc.)
+  if (/\S+:\d+:(?:\d+:)?\s/.test(stripped)) {
+    return true;
+  }
+
+  // Whitespace-bounded severity token "error" (eslint stylish rows), not
+  // "warning"/"warnings". Case-sensitive so bare "ERROR" doesn't match.
+  if (/(?:^|\s)error(?:\s|$)/.test(stripped)) {
+    return true;
+  }
+
+  // pytest failure marker
+  if (/\bFAILED\b/.test(stripped)) {
+    return true;
+  }
+
+  // black --check
+  if (/would reformat/.test(stripped)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * A failure line strong enough to anchor excerpt extraction on: either real
+ * stdout diagnostics, or a runner error annotation that isn't just the weak
+ * "Process completed with exit code N" line.
+ */
+export function isStrongFailureLine(line: string): boolean {
+  return isStdoutFailureLine(line) || (isErrorLine(line) && !isWeakRunnerExitLine(line));
+}
+
+/**
+ * True when every non-empty shell segment of a `Run <command>` group header
+ * contains `--exit-zero`, meaning the command cannot actually fail the step
+ * (e.g. `flake8 . --exit-zero`). Segments are split on `&&`, `||`, `;`, and
+ * newlines — not on `|` inside a pipeline. A compound command where only some
+ * segments are `--exit-zero` (e.g. `flake8 . --exit-zero && pytest`) is NOT
+ * non-failing, since a later segment can still fail the step.
+ */
+export function isNonFailingRunCommand(command: string): boolean {
+  const stripped = command.replace(/^Run\s+/, "");
+  const segments = stripped
+    .split(/&&|\|\||;|\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  if (segments.length === 0) {
+    return false;
+  }
+
+  return segments.every((s) => s.includes("--exit-zero"));
+}
+
+/**
+ * Parse the command from a `##[group]Run <command>` / `::group::Run <command>`
+ * header line, if this group is a `run:` step. Returns null for `uses:` step
+ * group headers (which are just the step/action name, not a command).
+ */
+function parseGroupRunCommand(headerLine: string): string | null {
+  const stripped = stripGhaTimestamp(headerLine);
+  const match = stripped.match(/(?:##\[group\]|::group::)Run (.+)$/);
+  return match ? match[1].trim() : null;
+}
+
+/**
  * Extract logs for a specific step from the full job logs.
  *
  * GitHub Actions log format:
  * - Lines start with timestamps: "2024-01-15T10:30:00.0000000Z ..."
+ *   (stripped by `stripGhaTimestamp` before any classifier runs)
  * - Step sections marked by: "##[group]Run <command>" (note: contains COMMAND, not step NAME)
  *   (or "::group::" in some cases)
  * - Errors marked by: "##[error]<message>" (or "::error::" in some cases)
  *
  * Strategy:
  * 1. Find step section using group markers (step name won't match, use command patterns)
- * 2. Find error markers within section (GitHub adds these for any failure)
- * 3. Extract N lines before error marker (error details appear before the marker)
+ * 2. Among candidate sections, prefer the one containing a *strong* failure line
+ *    (real stdout diagnostics, not just the weak "Process completed with exit
+ *    code N" line) — and skip sections whose `run:` command is a non-failing
+ *    `--exit-zero` invocation, since those commonly dump warnings before the
+ *    actual failing step runs.
+ * 3. Extract N lines around the first strong failure line (error details
+ *    appear before it); fall back to the weak exit line only if nothing
+ *    stronger exists in the section.
  */
-function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string): string | null {
+export function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string): string | null {
   const lines = fullLogs.split("\n");
   const MAX_LINES = 150;
 
@@ -124,10 +239,13 @@ function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string)
     stepEndLine = groupMarkers[targetIdx + 1]?.lineNum ?? lines.length;
   }
 
-  // Fallback: Find the group section that contains error markers.
-  // This is more reliable than "last Run before Post" which can pick cleanup steps
-  // that run after the failure (e.g., "Stop Containers" with `if: always()`).
+  // Fallback: walk groups looking for the failing `run:` section.
+  // This is more reliable than "last Run before Post" which can pick cleanup
+  // steps that run after the failure (e.g., "Stop Containers" with `if: always()`).
   if (targetIdx < 0) {
+    let lastStrongIdx = -1;
+    let firstWeakIdx = -1;
+
     for (let i = 0; i < groupMarkers.length; i++) {
       const sectionStart = groupMarkers[i].lineNum;
       const sectionEnd = groupMarkers[i + 1]?.lineNum ?? lines.length;
@@ -137,43 +255,72 @@ function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string)
         continue;
       }
 
+      // Skip non-failing `--exit-zero` groups — they commonly dump warnings
+      // before (or instead of) the actual failing `run:` step.
+      const runCommand = parseGroupRunCommand(groupMarkers[i].content);
+      if (runCommand && isNonFailingRunCommand(runCommand)) {
+        continue;
+      }
+
+      let hasStrong = false;
       let hasError = false;
       for (let j = sectionStart; j < sectionEnd; j++) {
-        if (isErrorLine(lines[j])) {
-          hasError = true;
-          break;
-        }
+        if (isStrongFailureLine(lines[j])) hasStrong = true;
+        if (isErrorLine(lines[j])) hasError = true;
       }
-      if (hasError) {
-        targetIdx = i;
-        stepStartLine = sectionStart;
-        stepEndLine = sectionEnd;
-        break;
+
+      if (hasStrong) {
+        // Take the LAST strong section before Post — warning dumps typically
+        // precede the actual failing `run:` step.
+        lastStrongIdx = i;
       }
+      if (hasError && firstWeakIdx < 0) {
+        // Preserve today's "first section with any error marker" behavior as
+        // a fallback for when no section has a strong failure line.
+        firstWeakIdx = i;
+      }
+    }
+
+    const chosenIdx = lastStrongIdx >= 0 ? lastStrongIdx : firstWeakIdx;
+    if (chosenIdx >= 0) {
+      targetIdx = chosenIdx;
+      stepStartLine = groupMarkers[chosenIdx].lineNum;
+      stepEndLine = groupMarkers[chosenIdx + 1]?.lineNum ?? lines.length;
     }
   }
 
-  // Step 3: Find error markers (within step section or globally)
-  const errorMarkers: { lineNum: number }[] = [];
+  // Step 3: Find failure markers within the chosen section (or globally)
   const searchStart = stepStartLine >= 0 ? stepStartLine : 0;
   const searchEnd = stepStartLine >= 0 ? stepEndLine : lines.length;
 
+  const strongMarkers: number[] = [];
+  const errorMarkers: number[] = [];
   for (let i = searchStart; i < searchEnd; i++) {
-    if (isErrorLine(lines[i])) {
-      errorMarkers.push({ lineNum: i });
-    }
+    if (isStrongFailureLine(lines[i])) strongMarkers.push(i);
+    if (isErrorLine(lines[i])) errorMarkers.push(i);
   }
 
+  // Anchor on the first strong failure line; only fall back to a weak exit
+  // line ("Process completed with exit code N") when nothing stronger exists.
+  const anchorMarkers = strongMarkers.length > 0 ? strongMarkers : errorMarkers;
+
   // Step 4: Extract logs
-  if (errorMarkers.length > 0) {
-    // Take MAX_LINES before first error marker, through last error marker + 5
-    const firstErrorLine = errorMarkers[0].lineNum;
-    const lastErrorLine = errorMarkers[errorMarkers.length - 1].lineNum;
+  if (anchorMarkers.length > 0) {
+    const firstAnchorLine = anchorMarkers[0];
+    const lastAnchorLine = anchorMarkers[anchorMarkers.length - 1];
 
-    const extractStart = Math.max(stepStartLine >= 0 ? stepStartLine : 0, firstErrorLine - MAX_LINES);
-    const extractEnd = Math.min(lines.length, lastErrorLine + 5);
+    const extractStart = Math.max(stepStartLine >= 0 ? stepStartLine : 0, firstAnchorLine - MAX_LINES);
+    const extractEnd = Math.min(lines.length, lastAnchorLine + 5);
 
-    return lines.slice(extractStart, extractEnd).join("\n");
+    let extracted = lines.slice(extractStart, extractEnd);
+
+    // If the window trimmed off the group header line, prepend it so
+    // `Run <command>` survives for `inferFailedCommand`.
+    if (stepStartLine >= 0 && extractStart > stepStartLine) {
+      extracted = [lines[stepStartLine], ...extracted];
+    }
+
+    return extracted.join("\n");
   }
 
   // No error markers found - take last MAX_LINES of step (or entire log as last resort)
@@ -188,6 +335,114 @@ function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string)
   // Last resort: end of entire log
   log.warn("Could not find step section, using end of log", { stepName, stepNumber });
   return "...(truncated)\n" + lines.slice(-MAX_LINES).join("\n");
+}
+
+const COMMAND_LIKE_PREFIXES = [
+  "npm",
+  "yarn",
+  "pnpm",
+  "npx",
+  "pytest",
+  "flake8",
+  "eslint",
+  "black",
+  "ruff",
+  "cargo",
+  "go",
+  "python",
+  "make",
+];
+
+function looksLikeShellCommand(name: string): boolean {
+  const trimmed = name.trim();
+  if (COMMAND_LIKE_PREFIXES.some((p) => trimmed === p || trimmed.startsWith(`${p} `))) {
+    return true;
+  }
+  return / run /.test(trimmed);
+}
+
+/**
+ * Infer the shell command that actually failed for a check, from that check's
+ * `failedCheckLogs` blob (as produced by `fetchFailedStepLogs`/`fetchCIStatus`).
+ *
+ * Priority:
+ * 1. Every `##[group]Run ...` / `::group::Run ...` header found in the logs
+ *    (deduped) — these are the only source that is safe to hand back to an
+ *    agent to literally re-execute.
+ * 2. Else, if the check name itself looks like a shell invocation (e.g.
+ *    "npm run lint", "flake8"), use that.
+ * 3. Else null — the caller should fall back to "identify the command from
+ *    the logs" instructions instead of guessing.
+ *
+ * Does NOT treat `### Failed Step: ...` markers or `uses:` step group titles
+ * (e.g. "##[group]Build Docker image") as commands.
+ */
+export function inferFailedCommand(checkName: string, logs: string): string[] | null {
+  const commands: string[] = [];
+  const seen = new Set<string>();
+
+  for (const line of logs.split("\n")) {
+    const stripped = stripGhaTimestamp(line);
+    const match = stripped.match(/(?:##\[group\]|::group::)Run (.+)$/);
+    if (match) {
+      const cmd = match[1].trim();
+      if (cmd && !seen.has(cmd)) {
+        seen.add(cmd);
+        commands.push(cmd);
+      }
+    }
+  }
+
+  if (commands.length > 0) {
+    return commands;
+  }
+
+  if (looksLikeShellCommand(checkName)) {
+    return [checkName.trim()];
+  }
+
+  return null;
+}
+
+/**
+ * Truncate combined failed-step log sections to `maxLogSize` while preserving
+ * every `### Failed Step:` header and any `Run `/`::group::` header that
+ * follows it, so `inferFailedCommand` (and the fix-prompt fallback) can still
+ * identify the failing command/step after truncation. A pure tail slice can
+ * otherwise drop those headers entirely, leaving only a trailing
+ * "Process completed with exit code 1" line.
+ *
+ * Layout: [all headers] + "...(truncated)" + [tail of section bodies], capped
+ * to `maxLogSize`.
+ */
+export function truncateFailedStepLogs(stepLogSections: string[], maxLogSize: number): string {
+  const TRUNCATED_MARKER = "...(truncated)";
+
+  const sectionParts = stepLogSections.map((section) => {
+    const lines = section.split("\n");
+    const headerLines: string[] = [];
+    const bodyLines: string[] = [];
+    for (const line of lines) {
+      if (line.startsWith("### Failed Step:") || isGroupLine(stripGhaTimestamp(line))) {
+        headerLines.push(line);
+      } else {
+        bodyLines.push(line);
+      }
+    }
+    return { headerLines, body: bodyLines.join("\n") };
+  });
+
+  const headerBlock = sectionParts
+    .map((s) => s.headerLines.join("\n"))
+    .filter((h) => h.length > 0)
+    .join("\n\n");
+  const prefix = headerBlock ? `${headerBlock}\n${TRUNCATED_MARKER}\n` : `${TRUNCATED_MARKER}\n`;
+
+  const remainingBudget = Math.max(0, maxLogSize - prefix.length);
+  const combinedBody = sectionParts.map((s) => s.body).join("\n\n");
+  const bodyTail = combinedBody.length > remainingBudget ? combinedBody.slice(-remainingBudget) : combinedBody;
+
+  return (prefix + bodyTail).slice(0, maxLogSize);
 }
 
 /**
@@ -252,10 +507,16 @@ async function fetchFailedStepLogs(
       combinedLogs = stepLogSections.join("\n\n");
     }
 
-    // Truncate if too long (max 15KB per job to avoid bloating the DB)
+    // Truncate if too long (max 15KB per job to avoid bloating the DB).
+    // Header-preserving when we have step sections to preserve headers from —
+    // a pure tail slice can drop the `### Failed Step:`/`Run` headers that
+    // `inferFailedCommand` needs.
     const maxLogSize = 15360;
     if (combinedLogs.length > maxLogSize) {
-      combinedLogs = "...(truncated)\n" + combinedLogs.slice(-maxLogSize);
+      combinedLogs =
+        stepLogSections.length > 0
+          ? truncateFailedStepLogs(stepLogSections, maxLogSize)
+          : "...(truncated)\n" + combinedLogs.slice(-maxLogSize);
     }
 
     return {

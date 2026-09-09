@@ -14,7 +14,11 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 // ---------------------------------------------------------------------------
 // Module mocks — must come before any import that transitively loads them.
 // ---------------------------------------------------------------------------
-vi.mock("@/lib/db", () => ({ db: {} }));
+vi.mock("@/lib/db", () => ({
+  db: {
+    workspace: { findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []) },
+  },
+}));
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn() },
   getWorkspaceChannelName: vi.fn(() => "ch"),
@@ -53,6 +57,7 @@ vi.mock("@/lib/ai/connectionTools", () => ({ buildConnectionTools: vi.fn(() => (
 vi.mock("@/lib/ai/canvasTools", () => ({ buildCanvasTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/initiativeTools", () => ({ buildInitiativeTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/researchTools", () => ({ buildResearchTools: vi.fn(() => ({})) }));
+vi.mock("@/lib/ai/htmlArtifactTools", () => ({ buildHtmlArtifactTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/infraTools", () => ({ buildInfraTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/graphWalkerTools", () => ({ buildGraphWalkerTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/graphWalkDispatchTools", () => ({ buildGraphWalkDispatchTools: vi.fn(() => ({})) }));
@@ -68,6 +73,16 @@ vi.mock("@/lib/ai/message-sanitizer", () => ({
 vi.mock("@/lib/ai/provider", () => ({
   getModel: vi.fn(() => ({ modelId: "mock-model" })),
   getApiKeyForProvider: vi.fn(() => "api-key"),
+  WEB_SEARCH_TOOL_NAME: "web_search",
+  createWebSearch: vi.fn(() => ({
+    tool: { description: "mock web_search", execute: vi.fn() },
+    backend: "anthropic",
+    native: true,
+    results: [],
+    capture: vi.fn(),
+    promptSnippet: "",
+    formatOutput: (markdown: string) => ({ content: markdown, converted: 0, skipped: 0 }),
+  })),
 }));
 vi.mock("aieo", () => ({ getProviderOptions: vi.fn(() => ({})) }));
 vi.mock("@/services/bifrost/orchestrator", () => ({
@@ -90,6 +105,7 @@ vi.mock("@/lib/constants/prompt", () => ({
   getPlannerCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
+  getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
   getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
   getWorkflowsCapabilitySnippet: vi.fn(() => ""),

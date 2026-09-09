@@ -4,6 +4,7 @@ import { EncryptionService, isEncrypted } from "@/lib/encryption";
 import {
   getSwarmCmdJwt,
   swarmCmdRequest,
+  SwarmAuthError,
   SwarmCmdConfigError,
   type SwarmCmdResponse,
 } from "./cmd";
@@ -55,7 +56,7 @@ const COOLDOWN_KEY_PREFIX = "admin:swarms:host-storage:";
  * authenticating — this is the SSRF guard that keeps a tampered `swarmUrl` DB
  * row from receiving our credentials or pointing us at internal infrastructure.
  */
-const ALLOWED_SWARM_HOST_SUFFIXES = [".sphinx.chat"];
+export const ALLOWED_SWARM_HOST_SUFFIXES = [".sphinx.chat"];
 
 export type HostStorageReadOutcome =
   | "fresh"
@@ -94,6 +95,8 @@ export interface HostStorageReadResult {
   reasonCode?: HostStorageReadReasonCode;
   /** True only when the reading was served from the Hive cooldown cache. */
   cached: boolean;
+  /** Present on recovery-eligible failures (`DECRYPT_FAILED`, `AUTH_FAILED`) so the admin recovery UI can target the workspace. */
+  workspaceId?: string;
 }
 
 const encryptionService = EncryptionService.getInstance();
@@ -117,12 +120,15 @@ function result(
   reasonCode: HostStorageReadReasonCode | undefined,
   swarmId: string | null,
   instanceId: string,
+  workspaceId?: string | null,
 ): HostStorageReadResult {
   if (reasonCode) logFailure(swarmId, instanceId, reasonCode);
-  return { outcome, reasonCode, cached: false };
+  return workspaceId
+    ? { outcome, reasonCode, cached: false, workspaceId }
+    : { outcome, reasonCode, cached: false };
 }
 
-function isAbortErrorLike(error: unknown): boolean {
+export function isAbortErrorLike(error: unknown): boolean {
   return (
     (error instanceof Error && error.name === "AbortError") ||
     (typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ABORT_ERR")
@@ -135,7 +141,7 @@ function isAbortErrorLike(error: unknown): boolean {
  * plaintext or corrupt stored password must surface as DECRYPT_FAILED, never
  * become a normal-looking failed login against the swarm.
  */
-function isEncryptedEnvelope(stored: string): boolean {
+export function isEncryptedEnvelope(stored: string): boolean {
   try {
     return isEncrypted(JSON.parse(stored));
   } catch {
@@ -144,7 +150,7 @@ function isEncryptedEnvelope(stored: string): boolean {
 }
 
 /** Parse a swarm URL from the DB row down to its hostname (http(s) only). */
-function resolveSwarmHost(swarmUrl: string): string | null {
+export function resolveSwarmHost(swarmUrl: string): string | null {
   try {
     const url = new URL(swarmUrl);
     if (url.protocol !== "https:" && url.protocol !== "http:") return null;
@@ -154,7 +160,7 @@ function resolveSwarmHost(swarmUrl: string): string | null {
   }
 }
 
-function isAllowedSwarmHost(hostname: string): boolean {
+export function isAllowedSwarmHost(hostname: string): boolean {
   return ALLOWED_SWARM_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix));
 }
 
@@ -239,6 +245,7 @@ export async function readHostStorage(instanceId: string): Promise<HostStorageRe
       id: true,
       swarmUrl: true,
       swarmPassword: true,
+      workspaceId: true,
       workspace: { select: { deleted: true } },
     },
   });
@@ -272,13 +279,13 @@ export async function readHostStorage(instanceId: string): Promise<HostStorageRe
 
   // 6. Credentials — DB path only.
   if (!isEncryptedEnvelope(swarm.swarmPassword)) {
-    return result("failed", "DECRYPT_FAILED", swarm.id, instanceId);
+    return result("failed", "DECRYPT_FAILED", swarm.id, instanceId, swarm.workspaceId);
   }
   let password: string;
   try {
     password = encryptionService.decryptField("swarmPassword", swarm.swarmPassword);
   } catch {
-    return result("failed", "DECRYPT_FAILED", swarm.id, instanceId);
+    return result("failed", "DECRYPT_FAILED", swarm.id, instanceId, swarm.workspaceId);
   }
 
   // 7. Login. getSwarmCmdJwt throws with the swarm's raw response text
@@ -293,7 +300,13 @@ export async function readHostStorage(instanceId: string): Promise<HostStorageRe
     if (isAbortErrorLike(error)) {
       return result("unreachable", "TIMEOUT", swarm.id, instanceId);
     }
-    return result("failed", "AUTH_FAILED", swarm.id, instanceId);
+    if (error instanceof SwarmAuthError && error.status === 401) {
+      return result("failed", "AUTH_FAILED", swarm.id, instanceId, swarm.workspaceId);
+    }
+    if (error instanceof SwarmAuthError) {
+      return result("unreachable", `HTTP_${error.status}`, swarm.id, instanceId);
+    }
+    return result("unreachable", "UNREACHABLE", swarm.id, instanceId);
   }
 
   // 8. Read + parse via the foundation ticket. `swarmCmdRequest` and

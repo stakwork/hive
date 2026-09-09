@@ -116,8 +116,9 @@ export function formatPRSummaryMessage(
  */
 export async function sendToSphinx(
   sphinxConfig: SphinxConfig,
-  message: string
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  message: string,
+  signal?: AbortSignal,
+): Promise<{ success: boolean; messageId?: string; error?: string; statusCode?: number }> {
   try {
     const response = await fetch(config.SPHINX_API_URL, {
       method: "POST",
@@ -131,11 +132,16 @@ export async function sendToSphinx(
         content: message,
         action: "broadcast",
       }),
+      signal,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Sphinx API error: ${response.status} - ${errorText}`);
+      const err = Object.assign(
+        new Error(`Sphinx API error: ${response.status} - ${errorText}`),
+        { statusCode: response.status },
+      );
+      throw err;
     }
 
     const result = await response.json();
@@ -153,9 +159,16 @@ export async function sendToSphinx(
     return { success: true, messageId: result.message_id };
   } catch (error) {
     logger.error("[SPHINX] Error sending message", "SPHINX", { error });
+    const statusCode =
+      error instanceof Error &&
+      "statusCode" in error &&
+      typeof (error as { statusCode?: unknown }).statusCode === "number"
+        ? (error as { statusCode: number }).statusCode
+        : undefined;
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
+      statusCode,
     };
   }
 }

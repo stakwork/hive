@@ -60,6 +60,39 @@ export type RawJarvisNode = {
 };
 
 /**
+ * Convert a Jarvis `date_added_to_graph` epoch stamp (number or numeric
+ * string) to ISO; null when absent or unparseable.
+ *
+ * The field may be epoch **milliseconds** (canonical Jarvis writes, e.g.
+ * `int(time.time() * 1000)`) or legacy epoch **seconds** (older writes).
+ * Mirrors Jarvis `TimeFormatter.epoch_value_to_ms` in
+ * `jarvis-backend/api/helper/time_formatter.py`: values greater than `1e12`
+ * are treated as already-milliseconds (epoch-seconds does not reach `1e12`
+ * until year ~33k), everything else is treated as legacy seconds and
+ * multiplied by 1000.
+ */
+export function graphEpochToIso(raw: number | string | null | undefined): string | null {
+  if (raw == null || raw === "") return null;
+  let value: number;
+  if (typeof raw === "number") {
+    value = raw;
+  } else {
+    const trimmed = raw.trim();
+    if (trimmed === "") return null;
+    // Whole-string parse: Number() rejects ISO-like / prefix-numeric
+    // garbage that parseFloat would silently accept (e.g. "2024-07-03T…" → 2024).
+    value = Number(trimmed);
+  }
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const ms = value > 1e12 ? value : value * 1000;
+  try {
+    return new Date(ms).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Parse n_passed/n_total from judge_notes as a fallback for older hive-written nodes
  * whose properties don't carry these fields.
  * Format: "{n_passed}/{n_total} criteria passed…"

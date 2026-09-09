@@ -4,6 +4,8 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
+import { makeConsolidatedRunRow } from "@/__tests__/support/factories";
 
 globalThis.React = React;
 
@@ -141,23 +143,11 @@ vi.mock("@/hooks/useLegalBenchmarkRunList", () => ({
   })),
 }));
 
-// useLegalBenchmarkRun — RecursionCard calls this to poll the consolidated run
-// status. Use vi.fn() so per-test overrides are possible.
-const mockUseLegalBenchmarkRun = vi.fn(() => ({
-  run: null,
-  isLoading: false,
-  isStale: false,
-  refetch: vi.fn(),
-}));
-vi.mock("@/hooks/useLegalBenchmarkRun", () => ({
-  useLegalBenchmarkRun: (...args: unknown[]) => mockUseLegalBenchmarkRun(...args),
-}));
-
 global.fetch = vi.fn();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeEntry(overrides: Partial<{ refId: string; id: string; name: string; recursion: boolean }> = {}) {
+function makeEntry(overrides: Partial<RecursionEntry> = {}): RecursionEntry {
   return {
     refId: "ref-abc",
     id: "antitrust/task-1",
@@ -247,6 +237,8 @@ function mockFetchFail(status = 500, error = "Graph error") {
 // ─── Component under test ──────────────────────────────────────────────────────
 
 import { RecursionList } from "@/components/legal/RecursionBox";
+import { formatDistanceToNow } from "date-fns";
+import { graphEpochToIso } from "@/lib/harvey-lab/eval-normalizers";
 
 // ─── RecursionCard (via RecursionList) ────────────────────────────────────────
 
@@ -655,6 +647,37 @@ describe("RecursionList", () => {
     expect(text).toMatch(/failing criteria/i);
   });
 
+  it("orders cards by when the EvalSet was added to the graph, newest first", () => {
+    const entries = [
+      makeEntry({ refId: "r-old", id: "slug-old", name: "Oldest Task", dateAddedToGraph: "2024-01-01T00:00:00.000Z" }),
+      makeEntry({ refId: "r-new", id: "slug-new", name: "Newest Task", dateAddedToGraph: "2026-08-01T00:00:00.000Z" }),
+      makeEntry({ refId: "r-mid", id: "slug-mid", name: "Middle Task", dateAddedToGraph: "2025-06-01T00:00:00.000Z" }),
+    ];
+    render(
+      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
+    );
+    const names = screen.getAllByText(/Task$/).map((el) => el.textContent);
+    expect(names).toEqual(["Newest Task", "Middle Task", "Oldest Task"]);
+  });
+
+  it("falls back to the latest run time without a graph timestamp; entries with neither sink", () => {
+    const entries = [
+      makeEntry({ refId: "r-none", id: "slug-none", name: "Undated Task" }),
+      makeEntry({
+        refId: "r-run",
+        id: "slug-run",
+        name: "Ran Task",
+        latestRun: { n_passed: 1, n_total: 2, runAt: "2026-08-01T00:00:00.000Z" },
+      }),
+      makeEntry({ refId: "r-graph", id: "slug-graph", name: "Stamped Task", dateAddedToGraph: "2025-08-24T00:00:00.000Z" }),
+    ];
+    render(
+      <RecursionList entries={entries} isLoading={false} error={null} refetch={mockRefetch} allRuns={[]} />,
+    );
+    const names = screen.getAllByText(/Task$/).map((el) => el.textContent);
+    expect(names).toEqual(["Ran Task", "Stamped Task", "Undated Task"]);
+  });
+
   it("renders a card per entry", () => {
     const entries = [
       makeEntry({ refId: "r1", id: "slug-1", name: "Task One" }),
@@ -691,6 +714,193 @@ describe("RecursionList", () => {
     expect(screen.queryByText("Active")).toBeNull();
     expect(screen.queryByText("Running")).toBeNull();
     expect(screen.queryByText("Inactive")).toBeNull();
+  });
+});
+
+// ─── Relative enrollment / last-run times ────────────────────────────────────
+
+describe("RecursionCard — relative enrollment and last-run times", () => {
+  const mockRefetch = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRefetch.mockResolvedValue(undefined);
+    mockHistoryLoaded();
+    mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
+  });
+
+  function renderEntries(entries: RecursionEntry[]) {
+    render(
+      <RecursionList
+        entries={entries}
+        isLoading={false}
+        error={null}
+        refetch={mockRefetch}
+        allRuns={[]}
+      />,
+    );
+  }
+
+  it("shows original-task relative time from dateAddedToGraph, distinct from last recursion", () => {
+    renderEntries([
+      makeEntry({
+        dateAddedToGraph: "2024-01-15T00:00:00.000Z",
+        latestRun: { n_passed: 1, n_total: 2, runAt: "2024-06-01T00:00:00.000Z" },
+      }),
+    ]);
+
+    const enrollment = screen.getByTestId("original-enrollment-time");
+    expect(enrollment.textContent).toMatch(/^Original task · /);
+    expect(enrollment.textContent).toMatch(/ago/);
+    expect(enrollment.textContent).not.toMatch(/Last recursion/);
+    expect(enrollment.getAttribute("title")).toBeNull();
+
+    const lastRun = screen.getByTestId("last-recursion-time");
+    expect(lastRun.textContent).toMatch(/^Last recursion · /);
+    expect(lastRun.textContent).toMatch(/ago/);
+    expect(lastRun.textContent).not.toMatch(/Original task/);
+  });
+
+  it("shows last-recursion relative time from latestRun.runAt while collapsed", () => {
+    renderEntries([
+      makeEntry({
+        latestRun: { n_passed: 3, n_total: 5, runAt: "2024-06-01T00:00:00.000Z" },
+      }),
+    ]);
+
+    expect(screen.queryByTestId("original-enrollment-time")).toBeNull();
+    const lastRun = screen.getByTestId("last-recursion-time");
+    expect(lastRun.textContent).toMatch(/^Last recursion · /);
+    expect(lastRun.textContent).toMatch(/ago/);
+    expect(lastRun.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(lastRun.textContent).not.toMatch(/\d{1,2}:\d{2}/);
+    expect(screen.queryByTestId("expand-toggle")).toBeTruthy();
+    expect(screen.queryByTestId("hill-climb-chart")).toBeNull();
+  });
+
+  it("expanded card uses max converted attempt date_added_to_graph over latestRun.runAt", async () => {
+    const olderRunAt = "2024-01-01T00:00:00.000Z";
+    mockHistoryLoaded([
+      makeOutput(28, 42, 0),
+      makeOutput(34, 42, 1),
+      makeOutput(20, 42, 2),
+    ]);
+    renderEntries([
+      makeEntry({
+        dateAddedToGraph: "2023-12-01T00:00:00.000Z",
+        latestRun: { n_passed: 34, n_total: 42, runAt: olderRunAt },
+      }),
+    ]);
+
+    fireEvent.click(screen.getByTestId("expand-toggle"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hill-climb-chart")).toBeTruthy();
+    });
+
+    const newestEpoch = String(1720000000 + 2 * 86400);
+    const newestIso = graphEpochToIso(newestEpoch);
+    expect(newestIso).toBeTruthy();
+    const expected = formatDistanceToNow(new Date(newestIso!), { addSuffix: true });
+
+    const lastRun = screen.getByTestId("last-recursion-time");
+    expect(lastRun.textContent).toBe(`Last recursion · ${expected}`);
+    expect(lastRun.textContent).toMatch(/ago/);
+
+    const fallbackExpected = formatDistanceToNow(new Date(olderRunAt), { addSuffix: true });
+    expect(lastRun.textContent).not.toBe(`Last recursion · ${fallbackExpected}`);
+  });
+
+  it("omits each label independently when its stamp is missing, empty, or unparseable", () => {
+    expect(() => {
+      renderEntries([
+        makeEntry({
+          refId: "r-bad",
+          id: "slug-bad",
+          name: "Bad Stamps Task",
+          dateAddedToGraph: "not-a-date",
+          latestRun: { n_passed: 1, n_total: 2, runAt: "totally-invalid" },
+        }),
+      ]);
+    }).not.toThrow();
+
+    expect(screen.queryByTestId("original-enrollment-time")).toBeNull();
+    expect(screen.queryByTestId("last-recursion-time")).toBeNull();
+  });
+
+  it("omits enrollment when dateAddedToGraph is empty and does not fall back to latestRun", () => {
+    renderEntries([
+      makeEntry({
+        dateAddedToGraph: "",
+        latestRun: { n_passed: 1, n_total: 2, runAt: "2024-06-01T00:00:00.000Z" },
+      }),
+    ]);
+
+    expect(screen.queryByTestId("original-enrollment-time")).toBeNull();
+    expect(screen.getByTestId("last-recursion-time").textContent).toMatch(/Last recursion · .*ago/);
+  });
+
+  it("converts leftover epoch latestRun.runAt instead of throwing Invalid Date", () => {
+    expect(() => {
+      renderEntries([
+        makeEntry({
+          latestRun: { n_passed: 7, n_total: 10, runAt: "1700000000" },
+        }),
+      ]);
+    }).not.toThrow();
+
+    const lastRun = screen.getByTestId("last-recursion-time");
+    expect(lastRun.textContent).toMatch(/^Last recursion · /);
+    expect(lastRun.textContent).toMatch(/ago/);
+    expect(lastRun.textContent).not.toMatch(/1700000000/);
+    expect(lastRun.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it("converts leftover millisecond stamps instead of showing year-58000 copy", () => {
+    const msStamp = "1788527805693";
+    const expected = formatDistanceToNow(new Date(1788527805693), { addSuffix: true });
+
+    expect(() => {
+      renderEntries([
+        makeEntry({
+          dateAddedToGraph: msStamp,
+          latestRun: { n_passed: 7, n_total: 10, runAt: msStamp },
+        }),
+      ]);
+    }).not.toThrow();
+
+    const enrollment = screen.getByTestId("original-enrollment-time");
+    expect(enrollment.textContent).toBe(`Original task · ${expected}`);
+    expect(enrollment.textContent).not.toMatch(/in about \d+ years/);
+
+    const lastRun = screen.getByTestId("last-recursion-time");
+    expect(lastRun.textContent).toBe(`Last recursion · ${expected}`);
+    expect(lastRun.textContent).not.toMatch(/in about \d+ years/);
+    expect(lastRun.textContent).not.toMatch(/58000/);
+  });
+
+  it("falls back to latestRun.runAt when expanded attempts have no convertible stamp", async () => {
+    mockHistoryLoaded([
+      { ...makeOutput(28, 42, 0), date_added_to_graph: "not-an-epoch" },
+    ]);
+    renderEntries([
+      makeEntry({
+        latestRun: { n_passed: 28, n_total: 42, runAt: "2024-06-01T00:00:00.000Z" },
+      }),
+    ]);
+
+    fireEvent.click(screen.getByTestId("expand-toggle"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hill-climb-chart")).toBeTruthy();
+    });
+
+    const expected = formatDistanceToNow(new Date("2024-06-01T00:00:00.000Z"), {
+      addSuffix: true,
+    });
+    expect(screen.getByTestId("last-recursion-time").textContent).toBe(
+      `Last recursion · ${expected}`,
+    );
   });
 });
 
@@ -953,46 +1163,13 @@ describe("RecursionCard — allRuns prop (consolidated-run detection)", () => {
     mockRefetch.mockResolvedValue(undefined);
     mockHistoryLoaded();
     mockUseBenchmarkRubrics.mockReturnValue({ rubrics: null });
-    // Default: no run
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: null,
-      isLoading: false,
-      isStale: false,
-      refetch: vi.fn(),
-    });
   });
 
-  function makeConsolidatedRow(overrides: {
-    id?: string;
-    taskSlug?: string;
-    status?: import("@prisma/client").WorkflowStatus;
-    hasReport?: boolean;
-  } = {}): import("@/hooks/useLegalBenchmarkRunList").BenchmarkRunListRow {
-    return {
-      id: overrides.id ?? "con-run-1",
-      workspaceId: "ws-1",
-      runType: "consolidated" as const,
-      pipeline: "LEGAL_BENCHMARK_CONSOLIDATED" as import("@prisma/client").StakworkRunType,
-      status: overrides.status ?? "PENDING" as import("@prisma/client").WorkflowStatus,
-      projectId: null,
-      taskSlug: overrides.taskSlug ?? "antitrust/task-1",
-      taskTitle: "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      hasReport: overrides.hasReport ?? false,
-    };
-  }
-
   it("detects a PENDING in-flight consolidated run via the allRuns prop", () => {
-    // The card finds existingConsolidated from allRuns and seeds effectiveConsolidatedRunId.
-    // useLegalBenchmarkRun is then called with that id and returns hasReport=false,
-    // which causes the "Generating…" spinner to appear.
-    mockUseLegalBenchmarkRun.mockImplementation((runId: string | null) =>
-      runId ? { run: { hasReport: false }, isLoading: false, isStale: false, refetch: vi.fn() }
-            : { run: null, isLoading: false, isStale: false, refetch: vi.fn() },
-    );
-
-    const run = makeConsolidatedRow({ id: "existing-1", taskSlug: "antitrust/task-1", status: "PENDING" as import("@prisma/client").WorkflowStatus });
+    // The card finds existingConsolidated in allRuns, seeds
+    // effectiveConsolidatedRunId from it, and reads the same row back for its
+    // status — no report yet, so the "Generating…" spinner appears.
+    const run = makeConsolidatedRunRow({ id: "existing-1", taskSlug: "antitrust/task-1" });
 
     render(
       <RecursionList
@@ -1008,7 +1185,7 @@ describe("RecursionCard — allRuns prop (consolidated-run detection)", () => {
   });
 
   it("ignores consolidated runs for other task slugs", () => {
-    const run = makeConsolidatedRow({ id: "other-1", taskSlug: "contracts/other-task" });
+    const run = makeConsolidatedRunRow({ id: "other-1", taskSlug: "contracts/other-task" });
 
     render(
       <RecursionList
@@ -1024,11 +1201,7 @@ describe("RecursionCard — allRuns prop (consolidated-run detection)", () => {
   });
 
   it("ignores runs with hasReport=true (already completed)", () => {
-    mockUseLegalBenchmarkRun.mockReturnValue({
-      run: null, isLoading: false, isStale: false, refetch: vi.fn(),
-    });
-
-    const run = makeConsolidatedRow({ taskSlug: "antitrust/task-1", hasReport: true });
+    const run = makeConsolidatedRunRow({ taskSlug: "antitrust/task-1", hasReport: true });
 
     render(
       <RecursionList
@@ -1046,7 +1219,6 @@ describe("RecursionCard — allRuns prop (consolidated-run detection)", () => {
   it("useLegalBenchmarkRunList is NOT called by RecursionList or RecursionCard", () => {
     // After the lift, these components receive allRuns as a prop and must not
     // call the hook themselves. The mock's call count must remain 0 for N cards.
-    vi.mocked(mockUseLegalBenchmarkRun); // keep linter happy — actual assertion below
     const runListMock = vi.mocked(
       (vi.getMockImplementation as unknown as () => {
         useLegalBenchmarkRunList: ReturnType<typeof vi.fn>;

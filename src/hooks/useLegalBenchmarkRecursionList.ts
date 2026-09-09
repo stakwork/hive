@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+// The /recursion route returns listRecursionEvalSets' entries verbatim.
+import type { RecursionEvalSetEntry } from "@/services/legal-benchmark-recursion";
 
 export interface RecursionEntry {
   refId: string;
@@ -11,6 +13,8 @@ export interface RecursionEntry {
   contestedCount?: number;
   latestRun?: { n_passed: number | null; n_total: number | null; runAt: string | null } | null;
   fixChainDepth?: number;
+  /** ISO timestamp of when the EvalSet was added to the graph; drives list order. */
+  dateAddedToGraph?: string | null;
 }
 
 interface UseLegalBenchmarkRecursionListResult {
@@ -18,8 +22,6 @@ interface UseLegalBenchmarkRecursionListResult {
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  /** True when listRecursionEvalSets returned partial results (Sources 2/3 failed). */
-  enrollmentPartial?: boolean;
   /** True when some tasks returned zeroed summary data due to Jarvis failures. */
   summaryPartial?: boolean;
 }
@@ -46,7 +48,6 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
   const [entries, setEntries] = useState<RecursionEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [enrollmentPartial, setEnrollmentPartial] = useState<boolean | undefined>(undefined);
   const [summaryPartial, setSummaryPartial] = useState<boolean | undefined>(undefined);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -54,17 +55,16 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
   const summaryMapRef = useRef<Map<string, SummaryResponseEntry>>(new Map());
 
   /** Merge enrollment-list entries with any already-resolved summary fields. */
-  function mergeWithSummary(
-    rawItems: Array<{ ref_id: string; id: string; name: string; reason?: string; recursion?: boolean }>,
-  ): RecursionEntry[] {
+  function mergeWithSummary(rawItems: RecursionEvalSetEntry[]): RecursionEntry[] {
     return rawItems.map((item) => {
       const summary = summaryMapRef.current.get(item.ref_id);
       return {
         refId: item.ref_id,
         id: item.id,
         name: item.name,
-        reason: item.reason as RecursionEntry["reason"] | undefined,
+        reason: item.reason,
         recursion: item.recursion === true,
+        dateAddedToGraph: item.dateAddedToGraph ?? null,
         ...(summary
           ? {
               rubricCount: summary.rubricCount,
@@ -84,10 +84,7 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? "Failed to fetch recursion entries");
       }
-      const body = (await res.json()) as {
-        success: boolean;
-        data: Array<{ ref_id: string; id: string; name: string; reason?: string; recursion?: boolean }>;
-      };
+      const body = (await res.json()) as { success: boolean; data: RecursionEvalSetEntry[] };
       setEntries(mergeWithSummary(body.data ?? []));
       setError(null);
     } catch (err) {
@@ -127,7 +124,6 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
         const body = (await res.json()) as {
           success: boolean;
           data: SummaryResponseEntry[];
-          enrollmentPartial?: boolean;
           summaryPartial?: boolean;
         };
         if (!body.success || !Array.isArray(body.data)) return;
@@ -155,7 +151,6 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
           }),
         );
 
-        if (body.enrollmentPartial) setEnrollmentPartial(true);
         if (body.summaryPartial) setSummaryPartial(true);
       } catch {
         // Non-fatal: the tab still works without summary data; cards lazy-load on demand.
@@ -166,5 +161,5 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
     };
   }, []); // Intentionally empty: one-time mount fetch only.
 
-  return { entries, isLoading, error, refetch: fetchEntries, enrollmentPartial, summaryPartial };
+  return { entries, isLoading, error, refetch: fetchEntries, summaryPartial };
 }

@@ -52,6 +52,7 @@ export async function GET(
         sourceControlOrgId: org.id,
         userId: userOrResponse.id,
         source: "org-canvas",
+        archivedAt: null,
       },
       orderBy: { lastMessageAt: "desc" },
       take: limit,

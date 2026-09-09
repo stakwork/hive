@@ -188,3 +188,26 @@ export const RESEARCH_ROOT_ROW_STEP = RESEARCH_W + ROW_GAP;
 export const RESEARCH_INIT_ROW_Y = LOOSE_FEATURE_INIT_ROW_Y + FEATURE_H + 60;
 export const RESEARCH_INIT_ROW_X0 = 40;
 export const RESEARCH_INIT_ROW_STEP = RESEARCH_W + ROW_GAP;
+
+// ---------------------------------------------------------------------------
+// HTML page card sizing + default placement.
+//
+// HTML pages project on the org root canvas only (initiative-canvas
+// placement is a separate ticket — no `HTML_INIT_ROW_*` here). The
+// card size matches research / loose-feature (260×100) so an HTML
+// page and a research doc read as visually equivalent floating
+// cards — same spatial weight, distinguished by the rose accent +
+// "HTML" kicker (research is emerald).
+//
+// Default-render row: pages that don't have a saved position land
+// underneath the research row so the two projected bands don't
+// overlap on first render.
+// ---------------------------------------------------------------------------
+
+export const HTML_W = FEATURE_W;
+export const HTML_H = FEATURE_H;
+
+/** HTML-page row on the root canvas — under the research row. */
+export const HTML_ROOT_ROW_Y = RESEARCH_ROOT_ROW_Y + RESEARCH_H + 60;
+export const HTML_ROOT_ROW_X0 = 40;
+export const HTML_ROOT_ROW_STEP = HTML_W + ROW_GAP;

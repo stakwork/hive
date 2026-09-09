@@ -160,6 +160,50 @@ describe("CascadeTrace", () => {
     expect(screen.queryByTestId("node-peek-view-in-graph")).toBeNull();
   });
 
+  it("serves a concept peek from an embedded map without fetching", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const peeks = new Map([
+      [
+        "onto-1",
+        {
+          state: "done" as const,
+          payload: { ref_id: "onto-1", name: "wfa-ontology", properties: { docs: "Captured doctrine." } },
+        },
+      ],
+    ]);
+
+    render(<CascadeTrace model={mockModel()} peeks={peeks} />);
+    fireEvent.click(screen.getByTestId("cascade-concept-onto-1"));
+
+    const peek = await screen.findByTestId("cascade-concept-peek");
+    expect(peek.textContent).toContain("Captured doctrine.");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("explains an embedded map miss instead of falling back to a fetch", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CascadeTrace model={mockModel()} workspaceSlug="acme" peeks={new Map()} />);
+    fireEvent.click(screen.getByTestId("cascade-concept-onto-1"));
+
+    const peek = await screen.findByTestId("cascade-concept-peek");
+    expect(peek.textContent).toContain("not captured when the trace was exported");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("renders the header action next to expand all", () => {
+    render(
+      <CascadeTrace
+        model={mockModel()}
+        headerAction={<button data-testid="cascade-download">Download HTML</button>}
+      />,
+    );
+    const strip = screen.getByTestId("cascade-summary-strip");
+    expect(strip.contains(screen.getByTestId("cascade-download"))).toBe(true);
+  });
+
   it("expand all unrolls every pill; collapse all folds them", () => {
     render(<CascadeTrace model={mockModel()} />);
 

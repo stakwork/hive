@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type Components } from "react-markdown";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { FileIcon } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { CanvasAttachment } from "../_state/canvasChatStore";
 import { CanvasDeeplinkChip } from "./CanvasDeeplinkChip";
 
@@ -153,6 +154,8 @@ export function SidebarChatMessage({
   }, [router, pathname, searchParams]);
 
   const hasContent = message.content.trim();
+  // A settled reply carries a copy button top-right, so its text keeps clear of it.
+  const showCopy = !isUser && !isStreaming;
   const hasAttachments =
     message.attachments && message.attachments.length > 0;
 
@@ -168,15 +171,20 @@ export function SidebarChatMessage({
         transition={{ duration: 0.2 }}
         className={`flex w-full flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}
       >
-        {/* Text bubble */}
+        {/* Text bubble; a reply carries a copy button that shows on hover. */}
         {hasContent && (
-          <div className={`${isUser ? "max-w-[85%]" : "w-full"}`}>
+          <div className={`${isUser ? "max-w-[85%]" : "group relative w-full"}`}>
+            {showCopy && (
+              <CopyButton
+                value={message.content}
+                label="Copy reply"
+                className="absolute right-1.5 top-1.5 rounded-md bg-background/90 p-1 opacity-0 shadow-sm focus-visible:opacity-100 group-hover:opacity-100"
+              />
+            )}
             <div
               className={`rounded-2xl px-3 py-2 shadow-sm ${
-                isUser
-                  ? "bg-primary text-primary-foreground inline-block"
-                  : "bg-muted/40"
-              }`}
+                isUser ? "bg-primary text-primary-foreground inline-block" : "bg-muted/40"
+              } ${showCopy ? "pr-8" : ""}`}
             >
               {isStreaming ? (
                 <div

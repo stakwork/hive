@@ -58,8 +58,9 @@ export async function forkCanvasConversation(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: rawMessages,
-        settings,
+        settings, // preserves titleSource when the source was LLM-titled
         source: "org-canvas",
+        title: sourceConv.title,
       }),
     },
   );
@@ -120,6 +121,7 @@ export async function forkCanvasConversation(
     sourceServerId, // forkedFromShareId
     hydrated.length, // ephemeralSeedCount — skip re-persisting copied history
     forkId,         // serverConversationId — bind directly to the fork row
+    typeof sourceConv.title === "string" ? sourceConv.title : null,
   );
 
   // ── 5. Return fork id ────────────────────────────────────────────────

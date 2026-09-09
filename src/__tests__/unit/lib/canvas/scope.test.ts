@@ -83,6 +83,10 @@ describe("isLiveId", () => {
     expect(isLiveId("milestone:abc")).toBe(true);
   });
 
+  it("recognizes the html: prefix as a live id", () => {
+    expect(isLiveId("html:cuid_page")).toBe(true);
+  });
+
   it("treats unprefixed ids as authored", () => {
     expect(isLiveId("some-random-id")).toBe(false);
     expect(isLiveId("nd_1234")).toBe(false);

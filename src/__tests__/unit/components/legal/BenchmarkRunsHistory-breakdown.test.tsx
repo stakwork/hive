@@ -126,8 +126,9 @@ function makeRun(overrides: Record<string, unknown> = {}) {
 
 function defaultMocks({ roster = null as unknown[] | null, graphOutput = null as Record<string, unknown> | null } = {}) {
   mockRecursionList.mockReturnValue({ entries: [] });
+  // Always keyed: an absent key means "roster still loading" to the component.
   const rostersMap = new Map();
-  if (roster) rostersMap.set("legal/task-abc", roster);
+  rostersMap.set("legal/task-abc", roster ?? null);
   mockRubricsMap.mockReturnValue(rostersMap);
   const graphMap = new Map();
   if (graphOutput) graphMap.set("legal/task-abc", [graphOutput]);

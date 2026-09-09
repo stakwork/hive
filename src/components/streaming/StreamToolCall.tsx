@@ -1,13 +1,251 @@
 "use client";
 
-import { useState } from "react";
+import React, { useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  Code,
+  FileText,
+  Globe,
+  Loader2,
+  Pencil,
+  ScrollText,
+  Search,
+  Send,
+  SquareFunction,
+  Terminal,
+  Waypoints,
+  type LucideIcon,
+} from "lucide-react";
 import type { StreamToolCall as StreamToolCallType } from "@/types/streaming";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { CopyButton } from "@/components/ui/copy-button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import {
+  isPlainObject,
+  isPrimitive,
+  tableColumns,
+  toJsonText,
+  toolCallInput,
+  toolCallPhase,
+  toolIconKey,
+  toolLabel,
+  type ToolCallPhase,
+  type ToolIconKey,
+} from "./toolCallValue";
 
-function renderOutput(output: unknown): string {
-  if (typeof output === "string") return output;
-  return "```json\n" + JSON.stringify(output, null, 2) + "\n```";
+/** The glyph for each kind of tool; a function call is the generic one. */
+const TOOL_ICONS: Record<ToolIconKey, LucideIcon> = {
+  web: Globe,
+  graph: Waypoints,
+  search: Search,
+  file: FileText,
+  edit: Pencil,
+  docs: BookOpen,
+  send: Send,
+  shell: Terminal,
+  logs: ScrollText,
+  code: Code,
+  generic: SquareFunction,
+};
+
+/** State first — a spinner while the call runs, amber when it failed — else the resting glyph. */
+export function ToolCallMarker({ phase, glyph: Glyph }: { phase: ToolCallPhase; glyph: LucideIcon }) {
+  if (phase === "running") {
+    return <Loader2 aria-label="Running" className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />;
+  }
+  if (phase === "error") {
+    return <AlertTriangle aria-label="Failed" className="h-3.5 w-3.5 shrink-0 text-amber-500" />;
+  }
+  return <Glyph aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
 }
+
+export function ToolCallChevron({ open }: { open: boolean }) {
+  const Icon = open ? ChevronDown : ChevronRight;
+  return <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
+}
+
+/** The row buttons share one shape: content-wide, so the chevron sits right after the words. */
+export const TOOL_ROW_CLASS =
+  "inline-flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs transition-colors";
+
+// ─── Values, laid out for reading ───────────────────────────────────────
+
+const TABLE_PREVIEW_ROWS = 8;
+const NESTING_LIMIT = 2;
+
+function cellText(cell: unknown): string {
+  return cell === undefined || cell === null ? "—" : String(cell);
+}
+
+function ValueTable({ rows, columns }: { rows: Record<string, unknown>[]; columns: string[] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? rows : rows.slice(0, TABLE_PREVIEW_ROWS);
+  return (
+    <div>
+      <Table className="text-xs">
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            {columns.map((column) => (
+              <TableHead key={column} className="h-auto px-0 pb-1 pr-3">
+                {column}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {shown.map((row, i) => (
+            <TableRow key={i} className="hover:bg-transparent">
+              {columns.map((column) => (
+                <TableCell key={column} className="px-0 py-1 pr-3 align-top break-words">
+                  {cellText(row[column])}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {rows.length > shown.length && (
+        <button
+          type="button"
+          onClick={() => setAll(true)}
+          className="mt-1 text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Show all {rows.length}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function KeyValueList({ entries, depth }: { entries: [string, unknown][]; depth: number }) {
+  if (entries.length === 0) return <span className="text-muted-foreground">empty</span>;
+  return (
+    <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1">
+      {entries.map(([key, value]) => (
+        <React.Fragment key={key}>
+          <dt className="text-muted-foreground">{key}</dt>
+          <dd className="min-w-0">
+            <ToolValue value={value} depth={depth + 1} />
+          </dd>
+        </React.Fragment>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * A tool's input or output as something to read rather than parse: fields
+ * as a key/value list, a list of records as a table, a list of words as a
+ * line; anything deeper or stranger falls back to JSON. Memoised because a
+ * streaming turn re-renders every open detail many times a second.
+ */
+const ToolValue = React.memo(function ToolValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
+  const columns = useMemo(() => tableColumns(value), [value]);
+  if (value === undefined) return null;
+  if (isPrimitive(value)) {
+    return <span className="whitespace-pre-wrap break-words">{cellText(value)}</span>;
+  }
+  if (columns) return <ValueTable rows={value as Record<string, unknown>[]} columns={columns} />;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-muted-foreground">empty</span>;
+    if (value.every(isPrimitive)) return <span className="break-words">{value.map(String).join(", ")}</span>;
+    if (depth < NESTING_LIMIT) {
+      return (
+        <ol className="list-decimal space-y-1 pl-4">
+          {value.map((item, i) => (
+            <li key={i}>
+              <ToolValue value={item} depth={depth + 1} />
+            </li>
+          ))}
+        </ol>
+      );
+    }
+  }
+  if (isPlainObject(value) && depth < NESTING_LIMIT) {
+    return <KeyValueList entries={Object.entries(value)} depth={depth} />;
+  }
+  return <pre className="whitespace-pre-wrap break-words font-mono text-[11px]">{toJsonText(value)}</pre>;
+});
+
+// ─── The detail under a row ─────────────────────────────────────────────
+
+/** One part of a call — Input, Output, Error — with its copy button and a raw JSON view. */
+function DetailSection({
+  label,
+  text,
+  rawAvailable = true,
+  children,
+}: {
+  label: string;
+  /** The part as text, for the clipboard and the raw view. */
+  text: string;
+  rawAvailable?: boolean;
+  children: React.ReactNode;
+}) {
+  const [raw, setRaw] = useState(false);
+  return (
+    <section className="min-w-0">
+      <header className="flex items-center gap-2">
+        <span className="mr-auto font-medium text-muted-foreground">{label}</span>
+        {rawAvailable && (
+          <button
+            type="button"
+            onClick={() => setRaw((r) => !r)}
+            aria-pressed={raw}
+            className={cn(
+              "rounded px-1 text-[11px] transition-colors hover:text-foreground",
+              raw ? "text-foreground" : "text-muted-foreground",
+            )}
+          >
+            Raw
+          </button>
+        )}
+        <CopyButton value={text} label={`Copy ${label.toLowerCase()}`} />
+      </header>
+      <div className="mt-1 max-h-64 overflow-auto">
+        {raw ? <pre className="whitespace-pre-wrap break-words font-mono text-[11px]">{text}</pre> : children}
+      </div>
+    </section>
+  );
+}
+
+function ToolCallDetail({ toolCall }: { toolCall: StreamToolCallType }) {
+  const { output, errorText } = toolCall;
+  const input = useMemo(() => toolCallInput(toolCall), [toolCall]);
+  const inputText = useMemo(() => toJsonText(input), [input]);
+  const outputText = useMemo(() => toJsonText(output), [output]);
+  return (
+    <div className="ml-1.5 mt-1 space-y-3 rounded-md bg-muted/30 px-3 py-2 text-xs">
+      {input !== undefined && (
+        <DetailSection label="Input" text={inputText} rawAvailable={typeof input !== "string"}>
+          <ToolValue value={input} />
+        </DetailSection>
+      )}
+      {output !== undefined && (
+        <DetailSection label="Output" text={outputText} rawAvailable={typeof output !== "string"}>
+          {typeof output === "string" ? (
+            <MarkdownRenderer variant="assistant" size="compact">
+              {output}
+            </MarkdownRenderer>
+          ) : (
+            <ToolValue value={output} />
+          )}
+        </DetailSection>
+      )}
+      {errorText && (
+        <DetailSection label="Error" text={errorText} rawAvailable={false}>
+          <p className="break-words text-amber-600 dark:text-amber-400">{errorText}</p>
+        </DetailSection>
+      )}
+    </div>
+  );
+}
+
+// ─── The row ────────────────────────────────────────────────────────────
 
 interface StreamToolCallProps {
   toolCall: StreamToolCallType;
@@ -19,83 +257,32 @@ interface StreamToolCallProps {
   expectsOutput?: boolean;
 }
 
-const WrenchIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="12"
-    height="12"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="shrink-0"
-  >
-    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />
-  </svg>
-);
-
-export function StreamToolCall({ toolCall, expectsOutput = true }: StreamToolCallProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  // If outputs aren't expected, consider tool complete once input is available
-  const isComplete = expectsOutput
-    ? toolCall.status === "output-available"
-    : toolCall.status === "output-available" || toolCall.status === "input-available";
-  const isError = toolCall.status === "input-error" || toolCall.status === "output-error";
-  const isRunning = !isComplete && !isError;
-
-  // Strip "developer__" prefix from tool name for display only
-  const displayName = toolCall.toolName.startsWith("developer__")
-    ? toolCall.toolName.replace("developer__", "")
-    : toolCall.toolName;
+/** One tool call as a row — its name, its state — that opens into its input, output and error. */
+export const StreamToolCall = React.memo(function StreamToolCall({
+  toolCall,
+  expectsOutput = true,
+}: StreamToolCallProps) {
+  const [open, setOpen] = useState(false);
+  const phase = toolCallPhase(toolCall, expectsOutput);
+  const { name, scope } = toolLabel(toolCall.toolName);
+  const hasDetail =
+    toolCall.input !== undefined || !!toolCall.inputText || toolCall.output !== undefined || !!toolCall.errorText;
 
   return (
     <div>
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted hover:bg-muted/80 transition-colors text-xs font-medium cursor-pointer"
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        disabled={!hasDetail}
+        className={cn(TOOL_ROW_CLASS, hasDetail ? "hover:bg-muted/60" : "cursor-default")}
       >
-        <WrenchIcon />
-        <span>{displayName}</span>
-        {isRunning && <span className="text-muted-foreground animate-pulse">...</span>}
-        {isComplete && <span className="text-muted-foreground">Complete</span>}
-        {isError && <span className="text-destructive">Error</span>}
+        <ToolCallMarker phase={phase} glyph={TOOL_ICONS[toolIconKey(toolCall.toolName)]} />
+        <span className="min-w-0 truncate text-foreground/90">{name}</span>
+        {scope && <span className="shrink-0 text-muted-foreground">· {scope}</span>}
+        {hasDetail && <ToolCallChevron open={open} />}
       </button>
-
-      {isExpanded && (
-        <div className="mt-2 ml-5 text-xs text-muted-foreground space-y-2 overflow-hidden">
-          {toolCall.inputText && (
-            <div>
-              <div className="font-semibold mb-1">Input:</div>
-              <div className="bg-muted/50 rounded p-2 font-mono text-[10px] whitespace-pre-wrap break-words">
-                {toolCall.inputText}
-              </div>
-            </div>
-          )}
-
-          {toolCall.output !== undefined && (
-            <div>
-              <div className="font-semibold mb-1">Output:</div>
-              <div className="bg-muted/50 rounded p-2 max-h-60 overflow-y-auto overflow-x-hidden">
-                <MarkdownRenderer variant="assistant" size="compact">
-                  {renderOutput(toolCall.output)}
-                </MarkdownRenderer>
-              </div>
-            </div>
-          )}
-
-          {toolCall.errorText && (
-            <div>
-              <div className="font-semibold mb-1 text-destructive">Error:</div>
-              <div className="bg-destructive/10 rounded p-2 text-destructive break-words">
-                {toolCall.errorText}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {open && <ToolCallDetail toolCall={toolCall} />}
     </div>
   );
-}
+});

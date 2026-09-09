@@ -34,6 +34,7 @@ vi.mock('@aws-sdk/client-ec2', () => ({
 // Import service at the top level — config is read at call time via the mutable mockConfig object
 import {
   listSuperadminInstances,
+  describeInstance,
   startInstance,
   stopInstance,
 } from '@/services/ec2';
@@ -75,6 +76,27 @@ describe('EC2 Service (USE_MOCKS=true)', () => {
 
   it('does not call AWS SDK when USE_MOCKS=true', async () => {
     await listSuperadminInstances();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('describeInstance returns the mapped mock instance on hit', async () => {
+    const result = await describeInstance('i-mock0000000001');
+
+    expect(mockListInstances).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      instanceId: 'i-mock0000000001',
+      name: 'swarm-node-1',
+      state: 'running',
+      instanceType: 't3.medium',
+      hiveWorkspace: null,
+    });
+    expect(result?.tags).toContainEqual({ key: 'Swarm', value: 'superadmin' });
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('describeInstance returns null on mock miss', async () => {
+    const result = await describeInstance('i-does-not-exist');
+    expect(result).toBeNull();
     expect(mockSend).not.toHaveBeenCalled();
   });
 });
@@ -153,5 +175,86 @@ describe('EC2 Service (USE_MOCKS=false)', () => {
   it('does not call mockEc2State when USE_MOCKS=false', async () => {
     await listSuperadminInstances();
     expect(mockListInstances).not.toHaveBeenCalled();
+  });
+
+  it('describeInstance issues a scoped single-instance DescribeInstancesCommand', async () => {
+    const { DescribeInstancesCommand } = await import('@aws-sdk/client-ec2');
+    await describeInstance('i-real000000001');
+
+    expect(DescribeInstancesCommand).toHaveBeenCalledWith({
+      InstanceIds: ['i-real000000001'],
+      Filters: [{ Name: 'tag:Swarm', Values: ['superadmin'] }],
+    });
+    expect(mockSend).toHaveBeenCalledOnce();
+    expect(mockListInstances).not.toHaveBeenCalled();
+  });
+
+  it('describeInstance maps a live AWS instance to Ec2InstanceInfo', async () => {
+    mockSend.mockResolvedValueOnce({
+      Reservations: [
+        {
+          Instances: [
+            {
+              InstanceId: 'i-real000000001',
+              State: { Name: 'running' },
+              InstanceType: 't3.medium',
+              LaunchTime: new Date('2026-01-01T00:00:00Z'),
+              PublicIpAddress: '1.2.3.4',
+              PrivateIpAddress: '10.0.0.1',
+              Tags: [
+                { Key: 'Swarm', Value: 'superadmin' },
+                { Key: 'Name', Value: 'prod-node-1' },
+                { Key: 'UserAssignedName', Value: 'prod-node-1' },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await describeInstance('i-real000000001');
+
+    expect(result).toMatchObject({
+      instanceId: 'i-real000000001',
+      name: 'prod-node-1',
+      state: 'running',
+      instanceType: 't3.medium',
+      publicIp: '1.2.3.4',
+      privateIp: '10.0.0.1',
+      hiveWorkspace: null,
+    });
+    expect(result?.tags).toContainEqual({ key: 'UserAssignedName', value: 'prod-node-1' });
+  });
+
+  it('describeInstance returns null for InvalidInstanceID.NotFound', async () => {
+    mockSend.mockRejectedValueOnce(
+      Object.assign(new Error('The instance ID does not exist'), {
+        name: 'InvalidInstanceID.NotFound',
+      }),
+    );
+
+    await expect(describeInstance('i-missing')).resolves.toBeNull();
+  });
+
+  it('describeInstance returns null for InvalidInstanceID.Malformed', async () => {
+    mockSend.mockRejectedValueOnce(
+      Object.assign(new Error('The instance ID is malformed'), {
+        name: 'InvalidInstanceID.Malformed',
+      }),
+    );
+
+    await expect(describeInstance('not-an-id')).resolves.toBeNull();
+  });
+
+  it('describeInstance returns null when Reservations are empty (non-superadmin-tagged)', async () => {
+    mockSend.mockResolvedValueOnce({ Reservations: [] });
+
+    await expect(describeInstance('i-other-account-instance')).resolves.toBeNull();
+  });
+
+  it('describeInstance rethrows unrelated AWS errors', async () => {
+    mockSend.mockRejectedValueOnce(new Error('AccessDenied'));
+
+    await expect(describeInstance('i-real000000001')).rejects.toThrow('AccessDenied');
   });
 });

@@ -25,6 +25,14 @@ vi.mock("@/services/swarm/cmd", () => ({
       this.name = "SwarmCmdConfigError";
     }
   },
+  SwarmAuthError: class SwarmAuthError extends Error {
+    readonly status: number;
+    constructor(status: number) {
+      super(`Swarm login failed (${status})`);
+      this.name = "SwarmAuthError";
+      this.status = status;
+    }
+  },
   getSwarmCmdJwt: mockGetJwt,
   swarmCmdRequest: mockCmdRequest,
 }));
@@ -39,6 +47,7 @@ vi.mock("@/lib/redis", () => ({
 }));
 
 const { readHostStorage } = await import("@/services/swarm/host-storage-read");
+const { SwarmAuthError } = await import("@/services/swarm/cmd");
 
 type Body = Record<string, unknown>;
 
@@ -159,6 +168,7 @@ describe("readHostStorage - Integration Tests", () => {
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("WORKSPACE_DELETED");
+    expect(result.workspaceId).toBeUndefined();
     expect(mockGetJwt).not.toHaveBeenCalled();
     expect(mockCmdRequest).not.toHaveBeenCalled();
   });
@@ -175,6 +185,7 @@ describe("readHostStorage - Integration Tests", () => {
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("DECRYPT_FAILED");
+    expect(result.workspaceId).toBe(swarm.workspaceId);
     expect(mockGetJwt).not.toHaveBeenCalled();
   });
 
@@ -245,15 +256,28 @@ describe("readHostStorage - Integration Tests", () => {
     expect(redisStore.size).toBe(0); // failures are not cached
   });
 
+  test("a 401 SwarmAuthError is AUTH_FAILED and attaches the swarm workspaceId", async () => {
+    const ec2Id = freshEc2Id();
+    const swarm = await createSwarmForInstance({ ec2Id });
+    mockGetJwt.mockRejectedValue(new SwarmAuthError(401));
+
+    const result = await readHostStorage(ec2Id);
+
+    expect(result.outcome).toBe("failed");
+    expect(result.reasonCode).toBe("AUTH_FAILED");
+    expect(result.workspaceId).toBe(swarm.workspaceId);
+  });
+
   test("no log line or returned value contains the raw body or raw JWT-login error text", async () => {
     const ec2Id = freshEc2Id();
     await createSwarmForInstance({ ec2Id });
 
-    // Login failure carrying raw swarm text in the message (as getSwarmCmdJwt does).
+    // Generic login failure carrying raw swarm text — not a credential miss.
     mockGetJwt.mockRejectedValue(new Error("Swarm login failed (401): RAW_LOGIN_ERROR_MARKER"));
     const authResult = await readHostStorage(ec2Id);
-    expect(authResult.outcome).toBe("failed");
-    expect(authResult.reasonCode).toBe("AUTH_FAILED");
+    expect(authResult.outcome).toBe("unreachable");
+    expect(authResult.reasonCode).toBe("UNREACHABLE");
+    expect(authResult.workspaceId).toBeUndefined();
 
     // Malformed body carrying a raw-body marker.
     mockGetJwt.mockResolvedValue("cmd-jwt");

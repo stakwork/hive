@@ -61,6 +61,30 @@ vi.mock("@/lib/github/pr-ci", () => ({
     failedChecks: ["unit-tests"],
     failedCheckLogs: {},
   }),
+  // Real implementation - buildFixPrompt (called from monitorSinglePR's dispatch
+  // path) depends on it; without this the mock returns undefined and
+  // buildFixPrompt throws before triggerFix is ever invoked.
+  inferFailedCommand: vi.fn((checkName: string, logs: string) => {
+    const commands: string[] = [];
+    const seen = new Set<string>();
+    for (const line of logs.split("\n")) {
+      const match = line.match(/(?:##\[group\]|::group::)Run (.+)$/);
+      if (match) {
+        const cmd = match[1].trim();
+        if (cmd && !seen.has(cmd)) {
+          seen.add(cmd);
+          commands.push(cmd);
+        }
+      }
+    }
+    if (commands.length > 0) return commands;
+    const trimmed = checkName.trim();
+    const prefixes = ["npm", "yarn", "pnpm", "npx", "pytest", "flake8", "eslint", "black", "ruff", "cargo", "go", "python", "make"];
+    if (prefixes.some((p) => trimmed === p || trimmed.startsWith(`${p} `)) || / run /.test(trimmed)) {
+      return [trimmed];
+    }
+    return null;
+  }),
 }));
 
 vi.mock("@octokit/rest", () => ({

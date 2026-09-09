@@ -89,11 +89,12 @@ import {
   isCodeChangeCapabilityEnabledForOrg,
 } from "@/lib/ai/capabilityGates";
 import { buildCodeChangeTools } from "@/lib/ai/codeChangeTools";
+import { buildHtmlArtifactTools } from "@/lib/ai/htmlArtifactTools";
 import {
   buildResearchTools,
-  type CapturedSearchResult,
   type DispatchedResearchIntent,
 } from "@/lib/ai/researchTools";
+import type { WebSearchHandle } from "@/lib/ai/provider";
 import {
   PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
@@ -112,6 +113,7 @@ import {
   getConceptsCapabilitySnippet,
   getConnectionsCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
+  getHtmlPagesCapabilitySnippet,
   getInfraCapabilitySnippet,
   getPlannerCapabilitySnippet,
   getPromptsCapabilitySnippet,
@@ -127,6 +129,7 @@ export type OrgCapability =
   | "whiteboard"
   | "research"
   | "connections"
+  | "html_pages"
   | "graph_walker"
   | "infra"
   | "prompts"
@@ -137,7 +140,7 @@ export type OrgCapability =
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
  * arguments `runCanvasAgent` used to thread into the four factories
- * directly; the mutable collectors (`capturedWebSearchResults`,
+ * directly; the mutable collectors (`webSearch.results`,
  * `dispatchedResearch`) are per-call closures owned by the caller.
  */
 export interface CapabilityContext {
@@ -160,7 +163,13 @@ export interface CapabilityContext {
    * `Feature.model` is not already set (e.g. features not created via canvas).
    */
   chatAgentModel?: string;
-  capturedWebSearchResults: CapturedSearchResult[];
+  /**
+   * The run's `web_search` handle (from `createWebSearch`). Carries the
+   * ordered result list `update_research` cites into and the citation
+   * treatment for written-up text — which differs by backend, so tools
+   * must go through the handle rather than formatting text themselves.
+   */
+  webSearch: WebSearchHandle;
   dispatchedResearch?: DispatchedResearchIntent[];
   dispatchedGraphWalks?: DispatchedGraphWalkIntent[];
   graphWalkAnswerSink?: { answer: string | null };
@@ -263,6 +272,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "whiteboard",
   "research",
   "connections",
+  "html_pages",
   "graph_walker",
   "infra",
   "prompts",
@@ -310,7 +320,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // deliberately NOT included: it's org-gated (see its `orgGate`), and
       // `includes` is expanded by the sync resolver which can't run the
       // gate — so it must stay explicitly-selected-only.
-      includes: ["whiteboard", "research", "connections", "graph_walker", "infra", "concepts"],
+      includes: ["whiteboard", "research", "connections", "html_pages", "graph_walker", "infra", "concepts"],
     },
     planner: {
       buildTools: (ctx) =>
@@ -347,7 +357,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         buildResearchTools(
           ctx.orgId,
           ctx.userId,
-          ctx.capturedWebSearchResults,
+          ctx.webSearch,
           ctx.dispatchedResearch,
           ctx.currentCanvasConversationId,
         ),
@@ -377,6 +387,24 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         "`save_connection` / `update_connection`. Load when documenting an " +
         "integration between systems/workspaces.",
       writeToolNames: ["save_connection", "update_connection"],
+    },
+    html_pages: {
+      buildTools: (ctx) => buildHtmlArtifactTools(ctx.orgId, ctx.userId),
+      promptSnippet: getHtmlPagesCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**html_pages** — save, patch, and read a shareable HTML page " +
+        "artifact for this org (`save_html` / `update_html` / `get_html`). " +
+        "Load when the user asks you to create an artifact they can share " +
+        "with the team. Research first, then synthesize ONE HTML story — " +
+        "do not save one page per repo.",
+      // "Write" here really means "strip in readonly mode" (see the
+      // `writeToolNames` field comment above) — `get_html` returns the
+      // full page body, so a readonly sub-agent must not keep it: without
+      // this a readonly run could read a page via `get_html` and launder
+      // it into Postgres through e.g. `update_research`'s `content`
+      // field, defeating the S3-pointer-only guarantee.
+      writeToolNames: ["save_html", "update_html", "get_html"],
     },
     graph_walker: {
       buildTools: (ctx) => ({
@@ -524,6 +552,18 @@ in the workspace just to have a value.
 - The change is large or spans many files
 - The user wants a full feature with planning, story, and coding pipeline
 
+### Tests
+
+Do not weaken or delete existing tests to make a change pass. Never remove a
+test case, loosen an assertion, or mark a test skipped/pending just so the
+diff goes green. If a change makes an existing test fail, that is a signal —
+either fix the code, or explain the behavior change to the user and let them
+decide.
+
+Editing test files is otherwise fine: updating a test to match an intentional
+behavior change, or adding new coverage alongside a fix, is expected and
+encouraged.
+
 ### Usage
 
 \`\`\`
@@ -633,8 +673,8 @@ function buildLearnCapabilityTool(resolved: readonly OrgCapability[]): ToolSet {
         loadable.join(", ") +
         ". Call this FIRST whenever the user wants to: draw / diagram / " +
         "annotate / re-lay-out the canvas (`whiteboard`), create a saved " +
-        "research writeup (`research`), or document a system integration " +
-        "(`connections`). " +
+        "research writeup (`research`), document a system integration " +
+        "(`connections`), or save a shareable HTML page (`html_pages`). " +
         "You MUST load a capability before calling any of its tools; if you " +
         "find yourself about to call one of those tools without having loaded " +
         "its capability this turn, call `learn_capability` first. Returns the " +

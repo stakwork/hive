@@ -15,6 +15,7 @@ vi.mock("lucide-react", () => ({
   ListChecks: ({ className }: { className?: string }) => <svg data-testid="icon-listchecks" className={className} />,
   ShieldCheck: ({ className }: { className?: string }) => <svg data-testid="icon-shieldcheck" className={className} />,
   ScrollText: ({ className }: { className?: string }) => <svg data-testid="icon-scrolltext" className={className} />,
+  Globe: ({ className }: { className?: string }) => <svg data-testid="icon-globe" className={className} />,
 }));
 
 vi.mock("react-icons/pi", () => ({
