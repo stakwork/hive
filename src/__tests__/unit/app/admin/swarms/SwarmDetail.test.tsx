@@ -169,12 +169,19 @@ function makeErrorResponse(status = 500, error = "Internal server error") {
 import SwarmDetail from "@/app/admin/swarms/[instanceId]/SwarmDetail";
 import { toast } from "sonner";
 
-// HostStorageCard is its own component with its own suite; mocked here so the
-// SwarmDetail tests stay scoped to the containers/actions behaviour (its
-// on-mount storage GET would otherwise become mockFetch's first call).
+// HostStorageCard / FluentbitStatsCard are their own components with their
+// own suites; mocked here so SwarmDetail tests stay scoped to the
+// containers/actions behaviour (on-mount GETs would otherwise become
+// mockFetch's first calls).
 vi.mock("@/app/admin/swarms/[instanceId]/HostStorageCard", () => ({
   default: ({ instanceId }: { instanceId: string }) => (
     <div data-testid="host-storage-card-mock" data-instance-id={instanceId} />
+  ),
+}));
+
+vi.mock("@/app/admin/swarms/[instanceId]/FluentbitStatsCard", () => ({
+  default: ({ instanceId }: { instanceId: string }) => (
+    <div data-testid="fluentbit-stats-card-mock" data-instance-id={instanceId} />
   ),
 }));
 
@@ -221,15 +228,17 @@ describe("SwarmDetail", () => {
       expect(body.swarmUrl).toBe("https://swarm-node-2.sphinx.chat");
     });
 
-    it("renders the Host Storage card for the instance", async () => {
+    it("renders the Host Storage and FluentBit stats cards for the instance", async () => {
       mockFetch.mockResolvedValueOnce(makeListContainersResponse());
 
       render(<SwarmDetail instanceId="i-abc" swarmUrl="https://swarm-node-1.sphinx.chat" />);
 
       await waitFor(() => expect(mockFetch).toHaveBeenCalled());
 
-      const card = screen.getByTestId("host-storage-card-mock");
-      expect(card).toHaveAttribute("data-instance-id", "i-abc");
+      const storage = screen.getByTestId("host-storage-card-mock");
+      expect(storage).toHaveAttribute("data-instance-id", "i-abc");
+      const fluentbit = screen.getByTestId("fluentbit-stats-card-mock");
+      expect(fluentbit).toHaveAttribute("data-instance-id", "i-abc");
     });
 
     it("shows loading spinner while fetching", () => {
