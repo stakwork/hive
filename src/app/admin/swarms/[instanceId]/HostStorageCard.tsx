@@ -406,8 +406,9 @@ export default function HostStorageCard({ instanceId }: HostStorageCardProps) {
           (() => {
             const copy = failedStateCopy(data.reasonCode);
             const workspaceId = data.workspaceId;
-            const showPasswordForm =
-              data.reasonCode === "DECRYPT_FAILED" && Boolean(workspaceId);
+            const isRecoveryEligible =
+              data.reasonCode === "DECRYPT_FAILED" || data.reasonCode === "AUTH_FAILED";
+            const showPasswordForm = isRecoveryEligible && Boolean(workspaceId);
             return (
               <div className="flex items-start gap-3 py-6">
                 <Info className="mt-0.5 h-5 w-5 text-muted-foreground" />
@@ -418,6 +419,14 @@ export default function HostStorageCard({ instanceId }: HostStorageCardProps) {
                       {copy.detail}
                       {data.reasonCode ? ` (${data.reasonCode})` : ""}
                     </p>
+                    {isRecoveryEligible && !showPasswordForm ? (
+                      <p
+                        className="mt-1 text-sm text-muted-foreground"
+                        data-testid="password-recovery-needs-workspace"
+                      >
+                        Password recovery needs a linked workspace.
+                      </p>
+                    ) : null}
                   </div>
                   {showPasswordForm && workspaceId ? (
                     <SwarmPasswordUpdateForm

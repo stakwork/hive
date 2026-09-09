@@ -39,11 +39,20 @@ vi.mock("@/services/swarm/cmd", () => ({
       this.name = "SwarmCmdConfigError";
     }
   },
+  SwarmAuthError: class SwarmAuthError extends Error {
+    readonly status: number;
+    constructor(status: number) {
+      super(`Swarm login failed (${status})`);
+      this.name = "SwarmAuthError";
+      this.status = status;
+    }
+  },
   getSwarmCmdJwt: mockGetJwt,
   swarmCmdRequest: mockCmdRequest,
 }));
 
 const { readHostStorage } = await import("@/services/swarm/host-storage-read");
+const { SwarmAuthError } = await import("@/services/swarm/cmd");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -431,17 +440,66 @@ describe("readHostStorage", () => {
     expect(result.reasonCode).toBe("UNREACHABLE");
   });
 
-  test("a failed login is AUTH_FAILED without surfacing the raw error text", async () => {
+  test("a 401 SwarmAuthError is AUTH_FAILED and attaches workspaceId", async () => {
     mockFindMany.mockResolvedValue([swarmRow()]);
-    mockGetJwt.mockRejectedValue(new Error("Swarm login failed (401): RAW_JWT_ERROR_MARKER"));
+    mockGetJwt.mockRejectedValue(new SwarmAuthError(401));
 
     const result = await readHostStorage(INSTANCE_ID);
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("AUTH_FAILED");
+    expect(result.workspaceId).toBe("workspace-1");
+    expect(JSON.stringify(result)).not.toContain("RAW_JWT_ERROR_MARKER");
+    expect(consoleOutput()).not.toContain("RAW_JWT_ERROR_MARKER");
+  });
+
+  test("a generic login Error is UNREACHABLE without surfacing the raw error text", async () => {
+    mockFindMany.mockResolvedValue([swarmRow()]);
+    mockGetJwt.mockRejectedValue(new Error("Swarm login failed (401): RAW_JWT_ERROR_MARKER"));
+
+    const result = await readHostStorage(INSTANCE_ID);
+
+    expect(result.outcome).toBe("unreachable");
+    expect(result.reasonCode).toBe("UNREACHABLE");
     expect(result.workspaceId).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain("RAW_JWT_ERROR_MARKER");
     expect(consoleOutput()).not.toContain("RAW_JWT_ERROR_MARKER");
+  });
+
+  test("a non-401 SwarmAuthError is unreachable with HTTP_<status> and no workspaceId", async () => {
+    mockFindMany.mockResolvedValue([swarmRow()]);
+    mockGetJwt.mockRejectedValue(new SwarmAuthError(500));
+
+    const result = await readHostStorage(INSTANCE_ID);
+
+    expect(result.outcome).toBe("unreachable");
+    expect(result.reasonCode).toBe("HTTP_500");
+    expect(result.workspaceId).toBeUndefined();
+  });
+
+  test("a login-time TypeError is unreachable with reason UNREACHABLE", async () => {
+    mockFindMany.mockResolvedValue([swarmRow()]);
+    mockGetJwt.mockRejectedValue(new TypeError("fetch failed"));
+
+    const result = await readHostStorage(INSTANCE_ID);
+
+    expect(result.outcome).toBe("unreachable");
+    expect(result.reasonCode).toBe("UNREACHABLE");
+    expect(result.workspaceId).toBeUndefined();
+  });
+
+  test("AUTH_FAILED omits workspaceId when the swarm row has a falsy workspaceId", async () => {
+    for (const workspaceId of [null, ""]) {
+      mockFindMany.mockResolvedValue([swarmRow({ workspaceId })]);
+      mockGetJwt.mockRejectedValue(new SwarmAuthError(401));
+
+      const result = await readHostStorage(INSTANCE_ID);
+
+      expect(result.outcome).toBe("failed");
+      expect(result.reasonCode).toBe("AUTH_FAILED");
+      expect(result.workspaceId).toBeUndefined();
+      expect("workspaceId" in result).toBe(false);
+    }
   });
 
   test("a malformed body is failed as MALFORMED with no raw body echoed through", async () => {

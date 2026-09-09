@@ -29,6 +29,14 @@ vi.mock("@/services/swarm/cmd", () => ({
       this.name = "SwarmCmdConfigError";
     }
   },
+  SwarmAuthError: class SwarmAuthError extends Error {
+    readonly status: number;
+    constructor(status: number) {
+      super(`Swarm login failed (${status})`);
+      this.name = "SwarmAuthError";
+      this.status = status;
+    }
+  },
   getSwarmCmdJwt: mockGetJwt,
   swarmCmdRequest: mockCmdRequest,
 }));
