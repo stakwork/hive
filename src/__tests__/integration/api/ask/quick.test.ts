@@ -27,17 +27,25 @@ vi.mock('next/server', async (importOriginal) => {
   };
 });
 
-// Mock the AI streaming service
-vi.mock('ai', () => ({
-  streamText: vi.fn(),
-  createUIMessageStream: vi.fn(({ execute }) => {
-    execute({ writer: { write: vi.fn(), merge: vi.fn() } });
-    return {};
-  }),
-  createUIMessageStreamResponse: vi.fn(
-    ({ headers }) => new Response('test', { status: 200, headers }),
-  ),
-}));
+// Mock the AI streaming service. Keep the rest of the `ai` exports real:
+// the org capability tool factories (reached via `runCanvasAgent` whenever
+// the request carries an `orgId`) build their tools with `tool()`, and
+// `runCanvasAgent` uses `stepCountIs` & co. A bare object mock made every
+// org-scoped turn 500 the moment org tools were composed.
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>();
+  return {
+    ...actual,
+    streamText: vi.fn(),
+    createUIMessageStream: vi.fn(({ execute }) => {
+      execute({ writer: { write: vi.fn(), merge: vi.fn() } });
+      return {};
+    }),
+    createUIMessageStreamResponse: vi.fn(
+      ({ headers }) => new Response('test', { status: 200, headers }),
+    ),
+  };
+});
 
 // Mock the AI provider module (wrapper around aieo)
 vi.mock('@/lib/ai/provider', () => ({
@@ -95,6 +103,7 @@ vi.mock('@/lib/pusher', () => ({
 
 import { streamText } from 'ai';
 import { getModel } from '@/lib/ai/provider';
+import { getQuickAskPrefixMessages } from '@/lib/constants/prompt';
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -1580,6 +1589,145 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
         expect(Array.isArray(log.workspaces)).toBe(true);
         expect(log).toHaveProperty('orgId');
       }
+    });
+  });
+
+  describe('Org toolset for single-workspace orgs', () => {
+    // Regression guard. The route used to hand `orgId` to the agent only
+    // when the request carried MORE than one workspace slug, so every org
+    // with exactly one workspace ran its org canvas chat as the plain
+    // per-workspace agent — no `propose_feature`, no `read_canvas`, no
+    // capability prompt suffix. Many orgs have a single workspace.
+    async function setupSingleWorkspaceOrg() {
+      const owner = await createTestUser({
+        email: generateUniqueId('owner') + '@example.com',
+        withGitHubAuth: true,
+      });
+      const org = await db.sourceControlOrg.create({
+        data: {
+          githubLogin: generateUniqueId('org'),
+          githubInstallationId: Math.floor(Math.random() * 1_000_000),
+          type: 'ORG',
+          name: 'Single Workspace Org',
+        },
+      });
+      const token = encryptionService.encryptField(
+        'source_control_token',
+        'github_pat_test_token',
+      );
+      await db.sourceControlToken.create({
+        data: {
+          userId: owner.id,
+          sourceControlOrgId: org.id,
+          token: JSON.stringify(token),
+          scopes: ['repo'],
+        },
+      });
+      const workspace = await createTestWorkspace({
+        slug: generateUniqueId('workspace'),
+        ownerId: owner.id,
+        sourceControlOrgId: org.id,
+      });
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmUrl: 'https://test-swarm.sphinx.chat',
+        swarmApiKey: 'test-key',
+      });
+      await createTestRepository({
+        workspaceId: workspace.id,
+        repositoryUrl: 'https://github.com/test-org/test-repo',
+      });
+      return { owner, org, workspace };
+    }
+
+    function mockStream() {
+      const stream = {
+        toUIMessageStream: vi.fn(
+          () => new Response('test', { headers: { 'Content-Type': 'text/plain' } }),
+        ),
+      };
+      vi.mocked(streamText).mockReturnValue(stream as any);
+    }
+
+    function lastToolNames(): string[] {
+      const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
+      return Object.keys(callArgs.tools ?? {});
+    }
+
+    it('merges the org toolset (propose_feature, read_canvas, planner) for a one-workspace org', async () => {
+      const { owner, org, workspace } = await setupSingleWorkspaceOrg();
+      mockStream();
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/quick',
+          {
+            messages: [{ role: 'user', content: 'create a milestone for arm64 support' }],
+            workspaceSlugs: [workspace.slug],
+            orgId: org.id,
+          },
+          owner,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const toolNames = lastToolNames();
+      expect(toolNames).toContain('propose_feature');
+      expect(toolNames).toContain('propose_milestone');
+      expect(toolNames).toContain('propose_initiative');
+      expect(toolNames).toContain('read_canvas');
+      expect(toolNames).toContain('send_to_feature_planner');
+      expect(toolNames).toContain('learn_capability');
+    });
+
+    it('names the bound workspace in the single-workspace org prompt overlay', async () => {
+      const { owner, org, workspace } = await setupSingleWorkspaceOrg();
+      mockStream();
+
+      await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/quick',
+          {
+            messages: [{ role: 'user', content: 'hi' }],
+            workspaceSlug: workspace.slug,
+            orgId: org.id,
+          },
+          owner,
+        ),
+      );
+
+      // 6th positional arg of getQuickAskPrefixMessages is the org overlay
+      // context; the roadmap tools need the slug it carries.
+      const prefixCall = vi.mocked(getQuickAskPrefixMessages).mock.calls.at(-1)!;
+      expect(prefixCall[5]).toEqual(
+        expect.objectContaining({
+          orgId: org.id,
+          workspace: expect.objectContaining({ slug: workspace.slug }),
+        }),
+      );
+    });
+
+    it('still runs the plain per-workspace agent when no orgId is sent (dashboard chat)', async () => {
+      const { owner, workspace } = await setupSingleWorkspaceOrg();
+      mockStream();
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/quick',
+          {
+            messages: [{ role: 'user', content: 'hi' }],
+            workspaceSlug: workspace.slug,
+          },
+          owner,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const toolNames = lastToolNames();
+      expect(toolNames).not.toContain('propose_feature');
+      expect(toolNames).not.toContain('read_canvas');
+      const prefixCall = vi.mocked(getQuickAskPrefixMessages).mock.calls.at(-1)!;
+      expect(prefixCall[5]).toBeUndefined();
     });
   });
 });
