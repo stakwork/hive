@@ -322,13 +322,14 @@ export interface RunCanvasAgentOptions {
    * Optional model override in `getModelValue()` "provider/name" form
    * (e.g. "anthropic/claude-opus-4-6", "openrouter/stealth/ox-alpha"),
    * sourced from the caller's `User.chatAgentModel` preference. Any
-   * aieo-supported provider prefix (anthropic/google/openai/openrouter)
-   * with a configured API key is honored — the provider, key, and
-   * provider options all follow the prefix. Anthropic-only features
-   * degrade gracefully off-Anthropic: the `web_search` provider tool is
-   * stripped, and Bifrost routing / prompt caching don't apply. An
-   * unsupported prefix or missing key logs a warning and falls back to
-   * aieo's Anthropic default (sonnet), as does omitting this entirely.
+   * aieo-supported provider prefix (anthropic/google/openai/openrouter/
+   * xai) with a configured API key is honored — the provider, key,
+   * provider options and Bifrost routing all follow the prefix.
+   * Anthropic-only features degrade gracefully off-Anthropic: the
+   * native `web_search` tool gives way to the HTTP shim, and prompt
+   * caching doesn't apply. An unsupported prefix or missing key logs a
+   * warning and falls back to aieo's Anthropic default (sonnet), as
+   * does omitting this entirely.
    */
   modelName?: string;
   /**
@@ -662,7 +663,6 @@ function primaryOwnerRepo(repoUrls: string[]): string | undefined {
 export async function runCanvasAgent(
   opts: RunCanvasAgentOptions,
 ): Promise<RunCanvasAgentResult> {
-  const start = Date.now();
   const {
     userId,
     orgId,
@@ -716,8 +716,9 @@ export async function runCanvasAgent(
   // default sonnet), LOUDLY: a selected model must never silently
   // answer as a different one. The `getModel` call is deferred until
   // after workspace resolution so we can thread Bifrost overrides
-  // (baseUrl + `x-macaroon` headers, Anthropic-only) when the rollout
-  // flag is on for the primary workspace — see `getBifrostForLLM` below.
+  // (baseUrl + `x-macaroon` headers, for whichever provider won) when
+  // the rollout flag is on for the primary workspace — see
+  // `getBifrostForLLM` below.
   let provider: Provider = "anthropic";
   if (modelName?.includes("/")) {
     const prefix = modelName.split("/")[0] as Provider;
@@ -1238,26 +1239,6 @@ export async function runCanvasAgent(
   // mirrors the `repo-agent` vs `diagram-agent` convention of naming
   // by user-facing purpose, not by underlying function.
   const agentName = orgId ? "canvas-agent" : "chat-agent";
-  const tBifrost = Date.now();
-  // Bifrost VKs and gateway routing are Anthropic-only; a non-Anthropic
-  // model preference goes straight to its own provider endpoint.
-  const bifrost =
-    provider === "anthropic" && primaryWorkspaceId && primaryUserId
-      ? await getBifrostForLLM(
-          {
-            workspaceId: primaryWorkspaceId,
-            workspaceSlug: primarySlug,
-            userId: primaryUserId,
-          },
-          { agentName },
-        )
-      : undefined;
-  const tBifrostMs = Date.now() - tBifrost;
-  if (primaryWorkspaceId && primaryUserId) {
-    console.log("[runCanvasAgent] timing", { stage: "getBifrostForLLM", ms: tBifrostMs, workspaces: workspaceSlugs, orgId: orgId ?? null });
-  } else {
-    console.log("[runCanvasAgent] timing", { stage: "getBifrostForLLM", ms: 0, skipped: "no primaryWorkspaceId/userId", workspaces: workspaceSlugs, orgId: orgId ?? null });
-  }
 
   // Honor the caller's model preference when it targets the resolved
   // provider (which was itself derived from the same prefix, so any
@@ -1269,6 +1250,34 @@ export async function runCanvasAgent(
   // never pair a foreign model id with the fallback Anthropic client.
   const modelOverride =
     modelName && modelName.startsWith(`${provider}/`) ? modelName : undefined;
+
+  const tBifrost = Date.now();
+  // Every provider rides Bifrost. The VK reconciler suffixes `baseUrl`
+  // for the model's provider (`/openai/v1` for openai, openrouter and
+  // xai; `/genai/v1beta` for google) and aieo prefixes the model id on
+  // the OpenAI-compat route so the gateway picks the right upstream.
+  // The model handed over is the one `getModel` will actually use —
+  // undefined means aieo's Anthropic default. When the VK has no grant
+  // for that provider on this workspace's gateway, the orchestrator
+  // returns undefined and the call goes straight to the provider with
+  // Hive's own key, exactly as before.
+  const bifrost =
+    primaryWorkspaceId && primaryUserId
+      ? await getBifrostForLLM(
+          {
+            workspaceId: primaryWorkspaceId,
+            workspaceSlug: primarySlug,
+            userId: primaryUserId,
+          },
+          { agentName, model: modelOverride },
+        )
+      : undefined;
+  const tBifrostMs = Date.now() - tBifrost;
+  if (primaryWorkspaceId && primaryUserId) {
+    console.log("[runCanvasAgent] timing", { stage: "getBifrostForLLM", ms: tBifrostMs, workspaces: workspaceSlugs, orgId: orgId ?? null });
+  } else {
+    console.log("[runCanvasAgent] timing", { stage: "getBifrostForLLM", ms: 0, skipped: "no primaryWorkspaceId/userId", workspaces: workspaceSlugs, orgId: orgId ?? null });
+  }
 
   const model = getModel(
     provider,

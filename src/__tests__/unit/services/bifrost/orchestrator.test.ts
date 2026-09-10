@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { BifrostProvider } from "@/services/bifrost/types";
 
 // Mock the per-layer reconcilers BEFORE importing the SUT. The
 // orchestrator imports them by their concrete module paths
@@ -68,7 +69,15 @@ function mockMintOk(runId = "run_fixed_abc") {
   });
 }
 
-function mockVKOk(overrides: Partial<{ vkValue: string; baseUrl: string }> = {}) {
+function mockVKOk(
+  overrides: Partial<{
+    vkValue: string;
+    baseUrl: string;
+    modelProvider: BifrostProvider;
+    providers: string[];
+    modelProviderGranted: boolean;
+  }> = {},
+) {
   vi.mocked(reconcilerModule.reconcileBifrostVK).mockResolvedValueOnce({
     workspaceId: "ws-1",
     userId: "u_alice",
@@ -77,6 +86,9 @@ function mockVKOk(overrides: Partial<{ vkValue: string; baseUrl: string }> = {})
     vkValue: overrides.vkValue ?? "sk-bf-LIVE",
     baseUrl: overrides.baseUrl ?? "http://bifrost.test:8181",
     created: false,
+    modelProvider: overrides.modelProvider ?? "anthropic",
+    providers: overrides.providers,
+    modelProviderGranted: overrides.modelProviderGranted,
   });
 }
 
@@ -199,6 +211,70 @@ describe("getBifrostForLLM (master reconciler)", () => {
       "u_alice",
       { model: "gpt-5" },
     );
+  });
+
+  // ── Grant check ─────────────────────────────────────────────────────
+
+  it("returns undefined without minting when the VK has no grant for the model's provider", async () => {
+    process.env.BIFROST_ENABLED = "true";
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    mockVKOk({
+      baseUrl: "http://bifrost.test:8181/openai/v1",
+      modelProvider: "xai",
+      providers: ["anthropic", "openai", "openrouter", "gemini"],
+      modelProviderGranted: false,
+    });
+
+    const result = await getBifrostForLLM(auth, {
+      agentName: "coding-agent",
+      model: "xai/grok-4.6",
+    });
+    // Caller keeps its direct provider key — the gateway would have
+    // rejected the call, and nothing downstream retries.
+    expect(result).toBeUndefined();
+    expect(reconcilerModule.reconcileBifrostVK).toHaveBeenCalledWith(
+      "ws-1",
+      "u_alice",
+      { model: "xai/grok-4.6" },
+    );
+    expect(issuerModule.mintInvocationMacaroon).not.toHaveBeenCalled();
+  });
+
+  it("routes through Bifrost when the grants are unknown (no snapshot yet)", async () => {
+    process.env.BIFROST_ENABLED = "true";
+    mockVKOk({
+      baseUrl: "http://bifrost.test:8181/openai/v1",
+      modelProvider: "xai",
+      providers: undefined,
+      modelProviderGranted: undefined,
+    });
+    mockMintOk();
+
+    const result = await getBifrostForLLM(auth, {
+      agentName: "coding-agent",
+      model: "xai/grok-4.6",
+    });
+    expect(result?.baseUrl).toBe("http://bifrost.test:8181/openai/v1");
+    expect(issuerModule.mintInvocationMacaroon).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes through Bifrost when the model's provider is granted", async () => {
+    process.env.BIFROST_ENABLED = "true";
+    mockVKOk({
+      baseUrl: "http://bifrost.test:8181/openai/v1",
+      modelProvider: "xai",
+      providers: ["anthropic", "openai", "openrouter", "gemini", "xai"],
+      modelProviderGranted: true,
+    });
+    mockMintOk();
+
+    const result = await getBifrostForLLM(auth, {
+      agentName: "coding-agent",
+      model: "xai/grok-4.6",
+    });
+    expect(result?.apiKey).toBe("sk-bf-LIVE");
+    expect(issuerModule.mintInvocationMacaroon).toHaveBeenCalledTimes(1);
   });
 
   it("forwards caller-supplied runId + budget overrides to the issuer", async () => {
@@ -396,6 +472,7 @@ describe("getBifrostForLLM (master reconciler)", () => {
           vkValue: "sk-bf-LIVE",
           baseUrl: "http://bifrost.test:8181/anthropic/v1",
           created: false,
+          modelProvider: "anthropic",
         };
       },
     );
