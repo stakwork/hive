@@ -35,18 +35,42 @@ function makeClientStub(): {
   createCustomer: ReturnType<typeof vi.fn>;
   listVirtualKeys: ReturnType<typeof vi.fn>;
   createVirtualKey: ReturnType<typeof vi.fn>;
+  getVirtualKey: ReturnType<typeof vi.fn>;
+  updateVirtualKey: ReturnType<typeof vi.fn>;
+  listProviders: ReturnType<typeof vi.fn>;
 } {
   const listCustomers = vi.fn();
   const createCustomer = vi.fn();
   const listVirtualKeys = vi.fn();
   const createVirtualKey = vi.fn();
+  const getVirtualKey = vi.fn();
+  const updateVirtualKey = vi.fn();
+  // A gateway with every default provider configured.
+  const listProviders = vi.fn().mockResolvedValue({
+    providers: ["anthropic", "openai", "openrouter", "gemini", "xai"].map(
+      (name) => ({ name, provider_status: "active" }),
+    ),
+    total: 5,
+  });
   const client = {
     listCustomers,
     createCustomer,
     listVirtualKeys,
     createVirtualKey,
+    getVirtualKey,
+    updateVirtualKey,
+    listProviders,
   } as unknown as BifrostClient;
-  return { client, listCustomers, createCustomer, listVirtualKeys, createVirtualKey };
+  return {
+    client,
+    listCustomers,
+    createCustomer,
+    listVirtualKeys,
+    createVirtualKey,
+    getVirtualKey,
+    updateVirtualKey,
+    listProviders,
+  };
 }
 
 describe("reconcileBifrostVK (integration)", () => {
@@ -209,5 +233,9 @@ describe("reconcileBifrostVK (integration)", () => {
     expect(second.createCustomer).not.toHaveBeenCalled();
     expect(second.listVirtualKeys).not.toHaveBeenCalled();
     expect(second.createVirtualKey).not.toHaveBeenCalled();
+    // The first call just stamped bifrostSyncedAt, so the periodic
+    // provider-grant refresh stays out of it too.
+    expect(second.listProviders).not.toHaveBeenCalled();
+    expect(second.getVirtualKey).not.toHaveBeenCalled();
   });
 });

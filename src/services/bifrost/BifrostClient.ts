@@ -2,19 +2,24 @@ import { BIFROST_HTTP_TIMEOUT_MS } from "./constants";
 import type {
   CreateCustomerResponse,
   CreateVirtualKeyResponse,
+  GetVirtualKeyResponse,
   ListCustomersResponse,
+  ListProvidersResponse,
   ListVirtualKeysResponse,
+  UpdateVirtualKeyResponse,
   BifrostProvider,
   BifrostBudget,
   BifrostRateLimit,
 } from "./types";
 
 /**
- * Thin HTTP client for Bifrost's `/api/governance/{customers,virtual-keys}`
- * endpoints. Authenticates with Basic admin creds. Only the four calls
- * the phase-1 reconciler needs are implemented; offboarding (`PUT
- * virtual-keys/<id>`) and drift repair (`PUT customers/<id>`) are
- * deferred to phase 2 per `phase-1-reconciler.md`.
+ * Thin HTTP client for Bifrost's admin API. Authenticates with Basic
+ * admin creds. Only what the VK reconciler needs is implemented:
+ * Customer + VK list/create, `GET /api/providers` (so grants can be
+ * narrowed to what the gateway has configured), and VK get + update
+ * for provider-grant top-ups. Offboarding and Customer drift repair
+ * (`PUT customers/<id>`) stay deferred to phase 2 per
+ * `phase-1-reconciler.md`.
  */
 
 export class BifrostHttpError extends Error {
@@ -58,6 +63,24 @@ interface CreateVirtualKeyInput {
      * "no keys found for provider: …". See types.ts and the Go handler
      * (`KeyIDs json:"key_ids"`).
      */
+    key_ids?: string[];
+  }>;
+}
+
+interface UpdateVirtualKeyInput {
+  /**
+   * Bifrost REPLACES the VK's provider_configs with this set: entries
+   * carrying an `id` update that config in place, entries without one
+   * are created, and any existing config missing from the list is
+   * deleted. Always send the full set. Budgets and rate limits are
+   * left untouched when omitted.
+   */
+  provider_configs: Array<{
+    id?: number;
+    provider: string;
+    allowed_models: string[];
+    blacklisted_models?: string[];
+    weight?: number | null;
     key_ids?: string[];
   }>;
 }
@@ -132,8 +155,31 @@ export class BifrostClient {
     );
   }
 
+  async getVirtualKey(vkId: string): Promise<GetVirtualKeyResponse> {
+    return this.request<GetVirtualKeyResponse>(
+      "GET",
+      `/api/governance/virtual-keys/${encodeURIComponent(vkId)}`,
+    );
+  }
+
+  async updateVirtualKey(
+    vkId: string,
+    input: UpdateVirtualKeyInput,
+  ): Promise<UpdateVirtualKeyResponse> {
+    return this.request<UpdateVirtualKeyResponse>(
+      "PUT",
+      `/api/governance/virtual-keys/${encodeURIComponent(vkId)}`,
+      input,
+    );
+  }
+
+  /** The providers this gateway has configured (`GET /api/providers`). */
+  async listProviders(): Promise<ListProvidersResponse> {
+    return this.request<ListProvidersResponse>("GET", `/api/providers`);
+  }
+
   private async request<T>(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT",
     path: string,
     body?: unknown,
   ): Promise<T> {
