@@ -362,32 +362,22 @@ async function createAgentSession(
     }
   }
 
-  // xAI bypass: DEFAULT_PROVIDERS (src/services/bifrost/constants.ts)
-  // now lists xai and the VK reconciler grants it on any gateway that
-  // has it configured, but the swarm gateways don't yet carry an
-  // XAI_API_KEY (sphinx-swarm's bifrost config is the missing piece) —
-  // routing an xai/* session through Bifrost today would still fail on
-  // most swarms. Skip the call for xai/* and use the direct XAI_API_KEY
-  // resolved above instead. Remove once the swarm gateways ship with an
-  // xai key (aieo already maps xai onto the /openai/v1 gateway path).
-  // See src/services/task-workflow.ts for the matching bypass.
-  const isXaiModel = effectiveModel?.startsWith("xai/") ?? false;
-
   // Bifrost routing for the goose-side LLM calls. When the rollout
   // flag covers this workspace, mint a per-session VK + macaroon and
   // override `apiKey` + inject `baseUrl` / `headers` on the session
   // body. The agent forwards them onto every LLM call so the spend
   // shows up on `logs.db` as `agent-name=coding-agent`. When the flag
-  // is off, falls back to the model-resolved key (unchanged).
-  const bifrost = isXaiModel
-    ? undefined
-    : await getBifrostForLLM(bifrostAuth, {
-        agentName: "coding-agent",
-        // Pass the selected model so the Bifrost VK reconciler resolves
-        // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
-        // for google/* models). Without this it defaults to anthropic.
-        model: effectiveModel,
-      });
+  // is off — or the VK has no grant for the model's provider on this
+  // swarm's gateway, which the orchestrator checks — falls back to the
+  // model-resolved key (unchanged). Every provider rides Bifrost here,
+  // xai included; src/services/task-workflow.ts has the same wiring.
+  const bifrost = await getBifrostForLLM(bifrostAuth, {
+    agentName: "coding-agent",
+    // Pass the selected model so the Bifrost VK reconciler resolves
+    // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
+    // for google/* models). Without this it defaults to anthropic.
+    model: effectiveModel,
+  });
 
   const sessionPayload: Record<string, unknown> = {
     sessionId: taskId,
