@@ -26,13 +26,31 @@ export const DEFAULT_RATE_LIMIT_RESET_DURATION = "1m";
  * Providers the VK is allowed to call. Permissive by default — the
  * Customer-level budget is the spend ceiling. Add a provider here to
  * make it usable through Bifrost; absent providers are deny-by-default.
+ *
+ * The reconciler narrows this to whatever the workspace's gateway
+ * actually has configured (`GET /api/providers`) before creating or
+ * topping up a VK: Bifrost 400s any provider_config naming a provider
+ * the gateway lacks, and swarm gateways pick up new providers (xai
+ * via stakgraph#1673) on their own deploy cadence. The order here is
+ * the order of the VK's provider_configs.
  */
 export const DEFAULT_PROVIDERS: BifrostProvider[] = [
   "anthropic",
   "openai",
   "openrouter",
   "gemini",
+  "xai",
 ];
+
+/**
+ * How long a cached VK's provider grants are trusted before the
+ * reconciler re-checks them against DEFAULT_PROVIDERS ∩ the gateway's
+ * configured providers and tops up anything missing. Existing members
+ * otherwise never touch Bifrost, so this is how a newly listed (or
+ * newly configured) provider reaches VKs minted before it. Costs one
+ * GET (+ one PUT when something is missing) per member per window.
+ */
+export const BIFROST_VK_PROVIDER_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 /** Default Bifrost admin-API port. Bifrost serves admin on 8181. */
 export const DEFAULT_BIFROST_PORT = 8181;

@@ -56,9 +56,17 @@ export interface BifrostProviderConfig {
    * response-side `keys` array.
    */
   key_ids?: string[];
-  /** Response-side: hydrated provider keys. Read-only from our POV. */
+  /** ["*"] = block all models; empty = block none. Hive never sets this. */
+  blacklisted_models?: string[];
+  /**
+   * Response-side key grant: `allow_all_keys` is what `key_ids: ["*"]`
+   * becomes; otherwise `keys` lists the specific provider keys the
+   * config grants. Re-encoded back into `key_ids` when a config is
+   * carried through an update — see `carryProviderConfig` in
+   * reconciler.ts.
+   */
   allow_all_keys?: boolean;
-  keys?: unknown[];
+  keys?: Array<{ key_id?: string }>;
   budgets?: unknown[];
   rate_limit?: BifrostRateLimit | null;
 }
@@ -109,6 +117,30 @@ export interface CreateVirtualKeyResponse {
   virtual_key: BifrostVirtualKey;
 }
 
+/** GET /api/governance/virtual-keys/:id — provider_configs hydrated. */
+export interface GetVirtualKeyResponse {
+  virtual_key: BifrostVirtualKey;
+}
+
+export interface UpdateVirtualKeyResponse {
+  message: string;
+  virtual_key: BifrostVirtualKey;
+}
+
+/**
+ * GET /api/providers — one row per provider configured on the gateway.
+ * Only `name` is read; the rest of the row (network config, status,
+ * …) is left untyped.
+ */
+export interface ListProvidersResponse {
+  providers: Array<{
+    name: string;
+    /** "active" once Bifrost initialised the provider, else "error". */
+    provider_status?: string;
+  }>;
+  total: number;
+}
+
 /**
  * What `reconcileBifrostVK` returns. `vkValue` is the bearer token
  * (`sk-bf-…`) that callers attach to outbound LLM calls. The other
@@ -148,7 +180,8 @@ export type BifrostProvider =
   | "anthropic"
   | "openai"
   | "openrouter"
-  | "gemini";
+  | "gemini"
+  | "xai";
 
 // ─── Phase-5 trust registry wire shapes ────────────────────────────────
 //
