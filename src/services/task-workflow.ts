@@ -872,31 +872,23 @@ export async function callStakworkAPI(params: {
   // tuning of ttlSeconds / maxCostUsd / maxSteps is intentionally
   // deferred to a follow-up so this initial wiring stays small.
   //
-  // xAI bypass: `DEFAULT_PROVIDERS` now lists "xai" and the VK
-  // reconciler grants it on any gateway that has it configured, but
-  // the swarm gateways don't yet carry an XAI_API_KEY (sphinx-swarm's
-  // bifrost config is the missing piece), so routing an `xai/*`
-  // selection through Bifrost today would still fail on most swarms.
-  // Skip the Bifrost call entirely for xai/* and fall through to the
-  // direct `vars.apiKey` (XAI_API_KEY) resolved above. Remove this
-  // bypass once the swarm gateways ship with an xai key (aieo already
-  // maps xai onto the /openai/v1 gateway path) — until then this
-  // trades away per-agent cost attribution / macaroon observability
-  // for Grok runs only.
-  const isXaiModel = effectiveModel?.startsWith("xai/") ?? false;
-  const bifrost = isXaiModel
-    ? undefined
-    : await getBifrostForLLM(
-        { workspaceId, workspaceSlug, userId },
-        {
-          agentName: mode === "plan_mode" ? "plan-agent" : "coding-agent",
-          // Pass the selected model so the Bifrost VK reconciler resolves
-          // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
-          // for google/* models). Without this it defaults to anthropic
-          // and Google/OpenAI models get routed to the wrong provider.
-          model: effectiveModel ?? undefined,
-        },
-      );
+  // Every provider rides Bifrost here, xai included — swarm gateways
+  // carry an XAI_API_KEY since sphinx-swarm's "xai api key in bifrost".
+  // A swarm whose gateway still lacks the model's provider is handled
+  // inside the orchestrator: it returns `undefined` when the VK has no
+  // grant for that provider, so `vars.apiKey` stays the direct key
+  // resolved above for that call.
+  const bifrost = await getBifrostForLLM(
+    { workspaceId, workspaceSlug, userId },
+    {
+      agentName: mode === "plan_mode" ? "plan-agent" : "coding-agent",
+      // Pass the selected model so the Bifrost VK reconciler resolves
+      // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
+      // for google/* models). Without this it defaults to anthropic
+      // and Google/OpenAI models get routed to the wrong provider.
+      model: effectiveModel ?? undefined,
+    },
+  );
   if (bifrost) {
     vars.apiKey = bifrost.apiKey;
     vars.baseUrl = bifrost.baseUrl;
