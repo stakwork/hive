@@ -58,6 +58,35 @@ vi.mock("@/services/bifrost/resolve", () => ({
   BifrostConfigError: class BifrostConfigError extends Error {},
 }));
 
+const ALL_PROVIDERS = ["anthropic", "openai", "openrouter", "gemini", "xai"];
+
+/** `GET /api/providers` body for a gateway with exactly these configured. */
+function providersResponse(names: string[]) {
+  return {
+    providers: names.map((name) => ({ name, provider_status: "active" })),
+    total: names.length,
+  };
+}
+
+/** A hydrated (response-side) provider_config as Bifrost returns it. */
+function hydratedConfig(
+  id: number,
+  provider: string,
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    virtual_key_id: "vk-1",
+    provider,
+    weight: null,
+    allowed_models: ["*"],
+    blacklisted_models: [],
+    allow_all_keys: true,
+    keys: [],
+    ...extra,
+  };
+}
+
 function makeClientStub(
   overrides: Partial<BifrostClient> = {},
 ): BifrostClient {
@@ -66,6 +95,13 @@ function makeClientStub(
     createCustomer: vi.fn(),
     listVirtualKeys: vi.fn(),
     createVirtualKey: vi.fn(),
+    getVirtualKey: vi.fn(),
+    updateVirtualKey: vi.fn(),
+    // Default: a gateway with every default provider configured, so
+    // tests that don't care about grants see the full set.
+    listProviders: vi
+      .fn()
+      .mockResolvedValue(providersResponse(ALL_PROVIDERS)),
     ...overrides,
   } as unknown as BifrostClient;
   return stub;
@@ -91,6 +127,7 @@ describe("reconcileBifrostVK", () => {
       }),
       bifrostVkId: "vk-1",
       bifrostCustomerId: "cust-1",
+      bifrostSyncedAt: new Date(),
     } as never);
 
     const client = makeClientStub();
@@ -112,6 +149,8 @@ describe("reconcileBifrostVK", () => {
       created: false,
     });
     expect(client.listCustomers).not.toHaveBeenCalled();
+    expect(client.listProviders).not.toHaveBeenCalled();
+    expect(client.getVirtualKey).not.toHaveBeenCalled();
     expect(dbMock.workspaceMember.update).not.toHaveBeenCalled();
   });
 
@@ -579,6 +618,7 @@ describe("reconcileBifrostVK", () => {
         }),
         bifrostVkId: "vk-1",
         bifrostCustomerId: "cust-1",
+        bifrostSyncedAt: new Date(),
       } as never);
 
       const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
@@ -599,8 +639,14 @@ describe("reconcileBifrostVK", () => {
       ["gpt-5", "http://bifrost.test:8181/openai/v1"],
       ["gpt", "http://bifrost.test:8181/openai/v1"],
       ["gemini", "http://bifrost.test:8181/genai/v1beta"],
+      [
+        "google/gemini-3-pro-preview",
+        "http://bifrost.test:8181/genai/v1beta",
+      ],
       // OpenRouter rides Bifrost's OpenAI route.
       ["kimi", "http://bifrost.test:8181/openai/v1"],
+      // So does xAI — Bifrost has no dedicated Grok route.
+      ["xai/grok-4.3", "http://bifrost.test:8181/openai/v1"],
       // Default (no model) -> anthropic.
       [undefined, "http://bifrost.test:8181/anthropic/v1"],
     ])("model=%s -> baseUrl=%s", async (model, expected) => {
@@ -692,6 +738,410 @@ describe("reconcileBifrostVK", () => {
           description: expect.stringContaining(expectedName),
         }),
       );
+    });
+  });
+});
+
+describe("provider grants", () => {
+  const FOUR = ["anthropic", "openai", "openrouter", "gemini"];
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  const customers = {
+    customers: [{ id: "cust-1", name: USER_ID, created_at: "2026-01-01" }],
+    count: 1,
+    total_count: 1,
+    limit: 50,
+    offset: 0,
+  };
+  function vkList(vks: unknown[]) {
+    return {
+      virtual_keys: vks,
+      count: vks.length,
+      total_count: vks.length,
+      limit: 50,
+      offset: 0,
+    };
+  }
+  /** An existing VK; `configs === undefined` omits provider_configs entirely. */
+  function existingVk(configs: unknown[] | undefined) {
+    return {
+      id: "vk-1",
+      name: USER_ID,
+      value: "sk-bf-EXISTING",
+      customer_id: "cust-1",
+      created_at: "2026-01-01",
+      ...(configs === undefined ? {} : { provider_configs: configs }),
+    };
+  }
+  function fourConfigs() {
+    return FOUR.map((provider, i) => hydratedConfig(i + 1, provider));
+  }
+  const createdVk = {
+    message: "ok",
+    virtual_key: {
+      id: "vk-1",
+      name: USER_ID,
+      value: "sk-bf-NEW",
+      customer_id: "cust-1",
+      created_at: "2026-01-02",
+    },
+  };
+  function uncachedMember() {
+    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+      id: "mem-1",
+      bifrostVkValue: null,
+      bifrostVkId: null,
+      bifrostCustomerId: null,
+    } as never);
+  }
+  function cachedMember(bifrostSyncedAt: Date | null) {
+    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+      id: "mem-1",
+      bifrostVkValue: JSON.stringify({
+        data: "sk-bf-CACHED",
+        iv: "iv",
+        tag: "tag",
+        version: "1",
+        encryptedAt: "x",
+      }),
+      bifrostVkId: "vk-1",
+      bifrostCustomerId: "cust-1",
+      bifrostSyncedAt,
+    } as never);
+  }
+  /** Client for the create path: customer exists, no VK yet. */
+  function creatingClient(overrides: Partial<BifrostClient> = {}) {
+    return makeClientStub({
+      listCustomers: vi.fn().mockResolvedValue(customers),
+      listVirtualKeys: vi.fn().mockResolvedValue(vkList([])),
+      createVirtualKey: vi.fn().mockResolvedValue(createdVk),
+      ...overrides,
+    });
+  }
+  function grantedProviders(client: BifrostClient): string[] {
+    const input = vi.mocked(client.createVirtualKey).mock.calls[0][0];
+    return input.provider_configs.map((pc) => pc.provider);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+  });
+
+  describe("on create", () => {
+    it("grants only the default providers the gateway has configured", async () => {
+      uncachedMember();
+      const client = creatingClient({
+        listProviders: vi.fn().mockResolvedValue(providersResponse(FOUR)),
+      });
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(grantedProviders(client)).toEqual(FOUR);
+      const input = vi.mocked(client.createVirtualKey).mock.calls[0][0];
+      for (const pc of input.provider_configs) {
+        expect(pc).toEqual({
+          provider: pc.provider,
+          allowed_models: ["*"],
+          key_ids: ["*"],
+        });
+      }
+    });
+
+    it("grants every default provider, xai included, when the gateway has them all", async () => {
+      uncachedMember();
+      const client = creatingClient();
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(grantedProviders(client)).toEqual(ALL_PROVIDERS);
+    });
+
+    it("ignores configured providers Hive doesn't list", async () => {
+      uncachedMember();
+      const client = creatingClient({
+        listProviders: vi
+          .fn()
+          .mockResolvedValue(providersResponse([...ALL_PROVIDERS, "vertex"])),
+      });
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(grantedProviders(client)).toEqual(ALL_PROVIDERS);
+    });
+
+    it("falls back to every default provider when the providers list fails", async () => {
+      uncachedMember();
+      const client = creatingClient({
+        listProviders: vi
+          .fn()
+          .mockRejectedValue(new BifrostHttpError(500, undefined, "boom")),
+      });
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(grantedProviders(client)).toEqual(ALL_PROVIDERS);
+    });
+
+    it("falls back to every default provider when the gateway lists none of them", async () => {
+      uncachedMember();
+      const client = creatingClient({
+        listProviders: vi.fn().mockResolvedValue(providersResponse(["vertex"])),
+      });
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(grantedProviders(client)).toEqual(ALL_PROVIDERS);
+    });
+  });
+
+  describe("on an existing VK", () => {
+    it("tops up a VK missing a provider the gateway now has", async () => {
+      uncachedMember();
+      const updateVirtualKey = vi.fn().mockResolvedValue({
+        message: "ok",
+        virtual_key: existingVk([...fourConfigs(), hydratedConfig(5, "xai")]),
+      });
+      const client = makeClientStub({
+        listCustomers: vi.fn().mockResolvedValue(customers),
+        listVirtualKeys: vi
+          .fn()
+          .mockResolvedValue(vkList([existingVk(fourConfigs())])),
+        updateVirtualKey,
+      });
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(result.vkValue).toBe("sk-bf-EXISTING");
+      expect(result.created).toBe(false);
+      expect(client.createVirtualKey).not.toHaveBeenCalled();
+      expect(updateVirtualKey).toHaveBeenCalledTimes(1);
+      const [vkId, input] = updateVirtualKey.mock.calls[0];
+      expect(vkId).toBe("vk-1");
+      // Every existing config rides along with its id and key grant
+      // intact (a PUT that omitted one would delete it)…
+      expect(input.provider_configs.slice(0, 4)).toEqual(
+        FOUR.map((provider, i) => ({
+          id: i + 1,
+          provider,
+          allowed_models: ["*"],
+          blacklisted_models: [],
+          key_ids: ["*"],
+        })),
+      );
+      // …and the missing one is appended as a fresh, id-less grant.
+      expect(input.provider_configs[4]).toEqual({
+        provider: "xai",
+        allowed_models: ["*"],
+        key_ids: ["*"],
+      });
+    });
+
+    it("leaves a VK alone when it already carries every desired provider", async () => {
+      uncachedMember();
+      const client = makeClientStub({
+        listCustomers: vi.fn().mockResolvedValue(customers),
+        listVirtualKeys: vi.fn().mockResolvedValue(
+          vkList([existingVk([...fourConfigs(), hydratedConfig(5, "xai")])]),
+        ),
+      });
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(client.updateVirtualKey).not.toHaveBeenCalled();
+    });
+
+    it("does not top up a provider the gateway lacks too", async () => {
+      uncachedMember();
+      const client = makeClientStub({
+        listProviders: vi.fn().mockResolvedValue(providersResponse(FOUR)),
+        listCustomers: vi.fn().mockResolvedValue(customers),
+        listVirtualKeys: vi
+          .fn()
+          .mockResolvedValue(vkList([existingVk(fourConfigs())])),
+      });
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(client.updateVirtualKey).not.toHaveBeenCalled();
+    });
+
+    it("skips the top-up when Bifrost didn't hydrate provider_configs", async () => {
+      uncachedMember();
+      const client = makeClientStub({
+        listCustomers: vi.fn().mockResolvedValue(customers),
+        listVirtualKeys: vi
+          .fn()
+          .mockResolvedValue(vkList([existingVk(undefined)])),
+      });
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(result.vkValue).toBe("sk-bf-EXISTING");
+      expect(client.updateVirtualKey).not.toHaveBeenCalled();
+    });
+
+    it("carries a key-scoped grant through the top-up untouched", async () => {
+      uncachedMember();
+      const scoped = hydratedConfig(2, "openai", {
+        allow_all_keys: false,
+        keys: [{ key_id: "k-1" }, { key_id: "k-2" }],
+      });
+      const client = makeClientStub({
+        listCustomers: vi.fn().mockResolvedValue(customers),
+        listVirtualKeys: vi.fn().mockResolvedValue(
+          vkList([existingVk([hydratedConfig(1, "anthropic"), scoped])]),
+        ),
+      });
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      const [, input] = vi.mocked(client.updateVirtualKey).mock.calls[0];
+      expect(input.provider_configs[1]).toEqual({
+        id: 2,
+        provider: "openai",
+        allowed_models: ["*"],
+        blacklisted_models: [],
+        key_ids: ["k-1", "k-2"],
+      });
+    });
+
+    it("keeps the VK when the top-up fails", async () => {
+      uncachedMember();
+      const client = makeClientStub({
+        listCustomers: vi.fn().mockResolvedValue(customers),
+        listVirtualKeys: vi
+          .fn()
+          .mockResolvedValue(vkList([existingVk(fourConfigs())])),
+        updateVirtualKey: vi
+          .fn()
+          .mockRejectedValue(
+            new BifrostHttpError(400, undefined, "invalid provider name: xai"),
+          ),
+      });
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(result.vkValue).toBe("sk-bf-EXISTING");
+      expect(result.created).toBe(false);
+      expect(dbMock.workspaceMember.update).toHaveBeenCalled();
+    });
+  });
+
+  describe("on the cached path", () => {
+    it("serves the cache without touching Bifrost while the grants are fresh", async () => {
+      cachedMember(new Date());
+      const client = makeClientStub();
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(result.vkValue).toBe("sk-bf-CACHED");
+      expect(client.listProviders).not.toHaveBeenCalled();
+      expect(client.getVirtualKey).not.toHaveBeenCalled();
+      expect(client.updateVirtualKey).not.toHaveBeenCalled();
+      expect(dbMock.workspaceMember.update).not.toHaveBeenCalled();
+    });
+
+    it("re-checks the grants once the cache is older than the refresh window", async () => {
+      cachedMember(new Date(Date.now() - DAY_MS - 60_000));
+      const updateVirtualKey = vi.fn().mockResolvedValue({
+        message: "ok",
+        virtual_key: existingVk([]),
+      });
+      const client = makeClientStub({
+        getVirtualKey: vi
+          .fn()
+          .mockResolvedValue({ virtual_key: existingVk(fourConfigs()) }),
+        updateVirtualKey,
+      });
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      // Still the cached VK — the refresh is a side effect, not a re-provision.
+      expect(result.vkValue).toBe("sk-bf-CACHED");
+      expect(result.created).toBe(false);
+      expect(client.listCustomers).not.toHaveBeenCalled();
+      expect(client.createVirtualKey).not.toHaveBeenCalled();
+      expect(client.getVirtualKey).toHaveBeenCalledWith("vk-1");
+      expect(updateVirtualKey).toHaveBeenCalledTimes(1);
+      expect(
+        updateVirtualKey.mock.calls[0][1].provider_configs.map(
+          (pc: { provider: string }) => pc.provider,
+        ),
+      ).toEqual(ALL_PROVIDERS);
+      expect(dbMock.workspaceMember.update).toHaveBeenCalledWith({
+        where: { id: "mem-1" },
+        data: { bifrostSyncedAt: expect.any(Date) },
+      });
+    });
+
+    it("treats a missing bifrostSyncedAt as stale", async () => {
+      cachedMember(null);
+      const client = makeClientStub({
+        getVirtualKey: vi.fn().mockResolvedValue({
+          virtual_key: existingVk([...fourConfigs(), hydratedConfig(5, "xai")]),
+        }),
+      });
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(client.getVirtualKey).toHaveBeenCalledWith("vk-1");
+      expect(client.updateVirtualKey).not.toHaveBeenCalled();
+      expect(dbMock.workspaceMember.update).toHaveBeenCalledWith({
+        where: { id: "mem-1" },
+        data: { bifrostSyncedAt: expect.any(Date) },
+      });
+    });
+
+    it("serves the cache and still stamps the row when the refresh fails", async () => {
+      cachedMember(null);
+      const client = makeClientStub({
+        getVirtualKey: vi
+          .fn()
+          .mockRejectedValue(
+            new BifrostHttpError(404, undefined, "Virtual key not found"),
+          ),
+      });
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(result.vkValue).toBe("sk-bf-CACHED");
+      expect(client.updateVirtualKey).not.toHaveBeenCalled();
+      expect(dbMock.workspaceMember.update).toHaveBeenCalledWith({
+        where: { id: "mem-1" },
+        data: { bifrostSyncedAt: expect.any(Date) },
+      });
     });
   });
 });

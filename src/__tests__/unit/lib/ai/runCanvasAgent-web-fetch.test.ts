@@ -1,21 +1,28 @@
 /**
- * Unit tests for the graph-write capability wiring in runCanvasAgent.
+ * Unit tests for the `web_fetch` wiring in runCanvasAgent.
  *
- * The four `propose_*` graph-write tools are only composed when
- * `CapabilityContext.graphWriteEnabled` is true, and runCanvasAgent is the
- * only place that resolves it (via `isGraphWriteCapabilityEnabledForOrg`).
- * The registry-level tests cover `buildTools` given the flag; these cover
- * the wiring that produces the flag — the gap that shipped the tools with
- * no caller able to reach them.
- *
- * Acceptance criteria verified:
- *  1. Gate ON  → propose tools reach the streamText toolset (single-workspace).
- *  2. Gate OFF → they do not, while the read-only graph tools survive.
- *  3. Same wiring on the multi-workspace branch (the two sites stay in sync).
- *  4. The gate is consulted with the acting orgId.
+ * `createWebFetch` (aieo, via `@/lib/ai/provider`) builds one handle per
+ * run — Anthropic's native tool or aieo's guarded HTTP shim — and
+ * runCanvasAgent is the only place that registers it. These cover the
+ * registration rules, which mirror `web_search`:
+ *  1. The tool reaches the streamText toolset as `web_fetch`, beside `web_search`.
+ *  2. It survives `readonly: true` (reading a public page touches nothing of ours).
+ *  3. It is registered after `additionalTools`, so a caller can't shadow it.
+ *  4. A handle without a tool (Anthropic, no key) is dropped, not fatal.
+ *  5. Each step's content is fed to the handle's `capture`.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// ---------------------------------------------------------------------------
+// Hoisted handles — referenced from the provider mock factory below, which
+// vitest hoists above every import.
+// ---------------------------------------------------------------------------
+const handles = vi.hoisted(() => ({
+  fetchTool: { description: "mock web_fetch", execute: vi.fn() },
+  fetchCapture: vi.fn(),
+  createWebFetch: vi.fn(),
+}));
 
 // ---------------------------------------------------------------------------
 // Module mocks — must come before any import that transitively loads them.
@@ -67,14 +74,7 @@ vi.mock("@/lib/ai/graphWalkerTools", () => ({
 vi.mock("@/lib/ai/graphWalkDispatchTools", () => ({
   buildGraphWalkDispatchTools: vi.fn(() => ({ dispatch_graph_walk: {} })),
 }));
-vi.mock("@/lib/ai/graphWriteTools", () => ({
-  buildGraphWriteTools: vi.fn(() => ({
-    propose_create_node: {},
-    propose_node_edit: {},
-    propose_create_triplet: {},
-    propose_create_batch_triplet: {},
-  })),
-}));
+vi.mock("@/lib/ai/graphWriteTools", () => ({ buildGraphWriteTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/workflowExplorerTools", () => ({ buildWorkflowExplorerTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/promptTools", () => ({ buildPromptTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/conceptTools", () => ({ buildConceptTools: vi.fn(() => ({})) }));
@@ -89,13 +89,7 @@ vi.mock("@/lib/ai/provider", () => ({
   getApiKeyForProvider: vi.fn(() => "api-key"),
   WEB_SEARCH_TOOL_NAME: "web_search",
   WEB_FETCH_TOOL_NAME: "web_fetch",
-  createWebFetch: vi.fn(() => ({
-    tool: { description: "mock web_fetch", execute: vi.fn() },
-    backend: "anthropic",
-    native: true,
-    results: [],
-    capture: vi.fn(),
-  })),
+  createWebFetch: (...args: unknown[]) => handles.createWebFetch(...args),
   createWebSearch: vi.fn(() => ({
     tool: { description: "mock web_search", execute: vi.fn() },
     backend: "anthropic",
@@ -113,14 +107,9 @@ vi.mock("@/services/bifrost/orchestrator", () => ({
 vi.mock("@/lib/ai/canvas-system-prompt", () => ({
   getCanvasSystemPrompt: vi.fn(async () => ({ value: "system", promptId: null })),
 }));
-
-const isGraphWriteCapabilityEnabledForOrg = vi.fn<
-  (orgId: string | undefined) => Promise<boolean>
->();
 vi.mock("@/lib/ai/capabilityGates", () => ({
   isPromptsCapabilityEnabledForOrg: vi.fn(async () => false),
-  isGraphWriteCapabilityEnabledForOrg: (orgId: string | undefined) =>
-    isGraphWriteCapabilityEnabledForOrg(orgId),
+  isGraphWriteCapabilityEnabledForOrg: vi.fn(async () => false),
   isCodeChangeCapabilityEnabledForOrg: vi.fn(async () => false),
 }));
 vi.mock("@/lib/constants/prompt", () => ({
@@ -154,21 +143,28 @@ vi.mock("ai", () => ({
 // Imports (after mocks are registered)
 // ---------------------------------------------------------------------------
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
-import type { ModelMessage } from "ai";
+import { createWebSearch } from "@/lib/ai/provider";
+import type { ModelMessage, ToolSet } from "ai";
 
-const WRITE_TOOLS = [
-  "propose_create_node",
-  "propose_node_edit",
-  "propose_create_triplet",
-  "propose_create_batch_triplet",
-] as const;
+type StreamTextOpts = {
+  tools?: Record<string, unknown>;
+  onStepFinish?: (step: { content: unknown[] }) => Promise<void> | void;
+};
 
-/** Tool names handed to streamText on the most recent run. */
-function toolNames(): string[] {
-  const opts = mockStreamText.mock.calls.at(-1)?.[0] as
-    | { tools?: Record<string, unknown> }
-    | undefined;
-  return Object.keys(opts?.tools ?? {});
+/** The options handed to streamText on the most recent run. */
+function lastStreamTextOpts(): StreamTextOpts {
+  return (mockStreamText.mock.calls.at(-1)?.[0] ?? {}) as StreamTextOpts;
+}
+
+function fetchHandle(overrides: Record<string, unknown> = {}) {
+  return {
+    tool: handles.fetchTool,
+    backend: "anthropic",
+    native: true,
+    results: [],
+    capture: handles.fetchCapture,
+    ...overrides,
+  };
 }
 
 function opts(overrides: Partial<Parameters<typeof runCanvasAgent>[0]> = {}) {
@@ -178,6 +174,7 @@ function opts(overrides: Partial<Parameters<typeof runCanvasAgent>[0]> = {}) {
     workspaceSlugs: ["ws-slug"],
     capabilities: ["graph_walker"],
     messages: [{ role: "user", content: "hello" }] as ModelMessage[],
+    silentPusher: true,
     ...overrides,
   } satisfies Parameters<typeof runCanvasAgent>[0];
 }
@@ -186,49 +183,81 @@ function opts(overrides: Partial<Parameters<typeof runCanvasAgent>[0]> = {}) {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("runCanvasAgent — graph-write org gate wiring", () => {
-  let consoleSpy: ReturnType<typeof vi.spyOn>;
+describe("runCanvasAgent — web_fetch wiring", () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    isGraphWriteCapabilityEnabledForOrg.mockResolvedValue(false);
+    handles.createWebFetch.mockReturnValue(fetchHandle());
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    consoleSpy.mockRestore();
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
-  it("hands the propose tools to the model when the org gate is on", async () => {
-    isGraphWriteCapabilityEnabledForOrg.mockResolvedValue(true);
-
+  it("registers web_fetch beside web_search with the run's provider and key", async () => {
     await runCanvasAgent(opts());
 
-    const names = toolNames();
-    for (const t of WRITE_TOOLS) expect(names).toContain(t);
+    const { tools } = lastStreamTextOpts();
+    expect(tools?.web_fetch).toBe(handles.fetchTool);
+    expect(tools).toHaveProperty("web_search");
+
+    // One handle per run, built from the same provider/key as web_search.
+    expect(handles.createWebFetch).toHaveBeenCalledTimes(1);
+    const searchArgs = vi.mocked(createWebSearch).mock.calls[0][0];
+    expect(handles.createWebFetch).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: searchArgs.provider, apiKey: "api-key" }),
+    );
   });
 
-  it("withholds them when the gate is off, keeping the read tools", async () => {
+  it("survives the readonly strip, like web_search", async () => {
+    await runCanvasAgent(opts({ readonly: true }));
+
+    const { tools } = lastStreamTextOpts();
+    expect(tools?.web_fetch).toBe(handles.fetchTool);
+    expect(tools).toHaveProperty("web_search");
+  });
+
+  it("is registered after additionalTools, so a caller cannot shadow it", async () => {
+    const impostor = { description: "impostor" };
+    await runCanvasAgent(
+      opts({ additionalTools: { web_fetch: impostor } as unknown as ToolSet }),
+    );
+
+    expect(lastStreamTextOpts().tools?.web_fetch).toBe(handles.fetchTool);
+  });
+
+  it("drops the tool (with a warning) when the handle has none, keeping web_search", async () => {
+    handles.createWebFetch.mockReturnValueOnce(
+      fetchHandle({ tool: undefined, backend: undefined, native: false }),
+    );
     await runCanvasAgent(opts());
 
-    const names = toolNames();
-    for (const t of WRITE_TOOLS) expect(names).not.toContain(t);
-    expect(names).toContain("graph_get");
-    expect(names).toContain("dispatch_graph_walk");
+    const { tools } = lastStreamTextOpts();
+    expect(tools).not.toHaveProperty("web_fetch");
+    expect(tools).toHaveProperty("web_search");
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("no web_fetch backend"));
   });
 
-  it("applies the same wiring on the multi-workspace branch", async () => {
-    isGraphWriteCapabilityEnabledForOrg.mockResolvedValue(true);
-
-    await runCanvasAgent(opts({ workspaceSlugs: ["ws-a", "ws-b"] }));
-
-    const names = toolNames();
-    for (const t of WRITE_TOOLS) expect(names).toContain(t);
-  });
-
-  it("consults the gate with the acting orgId", async () => {
+  it("feeds every step's content to the handle's capture", async () => {
     await runCanvasAgent(opts());
 
-    expect(isGraphWriteCapabilityEnabledForOrg).toHaveBeenCalledWith("org-1");
+    const { onStepFinish } = lastStreamTextOpts();
+    expect(onStepFinish).toBeTypeOf("function");
+    const content = [
+      {
+        type: "tool-result",
+        toolName: "web_fetch",
+        output: { type: "web_fetch_result", url: "https://example.com" },
+      },
+    ];
+    await onStepFinish!({ content });
+
+    expect(handles.fetchCapture).toHaveBeenCalledTimes(1);
+    expect(handles.fetchCapture).toHaveBeenCalledWith(content);
   });
 });
