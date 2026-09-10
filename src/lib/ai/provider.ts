@@ -11,6 +11,8 @@ import { config } from "@/config/env";
 export type { Provider } from "aieo";
 export type { WebSearchHandle, WebSearchResult } from "aieo";
 export { WEB_SEARCH_TOOL_NAME, linkifyCitations, stripCitations } from "aieo";
+export type { WebFetchHandle, WebFetchResult } from "aieo";
+export { WEB_FETCH_TOOL_NAME } from "aieo";
 
 import {
   type Provider,
@@ -19,6 +21,9 @@ import {
   type WebSearchHandle,
   type WebSearchResult,
   createWebSearch as createWebSearchAieo,
+  type CreateWebFetchOptions,
+  type WebFetchHandle,
+  createWebFetch as createWebFetchAieo,
   stripCitations,
   getModel as getModelAieo,
   getProviderTool as getProviderToolAieo,
@@ -195,4 +200,46 @@ export function createWebSearch(
   }
 
   return createWebSearchAieo(opts);
+}
+
+/**
+ * Build the run's `web_fetch` tool with mock support. Sibling of
+ * `createWebSearch`.
+ *
+ * Delegates to aieo, which keeps Anthropic on its native server-executed
+ * tool and hands every other provider a guarded HTTP shim of the same
+ * name and result shape: http(s) only, no embedded credentials, private
+ * and reserved addresses refused, and every redirect hop re-checked.
+ * Callers register `handle.tool` under `WEB_FETCH_TOOL_NAME`, feed
+ * `handle.capture` from `onStepFinish`, and read `handle.results` for
+ * every page fetched — identical on both paths.
+ *
+ * One asymmetry worth knowing: Anthropic's native tool only fetches URLs
+ * that already appeared in the conversation (pasted by the user, or
+ * returned by an earlier search/fetch). The shim has no such memory.
+ */
+export function createWebFetch(
+  opts: Omit<CreateWebFetchOptions, "apiKey"> & { apiKey: string },
+): WebFetchHandle {
+  // Mock mode returns a handle shaped like the real one so the agent
+  // loop is exercised end-to-end without reaching Anthropic or the web.
+  // Mirrors createWebSearch's mock branch above.
+  if (config.USE_MOCKS && !USE_REAL_LLM && opts.provider === "anthropic") {
+    return {
+      tool: {
+        description: "Mock web_fetch tool",
+        parameters: {},
+        execute: async (params: unknown) => {
+          console.log("[Mock] web_fetch tool called with:", params);
+          return { result: "Mock tool result", mocked: true };
+        },
+      },
+      backend: "anthropic",
+      native: true,
+      results: [],
+      capture: () => {},
+    };
+  }
+
+  return createWebFetchAieo(opts);
 }
