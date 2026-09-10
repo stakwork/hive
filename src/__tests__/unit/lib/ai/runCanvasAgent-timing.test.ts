@@ -71,6 +71,14 @@ vi.mock("@/lib/ai/provider", () => ({
   getModel: vi.fn(() => ({ modelId: "mock-model" })),
   getApiKeyForProvider: vi.fn(() => "api-key"),
   WEB_SEARCH_TOOL_NAME: "web_search",
+  WEB_FETCH_TOOL_NAME: "web_fetch",
+  createWebFetch: vi.fn(() => ({
+    tool: { description: "mock web_fetch", execute: vi.fn() },
+    backend: "anthropic",
+    native: true,
+    results: [],
+    capture: vi.fn(),
+  })),
   createWebSearch: vi.fn(() => ({
     tool: { description: "mock web_search", execute: vi.fn() },
     backend: "anthropic",
