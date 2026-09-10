@@ -514,3 +514,5 @@ Runs from day one — benchmark labels already exist.
   should be near zero; rising means the guardrails, not the model, are
   doing the work)
 - `explore` latency: < 250 ms at target scale
+
+//
