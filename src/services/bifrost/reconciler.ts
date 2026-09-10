@@ -10,6 +10,7 @@ import {
   BIFROST_LOCK_PREFIX,
   BIFROST_LOCK_TTL_MS,
   BIFROST_LOG_TAG,
+  BIFROST_VK_PROVIDER_REFRESH_MS,
   DEFAULT_BUDGET_RESET_DURATION,
   DEFAULT_CUSTOMER_BUDGET_USD,
   DEFAULT_PROVIDERS,
@@ -20,6 +21,8 @@ import {
 import { resolveBifrost } from "./resolve";
 import type {
   BifrostCustomer,
+  BifrostProvider,
+  BifrostProviderConfig,
   BifrostVirtualKey,
   ReconcileResult,
 } from "./types";
@@ -41,7 +44,10 @@ import type {
  * just a display affordance and we never look users up by it.
  *
  * Triggered lazily on first LLM use. Subsequent callers hit the
- * cached VK on `WorkspaceMember` without ever talking to Bifrost.
+ * cached VK on `WorkspaceMember` without talking to Bifrost — except
+ * once per `BIFROST_VK_PROVIDER_REFRESH_MS`, when the VK's provider
+ * grants are re-checked against the gateway (see "Provider grants"
+ * below).
  *
  * See `gateway/plans/phase-1-reconciler.md`.
  */
@@ -107,6 +113,7 @@ async function doReconcile(
       bifrostVkValue: true,
       bifrostVkId: true,
       bifrostCustomerId: true,
+      bifrostSyncedAt: true,
       user: {
         select: {
           githubAuth: { select: { githubUsername: true } },
@@ -134,27 +141,22 @@ async function doReconcile(
   // suffix already applied.
   const llmBaseUrl = gatewayUrlForModel(options.model, baseCreds.baseUrl);
 
+  // Constructing the client is free (no I/O). It's only exercised on
+  // the Bifrost paths below — including the cached path's periodic
+  // grant refresh.
+  const client =
+    options.clientFactory?.(baseCreds) ?? new BifrostClient(baseCreds);
+
   if (
     member.bifrostVkValue &&
     member.bifrostVkId &&
     member.bifrostCustomerId
   ) {
+    let vkValue: string | undefined;
     try {
       // `decryptField` parses the stored JSON-stringified ciphertext
       // itself. Don't double-parse.
-      const vkValue = encryption.decryptField(
-        "bifrostVk",
-        member.bifrostVkValue,
-      );
-      return {
-        workspaceId,
-        userId,
-        customerId: member.bifrostCustomerId,
-        vkId: member.bifrostVkId,
-        vkValue,
-        baseUrl: llmBaseUrl,
-        created: false,
-      };
+      vkValue = encryption.decryptField("bifrostVk", member.bifrostVkValue);
     } catch (err) {
       // Corrupt encryption blob — fall through to re-provision.
       logger.warn(
@@ -167,12 +169,28 @@ async function doReconcile(
         },
       );
     }
+    if (vkValue !== undefined) {
+      // The cache never talks to Bifrost, so a provider added to
+      // DEFAULT_PROVIDERS (or newly configured on this gateway) would
+      // otherwise never reach a VK minted before it. Re-check the
+      // grants once per refresh window. Best-effort — never blocks
+      // or fails the call.
+      if (isProviderGrantStale(member.bifrostSyncedAt)) {
+        await refreshProviderGrants(client, member.bifrostVkId, member.id);
+      }
+      return {
+        workspaceId,
+        userId,
+        customerId: member.bifrostCustomerId,
+        vkId: member.bifrostVkId,
+        vkValue,
+        baseUrl: llmBaseUrl,
+        created: false,
+      };
+    }
   }
 
   // 2. Talk to Bifrost.
-  const client =
-    options.clientFactory?.(baseCreds) ?? new BifrostClient(baseCreds);
-
   let created = false;
 
   const { customer, createdCustomer } = await ensureCustomer(
@@ -181,10 +199,12 @@ async function doReconcile(
   );
   if (createdCustomer) created = true;
 
+  const providers = await desiredProviders(client);
   const { virtualKey, createdVk } = await ensureVirtualKey(
     client,
     bifrostName,
     customer.id,
+    providers,
   );
   if (createdVk) created = true;
 
@@ -289,9 +309,29 @@ async function ensureVirtualKey(
   client: BifrostClient,
   name: string,
   customerId: string,
+  providers: BifrostProvider[],
 ): Promise<{ virtualKey: BifrostVirtualKey; createdVk: boolean }> {
   const existing = await findExactVirtualKey(client, name, customerId);
-  if (existing) return { virtualKey: existing, createdVk: false };
+  if (existing) {
+    // Non-fatal: the VK already works for the providers it has, and
+    // failing here would make the orchestrator drop this call to the
+    // swarm's default key over a grant it may not even need.
+    try {
+      await topUpProviderGrants(client, existing, providers);
+    } catch (err) {
+      logger.warn(
+        "Bifrost VK provider top-up failed; using VK as is",
+        BIFROST_LOG_TAG,
+        {
+          name,
+          customerId,
+          vkId: existing.id,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+    }
+    return { virtualKey: existing, createdVk: false };
+  }
 
   try {
     const created = await client.createVirtualKey({
@@ -308,7 +348,7 @@ async function ensureVirtualKey(
       // a different (hydrated, read-only) field. See the Bifrost Go
       // handler: `KeyIDs schemas.WhiteList json:"key_ids"` in
       // transports/bifrost-http/handlers/governance.go.
-      provider_configs: DEFAULT_PROVIDERS.map((provider) => ({
+      provider_configs: providers.map((provider) => ({
         provider,
         allowed_models: ["*"],
         key_ids: ["*"],
@@ -357,6 +397,165 @@ async function findExactVirtualKey(
     { name, customerId, found: exact.length, picked: oldest.id },
   );
   return oldest;
+}
+
+// ─── Provider grants ──────────────────────────────────────────────────
+//
+// A VK is granted DEFAULT_PROVIDERS ∩ (providers configured on this
+// gateway). Bifrost validates every `provider_configs[].provider`
+// against its configured providers on create *and* update
+// (`getConfiguredProviderSet` in transports/bifrost-http/handlers/
+// governance.go), so naming one the gateway lacks 400s the whole
+// request — and swarm gateways pick up new providers (xai, via
+// stakgraph#1673) on their own deploy cadence. Grants are additive:
+// a provider the VK carries but the gateway no longer lists is left
+// in place.
+
+/**
+ * DEFAULT_PROVIDERS narrowed to what the gateway has configured.
+ * Falls back to the full list when the providers endpoint fails or
+ * lists none of them — the pre-narrowing behaviour, whose 400 on
+ * create surfaces through the orchestrator's fail-open path exactly
+ * as it always did.
+ */
+async function desiredProviders(
+  client: BifrostClient,
+): Promise<BifrostProvider[]> {
+  let configured: Set<string>;
+  try {
+    const res = await client.listProviders();
+    configured = new Set(res.providers.map((p) => p.name));
+  } catch (err) {
+    logger.warn(
+      "Bifrost providers list failed; assuming every default provider",
+      BIFROST_LOG_TAG,
+      { error: err instanceof Error ? err.message : String(err) },
+    );
+    return DEFAULT_PROVIDERS;
+  }
+  const desired = DEFAULT_PROVIDERS.filter((p) => configured.has(p));
+  if (desired.length === 0) {
+    logger.warn(
+      "Bifrost gateway lists none of the default providers; assuming every default provider",
+      BIFROST_LOG_TAG,
+      { configured: Array.from(configured) },
+    );
+    return DEFAULT_PROVIDERS;
+  }
+  return desired;
+}
+
+/**
+ * Grant the VK any of `desired` it doesn't already carry. Returns the
+ * providers added (empty when nothing changed).
+ *
+ * Bifrost's PUT replaces the provider_configs set wholesale: entries
+ * with an `id` update in place, entries without one are created, and
+ * any existing config missing from the request is DELETED. So every
+ * existing config is re-sent verbatim alongside the new ones. Budgets
+ * and rate limits are omitted, which Bifrost treats as "unchanged".
+ */
+async function topUpProviderGrants(
+  client: BifrostClient,
+  vk: BifrostVirtualKey,
+  desired: BifrostProvider[],
+): Promise<BifrostProvider[]> {
+  const existing = vk.provider_configs;
+  // Without the hydrated set (ids included) we can't re-send it, and
+  // a PUT that omits a config deletes it. Leave the VK alone.
+  if (!Array.isArray(existing) || existing.some((pc) => pc.id == null)) {
+    logger.warn(
+      "Bifrost VK response lacks hydrated provider_configs; skipping grant top-up",
+      BIFROST_LOG_TAG,
+      { vkId: vk.id },
+    );
+    return [];
+  }
+  const have = new Set(existing.map((pc) => pc.provider));
+  const missing = desired.filter((p) => !have.has(p));
+  if (missing.length === 0) return [];
+
+  await client.updateVirtualKey(vk.id, {
+    provider_configs: [
+      ...existing.map(carryProviderConfig),
+      ...missing.map((provider) => ({
+        provider,
+        allowed_models: ["*"],
+        key_ids: ["*"],
+      })),
+    ],
+  });
+  logger.info("Bifrost VK provider grants topped up", BIFROST_LOG_TAG, {
+    vkId: vk.id,
+    added: missing,
+  });
+  return missing;
+}
+
+/**
+ * Re-encode a hydrated (response-side) provider_config as the
+ * request-side shape so an update carries it through unchanged. The
+ * key grant round-trips from `allow_all_keys` / `keys[].key_id` back
+ * to `key_ids` — leaving `key_ids` off would strip the VK's keys.
+ */
+function carryProviderConfig(pc: BifrostProviderConfig) {
+  return {
+    id: pc.id,
+    provider: pc.provider,
+    allowed_models: pc.allowed_models ?? [],
+    blacklisted_models: pc.blacklisted_models ?? [],
+    weight: pc.weight ?? undefined,
+    key_ids: pc.allow_all_keys
+      ? ["*"]
+      : (pc.keys ?? [])
+          .map((k) => k.key_id)
+          .filter((id): id is string => typeof id === "string"),
+  };
+}
+
+/**
+ * Cached-path companion to `topUpProviderGrants`: fetch the cached VK
+ * from the gateway, grant anything it's missing, then stamp
+ * `bifrostSyncedAt` so the next check is a refresh window away.
+ *
+ * Best-effort throughout. Any failure is logged and the cached VK is
+ * served as is — an LLM call must never fail because a grant refresh
+ * did. The stamp is written even on failure so a persistently
+ * unhappy gateway costs one extra round-trip per window, not per call.
+ */
+async function refreshProviderGrants(
+  client: BifrostClient,
+  vkId: string,
+  memberId: string,
+): Promise<void> {
+  try {
+    const desired = await desiredProviders(client);
+    const { virtual_key } = await client.getVirtualKey(vkId);
+    await topUpProviderGrants(client, virtual_key, desired);
+  } catch (err) {
+    logger.warn(
+      "Bifrost VK grant refresh failed; serving cached VK",
+      BIFROST_LOG_TAG,
+      { vkId, error: err instanceof Error ? err.message : String(err) },
+    );
+  }
+  try {
+    await db.workspaceMember.update({
+      where: { id: memberId },
+      data: { bifrostSyncedAt: new Date() },
+    });
+  } catch (err) {
+    logger.warn(
+      "Failed to stamp bifrostSyncedAt after grant refresh",
+      BIFROST_LOG_TAG,
+      { memberId, error: err instanceof Error ? err.message : String(err) },
+    );
+  }
+}
+
+function isProviderGrantStale(syncedAt: Date | null | undefined): boolean {
+  if (!syncedAt) return true;
+  return Date.now() - syncedAt.getTime() > BIFROST_VK_PROVIDER_REFRESH_MS;
 }
 
 /**
