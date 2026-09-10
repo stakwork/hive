@@ -166,6 +166,83 @@ describe("BifrostClient", () => {
     });
   });
 
+  it("getVirtualKey GETs the VK by id", async () => {
+    fetchMock.mockResolvedValueOnce(
+      makeResponse(200, {
+        virtual_key: {
+          id: "vk-1",
+          name: "u_alice",
+          value: "sk-bf-XYZ",
+          created_at: "2026-05-14T00:00:01Z",
+          provider_configs: [],
+        },
+      }),
+    );
+
+    const client = makeClient();
+    const out = await client.getVirtualKey("vk-1");
+
+    expect(out.virtual_key.id).toBe("vk-1");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(
+      "http://bifrost.test:8181/api/governance/virtual-keys/vk-1",
+    );
+    expect((init as RequestInit).method).toBe("GET");
+  });
+
+  it("updateVirtualKey PUTs the full provider_configs set", async () => {
+    fetchMock.mockResolvedValueOnce(
+      makeResponse(200, {
+        message: "Virtual key updated successfully",
+        virtual_key: {
+          id: "vk-1",
+          name: "u_alice",
+          value: "sk-bf-XYZ",
+          created_at: "2026-05-14T00:00:01Z",
+        },
+      }),
+    );
+
+    const client = makeClient();
+    await client.updateVirtualKey("vk-1", {
+      provider_configs: [
+        { id: 1, provider: "anthropic", allowed_models: ["*"], key_ids: ["*"] },
+        { provider: "xai", allowed_models: ["*"], key_ids: ["*"] },
+      ],
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(
+      "http://bifrost.test:8181/api/governance/virtual-keys/vk-1",
+    );
+    expect((init as RequestInit).method).toBe("PUT");
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.provider_configs).toHaveLength(2);
+    expect(body.provider_configs[0].id).toBe(1);
+    expect(body.provider_configs[1]).toEqual({
+      provider: "xai",
+      allowed_models: ["*"],
+      key_ids: ["*"],
+    });
+  });
+
+  it("listProviders GETs /api/providers", async () => {
+    fetchMock.mockResolvedValueOnce(
+      makeResponse(200, {
+        providers: [{ name: "anthropic" }, { name: "xai" }],
+        total: 2,
+      }),
+    );
+
+    const client = makeClient();
+    const out = await client.listProviders();
+
+    expect(out.providers.map((p) => p.name)).toEqual(["anthropic", "xai"]);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://bifrost.test:8181/api/providers");
+    expect((init as RequestInit).method).toBe("GET");
+  });
+
   it("throws BifrostHttpError with detail on non-2xx", async () => {
     fetchMock.mockResolvedValue(
       makeResponse(400, { error: "Customer name is required" }),
