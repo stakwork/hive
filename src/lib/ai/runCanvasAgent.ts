@@ -78,6 +78,8 @@ import {
   getApiKeyForProvider,
   createWebSearch,
   WEB_SEARCH_TOOL_NAME,
+  createWebFetch,
+  WEB_FETCH_TOOL_NAME,
   type Provider,
 } from "@/lib/ai/provider";
 import { getProviderOptions, hasApiKeyForProvider, PROVIDERS } from "aieo";
@@ -785,6 +787,10 @@ export async function runCanvasAgent(
     apiKey,
     citations: !!opts.webSearchCitations,
   });
+  // Per-run web_fetch handle, same two-flow shape as the search handle:
+  // native on Anthropic, guarded HTTP shim elsewhere. `results` lists
+  // every page fetched during the run, in order.
+  const webFetch = createWebFetch({ provider, apiKey });
 
   // Turn-level cancellation flag, shared with the repo_agent tool
   // executes (via AskToolsContext). When the user stops a run, the
@@ -1166,6 +1172,18 @@ export async function runCanvasAgent(
     );
   }
 
+  // `web_fetch` follows the same rule: after the strip, after
+  // `additionalTools`. Reading a public page touches nothing of ours,
+  // and the aieo handle already refuses private addresses on the HTTP
+  // path. `tool` is undefined only on Anthropic without a key.
+  if (webFetch.tool) {
+    tools = { ...tools, [WEB_FETCH_TOOL_NAME]: webFetch.tool };
+  } else {
+    console.warn(
+      `[runCanvasAgent] no web_fetch backend for provider "${provider}"; continuing without it`,
+    );
+  }
+
   // ------------------------------------------------------------------
   // Assemble final message list + sanitize
   // ------------------------------------------------------------------
@@ -1380,6 +1398,7 @@ export async function runCanvasAgent(
       // want to add the Pusher round-trip (50-200ms) to every agent
       // step's wall-clock time.
       webSearch.capture(sf.content);
+      webFetch.capture(sf.content);
       if (!silentPusher) {
         maybeHighlightLearnedConcept(sf.content, primarySlug, features);
       }
