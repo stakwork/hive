@@ -1,3 +1,5 @@
+import type { Provider as AieoProvider } from "aieo";
+
 import type { BifrostProvider } from "./types";
 
 /**
@@ -51,6 +53,35 @@ export const DEFAULT_PROVIDERS: BifrostProvider[] = [
  * GET (+ one PUT when something is missing) per member per window.
  */
 export const BIFROST_VK_PROVIDER_REFRESH_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Shorter re-check window used when the model a caller asked for maps
+ * to a provider the cached VK's grant snapshot lacks — or when the row
+ * has no snapshot yet. Without it, a gateway that gains a provider
+ * (xai via stakgraph#1673) would take a full
+ * `BIFROST_VK_PROVIDER_REFRESH_MS` to reach a cached VK, and every
+ * call for that provider in between would fall back to the direct
+ * key. A persistent miss costs one GET (+ one PUT) per member per
+ * window — bounded, and only while someone keeps asking for the
+ * missing provider.
+ */
+export const BIFROST_VK_PROVIDER_MISS_REFRESH_MS = 15 * 60 * 1000;
+
+/**
+ * aieo provider prefix (the `provider/` half of a Hive model id) →
+ * Bifrost provider id, i.e. the name a VK `provider_configs[].provider`
+ * carries. Only `google` differs: aieo speaks Gemini through the
+ * `google` SDK, Bifrost calls the provider `gemini`. Typed against
+ * aieo's union so a new aieo provider fails to compile here until it
+ * is mapped.
+ */
+export const AIEO_TO_BIFROST_PROVIDER: Record<AieoProvider, BifrostProvider> = {
+  anthropic: "anthropic",
+  google: "gemini",
+  openai: "openai",
+  openrouter: "openrouter",
+  xai: "xai",
+};
 
 /** Default Bifrost admin-API port. Bifrost serves admin on 8181. */
 export const DEFAULT_BIFROST_PORT = 8181;

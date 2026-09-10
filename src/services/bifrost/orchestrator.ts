@@ -37,7 +37,7 @@ import {
 const PUBLIC_VIEWER_USER_ID = "__public_viewer__";
 
 export { BIFROST_AGENT_NAMES, type BifrostAgentName } from "./agent-names";
-import { BIFROST_AGENT_NAMES, type BifrostAgentName } from "./agent-names";
+import type { BifrostAgentName } from "./agent-names";
 
 /**
  * Master Bifrost reconciler — the **only** function callers should
@@ -150,6 +150,29 @@ export async function getBifrostForLLM(
   const vk = await runVKReconcile(workspaceAuth, opts.model);
   if (!vk) return undefined;
 
+  // 3b. Grant check. A VK only reaches the providers it was granted
+  // (DEFAULT_PROVIDERS ∩ what that gateway has configured — see the
+  // reconciler). When the snapshot says this model's provider is not
+  // among them (a swarm whose gateway has no XAI_API_KEY yet, say),
+  // the gateway would reject the call and nothing downstream retries,
+  // so hand the caller back to its direct provider key instead.
+  // Unknown grants (no snapshot yet) keep the fail-open routing.
+  if (vk.modelProviderGranted === false) {
+    logger.info(
+      "Bifrost VK has no grant for the model's provider; falling back to direct key",
+      "BIFROST_VK",
+      {
+        workspaceId: workspaceAuth.workspaceId,
+        userId: workspaceAuth.userId,
+        agentName: opts.agentName,
+        model: opts.model ?? null,
+        modelProvider: vk.modelProvider,
+        providers: vk.providers ?? null,
+      },
+    );
+    return undefined;
+  }
+
   // 4. Mint a macaroon for the x-macaroon header (phase 4 shadow
   // mode). Failure here MUST NOT block the LLM call — we return the
   // VK shape with empty headers and the call proceeds without the
@@ -215,7 +238,16 @@ async function runAgentCatalogReconcile(workspaceId: string, userId?: string): P
 async function runVKReconcile(
   workspaceAuth: Required<Pick<WorkspaceAuth, "workspaceId" | "userId">>,
   model: string | undefined,
-): Promise<{ apiKey: string; baseUrl: string } | undefined> {
+): Promise<
+  | {
+      apiKey: string;
+      baseUrl: string;
+      modelProvider: string;
+      providers?: string[];
+      modelProviderGranted?: boolean;
+    }
+  | undefined
+> {
   try {
     const { reconcileBifrostVK } = await import("./reconciler");
     const result = await reconcileBifrostVK(
@@ -223,7 +255,13 @@ async function runVKReconcile(
       workspaceAuth.userId,
       { model },
     );
-    return { apiKey: result.vkValue, baseUrl: result.baseUrl };
+    return {
+      apiKey: result.vkValue,
+      baseUrl: result.baseUrl,
+      modelProvider: result.modelProvider,
+      providers: result.providers,
+      modelProviderGranted: result.modelProviderGranted,
+    };
   } catch (err) {
     logger.warn(
       "Bifrost VK reconcile failed; falling back to default LLM key",

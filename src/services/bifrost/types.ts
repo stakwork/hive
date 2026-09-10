@@ -167,6 +167,28 @@ export interface ReconcileResult {
   baseUrl: string;
   /** True iff Customer or VK was created during this call (audit signal). */
   created: boolean;
+  /**
+   * Bifrost provider the requested model maps to (`options.model`,
+   * anthropic when omitted) — the same prefix resolution that picked
+   * the `baseUrl` suffix, mapped through `AIEO_TO_BIFROST_PROVIDER`
+   * (`gemini` for `google/*` models).
+   */
+  modelProvider: BifrostProvider;
+  /**
+   * The VK's provider grants as last observed: the create response, or
+   * the snapshot on `WorkspaceMember.bifrostVkProviders` (refreshed
+   * once per window, sooner on a miss). `undefined` when unknown — the
+   * row has no snapshot yet and the gateway couldn't be read this call.
+   */
+  providers?: string[];
+  /**
+   * `false` when `providers` is known and lacks `modelProvider`. The
+   * orchestrator then returns `undefined` so the caller uses its
+   * direct provider key instead of sending a call the gateway would
+   * reject. `true` when granted; `undefined` when grants are unknown
+   * (fail open — route through Bifrost as before).
+   */
+  modelProviderGranted?: boolean;
 }
 
 export interface BifrostAdminCreds {
