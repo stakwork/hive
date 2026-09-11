@@ -358,6 +358,11 @@ model WorkspaceMember {
   bifrostVkId       String?       @map("bifrost_vk_id")
   bifrostCustomerId String?       @map("bifrost_customer_id")
   bifrostSyncedAt   DateTime?     @map("bifrost_synced_at")
+  // Provider grants the cached Bifrost VK carried when it was last
+  // created or refreshed (`bifrost_synced_at`). Empty = unknown (row
+  // predates this column or the gateway couldn't be read), never "no
+  // grants" — the reconciler treats empty as "refresh, then trust Bifrost".
+  bifrostVkProviders String[]     @default([]) @map("bifrost_vk_providers")
   user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 

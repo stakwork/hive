@@ -2,14 +2,16 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { withLock } from "@/lib/locks/redis-lock";
-import { gatewayUrlForModel } from "aieo";
+import { gatewayUrlForModel, getProviderForModel } from "aieo";
 
 import { BifrostClient, BifrostHttpError } from "./BifrostClient";
 import {
+  AIEO_TO_BIFROST_PROVIDER,
   BIFROST_LOCK_ACQUIRE_TIMEOUT_MS,
   BIFROST_LOCK_PREFIX,
   BIFROST_LOCK_TTL_MS,
   BIFROST_LOG_TAG,
+  BIFROST_VK_PROVIDER_MISS_REFRESH_MS,
   BIFROST_VK_PROVIDER_REFRESH_MS,
   DEFAULT_BUDGET_RESET_DURATION,
   DEFAULT_CUSTOMER_BUDGET_USD,
@@ -47,7 +49,9 @@ import type {
  * cached VK on `WorkspaceMember` without talking to Bifrost — except
  * once per `BIFROST_VK_PROVIDER_REFRESH_MS`, when the VK's provider
  * grants are re-checked against the gateway (see "Provider grants"
- * below).
+ * below). The grants last observed are snapshotted on the row so a
+ * call for a provider the VK doesn't carry can be steered back to
+ * the caller's direct key instead of failing at the gateway.
  *
  * See `gateway/plans/phase-1-reconciler.md`.
  */
@@ -114,6 +118,7 @@ async function doReconcile(
       bifrostVkId: true,
       bifrostCustomerId: true,
       bifrostSyncedAt: true,
+      bifrostVkProviders: true,
       user: {
         select: {
           githubAuth: { select: { githubUsername: true } },
@@ -140,6 +145,7 @@ async function doReconcile(
   // downstream agent will call directly, so it needs the provider
   // suffix already applied.
   const llmBaseUrl = gatewayUrlForModel(options.model, baseCreds.baseUrl);
+  const modelProvider = bifrostProviderForModel(options.model);
 
   // Constructing the client is free (no I/O). It's only exercised on
   // the Bifrost paths below — including the cached path's periodic
@@ -170,13 +176,37 @@ async function doReconcile(
       );
     }
     if (vkValue !== undefined) {
+      // Grant snapshot from the last create / refresh. Empty means
+      // unknown (row predates the column, or the gateway couldn't be
+      // read) — never "no grants".
+      let providers = knownGrants(member.bifrostVkProviders);
       // The cache never talks to Bifrost, so a provider added to
       // DEFAULT_PROVIDERS (or newly configured on this gateway) would
       // otherwise never reach a VK minted before it. Re-check the
-      // grants once per refresh window. Best-effort — never blocks
-      // or fails the call.
-      if (isProviderGrantStale(member.bifrostSyncedAt)) {
-        await refreshProviderGrants(client, member.bifrostVkId, member.id);
+      // grants once per refresh window — and sooner, once per miss
+      // window, when the caller's model needs a provider the snapshot
+      // lacks (or there is no snapshot), so a gateway that just gained
+      // a provider flips its cached VKs in minutes rather than a day.
+      // Best-effort — never blocks or fails the call.
+      const missing =
+        providers === undefined || !providers.includes(modelProvider);
+      if (
+        isProviderGrantStale(
+          member.bifrostSyncedAt,
+          BIFROST_VK_PROVIDER_REFRESH_MS,
+        ) ||
+        (missing &&
+          isProviderGrantStale(
+            member.bifrostSyncedAt,
+            BIFROST_VK_PROVIDER_MISS_REFRESH_MS,
+          ))
+      ) {
+        const refreshed = await refreshProviderGrants(
+          client,
+          member.bifrostVkId,
+          member.id,
+        );
+        if (refreshed) providers = refreshed;
       }
       return {
         workspaceId,
@@ -186,6 +216,9 @@ async function doReconcile(
         vkValue,
         baseUrl: llmBaseUrl,
         created: false,
+        modelProvider,
+        providers,
+        modelProviderGranted: isGranted(providers, modelProvider),
       };
     }
   }
@@ -200,7 +233,7 @@ async function doReconcile(
   if (createdCustomer) created = true;
 
   const providers = await desiredProviders(client);
-  const { virtualKey, createdVk } = await ensureVirtualKey(
+  const { virtualKey, createdVk, granted } = await ensureVirtualKey(
     client,
     bifrostName,
     customer.id,
@@ -219,6 +252,9 @@ async function doReconcile(
       bifrostVkId: virtualKey.id,
       bifrostCustomerId: customer.id,
       bifrostSyncedAt: new Date(),
+      // Empty when the grants couldn't be observed — read as "unknown"
+      // by the cached path, which then refreshes on its next miss.
+      bifrostVkProviders: granted ?? [],
     },
   });
 
@@ -239,6 +275,9 @@ async function doReconcile(
     vkValue: virtualKey.value,
     baseUrl: llmBaseUrl,
     created,
+    modelProvider,
+    providers: granted,
+    modelProviderGranted: isGranted(granted, modelProvider),
   };
 }
 
@@ -310,14 +349,21 @@ async function ensureVirtualKey(
   name: string,
   customerId: string,
   providers: BifrostProvider[],
-): Promise<{ virtualKey: BifrostVirtualKey; createdVk: boolean }> {
+): Promise<{
+  virtualKey: BifrostVirtualKey;
+  createdVk: boolean;
+  /** Providers the VK carries after this call; undefined when unobserved. */
+  granted?: string[];
+}> {
   const existing = await findExactVirtualKey(client, name, customerId);
   if (existing) {
+    let granted = grantsOf(existing);
     // Non-fatal: the VK already works for the providers it has, and
     // failing here would make the orchestrator drop this call to the
     // swarm's default key over a grant it may not even need.
     try {
-      await topUpProviderGrants(client, existing, providers);
+      const topped = await topUpProviderGrants(client, existing, providers);
+      if (topped.granted) granted = topped.granted;
     } catch (err) {
       logger.warn(
         "Bifrost VK provider top-up failed; using VK as is",
@@ -330,7 +376,7 @@ async function ensureVirtualKey(
         },
       );
     }
-    return { virtualKey: existing, createdVk: false };
+    return { virtualKey: existing, createdVk: false, granted };
   }
 
   try {
@@ -354,7 +400,9 @@ async function ensureVirtualKey(
         key_ids: ["*"],
       })),
     });
-    return { virtualKey: created.virtual_key, createdVk: true };
+    // What we asked for is what the VK carries: Bifrost 400s the whole
+    // create on a provider it lacks rather than dropping that entry.
+    return { virtualKey: created.virtual_key, createdVk: true, granted: providers };
   } catch (err) {
     // VK names are uniquely indexed at the DB level (plan §4). On a
     // dup-key race, read back per the plan.
@@ -366,7 +414,11 @@ async function ensureVirtualKey(
           BIFROST_LOG_TAG,
           { name, customerId, picked: readback.id },
         );
-        return { virtualKey: readback, createdVk: false };
+        return {
+          virtualKey: readback,
+          createdVk: false,
+          granted: grantsOf(readback),
+        };
       }
     }
     throw err;
@@ -447,7 +499,8 @@ async function desiredProviders(
 
 /**
  * Grant the VK any of `desired` it doesn't already carry. Returns the
- * providers added (empty when nothing changed).
+ * providers added (empty when nothing changed) and the providers the
+ * VK carries afterwards (undefined when the response didn't say).
  *
  * Bifrost's PUT replaces the provider_configs set wholesale: entries
  * with an `id` update in place, entries without one are created, and
@@ -459,21 +512,23 @@ async function topUpProviderGrants(
   client: BifrostClient,
   vk: BifrostVirtualKey,
   desired: BifrostProvider[],
-): Promise<BifrostProvider[]> {
+): Promise<{ added: BifrostProvider[]; granted?: string[] }> {
   const existing = vk.provider_configs;
   // Without the hydrated set (ids included) we can't re-send it, and
-  // a PUT that omits a config deletes it. Leave the VK alone.
+  // a PUT that omits a config deletes it. Leave the VK alone — but the
+  // provider names are still a faithful reading of what it carries.
   if (!Array.isArray(existing) || existing.some((pc) => pc.id == null)) {
     logger.warn(
       "Bifrost VK response lacks hydrated provider_configs; skipping grant top-up",
       BIFROST_LOG_TAG,
       { vkId: vk.id },
     );
-    return [];
+    return { added: [], granted: grantsOf(vk) };
   }
-  const have = new Set(existing.map((pc) => pc.provider));
-  const missing = desired.filter((p) => !have.has(p));
-  if (missing.length === 0) return [];
+  const have = existing.map((pc) => pc.provider);
+  const haveSet = new Set(have);
+  const missing = desired.filter((p) => !haveSet.has(p));
+  if (missing.length === 0) return { added: [], granted: have };
 
   await client.updateVirtualKey(vk.id, {
     provider_configs: [
@@ -489,7 +544,7 @@ async function topUpProviderGrants(
     vkId: vk.id,
     added: missing,
   });
-  return missing;
+  return { added: missing, granted: [...have, ...missing] };
 }
 
 /**
@@ -516,7 +571,9 @@ function carryProviderConfig(pc: BifrostProviderConfig) {
 /**
  * Cached-path companion to `topUpProviderGrants`: fetch the cached VK
  * from the gateway, grant anything it's missing, then stamp
- * `bifrostSyncedAt` so the next check is a refresh window away.
+ * `bifrostSyncedAt` (and the grant snapshot, when observed) so the
+ * next check is a refresh window away. Returns the grants observed,
+ * or undefined when the gateway couldn't be read.
  *
  * Best-effort throughout. Any failure is logged and the cached VK is
  * served as is — an LLM call must never fail because a grant refresh
@@ -527,11 +584,12 @@ async function refreshProviderGrants(
   client: BifrostClient,
   vkId: string,
   memberId: string,
-): Promise<void> {
+): Promise<string[] | undefined> {
+  let granted: string[] | undefined;
   try {
     const desired = await desiredProviders(client);
     const { virtual_key } = await client.getVirtualKey(vkId);
-    await topUpProviderGrants(client, virtual_key, desired);
+    granted = (await topUpProviderGrants(client, virtual_key, desired)).granted;
   } catch (err) {
     logger.warn(
       "Bifrost VK grant refresh failed; serving cached VK",
@@ -542,7 +600,12 @@ async function refreshProviderGrants(
   try {
     await db.workspaceMember.update({
       where: { id: memberId },
-      data: { bifrostSyncedAt: new Date() },
+      data: {
+        bifrostSyncedAt: new Date(),
+        // Only overwrite the snapshot when this refresh actually saw
+        // the VK; a failed read must not blank a good one.
+        ...(granted ? { bifrostVkProviders: granted } : {}),
+      },
     });
   } catch (err) {
     logger.warn(
@@ -551,11 +614,49 @@ async function refreshProviderGrants(
       { memberId, error: err instanceof Error ? err.message : String(err) },
     );
   }
+  return granted;
 }
 
-function isProviderGrantStale(syncedAt: Date | null | undefined): boolean {
+function isProviderGrantStale(
+  syncedAt: Date | null | undefined,
+  windowMs: number,
+): boolean {
   if (!syncedAt) return true;
-  return Date.now() - syncedAt.getTime() > BIFROST_VK_PROVIDER_REFRESH_MS;
+  return Date.now() - syncedAt.getTime() > windowMs;
+}
+
+/**
+ * Bifrost provider id for the model a caller intends to use — the
+ * same prefix resolution `gatewayUrlForModel` applies to the base URL
+ * (shortcuts like `"grok"`, namespaced ids like `"xai/grok-4.6"`, bare
+ * ids, anthropic when omitted), mapped through
+ * `AIEO_TO_BIFROST_PROVIDER` (`google` → `gemini`).
+ */
+export function bifrostProviderForModel(
+  model: string | undefined,
+): BifrostProvider {
+  return AIEO_TO_BIFROST_PROVIDER[getProviderForModel(model)];
+}
+
+/** Snapshot → known grants. The empty default means "unknown", never "none". */
+function knownGrants(
+  snapshot: string[] | null | undefined,
+): string[] | undefined {
+  return snapshot && snapshot.length > 0 ? snapshot : undefined;
+}
+
+/** Provider names a VK response carries, or undefined when it doesn't say. */
+function grantsOf(vk: BifrostVirtualKey): string[] | undefined {
+  return Array.isArray(vk.provider_configs)
+    ? vk.provider_configs.map((pc) => pc.provider)
+    : undefined;
+}
+
+function isGranted(
+  providers: string[] | undefined,
+  provider: string,
+): boolean | undefined {
+  return providers === undefined ? undefined : providers.includes(provider);
 }
 
 /**
