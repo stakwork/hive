@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { UserRole } from "@prisma/client";
 import type { SwarmCmdResponse } from "@/services/swarm/cmd";
 import contractFixture from "@/services/swarm/__fixtures__/fluentbit-stats.contract.json";
+import { db } from "@/lib/db";
 import { createTestUser } from "@/__tests__/support/factories";
 import { createTestWorkspaceScenario } from "@/__tests__/support/factories/workspace.factory";
 import { createTestSwarm } from "@/__tests__/support/factories/swarm.factory";
@@ -320,5 +321,99 @@ describe("GET /api/admin/swarms/[instanceId]/fluentbit", () => {
     expect(body.outcome).toBe("failed");
     expect(body.reasonCode).toBe("CONFIG_INVALID");
     expect(mockGetJwt).not.toHaveBeenCalled();
+  });
+
+  test("returns ingest and containersToday even when live is unreachable, ignoring swarmId query override", async () => {
+    const GET = await importRoute();
+    const ec2Id = freshEc2Id();
+    const swarm = await createSwarmForInstance({
+      ec2Id,
+      swarmPassword: "super-secret-swarm-password",
+    });
+
+    const now = new Date();
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const yesterday = new Date(todayStart);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+
+    await db.fluentbitStatsSample.create({
+      data: {
+        instanceId: ec2Id,
+        swarmId: swarm.id,
+        collectedAt: new Date(yesterday.getTime() + 22 * 60 * 60 * 1000),
+        inputBytes: BigInt(1000),
+        inputRecords: BigInt(10),
+        containers: [
+          { containerName: "hive-web", inputBytes: 800, inputRecords: 8 },
+        ],
+        status: "OK",
+      },
+    });
+    await db.fluentbitStatsSample.create({
+      data: {
+        instanceId: ec2Id,
+        swarmId: swarm.id,
+        collectedAt: new Date(todayStart.getTime() + 12 * 60 * 60 * 1000),
+        inputBytes: BigInt(2500),
+        inputRecords: BigInt(25),
+        containers: [
+          { containerName: "hive-web", inputBytes: 2000, inputRecords: 20 },
+        ],
+        status: "OK",
+      },
+    });
+
+    mockCmdRequest.mockResolvedValue(timeoutResponse());
+
+    const request = createAuthenticatedGetRequest(
+      `/api/admin/swarms/${ec2Id}/fluentbit`,
+      superAdminUser,
+      { swarmId: "caller-supplied-override", instanceId: "i-evil" },
+    );
+    const response = await GET(request as never, {
+      params: Promise.resolve({ instanceId: ec2Id }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.outcome).toBe("unreachable");
+    expect(body.reasonCode).toBe("TIMEOUT");
+    expect(body.reading).toBeUndefined();
+    expect(body.ingest).toBeDefined();
+    expect(typeof body.ingest.today.inputBytes).toBe("number");
+    expect(body.ingest.today.inputBytes).toBe(1500);
+    expect(body.ingest.today.inputRecords).toBe(15);
+    expect(Array.isArray(body.containersToday)).toBe(true);
+    expect(body.containersToday).toEqual([
+      { containerName: "hive-web", inputBytes: 1200, inputRecords: 12 },
+    ]);
+
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("swarmPassword");
+    expect(serialized).not.toContain("super-secret-swarm-password");
+    expect(serialized).not.toContain("caller-supplied-override");
+  });
+
+  test("malformed instanceId still 400s INVALID_INSTANCE_ID without querying samples", async () => {
+    const GET = await importRoute();
+    const findManySpy = vi.spyOn(db.fluentbitStatsSample, "findMany");
+
+    const request = createAuthenticatedGetRequest(
+      "/api/admin/swarms/not-an-id/fluentbit",
+      superAdminUser,
+    );
+    const response = await GET(request as never, {
+      params: Promise.resolve({ instanceId: "not-an-id" }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.outcome).toBe("failed");
+    expect(body.reasonCode).toBe("INVALID_INSTANCE_ID");
+    expect(body.ingest).toBeUndefined();
+    expect(findManySpy).not.toHaveBeenCalled();
+    findManySpy.mockRestore();
   });
 });
