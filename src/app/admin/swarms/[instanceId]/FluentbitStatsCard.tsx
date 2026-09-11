@@ -18,12 +18,19 @@ import type {
   FluentbitStatsReadReasonCode,
   FluentbitStatsReadResult,
 } from "@/services/swarm/fluentbit-stats-read";
+import type {
+  FluentbitContainerToday,
+  FluentbitIngest,
+} from "@/services/swarm/fluentbit-stats-rollups";
 
 interface FluentbitStatsCardProps {
   instanceId: string;
 }
 
-type FluentbitResponse = FluentbitStatsReadResult;
+type FluentbitResponse = FluentbitStatsReadResult & {
+  ingest?: FluentbitIngest | null;
+  containersToday?: FluentbitContainerToday[] | null;
+};
 
 /**
  * Display-side truncation on top of the 256-char cap the parser applies.
@@ -243,6 +250,102 @@ function formatRateValue(
     : formatRecordRate(value, windowSeconds);
 }
 
+const INGEST_BUCKETS = [
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "last7Days", label: "Last 7 days" },
+] as const;
+
+function IngestBucketsSection({ ingest }: { ingest: FluentbitIngest }) {
+  return (
+    <div className="space-y-2" data-testid="ingest-buckets">
+      <h3 className="text-sm font-medium">Ingested Volume</h3>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Window</TableHead>
+            <TableHead className="text-right">Bytes</TableHead>
+            <TableHead className="text-right">Records</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {INGEST_BUCKETS.map((bucket) => {
+            const value = ingest[bucket.key];
+            return (
+              <TableRow key={bucket.key} data-testid={`ingest-row-${bucket.key}`}>
+                <TableCell className="text-sm">{bucket.label}</TableCell>
+                <TableCell
+                  className="text-right font-mono text-sm"
+                  data-testid={`ingest-${bucket.key}-bytes`}
+                >
+                  {formatByteCount(value.inputBytes)}
+                </TableCell>
+                <TableCell
+                  className="text-right font-mono text-sm"
+                  data-testid={`ingest-${bucket.key}-records`}
+                >
+                  {formatCount(value.inputRecords)}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ContainersTodaySection({ rows }: { rows: FluentbitContainerToday[] }) {
+  return (
+    <div className="space-y-2" data-testid="containers-today">
+      <h3 className="text-sm font-medium">Containers Today</h3>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No container breakdown for today.</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Container</TableHead>
+              <TableHead className="text-right">Bytes</TableHead>
+              <TableHead className="text-right">Records</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow
+                key={row.containerName}
+                data-testid={`container-today-${row.containerName}`}
+              >
+                <TableCell className="text-sm">{row.containerName}</TableCell>
+                <TableCell className="text-right font-mono text-sm">
+                  {formatByteCount(row.inputBytes)}
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm">
+                  {formatCount(row.inputRecords)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+function HistorySections({ data }: { data: FluentbitResponse }) {
+  const ingest = data.ingest;
+  const containersToday = data.containersToday;
+  const showIngest = ingest != null;
+  const showContainers = Array.isArray(containersToday);
+  if (!showIngest && !showContainers) return null;
+  return (
+    <div className="space-y-4">
+      {showIngest ? <IngestBucketsSection ingest={ingest} /> : null}
+      {showContainers ? <ContainersTodaySection rows={containersToday} /> : null}
+    </div>
+  );
+}
+
 export default function FluentbitStatsCard({ instanceId }: FluentbitStatsCardProps) {
   const [data, setData] = useState<FluentbitResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -314,147 +417,166 @@ export default function FluentbitStatsCard({ instanceId }: FluentbitStatsCardPro
               Retry
             </Button>
           </div>
-        ) : data?.outcome === "no_swarm_record" ? (
-          <div className="flex items-start gap-3 py-6">
-            <Info className="mt-0.5 h-5 w-5 text-muted-foreground" />
-            <div>
-              <div className="font-medium">No linked swarm record</div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                This EC2 instance has no matching swarm record, so FluentBit stats are unavailable.
-                This is a normal state for unlinked instances on the swarms list.
-              </p>
-            </div>
-          </div>
-        ) : data?.outcome === "ambiguous" ? (
-          <div className="flex items-start gap-3 py-6">
-            <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" />
-            <div>
-              <div className="font-medium text-destructive">Multiple linked swarm records</div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                More than one swarm record points at this EC2 instance, so no reading is shown
-                rather than an arbitrary one. Fix the linkage first.
-              </p>
-            </div>
-          </div>
-        ) : data?.outcome === "unreachable" ? (
-          <div className="flex items-start gap-3 py-6">
-            <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-500" />
-            <div>
-              <div className="font-medium">Couldn&apos;t reach the swarm just now</div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                The swarm exists but did not answer this moment
-                {data.reasonCode ? ` (reason: ${data.reasonCode})` : ""}. Try Refresh to retry.
-              </p>
-              <Button variant="outline" size="sm" className="mt-3" onClick={fetchStats}>
-                Retry
-              </Button>
-            </div>
-          </div>
-        ) : data?.outcome === "failed" ? (
-          (() => {
-            const copy = failedStateCopy(data.reasonCode);
-            return (
-              <div className="flex items-start gap-3 py-6">
+        ) : data ? (
+          <div className="space-y-4">
+            {data.outcome === "no_swarm_record" ? (
+              <div className="flex items-start gap-3 py-2">
                 <Info className="mt-0.5 h-5 w-5 text-muted-foreground" />
                 <div>
-                  <div className="font-medium">{copy.title}</div>
+                  <div className="font-medium">No linked swarm record</div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {copy.detail}
-                    {data.reasonCode ? ` (${data.reasonCode})` : ""}
+                    This EC2 instance has no matching swarm record, so FluentBit stats are
+                    unavailable. This is a normal state for unlinked instances on the swarms
+                    list.
                   </p>
                 </div>
               </div>
-            );
-          })()
-        ) : reading ? (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Badge className={statusBadgeClass(reading.status)} data-testid="fluentbit-status-badge">
-                {reading.status}
-              </Badge>
-              <span className="text-muted-foreground">
-                Collected: {formatCollectedAt(reading.collectedAt)}
-              </span>
-              {data?.cached ? (
-                <span className="text-amber-600 dark:text-amber-400" data-testid="cached-label">
-                  Cached reading from {formatCollectedAt(data.collectedAt ?? reading.collectedAt)}
-                </span>
-              ) : null}
-            </div>
-
-            {reading.status === "PARTIAL" ? (
-              <p className="text-sm text-muted-foreground">
-                Partial reading — some collectors reported problems (see warnings below).
-              </p>
-            ) : null}
-
-            {maskUnavailable ? (
-              <p className="text-sm text-muted-foreground" data-testid="unavailable-notice">
-                FluentBit is not currently reporting stats. Counters and rates are unavailable.
-              </p>
-            ) : null}
-
-            <div data-testid="fluentbit-counters">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Metric</TableHead>
-                    <TableHead className="text-right">Value</TableHead>
-                    <TableHead className="text-right">Rate</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {counterRows(reading).map((row) => {
-                    const valueText = maskUnavailable
-                      ? UNAVAILABLE
-                      : formatCounterValue(row.kind, row.value);
-                    const rateText =
-                      row.rateKey && row.rateKind
-                        ? maskUnavailable
-                          ? UNAVAILABLE
-                          : formatRateValue(
-                              row.rateKind,
-                              reading.rates?.[row.rateKey],
-                              reading.rateWindowSeconds,
-                            )
-                        : null;
-                    return (
-                      <TableRow key={row.key} data-testid={`fluentbit-row-${row.key}`}>
-                        <TableCell className="text-sm">{row.label}</TableCell>
-                        <TableCell
-                          className="text-right font-mono text-sm"
-                          data-testid={`counter-${row.key}`}
-                        >
-                          {valueText}
-                        </TableCell>
-                        <TableCell
-                          className="text-right font-mono text-sm text-muted-foreground"
-                          data-testid={`rate-${row.key}`}
-                        >
-                          {rateText}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-
-            {reading.errors.length > 0 ? (
-              <div className="space-y-1" data-testid="errors-warnings">
-                {reading.errors.map((err, idx) => (
-                  <div
-                    key={`${err}-${idx}`}
-                    className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800 dark:bg-amber-950"
-                  >
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                    <span className="text-amber-800 dark:text-amber-200">
-                      {truncateForDisplay(err)}
-                    </span>
-                  </div>
-                ))}
+            ) : data.outcome === "ambiguous" ? (
+              <div className="flex items-start gap-3 py-2">
+                <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" />
+                <div>
+                  <div className="font-medium text-destructive">Multiple linked swarm records</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    More than one swarm record points at this EC2 instance, so no reading is
+                    shown rather than an arbitrary one. Fix the linkage first.
+                  </p>
+                </div>
               </div>
-            ) : null}
+            ) : data.outcome === "unreachable" ? (
+              <div className="flex items-start gap-3 py-2">
+                <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-500" />
+                <div>
+                  <div className="font-medium">Couldn&apos;t reach the swarm just now</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    The swarm exists but did not answer this moment
+                    {data.reasonCode ? ` (reason: ${data.reasonCode})` : ""}. Try Refresh to
+                    retry.
+                  </p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={fetchStats}>
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : data.outcome === "failed" ? (
+              (() => {
+                const copy = failedStateCopy(data.reasonCode);
+                return (
+                  <div className="flex items-start gap-3 py-2">
+                    <Info className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium">{copy.title}</div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {copy.detail}
+                        {data.reasonCode ? ` (${data.reasonCode})` : ""}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : reading ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <Badge
+                    className={statusBadgeClass(reading.status)}
+                    data-testid="fluentbit-status-badge"
+                  >
+                    {reading.status}
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    Collected: {formatCollectedAt(reading.collectedAt)}
+                  </span>
+                  {data.cached ? (
+                    <span
+                      className="text-amber-600 dark:text-amber-400"
+                      data-testid="cached-label"
+                    >
+                      Cached reading from{" "}
+                      {formatCollectedAt(data.collectedAt ?? reading.collectedAt)}
+                    </span>
+                  ) : null}
+                </div>
+
+                {reading.status === "PARTIAL" ? (
+                  <p className="text-sm text-muted-foreground">
+                    Partial reading — some collectors reported problems (see warnings below).
+                  </p>
+                ) : null}
+
+                {maskUnavailable ? (
+                  <p className="text-sm text-muted-foreground" data-testid="unavailable-notice">
+                    FluentBit is not currently reporting stats. Counters and rates are
+                    unavailable.
+                  </p>
+                ) : null}
+
+                <div data-testid="fluentbit-counters">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Metric</TableHead>
+                        <TableHead className="text-right">Value</TableHead>
+                        <TableHead className="text-right">Rate</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {counterRows(reading).map((row) => {
+                        const valueText = maskUnavailable
+                          ? UNAVAILABLE
+                          : formatCounterValue(row.kind, row.value);
+                        const rateText =
+                          row.rateKey && row.rateKind
+                            ? maskUnavailable
+                              ? UNAVAILABLE
+                              : formatRateValue(
+                                  row.rateKind,
+                                  reading.rates?.[row.rateKey],
+                                  reading.rateWindowSeconds,
+                                )
+                            : null;
+                        return (
+                          <TableRow key={row.key} data-testid={`fluentbit-row-${row.key}`}>
+                            <TableCell className="text-sm">{row.label}</TableCell>
+                            <TableCell
+                              className="text-right font-mono text-sm"
+                              data-testid={`counter-${row.key}`}
+                            >
+                              {valueText}
+                            </TableCell>
+                            <TableCell
+                              className="text-right font-mono text-sm text-muted-foreground"
+                              data-testid={`rate-${row.key}`}
+                            >
+                              {rateText}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {reading.errors.length > 0 ? (
+                  <div className="space-y-1" data-testid="errors-warnings">
+                    {reading.errors.map((err, idx) => (
+                      <div
+                        key={`${err}-${idx}`}
+                        className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800 dark:bg-amber-950"
+                      >
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <span className="text-amber-800 dark:text-amber-200">
+                          {truncateForDisplay(err)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="py-8 text-center text-muted-foreground">
+                No FluentBit stats reading available.
+              </div>
+            )}
+            <HistorySections data={data} />
           </div>
         ) : (
           <div className="py-8 text-center text-muted-foreground">
