@@ -421,4 +421,98 @@ describe("FluentbitStatsCard", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
+
+  const SAMPLE_INGEST = {
+    today: { inputBytes: 4096, inputRecords: 12 },
+    yesterday: { inputBytes: null, inputRecords: null },
+    last7Days: { inputBytes: 8192, inputRecords: 40 },
+  };
+
+  const SAMPLE_CONTAINERS_TODAY = [
+    { containerName: "hive-web", inputBytes: 2048, inputRecords: 8 },
+  ];
+
+  it("shows ingest buckets and containers today on an unreachable outcome", async () => {
+    await renderWithFetch(
+      fetchResponse({
+        outcome: "unreachable",
+        reasonCode: "TIMEOUT",
+        cached: false,
+        ingest: SAMPLE_INGEST,
+        containersToday: SAMPLE_CONTAINERS_TODAY,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/couldn't reach the swarm just now/i)).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("ingest-buckets")).toBeInTheDocument();
+    expect(screen.getByText("Ingested Volume")).toBeInTheDocument();
+    expect(screen.getByTestId("ingest-today-bytes")).toHaveTextContent("4 KB");
+    expect(screen.getByTestId("ingest-today-records")).toHaveTextContent("12");
+    expect(screen.getByTestId("ingest-yesterday-bytes")).toHaveTextContent("unavailable");
+    expect(screen.getByTestId("ingest-yesterday-records")).toHaveTextContent("unavailable");
+    expect(screen.getByTestId("ingest-yesterday-bytes")).not.toHaveTextContent("0");
+    expect(screen.getByTestId("containers-today")).toBeInTheDocument();
+    expect(screen.getByText("hive-web")).toBeInTheDocument();
+    expect(screen.queryByTestId("fluentbit-counters")).not.toBeInTheDocument();
+  });
+
+  it("shows ingest buckets on a failed outcome", async () => {
+    await renderWithFetch(
+      fetchResponse({
+        outcome: "failed",
+        reasonCode: "AUTH_FAILED",
+        cached: false,
+        ingest: SAMPLE_INGEST,
+        containersToday: SAMPLE_CONTAINERS_TODAY,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/swarm authentication failed/i)).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("ingest-buckets")).toBeInTheDocument();
+    expect(screen.getByTestId("containers-today")).toBeInTheDocument();
+  });
+
+  it("does not render the ingest section when ingest is null", async () => {
+    await renderWithFetch(
+      fetchResponse({
+        ...freshResponse(okReading()),
+        ingest: null,
+        containersToday: null,
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("fluentbit-status-badge")).toHaveTextContent("OK");
+    });
+    expect(screen.queryByTestId("ingest-buckets")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("containers-today")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ingested Volume")).not.toBeInTheDocument();
+  });
+
+  it("renders a null ingest day as unavailable, not 0", async () => {
+    await renderWithFetch(
+      fetchResponse({
+        ...freshResponse(okReading({ uptimeSeconds: null })),
+        ingest: {
+          today: { inputBytes: 0, inputRecords: 0 },
+          yesterday: { inputBytes: null, inputRecords: null },
+          last7Days: { inputBytes: 100, inputRecords: 3 },
+        },
+        containersToday: [],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("ingest-buckets")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("ingest-today-bytes")).toHaveTextContent("0 B");
+    expect(screen.getByTestId("ingest-today-records")).toHaveTextContent("0");
+    expect(screen.getByTestId("ingest-yesterday-bytes")).toHaveTextContent("unavailable");
+    expect(screen.getByTestId("ingest-yesterday-records")).toHaveTextContent("unavailable");
+    expect(screen.getByTestId("ingest-yesterday-bytes")).not.toHaveTextContent(/^0/);
+    expect(screen.getByTestId("counter-uptimeSeconds")).toHaveTextContent("unavailable");
+  });
 });
