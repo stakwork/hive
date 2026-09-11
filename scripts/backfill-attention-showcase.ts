@@ -105,6 +105,7 @@ interface ShowcaseVariant {
     formTitle: string;
     fields: Array<{ name: string; type: string; required: boolean; label: string; options?: string[] }>;
   };
+  /** Awaiting-reply Feature: last message is ASSISTANT, no tasks exist. */
   feature: { title: string; brief: string; requirements: string; assistantMessage: string };
   /**
    * Live Now fixtures (see file header): planner-running feature,
@@ -124,6 +125,10 @@ interface ShowcaseVariant {
     taskTitle: string;
     taskDescription: string;
   };
+  /** Halted Feature: workflowStatus=HALTED so "Retry Run" is exercisable. */
+  haltedFeature: { title: string; brief: string; requirements: string; userMessage: string };
+  /** Ready-to-review Feature: workflowStatus=COMPLETED so "Jump to Review" is exercisable. */
+  reviewFeature: { title: string; brief: string; requirements: string; userMessage: string; assistantMessage: string };
 }
 
 const VARIANTS: ShowcaseVariant[] = [
@@ -193,6 +198,20 @@ const VARIANTS: ShowcaseVariant[] = [
       taskDescription:
         "Several templates render without preview thumbnails; agent halted awaiting asset decisions.",
     },
+    haltedFeature: {
+      title: "Migrate auth to passkeys",
+      brief: "Replace password-based login with WebAuthn passkeys across all surfaces.",
+      requirements: "FIDO2 registration, authentication, fallback to existing OAuth.",
+      userMessage: "Please design and implement passkey registration flow for the web app.",
+    },
+    reviewFeature: {
+      title: "Dark mode for settings pages",
+      brief: "Extend the existing dark theme to cover all settings pages and modals.",
+      requirements: "Full CSS variable coverage, no hardcoded colour values, persisted user preference.",
+      userMessage: "Extend dark mode styling to the settings section.",
+      assistantMessage:
+        "All settings pages now fully support dark mode. I've opened a PR and recorded a before/after screen recording — have a look and let me know if any section needs adjustment before merge.",
+    },
   },
   {
     halted: {
@@ -260,6 +279,20 @@ const VARIANTS: ShowcaseVariant[] = [
       taskDescription:
         "Filter state resets on refresh; agent halted awaiting confirmation of expected persistence scope.",
     },
+    haltedFeature: {
+      title: "Unify API error response schema",
+      brief: "Standardise all API error payloads to { code, message, details } across every route.",
+      requirements: "Consistent error codes, backward-compatible wrapper, auto-docs update.",
+      userMessage: "Please audit and unify the API error response schema across all routes.",
+    },
+    reviewFeature: {
+      title: "Granular notification preferences",
+      brief: "Give users per-channel, per-event notification toggles (email / push / in-app).",
+      requirements: "Per-event toggles, workspace-scoped defaults, immediate Pusher broadcast on save.",
+      userMessage: "Build the granular notification preferences UI and backend.",
+      assistantMessage:
+        "Notification preferences are live — email/push/in-app toggles are all wired up. I've opened a PR with a before/after test suite; looks good to me. Ready for your sign-off.",
+    },
   },
   {
     halted: {
@@ -326,6 +359,20 @@ const VARIANTS: ShowcaseVariant[] = [
       taskTitle: "Migrate legacy board presets to new schema",
       taskDescription:
         "Migration halts on presets with custom backgrounds; needs a fallback mapping.",
+    },
+    haltedFeature: {
+      title: "Multi-region failover routing",
+      brief: "Route traffic to the nearest healthy region and fail over automatically on health-check failures.",
+      requirements: "Latency-based routing, health probes every 30s, zero-downtime cutover.",
+      userMessage: "Design and scaffold the multi-region failover routing layer.",
+    },
+    reviewFeature: {
+      title: "AI-powered release notes generator",
+      brief: "Auto-draft release notes from merged PRs and resolved tickets each sprint.",
+      requirements: "PR title/body parsing, Jira link resolution, markdown output, one-click publish to Notion.",
+      userMessage: "Build the release notes generator using merged PRs and closed tickets.",
+      assistantMessage:
+        "Release notes generator is ready — it picks up all merged PRs since the last tag, groups them by label, and exports to Notion. PR open and green. Ready for your review before we ship.",
     },
   },
 ];
@@ -991,6 +1038,101 @@ async function backfillWorkspace(
       },
     });
     console.log(`  + loose-feature HALTED task: ${variant.loose.taskTitle}`);
+  }
+
+  // ── HALTED feature (workflowStatus=HALTED, has a USER msg to retry) ──
+  // Provides the "Retry Run" menu-item fixture. Has one USER-authored
+  // message so the server-side retry branch has something to resend.
+  let haltedFeat = await db.feature.findFirst({
+    where: { workspaceId, title: variant.haltedFeature.title, deleted: false },
+    select: { id: true },
+  });
+  if (!haltedFeat) {
+    haltedFeat = await db.feature.create({
+      data: {
+        title: variant.haltedFeature.title,
+        brief: variant.haltedFeature.brief,
+        status: FeatureStatus.IN_PROGRESS,
+        priority: FeaturePriority.HIGH,
+        requirements: variant.haltedFeature.requirements,
+        workspaceId,
+        createdById: userId,
+        updatedById: userId,
+        assigneeId: userId,
+        workflowStatus: WorkflowStatus.HALTED,
+      },
+      select: { id: true },
+    });
+    console.log(`  + halted feature: ${variant.haltedFeature.title}`);
+  }
+  const existingHaltedMsg = await db.chatMessage.findFirst({
+    where: { featureId: haltedFeat.id, role: "USER" },
+    select: { id: true },
+  });
+  if (!existingHaltedMsg) {
+    await db.chatMessage.create({
+      data: {
+        featureId: haltedFeat.id,
+        message: variant.haltedFeature.userMessage,
+        role: "USER",
+      },
+    });
+    console.log(`  + USER msg on halted feature`);
+  }
+
+  // ── READY-TO-REVIEW feature (workflowStatus=COMPLETED, last-msg ASSISTANT) ──
+  // Provides the "Jump to Review" menu-item fixture.
+  let reviewFeat = await db.feature.findFirst({
+    where: { workspaceId, title: variant.reviewFeature.title, deleted: false },
+    select: { id: true },
+  });
+  if (!reviewFeat) {
+    reviewFeat = await db.feature.create({
+      data: {
+        title: variant.reviewFeature.title,
+        brief: variant.reviewFeature.brief,
+        status: FeatureStatus.IN_PROGRESS,
+        priority: FeaturePriority.MEDIUM,
+        requirements: variant.reviewFeature.requirements,
+        workspaceId,
+        createdById: userId,
+        updatedById: userId,
+        assigneeId: userId,
+        workflowStatus: WorkflowStatus.COMPLETED,
+      },
+      select: { id: true },
+    });
+    console.log(`  + ready-to-review feature: ${variant.reviewFeature.title}`);
+  }
+  const existingReviewMsg = await db.chatMessage.findFirst({
+    where: { featureId: reviewFeat.id },
+    select: { id: true, role: true },
+    orderBy: { timestamp: "desc" },
+  });
+  if (!existingReviewMsg || existingReviewMsg.role !== "ASSISTANT") {
+    // Seed both a USER message and a closing ASSISTANT message so the
+    // feature resembles a completed conversation ready for sign-off.
+    const hasUser = await db.chatMessage.findFirst({
+      where: { featureId: reviewFeat.id, role: "USER" },
+      select: { id: true },
+    });
+    if (!hasUser) {
+      await db.chatMessage.create({
+        data: {
+          featureId: reviewFeat.id,
+          message: variant.reviewFeature.userMessage,
+          role: "USER",
+        },
+      });
+    }
+    await db.chatMessage.create({
+      data: {
+        featureId: reviewFeat.id,
+        message: variant.reviewFeature.assistantMessage,
+        role: "ASSISTANT",
+      },
+    });
+    console.log(`  + ASSISTANT msg on ready-to-review feature`);
   }
 }
 
