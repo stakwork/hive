@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
 import { isRecursionSubgraphRequest } from "./fixture-constants";
-import { buildRecursionNodes, buildRecursionEdges } from "./recursion-fixture";
+import { buildRecursionNodes, buildRecursionEdges, withConceptSiblings } from "./recursion-fixture";
 
 export const runtime = "nodejs";
 
@@ -170,10 +170,13 @@ export async function GET(request: NextRequest) {
 
     // Branch: return recursion fixture when the request targets the eval subgraph
     if (isRecursionSubgraphRequest({ nodeType, startNode })) {
-      const response: JarvisResponse = {
-        nodes: buildRecursionNodes(),
-        edges: buildRecursionEdges(),
-      };
+      const base = { nodes: buildRecursionNodes(), edges: buildRecursionEdges() };
+      // Opt-in concept-sibling fixture: only in non-production + ?fixture=concept-siblings
+      const fixtureParam = searchParams.get("fixture");
+      const withSiblings =
+        process.env.NODE_ENV !== "production" && fixtureParam === "concept-siblings";
+      const { nodes, edges } = withSiblings ? withConceptSiblings(base) : base;
+      const response: JarvisResponse = { nodes, edges };
       return NextResponse.json({ success: true, status: 200, data: response });
     }
 

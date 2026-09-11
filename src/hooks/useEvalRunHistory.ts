@@ -92,13 +92,15 @@ export interface AttemptRailRow {
   /** PENDING or IN_PROGRESS — the attempt is still running */
   inFlight: boolean;
   /**
-   * The before/after snapshot of the ProposedFix behind this charted attempt,
-   * from `buildHillClimbSeries`'s sidecar map. Non-null only on `fix-chain`
-   * series rows whose fix actually recorded a snapshot — the rail renders its
-   * diff control exactly when this is set, so legacy fixes and eval-output
-   * rows (which never populate it) get no control by construction.
+   * All before/after snapshots of the ProposedFix siblings behind this charted
+   * attempt, from `buildHillClimbSeries`'s sidecar map. Non-empty only on
+   * `fix-chain` series rows whose fix actually recorded snapshots — the rail
+   * renders one diff control per sibling, capped at 3 + overflow. Eval-output
+   * and legacy rows always receive an empty array by construction.
    */
-  fixSnapshot: FixSnapshotProps | null;
+  fixSnapshots: FixSnapshotProps[];
+  /** How many sibling fixes resolved to this point (≥1 when non-empty). */
+  siblingCount: number;
 }
 
 const NON_TERMINAL_STATUSES = new Set(["PENDING", "IN_PROGRESS"]);
@@ -333,10 +335,29 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
         // point_ref_id names the series point it resolved to (null when the
         // fix emitted no point). Inverted below to join snapshots onto rows.
         const fixSnapshots = new Map<string, FixSnapshotProps>();
-        const hillClimbAttempts = buildHillClimbSeries(subgraph, { fixSnapshotsOut: fixSnapshots });
-        const snapshotByPointRef = new Map<string, FixSnapshotProps>();
+        const siblingCountsOut = new Map<string, number>();
+        const hillClimbAttempts = buildHillClimbSeries(subgraph, {
+          fixSnapshotsOut: fixSnapshots,
+          siblingCountsOut,
+          partial: fixChain.partial ?? false,
+        });
+        const snapshotByPointRef = new Map<string, FixSnapshotProps[]>();
+        let orphanSnapshotCount = 0;
         for (const snapshot of fixSnapshots.values()) {
-          if (snapshot.point_ref_id) snapshotByPointRef.set(snapshot.point_ref_id, snapshot);
+          if (snapshot.point_ref_id) {
+            const existing = snapshotByPointRef.get(snapshot.point_ref_id) ?? [];
+            existing.push(snapshot);
+            snapshotByPointRef.set(snapshot.point_ref_id, existing);
+          } else {
+            orphanSnapshotCount++;
+          }
+        }
+        if (orphanSnapshotCount > 0) {
+          logger.info(
+            `[legal/benchmarks/useEvalRunHistory] ${orphanSnapshotCount} snapshot(s) with null point_ref_id (orphans, not discarded)`,
+            "legal",
+            { evalSetRefId, orphanSnapshotCount },
+          );
         }
 
         // ── Step 4: Build history table (EvalRunsBox) ─────────────────────
@@ -526,7 +547,8 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
           extras: Pick<AttemptRailRow, "label" | "attemptIndex" | "score"> & {
             graphTime?: string | null;
             graphReportRef?: string | null;
-            fixSnapshot?: FixSnapshotProps | null;
+            fixSnapshots?: FixSnapshotProps[];
+            siblingCount?: number;
           },
         ): AttemptRailRow => {
           const parsedStatusRun = statusRun ? parseBenchmarkRunResult(statusRun.result) : null;
@@ -547,7 +569,8 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
               parsedStatusRun?.generateRunReport === true &&
               statusRun?.hasReport !== true,
             inFlight: NON_TERMINAL_STATUSES.has(statusRun?.status ?? ""),
-            fixSnapshot: extras.fixSnapshot ?? null,
+            fixSnapshots: extras.fixSnapshots ?? [],
+            siblingCount: extras.siblingCount ?? 0,
           };
         };
 
@@ -569,10 +592,14 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
             // concept-driven recursion writes no ProposedFix, so eval-output
             // rows legitimately carry none — the attempts-report path still
             // shows the task's fixes when they exist.
-            fixSnapshot:
+            fixSnapshots:
               finalSeriesKind === "fix-chain"
-                ? snapshotByPointRef.get(attempt.ref_id) ?? null
-                : null,
+                ? (snapshotByPointRef.get(attempt.ref_id) ?? [])
+                : [],
+            siblingCount:
+              finalSeriesKind === "fix-chain"
+                ? (siblingCountsOut.get(attempt.ref_id) ?? 0)
+                : 0,
           });
         });
 
@@ -617,7 +644,8 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
               graphReportRef: null,
               reportPending: false,
               inFlight: true,
-              fixSnapshot: null,
+              fixSnapshots: [],
+              siblingCount: 0,
             };
           });
 
@@ -651,7 +679,8 @@ export function useEvalRunHistory(input: UseEvalRunHistoryInput): UseEvalRunHist
               hasReport: run.hasReport === true,
               graphReportRef: null,
               reportPending: false,
-              fixSnapshot: null,
+              fixSnapshots: [],
+              siblingCount: 0,
               score: passed != null && total != null ? { passed, total } : null,
             };
           });

@@ -1032,6 +1032,8 @@ describe("RecursionCard — activity rail", () => {
       graphReportRef: null,
       reportPending: false,
       inFlight: false,
+      fixSnapshots: [],
+      siblingCount: 0,
     },
   ];
 

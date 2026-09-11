@@ -21,29 +21,38 @@ import { graphEpochToIso, type EvalTriggerOutput } from "@/lib/harvey-lab/eval-n
 import type { RecursionEntry } from "@/hooks/useLegalBenchmarkRecursionList";
 import { WorkflowStatus } from "@prisma/client";
 
-/** Edge types the recursion loop writes — the subgraph query's whole alphabet. */
+/** Edge types the recursion loop writes — the subgraph query's whole alphabet.
+ *  PRODUCED_BY is included so the shared EvalTriggerOutput that defines a
+ *  sibling group is always returned by the deep-linked query. */
 const LOOP_EDGE_TYPES =
-  "HAS_BASELINE_TRIGGER|HAS_TRIGGER|HAS_OUTPUT|HAS_PROPOSED_FIX|DERIVED_FROM|HAS_REQUIREMENT";
+  "HAS_BASELINE_TRIGGER|HAS_TRIGGER|HAS_OUTPUT|HAS_PROPOSED_FIX|DERIVED_FROM|HAS_REQUIREMENT|PRODUCED_BY";
+
+/** Allowlist for evalSetRefId values used in Cypher interpolation. */
+const SAFE_REF_RE = /^[A-Za-z0-9_-]+$/;
 
 /**
  * Cypher for the card's entire recursion subgraph, anchored on the EvalSet:
  * every edge reachable over the loop's own edge types, returned as (a, r, b)
  * rows — the exact shape the explorer's canvas parses into nodes + labeled
  * edges, so the deep link lands on a fully rendered subgraph instead of a
- * single focused node. Quotes/backslashes are stripped from the ref rather
- * than escaped — ref_ids never legitimately contain either.
+ * single focused node. Returns null when evalSetRefId fails the allowlist so
+ * the caller can render no link rather than interpolating an unsafe value.
  */
-function loopSubgraphCypher(evalSetRefId: string): string {
-  const ref = evalSetRefId.replace(/["'\\]/g, "");
+function loopSubgraphCypher(evalSetRefId: string): string | null {
+  if (!SAFE_REF_RE.test(evalSetRefId)) return null;
   return (
-    `MATCH (s {ref_id: "${ref}"})-[:${LOOP_EDGE_TYPES}*0..6]->(a)-[r:${LOOP_EDGE_TYPES}]->(b) ` +
-    `RETURN DISTINCT a, r, b LIMIT 100`
+    `MATCH (s {ref_id: "${evalSetRefId}"})-[:${LOOP_EDGE_TYPES}*0..6]->(a)-[r:${LOOP_EDGE_TYPES}]->(b) ` +
+    `RETURN DISTINCT a, r, b LIMIT 300`
   );
 }
 
-/** Graph Explorer deep link that pre-runs the loop-subgraph Cypher. */
-export function loopSubgraphHref(workspaceSlug: string, evalSetRefId: string): string {
-  return `/w/${encodeURIComponent(workspaceSlug)}/context/graph?cypher=${encodeURIComponent(loopSubgraphCypher(evalSetRefId))}`;
+/** Graph Explorer deep link that pre-runs the loop-subgraph Cypher.
+ *  Returns null when evalSetRefId fails the allowlist — callers must not
+ *  render a link in that case. */
+export function loopSubgraphHref(workspaceSlug: string, evalSetRefId: string): string | null {
+  const cypher = loopSubgraphCypher(evalSetRefId);
+  if (!cypher) return null;
+  return `/w/${encodeURIComponent(workspaceSlug)}/context/graph?cypher=${encodeURIComponent(cypher)}`;
 }
 
 // ─── ScoreBadge ──────────────────────────────────────────────────────────────
@@ -222,19 +231,19 @@ interface ClimbTarget {
 function collectClimbTargets(rows: AttemptRailRow[]): ClimbTarget[] {
   const seen = new Map<string, ClimbTarget>();
   for (const row of rows) {
-    const fix = row.fixSnapshot;
-    if (!fix) continue;
-    const refId = fix.target_ref?.trim() || null;
-    const name = fix.target_name?.trim() || refId;
-    if (!name) continue;
-    const key = refId ?? `name:${name}`;
-    if (!seen.has(key)) {
-      seen.set(key, {
-        key,
-        kind: fix.target_type?.trim().toLowerCase() || null,
-        name,
-        refId,
-      });
+    for (const fix of row.fixSnapshots) {
+      const refId = fix.target_ref?.trim() || null;
+      const name = fix.target_name?.trim() || refId;
+      if (!name) continue;
+      const key = refId ?? `name:${name}`;
+      if (!seen.has(key)) {
+        seen.set(key, {
+          key,
+          kind: fix.target_type?.trim().toLowerCase() || null,
+          name,
+          refId,
+        });
+      }
     }
   }
   return [...seen.values()];
@@ -678,10 +687,10 @@ function RecursionCard({ entry, refetch, allRuns }: RecursionCardProps) {
             </a>
           )}
 
-          {workspaceSlug && entry.refId && (
+          {workspaceSlug && entry.refId && loopSubgraphHref(workspaceSlug, entry.refId) && (
             <>
               <a
-                href={loopSubgraphHref(workspaceSlug, entry.refId)}
+                href={loopSubgraphHref(workspaceSlug, entry.refId) ?? "#"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors whitespace-nowrap"
