@@ -270,6 +270,177 @@ describe("parseFluentbitStats — pinned contract fixture", () => {
   });
 });
 
+describe("parseFluentbitStats — containers", () => {
+  test("body without containers still parses OK and reading.containers is null", () => {
+    const body = clone(contractFixture);
+    delete body.containers;
+
+    const reading = parseFluentbitStats(okResponse(body));
+
+    expect(reading.status).toBe("OK");
+    expect(reading.reason).toBeUndefined();
+    expect(reading.containers).toBeNull();
+  });
+
+  test("empty containers array is null, never an empty list", () => {
+    const body = clone(contractFixture);
+    body.containers = [];
+
+    const reading = parseFluentbitStats(okResponse(body));
+
+    expect(reading.status).toBe("OK");
+    expect(reading.containers).toBeNull();
+  });
+
+  test("valid containers parse as OK with camelCase fields matching input", () => {
+    const reading = parseFluentbitStats(okResponse(clone(contractFixture)));
+
+    expect(reading.status).toBe("OK");
+    expect(reading.containers).toEqual([
+      { containerName: "hive-web", inputBytes: 8000, inputRecords: 40 },
+      { containerName: "hive-worker", inputBytes: 3000, inputRecords: 20 },
+      { containerName: "neo4j", inputBytes: 1345, inputRecords: 7 },
+    ]);
+  });
+
+  test("PARTIAL body with containers still populates camelCase containers", () => {
+    const body = clone(contractFixture);
+    body.errors = ["collector timed out"];
+
+    const reading = parseFluentbitStats(okResponse(body));
+
+    expect(reading.status).toBe("PARTIAL");
+    expect(reading.containers).toHaveLength(3);
+    expect(reading.containers?.[0]).toEqual({
+      containerName: "hive-web",
+      inputBytes: 8000,
+      inputRecords: 40,
+    });
+  });
+
+  test("70 containers entries are capped at 64", () => {
+    const body = clone(contractFixture);
+    body.containers = Array.from({ length: 70 }, (_, i) => ({
+      container_name: `c${i}`,
+      input_bytes: i,
+      input_records: i,
+    }));
+
+    const reading = parseFluentbitStats(okResponse(body));
+
+    expect(reading.status).toBe("OK");
+    expect(reading.containers).toHaveLength(64);
+    expect(reading.containers?.[0]?.containerName).toBe("c0");
+    expect(reading.containers?.[63]?.containerName).toBe("c63");
+  });
+
+  test("container_name over 256 chars is capped to 256", () => {
+    const body = clone(contractFixture);
+    body.containers = [
+      { container_name: "x".repeat(1000), input_bytes: 1, input_records: 2 },
+    ];
+
+    const reading = parseFluentbitStats(okResponse(body));
+
+    expect(reading.status).toBe("OK");
+    expect(reading.containers?.[0]?.containerName).toHaveLength(256);
+  });
+
+  test("unknown extra keys inside a container object are stripped", () => {
+    const body = clone(contractFixture);
+    body.containers = [
+      {
+        container_name: "hive-web",
+        input_bytes: 8000,
+        input_records: 40,
+        leaked: "SECRET_MARKER_CONTAINER_KEY",
+        extra_counter: 99,
+      },
+    ];
+
+    const reading = parseFluentbitStats(okResponse(body));
+
+    expect(reading.status).toBe("OK");
+    expect(reading.containers).toEqual([
+      { containerName: "hive-web", inputBytes: 8000, inputRecords: 40 },
+    ]);
+    expect(JSON.stringify(reading)).not.toContain("SECRET_MARKER_CONTAINER_KEY");
+    expect(JSON.stringify(reading)).not.toContain("extra_counter");
+    expect(JSON.stringify(reading)).not.toContain("container_name");
+    expect(JSON.stringify(reading)).not.toContain("input_bytes");
+  });
+});
+
+describe("parseFluentbitStats — object-shaped errors", () => {
+  test('errors: ["plain string"] pass through unchanged', () => {
+    const body = clone(contractFixture);
+    body.errors = ["plain string"];
+
+    const reading = parseFluentbitStats(okResponse(body));
+
+    expect(reading.status).toBe("PARTIAL");
+    expect(reading.errors).toEqual(["plain string"]);
+  });
+
+  test("object errors normalize to collector: reason strings", () => {
+    const body = clone(contractFixture);
+    body.errors = [{ collector: "fluentbit", reason: "unreachable" }];
+
+    const reading = parseFluentbitStats(okResponse(body));
+
+    expect(reading.status).toBe("PARTIAL");
+    expect(reading.errors).toEqual(["fluentbit: unreachable"]);
+  });
+
+  test("mixed string and object errors normalize in order", () => {
+    const body = clone(contractFixture);
+    body.errors = [
+      "plain string",
+      { collector: "fluentbit", reason: "unreachable" },
+      "another string",
+      { collector: "volumes", reason: "timed out" },
+    ];
+
+    const reading = parseFluentbitStats(okResponse(body));
+
+    expect(reading.status).toBe("PARTIAL");
+    expect(reading.errors).toEqual([
+      "plain string",
+      "fluentbit: unreachable",
+      "another string",
+      "volumes: timed out",
+    ]);
+  });
+
+  test("oversized collector and reason strings are capped at 256 chars", () => {
+    const body = clone(contractFixture);
+    body.errors = [{ collector: "c".repeat(1000), reason: "r".repeat(1000) }];
+
+    const reading = parseFluentbitStats(okResponse(body));
+
+    expect(reading.status).toBe("PARTIAL");
+    expect(reading.errors).toHaveLength(1);
+    const [collector, reason] = reading.errors[0].split(": ");
+    expect(collector).toHaveLength(256);
+    expect(reason).toHaveLength(256);
+  });
+
+  test("JSON.stringify(reading) never contains raw object errors", () => {
+    const body = clone(contractFixture);
+    body.errors = [
+      { collector: "fluentbit", reason: "unreachable" },
+      "plain string",
+    ];
+
+    const reading = parseFluentbitStats(okResponse(body));
+    const serialized = JSON.stringify(reading);
+
+    expect(serialized).not.toContain("[object Object]");
+    expect(serialized).not.toContain('"collector"');
+    expect(reading.errors.every((e) => typeof e === "string")).toBe(true);
+  });
+});
+
 describe("computeFluentbitRates", () => {
   test("first sample (prev null) → all rates null, never 0", () => {
     const { rates, rateWindowSeconds } = computeFluentbitRates(null, sample());

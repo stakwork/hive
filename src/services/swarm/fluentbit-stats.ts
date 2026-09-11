@@ -36,6 +36,21 @@ const capArray = <T>(items: T[]) => items.slice(0, MAX_ARRAY_ENTRIES);
 
 const cappedString = z.string().transform(capString);
 const counter = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable();
+const requiredCounter = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+
+const contractContainerSchema = z.object({
+  container_name: cappedString,
+  input_bytes: requiredCounter,
+  input_records: requiredCounter,
+});
+
+const contractErrorSchema = z.union([
+  cappedString,
+  z.object({
+    collector: cappedString,
+    reason: cappedString,
+  }),
+]);
 
 export const fluentbitStatsSchema = z.object({
   available: z.boolean(),
@@ -49,7 +64,8 @@ export const fluentbitStatsSchema = z.object({
   output_errors: counter,
   retries_failed: counter,
   uptime_seconds: counter,
-  errors: z.array(cappedString).transform(capArray),
+  errors: z.array(contractErrorSchema).transform(capArray),
+  containers: z.array(contractContainerSchema).transform(capArray).optional(),
 });
 
 /** Wire shape of the pinned contract fixture. */
@@ -82,6 +98,12 @@ export const NULL_FLUENTBIT_RATES: FluentbitRates = {
   outputProcRecordsPerSec: null,
 };
 
+export interface FluentbitStatsContainer {
+  containerName: string;
+  inputBytes: number;
+  inputRecords: number;
+}
+
 export interface FluentbitStatsReading {
   status: FluentbitStatsStatus;
   /** Only set when status is ERROR or UNREACHABLE. */
@@ -98,6 +120,8 @@ export interface FluentbitStatsReading {
   retriesFailed: number | null;
   uptimeSeconds: number | null;
   errors: string[];
+  /** Per-container lifetime totals. Null when omitted or empty — never fabricated. */
+  containers: FluentbitStatsContainer[] | null;
   rates: FluentbitRates;
   rateWindowSeconds: number | null;
 }
@@ -243,9 +267,28 @@ function failureReading(
     retriesFailed: null,
     uptimeSeconds: null,
     errors: [],
+    containers: null,
     rates: { ...NULL_FLUENTBIT_RATES },
     rateWindowSeconds: null,
   };
+}
+
+function normalizeError(
+  entry: FluentbitStatsContract["errors"][number],
+): string {
+  if (typeof entry === "string") return entry;
+  return `${entry.collector}: ${entry.reason}`;
+}
+
+function normalizeContainers(
+  containers: FluentbitStatsContract["containers"],
+): FluentbitStatsContainer[] | null {
+  if (!containers || containers.length === 0) return null;
+  return containers.map((c) => ({
+    containerName: c.container_name,
+    inputBytes: c.input_bytes,
+    inputRecords: c.input_records,
+  }));
 }
 
 function normalizeReading(
@@ -265,7 +308,8 @@ function normalizeReading(
     outputErrors: contract.output_errors,
     retriesFailed: contract.retries_failed,
     uptimeSeconds: contract.uptime_seconds,
-    errors: contract.errors,
+    errors: contract.errors.map(normalizeError),
+    containers: normalizeContainers(contract.containers),
     rates: { ...NULL_FLUENTBIT_RATES },
     rateWindowSeconds: null,
   };
