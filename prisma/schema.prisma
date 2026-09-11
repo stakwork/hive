@@ -490,6 +490,7 @@ model Swarm {
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
   storageSnapshots        SwarmStorageSnapshot[]
+  fluentbitStatsSamples   FluentbitStatsSample[]
   workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([swarmId])
@@ -525,6 +526,28 @@ model SwarmStorageSnapshot {
   @@index([date])
   @@index([instanceId])
   @@map("swarm_storage_snapshots")
+}
+
+/// Hourly FluentBit stats sample for a swarm EC2 instance. Insert-only
+/// (many rows per day). swarmId is optional with onDelete: SetNull so
+/// deleting/recreating a swarm never orphans retained history. Byte and
+/// record columns are BigInt (lifetime FluentBit counters exceed Prisma
+/// Int at 2^31−1 ≈ 2 GiB). `containers` stores only the parser-normalized
+/// capped array, never the raw swarm body. Retained for 14 days.
+model FluentbitStatsSample {
+  id           String   @id @default(cuid())
+  instanceId   String   @map("instance_id")
+  swarmId      String?  @map("swarm_id")
+  collectedAt  DateTime @map("collected_at")
+  inputBytes   BigInt?  @map("input_bytes")
+  inputRecords BigInt?  @map("input_records")
+  containers   Json?
+  status       String
+  createdAt    DateTime @default(now()) @map("created_at")
+  swarm        Swarm?   @relation(fields: [swarmId], references: [id], onDelete: SetNull)
+
+  @@index([instanceId, collectedAt])
+  @@map("fluentbit_stats_samples")
 }
 
 model Pod {
