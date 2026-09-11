@@ -112,6 +112,27 @@ function redisSetexKeys(): string[] {
   return mockRedisSetex.mock.calls.map((c) => String(c[0]));
 }
 
+function cachedOkReading(overrides: Record<string, unknown> = {}) {
+  return {
+    status: "OK",
+    available: true,
+    collectedAt: 1757430000,
+    inputBytes: 1,
+    inputRecords: 1,
+    outputProcBytes: 1,
+    outputProcRecords: 1,
+    filterDropRecords: 0,
+    outputDroppedRecords: 0,
+    outputErrors: 0,
+    retriesFailed: 0,
+    uptimeSeconds: 3600,
+    errors: [],
+    rates: { ...NULL_FLUENTBIT_RATES },
+    rateWindowSeconds: null,
+    ...overrides,
+  };
+}
+
 describe("readFluentbitStats", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -590,6 +611,50 @@ describe("readFluentbitStats", () => {
 
     expect(result.outcome).toBe("failed");
     expect(result.reasonCode).toBe("STACK_ERROR");
+    expect(mockRedisSetex).not.toHaveBeenCalled();
+  });
+
+  test("bypassCooldown skips the Redis cooldown read and always performs a live fetch", async () => {
+    mockRedisGet.mockImplementation(async (key: string) => {
+      if (key === COOLDOWN_KEY) return JSON.stringify({ reading: cachedOkReading() });
+      return null;
+    });
+    mockFindMany.mockResolvedValue([swarmRow()]);
+
+    const result = await readFluentbitStats(INSTANCE_ID, { bypassCooldown: true });
+
+    expect(result.outcome).toBe("fresh");
+    expect(result.cached).toBe(false);
+    expect(result.reading?.inputBytes).toBe(12345);
+    expect(mockGetJwt).toHaveBeenCalledTimes(1);
+    expect(mockCmdRequest).toHaveBeenCalledTimes(1);
+    expect(redisGets()).not.toContain(COOLDOWN_KEY);
+  });
+
+  test("skipWriteCache does not call Redis set for cooldown or prev-sample after a fresh read", async () => {
+    mockFindMany.mockResolvedValue([swarmRow()]);
+
+    const result = await readFluentbitStats(INSTANCE_ID, { skipWriteCache: true });
+
+    expect(result.outcome).toBe("fresh");
+    expect(result.reading?.inputBytes).toBe(12345);
+    expect(mockRedisSetex).not.toHaveBeenCalled();
+  });
+
+  test("bypassCooldown + skipWriteCache neither reads cooldown nor writes cache", async () => {
+    mockRedisGet.mockResolvedValue(
+      JSON.stringify({ reading: cachedOkReading({ uptimeSeconds: 1 }) }),
+    );
+    mockFindMany.mockResolvedValue([swarmRow()]);
+
+    const result = await readFluentbitStats(INSTANCE_ID, {
+      bypassCooldown: true,
+      skipWriteCache: true,
+    });
+
+    expect(result.outcome).toBe("fresh");
+    expect(mockGetJwt).toHaveBeenCalledTimes(1);
+    expect(redisGets()).not.toContain(COOLDOWN_KEY);
     expect(mockRedisSetex).not.toHaveBeenCalled();
   });
 

@@ -202,11 +202,24 @@ function attachRates(
   return { ...reading, rates, rateWindowSeconds };
 }
 
+export interface FluentbitStatsReadOptions {
+  /** Skip the Redis cooldown read and always perform a live fetch. Cron-only. */
+  bypassCooldown?: boolean;
+  /** Skip writing cooldown / prev-sample Redis keys after a fresh read. Cron-only. */
+  skipWriteCache?: boolean;
+}
+
 /**
  * Perform one live FluentBit-stats read for an EC2 instance. Never throws —
  * every failure is classified into the outcome discriminator.
+ *
+ * `options` is in-process only (cron sampler). Callers must never source
+ * `bypassCooldown` / `skipWriteCache` from request query or body.
  */
-export async function readFluentbitStats(instanceId: string): Promise<FluentbitStatsReadResult> {
+export async function readFluentbitStats(
+  instanceId: string,
+  options: FluentbitStatsReadOptions = {},
+): Promise<FluentbitStatsReadResult> {
   // 1. Input gate — before ANY DB query or cache lookup.
   if (!HOST_STORAGE_INSTANCE_ID_PATTERN.test(instanceId)) {
     return result("failed", "INVALID_INSTANCE_ID", null, instanceId);
@@ -215,10 +228,13 @@ export async function readFluentbitStats(instanceId: string): Promise<FluentbitS
   // 2. Cooldown cache — inside the TTL there is no outbound call, no DB query,
   //    no credential decryption, and no prev lookup / rate recompute. The
   //    cached reading keeps its ORIGINAL collectedAt and baked-in rates.
-  const cached = await readCooldownCache(instanceId);
-  if (cached) {
-    console.log(`${LOG_PREFIX} cooldown hit instance=${instanceId}`);
-    return cached;
+  //    Sampler passes bypassCooldown so the cron always hits live.
+  if (!options.bypassCooldown) {
+    const cached = await readCooldownCache(instanceId);
+    if (cached) {
+      console.log(`${LOG_PREFIX} cooldown hit instance=${instanceId}`);
+      return cached;
+    }
   }
 
   // 3. Resolve the swarm — exactly one match, never an arbitrary pick.
@@ -308,17 +324,21 @@ export async function readFluentbitStats(instanceId: string): Promise<FluentbitS
       rates: { ...NULL_FLUENTBIT_RATES },
       rateWindowSeconds: null,
     };
-    await writeCooldownCache(instanceId, reading);
+    if (!options.skipWriteCache) {
+      await writeCooldownCache(instanceId, reading);
+    }
     return { outcome: "fresh", reading, collectedAt: reading.collectedAt, cached: false };
   }
 
   if (parsed.status === "OK" || parsed.status === "PARTIAL") {
     const prev = await readPrevSample(instanceId);
     const reading = attachRates(parsed, prev);
-    await writeCooldownCache(instanceId, reading);
-    const snapshot = fluentbitPrevSampleFromReading(reading);
-    if (snapshot) {
-      await writePrevSample(instanceId, snapshot);
+    if (!options.skipWriteCache) {
+      await writeCooldownCache(instanceId, reading);
+      const snapshot = fluentbitPrevSampleFromReading(reading);
+      if (snapshot) {
+        await writePrevSample(instanceId, snapshot);
+      }
     }
     return { outcome: "fresh", reading, collectedAt: reading.collectedAt, cached: false };
   }
