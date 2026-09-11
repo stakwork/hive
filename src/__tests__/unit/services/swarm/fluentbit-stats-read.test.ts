@@ -447,6 +447,19 @@ describe("readFluentbitStats", () => {
     expect(result.reading?.uptimeSeconds).toBe(3600);
   });
 
+  test("containers from the live reading are carried through unchanged", async () => {
+    mockFindMany.mockResolvedValue([swarmRow()]);
+
+    const result = await readFluentbitStats(INSTANCE_ID);
+
+    expect(result.outcome).toBe("fresh");
+    expect(result.reading?.containers).toEqual([
+      { containerName: "hive-web", inputBytes: 8000, inputRecords: 40 },
+      { containerName: "hive-worker", inputBytes: 3000, inputRecords: 20 },
+      { containerName: "neo4j", inputBytes: 1345, inputRecords: 7 },
+    ]);
+  });
+
   test("a PARTIAL reading (populated errors[]) is a successful fresh outcome and overwrites prev", async () => {
     mockFindMany.mockResolvedValue([swarmRow()]);
     const partial = clone(contractFixture);
