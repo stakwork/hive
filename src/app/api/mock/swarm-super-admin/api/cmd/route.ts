@@ -44,6 +44,25 @@ const MOCK_RESPONSES: Record<string, unknown> = {
   },
   GetSecondBrainAboutDetails: { title: "mock-graph", description: "" },
   UpdateSecondBrainAbout: { success: true },
+  GetFluentbitStats: {
+    available: true,
+    collected_at: 1757430000,
+    input_bytes: 12345,
+    input_records: 67,
+    output_proc_bytes: 12000,
+    output_proc_records: 65,
+    filter_drop_records: 0,
+    output_dropped_records: 0,
+    output_errors: 0,
+    retries_failed: 0,
+    uptime_seconds: 3600,
+    errors: [],
+    containers: [
+      { container_name: "hive-web", input_bytes: 8000, input_records: 40 },
+      { container_name: "hive-worker", input_bytes: 3000, input_records: 20 },
+      { container_name: "neo4j", input_bytes: 1345, input_records: 7 },
+    ],
+  },
 };
 
 /**
