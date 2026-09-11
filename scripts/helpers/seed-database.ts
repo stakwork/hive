@@ -1,4 +1,5 @@
 import {
+  Prisma,
   PrismaClient,
   SwarmStatus,
   TaskLayerType,
@@ -2616,6 +2617,162 @@ async function seedSwarmStorageSnapshots() {
   );
 }
 
+async function seedFluentbitStatsSamples() {
+  const swarms = await prisma.swarm.findMany({
+    where: { name: { in: ["alpha-swarm", "beta-swarm"] } },
+    select: { id: true, name: true, ec2Id: true },
+    orderBy: { name: "asc" },
+  });
+
+  if (swarms.length < 2) {
+    console.log("Fewer than 2 swarms found, skipping fluentbit stats sample seeding");
+    return;
+  }
+
+  const retentionDays = 12;
+  const today = new Date();
+  const utcToday = new Date(
+    Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
+  );
+
+  const alpha = swarms.find((s) => s.name === "alpha-swarm") ?? swarms[0];
+  const beta = swarms.find((s) => s.name === "beta-swarm") ?? swarms[1];
+
+  const alphaInstanceId = alpha.ec2Id ?? "i-0aaa1111bbb2222c";
+  const betaInstanceId = beta.ec2Id ?? "i-0ccc3333ddd4444e";
+
+  if (!alpha.ec2Id) {
+    await prisma.swarm.update({
+      where: { id: alpha.id },
+      data: { ec2Id: alphaInstanceId },
+    });
+  }
+  if (!beta.ec2Id) {
+    await prisma.swarm.update({
+      where: { id: beta.id },
+      data: { ec2Id: betaInstanceId },
+    });
+  }
+
+  type ContainerRow = {
+    containerName: string;
+    inputBytes: number;
+    inputRecords: number;
+  };
+
+  const rows: Array<{
+    instanceId: string;
+    swarmId: string;
+    collectedAt: Date;
+    inputBytes: bigint | null;
+    inputRecords: bigint | null;
+    containers: ContainerRow[] | typeof Prisma.JsonNull;
+    status: string;
+  }> = [];
+
+  const hours = [0, 6, 12, 18];
+  // One full UTC day with zero samples (missing-day case for rollups).
+  const missingDayOffset = 5;
+  // Counter-reset day: value drops then rises again (FluentBit restart).
+  const resetDayOffset = 2;
+  // Omitted containers on this offset's 00:00 sample.
+  const omittedContainersOffset = 8;
+  // Empty containers list on this offset's 06:00 sample.
+  const emptyContainersOffset = 7;
+  // Newly-appearing container name from this offset onward.
+  const newContainerFromOffset = 3;
+
+  for (let offset = retentionDays - 1; offset >= 0; offset--) {
+    if (offset === missingDayOffset) continue;
+
+    const day = new Date(utcToday);
+    day.setUTCDate(day.getUTCDate() - offset);
+    const dayIndex = retentionDays - 1 - offset;
+
+    for (let h = 0; h < hours.length; h++) {
+      const collectedAt = new Date(day.getTime() + hours[h] * 60 * 60 * 1000);
+      const sampleIndex = dayIndex * hours.length + h;
+
+      let bytes = 1_000_000 + sampleIndex * 50_000;
+      let records = 1_000 + sampleIndex * 40;
+
+      if (offset === resetDayOffset && h === 2) {
+        bytes = 12_000;
+        records = 20;
+      } else if (offset === resetDayOffset && h === 3) {
+        bytes = 12_000 + 50_000;
+        records = 20 + 40;
+      }
+
+      let containers: ContainerRow[] | typeof Prisma.JsonNull = [
+        {
+          containerName: "hive-web",
+          inputBytes: Math.floor(bytes * 0.6),
+          inputRecords: Math.floor(records * 0.6),
+        },
+        {
+          containerName: "hive-worker",
+          inputBytes: Math.floor(bytes * 0.3),
+          inputRecords: Math.floor(records * 0.3),
+        },
+      ];
+
+      if (offset <= newContainerFromOffset && Array.isArray(containers)) {
+        containers.push({
+          containerName: "neo4j",
+          inputBytes: Math.floor(bytes * 0.1),
+          inputRecords: Math.floor(records * 0.1),
+        });
+      }
+
+      if (offset === omittedContainersOffset && h === 0) {
+        containers = Prisma.JsonNull;
+      } else if (offset === emptyContainersOffset && h === 1) {
+        containers = [];
+      }
+
+      const status = offset === omittedContainersOffset && h === 0 ? "PARTIAL" : "OK";
+
+      rows.push({
+        instanceId: alphaInstanceId,
+        swarmId: alpha.id,
+        collectedAt,
+        inputBytes: BigInt(bytes),
+        inputRecords: BigInt(records),
+        containers,
+        status,
+      });
+
+      rows.push({
+        instanceId: betaInstanceId,
+        swarmId: beta.id,
+        collectedAt,
+        inputBytes: BigInt(bytes + 250_000),
+        inputRecords: BigInt(records + 200),
+        containers,
+        status: "OK",
+      });
+    }
+  }
+
+  await prisma.fluentbitStatsSample.deleteMany({
+    where: {
+      instanceId: { in: [alphaInstanceId, betaInstanceId] },
+    },
+  });
+
+  const BATCH = 50;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    await prisma.fluentbitStatsSample.createMany({
+      data: rows.slice(i, i + BATCH),
+    });
+  }
+
+  console.log(
+    `✓ Seeded ${rows.length} FluentbitStatsSample rows (~${retentionDays} days × 2 instances)`,
+  );
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -2640,6 +2797,7 @@ async function main() {
   await seedLegalBenchmarkRuns();
   await seedWorkflowBenchmarkRuns();
   await seedSwarmStorageSnapshots();
+  await seedFluentbitStatsSamples();
 
   console.log("Seed completed.");
 }

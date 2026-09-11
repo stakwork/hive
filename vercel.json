@@ -90,6 +90,10 @@
     {
       "path": "/api/cron/swarm-storage-janitor",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/fluentbit-stats-sample",
+      "schedule": "45 * * * *"
     }
   ]
 }
