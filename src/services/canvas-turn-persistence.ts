@@ -399,6 +399,27 @@ export async function fetchStoredConversationMessages(args: {
 }
 
 /**
+ * Where a turn's rows go: after the last stored row of that turn when it
+ * has one (its user message, or an earlier partial write), else at the
+ * end. Appending blindly puts a slow reply after a message that was sent
+ * while it ran.
+ */
+export function placeTurnRows<T extends { id?: unknown }>(
+  existing: T[],
+  rows: T[],
+  turnId?: string,
+): T[] {
+  if (!turnId) return [...existing, ...rows];
+  const prefix = `${turnId}-`;
+  let last = -1;
+  existing.forEach((m, i) => {
+    if (typeof m.id === "string" && m.id.startsWith(prefix)) last = i;
+  });
+  if (last < 0 || last === existing.length - 1) return [...existing, ...rows];
+  return [...existing.slice(0, last + 1), ...rows, ...existing.slice(last + 1)];
+}
+
+/**
  * Append rows into a canvas conversation under the same row-level lock
  * the fan-out worker and the autosave PUT use, so all writers serialize
  * on the conversation row. Idempotent on the `idPrefix`: if any existing
@@ -414,8 +435,15 @@ export async function appendTurnMessages(args: {
   rows: StoredMessage[];
   idPrefix: string;
   reason: CanvasConversationUpdateReason;
+  /**
+   * The turn these rows finish. Its user row (`${turnId}-u`) is already
+   * stored, so the rows land right after that turn's last row rather
+   * than at the end — a reply that finishes after a later message was
+   * sent (another tab, a shared room) still reads user → reply → user.
+   */
+  turnId?: string;
 }): Promise<boolean> {
-  const { conversationId, rows, idPrefix, reason } = args;
+  const { conversationId, rows, idPrefix, reason, turnId } = args;
   if (rows.length === 0) return false;
 
   let didAppend = false;
@@ -437,7 +465,7 @@ export async function appendTurnMessages(args: {
     await tx.sharedConversation.update({
       where: { id: conversationId },
       data: {
-        messages: [...existing, ...rows] as unknown as never,
+        messages: placeTurnRows(existing, rows, turnId) as unknown as never,
         lastMessageAt: new Date(),
       },
     });

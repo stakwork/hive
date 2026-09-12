@@ -418,6 +418,7 @@ export function registerOrgTools(
               rows,
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              turnId,
             });
 
             // Snapshot the rendered prefix for the Agent Logs detail view,
