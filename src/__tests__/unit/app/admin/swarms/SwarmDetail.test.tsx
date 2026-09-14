@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import React from "react";
 
 // ---------------------------------------------------------------------------
@@ -27,18 +27,21 @@ vi.mock("@/components/ui/button", () => ({
     disabled,
     variant,
     size,
+    ...rest
   }: {
     children: React.ReactNode;
     onClick?: () => void;
     disabled?: boolean;
     variant?: string;
     size?: string;
+    [key: string]: unknown;
   }) => (
     <button
       onClick={onClick}
       disabled={disabled}
       data-variant={variant}
       data-size={size}
+      {...rest}
     >
       {children}
     </button>
@@ -458,6 +461,138 @@ describe("SwarmDetail", () => {
           "Failed to start container",
           expect.objectContaining({ description: "Command failed" })
         );
+      });
+    });
+  });
+
+  describe("container update action", () => {
+    async function renderReady() {
+      mockFetch.mockResolvedValueOnce(makeListContainersResponse());
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+      await waitFor(() => expect(screen.getByText("sphinx")).toBeInTheDocument());
+    }
+
+    it("shows an Update button on every container row, including stopped ones", async () => {
+      await renderReady();
+
+      expect(screen.getByTestId("container-update-sphinx")).toBeInTheDocument();
+      expect(screen.getByTestId("container-update-neo4j")).toBeInTheDocument();
+      expect(screen.getByTestId("container-update-lnd")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Update lnd" })).toBeInTheDocument();
+    });
+
+    it("opens a confirm dialog naming the container and does not POST until confirm", async () => {
+      await renderReady();
+
+      fireEvent.click(screen.getByTestId("container-update-sphinx"));
+
+      const dialog = screen.getByRole("dialog");
+      expect(dialog).toBeInTheDocument();
+      expect(within(dialog).getByText("Update container sphinx?")).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(/stops and recreates sphinx from latest/i)
+      ).toBeInTheDocument();
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("Cancel closes the dialog and issues no request", async () => {
+      await renderReady();
+
+      fireEvent.click(screen.getByTestId("container-update-sphinx"));
+      const dialog = screen.getByRole("dialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("Confirm posts UpdateNode with id and version latest", async () => {
+      mockFetch
+        .mockResolvedValueOnce(makeListContainersResponse())
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) })
+        .mockResolvedValueOnce(makeListContainersResponse());
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+      await waitFor(() => expect(screen.getByText("sphinx")).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId("container-update-sphinx"));
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Update" }));
+
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
+
+      const updateBody = JSON.parse(mockFetch.mock.calls[1][1].body as string);
+      expect(updateBody.cmd).toEqual({
+        type: "Swarm",
+        data: { cmd: "UpdateNode", content: { id: "sphinx", version: "latest" } },
+      });
+    });
+
+    it("shows success toast and re-fetches containers after a successful update", async () => {
+      mockFetch
+        .mockResolvedValueOnce(makeListContainersResponse())
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) })
+        .mockResolvedValueOnce(makeListContainersResponse());
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+      await waitFor(() => expect(screen.getByText("sphinx")).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId("container-update-sphinx"));
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Update" }));
+
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith("Container update successful");
+      });
+
+      const refreshBody = JSON.parse(mockFetch.mock.calls[2][1].body as string);
+      expect(refreshBody.cmd).toEqual({ type: "Swarm", data: { cmd: "ListContainers" } });
+    });
+
+    it("shows error toast when update fails", async () => {
+      mockFetch
+        .mockResolvedValueOnce(makeListContainersResponse())
+        .mockResolvedValueOnce(makeErrorResponse(500, "Command failed"));
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+      await waitFor(() => expect(screen.getByText("sphinx")).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId("container-update-sphinx"));
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Update" }));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          "Failed to update container",
+          expect.objectContaining({ description: "Command failed" })
+        );
+      });
+    });
+
+    it("does not POST twice when Confirm is clicked rapidly", async () => {
+      let resolveUpdate: (value: unknown) => void = () => {};
+      const updatePromise = new Promise((resolve) => {
+        resolveUpdate = resolve;
+      });
+
+      mockFetch
+        .mockResolvedValueOnce(makeListContainersResponse())
+        .mockImplementationOnce(() => updatePromise);
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+      await waitFor(() => expect(screen.getByText("sphinx")).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId("container-update-sphinx"));
+      const confirmBtn = within(screen.getByRole("dialog")).getByRole("button", { name: "Update" });
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      resolveUpdate({ ok: true, json: async () => ({ success: true }) });
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith("Container update successful");
       });
     });
   });
