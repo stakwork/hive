@@ -22,7 +22,7 @@
  */
 
 import { db } from "@/lib/db";
-import { ArtifactType } from "@prisma/client";
+import { ArtifactType, ChatRole } from "@prisma/client";
 import {
   _processCompletedResult,
   reconcilePr,
@@ -104,6 +104,11 @@ export function parseCreatePrClaim(value: unknown): CreatePrClaim | null {
  * Best-effort and idempotent: a failure here must never turn a landed PR
  * into a reported failure, and a concurrent webhook/reconcile must not
  * produce two artifacts for the same PR.
+ *
+ * Scoped to the ASSISTANT message — the one carrying the DIFF. A claim Task
+ * also seeds a USER message holding the originating prompt, and both rows are
+ * written in the same transaction, so `createdAt` alone can tie and resolve
+ * either way. The role filter keeps the PR landing beside its diff.
  */
 export async function attachPrArtifact(
   taskId: string,
@@ -112,7 +117,7 @@ export async function attachPrArtifact(
 ): Promise<void> {
   try {
     const msg = await db.chatMessage.findFirst({
-      where: { taskId },
+      where: { taskId, role: ChatRole.ASSISTANT },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,

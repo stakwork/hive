@@ -541,3 +541,84 @@ describe("approveCodeChange — reconcile on retry", () => {
     expect(mockReconcilePr).not.toHaveBeenCalled();
   });
 });
+
+describe("approveCodeChange — claim Task seeding", () => {
+  /**
+   * Swap in a transaction mock whose `tx` client is retained, so the rows the
+   * claim transaction writes can be inspected after the call.
+   */
+  function captureTx() {
+    const tx = {
+      task: {
+        create: vi.fn().mockResolvedValue({ id: CLAIM_TASK_ID }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      chatMessage: { create: vi.fn().mockResolvedValue({ id: SEED_MSG_ID }) },
+      artifact: {
+        create: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({}),
+      },
+    };
+    vi.mocked(db.$transaction).mockImplementation(async (arg: unknown) => {
+      if (typeof arg !== "function") return undefined as never;
+      return (arg as (t: unknown) => Promise<unknown>)(tx) as never;
+    });
+    return tx;
+  }
+
+  function outputWithPrompt(prompt: string) {
+    const base = codeChangeOutput();
+    return { ...base, payload: { ...base.payload, prompt } };
+  }
+
+  it("creates the claim IN_PROGRESS so the tasks list does not hide it", async () => {
+    const tx = captureTx();
+    mockFetchStored.mockResolvedValue([msg(codeChangeOutput())]);
+
+    await approve([msg(codeChangeOutput())]);
+
+    // A TODO claim matches none of the list's visibility branches — it is
+    // neither agent-mode nor Stakwork-backed — so it would surface only in
+    // Kanban. COMPLETED must survive alongside it for pr-monitor's fix path.
+    expect(tx.task.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "IN_PROGRESS",
+          workflowStatus: "COMPLETED",
+        }),
+      }),
+    );
+  });
+
+  it("seeds the originating prompt as a USER message ahead of the diff", async () => {
+    const tx = captureTx();
+    mockFetchStored.mockResolvedValue([
+      msg(outputWithPrompt("Add a null check in auth middleware")),
+    ]);
+
+    // The prompt is read off the STORED proposal, never the caller's copy.
+    await approve([msg(outputWithPrompt("rm -rf /"))]);
+
+    expect(tx.chatMessage.create).toHaveBeenCalledTimes(2);
+
+    const [first, second] = tx.chatMessage.create.mock.calls;
+    expect(first[0].data).toMatchObject({
+      role: "USER",
+      message: "Add a null check in auth middleware",
+    });
+    // The diff rides on the ASSISTANT message, which `attachPrArtifact` later
+    // resolves by role to hang the PULL_REQUEST artifact off.
+    expect(second[0].data.role).toBe("ASSISTANT");
+    expect(second[0].data.artifacts.create.type).toBe("DIFF");
+  });
+
+  it("seeds only the diff message for a proposal stored before `prompt` existed", async () => {
+    const tx = captureTx();
+    mockFetchStored.mockResolvedValue([msg(codeChangeOutput())]);
+
+    await approve([msg(codeChangeOutput())]);
+
+    expect(tx.chatMessage.create).toHaveBeenCalledTimes(1);
+    expect(tx.chatMessage.create.mock.calls[0][0].data.role).toBe("ASSISTANT");
+  });
+});

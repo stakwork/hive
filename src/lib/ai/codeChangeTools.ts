@@ -438,6 +438,7 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
             diffSha256,
             filesChanged: diffs.length,
             baseBranchDisplay,
+            prompt,
           },
           // Stamped server-side from the tool's own context — never a caller
           // input. The approval handler reads this back off the STORED

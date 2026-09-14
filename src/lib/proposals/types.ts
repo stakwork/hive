@@ -289,6 +289,12 @@ export interface CodeChangeProposalPayload {
   filesChanged: number;
   /** Display-only: the base branch the swarm resolved server-side. */
   baseBranchDisplay?: string;
+  /** The instruction sent to the read-only `repo_agent` run that produced
+   *  `diff`. Display-only: seeded as a USER-role ChatMessage on the claim Task
+   *  so the Task view shows what was asked, not just the result. Never re-sent
+   *  to the swarm — approval forwards `diff`. Absent on proposals stored
+   *  before this field existed; those replay result-only. */
+  prompt?: string;
 }
 
 /** What the propose tools return from `execute(...)` on success. */
