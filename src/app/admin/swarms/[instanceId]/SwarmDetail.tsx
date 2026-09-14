@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, RefreshCw, AlertCircle } from "lucide-react";
+import { ArrowLeft, ArrowUpCircle, Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,11 @@ import { Textarea } from "@/components/ui/textarea";
 import HostStorageCard from "./HostStorageCard";
 import FluentbitStatsCard from "./FluentbitStatsCard";
 import { swarmUrlFromTags } from "@/lib/swarm/swarm-url";
+import {
+  parseImageVersions,
+  shouldShowUpdateAvailable,
+  type ImageVersion,
+} from "./image-versions";
 
 interface Container {
   name: string;
@@ -115,16 +120,26 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
   const [updateNodeDialog, setUpdateNodeDialog] = useState(false);
   const [updateNodePayload, setUpdateNodePayload] = useState("{}");
   const [pendingUpdateContainer, setPendingUpdateContainer] = useState<Container | null>(null);
+  const [imageVersions, setImageVersions] = useState<Map<string, ImageVersion>>(new Map());
+  const [versionsLoading, setVersionsLoading] = useState(false);
   const updateConfirmLockRef = useRef(false);
+  const fetchGenRef = useRef(0);
 
   const fetchContainers = useCallback(async (url: string) => {
+    const gen = ++fetchGenRef.current;
+    const isStale = () => fetchGenRef.current !== gen;
+
     setLoadingContainers(true);
     setLoadError(null);
+    setImageVersions(new Map());
+    setVersionsLoading(true);
+
     try {
       const data = await postCmd(instanceId, url, {
         type: "Swarm",
         data: { cmd: "ListContainers" },
       });
+      if (isStale()) return;
       const body = (data as any)?.data ?? data;
       const list = Array.isArray(body)
         ? body
@@ -133,9 +148,34 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
           : [];
       setContainers((list as RawDockerContainer[]).map(normalizeContainer));
     } catch (err) {
+      if (isStale()) return;
       setLoadError(err instanceof Error ? err.message : "Failed to load containers");
+      setVersionsLoading(false);
+      return;
     } finally {
-      setLoadingContainers(false);
+      if (!isStale()) {
+        setLoadingContainers(false);
+      }
+    }
+
+    try {
+      const envelope = await postCmd(instanceId, url, {
+        type: "Swarm",
+        data: { cmd: "GetAllImageActualVersion" },
+      });
+      if (isStale()) return;
+      if (envelope?.ok === false) {
+        setImageVersions(new Map());
+        return;
+      }
+      setImageVersions(parseImageVersions(envelope?.data));
+    } catch {
+      if (isStale()) return;
+      setImageVersions(new Map());
+    } finally {
+      if (!isStale()) {
+        setVersionsLoading(false);
+      }
     }
   }, [instanceId]);
 
@@ -190,6 +230,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
     resolveThenFetch();
     return () => {
       cancelled = true;
+      fetchGenRef.current += 1;
     };
   }, [instanceId, swarmUrl, fetchContainers]);
 
@@ -384,6 +425,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
               <TableBody>
                 {containers.map((container) => {
                   const isRunning = container.status === "running";
+                  const versionInfo = imageVersions.get(container.name);
                   return (
                     <TableRow key={container.name}>
                       <TableCell className="font-mono font-medium">{container.name}</TableCell>
@@ -443,6 +485,17 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
                               "Restart"
                             )}
                           </Button>
+                          {!versionsLoading && shouldShowUpdateAvailable(versionInfo) && versionInfo && (
+                            <span
+                              className="inline-flex"
+                              title={`${versionInfo.version} → ${versionInfo.latest_version}`}
+                              aria-label="Update available"
+                              role="img"
+                              data-testid={`container-update-available-${container.name}`}
+                            >
+                              <ArrowUpCircle className="h-4 w-4 text-amber-500" />
+                            </span>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
