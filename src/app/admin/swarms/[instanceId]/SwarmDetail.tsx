@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -66,10 +66,12 @@ interface SwarmDetailProps {
   name?: string;
 }
 
+type ContainerAction = "start" | "stop" | "restart" | "logs" | "update";
+
 type ActionLoading = {
   type: "container";
   containerName: string;
-  action: "start" | "stop" | "restart" | "logs";
+  action: ContainerAction;
 } | {
   type: "swarm";
   action: "getConfig" | "listVersions" | "getAllImageVersions" | "updateNode";
@@ -112,6 +114,8 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
   const [logsDialog, setLogsDialog] = useState<LogsDialog | null>(null);
   const [updateNodeDialog, setUpdateNodeDialog] = useState(false);
   const [updateNodePayload, setUpdateNodePayload] = useState("{}");
+  const [pendingUpdateContainer, setPendingUpdateContainer] = useState<Container | null>(null);
+  const updateConfirmLockRef = useRef(false);
 
   const fetchContainers = useCallback(async (url: string) => {
     setLoadingContainers(true);
@@ -191,7 +195,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
 
   async function handleContainerAction(
     container: Container,
-    action: "start" | "stop" | "restart" | "logs"
+    action: ContainerAction
   ) {
     setActionLoading({ type: "container", containerName: container.name, action });
     try {
@@ -200,6 +204,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
         stop: { type: "Swarm", data: { cmd: "StopContainer", content: container.name } },
         restart: { type: "Swarm", data: { cmd: "RestartContainer", content: container.name } },
         logs: { type: "Swarm", data: { cmd: "GetContainerLogs", content: { name: container.name, before_timestamp: null, since_timestamp: null } } },
+        update: { type: "Swarm", data: { cmd: "UpdateNode", content: { id: container.name, version: "latest" } } },
       };
 
       const data = await postCmd(instanceId, resolvedUrl, cmdMap[action]);
@@ -275,6 +280,25 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
     } finally {
       setActionLoading(null);
     }
+  }
+
+  function handleConfirmUpdate() {
+    if (!pendingUpdateContainer) return;
+    if (updateConfirmLockRef.current) return;
+    if (
+      actionLoading?.type === "container" &&
+      actionLoading.containerName === pendingUpdateContainer.name &&
+      actionLoading.action === "update"
+    ) {
+      return;
+    }
+
+    const captured = pendingUpdateContainer;
+    updateConfirmLockRef.current = true;
+    setPendingUpdateContainer(null);
+    void handleContainerAction(captured, "update").finally(() => {
+      updateConfirmLockRef.current = false;
+    });
   }
 
   function isContainerActionLoading(containerName: string, action: string) {
@@ -420,6 +444,20 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
                             )}
                           </Button>
                           <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={actionLoading !== null || !resolvedUrl}
+                            aria-label={`Update ${container.name}`}
+                            data-testid={`container-update-${container.name}`}
+                            onClick={() => setPendingUpdateContainer(container)}
+                          >
+                            {isContainerActionLoading(container.name, "update") ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              "Update"
+                            )}
+                          </Button>
+                          <Button
                             variant="ghost"
                             size="sm"
                             disabled={actionLoading !== null || !resolvedUrl}
@@ -517,6 +555,46 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
           <pre className="max-h-96 overflow-auto text-xs font-mono bg-muted p-4 rounded whitespace-pre-wrap">
             {resultDialog?.content ?? ""}
           </pre>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm container update */}
+      <Dialog
+        open={pendingUpdateContainer !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingUpdateContainer(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update container {pendingUpdateContainer?.name}?</DialogTitle>
+            <DialogDescription>
+              Updating stops and recreates {pendingUpdateContainer?.name} from latest. Are you sure?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPendingUpdateContainer(null)}
+              disabled={
+                actionLoading?.type === "container" &&
+                actionLoading.containerName === pendingUpdateContainer?.name &&
+                actionLoading.action === "update"
+              }
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmUpdate}
+              disabled={
+                actionLoading?.type === "container" &&
+                actionLoading.containerName === pendingUpdateContainer?.name &&
+                actionLoading.action === "update"
+              }
+            >
+              Update
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
