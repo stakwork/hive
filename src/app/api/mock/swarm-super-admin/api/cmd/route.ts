@@ -19,11 +19,14 @@ const MOCK_RESPONSES: Record<string, unknown> = {
   UpdateNode: { success: true },
   ListVersions: { versions: ["v1.0.0", "v1.1.0", "v1.2.0"] },
   GetAllImageActualVersion: {
-    images: {
-      "sphinxlightning/sphinx-relay": "latest",
-      neo4j: "5",
-      "lightninglabs/lnd": "v0.18",
-    },
+    success: true,
+    message: "image versions retrieved",
+    data: [
+      { name: "sphinx", version: "1.0.0", is_latest: false, latest_version: "1.2.0" },
+      { name: "neo4j", version: "5", is_latest: true, latest_version: "5" },
+      { name: "lnd", version: "unavailable", is_latest: false, latest_version: "v0.18" },
+      { name: "orphan", version: "9.9.9", is_latest: false, latest_version: "10.0.0" },
+    ],
   },
   GetBoltwallAccessibility: { isPublic: false },
   UpdateBoltwallAccessibility: { success: true },
