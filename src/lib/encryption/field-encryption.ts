@@ -68,6 +68,7 @@ export class FieldEncryptionService {
       "agentPassword",
       "agentWebhookSecret",
       "codeChangeWebhookSecret",
+      "auditCallbackKey",
       "vercelApiToken",
       "fiatPaymentPassword",
       "bifrostAdminPassword",

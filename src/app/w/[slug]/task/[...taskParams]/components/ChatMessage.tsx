@@ -7,7 +7,7 @@ import { ChevronDown, ChevronRight, Download, ExternalLink, User, X, Image as Im
 import { Button } from "@/components/ui/button";
 
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
-import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, PublishScriptArtifact, PublishPromptArtifact, PublishSkillArtifact, BountyArtifact } from "../artifacts";
+import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, PublishScriptArtifact, PublishPromptArtifact, PublishSkillArtifact, BountyArtifact, VerdictArtifact, isAuditVerdict } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
@@ -457,6 +457,17 @@ export const ChatMessage = memo(function ChatMessage({
             <div className="max-w-md w-full min-w-0 overflow-hidden">
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                 <LongformArtifactPanel artifacts={[artifact]} workflowUrl={message.workflowUrl ?? undefined} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
+      {message.artifacts
+        ?.filter((a) => a.type === "VERIFY" && isAuditVerdict(a.content))
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <VerdictArtifact artifact={artifact} />
               </motion.div>
             </div>
           </div>
