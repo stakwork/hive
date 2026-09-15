@@ -29,7 +29,8 @@ function makeRow(overrides: Partial<AttemptRailRow> = {}): AttemptRailRow {
     graphReportRef: null,
     reportPending: false,
     inFlight: false,
-    fixSnapshot: null,
+    fixSnapshots: [],
+    siblingCount: 0,
     ...overrides,
   };
 }
@@ -232,13 +233,16 @@ describe("RecursionActivityRail — fix snapshot diff control", () => {
     const rows = [
       makeRow({
         key: "with-snapshot",
-        fixSnapshot: {
-          ref_id: "fix-1",
-          target_type: "concept",
-          target_name: "Limitation of Liability",
-          old_value: '{"docs": "before"}',
-          new_value: '{"docs": "after"}',
-        },
+        fixSnapshots: [
+          {
+            ref_id: "fix-1",
+            target_type: "concept",
+            target_name: "Limitation of Liability",
+            old_value: '{"docs": "before"}',
+            new_value: '{"docs": "after"}',
+          },
+        ],
+        siblingCount: 1,
       }),
       makeRow({ key: "without-snapshot" }),
     ];
