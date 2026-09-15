@@ -147,22 +147,29 @@ const edgeInputSchema = z.object({
 
 /**
  * Trim internal/derived fields so the LLM sees a small, stable shape.
- * Whatever we include here is also the contract the agent should use when
- * round-tripping through `update_canvas`.
+ *
+ * `id` / `category` / `text` / `x` / `y` (plus optional `ref`, size,
+ * and `customData`) are the write contract the agent should round-trip
+ * through `update_canvas`. `type` and `label` are **read-only**
+ * `read_canvas` fields: they let the agent see groups (whose visible
+ * name lives in `label`, not `text`) and distinguish node kinds. Do
+ * not expand `nodeInputSchema` / `toCanvasNode` to accept them.
  *
  * `ref` is preserved on live nodes (`ws:…`, `feature:…`) so the agent
  * can tell at a glance which nodes are projected from the DB — those
  * ids have the `<kind>:` prefix, and the `ref` field points to their
  * drill-down sub-canvas.
  */
-function compactNode(n: CanvasNode) {
+export function compactNode(n: CanvasNode) {
   const out: Record<string, unknown> = {
     id: n.id,
+    type: n.type,
     category: n.category,
     text: n.text,
     x: n.x,
     y: n.y,
   };
+  if (n.label) out.label = n.label;
   if (n.ref) out.ref = n.ref;
   if (n.width != null) out.width = n.width;
   if (n.height != null) out.height = n.height;

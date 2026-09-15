@@ -124,9 +124,7 @@ beforeEach(() => {
       json: async () => ({ default_branch: "master" }),
     }),
   );
-  vi.mocked(db.repository.findFirst).mockImplementation((async (a: {
-    where: { repositoryUrl: string };
-  }) =>
+  vi.mocked(db.repository.findFirst).mockImplementation((async (a: { where: { repositoryUrl: string } }) =>
     a.where.repositoryUrl === TARGET_REPO || a.where.repositoryUrl === OTHER_REPO
       ? { id: "repo-1", name: "hive", repositoryUrl: a.where.repositoryUrl }
       : null) as never);
@@ -142,9 +140,7 @@ describe("propose_code_change — repository selection", () => {
 
     expect(out.error).toBeUndefined();
     expect(out.kind).toBe("codeChange");
-    expect((out.payload as { repositoryUrl: string }).repositoryUrl).toBe(
-      TARGET_REPO,
-    );
+    expect((out.payload as { repositoryUrl: string }).repositoryUrl).toBe(TARGET_REPO);
   });
 
   it("forwards exactly one explicit repo_url to the swarm", async () => {
@@ -227,5 +223,123 @@ describe("propose_code_change — authorization is unchanged", () => {
 
     expect(out.error).toContain("does not belong to the active org");
     expect(mockRepoAgent).not.toHaveBeenCalled();
+  });
+});
+
+// ── Diff source ─────────────────────────────────────────────────────────────
+//
+// Newer swarms read the diff from the ephemeral worktree after the run and
+// return it as `preview` (same `ok` / `failure` / `error` shape as `pr`),
+// plus `incomplete` when the run never reached a proper termination.
+// Older swarms return only the model's text. The tool must prefer the
+// worktree, believe the swarm's reasons, and refuse unfinished runs.
+
+const WORKTREE_DIFF = [
+  "diff --git a/src/lib/ai/canvasTools.ts b/src/lib/ai/canvasTools.ts",
+  "index 1111111..2222222 100644",
+  "--- a/src/lib/ai/canvasTools.ts",
+  "+++ b/src/lib/ai/canvasTools.ts",
+  "@@ -1,3 +1,4 @@",
+  " function compactNode(n: CanvasNode) {",
+  "+  // captured from the worktree",
+  "   const out = {};",
+  " }",
+  "diff --git a/src/tests/new.test.ts b/src/tests/new.test.ts",
+  "new file mode 100644",
+  "index 0000000..3333333",
+  "--- /dev/null",
+  "+++ b/src/tests/new.test.ts",
+  "@@ -0,0 +1 @@",
+  "+export const x = 1;",
+  "",
+].join("\n");
+
+describe("propose_code_change — diff source", () => {
+  beforeEach(() => mockWorkspace(2));
+
+  it("prefers the swarm's worktree diff over anything in the model's text", async () => {
+    mockRepoAgent.mockResolvedValue({
+      content: "Done. Here is what I changed:\n" + DIFF,
+      preview: { ok: true, diff: WORKTREE_DIFF + "\n\n", filesChanged: 2 },
+    });
+
+    const out = await run();
+
+    expect(out.error).toBeUndefined();
+    expect(out.kind).toBe("codeChange");
+    const payload = out.payload as { diff: string; filesChanged: number };
+    expect(payload.diff).toBe(WORKTREE_DIFF.trimEnd());
+    expect(payload.filesChanged).toBe(2);
+    expect(payload.diff).not.toContain("bg-blue-500");
+  });
+
+  it("falls back to the model's text when the swarm sends no preview", async () => {
+    mockRepoAgent.mockResolvedValue({ content: "Applied.\n" + DIFF });
+
+    const out = await run();
+
+    expect(out.error).toBeUndefined();
+    expect((out.payload as { diff: string }).diff).toBe(DIFF.trimEnd());
+  });
+
+  it("refuses a run the swarm flags as incomplete, even if the text holds a diff", async () => {
+    mockRepoAgent.mockResolvedValue({
+      content: DIFF,
+      incomplete: { reason: "stall" },
+    });
+
+    const out = await run();
+
+    expect(out.kind).toBeUndefined();
+    expect(out.error).toContain("stopped before finishing");
+    expect(out.error).toContain("stall");
+  });
+
+  it("believes the swarm's no_changes over a diff pasted by the model", async () => {
+    mockRepoAgent.mockResolvedValue({
+      content: DIFF,
+      preview: {
+        ok: false,
+        failure: "no_changes",
+        error: "No changes in the worktree after the run",
+      },
+    });
+
+    const out = await run();
+
+    expect(out.kind).toBeUndefined();
+    expect(out.error).toContain("without changing any files");
+  });
+
+  it("maps the swarm's secret scan to the credentials refusal", async () => {
+    mockRepoAgent.mockResolvedValue({
+      content: "",
+      preview: {
+        ok: false,
+        failure: "secrets_detected",
+        error: "Secret scan found 1 finding(s)",
+      },
+    });
+
+    const out = await run();
+
+    expect(out.error).toContain("known credentials");
+  });
+
+  it("surfaces the swarm's error text when the run fails", async () => {
+    mockRepoAgent.mockRejectedValue(new Error("Run ended on a tool call that could not be resolved: code_execution."));
+
+    const out = await run();
+
+    expect(out.error).toContain("could not be resolved: code_execution");
+  });
+
+  it("tells the agent to stage before diffing so new files are not lost", async () => {
+    await run();
+
+    const params = mockRepoAgent.mock.calls[0][2];
+    expect(params.prompt).toContain("git add -A && git diff --cached");
+    expect(params.prompt).not.toContain("git diff HEAD");
+    expect(params.ephemeral).toBe(true);
   });
 });
