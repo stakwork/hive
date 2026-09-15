@@ -23,6 +23,7 @@ import { swarmUrlFromTags } from "@/lib/swarm/swarm-url";
 import {
   parseImageVersions,
   shouldShowUpdateAvailable,
+  normalizeServiceName,
   type ImageVersion,
 } from "./image-versions";
 
@@ -425,7 +426,7 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
               <TableBody>
                 {containers.map((container) => {
                   const isRunning = container.status === "running";
-                  const versionInfo = imageVersions.get(container.name);
+                  const versionInfo = imageVersions.get(normalizeServiceName(container.name));
                   return (
                     <TableRow key={container.name}>
                       <TableCell className="font-mono font-medium">{container.name}</TableCell>

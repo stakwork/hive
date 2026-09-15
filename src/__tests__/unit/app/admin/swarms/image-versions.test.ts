@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseImageVersions,
   shouldShowUpdateAvailable,
+  normalizeServiceName,
   type ImageVersion,
 } from "@/app/admin/swarms/[instanceId]/image-versions";
 
@@ -27,6 +28,36 @@ const ORPHAN: ImageVersion = {
 function mapKeys(map: Map<string, ImageVersion>) {
   return [...map.keys()];
 }
+
+describe("normalizeServiceName", () => {
+  it('strips a trailing ".sphinx" suffix', () => {
+    expect(normalizeServiceName("boltwall.sphinx")).toBe("boltwall");
+  });
+
+  it('aliases "sphinx-swarm" to "swarm"', () => {
+    expect(normalizeServiceName("sphinx-swarm")).toBe("swarm");
+  });
+
+  it("leaves unrelated names unchanged", () => {
+    expect(normalizeServiceName("redis")).toBe("redis");
+  });
+
+  it('does not empty the live table default name "sphinx"', () => {
+    expect(normalizeServiceName("sphinx")).toBe("sphinx");
+  });
+
+  it('does not alias "swarm" unless the full "sphinx-swarm" token is present', () => {
+    expect(normalizeServiceName("swarm")).toBe("swarm");
+  });
+
+  it("strips a leading slash then a trailing .sphinx suffix", () => {
+    expect(normalizeServiceName("/boltwall.sphinx")).toBe("boltwall");
+  });
+
+  it('returns empty string for a name that is only ".sphinx"', () => {
+    expect(normalizeServiceName(".sphinx")).toBe("");
+  });
+});
 
 describe("parseImageVersions", () => {
   it("parses the { success, message, data } envelope into a name→version map", () => {
@@ -58,6 +89,30 @@ describe("parseImageVersions", () => {
     ]);
 
     expect(mapKeys(map)).toEqual(["sphinx"]);
+  });
+
+  it("keys the map by the normalized name while keeping the raw ImageVersion.name", () => {
+    const suffixed: ImageVersion = {
+      name: "boltwall.sphinx",
+      version: "1.0.0",
+      is_latest: false,
+      latest_version: "1.2.0",
+    };
+    const map = parseImageVersions([suffixed]);
+
+    expect(map.get("boltwall")).toEqual(suffixed);
+    expect(map.get("boltwall")?.name).toBe("boltwall.sphinx");
+    expect(map.has("boltwall.sphinx")).toBe(false);
+  });
+
+  it("omits entries whose normalized key is empty", () => {
+    const map = parseImageVersions([
+      { name: ".sphinx", version: "1", is_latest: false, latest_version: "2" },
+      SPHINX,
+    ]);
+
+    expect(mapKeys(map)).toEqual(["sphinx"]);
+    expect(map.has("")).toBe(false);
   });
 
   it("keeps unmatched names in the map", () => {
