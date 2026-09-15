@@ -431,15 +431,31 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
                     <TableRow key={container.name}>
                       <TableCell className="font-mono font-medium">{container.name}</TableCell>
                       <TableCell>
-                        <Badge
-                          className={
-                            isRunning
-                              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                              : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                          }
-                        >
-                          {container.status}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            className={
+                              isRunning
+                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                            }
+                          >
+                            {container.status}
+                          </Badge>
+                          {!versionsLoading && shouldShowUpdateAvailable(versionInfo) && (
+                            <span
+                              data-testid={`container-update-pending-${container.name}`}
+                              title={
+                                versionInfo
+                                  ? `${versionInfo.version} → ${versionInfo.latest_version}`
+                                  : undefined
+                              }
+                            >
+                              <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                                update pending
+                              </Badge>
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm text-muted-foreground">
                         {container.image}
@@ -497,20 +513,25 @@ export default function SwarmDetail({ instanceId, swarmUrl, name }: SwarmDetailP
                               <ArrowUpCircle className="h-4 w-4 text-amber-500" />
                             </span>
                           )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={actionLoading !== null || !resolvedUrl}
-                            aria-label={`Update ${container.name}`}
-                            data-testid={`container-update-${container.name}`}
-                            onClick={() => setPendingUpdateContainer(container)}
-                          >
-                            {isContainerActionLoading(container.name, "update") ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              "Update"
-                            )}
-                          </Button>
+                          {/* Stay visible while versionsLoading so admins can force-update
+                              without waiting; once versions resolve, hide unless
+                              shouldShowUpdateAvailable (covers fetch failure / ok: false). */}
+                          {(versionsLoading || shouldShowUpdateAvailable(versionInfo)) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={actionLoading !== null || !resolvedUrl}
+                              aria-label={`Update ${container.name}`}
+                              data-testid={`container-update-${container.name}`}
+                              onClick={() => setPendingUpdateContainer(container)}
+                            >
+                              {isContainerActionLoading(container.name, "update") ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                "Update"
+                              )}
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
