@@ -418,6 +418,62 @@ describe("SwarmDetail", () => {
       expect(icon).toHaveAttribute("title", "1.0.0 → 1.2.0");
     });
 
+    it("joins boltwall.sphinx container to a boltwall version entry", async () => {
+      mockFetch.mockImplementation(
+        cmdAwareFetch({
+          listContainers: () =>
+            Promise.resolve(
+              makeListContainersResponse([
+                { name: "boltwall.sphinx", status: "running", image: "sphinxlightning/boltwall:latest" },
+              ])
+            ),
+          imageVersions: () =>
+            Promise.resolve(
+              makeImageVersionsResponse([
+                { name: "boltwall", version: "1.0.0", is_latest: false, latest_version: "1.2.0" },
+              ])
+            ),
+        })
+      );
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("container-update-available-boltwall.sphinx")).toBeInTheDocument();
+      });
+
+      const icon = screen.getByTestId("container-update-available-boltwall.sphinx");
+      expect(icon).toHaveAttribute("title", "1.0.0 → 1.2.0");
+    });
+
+    it("joins sphinx-swarm container to a swarm version entry", async () => {
+      mockFetch.mockImplementation(
+        cmdAwareFetch({
+          listContainers: () =>
+            Promise.resolve(
+              makeListContainersResponse([
+                { name: "sphinx-swarm", status: "running", image: "sphinxlightning/sphinx-swarm:latest" },
+              ])
+            ),
+          imageVersions: () =>
+            Promise.resolve(
+              makeImageVersionsResponse([
+                { name: "swarm", version: "1.0.0", is_latest: false, latest_version: "1.2.0" },
+              ])
+            ),
+        })
+      );
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("container-update-available-sphinx-swarm")).toBeInTheDocument();
+      });
+
+      const icon = screen.getByTestId("container-update-available-sphinx-swarm");
+      expect(icon).toHaveAttribute("title", "1.0.0 → 1.2.0");
+    });
+
     it("does not show a badge while versions are in-flight", async () => {
       mockFetch.mockImplementation(
         cmdAwareFetch({

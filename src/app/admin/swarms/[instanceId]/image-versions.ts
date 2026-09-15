@@ -6,6 +6,22 @@ export type ImageVersion = {
 };
 
 const UNAVAILABLE = "unavailable";
+const SPHINX_SUFFIX = ".sphinx";
+
+/**
+ * Joins Docker container names with GetAllImageActualVersion keys.
+ *
+ * Order: strip a single leading `/`, then a trailing `.sphinx` suffix once,
+ * then alias the exact token `sphinx-swarm` → `swarm`.
+ */
+export function normalizeServiceName(name: string): string {
+  let result = name.startsWith("/") ? name.slice(1) : name;
+  if (result.endsWith(SPHINX_SUFFIX)) {
+    result = result.slice(0, -SPHINX_SUFFIX.length);
+  }
+  if (result === "sphinx-swarm") return "swarm";
+  return result;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -45,7 +61,9 @@ export function parseImageVersions(raw: unknown): Map<string, ImageVersion> {
   for (const item of items) {
     const version = toImageVersion(item);
     if (!version) continue;
-    map.set(version.name, version);
+    const key = normalizeServiceName(version.name);
+    if (key.length === 0) continue;
+    map.set(key, version);
   }
 
   return map;
