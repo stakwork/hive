@@ -483,8 +483,11 @@ describe("SwarmDetail", () => {
 
       await renderReady();
 
+      // Update stays visible while versionsLoading so admins can force-update
+      // without waiting for the version check to resolve.
       expect(screen.getByTestId("container-update-sphinx")).toBeInTheDocument();
       expect(screen.queryByTestId("container-update-available-sphinx")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("container-update-pending-sphinx")).not.toBeInTheDocument();
     });
 
     it("does not show a badge when the versions fetch fails with an HTTP error", async () => {
@@ -497,11 +500,10 @@ describe("SwarmDetail", () => {
       await renderReady();
 
       await waitFor(() => {
-        expect(cmdCalls("GetAllImageActualVersion").length).toBe(1);
+        expect(screen.queryByTestId("container-update-sphinx")).not.toBeInTheDocument();
       });
 
       expect(screen.getByText("sphinx")).toBeInTheDocument();
-      expect(screen.getByTestId("container-update-sphinx")).toBeEnabled();
       expect(screen.queryByTestId("container-update-available-sphinx")).not.toBeInTheDocument();
       expect(toast.error).not.toHaveBeenCalled();
     });
@@ -516,13 +518,39 @@ describe("SwarmDetail", () => {
       await renderReady();
 
       await waitFor(() => {
-        expect(cmdCalls("GetAllImageActualVersion").length).toBe(1);
+        expect(screen.queryByTestId("container-update-sphinx")).not.toBeInTheDocument();
       });
 
       expect(screen.getByText("sphinx")).toBeInTheDocument();
-      expect(screen.getByTestId("container-update-sphinx")).toBeEnabled();
       expect(screen.queryByTestId("container-update-available-sphinx")).not.toBeInTheDocument();
       expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it("shows an update-pending tag only on the outdated row", async () => {
+      await renderReady();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("container-update-pending-sphinx")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId("container-update-pending-neo4j")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("container-update-pending-lnd")).not.toBeInTheDocument();
+
+      const tag = screen.getByTestId("container-update-pending-sphinx");
+      expect(tag).toHaveAttribute("title", "1.0.0 → 1.2.0");
+      expect(tag).toHaveTextContent("update pending");
+    });
+
+    it("does not show an update-pending tag while versions are in-flight", async () => {
+      mockFetch.mockImplementation(
+        cmdAwareFetch({
+          imageVersions: () => new Promise(() => {}),
+        })
+      );
+
+      await renderReady();
+
+      expect(screen.queryByTestId("container-update-pending-sphinx")).not.toBeInTheDocument();
     });
   });
 
@@ -621,13 +649,53 @@ describe("SwarmDetail", () => {
   });
 
   describe("container update action", () => {
-    it("shows an Update button on every container row, including stopped ones", async () => {
+    it("shows an Update button only on outdated containers after versions settle", async () => {
       await renderReady();
 
+      await waitFor(() => {
+        expect(screen.getByTestId("container-update-available-sphinx")).toBeInTheDocument();
+      });
+
       expect(screen.getByTestId("container-update-sphinx")).toBeInTheDocument();
-      expect(screen.getByTestId("container-update-neo4j")).toBeInTheDocument();
-      expect(screen.getByTestId("container-update-lnd")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Update lnd" })).toBeInTheDocument();
+      expect(screen.queryByTestId("container-update-neo4j")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("container-update-lnd")).not.toBeInTheDocument();
+    });
+
+    it("shows an Update button on a stopped container that has a pending update", async () => {
+      mockFetch.mockImplementation(
+        cmdAwareFetch({
+          listContainers: () =>
+            Promise.resolve(
+              makeListContainersResponse([
+                { name: "relay", status: "stopped", image: "sphinxlightning/relay:1.0.0" },
+              ])
+            ),
+          imageVersions: () =>
+            Promise.resolve(
+              makeImageVersionsResponse([
+                { name: "relay", version: "1.0.0", is_latest: false, latest_version: "1.2.0" },
+              ])
+            ),
+        })
+      );
+
+      render(<SwarmDetail instanceId="i-123" swarmUrl="https://swarm-node-1.sphinx.chat" />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("container-update-available-relay")).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId("container-update-relay")).toBeInTheDocument();
+    });
+
+    it("hides the Update button for up-to-date containers after versions settle", async () => {
+      await renderReady();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("container-update-available-sphinx")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId("container-update-neo4j")).not.toBeInTheDocument();
     });
 
     it("opens a confirm dialog naming the container and does not POST until confirm", async () => {
