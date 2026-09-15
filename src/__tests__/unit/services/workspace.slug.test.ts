@@ -7,7 +7,7 @@ describe("Workspace Slug Validation", () => {
     test("should accept valid slugs", () => {
       expect(validateWorkspaceSlug("my-workspace")).toEqual({ isValid: true });
       expect(validateWorkspaceSlug("workspace123")).toEqual({ isValid: true });
-      expect(validateWorkspaceSlug("a1")).toEqual({ isValid: true });
+      expect(validateWorkspaceSlug("a1b")).toEqual({ isValid: true });
       expect(validateWorkspaceSlug("test-workspace-123")).toEqual({ isValid: true });
     });
 

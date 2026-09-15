@@ -45,7 +45,11 @@ export function CreateWorkspaceDialog({
     // Validation
     const newErrors: Record<string, string> = {};
     if (!formData.name.trim()) newErrors.name = "Name is required";
-    if (!formData.slug.trim()) newErrors.slug = "Slug is required";
+    if (!formData.slug.trim()) {
+      newErrors.slug = "Slug is required";
+    } else if (formData.slug.trim().length < 3) {
+      newErrors.slug = "Workspace name must be between 3 and 50 characters.";
+    }
     // The session callback in nextauth.ts ensures user.id is present
     const userId = (session?.user as { id?: string })?.id;
     if (!userId) newErrors.ownerId = "User not authenticated";
@@ -124,12 +128,14 @@ export function CreateWorkspaceDialog({
               id="slug"
               placeholder="e.g., my-team"
               value={formData.slug}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  slug: e.target.value,
-                })
-              }
+              onChange={(e) => {
+                const val = e.target.value;
+                setFormData({ ...formData, slug: val });
+                if (val.trim().length > 0 && val.trim().length < 3) {
+                  // Clear length error while still typing — defer until 3+ chars
+                  setErrors((prev) => ({ ...prev, slug: "" }));
+                }
+              }}
               className={errors.slug ? "border-destructive" : ""}
               disabled={loading}
             />

@@ -93,8 +93,8 @@ describe("constants", () => {
       expect(WORKSPACE_SLUG_PATTERNS.VALID.test("invalid_")).toBe(false);
     });
 
-    it("should have min length of 2", () => {
-      expect(WORKSPACE_SLUG_PATTERNS.MIN_LENGTH).toBe(2);
+    it("should have min length of 3", () => {
+      expect(WORKSPACE_SLUG_PATTERNS.MIN_LENGTH).toBe(3);
     });
 
     it("should have max length of 50", () => {
