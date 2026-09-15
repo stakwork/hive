@@ -57,16 +57,17 @@ function sha256Hex(text: string): string {
 
 /**
  * Fields of the swarm's terminal result this tool reads. `content` is the
- * model's final text (every swarm). `diff`, `diff_error` and `incomplete`
- * come from swarms that read the preview worktree themselves after the run
- * (stakgraph `captureWorktreeDiff`) and flag runs that never finished; older
- * swarms omit them, and the model's text is then the only source.
+ * model's final text (every swarm). `preview` and `incomplete` come from
+ * swarms that read the preview worktree themselves after the run (stakgraph
+ * `captureWorktreeDiff`) and flag runs that never finished; older swarms
+ * omit them, and the model's text is then the only source.
+ *
+ * `preview` is the ephemeral-run counterpart of the `pr` result on create_pr
+ * runs, with the same `ok` / `failure` / `error` shape.
  */
 interface SwarmPreviewResult {
   content?: unknown;
-  diff?: string;
-  diff_files?: number;
-  diff_error?: { failure: string; error: string };
+  preview?: { ok: true; diff: string; filesChanged: number } | { ok: false; failure: string; error: string };
   incomplete?: { reason: string };
 }
 
@@ -378,16 +379,16 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
 
         // A swarm that read the worktree and found a reason there is no diff
         // is believed over anything the model pasted into its answer.
-        if (swarm.diff_error) {
-          return { error: describeSwarmDiffError(swarm.diff_error) };
+        if (swarm.preview && !swarm.preview.ok) {
+          return { error: describeSwarmDiffError(swarm.preview) };
         }
 
         // Newer swarms return the worktree's own diff — ground truth, new
         // files included. Older swarms return only the model's text, so the
         // regex extraction stays as the fallback.
         let rawDiff: string;
-        if (typeof swarm.diff === "string" && swarm.diff.trim()) {
-          rawDiff = swarm.diff.trimEnd();
+        if (swarm.preview?.ok && swarm.preview.diff.trim()) {
+          rawDiff = swarm.preview.diff.trimEnd();
         } else {
           const agentOutput = typeof swarm.content === "string" ? swarm.content : JSON.stringify(rawResult);
           // Grab the first unified-diff block from the output.

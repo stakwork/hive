@@ -229,8 +229,8 @@ describe("propose_code_change — authorization is unchanged", () => {
 // ── Diff source ─────────────────────────────────────────────────────────────
 //
 // Newer swarms read the diff from the ephemeral worktree after the run and
-// return it as `diff`, with `diff_error` when there is a reason there is
-// none and `incomplete` when the run never reached a proper termination.
+// return it as `preview` (same `ok` / `failure` / `error` shape as `pr`),
+// plus `incomplete` when the run never reached a proper termination.
 // Older swarms return only the model's text. The tool must prefer the
 // worktree, believe the swarm's reasons, and refuse unfinished runs.
 
@@ -260,8 +260,7 @@ describe("propose_code_change — diff source", () => {
   it("prefers the swarm's worktree diff over anything in the model's text", async () => {
     mockRepoAgent.mockResolvedValue({
       content: "Done. Here is what I changed:\n" + DIFF,
-      diff: WORKTREE_DIFF + "\n\n",
-      diff_files: 2,
+      preview: { ok: true, diff: WORKTREE_DIFF + "\n\n", filesChanged: 2 },
     });
 
     const out = await run();
@@ -274,7 +273,7 @@ describe("propose_code_change — diff source", () => {
     expect(payload.diff).not.toContain("bg-blue-500");
   });
 
-  it("falls back to the model's text when the swarm sends no diff field", async () => {
+  it("falls back to the model's text when the swarm sends no preview", async () => {
     mockRepoAgent.mockResolvedValue({ content: "Applied.\n" + DIFF });
 
     const out = await run();
@@ -299,7 +298,11 @@ describe("propose_code_change — diff source", () => {
   it("believes the swarm's no_changes over a diff pasted by the model", async () => {
     mockRepoAgent.mockResolvedValue({
       content: DIFF,
-      diff_error: { failure: "no_changes", error: "No changes in the worktree after the run" },
+      preview: {
+        ok: false,
+        failure: "no_changes",
+        error: "No changes in the worktree after the run",
+      },
     });
 
     const out = await run();
@@ -311,7 +314,11 @@ describe("propose_code_change — diff source", () => {
   it("maps the swarm's secret scan to the credentials refusal", async () => {
     mockRepoAgent.mockResolvedValue({
       content: "",
-      diff_error: { failure: "secrets_detected", error: "Secret scan found 1 finding(s)" },
+      preview: {
+        ok: false,
+        failure: "secrets_detected",
+        error: "Secret scan found 1 finding(s)",
+      },
     });
 
     const out = await run();
