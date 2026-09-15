@@ -34,10 +34,7 @@ import crypto from "crypto";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import {
-  repoAgent,
-  REPO_AGENT_CANCELLED_MARKER,
-} from "@/lib/ai/askTools";
+import { repoAgent, REPO_AGENT_CANCELLED_MARKER } from "@/lib/ai/askTools";
 import {
   parseUnifiedDiff,
   enforceDiffCaps,
@@ -59,14 +56,50 @@ function sha256Hex(text: string): string {
 }
 
 /**
+ * Fields of the swarm's terminal result this tool reads. `content` is the
+ * model's final text (every swarm). `diff`, `diff_error` and `incomplete`
+ * come from swarms that read the preview worktree themselves after the run
+ * (stakgraph `captureWorktreeDiff`) and flag runs that never finished; older
+ * swarms omit them, and the model's text is then the only source.
+ */
+interface SwarmPreviewResult {
+  content?: unknown;
+  diff?: string;
+  diff_files?: number;
+  diff_error?: { failure: string; error: string };
+  incomplete?: { reason: string };
+}
+
+function describeSwarmDiffError(e: { failure: string; error: string }): string {
+  switch (e.failure) {
+    case "no_changes":
+      return (
+        "The agent finished without changing any files in the repository, " +
+        "so there is nothing to propose. Try a more specific prompt."
+      );
+    case "change_too_large":
+      return (
+        `The change is too large for a preview (${e.error}). ` +
+        "Use `propose_feature` — the feature pipeline handles large changes."
+      );
+    case "secrets_detected":
+      return (
+        "The change contains patterns matching known credentials. " +
+        "Review it manually and ensure no secrets are included before proposing."
+      );
+    default:
+      return (
+        `The swarm could not read the change from the preview worktree (${e.error}). ` +
+        "Try again, or use `propose_feature`."
+      );
+  }
+}
+
+/**
  * Fetch the GitHub default branch for a repo via a plain authenticated GET.
  * Falls back to "main" on any error so a PAT scope issue doesn't block preview.
  */
-async function fetchDefaultBranch(
-  owner: string,
-  repo: string,
-  pat: string,
-): Promise<string> {
+async function fetchDefaultBranch(owner: string, repo: string, pat: string): Promise<string> {
   try {
     const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
     const res = await fetch(url, {
@@ -102,9 +135,7 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
         "repository, when you cannot tell which repository it belongs in, or " +
         "for database migrations, schema changes, and large multi-file refactors.",
       inputSchema: z.object({
-        workspaceSlug: z
-          .string()
-          .describe("The workspace slug that owns the target repository."),
+        workspaceSlug: z.string().describe("The workspace slug that owns the target repository."),
         repositoryUrl: z
           .string()
           .url()
@@ -119,15 +150,8 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
           .string()
           .min(1)
           .max(256)
-          .describe(
-            "Short PR title (no leading dash). " +
-              "The [Jamie] prefix is added automatically.",
-          ),
-        body: z
-          .string()
-          .max(65536)
-          .default("")
-          .describe("PR body / description (markdown)."),
+          .describe("Short PR title (no leading dash). " + "The [Jamie] prefix is added automatically."),
+        body: z.string().max(65536).default("").describe("PR body / description (markdown)."),
         prompt: z
           .string()
           .min(1)
@@ -166,22 +190,15 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
         // before any credentials or swarm keys are accessed.
         if (workspace.members.length === 0) {
           return {
-            error:
-              "You do not have access to workspace '" + workspaceSlug + "'.",
+            error: "You do not have access to workspace '" + workspaceSlug + "'.",
           };
         }
 
         // Org-membership check: ctx.orgId is the SourceControlOrg.id the
         // caller already validated. Refuse cross-org requests.
-        if (
-          ctx.orgId &&
-          workspace.sourceControlOrg &&
-          workspace.sourceControlOrg.id !== ctx.orgId
-        ) {
+        if (ctx.orgId && workspace.sourceControlOrg && workspace.sourceControlOrg.id !== ctx.orgId) {
           return {
-            error:
-              "Repository does not belong to the active org. " +
-              "Use `propose_feature` for cross-org changes.",
+            error: "Repository does not belong to the active org. " + "Use `propose_feature` for cross-org changes.",
           };
         }
 
@@ -222,10 +239,7 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
 
         let swarmApiKey: string;
         try {
-          swarmApiKey = EncryptionService.getInstance().decryptField(
-            "swarmApiKey",
-            workspace.swarm.swarmApiKey,
-          );
+          swarmApiKey = EncryptionService.getInstance().decryptField("swarmApiKey", workspace.swarm.swarmApiKey);
         } catch {
           return {
             error: "Failed to decrypt swarm credentials for this workspace.",
@@ -239,13 +253,8 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
           : `https://${swarmUrlObj.hostname}:3355`;
 
         // ── 3. GitHub PAT ──────────────────────────────────────────────
-        const { getGithubUsernameAndPAT } = await import(
-          "@/lib/auth/nextauth"
-        );
-        const githubProfile = await getGithubUsernameAndPAT(
-          ctx.userId,
-          workspaceSlug,
-        );
+        const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+        const githubProfile = await getGithubUsernameAndPAT(ctx.userId, workspaceSlug);
         const pat = githubProfile?.token ?? "";
 
         // ── 4. Fetch live baseBranchDisplay from GitHub ────────────────
@@ -274,11 +283,8 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
         let activeRequestId: string | undefined;
         const hooks = convId
           ? await (async () => {
-              const {
-                setActiveRun,
-                isAbortRequestedForRun,
-                notifyRunActive,
-              } = await import("@/services/canvas-active-runs-hooks");
+              const { setActiveRun, isAbortRequestedForRun, notifyRunActive } =
+                await import("@/services/canvas-active-runs-hooks");
               return {
                 onRequestId: async (requestId: string) => {
                   activeRequestId = requestId;
@@ -293,8 +299,7 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
                   );
                   await notifyRunActive(convId, true);
                 },
-                isAbortRequested: async () =>
-                  isAbortRequestedForRun(convId, activeRequestId ?? ""),
+                isAbortRequested: async () => isAbortRequestedForRun(convId, activeRequestId ?? ""),
               };
             })()
           : undefined;
@@ -302,18 +307,21 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
         // ── 7. READ-ONLY repo_agent call ───────────────────────────────
         // `toolsConfig.create_pr` is INTENTIONALLY ABSENT — structural
         // guarantee that no PR is opened during this preview run.
+        // The swarm reads the diff from the preview worktree itself when the
+        // run finishes (`diff` on the result), so the diff the model pastes
+        // is a fallback for swarms that predate that. It stages first:
+        // `git diff HEAD` alone omits new files.
         const agentPrompt =
           `${prompt}\n\n` +
           `Repository: ${repositoryUrl}\n` +
           `IMPORTANT: This is a READ-ONLY preview run. Do NOT push any branch ` +
-          `or open a pull request. Apply the change locally using apply_patch ` +
-          `or git apply, then output the full unified diff by running: git diff HEAD\n` +
-          `Output ONLY the raw unified diff (starting with "--- " / "+++ ") ` +
-          `with no additional commentary after it.`;
+          `or open a pull request. Apply the change directly in the working tree ` +
+          `(bash, or the file editor). When every edit is done, run: ` +
+          `git add -A && git diff --cached\n` +
+          `and output that unified diff (starting with "--- " / "+++ ") as your ` +
+          `final answer, with no commentary after it.`;
 
-        let rawResult:
-          | Record<string, string>
-          | typeof REPO_AGENT_CANCELLED_MARKER;
+        let rawResult: Record<string, string> | typeof REPO_AGENT_CANCELLED_MARKER;
         try {
           rawResult = await repoAgent(
             swarmUrl,
@@ -331,47 +339,61 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
             bifrost,
             hooks,
           );
-        } catch {
+        } catch (err) {
+          const detail = err instanceof Error && err.message ? ` (${err.message})` : "";
           return {
             error:
-              "The code-change preview timed out or the swarm returned an error. " +
+              `The code-change preview failed${detail}. ` +
               "For large or multi-file changes, use `propose_feature` so the " +
               "work runs as a background task instead.",
           };
         } finally {
           if (convId && activeRequestId) {
-            const { clearActiveRun, notifyRunActive } = await import(
-              "@/services/canvas-active-runs-hooks"
-            );
-            const { wasLast } = await clearActiveRun(
-              convId,
-              activeRequestId,
-            ).catch(() => ({ wasLast: true }));
+            const { clearActiveRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
+            const { wasLast } = await clearActiveRun(convId, activeRequestId).catch(() => ({ wasLast: true }));
             if (wasLast) await notifyRunActive(convId, false).catch(() => {});
           }
         }
 
         if (rawResult === REPO_AGENT_CANCELLED_MARKER) {
           return {
-            error:
-              "Code-change preview was cancelled. " +
-              "For large changes, use `propose_feature` instead.",
+            error: "Code-change preview was cancelled. " + "For large changes, use `propose_feature` instead.",
           };
         }
 
-        // ── 8. Extract unified diff from swarm output ──────────────────
-        const agentOutput =
-          typeof rawResult.content === "string"
-            ? rawResult.content
-            : JSON.stringify(rawResult);
+        // ── 8. Take the diff ───────────────────────────────────────────
+        const swarm = rawResult as unknown as SwarmPreviewResult;
 
-        // Grab the first unified-diff block from the output.
-        const diffMatch = agentOutput.match(
-          /(---[ \t][^\n]+\n\+\+\+[ \t][^\n]+[\s\S]*)/,
-        );
-        const rawDiff = diffMatch
-          ? diffMatch[1].trimEnd()
-          : agentOutput.trim();
+        // The run ended without a proper termination (stall, truncation,
+        // stream error). Whatever text came back is narration, and the
+        // worktree may hold a half-applied change. Not a proposal.
+        if (swarm.incomplete) {
+          return {
+            error:
+              `The agent stopped before finishing the change (${swarm.incomplete.reason}). ` +
+              "No proposal was created. Try again with a more specific prompt, " +
+              "or use `propose_feature` for larger changes.",
+          };
+        }
+
+        // A swarm that read the worktree and found a reason there is no diff
+        // is believed over anything the model pasted into its answer.
+        if (swarm.diff_error) {
+          return { error: describeSwarmDiffError(swarm.diff_error) };
+        }
+
+        // Newer swarms return the worktree's own diff — ground truth, new
+        // files included. Older swarms return only the model's text, so the
+        // regex extraction stays as the fallback.
+        let rawDiff: string;
+        if (typeof swarm.diff === "string" && swarm.diff.trim()) {
+          rawDiff = swarm.diff.trimEnd();
+        } else {
+          const agentOutput = typeof swarm.content === "string" ? swarm.content : JSON.stringify(rawResult);
+          // Grab the first unified-diff block from the output.
+          const diffMatch = agentOutput.match(/(---[ \t][^\n]+\n\+\+\+[ \t][^\n]+[\s\S]*)/);
+          rawDiff = diffMatch ? diffMatch[1].trimEnd() : agentOutput.trim();
+        }
 
         // ── 9. diffHygiene validation ──────────────────────────────────
         const parseResult = parseUnifiedDiff(rawDiff);
