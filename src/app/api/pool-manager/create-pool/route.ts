@@ -285,6 +285,7 @@ export async function POST(request: NextRequest) {
       () => poolManager.createPool({
         pool_name: swarm.id,
         minimum_vms: 2,
+        kvm_enabled: swarm.kvmEnabled ?? false,
         repo_name: primaryRepository?.repositoryUrl || "",
         branch_name: primaryRepository?.branch || "",
         repositories: repositoriesConfig,

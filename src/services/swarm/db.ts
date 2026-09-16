@@ -86,6 +86,7 @@ export const select = {
   autoLearnEnabled: true,
   minimumVms: true,
   minimumPods: true,
+  kvmEnabled: true,
   deployedPods: true,
   webhookUrl: true,
   pendingRepairTrigger: true,
