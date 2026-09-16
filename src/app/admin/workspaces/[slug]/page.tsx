@@ -56,6 +56,7 @@ export default async function AdminWorkspaceDetailPage({
           swarmPassword: true,
           minimumVms: true,
           minimumPods: true,
+          kvmEnabled: true,
           poolApiKey: true,
         },
       },
@@ -188,6 +189,7 @@ export default async function AdminWorkspaceDetailPage({
                   slug={slug}
                   initialMinimumVms={workspace.swarm.minimumVms ?? 2}
                   initialMinimumPods={workspace.swarm.minimumPods ?? null}
+                  initialKvmEnabled={workspace.swarm.kvmEnabled ?? false}
                 />
               </div>
             )}

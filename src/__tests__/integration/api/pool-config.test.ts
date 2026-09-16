@@ -118,6 +118,7 @@ describe("Pool Config API", () => {
         data: {
           minimumVms: 3,
           minimumPods: 2,
+          kvmEnabled: false,
           isSuperAdmin: false,
         },
       });
@@ -146,6 +147,7 @@ describe("Pool Config API", () => {
         data: {
           minimumVms: 3,
           minimumPods: 2,
+          kvmEnabled: false,
           isSuperAdmin: true,
         },
       });
@@ -193,6 +195,32 @@ describe("Pool Config API", () => {
       expect(data.data.minimumPods).toBe(5);
     });
 
+    it("should return kvmEnabled true when set on swarm", async () => {
+      await db.swarm.update({
+        where: { id: swarm.id },
+        data: { kvmEnabled: true },
+      });
+
+      getMockedRequireAuth.mockReturnValue({
+        id: regularUser.id,
+        email: regularUser.email!,
+        name: regularUser.name!,
+      });
+      getMockedCheckIsSuperAdmin.mockResolvedValue(false);
+
+      const request = createAuthenticatedGetRequest(
+        `/api/w/${workspace.slug}/pool/config`,
+        regularUser
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.data.kvmEnabled).toBe(true);
+    });
+
     it("should return 200 with minimumVms for superadmin on unowned workspace", async () => {
       // Create a separate workspace owned by a different user
       const otherScenario = await createTestWorkspaceScenario({
@@ -233,6 +261,7 @@ describe("Pool Config API", () => {
         data: {
           minimumVms: 4,
           minimumPods: 2,
+          kvmEnabled: false,
           isSuperAdmin: true,
         },
       });
@@ -323,6 +352,33 @@ describe("Pool Config API", () => {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ minimumVms: 5 }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.success).toBe(false);
+      expect(data.message).toContain("Forbidden");
+    });
+
+    it("should return 403 for non-superadmin user changing kvmEnabled", async () => {
+      getMockedCheckIsSuperAdmin.mockResolvedValue(false);
+      getMockedRequireAuth.mockReturnValue({
+        id: regularUser.id,
+        email: regularUser.email!,
+        name: regularUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kvmEnabled: true }),
         }
       );
 
@@ -707,6 +763,181 @@ describe("Pool Config API", () => {
         select: { minimumPods: true },
       });
       expect(updatedSwarm?.minimumPods).toBe(3);
+    });
+
+    it("should succeed with only kvmEnabled provided", async () => {
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kvmEnabled: true }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      const updatedSwarm = await db.swarm.findUnique({
+        where: { id: swarm.id },
+        select: { kvmEnabled: true },
+      });
+      expect(updatedSwarm?.kvmEnabled).toBe(true);
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`/pools/${encodeURIComponent(swarm.id)}`),
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ kvm_enabled: true }),
+        })
+      );
+    });
+
+    it("should send kvm_enabled false as a real boolean on Pool Manager PUT", async () => {
+      await db.swarm.update({
+        where: { id: swarm.id },
+        data: { kvmEnabled: true },
+      });
+
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kvmEnabled: false }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      const updatedSwarm = await db.swarm.findUnique({
+        where: { id: swarm.id },
+        select: { kvmEnabled: true },
+      });
+      expect(updatedSwarm?.kvmEnabled).toBe(false);
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`/pools/${encodeURIComponent(swarm.id)}`),
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ kvm_enabled: false }),
+        })
+      );
+    });
+
+    it("should omit kvm_enabled from Pool Manager PUT on pods-only PATCH", async () => {
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minimumPods: 5 }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify({ minimum_pods: 5 }),
+        })
+      );
+      const putCall = fetchSpy.mock.calls.find(
+        (call) => typeof call[1] === "object" && call[1]?.method === "PUT"
+      );
+      expect(putCall?.[1]?.body).not.toContain("kvm_enabled");
+    });
+
+    it("should omit kvm_enabled from Pool Manager PUT on VMs-only PATCH", async () => {
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minimumVms: 4 }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify({ minimum_vms: 4 }),
+        })
+      );
+      const putCall = fetchSpy.mock.calls.find(
+        (call) => typeof call[1] === "object" && call[1]?.method === "PUT"
+      );
+      expect(putCall?.[1]?.body).not.toContain("kvm_enabled");
+    });
+
+    it("should return 400 for non-boolean kvmEnabled", async () => {
+      getMockedRequireAuth.mockReturnValue({
+        id: superadminUser.id,
+        email: superadminUser.email!,
+        name: superadminUser.name!,
+      });
+
+      const request = new NextRequest(
+        new URL(`http://localhost/api/w/${workspace.slug}/pool/config`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kvmEnabled: "yes" }),
+        }
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ slug: workspace.slug }),
+      });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.success).toBe(false);
+      expect(data.message).toContain("Invalid kvmEnabled");
     });
 
     it("should return 404 when pool not configured", async () => {

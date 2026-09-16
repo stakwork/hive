@@ -16,6 +16,22 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+vi.mock('@/components/ui/confirm-dialog', () => ({
+  ConfirmDialog: ({ open, onOpenChange, title, description, confirmText, onConfirm, testId }: any) => (
+    open ? (
+      <div data-testid={testId || 'confirm-dialog'} role="dialog">
+        <h2>{title}</h2>
+        <p>{description}</p>
+        <button data-testid={testId ? `${testId}-cancel` : 'dialog-cancel'} onClick={() => onOpenChange(false)}>
+          Cancel
+        </button>
+        <button data-testid={testId ? `${testId}-confirm` : 'dialog-confirm'} onClick={() => { onConfirm(); onOpenChange(false); }}>
+          {confirmText}
+        </button>
+      </div>
+    ) : null
+  ),
+}));
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -345,7 +361,7 @@ describe('VMConfigSection', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { minimumPods: 3, isSuperAdmin: true },
+              data: { minimumPods: 3, kvmEnabled: false, isSuperAdmin: true },
             }),
           });
         }
@@ -421,7 +437,7 @@ describe('VMConfigSection', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { minimumPods: 3, isSuperAdmin: true },
+              data: { minimumPods: 3, kvmEnabled: false, isSuperAdmin: true },
             }),
           });
         }
@@ -498,7 +514,7 @@ describe('VMConfigSection', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { minimumPods: 3, isSuperAdmin: true },
+              data: { minimumPods: 3, kvmEnabled: false, isSuperAdmin: true },
             }),
           });
         }
@@ -557,7 +573,7 @@ describe('VMConfigSection', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { minimumPods: 3, isSuperAdmin: true },
+              data: { minimumPods: 3, kvmEnabled: false, isSuperAdmin: true },
             }),
           });
         }
@@ -636,7 +652,7 @@ describe('VMConfigSection', () => {
             ok: true,
             json: async () => ({
               success: true,
-              data: { minimumPods: 3, isSuperAdmin: true },
+              data: { minimumPods: 3, kvmEnabled: false, isSuperAdmin: true },
             }),
           });
         }
@@ -674,6 +690,159 @@ describe('VMConfigSection', () => {
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument();
       });
+    });
+
+    it('should render KVM switch for superadmin with active pool', async () => {
+      renderWithSession(<VMConfigSection />, true);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('KVM')).toBeInTheDocument();
+      });
+
+      const kvmSwitch = screen.getByLabelText('KVM');
+      expect(kvmSwitch).toHaveAttribute('data-state', 'unchecked');
+    });
+
+    it('should NOT render KVM switch for non-superadmin with active pool', async () => {
+      renderWithSession(<VMConfigSection />, false);
+
+      await waitFor(() => {
+        expect(screen.getByText('3 in use')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByLabelText('KVM')).not.toBeInTheDocument();
+    });
+
+    it('should require confirmation before PATCHing kvmEnabled', async () => {
+      const mockPatch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+
+      (global.fetch as any).mockImplementation((url: string, options?: any) => {
+        if (options?.method === 'PATCH' && url.includes('/pool/config')) {
+          return mockPatch(url, options);
+        }
+        if (url.includes('/pool/status')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: {
+                status: {
+                  usedVms: 3,
+                  unusedVms: 2,
+                  pendingVms: 0,
+                  failedVms: 0,
+                  runningVms: 5,
+                  lastCheck: '2025-01-15T10:00:00Z',
+                  queuedCount: 0,
+                },
+              },
+            }),
+          });
+        }
+        if (url.includes('/pool/config')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: { minimumPods: 3, kvmEnabled: false, isSuperAdmin: true },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: false }),
+        });
+      });
+
+      renderWithSession(<VMConfigSection />, true);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('KVM')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByLabelText('KVM'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('kvm-confirm-dialog')).toBeInTheDocument();
+      });
+      expect(mockPatch).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId('kvm-confirm-dialog-confirm'));
+
+      await waitFor(() => {
+        expect(mockPatch).toHaveBeenCalledWith(
+          `/api/w/${mockSlug}/pool/config`,
+          expect.objectContaining({
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kvmEnabled: true }),
+          })
+        );
+      });
+    });
+
+    it('should revert KVM switch and toast on PATCH failure', async () => {
+      (global.fetch as any).mockImplementation((url: string, options?: any) => {
+        if (options?.method === 'PATCH' && url.includes('/pool/config')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ success: false }),
+          });
+        }
+        if (url.includes('/pool/status')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: {
+                status: {
+                  usedVms: 3,
+                  unusedVms: 2,
+                  pendingVms: 0,
+                  failedVms: 0,
+                  runningVms: 5,
+                  lastCheck: '2025-01-15T10:00:00Z',
+                  queuedCount: 0,
+                },
+              },
+            }),
+          });
+        }
+        if (url.includes('/pool/config')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              success: true,
+              data: { minimumPods: 3, kvmEnabled: false, isSuperAdmin: true },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: false }),
+        });
+      });
+
+      renderWithSession(<VMConfigSection />, true);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('KVM')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByLabelText('KVM'));
+      await waitFor(() => {
+        expect(screen.getByTestId('kvm-confirm-dialog')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByTestId('kvm-confirm-dialog-confirm'));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('Failed to update KVM');
+      });
+
+      expect(screen.getByLabelText('KVM')).toHaveAttribute('data-state', 'unchecked');
     });
   });
 });
