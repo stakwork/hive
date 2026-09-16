@@ -1,7 +1,5 @@
-import { BifrostCredsDevLog } from "@/components/settings/BifrostCredsDevLog";
 import { SettingsTabs } from "@/components/settings/SettingsTabs";
 import { PageHeader } from "@/components/ui/page-header";
-import { isBifrostEnabledForWorkspace } from "@/config/env";
 import { authOptions } from "@/lib/auth/nextauth";
 import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
@@ -31,32 +29,9 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
     notFound();
   }
 
-  // DEV: when the rollout flag is on for this workspace, mount a
-  // client-side helper that fetches the admin creds and dumps them to
-  // the browser DevTools console. Gated server-side here so the
-  // component is omitted from the React tree entirely for workspaces
-  // that haven't opted in (no client-side flag leak).
-  //
-  // The `/api/workspaces/[slug]/bifrost/credentials` route the helper
-  // hits enforces workspace OWNER/ADMIN server-side, so even if a
-  // viewer somehow rendered this component the route would 403.
-  //
-  // Remove once the proper "Open dashboard / copy password" card
-  // lands in SettingsTabs.
-  //
-  // Bifrost guard: never show the dev log when the OWNER role was
-  // granted only via the super-admin bypass (non-member super admin).
-  // The credentials endpoint itself still rejects non-members, but
-  // we avoid mounting the component at all for foreign workspaces.
-  // A super admin accessing via bypass is not the actual owner/member:
-  // ownerId !== userId (not the owner) and isSuperAdmin is what unlocked access.
-  const isAccessViaSuperAdminBypass = isSuperAdmin && workspace.ownerId !== userId;
-  const showBifrostDevLog = isBifrostEnabledForWorkspace(workspace.slug) && !isAccessViaSuperAdminBypass;
-
   return (
     <div className="space-y-6">
       <PageHeader title="Workspace Settings" />
-      {showBifrostDevLog && <BifrostCredsDevLog slug={workspace.slug} />}
       <SettingsTabs
         workspaceId={workspace.id}
         workspaceName={workspace.name}
