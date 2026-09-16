@@ -16,6 +16,7 @@ import {
 import {
   MACAROON_DEFAULT_MAX_COST_USD,
   MACAROON_DEFAULT_MAX_STEPS,
+  MACAROON_DEFAULT_TTL_SECONDS,
 } from "@/services/bifrost/constants";
 import { dbMock } from "@/__tests__/support/mocks/prisma";
 
@@ -199,9 +200,9 @@ describe("mintInvocationMacaroon", () => {
       MACAROON_DEFAULT_MAX_COST_USD,
     );
     expect(claims.effective_caveats.max_steps).toBe(MACAROON_DEFAULT_MAX_STEPS);
-    // ~1h from now ±60s (allow for clock skew in CI).
+    // ~8h from now ±60s (allow for clock skew in CI).
     const expMs = new Date(claims.effective_caveats.exp).getTime();
-    const expected = Date.now() + 3600_000;
+    const expected = Date.now() + MACAROON_DEFAULT_TTL_SECONDS * 1000;
     expect(Math.abs(expMs - expected)).toBeLessThan(60_000);
   });
 

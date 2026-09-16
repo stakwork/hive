@@ -175,11 +175,12 @@ export const MACAROON_DEFAULT_MAX_COST_USD = 100.0;
 export const MACAROON_DEFAULT_MAX_STEPS = 2000;
 
 /**
- * Default macaroon TTL — long enough to cover a single agent run with
- * polling, short enough that a stolen macaroon expires before it can
- * do material damage. Caller can shorten per call site.
+ * Default macaroon TTL — long enough to cover a long agent run with
+ * polling, short enough that a stolen macaroon still expires within a
+ * bounded window (8h) before it can do material damage. Caller can
+ * shorten per call site.
  */
-export const MACAROON_DEFAULT_TTL_SECONDS = 3600;
+export const MACAROON_DEFAULT_TTL_SECONDS = 28800;
 
 // ─── Agent catalog seed ──────────────────────────────────────────────
 //
