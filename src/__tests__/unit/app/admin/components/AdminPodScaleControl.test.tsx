@@ -11,6 +11,22 @@ vi.mock("sonner", () => ({
     error: vi.fn(),
   },
 }));
+vi.mock("@/components/ui/confirm-dialog", () => ({
+  ConfirmDialog: ({ open, onOpenChange, title, description, confirmText, onConfirm, testId }: any) => (
+    open ? (
+      <div data-testid={testId || "confirm-dialog"} role="dialog">
+        <h2>{title}</h2>
+        <p>{description}</p>
+        <button data-testid={testId ? `${testId}-cancel` : "dialog-cancel"} onClick={() => onOpenChange(false)}>
+          Cancel
+        </button>
+        <button data-testid={testId ? `${testId}-confirm` : "dialog-confirm"} onClick={() => { onConfirm(); onOpenChange(false); }}>
+          {confirmText}
+        </button>
+      </div>
+    ) : null
+  ),
+}));
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -132,5 +148,85 @@ describe("AdminPodScaleControl", () => {
     render(<AdminPodScaleControl slug="test-workspace" initialMinimumVms={3} initialMinimumPods={null} />);
     const input = screen.getByRole("spinbutton");
     expect(input).toHaveAttribute("min", "1");
+  });
+
+  it("renders KVM switch from initialKvmEnabled", () => {
+    render(
+      <AdminPodScaleControl
+        slug="test-workspace"
+        initialMinimumVms={2}
+        initialMinimumPods={2}
+        initialKvmEnabled={false}
+      />
+    );
+    const kvmSwitch = screen.getByLabelText("KVM");
+    expect(kvmSwitch).toBeInTheDocument();
+    expect(kvmSwitch).toHaveAttribute("data-state", "unchecked");
+  });
+
+  it("requires confirmation before PATCHing kvmEnabled", async () => {
+    render(
+      <AdminPodScaleControl
+        slug="test-workspace"
+        initialMinimumVms={2}
+        initialMinimumPods={2}
+        initialKvmEnabled={false}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText("KVM"));
+    expect(screen.getByTestId("admin-kvm-confirm-dialog")).toBeInTheDocument();
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("admin-kvm-confirm-dialog-confirm"));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith("/api/w/test-workspace/pool/config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kvmEnabled: true }),
+      });
+    });
+  });
+
+  it("keeps KVM enabled after a successful PATCH", async () => {
+    render(
+      <AdminPodScaleControl
+        slug="test-workspace"
+        initialMinimumVms={2}
+        initialMinimumPods={2}
+        initialKvmEnabled={false}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText("KVM"));
+    fireEvent.click(screen.getByTestId("admin-kvm-confirm-dialog-confirm"));
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("KVM enabled");
+    });
+
+    expect(screen.getByLabelText("KVM")).toHaveAttribute("data-state", "checked");
+  });
+
+  it("reverts KVM switch and toasts on PATCH failure", async () => {
+    mockFetch.mockResolvedValue({ ok: false });
+    render(
+      <AdminPodScaleControl
+        slug="test-workspace"
+        initialMinimumVms={2}
+        initialMinimumPods={2}
+        initialKvmEnabled={false}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText("KVM"));
+    fireEvent.click(screen.getByTestId("admin-kvm-confirm-dialog-confirm"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to update KVM");
+    });
+
+    expect(screen.getByLabelText("KVM")).toHaveAttribute("data-state", "unchecked");
   });
 });

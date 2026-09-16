@@ -72,6 +72,7 @@ export interface RepositoryConfig {
 export interface CreatePoolRequest {
   pool_name: string;
   minimum_vms: number;
+  kvm_enabled?: boolean;
   repo_name: string;
   branch_name: string;
   repositories?: RepositoryConfig[]; // Optional multi-repo support (backward compatible)

@@ -287,6 +287,7 @@ describe("POST /api/pool-manager/create-pool", () => {
         expect.objectContaining({
           pool_name: swarm.id,
           minimum_vms: 2,
+          kvm_enabled: false,
           repo_name: repository.repositoryUrl,
           branch_name: repository.branch,
           github_pat: "test-github-token",
@@ -297,6 +298,44 @@ describe("POST /api/pool-manager/create-pool", () => {
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
           containerFiles: expect.any(Object),
+        })
+      );
+    });
+
+    test("passes swarm.kvmEnabled true as kvm_enabled on create", async () => {
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+
+      await db.swarm.update({
+        where: { id: swarm.id },
+        data: { kvmEnabled: true },
+      });
+
+      const mockCreatePool = vi.fn().mockResolvedValue({
+        id: "pool-kvm",
+        name: swarm.id,
+        status: "active" as const,
+        owner_id: owner.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      mockPoolManagerService.mockReturnValue({
+        createPool: mockCreatePool,
+        updateApiKey: vi.fn(),
+      } as any);
+
+      const request = createPostRequest(
+        "http://localhost/api/pool-manager/create-pool",
+        {
+          swarmId: swarm.swarmId,
+          workspaceId: workspace.id,
+        }
+      );
+      const response = await POST(request);
+
+      await expectSuccess(response, 201);
+      expect(mockCreatePool).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kvm_enabled: true,
         })
       );
     });
