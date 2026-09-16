@@ -29,6 +29,7 @@ export interface CreateTestSwarmOptions {
   ec2Id?: string;
   minimumVms?: number;
   minimumPods?: number | null;
+  kvmEnabled?: boolean;
   swarmSecretAlias?: string;
   /** If true, return existing swarm if name+workspace match */
   idempotent?: boolean;
@@ -69,6 +70,7 @@ export async function createTestSwarm(
     ec2Id: options.ec2Id ?? null,
     ...(options.minimumVms !== undefined && { minimumVms: options.minimumVms }),
     ...(options.minimumPods !== undefined && { minimumPods: options.minimumPods }),
+    ...(options.kvmEnabled !== undefined && { kvmEnabled: options.kvmEnabled }),
     ...(options.swarmSecretAlias !== undefined && { swarmSecretAlias: options.swarmSecretAlias }),
   };
 

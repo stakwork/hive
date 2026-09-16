@@ -41,7 +41,7 @@ export async function GET(
     // Get swarm config
     const swarm = await db.swarm.findFirst({
       where: { workspaceId: workspace.id },
-      select: { minimumVms: true, minimumPods: true },
+      select: { minimumVms: true, minimumPods: true, kvmEnabled: true },
     });
 
     return NextResponse.json({
@@ -49,6 +49,7 @@ export async function GET(
       data: {
         minimumVms: swarm?.minimumVms ?? 2,
         minimumPods: swarm?.minimumPods ?? null,
+        kvmEnabled: swarm?.kvmEnabled ?? false,
         isSuperAdmin: userIsSuperAdmin,
       },
     });
@@ -104,12 +105,12 @@ export async function PATCH(
 
     // Parse request body
     const body = await request.json();
-    const { minimumVms, minimumPods } = body;
+    const { minimumVms, minimumPods, kvmEnabled } = body;
 
     // Require at least one field
-    if (minimumVms === undefined && minimumPods === undefined) {
+    if (minimumVms === undefined && minimumPods === undefined && kvmEnabled === undefined) {
       return NextResponse.json(
-        { success: false, message: "At least one of minimumVms or minimumPods must be provided" },
+        { success: false, message: "At least one of minimumVms, minimumPods, or kvmEnabled must be provided" },
         { status: 400 }
       );
     }
@@ -129,6 +130,16 @@ export async function PATCH(
       if (typeof minimumPods !== "number" || minimumPods < 1 || minimumPods > 20) {
         return NextResponse.json(
           { success: false, message: "Invalid minimumPods: must be a number >= 1 and <= 20" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate kvmEnabled when present
+    if (kvmEnabled !== undefined) {
+      if (typeof kvmEnabled !== "boolean") {
+        return NextResponse.json(
+          { success: false, message: "Invalid kvmEnabled: must be a boolean" },
           { status: 400 }
         );
       }
@@ -158,9 +169,10 @@ export async function PATCH(
     }
 
     // Build update data with only provided fields
-    const updateData: { minimumVms?: number; minimumPods?: number } = {};
+    const updateData: { minimumVms?: number; minimumPods?: number; kvmEnabled?: boolean } = {};
     if (minimumVms !== undefined) updateData.minimumVms = minimumVms;
     if (minimumPods !== undefined) updateData.minimumPods = minimumPods;
+    if (kvmEnabled !== undefined) updateData.kvmEnabled = kvmEnabled;
 
     // Update DB
     await db.swarm.update({
@@ -173,9 +185,10 @@ export async function PATCH(
       const decryptedApiKey = encryptionService.decryptField("poolApiKey", swarm.poolApiKey);
       const poolManagerUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(swarm.id)}`;
 
-      const poolManagerBody: { minimum_vms?: number; minimum_pods?: number } = {};
+      const poolManagerBody: { minimum_vms?: number; minimum_pods?: number; kvm_enabled?: boolean } = {};
       if (minimumVms !== undefined) poolManagerBody.minimum_vms = minimumVms;
       if (minimumPods !== undefined) poolManagerBody.minimum_pods = minimumPods;
+      if (kvmEnabled !== undefined) poolManagerBody.kvm_enabled = kvmEnabled;
 
       const response = await fetch(poolManagerUrl, {
         method: "PUT",

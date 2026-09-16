@@ -458,6 +458,7 @@ model Swarm {
   autoLearnEnabled        Boolean               @default(false) @map("auto_learn_enabled")
   minimumVms              Int                   @default(2) @map("minimum_vms")
   minimumPods             Int?                  @default(2) @map("minimum_pods")
+  kvmEnabled              Boolean               @default(false) @map("kvm_enabled")
   deployedPods            Int?                  @map("deployed_pods")
   webhookUrl              String?               @map("webhook_url")
   pendingRepairTrigger    Json?                 @map("pending_repair_trigger")

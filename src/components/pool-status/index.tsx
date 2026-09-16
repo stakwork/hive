@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeOrDateInTz } from "@/lib/date-utils";
 import { useUserTimezone } from "@/hooks/useUserTimezone";
@@ -28,6 +30,9 @@ export function VMConfigSection() {
   const [minimumPods, setMinimumPods] = useState<number>(2);
   const [pendingPods, setPendingPods] = useState<number>(2);
   const [saving, setSaving] = useState(false);
+  const [kvmEnabled, setKvmEnabled] = useState(false);
+  const [kvmSaving, setKvmSaving] = useState(false);
+  const [pendingKvmEnabled, setPendingKvmEnabled] = useState<boolean | null>(null);
 
   const isPoolActive = workspace?.poolState === "COMPLETE";
   const servicesReady = workspace?.containerFilesSetUp === true;
@@ -41,6 +46,7 @@ export function VMConfigSection() {
       if (result.success) {
         setMinimumPods(result.data.minimumPods);
         setPendingPods(result.data.minimumPods);
+        setKvmEnabled(result.data.kvmEnabled ?? false);
       }
     } catch {
       // Silently fail - not critical
@@ -99,6 +105,38 @@ export function VMConfigSection() {
       toast.error("Failed to update Amount of Pods");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleKvmToggleRequest = (checked: boolean) => {
+    if (checked === kvmEnabled || kvmSaving) return;
+    setPendingKvmEnabled(checked);
+  };
+
+  const handleConfirmKvmToggle = async () => {
+    if (pendingKvmEnabled === null) return;
+    const nextValue = pendingKvmEnabled;
+    setPendingKvmEnabled(null);
+    setKvmEnabled(nextValue);
+    setKvmSaving(true);
+    try {
+      const res = await fetch(`/api/w/${slug}/pool/config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kvmEnabled: nextValue }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        toast.success(nextValue ? "KVM enabled" : "KVM disabled");
+      } else {
+        setKvmEnabled(!nextValue);
+        toast.error("Failed to update KVM");
+      }
+    } catch {
+      setKvmEnabled(!nextValue);
+      toast.error("Failed to update KVM");
+    } finally {
+      setKvmSaving(false);
     }
   };
 
@@ -170,26 +208,57 @@ export function VMConfigSection() {
               )}
 
               {isSuperAdmin && (
-                <div className="flex items-center gap-2 pt-2 border-t">
-                  <Label htmlFor="minimum-vms" className="text-sm font-medium whitespace-nowrap">
-                    Amount of Pods
-                  </Label>
-                  <Input
-                    id="minimum-vms"
-                    type="number"
-                    min={1}
-                    value={pendingPods}
-                    onChange={(e) => setPendingPods(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-20 h-8"
-                    disabled={saving}
+                <div className="flex flex-col gap-3 pt-2 border-t">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="minimum-vms" className="text-sm font-medium whitespace-nowrap">
+                      Amount of Pods
+                    </Label>
+                    <Input
+                      id="minimum-vms"
+                      type="number"
+                      min={1}
+                      value={pendingPods}
+                      onChange={(e) => setPendingPods(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-20 h-8"
+                      disabled={saving}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleSaveMinimumPods}
+                      disabled={saving || pendingPods === minimumPods}
+                    >
+                      {saving ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="kvm-enabled" className="text-sm font-medium whitespace-nowrap">
+                      KVM
+                    </Label>
+                    <Switch
+                      id="kvm-enabled"
+                      checked={kvmEnabled}
+                      onCheckedChange={handleKvmToggleRequest}
+                      disabled={kvmSaving}
+                      aria-label="KVM"
+                      data-testid="kvm-enabled-switch"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {kvmSaving ? "Saving…" : kvmEnabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </div>
+                  <ConfirmDialog
+                    open={pendingKvmEnabled !== null}
+                    onOpenChange={(open) => {
+                      if (!open) setPendingKvmEnabled(null);
+                    }}
+                    title={pendingKvmEnabled ? "Enable KVM?" : "Disable KVM?"}
+                    description="Changing KVM is a pool-type switch. Unused pods will be deleted immediately and in-use pods will be flagged for recreation."
+                    confirmText={pendingKvmEnabled ? "Enable KVM" : "Disable KVM"}
+                    cancelText="Cancel"
+                    variant="destructive"
+                    onConfirm={handleConfirmKvmToggle}
+                    testId="kvm-confirm-dialog"
                   />
-                  <Button
-                    size="sm"
-                    onClick={handleSaveMinimumPods}
-                    disabled={saving || pendingPods === minimumPods}
-                  >
-                    {saving ? "Saving..." : "Save"}
-                  </Button>
                 </div>
               )}
             </div>
