@@ -30,17 +30,24 @@ vi.mock("@/lib/service-factory", () => ({
   })),
 }));
 
-vi.mock("@/config/env", () => ({
-  config: {
-    STAKWORK_API_KEY: "test-key",
-    STAKWORK_PROTECT_WORKFLOW_ID: "555",
-    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
-  },
-  optionalEnvVars: {
-    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
-    STAKWORK_PROTECT_WORKFLOW_ID: "555",
-  },
-}));
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return {
+    ...actual,
+    isSuperAdmin: () => false,
+    config: {
+      ...actual.config,
+      STAKWORK_API_KEY: "test-key",
+      STAKWORK_PROTECT_WORKFLOW_ID: "555",
+      STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+    },
+    optionalEnvVars: {
+      ...actual.optionalEnvVars,
+      STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+      STAKWORK_PROTECT_WORKFLOW_ID: "555",
+    },
+  };
+});
 
 vi.mock("@/lib/rate-limit", () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
