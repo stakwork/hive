@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
-import { ModelMessage, createUIMessageStream, createUIMessageStreamResponse } from "ai";
+import { ModelMessage, createUIMessageStream, createUIMessageStreamResponse, toUIMessageStream } from "ai";
 import { normalizeTokenUsage } from "@/lib/utils/token-usage";
 import { getMiddlewareContext } from "@/lib/middleware/utils";
 import { getBaseUrl } from "@/lib/utils";
@@ -55,6 +55,13 @@ import {
 // deploy, and `runCanvasAgent` passes no abort signal, so a client disconnect
 // can't cancel generation).
 export const maxDuration = 800;
+
+// Generic, client-safe text for stream failures. Raw provider/SDK error
+// messages can leak API keys, swarm URLs and internal request details, so
+// they are logged server-side only and never forwarded to the browser or
+// persisted onto the (shareable) conversation transcript.
+const CLIENT_FACING_STREAM_ERROR =
+  "An error occurred while generating the response.";
 
 export async function POST(request: NextRequest) {
   const t0 = Date.now();
@@ -699,7 +706,14 @@ export async function POST(request: NextRequest) {
               });
             },
             onError: ({ message }) => {
-              midStreamError = message;
+              // Full provider/SDK text is server-side only (it can carry
+              // API keys, swarm URLs and internal request details); the
+              // flag we persist onto the shared conversation is generic.
+              console.error("❌ [quick-ask] Mid-stream error (agent hook):", {
+                workspaces: slugs,
+                message,
+              });
+              midStreamError = CLIENT_FACING_STREAM_ERROR;
             },
           },
         });
@@ -791,7 +805,10 @@ export async function POST(request: NextRequest) {
               rows.push({
                 id: `${assistantPrefix}error`,
                 role: "assistant",
-                content: `I'm sorry — this turn hit an error before completing: ${errMsg.slice(0, 300)}. Please try again.`,
+                // `errMsg` is the generic client-safe string (the real
+                // provider text is logged server-side only), so it is
+                // safe to persist on the shared conversation verbatim.
+                content: `I'm sorry — this turn hit an error before completing: ${errMsg} Please try again.`,
                 timestamp: new Date().toISOString(),
                 // Marks the row as a turn error so the Agent Logs
                 // detail view renders it with error styling.
@@ -981,8 +998,9 @@ export async function POST(request: NextRequest) {
         : {};
 
       // The onError handler that was riding on toUIMessageStreamResponse.
-      // Forwarding the real message instead of the SDK's generic
-      // "An error occurred." so the user sees *why* it failed.
+      // The FULL provider/SDK message is logged server-side only: raw
+      // provider errors can embed API keys, swarm URLs and internal
+      // request details, so the client gets a generic string instead.
       const onError = (error: unknown) => {
         const message =
           error instanceof Error ? error.message : String(error);
@@ -990,12 +1008,12 @@ export async function POST(request: NextRequest) {
           workspaces: slugs,
           message,
         });
-        return message;
+        return CLIENT_FACING_STREAM_ERROR;
       };
 
       // Wrap the existing stream in a UIMessageStream so we can inject
       // custom `data-usage` chunks mid-stream (live per-step usage).
-      // The writer is attached to `writerRef` before `result.toUIMessageStream()`
+      // The writer is attached to `writerRef` before `toUIMessageStream()`
       // is merged in, so any step-finish events that fire during the
       // stream's first flush can already write to it.
       const uiStream = createUIMessageStream({
@@ -1003,7 +1021,10 @@ export async function POST(request: NextRequest) {
           // Attach the writer so the onStepFinish hook can call
           // writerRef.write({ type: "data-usage", data: … }).
           writerRef = writer as typeof writerRef;
-          writer.merge(result.toUIMessageStream({ onError }));
+          // v7: the result-object `toUIMessageStream()` helper is
+          // deprecated; use the standalone helper with the streamText
+          // result's `fullStream` (ReadableStream<TextStreamPart>).
+          writer.merge(toUIMessageStream({ stream: result.fullStream, onError }));
         },
         onError,
       });

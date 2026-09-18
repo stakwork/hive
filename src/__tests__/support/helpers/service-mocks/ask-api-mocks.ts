@@ -97,7 +97,19 @@ export async function setupAIServiceMocks(
   ]);
 
   // StreamText mock - returns a successful streaming response
+  // ai@7 moved the stream helpers off the result object and onto the `ai`
+  // module (`toUIMessageStream({ stream: result.fullStream, onError })`,
+  // `createTextStreamResponse({ stream: result.textStream })`). The result
+  // therefore has to expose the raw streams; `toUIMessageStreamResponse`
+  // is kept for any caller still on the result-method form.
   streamText.mockReturnValue({
+    fullStream: new ReadableStream({ start: (c) => c.close() }),
+    textStream: new ReadableStream<string>({
+      start: (c) => {
+        c.enqueue("Mock AI response");
+        c.close();
+      },
+    }),
     toUIMessageStreamResponse: vi.fn().mockReturnValue(
       new Response("Mock AI response", {
         headers: { "content-type": "text/plain; charset=utf-8" },

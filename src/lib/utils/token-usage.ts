@@ -7,14 +7,25 @@
  * client (useStreamProcessor.ts) and server (api/ask/quick/route.ts)
  * never drift — both import from here.
  *
- * AI SDK v6 stores cache counts in `inputTokenDetails`:
+ * AI SDK v6 AND v7 both store cache counts in `inputTokenDetails`
+ * (verified against ai@7.0.105's `LanguageModelUsage`, which still
+ * declares the nested `inputTokenDetails` object):
  *   inputTokenDetails.cacheReadTokens  → cacheReadTokens
  *   inputTokenDetails.cacheWriteTokens → cacheWriteTokens
  *
+ * One level down, the provider spec (`LanguageModelV2Usage` in
+ * `@ai-sdk/provider`) is flat and only carries cache READS, as
+ * `cachedInputTokens`. Anything that forwards provider-level usage
+ * without re-nesting it lands on that field, so it is checked right
+ * after the nested pair.
+ *
  * Older SSE finish events / provider metadata may surface the same
  * counts under the legacy field names kept here as fallbacks:
+ *   cachedInputTokens (provider-spec flat cache read)
  *   cacheReadInputTokens / cacheReadTokens
  *   cacheCreationInputTokens / cacheWriteTokens
+ *   cache_read_input_tokens / cache_creation_input_tokens (raw Anthropic)
+ *   usage.raw.* (ai@7 passthrough of the provider's own usage object)
  */
 
 import type { TokenUsage } from "@/types/usage";
@@ -27,7 +38,12 @@ import type { TokenUsage } from "@/types/usage";
 export interface RawUsage {
   inputTokens?: number;
   outputTokens?: number;
-  /** AI SDK v6 nests cache counts here. */
+  /**
+   * AI SDK v6 AND v7 both nest cache counts here — `LanguageModelUsage`
+   * in ai@7 still declares `inputTokenDetails.{noCacheTokens,
+   * cacheReadTokens, cacheWriteTokens}`. This stays the highest-priority
+   * source on both major versions.
+   */
   inputTokenDetails?: {
     cacheReadTokens?: number;
     cacheWriteTokens?: number;
@@ -38,6 +54,25 @@ export interface RawUsage {
   cacheReadTokens?: number;
   cacheCreationInputTokens?: number;
   cacheWriteTokens?: number;
+  /**
+   * Flat provider-level field: `LanguageModelV2Usage` in
+   * `@ai-sdk/provider` exposes cache reads as `cachedInputTokens`, and
+   * some SSE/finish payloads forward that un-nested value verbatim.
+   */
+  cachedInputTokens?: number;
+  /** Raw Anthropic snake_case names, when a caller flattens them onto usage. */
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  /**
+   * ai@7 adds `raw` — the provider's own usage object, untouched. For
+   * Anthropic that carries the snake_case cache counters, which is the
+   * last place worth looking before giving up and reporting zero.
+   */
+  raw?: {
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+    [key: string]: unknown;
+  };
 }
 
 /**
@@ -66,15 +101,20 @@ export function normalizeTokenUsage(
 
   const cacheRead =
     raw.inputTokenDetails?.cacheReadTokens ??
+    raw.cachedInputTokens ??
     raw.cacheReadInputTokens ??
     raw.cacheReadTokens ??
-    anthropicMeta?.cacheReadInputTokens;
+    raw.cache_read_input_tokens ??
+    anthropicMeta?.cacheReadInputTokens ??
+    raw.raw?.cache_read_input_tokens;
 
   const cacheWrite =
     raw.inputTokenDetails?.cacheWriteTokens ??
     raw.cacheCreationInputTokens ??
     raw.cacheWriteTokens ??
-    anthropicMeta?.cacheCreationInputTokens;
+    raw.cache_creation_input_tokens ??
+    anthropicMeta?.cacheCreationInputTokens ??
+    raw.raw?.cache_creation_input_tokens;
 
   return {
     inputTokens: raw.inputTokens,

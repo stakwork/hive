@@ -29,7 +29,31 @@ import {
   getProviderTool as getProviderToolAieo,
   getApiKeyForProvider as getApiKeyForProviderAieo
 } from "aieo";
-import type { LanguageModel } from "ai";
+import { jsonSchema, type LanguageModel } from "ai";
+
+/**
+ * Input schema for every mock tool below.
+ *
+ * ai@7 renamed a tool's schema field from `parameters` to `inputSchema`
+ * and requires a real `Schema`, not a bare object literal: the value is
+ * what becomes Anthropic's `input_schema`, and an empty `{}` has no
+ * `type`/`properties`, so the API rejects the request and 400s the whole
+ * stream. `jsonSchema()` wraps a valid JSON Schema in the `Schema`
+ * marker shape the SDK expects. `additionalProperties: true` keeps the
+ * mocks permissive — they accept whatever the model sends and always
+ * return the same canned result.
+ */
+const MOCK_TOOL_INPUT_SCHEMA = jsonSchema<Record<string, unknown>>({
+  type: "object",
+  properties: {
+    query: {
+      type: "string",
+      description: "Mock tool input; ignored by the canned implementation.",
+    },
+  },
+  required: [],
+  additionalProperties: true,
+});
 
 // Opt-in escape hatch: when USE_REAL_LLM=true, bypass the Anthropic
 // mock even if USE_MOCKS=true. Lets us run the real model locally
@@ -140,7 +164,7 @@ export function getProviderTool(
   if (config.USE_MOCKS && !USE_REAL_LLM && provider === "anthropic") {
     return {
       description: `Mock ${toolName} tool`,
-      parameters: {},
+      inputSchema: MOCK_TOOL_INPUT_SCHEMA,
       execute: async (params: unknown) => {
         console.log(`[Mock] ${toolName} tool called with:`, params);
         return { result: "Mock tool result", mocked: true };
@@ -180,7 +204,7 @@ export function createWebSearch(
     return {
       tool: {
         description: "Mock web_search tool",
-        parameters: {},
+        inputSchema: MOCK_TOOL_INPUT_SCHEMA,
         execute: async (params: unknown) => {
           console.log("[Mock] web_search tool called with:", params);
           return { result: "Mock tool result", mocked: true };
@@ -228,7 +252,7 @@ export function createWebFetch(
     return {
       tool: {
         description: "Mock web_fetch tool",
-        parameters: {},
+        inputSchema: MOCK_TOOL_INPUT_SCHEMA,
         execute: async (params: unknown) => {
           console.log("[Mock] web_fetch tool called with:", params);
           return { result: "Mock tool result", mocked: true };
