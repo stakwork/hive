@@ -1,3 +1,34 @@
+const SENSITIVE_BODY_KEYS = new Set([
+  "pat",
+  "token",
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "apiKey",
+  "api_key",
+  "secret",
+  "password",
+  "authorization",
+  "swarmApiKey",
+  "swarm_api_key",
+]);
+
+function redactSensitiveBody(body: unknown): unknown {
+  if (body === null || body === undefined) return body;
+  if (Array.isArray(body)) return body.map(redactSensitiveBody);
+  if (typeof body !== "object") return body;
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+    if (SENSITIVE_BODY_KEYS.has(key) || /(?:^|_)(?:pat|token|secret|password|authorization)$/i.test(key)) {
+      redacted[key] = "[REDACTED]";
+      continue;
+    }
+    redacted[key] = redactSensitiveBody(value);
+  }
+  return redacted;
+}
+
 export interface HttpClientConfig {
   baseURL: string;
   defaultHeaders?: Record<string, string>;
@@ -133,7 +164,7 @@ export class HttpClient {
     headers?: Record<string, string>,
     service?: string,
   ): Promise<T> {
-    console.log("[HttpClient] POST body:", body);
+    console.log("[HttpClient] POST body:", redactSensitiveBody(body));
 
     return this.request<T>(
       endpoint,
