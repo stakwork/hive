@@ -98,6 +98,47 @@ export async function isGraphWriteCapabilityEnabledForOrg(
 }
 
 /**
+ * Whether the `strut` capability (`dispatch_strut` + its read tools) is
+ * available to the given source-control org.
+ *
+ * An exposure gate, and a deliberately conservative one: `dispatch_strut`
+ * hands a prompt to a workspace swarm's strut AI builder, which has a shell
+ * and can publish + run code on that swarm. Per-workspace authorization
+ * (membership, org ownership) is enforced inside the tools themselves.
+ *
+ * Driven by `STRUT_CAPABILITY_ORG_LOGINS` (comma-separated GitHub logins,
+ * case-insensitive). Defaults to "" (empty → disabled for all orgs) so
+ * rollout is strictly opt-in per org.
+ *
+ * Fails closed: a missing orgId, an unknown org, or a lookup error → false.
+ */
+export async function isStrutCapabilityEnabledForOrg(
+  orgId: string | undefined,
+): Promise<boolean> {
+  if (!orgId) return false;
+  const allowList = (process.env.STRUT_CAPABILITY_ORG_LOGINS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (allowList.length === 0) return false;
+  try {
+    const org = await db.sourceControlOrg.findUnique({
+      where: { id: orgId },
+      select: { githubLogin: true },
+    });
+    const login = (org?.githubLogin ?? "").trim().toLowerCase();
+    return Boolean(login) && allowList.includes(login);
+  } catch (err) {
+    logger.error(
+      "[capabilityGates] strut org gate lookup failed — denying",
+      "capabilityGates",
+      { orgId, error: err instanceof Error ? err.message : String(err) },
+    );
+    return false;
+  }
+}
+
+/**
  * Whether the `code_change` capability (`propose_code_change` tool) is
  * available to the given source-control org.
  *

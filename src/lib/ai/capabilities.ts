@@ -87,7 +87,13 @@ import { buildWorkflowExplorerTools } from "@/lib/ai/workflowExplorerTools";
 import {
   isPromptsCapabilityEnabledForOrg,
   isCodeChangeCapabilityEnabledForOrg,
+  isStrutCapabilityEnabledForOrg,
 } from "@/lib/ai/capabilityGates";
+import {
+  buildStrutTools,
+  getStrutCapabilitySnippet,
+  DISPATCH_STRUT_TOOL,
+} from "@/lib/ai/strutTools";
 import { buildCodeChangeTools } from "@/lib/ai/codeChangeTools";
 import { buildHtmlArtifactTools } from "@/lib/ai/htmlArtifactTools";
 import {
@@ -135,7 +141,8 @@ export type OrgCapability =
   | "prompts"
   | "concepts"
   | "workflows"
-  | "code_change";
+  | "code_change"
+  | "strut";
 
 /**
  * Everything a capability's `buildTools` may need. Mirrors the
@@ -279,6 +286,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "concepts",
   "workflows",
   "code_change",
+  "strut",
 ];
 
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
@@ -592,6 +600,26 @@ A \`[Jamie]\` prefix is added to the PR title automatically.
       // enforced at approval time by the createPr adapter.
       // Like `prompts` and `workflows`, must never appear in `includes`.
       orgGate: isCodeChangeCapabilityEnabledForOrg,
+    },
+    strut: {
+      // The workspace swarm's strut AI builder as a background sub-agent:
+      // `dispatch_strut` (start / continue a chat; replies land via strut's
+      // turn-end callback — see strutTools.ts) + two thin read tools.
+      buildTools: (ctx) => buildStrutTools(ctx),
+      promptSnippet: getStrutCapabilitySnippet,
+      core: false,
+      menuBlurb:
+        "**strut** — dispatch a workspace's strut AI builder " +
+        "(`dispatch_strut`) to build, revise, run, or evaluate strut " +
+        "workflows on that workspace's swarm, and continue those chats. " +
+        "Runs in the background; replies are posted into this conversation. " +
+        "Load when the user asks for a strut workflow, or about a strut run.",
+      // Strut has a shell and publishes + runs code on the swarm — a write
+      // tool in every sense. The two read tools survive readonly mode.
+      writeToolNames: [DISPATCH_STRUT_TOOL],
+      // Org-gated, opt-in. Like the other gated capabilities, must never
+      // appear in an `includes` list.
+      orgGate: isStrutCapabilityEnabledForOrg,
     },
   };
 
