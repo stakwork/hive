@@ -43,6 +43,7 @@ const SENSITIVE_KEYS = new Set([
   'secret',
   'password',
   'token',
+  'pat',
   'authorization',
   'session_state',
   'providerAccountId',
