@@ -28,6 +28,7 @@ import {
   ScrollText,
   Server,
   Settings,
+  Shield,
   ShieldCheck,
   TestTube2,
   Workflow,
@@ -132,6 +133,7 @@ const baseNavigationItems: NavigationItem[] = [
     label: "Protect",
     href: "/protect",
     children: [
+      { icon: Shield, label: "Review", href: "/protect" },
       { icon: BarChart3, label: "Recommendations", href: "/recommendations" },
       { icon: TestTube2, label: "Testing", href: "/testing" },
       { icon: Bot, label: "Janitors", href: "/janitors" },
@@ -242,60 +244,32 @@ function SidebarContent({
               <li key={item.href}>
                 {hasChildren ? (
                   // Expandable items - use button with onClick to toggle.
-                  // "Protect" additionally gets a small adjacent Link so
-                  // users can navigate straight to /protect without that
-                  // click also toggling the children list open/closed.
-                  <div className="flex items-center gap-1">
-                    <Button
-                      data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-                      variant="ghost"
-                      className="flex-1 justify-start hover:bg-primary/5 dark:hover:bg-primary/10"
-                      onClick={() => toggleSection(item.label)}
-                    >
-                      <item.icon className="w-4 h-4 mr-2" />
-                      {item.label}
-                      {showBadge && (
-                        <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
-                          {tasksWaitingForInputCount}
-                        </Badge>
-                      )}
-                      {showCapacityBadge && (
-                        <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 border-blue-200">
-                          {poolCapacityCount}
-                        </Badge>
-                      )}
-                      <span className="ml-auto">
-                        {isExpanded ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                      </span>
-                    </Button>
-                    {item.label === "Protect" && (
-                      // Standalone navigation link to /protect. Only ever
-                      // rendered when "Protect" made it into navigationItems,
-                      // which already requires canAccessDefense (and, for
-                      // public viewers, is excluded entirely) — so this
-                      // inherits the same feature-flag gating as the rest
-                      // of the Protect entry.
-                      <Button
-                        asChild
-                        variant="ghost"
-                        size="icon"
-                        data-testid="nav-protect-link"
-                        className="h-8 w-8 shrink-0 hover:bg-primary/5 dark:hover:bg-primary/10"
-                      >
-                        <Link
-                          href={itemHref}
-                          aria-label="Go to Protect"
-                          onClick={() => setIsOpen(false)}
-                        >
-                          <item.icon className="w-4 h-4" />
-                        </Link>
-                      </Button>
+                  <Button
+                    data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                    variant="ghost"
+                    className="w-full justify-start hover:bg-primary/5 dark:hover:bg-primary/10"
+                    onClick={() => toggleSection(item.label)}
+                  >
+                    <item.icon className="w-4 h-4 mr-2" />
+                    {item.label}
+                    {showBadge && (
+                      <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
+                        {tasksWaitingForInputCount}
+                      </Badge>
                     )}
-                  </div>
+                    {showCapacityBadge && (
+                      <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 border-blue-200">
+                        {poolCapacityCount}
+                      </Badge>
+                    )}
+                    <span className="ml-auto">
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
+                    </span>
+                  </Button>
                 ) : (
                   // Non-expandable items - use Link
                   <Button

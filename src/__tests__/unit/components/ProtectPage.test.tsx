@@ -62,6 +62,7 @@ vi.mock("@/components/ui/select", () => ({
   SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) => (
     <div data-value={value}>{children}</div>
   ),
+  SelectValue: ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>,
 }));
 
 import ProtectPage from "@/app/w/[slug]/protect/page";
@@ -109,7 +110,12 @@ describe("ProtectPage model picker", () => {
         return jsonResponse({ securityReviewModel: "anthropic/claude-sonnet-4" });
       }
       if (typeof url === "string" && url.endsWith("/protect/findings")) {
-        return jsonResponse({ status: "empty", findings: [], run: null });
+        return jsonResponse({
+          status: "empty",
+          findings: [],
+          run: null,
+          scope: { repositories: [], selected: [], empty: true },
+        });
       }
       return jsonResponse({});
     });
@@ -161,7 +167,12 @@ describe("ProtectPage model picker", () => {
         return jsonResponse({ securityReviewModel: "anthropic/retired-model" });
       }
       if (typeof url === "string" && url.endsWith("/protect/findings")) {
-        return jsonResponse({ status: "empty", findings: [], run: null });
+        return jsonResponse({
+          status: "empty",
+          findings: [],
+          run: null,
+          scope: { repositories: [], selected: [], empty: true },
+        });
       }
       return jsonResponse({});
     });

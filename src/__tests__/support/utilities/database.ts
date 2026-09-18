@@ -84,6 +84,9 @@ export async function resetDatabase() {
     await db.janitorRecommendation.deleteMany();
     await db.janitorRun.deleteMany();
     await db.janitorConfig.deleteMany();
+    try { await db.protectReviewRunRepo.deleteMany(); } catch { /* table may not exist */ }
+    try { await db.protectReviewRepo.deleteMany(); } catch { /* table may not exist */ }
+    try { await db.protectReviewRun.deleteMany(); } catch { /* table may not exist */ }
     await db.userStory.deleteMany();
     await db.userFeaturePresence.deleteMany();
     try { await db.scorerDigest.deleteMany(); } catch { /* table may not exist */ }
@@ -138,6 +141,9 @@ const RESET_TABLES = [
   "janitor_recommendations",
   "janitor_runs",
   "janitor_configs",
+  "protect_review_run_repos",
+  "protect_review_repos",
+  "protect_review_runs",
   "agent_logs",
   "stakwork_runs",
   "whiteboards",

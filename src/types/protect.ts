@@ -65,10 +65,27 @@ export interface ProtectReviewRunSummary {
   completedAt: string | null;
 }
 
+export interface ProtectScopeRepository {
+  id: string;
+  name: string;
+  repositoryUrl: string;
+  inScope: boolean;
+}
+
+export interface ProtectScopePayload {
+  repositories: ProtectScopeRepository[];
+  selected: Array<{
+    id: string;
+    repositoryUrl: string;
+  }>;
+  empty: boolean;
+}
+
 export interface ProtectFindingsResponse {
   status: ProtectPageStatus;
   findings: ProtectFinding[];
   run: ProtectReviewRunSummary | null;
+  scope: ProtectScopePayload;
   error?: string;
 }
 

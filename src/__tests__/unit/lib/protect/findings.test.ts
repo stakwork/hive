@@ -176,6 +176,7 @@ describe("applyProtectReviewFindings", () => {
 
     const result = await applyProtectReviewFindings(CONFIG, [incoming({ line: 22 })], {
       mode: "full",
+      snapshotCanonicalUrls: ["acme/hive"],
     });
 
     expect(result.counts.updated).toBe(1);
@@ -212,7 +213,7 @@ describe("applyProtectReviewFindings", () => {
     const result = await applyProtectReviewFindings(
       CONFIG,
       [incoming({ file: "src/other.ts", title: "New issue" })],
-      { mode: "full" },
+      { mode: "full", snapshotCanonicalUrls: ["acme/hive"] },
     );
 
     expect(result.counts.created).toBe(1);
@@ -240,7 +241,7 @@ describe("applyProtectReviewFindings", () => {
       const result = await applyProtectReviewFindings(
         CONFIG,
         [incoming({ line: 22, titlefingerprint: TITLE_FINGERPRINT })],
-        { mode: "full" },
+        { mode: "full", snapshotCanonicalUrls: ["acme/hive"] },
       );
 
       expect(result.counts.updated).toBe(1);
@@ -284,7 +285,7 @@ describe("applyProtectReviewFindings", () => {
             titlefingerprint: "fedcba9876543210",
           }),
         ],
-        { mode: "full" },
+        { mode: "full", snapshotCanonicalUrls: ["acme/hive"] },
       );
 
       expect(result.counts.created).toBe(1);
@@ -311,12 +312,83 @@ describe("applyProtectReviewFindings", () => {
       const result = await applyProtectReviewFindings(
         CONFIG,
         [incoming({ titlefingerprint: "aaaaaaaaaaaaaaaa" })],
-        { mode: "full" },
+        { mode: "full", snapshotCanonicalUrls: ["acme/hive"] },
       );
 
       expect(result.counts.created).toBe(1);
       expect(result.counts.updated).toBe(0);
       expect(result.counts.stale).toBe(1);
     });
+  });
+
+  it("does not stale findings whose repo is outside the full-run snapshot", async () => {
+    const inScope = priorFinding({ status: "open", ref_id: "in-scope" });
+    const outOfScope = priorFinding({
+      status: "open",
+      ref_id: "out-of-scope",
+      repositoryUrl: "https://github.com/acme/other",
+      file: "src/other.ts",
+      title: "Other issue",
+      node_key: "other-key",
+    });
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: true,
+      nodes: [
+        { ref_id: inScope.ref_id, node_type: "SecurityFinding", properties: inScope },
+        { ref_id: outOfScope.ref_id, node_type: "SecurityFinding", properties: outOfScope },
+      ],
+    });
+
+    const result = await applyProtectReviewFindings(CONFIG, [], {
+      mode: "full",
+      snapshotCanonicalUrls: ["acme/hive"],
+    });
+
+    expect(result.counts.stale).toBe(1);
+    expect(nodes.updateNodeV2).toHaveBeenCalledTimes(1);
+    expect(nodes.updateNodeV2).toHaveBeenCalledWith(CONFIG, inScope.ref_id, { status: "stale" });
+  });
+
+  it("does not stale the whole graph when full mode has an empty snapshot", async () => {
+    const existing = priorFinding({ status: "open" });
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: true,
+      nodes: [{ ref_id: existing.ref_id, node_type: "SecurityFinding", properties: existing }],
+    });
+
+    const result = await applyProtectReviewFindings(CONFIG, [], { mode: "full" });
+
+    expect(result.counts.stale).toBe(0);
+    expect(nodes.updateNodeV2).not.toHaveBeenCalled();
+  });
+
+  it("canonicalizes incremental repositoryUrl when choosing stale targets", async () => {
+    const matching = priorFinding({
+      status: "open",
+      repositoryUrl: "git@github.com:acme/hive.git",
+    });
+    const other = priorFinding({
+      status: "open",
+      ref_id: "other",
+      repositoryUrl: "https://github.com/acme/other",
+      file: "src/other.ts",
+      title: "Other",
+      node_key: "other-key",
+    });
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: true,
+      nodes: [
+        { ref_id: matching.ref_id, node_type: "SecurityFinding", properties: matching },
+        { ref_id: other.ref_id, node_type: "SecurityFinding", properties: other },
+      ],
+    });
+
+    const result = await applyProtectReviewFindings(CONFIG, [], {
+      mode: "incremental",
+      repositoryUrl: "https://github.com/acme/hive",
+    });
+
+    expect(result.counts.stale).toBe(1);
+    expect(nodes.updateNodeV2).toHaveBeenCalledWith(CONFIG, matching.ref_id, { status: "stale" });
   });
 });
