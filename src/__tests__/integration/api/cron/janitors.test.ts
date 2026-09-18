@@ -318,7 +318,7 @@ describe("GET /api/cron/janitors", () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
       expect(data.workspacesProcessed).toBe(3);
-      expect(data.runsCreated).toBe(4); // 2 + 1 + 1 janitor types enabled
+      expect(data.runsCreated).toBe(3); // 2 + 1; SECURITY_REVIEW is Protect-only
       expect(data.errorCount).toBe(0);
       expect(data.errors).toHaveLength(0);
 
@@ -339,7 +339,7 @@ describe("GET /api/cron/janitors", () => {
         orderBy: { createdAt: "asc" },
       });
 
-      expect(runs).toHaveLength(4);
+      expect(runs).toHaveLength(3);
       
       // Verify all runs have SCHEDULED trigger
       expect(runs.every((run) => run.triggeredBy === JanitorTrigger.SCHEDULED)).toBe(true);
@@ -361,10 +361,9 @@ describe("GET /api/cron/janitors", () => {
       expect(ws2Runs).toHaveLength(1);
       expect(ws2Runs[0].janitorType).toBe(JanitorType.E2E_TESTS);
       
-      // Verify workspace 3 has 1 run (SECURITY_REVIEW)
+      // SECURITY_REVIEW is dispatched exclusively by Protect, not the janitor cron.
       const ws3Runs = runs.filter((run) => run.janitorConfig.workspaceId === workspace3.id);
-      expect(ws3Runs).toHaveLength(1);
-      expect(ws3Runs[0].janitorType).toBe(JanitorType.SECURITY_REVIEW);
+      expect(ws3Runs).toHaveLength(0);
     });
 
     it("should skip workspaces with no enabled janitors", async () => {

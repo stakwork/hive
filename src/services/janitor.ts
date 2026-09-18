@@ -456,6 +456,10 @@ export async function createJanitorRun(
   }
   const janitorType = janitorTypeUpper as JanitorType;
 
+  if (janitorType === JanitorType.SECURITY_REVIEW) {
+    throw new Error("SECURITY_REVIEW is no longer a janitor dispatcher; use Protect");
+  }
+
   let workspaceId: string;
 
   // Skip auth validation for SCHEDULED (cron) runs - system-initiated and trusted

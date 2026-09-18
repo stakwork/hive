@@ -25,8 +25,8 @@ export async function POST(request: NextRequest) {
       workflow_params,
     });
 
-    const webhookUrl =
-      workflow_params?.set_var?.attributes?.vars?.webhook_url;
+    const vars = workflow_params?.set_var?.attributes?.vars;
+    const webhookUrl = vars?.webhook_url ?? vars?.webhookUrl;
 
     mockStakworkState.progressWorkflow(result.project_id, webhookUrl);
 
