@@ -15,6 +15,7 @@ import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
 import { createAndSendNotification } from "@/services/notifications";
 import { triggerLearningRun } from "@/services/learning-run";
 import { monitorSinglePR } from "@/lib/github/pr-monitor";
+import { dispatchIncrementalProtectReview } from "@/services/protect";
 
 function serializeWebhookError(error: unknown) {
   if (error instanceof Error) {
@@ -196,6 +197,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         delivery,
         workspaceId: repository.workspaceId,
         pushedBranch,
+      });
+
+      // Incremental Protect review is independent of codeIngestionEnabled.
+      // Fire-and-forget so it never blocks or delays code-graph sync.
+      const beforeSha: string = typeof payload?.before === "string" ? payload.before : "";
+      const afterSha: string = typeof payload?.after === "string" ? payload.after : "";
+      void dispatchIncrementalProtectReview({
+        workspaceId: repository.workspaceId,
+        workspaceSlug: workspace?.slug,
+        repositoryUrl: repository.repositoryUrl,
+        before: beforeSha,
+        after: afterSha,
+        ref,
+      }).catch((error) => {
+        console.error("[GithubWebhook] Protect incremental dispatch failed (non-blocking)", {
+          delivery,
+          workspaceId: repository.workspaceId,
+          repositoryUrl: repository.repositoryUrl,
+          mode: "incremental",
+          error: error instanceof Error ? error.message : "unknown",
+        });
       });
 
       // Check if code ingestion is enabled for this repository

@@ -106,10 +106,25 @@ async function dispatchProtectWorkflow(vars: Record<string, unknown>): Promise<n
   return projectId;
 }
 
+export const INCREMENTAL_PROTECT_DEBOUNCE_MS = 60_000;
+
 export interface DispatchFullProtectReviewInput {
   workspaceId: string;
   workspaceSlug: string;
 }
+
+export interface DispatchIncrementalProtectReviewInput {
+  workspaceId: string;
+  workspaceSlug?: string;
+  repositoryUrl: string;
+  before: string;
+  after: string;
+  ref: string;
+}
+
+export type IncrementalProtectDispatchResult =
+  | { dispatched: true; run: ProtectReviewRun }
+  | { dispatched: false; reason: string };
 
 export async function dispatchFullProtectReview(
   input: DispatchFullProtectReviewInput,
@@ -173,6 +188,162 @@ export async function dispatchFullProtectReview(
         status: "failed",
         completedAt: new Date(),
       },
+    });
+    throw error;
+  }
+}
+
+export async function dispatchIncrementalProtectReview(
+  input: DispatchIncrementalProtectReviewInput,
+): Promise<IncrementalProtectDispatchResult> {
+  const repositoryUrl = input.repositoryUrl.trim();
+  if (!repositoryUrl) {
+    console.log("[GithubWebhook] Protect incremental skip", {
+      workspaceId: input.workspaceId,
+      repositoryUrl: input.repositoryUrl,
+      mode: "incremental",
+      reason: "missing_repository_url",
+    });
+    return { dispatched: false, reason: "missing_repository_url" };
+  }
+
+  const enabled = await isSecurityReviewEnabled(input.workspaceId);
+  if (!enabled) {
+    console.log("[GithubWebhook] Protect incremental skip", {
+      workspaceId: input.workspaceId,
+      repositoryUrl,
+      mode: "incremental",
+      reason: "security_review_disabled",
+    });
+    return { dispatched: false, reason: "security_review_disabled" };
+  }
+
+  const completedFull = await getLatestCompletedFullProtectReviewRun(input.workspaceId);
+  if (!completedFull) {
+    console.log("[GithubWebhook] Protect incremental skip", {
+      workspaceId: input.workspaceId,
+      repositoryUrl,
+      mode: "incremental",
+      reason: "no_completed_full_review",
+    });
+    return { dispatched: false, reason: "no_completed_full_review" };
+  }
+
+  const workspaceRepos = await loadWorkspaceRepositories(input.workspaceId);
+  if (!workspaceRepos.includes(repositoryUrl)) {
+    console.log("[GithubWebhook] Protect incremental skip", {
+      workspaceId: input.workspaceId,
+      repositoryUrl,
+      mode: "incremental",
+      reason: "repository_not_in_workspace",
+    });
+    return { dispatched: false, reason: "repository_not_in_workspace" };
+  }
+
+  const inFlightForRepo = await db.protectReviewRun.findFirst({
+    where: {
+      workspaceId: input.workspaceId,
+      repositoryUrl,
+      mode: "incremental",
+      status: { in: [...IN_FLIGHT_STATUSES] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (inFlightForRepo) {
+    console.log("[GithubWebhook] Protect incremental skip", {
+      workspaceId: input.workspaceId,
+      repositoryUrl,
+      mode: "incremental",
+      reason: "in_flight",
+    });
+    return { dispatched: false, reason: "in_flight" };
+  }
+
+  const debounceCutoff = new Date(Date.now() - INCREMENTAL_PROTECT_DEBOUNCE_MS);
+  const recentForRepo = await db.protectReviewRun.findFirst({
+    where: {
+      workspaceId: input.workspaceId,
+      repositoryUrl,
+      mode: "incremental",
+      createdAt: { gte: debounceCutoff },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (recentForRepo) {
+    console.log("[GithubWebhook] Protect incremental skip", {
+      workspaceId: input.workspaceId,
+      repositoryUrl,
+      mode: "incremental",
+      reason: "debounced",
+    });
+    return { dispatched: false, reason: "debounced" };
+  }
+
+  const jarvisConfig = await getJarvisConfigForWorkspace(input.workspaceId);
+  const priorFindings = jarvisConfig
+    ? await listProtectFindings(jarvisConfig)
+    : { ok: true as const, findings: [] };
+  const priorNodes = priorFindings.ok
+    ? priorFindings.findings
+        .filter((finding) => finding.repositoryUrl === repositoryUrl)
+        .map(serializeFindingForWorkflow)
+    : [];
+
+  const run = await db.protectReviewRun.create({
+    data: {
+      workspaceId: input.workspaceId,
+      mode: "incremental",
+      status: "pending",
+      repositoryUrl,
+    },
+  });
+
+  const webhookUrl = `${getBaseUrl()}/api/protect/webhook`;
+
+  try {
+    const projectId = await dispatchProtectWorkflow({
+      runId: run.id,
+      mode: "incremental",
+      webhookUrl,
+      tokenReference: getStakworkTokenReference(),
+      repositoryUrl,
+      before: input.before,
+      after: input.after,
+      ref: input.ref,
+      priorFindings: priorNodes,
+    });
+
+    const updated = await db.protectReviewRun.update({
+      where: { id: run.id },
+      data: {
+        stakworkProjectId: projectId,
+        status: "running",
+      },
+    });
+
+    console.log("[GithubWebhook] Protect incremental dispatch", {
+      workspaceId: input.workspaceId,
+      workspaceSlug: input.workspaceSlug,
+      repositoryUrl,
+      mode: "incremental",
+      runId: run.id,
+    });
+
+    return { dispatched: true, run: updated };
+  } catch (error) {
+    await db.protectReviewRun.update({
+      where: { id: run.id },
+      data: {
+        status: "failed",
+        completedAt: new Date(),
+      },
+    });
+    console.error("[GithubWebhook] Protect incremental dispatch failed", {
+      workspaceId: input.workspaceId,
+      repositoryUrl,
+      mode: "incremental",
+      runId: run.id,
+      error: error instanceof Error ? error.message : "unknown",
     });
     throw error;
   }
