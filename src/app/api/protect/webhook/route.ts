@@ -25,6 +25,7 @@ const findingSchema = z
     recommendation: z.string().max(PROTECT_STRING_LIMITS.recommendation).default(""),
     status: z.enum(PROTECT_FINDING_STATUSES).optional(),
     repositoryUrl: z.string().min(1).max(PROTECT_STRING_LIMITS.repositoryUrl),
+    titlefingerprint: z.string().min(1).optional(),
   })
   .strip();
 
@@ -120,6 +121,7 @@ export async function POST(request: NextRequest) {
         recommendation: finding.recommendation,
         status: finding.status,
         repositoryUrl: finding.repositoryUrl,
+        titlefingerprint: finding.titlefingerprint,
       });
     }
 

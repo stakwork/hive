@@ -92,4 +92,5 @@ export interface IncomingProtectFinding {
   recommendation: string;
   status?: ProtectFindingStatus;
   repositoryUrl: string;
+  titlefingerprint?: string;
 }
