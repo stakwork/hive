@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/api/github/webhook/[workspaceId]/route';
 import { RepositoryStatus, ArtifactType, TaskStatus, WorkflowStatus } from '@prisma/client';
 import {
@@ -15,10 +15,69 @@ import { getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
 import { pusherServer } from '@/lib/pusher';
 import { releaseTaskPod } from '@/lib/pods/utils';
 import { generateUniqueId } from '@/__tests__/support/helpers';
+import { dispatchIncrementalProtectReview } from '@/services/protect';
+import { listProtectFindings } from '@/lib/protect/findings';
+
+const mockStakworkRequest = vi.fn().mockResolvedValue({ data: { project_id: 99 } });
+
+function mockDispatchNoop() {
+  vi.mocked(dispatchIncrementalProtectReview).mockResolvedValue({
+    dispatched: false,
+    reason: 'mocked',
+  });
+}
+
+function mockFindingsEmpty() {
+  vi.mocked(listProtectFindings).mockImplementation(async () => ({
+    ok: true,
+    findings: [],
+  }));
+}
 
 // Mock external services
 vi.mock('@/services/swarm/stakgraph-actions');
 vi.mock('@/lib/auth/nextauth');
+vi.mock('@/lib/service-factory', () => ({
+  stakworkService: vi.fn(() => ({
+    stakworkRequest: mockStakworkRequest,
+  })),
+}));
+vi.mock('@/lib/protect/findings', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/protect/findings')>(
+    '@/lib/protect/findings',
+  );
+  return {
+    ...actual,
+    listProtectFindings: vi.fn(async () => ({ ok: true, findings: [] })),
+  };
+});
+vi.mock('@/config/env', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/config/env')>();
+  return {
+    ...actual,
+    config: {
+      ...actual.config,
+      STAKWORK_API_KEY: 'test-stakwork',
+      STAKWORK_PROTECT_WORKFLOW_ID: '555',
+    },
+    optionalEnvVars: {
+      ...actual.optionalEnvVars,
+      STAKWORK_PROTECT_WORKFLOW_ID: '555',
+    },
+  };
+});
+vi.mock('@/services/protect', async () => {
+  const actual = await vi.importActual<typeof import('@/services/protect')>(
+    '@/services/protect',
+  );
+  return {
+    ...actual,
+    dispatchIncrementalProtectReview: vi.fn().mockResolvedValue({
+      dispatched: false,
+      reason: 'mocked',
+    }),
+  };
+});
 vi.mock('@/lib/pusher', () => ({
   pusherServer: {
     trigger: vi.fn(),
@@ -55,10 +114,12 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     vi.mocked(pusherServer.trigger).mockResolvedValue({} as any);
-  });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+    // Re-apply after clearAllMocks. Do not restoreAllMocks in afterEach:
+    // that strips factory implementations so dispatchIncrementalProtectReview()
+    // returns undefined and `undefined.catch` 500s the push handler.
+    mockDispatchNoop();
+    mockFindingsEmpty();
   });
 
   describe('Authentication & Security', () => {
@@ -811,6 +872,176 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
 
       // Verify triggerAsyncSync was called (meaning API key was successfully decrypted)
       expect(triggerAsyncSync).toHaveBeenCalled();
+    });
+  });
+
+  describe('Incremental Protect review', () => {
+    beforeEach(async () => {
+      mockStakworkRequest.mockClear();
+      mockStakworkRequest.mockResolvedValue({ data: { project_id: 99 } });
+      process.env.STAKWORK_PROTECT_WORKFLOW_ID = '555';
+      process.env.STAKWORK_API_KEY = 'test-stakwork';
+      const actual = await vi.importActual<typeof import('@/services/protect')>(
+        '@/services/protect',
+      );
+      vi.mocked(dispatchIncrementalProtectReview).mockImplementation(
+        actual.dispatchIncrementalProtectReview,
+      );
+      mockFindingsEmpty();
+    });
+
+    async function enableProtect(workspaceId: string) {
+      await db.janitorConfig.create({
+        data: { workspaceId, securityReviewEnabled: true },
+      });
+    }
+
+    async function completeFullReview(workspaceId: string) {
+      await db.protectReviewRun.create({
+        data: {
+          workspaceId,
+          mode: 'full',
+          status: 'completed',
+          completedAt: new Date(),
+        },
+      });
+    }
+
+    async function sendPush(
+      setup: TestRepositorySetup,
+      extras?: { before?: string; after?: string; waitForDispatch?: boolean },
+    ) {
+      const payload = createGitHubPushPayload(
+        'refs/heads/main',
+        setup.repository.repositoryUrl,
+        'test-owner/test-repo',
+        extras?.before ?? '1111111111111111111111111111111111111111',
+        extras?.after ?? '2222222222222222222222222222222222222222',
+      );
+      const signature = computeValidWebhookSignature(
+        setup.webhookSecret,
+        JSON.stringify(payload),
+      );
+      const request = createWebhookRequest(
+        `http://localhost/api/github/webhook/${setup.workspace.id}`,
+        payload,
+        signature,
+        setup.repository.githubWebhookId!,
+      );
+      const response = await POST(request, { params: { workspaceId: setup.workspace.id } });
+      if (extras?.waitForDispatch !== false) {
+        await vi.mocked(dispatchIncrementalProtectReview).mock.results.at(-1)?.value;
+      }
+      return response;
+    }
+
+    test('does not await incremental dispatch before triggerAsyncSync', async () => {
+      testSetup = await createWebhookTestScenario({ branch: 'main' });
+      await enableProtect(testSetup.workspace.id);
+      await completeFullReview(testSetup.workspace.id);
+
+      let resolveDispatch: (value: { dispatched: false; reason: string }) => void = () => {};
+      const hung = new Promise<{ dispatched: false; reason: string }>((resolve) => {
+        resolveDispatch = resolve;
+      });
+      vi.mocked(dispatchIncrementalProtectReview).mockReturnValue(hung);
+
+      const response = await sendPush(testSetup, { waitForDispatch: false });
+      expect(response.status).toBe(202);
+      expect(triggerAsyncSync).toHaveBeenCalled();
+      expect(vi.mocked(dispatchIncrementalProtectReview).mock.results.at(-1)?.value).toBe(hung);
+
+      resolveDispatch({ dispatched: false, reason: 'test' });
+      await hung;
+    });
+
+    test('does not dispatch incremental scan before the first completed full review', async () => {
+      testSetup = await createWebhookTestScenario({ branch: 'main' });
+      await enableProtect(testSetup.workspace.id);
+
+      const response = await sendPush(testSetup);
+      expect(response.status).toBe(202);
+
+      const runs = await db.protectReviewRun.findMany({
+        where: { workspaceId: testSetup.workspace.id, mode: 'incremental' },
+      });
+      expect(runs).toHaveLength(0);
+      expect(mockStakworkRequest).not.toHaveBeenCalled();
+      expect(triggerAsyncSync).toHaveBeenCalled();
+    });
+
+    test('dispatches incremental scan after a completed full review using before/after/ref', async () => {
+      testSetup = await createWebhookTestScenario({ branch: 'main' });
+      await enableProtect(testSetup.workspace.id);
+      await completeFullReview(testSetup.workspace.id);
+
+      const response = await sendPush(testSetup, {
+        before: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        after: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      });
+      expect(response.status).toBe(202);
+
+      const runs = await db.protectReviewRun.findMany({
+        where: { workspaceId: testSetup.workspace.id, mode: 'incremental' },
+      });
+      expect(runs).toHaveLength(1);
+      expect(runs[0].repositoryUrl).toBe(testSetup.repository.repositoryUrl);
+      expect(runs[0].status).toBe('running');
+
+      expect(mockStakworkRequest).toHaveBeenCalled();
+      const vars = (
+        mockStakworkRequest.mock.calls[0][1] as {
+          workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+        }
+      ).workflow_params.set_var.attributes.vars;
+      expect(vars).toMatchObject({
+        mode: 'incremental',
+        repositoryUrl: testSetup.repository.repositoryUrl,
+        before: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        after: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        ref: 'refs/heads/main',
+      });
+      expect(vars).not.toHaveProperty('pat');
+      expect(vars).not.toHaveProperty('swarmApiKey');
+      expect(triggerAsyncSync).toHaveBeenCalled();
+    });
+
+    test('still dispatches incremental scan when codeIngestionEnabled is false', async () => {
+      testSetup = await createWebhookTestScenario({
+        branch: 'main',
+        codeIngestionEnabled: false,
+      });
+      await enableProtect(testSetup.workspace.id);
+      await completeFullReview(testSetup.workspace.id);
+
+      const response = await sendPush(testSetup);
+      expect(response.status).toBe(202);
+
+      const runs = await db.protectReviewRun.findMany({
+        where: { workspaceId: testSetup.workspace.id, mode: 'incremental' },
+      });
+      expect(runs).toHaveLength(1);
+      expect(mockStakworkRequest).toHaveBeenCalled();
+      expect(triggerAsyncSync).not.toHaveBeenCalled();
+    });
+
+    test('debounce prevents duplicate incremental dispatch on rapid repeated pushes', async () => {
+      testSetup = await createWebhookTestScenario({ branch: 'main' });
+      await enableProtect(testSetup.workspace.id);
+      await completeFullReview(testSetup.workspace.id);
+
+      const first = await sendPush(testSetup);
+      const second = await sendPush(testSetup, {
+        before: 'cccccccccccccccccccccccccccccccccccccccc',
+        after: 'dddddddddddddddddddddddddddddddddddddddd',
+      });
+      expect(first.status).toBe(202);
+      expect(second.status).toBe(202);
+
+      const runs = await db.protectReviewRun.findMany({
+        where: { workspaceId: testSetup.workspace.id, mode: 'incremental' },
+      });
+      expect(runs).toHaveLength(1);
     });
   });
 });

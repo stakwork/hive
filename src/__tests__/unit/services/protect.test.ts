@@ -49,7 +49,12 @@ import { db } from "@/lib/db";
 import { stakworkService } from "@/lib/service-factory";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { listProtectFindings, applyProtectReviewFindings } from "@/lib/protect/findings";
-import { dispatchFullProtectReview, completeProtectReview, PROTECT_ERRORS } from "@/services/protect";
+import {
+  dispatchFullProtectReview,
+  dispatchIncrementalProtectReview,
+  completeProtectReview,
+  PROTECT_ERRORS,
+} from "@/services/protect";
 
 const mockStakworkRequest = vi.fn().mockResolvedValue({ data: { project_id: 99 } });
 
@@ -135,6 +140,182 @@ describe("dispatchFullProtectReview", () => {
       }
     ).workflow_params.set_var.attributes.vars;
     expect(vars.repositoryUrls).toEqual(["https://github.com/acme/owned"]);
+  });
+});
+
+describe("dispatchIncrementalProtectReview", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStakworkRequest.mockResolvedValue({ data: { project_id: 99 } });
+    vi.mocked(stakworkService).mockReturnValue({
+      stakworkRequest: mockStakworkRequest,
+    } as never);
+    vi.mocked(db.repository.findMany).mockResolvedValue([
+      { repositoryUrl: "https://github.com/acme/hive" },
+    ] as never);
+    vi.mocked(getJarvisConfigForWorkspace).mockResolvedValue({
+      jarvisUrl: "https://jarvis.test",
+      apiKey: "key",
+    });
+    vi.mocked(listProtectFindings).mockResolvedValue({ ok: true, findings: [] });
+    vi.mocked(db.protectReviewRun.create).mockResolvedValue({
+      id: "inc-1",
+      workspaceId: "ws-1",
+      mode: "incremental",
+      status: "pending",
+      repositoryUrl: "https://github.com/acme/hive",
+    } as never);
+    vi.mocked(db.protectReviewRun.update).mockResolvedValue({
+      id: "inc-1",
+      workspaceId: "ws-1",
+      mode: "incremental",
+      status: "running",
+      repositoryUrl: "https://github.com/acme/hive",
+      stakworkProjectId: 99,
+    } as never);
+  });
+
+  it("no-ops when security review is disabled", async () => {
+    vi.mocked(db.janitorConfig.findUnique).mockResolvedValue({
+      securityReviewEnabled: false,
+    } as never);
+
+    const result = await dispatchIncrementalProtectReview({
+      workspaceId: "ws-1",
+      repositoryUrl: "https://github.com/acme/hive",
+      before: "aaa",
+      after: "bbb",
+      ref: "refs/heads/main",
+    });
+
+    expect(result).toEqual({ dispatched: false, reason: "security_review_disabled" });
+    expect(db.protectReviewRun.create).not.toHaveBeenCalled();
+    expect(mockStakworkRequest).not.toHaveBeenCalled();
+  });
+
+  it("no-ops before the first completed full review", async () => {
+    vi.mocked(db.janitorConfig.findUnique).mockResolvedValue({
+      securityReviewEnabled: true,
+    } as never);
+    vi.mocked(db.protectReviewRun.findFirst).mockResolvedValue(null);
+
+    const result = await dispatchIncrementalProtectReview({
+      workspaceId: "ws-1",
+      workspaceSlug: "acme",
+      repositoryUrl: "https://github.com/acme/hive",
+      before: "aaa",
+      after: "bbb",
+      ref: "refs/heads/main",
+    });
+
+    expect(result).toEqual({ dispatched: false, reason: "no_completed_full_review" });
+    expect(db.protectReviewRun.create).not.toHaveBeenCalled();
+    expect(mockStakworkRequest).not.toHaveBeenCalled();
+  });
+
+  it("no-ops when the repository is not in workspace.repositories", async () => {
+    vi.mocked(db.janitorConfig.findUnique).mockResolvedValue({
+      securityReviewEnabled: true,
+    } as never);
+    vi.mocked(db.protectReviewRun.findFirst).mockResolvedValue({
+      id: "full-1",
+      mode: "full",
+      status: "completed",
+    } as never);
+    vi.mocked(db.repository.findMany).mockResolvedValue([
+      { repositoryUrl: "https://github.com/acme/other" },
+    ] as never);
+
+    const result = await dispatchIncrementalProtectReview({
+      workspaceId: "ws-1",
+      repositoryUrl: "https://github.com/acme/hive",
+      before: "aaa",
+      after: "bbb",
+      ref: "refs/heads/main",
+    });
+
+    expect(result).toEqual({ dispatched: false, reason: "repository_not_in_workspace" });
+    expect(db.protectReviewRun.create).not.toHaveBeenCalled();
+  });
+
+  it("dispatches after a completed full review with before/after/ref", async () => {
+    vi.mocked(db.janitorConfig.findUnique).mockResolvedValue({
+      securityReviewEnabled: true,
+    } as never);
+    vi.mocked(db.protectReviewRun.findFirst)
+      .mockResolvedValueOnce({ id: "full-1", mode: "full", status: "completed" } as never)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    const result = await dispatchIncrementalProtectReview({
+      workspaceId: "ws-1",
+      workspaceSlug: "acme",
+      repositoryUrl: "https://github.com/acme/hive",
+      before: "sha-before",
+      after: "sha-after",
+      ref: "refs/heads/main",
+    });
+
+    expect(result.dispatched).toBe(true);
+    const vars = (
+      mockStakworkRequest.mock.calls[0][1] as {
+        workflow_params: {
+          set_var: { attributes: { vars: Record<string, unknown> } };
+        };
+      }
+    ).workflow_params.set_var.attributes.vars;
+    expect(vars).toMatchObject({
+      runId: "inc-1",
+      mode: "incremental",
+      tokenReference: "{{HIVE_STAGING}}",
+      repositoryUrl: "https://github.com/acme/hive",
+      before: "sha-before",
+      after: "sha-after",
+      ref: "refs/heads/main",
+    });
+    expect(vars).not.toHaveProperty("pat");
+    expect(vars).not.toHaveProperty("swarmApiKey");
+  });
+
+  it("skips when an incremental run for the repo is already in-flight", async () => {
+    vi.mocked(db.janitorConfig.findUnique).mockResolvedValue({
+      securityReviewEnabled: true,
+    } as never);
+    vi.mocked(db.protectReviewRun.findFirst)
+      .mockResolvedValueOnce({ id: "full-1", mode: "full", status: "completed" } as never)
+      .mockResolvedValueOnce({ id: "inc-open" } as never);
+
+    const result = await dispatchIncrementalProtectReview({
+      workspaceId: "ws-1",
+      repositoryUrl: "https://github.com/acme/hive",
+      before: "aaa",
+      after: "bbb",
+      ref: "refs/heads/main",
+    });
+
+    expect(result).toEqual({ dispatched: false, reason: "in_flight" });
+    expect(db.protectReviewRun.create).not.toHaveBeenCalled();
+  });
+
+  it("skips when a recent incremental run for the repo exists (debounce)", async () => {
+    vi.mocked(db.janitorConfig.findUnique).mockResolvedValue({
+      securityReviewEnabled: true,
+    } as never);
+    vi.mocked(db.protectReviewRun.findFirst)
+      .mockResolvedValueOnce({ id: "full-1", mode: "full", status: "completed" } as never)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "inc-recent" } as never);
+
+    const result = await dispatchIncrementalProtectReview({
+      workspaceId: "ws-1",
+      repositoryUrl: "https://github.com/acme/hive",
+      before: "aaa",
+      after: "bbb",
+      ref: "refs/heads/main",
+    });
+
+    expect(result).toEqual({ dispatched: false, reason: "debounced" });
+    expect(db.protectReviewRun.create).not.toHaveBeenCalled();
   });
 });
 
