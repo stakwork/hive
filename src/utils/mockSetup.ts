@@ -152,7 +152,9 @@ export async function ensureMockWorkspaceForUser(userId: string): Promise<string
       select: { id: true, slug: true },
     });
 
-    // Optional repository seed to satisfy UIs expecting a repository
+    // Optional repository seed to satisfy UIs expecting a repository.
+    // Protect scope stays empty by default. Extra repos (added later by
+    // seedMockData plus this ingestion-off repo) cover in/out of scope.
     await tx.repository.create({
       data: {
         name: "hive",
@@ -169,6 +171,18 @@ export async function ensureMockWorkspaceForUser(userId: string): Promise<string
         codeIngestionEnabled: true,
         docsEnabled: true,
         mocksEnabled: true,
+      },
+    });
+    await tx.repository.create({
+      data: {
+        name: "docs-site",
+        repositoryUrl: "https://github.com/stakwork/docs-site",
+        branch: "main",
+        status: RepositoryStatus.SYNCED,
+        workspaceId: workspace.id,
+        codeIngestionEnabled: false,
+        docsEnabled: true,
+        mocksEnabled: false,
       },
     });
 
@@ -353,7 +367,7 @@ export async function ensureStakworkMockWorkspace(userId: string): Promise<strin
       },
     });
 
-    // 6. Create Repository record for "hive"
+    // 6. Create Repository records. Protect scope stays empty by default.
     await tx.repository.create({
       data: {
         name: "hive",
@@ -370,6 +384,18 @@ export async function ensureStakworkMockWorkspace(userId: string): Promise<strin
         codeIngestionEnabled: true,
         docsEnabled: true,
         mocksEnabled: true,
+      },
+    });
+    await tx.repository.create({
+      data: {
+        name: "docs-site",
+        repositoryUrl: "https://github.com/stakwork/docs-site",
+        branch: "main",
+        status: RepositoryStatus.SYNCED,
+        workspaceId: workspace.id,
+        codeIngestionEnabled: false,
+        docsEnabled: true,
+        mocksEnabled: false,
       },
     });
 

@@ -419,6 +419,45 @@ describe("HttpClient.post Method - Unit Tests", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith("[HttpClient] POST body:", body);
     });
 
+    test("should redact vars.pat and tokens before logging POST body", async () => {
+      const body = {
+        workflow_params: {
+          set_var: {
+            attributes: {
+              vars: {
+                username: "alice",
+                pat: "ghs_super_secret",
+                tokenReference: "{{HIVE_STAGING}}",
+              },
+            },
+          },
+        },
+      };
+
+      await httpClient.post("/projects", body);
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        "[HttpClient] POST body:",
+        expect.objectContaining({
+          workflow_params: {
+            set_var: {
+              attributes: {
+                vars: {
+                  username: "alice",
+                  pat: "[REDACTED]",
+                  tokenReference: "{{HIVE_STAGING}}",
+                },
+              },
+            },
+          },
+        }),
+      );
+      const logged = mockConsoleLog.mock.calls.find(
+        (call) => call[0] === "[HttpClient] POST body:",
+      );
+      expect(JSON.stringify(logged?.[1])).not.toContain("ghs_super_secret");
+    });
+
     test("should log undefined values when body is not provided", async () => {
       await httpClient.post("/test");
 

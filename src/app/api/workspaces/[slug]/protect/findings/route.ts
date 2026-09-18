@@ -9,6 +9,7 @@ import {
   getLatestCompletedFullProtectReviewRun,
   getLatestProtectReviewRun,
 } from "@/services/protect";
+import { getProtectScopePayload } from "@/lib/protect/scope";
 import type { ProtectFindingsResponse, ProtectReviewRunSummary } from "@/types/protect";
 
 function toRunSummary(
@@ -46,10 +47,11 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const [inFlight, completedFull, latest] = await Promise.all([
+    const [inFlight, completedFull, latest, scope] = await Promise.all([
       getInFlightProtectReviewRun(member.workspaceId),
       getLatestCompletedFullProtectReviewRun(member.workspaceId),
       getLatestProtectReviewRun(member.workspaceId),
+      getProtectScopePayload(member.workspaceId),
     ]);
 
     if (inFlight) {
@@ -57,6 +59,7 @@ export async function GET(
         status: "in-progress",
         findings: [],
         run: toRunSummary(inFlight),
+        scope,
       };
       return NextResponse.json(body);
     }
@@ -66,6 +69,7 @@ export async function GET(
         status: "empty",
         findings: [],
         run: toRunSummary(latest),
+        scope,
       };
       return NextResponse.json(body);
     }
@@ -76,6 +80,7 @@ export async function GET(
         status: "error",
         findings: [],
         run: toRunSummary(completedFull),
+        scope,
         error: "Workspace swarm is not configured",
       };
       return NextResponse.json(body);
@@ -87,6 +92,7 @@ export async function GET(
         status: "error",
         findings: [],
         run: toRunSummary(completedFull),
+        scope,
         error: listed.error,
       };
       return NextResponse.json(body);
@@ -96,6 +102,7 @@ export async function GET(
       status: "ready",
       findings: listed.findings.map(redactSecretEvidence),
       run: toRunSummary(completedFull),
+      scope,
     };
     return NextResponse.json(body);
   } catch (error) {
