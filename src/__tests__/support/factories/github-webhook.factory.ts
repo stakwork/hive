@@ -19,6 +19,7 @@ interface CreateWebhookTestScenarioOptions {
   repositoryUrl?: string;
   branch?: string;
   status?: RepositoryStatus;
+  codeIngestionEnabled?: boolean;
 }
 
 /**
@@ -32,6 +33,7 @@ export async function createWebhookTestScenario(options?: CreateWebhookTestScena
     repositoryUrl = "https://github.com/test-owner/test-repo",
     branch = "main",
     status = RepositoryStatus.SYNCED,
+    codeIngestionEnabled = true,
   } = options || {};
 
   return await db.$transaction(async (tx) => {
@@ -85,7 +87,7 @@ export async function createWebhookTestScenario(options?: CreateWebhookTestScena
         githubWebhookId,
         githubWebhookSecret: encryptedSecret ? JSON.stringify(encryptedSecret) : null,
         // Sync config - matches Prisma defaults
-        codeIngestionEnabled: true,
+        codeIngestionEnabled,
         docsEnabled: true,
         mocksEnabled: false,
       },
@@ -106,6 +108,8 @@ export async function createWebhookTestScenario(options?: CreateWebhookTestScena
  */
 interface GitHubPushPayload {
   ref: string;
+  before?: string;
+  after?: string;
   repository: {
     html_url: string;
     full_name: string;
@@ -147,10 +151,14 @@ interface GitHubPullRequestPayload {
 export function createGitHubPushPayload(
   ref: string = "refs/heads/main",
   repositoryUrl: string = "https://github.com/test-owner/test-repo",
-  fullName: string = "test-owner/test-repo"
+  fullName: string = "test-owner/test-repo",
+  before: string = "0000000000000000000000000000000000000000",
+  after: string = "abc123def4567890abc123def4567890abc123de",
 ): GitHubPushPayload {
   return {
     ref,
+    before,
+    after,
     repository: {
       html_url: repositoryUrl,
       full_name: fullName,
