@@ -32,7 +32,11 @@ export async function chooseProtectJamieTool(
   return looksMechanicalSingleFile(finding) ? "propose_code_change" : "propose_feature";
 }
 
-export function buildProtectJamieSeed(finding: ProtectFinding, tool: ProtectJamieTool): string {
+export function buildProtectJamieSeed(
+  finding: ProtectFinding,
+  tool: ProtectJamieTool,
+  workspaceSlug: string,
+): string {
   const evidence =
     finding.category === "secret"
       ? "(redacted — secret-category evidence is not included)"
@@ -40,8 +44,8 @@ export function buildProtectJamieSeed(finding: ProtectFinding, tool: ProtectJami
 
   const toolInstruction =
     tool === "propose_code_change"
-      ? "This looks like a small single-file, single-repo mechanical fix. Use the propose_code_change tool."
-      : "This looks multi-file or ambiguous. Use the propose_feature tool.";
+      ? `This looks like a small single-file, single-repo mechanical fix. Use the propose_code_change tool and pass workspaceSlug "${workspaceSlug}" and repositoryUrl "${finding.repositoryUrl}".`
+      : `This looks multi-file or ambiguous. Use the propose_feature tool and pass workspaceSlug "${workspaceSlug}" and repositoryUrl "${finding.repositoryUrl}".`;
 
   return [
     "You are helping a workspace member act on a single Protect security finding.",
@@ -52,6 +56,7 @@ export function buildProtectJamieSeed(finding: ProtectFinding, tool: ProtectJami
     `Category: ${finding.category}`,
     `Severity: ${finding.severity}`,
     `Area: ${finding.area || "(none)"}`,
+    `Workspace: ${workspaceSlug}`,
     `Repository: ${finding.repositoryUrl}`,
     `File: ${finding.file}`,
     `Line: ${finding.line ?? "(unknown)"}`,
