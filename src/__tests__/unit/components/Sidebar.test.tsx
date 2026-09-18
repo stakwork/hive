@@ -1110,3 +1110,114 @@ describe('Sidebar - Legal Section', () => {
     });
   });
 });
+
+describe('Sidebar - Protect direct navigation link', () => {
+  const mockUser = {
+    name: 'Test User',
+    email: 'test@example.com',
+    image: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(true);
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: true,
+      hasAccess: true,
+      role: 'OWNER',
+    } as any);
+    vi.mocked(useUnresolvedErrorCountModule.useUnresolvedErrorCount).mockReturnValue({ count: 0 });
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'workspace-1', name: 'Test Workspace', slug: 'test-workspace', poolState: 'COMPLETE' },
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+  });
+
+  it('renders a standalone link to /protect alongside the toggle button', () => {
+    render(<Sidebar user={mockUser} />);
+
+    // The toggle button for Protect still exists alongside the new link
+    const protectToggles = screen.getAllByTestId('nav-protect');
+    expect(protectToggles.length).toBeGreaterThan(0);
+
+    const protectLinkButtons = screen.getAllByTestId('nav-protect-link');
+    expect(protectLinkButtons.length).toBeGreaterThan(0);
+
+    // The mocked Button renders `asChild` content inline, so the real href
+    // lives on the nested <a> rendered by the Link mock — same pattern used
+    // for Settings/GraphMindset Admin elsewhere in this file.
+    const protectLinkAnchor = protectLinkButtons[0].querySelector('a');
+    expect(protectLinkAnchor).toHaveAttribute('href', '/w/test-workspace/protect');
+  });
+
+  it('clicking the toggle button only expands/collapses children and does not navigate', async () => {
+    const user = userEvent.setup();
+    render(<Sidebar user={mockUser} />);
+
+    const protectToggle = screen.getAllByTestId('nav-protect')[0];
+    // Toggle is a plain button, not a link — it has no href to navigate to
+    expect(protectToggle.tagName).toBe('BUTTON');
+    expect(protectToggle).not.toHaveAttribute('href');
+    expect(protectToggle.querySelector('a')).toBeNull();
+
+    const getChildrenList = () =>
+      screen.getAllByTestId('nav-recommendations')[0].closest('ul');
+
+    // Collapsed initially — the children <ul> is rendered with the 'hidden' class
+    expect(getChildrenList()?.className).toContain('hidden');
+
+    await user.click(protectToggle);
+
+    await waitFor(() => {
+      expect(getChildrenList()?.className).not.toContain('hidden');
+    });
+
+    // Still no href/navigation was introduced on the toggle button itself
+    expect(protectToggle).not.toHaveAttribute('href');
+
+    await user.click(protectToggle);
+
+    await waitFor(() => {
+      expect(getChildrenList()?.className).toContain('hidden');
+    });
+  });
+
+  it('clicking the Protect link navigates to /protect without toggling the children list', async () => {
+    const user = userEvent.setup();
+    render(<Sidebar user={mockUser} />);
+
+    const protectLinkAnchor = screen.getAllByTestId('nav-protect-link')[0].querySelector('a');
+    expect(protectLinkAnchor).toHaveAttribute('href', '/w/test-workspace/protect');
+
+    const childrenList = screen.getAllByTestId('nav-recommendations')[0].closest('ul');
+    expect(childrenList?.className).toContain('hidden');
+
+    // Clicking the link must not toggle the children's expand state
+    await user.click(protectLinkAnchor!);
+
+    expect(childrenList?.className).toContain('hidden');
+  });
+
+  it('does not render the Protect link when the feature flag is off', () => {
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(false);
+    render(<Sidebar user={mockUser} />);
+
+    // Protect is excluded from the nav entirely when canAccessDefense is false,
+    // so neither the toggle nor the new link should render.
+    expect(screen.queryAllByTestId('nav-protect-link')).toHaveLength(0);
+    expect(screen.queryAllByTestId('nav-protect')).toHaveLength(0);
+  });
+});
