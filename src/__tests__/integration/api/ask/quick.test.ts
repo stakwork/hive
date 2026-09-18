@@ -44,6 +44,13 @@ vi.mock('ai', async (importOriginal) => {
     createUIMessageStreamResponse: vi.fn(
       ({ headers }) => new Response('test', { status: 200, headers }),
     ),
+    // ai@7: `toUIMessageStream` is a STANDALONE module export taking
+    // `{ stream, onError }` — it is no longer a method on the streamText
+    // result. The route merges its return value into the UI message
+    // stream writer, so an empty readable is enough here.
+    toUIMessageStream: vi.fn(
+      () => new ReadableStream({ start: (c) => c.close() }),
+    ),
   };
 });
 
@@ -513,11 +520,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStream: vi.fn(() =>
-          new Response('test', {
-            headers: { 'Content-Type': 'text/plain' },
-          })
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
 
       vi.mocked(streamText).mockReturnValue(mockStream as any);
@@ -616,11 +619,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStream: vi.fn(() =>
-          new Response('test', {
-            headers: { 'Content-Type': 'text/plain' },
-          })
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
 
       vi.mocked(streamText).mockReturnValue(mockStream as any);
@@ -701,11 +700,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStream: vi.fn(() =>
-          new Response('test response', {
-            headers: { 'Content-Type': 'text/plain' },
-          })
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
 
       vi.mocked(streamText).mockReturnValue(mockStream as any);
@@ -760,11 +755,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStream: vi.fn(() =>
-          new Response('test response', {
-            headers: { 'Content-Type': 'text/plain' },
-          })
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
 
       vi.mocked(streamText).mockReturnValue(mockStream as any);
@@ -816,11 +807,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStream: vi.fn(() =>
-          new Response('test response', {
-            headers: { 'Content-Type': 'text/plain' },
-          })
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
 
       vi.mocked(streamText).mockReturnValue(mockStream as any);
@@ -886,9 +873,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStream: vi.fn(
-          () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
       vi.mocked(streamText).mockReturnValue(mockStream as any);
 
@@ -986,9 +971,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStream: vi.fn(
-          () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
       vi.mocked(streamText).mockReturnValue(mockStream as any);
 
@@ -1080,11 +1063,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
         await setupWorkspaceWithConversation(storedMessages);
 
       const mockStream = {
-        toUIMessageStream: vi.fn(() =>
-          new Response('test', {
-            headers: { 'Content-Type': 'text/plain' },
-          })
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
       vi.mocked(streamText).mockReturnValue(mockStream as any);
 
@@ -1243,9 +1222,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStream: vi.fn(() =>
-          new Response('test', { headers: { 'Content-Type': 'text/plain' } })
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
       vi.mocked(streamText).mockReturnValue(mockStream as any);
 
@@ -1345,11 +1322,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
         await setupWorkspaceWithConversation(storedMessages);
 
       const mockStream = {
-        toUIMessageStream: vi.fn(() =>
-          new Response('test', {
-            headers: { 'Content-Type': 'text/plain' },
-          })
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
       vi.mocked(streamText).mockReturnValue(mockStream as any);
 
@@ -1518,9 +1491,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStream: vi.fn(
-          () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
       vi.mocked(streamText).mockReturnValue(mockStream as any);
 
@@ -1572,9 +1543,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       });
 
       const mockStream = {
-        toUIMessageStream: vi.fn(
-          () => new Response('ok', { headers: { 'Content-Type': 'text/plain' } }),
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
       vi.mocked(streamText).mockReturnValue(mockStream as any);
 
@@ -1650,9 +1619,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
 
     function mockStream() {
       const stream = {
-        toUIMessageStream: vi.fn(
-          () => new Response('test', { headers: { 'Content-Type': 'text/plain' } }),
-        ),
+        fullStream: new ReadableStream({ start: (c) => c.close() }),
       };
       vi.mocked(streamText).mockReturnValue(stream as any);
     }

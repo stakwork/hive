@@ -110,9 +110,12 @@ vi.mock("@/lib/constants/prompt", () => ({
   getPromptsCapabilitySnippet: vi.fn(() => ""),
   getConceptsCapabilitySnippet: vi.fn(() => ""),
 }));
-vi.mock("ai", () => ({
-  tool: vi.fn((t: unknown) => t),
-}));
+vi.mock("ai", async (importOriginal) => {
+  // ai@7's tool/capability modules reach for `jsonSchema` (and friends)
+  // at import time, so spread the real module rather than replacing it.
+  const actual = await importOriginal<typeof import("ai")>();
+  return { ...actual, tool: vi.fn((t: unknown) => t) };
+});
 vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_FEATURE_TOOL: "propose_feature",
   PROPOSE_INITIATIVE_TOOL: "propose_initiative",
