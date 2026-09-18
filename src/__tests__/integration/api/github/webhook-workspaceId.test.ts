@@ -1043,7 +1043,8 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
 
       testSetup = await createWebhookTestScenario({ branch: 'main' });
       await enableProtect(testSetup.workspace.id);
-      await completeFullReview(testSetup.workspace.id);
+      await addToScope(testSetup.workspace.id, testSetup.repository.id);
+      await completeFullReview(testSetup.workspace.id, testSetup.repository);
       await db.janitorConfig.update({
         where: { workspaceId: testSetup.workspace.id },
         data: { securityReviewModel: 'anthropic/claude-sonnet-4' },

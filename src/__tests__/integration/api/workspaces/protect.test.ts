@@ -714,7 +714,9 @@ describe("Protect API", () => {
   });
 
   test("full-review Stakwork vars include the resolved model and credential fields", async () => {
-    const { actor, workspace } = await setup("ADMIN");
+    const { actor, workspace, repository } = await setup("ADMIN");
+    await addToScope(workspace.id, repository.id);
+    await attachWorkspaceGithubApp(actor.id, workspace.id, "ghs_admin_pat");
     await createTestLlmModel({
       name: "claude-sonnet-4",
       provider: "ANTHROPIC",
