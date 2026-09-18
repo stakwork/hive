@@ -583,7 +583,13 @@ Example queries:
           const searchLogsTool = tools['search_logs'];
           if (!searchLogsTool?.execute) return 'search_logs tool not found on MCP server';
           return capMcpResult(
-            await searchLogsTool.execute({ query, max_hits }, { toolCallId: '1', messages: [] }),
+            await searchLogsTool.execute(
+              { query, max_hits },
+              // v7 ToolExecutionOptions also requires `context` (tool-context
+              // from the tool's context schema). MCP tools declare none, so
+              // pass undefined.
+              { toolCallId: '1', messages: [], context: undefined },
+            ),
           );
         };
         try {
@@ -603,8 +609,9 @@ Example queries:
   };
   // Gated to the "stakwork" workspace only — searches Jarvis Workflow nodes.
   const isStakwork = workspaceAuth?.workspaceSlug === "stakwork";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let stakworkSearchWorkflowsTool: ReturnType<typeof tool<any, any>> | undefined;
+  // v7's `tool()` is generic over <INPUT, OUTPUT, CONTEXT>; the single entry of a
+  // ToolSet is the precise type we need here (Tool + the execute/input callbacks).
+  let stakworkSearchWorkflowsTool: ToolSet[string] | undefined;
   if (isStakwork) {
     const swarmHost = new URL(swarmUrl).hostname;
     const jarvisBase = `https://${swarmHost}:8444`;
@@ -693,13 +700,14 @@ Example queries:
     });
   }
 
-  return {
+  const allTools: ToolSet = {
     ...baseTools,
     ...buildWorkspaceTools(swarmUrl, swarmApiKey, workspaceAuth),
     ...(isStakwork && stakworkSearchWorkflowsTool
       ? { stakwork__search_workflows: stakworkSearchWorkflowsTool }
       : {}),
   };
+  return allTools;
 }
 
 import { mcpText, capMcpResult } from "./mcpResult";

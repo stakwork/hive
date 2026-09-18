@@ -281,6 +281,79 @@ describe("toIngestUsage", () => {
     });
   });
 
+  test("falls back to flattened Anthropic snake_case cache counters", () => {
+    expect(
+      toIngestUsage({
+        inputTokens: 10,
+        outputTokens: 5,
+        cache_read_input_tokens: 800,
+        cache_creation_input_tokens: 64,
+      }),
+    ).toEqual({
+      input_tokens: 10,
+      output_tokens: 5,
+      cache_read_tokens: 800,
+      cache_write_tokens: 64,
+    });
+  });
+
+  test("falls back to ai@7's `raw` provider-usage passthrough", () => {
+    expect(
+      toIngestUsage({
+        inputTokens: 11,
+        outputTokens: 6,
+        raw: {
+          cache_read_input_tokens: 512,
+          cache_creation_input_tokens: 128,
+        },
+      }),
+    ).toEqual({
+      input_tokens: 11,
+      output_tokens: 6,
+      cache_read_tokens: 512,
+      cache_write_tokens: 128,
+    });
+  });
+
+  test("nested inputTokenDetails still wins over every flat/raw fallback", () => {
+    // v7 KEPT the nested shape as primary — a flat or raw value must never
+    // shadow it, otherwise upgrading a provider silently changes the numbers.
+    expect(
+      toIngestUsage({
+        inputTokens: 12,
+        outputTokens: 7,
+        inputTokenDetails: { cacheReadTokens: 900, cacheWriteTokens: 30 },
+        cachedInputTokens: 1,
+        cache_read_input_tokens: 2,
+        cache_creation_input_tokens: 3,
+        raw: { cache_read_input_tokens: 4, cache_creation_input_tokens: 5 },
+      }),
+    ).toEqual({
+      input_tokens: 12,
+      output_tokens: 7,
+      cache_read_tokens: 900,
+      cache_write_tokens: 30,
+    });
+  });
+
+  test("mixes sources: flat cache read + raw cache write", () => {
+    // Read and write resolve independently, so a payload that only carries
+    // the provider-spec flat read still picks its write out of `raw`.
+    expect(
+      toIngestUsage({
+        inputTokens: 13,
+        outputTokens: 8,
+        cachedInputTokens: 300,
+        raw: { cache_creation_input_tokens: 42 },
+      }),
+    ).toEqual({
+      input_tokens: 13,
+      output_tokens: 8,
+      cache_read_tokens: 300,
+      cache_write_tokens: 42,
+    });
+  });
+
   test("zero-fills missing or non-numeric fields", () => {
     expect(toIngestUsage({})).toEqual({
       input_tokens: 0,
