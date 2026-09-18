@@ -218,21 +218,52 @@ export function toIngestUsage(usage: unknown):
     }
   | undefined {
   if (!usage || typeof usage !== "object") return undefined;
+  // Cache counters live in different places depending on which layer
+  // handed us the object. ai@6 and ai@7 both nest them under
+  // `inputTokenDetails` (checked first, and what the fixtures use);
+  // the flat provider spec (`LanguageModelV2Usage`) only has cache
+  // reads, as `cachedInputTokens`; and anything forwarding Anthropic's
+  // own payload uses snake_case, either flattened onto usage or inside
+  // ai@7's `raw` passthrough. Resolve in that order so cache tokens are
+  // never silently reported as zero.
   const u = usage as {
     inputTokens?: number;
     outputTokens?: number;
     cachedInputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
     inputTokenDetails?: {
       cacheReadTokens?: number;
       cacheWriteTokens?: number;
     };
+    raw?: {
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+    };
   };
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  const cacheRead =
+    u.inputTokenDetails?.cacheReadTokens ??
+    u.cachedInputTokens ??
+    u.cacheReadInputTokens ??
+    u.cacheReadTokens ??
+    u.cache_read_input_tokens ??
+    u.raw?.cache_read_input_tokens;
+  const cacheWrite =
+    u.inputTokenDetails?.cacheWriteTokens ??
+    u.cacheCreationInputTokens ??
+    u.cacheWriteTokens ??
+    u.cache_creation_input_tokens ??
+    u.raw?.cache_creation_input_tokens;
   return {
     input_tokens: num(u.inputTokens),
     output_tokens: num(u.outputTokens),
-    cache_read_tokens: num(u.inputTokenDetails?.cacheReadTokens ?? u.cachedInputTokens),
-    cache_write_tokens: num(u.inputTokenDetails?.cacheWriteTokens),
+    cache_read_tokens: num(cacheRead),
+    cache_write_tokens: num(cacheWrite),
   };
 }
 

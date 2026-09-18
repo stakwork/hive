@@ -34,9 +34,15 @@ vi.mock("@/utils/devContainerUtils", () => ({
 }));
 
 // Stub `ai` so `tool()` is a passthrough returning the definition object.
-vi.mock("ai", () => ({
-  tool: vi.fn((t: unknown) => t),
-}));
+// ai@7's capability/tool modules also reach for `jsonSchema` and
+// `dynamicTool` at import time, so the module mock must provide them.
+vi.mock("ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ai")>();
+  return {
+    ...actual,
+    tool: vi.fn((t: unknown) => t),
+  };
+});
 
 // Mocks needed when capabilities.ts is imported (prevents pulling in heavy deps).
 vi.mock("@/lib/ai/canvasTools", () => ({ buildCanvasTools: vi.fn(() => ({})) }));

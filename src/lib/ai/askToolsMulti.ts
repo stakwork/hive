@@ -394,7 +394,12 @@ export function askToolsMulti(
           const searchLogsTool = tools["search_logs"];
           if (!searchLogsTool?.execute) return "search_logs tool not found";
           return capMcpResult(
-            await searchLogsTool.execute({ query, max_hits }, { toolCallId: "1", messages: [] }),
+            await searchLogsTool.execute(
+              { query, max_hits },
+              // v7 ToolExecutionOptions also requires `context`; MCP tools
+              // declare no context schema, so pass undefined.
+              { toolCallId: "1", messages: [], context: undefined },
+            ),
           );
         };
         try {

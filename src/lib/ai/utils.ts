@@ -1,4 +1,4 @@
-import { streamObject } from "ai";
+import { createTextStreamResponse, streamObject } from "ai";
 import { z } from "zod";
 
 export function parseOwnerRepo(repoUrl: string): { owner: string; repo: string } {
@@ -133,5 +133,8 @@ export async function generateWithStreaming<T extends z.ZodTypeAny>(
     temperature: 0.7,
   });
 
-  return result.toTextStreamResponse();
+  // v7: the result-object `toTextStreamResponse()` helper is deprecated;
+  // use the standalone `createTextStreamResponse` with the result's
+  // `textStream` (a ReadableStream<string>) instead.
+  return createTextStreamResponse({ stream: result.textStream });
 }

@@ -40,6 +40,7 @@
 import { streamText, ModelMessage, ToolSet, NoSuchToolError } from "ai";
 import type {
   StreamTextResult,
+  OutputInterface,
   StopCondition,
   PrepareStepFunction,
 } from "ai";
@@ -481,7 +482,11 @@ export interface RunCanvasAgentOptions {
 
 export interface RunCanvasAgentResult {
   /** Raw streamText handle — call `.toUIMessageStreamResponse()` or `await .text`. */
-  result: StreamTextResult<ToolSet, never>;
+  // ai@7: `StreamTextResult<TOOLS, RUNTIME_CONTEXT, OUTPUT>` takes three
+  // type args. We don't use a runtime context or structured output here,
+  // so mirror the `streamText` defaults: `Context` (= Record<string,
+  // unknown>, not exported from "ai") and the `Output` interface.
+  result: StreamTextResult<ToolSet, Record<string, unknown>, OutputInterface>;
   /**
    * Resolved primary swarm credentials. Surface so the HTTP route's
    * `after()` enrichment block can fetch provenance from stakgraph
@@ -644,6 +649,34 @@ function primaryOwnerRepo(repoUrls: string[]): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Demote every caller-supplied `role:"system"` message to `role:"user"`.
+ *
+ * The public ask routes (`/api/ask/quick`, `/api/ask/sync`, and the
+ * replay/autoturn paths built on them) accept a raw message array whose
+ * `role` may be any of user/assistant/system/tool. A `system` row from
+ * the client is untrusted input that would otherwise be presented to the
+ * model with system-level authority — i.e. prompt injection that can
+ * override the server-authored persona/capability prefix.
+ *
+ * Only the server-built `prefixMessages` (whose first row is the real
+ * system prompt and the Anthropic cache prefix) and the trailing canvas
+ * scope message are allowed to keep their authored roles; this helper is
+ * applied solely to the caller's slice.
+ *
+ * Content is preserved verbatim and order is never changed — the model
+ * still sees exactly what the caller sent, just as a user turn.
+ */
+export function demoteCallerSystemMessages(
+  messages: ModelMessage[],
+): ModelMessage[] {
+  return messages.map((m) =>
+    m.role === "system"
+      ? ({ ...m, role: "user", content: m.content } as ModelMessage)
+      : m,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1204,8 +1237,13 @@ export async function runCanvasAgent(
   // the exact problem this fixes.
   const canvasScopeMessage = buildCanvasScopeMessage(canvasScope);
   const rawMessages: ModelMessage[] = [
+    // `prefixMessages` is server-authored: its leading `role:"system"`
+    // row is the stable longest-common-prefix Anthropic caches against
+    // (and is re-exported as `assembledPrefix` for Agent Logs), so it
+    // is passed through verbatim. Caller-supplied `messages` are NOT
+    // trusted — see `demoteCallerSystemMessages`.
     ...prefixMessages,
-    ...messages,
+    ...demoteCallerSystemMessages(messages),
     ...(canvasScopeMessage ? [canvasScopeMessage] : []),
   ];
   const tSanitize = Date.now();
@@ -1293,17 +1331,18 @@ export async function runCanvasAgent(
 
   // ------------------------------------------------------------------
   // Provider options — enables Anthropic auto prompt caching
-  // (top-level `cache_control` field, supported by @ai-sdk/anthropic
-  // 3.0.75+ as bundled by aieo). Also threads `thinking` config.
-  // The aieo SDK copy resolves under `node_modules/aieo/node_modules/
-  // @ai-sdk/anthropic`, which is the one that actually serializes
-  // these options into the API request — confirmed in the SDK source
-  // (dist/index.js ~line 3246: `cache_control: anthropicOptions.cacheControl`).
-  // ------------------------------------------------------------------
-  // Cast: aieo bundles its own `@ai-sdk/provider` type copy, so the
-  // returned union doesn't structurally match the `SharedV3ProviderOptions`
-  // shape from hive's top-level `ai` package. The runtime payload is
-  // identical — aieo created the model with the SDK that consumes it.
+  // (top-level `cache_control` field). Also threads `thinking` config.
+  //
+  // aieo 0.2.0 no longer nests its own SDK copy: it hoists onto this
+  // repo's single root `ai@7` / `@ai-sdk/anthropic@4`, so the same
+  // installed provider that aieo built the model with is the one that
+  // serializes these options into the API request
+  // (`cache_control: anthropicOptions.cacheControl`). One SDK, one set
+  // of `SharedV4ProviderOptions` types — no duplicate-copy mismatch.
+  //
+  // The cast stays only because `getProviderOptions` returns a
+  // per-provider union rather than the SDK's index-signature
+  // `ProviderOptions`; the runtime payload is unchanged.
   const providerOptions = getProviderOptions(
     provider,
   ) as unknown as Parameters<typeof streamText>[0]["providerOptions"];
@@ -1357,6 +1396,13 @@ export async function runCanvasAgent(
     model,
     tools,
     messages: modelMessages,
+    // ai@7 rejects `role:"system"` rows inside `messages` unless this is
+    // set. Our server-authored prefix intentionally leads with one (it's
+    // the stable Anthropic cache prefix), so opt in. Caller-supplied
+    // system rows are demoted to `user` above by
+    // `demoteCallerSystemMessages`, so this does not widen injection
+    // surface.
+    allowSystemInMessages: true,
     providerOptions,
     // The SDK default (2 retries, quick backoff) is easily exhausted by a
     // transient network flake (e.g. ECONNRESET to the provider) or a

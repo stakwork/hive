@@ -49,8 +49,8 @@
     "generate:workflow-benchmark-tasks": "tsx scripts/generate-workflow-benchmark-tasks.ts"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.85",
-    "@ai-sdk/mcp": "^1.0.19",
+    "@ai-sdk/anthropic": "4.0.56",
+    "@ai-sdk/mcp": "2.0.52",
     "@anycable/web": "^1.1.0",
     "@auth/prisma-adapter": "^2.10.0",
     "@aws-sdk/client-ec2": "^3.1019.0",
@@ -104,8 +104,8 @@
     "@vercel/blob": "^2.3.0",
     "@vercel/functions": "^3.1.4",
     "@xyflow/react": "^12.8.6",
-    "ai": "^6.0.72",
-    "aieo": "^0.1.38",
+    "ai": "7.0.105",
+    "aieo": "^0.2.0",
     "autoprefixer": "^10.4.21",
     "axios": "1.10.0",
     "bcryptjs": "^3.0.2",
@@ -179,7 +179,7 @@
     "three": "^0.180.0",
     "tiny-secp256k1": "^2.2.4",
     "undici": "7.29.0",
-    "zod": "^4.1.12",
+    "zod": "^4.6.5",
     "zustand": "^5.0.6"
   },
   "devDependencies": {
@@ -193,7 +193,7 @@
     "@types/diff": "^7.0.2",
     "@types/globrex": "^0.1.4",
     "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^20",
+    "@types/node": "^22",
     "@types/prismjs": "^1.26.5",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
@@ -217,12 +217,16 @@
   "overrides": {
     "keyv": "4.5.4",
     "flat-cache": "4.0.1",
-    "file-entry-cache": "8.0.0"
+    "file-entry-cache": "8.0.0",
+    "ai": "7.0.105",
+    "zod": "^4.6.5"
   },
   "resolutions": {
     "keyv": "4.5.4",
     "flat-cache": "4.0.1",
-    "file-entry-cache": "8.0.0"
+    "file-entry-cache": "8.0.0",
+    "ai": "7.0.105",
+    "zod": "^4.6.5"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
