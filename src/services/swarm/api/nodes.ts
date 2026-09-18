@@ -504,6 +504,47 @@ export async function searchNodesByAttributes(
   return { ok: true, nodes: Array.isArray(body?.nodes) ? body!.nodes : [], status: result.status };
 }
 
+/**
+ * List nodes of a given type via `GET /v2/nodes?type=X&limit=N`.
+ *
+ * Never throws. Returns `{ ok }` so callers can distinguish a failed Jarvis
+ * read from a legitimately empty result — `kgGetNodesByType` cannot.
+ */
+export async function listNodesByType(
+  config: JarvisConnectionConfig,
+  nodeType: string,
+  limit = 500,
+): Promise<SearchLatestResult> {
+  const params = new URLSearchParams({
+    type: nodeType,
+    limit: String(limit),
+  });
+
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes?${params.toString()}`,
+    method: "GET",
+  });
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      nodes: [],
+      status: result.status,
+      endpointMissing: result.notFound,
+      error: result.error,
+    };
+  }
+
+  const body = result.body as
+    | JarvisGraphNode[]
+    | { nodes?: JarvisGraphNode[]; status?: string }
+    | undefined;
+
+  const raw = Array.isArray(body) ? body : Array.isArray(body?.nodes) ? body.nodes : [];
+  return { ok: true, nodes: raw, status: result.status };
+}
+
 export async function updateNode(
   config: JarvisConnectionConfig,
   request: UpdateNodeRequest,

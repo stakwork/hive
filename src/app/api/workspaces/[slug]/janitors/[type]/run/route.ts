@@ -22,6 +22,13 @@ export async function POST(
 
     const { slug, type } = await params;
 
+    if (type.toUpperCase() === "SECURITY_REVIEW") {
+      return NextResponse.json(
+        { error: "SECURITY_REVIEW is no longer a janitor dispatcher; use Protect" },
+        { status: 400 },
+      );
+    }
+
     const access = await validateWorkspaceAccess(slug, userId);
     if (!access.hasAccess || !access.canWrite) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

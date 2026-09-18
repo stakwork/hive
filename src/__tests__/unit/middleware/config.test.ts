@@ -72,6 +72,10 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/janitors/webhook")).toBe("webhook");
     });
 
+    it("matches protect webhook route", () => {
+      expect(resolveRouteAccess("/api/protect/webhook")).toBe("webhook");
+    });
+
     it("matches swarm stakgraph webhook route", () => {
       expect(resolveRouteAccess("/api/swarm/stakgraph/webhook")).toBe("webhook");
     });

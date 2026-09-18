@@ -106,7 +106,6 @@ const SEQUENTIAL_JANITOR_TYPES: JanitorType[] = [
   JanitorType.UNIT_TESTS,
   JanitorType.INTEGRATION_TESTS,
   JanitorType.E2E_TESTS,
-  JanitorType.SECURITY_REVIEW,
   JanitorType.MOCK_GENERATION,
   JanitorType.GENERAL_REFACTORING,
   JanitorType.DEDUPLICATION,
@@ -311,8 +310,11 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
 
       console.log(`[JanitorCron] Processing workspace: ${name} (${slug})`);
 
-      // Process all enabled janitor types
+      // Process all enabled janitor types. SECURITY_REVIEW is now dispatched
+      // exclusively by Protect — skip it here so we never dual-write
+      // JanitorRecommendation rows.
       for (const janitorType of Object.values(JanitorType)) {
+        if (janitorType === JanitorType.SECURITY_REVIEW) continue;
         if (!isJanitorEnabled(janitorConfig, janitorType)) continue;
 
         // ── GraphMindset janitors: workspace-wide, single dispatch ────────────
