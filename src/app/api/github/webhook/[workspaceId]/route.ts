@@ -206,6 +206,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       void dispatchIncrementalProtectReview({
         workspaceId: repository.workspaceId,
         workspaceSlug: workspace?.slug,
+        userId: workspace?.ownerId,
         repositoryUrl: repository.repositoryUrl,
         before: beforeSha,
         after: afterSha,
