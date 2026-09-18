@@ -80,10 +80,10 @@ export const CreateStakworkRunSchema = z.object({
 
 export const StakworkRunWebhookSchema = z.object({
   /**
-   * Explicitly `.optional()`: zod 3 treated a bare `z.unknown()` key as
-   * implicitly optional, but zod 4 requires the key to be present. Several
-   * run types (e.g. TASK_GENERATION) post payloads with no `result` field,
-   * so dropping the modifier would 400 them.
+   * Several run types (e.g. TASK_GENERATION) post payloads with no
+   * `result` field. zod 4 already accepts a missing `z.unknown()` key at
+   * runtime; `.optional()` makes the inferred type `result?: unknown` to
+   * match.
    */
   result: z.unknown().optional(),
   project_status: z.string().optional(),

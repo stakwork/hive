@@ -1013,7 +1013,7 @@ export async function POST(request: NextRequest) {
 
       // Wrap the existing stream in a UIMessageStream so we can inject
       // custom `data-usage` chunks mid-stream (live per-step usage).
-      // The writer is attached to `writerRef` before `result.toUIMessageStream()`
+      // The writer is attached to `writerRef` before `toUIMessageStream()`
       // is merged in, so any step-finish events that fire during the
       // stream's first flush can already write to it.
       const uiStream = createUIMessageStream({

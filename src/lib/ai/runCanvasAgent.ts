@@ -28,11 +28,11 @@
  *   - Agent-proposal Approve/Reject short-circuit (no LLM call).
  *   - Token attribution & `after()` enrichments (follow-up questions,
  *     stakgraph provenance).
- *   - HTTP response shaping (`toUIMessageStreamResponse`, headers).
+ *   - HTTP response shaping (`toUIMessageStream`, headers).
  *
  * The signature returns the raw `streamText` result handle so each
  * caller can consume the stream however it wants:
- *   - HTTP route → `result.toUIMessageStreamResponse()`
+ *   - HTTP route → `toUIMessageStream({ stream: result.fullStream })`
  *   - Programmatic caller → `await result.text` (or iterate
  *     `result.textStream`)
  */
@@ -481,7 +481,7 @@ export interface RunCanvasAgentOptions {
 }
 
 export interface RunCanvasAgentResult {
-  /** Raw streamText handle — call `.toUIMessageStreamResponse()` or `await .text`. */
+  /** Raw streamText handle — pass `.fullStream` to `toUIMessageStream()` or `await .text`. */
   // ai@7: `StreamTextResult<TOOLS, RUNTIME_CONTEXT, OUTPUT>` takes three
   // type args. We don't use a runtime context or structured output here,
   // so mirror the `streamText` defaults: `Context` (= Record<string,
