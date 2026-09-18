@@ -157,6 +157,9 @@ export type CanvasConversationUpdateReason =
   // result into the conversation — either inline (short run) or via
   // the webhook fan-back safety net (long run).
   | "agent_run"
+  // A dispatched strut chat ended a turn (or settled) and its reply was
+  // fanned into the conversation via `/api/agent-runs/webhook/strut`.
+  | "strut"
   // A code-change claim reached a terminal PR outcome (webhook delivery
   // or reconcile cron) and the stored approvalResult row was patched in
   // place — clients reconcile existing rows so the proposal card flips
