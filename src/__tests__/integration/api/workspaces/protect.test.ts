@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST as TriggerRun } from "@/app/api/workspaces/[slug]/protect/run/route";
+import { GET as GetConfig, PUT as PutConfig } from "@/app/api/workspaces/[slug]/protect/config/route";
 import { GET as GetFindings } from "@/app/api/workspaces/[slug]/protect/findings/route";
 import { PATCH as PatchFinding } from "@/app/api/workspaces/[slug]/protect/findings/[refId]/route";
 import { POST as StartChat } from "@/app/api/workspaces/[slug]/protect/findings/[refId]/chat/route";
@@ -15,11 +16,13 @@ import {
 import {
   createAuthenticatedGetRequest,
   createAuthenticatedPostRequest,
+  createAuthenticatedPutRequest,
   createAuthenticatedPatchRequest,
   createGetRequest,
   createAuthenticatedSession,
   getMockedSession,
 } from "@/__tests__/support/helpers";
+import { createTestLlmModel } from "@/__tests__/support/factories/llm-model.factory";
 import * as findings from "@/lib/protect/findings";
 
 const mockStakworkRequest = vi.fn().mockResolvedValue({ data: { project_id: 99 } });
@@ -78,6 +81,8 @@ vi.mock("@/lib/helpers/jarvis-config", () => ({
 }));
 
 const originalFlag = process.env.NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION;
+const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
+const originalOpenaiKey = process.env.OPENAI_API_KEY;
 
 describe("Protect API", () => {
   beforeEach(() => {
@@ -85,12 +90,16 @@ describe("Protect API", () => {
     process.env.NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION = "true";
     process.env.STAKWORK_API_KEY = "test-key";
     process.env.STAKWORK_PROTECT_WORKFLOW_ID = "555";
+    process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+    process.env.OPENAI_API_KEY = "test-openai-key";
     vi.mocked(findings.listProtectFindings).mockResolvedValue({ ok: true, findings: [] });
     mockStakworkRequest.mockResolvedValue({ data: { project_id: 99 } });
   });
 
   afterEach(() => {
     process.env.NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION = originalFlag;
+    process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
+    process.env.OPENAI_API_KEY = originalOpenaiKey;
   });
 
   async function setup(role: "OWNER" | "ADMIN" | "DEVELOPER" | "VIEWER" = "OWNER") {
@@ -385,5 +394,166 @@ describe("Protect API", () => {
     expect(conversation?.workspaceId).toBe(workspace.id);
     expect(conversation?.isShared).toBe(false);
     expect(conversation?.source).toBe("protect");
+  });
+
+  test("GET config is readable by a member; PUT persists allowlisted model and null-clear", async () => {
+    const { actor, workspace } = await setup("DEVELOPER");
+    await createTestLlmModel({
+      name: "claude-sonnet-4",
+      provider: "ANTHROPIC",
+      isPublic: true,
+      isTaskDefault: true,
+    });
+
+    const getRes = await GetConfig(
+      createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/protect/config`,
+        actor,
+      ),
+      { params: Promise.resolve({ slug: workspace.slug }) },
+    );
+    expect(getRes.status).toBe(200);
+    expect(await getRes.json()).toEqual({ securityReviewModel: null });
+
+    const { actor: admin, workspace: ws } = await setup("ADMIN");
+    const putRes = await PutConfig(
+      createAuthenticatedPutRequest(
+        `http://localhost:3000/api/workspaces/${ws.slug}/protect/config`,
+        admin,
+        { securityReviewModel: "anthropic/claude-sonnet-4" },
+      ),
+      { params: Promise.resolve({ slug: ws.slug }) },
+    );
+    expect(putRes.status).toBe(200);
+    expect(await putRes.json()).toEqual({ securityReviewModel: "anthropic/claude-sonnet-4" });
+
+    const stored = await db.janitorConfig.findUnique({ where: { workspaceId: ws.id } });
+    expect(stored?.securityReviewModel).toBe("anthropic/claude-sonnet-4");
+
+    const clearRes = await PutConfig(
+      createAuthenticatedPutRequest(
+        `http://localhost:3000/api/workspaces/${ws.slug}/protect/config`,
+        admin,
+        { securityReviewModel: null },
+      ),
+      { params: Promise.resolve({ slug: ws.slug }) },
+    );
+    expect(clearRes.status).toBe(200);
+    expect(await clearRes.json()).toEqual({ securityReviewModel: null });
+  });
+
+  test("PUT config rejects non-catalog and key-not-configured models", async () => {
+    const { actor, workspace } = await setup("ADMIN");
+    await createTestLlmModel({
+      name: "claude-sonnet-4",
+      provider: "ANTHROPIC",
+      isPublic: true,
+    });
+    await createTestLlmModel({
+      name: "gpt-4o",
+      provider: "OPENAI",
+      isPublic: true,
+    });
+
+    const missing = await PutConfig(
+      createAuthenticatedPutRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/protect/config`,
+        actor,
+        { securityReviewModel: "anthropic/not-a-real-model" },
+      ),
+      { params: Promise.resolve({ slug: workspace.slug }) },
+    );
+    expect(missing.status).toBe(400);
+
+    const originalOpenai = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    const noKey = await PutConfig(
+      createAuthenticatedPutRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/protect/config`,
+        actor,
+        { securityReviewModel: "openai/gpt-4o" },
+      ),
+      { params: Promise.resolve({ slug: workspace.slug }) },
+    );
+    process.env.OPENAI_API_KEY = originalOpenai;
+    expect(noKey.status).toBe(400);
+  });
+
+  test("PUT config is admin-only and IDOR-safe across workspaces", async () => {
+    const { actor, workspace } = await setup("DEVELOPER");
+    await createTestLlmModel({
+      name: "claude-sonnet-4",
+      provider: "ANTHROPIC",
+      isPublic: true,
+    });
+
+    const forbidden = await PutConfig(
+      createAuthenticatedPutRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/protect/config`,
+        actor,
+        { securityReviewModel: "anthropic/claude-sonnet-4" },
+      ),
+      { params: Promise.resolve({ slug: workspace.slug }) },
+    );
+    expect(forbidden.status).toBe(403);
+
+    const { actor: adminA, workspace: wsA } = await setup("ADMIN");
+    const { workspace: wsB } = await setup("OWNER");
+
+    const idorPut = await PutConfig(
+      createAuthenticatedPutRequest(
+        `http://localhost:3000/api/workspaces/${wsB.slug}/protect/config`,
+        adminA,
+        { securityReviewModel: "anthropic/claude-sonnet-4" },
+      ),
+      { params: Promise.resolve({ slug: wsB.slug }) },
+    );
+    expect([403, 404]).toContain(idorPut.status);
+
+    const idorGet = await GetConfig(
+      createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/${wsB.slug}/protect/config`,
+        adminA,
+      ),
+      { params: Promise.resolve({ slug: wsB.slug }) },
+    );
+    expect([403, 404]).toContain(idorGet.status);
+
+    const own = await db.janitorConfig.findUnique({ where: { workspaceId: wsA.id } });
+    const other = await db.janitorConfig.findUnique({ where: { workspaceId: wsB.id } });
+    expect(own?.securityReviewModel ?? null).toBeNull();
+    expect(other?.securityReviewModel ?? null).toBeNull();
+  });
+
+  test("full-review Stakwork vars include the resolved model and credential fields", async () => {
+    const { actor, workspace } = await setup("ADMIN");
+    await createTestLlmModel({
+      name: "claude-sonnet-4",
+      provider: "ANTHROPIC",
+      isPublic: true,
+      isTaskDefault: true,
+    });
+    await db.janitorConfig.update({
+      where: { workspaceId: workspace.id },
+      data: { securityReviewModel: "anthropic/claude-sonnet-4" },
+    });
+
+    const ok = await TriggerRun(
+      createAuthenticatedPostRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/protect/run`,
+        actor,
+        {},
+      ),
+      { params: Promise.resolve({ slug: workspace.slug }) },
+    );
+    expect(ok.status).toBe(200);
+
+    const vars = (
+      mockStakworkRequest.mock.calls[0][1] as {
+        workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+      }
+    ).workflow_params.set_var.attributes.vars;
+    expect(vars.model).toBe("anthropic/claude-sonnet-4");
+    expect(vars.apiKey).toBe("test-anthropic-key");
   });
 });

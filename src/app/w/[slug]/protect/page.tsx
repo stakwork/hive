@@ -1,16 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { redirect } from "next/navigation";
-import { Loader2, Shield } from "lucide-react";
+import { Loader2, Shield, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { FindingsList } from "@/components/protect/FindingsList";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import { toast } from "sonner";
 import type { ProtectFindingsResponse } from "@/types/protect";
 
@@ -21,6 +23,8 @@ export default function ProtectPage() {
   const [data, setData] = useState<ProtectFindingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [llmModels, setLlmModels] = useState<LlmModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("");
 
   const loadFindings = useCallback(async (slug: string) => {
     setLoading(true);
@@ -47,9 +51,61 @@ export default function ProtectPage() {
     }
   }, [workspace?.slug, loadFindings]);
 
+  useEffect(() => {
+    if (!canAdmin || !workspace?.slug) return;
+
+    const loadModelConfig = async () => {
+      try {
+        const [modelsRes, configRes] = await Promise.all([
+          fetch("/api/llm-models"),
+          fetch(`/api/workspaces/${workspace.slug}/protect/config`),
+        ]);
+        const models: LlmModelOption[] = modelsRes.ok
+          ? ((await modelsRes.json()).models ?? [])
+          : [];
+        setLlmModels(models);
+        if (models.length === 0) return;
+
+        const stored: string | null = configRes.ok
+          ? ((await configRes.json()).securityReviewModel ?? null)
+          : null;
+        const storedModel = stored
+          ? models.find((m) => getModelValue(m) === stored)
+          : null;
+        const defaultModel = models.find((m) => m.isTaskDefault);
+        setSelectedModel(getModelValue(storedModel ?? defaultModel ?? models[0]));
+      } catch (error) {
+        console.error("Error fetching Protect model config:", error);
+      }
+    };
+
+    void loadModelConfig();
+  }, [canAdmin, workspace?.slug]);
+
   if (!canAccessDefense) {
     redirect("/");
   }
+
+  const handleModelChange = async (value: string) => {
+    if (!workspace?.slug) return;
+    const previous = selectedModel;
+    setSelectedModel(value);
+    try {
+      const response = await fetch(`/api/workspaces/${workspace.slug}/protect/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ securityReviewModel: value }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to save model");
+      }
+    } catch (error) {
+      setSelectedModel(previous);
+      toast.error("Could not save model", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    }
+  };
 
   const handleRunReview = async () => {
     if (!workspace?.slug) return;
@@ -84,14 +140,41 @@ export default function ProtectPage() {
         icon={Shield}
         actions={
           canAdmin ? (
-            <Button
-              onClick={handleRunReview}
-              disabled={runDisabled}
-              data-testid="protect-run-review"
-            >
-              {(running || inProgress) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Run review
-            </Button>
+            <>
+              {llmModels.length > 0 && (
+                <Select value={selectedModel} onValueChange={handleModelChange}>
+                  <SelectTrigger
+                    className="w-auto h-8 text-xs rounded-lg shadow-sm whitespace-nowrap"
+                    data-testid="model-selector"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 shrink-0" />
+                      <span>
+                        {selectedModel
+                          ? llmModels.find((m) => getModelValue(m) === selectedModel)?.name ||
+                            selectedModel
+                          : "Model"}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {llmModels.map((m) => (
+                      <SelectItem key={m.id} value={getModelValue(m)}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Button
+                onClick={handleRunReview}
+                disabled={runDisabled}
+                data-testid="protect-run-review"
+              >
+                {(running || inProgress) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Run review
+              </Button>
+            </>
           ) : undefined
         }
       />

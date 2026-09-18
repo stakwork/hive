@@ -1006,6 +1006,44 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       expect(triggerAsyncSync).toHaveBeenCalled();
     });
 
+    test('incremental dispatch Stakwork vars include the resolved model and credential fields', async () => {
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+      await db.llmModel.create({
+        data: {
+          name: 'claude-sonnet-4',
+          provider: 'ANTHROPIC',
+          inputPricePer1M: 3,
+          outputPricePer1M: 15,
+          isPublic: true,
+          isTaskDefault: true,
+        },
+      });
+
+      testSetup = await createWebhookTestScenario({ branch: 'main' });
+      await enableProtect(testSetup.workspace.id);
+      await completeFullReview(testSetup.workspace.id);
+      await db.janitorConfig.update({
+        where: { workspaceId: testSetup.workspace.id },
+        data: { securityReviewModel: 'anthropic/claude-sonnet-4' },
+      });
+
+      const response = await sendPush(testSetup, {
+        before: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        after: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      });
+      expect(response.status).toBe(202);
+
+      expect(mockStakworkRequest).toHaveBeenCalled();
+      const vars = (
+        mockStakworkRequest.mock.calls[0][1] as {
+          workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+        }
+      ).workflow_params.set_var.attributes.vars;
+      expect(vars.model).toBe('anthropic/claude-sonnet-4');
+      expect(typeof vars.apiKey).toBe('string');
+      expect(vars.apiKey).toBeTruthy();
+    });
+
     test('still dispatches incremental scan when codeIngestionEnabled is false', async () => {
       testSetup = await createWebhookTestScenario({
         branch: 'main',

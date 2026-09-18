@@ -12,6 +12,8 @@ export interface CreateTestLlmModelOptions {
   dateStart?: Date | null;
   dateEnd?: Date | null;
   isPublic?: boolean;
+  isPlanDefault?: boolean;
+  isTaskDefault?: boolean;
 }
 
 export async function createTestLlmModel(

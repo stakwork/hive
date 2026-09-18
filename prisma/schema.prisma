@@ -898,6 +898,7 @@ model JanitorConfig {
   legalBenchmarkRecursionEnabled      Boolean      @default(false) @map("legal_benchmark_recursion_enabled")
   stalePrTasksEnabled        Boolean      @default(false) @map("stale_pr_tasks_enabled")
   stalePrTaskThresholdDays   Int          @default(7)     @map("stale_pr_task_threshold_days")
+  securityReviewModel        String?      @map("security_review_model")
   workspace                  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   janitorRuns                JanitorRun[]
 

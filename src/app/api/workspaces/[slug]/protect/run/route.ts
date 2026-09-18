@@ -56,6 +56,7 @@ export async function POST(
     const run = await dispatchFullProtectReview({
       workspaceId: member.workspaceId,
       workspaceSlug: member.slug,
+      userId: member.userId,
     });
 
     return NextResponse.json({

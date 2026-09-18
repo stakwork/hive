@@ -4,6 +4,9 @@ import { stakworkService } from "@/lib/service-factory";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getBaseUrl } from "@/lib/utils";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { getApiKeyForModel, getDefaultModel } from "@/lib/ai/models";
+import { resolveModelAgainstCatalog } from "@/lib/ai/resolve-model";
+import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import {
   applyProtectReviewFindings,
   listProtectFindings,
@@ -11,6 +14,9 @@ import {
 } from "@/lib/protect/findings";
 import type { IncomingProtectFinding, ProtectReviewCounts } from "@/types/protect";
 import type { ProtectReviewRun } from "@prisma/client";
+
+/** Stakwork-held macaroons can outlive the 8h default; incremental webhook runs in particular. */
+const PROTECT_MACAROON_TTL_SECONDS = 86_400;
 
 const IN_FLIGHT_STATUSES = ["pending", "running"] as const;
 
@@ -111,15 +117,78 @@ export const INCREMENTAL_PROTECT_DEBOUNCE_MS = 60_000;
 export interface DispatchFullProtectReviewInput {
   workspaceId: string;
   workspaceSlug: string;
+  userId: string;
 }
 
 export interface DispatchIncrementalProtectReviewInput {
   workspaceId: string;
   workspaceSlug?: string;
+  userId?: string;
   repositoryUrl: string;
   before: string;
   after: string;
   ref: string;
+}
+
+export interface ResolveProtectDispatchModelInput {
+  workspaceId: string;
+  workspaceSlug?: string;
+  userId?: string;
+}
+
+async function overlayProtectModelCredentials(
+  vars: Record<string, unknown>,
+  effectiveModel: string,
+  input: ResolveProtectDispatchModelInput,
+): Promise<void> {
+  const resolvedApiKey = getApiKeyForModel(effectiveModel);
+  if (resolvedApiKey) vars.apiKey = resolvedApiKey;
+
+  const isXaiModel = effectiveModel.startsWith("xai/");
+  const workspaceSlug = input.workspaceSlug;
+  const userId = input.userId;
+  const bifrost =
+    isXaiModel || !workspaceSlug || !userId
+      ? undefined
+      : await getBifrostForLLM(
+          {
+            workspaceId: input.workspaceId,
+            workspaceSlug,
+            userId,
+          },
+          {
+            agentName: "security-review-agent",
+            model: effectiveModel,
+            ttlSeconds: PROTECT_MACAROON_TTL_SECONDS,
+          },
+        );
+  if (bifrost) {
+    vars.apiKey = bifrost.apiKey;
+    vars.baseUrl = bifrost.baseUrl;
+    if (Object.keys(bifrost.headers).length > 0) {
+      vars.headers = bifrost.headers;
+    }
+  }
+}
+
+export async function resolveProtectDispatchModel(
+  input: ResolveProtectDispatchModelInput,
+): Promise<{ modelVars: Record<string, unknown>; modelLog: string }> {
+  const config = await db.janitorConfig.findUnique({
+    where: { workspaceId: input.workspaceId },
+    select: { securityReviewModel: true },
+  });
+
+  const catalog = await resolveModelAgainstCatalog(config?.securityReviewModel);
+  const effectiveModel = catalog.value ?? (await getDefaultModel("task"));
+
+  if (!effectiveModel) {
+    return { modelVars: {}, modelLog: "unset" };
+  }
+
+  const modelVars: Record<string, unknown> = { model: effectiveModel };
+  await overlayProtectModelCredentials(modelVars, effectiveModel, input);
+  return { modelVars, modelLog: effectiveModel };
 }
 
 export type IncrementalProtectDispatchResult =
@@ -157,6 +226,11 @@ export async function dispatchFullProtectReview(
   });
 
   const webhookUrl = `${getBaseUrl()}/api/protect/webhook`;
+  const { modelVars, modelLog } = await resolveProtectDispatchModel({
+    workspaceId: input.workspaceId,
+    workspaceSlug: input.workspaceSlug,
+    userId: input.userId,
+  });
 
   try {
     const projectId = await dispatchProtectWorkflow({
@@ -166,6 +240,7 @@ export async function dispatchFullProtectReview(
       tokenReference: getStakworkTokenReference(),
       repositoryUrls,
       priorFindings: priorNodes,
+      ...modelVars,
     });
 
     const updated = await db.protectReviewRun.update({
@@ -177,7 +252,7 @@ export async function dispatchFullProtectReview(
     });
 
     console.log(
-      `[Protect] dispatch workspace=${input.workspaceSlug} mode=full runId=${run.id} repos=${repositoryUrls.length}`,
+      `[Protect] dispatch workspace=${input.workspaceSlug} mode=full runId=${run.id} repos=${repositoryUrls.length} model=${modelLog}`,
     );
 
     return updated;
@@ -299,6 +374,11 @@ export async function dispatchIncrementalProtectReview(
   });
 
   const webhookUrl = `${getBaseUrl()}/api/protect/webhook`;
+  const { modelVars, modelLog } = await resolveProtectDispatchModel({
+    workspaceId: input.workspaceId,
+    workspaceSlug: input.workspaceSlug,
+    userId: input.userId,
+  });
 
   try {
     const projectId = await dispatchProtectWorkflow({
@@ -311,6 +391,7 @@ export async function dispatchIncrementalProtectReview(
       after: input.after,
       ref: input.ref,
       priorFindings: priorNodes,
+      ...modelVars,
     });
 
     const updated = await db.protectReviewRun.update({
@@ -327,6 +408,7 @@ export async function dispatchIncrementalProtectReview(
       repositoryUrl,
       mode: "incremental",
       runId: run.id,
+      model: modelLog,
     });
 
     return { dispatched: true, run: updated };
