@@ -194,6 +194,10 @@ function findingNodeData(
   nodeKey: string,
   status: ProtectFindingStatus,
 ): Record<string, unknown> {
+  const titlefingerprint =
+    finding.titlefingerprint && finding.titlefingerprint.trim().length > 0
+      ? finding.titlefingerprint.trim()
+      : fingerprintTitle(finding.title);
   return {
     id: nodeKey,
     node_key: nodeKey,
@@ -208,6 +212,7 @@ function findingNodeData(
     recommendation: finding.recommendation,
     status,
     repositoryUrl: finding.repositoryUrl,
+    titlefingerprint,
   };
 }
 

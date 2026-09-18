@@ -195,6 +195,7 @@ describe("applyProtectReviewFindings", () => {
     );
     const nodeData = vi.mocked(nodes.addNode).mock.calls[0][1].node_data;
     expect(nodeData).not.toHaveProperty("verification");
+    expect(nodeData).toHaveProperty("titlefingerprint", fingerprintTitle(existing.title));
   });
 
   it("marks unmatched prior findings stale and never inserts a second node", async () => {
@@ -260,6 +261,7 @@ describe("applyProtectReviewFindings", () => {
       );
       const nodeData = vi.mocked(nodes.addNode).mock.calls[0][1].node_data;
       expect(nodeData).not.toHaveProperty("verification");
+      expect(nodeData).toHaveProperty("titlefingerprint", TITLE_FINGERPRINT);
       expect(existing.node_key).toContain(TITLE_FINGERPRINT);
     });
 
