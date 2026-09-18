@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { POST } from '@/app/api/github/webhook/[workspaceId]/route';
 import { RepositoryStatus, ArtifactType, TaskStatus, WorkflowStatus } from '@prisma/client';
 import {
@@ -16,8 +16,23 @@ import { pusherServer } from '@/lib/pusher';
 import { releaseTaskPod } from '@/lib/pods/utils';
 import { generateUniqueId } from '@/__tests__/support/helpers';
 import { dispatchIncrementalProtectReview } from '@/services/protect';
+import { listProtectFindings } from '@/lib/protect/findings';
 
 const mockStakworkRequest = vi.fn().mockResolvedValue({ data: { project_id: 99 } });
+
+function mockDispatchNoop() {
+  vi.mocked(dispatchIncrementalProtectReview).mockResolvedValue({
+    dispatched: false,
+    reason: 'mocked',
+  });
+}
+
+function mockFindingsEmpty() {
+  vi.mocked(listProtectFindings).mockImplementation(async () => ({
+    ok: true,
+    findings: [],
+  }));
+}
 
 // Mock external services
 vi.mock('@/services/swarm/stakgraph-actions');
@@ -33,7 +48,7 @@ vi.mock('@/lib/protect/findings', async () => {
   );
   return {
     ...actual,
-    listProtectFindings: vi.fn().mockResolvedValue({ ok: true, findings: [] }),
+    listProtectFindings: vi.fn(async () => ({ ok: true, findings: [] })),
   };
 });
 vi.mock('@/config/env', async (importOriginal) => {
@@ -99,10 +114,12 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     vi.mocked(pusherServer.trigger).mockResolvedValue({} as any);
-  });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+    // Re-apply after clearAllMocks. Do not restoreAllMocks in afterEach:
+    // that strips factory implementations so dispatchIncrementalProtectReview()
+    // returns undefined and `undefined.catch` 500s the push handler.
+    mockDispatchNoop();
+    mockFindingsEmpty();
   });
 
   describe('Authentication & Security', () => {
@@ -870,6 +887,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       vi.mocked(dispatchIncrementalProtectReview).mockImplementation(
         actual.dispatchIncrementalProtectReview,
       );
+      mockFindingsEmpty();
     });
 
     async function enableProtect(workspaceId: string) {
