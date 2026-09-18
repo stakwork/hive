@@ -28,6 +28,7 @@ import {
 } from "@/__tests__/support/helpers";
 import { createTestLlmModel } from "@/__tests__/support/factories/llm-model.factory";
 import * as findings from "@/lib/protect/findings";
+import type { ProtectFinding } from "@/types/protect";
 
 const mockStakworkRequest = vi.fn().mockResolvedValue({ data: { project_id: 99 } });
 
@@ -533,27 +534,13 @@ describe("Protect API", () => {
     );
   });
 
-  test("Jamie action 404s unknown ref_id and creates an unshared workspace conversation", async () => {
-    const { actor, workspace } = await setup("DEVELOPER");
-    vi.mocked(findings.getProtectFindingByRef).mockResolvedValueOnce(null);
-
-    const missing = await StartChat(
-      createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/protect/findings/guessed/chat`,
-        actor,
-        {},
-      ),
-      { params: Promise.resolve({ slug: workspace.slug, refId: "guessed" }) },
-    );
-    expect(missing.status).toBe(404);
-    expect(await db.sharedConversation.count({ where: { workspaceId: workspace.id } })).toBe(0);
-
-    vi.mocked(findings.getProtectFindingByRef).mockResolvedValueOnce({
+  function mockFinding(overrides: Partial<ProtectFinding> = {}) {
+    return {
       ref_id: "ref-1",
       node_key: "key",
       id: "key",
-      category: "bug",
-      severity: "low",
+      category: "bug" as const,
+      severity: "low" as const,
       area: "auth",
       file: "a.ts",
       line: 1,
@@ -561,27 +548,152 @@ describe("Protect API", () => {
       description: "desc",
       evidence: "ev",
       recommendation: "fix",
-      verification: "reported",
-      status: "open",
+      verification: "reported" as const,
+      status: "open" as const,
       repositoryUrl: "https://github.com/acme/hive",
-    });
+      ...overrides,
+    };
+  }
 
-    const created = await StartChat(
+  async function startChat(actor: { id: string; email: string; name?: string }, slug: string, refId = "ref-1") {
+    return StartChat(
       createAuthenticatedPostRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/protect/findings/ref-1/chat`,
+        `http://localhost:3000/api/workspaces/${slug}/protect/findings/${refId}/chat`,
         actor,
         {},
       ),
-      { params: Promise.resolve({ slug: workspace.slug, refId: "ref-1" }) },
+      { params: Promise.resolve({ slug, refId }) },
     );
+  }
+
+  test("Jamie action 404s unknown ref_id", async () => {
+    const { actor, workspace } = await setup("DEVELOPER");
+    vi.mocked(findings.getProtectFindingByRef).mockResolvedValueOnce(null);
+
+    const missing = await startChat(actor, workspace.slug, "guessed");
+    expect(missing.status).toBe(404);
+    expect(await db.sharedConversation.count({ where: { workspaceId: workspace.id } })).toBe(0);
+  });
+
+  test("Jamie action creates an org-canvas conversation and deep-links into the org", async () => {
+    const { actor, workspace } = await setup("DEVELOPER");
+    const org = await attachWorkspaceGithubApp(actor.id, workspace.id);
+    vi.mocked(findings.getProtectFindingByRef).mockResolvedValueOnce(mockFinding());
+
+    const created = await startChat(actor, workspace.slug);
     expect(created.status).toBe(200);
     const body = await created.json();
+    expect(body.path).toBe(`/org/${org.githubLogin}?chat=${body.conversationId}`);
+
     const conversation = await db.sharedConversation.findUnique({
       where: { id: body.conversationId },
     });
-    expect(conversation?.workspaceId).toBe(workspace.id);
+    expect(conversation?.workspaceId).toBeNull();
+    expect(conversation?.sourceControlOrgId).toBe(org.id);
+    expect(conversation?.source).toBe("org-canvas");
     expect(conversation?.isShared).toBe(false);
-    expect(conversation?.source).toBe("protect");
+
+    const settings = conversation?.settings as {
+      extraWorkspaceSlugs?: string[];
+      protectFindingRefId?: string;
+      protectWorkspaceSlug?: string;
+    };
+    expect(settings.extraWorkspaceSlugs).toEqual([workspace.slug]);
+    expect(settings.protectFindingRefId).toBe("ref-1");
+    expect(settings.protectWorkspaceSlug).toBe(workspace.slug);
+
+    const messages = conversation?.messages as Array<{ timestamp?: string; createdAt?: string }>;
+    expect(messages[0]?.timestamp).toBeTruthy();
+    expect(messages[0]?.createdAt).toBeUndefined();
+  });
+
+  test("Jamie action 400s when the workspace is not linked to an organization", async () => {
+    const { actor, workspace } = await setup("DEVELOPER");
+    vi.mocked(findings.getProtectFindingByRef).mockResolvedValueOnce(mockFinding());
+
+    const res = await startChat(actor, workspace.slug);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "This workspace is not linked to an organization",
+    });
+    expect(await db.sharedConversation.count({ where: { userId: actor.id } })).toBe(0);
+  });
+
+  test("Jamie action 403s when the caller is not an org member", async () => {
+    const { owner, workspace } = await setup("OWNER");
+    const org = await attachWorkspaceGithubApp(owner.id, workspace.id);
+    const superAdmin = await createTestUser({
+      role: "SUPER_ADMIN",
+      withGitHubAuth: true,
+      githubUsername: `super-${generateUniqueId("gh")}`,
+    });
+    vi.mocked(findings.getProtectFindingByRef).mockResolvedValueOnce(mockFinding());
+
+    const res = await startChat(superAdmin, workspace.slug);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: "You must be a member of this organization to open an org-canvas chat",
+    });
+    expect(await db.sharedConversation.count({ where: { sourceControlOrgId: org.id } })).toBe(0);
+  });
+
+  test("Jamie action reuses the live org-canvas conversation for the same finding", async () => {
+    const { actor, workspace } = await setup("DEVELOPER");
+    await attachWorkspaceGithubApp(actor.id, workspace.id);
+    vi.mocked(findings.getProtectFindingByRef).mockResolvedValue(mockFinding());
+
+    const first = await startChat(actor, workspace.slug);
+    const firstBody = await first.json();
+    const second = await startChat(actor, workspace.slug);
+    const secondBody = await second.json();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(secondBody.conversationId).toBe(firstBody.conversationId);
+    expect(await db.sharedConversation.count({ where: { userId: actor.id, source: "org-canvas" } })).toBe(1);
+  });
+
+  test("Jamie action creates a new conversation after the live row is archived", async () => {
+    const { actor, workspace } = await setup("DEVELOPER");
+    await attachWorkspaceGithubApp(actor.id, workspace.id);
+    vi.mocked(findings.getProtectFindingByRef).mockResolvedValue(mockFinding());
+
+    const first = await startChat(actor, workspace.slug);
+    const firstBody = await first.json();
+    await db.sharedConversation.update({
+      where: { id: firstBody.conversationId },
+      data: { archivedAt: new Date() },
+    });
+
+    const second = await startChat(actor, workspace.slug);
+    const secondBody = await second.json();
+    expect(second.status).toBe(200);
+    expect(secondBody.conversationId).not.toBe(firstBody.conversationId);
+  });
+
+  test("Jamie action does not reuse a conversation from another workspace with the same finding ref", async () => {
+    const { actor, owner, workspace } = await setup("DEVELOPER");
+    const org = await attachWorkspaceGithubApp(actor.id, workspace.id);
+    const workspaceB = await createTestWorkspace({
+      ownerId: owner.id,
+      sourceControlOrgId: org.id,
+    });
+    await createTestMembership({ workspaceId: workspaceB.id, userId: owner.id, role: "OWNER" });
+    await createTestMembership({ workspaceId: workspaceB.id, userId: actor.id, role: "DEVELOPER" });
+    await createTestSwarm({ workspaceId: workspaceB.id, swarmApiKey: "test-api-key" });
+    await db.janitorConfig.create({
+      data: { workspaceId: workspaceB.id, securityReviewEnabled: true },
+    });
+    vi.mocked(findings.getProtectFindingByRef).mockResolvedValue(mockFinding());
+
+    const first = await startChat(actor, workspace.slug);
+    const firstBody = await first.json();
+    const second = await startChat(actor, workspaceB.slug);
+    const secondBody = await second.json();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(secondBody.conversationId).not.toBe(firstBody.conversationId);
   });
 
   test("GET config is readable by a member; PUT persists allowlisted model and null-clear", async () => {
