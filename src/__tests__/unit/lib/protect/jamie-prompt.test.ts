@@ -59,9 +59,19 @@ describe("buildProtectJamieSeed", () => {
     const seed = buildProtectJamieSeed(
       finding({ category: "secret", evidence: "sk-live-secret" }),
       "propose_feature",
+      "acme-hive",
     );
     expect(seed).not.toContain("sk-live-secret");
     expect(seed).toContain("redacted");
     expect(seed).toContain("propose_feature");
+  });
+
+  it("includes workspace slug and repository URL and tells the tool to pass both", () => {
+    const seed = buildProtectJamieSeed(finding(), "propose_code_change", "acme-hive");
+    expect(seed).toContain("Workspace: acme-hive");
+    expect(seed).toContain("Repository: https://github.com/acme/hive");
+    expect(seed).toContain("propose_code_change");
+    expect(seed).toContain('workspaceSlug "acme-hive"');
+    expect(seed).toContain('repositoryUrl "https://github.com/acme/hive"');
   });
 });
