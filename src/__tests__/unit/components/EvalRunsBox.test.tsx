@@ -762,56 +762,56 @@ describe("EvalRunsBox — isSuperAdmin / StakworkRunLink", () => {
     );
   });
 
-  it("colSpan is 6 for skeleton rows when isSuperAdmin=false", () => {
+  it("colSpan is 7 for skeleton rows when isSuperAdmin=false", () => {
     renderBox({ isLoading: true, fixes: [], isSuperAdmin: false });
     const skeletonCell = document.querySelector("td[colspan]");
-    expect(skeletonCell?.getAttribute("colspan")).toBe("6");
+    expect(skeletonCell?.getAttribute("colspan")).toBe("7");
   });
 
-  it("colSpan is 7 for skeleton rows when isSuperAdmin=true", () => {
+  it("colSpan is 8 for skeleton rows when isSuperAdmin=true", () => {
     renderBox({ isLoading: true, fixes: [], isSuperAdmin: true });
     const skeletonCells = document.querySelectorAll("td[colspan]");
-    expect(skeletonCells[0]?.getAttribute("colspan")).toBe("7");
+    expect(skeletonCells[0]?.getAttribute("colspan")).toBe("8");
   });
 
-  it("colSpan is 6 for empty-state row when isSuperAdmin=false", () => {
+  it("colSpan is 7 for empty-state row when isSuperAdmin=false", () => {
     renderBox({ fixes: [], isLoading: false, isSuperAdmin: false });
-    const emptyCell = document.querySelector("td[colspan]");
-    expect(emptyCell?.getAttribute("colspan")).toBe("6");
-  });
-
-  it("colSpan is 7 for empty-state row when isSuperAdmin=true", () => {
-    renderBox({ fixes: [], isLoading: false, isSuperAdmin: true });
     const emptyCell = document.querySelector("td[colspan]");
     expect(emptyCell?.getAttribute("colspan")).toBe("7");
   });
 
-  it("colSpan is 7 for expanded-detail row when isSuperAdmin=true", async () => {
+  it("colSpan is 8 for empty-state row when isSuperAdmin=true", () => {
+    renderBox({ fixes: [], isLoading: false, isSuperAdmin: true });
+    const emptyCell = document.querySelector("td[colspan]");
+    expect(emptyCell?.getAttribute("colspan")).toBe("8");
+  });
+
+  it("colSpan is 8 for expanded-detail row when isSuperAdmin=true", async () => {
     renderBox({ fixes: [makeFix()], isSuperAdmin: true });
 
     const chevron = screen.getByRole("button", { name: "Expand" });
     await act(async () => { fireEvent.click(chevron); });
 
-    // Expanded row detail td should have colSpan=7
+    // Expanded row detail td should have colSpan=8
     const expandedCells = document.querySelectorAll("td[colspan]");
     const expandedCell = Array.from(expandedCells).find(
-      (el) => el.getAttribute("colspan") === "7",
+      (el) => el.getAttribute("colspan") === "8",
     );
     expect(expandedCell).toBeTruthy();
   });
 
-  it("colSpan is 6 for expanded-detail row when isSuperAdmin=false", async () => {
+  it("colSpan is 7 for expanded-detail row when isSuperAdmin=false", async () => {
     renderBox({ fixes: [makeFix()], isSuperAdmin: false });
 
     const chevron = screen.getByRole("button", { name: "Expand" });
     await act(async () => { fireEvent.click(chevron); });
 
     const expandedCells = document.querySelectorAll("td[colspan]");
-    // All colspan values should be 6 (no 7 present)
-    const hasSevenColspan = Array.from(expandedCells).some(
-      (el) => el.getAttribute("colspan") === "7",
+    // All colspan values should be 7 (no 8 present)
+    const hasEightColspan = Array.from(expandedCells).some(
+      (el) => el.getAttribute("colspan") === "8",
     );
-    expect(hasSevenColspan).toBe(false);
-    expect(expandedCells[0]?.getAttribute("colspan")).toBe("6");
+    expect(hasEightColspan).toBe(false);
+    expect(expandedCells[0]?.getAttribute("colspan")).toBe("7");
   });
 });
