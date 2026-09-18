@@ -1111,7 +1111,7 @@ describe('Sidebar - Legal Section', () => {
   });
 });
 
-describe('Sidebar - Protect direct navigation link', () => {
+describe('Sidebar - Protect "Review" child link', () => {
   const mockUser = {
     name: 'Test User',
     email: 'test@example.com',
@@ -1146,37 +1146,63 @@ describe('Sidebar - Protect direct navigation link', () => {
     } as any);
   });
 
-  it('renders a standalone link to /protect alongside the toggle button', () => {
+  it('renders "Review" as the first child link under Protect when expanded', async () => {
+    const user = userEvent.setup();
     render(<Sidebar user={mockUser} />);
 
-    // The toggle button for Protect still exists alongside the new link
     const protectToggles = screen.getAllByTestId('nav-protect');
     expect(protectToggles.length).toBeGreaterThan(0);
 
-    const protectLinkButtons = screen.getAllByTestId('nav-protect-link');
-    expect(protectLinkButtons.length).toBeGreaterThan(0);
+    // No standalone icon-only link should exist anymore alongside the toggle
+    expect(screen.queryAllByTestId('nav-protect-link')).toHaveLength(0);
 
-    // The mocked Button renders `asChild` content inline, so the real href
-    // lives on the nested <a> rendered by the Link mock — same pattern used
-    // for Settings/GraphMindset Admin elsewhere in this file.
-    const protectLinkAnchor = protectLinkButtons[0].querySelector('a');
-    expect(protectLinkAnchor).toHaveAttribute('href', '/w/test-workspace/protect');
+    await user.click(protectToggles[0]);
+
+    await waitFor(() => {
+      const reviewLinks = screen.getAllByTestId('nav-review');
+      expect(reviewLinks.length).toBeGreaterThan(0);
+      expect(reviewLinks[0]).toHaveAttribute('href', '/w/test-workspace/protect');
+    });
+
+    // "Review" is the first child in the list, ahead of Recommendations
+    const childrenList = screen.getAllByTestId('nav-review')[0].closest('ul');
+    const firstChildLink = childrenList?.querySelector('li:first-child a');
+    expect(firstChildLink).toHaveAttribute('data-testid', 'nav-review');
   });
 
-  it('clicking the toggle button only expands/collapses children and does not navigate', async () => {
+  it('renders "Review" like the other Protect children — plain text link with shared styling', async () => {
+    const user = userEvent.setup();
+    render(<Sidebar user={mockUser} />);
+
+    const protectToggles = screen.getAllByTestId('nav-protect');
+    await user.click(protectToggles[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-review').length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId('nav-recommendations').length).toBeGreaterThan(0);
+    });
+
+    const reviewLink = screen.getAllByTestId('nav-review')[0];
+    const recommendationsLink = screen.getAllByTestId('nav-recommendations')[0];
+
+    // Same tag and shared class list as the other children (no icon-only/button special-casing)
+    expect(reviewLink.tagName).toBe('A');
+    expect(reviewLink.className).toBe(recommendationsLink.className);
+    expect(reviewLink.textContent).toBe('Review');
+  });
+
+  it('toggling Protect only expands/collapses children and Review navigates without toggling', async () => {
     const user = userEvent.setup();
     render(<Sidebar user={mockUser} />);
 
     const protectToggle = screen.getAllByTestId('nav-protect')[0];
-    // Toggle is a plain button, not a link — it has no href to navigate to
     expect(protectToggle.tagName).toBe('BUTTON');
     expect(protectToggle).not.toHaveAttribute('href');
-    expect(protectToggle.querySelector('a')).toBeNull();
 
     const getChildrenList = () =>
       screen.getAllByTestId('nav-recommendations')[0].closest('ul');
 
-    // Collapsed initially — the children <ul> is rendered with the 'hidden' class
+    // Collapsed initially
     expect(getChildrenList()?.className).toContain('hidden');
 
     await user.click(protectToggle);
@@ -1185,39 +1211,21 @@ describe('Sidebar - Protect direct navigation link', () => {
       expect(getChildrenList()?.className).not.toContain('hidden');
     });
 
-    // Still no href/navigation was introduced on the toggle button itself
-    expect(protectToggle).not.toHaveAttribute('href');
+    const reviewLink = screen.getAllByTestId('nav-review')[0];
+    expect(reviewLink).toHaveAttribute('href', '/w/test-workspace/protect');
 
-    await user.click(protectToggle);
-
-    await waitFor(() => {
-      expect(getChildrenList()?.className).toContain('hidden');
-    });
+    // Clicking the Review link itself should not toggle the list closed
+    await user.click(reviewLink);
+    expect(getChildrenList()?.className).not.toContain('hidden');
   });
 
-  it('clicking the Protect link navigates to /protect without toggling the children list', async () => {
-    const user = userEvent.setup();
-    render(<Sidebar user={mockUser} />);
-
-    const protectLinkAnchor = screen.getAllByTestId('nav-protect-link')[0].querySelector('a');
-    expect(protectLinkAnchor).toHaveAttribute('href', '/w/test-workspace/protect');
-
-    const childrenList = screen.getAllByTestId('nav-recommendations')[0].closest('ul');
-    expect(childrenList?.className).toContain('hidden');
-
-    // Clicking the link must not toggle the children's expand state
-    await user.click(protectLinkAnchor!);
-
-    expect(childrenList?.className).toContain('hidden');
-  });
-
-  it('does not render the Protect link when the feature flag is off', () => {
+  it('does not render the Review link when the feature flag is off', () => {
     vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(false);
     render(<Sidebar user={mockUser} />);
 
     // Protect is excluded from the nav entirely when canAccessDefense is false,
-    // so neither the toggle nor the new link should render.
-    expect(screen.queryAllByTestId('nav-protect-link')).toHaveLength(0);
+    // so neither the toggle nor its "Review" child should render.
+    expect(screen.queryAllByTestId('nav-review')).toHaveLength(0);
     expect(screen.queryAllByTestId('nav-protect')).toHaveLength(0);
   });
 });
