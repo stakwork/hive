@@ -166,4 +166,65 @@ describe("POST /api/protect/webhook", () => {
     expect(findings[0]).not.toHaveProperty("extraEvil");
     expect(findings[0]).not.toHaveProperty("verification");
   });
+
+  it("accepts titlefingerprint and passes it through to completeProtectReview", async () => {
+    vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue({
+      id: "run-1",
+      workspaceId: "ws-1",
+      status: "running",
+      workspace: {
+        repositories: [{ repositoryUrl: "https://github.com/acme/hive" }],
+      },
+    } as never);
+
+    await POST(
+      request({
+        runId: "run-1",
+        findings: [
+          {
+            category: "bug",
+            severity: "low",
+            file: "a.ts",
+            title: "Issue",
+            repositoryUrl: "https://github.com/acme/hive",
+            titlefingerprint: "0123456789abcdef",
+          },
+        ],
+      }),
+    );
+
+    const payload = vi.mocked(completeProtectReview).mock.calls[0][0];
+    const findings = payload.findings ?? [];
+    expect(findings[0]).toHaveProperty("titlefingerprint", "0123456789abcdef");
+  });
+
+  it("rejects a repositoryUrl not owned by the run workspace even when titlefingerprint is present", async () => {
+    vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue({
+      id: "run-1",
+      workspaceId: "ws-1",
+      status: "running",
+      workspace: {
+        repositories: [{ repositoryUrl: "https://github.com/acme/hive" }],
+      },
+    } as never);
+
+    const response = await POST(
+      request({
+        runId: "run-1",
+        findings: [
+          {
+            category: "bug",
+            severity: "low",
+            file: "a.ts",
+            title: "Issue",
+            repositoryUrl: "https://github.com/evil/repo",
+            titlefingerprint: "0123456789abcdef",
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(completeProtectReview).not.toHaveBeenCalled();
+  });
 });

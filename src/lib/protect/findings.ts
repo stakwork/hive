@@ -44,8 +44,13 @@ export function buildFindingNodeKey(
   file: string,
   category: string,
   title: string,
+  titlefingerprint?: string,
 ): string {
-  return [repositoryUrl.trim(), file.trim(), category.trim(), fingerprintTitle(title)].join("|");
+  const fingerprint =
+    titlefingerprint && titlefingerprint.trim().length > 0
+      ? titlefingerprint.trim()
+      : fingerprintTitle(title);
+  return [repositoryUrl.trim(), file.trim(), category.trim(), fingerprint].join("|");
 }
 
 function asString(value: unknown, fallback = ""): string {
@@ -245,6 +250,7 @@ export async function applyProtectReviewFindings(
       finding.file,
       finding.category,
       finding.title,
+      finding.titlefingerprint,
     );
     incomingKeys.add(nodeKey);
     const prior = priorByKey.get(nodeKey);
