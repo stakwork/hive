@@ -31,7 +31,6 @@ const allJanitors = getAllJanitorItems();
 const testingJanitors: JanitorItem[] = [
   ...allJanitors.filter((j) => j.id !== "SECURITY_REVIEW" && j.id !== "GENERAL_REFACTORING"),
 ];
-const securityReviewJanitor = allJanitors.find((j) => j.id === "SECURITY_REVIEW");
 const refactoringJanitor = allJanitors.find((j) => j.id === "GENERAL_REFACTORING");
 
 // Maintainability janitors - refactoring is active, others coming soon
@@ -53,9 +52,16 @@ const maintainabilityJanitors: JanitorItem[] = [
   },
 ];
 
-// Security janitors
+// Security janitors — Security Review stays as enablement UI for Protect.
+// The id is not a JanitorType, so the section will not offer a manual run.
 const securityJanitors: JanitorItem[] = [
-  ...(securityReviewJanitor ? [securityReviewJanitor] : []),
+  {
+    id: "protect-security-review",
+    name: "Security Review",
+    icon: Shield,
+    description: "Scan for security vulnerabilities and best practices.",
+    configKey: "securityReviewEnabled",
+  },
   {
     id: "supply-chain",
     name: "Supply Chain",

@@ -100,11 +100,19 @@ function edgeCountsFor(node: MockSearchNode): Record<string, number> {
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const params = req.nextUrl.searchParams;
+  const scenario = params.get("_mock_scenario");
+  const types = splitListParam(params.get("type")).map((t) => t.toLowerCase());
+
+  if (types.includes("securityfinding") && scenario === "error") {
+    return NextResponse.json({ status: "error", message: "Jarvis unavailable" }, { status: 500 });
+  }
+  if (types.includes("securityfinding") && scenario === "empty") {
+    return NextResponse.json({ status: "success", nodes: [] }, { status: 200 });
+  }
 
   // Blank/absent namespace means "no partition filter" (default behaviour).
   const namespace = (params.get("namespace") ?? "").trim();
   const q = (params.get("q") ?? "").trim().toLowerCase();
-  const types = splitListParam(params.get("type")).map((t) => t.toLowerCase());
   const domains = splitListParam(params.get("domains")).map((d) => d.toLowerCase());
   const includeEdgeCounts = params.get("include_edge_counts") === "true";
 

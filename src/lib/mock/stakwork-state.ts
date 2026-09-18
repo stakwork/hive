@@ -88,16 +88,35 @@ class MockStakworkStateManager {
   ): Promise<void> {
     const webhookUrl = this.webhookCallbacks.get(projectId);
     if (!webhookUrl) return;
+    const project = this.projects.get(projectId);
+    if (!project) return;
 
     try {
+      const isProtect = webhookUrl.includes("/api/protect/webhook");
+      if (isProtect && status !== "complete") return;
+
+      const vars = (project.workflow_params as {
+        set_var?: { attributes?: { vars?: Record<string, unknown> } };
+      } | undefined)?.set_var?.attributes?.vars;
+      const body = isProtect
+        ? {
+            runId: vars?.runId,
+            status: "completed",
+            findings: [],
+          }
+        : {
+            project_status: status,
+            task_id: null,
+            project_id: projectId,
+          };
+
       await fetch(webhookUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_status: status,
-          task_id: null,
-          project_id: projectId,
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(process.env.API_TOKEN ? { "x-api-token": process.env.API_TOKEN } : {}),
+        },
+        body: JSON.stringify(body),
       });
     } catch (error) {
       console.error(

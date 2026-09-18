@@ -68,6 +68,32 @@ export async function GET(): Promise<NextResponse> {
         },
         inherited_attributes: {},
       },
+      {
+        type: "SecurityFinding",
+        domain: "security",
+        description: "A workspace Protect finding stored in the knowledge graph.",
+        node_key: "node_key",
+        parent: "Thing",
+        attributes: {
+          node_key: "string",
+          id: "string",
+          category: "string",
+          severity: "string",
+          area: "?string",
+          file: "string",
+          line: "?number",
+          title: "string",
+          description: "?string",
+          evidence: "?string",
+          recommendation: "?string",
+          verification: "?string",
+          status: "string",
+          repositoryUrl: "string",
+        },
+        inherited_attributes: {
+          label: "?string",
+        },
+      },
       // Deleted type — must be excluded from results.
       {
         type: "OldType",

@@ -6,6 +6,7 @@ import {
   buildPlateauCapNodes,
   buildRecursionNodes,
 } from "@/app/api/mock/jarvis/graph/recursion-fixture";
+import { mockSearchNodes } from "../search-fixtures";
 
 /**
  * Mock routes for /v2/nodes/{ref_id}
@@ -42,6 +43,11 @@ function lookupFixtureNode(refId: string): unknown | null {
     }
     for (const node of Object.values(MOCK_LIVE_TARGET_NODES)) {
       fixtureNodeIndex.set(node.ref_id, node);
+    }
+    for (const node of mockSearchNodes) {
+      if (node.node_type === "SecurityFinding") {
+        fixtureNodeIndex.set(node.ref_id, node);
+      }
     }
   }
   return fixtureNodeIndex.get(refId) ?? null;

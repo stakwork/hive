@@ -317,6 +317,7 @@ model Workspace {
   workflowSummaries       WorkflowSummary[]
   janitorConfig           JanitorConfig?
   janitorRecommendations  JanitorRecommendation[]
+  protectReviewRuns       ProtectReviewRun[]
   repositories            Repository[]
   screenshots             Screenshot[]
   scorerDigests           ScorerDigest[]
@@ -1570,6 +1571,34 @@ enum StepStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+enum ProtectReviewMode {
+  full
+  incremental
+}
+
+enum ProtectReviewStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+model ProtectReviewRun {
+  id                String              @id @default(cuid())
+  workspaceId       String              @map("workspace_id")
+  mode              ProtectReviewMode
+  status            ProtectReviewStatus @default(pending)
+  repositoryUrl     String?             @map("repository_url")
+  stakworkProjectId Int?                @map("stakwork_project_id")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  completedAt       DateTime?           @map("completed_at")
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, mode, status])
+  @@map("protect_review_runs")
 }
 
 enum JanitorType {

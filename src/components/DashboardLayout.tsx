@@ -24,6 +24,7 @@ const PUBLIC_VIEWER_BLOCKED_SEGMENTS = [
   "calls",            // voice / call recordings — entirely auth-gated
   "capacity",         // pool / pod infra
   "janitors",         // janitor config
+  "protect",          // graph-backed security findings
   "recommendations",  // security findings (incl. GitLeaks)
   "workflows",        // stakwork write surface
   "projects",         // stakwork write surface

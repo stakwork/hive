@@ -473,6 +473,12 @@ describe("Janitor Service", () => {
       ).rejects.toThrow("Invalid janitor type: INVALID_TYPE");
     });
 
+    test("should reject SECURITY_REVIEW because Protect is the only dispatcher", async () => {
+      await expect(
+        createJanitorRun("test-workspace", "user-1", "SECURITY_REVIEW")
+      ).rejects.toThrow("SECURITY_REVIEW is no longer a janitor dispatcher; use Protect");
+    });
+
     test("should throw error when janitor type is disabled", async () => {
       const mockConfig = janitorMocks.createMockConfig({
         unitTestsEnabled: false,
