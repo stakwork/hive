@@ -4,11 +4,19 @@ import { stakworkService } from "@/lib/service-factory";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { getBaseUrl } from "@/lib/utils";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import {
   applyProtectReviewFindings,
   listProtectFindings,
   serializeFindingForWorkflow,
 } from "@/lib/protect/findings";
+import {
+  hasCompletedFullRunForRepository,
+  loadProtectRunSnapshotCanonicalUrls,
+  loadProtectScopeRepos,
+  sameCanonicalRepo,
+  snapshotProtectRunRepos,
+} from "@/lib/protect/scope";
 import type { IncomingProtectFinding, ProtectReviewCounts } from "@/types/protect";
 import type { ProtectReviewRun } from "@prisma/client";
 
@@ -20,6 +28,8 @@ export const PROTECT_ERRORS = {
   RUN_IN_PROGRESS: "A Protect review is already in progress",
   RATE_LIMITED: "Too many Protect reviews. Try again later.",
   NO_REPOSITORIES: "Workspace has no repositories to scan",
+  EMPTY_SCOPE: "No repositories are in the Protect review scope",
+  MISSING_GITHUB_CREDENTIALS: "Workspace GitHub App credentials are required to run a Protect review",
   WORKFLOW_NOT_CONFIGURED: "STAKWORK_PROTECT_WORKFLOW_ID is required for Protect reviews",
   STAKWORK_NOT_CONFIGURED: "STAKWORK_API_KEY is required for Protect reviews",
   RUN_NOT_FOUND: "Protect review run not found",
@@ -67,14 +77,30 @@ export async function isSecurityReviewEnabled(workspaceId: string): Promise<bool
   return config?.securityReviewEnabled === true;
 }
 
-async function loadWorkspaceRepositories(workspaceId: string): Promise<string[]> {
-  const repositories = await db.repository.findMany({
-    where: { workspaceId },
-    select: { repositoryUrl: true },
+async function workspaceHasRepositories(workspaceId: string): Promise<boolean> {
+  const count = await db.repository.count({ where: { workspaceId } });
+  return count > 0;
+}
+
+async function resolveWorkspaceGithubAppCredentials(
+  userId: string,
+  workspaceSlug: string,
+): Promise<{ username: string; token: string }> {
+  const workspace = await db.workspace.findUnique({
+    where: { slug: workspaceSlug },
+    select: { sourceControlOrgId: true },
   });
-  return repositories
-    .map((repo) => repo.repositoryUrl)
-    .filter((url): url is string => typeof url === "string" && url.trim() !== "");
+
+  if (!workspace?.sourceControlOrgId) {
+    throw new Error(PROTECT_ERRORS.MISSING_GITHUB_CREDENTIALS);
+  }
+
+  const creds = await getGithubUsernameAndPAT(userId, workspaceSlug);
+  if (!creds?.username || !creds.token) {
+    throw new Error(PROTECT_ERRORS.MISSING_GITHUB_CREDENTIALS);
+  }
+
+  return creds;
 }
 
 async function dispatchProtectWorkflow(vars: Record<string, unknown>): Promise<number> {
@@ -111,6 +137,7 @@ export const INCREMENTAL_PROTECT_DEBOUNCE_MS = 60_000;
 export interface DispatchFullProtectReviewInput {
   workspaceId: string;
   workspaceSlug: string;
+  userId: string;
 }
 
 export interface DispatchIncrementalProtectReviewInput {
@@ -129,9 +156,14 @@ export type IncrementalProtectDispatchResult =
 export async function dispatchFullProtectReview(
   input: DispatchFullProtectReviewInput,
 ): Promise<ProtectReviewRun> {
-  const repositoryUrls = await loadWorkspaceRepositories(input.workspaceId);
-  if (repositoryUrls.length === 0) {
+  const hasRepos = await workspaceHasRepositories(input.workspaceId);
+  if (!hasRepos) {
     throw new Error(PROTECT_ERRORS.NO_REPOSITORIES);
+  }
+
+  const scopedRepos = await loadProtectScopeRepos(input.workspaceId);
+  if (scopedRepos.length === 0) {
+    throw new Error(PROTECT_ERRORS.EMPTY_SCOPE);
   }
 
   const inFlight = await getInFlightProtectReviewRun(input.workspaceId);
@@ -139,12 +171,24 @@ export async function dispatchFullProtectReview(
     throw new Error(PROTECT_ERRORS.RUN_IN_PROGRESS);
   }
 
+  const githubCreds = await resolveWorkspaceGithubAppCredentials(
+    input.userId,
+    input.workspaceSlug,
+  );
+
+  const repositoryUrls = scopedRepos.map((repo) => repo.repositoryUrl);
+  const scopeKeys = new Set(scopedRepos.map((repo) => repo.canonicalUrl));
+
   const jarvisConfig = await getJarvisConfigForWorkspace(input.workspaceId);
   const priorFindings = jarvisConfig
     ? await listProtectFindings(jarvisConfig)
     : { ok: true as const, findings: [] };
   const priorNodes = priorFindings.ok
-    ? priorFindings.findings.map(serializeFindingForWorkflow)
+    ? priorFindings.findings
+        .filter((finding) =>
+          scopedRepos.some((repo) => sameCanonicalRepo(repo.repositoryUrl, finding.repositoryUrl)),
+        )
+        .map(serializeFindingForWorkflow)
     : [];
 
   const run = await db.protectReviewRun.create({
@@ -156,6 +200,8 @@ export async function dispatchFullProtectReview(
     },
   });
 
+  await snapshotProtectRunRepos(run.id, scopedRepos);
+
   const webhookUrl = `${getBaseUrl()}/api/protect/webhook`;
 
   try {
@@ -164,6 +210,8 @@ export async function dispatchFullProtectReview(
       mode: "full",
       webhookUrl,
       tokenReference: getStakworkTokenReference(),
+      username: githubCreds.username,
+      pat: githubCreds.token,
       repositoryUrls,
       priorFindings: priorNodes,
     });
@@ -177,7 +225,7 @@ export async function dispatchFullProtectReview(
     });
 
     console.log(
-      `[Protect] dispatch workspace=${input.workspaceSlug} mode=full runId=${run.id} repos=${repositoryUrls.length}`,
+      `[Protect] dispatch workspace=${input.workspaceSlug} mode=full runId=${run.id} repos=${repositoryUrls.length} urls=${JSON.stringify(Array.from(scopeKeys))}`,
     );
 
     return updated;
@@ -229,15 +277,32 @@ export async function dispatchIncrementalProtectReview(
     return { dispatched: false, reason: "no_completed_full_review" };
   }
 
-  const workspaceRepos = await loadWorkspaceRepositories(input.workspaceId);
-  if (!workspaceRepos.includes(repositoryUrl)) {
+  const scopedRepos = await loadProtectScopeRepos(input.workspaceId);
+  const scopedRepo = scopedRepos.find((repo) =>
+    sameCanonicalRepo(repo.repositoryUrl, repositoryUrl),
+  );
+  if (!scopedRepo) {
     console.log("[GithubWebhook] Protect incremental skip", {
       workspaceId: input.workspaceId,
       repositoryUrl,
       mode: "incremental",
-      reason: "repository_not_in_workspace",
+      reason: "repository_not_in_protect_scope",
     });
-    return { dispatched: false, reason: "repository_not_in_workspace" };
+    return { dispatched: false, reason: "repository_not_in_protect_scope" };
+  }
+
+  const scannedInFullRun = await hasCompletedFullRunForRepository(
+    input.workspaceId,
+    repositoryUrl,
+  );
+  if (!scannedInFullRun) {
+    console.log("[GithubWebhook] Protect incremental skip", {
+      workspaceId: input.workspaceId,
+      repositoryUrl,
+      mode: "incremental",
+      reason: "repository_not_in_completed_full_run",
+    });
+    return { dispatched: false, reason: "repository_not_in_completed_full_run" };
   }
 
   const inFlightForRepo = await db.protectReviewRun.findFirst({
@@ -285,7 +350,7 @@ export async function dispatchIncrementalProtectReview(
     : { ok: true as const, findings: [] };
   const priorNodes = priorFindings.ok
     ? priorFindings.findings
-        .filter((finding) => finding.repositoryUrl === repositoryUrl)
+        .filter((finding) => sameCanonicalRepo(finding.repositoryUrl, repositoryUrl))
         .map(serializeFindingForWorkflow)
     : [];
 
@@ -297,6 +362,8 @@ export async function dispatchIncrementalProtectReview(
       repositoryUrl,
     },
   });
+
+  await snapshotProtectRunRepos(run.id, [scopedRepo]);
 
   const webhookUrl = `${getBaseUrl()}/api/protect/webhook`;
 
@@ -401,9 +468,13 @@ export async function completeProtectReview(
     };
   }
 
+  const snapshotCanonicalUrls =
+    run.mode === "full" ? await loadProtectRunSnapshotCanonicalUrls(run.id) : [];
+
   const applied = await applyProtectReviewFindings(jarvisConfig, input.findings ?? [], {
     mode: run.mode,
     repositoryUrl: run.repositoryUrl,
+    snapshotCanonicalUrls: run.mode === "full" ? snapshotCanonicalUrls : undefined,
   });
 
   const completed = await db.protectReviewRun.update({

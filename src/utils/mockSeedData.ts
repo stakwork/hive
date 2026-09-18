@@ -92,7 +92,7 @@ async function seedAdditionalRepositories(workspaceId: string): Promise<Array<{ 
   const repositories = [
     {
       name: "backend-api",
-      repositoryUrl: "https://github.com/stakwork/backend-api",
+      repositoryUrl: "https://github.com/stakwork/backend-api.git",
       branch: "main",
       status: RepositoryStatus.SYNCED,
       testingFrameworkSetup: true,
@@ -103,7 +103,7 @@ async function seedAdditionalRepositories(workspaceId: string): Promise<Array<{ 
     },
     {
       name: "mobile-app",
-      repositoryUrl: "https://github.com/stakwork/mobile-app",
+      repositoryUrl: "git@github.com:stakwork/mobile-app.git",
       branch: "develop",
       status: RepositoryStatus.PENDING,
       testingFrameworkSetup: false,

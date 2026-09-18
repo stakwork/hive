@@ -3,6 +3,7 @@ import { timingSafeEqual } from "crypto";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { completeProtectReview, isProtectReviewInFlight, PROTECT_ERRORS } from "@/services/protect";
+import { canonicalRepoKey } from "@/lib/utils/error-fingerprint";
 import {
   PROTECT_FINDING_CATEGORIES,
   PROTECT_FINDING_SEVERITIES,
@@ -79,6 +80,11 @@ export async function POST(request: NextRequest) {
         id: true,
         workspaceId: true,
         status: true,
+        mode: true,
+        repositoryUrl: true,
+        snapshotRepos: {
+          select: { canonicalUrl: true },
+        },
         workspace: {
           select: {
             repositories: {
@@ -93,16 +99,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: PROTECT_ERRORS.RUN_NOT_FOUND }, { status: 404 });
     }
 
-    const ownedUrls = new Set(
+    const workspaceCanonicalUrls = new Set(
       run.workspace.repositories
-        .map((repo) => repo.repositoryUrl)
-        .filter((url): url is string => typeof url === "string" && url.trim() !== ""),
+        .map((repo) => canonicalRepoKey(repo.repositoryUrl))
+        .filter((key) => key !== "unknown"),
     );
+    const snapshotCanonicalUrls = new Set(
+      run.snapshotRepos
+        .map((row) => row.canonicalUrl)
+        .filter((key) => key && key !== "unknown"),
+    );
+    if (snapshotCanonicalUrls.size === 0 && run.repositoryUrl) {
+      const incrementalKey = canonicalRepoKey(run.repositoryUrl);
+      if (incrementalKey !== "unknown") snapshotCanonicalUrls.add(incrementalKey);
+    }
 
     const rawFindings = payload.findings.length > 0 ? payload.findings : payload.results?.findings ?? [];
     const findings: IncomingProtectFinding[] = [];
     for (const finding of rawFindings) {
-      if (!ownedUrls.has(finding.repositoryUrl)) {
+      const findingKey = canonicalRepoKey(finding.repositoryUrl);
+      const ownedByWorkspace = workspaceCanonicalUrls.has(findingKey);
+      const allowedBySnapshot = snapshotCanonicalUrls.has(findingKey);
+
+      if (!ownedByWorkspace || !allowedBySnapshot) {
         return NextResponse.json(
           { error: "repositoryUrl is not owned by this workspace" },
           { status: 400 },
