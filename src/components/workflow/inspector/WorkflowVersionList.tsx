@@ -36,12 +36,6 @@ export function WorkflowVersionList({
   onCustomSelectionConfirm,
 }: WorkflowVersionListProps) {
   const { timezone } = useUserTimezone();
-  if (versions.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground p-2">No versions available.</p>
-    );
-  }
-
   const activeVersionId = versions.find((v) => v.published)?.workflow_version_id ?? null;
   const { unreleased, groups } = groupWorkflowVersions(versions);
 
@@ -50,6 +44,12 @@ export function WorkflowVersionList({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(latestPublishedId ? [latestPublishedId] : []),
   );
+
+  if (versions.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground p-2">No versions available.</p>
+    );
+  }
 
   const toggleGroup = (key: string) => {
     setExpandedGroups((prev) => {
