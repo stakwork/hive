@@ -292,6 +292,54 @@ describe("appendTurnMessages", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
+  test("lands a turn's rows after its own user message, not after a later one", async () => {
+    withLockedRows([
+      { id: "turn-1-u", role: "user", content: "Q1" },
+      { id: "turn-2-u", role: "user", content: "Q2 (sent while turn 1 ran)" },
+    ]);
+
+    await appendTurnMessages({
+      conversationId: "conv-1",
+      rows,
+      idPrefix: "turn-1-a",
+      reason: "user-turn",
+      turnId: "turn-1",
+    });
+
+    const written = update.mock.calls[0][0].data.messages as { id: string }[];
+    expect(written.map((m) => m.id)).toEqual(["turn-1-u", "turn-1-a0", "turn-2-u"]);
+  });
+
+  test("appends when the turn is already last, or when no turn is given", async () => {
+    withLockedRows([
+      { id: "turn-0-u", role: "user", content: "Q0" },
+      { id: "turn-1-u", role: "user", content: "Q1" },
+    ]);
+    await appendTurnMessages({
+      conversationId: "conv-1",
+      rows,
+      idPrefix: "turn-1-a",
+      reason: "user-turn",
+      turnId: "turn-1",
+    });
+    const anchored = update.mock.calls[0][0].data.messages as { id: string }[];
+    expect(anchored.map((m) => m.id)).toEqual(["turn-0-u", "turn-1-u", "turn-1-a0"]);
+
+    update.mockClear();
+    withLockedRows([
+      { id: "turn-1-u", role: "user", content: "Q1" },
+      { id: "turn-2-u", role: "user", content: "Q2" },
+    ]);
+    await appendTurnMessages({
+      conversationId: "conv-1",
+      rows,
+      idPrefix: "turn-1-a",
+      reason: "user-turn",
+    });
+    const appended = update.mock.calls[0][0].data.messages as { id: string }[];
+    expect(appended.map((m) => m.id)).toEqual(["turn-1-u", "turn-2-u", "turn-1-a0"]);
+  });
+
   test("no-ops when the conversation row was deleted mid-turn", async () => {
     withNoRow();
 
