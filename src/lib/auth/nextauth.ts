@@ -43,6 +43,10 @@ const getProviders = () => {
       GitHubProvider({
         clientId: process.env.GITHUB_CLIENT_ID!,
         clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+        // GitHub now returns `iss` on the OAuth callback. openid-client validates
+        // it against the issuer metadata, which next-auth's built-in GitHub
+        // provider leaves unset, causing "issuer must be configured on the issuer".
+        issuer: "https://github.com/login/oauth",
         authorization: {
           params: {
             scope: "read:user user:email public_repo",
