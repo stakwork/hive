@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 
 export type OrgView =
   | "canvas"
+  | "strut"
   | "gateway"
   | "canvas-demo"
   | "initiatives"
@@ -23,6 +24,7 @@ export function useOrgView(githubLogin: string): OrgView {
   const pathname = usePathname() ?? "";
   const base = `/org/${githubLogin}`;
   if (pathname === base || pathname === `${base}/`) return "canvas";
+  if (pathname.startsWith(`${base}/strut`)) return "strut";
   if (pathname.startsWith(`${base}/gateway`)) return "gateway";
   if (pathname.startsWith(`${base}/canvas-demo`)) return "canvas-demo";
   if (pathname.startsWith(`${base}/initiatives`)) return "initiatives";
@@ -38,6 +40,7 @@ export function useOrgView(githubLogin: string): OrgView {
 export function viewIsFullBleed(view: OrgView): boolean {
   return (
     view === "canvas" ||
+    view === "strut" ||
     view === "gateway" ||
     view === "canvas-demo" ||
     view === "schematic" ||
