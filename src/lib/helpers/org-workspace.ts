@@ -45,3 +45,42 @@ export async function getDefaultWorkspaceForOrg(
     return null;
   }
 }
+
+/**
+ * Pick the workspace whose swarm backs an org-level embedded view (gateway,
+ * strut) for this user: the org's default workspace when it is set, has a
+ * swarm, and the user can access it; otherwise the first workspace in the
+ * org that does. One resolver so every embedded view lands on the same swarm.
+ */
+export async function resolveOrgSwarmWorkspaceForUser(
+  githubLogin: string,
+  userId: string,
+) {
+  const accessibleWithSwarm = {
+    deleted: false,
+    sourceControlOrg: { githubLogin },
+    OR: [
+      { ownerId: userId },
+      { members: { some: { userId, leftAt: null } } },
+    ],
+    swarm: { isNot: null },
+  };
+
+  const orgRow = await db.sourceControlOrg.findUnique({
+    where: { githubLogin },
+    select: { defaultWorkspaceId: true },
+  });
+
+  if (orgRow?.defaultWorkspaceId) {
+    const defaultWorkspace = await db.workspace.findFirst({
+      where: { id: orgRow.defaultWorkspaceId, ...accessibleWithSwarm },
+      include: { swarm: true },
+    });
+    if (defaultWorkspace) return defaultWorkspace;
+  }
+
+  return db.workspace.findFirst({
+    where: accessibleWithSwarm,
+    include: { swarm: true },
+  });
+}
