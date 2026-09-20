@@ -74,7 +74,13 @@ async function main() {
       }
       const tool = tools[toolName];
       const args = parseArgs(rest);
-      const result = await tool.execute(args, { toolCallId: 'cli', messages: [] });
+      // v7 ToolExecutionOptions requires `context` in addition to
+      // toolCallId/messages; MCP tools declare no context schema.
+      const result = await tool.execute(args, {
+        toolCallId: 'cli',
+        messages: [],
+        context: undefined,
+      });
       for (const part of result.content) {
         if (part.type === 'text') {
           process.stdout.write(part.text + '\n');

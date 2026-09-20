@@ -56,6 +56,7 @@ export async function POST(
     const run = await dispatchFullProtectReview({
       workspaceId: member.workspaceId,
       workspaceSlug: member.slug,
+      userId: member.userId,
     });
 
     return NextResponse.json({
@@ -78,6 +79,8 @@ export async function POST(
       }
       if (
         error.message === PROTECT_ERRORS.NO_REPOSITORIES ||
+        error.message === PROTECT_ERRORS.EMPTY_SCOPE ||
+        error.message === PROTECT_ERRORS.MISSING_GITHUB_CREDENTIALS ||
         error.message === PROTECT_ERRORS.SECURITY_REVIEW_DISABLED ||
         error.message === PROTECT_ERRORS.WORKFLOW_NOT_CONFIGURED ||
         error.message === PROTECT_ERRORS.STAKWORK_NOT_CONFIGURED

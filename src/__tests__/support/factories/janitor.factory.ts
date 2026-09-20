@@ -54,6 +54,7 @@ export async function createJanitorConfig(
     integrationTestsEnabled: boolean;
     e2eTestsEnabled: boolean;
     securityReviewEnabled: boolean;
+    securityReviewModel: string | null;
     mockGenerationEnabled: boolean;
     // PR Monitor settings
     prMonitorEnabled: boolean;

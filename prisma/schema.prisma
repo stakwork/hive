@@ -317,6 +317,7 @@ model Workspace {
   workflowSummaries       WorkflowSummary[]
   janitorConfig           JanitorConfig?
   janitorRecommendations  JanitorRecommendation[]
+  protectReviewRepos      ProtectReviewRepo[]
   protectReviewRuns       ProtectReviewRun[]
   repositories            Repository[]
   screenshots             Screenshot[]
@@ -610,6 +611,8 @@ model Repository {
   janitorRuns           JanitorRun[]
   errorIssues           ErrorIssue[]
   errorEvents           ErrorEvent[]
+  protectReviewRepos    ProtectReviewRepo[]
+  protectReviewRunRepos ProtectReviewRunRepo[]
   workspace             Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tasks                 Task[]
 
@@ -898,6 +901,7 @@ model JanitorConfig {
   legalBenchmarkRecursionEnabled      Boolean      @default(false) @map("legal_benchmark_recursion_enabled")
   stalePrTasksEnabled        Boolean      @default(false) @map("stale_pr_tasks_enabled")
   stalePrTaskThresholdDays   Int          @default(7)     @map("stale_pr_task_threshold_days")
+  securityReviewModel        String?      @map("security_review_model")
   workspace                  Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   janitorRuns                JanitorRun[]
 
@@ -1586,19 +1590,49 @@ enum ProtectReviewStatus {
 }
 
 model ProtectReviewRun {
-  id                String              @id @default(cuid())
-  workspaceId       String              @map("workspace_id")
+  id                String                 @id @default(cuid())
+  workspaceId       String                 @map("workspace_id")
   mode              ProtectReviewMode
-  status            ProtectReviewStatus @default(pending)
-  repositoryUrl     String?             @map("repository_url")
-  stakworkProjectId Int?                @map("stakwork_project_id")
-  createdAt         DateTime            @default(now()) @map("created_at")
-  completedAt       DateTime?           @map("completed_at")
-  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  status            ProtectReviewStatus    @default(pending)
+  repositoryUrl     String?                @map("repository_url")
+  stakworkProjectId Int?                   @map("stakwork_project_id")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  completedAt       DateTime?              @map("completed_at")
+  snapshotRepos     ProtectReviewRunRepo[]
+  workspace         Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, status])
   @@index([workspaceId, mode, status])
   @@map("protect_review_runs")
+}
+
+model ProtectReviewRepo {
+  id           String     @id @default(cuid())
+  workspaceId  String     @map("workspace_id")
+  repositoryId String     @map("repository_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, repositoryId])
+  @@index([workspaceId])
+  @@index([repositoryId])
+  @@map("protect_review_repos")
+}
+
+model ProtectReviewRunRepo {
+  id           String           @id @default(cuid())
+  runId        String           @map("run_id")
+  repositoryId String           @map("repository_id")
+  canonicalUrl String           @map("canonical_url")
+  run          ProtectReviewRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  repository   Repository       @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, repositoryId])
+  @@index([runId])
+  @@index([repositoryId])
+  @@index([canonicalUrl])
+  @@map("protect_review_run_repos")
 }
 
 enum JanitorType {

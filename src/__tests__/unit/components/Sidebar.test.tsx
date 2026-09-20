@@ -1110,3 +1110,122 @@ describe('Sidebar - Legal Section', () => {
     });
   });
 });
+
+describe('Sidebar - Protect "Review" child link', () => {
+  const mockUser = {
+    name: 'Test User',
+    email: 'test@example.com',
+    image: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(true);
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: true,
+      hasAccess: true,
+      role: 'OWNER',
+    } as any);
+    vi.mocked(useUnresolvedErrorCountModule.useUnresolvedErrorCount).mockReturnValue({ count: 0 });
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'workspace-1', name: 'Test Workspace', slug: 'test-workspace', poolState: 'COMPLETE' },
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+    } as any);
+  });
+
+  it('renders "Review" as the first child link under Protect when expanded', async () => {
+    const user = userEvent.setup();
+    render(<Sidebar user={mockUser} />);
+
+    const protectToggles = screen.getAllByTestId('nav-protect');
+    expect(protectToggles.length).toBeGreaterThan(0);
+
+    // No standalone icon-only link should exist anymore alongside the toggle
+    expect(screen.queryAllByTestId('nav-protect-link')).toHaveLength(0);
+
+    await user.click(protectToggles[0]);
+
+    await waitFor(() => {
+      const reviewLinks = screen.getAllByTestId('nav-review');
+      expect(reviewLinks.length).toBeGreaterThan(0);
+      expect(reviewLinks[0]).toHaveAttribute('href', '/w/test-workspace/protect');
+    });
+
+    // "Review" is the first child in the list, ahead of Recommendations
+    const childrenList = screen.getAllByTestId('nav-review')[0].closest('ul');
+    const firstChildLink = childrenList?.querySelector('li:first-child a');
+    expect(firstChildLink).toHaveAttribute('data-testid', 'nav-review');
+  });
+
+  it('renders "Review" like the other Protect children — plain text link with shared styling', async () => {
+    const user = userEvent.setup();
+    render(<Sidebar user={mockUser} />);
+
+    const protectToggles = screen.getAllByTestId('nav-protect');
+    await user.click(protectToggles[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-review').length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId('nav-recommendations').length).toBeGreaterThan(0);
+    });
+
+    const reviewLink = screen.getAllByTestId('nav-review')[0];
+    const recommendationsLink = screen.getAllByTestId('nav-recommendations')[0];
+
+    // Same tag and shared class list as the other children (no icon-only/button special-casing)
+    expect(reviewLink.tagName).toBe('A');
+    expect(reviewLink.className).toBe(recommendationsLink.className);
+    expect(reviewLink.textContent).toBe('Review');
+  });
+
+  it('toggling Protect only expands/collapses children and Review navigates without toggling', async () => {
+    const user = userEvent.setup();
+    render(<Sidebar user={mockUser} />);
+
+    const protectToggle = screen.getAllByTestId('nav-protect')[0];
+    expect(protectToggle.tagName).toBe('BUTTON');
+    expect(protectToggle).not.toHaveAttribute('href');
+
+    const getChildrenList = () =>
+      screen.getAllByTestId('nav-recommendations')[0].closest('ul');
+
+    // Collapsed initially
+    expect(getChildrenList()?.className).toContain('hidden');
+
+    await user.click(protectToggle);
+
+    await waitFor(() => {
+      expect(getChildrenList()?.className).not.toContain('hidden');
+    });
+
+    const reviewLink = screen.getAllByTestId('nav-review')[0];
+    expect(reviewLink).toHaveAttribute('href', '/w/test-workspace/protect');
+
+    // Clicking the Review link itself should not toggle the list closed
+    await user.click(reviewLink);
+    expect(getChildrenList()?.className).not.toContain('hidden');
+  });
+
+  it('does not render the Review link when the feature flag is off', () => {
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(false);
+    render(<Sidebar user={mockUser} />);
+
+    // Protect is excluded from the nav entirely when canAccessDefense is false,
+    // so neither the toggle nor its "Review" child should render.
+    expect(screen.queryAllByTestId('nav-review')).toHaveLength(0);
+    expect(screen.queryAllByTestId('nav-protect')).toHaveLength(0);
+  });
+});

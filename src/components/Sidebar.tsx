@@ -28,6 +28,7 @@ import {
   ScrollText,
   Server,
   Settings,
+  Shield,
   ShieldCheck,
   TestTube2,
   Workflow,
@@ -132,6 +133,7 @@ const baseNavigationItems: NavigationItem[] = [
     label: "Protect",
     href: "/protect",
     children: [
+      { icon: Shield, label: "Review", href: "/protect" },
       { icon: BarChart3, label: "Recommendations", href: "/recommendations" },
       { icon: TestTube2, label: "Testing", href: "/testing" },
       { icon: Bot, label: "Janitors", href: "/janitors" },
@@ -241,7 +243,7 @@ function SidebarContent({
             return (
               <li key={item.href}>
                 {hasChildren ? (
-                  // Expandable items - use button with onClick to toggle
+                  // Expandable items - use button with onClick to toggle.
                   <Button
                     data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                     variant="ghost"

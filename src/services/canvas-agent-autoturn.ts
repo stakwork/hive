@@ -433,7 +433,7 @@ type AutoTurnClaims = Record<string, { claimedAt: number }>;
  * `idPrefix` dedup still blocks duplicate output rows. The leak/drop bug this
  * replaces was the real hazard; this claim is the narrow belt-and-suspenders.
  */
-async function claimAutoTurn(
+export async function claimAutoTurn(
   conversationId: string,
   plannerMessageId: string,
 ): Promise<boolean> {
@@ -479,7 +479,7 @@ async function claimAutoTurn(
  * never runs (e.g. the process died). Serialized by the same row lock so it
  * doesn't clobber a concurrent `settings` writer.
  */
-async function releaseAutoTurnClaim(
+export async function releaseAutoTurnClaim(
   conversationId: string,
   plannerMessageId: string,
 ): Promise<void> {
@@ -787,7 +787,7 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
  * would poison the cache into permanently serving nothing). Mirrors the
  * `hasConcepts` guard in `/api/ask/quick/route.ts`.
  */
-function hasConcepts(c: CachedConcepts): boolean {
+export function hasConcepts(c: CachedConcepts): boolean {
   if (Array.isArray(c.concepts)) return c.concepts.length > 0;
   if (c.conceptsByWorkspace) {
     return Object.values(c.conceptsByWorkspace).some(
@@ -806,7 +806,7 @@ function hasConcepts(c: CachedConcepts): boolean {
  * instead of overwriting it. Sibling of `persistOrgCanvasPromptCache` in
  * `/api/ask/quick/route.ts`.
  */
-async function persistPromptConcepts(
+export async function persistPromptConcepts(
   conversationId: string,
   concepts: CachedConcepts,
 ): Promise<void> {

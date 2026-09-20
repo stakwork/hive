@@ -17,6 +17,7 @@ import { releaseTaskPod } from '@/lib/pods/utils';
 import { generateUniqueId } from '@/__tests__/support/helpers';
 import { dispatchIncrementalProtectReview } from '@/services/protect';
 import { listProtectFindings } from '@/lib/protect/findings';
+import { canonicalRepoKey } from '@/lib/utils/error-fingerprint';
 
 const mockStakworkRequest = vi.fn().mockResolvedValue({ data: { project_id: 99 } });
 
@@ -896,8 +897,17 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       });
     }
 
-    async function completeFullReview(workspaceId: string) {
-      await db.protectReviewRun.create({
+    async function addToScope(workspaceId: string, repositoryId: string) {
+      await db.protectReviewRepo.create({
+        data: { workspaceId, repositoryId },
+      });
+    }
+
+    async function completeFullReview(
+      workspaceId: string,
+      repository?: { id: string; repositoryUrl: string },
+    ) {
+      const run = await db.protectReviewRun.create({
         data: {
           workspaceId,
           mode: 'full',
@@ -905,6 +915,16 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
           completedAt: new Date(),
         },
       });
+      if (repository) {
+        await db.protectReviewRunRepo.create({
+          data: {
+            runId: run.id,
+            repositoryId: repository.id,
+            canonicalUrl: canonicalRepoKey(repository.repositoryUrl),
+          },
+        });
+      }
+      return run;
     }
 
     async function sendPush(
@@ -938,7 +958,8 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     test('does not await incremental dispatch before triggerAsyncSync', async () => {
       testSetup = await createWebhookTestScenario({ branch: 'main' });
       await enableProtect(testSetup.workspace.id);
-      await completeFullReview(testSetup.workspace.id);
+      await addToScope(testSetup.workspace.id, testSetup.repository.id);
+      await completeFullReview(testSetup.workspace.id, testSetup.repository);
 
       let resolveDispatch: (value: { dispatched: false; reason: string }) => void = () => {};
       const hung = new Promise<{ dispatched: false; reason: string }>((resolve) => {
@@ -973,7 +994,8 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     test('dispatches incremental scan after a completed full review using before/after/ref', async () => {
       testSetup = await createWebhookTestScenario({ branch: 'main' });
       await enableProtect(testSetup.workspace.id);
-      await completeFullReview(testSetup.workspace.id);
+      await addToScope(testSetup.workspace.id, testSetup.repository.id);
+      await completeFullReview(testSetup.workspace.id, testSetup.repository);
 
       const response = await sendPush(testSetup, {
         before: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -1006,13 +1028,53 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
       expect(triggerAsyncSync).toHaveBeenCalled();
     });
 
+    test('incremental dispatch Stakwork vars include the resolved model and credential fields', async () => {
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+      await db.llmModel.create({
+        data: {
+          name: 'claude-sonnet-4',
+          provider: 'ANTHROPIC',
+          inputPricePer1M: 3,
+          outputPricePer1M: 15,
+          isPublic: true,
+          isTaskDefault: true,
+        },
+      });
+
+      testSetup = await createWebhookTestScenario({ branch: 'main' });
+      await enableProtect(testSetup.workspace.id);
+      await addToScope(testSetup.workspace.id, testSetup.repository.id);
+      await completeFullReview(testSetup.workspace.id, testSetup.repository);
+      await db.janitorConfig.update({
+        where: { workspaceId: testSetup.workspace.id },
+        data: { securityReviewModel: 'anthropic/claude-sonnet-4' },
+      });
+
+      const response = await sendPush(testSetup, {
+        before: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        after: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      });
+      expect(response.status).toBe(202);
+
+      expect(mockStakworkRequest).toHaveBeenCalled();
+      const vars = (
+        mockStakworkRequest.mock.calls[0][1] as {
+          workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+        }
+      ).workflow_params.set_var.attributes.vars;
+      expect(vars.model).toBe('anthropic/claude-sonnet-4');
+      expect(typeof vars.apiKey).toBe('string');
+      expect(vars.apiKey).toBeTruthy();
+    });
+
     test('still dispatches incremental scan when codeIngestionEnabled is false', async () => {
       testSetup = await createWebhookTestScenario({
         branch: 'main',
         codeIngestionEnabled: false,
       });
       await enableProtect(testSetup.workspace.id);
-      await completeFullReview(testSetup.workspace.id);
+      await addToScope(testSetup.workspace.id, testSetup.repository.id);
+      await completeFullReview(testSetup.workspace.id, testSetup.repository);
 
       const response = await sendPush(testSetup);
       expect(response.status).toBe(202);
@@ -1028,7 +1090,8 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     test('debounce prevents duplicate incremental dispatch on rapid repeated pushes', async () => {
       testSetup = await createWebhookTestScenario({ branch: 'main' });
       await enableProtect(testSetup.workspace.id);
-      await completeFullReview(testSetup.workspace.id);
+      await addToScope(testSetup.workspace.id, testSetup.repository.id);
+      await completeFullReview(testSetup.workspace.id, testSetup.repository);
 
       const first = await sendPush(testSetup);
       const second = await sendPush(testSetup, {
@@ -1042,6 +1105,37 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
         where: { workspaceId: testSetup.workspace.id, mode: 'incremental' },
       });
       expect(runs).toHaveLength(1);
+    });
+
+    test('skips incremental scan when the pushed repo is out of Protect scope', async () => {
+      testSetup = await createWebhookTestScenario({ branch: 'main' });
+      await enableProtect(testSetup.workspace.id);
+      await completeFullReview(testSetup.workspace.id, testSetup.repository);
+
+      const response = await sendPush(testSetup);
+      expect(response.status).toBe(202);
+
+      const runs = await db.protectReviewRun.findMany({
+        where: { workspaceId: testSetup.workspace.id, mode: 'incremental' },
+      });
+      expect(runs).toHaveLength(0);
+      expect(mockStakworkRequest).not.toHaveBeenCalled();
+    });
+
+    test('skips incremental scan when the repo is in live scope but never fully scanned', async () => {
+      testSetup = await createWebhookTestScenario({ branch: 'main' });
+      await enableProtect(testSetup.workspace.id);
+      await addToScope(testSetup.workspace.id, testSetup.repository.id);
+      await completeFullReview(testSetup.workspace.id);
+
+      const response = await sendPush(testSetup);
+      expect(response.status).toBe(202);
+
+      const runs = await db.protectReviewRun.findMany({
+        where: { workspaceId: testSetup.workspace.id, mode: 'incremental' },
+      });
+      expect(runs).toHaveLength(0);
+      expect(mockStakworkRequest).not.toHaveBeenCalled();
     });
   });
 });

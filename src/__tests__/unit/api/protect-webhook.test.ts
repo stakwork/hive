@@ -34,6 +34,24 @@ function request(body: unknown, token = TOKEN) {
   });
 }
 
+function runningFullRun(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "run-1",
+    workspaceId: "ws-1",
+    status: "running",
+    mode: "full",
+    repositoryUrl: null,
+    snapshotRepos: [{ canonicalUrl: "acme/hive" }],
+    workspace: {
+      repositories: [
+        { repositoryUrl: "https://github.com/acme/hive" },
+        { repositoryUrl: "https://github.com/acme/other" },
+      ],
+    },
+    ...overrides,
+  };
+}
+
 describe("POST /api/protect/webhook", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,9 +82,9 @@ describe("POST /api/protect/webhook", () => {
     expect(missing.status).toBe(404);
 
     vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue({
-      id: "run-1",
-      workspaceId: "ws-1",
+      ...runningFullRun(),
       status: "completed",
+      snapshotRepos: [],
       workspace: { repositories: [] },
     } as never);
     const completed = await POST(request({ runId: "run-1" }));
@@ -75,12 +93,8 @@ describe("POST /api/protect/webhook", () => {
 
   it("ignores body workspaceId and uses the run's workspace", async () => {
     vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue({
-      id: "run-1",
+      ...runningFullRun(),
       workspaceId: "ws-from-run",
-      status: "running",
-      workspace: {
-        repositories: [{ repositoryUrl: "https://github.com/acme/hive" }],
-      },
     } as never);
 
     const response = await POST(
@@ -106,14 +120,7 @@ describe("POST /api/protect/webhook", () => {
   });
 
   it("rejects a repositoryUrl not owned by the run workspace", async () => {
-    vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue({
-      id: "run-1",
-      workspaceId: "ws-1",
-      status: "running",
-      workspace: {
-        repositories: [{ repositoryUrl: "https://github.com/acme/hive" }],
-      },
-    } as never);
+    vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue(runningFullRun() as never);
 
     const response = await POST(
       request({
@@ -134,15 +141,52 @@ describe("POST /api/protect/webhook", () => {
     expect(completeProtectReview).not.toHaveBeenCalled();
   });
 
+  it("rejects a workspace repo that is not on this run's snapshot", async () => {
+    vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue(runningFullRun() as never);
+
+    const response = await POST(
+      request({
+        runId: "run-1",
+        findings: [
+          {
+            category: "bug",
+            severity: "low",
+            file: "a.ts",
+            title: "Issue",
+            repositoryUrl: "https://github.com/acme/other",
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(completeProtectReview).not.toHaveBeenCalled();
+  });
+
+  it("accepts SSH / .git variants that canonicalize to a snapshot URL", async () => {
+    vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue(runningFullRun() as never);
+
+    const response = await POST(
+      request({
+        runId: "run-1",
+        findings: [
+          {
+            category: "bug",
+            severity: "low",
+            file: "a.ts",
+            title: "Issue",
+            repositoryUrl: "git@github.com:acme/hive.git",
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(completeProtectReview).toHaveBeenCalled();
+  });
+
   it("strips unknown finding keys before upsert", async () => {
-    vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue({
-      id: "run-1",
-      workspaceId: "ws-1",
-      status: "running",
-      workspace: {
-        repositories: [{ repositoryUrl: "https://github.com/acme/hive" }],
-      },
-    } as never);
+    vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue(runningFullRun() as never);
 
     await POST(
       request({
@@ -165,5 +209,52 @@ describe("POST /api/protect/webhook", () => {
     const findings = payload.findings ?? [];
     expect(findings[0]).not.toHaveProperty("extraEvil");
     expect(findings[0]).not.toHaveProperty("verification");
+  });
+
+  it("accepts titlefingerprint and passes it through to completeProtectReview", async () => {
+    vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue(runningFullRun() as never);
+
+    await POST(
+      request({
+        runId: "run-1",
+        findings: [
+          {
+            category: "bug",
+            severity: "low",
+            file: "a.ts",
+            title: "Issue",
+            repositoryUrl: "https://github.com/acme/hive",
+            titlefingerprint: "0123456789abcdef",
+          },
+        ],
+      }),
+    );
+
+    const payload = vi.mocked(completeProtectReview).mock.calls[0][0];
+    const findings = payload.findings ?? [];
+    expect(findings[0]).toHaveProperty("titlefingerprint", "0123456789abcdef");
+  });
+
+  it("rejects a repositoryUrl not owned by the run workspace even when titlefingerprint is present", async () => {
+    vi.mocked(db.protectReviewRun.findUnique).mockResolvedValue(runningFullRun() as never);
+
+    const response = await POST(
+      request({
+        runId: "run-1",
+        findings: [
+          {
+            category: "bug",
+            severity: "low",
+            file: "a.ts",
+            title: "Issue",
+            repositoryUrl: "https://github.com/evil/repo",
+            titlefingerprint: "0123456789abcdef",
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(completeProtectReview).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,7 @@ import {
   PROTECT_FINDING_VERIFICATIONS,
   PROTECT_STRING_LIMITS,
 } from "@/types/protect";
+import { canonicalRepoKey } from "@/lib/utils/error-fingerprint";
 
 export const SECURITY_FINDING_NODE_TYPE = "SecurityFinding";
 
@@ -44,8 +45,13 @@ export function buildFindingNodeKey(
   file: string,
   category: string,
   title: string,
+  titlefingerprint?: string,
 ): string {
-  return [repositoryUrl.trim(), file.trim(), category.trim(), fingerprintTitle(title)].join("|");
+  const fingerprint =
+    titlefingerprint && titlefingerprint.trim().length > 0
+      ? titlefingerprint.trim()
+      : fingerprintTitle(title);
+  return [repositoryUrl.trim(), file.trim(), category.trim(), fingerprint].join("|");
 }
 
 function asString(value: unknown, fallback = ""): string {
@@ -188,6 +194,10 @@ function findingNodeData(
   nodeKey: string,
   status: ProtectFindingStatus,
 ): Record<string, unknown> {
+  const titlefingerprint =
+    finding.titlefingerprint && finding.titlefingerprint.trim().length > 0
+      ? finding.titlefingerprint.trim()
+      : fingerprintTitle(finding.title);
   return {
     id: nodeKey,
     node_key: nodeKey,
@@ -202,6 +212,7 @@ function findingNodeData(
     recommendation: finding.recommendation,
     status,
     repositoryUrl: finding.repositoryUrl,
+    titlefingerprint,
   };
 }
 
@@ -216,7 +227,8 @@ export interface ApplyProtectReviewResult {
  * - a stale match is reopened (status: open)
  * - keys the review no longer reports are marked stale
  * - verification is never written (member PATCH owns that field)
- * - incremental reviews only stale findings for the reviewed repository
+ * - full reviews only stale findings whose repo is in this run's snapshot
+ * - incremental reviews only stale findings for the reviewed repository (canonical match)
  */
 export async function applyProtectReviewFindings(
   config: JarvisConnectionConfig,
@@ -224,6 +236,7 @@ export async function applyProtectReviewFindings(
   options: {
     mode: "full" | "incremental";
     repositoryUrl?: string | null;
+    snapshotCanonicalUrls?: string[] | null;
   },
 ): Promise<ApplyProtectReviewResult> {
   const priorResult = await listProtectFindings(config);
@@ -245,6 +258,7 @@ export async function applyProtectReviewFindings(
       finding.file,
       finding.category,
       finding.title,
+      finding.titlefingerprint,
     );
     incomingKeys.add(nodeKey);
     const prior = priorByKey.get(nodeKey);
@@ -270,17 +284,22 @@ export async function applyProtectReviewFindings(
     }
   }
 
+  const snapshotKeys = new Set(
+    (options.snapshotCanonicalUrls ?? []).filter((key) => key && key !== "unknown"),
+  );
+
   const staleTargets = priorResult.findings.filter((finding) => {
     if (incomingKeys.has(finding.node_key)) return false;
     if (finding.status === "stale") return false;
-    if (
-      options.mode === "incremental" &&
-      options.repositoryUrl &&
-      finding.repositoryUrl !== options.repositoryUrl
-    ) {
-      return false;
+    if (options.mode === "incremental") {
+      if (!options.repositoryUrl) return false;
+      return canonicalRepoKey(finding.repositoryUrl) === canonicalRepoKey(options.repositoryUrl);
     }
-    return true;
+    if (options.mode === "full") {
+      if (snapshotKeys.size === 0) return false;
+      return snapshotKeys.has(canonicalRepoKey(finding.repositoryUrl));
+    }
+    return false;
   });
 
   for (const finding of staleTargets) {

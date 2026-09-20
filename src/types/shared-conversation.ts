@@ -2,6 +2,10 @@
 
 export interface ConversationSettings {
   extraWorkspaceSlugs?: string[];
+  // Protect Jamie action: pins reuse + tool targeting for org-canvas chats.
+  protectFindingRefId?: string;
+  protectTool?: string;
+  protectWorkspaceSlug?: string;
   // Set to "llm" after a successful generateConversationTitle write.
   // Once present, later turns must not overwrite SharedConversation.title.
   titleSource?: "llm";

@@ -1,18 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { redirect } from "next/navigation";
-import { Loader2, Shield } from "lucide-react";
+import { Loader2, Plus, Shield, Sparkles, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { FindingsList } from "@/components/protect/FindingsList";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import { toast } from "sonner";
-import type { ProtectFindingsResponse } from "@/types/protect";
+import type { ProtectFindingsResponse, ProtectScopePayload } from "@/types/protect";
+
+const EMPTY_SCOPE: ProtectScopePayload = {
+  repositories: [],
+  selected: [],
+  empty: true,
+};
 
 export default function ProtectPage() {
   const canAccessDefense = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
@@ -21,6 +35,10 @@ export default function ProtectPage() {
   const [data, setData] = useState<ProtectFindingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [llmModels, setLlmModels] = useState<LlmModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [updatingScope, setUpdatingScope] = useState(false);
+  const [pendingRepoId, setPendingRepoId] = useState<string>("");
 
   const loadFindings = useCallback(async (slug: string) => {
     setLoading(true);
@@ -30,12 +48,21 @@ export default function ProtectPage() {
         throw new Error("Failed to load findings");
       }
       const body = (await response.json()) as ProtectFindingsResponse;
-      setData(body);
+      setData({
+        ...body,
+        scope: body.scope ?? EMPTY_SCOPE,
+      });
     } catch (error) {
       toast.error("Could not load Protect findings", {
         description: error instanceof Error ? error.message : "Please try again.",
       });
-      setData({ status: "error", findings: [], run: null, error: "Failed to load findings" });
+      setData({
+        status: "error",
+        findings: [],
+        run: null,
+        scope: EMPTY_SCOPE,
+        error: "Failed to load findings",
+      });
     } finally {
       setLoading(false);
     }
@@ -47,9 +74,68 @@ export default function ProtectPage() {
     }
   }, [workspace?.slug, loadFindings]);
 
+  useEffect(() => {
+    if (!canAdmin || !workspace?.slug) return;
+
+    const loadModelConfig = async () => {
+      try {
+        const [modelsRes, configRes] = await Promise.all([
+          fetch("/api/llm-models"),
+          fetch(`/api/workspaces/${workspace.slug}/protect/config`),
+        ]);
+        const models: LlmModelOption[] = modelsRes.ok
+          ? ((await modelsRes.json()).models ?? [])
+          : [];
+        setLlmModels(models);
+        if (models.length === 0) return;
+
+        const stored: string | null = configRes.ok
+          ? ((await configRes.json()).securityReviewModel ?? null)
+          : null;
+        const storedModel = stored
+          ? models.find((m) => getModelValue(m) === stored)
+          : null;
+        const defaultModel = models.find((m) => m.isTaskDefault);
+        setSelectedModel(getModelValue(storedModel ?? defaultModel ?? models[0]));
+      } catch (error) {
+        console.error("Error fetching Protect model config:", error);
+      }
+    };
+
+    void loadModelConfig();
+  }, [canAdmin, workspace?.slug]);
+
   if (!canAccessDefense) {
     redirect("/");
   }
+
+  const handleModelChange = async (value: string) => {
+    if (!workspace?.slug) return;
+    const previous = selectedModel;
+    setSelectedModel(value);
+    try {
+      const response = await fetch(`/api/workspaces/${workspace.slug}/protect/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ securityReviewModel: value }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to save model");
+      }
+    } catch (error) {
+      setSelectedModel(previous);
+      toast.error("Could not save model", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    }
+  };
+
+  const scope = data?.scope ?? EMPTY_SCOPE;
+  const scopeEmpty = scope.empty;
+  const inProgress = data?.status === "in-progress" || running;
+  const runDisabled = !canAdmin || inProgress || running || scopeEmpty;
+  const availableRepos = scope.repositories.filter((repo) => !repo.inScope);
+  const selectedRepos = scope.repositories.filter((repo) => repo.inScope);
 
   const handleRunReview = async () => {
     if (!workspace?.slug) return;
@@ -73,30 +159,170 @@ export default function ProtectPage() {
     }
   };
 
-  const inProgress = data?.status === "in-progress" || running;
-  const runDisabled = !canAdmin || inProgress || running;
+  const updateScope = async (repositoryId: string, inScope: boolean) => {
+    if (!workspace?.slug) return;
+    setUpdatingScope(true);
+    try {
+      const response = await fetch(`/api/workspaces/${workspace.slug}/protect/scope`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repositoryId, inScope }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof body.error === "string" ? body.error : "Failed to update scope");
+      }
+      setData((current) =>
+        current
+          ? { ...current, scope: body.scope as ProtectScopePayload }
+          : current,
+      );
+      setPendingRepoId("");
+    } catch (error) {
+      toast.error("Could not update review scope", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setUpdatingScope(false);
+    }
+  };
+
+  const emptyCopy = (() => {
+    if (scopeEmpty) {
+      return canAdmin
+        ? "Add a repository to the review scope, then run a full review."
+        : "No repositories are in the review scope yet. Ask an admin to add one.";
+    }
+    return canAdmin
+      ? "No review has run yet. Run a full review of the selected repositories."
+      : "No review has run yet. Ask an admin to run a review.";
+  })();
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Protect"
-        description="Security findings for this workspace."
+        description="Security findings for repositories in the review scope."
         icon={Shield}
         actions={
           canAdmin ? (
-            <Button
-              onClick={handleRunReview}
-              disabled={runDisabled}
-              data-testid="protect-run-review"
-            >
-              {(running || inProgress) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Run review
-            </Button>
+            <>
+              {llmModels.length > 0 && (
+                <Select value={selectedModel} onValueChange={handleModelChange}>
+                  <SelectTrigger
+                    className="w-auto h-8 text-xs rounded-lg shadow-sm whitespace-nowrap"
+                    data-testid="model-selector"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 shrink-0" />
+                      <span>
+                        {selectedModel
+                          ? llmModels.find((m) => getModelValue(m) === selectedModel)?.name ||
+                            selectedModel
+                          : "Model"}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {llmModels.map((m) => (
+                      <SelectItem key={m.id} value={getModelValue(m)}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Button
+                onClick={handleRunReview}
+                disabled={runDisabled}
+                data-testid="protect-run-review"
+              >
+                {(running || inProgress) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Run review
+              </Button>
+            </>
           ) : undefined
         }
       />
 
       <div className="max-w-5xl space-y-6">
+        <Card data-testid="protect-scope">
+          <CardContent className="space-y-4 py-5">
+            <div>
+              <h2 className="text-sm font-medium">Review scope</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Only selected repositories are scanned. Scope starts empty.
+              </p>
+            </div>
+
+            {selectedRepos.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="protect-scope-empty">
+                No repositories selected.
+              </p>
+            ) : (
+              <ul className="flex flex-wrap gap-2" data-testid="protect-scope-selected">
+                {selectedRepos.map((repo) => (
+                  <li
+                    key={repo.id}
+                    className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 text-sm"
+                  >
+                    <span>{repo.name}</span>
+                    {canAdmin && (
+                      <button
+                        type="button"
+                        className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                        aria-label={`Remove ${repo.name} from scope`}
+                        data-testid={`protect-scope-remove-${repo.id}`}
+                        disabled={updatingScope}
+                        onClick={() => void updateScope(repo.id, false)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {canAdmin && availableRepos.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={pendingRepoId || undefined}
+                  onValueChange={setPendingRepoId}
+                  disabled={updatingScope}
+                >
+                  <SelectTrigger className="w-64" data-testid="protect-scope-select">
+                    <SelectValue placeholder="Add a repository" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableRepos.map((repo) => (
+                      <SelectItem key={repo.id} value={repo.id}>
+                        {repo.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!pendingRepoId || updatingScope}
+                  data-testid="protect-scope-add"
+                  onClick={() => {
+                    if (pendingRepoId) void updateScope(pendingRepoId, true);
+                  }}
+                >
+                  {updatingScope ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="mr-2 h-4 w-4" />
+                  )}
+                  Add
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {loading && (
           <Card data-testid="protect-loading">
             <CardContent className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
@@ -109,7 +335,7 @@ export default function ProtectPage() {
         {!loading && data?.status === "empty" && (
           <Card data-testid="protect-empty">
             <CardContent className="py-10 text-sm text-muted-foreground">
-              No review has run yet. {canAdmin ? "Run a full review to scan every repository." : "Ask an admin to run a review."}
+              {emptyCopy}
             </CardContent>
           </Card>
         )}
