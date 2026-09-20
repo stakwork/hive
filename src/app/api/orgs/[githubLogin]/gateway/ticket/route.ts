@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { resolveOrgSwarmWorkspaceForUser } from "@/lib/helpers/org-workspace";
 import { deriveBifrostBaseUrl } from "@/services/bifrost/resolve";
 import { BIFROST_HTTP_TIMEOUT_MS } from "@/services/bifrost/constants";
 
@@ -39,44 +39,8 @@ export async function POST(
   const { githubLogin } = await params;
   const userId = userOrResponse.id;
 
-  // Phase 1: prefer the org's default workspace (if set and accessible).
-  const orgRow = await db.sourceControlOrg.findUnique({
-    where: { githubLogin },
-    select: { defaultWorkspaceId: true },
-  });
-
-  let workspace = null;
-  if (orgRow?.defaultWorkspaceId) {
-    workspace = await db.workspace.findFirst({
-      where: {
-        id: orgRow.defaultWorkspaceId,
-        deleted: false,
-        sourceControlOrg: { githubLogin },
-        OR: [
-          { ownerId: userId },
-          { members: { some: { userId, leftAt: null } } },
-        ],
-        swarm: { isNot: null },
-      },
-      include: { swarm: true },
-    });
-  }
-
-  // Phase 2: fall back to first-reachable workspace (original behaviour).
-  if (!workspace) {
-    workspace = await db.workspace.findFirst({
-      where: {
-        deleted: false,
-        sourceControlOrg: { githubLogin },
-        OR: [
-          { ownerId: userId },
-          { members: { some: { userId, leftAt: null } } },
-        ],
-        swarm: { isNot: null },
-      },
-      include: { swarm: true },
-    });
-  }
+  // The org's default workspace when accessible, else first-reachable.
+  const workspace = await resolveOrgSwarmWorkspaceForUser(githubLogin, userId);
 
   if (!workspace || !workspace.swarm) {
     return NextResponse.json(
