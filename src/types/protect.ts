@@ -89,6 +89,20 @@ export interface ProtectFindingsResponse {
   error?: string;
 }
 
+export interface ProtectEndpoint {
+  refId: string;
+  name: string;
+  verb: string;
+  file: string;
+}
+
+export interface ProtectEndpointsResponse {
+  status: "ready" | "error";
+  endpoints: ProtectEndpoint[];
+  truncated: boolean;
+  error?: string;
+}
+
 export interface ProtectReviewCounts {
   created: number;
   updated: number;
