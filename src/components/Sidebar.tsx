@@ -31,6 +31,7 @@ import {
   Shield,
   ShieldCheck,
   TestTube2,
+  Waypoints,
   Workflow,
 } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
@@ -134,6 +135,7 @@ const baseNavigationItems: NavigationItem[] = [
     href: "/protect",
     children: [
       { icon: Shield, label: "Review", href: "/protect" },
+      { icon: Waypoints, label: "Endpoints", href: "/endpoints" },
       { icon: BarChart3, label: "Recommendations", href: "/recommendations" },
       { icon: TestTube2, label: "Testing", href: "/testing" },
       { icon: Bot, label: "Janitors", href: "/janitors" },
