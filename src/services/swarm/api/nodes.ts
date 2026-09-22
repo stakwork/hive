@@ -507,6 +507,10 @@ export async function searchNodesByAttributes(
 /**
  * List nodes of a given type via `GET /v2/nodes?type=X&limit=N`.
  *
+ * `startingAfter` is jarvis' cursor (the last `ref_id` of the previous page);
+ * `fields` restricts `properties` to the named keys so large bodies stay
+ * server-side.
+ *
  * Never throws. Returns `{ ok }` so callers can distinguish a failed Jarvis
  * read from a legitimately empty result — `kgGetNodesByType` cannot.
  */
@@ -514,11 +518,14 @@ export async function listNodesByType(
   config: JarvisConnectionConfig,
   nodeType: string,
   limit = 500,
+  options: { startingAfter?: string; fields?: string[] } = {},
 ): Promise<SearchLatestResult> {
   const params = new URLSearchParams({
     type: nodeType,
     limit: String(limit),
   });
+  if (options.startingAfter) params.set("starting_after", options.startingAfter);
+  if (options.fields?.length) params.set("fields", options.fields.join(","));
 
   const result = await jarvisRequest({
     config,
@@ -543,6 +550,72 @@ export async function listNodesByType(
 
   const raw = Array.isArray(body) ? body : Array.isArray(body?.nodes) ? body.nodes : [];
   return { ok: true, nodes: raw, status: result.status };
+}
+
+export interface JarvisCallerSystem {
+  system: string;
+  call_sites: number;
+}
+
+export interface JarvisCallersTarget {
+  ref_id: string;
+  name: string | null;
+  verb: string | null;
+  file: string | null;
+  system: string;
+  callers: JarvisCallerSystem[];
+}
+
+export interface JarvisCallersResult {
+  ok: boolean;
+  targets: JarvisCallersTarget[];
+  /** caller -> callee system matrix summed over all targets. */
+  systems: Array<{ caller: string; callee: string; call_sites: number }>;
+  status?: number;
+  endpointMissing?: boolean;
+  error?: string;
+}
+
+/**
+ * Every `targetType` node with its callers grouped by system via
+ * `GET /v2/graph/callers`. A system is the leading segments of a node's
+ * `file` (`stakwork/hive`). Never throws.
+ */
+export async function getGraphCallers(
+  config: JarvisConnectionConfig,
+  params: { edgeType?: string; sourceType?: string; targetType?: string; systemDepth?: number } = {},
+): Promise<JarvisCallersResult> {
+  const query = new URLSearchParams({
+    edge_type: params.edgeType ?? "CALLS",
+    source_type: params.sourceType ?? "Request",
+    target_type: params.targetType ?? "Endpoint",
+  });
+  if (params.systemDepth) query.set("system_depth", String(params.systemDepth));
+
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/graph/callers?${query.toString()}`,
+    method: "GET",
+  });
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      targets: [],
+      systems: [],
+      status: result.status,
+      endpointMissing: result.notFound,
+      error: result.error,
+    };
+  }
+
+  const body = result.body as Partial<Pick<JarvisCallersResult, "targets" | "systems">> | undefined;
+  return {
+    ok: true,
+    targets: Array.isArray(body?.targets) ? body.targets : [],
+    systems: Array.isArray(body?.systems) ? body.systems : [],
+    status: result.status,
+  };
 }
 
 export async function updateNode(

@@ -24,6 +24,7 @@
  *      type === PULL_REQUEST). Read-only: no GitHub refresh, no writes.
  */
 
+import { stripEndMarker } from "@/lib/ai/endMarker";
 import { db } from "@/lib/db";
 import {
   getProposalStatus,
@@ -45,8 +46,6 @@ const PROPOSE_TOOL_NAMES = new Set<string>([
   PROPOSE_MILESTONE_TOOL,
   PROPOSE_CODE_CHANGE_TOOL,
 ]);
-
-const END_MARKER = /\[END_OF_ANSWER\]/g;
 
 /** Richer view of the loosely-typed `StoredMessage.source` JSON. */
 type MessageSource = {
@@ -183,7 +182,7 @@ export async function buildOrgConversationReadout(args: {
 
   // ── Transcript ────────────────────────────────────────────────────
   for (const m of messages) {
-    const text = (m.content ?? "").replace(END_MARKER, "").trim();
+    const text = stripEndMarker(m.content ?? "").trim();
 
     if (m.role === "user") {
       // Approve/Reject intents render no bubble in the UI — the card's

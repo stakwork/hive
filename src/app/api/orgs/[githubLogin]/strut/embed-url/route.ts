@@ -4,6 +4,10 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { EncryptionService } from "@/lib/encryption";
 import { resolveOrgSwarmWorkspaceForUser } from "@/lib/helpers/org-workspace";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import {
+  ensureStrutDelegation,
+  resolveStrutActor,
+} from "@/services/bifrost/strut-delegation";
 
 export const runtime = "nodejs";
 
@@ -26,6 +30,12 @@ const MINT_TIMEOUT_MS = 10_000;
  *     sessionStorage, strips it from the URL, and replays it as
  *     `Authorization: Bearer` on every request — which mcp's lab gate
  *     accepts alongside its Basic / `x-api-token` credentials.
+ *
+ * The JWT's `sub` is the user's actor string (the macaroon `user_id`), so
+ * strut bills what the user does in the embed to them; and, behind the
+ * Bifrost gates, the route makes sure the swarm's strut holds a live
+ * standing delegation for that user (`ensureStrutDelegation`). A failed
+ * push never blocks the embed.
  */
 export async function POST(
   request: NextRequest,
@@ -73,6 +83,7 @@ export async function POST(
   }
 
   const baseUrl = transformSwarmUrlToRepo2Graph(swarm.swarmUrl);
+  const actor = await resolveStrutActor(userOrResponse.id);
 
   let resp: Response;
   try {
@@ -82,7 +93,7 @@ export async function POST(
         "Content-Type": "application/json",
         "x-api-token": apiToken,
       },
-      body: JSON.stringify({ expires_in: TOKEN_TTL }),
+      body: JSON.stringify({ expires_in: TOKEN_TTL, sub: actor }),
       cache: "no-store",
       signal: AbortSignal.timeout(MINT_TIMEOUT_MS),
     });
@@ -109,6 +120,13 @@ export async function POST(
       { status: 502 },
     );
   }
+
+  // Never throws: a failed push is logged and the embed goes ahead.
+  await ensureStrutDelegation(
+    { workspaceId: workspace.id, workspaceSlug: workspace.slug, userId: userOrResponse.id },
+    { swarmUrl: swarm.swarmUrl, swarmApiKey: apiToken },
+    { actor },
+  );
 
   // Trailing slash matters: the UI's relative `./assets/...` URLs resolve
   // under `/lab/`, and mcp 308s a bare `/lab` there — dropping the `?key=`.

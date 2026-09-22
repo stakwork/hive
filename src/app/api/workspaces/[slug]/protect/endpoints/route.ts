@@ -25,7 +25,8 @@ export async function GET(
       const body: ProtectEndpointsResponse = {
         status: "error",
         endpoints: [],
-        truncated: false,
+        systems: [],
+        callersUnavailable: false,
         error: "Workspace swarm is not configured",
       };
       return NextResponse.json(body);
@@ -36,7 +37,8 @@ export async function GET(
       const body: ProtectEndpointsResponse = {
         status: "error",
         endpoints: [],
-        truncated: false,
+        systems: [],
+        callersUnavailable: false,
         error: listed.error,
       };
       return NextResponse.json(body);
@@ -45,7 +47,8 @@ export async function GET(
     const body: ProtectEndpointsResponse = {
       status: "ready",
       endpoints: listed.endpoints,
-      truncated: listed.truncated,
+      systems: listed.systems,
+      callersUnavailable: listed.callersUnavailable,
     };
     return NextResponse.json(body);
   } catch (error) {

@@ -12,6 +12,20 @@ export type {
   WorkspaceAuth,
 } from "./orchestrator";
 
+// The strut standing delegation (plans/mothership-cost-control.md §4):
+// the push hive makes at the moments it already talks to a swarm's strut,
+// and the actor string every such call must name.
+export {
+  ensureStrutDelegation,
+  resolveStrutActor,
+  STRUT_ACTOR_HEADER,
+} from "./strut-delegation";
+export type {
+  EnsureStrutDelegationResult,
+  EnsureStrutDelegationStatus,
+  StrutDelegationSummary,
+} from "./strut-delegation";
+
 // ─── Per-layer building blocks (exported for testing + advanced use) ─
 //
 // New code in `lib/ai/`, `lib/mcp/`, etc. should NOT call these
