@@ -149,7 +149,38 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
     expect(mintUrl).toBe("https://default.swarm.test:3355/mint-token");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["x-api-token"]).toBe("mock-swarm-api-key");
-    expect(JSON.parse(init.body as string)).toEqual({ expires_in: "8h" });
+    // `sub` is the user's actor string — `buildBifrostName(userId, login)`,
+    // the macaroon user_id — so strut bills the embed's spend to them. The
+    // fixture user has no GitHub login, so it is the bare id.
+    expect(JSON.parse(init.body as string)).toEqual({ expires_in: "8h", sub: owner.id });
+  });
+
+  it("puts {login}-{userId} in `sub` for a user with a GitHub login", async () => {
+    const githubLogin = `strut-org-sub-${generateUniqueId()}`;
+    const org = await createOrg(githubLogin);
+    createdOrgIds.push(org.id);
+    const owner = await seedOwner("strut-owner-sub");
+    await db.gitHubAuth.create({
+      data: {
+        userId: owner.id,
+        githubUserId: `gh-${generateUniqueId()}`,
+        githubUsername: "octo-owner",
+      },
+    });
+
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+    await createTestSwarm({
+      workspaceId: ws.id,
+      swarmUrl: "https://sub.swarm.test/api",
+      swarmApiKey: "key-sub",
+    });
+
+    await expectJson(await postAs(githubLogin, owner), 200);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string).sub).toBe(`octo-owner-${owner.id}`);
+    // BIFROST_ENABLED is unset here, so no delegation push follows the mint.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to the first reachable workspace when no default is set", async () => {

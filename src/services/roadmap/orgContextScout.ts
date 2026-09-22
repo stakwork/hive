@@ -38,6 +38,7 @@
  * when it can, and degrades gracefully otherwise.
  */
 
+import { stripEndMarker } from "@/lib/ai/endMarker";
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
 
@@ -191,11 +192,9 @@ export async function scoutOrgContext(
   // ── Parse the scout's reply ──────────────────────────────────────
   // The agent's system prompt teaches it to emit `[END_OF_ANSWER]` as
   // a stop marker. The AI SDK also configures it as a `stopSequence`,
-  // so streamText cuts off at the marker — but we strip defensively
-  // in case the prompt drift leaves it in the text.
-  const cleaned = text
-    .replace(/\[END_OF_ANSWER\]/g, "")
-    .trim();
+  // so streamText cuts off at the marker — but we strip a trailing one
+  // defensively in case prompt drift leaves it in the text.
+  const cleaned = stripEndMarker(text).trim();
 
   // Accept either the explicit sentinel or any empty/whitespace
   // response as the "nothing useful" signal. Belt-and-suspenders
