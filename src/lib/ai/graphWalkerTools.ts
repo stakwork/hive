@@ -946,18 +946,6 @@ async function searchKg(
 // graph_query output shaping
 // ---------------------------------------------------------------------------
 
-/**
- * Terminal admin-denial message for `graph_query`.
- *
- * Deliberately self-evidently NON-retryable: fanout/cron paths
- * (`canvas-graph-walk-worker`, `canvas-agent-autoturn`) can reach this tool
- * without an admin user, and retries against a permanently-403ing call waste
- * turns. Exported so tests can pin the exact phrasing.
- */
-export const GRAPH_QUERY_FORBIDDEN_MESSAGE =
-  "Forbidden: graph_query requires workspace admin or owner role for the acting user. " +
-  "This will not succeed on retry — use graph_search or graph_neighbors instead.";
-
 /** Shaped success payload returned to the model by `graph_query`. */
 interface ShapedGraphQuerySuccess {
   columns: unknown[];
@@ -1503,15 +1491,16 @@ export function buildGraphWalkerTools(
         "This is the escape hatch for AGGREGATES and MULTI-HOP PATTERNS that graph_search / " +
         "graph_neighbors cannot express (e.g. 'how many functions call X', 'which files have " +
         "the most endpoints') — prefer graph_search / graph_neighbors FIRST for simple lookups; " +
-        "they are cheaper. ADMIN-ONLY: requires the workspace admin/owner role for the acting " +
-        "user; non-admin callers are denied terminally (do not retry). Queries the stakgraph CODE " +
-        "graph (Function, File, Endpoint, Class, Datamodel): the SAME Neo4j instance the kg tools " +
-        "(graph_search / graph_neighbors / graph_get) read from, but a LARGELY DISJOINT LABEL SET " +
-        "from the Jarvis content/entity view (Person, Episode, Clip, Document) those tools surface — " +
-        "results are NOT interchangeable between the two. Write operations are blocked. The server " +
-        "strips any inline LIMIT clause from your query and applies its own based on the limit " +
-        "argument (max 200), so express top-N with ORDER BY plus limit rather than an inline LIMIT. " +
-        "Query text is capped at 4096 characters.",
+        "they are cheaper. Any workspace member may call this (no admin/owner role required); " +
+        "callers who are not a member of the named workspace are denied. This remains an escape " +
+        "hatch, not a general-purpose query interface: write operations are always blocked, " +
+        "regardless of role. Queries the stakgraph CODE graph (Function, File, Endpoint, Class, " +
+        "Datamodel): the SAME Neo4j instance the kg tools (graph_search / graph_neighbors / " +
+        "graph_get) read from, but a LARGELY DISJOINT LABEL SET from the Jarvis content/entity " +
+        "view (Person, Episode, Clip, Document) those tools surface — results are NOT " +
+        "interchangeable between the two. The server strips any inline LIMIT clause from your " +
+        "query and applies its own based on the limit argument (max 200), so express top-N with " +
+        "ORDER BY plus limit rather than an inline LIMIT. Query text is capped at 4096 characters.",
       inputSchema: z.object({
         workspace: z.string().describe(
           "Required workspace slug to run the query against — credentials resolve from " +
@@ -1560,9 +1549,10 @@ export function buildGraphWalkerTools(
             };
           }
 
-          // 3) Shared service — the AUTHORITATIVE membership+admin gate
-          // (validateWorkspaceAccess(slug, userId, true)), identical denial
-          // semantics to the admin HTTP route. Do not weaken/bypass/duplicate it.
+          // 3) Shared service — the AUTHORITATIVE membership gate
+          // (validateWorkspaceAccess(slug, userId, true)); any member role
+          // passes, identical denial semantics to the HTTP route. Do not
+          // weaken/bypass/duplicate it.
           const result = await runWorkspaceGraphQuery({
             slug: workspace,
             userId,
@@ -1576,11 +1566,9 @@ export function buildGraphWalkerTools(
               userId,
               status: result.status,
             });
-            if (result.status === 403) {
-              // Terminal, self-evidently non-retryable — see
-              // GRAPH_QUERY_FORBIDDEN_MESSAGE doc above.
-              return { error: GRAPH_QUERY_FORBIDDEN_MESSAGE };
-            }
+            // No more admin-only terminal denial: the service now only 403s
+            // on the write-keyword guard (retryable with a read-only query),
+            // so every failure surfaces the service's own message/status.
             return { error: `${result.message} (status ${result.status})` };
           }
 

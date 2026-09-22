@@ -8,10 +8,11 @@ export const runtime = "nodejs";
 /**
  * Thin HTTP wrapper over `runWorkspaceGraphQuery` (src/services/graph/query.ts).
  *
- * Keeps only session auth and body parsing; the access/admin gates, query
+ * Keeps only session auth and body parsing; the membership gate, query
  * validation, write guard, mock handling, swarm resolution, timeout, and
- * upstream forwarding all live in the shared service so a follow-on agent
- * tool can reuse the same authorization path.
+ * upstream forwarding all live in the shared service so the agent tool
+ * reuses the same authorization path. Any workspace member may call this —
+ * there is no admin/owner requirement.
  */
 export async function POST(
   request: NextRequest,
