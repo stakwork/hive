@@ -2,13 +2,14 @@
  * Shared workspace graph-query service.
  *
  * Extracted from `src/app/api/workspaces/[slug]/graph/query/route.ts` so both
- * that admin HTTP route and (in a follow-on task) a server-side agent tool can
- * run a read-only Cypher query against a workspace's stakgraph instance
- * through ONE authorization gate and ONE code path.
+ * that HTTP route and the server-side agent tool (graph_query) can run a
+ * read-only Cypher query against a workspace's stakgraph instance through ONE
+ * authorization gate and ONE code path.
  *
  * The gate order below intentionally mirrors the pre-extraction route exactly
- * (the integration suite pins it):
- *   access → admin → query validation → write-keyword guard → mocks →
+ * (the integration suite pins it), minus the admin-role check (any workspace
+ * member may call this now):
+ *   access (membership) → query validation → write-keyword guard → mocks →
  *   swarm resolution → upstream fetch.
  *
  * Request-free by design: callers pass explicit values, never a NextRequest,
@@ -130,7 +131,6 @@ function deny(
   userId: string,
   reason:
     | "not-member"
-    | "not-admin"
     | "no-swarm"
     | "write-keyword"
     | "query-too-long",
@@ -151,7 +151,8 @@ export interface RunWorkspaceGraphQueryArgs {
 
 /**
  * Run a read-only Cypher query against a workspace's stakgraph instance,
- * enforcing membership + admin on `userId`.
+ * enforcing workspace membership on `userId`. Any member role may call this —
+ * the write-keyword denylist (not role) enforces read-only.
  */
 export async function runWorkspaceGraphQuery({
   slug,
@@ -161,12 +162,13 @@ export async function runWorkspaceGraphQuery({
   timeoutMs,
 }: RunWorkspaceGraphQueryArgs): Promise<WorkspaceGraphQueryResult> {
   // 1) IDOR / authorization gate — must precede any credential resolution.
+  //
+  // Membership only. Any workspace member (VIEWER, STAKEHOLDER, DEVELOPER, PM,
+  // ADMIN, OWNER) may run a read-only query here — the write-keyword denylist
+  // below (not role) is what keeps this read-only.
   const access = await validateWorkspaceAccess(slug, userId, true);
   if (!access.hasAccess) {
     return deny(slug, userId, "not-member", 404, "Workspace not found or access denied");
-  }
-  if (!access.canAdmin) {
-    return deny(slug, userId, "not-admin", 403, "Forbidden: admin access required");
   }
 
   // 2) Query validation.
@@ -195,7 +197,7 @@ export async function runWorkspaceGraphQuery({
   }
 
   // Forwarded UNCLAMPED (upstream already applies min(limit, 1000)); bounding
-  // belongs to the agent tool path, not this shared admin contract.
+  // belongs to the agent tool path, not this shared service contract.
   const requestedLimit = (limit ?? 100) as number;
   const limitRewritten = /\bLIMIT\b/i.test(query);
   const meta: GraphQueryMeta = { requestedLimit, limitRewritten };
