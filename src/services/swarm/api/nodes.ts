@@ -545,6 +545,72 @@ export async function listNodesByType(
   return { ok: true, nodes: raw, status: result.status };
 }
 
+export interface JarvisCallerSystem {
+  system: string;
+  call_sites: number;
+}
+
+export interface JarvisCallersTarget {
+  ref_id: string;
+  name: string | null;
+  verb: string | null;
+  file: string | null;
+  system: string;
+  callers: JarvisCallerSystem[];
+}
+
+export interface JarvisCallersResult {
+  ok: boolean;
+  targets: JarvisCallersTarget[];
+  /** caller -> callee system matrix summed over all targets. */
+  systems: Array<{ caller: string; callee: string; call_sites: number }>;
+  status?: number;
+  endpointMissing?: boolean;
+  error?: string;
+}
+
+/**
+ * Every `targetType` node with its callers grouped by system via
+ * `GET /v2/graph/callers`. A system is the leading segments of a node's
+ * `file` (`stakwork/hive`). Never throws.
+ */
+export async function getGraphCallers(
+  config: JarvisConnectionConfig,
+  params: { edgeType?: string; sourceType?: string; targetType?: string; systemDepth?: number } = {},
+): Promise<JarvisCallersResult> {
+  const query = new URLSearchParams({
+    edge_type: params.edgeType ?? "CALLS",
+    source_type: params.sourceType ?? "Request",
+    target_type: params.targetType ?? "Endpoint",
+  });
+  if (params.systemDepth) query.set("system_depth", String(params.systemDepth));
+
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/graph/callers?${query.toString()}`,
+    method: "GET",
+  });
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      targets: [],
+      systems: [],
+      status: result.status,
+      endpointMissing: result.notFound,
+      error: result.error,
+    };
+  }
+
+  const body = result.body as Partial<Pick<JarvisCallersResult, "targets" | "systems">> | undefined;
+  return {
+    ok: true,
+    targets: Array.isArray(body?.targets) ? body.targets : [],
+    systems: Array.isArray(body?.systems) ? body.systems : [],
+    status: result.status,
+  };
+}
+
 export async function updateNode(
   config: JarvisConnectionConfig,
   request: UpdateNodeRequest,
