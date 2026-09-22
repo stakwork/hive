@@ -9,7 +9,7 @@ import * as nodes from "@/services/swarm/api/nodes";
 
 vi.mock("@/services/swarm/api/nodes", () => ({
   getGraphCallers: vi.fn(),
-  searchNodesByAttributes: vi.fn(),
+  listNodesByType: vi.fn(),
 }));
 
 const CONFIG = { jarvisUrl: "https://jarvis.test", apiKey: "key" };
@@ -77,7 +77,7 @@ describe("parseProtectEndpoint", () => {
 describe("listProtectEndpoints", () => {
   beforeEach(() => {
     vi.mocked(nodes.getGraphCallers).mockReset();
-    vi.mocked(nodes.searchNodesByAttributes).mockReset();
+    vi.mocked(nodes.listNodesByType).mockReset();
   });
 
   it("reads /v2/graph/callers and sorts endpoints by name", async () => {
@@ -96,10 +96,10 @@ describe("listProtectEndpoints", () => {
       { caller: "stakwork/hive", callee: "stakwork/staklink", callSites: 9 },
     ]);
     expect(nodes.getGraphCallers).toHaveBeenCalledWith(CONFIG, { targetType: "Endpoint" });
-    expect(nodes.searchNodesByAttributes).not.toHaveBeenCalled();
+    expect(nodes.listNodesByType).not.toHaveBeenCalled();
   });
 
-  it("falls back to the attributes search when the callers route is missing", async () => {
+  it("falls back to paging GET /v2/nodes when the callers route is missing", async () => {
     vi.mocked(nodes.getGraphCallers).mockResolvedValueOnce({
       ok: false,
       targets: [],
@@ -107,20 +107,24 @@ describe("listProtectEndpoints", () => {
       status: 404,
       endpointMissing: true,
     });
-    vi.mocked(nodes.searchNodesByAttributes).mockResolvedValueOnce({
-      ok: true,
-      nodes: [endpointNode(1, "/b"), endpointNode(2, "/a")],
-    });
+    const fullPage = Array.from({ length: 500 }, (_, i) => endpointNode(i, `/p${i}`));
+    vi.mocked(nodes.listNodesByType)
+      .mockResolvedValueOnce({ ok: true, nodes: fullPage })
+      .mockResolvedValueOnce({ ok: true, nodes: [endpointNode(900, "/b"), endpointNode(901, "/a")] });
 
     const result = await listProtectEndpoints(CONFIG);
 
     expect(result).toMatchObject({ ok: true, callersUnavailable: true, systems: [] });
-    expect(result.endpoints.map((endpoint) => endpoint.name)).toEqual(["/a", "/b"]);
-    expect(nodes.searchNodesByAttributes).toHaveBeenCalledWith(CONFIG, {
-      nodeTypes: ["Endpoint"],
-      filters: [],
-      includeProperties: true,
-      limit: 5000,
+    expect(result.endpoints).toHaveLength(502);
+    expect(result.endpoints.slice(0, 2).map((endpoint) => endpoint.name)).toEqual(["/a", "/b"]);
+    expect(nodes.listNodesByType).toHaveBeenCalledTimes(2);
+    expect(nodes.listNodesByType).toHaveBeenNthCalledWith(1, CONFIG, "Endpoint", 500, {
+      startingAfter: undefined,
+      fields: ["name", "verb", "file"],
+    });
+    expect(nodes.listNodesByType).toHaveBeenNthCalledWith(2, CONFIG, "Endpoint", 500, {
+      startingAfter: "ref-499",
+      fields: ["name", "verb", "file"],
     });
   });
 
@@ -140,7 +144,7 @@ describe("listProtectEndpoints", () => {
       error: "bad gateway",
       status: 502,
     });
-    expect(nodes.searchNodesByAttributes).not.toHaveBeenCalled();
+    expect(nodes.listNodesByType).not.toHaveBeenCalled();
   });
 
   it("surfaces a fallback failure", async () => {
@@ -151,7 +155,7 @@ describe("listProtectEndpoints", () => {
       status: 404,
       endpointMissing: true,
     });
-    vi.mocked(nodes.searchNodesByAttributes).mockResolvedValueOnce({
+    vi.mocked(nodes.listNodesByType).mockResolvedValueOnce({
       ok: false,
       nodes: [],
       status: 500,

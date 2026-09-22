@@ -1,6 +1,6 @@
 import {
   getGraphCallers,
-  searchNodesByAttributes,
+  listNodesByType,
   type JarvisCallersTarget,
   type JarvisGraphNode,
 } from "@/services/swarm/api/nodes";
@@ -9,7 +9,10 @@ import type { ProtectEndpoint, ProtectSystemCall } from "@/types/protect";
 
 export const ENDPOINT_NODE_TYPE = "Endpoint";
 
-const FALLBACK_LIMIT = 5000;
+const PAGE_SIZE = 500;
+const MAX_PAGES = 20;
+// Endpoint nodes carry the full handler source in `body`; only pull what the list renders.
+const ENDPOINT_FIELDS = ["name", "verb", "file"];
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -105,28 +108,40 @@ export async function listProtectEndpoints(
     };
   }
 
-  // Stakgraph writes code nodes as :Data_Bank:Endpoint without the :Node
-  // label, so the attributes search (plain MATCH (n)) is the read that works
-  // on every jarvis build.
-  const fallback = await searchNodesByAttributes(config, {
-    nodeTypes: [ENDPOINT_NODE_TYPE],
-    filters: [],
-    includeProperties: true,
-    limit: FALLBACK_LIMIT,
-  });
-  if (!fallback.ok) {
-    return {
-      ok: false,
-      endpoints: [],
-      systems: [],
-      error: fallback.error || "Failed to load endpoints",
-      status: fallback.status,
-    };
+  // Older swarm without /v2/graph/callers: page through GET /v2/nodes.
+  const nodes: JarvisGraphNode[] = [];
+  let startingAfter: string | undefined;
+  let truncated = false;
+  for (let page = 0; ; page++) {
+    if (page === MAX_PAGES) {
+      truncated = true;
+      break;
+    }
+    const result = await listNodesByType(config, ENDPOINT_NODE_TYPE, PAGE_SIZE, {
+      startingAfter,
+      fields: ENDPOINT_FIELDS,
+    });
+    if (!result.ok) {
+      return {
+        ok: false,
+        endpoints: [],
+        systems: [],
+        error: result.error || "Failed to load endpoints",
+        status: result.status,
+      };
+    }
+    nodes.push(...result.nodes);
+    const lastRefId = result.nodes[result.nodes.length - 1]?.ref_id;
+    if (result.nodes.length < PAGE_SIZE || !lastRefId) break;
+    startingAfter = lastRefId;
+  }
+  if (truncated) {
+    console.warn(`[Protect] endpoint listing stopped after ${MAX_PAGES * PAGE_SIZE} nodes`);
   }
 
   return {
     ok: true,
-    endpoints: fallback.nodes
+    endpoints: nodes
       .map(parseProtectEndpoint)
       .filter((endpoint): endpoint is ProtectEndpoint => endpoint !== null)
       .sort(byNameThenVerb),

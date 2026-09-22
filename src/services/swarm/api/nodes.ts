@@ -507,6 +507,10 @@ export async function searchNodesByAttributes(
 /**
  * List nodes of a given type via `GET /v2/nodes?type=X&limit=N`.
  *
+ * `startingAfter` is jarvis' cursor (the last `ref_id` of the previous page);
+ * `fields` restricts `properties` to the named keys so large bodies stay
+ * server-side.
+ *
  * Never throws. Returns `{ ok }` so callers can distinguish a failed Jarvis
  * read from a legitimately empty result — `kgGetNodesByType` cannot.
  */
@@ -514,11 +518,14 @@ export async function listNodesByType(
   config: JarvisConnectionConfig,
   nodeType: string,
   limit = 500,
+  options: { startingAfter?: string; fields?: string[] } = {},
 ): Promise<SearchLatestResult> {
   const params = new URLSearchParams({
     type: nodeType,
     limit: String(limit),
   });
+  if (options.startingAfter) params.set("starting_after", options.startingAfter);
+  if (options.fields?.length) params.set("fields", options.fields.join(","));
 
   const result = await jarvisRequest({
     config,
