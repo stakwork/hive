@@ -41,6 +41,7 @@
  *   what the caller asks for.
  */
 
+import { stripEndMarker } from "@/lib/ai/endMarker";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import type { ModelMessage } from "ai";
@@ -396,7 +397,7 @@ export function registerOrgTools(
         // the final text. The caller only needs prose.
         await result.consumeStream();
         const text = await result.text;
-        const cleaned = text.replace(/\[END_OF_ANSWER\]/g, "").trim();
+        const cleaned = stripEndMarker(text).trim();
         const answer = cleaned || "(empty response)";
 
         // Persist the assistant turn + build the link. Best-effort: a

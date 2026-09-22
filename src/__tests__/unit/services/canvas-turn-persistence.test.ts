@@ -113,6 +113,20 @@ describe("messagesFromSteps", () => {
     expect(rows[0]).toMatchObject({ content: "Here's the answer." });
   });
 
+  test("keeps a marker quoted mid-text; only the trailing one is stripped", () => {
+    const steps = [
+      {
+        text: "Modified: messagesFromSteps — stripCitations after the `[END_OF_ANSWER]` strip (canvas reload / share).\n[END_OF_ANSWER]",
+      },
+    ];
+    const rows = messagesFromSteps(steps, "turn-1-a");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      content:
+        "Modified: messagesFromSteps — stripCitations after the `[END_OF_ANSWER]` strip (canvas reload / share).",
+    });
+  });
+
   test("strips control tools and yields nothing for a control-only turn", () => {
     const steps = [
       { toolCalls: [{ toolCallId: "s1", toolName: "stay_silent", input: {} }] },
