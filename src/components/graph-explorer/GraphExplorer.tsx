@@ -238,7 +238,7 @@ interface GraphExplorerProps {
    * callers that know a whole subgraph shape (e.g. the recursion card's loop
    * subgraph) can land on a rendered canvas instead of a single focused node.
    * `ref_id` wins when both are present. Same power as typing in the query bar:
-   * the route is admin-gated and read-only, and the query stays visible/editable.
+   * the route is member-gated and read-only, and the query stays visible/editable.
    */
   initialCypher?: string | null;
 }

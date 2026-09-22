@@ -97,11 +97,11 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
 
   // ── Non-admin members may run read-only queries ─────────────────────────────
 
-  test.each(["VIEWER", "DEVELOPER"] as const)(
+  test.each(["VIEWER", "DEVELOPER"])(
     "returns 400 when a non-admin member (%s) has no swarm configured",
     async (role) => {
       const owner = await createTestUser();
-      const member = await createTestUser({ email: `${role.toLowerCase()}-${Date.now()}@example.com` });
+      const member = await createTestUser({ email: `member-${role}-${Date.now()}@example.com` });
       const workspace = await createTestWorkspace({ ownerId: owner.id });
       await createTestMembership({
         workspaceId: workspace.id,
@@ -116,7 +116,6 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
           query: "MATCH (n) RETURN n LIMIT 5",
         });
 
-        // Member passes the auth gate (no longer admin-only) and hits swarm resolution
         expect(response.status).toBe(400);
         const data = await response.json();
         expect(data.success).toBe(false);
@@ -129,11 +128,11 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
     }
   );
 
-  test.each(["VIEWER", "DEVELOPER"] as const)(
+  test.each(["VIEWER", "DEVELOPER"])(
     "returns 200 when a non-admin member (%s) has a configured swarm",
     async (role) => {
       const owner = await createTestUser();
-      const member = await createTestUser({ email: `${role.toLowerCase()}-${Date.now()}@example.com` });
+      const member = await createTestUser({ email: `member-${role}-${Date.now()}@example.com` });
       const workspace = await createTestWorkspace({ ownerId: owner.id });
       await createTestMembership({
         workspaceId: workspace.id,
