@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { CanvasEdge, CanvasNode } from "system-canvas";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, Layers, MousePointerClick, Network } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -159,22 +160,30 @@ export function OrgRightPanel({
   // object on reselect still re-fires.
   const [tab, setTab] = useState<Tab>("chat");
   const [inboxOpen, setInboxOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
+    if (isMobile) return;
     if (selectedNode) setTab("details");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNode?.id]);
+  }, [selectedNode?.id, isMobile]);
   useEffect(() => {
+    if (isMobile) return;
     if (selectedNodes.length >= 2) setTab("details");
-  }, [selectedNodes.length]);
+  }, [selectedNodes.length, isMobile]);
   useEffect(() => {
+    if (isMobile) return;
     if (activeConnection) setTab("connections");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConnection?.id]);
+  }, [activeConnection?.id, isMobile]);
   useEffect(() => {
+    if (isMobile) return;
     if (selectedEdge) setTab("connections");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEdge?.edge.id]);
+  }, [selectedEdge?.edge.id, isMobile]);
+  useEffect(() => {
+    if (isMobile) setTab("chat");
+  }, [isMobile]);
 
   const { count, runs, openRun } = useAutomationInbox(githubLogin, { chatReady });
 
@@ -206,7 +215,11 @@ export function OrgRightPanel({
   const detailPlanId = detail?.focus.kind === "plan" ? detail.focus.id : null;
   const detailTaskNode = detail ? taskNodeFor(detail.focus) : null;
   const backToPlanId = detail?.focus.kind === "task" ? (detail.focus.planId ?? null) : null;
-  const activeTab: Tab = stage ? (stageFocus?.kind === "chat" ? "chat" : "details") : tab;
+  const activeTab: Tab = isMobile
+    ? "chat"
+    : stage
+      ? (stageFocus?.kind === "chat" ? "chat" : "details")
+      : tab;
 
   const handleRunClick = async (run: InboxRun) => {
     setInboxOpen(false);
@@ -245,7 +258,7 @@ export function OrgRightPanel({
                 <button
                   disabled={!chatReady}
                   className={cn(
-                    "flex items-center px-1.5 py-2.5 border-b-2 -mb-[1px] border-transparent",
+                    "hidden md:flex items-center px-1.5 py-2.5 border-b-2 -mb-[1px] border-transparent",
                     "transition-colors",
                     chatReady ? "cursor-pointer hover:text-foreground" : "opacity-50 cursor-not-allowed",
                   )}
@@ -286,12 +299,14 @@ export function OrgRightPanel({
               else if (detail) stage.onFocusChange(detail.focus);
             }}
             disabled={stage ? !detail : !selectedNode && selectedNodes.length < 2}
+            className="hidden md:flex"
           />
           {!stage && (
             <TabButton
               label="Connections"
               isActive={activeTab === "connections"}
               onClick={() => setTab("connections")}
+              className="hidden md:flex"
               trailing={
                 <Badge variant="secondary" className="ml-1">
                   {connections.length}
@@ -303,14 +318,14 @@ export function OrgRightPanel({
         <div className="ml-auto flex items-center gap-1 pr-2">
           {/* Kept mounted: its settings popover and activity hook fetch on mount. */}
           <div className={cn("flex items-center", activeTab !== "chat" && "hidden")}>
-            <SidebarChatActions githubLogin={githubLogin} hideHistory={!!stage} />
+            <SidebarChatActions githubLogin={githubLogin} hideHistory={!!stage} compact={isMobile} />
           </div>
           <ActionTip label={stage ? "Canvas" : "Control panel"}>
             <button
               type="button"
               onClick={stage ? stage.onExit : onOpenControlPanel}
               aria-label={stage ? "Canvas" : "Control panel"}
-              className="p-1.5 rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="hidden md:flex p-1.5 rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               {stage ? <Network className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
             </button>
@@ -451,12 +466,14 @@ function TabButton({
   onClick,
   disabled,
   trailing,
+  className,
 }: {
   label: string;
   isActive: boolean;
   onClick: () => void;
   disabled?: boolean;
   trailing?: React.ReactNode;
+  className?: string;
 }) {
   return (
     <button
@@ -469,6 +486,7 @@ function TabButton({
           ? "border-foreground text-foreground"
           : "border-transparent text-muted-foreground hover:text-foreground",
         disabled && "opacity-50 cursor-not-allowed hover:text-muted-foreground",
+        className,
       )}
     >
       {label}

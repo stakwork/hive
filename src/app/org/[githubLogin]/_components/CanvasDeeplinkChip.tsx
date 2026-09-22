@@ -2,6 +2,7 @@
 
 import React from "react";
 import { CrosshairIcon } from "lucide-react";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useCanvasChatStore } from "../_state/canvasChatStore";
 
 interface CanvasDeeplinkChipProps {
@@ -26,7 +27,10 @@ export function CanvasDeeplinkChip({
   x,
   y,
 }: CanvasDeeplinkChipProps) {
+  const isMobile = useIsMobile();
+
   const handleClick = () => {
+    if (isMobile) return;
     useCanvasChatStore
       .getState()
       .triggerDeeplink({ nodeId, canvasRef, label, x, y });
@@ -36,7 +40,8 @@ export function CanvasDeeplinkChip({
     <button
       type="button"
       onClick={handleClick}
-      className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-600 hover:bg-sky-100 cursor-pointer select-none transition-colors"
+      disabled={isMobile}
+      className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-600 hover:bg-sky-100 cursor-pointer select-none transition-colors pointer-events-none md:pointer-events-auto"
       data-testid="canvas-deeplink-chip"
     >
       <CrosshairIcon className="h-3 w-3 shrink-0" aria-hidden="true" />

@@ -18,6 +18,8 @@ import { AttentionMapProvider } from "../connections/AttentionMapContext";
 import { cn } from "@/lib/utils";
 import { ControlPanelList } from "./control-panel/ControlPanelList";
 import { useControlPanel } from "./control-panel/useControlPanel";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { MEDIA_QUERIES } from "@/constants/breakpoints";
 
 /**
  * Sidebar layout sizes (percent of container width).
@@ -117,8 +119,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     searchParams.get("view") === "control-panel" ? "control-panel" : "canvas",
   );
   const modeRef = useRef(mode);
+  const isMobile = useIsMobile();
+  const isMobileRef = useRef(isMobile);
+  isMobileRef.current = isMobile;
+  /** Below `md`, the page is chat-first: ignore control-panel layout without stripping the URL. */
+  const layoutMode: OrgPageMode = isMobile ? "canvas" : mode;
   /** Sidebar width before it grew into the stage; restored on the way back. */
   const preStageSizeRef = useRef<number | null>(null);
+  /** Sidebar width before we grew it to 100% on mobile; restored on rotate-up. */
+  const preMobileSizeRef = useRef<number | null>(null);
   /** While the divider is held the panels must follow the pointer, not ease. */
   const [dragging, setDragging] = useState(false);
   // The panel library persists every layout; on the control panel the
@@ -135,6 +144,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       },
       setItem: (name: string, value: string) => {
         if (modeRef.current !== "canvas") return;
+        // Don't persist a mobile 100% chat width as the desktop sidebar size.
+        if (typeof window !== "undefined" && window.matchMedia(MEDIA_QUERIES.MOBILE).matches) {
+          return;
+        }
         try {
           localStorage.setItem(name, value);
         } catch {
@@ -144,7 +157,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     }),
     [],
   );
-  const controlPanel = useControlPanel(githubLogin, mode === "control-panel");
+  const controlPanel = useControlPanel(githubLogin, layoutMode === "control-panel");
 
   // Sync `panelWidth` to the panel's actual rendered width on mount,
   // before the browser paints. Two paths land it at the right value:
@@ -396,6 +409,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       const expand = () => {
         const panel = sidebarPanelRef.current;
         if (!panel) return false;
+        // Mobile chat is already full-width; don't shrink it to the viewer size.
+        if (isMobileRef.current) return true;
         const current = panel.getSize();
         if (preExpandSizeRef.current === null) {
           preExpandSizeRef.current = current;
@@ -528,7 +543,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const closeViewerKeepingEdge = useCallback(() => {
     const panel = sidebarPanelRef.current;
     const prior = preExpandSizeRef.current;
-    if (panel && prior !== null) {
+    if (panel && prior !== null && !isMobileRef.current) {
       const current = panel.getSize();
       // Tolerate sub-pixel rounding from `onResize` round-trips.
       if (Math.abs(current - SIDEBAR_EXPANDED_SIZE) < 0.5) {
@@ -802,13 +817,38 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
 
   // Landing on `?view=control-panel`: the layout restored is the sidebar's,
   // so grow into the stage from it (and remember it for the way back).
+  // Skip below `md` — mobile is chat-first and must not inherit the stage width.
   useLayoutEffect(() => {
     if (modeRef.current !== "control-panel") return;
+    if (typeof window !== "undefined" && window.matchMedia(MEDIA_QUERIES.MOBILE).matches) {
+      return;
+    }
     const panel = sidebarPanelRef.current;
     if (!panel) return;
     preStageSizeRef.current = panel.getSize();
     panel.resize(CONTROL_PANEL_STAGE_SIZE);
   }, []);
+
+  // Fill the panel group on mobile; restore the pre-mobile width when rotating up.
+  useLayoutEffect(() => {
+    const panel = sidebarPanelRef.current;
+    if (!panel) return;
+    if (isMobile) {
+      if (preMobileSizeRef.current === null) {
+        preMobileSizeRef.current = panel.getSize();
+      }
+      panel.resize(100);
+      return;
+    }
+    const prior = preMobileSizeRef.current;
+    preMobileSizeRef.current = null;
+    if (prior === null) return;
+    if (modeRef.current === "control-panel") {
+      panel.resize(CONTROL_PANEL_STAGE_SIZE);
+      return;
+    }
+    panel.resize(prior);
+  }, [isMobile]);
 
   // ─── Canvas chat conversation lifecycle ─────────────────────────────
   // Start the active conversation once everything we need is loaded.
@@ -818,15 +858,17 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const currentCanvasRef = searchParams.get("canvas") ?? "";
   // The hidden-workspace list comes from the canvas; landing straight on
   // the control panel has no canvas to report it, so don't wait for it.
-  const chatReady = !loadingWorkspaces && (hiddenInitialized || mode === "control-panel") && chatLoadComplete;
+  const chatReady =
+    !loadingWorkspaces && (hiddenInitialized || mode === "control-panel" || isMobile) && chatLoadComplete;
 
   // What "this" means to Jamie: the canvas selection, or — on the
   // control panel — the plan/task on stage, exactly like a canvas click.
   const panelFocusNodeId = controlPanel.focusNodeId;
-  const contextNodeId = mode === "control-panel" ? panelFocusNodeId : (selectedNode?.id ?? null);
+  const contextNodeId = layoutMode === "control-panel" ? panelFocusNodeId : (selectedNode?.id ?? null);
   const contextNodeIds = useMemo(
-    () => (mode === "control-panel" ? (panelFocusNodeId ? [panelFocusNodeId] : []) : selectedNodes.map((n) => n.id)),
-    [mode, panelFocusNodeId, selectedNodes],
+    () =>
+      layoutMode === "control-panel" ? (panelFocusNodeId ? [panelFocusNodeId] : []) : selectedNodes.map((n) => n.id),
+    [layoutMode, panelFocusNodeId, selectedNodes],
   );
 
   useEffect(() => {
@@ -918,10 +960,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         {/* The canvas, under the panel group. On the control panel it fades
           out behind the list and is unmounted. */}
         <AnimatePresence initial={false}>
-          {mode === "canvas" && (
+          {layoutMode === "canvas" && (
             <motion.div
               key="canvas"
-              className="absolute inset-0 flex"
+              className="absolute inset-0 hidden md:flex"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -971,13 +1013,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               id="org-right-panel-filler"
               order={1}
               defaultSize={100 - SIDEBAR_DEFAULT_SIZE}
+              minSize={isMobile ? 0 : 10}
               className={cn(
-                mode === "canvas" ? "pointer-events-none" : "pointer-events-auto",
+                "hidden md:flex",
+                layoutMode === "canvas" ? "pointer-events-none" : "pointer-events-auto",
                 !dragging && PANEL_TRANSITION,
               )}
             >
               <AnimatePresence initial={false}>
-                {mode === "control-panel" && (
+                {layoutMode === "control-panel" && (
                   <motion.div
                     key="list"
                     className="h-full w-full bg-background"
@@ -992,7 +1036,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               </AnimatePresence>
             </ResizablePanel>
 
-            <ResizableHandle withHandle className="pointer-events-auto" onDragging={setDragging} />
+            <ResizableHandle
+              withHandle
+              className="pointer-events-auto hidden md:flex"
+              onDragging={setDragging}
+            />
 
             {/* Right panel — the visible sidebar, and the stage */}
             <ResizablePanel
@@ -1001,8 +1049,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               order={2}
               defaultSize={SIDEBAR_DEFAULT_SIZE}
               minSize={SIDEBAR_MIN_SIZE}
-              maxSize={SIDEBAR_MAX_SIZE}
-              className={cn("pointer-events-auto", !dragging && PANEL_TRANSITION)}
+              maxSize={isMobile ? 100 : SIDEBAR_MAX_SIZE}
+              className={cn(
+                "pointer-events-auto max-md:!flex-[1_1_100%]",
+                !dragging && PANEL_TRANSITION,
+              )}
               onResize={(percent) => {
                 const containerWidth = containerRef.current?.offsetWidth ?? 1600;
                 setPanelWidth(Math.round((percent / 100) * containerWidth));
@@ -1027,7 +1078,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                 onCreateConnectionForEdge={handleCreateConnectionForEdge}
                 linkedConnectionIds={linkedConnectionIds}
                 controlPanel={
-                  mode === "control-panel" ? { ...controlPanel.stage, onExit: closeControlPanel } : undefined
+                  layoutMode === "control-panel"
+                    ? { ...controlPanel.stage, onExit: closeControlPanel }
+                    : undefined
                 }
                 onOpenControlPanel={openControlPanel}
               />

@@ -42,7 +42,19 @@ export function OrgShell({
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
-      <OrgRail githubLogin={githubLogin} activeView={view} user={user} />
+      {/*
+        Canvas is chat-first below `md`. Hide the rail with a CSS media
+        query (not `useIsMobile`) so it never paints on phones — the hook
+        initializes `false` and would flash the 56px rail for a frame.
+        Other org routes keep the rail on mobile.
+      */}
+      {view === "canvas" ? (
+        <div className="hidden md:flex h-full shrink-0">
+          <OrgRail githubLogin={githubLogin} activeView={view} user={user} />
+        </div>
+      ) : (
+        <OrgRail githubLogin={githubLogin} activeView={view} user={user} />
+      )}
 
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {fullBleed ? (
