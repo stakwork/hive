@@ -27,6 +27,13 @@ export const BIFROST_AGENT_NAMES = [
   "build-agent",
   "browser-agent",
   "security-review-agent",
+  // Strut (plans/mothership-cost-control.md §4). `strut-agent` is the
+  // ROOT of every strut lineage: the standing invocation hive mints per
+  // user names it, and strut attenuates per run / per step below it
+  // (`<workflow>.<step>` names are added by strut, never listed here).
+  // `strut-assistant` is the leaf a strut chat turn is billed as.
+  "strut-agent",
+  "strut-assistant",
 ] as const;
 
 export type BifrostAgentName = (typeof BIFROST_AGENT_NAMES)[number];
