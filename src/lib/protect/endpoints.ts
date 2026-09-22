@@ -15,6 +15,11 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+/** Stakgraph stores some verbs as `"GET"`, quotes included. */
+function asVerb(value: unknown): string {
+  return asString(value).replace(/^["']+|["']+$/g, "").toUpperCase();
+}
+
 /** `stakwork/hive/src/app.ts` -> `stakwork/hive`, mirroring jarvis' system_depth=2. */
 export function systemFromFile(file: string): string {
   const segments = file.split("/").filter(Boolean);
@@ -26,7 +31,7 @@ export function parseCallersTarget(target: JarvisCallersTarget): ProtectEndpoint
   return {
     refId: target.ref_id,
     name: asString(target.name),
-    verb: asString(target.verb).toUpperCase(),
+    verb: asVerb(target.verb),
     file: asString(target.file),
     system: target.system || systemFromFile(asString(target.file)),
     callers: (target.callers ?? []).map((caller) => ({
@@ -43,7 +48,7 @@ export function parseProtectEndpoint(node: JarvisGraphNode): ProtectEndpoint | n
   return {
     refId: node.ref_id,
     name: asString(properties.name),
-    verb: asString(properties.verb).toUpperCase(),
+    verb: asVerb(properties.verb),
     file,
     system: systemFromFile(file),
     callers: [],

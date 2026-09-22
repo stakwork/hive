@@ -161,11 +161,11 @@ export default function ProtectEndpointsPage() {
           <Card data-testid="protect-endpoints-systems">
             <CardContent className="space-y-3 py-5">
               <div>
-                <h2 className="text-sm font-medium">System map</h2>
+                <h2 className="text-sm font-medium">System calls</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Arrows point from caller to callee; thicker means more endpoints. Click an
-                  arrow or a system to filter the list below. Generic paths such as{" "}
-                  <code>/health</code> can match endpoints in several systems.
+                  Each ribbon is one system calling another, sized by how many endpoints it
+                  hits. Click a ribbon or a system to filter the list below. Generic paths such
+                  as <code>/health</code> can match endpoints in several systems.
                 </p>
               </div>
               <SystemGraph endpoints={endpoints} selection={selection} onSelect={setSelection} />
@@ -216,7 +216,7 @@ export default function ProtectEndpointsPage() {
                     }))
                   }
                 >
-                  <SelectTrigger className="w-44" data-testid="protect-endpoints-caller-filter">
+                  <SelectTrigger className="w-56" data-testid="protect-endpoints-caller-filter">
                     <SelectValue placeholder="Called by" />
                   </SelectTrigger>
                   <SelectContent>

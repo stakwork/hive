@@ -1,44 +1,34 @@
 "use client";
 
-import React, { useEffect, useMemo } from "react";
-import dagre from "@dagrejs/dagre";
-import {
-  BaseEdge,
-  EdgeLabelRenderer,
-  Handle,
-  Position,
-  ReactFlow,
-  ReactFlowProvider,
-  getSmoothStepPath,
-  useReactFlow,
-  type Edge,
-  type EdgeProps,
-  type Node,
-  type NodeProps,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import React, { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ProtectEndpoint } from "@/types/protect";
 
-const NODE_WIDTH = 190;
-const NODE_HEIGHT = 64;
-const LABEL_WIDTH = 96;
-const LABEL_HEIGHT = 28;
-const MIN_STROKE = 2;
-const MAX_STROKE = 6;
+const WIDTH = 960;
+const GUTTER = 210; // label space either side of the bars
+const BAR_WIDTH = 12;
+const LEFT_X = GUTTER;
+const RIGHT_X = WIDTH - GUTTER - BAR_WIDTH;
+const PAD_Y = 24;
+const GAP = 14;
+const MIN_BAR = 8;
+const MIN_SLOT = 36; // bar + gap must fit a two-line label
+const MIN_HEIGHT = 320;
+const MAX_HEIGHT = 600;
+const LABEL_MIN_THICKNESS = 13;
 
 // One hue per system, assigned in sorted order so colours are stable across reloads.
 const PALETTE = [
-  "#3b82f6", // blue
-  "#a855f7", // purple
-  "#10b981", // emerald
-  "#f59e0b", // amber
-  "#f43f5e", // rose
-  "#14b8a6", // teal
-  "#6366f1", // indigo
-  "#f97316", // orange
-  "#84cc16", // lime
-  "#ec4899", // pink
+  "#60a5fa", // blue
+  "#c084fc", // purple
+  "#34d399", // emerald
+  "#fbbf24", // amber
+  "#fb7185", // rose
+  "#2dd4bf", // teal
+  "#818cf8", // indigo
+  "#fb923c", // orange
+  "#a3e635", // lime
+  "#f472b6", // pink
 ];
 
 export interface SystemGraphSelection {
@@ -55,35 +45,29 @@ interface SystemGraphProps {
   className?: string;
 }
 
-interface SystemNodeData extends Record<string, unknown> {
-  label: string;
-  system: string;
-  color: string;
-  endpointCount: number;
-  internalCalls: number;
-  selected: boolean;
-  dimmed: boolean;
-}
-
-interface PairCounts {
+interface Pair {
   caller: string;
   callee: string;
   endpoints: number;
   callSites: number;
 }
 
-interface PairStats extends PairCounts, Record<string, unknown> {
-  maxEndpoints: number;
-  color: string;
-  selected: boolean;
-  dimmed: boolean;
-  /** Label anchor from dagre, in flow coordinates. */
-  labelX: number;
-  labelY: number;
+interface Bar {
+  system: string;
+  y: number;
+  height: number;
+  total: number;
 }
 
-type SystemNodeType = Node<SystemNodeData, "system">;
-type PairEdgeType = Edge<PairStats, "pair">;
+interface Ribbon extends Pair {
+  y0: number;
+  y1: number;
+  /** Thickness at the caller bar; each column is scaled on its own. */
+  t0: number;
+  /** Thickness at the callee bar. */
+  t1: number;
+  color: string;
+}
 
 /** `stakwork/hive` -> `hive`; the full id stays available as a tooltip. */
 function shortSystem(system: string): string {
@@ -91,292 +75,343 @@ function shortSystem(system: string): string {
   return slash === -1 ? system : system.slice(slash + 1);
 }
 
-function pairKey(caller: string, callee: string): string {
-  return `${caller}→${callee}`;
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
-function SystemNode({ data }: NodeProps<SystemNodeType>) {
-  return (
-    <div
-      className={cn(
-        "flex h-full items-stretch overflow-hidden rounded-xl border bg-card shadow-md transition-all",
-        data.selected ? "border-foreground/60 shadow-lg" : "border-border/60",
-        data.dimmed && "opacity-40",
-      )}
-      style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
-      title={data.system}
-      data-testid={`system-node-${data.system}`}
-    >
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-transparent" />
-      <div className="w-1.5 shrink-0" style={{ backgroundColor: data.color }} />
-      <div className="flex min-w-0 flex-1 flex-col justify-center px-3">
-        <div className="truncate text-sm font-semibold tracking-tight">{data.label}</div>
-        <div className="truncate text-xs text-muted-foreground">
-          {data.endpointCount} {data.endpointCount === 1 ? "endpoint" : "endpoints"}
-          {data.internalCalls > 0 && ` · ${data.internalCalls} internal`}
-        </div>
-      </div>
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-transparent" />
-    </div>
-  );
+function ribbonPath(x0: number, y0: number, t0: number, x1: number, y1: number, t1: number): string {
+  const xm = (x0 + x1) / 2;
+  return [
+    `M ${x0} ${y0}`,
+    `C ${xm} ${y0}, ${xm} ${y1}, ${x1} ${y1}`,
+    `L ${x1} ${y1 + t1}`,
+    `C ${xm} ${y1 + t1}, ${xm} ${y0 + t0}, ${x0} ${y0 + t0}`,
+    "Z",
+  ].join(" ");
 }
 
-function PairEdge({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-  data,
-  markerEnd,
-}: EdgeProps<PairEdgeType>) {
-  const [path] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    borderRadius: 24,
-  });
-  if (!data) return null;
-  const maxRatio = Math.min(1, data.endpoints / Math.max(1, data.maxEndpoints));
-  const strokeWidth = MIN_STROKE + (MAX_STROKE - MIN_STROKE) * maxRatio;
-  const opacity = data.dimmed ? 0.18 : data.selected ? 1 : 0.75;
-
-  return (
-    <>
-      <BaseEdge
-        id={id}
-        path={path}
-        markerEnd={markerEnd}
-        style={{ stroke: data.color, strokeWidth, opacity, transition: "opacity 150ms" }}
-        interactionWidth={16}
-      />
-      <EdgeLabelRenderer>
-        <div
-          className={cn(
-            "nodrag nopan pointer-events-auto absolute select-none rounded-full border px-2 py-0.5 text-[11px] font-medium shadow-sm transition-opacity",
-            data.selected ? "bg-foreground text-background" : "bg-card text-foreground",
-          )}
-          style={{
-            transform: `translate(-50%, -50%) translate(${data.labelX}px, ${data.labelY}px)`,
-            borderColor: data.color,
-            opacity: data.dimmed ? 0.3 : 1,
-          }}
-          title={`${shortSystem(data.caller)} → ${shortSystem(data.callee)}: ${data.endpoints} endpoints, ${data.callSites} call sites`}
-        >
-          {data.endpoints} {data.endpoints === 1 ? "endpoint" : "endpoints"}
-        </div>
-      </EdgeLabelRenderer>
-    </>
-  );
-}
-
-const nodeTypes = { system: SystemNode };
-const edgeTypes = { pair: PairEdge };
-
-function buildGraph(endpoints: ProtectEndpoint[], selection: SystemGraphSelection) {
+function buildFlow(endpoints: ProtectEndpoint[]) {
   const owned = new Map<string, number>();
-  const internal = new Map<string, number>();
-  const pairs = new Map<string, PairCounts>();
+  const pairs = new Map<string, Pair>();
 
   for (const endpoint of endpoints) {
     owned.set(endpoint.system, (owned.get(endpoint.system) ?? 0) + 1);
     for (const caller of endpoint.callers) {
-      if (caller.system === endpoint.system) {
-        internal.set(endpoint.system, (internal.get(endpoint.system) ?? 0) + 1);
-        continue;
-      }
-      if (!owned.has(caller.system)) owned.set(caller.system, 0);
-      const key = pairKey(caller.system, endpoint.system);
-      const stats = pairs.get(key) ?? {
+      const key = `${caller.system}→${endpoint.system}`;
+      const pair = pairs.get(key) ?? {
         caller: caller.system,
         callee: endpoint.system,
         endpoints: 0,
         callSites: 0,
       };
-      stats.endpoints += 1;
-      stats.callSites += caller.callSites;
-      pairs.set(key, stats);
+      pair.endpoints += 1;
+      pair.callSites += caller.callSites;
+      pairs.set(key, pair);
     }
   }
 
-  const systems = Array.from(owned.keys()).sort();
-  const colorOf = new Map(systems.map((system, i) => [system, PALETTE[i % PALETTE.length]]));
-  const maxEndpoints = Math.max(1, ...Array.from(pairs.values(), (pair) => pair.endpoints));
-  const hasSelection = selection.system !== null || selection.caller !== null;
-
-  const graph = new dagre.graphlib.Graph();
-  graph.setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({ rankdir: "LR", ranksep: 150, nodesep: 56, edgesep: 24, ranker: "network-simplex" });
-  systems.forEach((system) => graph.setNode(system, { width: NODE_WIDTH, height: NODE_HEIGHT }));
+  const outgoing = new Map<string, number>();
+  const incoming = new Map<string, number>();
   for (const pair of pairs.values()) {
-    // Reserving label space lets dagre route edges so pills don't overlap.
-    graph.setEdge(pair.caller, pair.callee, {
-      width: LABEL_WIDTH,
-      height: LABEL_HEIGHT,
-      labelpos: "c",
-      weight: pair.endpoints,
-    });
+    outgoing.set(pair.caller, (outgoing.get(pair.caller) ?? 0) + pair.endpoints);
+    incoming.set(pair.callee, (incoming.get(pair.callee) ?? 0) + pair.endpoints);
   }
-  dagre.layout(graph);
 
-  const nodes: SystemNodeType[] = systems.map((system) => {
-    const { x, y } = graph.node(system);
-    const selected = selection.system === system && selection.caller === null;
-    const involved =
-      selection.system === system ||
-      selection.caller === system ||
-      (selection.caller === null && selection.system !== null &&
-        pairs.has(pairKey(system, selection.system)));
-    return {
-      id: system,
-      type: "system",
-      position: { x: x - NODE_WIDTH / 2, y: y - NODE_HEIGHT / 2 },
-      draggable: false,
-      data: {
-        label: shortSystem(system),
-        system,
-        color: colorOf.get(system) ?? PALETTE[0],
-        endpointCount: owned.get(system) ?? 0,
-        internalCalls: internal.get(system) ?? 0,
-        selected,
-        dimmed: hasSelection && !involved,
-      },
-    };
-  });
+  const systems = Array.from(new Set([...owned.keys(), ...outgoing.keys()])).sort();
+  const colorOf = new Map(systems.map((system, i) => [system, PALETTE[i % PALETTE.length]]));
 
-  const edges: PairEdgeType[] = Array.from(pairs.values()).map((pair) => {
-    const selected = selection.caller === pair.caller && selection.system === pair.callee;
-    const involved =
-      selected ||
-      (selection.caller === null && selection.system === pair.callee) ||
-      (selection.system === null && selection.caller === pair.caller);
-    const label = graph.edge(pair.caller, pair.callee);
-    return {
-      id: pairKey(pair.caller, pair.callee),
-      source: pair.caller,
-      target: pair.callee,
-      type: "pair",
-      data: {
-        ...pair,
-        maxEndpoints,
-        color: colorOf.get(pair.caller) ?? PALETTE[0],
-        selected,
-        dimmed: hasSelection && !involved,
-        labelX: label?.x ?? 0,
-        labelY: label?.y ?? 0,
-      },
-      markerEnd: `url(#system-arrow-${pair.caller.replace(/[^a-z0-9]/gi, "_")})`,
-    };
-  });
-
-  return { nodes, edges, colors: Array.from(colorOf.entries()) };
-}
-
-/** Fixed-size arrowheads, one per caller colour, unaffected by stroke width. */
-function ArrowDefs({ colors }: { colors: Array<[string, string]> }) {
-  return (
-    <svg className="absolute h-0 w-0">
-      <defs>
-        {colors.map(([system, color]) => (
-          <marker
-            key={system}
-            id={`system-arrow-${system.replace(/[^a-z0-9]/gi, "_")}`}
-            viewBox="0 0 10 10"
-            refX="9"
-            refY="5"
-            markerWidth="10"
-            markerHeight="10"
-            markerUnits="userSpaceOnUse"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 0 L 10 5 L 0 10 z" fill={color} />
-          </marker>
-        ))}
-      </defs>
-    </svg>
+  // Callers on the left, biggest first; every system that owns endpoints on the right.
+  const leftOrder = Array.from(outgoing.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([system]) => system);
+  const rightOrder = Array.from(owned.keys()).sort(
+    (a, b) =>
+      (incoming.get(b) ?? 0) - (incoming.get(a) ?? 0) ||
+      (owned.get(b) ?? 0) - (owned.get(a) ?? 0) ||
+      a.localeCompare(b),
   );
-}
 
-function FitOnChange({ signature }: { signature: string }) {
-  const { fitView } = useReactFlow();
-  useEffect(() => {
-    const fit = () => fitView({ padding: 0.15, duration: 200 });
-    const timer = setTimeout(fit, 50);
-    window.addEventListener("resize", fit);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("resize", fit);
-    };
-  }, [signature, fitView]);
-  return null;
-}
+  const rows = Math.max(leftOrder.length, rightOrder.length, 1);
+  const height = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, PAD_Y * 2 + rows * 76));
+  const usable = height - PAD_Y * 2;
 
-function SystemGraphInner({ endpoints, selection, onSelect }: SystemGraphProps) {
-  const { nodes, edges, colors } = useMemo(
-    () => buildGraph(endpoints, selection),
-    [endpoints, selection],
+  function stack(order: string[], totals: Map<string, number>): Bar[] {
+    // Bars are proportional to their totals, except that every row keeps at
+    // least MIN_SLOT so its label fits. Fixed rows are removed from the
+    // proportional pool until the scale settles.
+    const fixed = new Set<string>();
+    let unit = 0;
+    for (let pass = 0; pass < order.length + 1; pass++) {
+      const flexible = order.filter((system) => !fixed.has(system));
+      const flexUnits = flexible.reduce((sum, system) => sum + (totals.get(system) ?? 0), 0);
+      const reserved = fixed.size * MIN_SLOT + flexible.length * GAP - (order.length ? GAP : 0);
+      unit = flexUnits > 0 ? Math.max(0, (usable - reserved) / flexUnits) : 0;
+      const newlyFixed = flexible.filter(
+        (system) => (totals.get(system) ?? 0) * unit + GAP < MIN_SLOT,
+      );
+      if (newlyFixed.length === 0) break;
+      newlyFixed.forEach((system) => fixed.add(system));
+    }
+
+    const bars: Bar[] = [];
+    let y = PAD_Y;
+    for (const system of order) {
+      const total = totals.get(system) ?? 0;
+      const barHeight = fixed.has(system)
+        ? Math.max(MIN_BAR, Math.min(MIN_SLOT - GAP, total * unit))
+        : total * unit;
+      bars.push({ system, y, height: barHeight, total });
+      y += fixed.has(system) ? MIN_SLOT : barHeight + GAP;
+    }
+    // Centre the shorter stack vertically.
+    const used = y - (order.length && !fixed.has(order[order.length - 1]) ? GAP : 0) - PAD_Y;
+    const offset = Math.max(0, (usable - used) / 2);
+    return bars.map((bar) => ({ ...bar, y: bar.y + offset }));
+  }
+
+  const left = stack(leftOrder, outgoing);
+  const right = stack(rightOrder, incoming);
+  const leftIndex = new Map(left.map((bar, i) => [bar.system, i]));
+  const rightIndex = new Map(right.map((bar, i) => [bar.system, i]));
+
+  // Ribbons stack inside each bar in the other column's order, which keeps crossings low.
+  const leftCursor = new Map(left.map((bar) => [bar.system, bar.y]));
+  const rightCursor = new Map(right.map((bar) => [bar.system, bar.y]));
+  const sortedPairs = Array.from(pairs.values()).sort(
+    (a, b) =>
+      (leftIndex.get(a.caller) ?? 0) - (leftIndex.get(b.caller) ?? 0) ||
+      (rightIndex.get(a.callee) ?? 0) - (rightIndex.get(b.callee) ?? 0),
   );
-  const signature = useMemo(() => nodes.map((node) => node.id).join("|"), [nodes]);
+  const ribbons: Ribbon[] = [];
+  for (const pair of sortedPairs) {
+    const leftBar = left[leftIndex.get(pair.caller) ?? 0];
+    const rightBar = right[rightIndex.get(pair.callee) ?? 0];
+    if (!leftBar || !rightBar) continue;
+    const t0 = (leftBar.height * pair.endpoints) / Math.max(1, leftBar.total);
+    const t1 = (rightBar.height * pair.endpoints) / Math.max(1, rightBar.total);
+    const y0 = leftCursor.get(pair.caller) ?? leftBar.y;
+    leftCursor.set(pair.caller, y0 + t0);
+    ribbons.push({ ...pair, y0, y1: 0, t0, t1, color: colorOf.get(pair.caller) ?? PALETTE[0] });
+  }
+  for (const ribbon of ribbons.slice().sort(
+    (a, b) =>
+      (rightIndex.get(a.callee) ?? 0) - (rightIndex.get(b.callee) ?? 0) ||
+      (leftIndex.get(a.caller) ?? 0) - (leftIndex.get(b.caller) ?? 0),
+  )) {
+    const rightBar = right[rightIndex.get(ribbon.callee) ?? 0];
+    const y1 = rightCursor.get(ribbon.callee) ?? rightBar.y;
+    ribbon.y1 = y1;
+    rightCursor.set(ribbon.callee, y1 + ribbon.t1);
+  }
 
-  return (
-    <>
-      <ArrowDefs colors={colors} />
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        zoomOnScroll={false}
-        panOnScroll
-        minZoom={0.3}
-        maxZoom={1.5}
-        onNodeClick={(_event, node) => {
-          const system = node.id;
-          const alreadySelected = selection.system === system && selection.caller === null;
-          onSelect(alreadySelected ? { system: null, caller: null } : { system, caller: null });
-        }}
-        onEdgeClick={(_event, edge) => {
-          const pair = (edge as PairEdgeType).data;
-          if (!pair) return;
-          const alreadySelected =
-            selection.caller === pair.caller && selection.system === pair.callee;
-          onSelect(
-            alreadySelected
-              ? { system: null, caller: null }
-              : { system: pair.callee, caller: pair.caller },
-          );
-        }}
-        onPaneClick={() => onSelect({ system: null, caller: null })}
-        proOptions={{ hideAttribution: true }}
-      >
-        <FitOnChange signature={signature} />
-      </ReactFlow>
-    </>
-  );
+  return { left, right, ribbons, owned, colorOf, height };
 }
 
 /**
- * Systems as nodes, one edge per caller -> callee pair, weighted by how many
- * endpoints the caller hits. Self-calls are folded into the node as
- * "internal". Clicking an edge or node narrows `selection`, which the
- * endpoint table uses as its filter.
+ * Flow diagram of cross-system calls: calling systems on the left, called
+ * systems on the right, one ribbon per pair sized by how many endpoints the
+ * caller hits. Internal calls are a ribbon from a system to itself.
+ * Clicking a ribbon or a bar narrows `selection`, which the endpoint table
+ * uses as its filter.
  */
-export function SystemGraph({ className, ...props }: SystemGraphProps) {
+export function SystemGraph({ endpoints, selection, onSelect, className }: SystemGraphProps) {
+  const flow = useMemo(() => buildFlow(endpoints), [endpoints]);
+  const [hover, setHover] = useState<string | null>(null);
+  const hasSelection = selection.system !== null || selection.caller !== null;
+
+  const isActive = (ribbon: Ribbon) =>
+    (selection.caller === null || selection.caller === ribbon.caller) &&
+    (selection.system === null || selection.system === ribbon.callee);
+
+  const toggleCaller = (system: string) =>
+    onSelect(
+      selection.caller === system && selection.system === null
+        ? { system: null, caller: null }
+        : { system: null, caller: system },
+    );
+  const toggleCallee = (system: string) =>
+    onSelect(
+      selection.system === system && selection.caller === null
+        ? { system: null, caller: null }
+        : { system, caller: null },
+    );
+  const toggleRibbon = (ribbon: Ribbon) =>
+    onSelect(
+      selection.caller === ribbon.caller && selection.system === ribbon.callee
+        ? { system: null, caller: null }
+        : { system: ribbon.callee, caller: ribbon.caller },
+    );
+
   return (
-    <div
-      className={cn("relative h-[380px] w-full overflow-hidden rounded-lg bg-muted/30", className)}
-      data-testid="protect-system-graph"
-    >
-      <ReactFlowProvider>
-        <SystemGraphInner {...props} />
-      </ReactFlowProvider>
+    <div className={cn("w-full", className)} data-testid="protect-system-graph">
+      <svg
+        viewBox={`0 0 ${WIDTH} ${flow.height}`}
+        className="h-auto w-full select-none"
+        style={{ maxHeight: MAX_HEIGHT }}
+        role="img"
+        aria-label="Which systems call which endpoints"
+      >
+        <text
+          x={LEFT_X - 10}
+          y={12}
+          textAnchor="end"
+          fontSize={11}
+          fontWeight={600}
+          letterSpacing={1}
+          style={{ fill: "var(--muted-foreground)" }}
+        >
+          CALLS FROM
+        </text>
+        <text
+          x={RIGHT_X + BAR_WIDTH + 10}
+          y={12}
+          fontSize={11}
+          fontWeight={600}
+          letterSpacing={1}
+          style={{ fill: "var(--muted-foreground)" }}
+        >
+          ENDPOINTS IN
+        </text>
+
+        {flow.ribbons.map((ribbon) => {
+          const key = `${ribbon.caller}→${ribbon.callee}`;
+          const active = isActive(ribbon);
+          const highlighted = hover === key || (hasSelection && active);
+          const dimmed = (hasSelection && !active) || (hover !== null && hover !== key);
+          const internal = ribbon.caller === ribbon.callee;
+          return (
+            <g
+              key={key}
+              className="cursor-pointer"
+              onMouseEnter={() => setHover(key)}
+              onMouseLeave={() => setHover(null)}
+              onClick={() => toggleRibbon(ribbon)}
+              data-testid={`system-ribbon-${ribbon.caller}-${ribbon.callee}`}
+            >
+              <title>
+                {`${shortSystem(ribbon.caller)} → ${shortSystem(ribbon.callee)}${internal ? " (internal)" : ""}: ${plural(ribbon.endpoints, "endpoint")}, ${plural(ribbon.callSites, "call site")}`}
+              </title>
+              <path
+                d={ribbonPath(LEFT_X + BAR_WIDTH, ribbon.y0, ribbon.t0, RIGHT_X, ribbon.y1, ribbon.t1)}
+                fill={ribbon.color}
+                fillOpacity={dimmed ? 0.08 : highlighted ? 0.75 : 0.4}
+                stroke={ribbon.color}
+                strokeOpacity={dimmed ? 0.1 : highlighted ? 1 : 0.35}
+                strokeWidth={0.75}
+                style={{ transition: "fill-opacity 120ms, stroke-opacity 120ms" }}
+              />
+              {(ribbon.t0 >= LABEL_MIN_THICKNESS || highlighted) && !dimmed && (
+                <text
+                  x={LEFT_X + BAR_WIDTH + 10}
+                  y={ribbon.y0 + ribbon.t0 / 2}
+                  dominantBaseline="middle"
+                  fontSize={11}
+                  fontWeight={600}
+                  className="pointer-events-none"
+                  style={{ fill: "var(--foreground)", paintOrder: "stroke", stroke: "var(--card)", strokeWidth: 3 }}
+                >
+                  {ribbon.endpoints}
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        {flow.left.map((bar) => {
+          const color = flow.colorOf.get(bar.system) ?? PALETTE[0];
+          const active = selection.caller === null || selection.caller === bar.system;
+          const selected = selection.caller === bar.system && selection.system === null;
+          return (
+            <g
+              key={`left-${bar.system}`}
+              className="cursor-pointer"
+              onClick={() => toggleCaller(bar.system)}
+              opacity={hasSelection && !active ? 0.35 : 1}
+              data-testid={`system-caller-${bar.system}`}
+            >
+              <title>{`${bar.system} calls ${plural(bar.total, "endpoint")}`}</title>
+              <rect
+                x={LEFT_X}
+                y={bar.y}
+                width={BAR_WIDTH}
+                height={bar.height}
+                rx={3}
+                fill={color}
+                stroke={selected ? "var(--foreground)" : "none"}
+                strokeWidth={2}
+              />
+              <text
+                x={LEFT_X - 12}
+                y={bar.y + bar.height / 2}
+                textAnchor="end"
+                dominantBaseline="middle"
+                style={{ fill: "var(--foreground)" }}
+              >
+                <tspan fontSize={13} fontWeight={600}>
+                  {shortSystem(bar.system)}
+                </tspan>
+                <tspan
+                  x={LEFT_X - 12}
+                  dy={15}
+                  fontSize={11}
+                  style={{ fill: "var(--muted-foreground)" }}
+                >
+                  calls {plural(bar.total, "endpoint")}
+                </tspan>
+              </text>
+            </g>
+          );
+        })}
+
+        {flow.right.map((bar) => {
+          const color = flow.colorOf.get(bar.system) ?? PALETTE[0];
+          const active = selection.system === null || selection.system === bar.system;
+          const selected = selection.system === bar.system && selection.caller === null;
+          const owned = flow.owned.get(bar.system) ?? 0;
+          return (
+            <g
+              key={`right-${bar.system}`}
+              className="cursor-pointer"
+              onClick={() => toggleCallee(bar.system)}
+              opacity={hasSelection && !active ? 0.35 : 1}
+              data-testid={`system-callee-${bar.system}`}
+            >
+              <title>
+                {`${bar.system}: ${plural(owned, "endpoint")}, ${bar.total} called from known systems`}
+              </title>
+              <rect
+                x={RIGHT_X}
+                y={bar.y}
+                width={BAR_WIDTH}
+                height={bar.height}
+                rx={3}
+                fill={color}
+                stroke={selected ? "var(--foreground)" : "none"}
+                strokeWidth={2}
+              />
+              <text
+                x={RIGHT_X + BAR_WIDTH + 12}
+                y={bar.y + bar.height / 2}
+                dominantBaseline="middle"
+                style={{ fill: "var(--foreground)" }}
+              >
+                <tspan fontSize={13} fontWeight={600}>
+                  {shortSystem(bar.system)}
+                </tspan>
+                <tspan
+                  x={RIGHT_X + BAR_WIDTH + 12}
+                  dy={15}
+                  fontSize={11}
+                  style={{ fill: "var(--muted-foreground)" }}
+                >
+                  {plural(owned, "endpoint")}
+                  {bar.total === 0 && " · no known callers"}
+                </tspan>
+              </text>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }
