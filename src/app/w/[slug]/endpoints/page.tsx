@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { redirect } from "next/navigation";
-import { ArrowRight, Loader2, Waypoints } from "lucide-react";
+import { Loader2, Waypoints } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,10 +25,12 @@ import {
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { SystemGraph, type SystemGraphSelection } from "@/components/protect/SystemGraph";
 import { toast } from "sonner";
 import type { ProtectEndpoint, ProtectEndpointsResponse } from "@/types/protect";
 
 const ALL = "__all__";
+const NO_SELECTION: SystemGraphSelection = { system: null, caller: null };
 
 /** `stakwork/hive` -> `hive`; the full id stays available as a tooltip. */
 function shortSystem(system: string): string {
@@ -51,8 +53,7 @@ export default function ProtectEndpointsPage() {
   const [data, setData] = useState<ProtectEndpointsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [systemFilter, setSystemFilter] = useState(ALL);
-  const [callerFilter, setCallerFilter] = useState(ALL);
+  const [selection, setSelection] = useState<SystemGraphSelection>(NO_SELECTION);
 
   const loadEndpoints = useCallback(async (slug: string) => {
     setLoading(true);
@@ -102,12 +103,12 @@ export default function ProtectEndpointsPage() {
     const query = search.trim().toLowerCase();
     return endpoints.filter(
       (endpoint) =>
-        (systemFilter === ALL || endpoint.system === systemFilter) &&
-        (callerFilter === ALL ||
-          endpoint.callers.some((caller) => caller.system === callerFilter)) &&
+        (selection.system === null || endpoint.system === selection.system) &&
+        (selection.caller === null ||
+          endpoint.callers.some((caller) => caller.system === selection.caller)) &&
         (!query || matchesSearch(endpoint, query)),
     );
-  }, [endpoints, search, systemFilter, callerFilter]);
+  }, [endpoints, search, selection]);
 
   if (!canAccessDefense) {
     redirect("/");
@@ -156,30 +157,18 @@ export default function ProtectEndpointsPage() {
           </p>
         )}
 
-        {showCallers && data.systems.length > 0 && (
+        {showCallers && systems.length > 1 && (
           <Card data-testid="protect-endpoints-systems">
             <CardContent className="space-y-3 py-5">
               <div>
-                <h2 className="text-sm font-medium">System calls</h2>
+                <h2 className="text-sm font-medium">System map</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Which system calls which, counted by call sites in code. Generic paths such
-                  as <code>/health</code> can match endpoints in several systems.
+                  Arrows point from caller to callee; thicker means more endpoints. Click an
+                  arrow or a system to filter the list below. Generic paths such as{" "}
+                  <code>/health</code> can match endpoints in several systems.
                 </p>
               </div>
-              <ul className="flex flex-wrap gap-2">
-                {data.systems.map((row) => (
-                  <li
-                    key={`${row.caller}->${row.callee}`}
-                    className="inline-flex items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 font-mono text-xs"
-                    title={`${row.caller} → ${row.callee}: ${row.callSites} call sites`}
-                  >
-                    <span>{shortSystem(row.caller)}</span>
-                    <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                    <span>{shortSystem(row.callee)}</span>
-                    <span className="text-muted-foreground">{row.callSites}</span>
-                  </li>
-                ))}
-              </ul>
+              <SystemGraph endpoints={endpoints} selection={selection} onSelect={setSelection} />
             </CardContent>
           </Card>
         )}
@@ -195,7 +184,15 @@ export default function ProtectEndpointsPage() {
                 data-testid="protect-endpoints-search"
               />
               {systems.length > 1 && (
-                <Select value={systemFilter} onValueChange={setSystemFilter}>
+                <Select
+                  value={selection.system ?? ALL}
+                  onValueChange={(value) =>
+                    setSelection((current) => ({
+                      ...current,
+                      system: value === ALL ? null : value,
+                    }))
+                  }
+                >
                   <SelectTrigger className="w-44" data-testid="protect-endpoints-system-filter">
                     <SelectValue placeholder="System" />
                   </SelectTrigger>
@@ -210,7 +207,15 @@ export default function ProtectEndpointsPage() {
                 </Select>
               )}
               {showCallers && callerSystems.length > 0 && (
-                <Select value={callerFilter} onValueChange={setCallerFilter}>
+                <Select
+                  value={selection.caller ?? ALL}
+                  onValueChange={(value) =>
+                    setSelection((current) => ({
+                      ...current,
+                      caller: value === ALL ? null : value,
+                    }))
+                  }
+                >
                   <SelectTrigger className="w-44" data-testid="protect-endpoints-caller-filter">
                     <SelectValue placeholder="Called by" />
                   </SelectTrigger>
