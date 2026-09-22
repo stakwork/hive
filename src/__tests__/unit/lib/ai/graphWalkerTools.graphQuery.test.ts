@@ -1,16 +1,22 @@
 /**
- * Unit tests for the admin-gated `graph_query` agent tool (T2).
+ * Unit tests for the member-gated `graph_query` agent tool (T2).
+ *
+ * No admin/owner role is required — any workspace member may call this tool;
+ * membership itself is enforced by the shared service
+ * (see src/__tests__/unit/services/graph-query.test.ts for the auth-gate
+ * cases, incl. "non-admin member passes the gate but still can't write").
  *
  * Covers:
  *   1. Input schema bounds — `limit` outside 1–200 rejected; `query` over 4096 chars rejected
  *   2. Org mismatch — slug outside this session's sourceControlOrgId → { error }, no service call
  *   3. Rate-limit rejection → { error } carrying retry-after guidance, no service call
- *   4. Service 403 → exact terminal non-retryable phrasing
+ *   4. Service 403 (write-guard) → surfaced as-is, never remapped to an admin-denial message
  *   5. Other service failures map onto { error } without throwing
  *   6. Truncation — large synthetic sets flag `truncated` and respect MCP_TOTAL_CHAR_BUDGET
  *   7. Success shape — columns echoed alongside positional rows (+ limitRewritten note)
  *   8. Every failure path returns { error }, incl. a forced service exception (never throws)
- *   9. USE_MOCKS=true chain — real service short-circuits to the T1 fixture, zero outbound fetches
+ *   9. USE_MOCKS=true chain — real service short-circuits to the T1 fixture, zero outbound
+ *      fetches, exercised with a non-admin (VIEWER) role
  */
 
 // @vitest-environment node
@@ -105,10 +111,7 @@ vi.mock("ai", () => ({ tool: (t: unknown) => t }));
 import { db } from "@/lib/db";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { checkRateLimit } from "@/lib/rate-limit";
-import {
-  buildGraphWalkerTools,
-  GRAPH_QUERY_FORBIDDEN_MESSAGE,
-} from "@/lib/ai/graphWalkerTools";
+import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import {
   MCP_FIELD_CHAR_CAP,
   MCP_TOTAL_CHAR_BUDGET,
@@ -302,21 +305,21 @@ describe("graph_query tool", () => {
   });
 
   describe("service failure mapping", () => {
-    it("status 403 → EXACT terminal non-retryable phrasing", async () => {
+    // No admin-only terminal denial anymore: the service only 403s on the
+    // write-keyword guard, and that message/status is surfaced as-is (not
+    // remapped) so the model sees "write blocked", not "forbidden — admin".
+    it("a write-guard 403 surfaces the service's own message and status, NOT an admin-denial message", async () => {
       mockRunService.mockResolvedValue({
         ok: false,
         status: 403,
-        message: "Forbidden: admin access required",
+        message: "Write operations are not permitted",
       });
 
       const result = await exec();
 
-      expect(result.error).toBe(GRAPH_QUERY_FORBIDDEN_MESSAGE);
-      expect(result.error).toBe(
-        "Forbidden: graph_query requires workspace admin or owner role for the acting user. " +
-          "This will not succeed on retry — use graph_search or graph_neighbors instead.",
-      );
-      expect(String(result.error)).toContain("will not succeed on retry");
+      expect(result.error).toContain("Write operations are not permitted");
+      expect(result.error).toContain("403");
+      expect(String(result.error)).not.toMatch(/admin|owner/i);
     });
 
     it("non-403 failures keep the service message and status", async () => {
@@ -330,6 +333,22 @@ describe("graph_query tool", () => {
 
       expect(result.error).toContain("Write operations are not permitted");
       expect(result.error).toContain("400");
+    });
+
+    it("a non-admin member (VIEWER/DEVELOPER) reaching the tool never gets an admin-forbidden error", async () => {
+      // The tool no longer special-cases 403 into an admin-denial message —
+      // confirm no such string is ever produced for a member-role failure.
+      mockRunService.mockResolvedValue({
+        ok: false,
+        status: 403,
+        message: "Write operations are not permitted",
+      });
+
+      const result = await exec();
+
+      expect(String(result.error)).not.toContain(
+        "requires workspace admin or owner role",
+      );
     });
 
     it("timeouts surface the service's narrowing hint", async () => {
@@ -513,12 +532,14 @@ describe("graph_query tool", () => {
       process.env.USE_MOCKS = "true";
       global.fetch = vi.fn(); // any outbound attempt must fail loudly
 
+      // Non-admin role — proves the mock branch (and the shared gate behind
+      // it) no longer requires ADMIN/OWNER.
       mockValidate.mockResolvedValue({
         hasAccess: true,
         canRead: true,
         canWrite: true,
-        canAdmin: true,
-        userRole: "ADMIN",
+        canAdmin: false,
+        userRole: "VIEWER",
       } as never);
 
       const query = "MATCH (n) RETURN n LIMIT 5";
