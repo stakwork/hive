@@ -95,56 +95,89 @@ describe("POST /api/workspaces/[slug]/graph/query", () => {
     }
   });
 
-  test("returns 403 when user is not admin (VIEWER role)", async () => {
-    const owner = await createTestUser();
-    const viewer = await createTestUser({ email: `viewer-${Date.now()}@example.com` });
-    const workspace = await createTestWorkspace({ ownerId: owner.id });
-    await createTestMembership({
-      workspaceId: workspace.id,
-      userId: viewer.id,
-      role: "VIEWER",
-    });
+  // ── Non-admin members may run read-only queries ─────────────────────────────
 
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(viewer));
-
-    try {
-      const response = await callRoute(workspace.slug, {
-        query: "MATCH (n) RETURN n LIMIT 5",
+  test.each(["VIEWER", "DEVELOPER"] as const)(
+    "returns 400 when a non-admin member (%s) has no swarm configured",
+    async (role) => {
+      const owner = await createTestUser();
+      const member = await createTestUser({ email: `${role.toLowerCase()}-${Date.now()}@example.com` });
+      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      await createTestMembership({
+        workspaceId: workspace.id,
+        userId: member.id,
+        role,
       });
 
-      expect(response.status).toBe(403);
-      const data = await response.json();
-      expect(data.success).toBe(false);
-      expect(data.message).toContain("admin");
-    } finally {
-      await db.workspace.delete({ where: { id: workspace.id } });
-      await db.user.deleteMany({ where: { id: { in: [owner.id, viewer.id] } } });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(member));
+
+      try {
+        const response = await callRoute(workspace.slug, {
+          query: "MATCH (n) RETURN n LIMIT 5",
+        });
+
+        // Member passes the auth gate (no longer admin-only) and hits swarm resolution
+        expect(response.status).toBe(400);
+        const data = await response.json();
+        expect(data.success).toBe(false);
+        expect(data.message).toContain("Graph DB not configured");
+        expect(data.message).not.toContain("admin");
+      } finally {
+        await db.workspace.delete({ where: { id: workspace.id } });
+        await db.user.deleteMany({ where: { id: { in: [owner.id, member.id] } } });
+      }
     }
-  });
+  );
 
-  test("returns 403 when user is DEVELOPER (not admin)", async () => {
-    const owner = await createTestUser();
-    const dev = await createTestUser({ email: `dev-${Date.now()}@example.com` });
-    const workspace = await createTestWorkspace({ ownerId: owner.id });
-    await createTestMembership({
-      workspaceId: workspace.id,
-      userId: dev.id,
-      role: "DEVELOPER",
-    });
+  test.each(["VIEWER", "DEVELOPER"] as const)(
+    "returns 200 when a non-admin member (%s) has a configured swarm",
+    async (role) => {
+      const owner = await createTestUser();
+      const member = await createTestUser({ email: `${role.toLowerCase()}-${Date.now()}@example.com` });
+      const workspace = await createTestWorkspace({ ownerId: owner.id });
+      await createTestMembership({
+        workspaceId: workspace.id,
+        userId: member.id,
+        role,
+      });
+      await createTestSwarmWithEncryptedApiKey(workspace.id);
 
-    getMockedSession().mockResolvedValue(createAuthenticatedSession(dev));
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(member));
 
-    try {
-      const response = await callRoute(workspace.slug, {
-        query: "MATCH (n) RETURN n LIMIT 5",
+      const mockResult = {
+        columns: ["n", "r", "m"],
+        rows: [
+          [
+            { id: "1", name: "AuthService.ts", type: "File" },
+            { id: "10", type: "IMPORTS" },
+            { id: "2", name: "db.ts", type: "File" },
+          ],
+        ],
+      };
+
+      const originalFetch = global.fetch;
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockResult),
       });
 
-      expect(response.status).toBe(403);
-    } finally {
-      await db.workspace.delete({ where: { id: workspace.id } });
-      await db.user.deleteMany({ where: { id: { in: [owner.id, dev.id] } } });
+      try {
+        const response = await callRoute(workspace.slug, {
+          query: "MATCH (n) RETURN n LIMIT 5",
+        });
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(Array.isArray(data.columns)).toBe(true);
+        expect(Array.isArray(data.rows)).toBe(true);
+      } finally {
+        global.fetch = originalFetch;
+        await db.workspace.delete({ where: { id: workspace.id } });
+        await db.user.deleteMany({ where: { id: { in: [owner.id, member.id] } } });
+      }
     }
-  });
+  );
 
   // ── Read-only guard ────────────────────────────────────────────────────────
 
