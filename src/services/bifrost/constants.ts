@@ -208,3 +208,37 @@ export const BIFROST_AGENT_CATALOG_LOCK_ACQUIRE_TIMEOUT_MS = 20_000;
 
 /** Log tag for agent-catalog seeding. */
 export const BIFROST_AGENT_CATALOG_LOG_TAG = "BIFROST_AGENTS";
+
+// ─── Strut standing delegation ───────────────────────────────────────
+//
+// Hive mints, once per user and deployment, a long-lived macaroon for
+// the agent `strut-agent` and pushes it to the workspace swarm's strut
+// lab (`PUT /llm/delegations/:actor`). Strut attenuates it per run and
+// per step; the gateway bills the step and enforces the ceiling. See
+// `strut/plans/mothership-cost-control.md` §4 and `strut-delegation.ts`.
+
+/**
+ * The delegation ceiling: a cumulative cap on everything one user spends
+ * through strut, enforced by the gateway on the delegation's own run id.
+ * Overridable per deployment with `STRUT_DELEGATION_MAX_COST_USD` (see
+ * `strutDelegationMaxCostUsd`).
+ */
+export const STRUT_DELEGATION_DEFAULT_MAX_COST_USD = 10_000;
+
+/**
+ * Lifetime of the standing invocation (and its UA): 60 days. The
+ * reconciler cron re-mints inside the last 15, so nobody meets the
+ * expiry unless hive itself is down for weeks — it is a backstop.
+ */
+export const STRUT_DELEGATION_TTL_SECONDS = 60 * 24 * 60 * 60;
+
+/**
+ * The reconciler cron re-mints a delegation this close to its expiry.
+ */
+export const STRUT_DELEGATION_RENEW_WITHIN_MS = 15 * 24 * 60 * 60 * 1000;
+
+/** Per-call HTTP timeout for the strut lab's `/llm/delegations` routes. */
+export const STRUT_DELEGATION_HTTP_TIMEOUT_MS = 10_000;
+
+/** Log tag for the strut delegation push + reconciler. */
+export const STRUT_DELEGATION_LOG_TAG = "STRUT_DELEGATION";

@@ -133,6 +133,15 @@ export const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
     displayName: "Security Review Agent",
     description: "Reviews the code for security vulnerabilities.",
   },
+  "strut-agent": {
+    displayName: "Strut",
+    description:
+      "Root of every strut workflow run; steps are billed as <workflow>.<step> under it.",
+  },
+  "strut-assistant": {
+    displayName: "Strut Assistant",
+    description: "Strut's workflow-authoring chat (the AI builder).",
+  },
 };
 
 /**
