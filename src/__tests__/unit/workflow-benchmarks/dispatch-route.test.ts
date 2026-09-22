@@ -56,6 +56,8 @@ const mockDbStakworkRunFindUnique = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunDelete = vi.hoisted(() => vi.fn());
 const mockDbTransaction = vi.hoisted(() => vi.fn());
 const mockFetch = vi.hoisted(() => vi.fn());
+const mockResolveStrutActor = vi.hoisted(() => vi.fn(async () => "user-123"));
+const mockEnsureStrutDelegation = vi.hoisted(() => vi.fn(async () => ({ status: "skipped-gate" })));
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -82,6 +84,12 @@ vi.mock("@/lib/rate-limit", () => ({
 
 vi.mock("@/lib/workflow-benchmarks/eval-nodes", () => ({
   ensureWorkflowBenchmarkEvalNodes: mockEnsureWorkflowBenchmarkEvalNodes,
+}));
+
+vi.mock("@/services/bifrost/strut-delegation", () => ({
+  STRUT_ACTOR_HEADER: "x-strut-actor",
+  resolveStrutActor: mockResolveStrutActor,
+  ensureStrutDelegation: mockEnsureStrutDelegation,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -964,6 +972,17 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=strut",
     expect(url).toBe("https://swarm.example.com:3355/lab/workflows/wfbench-run/run");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["x-api-token"]).toBe(SWARM_KEY);
+    // The run's LLM spend is billed to the dispatching user: the actor is
+    // the macaroon user_id, resolved from the user, and strut is handed that
+    // user's standing delegation before the run is dispatched.
+    expect((init.headers as Record<string, string>)["x-strut-actor"]).toBe("user-123");
+    expect(mockResolveStrutActor).toHaveBeenCalledWith(USER_ID);
+    expect(mockEnsureStrutDelegation).toHaveBeenCalledWith(
+      { workspaceId: WORKSPACE_ID, workspaceSlug: VALID_SLUG, userId: USER_ID },
+      { swarmUrl: "https://swarm.example.com/api", swarmApiKey: SWARM_KEY },
+      { actor: "user-123" },
+    );
+    expect(mockEnsureStrutDelegation.mock.invocationCallOrder[0]).toBeLessThan(mockFetch.mock.invocationCallOrder[0]);
     expect(JSON.stringify(init)).not.toContain("jobs.stakwork.com");
 
     const body = JSON.parse(init.body as string);

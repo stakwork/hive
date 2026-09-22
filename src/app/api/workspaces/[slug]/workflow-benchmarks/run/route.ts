@@ -20,6 +20,11 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { optionalEnvVars } from "@/config/env";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import {
+  STRUT_ACTOR_HEADER,
+  ensureStrutDelegation,
+  resolveStrutActor,
+} from "@/services/bifrost/strut-delegation";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -420,7 +425,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       // (criteria as the array, workflow_input as the object — the harness
       // accepts both encodings). Auth is the swarm API key as x-api-token,
       // the same way every other Hive → stakgraph call authenticates.
+      // `x-strut-actor` names who the run's LLM spend is billed to (the
+      // macaroon `user_id`, not the raw User.id), and — behind the Bifrost
+      // gates — strut is first handed that user's standing delegation.
+      // The push never throws and never blocks the dispatch.
       const labBase = transformSwarmUrlToRepo2Graph(swarmUrl);
+      const actor = await resolveStrutActor(userId);
+      await ensureStrutDelegation(
+        { workspaceId, workspaceSlug: slug, userId },
+        { swarmUrl, swarmApiKey },
+        { actor },
+      );
       const strutInput: Record<string, unknown> = {
         task_slug: task.slug,
         task_title: task.title,
@@ -435,6 +450,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         headers: {
           "Content-Type": "application/json",
           "x-api-token": swarmApiKey,
+          [STRUT_ACTOR_HEADER]: actor,
         },
         body: JSON.stringify({ input: strutInput }),
       });

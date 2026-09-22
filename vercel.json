@@ -94,6 +94,10 @@
     {
       "path": "/api/cron/fluentbit-stats-sample",
       "schedule": "45 * * * *"
+    },
+    {
+      "path": "/api/cron/strut-delegations",
+      "schedule": "20 3 * * *"
     }
   ]
 }
