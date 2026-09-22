@@ -556,9 +556,12 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 export function SidebarChatActions({
   githubLogin,
   hideHistory = false,
+  compact = false,
 }: {
   githubLogin: string;
   hideHistory?: boolean;
+  /** Mobile header: History, New chat, and Stop only — hide Share/Fork/settings. */
+  compact?: boolean;
 }) {
   const activeId = useCanvasChatStore((s) => s.activeConversationId);
   const hasMessages = useCanvasChatStore((s) => ((activeId ? s.conversations[activeId]?.messages.length : 0) ?? 0) > 0);
@@ -655,29 +658,33 @@ export function SidebarChatActions({
           Stop
         </button>
       )}
-      <ActionTip label="Copy share link">
-        <button
-          type="button"
-          onClick={handleShare}
-          disabled={!serverConversationId}
-          aria-label="Copy share link"
-          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <Share2 className="w-4 h-4" />
-        </button>
-      </ActionTip>
-      <ActionTip label="Fork chat">
-        <button
-          type="button"
-          onClick={handleFork}
-          disabled={!serverConversationId || isStreaming || isForking}
-          aria-label="Fork chat"
-          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <Split className="w-4 h-4" />
-        </button>
-      </ActionTip>
-      <CanvasAgentSettingsPopover githubLogin={githubLogin} />
+      {!compact && (
+        <div className="hidden md:flex items-center gap-1">
+          <ActionTip label="Copy share link">
+            <button
+              type="button"
+              onClick={handleShare}
+              disabled={!serverConversationId}
+              aria-label="Copy share link"
+              className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+          </ActionTip>
+          <ActionTip label="Fork chat">
+            <button
+              type="button"
+              onClick={handleFork}
+              disabled={!serverConversationId || isStreaming || isForking}
+              aria-label="Fork chat"
+              className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Split className="w-4 h-4" />
+            </button>
+          </ActionTip>
+          <CanvasAgentSettingsPopover githubLogin={githubLogin} />
+        </div>
+      )}
       {!hideHistory && <CanvasHistoryPopover githubLogin={githubLogin} />}
       <ActionTip label="New chat">
         <button

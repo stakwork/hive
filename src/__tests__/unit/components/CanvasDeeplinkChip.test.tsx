@@ -23,11 +23,17 @@ vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
   },
 }));
 
+const mockUseIsMobile = vi.fn(() => false);
+vi.mock("@/hooks/useIsMobile", () => ({
+  useIsMobile: () => mockUseIsMobile(),
+}));
+
 import { CanvasDeeplinkChip } from "@/app/org/[githubLogin]/_components/CanvasDeeplinkChip";
 
 describe("CanvasDeeplinkChip", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseIsMobile.mockReturnValue(false);
   });
 
   it("renders the label text", () => {
@@ -93,6 +99,23 @@ describe("CanvasDeeplinkChip", () => {
       x: 100,
       y: 200,
     });
+  });
+
+  it("does not call triggerDeeplink on mobile click", () => {
+    mockUseIsMobile.mockReturnValue(true);
+
+    render(
+      <CanvasDeeplinkChip
+        nodeId="initiative:abc"
+        canvasRef="initiative:abc"
+        label="Initiative: Q3 Roadmap"
+      />,
+    );
+
+    const chip = screen.getByTestId("canvas-deeplink-chip");
+    expect(chip).toBeDisabled();
+    fireEvent.click(chip);
+    expect(mockTriggerDeeplink).not.toHaveBeenCalled();
   });
 
   it("uses empty string canvasRef for root canvas", () => {
