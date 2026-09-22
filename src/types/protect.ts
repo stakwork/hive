@@ -89,17 +89,34 @@ export interface ProtectFindingsResponse {
   error?: string;
 }
 
+export interface ProtectEndpointCaller {
+  system: string;
+  callSites: number;
+}
+
 export interface ProtectEndpoint {
   refId: string;
   name: string;
   verb: string;
   file: string;
+  /** Owning repo, from the leading `file` segments (`stakwork/hive`). */
+  system: string;
+  callers: ProtectEndpointCaller[];
+}
+
+export interface ProtectSystemCall {
+  caller: string;
+  callee: string;
+  callSites: number;
 }
 
 export interface ProtectEndpointsResponse {
   status: "ready" | "error";
   endpoints: ProtectEndpoint[];
-  truncated: boolean;
+  /** caller -> callee matrix; empty when the swarm cannot report callers. */
+  systems: ProtectSystemCall[];
+  /** True when callers came back empty because the swarm lacks /v2/graph/callers. */
+  callersUnavailable: boolean;
   error?: string;
 }
 

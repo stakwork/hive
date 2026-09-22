@@ -8,6 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -18,8 +25,27 @@ import {
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { SystemGraph, type SystemGraphSelection } from "@/components/protect/SystemGraph";
 import { toast } from "sonner";
-import type { ProtectEndpointsResponse } from "@/types/protect";
+import type { ProtectEndpoint, ProtectEndpointsResponse } from "@/types/protect";
+
+const ALL = "__all__";
+const NO_SELECTION: SystemGraphSelection = { system: null, caller: null };
+
+/** `stakwork/hive` -> `hive`; the full id stays available as a tooltip. */
+function shortSystem(system: string): string {
+  const slash = system.lastIndexOf("/");
+  return slash === -1 ? system : system.slice(slash + 1);
+}
+
+function matchesSearch(endpoint: ProtectEndpoint, query: string): boolean {
+  return (
+    endpoint.name.toLowerCase().includes(query) ||
+    endpoint.file.toLowerCase().includes(query) ||
+    endpoint.verb.toLowerCase().includes(query) ||
+    endpoint.callers.some((caller) => caller.system.toLowerCase().includes(query))
+  );
+}
 
 export default function ProtectEndpointsPage() {
   const canAccessDefense = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
@@ -27,6 +53,7 @@ export default function ProtectEndpointsPage() {
   const [data, setData] = useState<ProtectEndpointsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [selection, setSelection] = useState<SystemGraphSelection>(NO_SELECTION);
 
   const loadEndpoints = useCallback(async (slug: string) => {
     setLoading(true);
@@ -43,7 +70,8 @@ export default function ProtectEndpointsPage() {
       setData({
         status: "error",
         endpoints: [],
-        truncated: false,
+        systems: [],
+        callersUnavailable: false,
         error: "Failed to load endpoints",
       });
     } finally {
@@ -57,31 +85,47 @@ export default function ProtectEndpointsPage() {
     }
   }, [workspace?.slug, loadEndpoints]);
 
+  const endpoints = useMemo(() => data?.endpoints ?? [], [data?.endpoints]);
+
+  const systems = useMemo(
+    () => Array.from(new Set(endpoints.map((endpoint) => endpoint.system))).sort(),
+    [endpoints],
+  );
+  const callerSystems = useMemo(
+    () =>
+      Array.from(
+        new Set(endpoints.flatMap((endpoint) => endpoint.callers.map((caller) => caller.system))),
+      ).sort(),
+    [endpoints],
+  );
+
   const filtered = useMemo(() => {
-    const endpoints = data?.endpoints ?? [];
     const query = search.trim().toLowerCase();
-    if (!query) return endpoints;
     return endpoints.filter(
       (endpoint) =>
-        endpoint.name.toLowerCase().includes(query) ||
-        endpoint.file.toLowerCase().includes(query) ||
-        endpoint.verb.toLowerCase().includes(query),
+        (selection.system === null || endpoint.system === selection.system) &&
+        (selection.caller === null ||
+          endpoint.callers.some((caller) => caller.system === selection.caller)) &&
+        (!query || matchesSearch(endpoint, query)),
     );
-  }, [data?.endpoints, search]);
+  }, [endpoints, search, selection]);
 
   if (!canAccessDefense) {
     redirect("/");
   }
 
+  const ready = !loading && data?.status === "ready";
+  const showCallers = ready && !data.callersUnavailable;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Endpoints"
-        description="API endpoints discovered in the workspace knowledge graph."
+        description="API endpoints in the knowledge graph and the systems that call them."
         icon={Waypoints}
       />
 
-      <div className="max-w-5xl space-y-4">
+      <div className="max-w-6xl space-y-4">
         {loading && (
           <Card data-testid="protect-endpoints-loading">
             <CardContent className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
@@ -99,7 +143,7 @@ export default function ProtectEndpointsPage() {
           </Card>
         )}
 
-        {!loading && data?.status === "ready" && data.endpoints.length === 0 && (
+        {ready && endpoints.length === 0 && (
           <Card data-testid="protect-endpoints-empty">
             <CardContent className="py-10 text-sm text-muted-foreground">
               No endpoints found in the knowledge graph.
@@ -107,19 +151,89 @@ export default function ProtectEndpointsPage() {
           </Card>
         )}
 
-        {!loading && data?.status === "ready" && data.endpoints.length > 0 && (
+        {ready && data.callersUnavailable && endpoints.length > 0 && (
+          <p className="text-sm text-muted-foreground" data-testid="protect-endpoints-no-callers">
+            Caller information needs a newer swarm build; showing endpoints only.
+          </p>
+        )}
+
+        {showCallers && systems.length > 1 && (
+          <Card data-testid="protect-endpoints-systems">
+            <CardContent className="space-y-3 py-5">
+              <div>
+                <h2 className="text-sm font-medium">System calls</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Each ribbon is one system calling another, sized by how many endpoints it
+                  hits. Click a ribbon or a system to filter the list below. Generic paths such
+                  as <code>/health</code> can match endpoints in several systems.
+                </p>
+              </div>
+              <SystemGraph endpoints={endpoints} selection={selection} onSelect={setSelection} />
+            </CardContent>
+          </Card>
+        )}
+
+        {ready && endpoints.length > 0 && (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Filter by path, method or file"
+                placeholder="Filter by path, method, file or caller"
                 className="max-w-sm"
                 data-testid="protect-endpoints-search"
               />
-              <p className="text-sm text-muted-foreground" data-testid="protect-endpoints-count">
-                {filtered.length} of {data.endpoints.length} endpoints
-                {data.truncated && " (list truncated)"}
+              {systems.length > 1 && (
+                <Select
+                  value={selection.system ?? ALL}
+                  onValueChange={(value) =>
+                    setSelection((current) => ({
+                      ...current,
+                      system: value === ALL ? null : value,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-44" data-testid="protect-endpoints-system-filter">
+                    <SelectValue placeholder="System" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All systems</SelectItem>
+                    {systems.map((system) => (
+                      <SelectItem key={system} value={system}>
+                        {shortSystem(system)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {showCallers && callerSystems.length > 0 && (
+                <Select
+                  value={selection.caller ?? ALL}
+                  onValueChange={(value) =>
+                    setSelection((current) => ({
+                      ...current,
+                      caller: value === ALL ? null : value,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-56" data-testid="protect-endpoints-caller-filter">
+                    <SelectValue placeholder="Called by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>Any caller</SelectItem>
+                    {callerSystems.map((system) => (
+                      <SelectItem key={system} value={system}>
+                        Called by {shortSystem(system)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p
+                className="ml-auto text-sm text-muted-foreground"
+                data-testid="protect-endpoints-count"
+              >
+                {filtered.length} of {endpoints.length} endpoints
               </p>
             </div>
 
@@ -130,6 +244,8 @@ export default function ProtectEndpointsPage() {
                     <TableRow>
                       <TableHead className="w-24">Method</TableHead>
                       <TableHead>Endpoint</TableHead>
+                      <TableHead>System</TableHead>
+                      {showCallers && <TableHead>Called by</TableHead>}
                       <TableHead>File</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -140,6 +256,32 @@ export default function ProtectEndpointsPage() {
                           {endpoint.verb && <Badge variant="outline">{endpoint.verb}</Badge>}
                         </TableCell>
                         <TableCell className="font-mono text-sm">{endpoint.name}</TableCell>
+                        <TableCell className="text-sm" title={endpoint.system}>
+                          {shortSystem(endpoint.system)}
+                        </TableCell>
+                        {showCallers && (
+                          <TableCell>
+                            {endpoint.callers.length === 0 ? (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {endpoint.callers.map((caller) => (
+                                  <Badge
+                                    key={caller.system}
+                                    variant="secondary"
+                                    className="font-mono text-xs"
+                                    title={`${caller.system}: ${caller.callSites} call sites`}
+                                  >
+                                    {shortSystem(caller.system)}
+                                    <span className="ml-1 text-muted-foreground">
+                                      {caller.callSites}
+                                    </span>
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </TableCell>
+                        )}
                         <TableCell className="font-mono text-xs text-muted-foreground">
                           {endpoint.file}
                         </TableCell>
