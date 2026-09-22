@@ -365,6 +365,13 @@ model WorkspaceMember {
   // predates this column or the gateway couldn't be read), never "no
   // grants" — the reconciler treats empty as "refresh, then trust Bifrost".
   bifrostVkProviders String[]     @default([]) @map("bifrost_vk_providers")
+  // The strut standing delegation last pushed for this member (see
+  // `services/bifrost/strut-delegation.ts`): the macaroon's expiry and its
+  // invocation run_id. Desired state for the `strut-delegations` cron —
+  // NEVER the token itself, which is a bearer credential hive may not be
+  // able to re-mint once user keys leave the platform.
+  strutDelegationExp DateTime?    @map("strut_delegation_exp")
+  strutDelegationId  String?      @map("strut_delegation_id")
   user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 

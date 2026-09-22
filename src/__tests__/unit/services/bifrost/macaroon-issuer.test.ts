@@ -172,6 +172,32 @@ describe("mintInvocationMacaroon", () => {
     expect(claims.permitted_realms).toBeNull();
   });
 
+  it("keeps an explicit maxSteps of 0 (the strut standing delegation) — 0 survives the destructuring default", async () => {
+    await seedHappyPath();
+    const minted = await mintInvocationMacaroon({
+      workspaceId: WORKSPACE_ID,
+      userId: USER_ID,
+      agentName: "strut-agent",
+      maxCostUsd: 10_000,
+      maxSteps: 0,
+      ttlSeconds: 60 * 24 * 3600,
+    });
+    const decoded = decodeMacaroon(minted.token);
+    expect(decoded.invocation.max_steps).toBe(0);
+    expect(decoded.invocation.max_cost_usd).toBe(10_000);
+    expect(decoded.invocation.agents).toEqual(["strut-agent"]);
+    expect(decoded.user_authorization.agents).toEqual(["strut-agent"]);
+    expect(decoded.attenuations).toEqual([]);
+    expect(decoded.invocation.run_id).toBe(minted.runId);
+    // Both layers carry the same 60-day lifetime.
+    expect(decoded.user_authorization.exp).toBe(decoded.invocation.exp);
+    expect(new Date(decoded.invocation.exp).getTime() - Date.now()).toBeGreaterThan(59 * 24 * 3600 * 1000);
+
+    const claims = verify(minted.token, policy, new Date());
+    expect(claims.effective_caveats.max_steps).toBe(0);
+    expect(claims.agent_name).toBe("strut-agent");
+  });
+
   it("respects a caller-supplied runId", async () => {
     await seedHappyPath();
     const minted = await mintInvocationMacaroon({

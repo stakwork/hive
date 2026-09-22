@@ -22,6 +22,8 @@ const {
   mockAgentRunCreate,
   mockAgentRunUpdate,
   mockAgentRunUpdateMany,
+  mockResolveStrutActor,
+  mockEnsureStrutDelegation,
 } = vi.hoisted(() => ({
   mockSwarmAccess: vi.fn(),
   mockResolveConversation: vi.fn(),
@@ -29,10 +31,17 @@ const {
   mockAgentRunCreate: vi.fn(),
   mockAgentRunUpdate: vi.fn(),
   mockAgentRunUpdateMany: vi.fn(),
+  mockResolveStrutActor: vi.fn(),
+  mockEnsureStrutDelegation: vi.fn(),
 }));
 
 vi.mock("@/lib/helpers/swarm-access", () => ({ getWorkspaceSwarmAccess: mockSwarmAccess }));
 vi.mock("@/services/org-canvas-conversation", () => ({ resolveOrgConversationRowId: mockResolveConversation }));
+vi.mock("@/services/bifrost/strut-delegation", () => ({
+  STRUT_ACTOR_HEADER: "x-strut-actor",
+  resolveStrutActor: mockResolveStrutActor,
+  ensureStrutDelegation: mockEnsureStrutDelegation,
+}));
 vi.mock("@/lib/db", () => ({
   db: {
     workspace: { findUnique: mockWorkspaceFindUnique },
@@ -76,6 +85,8 @@ describe("buildStrutTools", () => {
     mockAgentRunCreate.mockResolvedValue({ id: "run-1" });
     mockAgentRunUpdate.mockResolvedValue({});
     mockAgentRunUpdateMany.mockResolvedValue({ count: 0 });
+    mockResolveStrutActor.mockResolvedValue("alice-user-1");
+    mockEnsureStrutDelegation.mockResolvedValue({ status: "skipped-gate" });
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -116,6 +127,9 @@ describe("buildStrutTools", () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe("https://swarm1.sphinx.chat:3355/lab/chat");
     expect(init.headers["x-api-token"]).toBe("swarm-key");
+    // The actor strut bills the chat to: the macaroon user_id, not the raw User.id.
+    expect(init.headers["x-strut-actor"]).toBe("alice-user-1");
+    expect(mockResolveStrutActor).toHaveBeenCalledWith("user-1");
     const body = JSON.parse(init.body);
     expect(body).toMatchObject({ message: "build it", title: "Build clipper" });
     expect(body.chatId).toBeUndefined();
@@ -130,6 +144,20 @@ describe("buildStrutTools", () => {
       where: { id: "run-1" },
       data: { sessionId: "chat-9", requestId: "0" },
     });
+  });
+
+  test("dispatch hands strut the user's standing delegation first; a failed push never blocks", async () => {
+    mockEnsureStrutDelegation.mockResolvedValue({ status: "failed" });
+    mockFetch.mockResolvedValue(json(202, { chatId: "chat-9", turn: 0, callback: true }));
+    const out = await dispatch();
+    expect(out.status).toBe("dispatched");
+    expect(mockEnsureStrutDelegation).toHaveBeenCalledWith(
+      { workspaceId: "ws-id", workspaceSlug: "acme", userId: "user-1" },
+      { swarmUrl: "https://swarm1.sphinx.chat/api", swarmApiKey: "swarm-key" },
+      { actor: "alice-user-1" },
+    );
+    // Push before the POST — strut must hold the delegation when the turn starts.
+    expect(mockEnsureStrutDelegation.mock.invocationCallOrder[0]).toBeLessThan(mockFetch.mock.invocationCallOrder[0]);
   });
 
   test("continue: sends chatId and supersedes that chat's earlier PENDING rows", async () => {

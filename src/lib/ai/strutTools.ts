@@ -46,6 +46,11 @@ import { db } from "@/lib/db";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { resolveOrgConversationRowId } from "@/services/org-canvas-conversation";
+import {
+  STRUT_ACTOR_HEADER,
+  ensureStrutDelegation,
+  resolveStrutActor,
+} from "@/services/bifrost/strut-delegation";
 import type { CapabilityContext } from "./capabilities";
 
 export const DISPATCH_STRUT_TOOL = "dispatch_strut";
@@ -58,8 +63,16 @@ const MAX_LISTED_CHATS = 30;
 
 interface StrutTarget {
   workspaceId: string;
+  workspaceSlug: string;
+  swarmUrl: string;
   labBase: string;
   swarmApiKey: string;
+  /**
+   * Who strut bills this call to: the acting user's actor string — the
+   * macaroon `user_id` (`buildBifrostName`), NOT the raw `User.id`. Sent as
+   * `x-strut-actor`; mcp trusts it because the swarm key proves it is hive.
+   */
+  actor: string;
 }
 
 /**
@@ -86,8 +99,11 @@ async function resolveStrut(ctx: CapabilityContext, workspaceSlug: string): Prom
   }
   return {
     workspaceId: access.data.workspaceId,
+    workspaceSlug,
+    swarmUrl: access.data.swarmUrl,
     labBase: `${transformSwarmUrlToRepo2Graph(access.data.swarmUrl)}/lab`,
     swarmApiKey: access.data.swarmApiKey,
+    actor: await resolveStrutActor(ctx.userId),
   };
 }
 
@@ -97,6 +113,7 @@ async function strutFetch(target: StrutTarget, path: string, init?: { body: unkn
     headers: {
       "Content-Type": "application/json",
       "x-api-token": target.swarmApiKey,
+      [STRUT_ACTOR_HEADER]: target.actor,
     },
     ...(init ? { body: JSON.stringify(init.body) } : {}),
     signal: AbortSignal.timeout(STRUT_TIMEOUT_MS),
@@ -209,6 +226,17 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
       execute: async ({ workspace, title, prompt, chatId }) => {
         const target = await resolveStrut(ctx, workspace);
         if ("error" in target) return { status: "error", error: target.error };
+
+        // The chat's LLM spend is billed to the acting user through the
+        // Mothership once strut holds their standing delegation. Behind the
+        // Bifrost gates; never throws, never blocks the dispatch. Also runs
+        // with no live session (automations, the strut auto-turn) — the
+        // user is attributed, not present; the custodial key signs.
+        await ensureStrutDelegation(
+          { workspaceId: target.workspaceId, workspaceSlug: target.workspaceSlug, userId: ctx.userId },
+          { swarmUrl: target.swarmUrl, swarmApiKey: target.swarmApiKey },
+          { actor: target.actor },
+        );
 
         const callback = await setupCallback(ctx, {
           title,
