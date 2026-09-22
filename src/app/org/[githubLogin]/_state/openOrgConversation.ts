@@ -20,6 +20,7 @@
  * Returns `true` when the conversation is now active, `false` on any
  * failure (callers leave their own UI state untouched in that case).
  */
+import { hasLocalUnsavedState } from "@/lib/conversationDrafts";
 import { useCanvasChatStore, type CanvasChatMessage } from "./canvasChatStore";
 
 export interface OpenOrgConversationOptions {
@@ -111,6 +112,7 @@ function markSeen(githubLogin: string, conversationId: string): void {
  */
 function openSlotFor(conversationId: string): string | null {
   const { conversations } = useCanvasChatStore.getState();
+  if (conversations[conversationId]) return conversationId;
   let best: { id: string; size: number } | null = null;
   for (const conv of Object.values(conversations)) {
     if (conv.serverConversationId !== conversationId) continue;
@@ -190,11 +192,28 @@ export function startNewOrgConversation(githubLogin: string): string {
   const store = useCanvasChatStore.getState();
   const activeId = store.activeConversationId;
   const active = activeId ? store.conversations[activeId] : undefined;
-  const untouched = !!active && !active.serverConversationId && (active.messages?.length ?? 0) === 0;
+  const untouched =
+    !!active &&
+    !active.serverConversationId &&
+    (active.messages?.length ?? 0) === 0 &&
+    !hasLocalUnsavedState(active.id);
   const id = untouched
     ? active.id
     : store.startConversation(active?.context ?? fallbackContext(githubLogin), [], undefined, 0);
   dropChatParam();
   store.setPendingInputDraft("");
   return id;
+}
+
+/**
+ * Drop an unsaved local slot (no server row) and focus a fresh empty
+ * composer. Switching away is not discard — only this explicit action.
+ */
+export function discardUnsavedOrgConversation(githubLogin: string, localId: string): string {
+  const store = useCanvasChatStore.getState();
+  const conv = store.conversations[localId];
+  if (conv && conv.serverConversationId == null) {
+    store.removeConversation(localId);
+  }
+  return startNewOrgConversation(githubLogin);
 }

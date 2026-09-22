@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCanvasChatStore, type ConversationContext } from "@/app/org/[githubLogin]/_state/canvasChatStore";
-import { openOrgConversation } from "@/app/org/[githubLogin]/_state/openOrgConversation";
+import { openOrgConversation, startNewOrgConversation } from "@/app/org/[githubLogin]/_state/openOrgConversation";
+import { resetConversationDraftsForTests, setDraft, orgDraftScope } from "@/lib/conversationDrafts";
 
 const context: ConversationContext = {
   orgId: "org-1",
@@ -32,6 +33,7 @@ describe("openOrgConversation", () => {
     vi.stubGlobal("fetch", fetchMock);
     useCanvasChatStore.setState({ conversations: {}, activeConversationId: null, ephemeralSeedCounts: {} });
     window.history.replaceState(null, "", "/org/acme");
+    resetConversationDraftsForTests();
   });
 
   it("switches to the slot already holding the conversation instead of fetching a copy", async () => {
@@ -98,6 +100,36 @@ describe("openOrgConversation", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(useCanvasChatStore.getState().conversations[held].title).toBe("Held title");
+  });
+
+  it("reuses an untouched empty slot instead of stacking another", () => {
+    const store = useCanvasChatStore.getState();
+    const first = store.startConversation(context, [], undefined, 0);
+    const again = startNewOrgConversation("acme");
+    expect(again).toBe(first);
+    expect(Object.keys(useCanvasChatStore.getState().conversations)).toHaveLength(1);
+  });
+
+  it("starts a new slot when the active unsaved chat has a draft", () => {
+    const store = useCanvasChatStore.getState();
+    const first = store.startConversation(context, [], undefined, 0);
+    setDraft({ userId: "anon", scope: orgDraftScope("acme"), conversationKey: first }, "typed but unsent");
+    const next = startNewOrgConversation("acme");
+    expect(next).not.toBe(first);
+    expect(useCanvasChatStore.getState().conversations[first]).toBeDefined();
+    expect(Object.keys(useCanvasChatStore.getState().conversations)).toHaveLength(2);
+  });
+
+  it("opens a local conv-* id without fetching", async () => {
+    const store = useCanvasChatStore.getState();
+    const local = store.startConversation(context, [], undefined, 0);
+    store.startConversation(context, [], undefined, 0, "srv-b");
+
+    const opened = await openOrgConversation("acme", local);
+
+    expect(opened).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useCanvasChatStore.getState().activeConversationId).toBe(local);
   });
 
   it("returns false and leaves the store alone when the fetch fails", async () => {
