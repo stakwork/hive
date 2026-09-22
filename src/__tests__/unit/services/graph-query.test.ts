@@ -125,27 +125,35 @@ describe("runWorkspaceGraphQuery", () => {
     expect(mockedGetSwarmAccess).not.toHaveBeenCalled();
   });
 
-  test("returns 403 for a non-admin member (e.g. DEVELOPER/VIEWER)", async () => {
-    mockedValidate.mockResolvedValue({
-      hasAccess: true,
-      canRead: true,
-      canWrite: true,
-      canAdmin: false,
-      userRole: "DEVELOPER",
-    } as never);
+  test.each(["DEVELOPER", "VIEWER"])(
+    "a non-admin member (%s) passes the auth gate and reaches the read-only checks",
+    async (userRole) => {
+      mockedValidate.mockResolvedValue({
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        userRole,
+      } as never);
 
-    const result = await call();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(UPSTREAM_RESULT),
+      });
+      global.fetch = fetchMock;
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.status).toBe(403);
-      expect(result.message).toBe("Forbidden: admin access required");
-    }
-    // Admin gate precedes the write guard AND swarm resolution
-    expect(mockedFindFirst).not.toHaveBeenCalled();
-  });
+      const result = await call();
 
-  test("admin gate runs before the write guard (viewer + CREATE ⇒ 403 admin msg)", async () => {
+      // No admin/owner role required — a plain read query from a non-admin
+      // member succeeds all the way through to the upstream fetch.
+      expect(result.ok).toBe(true);
+      expect(mockedFindFirst).toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalled();
+    },
+  );
+
+  test("member of a non-admin role still cannot run a write query (write guard, not admin 403)", async () => {
     mockedValidate.mockResolvedValue({
       hasAccess: true,
       canRead: true,
@@ -159,8 +167,11 @@ describe("runWorkspaceGraphQuery", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.status).toBe(403);
-      expect(result.message).toBe("Forbidden: admin access required");
+      expect(result.message).toBe("Write operations are not permitted");
     }
+    // Rejected by the write-keyword guard before swarm resolution — but it's
+    // the write guard, not a defunct admin gate, doing the rejecting.
+    expect(mockedFindFirst).not.toHaveBeenCalled();
   });
 
   test("returns 400 when query is missing or not a string", async () => {

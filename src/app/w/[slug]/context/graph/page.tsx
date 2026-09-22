@@ -10,7 +10,10 @@ import { GraphExplorer } from "@/components/graph-explorer/GraphExplorer";
 
 export default function GraphExplorerPage() {
   const { slug } = useWorkspace();
-  const { canAdmin } = useWorkspaceAccess();
+  // Membership gate only — matches the underlying query API
+  // (runWorkspaceGraphQuery), which allows any workspace member and no
+  // longer requires admin/owner.
+  const { canRead } = useWorkspaceAccess();
   const searchParams = useSearchParams();
   // Deep link from anywhere that knows a ref_id (e.g. agent-session concept
   // chips) — open the explorer focused on that node. `cypher` deep-links a
@@ -18,13 +21,13 @@ export default function GraphExplorerPage() {
   const initialRefId = searchParams.get("ref_id");
   const initialCypher = searchParams.get("cypher");
 
-  if (!canAdmin) {
+  if (!canRead) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8">
         <Share2 className="h-12 w-12 text-muted-foreground mb-4" />
         <h2 className="text-xl font-semibold text-foreground mb-2">Access Denied</h2>
         <p className="text-muted-foreground max-w-sm">
-          The Graph Explorer is only available to workspace Admins and Owners.
+          The Graph Explorer is only available to members of this workspace.
         </p>
       </div>
     );
