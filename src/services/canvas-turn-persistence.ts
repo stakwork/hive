@@ -23,6 +23,7 @@
  * tab never double-renders its own optimistic stream.
  */
 
+import { stripEndMarker } from "@/lib/ai/endMarker";
 import { db } from "@/lib/db";
 import {
   notifyCanvasConversationUpdated,
@@ -268,11 +269,12 @@ export function messagesFromSteps(
     // attached to the text row as `deferredCheck` metadata.
     const deferredCheck = extractDeferredCheckFromStep(step);
 
-    // Strip the "[END_OF_ANSWER]" turn-end marker before persisting —
+    // Strip a trailing "[END_OF_ANSWER]" turn-end marker before persisting —
     // providers that don't enforce `stopSequences` server-side (e.g. some
     // OpenRouter-hosted models) leak it into the step text, and stored
-    // rows feed shared conversations and reloads.
-    const stepText = step.text?.replace(/\[END_OF_ANSWER\]/g, "").trim();
+    // rows feed shared conversations and reloads. A marker quoted mid-text
+    // is content and stays.
+    const stepText = step.text ? stripEndMarker(step.text).trim() : undefined;
     if (stepText) {
       const textRow: StoredMessage = {
         id: nextId(),

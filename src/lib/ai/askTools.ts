@@ -1,3 +1,4 @@
+import { hasTrailingEndMarker } from "./endMarker";
 import { StopCondition, tool, ToolSet, ModelMessage } from "ai";
 import { z } from "zod";
 import { RepoAnalyzer } from "gitsee/server";
@@ -886,17 +887,13 @@ function buildWorkspaceTools(
   };
 }
 
+/**
+ * Stop the loop once a step's text ends with the "[END_OF_ANSWER]" marker.
+ * Anchored to the end of the text: a marker quoted mid-text (the agent
+ * discussing the code that handles it) is content, not a termination.
+ */
 export function createHasEndMarkerCondition<T extends ToolSet>(): StopCondition<T> {
-  return ({ steps }) => {
-    for (const step of steps) {
-      for (const item of step.content) {
-        if (item.type === "text" && item.text?.includes("[END_OF_ANSWER]")) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
+  return ({ steps }) => hasTrailingEndMarker(steps);
 }
 
 export interface ClueResult {

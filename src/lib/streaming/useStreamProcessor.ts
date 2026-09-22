@@ -1,3 +1,4 @@
+import { stripEndMarker } from "@/lib/ai/endMarker";
 import { useCallback } from "react";
 import type { BaseStreamingMessage, StreamProcessorConfig, StreamEvent, ToolCallStatus } from "@/types/streaming";
 import type { TokenUsage } from "@/types/usage";
@@ -87,11 +88,11 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
       const buildMessage = (isStreaming: boolean): T => {
         // Providers that don't enforce `stopSequences` server-side (e.g.
         // some OpenRouter-hosted models) can leak the "[END_OF_ANSWER]"
-        // turn-end marker into visible text. Strip it here — every derived
-        // view (content, textParts, timeline) is rebuilt from the
-        // accumulated parts on each delta, so a marker split across
-        // chunks self-heals once fully arrived.
-        const stripEndMarker = (s: string) => s.replace(/\[END_OF_ANSWER\]/g, "");
+        // turn-end marker into visible text. Strip a trailing one here —
+        // every derived view (content, textParts, timeline) is rebuilt from
+        // the accumulated parts on each delta, so a marker split across
+        // chunks self-heals once fully arrived. A marker quoted mid-text is
+        // content and stays.
         // Use the tracked order to build arrays in insertion order
         const allTextParts = textPartsOrder.map((id) => ({
           id,
