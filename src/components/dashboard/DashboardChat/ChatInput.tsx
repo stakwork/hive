@@ -4,6 +4,15 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Image as ImageIcon, Plus, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import {
+  ANON_USER_ID,
+  NEW_CONVERSATION_KEY,
+  clearDraft,
+  getDraft,
+  setDraft,
+  workspaceDraftScope,
+  type DraftRef,
+} from "@/lib/conversationDrafts";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
@@ -30,6 +39,10 @@ interface ChatInputProps {
   onRemoveWorkspace?: (slug: string) => void;
   currentWorkspaceSlug?: string;
   maxExtraWorkspaces?: number;
+  /** Server conversation id, or `__new__` while unsaved. */
+  conversationKey?: string;
+  userId?: string;
+  onDraftChange?: (hasDraft: boolean) => void;
 }
 
 export function ChatInput({
@@ -43,12 +56,32 @@ export function ChatInput({
   onRemoveWorkspace,
   currentWorkspaceSlug,
   maxExtraWorkspaces = DEFAULT_MAX_EXTRA_WORKSPACES,
+  conversationKey = NEW_CONVERSATION_KEY,
+  userId = ANON_USER_ID,
+  onDraftChange,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [rows, setRows] = useState(1);
   const [isWorkspacePickerOpen, setIsWorkspacePickerOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputLatestRef = useRef("");
+  const conversationKeyRef = useRef(conversationKey);
+  const userIdRef = useRef(userId);
+  const slugRef = useRef(currentWorkspaceSlug);
+  const didMountRef = useRef(false);
+  userIdRef.current = userId;
+  slugRef.current = currentWorkspaceSlug;
+
+  const draftRefFor = (key: string): DraftRef | null => {
+    const slug = slugRef.current;
+    if (!slug) return null;
+    return {
+      userId: userIdRef.current || ANON_USER_ID,
+      scope: workspaceDraftScope(slug),
+      conversationKey: key,
+    };
+  };
 
   const { workspaces } = useWorkspace();
 
@@ -60,6 +93,31 @@ export function ChatInput({
       ws.slug !== currentWorkspaceSlug &&
       !extraWorkspaceSlugs.includes(ws.slug)
   );
+
+  useEffect(() => {
+    inputLatestRef.current = input;
+  }, [input]);
+
+  // Save the previous conversation's draft, then restore this key's.
+  useEffect(() => {
+    if (didMountRef.current) {
+      const prevRef = draftRefFor(conversationKeyRef.current);
+      if (prevRef) setDraft(prevRef, inputLatestRef.current);
+    }
+    didMountRef.current = true;
+    conversationKeyRef.current = conversationKey;
+    const ref = draftRefFor(conversationKey);
+    const restored = ref ? getDraft(ref) : "";
+    inputLatestRef.current = restored;
+    setInput(restored);
+    onDraftChange?.(!!restored.trim());
+    return () => {
+      const unmountRef = draftRefFor(conversationKeyRef.current);
+      if (unmountRef) setDraft(unmountRef, inputLatestRef.current);
+    };
+    // Restore on conversation identity change, not on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationKey]);
 
   // Auto-adjust textarea height based on content
   useEffect(() => {
@@ -82,6 +140,10 @@ export function ChatInput({
     // Don't clear input yet - wait for response to start
     await onSend(message, () => {
       setInput("");
+      inputLatestRef.current = "";
+      const ref = draftRefFor(conversationKeyRef.current);
+      if (ref) clearDraft(ref);
+      onDraftChange?.(false);
       inputRef.current?.focus();
     });
   };
@@ -260,9 +322,17 @@ export function ChatInput({
         <div className="relative flex-1 min-w-0 leading-none">
           <textarea
             ref={inputRef}
+            data-conversation-key={conversationKey}
             placeholder="Ask me about your codebase..."
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              inputLatestRef.current = value;
+              setInput(value);
+              const ref = draftRefFor(conversationKeyRef.current);
+              if (ref) setDraft(ref, value);
+              onDraftChange?.(!!value.trim());
+            }}
             onKeyDown={handleKeyDown}
             disabled={disabled}
             rows={rows}

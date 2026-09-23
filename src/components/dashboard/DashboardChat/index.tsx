@@ -17,6 +17,14 @@ import type { ModelMessage } from "ai";
 import { ToolCallIndicator } from "./ToolCallIndicator";
 import { Sparkles, BookOpen, Share2, X, EyeOff } from "lucide-react";
 import { RecentChatsPopup, type LoadConversationParams } from "./RecentChatsPopup";
+import {
+  ANON_USER_ID,
+  NEW_CONVERSATION_KEY,
+  clearDraft,
+  getDraft,
+  hasDraft,
+  workspaceDraftScope,
+} from "@/lib/conversationDrafts";
 
 interface ToolCall {
   id: string;
@@ -83,6 +91,9 @@ export function DashboardChat({
   const [isLoading, setIsLoading] = useState(false);
   const [isReadOnly, setIsReadOnly] = useState(false);
   const conversationIdRef = useRef<string | null>(null);
+  const [conversationKey, setConversationKey] = useState<string>(NEW_CONVERSATION_KEY);
+  const [hasUnsavedDraft, setHasUnsavedDraft] = useState(false);
+  const userId = (session?.user as { id?: string } | undefined)?.id ?? ANON_USER_ID;
   const [showFeatureModal, setShowFeatureModal] = useState(false);
   const [extractedData, setExtractedData] = useState<{ title: string; description: string } | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -453,6 +464,7 @@ export function DashboardChat({
           hasReceivedContentRef.current = true;
           setIsLoading(false);
           clearInput(); // Clear input when response starts
+          if (conversationIdRef.current) setConversationKey(conversationIdRef.current);
         }
 
         // Use timeline to split messages at tool call boundaries
@@ -590,15 +602,28 @@ export function DashboardChat({
   };
 
   const handleClearAll = () => {
+    if (slug) {
+      clearDraft({
+        userId,
+        scope: workspaceDraftScope(slug),
+        conversationKey: conversationKeyRefOrNew(),
+      });
+    }
     setMessages([]);
     setFollowUpQuestions([]);
     setProvenanceData(null);
     setIsProvenanceSidebarOpen(false);
     setExtraWorkspaceSlugs([]);
     conversationIdRef.current = null;
+    setConversationKey(NEW_CONVERSATION_KEY);
+    setHasUnsavedDraft(false);
     assistantMsgsRef.current = [];
     setIsReadOnly(false);
   };
+
+  function conversationKeyRefOrNew(): string {
+    return conversationIdRef.current ?? NEW_CONVERSATION_KEY;
+  }
 
   const handleImageUpload = (imageData: string) => {
     // Add a new user message with just the image (no text yet)
@@ -634,10 +659,20 @@ export function DashboardChat({
     setMessages(loadedMessages as Message[]);
     setExtraWorkspaceSlugs(loadedSlugs);
     conversationIdRef.current = conversationId;
+    setConversationKey(conversationId ?? NEW_CONVERSATION_KEY);
     setIsReadOnly(readOnly);
     setFollowUpQuestions([]);
     setProvenanceData(null);
     setIsProvenanceSidebarOpen(false);
+    if (slug && conversationId) {
+      setHasUnsavedDraft(
+        hasDraft({ userId, scope: workspaceDraftScope(slug), conversationKey: conversationId }),
+      );
+    } else if (slug) {
+      setHasUnsavedDraft(
+        hasDraft({ userId, scope: workspaceDraftScope(slug), conversationKey: NEW_CONVERSATION_KEY }),
+      );
+    }
   };
 
   const handleFollowUpClick = (question: string) => {
@@ -890,6 +925,7 @@ export function DashboardChat({
   // const assistantMessages = messages.filter((m) => m.role === "assistant");
   // const hasAssistantMessages = assistantMessages.length > 0;
   const hasMessages = messages.length > 0;
+  const showRecentAndClear = hasMessages || hasUnsavedDraft;
 
   // Check if provenance has any files to show
   const hasProvenanceFiles =
@@ -968,9 +1004,9 @@ export function DashboardChat({
           either write to the workspace or expose private data; they
           are hidden for public viewers. The Sources pill and Clear
           remain available — both are local to the in-progress chat. */}
-      {hasMessages && (
+      {showRecentAndClear && (
         <div className="pointer-events-auto flex items-center gap-2 justify-center pb-1 flex-wrap">
-          {!isPublicViewer && (
+          {hasMessages && !isPublicViewer && (
             <button
               type="button"
               onClick={handleOpenFeatureModal}
@@ -981,7 +1017,7 @@ export function DashboardChat({
               Generate Plan
             </button>
           )}
-          {hasProvenanceFiles && (
+          {hasMessages && hasProvenanceFiles && (
             <button
               type="button"
               onClick={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
@@ -995,7 +1031,7 @@ export function DashboardChat({
               Sources
             </button>
           )}
-          {!isPublicViewer && (
+          {hasMessages && !isPublicViewer && (
             <button
               type="button"
               onClick={handleShare}
@@ -1011,6 +1047,11 @@ export function DashboardChat({
               slug={slug}
               currentUserId={(session.user as { id: string }).id}
               onLoadConversation={handleLoadConversation}
+              unsavedDraft={
+                hasDraft({ userId, scope: workspaceDraftScope(slug), conversationKey: NEW_CONVERSATION_KEY })
+                  ? getDraft({ userId, scope: workspaceDraftScope(slug), conversationKey: NEW_CONVERSATION_KEY })
+                  : null
+              }
             />
           )}
           <button
@@ -1047,6 +1088,9 @@ export function DashboardChat({
           onRemoveWorkspace={(ws) => setExtraWorkspaceSlugs((prev) => prev.filter((s) => s !== ws))}
           currentWorkspaceSlug={slug}
           maxExtraWorkspaces={maxExtraWorkspaces}
+          conversationKey={conversationKey}
+          userId={userId}
+          onDraftChange={setHasUnsavedDraft}
         />
       </div>
 

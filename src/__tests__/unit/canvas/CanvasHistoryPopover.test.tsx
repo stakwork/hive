@@ -45,25 +45,30 @@ const mockSetServerConversationId = vi.fn();
 const mockClearActiveConversation = vi.fn();
 const mockSetPendingInputDraft = vi.fn();
 
+const mockSetActiveConversation = vi.fn();
+
 const mockStoreState = {
   activeConversationId: "active-conv-1",
   conversations: {
     "active-conv-1": {
       // Persisted, so it counts as touched: "New" mints a fresh slot rather
       // than reusing this one.
+      id: "active-conv-1",
       serverConversationId: "srv-active",
       messages: [],
+      title: null,
       context: {
         orgId: "org-1",
         canvasRef: null,
         workspaceSlugs: ["ws-1"],
       },
     },
-  },
+  } as Record<string, any>,
   startConversation: mockStartConversation,
   setServerConversationId: mockSetServerConversationId,
   clearActiveConversation: mockClearActiveConversation,
   setPendingInputDraft: mockSetPendingInputDraft,
+  setActiveConversation: mockSetActiveConversation,
 };
 
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
@@ -149,13 +154,28 @@ function buildFetch(
 // ── Import component ───────────────────────────────────────────────────────
 
 import { CanvasHistoryPopover } from "@/app/org/[githubLogin]/_components/CanvasHistoryPopover";
+import { orgDraftScope, resetConversationDraftsForTests, setDraft } from "@/lib/conversationDrafts";
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("CanvasHistoryPopover", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetConversationDraftsForTests();
     mockStartConversation.mockReturnValue("new-conv-id");
+    mockStoreState.conversations = {
+      "active-conv-1": {
+        id: "active-conv-1",
+        serverConversationId: "srv-active",
+        messages: [],
+        title: null,
+        context: {
+          orgId: "org-1",
+          canvasRef: null,
+          workspaceSlugs: ["ws-1"],
+        },
+      },
+    };
 
     // Wire getState so that after startConversation is called, activeConversationId
     // reflects the new id — simulating the synchronous store update that the
@@ -512,5 +532,51 @@ describe("CanvasHistoryPopover", () => {
 
     expect(mockRouterReplace).not.toHaveBeenCalled();
     expect(mockRouterPush).not.toHaveBeenCalled();
+  });
+
+  it("overlays a local unsaved row after fetchList", async () => {
+    mockStoreState.conversations["conv-local"] = {
+      id: "conv-local",
+      serverConversationId: null,
+      messages: [],
+      title: null,
+    };
+    setDraft(
+      { userId: "anon", scope: orgDraftScope("my-org"), conversationKey: "conv-local" },
+      "typed locally",
+    );
+    global.fetch = buildFetch(mockItems, {});
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+
+    await waitFor(() => screen.getByText("Planning session"));
+    expect(screen.getByText("typed locally")).toBeInTheDocument();
+  });
+
+  it("local click calls setActiveConversation and never GETs a conv-* id", async () => {
+    mockStoreState.conversations["conv-local"] = {
+      id: "conv-local",
+      serverConversationId: null,
+      messages: [],
+      title: null,
+    };
+    setDraft(
+      { userId: "anon", scope: orgDraftScope("my-org"), conversationKey: "conv-local" },
+      "unsaved note",
+    );
+    const fetchMock = buildFetch(mockItems, {});
+    global.fetch = fetchMock;
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+    await waitFor(() => screen.getByText("unsaved note"));
+
+    fireEvent.click(screen.getByText("unsaved note"));
+
+    expect(mockSetActiveConversation).toHaveBeenCalledWith("conv-local");
+    expect(fetchMock.mock.calls.every((c: unknown[]) => !String(c[0]).includes("/conversations/conv-local"))).toBe(
+      true,
+    );
   });
 });

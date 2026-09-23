@@ -504,6 +504,8 @@ interface CanvasChatState {
   clearActiveConversation: () => void;
   /** Drop the active conversation and start fresh. */
   resetActiveConversation: () => void;
+  /** Remove a conversation slot (Discard of an unsaved chat). */
+  removeConversation: (conversationId: string) => void;
   /** Record the server-assigned `SharedConversation` id (auto-save creation). */
   setServerConversationId: (conversationId: string, serverId: string) => void;
   /** Record the persisted conversation title (LLM live-sync / seed). */
@@ -715,6 +717,24 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           },
           false,
           "resetActiveConversation",
+        ),
+
+      removeConversation: (conversationId) =>
+        set(
+          (s) => {
+            if (!s.conversations[conversationId]) return s;
+            const nextConversations = { ...s.conversations };
+            delete nextConversations[conversationId];
+            const nextSeedCounts = { ...s.ephemeralSeedCounts };
+            delete nextSeedCounts[conversationId];
+            return {
+              conversations: nextConversations,
+              activeConversationId: s.activeConversationId === conversationId ? null : s.activeConversationId,
+              ephemeralSeedCounts: nextSeedCounts,
+            };
+          },
+          false,
+          "removeConversation",
         ),
 
       setServerConversationId: (conversationId, serverId) =>

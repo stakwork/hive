@@ -1,6 +1,7 @@
 "use client";
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowUp,
@@ -15,6 +16,7 @@ import {
   RefreshCw,
   Share2,
   Split,
+  Trash2,
   X,
 } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -49,7 +51,7 @@ import {
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import { forkCanvasConversation } from "../_state/forkCanvasConversation";
-import { startNewOrgConversation } from "../_state/openOrgConversation";
+import { discardUnsavedOrgConversation, startNewOrgConversation } from "../_state/openOrgConversation";
 import { ActionTip } from "./ActionTip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { jamieName } from "@/lib/constants/jamie";
@@ -57,6 +59,20 @@ import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { StreamScrollIndicator } from "@/components/dashboard/DashboardChat/StreamScrollIndicator";
+import {
+  ANON_USER_ID,
+  adoptServerDraft,
+  clearDraft,
+  getDraft,
+  getDraftFiles,
+  hasLocalUnsavedState,
+  markConversationKeyDiscarded,
+  orgDraftScope,
+  setDraft,
+  setDraftFiles,
+  useConversationDraftsVersion,
+  type DraftRef,
+} from "@/lib/conversationDrafts";
 
 /**
  * Org-canvas sidebar chat. Renders the active conversation from the
@@ -535,13 +551,18 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       </div>{" "}
       {/* end relative wrapper */}
       <div className="border-t p-2">
-        <SidebarChatInput
-          ref={composerRef}
-          onSend={handleSend}
-          disabled={isLoading}
-          workspaceId={workspaceId}
-          orgId={githubLogin}
-        />
+        {activeId && (
+          <SidebarChatInput
+            key={activeId}
+            ref={composerRef}
+            activeId={activeId}
+            githubLogin={githubLogin}
+            onSend={handleSend}
+            disabled={isLoading}
+            workspaceId={workspaceId}
+            orgId={githubLogin}
+          />
+        )}
       </div>
     </div>
   );
@@ -562,12 +583,16 @@ export function SidebarChatActions({
 }) {
   const activeId = useCanvasChatStore((s) => s.activeConversationId);
   const hasMessages = useCanvasChatStore((s) => ((activeId ? s.conversations[activeId]?.messages.length : 0) ?? 0) > 0);
+  useConversationDraftsVersion();
+  const hasUnsavedDraft = !!activeId && hasLocalUnsavedState(activeId);
+  const canStartNew = hasMessages || hasUnsavedDraft;
   // The persisted row id. Sharing flips this row to `isShared` and hands
   // out its id, so the sharer and every joiner live in the *same* room.
   // Null until the first turn has created the row — Share/Fork are gated on it.
   const serverConversationId = useCanvasChatStore(
     (s) => (activeId ? s.conversations[activeId]?.serverConversationId : null) ?? null,
   );
+  const canDiscard = !!activeId && serverConversationId == null && canStartNew;
   // The source must be persisted before it is forked, so Fork stays
   // disabled until streaming ends.
   const isStreaming = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false);
@@ -679,11 +704,27 @@ export function SidebarChatActions({
       </ActionTip>
       <CanvasAgentSettingsPopover githubLogin={githubLogin} />
       {!hideHistory && <CanvasHistoryPopover githubLogin={githubLogin} />}
+      {canDiscard && (
+        <ActionTip label="Discard draft">
+          <button
+            type="button"
+            onClick={() => {
+              if (!activeId) return;
+              markConversationKeyDiscarded(activeId);
+              discardUnsavedOrgConversation(githubLogin, activeId);
+            }}
+            aria-label="Discard draft"
+            className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </ActionTip>
+      )}
       <ActionTip label="New chat">
         <button
           type="button"
           onClick={() => startNewOrgConversation(githubLogin)}
-          disabled={!hasMessages}
+          disabled={!canStartNew}
           aria-label="New chat"
           className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
@@ -768,6 +809,9 @@ interface SidebarChatInputProps {
   workspaceId: string;
   /** Fallback org id when workspaceId is absent (org canvas context). */
   orgId?: string;
+  /** Stable Zustand local slot id — remount key and in-memory draft key. */
+  activeId: string;
+  githubLogin: string;
 }
 
 /**
@@ -780,14 +824,62 @@ interface SidebarChatInputProps {
  * `DashboardChat/ChatInput` — the prop surface diverges enough that
  * sharing would require ugly conditionals (workspace pills, etc.).
  */
-const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProps>(function SidebarChatInput(
-  { onSend, disabled = false, workspaceId, orgId },
+export const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProps>(function SidebarChatInput(
+  { onSend, disabled = false, workspaceId, orgId, activeId, githubLogin },
   ref,
 ) {
+  const { data: session } = useSession();
+  const userId = (session?.user as { id?: string } | undefined)?.id ?? ANON_USER_ID;
+  const draftRef: DraftRef = {
+    userId,
+    scope: orgDraftScope(githubLogin),
+    conversationKey: activeId,
+  };
+  const persistAs = useCanvasChatStore((s) => s.conversations[activeId]?.serverConversationId ?? null);
+
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputLatestRef = useRef("");
+  const pendingFilesRef = useRef<PendingFile[]>([]);
+  const persistAsRef = useRef(persistAs);
+  persistAsRef.current = persistAs;
+  const draftRefLatest = useRef(draftRef);
+  draftRefLatest.current = draftRef;
+
+  useEffect(() => {
+    inputLatestRef.current = input;
+  }, [input]);
+  useEffect(() => {
+    pendingFilesRef.current = pendingFiles;
+  }, [pendingFiles]);
+
+  // Restore this slot's draft + files on mount. After reload a saved
+  // chat mints a fresh conv-* id; copy the server-id localStorage
+  // entry into that slot's memory key.
+  useEffect(() => {
+    const restored = persistAsRef.current
+      ? adoptServerDraft(draftRefLatest.current, persistAsRef.current)
+      : getDraft(draftRefLatest.current);
+    if (restored) {
+      inputLatestRef.current = restored;
+      setInput(restored);
+    }
+    const files = getDraftFiles<PendingFile>(activeId);
+    if (files.length) {
+      pendingFilesRef.current = files;
+      setPendingFiles(files);
+    }
+    // Save on unmount via a ref so Strict Mode double-mount cannot
+    // write the wrong chat. Do not revoke preview URLs on switch.
+    return () => {
+      setDraft(draftRefLatest.current, inputLatestRef.current, persistAsRef.current);
+      setDraftFiles(activeId, pendingFilesRef.current);
+    };
+    // Mount/unmount only — activeId is the remount key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Grow with the content; the class list's `max-h` caps it and it
   // scrolls from there. `field-sizing: content` covers Chromium; this
@@ -824,7 +916,9 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   useEffect(() => {
     if (transcript) {
       const newValue = preVoiceInputRef.current ? `${preVoiceInputRef.current} ${transcript}`.trim() : transcript;
+      inputLatestRef.current = newValue;
       setInput(newValue);
+      setDraft(draftRefLatest.current, newValue, persistAsRef.current);
     }
   }, [transcript]);
 
@@ -849,11 +943,16 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   });
 
   // ─── Pending-draft consumption ─────────────────────────────────────
+  // One-shot prefill (Connections / New-chat focus). Empty string only
+  // focuses and does not clobber a restored draft. Non-empty applies to
+  // this composer only and is not written into the draft map.
   const pendingDraft = useCanvasChatStore((s) => s.pendingInputDraft);
   useEffect(() => {
     if (pendingDraft === null) return;
-    // An empty draft only asks for focus; the text already there stays.
-    if (pendingDraft) setInput(pendingDraft);
+    if (pendingDraft) {
+      inputLatestRef.current = pendingDraft;
+      setInput(pendingDraft);
+    }
     requestAnimationFrame(() => {
       const el = inputRef.current;
       if (el) {
@@ -864,15 +963,9 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
     useCanvasChatStore.getState().setPendingInputDraft(null);
   }, [pendingDraft]);
 
-  // ─── Unmount cleanup — revoke all preview object URLs ──────────────
-  useEffect(() => {
-    return () => {
-      setPendingFiles((prev) => {
-        prev.forEach((f) => URL.revokeObjectURL(f.preview));
-        return [];
-      });
-    };
-  }, []);
+  // Preview URLs are revoked only on discard or successful send — not
+  // on composer unmount/switch, or attachments for the previous chat
+  // would be destroyed.
 
   // ─── File upload helpers ────────────────────────────────────────────
 
@@ -882,16 +975,24 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
       try {
         const uploadContext = workspaceId ? { workspaceId } : { orgId: orgId! };
         const result = await uploadFileToS3(pf.file, uploadContext);
-        setPendingFiles((prev) =>
-          prev.map((f) => (f.id === pf.id ? { ...f, uploading: false, s3Path: result.path } : f)),
-        );
+        setPendingFiles((prev) => {
+          const next = prev.map((f) => (f.id === pf.id ? { ...f, uploading: false, s3Path: result.path } : f));
+          pendingFilesRef.current = next;
+          setDraftFiles(activeId, next);
+          return next;
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Upload failed";
-        setPendingFiles((prev) => prev.map((f) => (f.id === pf.id ? { ...f, uploading: false, error: msg } : f)));
+        setPendingFiles((prev) => {
+          const next = prev.map((f) => (f.id === pf.id ? { ...f, uploading: false, error: msg } : f));
+          pendingFilesRef.current = next;
+          setDraftFiles(activeId, next);
+          return next;
+        });
         toast.error(`Failed to upload ${pf.filename}`, { description: msg });
       }
     },
-    [workspaceId, orgId],
+    [workspaceId, orgId, activeId],
   );
 
   const handleFiles = useCallback(
@@ -914,10 +1015,15 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
         });
       }
       if (!newFiles.length) return;
-      setPendingFiles((prev) => [...prev, ...newFiles]);
+      setPendingFiles((prev) => {
+        const next = [...prev, ...newFiles];
+        pendingFilesRef.current = next;
+        setDraftFiles(activeId, next);
+        return next;
+      });
       newFiles.forEach((pf) => uploadFile(pf));
     },
-    [uploadFile],
+    [uploadFile, activeId],
   );
 
   useImperativeHandle(ref, () => ({ addFiles: handleFiles }), [handleFiles]);
@@ -926,9 +1032,12 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
     setPendingFiles((prev) => {
       const f = prev.find((f) => f.id === id);
       if (f) URL.revokeObjectURL(f.preview);
-      return prev.filter((f) => f.id !== id);
+      const next = prev.filter((f) => f.id !== id);
+      pendingFilesRef.current = next;
+      setDraftFiles(activeId, next);
+      return next;
     });
-  }, []);
+  }, [activeId]);
 
   // ─── Submit ─────────────────────────────────────────────────────────
 
@@ -964,14 +1073,22 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
         size: f.size,
       }));
 
-    // Revoke preview URLs and clear pending files
-    pendingFiles.forEach((f) => URL.revokeObjectURL(f.preview));
-    setPendingFiles([]);
-    setInput(""); // clear immediately on send
+    const filesSnapshot = pendingFiles;
 
-    await onSend(message, attachments, () => {
-      inputRef.current?.focus();
-    });
+    try {
+      await onSend(message, attachments, () => {
+        filesSnapshot.forEach((f) => URL.revokeObjectURL(f.preview));
+        setPendingFiles([]);
+        pendingFilesRef.current = [];
+        setInput("");
+        inputLatestRef.current = "";
+        clearDraft(draftRefLatest.current, persistAsRef.current);
+        setDraftFiles(activeId, []);
+        inputRef.current?.focus();
+      });
+    } catch {
+      // Failed send: leave text and files so the user can retry.
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -982,7 +1099,10 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
+    const value = e.target.value;
+    inputLatestRef.current = value;
+    setInput(value);
+    setDraft(draftRefLatest.current, value, persistAsRef.current);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {

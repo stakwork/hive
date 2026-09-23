@@ -30,6 +30,10 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({ id: "ws-1" }),
 }));
 
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: { user: { id: "user-1" } } }),
+}));
+
 // ── Canvas chat store mock ────────────────────────────────────────────────────
 // Default store state — overridden in scroll tests
 let mockStoreState = {
@@ -725,6 +729,47 @@ describe("SidebarChat — handleClear strips ?chat= param", () => {
     const [, , url] = replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [unknown, unknown, string];
     expect(url).not.toMatch(/chat=/);
     expect(url).toMatch(/c=foo/);
+  });
+
+  it("enables New chat when the active slot has a draft and no messages", async () => {
+    const { setDraft, orgDraftScope, resetConversationDraftsForTests } = await import(
+      "@/lib/conversationDrafts"
+    );
+    resetConversationDraftsForTests();
+    mockStoreState = {
+      activeConversationId: "old-conv",
+      conversations: {
+        "old-conv": {
+          messages: [],
+          isLoading: false,
+          activeToolCalls: [],
+          serverConversationId: null,
+          context: { orgId: "o1", githubLogin: "test-org" },
+        },
+      },
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    } as typeof mockStoreState;
+    setDraft({ userId: "anon", scope: orgDraftScope("test-org"), conversationKey: "old-conv" }, "draft only");
+
+    const { useCanvasChatStore } = await import("@/app/org/[githubLogin]/_state/canvasChatStore");
+    (useCanvasChatStore as unknown as { getState: () => unknown }).getState = () => ({
+      activeConversationId: "old-conv",
+      conversations: {
+        "old-conv": {
+          context: { orgId: "o1", githubLogin: "test-org" },
+          serverConversationId: null,
+          messages: [],
+        },
+      },
+      startConversation: startConversationMock,
+      setPendingInputDraft: vi.fn(),
+    });
+
+    await renderSidebarChatActions();
+    expect(screen.getByLabelText("New chat")).not.toBeDisabled();
+    expect(screen.getByLabelText("Discard draft")).toBeInTheDocument();
   });
 
   it("uses window.history.replaceState (not router.replace) — replaceState is called exactly once per click", async () => {

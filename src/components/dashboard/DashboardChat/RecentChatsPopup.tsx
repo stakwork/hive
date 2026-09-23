@@ -8,6 +8,7 @@ import { useState, useCallback } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import type { RecentChatItem } from "@/types/shared-conversation";
 import { mapConversationMessages } from "@/lib/utils/map-conversation-messages";
+import { NEW_CONVERSATION_KEY } from "@/lib/conversationDrafts";
 
 export interface ChatMessage {
   id: string;
@@ -29,14 +30,23 @@ export interface RecentChatsPopupProps {
   slug: string;
   currentUserId: string;
   onLoadConversation: (params: LoadConversationParams) => void;
+  /** Unsent `__new__` composer text, when any. Prepended as a local row. */
+  unsavedDraft?: string | null;
 }
+
+type RecentRow = RecentChatItem & { local?: boolean };
 
 function extractFirstName(fullName: string | null | undefined): string {
   if (!fullName) return "Unknown";
   return fullName.split(" ")[0];
 }
 
-export function RecentChatsPopup({ slug, currentUserId, onLoadConversation }: RecentChatsPopupProps) {
+export function RecentChatsPopup({
+  slug,
+  currentUserId,
+  onLoadConversation,
+  unsavedDraft,
+}: RecentChatsPopupProps) {
   const { timezone } = useUserTimezone();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<RecentChatItem[]>([]);
@@ -65,7 +75,32 @@ export function RecentChatsPopup({ slug, currentUserId, onLoadConversation }: Re
     }
   };
 
-  const handleItemClick = async (item: RecentChatItem) => {
+  const displayItems: RecentRow[] = unsavedDraft?.trim()
+    ? [
+        {
+          id: NEW_CONVERSATION_KEY,
+          local: true,
+          title: "Untitled",
+          lastMessageAt: new Date().toISOString(),
+          creatorName: null,
+          creatorId: currentUserId,
+          source: "dashboard",
+        },
+        ...items,
+      ]
+    : items;
+
+  const handleItemClick = async (item: RecentRow) => {
+    if (item.local) {
+      onLoadConversation({
+        messages: [],
+        extraWorkspaceSlugs: [],
+        conversationId: null,
+        isReadOnly: false,
+      });
+      setOpen(false);
+      return;
+    }
     setLoadingItemId(item.id);
     try {
       const res = await fetch(`/api/workspaces/${slug}/chat/conversations/${item.id}`);
@@ -124,18 +159,20 @@ export function RecentChatsPopup({ slug, currentUserId, onLoadConversation }: Re
                 </div>
               ))}
             </div>
-          ) : items.length === 0 ? (
+          ) : displayItems.length === 0 ? (
             <div className="px-3 py-6 text-center">
               <Clock className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
               <p className="text-xs text-muted-foreground">No recent chats yet</p>
             </div>
           ) : (
             <div className="py-1">
-              {items.map((item) => {
-                const firstName = extractFirstName(item.creatorName);
-                const label = item.title
-                  ? `${item.title} (${firstName})`
-                  : `Untitled (${firstName})`;
+              {displayItems.map((item) => {
+                const firstName = item.local ? "you" : extractFirstName(item.creatorName);
+                const label = item.local
+                  ? "Untitled"
+                  : item.title
+                    ? `${item.title} (${firstName})`
+                    : `Untitled (${firstName})`;
                 const isLoadingThis = loadingItemId === item.id;
 
                 return (
