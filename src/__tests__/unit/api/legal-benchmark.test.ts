@@ -8,6 +8,10 @@ const mockGetBifrostForLLM = vi.hoisted(() => vi.fn());
 const mockGetApiKeyForModel = vi.hoisted(() => vi.fn());
 const mockGetStakworkTokenReference = vi.hoisted(() => vi.fn());
 const mockIsValidModel = vi.hoisted(() => vi.fn());
+const mockValidateWorkspaceAccess = vi.hoisted(() => vi.fn());
+const mockCheckRateLimit = vi.hoisted(() => vi.fn());
+const mockResolveStrutActor = vi.hoisted(() => vi.fn(async () => "actor-user-1"));
+const mockEnsureStrutDelegation = vi.hoisted(() => vi.fn(async () => ({ status: "fresh" })));
 
 // StakworkRun DB mock helpers
 const mockDbStakworkRunFindFirst = vi.hoisted(() => vi.fn());
@@ -74,6 +78,28 @@ vi.mock("@/lib/middleware/utils", () => ({
 
 vi.mock("@/lib/helpers/swarm-access", () => ({
   getWorkspaceSwarmAccess: vi.fn(),
+}));
+
+vi.mock("@/services/workspace", () => ({
+  validateWorkspaceAccess: mockValidateWorkspaceAccess,
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: mockCheckRateLimit,
+}));
+
+vi.mock("@/services/bifrost/strut-delegation", () => ({
+  STRUT_ACTOR_HEADER: "x-strut-actor",
+  resolveStrutActor: mockResolveStrutActor,
+  ensureStrutDelegation: mockEnsureStrutDelegation,
+}));
+
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
 }));
 
 vi.mock("@/config/env", () => ({
@@ -178,16 +204,21 @@ const MOCK_RUNNER_RUN = {
  * Single-run flow: transaction creates ONE runner row only.
  */
 function setupTransactionMock({
-  existingActiveRun = null,
+  existingActiveRun = null as { id: string; result: string; updatedAt?: Date } | null,
+  existingActiveRuns = null as Array<{ id: string; result: string; updatedAt?: Date }> | null,
   runnerResult = { id: "runner-new" },
   throwError = null as Error | null,
 } = {}) {
   mockDbTransaction.mockImplementation(
     async (fn: (tx: unknown) => Promise<unknown>) => {
       if (throwError) throw throwError;
+      const rows = existingActiveRuns ?? (existingActiveRun ? [existingActiveRun] : []);
       const tx = {
         stakworkRun: {
           findFirst: vi.fn().mockResolvedValue(existingActiveRun),
+          findMany: vi.fn().mockResolvedValue(
+            rows.map((row) => ({ updatedAt: new Date(), ...row })),
+          ),
           create: vi.fn().mockResolvedValue(runnerResult),
           update: vi.fn().mockResolvedValue(runnerResult),
         },
@@ -200,8 +231,14 @@ function setupTransactionMock({
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXTAUTH_URL = "http://localhost:3000";
-  process.env.NEXTAUTH_SECRET = "test-nextauth-secret";
+  process.env.NEXTAUTH_SECRET = "a".repeat(32);
   process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID = "1001";
+  delete process.env.LEGAL_STRUT_WORKFLOW_NAME;
+
+  mockValidateWorkspaceAccess.mockResolvedValue({ canWrite: true, hasAccess: true });
+  mockCheckRateLimit.mockResolvedValue({ allowed: true });
+  mockResolveStrutActor.mockResolvedValue("actor-user-1");
+  mockEnsureStrutDelegation.mockResolvedValue({ status: "fresh" });
 
   // Default: Jarvis configured
   mockGetJarvisConfig.mockResolvedValue({ jarvisUrl: "https://graph.example.com", apiKey: "supersecret" });
@@ -528,6 +565,7 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
       const tx = {
         stakworkRun: {
           findFirst: vi.fn().mockResolvedValue(null),
+          findMany: vi.fn().mockResolvedValue([]),
           create: vi.fn().mockImplementation(() => {
             createCallCount++;
             return Promise.resolve({ id: "runner-only" });
@@ -564,6 +602,7 @@ describe("POST /api/workspaces/[slug]/legal/benchmarks/run", () => {
         const tx = {
           stakworkRun: {
             findFirst: vi.fn().mockResolvedValue(null),
+          findMany: vi.fn().mockResolvedValue([]),
             create: vi.fn().mockImplementation((args: { data: unknown }) => {
               createdRows.push(args.data);
               return Promise.resolve({ id: "runner-x" });
@@ -1290,6 +1329,7 @@ describe("POST /run — model & judge model selection", () => {
       const tx = {
         stakworkRun: {
           findFirst: vi.fn().mockResolvedValue(null),
+          findMany: vi.fn().mockResolvedValue([]),
           create: vi.fn().mockImplementation((args: { data: { result: string } }) => {
             createdRows.push(args);
             return Promise.resolve({ id: "runner-new" });
@@ -1328,6 +1368,7 @@ describe("POST /run — model & judge model selection", () => {
       const tx = {
         stakworkRun: {
           findFirst: vi.fn().mockResolvedValue(null),
+          findMany: vi.fn().mockResolvedValue([]),
           create: vi.fn().mockImplementation((args: { data: { result: string } }) => {
             createdRows.push(args);
             return Promise.resolve({ id: "runner-new" });
@@ -1584,6 +1625,7 @@ describe("POST /run — requestedModel and requestedJudgeModel survive webhook m
       const tx = {
         stakworkRun: {
           findFirst: vi.fn().mockResolvedValue(null),
+          findMany: vi.fn().mockResolvedValue([]),
           create: vi.fn().mockImplementation((args: { data: { result: string } }) => {
             createdRows.push(args);
             return Promise.resolve({ id: "runner-new" });
@@ -1821,6 +1863,7 @@ describe("POST /run — standard/reasoning model pair", () => {
       const tx = {
         stakworkRun: {
           findFirst: vi.fn().mockResolvedValue(null),
+          findMany: vi.fn().mockResolvedValue([]),
           create: vi.fn().mockImplementation((args: { data: { result: string } }) => {
             createdRows.push(args);
             return Promise.resolve({ id: "runner-new" });
@@ -1849,5 +1892,379 @@ describe("POST /run — standard/reasoning model pair", () => {
     const created = JSON.parse(createdRows[0].data.result) as Record<string, string>;
     expect(created.requestedStandardModel).toBe("anthropic/claude-sonnet-5");
     expect(created.requestedReasoningModel).toBe("anthropic/claude-opus-4-6");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /run — runner toggle (stakwork | strut)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const STRUT_WORKFLOW_NAME = "legal-bench-run";
+
+function stakworkCalls(fetchMock: Mock) {
+  return fetchMock.mock.calls.filter(([url]: [string]) => String(url).includes("/projects"));
+}
+
+function labCalls(fetchMock: Mock) {
+  return fetchMock.mock.calls.filter(([url]: [string]) => String(url).includes("/lab/workflows/"));
+}
+
+/**
+ * URL-aware fetch. GitHub prefetches 404. Stakwork /projects and the strut
+ * lab each get their own response. Default: both succeed.
+ */
+function stubDispatchFetch(opts?: {
+  stakworkOk?: boolean;
+  labOk?: boolean;
+  labBody?: Record<string, unknown>;
+  taskJson?: Record<string, unknown> | null;
+}) {
+  const captured: Array<{ url: string; body: unknown; headers: Record<string, string> }> = [];
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    const href = String(url);
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    const body = init?.body ? JSON.parse(init.body as string) : null;
+    captured.push({ url: href, body, headers });
+    if (href.includes("task.json")) {
+      if (opts?.taskJson) {
+        return Promise.resolve({ ok: true, json: async () => opts.taskJson });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    }
+    if (href.includes("contents/tasks") || href.includes("/documents")) {
+      return Promise.resolve({ ok: false, status: 404 });
+    }
+    if (href.includes("/lab/workflows/")) {
+      return Promise.resolve({
+        ok: opts?.labOk !== false,
+        status: opts?.labOk === false ? 500 : 200,
+        json: async () => opts?.labBody ?? { runId: "lab-run-1" },
+      });
+    }
+    return Promise.resolve({
+      ok: opts?.stakworkOk !== false,
+      status: opts?.stakworkOk === false ? 500 : 200,
+      json: async () => ({ data: { project_id: 99 } }),
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return { fetchMock, captured };
+}
+
+describe("POST /run — runner toggle", () => {
+  const params = { params: Promise.resolve({ slug: "openlaw" }) };
+
+  test("absent runner still posts to /projects, payload unchanged, stored result has no runner field", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    let createdResult = "";
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        stakworkRun: {
+          findMany: vi.fn().mockResolvedValue([]),
+          create: vi.fn().mockImplementation((args: { data: { result: string } }) => {
+            createdResult = args.data.result;
+            return Promise.resolve({ id: "runner-new" });
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      };
+      return fn(tx);
+    });
+    const { fetchMock, captured } = stubDispatchFetch();
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), params);
+    expect(res.status).toBe(201);
+
+    expect(stakworkCalls(fetchMock as unknown as Mock)).toHaveLength(1);
+    expect(labCalls(fetchMock as unknown as Mock)).toHaveLength(0);
+
+    const stored = JSON.parse(createdResult) as Record<string, unknown>;
+    expect(stored).not.toHaveProperty("runner");
+
+    const dispatched = captured.find((c) => c.url.includes("/projects"))!.body as {
+      name: string;
+      workflow_id: number;
+      webhook_url: string;
+      webhook_full_output: boolean;
+      workflow_params: { set_var: { attributes: { vars: Record<string, unknown> } } };
+    };
+    const vars = dispatched.workflow_params.set_var.attributes.vars;
+    expect(dispatched.name).toBe("harvey-runner-runner-new");
+    expect(dispatched.workflow_id).toBe(1001);
+    expect(dispatched.webhook_full_output).toBe(false);
+    expect(dispatched.webhook_url).toMatch(/\/api\/stakwork\/webhook\?run_id=runner-new$/);
+    expect(vars).toMatchObject({
+      task_slug: "task-a",
+      task_title: "Task A",
+      task_goal: "",
+      task_output_desc: "",
+      documents_json: "[]",
+      rubrics_json: "[]",
+      swarm_secret_alias: "test-swarm-alias",
+      secret: "test-swarm-alias",
+      model: "claude-sonnet-5",
+      judge_model: "claude-sonnet-4-6",
+      standard_model: "anthropic/claude-sonnet-5",
+      reasoning_model: "anthropic/claude-opus-5",
+      generate_report: false,
+      apiKey: "env-anthropic-key",
+      baseUrl: "",
+      tokenReference: "{{HIVE_STAGING}}",
+      workspace_id: "ws-1",
+    });
+    expect(vars.webhook_url).toMatch(/type=LEGAL_BENCHMARK_RUNNER/);
+    expect(vars.swarm_url).toBe(transformSwarmUrlToRepo2Graph("https://swarm.example.com/api"));
+    expect(vars.repo2graph_url).toBe(vars.swarm_url);
+    expect(vars).not.toHaveProperty("headers");
+  });
+
+  test("runner strut creates a row with runner set before the lab response, posts eleven fields, stores strutRunId", async () => {
+    process.env.LEGAL_STRUT_WORKFLOW_NAME = STRUT_WORKFLOW_NAME;
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    let createdResult = "";
+    let createCalls = 0;
+    mockDbTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        stakworkRun: {
+          findMany: vi.fn().mockResolvedValue([]),
+          create: vi.fn().mockImplementation((args: { data: { type: string; result: string } }) => {
+            createCalls += 1;
+            createdResult = args.data.result;
+            expect(args.data.type).toBe("LEGAL_BENCHMARK_RUNNER");
+            // Written at create time, before the lab response is parsed.
+            expect(JSON.parse(args.data.result).runner).toBe("strut");
+            return Promise.resolve({ id: "runner-strut" });
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      };
+      return fn(tx);
+    });
+    mockDbStakworkRunFindUnique.mockResolvedValue({
+      ...MOCK_RUNNER_RUN,
+      id: "runner-strut",
+      result: JSON.stringify({ taskSlug: "task-a", runner: "strut" }),
+    });
+    const { fetchMock, captured } = stubDispatchFetch({ labBody: { runId: "lab-42" } });
+
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", runner: "strut" }),
+      params,
+    );
+    expect(res.status).toBe(201);
+    expect(createCalls).toBe(1);
+    expect(stakworkCalls(fetchMock as unknown as Mock)).toHaveLength(0);
+
+    const labs = labCalls(fetchMock as unknown as Mock);
+    expect(labs).toHaveLength(1);
+    const labUrl = String(labs[0][0]);
+    const expected =
+      `${transformSwarmUrlToRepo2Graph("https://swarm.example.com/api")}/lab/workflows/${STRUT_WORKFLOW_NAME}/run`;
+    expect(labUrl).toBe(expected);
+    expect(labUrl.split("/lab/").length - 1).toBe(1);
+
+    const posted = captured.find((c) => c.url.includes("/lab/workflows/"))!;
+    const input = (posted.body as { input: Record<string, unknown> }).input;
+    expect(Object.keys(input).sort()).toEqual(
+      [
+        "documents_json",
+        "graph_base_url",
+        "judge_model",
+        "reasoning_model",
+        "rubrics_json",
+        "standard_model",
+        "task_goal",
+        "task_output_desc",
+        "task_slug",
+        "task_title",
+        "webhook_url",
+      ].sort(),
+    );
+    expect(input).not.toHaveProperty("apiKey");
+    expect(input).not.toHaveProperty("secret");
+    expect(input).not.toHaveProperty("swarm_secret_alias");
+    expect(input).not.toHaveProperty("baseUrl");
+    expect(posted.headers["x-api-token"]).toBe("key");
+    expect(posted.headers["x-strut-actor"]).toBe("actor-user-1");
+
+    const progressUpdate = mockDbStakworkRunUpdate.mock.calls.find(
+      ([args]: [{ data: { status?: string } }]) => args.data?.status === "IN_PROGRESS",
+    );
+    expect(progressUpdate).toBeDefined();
+    expect(progressUpdate![0].data.projectId).toBeNull();
+    const merged = JSON.parse(progressUpdate![0].data.result) as Record<string, unknown>;
+    expect(merged.strutRunId).toBe("lab-42");
+    expect(merged).not.toHaveProperty("runnerProjectId");
+    expect(merged).not.toHaveProperty("strutRunUrl");
+    expect(JSON.parse(createdResult).runner).toBe("strut");
+  });
+
+  test.each([
+    ["unset", undefined],
+    ["empty", ""],
+    ["invalid", "Harvey Produce"],
+  ])("workflow name %s returns 503 and does not create a row", async (_label, name) => {
+    if (name === undefined) delete process.env.LEGAL_STRUT_WORKFLOW_NAME;
+    else process.env.LEGAL_STRUT_WORKFLOW_NAME = name;
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock();
+
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", runner: "strut" }),
+      params,
+    );
+    expect(res.status).toBe(503);
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+  });
+
+  test("missing swarmApiKey on a strut start returns 503 and does not create a row", async () => {
+    process.env.LEGAL_STRUT_WORKFLOW_NAME = STRUT_WORKFLOW_NAME;
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue({
+      ...MOCK_SWARM_ACCESS,
+      data: { ...MOCK_SWARM_ACCESS.data, swarmApiKey: "" },
+    });
+    setupTransactionMock();
+
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", runner: "strut" }),
+      params,
+    );
+    expect(res.status).toBe(503);
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+  });
+
+  test("missing swarmSecretAlias does not block a strut start and still blocks a Stakwork start", async () => {
+    process.env.LEGAL_STRUT_WORKFLOW_NAME = STRUT_WORKFLOW_NAME;
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS_NO_ALIAS);
+    setupTransactionMock({ runnerResult: { id: "runner-strut" } });
+    stubDispatchFetch();
+
+    const strutRes = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", runner: "strut" }),
+      params,
+    );
+    expect(strutRes.status).toBe(201);
+
+    const stakworkRes = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }),
+      params,
+    );
+    expect(stakworkRes.status).toBe(500);
+    const body = await stakworkRes.json();
+    expect(body.error).toMatch(/swarm secret alias not configured/i);
+  });
+
+  test("invalid runner returns 400 and does not create a row", async () => {
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock();
+
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", runner: "goose" }),
+      params,
+    );
+    expect(res.status).toBe(400);
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+    expect(mockDbStakworkRunCreate).not.toHaveBeenCalled();
+  });
+
+  test.each(["stakwork", "strut"] as const)(
+    "NEXTAUTH_SECRET missing returns 503 and no row for %s",
+    async (runner) => {
+      delete process.env.NEXTAUTH_SECRET;
+      process.env.LEGAL_STRUT_WORKFLOW_NAME = STRUT_WORKFLOW_NAME;
+      (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+      setupTransactionMock();
+
+      const res = await postRun(
+        makeRunRequest({
+          taskSlug: "task-a",
+          taskTitle: "Task A",
+          ...(runner === "strut" ? { runner } : {}),
+        }),
+        params,
+      );
+      expect(res.status).toBe(503);
+      expect(mockDbTransaction).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["stakwork", "strut"] as const)(
+    "NEXTAUTH_SECRET shorter than 32 returns 503 and no row for %s",
+    async (runner) => {
+      process.env.NEXTAUTH_SECRET = "short-secret";
+      process.env.LEGAL_STRUT_WORKFLOW_NAME = STRUT_WORKFLOW_NAME;
+      (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+      setupTransactionMock();
+
+      const res = await postRun(
+        makeRunRequest({
+          taskSlug: "task-a",
+          taskTitle: "Task A",
+          ...(runner === "strut" ? { runner } : {}),
+        }),
+        params,
+      );
+      expect(res.status).toBe(503);
+      expect(mockDbTransaction).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["skipped-gate", "failed"] as const)(
+    "ensureStrutDelegation %s returns 503 and leaves no row",
+    async (status) => {
+      process.env.LEGAL_STRUT_WORKFLOW_NAME = STRUT_WORKFLOW_NAME;
+      mockEnsureStrutDelegation.mockResolvedValue({ status });
+      (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+      setupTransactionMock({ runnerResult: { id: "runner-deleg" } });
+      stubDispatchFetch();
+
+      const res = await postRun(
+        makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", runner: "strut" }),
+        params,
+      );
+      expect(res.status).toBe(503);
+      expect(mockDbStakworkRunDeleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "runner-deleg" } }),
+      );
+      expect(labCalls(vi.mocked(global.fetch) as unknown as Mock)).toHaveLength(0);
+    },
+  );
+
+  test("a non-OK lab response returns 502 and deletes the pending row", async () => {
+    process.env.LEGAL_STRUT_WORKFLOW_NAME = STRUT_WORKFLOW_NAME;
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock({ runnerResult: { id: "runner-lab-fail" } });
+    stubDispatchFetch({ labOk: false });
+
+    const res = await postRun(
+      makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A", runner: "strut" }),
+      params,
+    );
+    expect(res.status).toBe(502);
+    expect(mockDbStakworkRunDeleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "runner-lab-fail" } }),
+    );
+  });
+
+  test("a caller without canWrite gets 404 and no row", async () => {
+    mockValidateWorkspaceAccess.mockResolvedValue({ canWrite: false, hasAccess: true });
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock();
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), params);
+    expect(res.status).toBe(404);
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+    expect(getWorkspaceSwarmAccess).not.toHaveBeenCalled();
+  });
+
+  test("a rate-limit throw gets 503 and no row", async () => {
+    mockCheckRateLimit.mockRejectedValue(new Error("redis down"));
+    (getWorkspaceSwarmAccess as Mock).mockResolvedValue(MOCK_SWARM_ACCESS);
+    setupTransactionMock();
+
+    const res = await postRun(makeRunRequest({ taskSlug: "task-a", taskTitle: "Task A" }), params);
+    expect(res.status).toBe(503);
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+    expect(getWorkspaceSwarmAccess).not.toHaveBeenCalled();
   });
 });
