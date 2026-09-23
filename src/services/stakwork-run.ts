@@ -1036,6 +1036,14 @@ export async function processStakworkRunWebhook(
     delete (incomingFields as Record<string, unknown>).report_url;
     delete (existingResult as Record<string, unknown>).report_url;
 
+    // A strut score body that echoes runnerProjectId must not land in the
+    // result JSON. The column stays null (this merge never writes projectId),
+    // and "View on Stakwork" stays hidden. Stakwork rows keep the field — the
+    // route writes it after /projects dispatch. Do not change the normalizer.
+    if (existingResult.runner === "strut") {
+      delete (incomingFields as Record<string, unknown>).runnerProjectId;
+    }
+
     serializedResult = JSON.stringify({ ...existingResult, ...incomingFields });
   }
 

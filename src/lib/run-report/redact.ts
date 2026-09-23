@@ -31,6 +31,12 @@ export const REDACTED_KEYS = new Set([
   "aws_access_key_id",
   "swarm_secret_alias",
   "swarmsecretalias",
+  // Hosts the Stakwork set_var already sends. A score body that echoes them
+  // must not return those hosts via GET /api/stakwork/runs?includeResult=true.
+  "swarm_url",
+  "swarmurl",
+  "repo2graph_url",
+  "repo2graphurl",
   "bearer",
   "credentials",
   "private_key",

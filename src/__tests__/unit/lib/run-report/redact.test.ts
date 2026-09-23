@@ -111,6 +111,18 @@ describe("redactSensitiveKeys — key set", () => {
     expect(out).not.toContain("cdn.example.com");
   });
 
+  it("redacts echoed swarm_url and repo2graph_url hosts", () => {
+    const out = JSON.stringify(
+      redactSensitiveKeys({
+        swarm_url: "https://swarm.example.com:3355",
+        repo2graph_url: "https://swarm.example.com:3355",
+        taskSlug: "task-a",
+      }),
+    );
+    expect(out).not.toContain("swarm.example.com");
+    expect(out).toContain("task-a");
+  });
+
   it("covers the Workflow Benchmark expected-answer keys (all four spellings)", () => {
     for (const key of [
       "expected_output",

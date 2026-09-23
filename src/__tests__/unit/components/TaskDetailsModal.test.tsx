@@ -38,6 +38,56 @@ vi.mock("@/components/ui/separator", () => ({
 // Capture the className passed to DialogContent for assertion
 let capturedDialogContentClassName = "";
 
+vi.mock("@/components/ui/toggle-group", () => {
+  const Ctx = React.createContext<((v: string) => void) | undefined>(undefined);
+  return {
+    ToggleGroup: ({
+      children,
+      value,
+      onValueChange,
+      disabled,
+      "data-testid": testId,
+    }: {
+      children?: React.ReactNode;
+      value?: string;
+      onValueChange?: (v: string) => void;
+      disabled?: boolean;
+      "data-testid"?: string;
+    }) =>
+      React.createElement(
+        Ctx.Provider,
+        { value: disabled ? undefined : onValueChange },
+        React.createElement(
+          "div",
+          {
+            "data-testid": testId ?? "toggle-group",
+            "data-value": value,
+            "data-disabled": disabled ? "true" : "false",
+          },
+          children,
+        ),
+      ),
+    ToggleGroupItem: ({
+      children,
+      value,
+    }: {
+      children?: React.ReactNode;
+      value?: string;
+    }) => {
+      const onValueChange = React.useContext(Ctx);
+      return React.createElement(
+        "button",
+        {
+          type: "button",
+          "data-testid": `toggle-item-${value}`,
+          onClick: () => onValueChange?.(value ?? ""),
+        },
+        children,
+      );
+    },
+  };
+});
+
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ children, open }: { children?: React.ReactNode; open?: boolean }) =>
     open ? <div data-testid="dialog">{children}</div> : null,
@@ -645,5 +695,140 @@ describe("TaskDetailsModal — judge model selection", () => {
       standardModel: "openai/gpt-5.2",
       reasoningModel: "openai/gpt-5.2",
     });
+  });
+});
+
+describe("TaskDetailsModal — runner toggle", () => {
+  function stubFetch() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (String(url) === "/api/llm-models") {
+          return Promise.resolve({ ok: true, json: async () => ({ models: MOCK_MODELS }) });
+        }
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    stubFetch();
+  });
+
+  it("defaults to stakwork and omits runner from onRunTask", async () => {
+    const onRunTask = vi.fn().mockResolvedValue(undefined);
+    const onOpenChange = vi.fn();
+    render(
+      <TaskDetailsModal
+        open={true}
+        onOpenChange={onOpenChange}
+        task={mockTask}
+        slug="openlaw"
+        onRunTask={onRunTask}
+      />,
+    );
+
+    expect(screen.getByTestId("legal-modal-runner-toggle")).toHaveAttribute("data-value", "stakwork");
+    fireEvent.click(screen.getByText("Run Task"));
+
+    await waitFor(() => {
+      expect(onRunTask).toHaveBeenCalledWith(
+        expect.not.objectContaining({ runner: expect.anything() }),
+      );
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("sends only its own runner when strut is selected", async () => {
+    const onRunTask = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TaskDetailsModal
+        open={true}
+        onOpenChange={vi.fn()}
+        task={mockTask}
+        slug="openlaw"
+        onRunTask={onRunTask}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("toggle-item-strut"));
+    fireEvent.click(screen.getByText("Run Task"));
+
+    await waitFor(() => {
+      expect(onRunTask).toHaveBeenCalledWith(expect.objectContaining({ runner: "strut" }));
+    });
+  });
+
+  it("stays open and shows the error when onRunTask rejects", async () => {
+    const onRunTask = vi.fn().mockRejectedValue(new Error("LEGAL_STRUT_WORKFLOW_NAME is not configured"));
+    const onOpenChange = vi.fn();
+    render(
+      <TaskDetailsModal
+        open={true}
+        onOpenChange={onOpenChange}
+        task={mockTask}
+        slug="openlaw"
+        onRunTask={onRunTask}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Run Task"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("legal-modal-run-error")).toHaveTextContent(
+        "LEGAL_STRUT_WORKFLOW_NAME is not configured",
+      );
+    });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByTestId("dialog")).toBeInTheDocument();
+  });
+
+  it("closes on success", async () => {
+    const onRunTask = vi.fn().mockResolvedValue(undefined);
+    const onOpenChange = vi.fn();
+    render(
+      <TaskDetailsModal
+        open={true}
+        onOpenChange={onOpenChange}
+        task={mockTask}
+        slug="openlaw"
+        onRunTask={onRunTask}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Run Task"));
+    await waitFor(() => {
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+  });
+
+  it("model and report changes do not change the runner", async () => {
+    const onRunTask = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TaskDetailsModal
+        open={true}
+        onOpenChange={vi.fn()}
+        task={mockTask}
+        slug="openlaw"
+        onRunTask={onRunTask}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("provider-select")).toBeInTheDocument();
+    });
+    const providerRoot = screen.getAllByTestId("select-root")[0];
+    fireEvent.click(within(providerRoot).getAllByTestId("select-item")[1]);
+
+    expect(screen.getByTestId("legal-modal-runner-toggle")).toHaveAttribute("data-value", "stakwork");
+    fireEvent.click(screen.getByText("Run Task"));
+
+    await waitFor(() => {
+      expect(onRunTask).toHaveBeenCalled();
+    });
+    const arg = onRunTask.mock.calls[0][0] as { runner?: string; standardModel?: string };
+    expect(arg.runner).toBeUndefined();
+    expect(arg.standardModel).toBe("openai/gpt-5.2");
   });
 });
