@@ -134,6 +134,66 @@ vi.mock("@/components/ui/select", () => ({
     ),
 }));
 
+vi.mock("@/components/ui/toggle-group", () => {
+  const Ctx = React.createContext<((v: string) => void) | undefined>(undefined);
+  return {
+    ToggleGroup: ({
+      children,
+      value,
+      onValueChange,
+      disabled,
+      "data-testid": testId,
+    }: {
+      children?: React.ReactNode;
+      value?: string;
+      onValueChange?: (v: string) => void;
+      disabled?: boolean;
+      "data-testid"?: string;
+    }) =>
+      React.createElement(
+        Ctx.Provider,
+        { value: disabled ? undefined : onValueChange },
+        React.createElement(
+          "div",
+          {
+            "data-testid": testId ?? "toggle-group",
+            "data-value": value,
+            "data-disabled": disabled ? "true" : "false",
+          },
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              "data-testid": `${testId ?? "toggle-group"}-clear`,
+              onClick: () => onValueChange?.(""),
+            },
+            "clear",
+          ),
+          children,
+        ),
+      ),
+    ToggleGroupItem: ({
+      children,
+      value,
+    }: {
+      children?: React.ReactNode;
+      value?: string;
+    }) => {
+      const onValueChange = React.useContext(Ctx);
+      return React.createElement(
+        "button",
+        {
+          type: "button",
+          "data-testid": `toggle-item-${value}`,
+          "data-value": value,
+          onClick: () => onValueChange?.(value ?? ""),
+        },
+        children,
+      );
+    },
+  };
+});
+
 vi.mock("@/components/ui/tooltip", () => ({
   Tooltip: ({ children }: { children?: React.ReactNode }) =>
     React.createElement("div", { "data-testid": "tooltip" }, children),
@@ -751,6 +811,111 @@ describe("LegalBenchmarksPanel", () => {
       expect(body.standardModel).toBe("anthropic/claude-sonnet-5");
       expect(body.reasoningModel).toBe("anthropic/claude-opus-4-6");
       expect(body.judgeModel).toBe("anthropic/claude-sonnet-4-6");
+    });
+  });
+
+  it("Select Task with Stakwork selected omits runner", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", makeDefaultFetch());
+    render(React.createElement(LegalBenchmarksPanel));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Select Task").length).toBeGreaterThan(0);
+    });
+    expect(screen.getAllByTestId(/legal-runner-toggle-/)[0]).toHaveAttribute("data-value", "stakwork");
+
+    await user.click(screen.getAllByText("Select Task")[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("legal-benchmark-results")).toBeInTheDocument();
+    });
+    const runCall = vi.mocked(global.fetch).mock.calls.find(
+      ([url, init]) =>
+        typeof url === "string" &&
+        url.includes("/legal/benchmarks/run") &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    const body = JSON.parse((runCall![1] as RequestInit).body as string);
+    expect(body).not.toHaveProperty("runner");
+  });
+
+  it("Select Task with strut selected sends runner strut", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", makeDefaultFetch());
+    render(React.createElement(LegalBenchmarksPanel));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("toggle-item-strut").length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByTestId("toggle-item-strut")[0]);
+    await user.click(screen.getAllByText("Select Task")[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("legal-benchmark-results")).toBeInTheDocument();
+    });
+    const runCall = vi.mocked(global.fetch).mock.calls.find(
+      ([url, init]) =>
+        typeof url === "string" &&
+        url.includes("/legal/benchmarks/run") &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    const body = JSON.parse((runCall![1] as RequestInit).body as string);
+    expect(body.runner).toBe("strut");
+  });
+
+  it("ignores a cleared toggle value and stays on the last choice", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", makeDefaultFetch());
+    render(React.createElement(LegalBenchmarksPanel));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("toggle-item-strut").length).toBeGreaterThan(0);
+    });
+    const slug = "antitrust-competition/task-1";
+    await user.click(screen.getAllByTestId("toggle-item-strut")[0]);
+    expect(screen.getByTestId(`legal-runner-toggle-${slug}`)).toHaveAttribute("data-value", "strut");
+
+    await user.click(screen.getByTestId(`legal-runner-toggle-${slug}-clear`));
+    expect(screen.getByTestId(`legal-runner-toggle-${slug}`)).toHaveAttribute("data-value", "strut");
+  });
+
+  it("disables the toggle while that card's request is in flight", async () => {
+    let resolveRun: (value: unknown) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (typeof url === "string" && url.includes("/legal/benchmarks/tasks")) {
+          return Promise.resolve({ ok: true, json: async () => MOCK_RESPONSE });
+        }
+        if (typeof url === "string" && url.includes("/legal/benchmarks/run") && init?.method === "POST") {
+          return new Promise((resolve) => {
+            resolveRun = resolve;
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }),
+    );
+    const user = userEvent.setup();
+    render(React.createElement(LegalBenchmarksPanel));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Select Task").length).toBeGreaterThan(0);
+    });
+    const slug = "antitrust-competition/task-1";
+    await user.click(screen.getAllByText("Select Task")[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`legal-runner-toggle-${slug}`)).toHaveAttribute("data-disabled", "true");
+    });
+    // A second card is not locked.
+    expect(screen.getByTestId("legal-runner-toggle-antitrust-competition/task-2")).toHaveAttribute(
+      "data-disabled",
+      "false",
+    );
+
+    resolveRun({ ok: false, json: async () => ({ error: "nope" }) });
+    await waitFor(() => {
+      expect(screen.getByTestId(`legal-runner-toggle-${slug}`)).toHaveAttribute("data-disabled", "false");
     });
   });
 });

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults";
 import type { HarveyTask } from "@/lib/harvey-lab-tasks";
@@ -63,17 +64,44 @@ export function taskPathLabel(slug: string): string {
   return slug.split("/").slice(1).join(" / ");
 }
 
+export type LegalBenchmarkRunner = "stakwork" | "strut";
+
 interface TaskCardProps {
   task: HarveyTask;
-  onSelect: (task: HarveyTask) => void;
+  onSelect: (task: HarveyTask, runner: LegalBenchmarkRunner) => Promise<void>;
   onViewDetails: (task: HarveyTask) => void;
-  isRunning: boolean;
+  /** True after a successful start, so the started card stays locked. */
+  isStarted: boolean;
 }
 
-function TaskCard({ task, onSelect, onViewDetails, isRunning }: TaskCardProps) {
+function TaskCard({ task, onSelect, onViewDetails, isStarted }: TaskCardProps) {
   const visibleTags = task.tags.slice(0, 3);
   const overflowCount = task.tags.length - 3;
   const pathLabel = taskPathLabel(task.slug);
+  // Independent of the details modal. Both default to stakwork. Only sent
+  // when strut is chosen, so a Stakwork Select Task omits the field.
+  const [runner, setRunner] = useState<LegalBenchmarkRunner>("stakwork");
+  // In-flight lives on the card, not the panel. Set true before fetch, cleared
+  // on failure, kept after success. A second card may still start a different task.
+  const [isStarting, setIsStarting] = useState(false);
+  // Reset clears the panel lock (isStarted). Drop the local success lock too,
+  // so the card can start again. Do not clear while a request is in flight.
+  useEffect(() => {
+    if (!isStarted) setIsStarting(false);
+  }, [isStarted]);
+  const locked = isStarting || isStarted;
+
+  const handleSelect = async () => {
+    if (locked) return;
+    setIsStarting(true);
+    try {
+      await onSelect(task, runner);
+      // Keep the lock. The panel sets runningTaskSlug only after success;
+      // clearing isStarting here would flash the card unlocked first.
+    } catch {
+      setIsStarting(false);
+    }
+  };
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -115,17 +143,46 @@ function TaskCard({ task, onSelect, onViewDetails, isRunning }: TaskCardProps) {
           )}
         </div>
 
-        <div className="flex gap-2">
-          <Button size="sm" variant="ghost" onClick={() => onViewDetails(task)}>
+        <div className="flex gap-2 flex-wrap items-center">
+          <ToggleGroup
+            type="single"
+            size="sm"
+            variant="outline"
+            value={runner}
+            // Radix clears the value when the active item is clicked again;
+            // keep the last choice instead of leaving the toggle blank.
+            onValueChange={(v) => {
+              if (v === "strut" || v === "stakwork") setRunner(v);
+            }}
+            disabled={locked}
+            aria-label="Benchmark runner"
+            data-testid={`legal-runner-toggle-${task.slug}`}
+          >
+            <ToggleGroupItem
+              value="stakwork"
+              className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+              aria-label="Run on Stakwork"
+            >
+              Stakwork
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="strut"
+              className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+              aria-label="Run on strut"
+            >
+              strut
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <Button size="sm" variant="ghost" onClick={() => onViewDetails(task)} disabled={locked}>
             Details
           </Button>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => onSelect(task)}
-            disabled={isRunning}
+            onClick={handleSelect}
+            disabled={locked}
           >
-            {isRunning ? (
+            {locked ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
                 Running…
@@ -184,14 +241,23 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
 
   const handleSelectTask = async (
     task: HarveyTask,
-    options?: {
-      generateJamieChat?: boolean;
-      generateRunReport?: boolean;
-      standardModel?: string;
-      reasoningModel?: string;
-      judgeModel?: string;
-    },
+    runnerOrOptions?:
+      | LegalBenchmarkRunner
+      | {
+          generateJamieChat?: boolean;
+          generateRunReport?: boolean;
+          standardModel?: string;
+          reasoningModel?: string;
+          judgeModel?: string;
+          runner?: LegalBenchmarkRunner;
+        },
   ) => {
+    const options = typeof runnerOrOptions === "string" ? undefined : runnerOrOptions;
+    const runner: LegalBenchmarkRunner =
+      typeof runnerOrOptions === "string"
+        ? runnerOrOptions
+        : (runnerOrOptions?.runner ?? "stakwork");
+
     const res = await fetch(`/api/workspaces/${slug}/legal/benchmarks/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -207,13 +273,16 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
         ...(options?.judgeModel ? { judgeModel: options.judgeModel } : {}),
         generateJamieChat: options?.generateJamieChat === true,
         generateRunReport: options?.generateRunReport === true,
+        // Absent means Stakwork. Do not post runner: "stakwork".
+        ...(runner === "strut" ? { runner } : {}),
       }),
     });
 
     if (!res.ok) {
-      const { error: errMsg } = await res.json();
-      toast.error(errMsg ?? "Failed to start run");
-      return;
+      const body = await res.json().catch(() => ({}));
+      const errMsg = (body as { error?: string })?.error ?? "Failed to start run";
+      toast.error(errMsg);
+      throw new Error(errMsg);
     }
 
     const { run_id } = await res.json();
@@ -314,7 +383,7 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
                     task={task}
                     onSelect={handleSelectTask}
                     onViewDetails={setDetailsTask}
-                    isRunning={task.slug === runningTaskSlug}
+                    isStarted={task.slug === runningTaskSlug}
                   />
                 ))}
               </div>
