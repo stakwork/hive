@@ -16,28 +16,52 @@
  *     enriched with the conversation/proposal ids the webhook path needs.
  *  5. Re-approving a claim that has a receipt but no PR artifact reconciles
  *     instead of dead-ending, and never re-dispatches.
+ *  6. On strut (`CODE_CHANGE_VIA_STRUT`, the default) approval dispatches the
+ *     `code-change-land` workflow with the ROW's bytes and a branch hive
+ *     names, the token only as the actor secret; a refusal before anything
+ *     runs deletes the claim; `CODE_CHANGE_VIA_STRUT=false` still uses
+ *     `createPr`.
  */
 
 // @vitest-environment node
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 const {
   mockFetchStored,
   mockCreatePr,
   mockReconcilePr,
+  mockVerifyIdentity,
+  mockDispatchStrutRun,
+  mockFetchDefaultBranch,
   mockValidateWsAccess,
   mockCheckRateLimit,
   mockAddPrLabels,
-} = vi.hoisted(() => ({
-  mockFetchStored: vi.fn(),
-  mockCreatePr: vi.fn(),
-  mockReconcilePr: vi.fn(),
-  mockValidateWsAccess: vi.fn(),
-  mockCheckRateLimit: vi.fn(),
-  mockAddPrLabels: vi.fn(),
-}));
+  StrutDispatchErrorMock,
+} = vi.hoisted(() => {
+  class StrutDispatchErrorMock extends Error {
+    constructor(
+      public readonly code: string,
+      message: string,
+    ) {
+      super(message);
+      this.name = "StrutDispatchError";
+    }
+  }
+  return {
+    mockFetchStored: vi.fn(),
+    mockCreatePr: vi.fn(),
+    mockReconcilePr: vi.fn(),
+    mockVerifyIdentity: vi.fn(),
+    mockDispatchStrutRun: vi.fn(),
+    mockFetchDefaultBranch: vi.fn(),
+    mockValidateWsAccess: vi.fn(),
+    mockCheckRateLimit: vi.fn(),
+    mockAddPrLabels: vi.fn(),
+    StrutDispatchErrorMock,
+  };
+});
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -53,13 +77,29 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/services/org-canvas-conversation", () => ({
   fetchOrgCanvasConversationMessages: mockFetchStored,
+  resolveOrgConversationRowId: vi.fn(),
 }));
-vi.mock("@/services/swarm/createPr", () => ({
+// The real module for its pure helpers (extractFilePaths, jamiePrTitle,
+// STRUT_BRANCH_PREFIX); the network-touching entry points are mocked.
+vi.mock("@/services/swarm/createPr", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/swarm/createPr")>()),
   createPr: mockCreatePr,
   reconcilePr: mockReconcilePr,
-  _processCompletedResult: vi.fn(),
-  extractFilePaths: vi.fn(() => new Set<string>()),
+  verifyGithubIdentity: mockVerifyIdentity,
 }));
+vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: vi.fn() }));
+vi.mock("@/lib/githubApp", () => ({ refreshAndUpdateAccessTokens: vi.fn() }));
+vi.mock("@/services/strut-runs", () => ({
+  dispatchStrutRun: mockDispatchStrutRun,
+  StrutDispatchError: StrutDispatchErrorMock,
+}));
+// The real kill switch (an env read); its heavy neighbours stubbed.
+vi.mock("@/lib/ai/codeChangeTools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/ai/codeChangeTools")>()),
+  fetchDefaultBranch: mockFetchDefaultBranch,
+}));
+vi.mock("@/lib/ai/askTools", () => ({ repoAgent: vi.fn(), REPO_AGENT_CANCELLED_MARKER: "cancelled" }));
+vi.mock("@/services/bifrost/orchestrator", () => ({ getBifrostForLLM: vi.fn() }));
 vi.mock("@/services/workspace", () => ({
   validateWorkspaceAccessById: mockValidateWsAccess,
 }));
@@ -202,8 +242,17 @@ function approve(messages: MessageLike[], userId = USER_ID) {
   } as Parameters<typeof handleApproval>[0]);
 }
 
+const ORIGINAL_SWITCH = process.env.CODE_CHANGE_VIA_STRUT;
+afterAll(() => {
+  if (ORIGINAL_SWITCH === undefined) delete process.env.CODE_CHANGE_VIA_STRUT;
+  else process.env.CODE_CHANGE_VIA_STRUT = ORIGINAL_SWITCH;
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
+  // The swarm `create_pr` path, kept for one release. The strut suite at the
+  // end of this file unsets it.
+  process.env.CODE_CHANGE_VIA_STRUT = "false";
 
   mockValidateWsAccess.mockResolvedValue({ hasAccess: true, canWrite: true });
   mockCheckRateLimit.mockResolvedValue({ allowed: true });
@@ -659,5 +708,234 @@ describe("approveCodeChange — reconcile on retry", () => {
     expect(res.ok).toBe(false);
     expect(res.ok === false && res.status).toBe(409);
     expect(mockReconcilePr).not.toHaveBeenCalled();
+  });
+});
+
+// ── Strut path: approval lands through `code-change-land` ────────────────
+//
+// The default. The claim Task is created exactly as before; then the
+// approver's GitHub identity is verified, the workflow is dispatched with the
+// ROW's diff and a branch hive names, and the receipt (`runner: "strut"`,
+// `requestId` = the StrutRun id) is written for the completion handler.
+
+describe("approveCodeChange — landing on strut (CODE_CHANGE_VIA_STRUT default)", () => {
+  const STRUT_ROW_ID = "strut-row-abcdef";
+  const DISPATCHED = {
+    runId: STRUT_ROW_ID,
+    strutRunId: "1790000000001",
+    swarmId: "swarm-1",
+    runUrl: "https://acme.sphinx.chat:3355/lab/?wf=code-change-land&run=1790000000001",
+  };
+  const EXPECTED_BRANCH = `jamie/${PROPOSAL_ID.slice(0, 8)}-abcdef`;
+
+  /** The preview run's row (phase 1), with the base branch it was generated against. */
+  const previewRow = (over: Record<string, unknown> = {}) => ({
+    id: "strut-run-1",
+    userId: USER_ID,
+    workspaceId: WS_ID,
+    status: "SUCCESS",
+    input: { repo: REPO_URL, prompt: "p" },
+    output: { diff: APPROVED_DIFF + "\n", filesChanged: 1, baseBranch: "develop" },
+    ...over,
+  });
+
+  /** The stored card the strut preview wrote and its completion patched `ready`. */
+  const strutCard = (over: Record<string, unknown> = {}) => {
+    const out = codeChangeOutput(over);
+    (out.payload as Record<string, unknown>).preview = "ready";
+    return out;
+  };
+
+  let launched: Record<string, unknown> | null = null;
+
+  beforeEach(() => {
+    delete process.env.CODE_CHANGE_VIA_STRUT;
+    launched = null;
+    mockVerifyIdentity.mockResolvedValue({ ok: true, username: "alice", token: "ghp_secret" });
+    mockFetchDefaultBranch.mockResolvedValue("main");
+    mockDispatchStrutRun.mockImplementation(async (args: Record<string, unknown>) => {
+      // `input` may be a function of the new row's id (the branch names the attempt).
+      const input = typeof args.input === "function" ? (args.input as (id: string) => unknown)(STRUT_ROW_ID) : args.input;
+      launched = { ...args, input };
+      return DISPATCHED;
+    });
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(previewRow() as never);
+    vi.mocked(db.task.delete).mockResolvedValue({} as never);
+    mockFetchStored.mockResolvedValue([msg(strutCard())]);
+  });
+
+  it("dispatches code-change-land with the ROW's diff, hive's branch and the preview's base branch — the token only as the actor secret", async () => {
+    // The caller's transcript carries a different diff; it never matters.
+    const res = await approve([msg(strutCard({ diff: FORGED_DIFF }))]);
+
+    expect(res.ok).toBe(true);
+    expect(mockCreatePr).not.toHaveBeenCalled();
+    expect(mockVerifyIdentity).toHaveBeenCalledWith(USER_ID, WS_SLUG);
+    expect(mockDispatchStrutRun).toHaveBeenCalledTimes(1);
+    expect(launched).toMatchObject({
+      workspaceId: WS_ID,
+      userId: USER_ID,
+      kind: "code_change_land",
+      workflow: "code-change-land",
+      purpose: "code_change",
+      publicBaseUrl: PUBLIC_BASE_URL,
+      conversationId: CONVERSATION_ID,
+      proposalId: PROPOSAL_ID,
+      actorSecrets: { GITHUB_TOKEN: "ghp_secret" },
+    });
+    expect(launched!.input).toEqual({
+      repo: REPO_URL,
+      baseBranch: "develop",
+      diff: APPROVED_DIFF.trimEnd(),
+      diffSha256: sha(APPROVED_DIFF.trimEnd()),
+      branch: EXPECTED_BRANCH,
+      title: "[Jamie] Bump b",
+      body: "body",
+    });
+    // Never in the input, never in the row.
+    expect(JSON.stringify(launched!.input)).not.toContain("ghp_secret");
+    expect(JSON.stringify(launched!.input)).not.toContain("prisma/schema.prisma");
+    if (res.ok) {
+      expect(res.result.codeChange).toEqual({ prPending: true, repositoryUrl: REPO_URL });
+      expect(res.result.createdEntityId).toBe(CLAIM_TASK_ID);
+    }
+  });
+
+  it("creates the claim with no per-claim webhook secret (that is the swarm path's)", async () => {
+    let createdData: Record<string, unknown> | null = null;
+    vi.mocked(db.$transaction).mockImplementation(async (arg: unknown) => {
+      if (typeof arg !== "function") return undefined as never;
+      const tx = {
+        task: {
+          create: vi.fn().mockImplementation((a: { data: Record<string, unknown> }) => {
+            createdData = a.data;
+            return Promise.resolve({ id: CLAIM_TASK_ID });
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        chatMessage: { create: vi.fn().mockResolvedValue({ id: SEED_MSG_ID }) },
+        artifact: { create: vi.fn().mockResolvedValue({}), updateMany: vi.fn().mockResolvedValue({}) },
+      };
+      return (arg as (t: unknown) => Promise<unknown>)(tx) as never;
+    });
+
+    const res = await approve([msg(strutCard())]);
+
+    expect(res.ok).toBe(true);
+    expect(createdData).toMatchObject({ proposalId: PROPOSAL_ID, codeChangeWebhookSecret: null });
+  });
+
+  it("writes the receipt after the dispatch: the StrutRun id, hive's branch, approved paths, runner, ids", async () => {
+    const res = await approve([msg(strutCard())]);
+
+    expect(res.ok).toBe(true);
+    expect(db.task.update).toHaveBeenCalledWith({
+      where: { id: CLAIM_TASK_ID },
+      data: {
+        codeChangeClaim: {
+          requestId: STRUT_ROW_ID,
+          repositoryUrl: REPO_URL,
+          userId: USER_ID,
+          workspaceSlug: WS_SLUG,
+          prBranch: EXPECTED_BRANCH,
+          approvedPaths: ["src/a.ts"],
+          conversationId: CONVERSATION_ID,
+          proposalId: PROPOSAL_ID,
+          runner: "strut",
+          strutRunId: "1790000000001",
+          swarmId: "swarm-1",
+        },
+      },
+    });
+    expect(mockDispatchStrutRun.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(db.task.update).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("refuses an identity mismatch: the claim is deleted, nothing dispatched, 502", async () => {
+    mockVerifyIdentity.mockResolvedValue({
+      ok: false,
+      failureCode: "identity_mismatch",
+      message: "The GitHub identity on the token does not match the expected username.",
+    });
+
+    const res = await approve([msg(strutCard())]);
+
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.status).toBe(502);
+    expect(res.ok === false && res.error).toMatch(/GitHub identity/);
+    expect(db.task.delete).toHaveBeenCalledWith({ where: { id: CLAIM_TASK_ID } });
+    expect(mockDispatchStrutRun).not.toHaveBeenCalled();
+    expect(db.task.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses an approver with no GitHub token the same way", async () => {
+    mockVerifyIdentity.mockResolvedValue({ ok: false, failureCode: "no_access", message: "No token." });
+
+    const res = await approve([msg(strutCard())]);
+
+    expect(res.ok).toBe(false);
+    expect(db.task.delete).toHaveBeenCalledWith({ where: { id: CLAIM_TASK_ID } });
+    expect(mockDispatchStrutRun).not.toHaveBeenCalled();
+  });
+
+  it("a dispatch strut turned down deletes the claim and is a 502 with strut's reason", async () => {
+    mockDispatchStrutRun.mockRejectedValue(
+      new StrutDispatchErrorMock("workflow_missing", 'Strut on this swarm has no "code-change-land" workflow (not seeded yet).'),
+    );
+
+    const res = await approve([msg(strutCard())]);
+
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.status).toBe(502);
+    expect(res.ok === false && res.error).toMatch(/not seeded yet/);
+    expect(db.task.delete).toHaveBeenCalledWith({ where: { id: CLAIM_TASK_ID } });
+    expect(db.task.update).not.toHaveBeenCalled();
+  });
+
+  it("an unexpected dispatch failure keeps the claim (a run may have started) and is a 500", async () => {
+    mockDispatchStrutRun.mockRejectedValue(new Error("db down"));
+
+    const res = await approve([msg(strutCard())]);
+
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.status).toBe(500);
+    expect(db.task.delete).not.toHaveBeenCalled();
+  });
+
+  it("a receipt write that fails after the dispatch keeps the claim and is a 500", async () => {
+    vi.mocked(db.task.update).mockRejectedValue(new Error("db down"));
+
+    const res = await approve([msg(strutCard())]);
+
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.status).toBe(500);
+    expect(db.task.delete).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the card's base branch, then the repository default", async () => {
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(
+      previewRow({ output: { diff: APPROVED_DIFF, filesChanged: 1 } }) as never,
+    );
+    mockFetchStored.mockResolvedValue([msg(strutCard({ payload: { ...codeChangeOutput().payload, preview: "ready", baseBranchDisplay: "release" } }))]);
+    await approve([msg(strutCard())]);
+    expect((launched!.input as { baseBranch: string }).baseBranch).toBe("release");
+    expect(mockFetchDefaultBranch).not.toHaveBeenCalled();
+
+    mockFetchStored.mockResolvedValue([msg(strutCard())]);
+    await approve([msg(strutCard())]);
+    expect(mockFetchDefaultBranch).toHaveBeenCalledWith("acme", "widgets", "ghp_secret");
+    expect((launched!.input as { baseBranch: string }).baseBranch).toBe("main");
+  });
+
+  it("CODE_CHANGE_VIA_STRUT=false lands through createPr as before", async () => {
+    process.env.CODE_CHANGE_VIA_STRUT = "false";
+
+    const res = await approve([msg(strutCard())]);
+
+    expect(res.ok).toBe(true);
+    expect(mockCreatePr).toHaveBeenCalledTimes(1);
+    expect(mockDispatchStrutRun).not.toHaveBeenCalled();
+    expect(mockVerifyIdentity).not.toHaveBeenCalled();
   });
 });
