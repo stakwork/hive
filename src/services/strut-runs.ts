@@ -120,6 +120,7 @@ export type StrutRunHandler = (row: StrutRunRow) => Promise<void>;
  */
 const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   code_change_propose: async () => (await import("./strut-runs/code-change-propose")).handleCodeChangeProposeSettled,
+  code_change_land: async () => (await import("./strut-runs/code-change-land")).handleCodeChangeLandSettled,
 };
 
 export function hashStrutRunToken(token: string): string {
@@ -179,8 +180,12 @@ export interface DispatchStrutRunArgs {
   kind: string;
   /** Strut workflow name. */
   workflow: string;
-  /** The workflow `input`. NEVER a credential: strut persists it on `run.start`. */
-  input: Record<string, unknown>;
+  /**
+   * The workflow `input`. NEVER a credential: strut persists it on
+   * `run.start`. A function receives the new row's id first — for an input
+   * that must name this attempt (a branch unique per `StrutRun`).
+   */
+  input: Record<string, unknown> | ((runId: string) => Record<string, unknown>);
   purpose: StrutPurpose;
   /** Swarm-reachable base URL of THIS hive, captured from the request host. */
   publicBaseUrl: string;
@@ -224,7 +229,7 @@ async function failRow(id: string, error: string): Promise<void> {
  * if created, is marked ERROR with the reason).
  */
 export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<DispatchStrutRunResult> {
-  const { workspaceId, userId, kind, workflow, input, purpose, publicBaseUrl, conversationId, proposalId } = args;
+  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId } = args;
   if (!HANDLERS[kind]) throw new Error(`No strut-run handler for kind "${kind}"`);
 
   const resolved = await resolveStrutTarget({ purpose, userId, workspaceId });
@@ -242,12 +247,21 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
       userId,
       kind,
       workflow,
-      input: toJson(input),
+      input: typeof args.input === "function" ? Prisma.DbNull : toJson(args.input),
       ...(conversationId ? { conversationId } : {}),
       ...(proposalId ? { proposalId } : {}),
     },
     select: { id: true },
   });
+  // An input derived from the row's id is stored once it exists, before the
+  // launch — the row is what the handler reads back.
+  let input: Record<string, unknown>;
+  if (typeof args.input === "function") {
+    input = args.input(row.id);
+    await db.strutRun.update({ where: { id: row.id }, data: { input: toJson(input) } });
+  } else {
+    input = args.input;
+  }
 
   // Pushes are per target and idempotent, before EVERY dispatch. Neither
   // throws nor blocks the launch.
