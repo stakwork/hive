@@ -3,13 +3,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-vi.mock("@/lib/middleware/utils", () => ({
-  getMiddlewareContext: vi.fn(),
-  requireAuth: vi.fn(),
-}));
-
-vi.mock("@/services/workspace", () => ({
-  getWorkspaceBySlug: vi.fn(),
+vi.mock("@/lib/auth/pod-access", () => ({
+  resolvePodCaller: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -24,14 +19,12 @@ vi.mock("@/lib/db", () => ({
 // ── Imports (after mocks) ──────────────────────────────────────────────────
 
 import { GET } from "@/app/api/w/[slug]/pool/[podId]/frontend-url/route";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { getWorkspaceBySlug } from "@/services/workspace";
+import { resolvePodCaller } from "@/lib/auth/pod-access";
 import { db } from "@/lib/db";
 
 // ── Test data ─────────────────────────────────────────────────────────────
 
-const MOCK_USER = { id: "user-1", email: "u@test.com", name: "Test" };
-const MOCK_WORKSPACE = { id: "ws-001", slug: "my-workspace" };
+const MOCK_CALLER = { kind: "user", workspaceId: "ws-001", userId: "user-1" };
 
 function makeRequest(slug = "my-workspace", podId = "pod-abc"): NextRequest {
   return new NextRequest(
@@ -44,19 +37,10 @@ function makeParams(slug = "my-workspace", podId = "pod-abc") {
   return { params: Promise.resolve({ slug, podId }) };
 }
 
-function authenticated() {
-  vi.mocked(getMiddlewareContext).mockReturnValue({
-    authStatus: "authenticated",
-    user: MOCK_USER,
-  } as never);
-  vi.mocked(requireAuth).mockReturnValue(MOCK_USER as never);
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   vi.unstubAllGlobals();
-  authenticated();
-  vi.mocked(getWorkspaceBySlug).mockResolvedValue(MOCK_WORKSPACE as never);
+  vi.mocked(resolvePodCaller).mockResolvedValue(MOCK_CALLER as never);
   vi.mocked(db.pod.findFirst).mockResolvedValue({
     podId: "pod-abc",
     password: "s3cr3t",
@@ -65,7 +49,7 @@ beforeEach(() => {
 
 describe("GET /api/w/[slug]/pool/[podId]/frontend-url", () => {
   it("returns 401 when unauthenticated", async () => {
-    vi.mocked(requireAuth).mockReturnValue(
+    vi.mocked(resolvePodCaller).mockResolvedValue(
       NextResponse.json({ error: "Unauthorized" }, { status: 401 }) as never,
     );
     const res = await GET(makeRequest(), makeParams());
@@ -73,9 +57,39 @@ describe("GET /api/w/[slug]/pool/[podId]/frontend-url", () => {
   });
 
   it("returns 404 when workspace is not found", async () => {
-    vi.mocked(getWorkspaceBySlug).mockResolvedValue(null as never);
+    vi.mocked(resolvePodCaller).mockResolvedValue(
+      NextResponse.json({ error: "Workspace not found" }, { status: 404 }) as never,
+    );
     const res = await GET(makeRequest(), makeParams());
     expect(res.status).toBe(404);
+  });
+
+  it("returns 404 (not 403) when the caller has no access to the workspace", async () => {
+    vi.mocked(resolvePodCaller).mockResolvedValue(
+      NextResponse.json({ error: "Access denied" }, { status: 403 }) as never,
+    );
+    const res = await GET(makeRequest(), makeParams());
+    expect(res.status).toBe(404);
+  });
+
+  it("accepts an org API key caller and scopes the pod lookup to its workspace", async () => {
+    vi.mocked(resolvePodCaller).mockResolvedValue({
+      kind: "org",
+      workspaceId: "ws-org",
+      orgId: "org-1",
+      apiKeyId: "key-1",
+      actingUserId: "user-1",
+    } as never);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
+
+    const res = await GET(makeRequest(), makeParams());
+
+    expect(res.status).toBe(200);
+    expect(db.pod.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ swarm: { workspaceId: "ws-org" } }),
+      }),
+    );
   });
 
   it("returns 404 when pod doesn't belong to workspace", async () => {

@@ -100,6 +100,7 @@ export const select = {
   bifrostAgentsSeedHash: true,
   bifrostAgentsSeedAt: true,
   gatewayHiveKeyId: true,
+  strutHiveKeyId: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
