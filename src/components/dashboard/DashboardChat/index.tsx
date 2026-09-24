@@ -3,7 +3,7 @@
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useSession } from "next-auth/react";
 import { useStreamProcessor } from "@/lib/streaming";
-import React, { useRef, useState, useEffect } from "react";
+import React, { useCallback, useRef, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { mapConversationMessages } from "@/lib/utils/map-conversation-messages";
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
@@ -17,6 +17,18 @@ import type { ModelMessage } from "ai";
 import { ToolCallIndicator } from "./ToolCallIndicator";
 import { Sparkles, BookOpen, Share2, X, EyeOff } from "lucide-react";
 import { RecentChatsPopup, type LoadConversationParams } from "./RecentChatsPopup";
+
+/**
+ * How long to wait, after the *last* scroll event seen while
+ * `isProgrammaticScrollRef` is set, before treating a programmatic
+ * `scrollIntoView({ behavior: "smooth" })` as settled. Native smooth
+ * scrolling fires a `scroll` event on every animation frame (spaced a
+ * few ms apart at 60fps) for the ~200-400ms the animation runs, so this
+ * comfortably outlasts the gap between frames while still being short
+ * enough that a real user scroll right after the animation ends is
+ * measured promptly. Mirrors the identical constant in `SidebarChat.tsx`.
+ */
+const PROGRAMMATIC_SCROLL_SETTLE_MS = 400;
 
 interface ToolCall {
   id: string;
@@ -107,14 +119,50 @@ export function DashboardChat({
   const streamingMsgIdRef = useRef<string | null>(null);
   const savedScrollTopRef = useRef<number>(0);
   const isProgrammaticScrollRef = useRef(false);
+  // Debounce handle for the programmatic-scroll "settle window" — see
+  // `armProgrammaticScroll` below.
+  const programmaticScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Native `scrollIntoView({ behavior: "smooth" })` animates over several
+  // frames, firing a `scroll` event on every one of them — not just once at
+  // the end. A flag that's cleared by the *first* `handleScroll` call (the
+  // previous approach) reads `userScrolledUp` from a still-mid-animation
+  // `scrollTop`, which can be far from the final resting position and gets
+  // wrongly latched as "the user scrolled up", freezing auto-scroll on a
+  // long/fast-streaming conversation.
+  //
+  // Instead, arm a debounce: every call (from the initiating effect/handler
+  // AND from each `handleScroll` invocation while the flag is still set)
+  // pushes the window out by `PROGRAMMATIC_SCROLL_SETTLE_MS`. Consecutive
+  // animation-frame events are spaced a few ms apart (well under the
+  // window), so the flag only actually clears once real scroll events stop
+  // arriving — i.e. once the smooth scroll has genuinely settled. A real
+  // user scroll (mouse wheel / drag / keyboard) arriving after that point
+  // is then measured against a resting `scrollTop`, same as before.
+  const armProgrammaticScroll = useCallback(() => {
+    isProgrammaticScrollRef.current = true;
+    if (programmaticScrollTimeoutRef.current) clearTimeout(programmaticScrollTimeoutRef.current);
+    programmaticScrollTimeoutRef.current = setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+      programmaticScrollTimeoutRef.current = null;
+    }, PROGRAMMATIC_SCROLL_SETTLE_MS);
+  }, []);
+
+  // Clear any pending debounce on unmount so it can't fire (and touch a
+  // stale ref) after the component is gone.
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollTimeoutRef.current) clearTimeout(programmaticScrollTimeoutRef.current);
+    };
+  }, []);
 
   // Auto-scroll to bottom when messages change (suppressed when user scrolled up)
   useEffect(() => {
     if (!userScrolledUp) {
-      isProgrammaticScrollRef.current = true;
+      armProgrammaticScroll();
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, activeToolCalls, userScrolledUp]);
+  }, [messages, activeToolCalls, userScrolledUp, armProgrammaticScroll]);
 
   // Preload a conversation when `?chat=<id>` is present (e.g. from My Activity links)
   useEffect(() => {
@@ -227,7 +275,11 @@ export function DashboardChat({
 
   const handleScroll = () => {
     if (isProgrammaticScrollRef.current) {
-      isProgrammaticScrollRef.current = false;
+      // Still inside the smooth-scroll's settle window — this event is one
+      // of the animation's intermediate frames, not real user input. Push
+      // the window out again rather than clearing the flag outright, so a
+      // long animation (many frames) stays covered end-to-end.
+      armProgrammaticScroll();
       return;
     }
     const el = scrollContainerRef.current;
@@ -238,7 +290,7 @@ export function DashboardChat({
   };
 
   const handleScrollToLatestLive = () => {
-    isProgrammaticScrollRef.current = true;
+    armProgrammaticScroll();
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     setUserScrolledUp(false);
     setShowBackButton(false);
@@ -250,7 +302,7 @@ export function DashboardChat({
     savedScrollTopRef.current = el.scrollTop;
     const target = el.querySelector(`[data-message-id^="${streamingMsgIdRef.current}-"]`);
     if (target) {
-      isProgrammaticScrollRef.current = true;
+      armProgrammaticScroll();
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     setShowBackButton(true);
@@ -260,7 +312,7 @@ export function DashboardChat({
   const handleBack = () => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    isProgrammaticScrollRef.current = true;
+    armProgrammaticScroll();
     el.scrollTop = savedScrollTopRef.current;
     setShowBackButton(false);
     setUserScrolledUp(true);

@@ -367,8 +367,16 @@ function buildStoreState(messages: (typeof SAMPLE_MESSAGE)[]) {
 describe("SidebarChat — scroll behaviour", () => {
   let scrollIntoViewMock: ReturnType<typeof vi.fn>;
 
+  // How long the component's `armProgrammaticScroll` debounce waits, in ms,
+  // after the *last* scroll event before treating a smooth scroll as
+  // settled (`PROGRAMMATIC_SCROLL_SETTLE_MS` in SidebarChat.tsx). Tests use
+  // fake timers and advance by comfortably more than this to let the flag
+  // clear before asserting on a "real" user scroll.
+  const SETTLE_MS = 500;
+
   beforeEach(() => {
     vi.resetModules();
+    vi.useFakeTimers();
     mockIsActive = false;
     mockStoreState = buildStoreState([SAMPLE_MESSAGE]) as typeof mockStoreState;
     // jsdom does not implement scrollIntoView — install a mock on the prototype
@@ -377,6 +385,7 @@ describe("SidebarChat — scroll behaviour", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     // Reset store to default (no active conversation)
     mockStoreState = {
       activeConversationId: null,
@@ -405,15 +414,17 @@ describe("SidebarChat — scroll behaviour", () => {
     Object.defineProperty(scrollEl, "clientHeight", { value: 300, configurable: true });
     Object.defineProperty(scrollEl, "scrollTop", { value: 0, configurable: true, writable: true });
 
-    // The initial auto-scroll effect sets isProgrammaticScrollRef.current = true.
-    // The first scroll event consumes that flag (early-return) so it doesn't
-    // change userScrolledUp. The second event is the real "user scrolled up".
+    // The initial auto-scroll effect armed the programmatic-scroll debounce.
+    // Let it settle (real smooth-scroll animations finish quickly; here we
+    // just advance the fake clock past the settle window) before firing a
+    // real user scroll — otherwise this event would be (correctly) treated
+    // as one of the smooth scroll's intermediate frames, not user input.
+    act(() => {
+      vi.advanceTimersByTime(SETTLE_MS);
+    });
     act(() => {
       fireEvent.scroll(scrollEl);
-    }); // consume programmatic flag
-    act(() => {
-      fireEvent.scroll(scrollEl);
-    }); // actual user scroll-up
+    }); // actual user scroll-up, after the programmatic window has settled
 
     // Clear call count after scroll-triggered re-render
     scrollIntoViewMock.mockClear();
@@ -438,9 +449,10 @@ describe("SidebarChat — scroll behaviour", () => {
     Object.defineProperty(scrollEl, "clientHeight", { value: 300, configurable: true });
     Object.defineProperty(scrollEl, "scrollTop", { value: 0, configurable: true, writable: true });
 
-    // First event consumes the programmatic flag; second is the real user scroll-up
+    // Let the initial programmatic scroll settle, then fire the real
+    // user scroll-up.
     act(() => {
-      fireEvent.scroll(scrollEl);
+      vi.advanceTimersByTime(SETTLE_MS);
     });
     act(() => {
       fireEvent.scroll(scrollEl);
@@ -474,6 +486,55 @@ describe("SidebarChat — scroll behaviour", () => {
     const indicator = container.querySelector("[data-testid='stream-scroll-indicator']");
     expect(indicator).not.toBeNull();
   });
+
+  // ── Regression: multi-frame smooth-scroll race ──────────────────────────
+  // Native `scrollIntoView({ behavior: "smooth" })` fires a `scroll` event
+  // on every animation frame, not just once. The previous implementation
+  // cleared `isProgrammaticScrollRef` on the *first* such event, so any
+  // later intermediate frame was misread as a real user scroll-up and
+  // froze auto-scroll for the rest of the conversation. This guards
+  // against that regression: many scroll events fired in a tight burst
+  // (simulating animation frames), all still inside the settle window,
+  // must NOT flip `userScrolledUp` — the viewport stays in follow-latest
+  // mode and the next message keeps auto-scrolling.
+  it("many intermediate scroll events during one programmatic smooth scroll do not suppress auto-scroll", async () => {
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+
+    const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
+    expect(scrollEl).not.toBeNull();
+
+    // Position looks like "scrolled up" if read mid-animation — this is
+    // exactly the trap the old code fell into.
+    Object.defineProperty(scrollEl, "scrollHeight", { value: 1000, configurable: true });
+    Object.defineProperty(scrollEl, "clientHeight", { value: 300, configurable: true });
+    Object.defineProperty(scrollEl, "scrollTop", { value: 0, configurable: true, writable: true });
+
+    // Fire a burst of scroll events with small gaps, mimicking successive
+    // animation frames of a single smooth scroll — each one arrives well
+    // inside the settle window re-armed by the previous event.
+    for (let i = 0; i < 8; i++) {
+      act(() => {
+        fireEvent.scroll(scrollEl);
+        vi.advanceTimersByTime(16); // ~60fps frame gap, far under SETTLE_MS
+      });
+    }
+
+    // The "Latest response…" manual-scroll button must NOT have appeared —
+    // userScrolledUp was never (incorrectly) set to true mid-animation.
+    expect(screen.queryByText("Latest response…")).toBeNull();
+
+    scrollIntoViewMock.mockClear();
+
+    // A new message arrives while the burst is still "fresh" — auto-scroll
+    // must still fire because userScrolledUp stayed false throughout.
+    act(() => {
+      mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
+      rerender(<SidebarChat githubLogin="test-org" />);
+    });
+
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
+  });
 });
 
 // ── Drag-guard scroll behaviour tests ─────────────────────────────────────────
@@ -481,8 +542,12 @@ describe("SidebarChat — scroll behaviour", () => {
 describe("SidebarChat — drag-guard scroll behaviour", () => {
   let scrollIntoViewMock: ReturnType<typeof vi.fn>;
 
+  // Mirrors the settle window used in the "scroll behaviour" describe above.
+  const SETTLE_MS = 500;
+
   beforeEach(() => {
     vi.resetModules();
+    vi.useFakeTimers();
     mockIsActive = false;
     mockStoreState = buildStoreState([SAMPLE_MESSAGE]) as typeof mockStoreState;
     scrollIntoViewMock = vi.fn();
@@ -490,6 +555,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     mockStoreState = {
       activeConversationId: null,
       conversations: {},
@@ -706,9 +772,11 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
     Object.defineProperty(scrollEl, "clientHeight", { value: 300, configurable: true });
     Object.defineProperty(scrollEl, "scrollTop", { value: 0, configurable: true, writable: true });
 
+    // Let the initial programmatic scroll settle before the real
+    // user scroll-up that flips userScrolledUp.
     act(() => {
-      fireEvent.scroll(scrollEl);
-    }); // consume programmatic flag
+      vi.advanceTimersByTime(SETTLE_MS);
+    });
     act(() => {
       fireEvent.scroll(scrollEl);
     }); // trigger userScrolledUp = true

@@ -80,6 +80,18 @@ import { StreamScrollIndicator } from "@/components/dashboard/DashboardChat/Stre
  */
 /** Chat input grows with its content (Shift+Enter adds lines) up to this, then scrolls. */
 
+/**
+ * How long to wait, after the *last* scroll event seen while
+ * `isProgrammaticScrollRef` is set, before treating a programmatic
+ * `scrollIntoView({ behavior: "smooth" })` as settled. Native smooth
+ * scrolling fires a `scroll` event on every animation frame (spaced a
+ * few ms apart at 60fps) for the ~200-400ms the animation runs, so this
+ * comfortably outlasts the gap between frames while still being short
+ * enough that a real user scroll right after the animation ends is
+ * measured promptly.
+ */
+const PROGRAMMATIC_SCROLL_SETTLE_MS = 400;
+
 interface SidebarChatProps {
   /** Slug of the org. Used by the Share button to scope the POST. */
   githubLogin: string;
@@ -132,8 +144,44 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   });
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const isProgrammaticScrollRef = useRef(false);
+  // Debounce handle for the programmatic-scroll "settle window" — see
+  // `armProgrammaticScroll` below.
+  const programmaticScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mouseDownRef = useRef(false); // true while primary mouse button is held
   const isMouseDragRef = useRef(false); // true only after movement detected — not on simple clicks
+
+  // Native `scrollIntoView({ behavior: "smooth" })` animates over several
+  // frames, firing a `scroll` event on every one of them — not just once at
+  // the end. A flag that's cleared by the *first* `handleScroll` call (the
+  // previous approach) reads `userScrolledUp` from a still-mid-animation
+  // `scrollTop`, which can be far from the final resting position and gets
+  // wrongly latched as "the user scrolled up", freezing auto-scroll on a
+  // long/fast-streaming conversation.
+  //
+  // Instead, arm a debounce: every call (from the initiating effect/handler
+  // AND from each `handleScroll` invocation while the flag is still set)
+  // pushes the window out by `PROGRAMMATIC_SCROLL_SETTLE_MS`. Consecutive
+  // animation-frame events are spaced a few ms apart (well under the
+  // window), so the flag only actually clears once real scroll events stop
+  // arriving — i.e. once the smooth scroll has genuinely settled. A real
+  // user scroll (mouse wheel / drag / keyboard) arriving after that point
+  // is then measured against a resting `scrollTop`, same as before.
+  const armProgrammaticScroll = useCallback(() => {
+    isProgrammaticScrollRef.current = true;
+    if (programmaticScrollTimeoutRef.current) clearTimeout(programmaticScrollTimeoutRef.current);
+    programmaticScrollTimeoutRef.current = setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+      programmaticScrollTimeoutRef.current = null;
+    }, PROGRAMMATIC_SCROLL_SETTLE_MS);
+  }, []);
+
+  // Clear any pending debounce on unmount so it can't fire (and touch a
+  // stale ref) after the component is gone.
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollTimeoutRef.current) clearTimeout(programmaticScrollTimeoutRef.current);
+    };
+  }, []);
 
   // Reset drag flag on conversation switch. Declared BEFORE the auto-scroll
   // effect so React runs it first within the same render — clearing the flag
@@ -148,10 +196,10 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
     const sel = window.getSelection();
     const hasSelection = sel && !sel.isCollapsed; // secondary fallback: keyboard/prior selection
     if (!userScrolledUp && !isMouseDragRef.current && !hasSelection) {
-      isProgrammaticScrollRef.current = true;
+      armProgrammaticScroll();
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, activeToolCalls, isLoading, userScrolledUp]);
+  }, [messages, activeToolCalls, isLoading, userScrolledUp, armProgrammaticScroll]);
 
   // Bind drag-tracking listeners to the scroll container.
   // Two-phase: mousedown sets the "button held" flag; mousemove promotes it to
@@ -188,7 +236,11 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 
   const handleScroll = () => {
     if (isProgrammaticScrollRef.current) {
-      isProgrammaticScrollRef.current = false;
+      // Still inside the smooth-scroll's settle window — this event is one
+      // of the animation's intermediate frames, not real user input. Push
+      // the window out again rather than clearing the flag outright, so a
+      // long animation (many frames) stays covered end-to-end.
+      armProgrammaticScroll();
       return;
     }
     const el = scrollRef.current;
@@ -522,12 +574,12 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
           userScrolledUp={userScrolledUp}
           showBackButton={false}
           onStreamingClick={() => {
-            isProgrammaticScrollRef.current = true;
+            armProgrammaticScroll();
             messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
             setUserScrolledUp(false);
           }}
           onLatestClick={() => {
-            isProgrammaticScrollRef.current = true;
+            armProgrammaticScroll();
             messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
             setUserScrolledUp(false);
           }}

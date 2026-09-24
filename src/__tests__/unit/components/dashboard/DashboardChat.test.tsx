@@ -347,18 +347,30 @@ describe("DashboardChat — scroll indicator", () => {
     mockProcessStreamFn.mockResolvedValue(undefined);
   });
 
-  /** Trigger a scroll event with the given scroll geometry */
-  function fireScrollEvent(
+  /**
+   * How long the component's `armProgrammaticScroll` debounce waits, in
+   * ms, after the *last* scroll event before treating a programmatic
+   * smooth scroll as settled (`PROGRAMMATIC_SCROLL_SETTLE_MS` in
+   * `DashboardChat/index.tsx`). This describe block uses real timers
+   * (userEvent needs them), so tests wait real wall-clock time past this
+   * window before firing a "real" user scroll — otherwise the event would
+   * be (correctly) treated as one of the smooth scroll's own intermediate
+   * animation-frame events, not user input.
+   */
+  const SETTLE_MS = 500;
+
+  /** Trigger a scroll event with the given scroll geometry, after letting
+   *  any in-flight programmatic-scroll settle window expire. */
+  async function fireScrollEvent(
     el: Element,
     opts: { scrollTop: number; clientHeight: number; scrollHeight: number }
   ) {
+    // Let the auto-scroll effect's programmatic-scroll debounce (armed when
+    // messages arrived) settle before this "real" user scroll is measured.
+    await new Promise((r) => setTimeout(r, SETTLE_MS));
     Object.defineProperty(el, "scrollTop", { configurable: true, writable: true, value: opts.scrollTop });
     Object.defineProperty(el, "clientHeight", { configurable: true, value: opts.clientHeight });
     Object.defineProperty(el, "scrollHeight", { configurable: true, value: opts.scrollHeight });
-    // In jsdom scrollIntoView is a no-op, so the component's isProgrammaticScrollRef
-    // may still be true (set by the auto-scroll useEffect after messages arrive).
-    // The first dispatch consumes/clears the flag; the second actually updates state.
-    el.dispatchEvent(new Event("scroll", { bubbles: true }));
     el.dispatchEvent(new Event("scroll", { bubbles: true }));
   }
 
@@ -396,7 +408,7 @@ describe("DashboardChat — scroll indicator", () => {
     expect(scrollEl).not.toBeNull();
 
     // scrollTop(100) + clientHeight(400) = 500 < scrollHeight(1000) - 50 → not at bottom
-    fireScrollEvent(scrollEl!, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
+    await fireScrollEvent(scrollEl!, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
 
     await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
   });
@@ -406,11 +418,11 @@ describe("DashboardChat — scroll indicator", () => {
     const scrollEl = container.querySelector(".overflow-y-auto")!;
 
     // Scroll up → indicator appears
-    fireScrollEvent(scrollEl, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
+    await fireScrollEvent(scrollEl, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
     await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
 
     // Scroll to bottom: 600 + 400 = 1000 >= 950 → atBottom
-    fireScrollEvent(scrollEl, { scrollTop: 600, clientHeight: 400, scrollHeight: 1000 });
+    await fireScrollEvent(scrollEl, { scrollTop: 600, clientHeight: 400, scrollHeight: 1000 });
     await waitFor(() => expect(screen.queryByTestId("latest-btn")).not.toBeInTheDocument());
   });
 
@@ -418,7 +430,7 @@ describe("DashboardChat — scroll indicator", () => {
     const { container } = await renderWithMessages();
     const scrollEl = container.querySelector(".overflow-y-auto")!;
 
-    fireScrollEvent(scrollEl, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
+    await fireScrollEvent(scrollEl, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
     await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
 
     await userEvent.click(screen.getByTestId("latest-btn"));
@@ -431,7 +443,7 @@ describe("DashboardChat — scroll indicator", () => {
     const { container } = await renderWithMessages();
     const scrollEl = container.querySelector(".overflow-y-auto")!;
 
-    fireScrollEvent(scrollEl, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
+    await fireScrollEvent(scrollEl, { scrollTop: 100, clientHeight: 400, scrollHeight: 1000 });
     await waitFor(() => expect(screen.getByTestId("latest-btn")).toBeInTheDocument());
 
     // Jump to latest → shows back btn
@@ -457,6 +469,38 @@ describe("DashboardChat — scroll indicator", () => {
     // It should still exist somewhere in the component tree (as a sibling).
     const indicator = container.querySelector("[data-testid='stream-scroll-indicator']");
     expect(indicator).not.toBeNull();
+  });
+
+  // ── Regression: multi-frame smooth-scroll race ──────────────────────────
+  // Native `scrollIntoView({ behavior: "smooth" })` fires a `scroll` event
+  // on every animation frame, not just once. The previous implementation
+  // cleared `isProgrammaticScrollRef` on the *first* such event, so any
+  // later intermediate frame was misread as a real user scroll-up and
+  // froze auto-scroll for the rest of the conversation. This guards
+  // against that regression: many scroll events fired in a tight burst
+  // (simulating animation frames of a single programmatic scroll) must
+  // NOT flip `userScrolledUp` — the viewport stays in follow-latest mode.
+  test("many intermediate scroll events during one programmatic smooth scroll do not suppress auto-scroll", async () => {
+    const { container } = await renderWithMessages();
+    const scrollEl = container.querySelector(".overflow-y-auto")!;
+
+    // Position looks like "scrolled up" if read mid-animation — exactly
+    // the trap the old first-event-clears-the-flag code fell into.
+    Object.defineProperty(scrollEl, "scrollHeight", { value: 1000, configurable: true });
+    Object.defineProperty(scrollEl, "clientHeight", { value: 300, configurable: true });
+    Object.defineProperty(scrollEl, "scrollTop", { value: 0, configurable: true, writable: true });
+
+    // Fire a burst of scroll events with small gaps, mimicking successive
+    // animation frames of a single smooth scroll (well under the settle
+    // window, so each one re-arms it before it can expire).
+    for (let i = 0; i < 8; i++) {
+      scrollEl.dispatchEvent(new Event("scroll", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 16)); // ~60fps frame gap
+    }
+
+    // The "Latest response…" manual-scroll button must NOT have appeared —
+    // userScrolledUp was never (incorrectly) set to true mid-animation.
+    expect(screen.queryByTestId("latest-btn")).not.toBeInTheDocument();
   });
 });
 
