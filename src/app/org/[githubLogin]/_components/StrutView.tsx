@@ -10,6 +10,49 @@ interface StrutViewProps {
   githubLogin: string;
 }
 
+/**
+ * The strut UI's deep-link params (`?wf` workflow, `?run`, `?v` version,
+ * `?chat`). They ride on `/org/<slug>/strut` so a Hive link opens the same
+ * view; never `key` / `embed_origin`, which are the embed's own.
+ */
+const DEEP_LINK_PARAMS = ["wf", "run", "v", "chat"] as const;
+type DeepLink = Partial<Record<(typeof DEEP_LINK_PARAMS)[number], string>>;
+
+function readDeepLink(search: string): DeepLink {
+  const p = new URLSearchParams(search);
+  const out: DeepLink = {};
+  for (const k of DEEP_LINK_PARAMS) {
+    const v = p.get(k);
+    if (v) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * The frame URL: the minted `/lab/?key=` plus the deep link, plus our origin
+ * as `embed_origin` so strut posts its location changes back to us (and to no
+ * one else).
+ */
+function frameUrl(embedUrl: string, link: DeepLink): string {
+  const url = new URL(embedUrl);
+  for (const [k, v] of Object.entries(link)) url.searchParams.set(k, v);
+  url.searchParams.set("embed_origin", window.location.origin);
+  return url.toString();
+}
+
+/** Mirror strut's deep link into our own address bar (no navigation). */
+function writeDeepLink(link: DeepLink) {
+  const url = new URL(window.location.href);
+  for (const k of DEEP_LINK_PARAMS) {
+    const v = link[k];
+    if (v) url.searchParams.set(k, v);
+    else url.searchParams.delete(k);
+  }
+  if (url.href !== window.location.href) {
+    window.history.replaceState(window.history.state, "", url);
+  }
+}
+
 interface EmbedUrlResponse {
   /** `{mcp}/lab/?key=<jwt>` — ready to drop into the iframe. */
   url: string;
@@ -42,12 +85,25 @@ async function fetchEmbedUrl(githubLogin: string): Promise<string> {
  * Like `GatewayView`, a `visibilitychange` listener re-mints and reloads
  * when the user returns to the tab after the token has (nearly) expired.
  * The reload is cheap: strut reattaches its open chat from localStorage.
+ *
+ * Deep links: strut keeps `?wf / run / v / chat` in its own (iframe) URL,
+ * which we can't see, so the two sides trade them. On load our params go
+ * onto the frame URL; after that strut posts `strut:location` on every
+ * change and we mirror it into our address bar — so the Hive URL is always
+ * a link to what's on screen. The frame `src` is never recomputed from those
+ * updates (that would reload strut on every click); a re-mint uses the
+ * latest one, so the reload lands where the user was.
  */
 export function StrutView({ githubLogin }: StrutViewProps) {
   const [src, setSrc] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [mintCount, setMintCount] = useState(0);
   const loadedAt = useRef<number | null>(null);
+  // The latest deep link: our URL at mount, then whatever strut reports.
+  const deepLink = useRef<DeepLink | null>(null);
+  if (deepLink.current === null && typeof window !== "undefined") {
+    deepLink.current = readDeepLink(window.location.search);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +114,7 @@ export function StrutView({ githubLogin }: StrutViewProps) {
     fetchEmbedUrl(githubLogin)
       .then((url) => {
         if (cancelled) return;
-        setSrc(url);
+        setSrc(frameUrl(url, deepLink.current ?? {}));
         loadedAt.current = Date.now();
       })
       .catch((e) => {
@@ -69,6 +125,28 @@ export function StrutView({ githubLogin }: StrutViewProps) {
       cancelled = true;
     };
   }, [githubLogin, mintCount]);
+
+  useEffect(() => {
+    if (!src) return;
+    const frameOrigin = new URL(src).origin;
+    const handleMessage = (e: MessageEvent) => {
+      if (e.origin !== frameOrigin) return;
+      const data = e.data as { type?: unknown; params?: unknown } | null;
+      if (data?.type !== "strut:location" || typeof data.params !== "object" || !data.params) {
+        return;
+      }
+      const link: DeepLink = {};
+      const params = data.params as Record<string, unknown>;
+      for (const k of DEEP_LINK_PARAMS) {
+        const v = params[k];
+        if (typeof v === "string" && v) link[k] = v;
+      }
+      deepLink.current = link;
+      writeDeepLink(link);
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [src]);
 
   useEffect(() => {
     const handleVisibility = () => {

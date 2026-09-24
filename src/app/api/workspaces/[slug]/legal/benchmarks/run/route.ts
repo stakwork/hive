@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID, createHmac } from "crypto";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { validateWorkspaceAccess } from "@/services/workspace";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { db } from "@/lib/db";
@@ -9,6 +10,8 @@ import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchHarveyTaskCriteria, ensureHarveyLabEvalNodes } from "@/lib/harvey-lab/eval-nodes";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 import {
   getApiKeyForModel,
   isValidModel,
@@ -19,6 +22,11 @@ import {
   PROVIDER_API_KEY_ENV_VARS,
 } from "@/lib/ai/models";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
+import {
+  STRUT_ACTOR_HEADER,
+  ensureStrutDelegation,
+  resolveStrutActor,
+} from "@/services/bifrost/strut-delegation";
 import { WorkflowStatus, StakworkRunType, LlmProvider } from "@prisma/client";
 
 type RouteParams = {
@@ -36,6 +44,39 @@ interface TaskJson {
 
 const HARVEY_BASE = "https://raw.githubusercontent.com/stakwork/harvey-labs/main";
 const GITHUB_API = "https://api.github.com/repos/stakwork/harvey-labs/contents";
+
+/** 30-minute staleness threshold for active runs. */
+const STALE_RUN_THRESHOLD_MS = 30 * 60 * 1000;
+
+/**
+ * Minimum acceptable length for NEXTAUTH_SECRET before we trust it to sign a
+ * run_token. A missing or too-short secret must never silently degrade to a
+ * forgeable token — processStakworkRunWebhook rejects verification below this.
+ */
+const MIN_RUN_TOKEN_SECRET_LENGTH = 32;
+
+/**
+ * Bound on how many candidate active-run rows we scan per dispatch. taskSlug
+ * lives inside serialized `result` JSON, so an unbounded scan would JSON-parse
+ * every active LEGAL_BENCHMARK_RUNNER row inside the transaction.
+ */
+const ACTIVE_RUN_SCAN_LIMIT = 25;
+
+/** Where a legal benchmark run executes. Absent in a request body = "stakwork". */
+type LegalBenchmarkRunner = "stakwork" | "strut";
+const LEGAL_BENCHMARK_RUNNERS: ReadonlySet<string> = new Set<LegalBenchmarkRunner>([
+  "stakwork",
+  "strut",
+]);
+
+/**
+ * Published strut workflow name. Left unset on purpose: do not hardcode
+ * harvey-produce or harvey-score. Those names are not in this repo, and the
+ * published contract (accepts documents_json, does not call harvey/get-task)
+ * is unconfirmed. A strut start with the name unset, empty, or failing the
+ * regex returns 503 and creates no row.
+ */
+const LEGAL_STRUT_WORKFLOW_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
  * Allowed characters for a Harvey LAB task slug.
@@ -82,32 +123,43 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { slug } = await params;
+    const userId = userOrResponse.id;
 
     if (slug !== "openlaw") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const swarmResult = await getWorkspaceSwarmAccess(slug, userOrResponse.id);
+    // IDOR: confirm the caller can write THIS workspace before any DB write,
+    // secret access, or third-party call. 404, not 403 — no existence leak.
+    const access = await validateWorkspaceAccess(slug, userId, true, {});
+    if (!access.canWrite) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // Fail closed. Before GitHub fetches, model catalog checks, Bifrost
+    // resolution, or row creation.
+    let rl: { allowed: boolean; retryAfter?: number };
+    try {
+      rl = await checkRateLimit(`legal-benchmark-run:${userId}`, 10, 60);
+    } catch {
+      return NextResponse.json(
+        { error: "Rate limit service unavailable" },
+        { status: 503 },
+      );
+    }
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests", retryAfter: rl.retryAfter },
+        { status: 429 },
+      );
+    }
+
+    const swarmResult = await getWorkspaceSwarmAccess(slug, userId);
     if (!swarmResult.success) {
       return handleSwarmAccessError(swarmResult.error);
     }
 
-    const { workspaceId, swarmSecretAlias, swarmUrl } = swarmResult.data;
-
-    if (!swarmSecretAlias) {
-      return NextResponse.json(
-        { error: "Swarm secret alias not configured" },
-        { status: 500 },
-      );
-    }
-
-    const agentHost = transformSwarmUrlToRepo2Graph(swarmUrl);
-    if (!agentHost) {
-      return NextResponse.json(
-        { error: "SWARM_URL_MISSING" },
-        { status: 400 },
-      );
-    }
+    const { workspaceId, swarmSecretAlias, swarmUrl, swarmApiKey } = swarmResult.data;
 
     // ── Parse + validate body (BEFORE Bifrost resolution) ─────────────────────
     let body: {
@@ -119,11 +171,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       reasoningModel?: string;
       generateJamieChat?: boolean;
       generateRunReport?: boolean;
+      runner?: string;
     };
     try {
       body = await request.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    // Absent means stakwork. Reject anything else before any write.
+    const runner: LegalBenchmarkRunner =
+      body.runner === undefined ? "stakwork" : (body.runner as LegalBenchmarkRunner);
+    if (!LEGAL_BENCHMARK_RUNNERS.has(runner)) {
+      return NextResponse.json(
+        { error: 'runner must be "stakwork" or "strut"' },
+        { status: 400 },
+      );
     }
 
     const { taskSlug, taskTitle } = body;
@@ -315,13 +378,59 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Validate required env vars before creating the record
-    const runnerWorkflowId = process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID;
+    // Preconditions, still before any write. Order matters: swarmSecretAlias and
+    // STAKWORK_HARVEY_RUNNER_WORKFLOW_ID are Stakwork set_var /projects fields
+    // only. A strut start must not 500 because either is unset.
+    const webhookSecret = process.env.NEXTAUTH_SECRET;
+    if (!webhookSecret || webhookSecret.length < MIN_RUN_TOKEN_SECRET_LENGTH) {
+      logger.error(
+        "[legal/benchmarks/run] NEXTAUTH_SECRET missing or too short — refusing to issue a run_token",
+        "legal-benchmarks",
+      );
+      return NextResponse.json(
+        { error: "Service misconfigured: webhook signing secret unavailable" },
+        { status: 503 },
+      );
+    }
 
-    if (!runnerWorkflowId) {
+    const runnerWorkflowId = process.env.STAKWORK_HARVEY_RUNNER_WORKFLOW_ID;
+    if (runner === "stakwork" && !runnerWorkflowId) {
       return NextResponse.json(
         { error: "STAKWORK_HARVEY_RUNNER_WORKFLOW_ID is not configured" },
         { status: 500 },
+      );
+    }
+
+    if (runner === "stakwork" && !swarmSecretAlias) {
+      return NextResponse.json(
+        { error: "Swarm secret alias not configured" },
+        { status: 500 },
+      );
+    }
+
+    const strutWorkflowName = process.env.LEGAL_STRUT_WORKFLOW_NAME ?? "";
+    if (runner === "strut") {
+      if (!LEGAL_STRUT_WORKFLOW_NAME_RE.test(strutWorkflowName)) {
+        return NextResponse.json(
+          { error: "LEGAL_STRUT_WORKFLOW_NAME is not configured" },
+          { status: 503 },
+        );
+      }
+      if (!swarmUrl || !swarmApiKey) {
+        return NextResponse.json(
+          { error: "Swarm not configured for the strut runner" },
+          { status: 503 },
+        );
+      }
+    }
+
+    // agentHost is a Stakwork set_var (swarm_url / repo2graph_url). Strut does
+    // not send it. A missing swarm URL on the Stakwork path stays a 400.
+    const agentHost = transformSwarmUrlToRepo2Graph(swarmUrl);
+    if (runner === "stakwork" && !agentHost) {
+      return NextResponse.json(
+        { error: "SWARM_URL_MISSING" },
+        { status: 400 },
       );
     }
 
@@ -381,34 +490,87 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     let runnerRun: { id: string };
 
+    // ADVISORY ONLY: this transaction takes no row lock. taskSlug lives only
+    // in serialized `result` JSON, so no unique index can enforce
+    // single-active-run-per-taskSlug. A concurrent dispatch landing between
+    // this read and the create() below can still race through. A partial
+    // unique index is out of scope — do not add a migration.
     try {
       runnerRun = await db.$transaction<{ id: string }>(async (tx) => {
-        // Re-check for an existing active LEGAL_BENCHMARK_RUNNER for this task
-        const existingRun = await tx.stakworkRun.findFirst({
+        const now = Date.now();
+
+        // Bounded scan, newest first. findFirst (no taskSlug filter, no
+        // orderBy) was insufficient: taskSlug lives inside serialized result
+        // JSON, so the single row returned may belong to a different task,
+        // and a JSON parse failure used to set existingTaskSlug = taskSlug,
+        // blocking every task.
+        const candidates = await tx.stakworkRun.findMany({
           where: {
             workspaceId,
             type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
             status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
           },
-          select: { id: true, result: true },
+          select: { id: true, result: true, updatedAt: true },
+          orderBy: { updatedAt: "desc" },
+          take: ACTIVE_RUN_SCAN_LIMIT,
         });
 
-        if (existingRun) {
-          let existingTaskSlug: string | undefined;
+        for (const candidate of candidates) {
+          let candidateTaskSlug: string | undefined;
+          let malformed = false;
           try {
-            const resultJson = existingRun.result
-              ? (JSON.parse(existingRun.result) as Record<string, unknown>)
+            const resultJson = candidate.result
+              ? (JSON.parse(candidate.result) as Record<string, unknown>)
               : {};
-            existingTaskSlug = resultJson.taskSlug as string | undefined;
+            candidateTaskSlug = resultJson.taskSlug as string | undefined;
           } catch {
-            // Malformed result JSON — treat as a collision to be safe
-            existingTaskSlug = taskSlug;
+            malformed = true;
           }
-          if (existingTaskSlug === taskSlug) {
-            throw Object.assign(new Error("A run is already in progress for this task"), {
-              code: "ACTIVE_RUN_EXISTS",
+
+          const isStale = candidate.updatedAt.getTime() < now - STALE_RUN_THRESHOLD_MS;
+
+          if (malformed) {
+            // Owning task slug is unknown. Block only while inside the
+            // staleness window. Past that window, ignore it. Never write it:
+            // a dispatch for task A must not mutate a row whose owner is unknown.
+            if (!isStale) {
+              throw Object.assign(new Error("A run is already in progress for this task"), {
+                code: "ACTIVE_RUN_EXISTS",
+              });
+            }
+            continue;
+          }
+
+          if (candidateTaskSlug !== taskSlug) {
+            continue;
+          }
+
+          if (isStale) {
+            await tx.stakworkRun.update({
+              where: { id: candidate.id },
+              data: {
+                status: WorkflowStatus.FAILED,
+                result: JSON.stringify({
+                  ...(() => {
+                    try {
+                      return candidate.result
+                        ? (JSON.parse(candidate.result) as Record<string, unknown>)
+                        : {};
+                    } catch {
+                      return {};
+                    }
+                  })(),
+                  staleTimeout: true,
+                  reason: "run timed out before webhook arrived",
+                }),
+              },
             });
+            continue;
           }
+
+          throw Object.assign(new Error("A run is already in progress for this task"), {
+            code: "ACTIVE_RUN_EXISTS",
+          });
         }
 
         const runnerResultJson: Record<string, unknown> = {
@@ -429,22 +591,26 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           // Records that the operator asked for a report bundle. The bundle
           // itself never lands here — it goes to the reportBundle column.
           ...(generateRunReport ? { generateRunReport: true } : {}),
+          // Written at create time, only for strut. A crash between create and
+          // the lab response must not leave a row indistinguishable from a
+          // Stakwork run. A Stakwork start stores no runner field.
+          ...(runner === "strut" ? { runner } : {}),
           // evalTriggerRef will be added later (non-fatal Jarvis step)
         };
 
-        const runner = await tx.stakworkRun.create({
+        const created = await tx.stakworkRun.create({
           data: {
             workspaceId,
             type: StakworkRunType.LEGAL_BENCHMARK_RUNNER,
             status: WorkflowStatus.PENDING,
             webhookUrl: placeholder,
-            userId: userOrResponse.id,
+            userId,
             result: JSON.stringify(runnerResultJson),
           },
           select: { id: true },
         });
 
-        return runner;
+        return created;
       });
     } catch (err: unknown) {
       if (
@@ -460,8 +626,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Build correct webhook URL now that we have the runner id, then update the row
-    const webhookSecret = process.env.NEXTAUTH_SECRET ?? "";
+    // Sign with the already-checked NEXTAUTH_SECRET. Same HMAC score URL for
+    // both runners. The Stakwork path also keeps statusWebhookUrl on the
+    // /projects payload only. Strut has no equivalent caller: the row stays
+    // IN_PROGRESS until the score body arrives, or a later start marks it
+    // FAILED after 30 minutes. Do not invent a status poller.
     const runToken = createHmac("sha256", webhookSecret).update(runnerRun.id).digest("hex");
     const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&run_id=${runnerRun.id}&workspace_id=${workspaceId}&run_token=${runToken}`;
     await db.stakworkRun.update({
@@ -477,11 +646,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Prefer the repo-owned title from task.json; fall back to the validated request value
     // when task.json was not fetched (404, network error, or parse failure).
     const resolvedTaskTitle = canonicalTaskTitle || taskTitle.trim();
-    const taskTitleSource = canonicalTaskTitle ? "json" : "request";
 
-    const payload = {
+    // Stakwork payload only. Do not build it for strut, and do not add or
+    // remove a set_var. runnerWorkflowId is required only on this path.
+    const payload = runner === "stakwork" ? {
       name: `harvey-runner-${runnerRun.id}`,
-      workflow_id: parseInt(runnerWorkflowId, 10),
+      workflow_id: parseInt(runnerWorkflowId ?? "0", 10),
       webhook_url: statusWebhookUrl,
       webhook_full_output: false,
       workflow_params: {
@@ -533,41 +703,102 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           },
         },
       },
-    };
+    } : null;
 
-    // Dispatch-boundary log — helps diagnose bad/unconfirmed model ids without fail-close
-    if (!dispatchApiKey || !payload.workflow_params.set_var.attributes.vars.model) {
-      console.error(
-        `[legal/benchmarks/run] dispatch warning: resolved apiKey is empty or model is blank — model="${bareModel}" judge_model="${bareJudgeModel}" standard_model="${standardModel}" reasoning_model="${reasoningModel}"`,
-      );
-    }
-    console.log(
-      `[legal/benchmarks/run] dispatching model=${bareModel} judge_model=${bareJudgeModel} standard_model=${standardModel} reasoning_model=${reasoningModel} provider=${pairProvider} task_title_source=${taskTitleSource} task_title_len=${resolvedTaskTitle.length}`,
-    );
-
-    const stakworkResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Token token="${optionalEnvVars.STAKWORK_API_KEY}"`,
-      },
-      body: JSON.stringify(payload),
+    // One dispatch log. Keys only: runner, taskSlug, workflow name, lab-run id.
+    // Never log documents, rubrics, model ids, keys, bodies, the webhook URL,
+    // or the webhook token. A fetch or JSON error can carry those.
+    logger.info("[legal/benchmarks/run] dispatching", "legal-benchmarks", {
+      runner,
+      taskSlug,
+      workflowName: runner === "strut" ? strutWorkflowName : undefined,
     });
 
-    if (!stakworkResponse.ok) {
-      // Clean up the single PENDING runner row so retries are not blocked
-      await db.stakworkRun.deleteMany({
-        where: { id: runnerRun.id },
-      });
-      return NextResponse.json(
-        { error: "Failed to dispatch job to Stakwork" },
-        { status: 502 },
-      );
-    }
+    let projectId: number | undefined;
+    let strutRunId: string | undefined;
 
-    const stakworkData = await stakworkResponse.json();
-    const projectId: number | undefined =
-      stakworkData?.data?.project_id ?? stakworkData?.project_id;
+    if (runner === "strut") {
+      // Require a confirmed user delegation before spending the workspace
+      // swarm key. The helper never throws. The workflow route continues on
+      // skipped-gate; legal must not.
+      const actor = await resolveStrutActor(userId);
+      const delegation = await ensureStrutDelegation(
+        { workspaceId, workspaceSlug: slug, userId },
+        { swarmUrl, swarmApiKey },
+        { actor },
+      );
+      if (delegation.status !== "fresh" && delegation.status !== "pushed") {
+        await deletePendingRun(runnerRun.id);
+        return NextResponse.json(
+          { error: "Strut delegation unavailable" },
+          { status: 503 },
+        );
+      }
+
+      // labBase is transformSwarmUrlToRepo2Graph(swarmUrl) only. strutLabBaseUrl
+      // already appends /lab — do not call it and append /lab again. Interpolate
+      // only the regex-checked name.
+      const labBase = transformSwarmUrlToRepo2Graph(swarmUrl);
+      const labUrl = `${labBase}/lab/workflows/${strutWorkflowName}/run`;
+      // Task contract only. Provider keys stay on the Stakwork payload. Strut
+      // is expected to use the lab's own credentials. webhook_url is the same
+      // HMAC score URL the Stakwork payload sends as vars.webhook_url.
+      const strutInput = {
+        task_slug: taskSlug,
+        task_title: resolvedTaskTitle,
+        task_goal: taskGoal,
+        task_output_desc: taskOutputDesc,
+        documents_json: JSON.stringify(documents),
+        rubrics_json: JSON.stringify(rubrics),
+        webhook_url: webhookUrl,
+        standard_model: standardModel,
+        reasoning_model: reasoningModel,
+        judge_model: bareJudgeModel,
+        graph_base_url: graphBaseUrl,
+      };
+      const strutResponse = await fetch(labUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-token": swarmApiKey,
+          [STRUT_ACTOR_HEADER]: actor,
+        },
+        body: JSON.stringify({ input: strutInput }),
+      });
+      if (!strutResponse.ok) {
+        await deletePendingRun(runnerRun.id);
+        return NextResponse.json(
+          { error: "Failed to dispatch job to strut" },
+          { status: 502 },
+        );
+      }
+      const strutData = (await strutResponse.json().catch(() => ({}))) as { runId?: unknown };
+      strutRunId =
+        typeof strutData?.runId === "string" && strutData.runId ? strutData.runId : undefined;
+      // Do not write project_id from the lab body. Do not build strutRunUrl.
+      projectId = undefined;
+    } else {
+      const stakworkResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Token token="${optionalEnvVars.STAKWORK_API_KEY}"`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!stakworkResponse.ok) {
+        // Clean up the single PENDING runner row so retries are not blocked
+        await deletePendingRun(runnerRun.id);
+        return NextResponse.json(
+          { error: "Failed to dispatch job to Stakwork" },
+          { status: 502 },
+        );
+      }
+
+      const stakworkData = await stakworkResponse.json();
+      projectId = stakworkData?.data?.project_id ?? stakworkData?.project_id;
+    }
 
     // Merge projectId into result; preserve existing result fields
     const runnerRow = await db.stakworkRun.findUnique({
@@ -582,14 +813,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     } catch {
       // ignore parse errors
     }
-    if (projectId !== undefined) {
+    if (runner === "strut") {
+      // projectId column stays null. Do not set runnerProjectId. strutRunId is
+      // the operator's handle for which lab run a pending row belongs to, not
+      // a substitute project link.
+      updatedRunnerResult.runner = "strut";
+      if (strutRunId !== undefined) updatedRunnerResult.strutRunId = strutRunId;
+    } else if (projectId !== undefined) {
       updatedRunnerResult.runnerProjectId = projectId;
     }
 
     await db.stakworkRun.update({
       where: { id: runnerRun.id },
       data: {
-        projectId: projectId ?? null,
+        projectId: runner === "strut" ? null : (projectId ?? null),
         status: WorkflowStatus.IN_PROGRESS,
         result: JSON.stringify(updatedRunnerResult),
       },
@@ -668,9 +905,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
+    logger.info("[legal/benchmarks/run] dispatched", "legal-benchmarks", {
+      runner,
+      taskSlug,
+      workflowName: runner === "strut" ? strutWorkflowName : undefined,
+      labRunId: strutRunId,
+    });
+
     return NextResponse.json({ run_id: runnerRun.id }, { status: 201 });
   } catch (error) {
-    console.error("[legal/benchmarks/run POST] Unexpected error:", error);
+    // Do not log the caught exception object. A fetch or JSON error can carry
+    // webhookUrl or a provider key. Status code only.
+    const statusCode = error instanceof Error && "status" in error
+      ? Number((error as { status?: unknown }).status) || undefined
+      : undefined;
+    logger.error("[legal/benchmarks/run POST] Unexpected error", "legal-benchmarks", {
+      statusCode,
+    });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+/**
+ * Drop a pending row after a failed dispatch. If the delete itself throws,
+ * log the run id and return anyway — the 30-minute stale mark is the escape
+ * if the delete did not land. Callers still return 502/503.
+ */
+async function deletePendingRun(runId: string): Promise<void> {
+  try {
+    await db.stakworkRun.deleteMany({ where: { id: runId } });
+  } catch {
+    logger.error("[legal/benchmarks/run] failed to delete pending run", "legal-benchmarks", {
+      runId,
+    });
   }
 }
