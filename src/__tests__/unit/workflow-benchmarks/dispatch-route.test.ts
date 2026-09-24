@@ -56,7 +56,7 @@ const mockDbStakworkRunFindUnique = vi.hoisted(() => vi.fn());
 const mockDbStakworkRunDelete = vi.hoisted(() => vi.fn());
 const mockDbTransaction = vi.hoisted(() => vi.fn());
 const mockFetch = vi.hoisted(() => vi.fn());
-const mockResolveStrutActor = vi.hoisted(() => vi.fn(async () => "user-123"));
+const mockResolveStrutTarget = vi.hoisted(() => vi.fn());
 const mockEnsureStrutDelegation = vi.hoisted(() => vi.fn(async () => ({ status: "skipped-gate" })));
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -88,8 +88,14 @@ vi.mock("@/lib/workflow-benchmarks/eval-nodes", () => ({
 
 vi.mock("@/services/bifrost/strut-delegation", () => ({
   STRUT_ACTOR_HEADER: "x-strut-actor",
-  resolveStrutActor: mockResolveStrutActor,
   ensureStrutDelegation: mockEnsureStrutDelegation,
+}));
+
+// Which strut a benchmark runs on is the resolver's policy
+// (`services/strut-target.ts`); the route only consults it.
+vi.mock("@/services/strut-target", () => ({
+  resolveStrutTarget: mockResolveStrutTarget,
+  describeStrutTargetError: (e: { type: string }) => e.type,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -943,6 +949,20 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=strut",
         swarmName: "swarm",
       },
     });
+    mockResolveStrutTarget.mockResolvedValue({
+      ok: true,
+      target: {
+        swarmId: "swarm-1",
+        workspaceId: WORKSPACE_ID,
+        workspaceSlug: VALID_SLUG,
+        orgId: "org-1",
+        swarmUrl: "https://swarm.example.com/api",
+        mcpBase: "https://swarm.example.com:3355",
+        labBase: "https://swarm.example.com:3355/lab",
+        swarmApiKey: SWARM_KEY,
+        actor: "user-123",
+      },
+    });
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ runId: STRUT_RUN_ID }) });
   }
 
@@ -976,7 +996,8 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=strut",
     // the macaroon user_id, resolved from the user, and strut is handed that
     // user's standing delegation before the run is dispatched.
     expect((init.headers as Record<string, string>)["x-strut-actor"]).toBe("user-123");
-    expect(mockResolveStrutActor).toHaveBeenCalledWith(USER_ID);
+    // The target comes from the ONE resolver, for the benchmark purpose.
+    expect(mockResolveStrutTarget).toHaveBeenCalledWith({ purpose: "benchmark", workspaceSlug: VALID_SLUG, userId: USER_ID });
     expect(mockEnsureStrutDelegation).toHaveBeenCalledWith(
       { workspaceId: WORKSPACE_ID, workspaceSlug: VALID_SLUG, userId: USER_ID },
       { swarmUrl: "https://swarm.example.com/api", swarmApiKey: SWARM_KEY },
@@ -1082,6 +1103,21 @@ describe("POST /api/workspaces/[slug]/workflow-benchmarks/run — runner=strut",
     const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
     expect(res.status).toBe(503);
     expect(mockDbTransaction).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 and cleans up the run row when the resolver has no strut for the workspace", async () => {
+    mockResolveStrutTarget.mockResolvedValue({ ok: false, error: { type: "SWARM_NOT_ACTIVE", status: "PENDING" } });
+    let deletedId: string | undefined;
+    mockDbStakworkRunDelete.mockImplementation(({ where }: { where: { id: string } }) => {
+      deletedId = where.id;
+      return {};
+    });
+    const { POST } = await import("@/app/api/workspaces/[slug]/workflow-benchmarks/run/route");
+    const req = makeRequest(VALID_SLUG, { taskSlug: TASK_SLUG, runner: "strut" });
+    const res = await POST(req, { params: Promise.resolve({ slug: VALID_SLUG }) });
+    expect(res.status).toBe(503);
+    expect(deletedId).toBe(RUN_ID);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("returns 502 and cleans up the run row on strut dispatch failure", async () => {

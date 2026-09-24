@@ -164,7 +164,12 @@ export type CanvasConversationUpdateReason =
   // or reconcile cron) and the stored approvalResult row was patched in
   // place — clients reconcile existing rows so the proposal card flips
   // from "PR in progress" to the PR link (or an honest failure).
-  | "code-change-pr-update";
+  | "code-change-pr-update"
+  // A code-change PREVIEW settled: strut's `run.end` callback (or the
+  // reconcile cron) patched the stored `propose_code_change` tool output in
+  // place — the diff, or an honest failure — so clients reconcile the card
+  // off "Generating diff…" (`reconcileProposalPreviews`).
+  | "code-change-preview";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON
