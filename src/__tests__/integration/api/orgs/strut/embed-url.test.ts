@@ -12,6 +12,7 @@ import { createTestUser, createTestSwarm } from "@/__tests__/support/factories";
 import { db } from "@/lib/db";
 import { POST } from "@/app/api/orgs/[githubLogin]/strut/embed-url/route";
 import type { NextResponse } from "next/server";
+import { hashApiKey } from "@/lib/api-keys";
 
 // Both encryptField (createTestSwarm factory) and decryptField (the route)
 // are mocked so no real KEY env vars are needed.
@@ -22,6 +23,11 @@ vi.mock("@/lib/encryption", () => ({
       decryptField: (_field: string, _value: string) => "mock-swarm-api-key",
     }),
   },
+}));
+
+// No redis in the integration env; the hive-key lock just runs its body.
+vi.mock("@/lib/locks/redis-lock", () => ({
+  withLock: (_key: string, fn: () => Promise<unknown>) => fn(),
 }));
 
 async function expectJson<T = unknown>(res: NextResponse | Response, status = 200): Promise<T> {
@@ -48,6 +54,14 @@ async function createWorkspaceInOrg(ownerId: string, orgId: string, suffix = "")
   return db.workspace.create({
     data: { name: slug, slug, ownerId, sourceControlOrgId: orgId },
   });
+}
+
+function mintCalls(): Array<[string, RequestInit]> {
+  return (fetchMock.mock.calls as Array<[string, RequestInit]>).filter(([url]) => url.endsWith("/mint-token"));
+}
+
+function secretPuts(): Array<[string, RequestInit]> {
+  return (fetchMock.mock.calls as Array<[string, RequestInit]>).filter(([url]) => url.includes("/lab/secrets/"));
 }
 
 function makeParams(githubLogin: string) {
@@ -144,8 +158,8 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
     // The raw swarm key stays server-side: header on the mint, never in the URL.
     expect(data.url).not.toContain("mock-swarm-api-key");
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [mintUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(mintCalls()).toHaveLength(1);
+    const [mintUrl, init] = mintCalls()[0];
     expect(mintUrl).toBe("https://default.swarm.test:3355/mint-token");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["x-api-token"]).toBe("mock-swarm-api-key");
@@ -177,10 +191,12 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
     });
 
     await expectJson(await postAs(githubLogin, owner), 200);
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [, init] = mintCalls()[0];
     expect(JSON.parse(init.body as string).sub).toBe(`octo-owner-${owner.id}`);
     // BIFROST_ENABLED is unset here, so no delegation push follows the mint.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      (fetchMock.mock.calls as Array<[string]>).filter(([url]) => url.includes("/llm/delegations")),
+    ).toHaveLength(0);
   });
 
   it("falls back to the first reachable workspace when no default is set", async () => {
@@ -256,5 +272,92 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
 
     const data = await expectJson<{ error: string }>(await postAs(githubLogin, owner), 502);
     expect(data.error).toContain("401");
+  });
+
+  describe("HIVE_API_KEY on the strut", () => {
+    async function seedEmbeddable(prefix: string) {
+      const githubLogin = `${prefix}-${generateUniqueId()}`;
+      const org = await createOrg(githubLogin);
+      createdOrgIds.push(org.id);
+      const owner = await seedOwner(prefix);
+      const ws = await createWorkspaceInOrg(owner.id, org.id);
+      createdWorkspaceIds.push(ws.id);
+      const swarm = await createTestSwarm({
+        workspaceId: ws.id,
+        swarmUrl: "https://hivekey.swarm.test/api",
+        swarmApiKey: "key-hivekey",
+      });
+      return { githubLogin, org, owner, swarm };
+    }
+
+    it("mints an org key on first embed and pushes it with HIVE_URL to the deployment store", async () => {
+      const { githubLogin, org, owner, swarm } = await seedEmbeddable("strut-hivekey");
+
+      await expectJson(await postAs(githubLogin, owner), 200);
+
+      const puts = secretPuts();
+      expect(puts.map(([url]) => url)).toEqual([
+        "https://hivekey.swarm.test:3355/lab/secrets/HIVE_API_KEY",
+        "https://hivekey.swarm.test:3355/lab/secrets/HIVE_URL",
+      ]);
+      for (const [, init] of puts) {
+        expect(init.method).toBe("PUT");
+        const headers = init.headers as Record<string, string>;
+        expect(headers["x-api-token"]).toBe("mock-swarm-api-key");
+        expect(headers.Authorization).toBe("Bearer mock-swarm-api-key");
+      }
+      const rawKey = JSON.parse(puts[0][1].body as string).value as string;
+      expect(rawKey).toMatch(/^hiveorg_/);
+
+      const updated = await db.swarm.findUniqueOrThrow({ where: { id: swarm.id } });
+      const key = await db.orgApiKey.findUniqueOrThrow({ where: { id: updated.strutHiveKeyId! } });
+      expect(key.sourceControlOrgId).toBe(org.id);
+      expect(key.revokedAt).toBeNull();
+      expect(key.keyHash).toBe(hashApiKey(rawKey));
+    });
+
+    it("sends nothing on a later embed while the key on record is live", async () => {
+      const { githubLogin, owner } = await seedEmbeddable("strut-hivekey-again");
+
+      await expectJson(await postAs(githubLogin, owner), 200);
+      fetchMock.mockClear();
+      await expectJson(await postAs(githubLogin, owner), 200);
+
+      expect(secretPuts()).toHaveLength(0);
+      expect(await db.orgApiKey.count({ where: { createdById: owner.id } })).toBe(1);
+    });
+
+    it("replaces a revoked key and revokes nothing live", async () => {
+      const { githubLogin, owner, swarm } = await seedEmbeddable("strut-hivekey-revoked");
+
+      await expectJson(await postAs(githubLogin, owner), 200);
+      const first = (await db.swarm.findUniqueOrThrow({ where: { id: swarm.id } })).strutHiveKeyId!;
+      await db.orgApiKey.update({ where: { id: first }, data: { revokedAt: new Date() } });
+
+      fetchMock.mockClear();
+      await expectJson(await postAs(githubLogin, owner), 200);
+
+      expect(secretPuts()).toHaveLength(2);
+      const second = (await db.swarm.findUniqueOrThrow({ where: { id: swarm.id } })).strutHiveKeyId!;
+      expect(second).not.toBe(first);
+      expect((await db.orgApiKey.findUniqueOrThrow({ where: { id: second } })).revokedAt).toBeNull();
+    });
+
+    it("revokes the fresh key and keeps no pointer when strut refuses the push; the embed still succeeds", async () => {
+      const { githubLogin, owner, swarm } = await seedEmbeddable("strut-hivekey-fail");
+
+      fetchMock.mockImplementation(async (url: string) =>
+        url.includes("/lab/secrets/")
+          ? { ok: false, status: 500, json: async () => ({}), text: async () => "boom" }
+          : { ok: true, status: 200, json: async () => ({ token: "mock.jwt.token" }), text: async () => "" },
+      );
+
+      await expectJson(await postAs(githubLogin, owner), 200);
+
+      expect((await db.swarm.findUniqueOrThrow({ where: { id: swarm.id } })).strutHiveKeyId).toBeNull();
+      const keys = await db.orgApiKey.findMany({ where: { createdById: owner.id } });
+      expect(keys).toHaveLength(1);
+      expect(keys[0].revokedAt).not.toBeNull();
+    });
   });
 });

@@ -9,7 +9,7 @@ import {
   POD_PORTS,
   buildPodUrl,
 } from "@/lib/pods";
-import { requireAuthOrApiToken, validateApiToken } from "@/lib/auth/api-token";
+import { resolvePodCaller } from "@/lib/auth/pod-access";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -31,37 +31,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Missing required field: podId" }, { status: 400 });
     }
 
-    // Check for API token authentication (used by Stakwork/external services)
-    const isApiTokenAuth = validateApiToken(request);
+    // Auth + workspace access (system API_TOKEN, org API key, or session member)
+    const caller = await resolvePodCaller(request, { id: workspaceId });
+    if (caller instanceof NextResponse) {
+      return caller;
+    }
 
-    if (!isApiTokenAuth) {
-      // Authenticate via session cookie (web UI) or Bearer token (iOS app)
-      const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
-      if (userOrResponse instanceof NextResponse) {
-        return userOrResponse;
-      }
-      const userId = userOrResponse.id;
-
-      // Verify user has access to the workspace
-      const workspaceAccess = await db.workspace.findFirst({
-        where: { id: workspaceId },
-        include: {
-          members: {
-            where: { userId },
-            select: { role: true },
-          },
-        },
+    // Org keys are scoped to their org's workspaces: the pod must belong to
+    // this workspace's swarm, otherwise a key could release any org's pod.
+    if (caller.kind === "org") {
+      const pod = await db.pod.findFirst({
+        where: { podId, deletedAt: null, swarm: { workspaceId } },
+        select: { id: true },
       });
-
-      if (!workspaceAccess) {
-        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
-      }
-
-      const isOwner = workspaceAccess.ownerId === userId;
-      const isMember = workspaceAccess.members.length > 0;
-
-      if (!isOwner && !isMember) {
-        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      if (!pod) {
+        return NextResponse.json({ error: "Pod not found in this workspace" }, { status: 404 });
       }
     }
 
