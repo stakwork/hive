@@ -18,7 +18,8 @@
  *    and `git/diff` captures the working tree. The launch carries a callback
  *    URL, so the chat turn returns at once.
  * 3. Returns a PENDING `ProposalOutput` of `kind: "codeChange"` — empty
- *    diff, `preview: "pending"`, a link to the run in strut. The run's
+ *    diff, `preview: "pending"`, a link to the run in the org strut view
+ *    (`/org/<login>/strut?strut=…`, never strut's own URL). The run's
  *    completion (`services/strut-runs/code-change-propose.ts`) runs hive's
  *    diff hygiene and patches the stored card in place with the diff (or an
  *    honest failure); Pusher + `reconcileProposalPreviews` flip it live.
@@ -67,6 +68,7 @@ import {
 } from "@/lib/proposals/types";
 import type { ProposalOutput } from "@/lib/proposals/types";
 import { EncryptionService } from "@/lib/encryption";
+import { strutRunDeepLink, strutViewPath } from "@/lib/utils/strut-links";
 import { resolveOrgConversationRowId } from "@/services/org-canvas-conversation";
 
 /**
@@ -167,13 +169,15 @@ function repoDisplayName(repositoryUrl: string, fallback: string | null | undefi
 async function proposeViaStrut(args: {
   ctx: CapabilityContext;
   workspace: { id: string; name: string; slug: string };
+  /** The workspace's org — whose strut view the card's "View run" opens. */
+  orgGithubLogin: string | null;
   repositoryUrl: string;
   repoName: string;
   title: string;
   body: string;
   prompt: string;
 }): Promise<ProposalOutput | { error: string }> {
-  const { ctx, workspace, repositoryUrl, repoName, title, body, prompt } = args;
+  const { ctx, workspace, orgGithubLogin, repositoryUrl, repoName, title, body, prompt } = args;
 
   // The callback URL is built on the route-captured host; without it there
   // is nowhere for strut to deliver the diff. Same trap
@@ -267,6 +271,16 @@ async function proposeViaStrut(args: {
     });
   }
 
+  // The card's "View run": the org strut view opened on this run, as
+  // `?strut=wf=…&run=…` packed the way `StrutView` reads it. The
+  // `code_change` target IS the org's default swarm — the strut that view
+  // embeds — and the view mints the embed token, so strut's own URL (which
+  // would land on its auth prompt) never reaches the transcript. No org
+  // means no such view — and the resolver has refused the dispatch already.
+  const runUrl = orgGithubLogin
+    ? strutViewPath(orgGithubLogin, strutRunDeepLink(CODE_CHANGE_PROPOSE_WORKFLOW, dispatched.strutRunId))
+    : undefined;
+
   const output: ProposalOutput = {
     kind: "codeChange",
     proposalId,
@@ -284,7 +298,7 @@ async function proposeViaStrut(args: {
         runId: dispatched.runId,
         strutRunId: dispatched.strutRunId,
         swarmId: dispatched.swarmId,
-        runUrl: dispatched.runUrl,
+        ...(runUrl ? { runUrl } : {}),
       },
     },
     // Stamped server-side from the tool's own context — never a caller
@@ -361,7 +375,7 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
           select: {
             id: true,
             name: true,
-            sourceControlOrg: { select: { id: true } },
+            sourceControlOrg: { select: { id: true, githubLogin: true } },
             swarm: { select: { swarmUrl: true, swarmApiKey: true } },
             members: {
               where: { userId: ctx.userId },
@@ -422,6 +436,7 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
           return proposeViaStrut({
             ctx,
             workspace: { id: workspace.id, name: workspace.name, slug: workspaceSlug },
+            orgGithubLogin: workspace.sourceControlOrg?.githubLogin ?? null,
             repositoryUrl,
             repoName: repoDisplayName(repositoryUrl, dbRepo.name),
             title,
