@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { getWorkspaceBySlug } from "@/services/workspace";
+import { resolvePodCaller } from "@/lib/auth/pod-access";
 import { db } from "@/lib/db";
 import { POD_BASE_DOMAIN, buildPodUrl } from "@/lib/pods/queries";
 import { POD_PORTS, PROCESS_NAMES } from "@/lib/pods/constants";
@@ -25,10 +24,6 @@ export async function GET(
   { params }: { params: Promise<{ slug: string; podId: string }> },
 ) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-
     const { slug, podId } = await params;
 
     if (!slug || !podId) {
@@ -38,13 +33,14 @@ export async function GET(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 404 },
-      );
+    // Session member, org API key (same org), or system API_TOKEN
+    const caller = await resolvePodCaller(request, { slug });
+    if (caller instanceof NextResponse) {
+      return caller.status === 403
+        ? NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 })
+        : caller;
     }
+    const workspace = { id: caller.workspaceId };
 
     // Verify the pod belongs to this workspace's swarm
     const pod = await db.pod.findFirst({

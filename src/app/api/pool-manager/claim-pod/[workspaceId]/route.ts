@@ -4,7 +4,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
 import { POD_BASE_DOMAIN, releasePodById } from "@/lib/pods/queries";
-import { requireAuthOrApiToken, validateApiToken } from "@/lib/auth/api-token";
+import { resolvePodCaller } from "@/lib/auth/pod-access";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -18,18 +18,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
-    // Check for API token authentication (used by Stakwork/external services)
-    const isApiTokenAuth = validateApiToken(request);
-
-    let userId: string | undefined;
-
-    if (!isApiTokenAuth) {
-      // Authenticate via session cookie (web UI) or Bearer token (iOS app)
-      const userOrResponse = await requireAuthOrApiToken(request, workspaceId);
-      if (userOrResponse instanceof NextResponse) {
-        return userOrResponse;
-      }
-      userId = userOrResponse.id;
+    // Auth + workspace access (system API_TOKEN, org API key, or session member).
+    // Must run before any DB write, secret access, or third-party call.
+    const caller = await resolvePodCaller(request, { id: workspaceId });
+    if (caller instanceof NextResponse) {
+      return caller;
     }
 
     // Check for "latest" and "taskId" query parameters
@@ -37,14 +30,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shouldUpdateToLatest = searchParams.get("latest") === "true";
     const taskId = searchParams.get("taskId");
 
-    // Fetch workspace (include members filter only when we have a userId for ownership check)
     const workspace = await db.workspace.findFirst({
       where: { id: workspaceId },
       include: {
-        owner: true,
-        members: userId
-          ? { where: { userId }, select: { role: true } }
-          : { select: { role: true }, take: 0 },
         swarm: true,
         repositories: true,
       },
@@ -52,17 +40,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (!workspace) {
       return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });
-    }
-
-    // Enforce ownership check only for session-based auth (API token callers are trusted system actors)
-    // Must run before any DB write, secret access, or third-party call.
-    if (!isApiTokenAuth) {
-      const isOwner = workspace.ownerId === userId;
-      const isMember = workspace.members.length > 0;
-
-      if (!isOwner && !isMember) {
-        return NextResponse.json({ success: false, error: "Access denied" }, { status: 403 });
-      }
     }
 
     // If using custom local Goose URL, return mock URLs instead of claiming a real pod
