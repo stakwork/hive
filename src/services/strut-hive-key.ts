@@ -10,9 +10,11 @@
  *
  * Desired state is `Swarm.strutHiveKeyId` → a live `OrgApiKey` of the
  * swarm's org. Hive keeps only the key's hash, so a key strut lost is
- * never re-sent: it is REPLACED — mint a new key, push it, point the swarm
- * at it, revoke the old one. A failed push revokes the fresh key and
- * leaves the pointer alone, so the next attempt starts clean.
+ * never re-sent: it is REPLACED — push HIVE_URL, mint a new key, push it,
+ * point the swarm at it, revoke the old one. HIVE_URL goes first so a key
+ * is minted only once the lab has accepted a push; a failed key push
+ * revokes the fresh key and leaves the pointer alone, so strut never holds
+ * a key hive does not point at and the next attempt starts clean.
  *
  *   - `ensureStrutHiveKey` — on the org strut embed: mint + push when the
  *     swarm has no live key on record. DB-only when it does. Never throws.
@@ -145,23 +147,26 @@ async function revokeKey(keyId: string, revokedById: string) {
 }
 
 /**
- * Mint a fresh key for the swarm's org, push it (and HIVE_URL), point the
+ * Push HIVE_URL, mint a fresh key for the swarm's org, push it, point the
  * swarm at it, revoke the previous one. Callers hold the swarm's lock.
  */
 async function rotateStrutHiveKey(
   target: StrutHiveKeyTarget & { orgId: string },
   opts: { publicBaseUrl: string; createdById: string; previousKeyId: string | null },
 ): Promise<"pushed" | "unsupported" | "failed"> {
+  // HIVE_URL first: it is no secret, and a key is minted only once the lab
+  // has accepted a push. Key first and URL second left strut holding a key
+  // that a failed second push then revoked, with nothing to notice it.
+  const urlPushed = await putStrutDeploymentSecret(target.lab, STRUT_HIVE_URL_SECRET, opts.publicBaseUrl);
+  if (urlPushed !== "ok") return urlPushed;
+
   const minted = await createOrgApiKey({
     orgId: target.orgId,
     name: STRUT_HIVE_KEY_NAME,
     createdById: opts.createdById,
   });
 
-  let pushed = await putStrutDeploymentSecret(target.lab, STRUT_HIVE_KEY_SECRET, minted.key);
-  if (pushed === "ok") {
-    pushed = await putStrutDeploymentSecret(target.lab, STRUT_HIVE_URL_SECRET, opts.publicBaseUrl);
-  }
+  const pushed = await putStrutDeploymentSecret(target.lab, STRUT_HIVE_KEY_SECRET, minted.key);
   if (pushed !== "ok") {
     // The raw key is gone with this frame; a key nobody holds is dead weight.
     await revokeKey(minted.id, opts.createdById);

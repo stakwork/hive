@@ -22,13 +22,14 @@ vi.mock("@/lib/locks/redis-lock", () => ({
 const HIVE_URL = "https://hive.example.com";
 let installationIdCounter = 950000;
 
-/** Strut answers `GET /secrets` with `names`, 200s every PUT. */
-function stubStrut(names: string[] | "unsupported") {
-  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+/** Strut answers `GET /secrets` with `names`, 200s every PUT except `refuse`'s (500). */
+function stubStrut(names: string[] | "unsupported", opts: { refuse?: string } = {}) {
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if ((init?.method ?? "GET") === "GET") {
       if (names === "unsupported") return new Response("not found", { status: 404 });
       return Response.json({ secrets: names.map((name) => ({ name })) });
     }
+    if (opts.refuse && url.endsWith(`/secrets/${opts.refuse}`)) return new Response("boom", { status: 500 });
     return Response.json({ ok: true });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -86,17 +87,29 @@ describe("runStrutHiveKeyReconcile", () => {
     expect(result).toMatchObject({ success: true, rotated: 1 });
     const puts = strut.puts();
     expect(puts.map((p) => p.url)).toEqual([
-      "https://hk.swarm.test:3355/lab/secrets/HIVE_API_KEY",
       "https://hk.swarm.test:3355/lab/secrets/HIVE_URL",
+      "https://hk.swarm.test:3355/lab/secrets/HIVE_API_KEY",
     ]);
-    expect(puts[0].value).toMatch(/^hiveorg_/);
-    expect(puts[1].value).toBe(HIVE_URL);
+    expect(puts[0].value).toBe(HIVE_URL);
+    expect(puts[1].value).toMatch(/^hiveorg_/);
 
     const newId = (await db.swarm.findUniqueOrThrow({ where: { id: swarm.id } })).strutHiveKeyId!;
     expect(newId).not.toBe(key.id);
     const newKey = await db.orgApiKey.findUniqueOrThrow({ where: { id: newId } });
     expect(newKey).toMatchObject({ sourceControlOrgId: org.id, createdById: owner.id, revokedAt: null });
     expect((await db.orgApiKey.findUniqueOrThrow({ where: { id: key.id } })).revokedAt).not.toBeNull();
+  });
+
+  it("mints nothing and keeps the old pointer when strut refuses HIVE_URL mid-rotation", async () => {
+    const { swarm, key, owner } = await seedEmbedded();
+    const strut = stubStrut([], { refuse: "HIVE_URL" });
+
+    const result = await runStrutHiveKeyReconcile({ publicBaseUrl: HIVE_URL });
+
+    expect(result).toMatchObject({ success: false, rotated: 0 });
+    expect(strut.puts().map((p) => p.url)).toEqual(["https://hk.swarm.test:3355/lab/secrets/HIVE_URL"]);
+    expect((await db.swarm.findUniqueOrThrow({ where: { id: swarm.id } })).strutHiveKeyId).toBe(key.id);
+    expect(await db.orgApiKey.count({ where: { createdById: owner.id } })).toBe(1);
   });
 
   it("rotates when the key on record was revoked, even though strut still lists the name", async () => {

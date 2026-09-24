@@ -297,8 +297,8 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
 
       const puts = secretPuts();
       expect(puts.map(([url]) => url)).toEqual([
-        "https://hivekey.swarm.test:3355/lab/secrets/HIVE_API_KEY",
         "https://hivekey.swarm.test:3355/lab/secrets/HIVE_URL",
+        "https://hivekey.swarm.test:3355/lab/secrets/HIVE_API_KEY",
       ]);
       for (const [, init] of puts) {
         expect(init.method).toBe("PUT");
@@ -306,7 +306,7 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
         expect(headers["x-api-token"]).toBe("mock-swarm-api-key");
         expect(headers.Authorization).toBe("Bearer mock-swarm-api-key");
       }
-      const rawKey = JSON.parse(puts[0][1].body as string).value as string;
+      const rawKey = JSON.parse(puts[1][1].body as string).value as string;
       expect(rawKey).toMatch(/^hiveorg_/);
 
       const updated = await db.swarm.findUniqueOrThrow({ where: { id: swarm.id } });
@@ -343,14 +343,18 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
       expect((await db.orgApiKey.findUniqueOrThrow({ where: { id: second } })).revokedAt).toBeNull();
     });
 
-    it("revokes the fresh key and keeps no pointer when strut refuses the push; the embed still succeeds", async () => {
-      const { githubLogin, owner, swarm } = await seedEmbeddable("strut-hivekey-fail");
-
+    /** Strut 500s the PUT of one secret; everything else (the mint, the other PUT) succeeds. */
+    function refuseSecret(name: string) {
       fetchMock.mockImplementation(async (url: string) =>
-        url.includes("/lab/secrets/")
+        url.endsWith(`/lab/secrets/${name}`)
           ? { ok: false, status: 500, json: async () => ({}), text: async () => "boom" }
           : { ok: true, status: 200, json: async () => ({ token: "mock.jwt.token" }), text: async () => "" },
       );
+    }
+
+    it("revokes the fresh key and keeps no pointer when strut refuses the key push; the embed still succeeds", async () => {
+      const { githubLogin, owner, swarm } = await seedEmbeddable("strut-hivekey-fail");
+      refuseSecret("HIVE_API_KEY");
 
       await expectJson(await postAs(githubLogin, owner), 200);
 
@@ -358,6 +362,17 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
       const keys = await db.orgApiKey.findMany({ where: { createdById: owner.id } });
       expect(keys).toHaveLength(1);
       expect(keys[0].revokedAt).not.toBeNull();
+    });
+
+    it("mints nothing when strut refuses HIVE_URL, which goes first", async () => {
+      const { githubLogin, owner, swarm } = await seedEmbeddable("strut-hivekey-url-fail");
+      refuseSecret("HIVE_URL");
+
+      await expectJson(await postAs(githubLogin, owner), 200);
+
+      expect(secretPuts().map(([url]) => url)).toEqual(["https://hivekey.swarm.test:3355/lab/secrets/HIVE_URL"]);
+      expect((await db.swarm.findUniqueOrThrow({ where: { id: swarm.id } })).strutHiveKeyId).toBeNull();
+      expect(await db.orgApiKey.count({ where: { createdById: owner.id } })).toBe(0);
     });
   });
 });
