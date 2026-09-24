@@ -111,6 +111,8 @@ model User {
   createdWhiteboards       Whiteboard[]             @relation("WhiteboardCreator")
   createdApiKeys           WorkspaceApiKey[]        @relation("ApiKeyCreator")
   revokedApiKeys           WorkspaceApiKey[]        @relation("ApiKeyRevoker")
+  createdOrgApiKeys        OrgApiKey[]              @relation("OrgApiKeyCreator")
+  revokedOrgApiKeys        OrgApiKey[]              @relation("OrgApiKeyRevoker")
   workspaceMembers         WorkspaceMember[]
   ownedWorkspaces          Workspace[]              @relation("WorkspaceOwner")
   fiatPayments             FiatPayment[]
@@ -211,6 +213,7 @@ model SourceControlOrg {
   automations          Automation[]
   urnEdges             UrnEdge[]
   mcpServers           OrgMcpServer[]
+  apiKeys              OrgApiKey[]
   // Keyset cursors for canvas-mirror-cron (per-entity {at,id} + canvas watermarks).
   // Mirrors Workspace.jarvisSyncState — staggered schedule so writes don't race.
   jarvisSyncState      Json?                @map("jarvis_sync_state")
@@ -218,6 +221,31 @@ model SourceControlOrg {
   @@index([githubLogin])
   @@index([githubInstallationId])
   @@map("source_control_orgs")
+}
+
+// Org-scoped API key for external systems (e.g. strut) calling Hive on the
+// org's behalf. Accepted on the pod endpoints for any workspace in the org.
+// Same shape as WorkspaceApiKey: only the SHA-256 hash is stored, the raw
+// `hiveorg_…` key is returned once at creation.
+model OrgApiKey {
+  id                 String           @id @default(cuid())
+  sourceControlOrgId String           @map("source_control_org_id")
+  name               String
+  keyPrefix          String           @map("key_prefix")
+  keyHash            String           @unique @map("key_hash")
+  createdById        String           @map("created_by_id")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  lastUsedAt         DateTime?        @map("last_used_at")
+  expiresAt          DateTime?        @map("expires_at")
+  revokedAt          DateTime?        @map("revoked_at")
+  revokedById        String?          @map("revoked_by_id")
+  sourceControlOrg   SourceControlOrg @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
+  createdBy          User             @relation("OrgApiKeyCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  revokedBy          User?            @relation("OrgApiKeyRevoker", fields: [revokedById], references: [id])
+
+  @@index([sourceControlOrgId])
+  @@index([createdById])
+  @@map("org_api_keys")
 }
 
 // External MCP server registered for an org's canvas agent (Jamie).
@@ -497,6 +525,11 @@ model Swarm {
   // it can call back into Hive for eval mutations/runs. Null until the
   // first successful push; set again on re-mint (missing/revoked key).
   gatewayHiveKeyId        String?               @map("gateway_hive_key_id")
+  // The OrgApiKey.id this swarm's strut holds as its deployment secret
+  // HIVE_API_KEY (services/strut-hive-key.ts). Minted on the org strut
+  // embed; the daily reconciler rotates it when strut lost it or the key
+  // was revoked. Only the hash is stored — a lost key is replaced, never re-sent.
+  strutHiveKeyId          String?               @map("strut_hive_key_id")
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
   pods                    Pod[]
   storageSnapshots        SwarmStorageSnapshot[]
