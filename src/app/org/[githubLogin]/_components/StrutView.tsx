@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { STRUT_DEEP_LINK_PARAM } from "@/lib/utils/strut-links";
 
 // The embed token lives 8h (see the embed-url route); re-mint an hour early.
 const TOKEN_REFRESH_THRESHOLD_MS = 7 * 60 * 60 * 1000;
@@ -18,8 +19,10 @@ interface StrutViewProps {
  * carries what strut reported and hands it back, and never has to learn a
  * key. The frame is untrusted content, so each pair is still bounded and
  * the embed's own `key` / `embed_origin` are dropped unconditionally.
+ * Hive mints such links itself too — a code-change card's "View run" is
+ * `strutViewPath(login, strutRunDeepLink(wf, run))` — so the param name
+ * lives in `lib/utils/strut-links`, shared with the server.
  */
-const DEEP_LINK_PARAM = "strut";
 const KEY_RE = /^[a-z][a-z0-9_]{0,31}$/;
 const MAX_VALUE_LENGTH = 512;
 const MAX_LINK_LENGTH = 2048;
@@ -43,7 +46,7 @@ function filterLink(entries: Iterable<[string, unknown]>): Record<string, string
 
 function readDeepLink(search: string): Record<string, string> {
   const here = new URLSearchParams(search);
-  const packed = here.get(DEEP_LINK_PARAM);
+  const packed = here.get(STRUT_DEEP_LINK_PARAM);
   if (packed !== null) return filterLink(new URLSearchParams(packed));
   return filterLink(LEGACY_PARAMS.map((k) => [k, here.get(k)]));
 }
@@ -63,8 +66,8 @@ function frameUrl(embedUrl: string, link: Record<string, string>): string {
 /** Mirror strut's (serialized) deep link into our own address bar (no navigation). */
 function writeDeepLink(packed: string) {
   const url = new URL(window.location.href);
-  if (packed) url.searchParams.set(DEEP_LINK_PARAM, packed);
-  else url.searchParams.delete(DEEP_LINK_PARAM);
+  if (packed) url.searchParams.set(STRUT_DEEP_LINK_PARAM, packed);
+  else url.searchParams.delete(STRUT_DEEP_LINK_PARAM);
   for (const k of LEGACY_PARAMS) url.searchParams.delete(k);
   if (url.href !== window.location.href) {
     window.history.replaceState(window.history.state, "", url);

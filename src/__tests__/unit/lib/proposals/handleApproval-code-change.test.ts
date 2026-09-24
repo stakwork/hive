@@ -724,7 +724,6 @@ describe("approveCodeChange — landing on strut (CODE_CHANGE_VIA_STRUT default)
     runId: STRUT_ROW_ID,
     strutRunId: "1790000000001",
     swarmId: "swarm-1",
-    runUrl: "https://acme.sphinx.chat:3355/lab/?wf=code-change-land&run=1790000000001",
   };
   const EXPECTED_BRANCH = `jamie/${PROPOSAL_ID.slice(0, 8)}-abcdef`;
 

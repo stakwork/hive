@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import {
+  ArrowUpRight,
   Check,
   X,
   ExternalLink,
@@ -1626,6 +1627,10 @@ function CodeChangeMeta({
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           <Loader2 className="h-3 w-3 animate-spin" />
           <span>Generating diff… this card will update when it is ready.</span>
+          {/* The org strut view on this run (`strutViewPath`, built at
+              dispatch) — a Hive page, opened in a new tab like every
+              cross-view link from the canvas so the chat survives. Never
+              strut's own URL: that needs the embed token the view mints. */}
           {payload.pending?.runUrl && (
             <a
               href={payload.pending.runUrl}
@@ -1633,8 +1638,8 @@ function CodeChangeMeta({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-0.5 hover:underline"
             >
-              <ExternalLink className="h-3 w-3" />
               View run
+              <ArrowUpRight className="h-3 w-3" />
             </a>
           )}
         </div>
