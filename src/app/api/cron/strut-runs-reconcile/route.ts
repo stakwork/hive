@@ -10,7 +10,9 @@ import { logger } from "@/lib/logger";
  * restart mid-run): every `StrutRun` still PENDING past the threshold is
  * asked about on the ROW's swarm — `GET {lab}/workflows/:name/runs/:runId`
  * — and settled through the same completion path the webhook uses, or
- * marked LOST when strut has no record of it. Never re-dispatches.
+ * marked LOST when strut has no record of it, or reports it `stale` twice
+ * ten seconds apart (strut restarted and did not resume it). Never
+ * re-dispatches.
  *
  * Enabled by default; `STRUT_RUNS_RECONCILE_CRON_ENABLED=false` disables
  * it (a safety net — opt-out, not opt-in).

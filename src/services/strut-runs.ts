@@ -20,7 +20,11 @@
  *                      failed after the claim still lands.
  *   reconcileStrutRuns rows PENDING past a threshold → GET the run summary
  *                      from the ROW's swarm → the same completion, or LOST
- *                      when strut never saw the run.
+ *                      when strut never saw the run, or when the run is
+ *                      `stale` (no live controller: strut restarted and did
+ *                      not resume it) — re-checked once, 10 s later, so a
+ *                      run strut is about to auto-resume is not declared
+ *                      dead in the seconds between its boot and its scan.
  *   cancelStrutRun     POST …/cancel on the row's swarm (the Stop button);
  *                      the callback then arrives as `cancelled`.
  *
@@ -49,6 +53,13 @@ const MAX_ERROR_CHARS = 4_000;
 /** Reconcile: leave a PENDING row alone this long — callbacks land within seconds-to-minutes. */
 export const STRUT_RUN_RECONCILE_MIN_AGE_MS = 10 * 60 * 1000;
 const RECONCILE_BATCH = 25;
+/**
+ * A `stale` run is re-probed after this long before it is declared LOST.
+ * Strut's boot-time auto-resume starts ~3 s after it comes up; a run it is
+ * about to resume looks stale until then. One wait per cron pass, for the
+ * whole batch of stale rows.
+ */
+export const STRUT_RUN_STALE_RECHECK_MS = 10_000;
 
 export type StrutRunTerminalStatus = "success" | "error" | "cancelled";
 
@@ -553,12 +564,51 @@ export interface ReconcileStrutRunsStats {
 }
 
 /**
+ * Act on one probe. Returns `"stale"` when the run has no live controller
+ * on strut (the caller re-probes those after a wait), else `"done"`.
+ */
+async function applyProbe(row: StrutRunRow, probe: StrutRunSummaryProbe, stats: ReconcileStrutRunsStats): Promise<"stale" | "done"> {
+  switch (probe.kind) {
+    case "running":
+      if (probe.status === "stale") return "stale";
+      stats.running++;
+      return "done";
+    case "unavailable":
+      stats.unavailable++;
+      logger.warn("Strut run summary unavailable", STRUT_RUN_LOG_TAG, { runId: row.id, reason: probe.reason });
+      return "done";
+    case "missing": {
+      const outcome = await loseRow(row, "strut has no record of the run (restart before it was written)");
+      if (outcome === "retry") stats.retry++;
+      else stats.lost++;
+      return "done";
+    }
+    case "settled": {
+      const full = await db.strutRun.findUnique({ where: { id: row.id }, select: { id: true, tokenHash: true } });
+      if (!full) return "done";
+      const outcome = await completeStrutRun(full, probe.completion);
+      if (outcome === "retry") stats.retry++;
+      else stats.settled++;
+      return "done";
+    }
+  }
+}
+
+/**
  * The backstop for a callback that never arrived (network drop past
  * strut's retries, a hive deploy mid-delivery, a swarm restart). Never
  * re-dispatches. A row still without a strut run id past the threshold —
  * the dispatch died between the row and the launch — is LOST too.
+ *
+ * A run strut reports `stale` (a log, no summary, no live controller —
+ * strut restarted) is either about to be auto-resumed (only the newest
+ * cut-off run per workflow, seconds after boot) or will stay stale for
+ * good. The two look the same in one probe, so stale rows are probed
+ * again after `STRUT_RUN_STALE_RECHECK_MS`; still stale → LOST.
  */
-export async function reconcileStrutRuns(opts: { now?: Date; minAgeMs?: number; limit?: number } = {}): Promise<ReconcileStrutRunsStats> {
+export async function reconcileStrutRuns(
+  opts: { now?: Date; minAgeMs?: number; limit?: number; staleRecheckMs?: number } = {},
+): Promise<ReconcileStrutRunsStats> {
   const now = opts.now ?? new Date();
   const minAgeMs = opts.minAgeMs ?? STRUT_RUN_RECONCILE_MIN_AGE_MS;
   const stats: ReconcileStrutRunsStats = { swept: 0, settled: 0, lost: 0, running: 0, unavailable: 0, retry: 0 };
@@ -570,6 +620,7 @@ export async function reconcileStrutRuns(opts: { now?: Date; minAgeMs?: number; 
     take: opts.limit ?? RECONCILE_BATCH,
   });
 
+  const stale: StrutRunRow[] = [];
   for (const row of rows) {
     stats.swept++;
     try {
@@ -579,29 +630,31 @@ export async function reconcileStrutRuns(opts: { now?: Date; minAgeMs?: number; 
         else stats.lost++;
         continue;
       }
-      const probe = await probeStrutRun(row);
-      if (probe.kind === "running") {
-        stats.running++;
-      } else if (probe.kind === "unavailable") {
-        stats.unavailable++;
-        logger.warn("Strut run summary unavailable", STRUT_RUN_LOG_TAG, { runId: row.id, reason: probe.reason });
-      } else if (probe.kind === "missing") {
-        const outcome = await loseRow(row, "strut has no record of the run (restart before it was written)");
-        if (outcome === "retry") stats.retry++;
-        else stats.lost++;
-      } else {
-        const full = await db.strutRun.findUnique({ where: { id: row.id }, select: { id: true, tokenHash: true } });
-        if (!full) continue;
-        const outcome = await completeStrutRun(full, probe.completion);
-        if (outcome === "retry") stats.retry++;
-        else stats.settled++;
-      }
+      if ((await applyProbe(row, await probeStrutRun(row), stats)) === "stale") stale.push(row);
     } catch (err) {
       stats.unavailable++;
       logger.error("Strut run reconcile threw", STRUT_RUN_LOG_TAG, {
         runId: row.id,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+
+  if (stale.length > 0) {
+    await new Promise((r) => setTimeout(r, opts.staleRecheckMs ?? STRUT_RUN_STALE_RECHECK_MS));
+    for (const row of stale) {
+      try {
+        if ((await applyProbe(row, await probeStrutRun(row), stats)) !== "stale") continue;
+        const outcome = await loseRow(row, "no live run on strut (it restarted and did not resume this run)");
+        if (outcome === "retry") stats.retry++;
+        else stats.lost++;
+      } catch (err) {
+        stats.unavailable++;
+        logger.error("Strut run reconcile threw", STRUT_RUN_LOG_TAG, {
+          runId: row.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 
