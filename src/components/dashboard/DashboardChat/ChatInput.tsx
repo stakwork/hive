@@ -16,10 +16,20 @@ import {
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { WorkspacePills } from "./WorkspacePills";
 import { useFileDrop } from "@/hooks/useFileDrop";
+import { getDraft, setDraft, type DraftScope } from "@/lib/conversationDrafts";
 
 const DEFAULT_MAX_EXTRA_WORKSPACES = 4; // current + 4 = 5 total
 
 interface ChatInputProps {
+  /**
+   * State-backed identity: the loaded server conversation id, or `__new__`
+   * while unsaved. Changing it saves the previous draft and restores the
+   * next one. Not the send ref — that does not re-render.
+   */
+  conversationKey?: string;
+  draftScope?: DraftScope | null;
+  /** Fired after a draft is saved so Recent Chats can show the unsaved row. */
+  onDraftChange?: () => void;
   onSend: (message: string, clearInput: () => void) => Promise<void>;
   disabled?: boolean;
   imageData?: string | null;
@@ -33,6 +43,9 @@ interface ChatInputProps {
 }
 
 export function ChatInput({
+  conversationKey,
+  draftScope = null,
+  onDraftChange,
   onSend,
   disabled = false,
   imageData = null,
@@ -46,6 +59,11 @@ export function ChatInput({
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [rows, setRows] = useState(1);
+  const inputValueRef = useRef("");
+  const scopeRef = useRef<DraftScope | null>(draftScope);
+  scopeRef.current = draftScope;
+  const onDraftChangeRef = useRef(onDraftChange);
+  onDraftChangeRef.current = onDraftChange;
   const [isWorkspacePickerOpen, setIsWorkspacePickerOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -60,6 +78,28 @@ export function ChatInput({
       ws.slug !== currentWorkspaceSlug &&
       !extraWorkspaceSlugs.includes(ws.slug)
   );
+
+  // Save the previous conversation's text and restore the next one's.
+  // `get` runs in an effect, never during render. `__new__` stays in
+  // memory only — `setDraft` refuses to write it to localStorage.
+  const skipDraftNotify = useRef(true);
+  useEffect(() => {
+    if (!conversationKey || !draftScope) return;
+    const restored = getDraft(draftScope, { allowStorage: true });
+    inputValueRef.current = restored;
+    setInput(restored);
+    skipDraftNotify.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationKey]);
+
+  useEffect(() => {
+    return () => {
+      const scope = scopeRef.current;
+      if (!scope) return;
+      setDraft(scope, inputValueRef.current);
+      onDraftChangeRef.current?.();
+    };
+  }, []);
 
   // Auto-adjust textarea height based on content
   useEffect(() => {
@@ -79,9 +119,13 @@ export function ChatInput({
     if (!input.trim() || disabled) return;
 
     const message = input.trim();
-    // Don't clear input yet - wait for response to start
+    // Don't clear input yet - wait for response to start. The parent
+    // calls `clearInput` only on the first stream chunk (ask success).
     await onSend(message, () => {
+      inputValueRef.current = "";
       setInput("");
+      if (draftScope) setDraft(draftScope, "");
+      onDraftChange?.();
       inputRef.current?.focus();
     });
   };
@@ -262,7 +306,17 @@ export function ChatInput({
             ref={inputRef}
             placeholder="Ask me about your codebase..."
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              inputValueRef.current = next;
+              setInput(next);
+              if (draftScope) setDraft(draftScope, next);
+              if (skipDraftNotify.current) {
+                skipDraftNotify.current = false;
+                return;
+              }
+              onDraftChange?.();
+            }}
             onKeyDown={handleKeyDown}
             disabled={disabled}
             rows={rows}

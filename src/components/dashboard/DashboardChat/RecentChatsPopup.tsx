@@ -23,12 +23,18 @@ export interface LoadConversationParams {
   extraWorkspaceSlugs: string[];
   conversationId: string | null;
   isReadOnly: boolean;
+  /** Restore the unsaved `__new__` composer. No fetch. */
+  local?: boolean;
 }
 
 export interface RecentChatsPopupProps {
   slug: string;
   currentUserId: string;
   onLoadConversation: (params: LoadConversationParams) => void;
+  /** Unsent `__new__` composer text. When set, a synthetic local row is prepended. */
+  unsavedDraft?: string | null;
+  /** True when `__new__` is already the active composer — selecting the row is a no-op switch. */
+  unsavedActive?: boolean;
 }
 
 function extractFirstName(fullName: string | null | undefined): string {
@@ -36,7 +42,13 @@ function extractFirstName(fullName: string | null | undefined): string {
   return fullName.split(" ")[0];
 }
 
-export function RecentChatsPopup({ slug, currentUserId, onLoadConversation }: RecentChatsPopupProps) {
+export function RecentChatsPopup({
+  slug,
+  currentUserId,
+  onLoadConversation,
+  unsavedDraft = null,
+  unsavedActive = false,
+}: RecentChatsPopupProps) {
   const { timezone } = useUserTimezone();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<RecentChatItem[]>([]);
@@ -63,6 +75,19 @@ export function RecentChatsPopup({ slug, currentUserId, onLoadConversation }: Re
     if (nextOpen) {
       fetchRecent();
     }
+  };
+
+  const handleLocalClick = () => {
+    if (!unsavedActive) {
+      onLoadConversation({
+        messages: [],
+        extraWorkspaceSlugs: [],
+        conversationId: null,
+        isReadOnly: false,
+        local: true,
+      });
+    }
+    setOpen(false);
   };
 
   const handleItemClick = async (item: RecentChatItem) => {
@@ -124,13 +149,23 @@ export function RecentChatsPopup({ slug, currentUserId, onLoadConversation }: Re
                 </div>
               ))}
             </div>
-          ) : items.length === 0 ? (
+          ) : items.length === 0 && !unsavedDraft ? (
             <div className="px-3 py-6 text-center">
               <Clock className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
               <p className="text-xs text-muted-foreground">No recent chats yet</p>
             </div>
           ) : (
             <div className="py-1">
+              {unsavedDraft && (
+                <button
+                  type="button"
+                  onClick={handleLocalClick}
+                  className="w-full px-3 py-2 text-left hover:bg-muted/50 transition-colors flex flex-col gap-0.5"
+                >
+                  <span className="text-xs font-medium text-foreground truncate block">Untitled</span>
+                  <span className="text-[10px] text-muted-foreground truncate block">{unsavedDraft}</span>
+                </button>
+              )}
               {items.map((item) => {
                 const firstName = extractFirstName(item.creatorName);
                 const label = item.title

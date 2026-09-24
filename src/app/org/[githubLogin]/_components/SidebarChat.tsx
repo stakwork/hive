@@ -17,6 +17,7 @@ import {
   Split,
   X,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
@@ -50,7 +51,20 @@ import {
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import { forkCanvasConversation } from "../_state/forkCanvasConversation";
-import { startNewOrgConversation } from "../_state/openOrgConversation";
+import { discardActiveUnsavedConversation, startNewOrgConversation } from "../_state/openOrgConversation";
+import {
+  clearSlotDraft,
+  flushDraftPersistence,
+  getDraft,
+  getPendingAttachments,
+  restoreDraftFromServerId,
+  setDraft,
+  setPendingAttachments,
+  slotHasAttachments,
+  slotHasDraft,
+  type DraftScope,
+  type PendingAttachment,
+} from "@/lib/conversationDrafts";
 import { ActionTip } from "./ActionTip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { jamieName } from "@/lib/constants/jamie";
@@ -84,13 +98,23 @@ interface SidebarChatProps {
   /** Slug of the org. Used by the Share button to scope the POST. */
   githubLogin: string;
   /**
-   * Hide the history popover and the new-chat button in the header.
-   * The control panel lists every chat and owns "New" in its own
-   * column, so those controls would be duplicates there.
+   * Signed-in user id for the draft key. `null` skips the session read
+   * (tests). Omit it and the body reads `useSession`.
    */
+  draftUserId?: string | null;
 }
 
-export function SidebarChat({ githubLogin }: SidebarChatProps) {
+function SidebarChatSession({ githubLogin }: { githubLogin: string }) {
+  const { data: session } = useSession();
+  return <SidebarChatBody githubLogin={githubLogin} draftUserId={session?.user?.id ?? null} />;
+}
+
+export function SidebarChat({ githubLogin, draftUserId }: SidebarChatProps) {
+  if (draftUserId === undefined) return <SidebarChatSession githubLogin={githubLogin} />;
+  return <SidebarChatBody githubLogin={githubLogin} draftUserId={draftUserId} />;
+}
+
+function SidebarChatBody({ githubLogin, draftUserId = null }: SidebarChatProps) {
   // ─── Selectors — narrow on purpose ─────────────────────────────────
   // Each selector returns a primitive or a stable reference so
   // streaming text-deltas don't trigger re-renders in selectors that
@@ -119,7 +143,6 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   const isStreaming = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false);
 
   const { id: workspaceId } = useWorkspace();
-
   const sendMessage = useSendCanvasChatMessage();
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -537,11 +560,14 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       {/* end relative wrapper */}
       <div className="border-t p-2">
         <SidebarChatInput
+          key={activeId ?? "none"}
           ref={composerRef}
+          activeId={activeId}
           onSend={handleSend}
           disabled={isLoading}
           workspaceId={workspaceId}
           orgId={githubLogin}
+          draftUserId={draftUserId}
         />
       </div>
     </div>
@@ -601,21 +627,52 @@ export function TokenCounter() {
  * panel's list is the history) and New chat. Reads the store itself, so
  * the chat's own header and the org page's one bar can both place it.
  */
+function DraftSessionActions(props: { githubLogin: string; hideHistory?: boolean }) {
+  const { data: session } = useSession();
+  return <SidebarChatActionsBody {...props} draftUserId={session?.user?.id ?? null} />;
+}
+
 export function SidebarChatActions({
   githubLogin,
   hideHistory = false,
+  draftUserId,
 }: {
   githubLogin: string;
   hideHistory?: boolean;
+  /** When omitted, the session is read. Tests that don't mock next-auth pass `null`. */
+  draftUserId?: string | null;
+}) {
+  if (draftUserId === undefined) {
+    return <DraftSessionActions githubLogin={githubLogin} hideHistory={hideHistory} />;
+  }
+  return <SidebarChatActionsBody githubLogin={githubLogin} hideHistory={hideHistory} draftUserId={draftUserId} />;
+}
+
+function SidebarChatActionsBody({
+  githubLogin,
+  hideHistory = false,
+  draftUserId,
+}: {
+  githubLogin: string;
+  hideHistory?: boolean;
+  draftUserId: string | null;
 }) {
   const activeId = useCanvasChatStore((s) => s.activeConversationId);
   const hasMessages = useCanvasChatStore((s) => ((activeId ? s.conversations[activeId]?.messages.length : 0) ?? 0) > 0);
+  const draftScope = { userId: draftUserId, scope: `org:${githubLogin}` };
   // The persisted row id. Sharing flips this row to `isShared` and hands
   // out its id, so the sharer and every joiner live in the *same* room.
   // Null until the first turn has created the row — Share/Fork are gated on it.
   const serverConversationId = useCanvasChatStore(
     (s) => (activeId ? s.conversations[activeId]?.serverConversationId : null) ?? null,
   );
+  // The draft/file bags live outside React. The composer bumps this
+  // revision on save so New / Discard re-render without watching keystrokes.
+  const draftRevision = useCanvasChatStore((s) => s.draftRevision);
+  const hasDraft = !!activeId && slotHasDraft(draftScope, activeId);
+  const hasFiles = !!activeId && slotHasAttachments(activeId);
+  const canStartNew = hasMessages || hasDraft || hasFiles || draftRevision < 0;
+  const canDiscard = !!activeId && !serverConversationId && canStartNew;
   // The source must be persisted before it is forked, so Fork stays
   // disabled until streaming ends.
   const isStreaming = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false);
@@ -727,11 +784,23 @@ export function SidebarChatActions({
       </ActionTip>
       <CanvasAgentSettingsPopover githubLogin={githubLogin} />
       {!hideHistory && <CanvasHistoryPopover githubLogin={githubLogin} />}
+      {canDiscard && (
+        <ActionTip label="Discard chat">
+          <button
+            type="button"
+            onClick={() => discardActiveUnsavedConversation(githubLogin, draftUserId)}
+            aria-label="Discard chat"
+            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </ActionTip>
+      )}
       <ActionTip label="New chat">
         <button
           type="button"
           onClick={() => startNewOrgConversation(githubLogin)}
-          disabled={!hasMessages}
+          disabled={!canStartNew}
           aria-label="New chat"
           className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
@@ -790,7 +859,7 @@ const EMPTY_ARTIFACT_IDS: string[] = [];
 interface PendingFile {
   id: string;
   file: File;
-  /** Object URL — revoke on remove/send to free memory. */
+  /** Object URL — revoke on remove/discard/successful send, never on switch. */
   preview: string;
   uploading: boolean;
   error?: string;
@@ -799,6 +868,39 @@ interface PendingFile {
   size: number;
   /** Set once upload completes; undefined while in-flight or errored. */
   s3Path?: string;
+}
+
+function useDraftUserId(override: string | null | undefined): string | null {
+  const { data: session } = useSession();
+  return override !== undefined ? override : (session?.user?.id ?? null);
+}
+
+function toPendingAttachment(file: PendingFile): PendingAttachment {
+  return {
+    id: file.id,
+    preview: file.preview,
+    filename: file.filename,
+    mimeType: file.mimeType,
+    size: file.size,
+    uploading: file.uploading,
+    error: file.error,
+    s3Path: file.s3Path,
+    file: file.file,
+  };
+}
+
+function fromPendingAttachment(file: PendingAttachment): PendingFile {
+  return {
+    id: file.id,
+    file: file.file ?? new File([], file.filename, { type: file.mimeType }),
+    preview: file.preview,
+    uploading: file.uploading,
+    error: file.error,
+    filename: file.filename,
+    mimeType: file.mimeType,
+    size: file.size,
+    s3Path: file.s3Path,
+  };
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -816,6 +918,14 @@ interface SidebarChatInputProps {
   workspaceId: string;
   /** Fallback org id when workspaceId is absent (org canvas context). */
   orgId?: string;
+  /**
+   * Stable Zustand slot id. The parent remounts with `key={activeId}` so
+   * save runs on unmount and restore runs on mount — never a sync effect
+   * that closes over `input`.
+   */
+  activeId?: string | null;
+  /** Signed-in user id for the draft key. Omit in tests that don't mock the session. */
+  draftUserId?: string | null;
 }
 
 /**
@@ -829,13 +939,30 @@ interface SidebarChatInputProps {
  * sharing would require ugly conditionals (workspace pills, etc.).
  */
 const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProps>(function SidebarChatInput(
-  { onSend, disabled = false, workspaceId, orgId },
+  { onSend, disabled = false, workspaceId, orgId, activeId = null, draftUserId: draftUserIdProp },
   ref,
 ) {
-  const [input, setInput] = useState("");
-  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const draftUserId = useDraftUserId(draftUserIdProp);
+  const draftScope: DraftScope | null = activeId
+    ? { userId: draftUserId, scope: `org:${orgId ?? ""}`, conversationKey: activeId }
+    : null;
+  // Restore once, in the lazy initializer — mount only, never during a
+  // later render, and never from localStorage until the effect below
+  // (SSR / hydration must not touch storage).
+  const [input, setInput] = useState(() => (draftScope ? getDraft(draftScope) : ""));
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>(() =>
+    activeId ? getPendingAttachments(activeId).map(fromPendingAttachment) : [],
+  );
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Latest text/files for the unmount save. A sync effect that closed
+  // over `input` would write the wrong chat under React 18 Strict Mode.
+  const latestRef = useRef({ input, pendingFiles, draftScope, activeId });
+  latestRef.current = { input, pendingFiles, draftScope, activeId };
+  const skipLiveSave = useRef(true);
+  // Set when a one-shot prefill is applied, so the live-save effect does
+  // not write `pendingInputDraft` into the per-chat map.
+  const prefillGuard = useRef<string | null>(null);
 
   // Grow with the content; the class list's `max-h` caps it and it
   // scrolls from there. `field-sizing: content` covers Chromium; this
@@ -896,12 +1023,47 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
     enabled: isSupported && !disabled,
   });
 
+  // Keep the slot's draft current while typing so history can list this
+  // unsaved chat before the composer unmounts. Not a sync effect that
+  // closes over a stale chat — `draftScope` is this mount's slot.
+  useEffect(() => {
+    if (!draftScope || !activeId) return;
+    if (skipLiveSave.current) {
+      skipLiveSave.current = false;
+      return;
+    }
+    if (prefillGuard.current !== null && input === prefillGuard.current) {
+      prefillGuard.current = null;
+      return;
+    }
+    setDraft(draftScope, input);
+    setPendingAttachments(activeId, pendingFiles.map(toPendingAttachment));
+    useCanvasChatStore.getState?.().bumpDraftRevision?.();
+  }, [input, pendingFiles, activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Reload restore ────────────────────────────────────────────────
+  // A saved chat reopened after reload has a new slot id. Copy the
+  // server-id localStorage entry into this slot's memory key once.
+  // `pendingInputDraft` is not written into the map.
+  useEffect(() => {
+    if (!draftScope || !activeId) return;
+    const serverId = useCanvasChatStore.getState?.().conversations?.[activeId]?.serverConversationId ?? null;
+    const restored = restoreDraftFromServerId(draftScope, serverId);
+    if (restored) setInput(restored);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
   // ─── Pending-draft consumption ─────────────────────────────────────
+  // One-shot prefill. Runs after restore. Empty string only focuses and
+  // does not clobber a restored draft. A non-empty Connections prefill
+  // applies to this (newly active) composer only — not the draft map.
   const pendingDraft = useCanvasChatStore((s) => s.pendingInputDraft);
   useEffect(() => {
     if (pendingDraft === null) return;
-    // An empty draft only asks for focus; the text already there stays.
-    if (pendingDraft) setInput(pendingDraft);
+    if (pendingDraft) {
+      prefillGuard.current = pendingDraft;
+      setInput(pendingDraft);
+    }
     requestAnimationFrame(() => {
       const el = inputRef.current;
       if (el) {
@@ -909,16 +1071,28 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
         el.selectionStart = el.selectionEnd = el.value.length;
       }
     });
-    useCanvasChatStore.getState().setPendingInputDraft(null);
+    useCanvasChatStore.getState?.().setPendingInputDraft?.(null);
   }, [pendingDraft]);
 
-  // ─── Unmount cleanup — revoke all preview object URLs ──────────────
+  // ─── Unmount save ───────────────────────────────────────────────────
+  // Keep the draft and file bag for this slot. Do not revoke preview
+  // URLs — the user may switch back. Discard and a successful send revoke.
   useEffect(() => {
     return () => {
-      setPendingFiles((prev) => {
-        prev.forEach((f) => URL.revokeObjectURL(f.preview));
-        return [];
-      });
+      const latest = latestRef.current;
+      if (!latest.draftScope || !latest.activeId) return;
+      const text = latest.input === prefillGuard.current ? "" : latest.input;
+      prefillGuard.current = null;
+      setDraft(latest.draftScope, text);
+      // Mirror onto the server id so a reload (new slot, known server id)
+      // can restore. The live composer keeps looking up the slot id.
+      const serverId = useCanvasChatStore.getState?.().conversations?.[latest.activeId]?.serverConversationId;
+      if (serverId && serverId !== latest.activeId) {
+        setDraft({ ...latest.draftScope, conversationKey: serverId }, text);
+        flushDraftPersistence({ ...latest.draftScope, conversationKey: serverId });
+      }
+      setPendingAttachments(latest.activeId, latest.pendingFiles.map(toPendingAttachment));
+      useCanvasChatStore.getState?.().bumpDraftRevision?.();
     };
   }, []);
 
@@ -1011,15 +1185,37 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
         mimeType: f.mimeType,
         size: f.size,
       }));
+    const filesAtSend = pendingFiles;
 
-    // Revoke preview URLs and clear pending files
-    pendingFiles.forEach((f) => URL.revokeObjectURL(f.preview));
-    setPendingFiles([]);
-    setInput(""); // clear immediately on send
-
-    await onSend(message, attachments, () => {
+    // Leave the composer populated. `clearInput` runs only when send
+    // succeeds (HTTP ok / first stream chunk via `onResponseStart`). A
+    // throw or POST failure leaves the text and files so the user can retry.
+    try {
+      await onSend(message, attachments, () => {
+      filesAtSend.forEach((f) => {
+        try {
+          URL.revokeObjectURL(f.preview);
+        } catch {
+          // already revoked
+        }
+      });
+      if (activeId) {
+        setPendingAttachments(activeId, []);
+        const serverId = useCanvasChatStore.getState?.().conversations?.[activeId]?.serverConversationId ?? null;
+        clearSlotDraft(
+          { userId: draftUserId, scope: `org:${orgId ?? ""}` },
+          activeId,
+          serverId,
+        );
+      }
+      setPendingFiles([]);
+      setInput("");
+      useCanvasChatStore.getState?.().bumpDraftRevision?.();
       inputRef.current?.focus();
     });
+    } catch {
+      // Failed send leaves the composer populated so the user can retry.
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

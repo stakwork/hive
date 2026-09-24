@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCanvasChatStore, type ConversationContext } from "@/app/org/[githubLogin]/_state/canvasChatStore";
-import { openOrgConversation } from "@/app/org/[githubLogin]/_state/openOrgConversation";
+import { openControlPanelChat, openOrgConversation } from "@/app/org/[githubLogin]/_state/openOrgConversation";
 
 const context: ConversationContext = {
   orgId: "org-1",
@@ -98,6 +98,30 @@ describe("openOrgConversation", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(useCanvasChatStore.getState().conversations[held].title).toBe("Held title");
+  });
+
+  it("openControlPanelChat switches a local slot and never GETs it", async () => {
+    const store = useCanvasChatStore.getState();
+    const local = store.startConversation(context, [], undefined, 0);
+    store.startConversation(context, [], undefined, 0, "srv-other");
+
+    const opened = await openControlPanelChat("acme", local, { syncUrl: true, markSeen: true });
+
+    expect(opened).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useCanvasChatStore.getState().activeConversationId).toBe(local);
+  });
+
+  it("switches a local conv-* slot without fetching", async () => {
+    const store = useCanvasChatStore.getState();
+    const local = store.startConversation(context, [userMessage("u1")]);
+
+    const opened = await openOrgConversation("acme", local);
+
+    expect(opened).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useCanvasChatStore.getState().activeConversationId).toBe(local);
+    expect(new URLSearchParams(window.location.search).get("chat")).toBeNull();
   });
 
   it("returns false and leaves the store alone when the fetch fails", async () => {

@@ -423,6 +423,8 @@ interface CanvasChatState {
    * (the control panel's "New chat" uses it).
    */
   pendingInputDraft: string | null;
+  /** Bumped when a composer saves or clears a per-chat draft, so header actions re-render. */
+  draftRevision: number;
 
   // ─── Canvas viewport (written by OrgCanvasBackground on every pan/zoom) ─
   /**
@@ -496,6 +498,11 @@ interface CanvasChatState {
     title?: string | null,
   ) => string;
   setActiveConversation: (conversationId: string | null) => void;
+  /**
+   * Drop a local slot entirely (explicit Discard). Does not start a
+   * replacement — the caller focuses a fresh empty composer.
+   */
+  removeConversation: (conversationId: string) => void;
   /** Record a turn id this client just sent (see `locallyAuthoredTurnIds`). */
   markTurnAuthored: (turnId: string) => void;
   /** Update the context of the active conversation (canvas-scope changes). */
@@ -553,6 +560,8 @@ interface CanvasChatState {
    * after consumption — callers usually shouldn't need to clear).
    */
   setPendingInputDraft: (draft: string | null) => void;
+  /** Tell header actions the per-chat draft/file bag changed. */
+  bumpDraftRevision: () => void;
 
   // ─── Canvas deeplink ─────────────────────────────────────────────────
   /**
@@ -602,6 +611,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       ephemeralSeedCounts: {},
       locallyAuthoredTurnIds: new Set<string>(),
       pendingInputDraft: null,
+      draftRevision: 0,
       pendingDeeplink: null,
       canvasViewport: null,
       proposals: {},
@@ -639,6 +649,25 @@ export const useCanvasChatStore = create<CanvasChatState>()(
 
       setActiveConversation: (conversationId) =>
         set({ activeConversationId: conversationId }, false, "setActiveConversation"),
+
+      removeConversation: (conversationId) =>
+        set(
+          (s) => {
+            if (!s.conversations[conversationId]) return s;
+            const nextConversations = { ...s.conversations };
+            delete nextConversations[conversationId];
+            const nextSeedCounts = { ...s.ephemeralSeedCounts };
+            delete nextSeedCounts[conversationId];
+            return {
+              conversations: nextConversations,
+              activeConversationId:
+                s.activeConversationId === conversationId ? null : s.activeConversationId,
+              ephemeralSeedCounts: nextSeedCounts,
+            };
+          },
+          false,
+          "removeConversation",
+        ),
 
       markTurnAuthored: (turnId) =>
         set(
@@ -946,6 +975,8 @@ export const useCanvasChatStore = create<CanvasChatState>()(
         ),
 
       setPendingInputDraft: (draft) => set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
+      bumpDraftRevision: () =>
+        set((s) => ({ draftRevision: s.draftRevision + 1 }), false, "bumpDraftRevision"),
 
       triggerDeeplink: (dl) => set({ pendingDeeplink: dl }, false, "triggerDeeplink"),
 

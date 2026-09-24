@@ -30,6 +30,10 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({ id: "ws-1" }),
 }));
 
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: { user: { id: "user-1" } } }),
+}));
+
 // ── Canvas chat store mock ────────────────────────────────────────────────────
 // Default store state — overridden in scroll tests
 let mockStoreState = {
@@ -38,6 +42,7 @@ let mockStoreState = {
   artifacts: {} as Record<string, unknown>,
   dismissedArtifactIds: {} as Record<string, boolean>,
   pendingInputDraft: null as string | null,
+  draftRevision: 0,
 };
 
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
@@ -216,14 +221,14 @@ vi.mock("framer-motion", () => ({
 // Lazy import AFTER all mocks are set up
 async function renderSidebarChat() {
   const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-  return render(<SidebarChat githubLogin="test-org" />);
+  return render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
 }
 
 // The header's actions (activity dot, Share, Fork, New chat) live in
 // `SidebarChatActions`, which the org page places in its own bar.
 async function renderSidebarChatActions() {
   const { SidebarChatActions } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-  return render(<SidebarChatActions githubLogin="test-org" />);
+  return render(<SidebarChatActions githubLogin="test-org" draftUserId={null} />);
 }
 
 // The header's token counter — `OrgRightPanel` renders it beside
@@ -271,6 +276,7 @@ function buildTokenUsageStoreState(messages: Array<{ id: string; usage?: Record<
     artifacts: {},
     dismissedArtifactIds: {},
     pendingInputDraft: null,
+      draftRevision: 0,
   };
 }
 
@@ -283,6 +289,7 @@ describe("SidebarChat header — TokenCounter", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     };
   });
 
@@ -361,6 +368,7 @@ function buildStoreState(messages: (typeof SAMPLE_MESSAGE)[]) {
     artifacts: {},
     dismissedArtifactIds: {},
     pendingInputDraft: null,
+      draftRevision: 0,
   };
 }
 
@@ -384,6 +392,7 @@ describe("SidebarChat — scroll behaviour", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     };
   });
 
@@ -394,7 +403,7 @@ describe("SidebarChat — scroll behaviour", () => {
 
   it("suppresses auto-scroll after user scrolls up", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
 
     // Find the scroll container (the overflow-y-auto div)
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
@@ -422,7 +431,7 @@ describe("SidebarChat — scroll behaviour", () => {
     // since userScrolledUp is now true, scrollIntoView should NOT be called.
     act(() => {
       mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
 
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
@@ -496,12 +505,13 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     };
   });
 
   it("click (mousedown → mouseup, no move) does NOT suppress auto-scroll", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Simulate a click: mousedown then mouseup with no mousemove
@@ -517,7 +527,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
     // Trigger a re-render via new message
     act(() => {
       mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
 
     expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
@@ -525,7 +535,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
 
   it("drag (mousedown → mousemove) suppresses auto-scroll", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Simulate a drag: mousedown then mousemove
@@ -541,7 +551,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
     // Trigger a re-render — drag should suppress scroll
     act(() => {
       mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
 
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
@@ -549,7 +559,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
 
   it("resumes auto-scroll after mouseup on window ends the drag", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Start a drag
@@ -570,7 +580,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
     // Trigger re-render — drag ended, scroll should resume
     act(() => {
       mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
 
     expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
@@ -578,7 +588,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
 
   it("blur on window resets drag flag and resumes auto-scroll", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Start a drag
@@ -599,7 +609,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
     // Trigger re-render — flag reset, scroll should resume
     act(() => {
       mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
 
     expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
@@ -607,7 +617,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
 
   it("visibilitychange on document resets drag flag and resumes auto-scroll", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Start a drag
@@ -628,7 +638,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
     // Trigger re-render — flag reset, scroll should resume
     act(() => {
       mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
 
     expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
@@ -636,7 +646,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
 
   it("activeId change resets drag flag so new conversation scrolls to bottom", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Start a drag in conversation conv-1
@@ -666,8 +676,9 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
         artifacts: {},
         dismissedArtifactIds: {},
         pendingInputDraft: null,
+      draftRevision: 0,
       } as typeof mockStoreState;
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
 
     // The drag flag was reset by the activeId effect — scroll should fire
@@ -676,7 +687,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
 
   it("selection guard (hasSelection) suppresses auto-scroll without drag", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    const { rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const { rerender } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
 
     // Stub getSelection to return a non-collapsed selection
     const getSelectionSpy = vi.spyOn(window, "getSelection").mockReturnValue({
@@ -688,7 +699,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
     // Trigger re-render with no drag in progress
     act(() => {
       mockStoreState = buildStoreState([SAMPLE_MESSAGE, SECOND_MESSAGE]) as typeof mockStoreState;
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
 
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
@@ -698,7 +709,7 @@ describe("SidebarChat — drag-guard scroll behaviour", () => {
 
   it("StreamScrollIndicator manual scroll fires scrollIntoView even during a drag", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    const { container } = render(<SidebarChat githubLogin="test-org" />);
+    const { container } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     const scrollEl = container.querySelector(".overflow-y-auto") as HTMLElement;
 
     // Simulate scroll-up so the StreamScrollIndicator button appears
@@ -763,6 +774,7 @@ describe("SidebarChat — handleClear strips ?chat= param", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     } as typeof mockStoreState;
 
     // Patch getState on the mock so handleClear can call useCanvasChatStore.getState()
@@ -793,6 +805,7 @@ describe("SidebarChat — handleClear strips ?chat= param", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     };
   });
 
@@ -859,12 +872,13 @@ describe("SidebarChat — DailyRecapCard placement", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     };
   });
 
   it("renders exactly one DailyRecapCard on initial load with no messages", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    render(<SidebarChat githubLogin="test-org" />);
+    render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
 
     const cards = screen.getAllByTestId("daily-recap-card");
     expect(cards).toHaveLength(1);
@@ -872,7 +886,7 @@ describe("SidebarChat — DailyRecapCard placement", () => {
 
   it("renders DailyRecapCard before the empty-state placeholder in DOM order", async () => {
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    const { container } = render(<SidebarChat githubLogin="test-org" />);
+    const { container } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
 
     const card = container.querySelector("[data-testid='daily-recap-card']");
     const placeholder = screen.getByText(`Message ${jamieName}`);
@@ -897,10 +911,11 @@ describe("SidebarChat — DailyRecapCard placement", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     };
 
     const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
-    render(<SidebarChat githubLogin="test-org" />);
+    render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
 
     const cards = screen.getAllByTestId("daily-recap-card");
     expect(cards).toHaveLength(1);
@@ -936,6 +951,7 @@ describe("SidebarChat — Fork chat button", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     }) as typeof mockStoreState;
 
   beforeEach(async () => {
@@ -994,6 +1010,7 @@ describe("SidebarChat — Fork chat button", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     };
   });
 
@@ -1019,6 +1036,7 @@ describe("SidebarChat — Fork chat button", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     } as typeof mockStoreState;
 
     await renderSidebarChatActions();
@@ -1192,6 +1210,7 @@ function buildAgentTurnsStoreState(agentTurnsInProgress: number, activeToolCalls
     artifacts: {},
     dismissedArtifactIds: {},
     pendingInputDraft: null,
+      draftRevision: 0,
   } as typeof mockStoreState;
 }
 
@@ -1208,6 +1227,7 @@ describe("SidebarChat — thinking dots (agentTurnsInProgress gate)", () => {
       artifacts: {},
       dismissedArtifactIds: {},
       pendingInputDraft: null,
+      draftRevision: 0,
     };
   });
 
@@ -1240,7 +1260,7 @@ describe("SidebarChat — thinking dots (agentTurnsInProgress gate)", () => {
 
     // Phase 1: turn in progress, streaming text — dots visible.
     mockStoreState = buildAgentTurnsStoreState(1, []);
-    const { container, rerender } = render(<SidebarChat githubLogin="test-org" />);
+    const { container, rerender } = render(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     expect(container.querySelector("[data-testid='thinking-dots']")).not.toBeNull();
 
     // Phase 2: a tool call becomes active — dots hidden.
@@ -1248,21 +1268,21 @@ describe("SidebarChat — thinking dots (agentTurnsInProgress gate)", () => {
       mockStoreState = buildAgentTurnsStoreState(1, [
         { id: "tc-1", toolName: "web_search", status: "input-available" },
       ]);
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
     expect(container.querySelector("[data-testid='thinking-dots']")).toBeNull();
 
     // Phase 3: tool call finishes, back to text streaming — dots visible again.
     act(() => {
       mockStoreState = buildAgentTurnsStoreState(1, []);
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
     expect(container.querySelector("[data-testid='thinking-dots']")).not.toBeNull();
 
     // Phase 4: turn settles fully — dots hidden.
     act(() => {
       mockStoreState = buildAgentTurnsStoreState(0, []);
-      rerender(<SidebarChat githubLogin="test-org" />);
+      rerender(<SidebarChat githubLogin="test-org" draftUserId={null} />);
     });
     expect(container.querySelector("[data-testid='thinking-dots']")).toBeNull();
   });

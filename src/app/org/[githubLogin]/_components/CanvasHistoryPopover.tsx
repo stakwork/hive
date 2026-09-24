@@ -6,7 +6,47 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ConversationListItem } from "@/types/shared-conversation";
 import { UNTITLED_CONVERSATION } from "@/lib/ai/conversationHelpers";
+import { getDraft, slotHasAttachments } from "@/lib/conversationDrafts";
+import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { openOrgConversation, startNewOrgConversation } from "../_state/openOrgConversation";
+
+/** A history row that exists only in this tab. `id` is a synthetic key, never a `conv-*` server id. */
+export interface LocalHistoryItem extends ConversationListItem {
+  local: true;
+  localId: string;
+}
+
+function isLocalHistoryItem(item: ConversationListItem | LocalHistoryItem): item is LocalHistoryItem {
+  return (item as LocalHistoryItem).local === true;
+}
+
+function unsavedHistoryRows(githubLogin: string): LocalHistoryItem[] {
+  const { conversations } = useCanvasChatStore.getState();
+  const scope = { userId: null, scope: `org:${githubLogin}` };
+  const rows: LocalHistoryItem[] = [];
+  for (const conv of Object.values(conversations)) {
+    if (conv.serverConversationId) continue;
+    const draft = getDraft({ ...scope, conversationKey: conv.id });
+    const hasFiles = slotHasAttachments(conv.id);
+    const hasMessages = (conv.messages?.length ?? 0) > 0;
+    if (!draft && !hasFiles && !hasMessages) continue;
+    const preview = draft || (hasFiles ? "Unsent attachment" : null);
+    rows.push({
+      local: true,
+      localId: conv.id,
+      id: `local:${conv.id}`,
+      title: draft ? null : hasMessages ? conv.title : null,
+      lastMessageAt: new Date().toISOString(),
+      preview,
+      source: "org-canvas",
+      isShared: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      unread: false,
+    });
+  }
+  return rows;
+}
 
 interface CanvasHistoryPopoverProps {
   githubLogin: string;
@@ -30,9 +70,16 @@ export function formatRelativeTime(dateStr: string | null): string {
 
 export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps) {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<ConversationListItem[]>([]);
+  const [items, setItems] = useState<Array<ConversationListItem | LocalHistoryItem>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
+  const draftRevision = useCanvasChatStore((s) => s.draftRevision ?? 0);
+  const storeSlots = useCanvasChatStore((s) =>
+    Object.values(s.conversations)
+      .filter((conv) => !conv.serverConversationId)
+      .map((conv) => conv.id)
+      .join(","),
+  );
 
   const fetchList = useCallback(async () => {
     setIsLoading(true);
@@ -40,14 +87,17 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
       const res = await fetch(`/api/orgs/${githubLogin}/chat/conversations?limit=10`);
       if (res.ok) {
         const data = await res.json();
-        setItems(data.items ?? []);
+        // Overlay after fetch. Synthetic ids stay out of ConversationListItem.id.
+        const local = unsavedHistoryRows(githubLogin);
+        const server: ConversationListItem[] = data.items ?? [];
+        setItems([...local, ...server]);
       }
     } catch {
       // silently fail
     } finally {
       setIsLoading(false);
     }
-  }, [githubLogin]);
+  }, [githubLogin, draftRevision, storeSlots]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -56,7 +106,12 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
     }
   };
 
-  const handleItemClick = async (item: ConversationListItem) => {
+  const handleItemClick = async (item: ConversationListItem | LocalHistoryItem) => {
+    if (isLocalHistoryItem(item)) {
+      useCanvasChatStore.getState().setActiveConversation(item.localId);
+      setOpen(false);
+      return;
+    }
     setLoadingItemId(item.id);
     try {
       // Hydrates the store, syncs `?chat=<id>` (shareable, survives a

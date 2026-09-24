@@ -17,6 +17,12 @@ import type { ModelMessage } from "ai";
 import { ToolCallIndicator } from "./ToolCallIndicator";
 import { Sparkles, BookOpen, Share2, X, EyeOff } from "lucide-react";
 import { RecentChatsPopup, type LoadConversationParams } from "./RecentChatsPopup";
+import {
+  NEW_CONVERSATION_KEY,
+  clearDraft,
+  getDraft,
+  type DraftScope,
+} from "@/lib/conversationDrafts";
 
 interface ToolCall {
   id: string;
@@ -83,6 +89,11 @@ export function DashboardChat({
   const [isLoading, setIsLoading] = useState(false);
   const [isReadOnly, setIsReadOnly] = useState(false);
   const conversationIdRef = useRef<string | null>(null);
+  // State-backed identity for the composer. The ref stays for send (it
+  // must not wait on a render), but ChatInput keys off this so a load
+  // restores that chat's draft instead of leaking the previous textarea.
+  const [conversationKey, setConversationKey] = useState<string>(NEW_CONVERSATION_KEY);
+  const [draftTick, setDraftTick] = useState(0);
   const [showFeatureModal, setShowFeatureModal] = useState(false);
   const [extractedData, setExtractedData] = useState<{ title: string; description: string } | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -205,6 +216,10 @@ export function DashboardChat({
       const data = await res.json();
       if (data?.id) {
         conversationIdRef.current = data.id;
+        // The ask is in flight on this new row. Move the composer key so
+        // a mid-stream keystroke lands on the saved chat, not `__new__`.
+        // `__new__` itself is cleared only when the ask succeeds.
+        setConversationKey(data.id);
         return data.id as string;
       }
       return null;
@@ -453,6 +468,19 @@ export function DashboardChat({
           hasReceivedContentRef.current = true;
           setIsLoading(false);
           clearInput(); // Clear input when response starts
+          // Successful ask — drop the unsaved `__new__` draft and the
+          // saved chat's draft. A failed ask never reaches here, so the
+          // composer text stays for a retry. Do not roll back the row
+          // `autoSaveCreate` already POSTed.
+          const userId = (session?.user as { id?: string } | undefined)?.id ?? null;
+          if (slug) {
+            const scope = { userId, scope: `ws:${slug}` };
+            clearDraft({ ...scope, conversationKey: NEW_CONVERSATION_KEY });
+            if (conversationIdRef.current) {
+              clearDraft({ ...scope, conversationKey: conversationIdRef.current });
+            }
+            setDraftTick((n) => n + 1);
+          }
         }
 
         // Use timeline to split messages at tool call boundaries
@@ -590,14 +618,23 @@ export function DashboardChat({
   };
 
   const handleClearAll = () => {
+    const userId = (session?.user as { id?: string } | undefined)?.id ?? null;
+    if (slug) {
+      clearDraft({ userId, scope: `ws:${slug}`, conversationKey: conversationKey });
+      if (conversationIdRef.current && conversationIdRef.current !== conversationKey) {
+        clearDraft({ userId, scope: `ws:${slug}`, conversationKey: conversationIdRef.current });
+      }
+    }
     setMessages([]);
     setFollowUpQuestions([]);
     setProvenanceData(null);
     setIsProvenanceSidebarOpen(false);
     setExtraWorkspaceSlugs([]);
     conversationIdRef.current = null;
+    setConversationKey(NEW_CONVERSATION_KEY);
     assistantMsgsRef.current = [];
     setIsReadOnly(false);
+    setDraftTick((n) => n + 1);
   };
 
   const handleImageUpload = (imageData: string) => {
@@ -630,10 +667,18 @@ export function DashboardChat({
     extraWorkspaceSlugs: loadedSlugs,
     conversationId,
     isReadOnly: readOnly,
+    local,
   }: LoadConversationParams) => {
     setMessages(loadedMessages as Message[]);
     setExtraWorkspaceSlugs(loadedSlugs);
     conversationIdRef.current = conversationId;
+    // A local unsaved row restores `__new__`. A null id on a server row
+    // is a read-only view of someone else's chat — not the unsaved composer.
+    setConversationKey(
+      local || conversationId === null && loadedMessages.length === 0 && !readOnly
+        ? NEW_CONVERSATION_KEY
+        : conversationId ?? `readonly:${loadedMessages[0]?.id ?? "view"}`,
+    );
     setIsReadOnly(readOnly);
     setFollowUpQuestions([]);
     setProvenanceData(null);
@@ -890,6 +935,12 @@ export function DashboardChat({
   // const assistantMessages = messages.filter((m) => m.role === "assistant");
   // const hasAssistantMessages = assistantMessages.length > 0;
   const hasMessages = messages.length > 0;
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
+  const draftScope: DraftScope | null = slug
+    ? { userId: currentUserId, scope: `ws:${slug}`, conversationKey }
+    : null;
+  const hasUnsavedDraft = !!draftScope && (getDraft(draftScope).length > 0 || draftTick < 0);
+  const showHistoryActions = hasMessages || hasUnsavedDraft;
 
   // Check if provenance has any files to show
   const hasProvenanceFiles =
@@ -968,9 +1019,9 @@ export function DashboardChat({
           either write to the workspace or expose private data; they
           are hidden for public viewers. The Sources pill and Clear
           remain available — both are local to the in-progress chat. */}
-      {hasMessages && (
+      {showHistoryActions && (
         <div className="pointer-events-auto flex items-center gap-2 justify-center pb-1 flex-wrap">
-          {!isPublicViewer && (
+          {hasMessages && !isPublicViewer && (
             <button
               type="button"
               onClick={handleOpenFeatureModal}
@@ -995,7 +1046,7 @@ export function DashboardChat({
               Sources
             </button>
           )}
-          {!isPublicViewer && (
+          {hasMessages && !isPublicViewer && (
             <button
               type="button"
               onClick={handleShare}
@@ -1006,11 +1057,19 @@ export function DashboardChat({
               Share
             </button>
           )}
-          {!isPublicViewer && slug && session?.user && (session.user as { id?: string }).id && (
+          {!isPublicViewer && slug && currentUserId && (
             <RecentChatsPopup
               slug={slug}
-              currentUserId={(session.user as { id: string }).id}
+              currentUserId={currentUserId}
               onLoadConversation={handleLoadConversation}
+              unsavedDraft={
+                getDraft({
+                  userId: currentUserId,
+                  scope: `ws:${slug}`,
+                  conversationKey: NEW_CONVERSATION_KEY,
+                }) || null
+              }
+              unsavedActive={conversationKey === NEW_CONVERSATION_KEY}
             />
           )}
           <button
@@ -1037,6 +1096,9 @@ export function DashboardChat({
       {/* Input field */}
       <div className="pointer-events-auto shrink-0">
         <ChatInput
+          conversationKey={conversationKey}
+          draftScope={draftScope}
+          onDraftChange={() => setDraftTick((n) => n + 1)}
           onSend={handleSend}
           disabled={isLoading || isReadOnly}
           imageData={currentImageData}
