@@ -143,54 +143,190 @@ describe("StrutView", () => {
   });
 
   describe("deep links", () => {
-    it("forwards the page's deep-link params to the frame, and nothing else", async () => {
-      window.history.replaceState(null, "", "/org/test-org/strut?wf=clip&run=123&chat=c1&key=nope&tab=x");
+    /** The strut deep link the Hive URL currently carries, decoded. */
+    function hereLink() {
+      return new URLSearchParams(new URLSearchParams(window.location.search).get("strut") ?? "");
+    }
+    function hereParams() {
+      return new URLSearchParams(window.location.search);
+    }
+    function packed(link: Record<string, string>) {
+      return encodeURIComponent(new URLSearchParams(link).toString());
+    }
+
+    it("forwards ?strut= to the frame as strut's own params, and nothing else of ours", async () => {
+      window.history.replaceState(
+        null,
+        "",
+        `/org/test-org/strut?strut=${packed({ wf: "clip", run: "123", chat: "c1" })}&key=nope&tab=x`,
+      );
       render(<StrutView githubLogin="test-org" />);
       const p = frameParams((await screen.findByTitle("Strut")) as HTMLIFrameElement);
       expect(p.get("wf")).toBe("clip");
       expect(p.get("run")).toBe("123");
       expect(p.get("chat")).toBe("c1");
       expect(p.get("key")).toBe("jwt-1");
+      expect(p.get("embed_origin")).toBe(window.location.origin);
       expect(p.has("tab")).toBe(false);
+      expect(p.has("strut")).toBe(false);
     });
 
-    it("mirrors strut's location messages into the address bar without reloading the frame", async () => {
-      window.history.replaceState(null, "", "/org/test-org/strut?wf=old&tab=x");
+    it("mirrors strut's location into ?strut= without reloading the frame", async () => {
+      window.history.replaceState(null, "", `/org/test-org/strut?strut=${packed({ wf: "old" })}&tab=x`);
       render(<StrutView githubLogin="test-org" />);
       const iframe = (await screen.findByTitle("Strut")) as HTMLIFrameElement;
       const src = iframe.src;
 
-      act(() => postFromFrame({ type: "strut:location", params: { wf: "clip", run: "42" } }));
+      act(() => postFromFrame({ type: "strut:location", params: { wf: "digest", run: "1790179200000" } }));
 
-      const here = new URLSearchParams(window.location.search);
-      expect(here.get("wf")).toBe("clip");
-      expect(here.get("run")).toBe("42");
-      expect(here.get("tab")).toBe("x");
+      expect(hereParams().get("strut")).toBe("wf=digest&run=1790179200000");
+      expect(window.location.search).toContain("strut=wf%3Ddigest%26run%3D1790179200000");
+      expect(hereParams().get("tab")).toBe("x");
       expect(window.location.pathname).toBe("/org/test-org/strut");
       expect((screen.getByTitle("Strut") as HTMLIFrameElement).src).toBe(src);
     });
 
-    it("clears params strut no longer reports", async () => {
-      window.history.replaceState(null, "", "/org/test-org/strut?wf=clip&run=42");
-      render(<StrutView githubLogin="test-org" />);
+    it("round-trips a key it has never heard of (peer): message → URL → frame", async () => {
+      const { unmount } = render(<StrutView githubLogin="test-org" />);
       await screen.findByTitle("Strut");
-      act(() => postFromFrame({ type: "strut:location", params: { wf: "clip" } }));
-      expect(window.location.search).toBe("?wf=clip");
+      act(() => postFromFrame({ type: "strut:location", params: { peer: "swarm-2", wf: "clip" } }));
+      expect(hereLink().get("peer")).toBe("swarm-2");
+      expect(hereLink().get("wf")).toBe("clip");
+
+      // A reload: a fresh mount reads the Hive URL back onto the frame.
+      unmount();
+      render(<StrutView githubLogin="test-org" />);
+      const p = frameParams((await screen.findByTitle("Strut")) as HTMLIFrameElement);
+      expect(p.get("peer")).toBe("swarm-2");
+      expect(p.get("wf")).toBe("clip");
     });
 
-    it("ignores messages from other origins, other types, and non-string values", async () => {
+    it("carries elicit while strut reports it and drops it once it's gone", async () => {
+      render(<StrutView githubLogin="test-org" />);
+      await screen.findByTitle("Strut");
+      act(() => postFromFrame({ type: "strut:location", params: { chat: "c1", elicit: "e1" } }));
+      expect(hereLink().get("chat")).toBe("c1");
+      expect(hereLink().get("elicit")).toBe("e1");
+
+      act(() => postFromFrame({ type: "strut:location", params: { chat: "c1" } }));
+      expect(hereLink().get("chat")).toBe("c1");
+      expect(hereLink().has("elicit")).toBe(false);
+    });
+
+    it("never carries key or embed_origin, whatever strut posts or the link says", async () => {
+      window.history.replaceState(
+        null,
+        "",
+        `/org/test-org/strut?strut=${packed({ key: "k", embed_origin: "https://evil.test", wf: "clip" })}`,
+      );
+      const { unmount } = render(<StrutView githubLogin="test-org" />);
+      let p = frameParams((await screen.findByTitle("Strut")) as HTMLIFrameElement);
+      expect(p.get("key")).toBe("jwt-1");
+      expect(p.get("embed_origin")).toBe(window.location.origin);
+      expect(p.get("wf")).toBe("clip");
+
+      act(() =>
+        postFromFrame({
+          type: "strut:location",
+          params: { wf: "digest", key: "k", embed_origin: "https://evil.test" },
+        }),
+      );
+      expect(hereLink().get("wf")).toBe("digest");
+      expect(hereLink().has("key")).toBe(false);
+      expect(hereLink().has("embed_origin")).toBe(false);
+
+      unmount();
+      render(<StrutView githubLogin="test-org" />);
+      p = frameParams((await screen.findByTitle("Strut")) as HTMLIFrameElement);
+      expect(p.get("key")).toBe("jwt-1");
+      expect(p.get("embed_origin")).toBe(window.location.origin);
+      expect(p.get("wf")).toBe("digest");
+    });
+
+    it("ignores messages from other origins, other types, non-object params, and non-string values", async () => {
       render(<StrutView githubLogin="test-org" />);
       await screen.findByTitle("Strut");
       act(() => postFromFrame({ type: "strut:location", params: { wf: "evil" } }, "https://evil.test"));
       act(() => postFromFrame({ type: "other", params: { wf: "x" } }));
-      act(() => postFromFrame({ type: "strut:location", params: { wf: { no: 1 }, key: "k" } }));
+      act(() => postFromFrame({ type: "strut:location", params: "wf=x" }));
+      act(() => postFromFrame({ type: "strut:location", params: ["wf", "x"] }));
+      act(() => postFromFrame({ type: "strut:location", params: { wf: { no: 1 }, run: 42 } }));
+      act(() => postFromFrame({ type: "strut:location" }));
+      act(() => postFromFrame(null));
       expect(window.location.search).toBe("");
+
+      // Per entry: the string ones survive.
+      act(() => postFromFrame({ type: "strut:location", params: { wf: { no: 1 }, run: "42" } }));
+      expect(hereParams().get("strut")).toBe("run=42");
     });
 
-    it("re-mints onto the latest reported deep link", async () => {
+    it("bounds keys, values and the whole link", async () => {
+      const key32 = "a" + "b".repeat(31);
+      const key33 = "a" + "b".repeat(32);
       render(<StrutView githubLogin="test-org" />);
       await screen.findByTitle("Strut");
+      act(() =>
+        postFromFrame({
+          type: "strut:location",
+          params: {
+            WF: "upper",
+            "bad key": "space",
+            "a-b": "dash",
+            _x: "underscore first",
+            "9x": "digit first",
+            [key33]: "33 chars",
+            [key32]: "32 chars",
+            ok_1: "x".repeat(512),
+            long: "x".repeat(513),
+            empty: "",
+          },
+        }),
+      );
+      expect([...hereLink().keys()].sort()).toEqual([key32, "ok_1"]);
+
+      // Over 2048 serialized: the update is dropped, the last link stays.
+      const tooBig: Record<string, string> = {};
+      for (let i = 0; i < 5; i++) tooBig[`k${i}`] = "y".repeat(500);
+      act(() => postFromFrame({ type: "strut:location", params: tooBig }));
+      expect([...hereLink().keys()].sort()).toEqual([key32, "ok_1"]);
+    });
+
+    // Removable with the legacy block in StrutView (links from 2026-09-22
+    // until ?strut= carried the keys bare).
+    it("opens a legacy ?wf=&run= link and rewrites it to ?strut= on the first strut:location", async () => {
+      window.history.replaceState(null, "", "/org/test-org/strut?wf=clip&run=42&tab=x");
+      render(<StrutView githubLogin="test-org" />);
+      const p = frameParams((await screen.findByTitle("Strut")) as HTMLIFrameElement);
+      expect(p.get("wf")).toBe("clip");
+      expect(p.get("run")).toBe("42");
+
       act(() => postFromFrame({ type: "strut:location", params: { wf: "clip", run: "42" } }));
+      expect(hereParams().get("strut")).toBe("wf=clip&run=42");
+      expect(hereParams().has("wf")).toBe(false);
+      expect(hereParams().has("run")).toBe(false);
+      expect(hereParams().get("tab")).toBe("x");
+    });
+
+    it("prefers ?strut= over legacy bare keys when both are present", async () => {
+      window.history.replaceState(null, "", `/org/test-org/strut?strut=${packed({ wf: "new" })}&wf=old&run=1`);
+      render(<StrutView githubLogin="test-org" />);
+      const p = frameParams((await screen.findByTitle("Strut")) as HTMLIFrameElement);
+      expect(p.get("wf")).toBe("new");
+      expect(p.has("run")).toBe(false);
+    });
+
+    it("removes ?strut= on empty params and leaves other Hive params untouched", async () => {
+      window.history.replaceState(null, "", `/org/test-org/strut?strut=${packed({ wf: "clip" })}&tab=x`);
+      render(<StrutView githubLogin="test-org" />);
+      await screen.findByTitle("Strut");
+      act(() => postFromFrame({ type: "strut:location", params: {} }));
+      expect(window.location.search).toBe("?tab=x");
+    });
+
+    it("re-mints onto the latest reported link", async () => {
+      render(<StrutView githubLogin="test-org" />);
+      await screen.findByTitle("Strut");
+      act(() => postFromFrame({ type: "strut:location", params: { wf: "clip", run: "42", peer: "swarm-2" } }));
 
       fetchMock.mockResolvedValueOnce({
         ok: true,
@@ -202,7 +338,10 @@ describe("StrutView", () => {
       await waitFor(() => {
         const p = frameParams(screen.getByTitle("Strut") as HTMLIFrameElement);
         expect(p.get("key")).toBe("jwt-2");
+        expect(p.get("wf")).toBe("clip");
         expect(p.get("run")).toBe("42");
+        expect(p.get("peer")).toBe("swarm-2");
+        expect(p.get("embed_origin")).toBe(window.location.origin);
       });
     });
   });
