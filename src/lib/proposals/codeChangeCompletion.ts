@@ -94,6 +94,13 @@ export function parseCreatePrClaim(value: unknown): CreatePrClaim | null {
     ...(typeof c.proposalId === "string" && c.proposalId
       ? { proposalId: c.proposalId }
       : {}),
+    // Strut-landed claims (phase 2): the run ids ride along so the handler
+    // and the reconcile paths can tell which attempt a claim belongs to.
+    ...(c.runner === "strut" ? { runner: "strut" as const } : {}),
+    ...(typeof c.strutRunId === "string" && c.strutRunId
+      ? { strutRunId: c.strutRunId }
+      : {}),
+    ...(typeof c.swarmId === "string" && c.swarmId ? { swarmId: c.swarmId } : {}),
   };
 }
 
