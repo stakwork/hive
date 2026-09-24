@@ -11,43 +11,61 @@ interface StrutViewProps {
 }
 
 /**
- * The strut UI's deep-link params (`?wf` workflow, `?run`, `?v` version,
- * `?chat`). They ride on `/org/<slug>/strut` so a Hive link opens the same
- * view; never `key` / `embed_origin`, which are the embed's own.
+ * Strut's deep link rides on `/org/<slug>/strut` as ONE opaque param,
+ * `?strut=<its query>` (e.g. `?strut=wf%3Ddigest%26run%3D1`), so a Hive
+ * link reopens the same view. Strut owns the vocabulary (`wf`, `run`, `v`,
+ * `chat`, `elicit`, whatever comes next — `web/src/embed.ts`); Hive only
+ * carries what strut reported and hands it back, and never has to learn a
+ * key. The frame is untrusted content, so each pair is still bounded and
+ * the embed's own `key` / `embed_origin` are dropped unconditionally.
  */
-const DEEP_LINK_PARAMS = ["wf", "run", "v", "chat"] as const;
-type DeepLink = Partial<Record<(typeof DEEP_LINK_PARAMS)[number], string>>;
+const DEEP_LINK_PARAM = "strut";
+const KEY_RE = /^[a-z][a-z0-9_]{0,31}$/;
+const MAX_VALUE_LENGTH = 512;
+const MAX_LINK_LENGTH = 2048;
+const EMBED_PARAMS = new Set(["key", "embed_origin"]);
 
-function readDeepLink(search: string): DeepLink {
-  const p = new URLSearchParams(search);
-  const out: DeepLink = {};
-  for (const k of DEEP_LINK_PARAMS) {
-    const v = p.get(k);
-    if (v) out[k] = v;
+/**
+ * Legacy (removable): links minted between 2026-09-22 (stakwork/hive#5334)
+ * and the `?strut=` param carried these keys bare on the Hive URL.
+ */
+const LEGACY_PARAMS = ["wf", "run", "v", "chat"];
+
+function filterLink(entries: Iterable<[string, unknown]>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of entries) {
+    if (!KEY_RE.test(k) || EMBED_PARAMS.has(k)) continue;
+    if (typeof v !== "string" || !v || v.length > MAX_VALUE_LENGTH) continue;
+    out[k] = v;
   }
   return out;
+}
+
+function readDeepLink(search: string): Record<string, string> {
+  const here = new URLSearchParams(search);
+  const packed = here.get(DEEP_LINK_PARAM);
+  if (packed !== null) return filterLink(new URLSearchParams(packed));
+  return filterLink(LEGACY_PARAMS.map((k) => [k, here.get(k)]));
 }
 
 /**
  * The frame URL: the minted `/lab/?key=` plus the deep link, plus our origin
  * as `embed_origin` so strut posts its location changes back to us (and to no
- * one else).
+ * one else). Nothing else of our own query goes across.
  */
-function frameUrl(embedUrl: string, link: DeepLink): string {
+function frameUrl(embedUrl: string, link: Record<string, string>): string {
   const url = new URL(embedUrl);
   for (const [k, v] of Object.entries(link)) url.searchParams.set(k, v);
   url.searchParams.set("embed_origin", window.location.origin);
   return url.toString();
 }
 
-/** Mirror strut's deep link into our own address bar (no navigation). */
-function writeDeepLink(link: DeepLink) {
+/** Mirror strut's (serialized) deep link into our own address bar (no navigation). */
+function writeDeepLink(packed: string) {
   const url = new URL(window.location.href);
-  for (const k of DEEP_LINK_PARAMS) {
-    const v = link[k];
-    if (v) url.searchParams.set(k, v);
-    else url.searchParams.delete(k);
-  }
+  if (packed) url.searchParams.set(DEEP_LINK_PARAM, packed);
+  else url.searchParams.delete(DEEP_LINK_PARAM);
+  for (const k of LEGACY_PARAMS) url.searchParams.delete(k);
   if (url.href !== window.location.href) {
     window.history.replaceState(window.history.state, "", url);
   }
@@ -86,13 +104,14 @@ async function fetchEmbedUrl(githubLogin: string): Promise<string> {
  * when the user returns to the tab after the token has (nearly) expired.
  * The reload is cheap: strut reattaches its open chat from localStorage.
  *
- * Deep links: strut keeps `?wf / run / v / chat` in its own (iframe) URL,
- * which we can't see, so the two sides trade them. On load our params go
- * onto the frame URL; after that strut posts `strut:location` on every
- * change and we mirror it into our address bar — so the Hive URL is always
- * a link to what's on screen. The frame `src` is never recomputed from those
- * updates (that would reload strut on every click); a re-mint uses the
- * latest one, so the reload lands where the user was.
+ * Deep links: strut keeps its own deep link in its own (iframe) URL, which
+ * we can't see, so the two sides trade it. On load our `?strut=` goes onto
+ * the frame URL as strut's own params; after that strut posts
+ * `strut:location` on every change and we mirror it into `?strut=` — so
+ * the Hive URL is always a link to what's on screen. The frame `src` is
+ * never recomputed from those updates (that would reload strut on every
+ * click); a re-mint uses the latest one, so the reload lands where the
+ * user was.
  */
 export function StrutView({ githubLogin }: StrutViewProps) {
   const [src, setSrc] = useState<string | null>(null);
@@ -100,7 +119,7 @@ export function StrutView({ githubLogin }: StrutViewProps) {
   const [mintCount, setMintCount] = useState(0);
   const loadedAt = useRef<number | null>(null);
   // The latest deep link: our URL at mount, then whatever strut reports.
-  const deepLink = useRef<DeepLink | null>(null);
+  const deepLink = useRef<Record<string, string> | null>(null);
   if (deepLink.current === null && typeof window !== "undefined") {
     deepLink.current = readDeepLink(window.location.search);
   }
@@ -132,17 +151,14 @@ export function StrutView({ githubLogin }: StrutViewProps) {
     const handleMessage = (e: MessageEvent) => {
       if (e.origin !== frameOrigin) return;
       const data = e.data as { type?: unknown; params?: unknown } | null;
-      if (data?.type !== "strut:location" || typeof data.params !== "object" || !data.params) {
-        return;
-      }
-      const link: DeepLink = {};
-      const params = data.params as Record<string, unknown>;
-      for (const k of DEEP_LINK_PARAMS) {
-        const v = params[k];
-        if (typeof v === "string" && v) link[k] = v;
-      }
+      if (data?.type !== "strut:location") return;
+      const params = data.params;
+      if (typeof params !== "object" || params === null || Array.isArray(params)) return;
+      const link = filterLink(Object.entries(params));
+      const packed = new URLSearchParams(link).toString();
+      if (packed.length > MAX_LINK_LENGTH) return;
       deepLink.current = link;
-      writeDeepLink(link);
+      writeDeepLink(packed);
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
