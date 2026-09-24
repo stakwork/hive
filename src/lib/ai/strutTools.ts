@@ -57,9 +57,10 @@ const MAX_REPLY_CHARS = 20_000;
 const MAX_LISTED_CHATS = 30;
 
 /**
- * Resolve a workspace's strut lab (`resolveStrutTarget`, purpose "chat" —
- * today the workspace's own swarm), validating that the acting user can
- * access the workspace AND that it belongs to the active org — before any
+ * Resolve the strut for a workspace (`resolveStrutTarget`, purpose "chat" —
+ * today the ORG's default swarm, whichever workspace is named; the policy
+ * lives in `strut-target.ts`), validating that the acting user can reach
+ * that swarm's workspace AND that it belongs to the active org — before any
  * swarm credential is touched. `target.actor` is who strut bills: the
  * acting user's actor string — the macaroon `user_id` (`buildBifrostName`),
  * NOT the raw `User.id` — sent as `x-strut-actor`; mcp trusts it because
@@ -73,7 +74,9 @@ async function resolveStrut(ctx: CapabilityContext, workspaceSlug: string): Prom
       error:
         type === "WORKSPACE_NOT_FOUND" || type === "ACCESS_DENIED"
           ? `Workspace '${workspaceSlug}' not found, or you do not have access to it.`
-          : `Workspace '${workspaceSlug}' has no active swarm, so it has no strut.`,
+          : type === "NO_ORG_SWARM"
+            ? `No workspace in the org of '${workspaceSlug}' has an active swarm you can reach, so it has no strut.`
+            : `Workspace '${workspaceSlug}' has no active swarm, so it has no strut.`,
     };
   }
   if (resolved.target.orgId !== ctx.orgId) {
@@ -175,7 +178,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
   return {
     [DISPATCH_STRUT_TOOL]: tool({
       description:
-        "Dispatch a workspace's strut AI builder — the workflow-authoring agent on that workspace's swarm. " +
+        "Dispatch the org's strut AI builder — the workflow-authoring agent on the org's default swarm (one strut per org). " +
         "It builds and revises strut workflows and custom steps, runs them, and evaluates their runs (run logs, outputs, claims/evidence). " +
         "Omit `chatId` to start a NEW strut conversation; pass a `chatId` to CONTINUE one — strut keeps the whole transcript, so a follow-up can be short. " +
         "Runs in the BACKGROUND: this returns at once with the `chatId`, and strut's replies are posted into this conversation as they land — seconds to hours later, and possibly several (a long workflow run ends one reply with 'I'll report back' and the verdict arrives as a later one). " +
@@ -183,7 +186,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         "`status: 'busy'` means that chat is mid-turn — not a failure; wait for its reply, then continue. " +
         "Strut has a shell and can publish and run code on the swarm: dispatch only what the user asked for.",
       inputSchema: z.object({
-        workspace: z.string().describe("Slug of the workspace whose strut to dispatch."),
+        workspace: z.string().describe("Slug of the workspace the work is for — any workspace in the active org; it selects that org's strut."),
         title: z.string().min(1).describe("Short label for this dispatch, shown on the result in this conversation."),
         prompt: z
           .string()
@@ -216,8 +219,11 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         const callback = await setupCallback(ctx, {
           title,
           prompt,
+          // The RESOLVED workspace — the swarm the chat lives on, which the
+          // reply header shows and `check_strut_chat` resolves again — not
+          // necessarily the slug Jamie named (strut-target.ts).
           workspaceId: target.workspaceId,
-          workspaceSlug: workspace,
+          workspaceSlug: target.workspaceSlug,
           chatId,
         }).catch((e) => {
           console.error("[dispatch_strut] callback setup failed (non-fatal)", {
@@ -330,7 +336,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
       description:
         "Read a strut chat's current status and its latest reply. A fallback — strut's replies are normally posted into this conversation on their own. Use it when the user asks how a dispatch is going, or when a reply seems overdue (a swarm restart drops it).",
       inputSchema: z.object({
-        workspace: z.string().describe("Slug of the workspace whose strut hosts the chat."),
+        workspace: z.string().describe("The workspace slug from the chat's header line (any workspace in the active org reaches the same strut)."),
         chatId: z.string().describe("The strut chat id."),
       }),
       execute: async ({ workspace, chatId }) => {
@@ -362,9 +368,9 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
     }),
 
     list_strut_chats: tool({
-      description: "List a workspace's strut chats (newest first) — to find a chat id to continue or check.",
+      description: "List the org's strut chats (newest first) — to find a chat id to continue or check.",
       inputSchema: z.object({
-        workspace: z.string().describe("Slug of the workspace whose strut to list."),
+        workspace: z.string().describe("Slug of a workspace in the active org (it selects that org's strut)."),
       }),
       execute: async ({ workspace }) => {
         const target = await resolveStrut(ctx, workspace);
@@ -405,11 +411,11 @@ export function getStrutCapabilitySnippet(): string {
 
 ## Strut (workflow builder sub-agent)
 
-Each workspace's swarm hosts **strut**, a workflow engine with its own AI builder — an agent that authors strut workflows (YAML) and custom steps, runs them, and evaluates their runs (run logs, outputs, claims and evidence). You dispatch that builder; you do not write strut workflows yourself.
+Each org's default swarm hosts **strut**, a workflow engine with its own AI builder — an agent that authors strut workflows (YAML) and custom steps, runs them, and evaluates their runs (run logs, outputs, claims and evidence). You dispatch that builder; you do not write strut workflows yourself.
 
 ### Tools
 
-- **\`dispatch_strut({ workspace, title, prompt, chatId? })\`** — Send a message to a workspace's strut builder. Omit \`chatId\` to start a NEW strut chat; pass one to CONTINUE it (strut keeps the whole transcript). Returns immediately with the \`chatId\`.
+- **\`dispatch_strut({ workspace, title, prompt, chatId? })\`** — Send a message to the org's strut builder (\`workspace\` is the workspace the work is for; every workspace in the org reaches the same strut). Omit \`chatId\` to start a NEW strut chat; pass one to CONTINUE it (strut keeps the whole transcript). Returns immediately with the \`chatId\`.
 - **\`check_strut_chat({ workspace, chatId })\`** — Read a chat's status and latest reply. A fallback, not the normal path.
 - **\`list_strut_chats({ workspace })\`** — Find a chat id again.
 
