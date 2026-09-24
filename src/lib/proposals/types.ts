@@ -671,6 +671,15 @@ export const PROPOSE_CODE_CHANGE_TOOL = "propose_code_change" as const;
 export const CODE_CHANGE_PROPOSE_KIND = "code_change_propose" as const;
 export const CODE_CHANGE_PROPOSE_WORKFLOW = "code-change-propose" as const;
 
+/**
+ * The `StrutRun.kind` / strut workflow behind LANDING an approved code
+ * change (`services/strut-runs/code-change-land.ts`): strut checks the
+ * repo out, `git apply`s the approved bytes, pushes a branch as the
+ * approver and opens the PR with their token — no model in between.
+ */
+export const CODE_CHANGE_LAND_KIND = "code_change_land" as const;
+export const CODE_CHANGE_LAND_WORKFLOW = "code-change-land" as const;
+
 export type ProposeToolName =
   | typeof PROPOSE_INITIATIVE_TOOL
   | typeof PROPOSE_FEATURE_TOOL

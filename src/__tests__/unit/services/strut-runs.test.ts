@@ -24,6 +24,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
+import { Prisma } from "@prisma/client";
 
 const {
   mockStrutRun,
@@ -32,6 +33,7 @@ const {
   mockEnsureStrutDelegation,
   mockEnsureStrutActorSecrets,
   mockHandler,
+  mockLandHandler,
   mockDecrypt,
 } = vi.hoisted(() => ({
   mockStrutRun: {
@@ -46,6 +48,7 @@ const {
   mockEnsureStrutDelegation: vi.fn(),
   mockEnsureStrutActorSecrets: vi.fn(),
   mockHandler: vi.fn(),
+  mockLandHandler: vi.fn(),
   mockDecrypt: vi.fn((_f: string, v: string) => `dec(${v})`),
 }));
 
@@ -61,6 +64,7 @@ vi.mock("@/services/bifrost/strut-delegation", () => ({
 }));
 vi.mock("@/services/strut-actor-secret", () => ({ ensureStrutActorSecrets: mockEnsureStrutActorSecrets }));
 vi.mock("@/services/strut-runs/code-change-propose", () => ({ handleCodeChangeProposeSettled: mockHandler }));
+vi.mock("@/services/strut-runs/code-change-land", () => ({ handleCodeChangeLandSettled: mockLandHandler }));
 vi.mock("@/lib/encryption", () => ({ EncryptionService: { getInstance: () => ({ decryptField: mockDecrypt }) } }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
@@ -255,6 +259,23 @@ describe("dispatchStrutRun", () => {
     await expect(dispatchStrutRun({ ...dispatchArgs, kind: "nope" })).rejects.toThrow(/No strut-run handler/);
     expect(mockResolveStrutTarget).not.toHaveBeenCalled();
   });
+
+  it("an input function receives the row's id; its result is stored on the row before the launch and is what strut gets", async () => {
+    mockFetch.mockResolvedValue(json(202, { runId: "1790000000000", callback: true }));
+    const input = vi.fn((runId: string) => ({ repo: "https://github.com/acme/widgets", branch: `jamie/abc-${runId.slice(-6)}` }));
+
+    await dispatchStrutRun({ ...dispatchArgs, kind: "code_change_land", workflow: "code-change-land", input });
+
+    expect(input).toHaveBeenCalledWith("row-1");
+    expect(mockStrutRun.create.mock.calls[0][0].data.input).toBe(Prisma.DbNull);
+    expect(mockStrutRun.update.mock.calls[0][0]).toEqual({
+      where: { id: "row-1" },
+      data: { input: { repo: "https://github.com/acme/widgets", branch: "jamie/abc-row-1" } },
+    });
+    expect(mockStrutRun.update.mock.invocationCallOrder[0]).toBeLessThan(mockFetch.mock.invocationCallOrder[0]);
+    const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.input).toEqual({ repo: "https://github.com/acme/widgets", branch: "jamie/abc-row-1" });
+  });
 });
 
 describe("completeStrutRun", () => {
@@ -304,6 +325,14 @@ describe("completeStrutRun", () => {
     mockStrutRun.findUnique.mockResolvedValue(row({ status: "SUCCESS" }));
     mockHandler.mockRejectedValue(new Error("db down"));
     expect(await completeStrutRun({ id: "row-1", tokenHash: HASH }, { status: "success" })).toBe("retry");
+  });
+
+  it("code_change_land is a registered kind: its own handler runs on the settled row", async () => {
+    const settled = row({ kind: "code_change_land", workflow: "code-change-land", status: "SUCCESS", output: { url: "u" } });
+    mockStrutRun.findUnique.mockResolvedValue(settled);
+    expect(await completeStrutRun({ id: "row-1", tokenHash: HASH }, { status: "success", output: { url: "u" } })).toBe("claimed");
+    expect(mockLandHandler).toHaveBeenCalledWith(settled);
+    expect(mockHandler).not.toHaveBeenCalled();
   });
 
   it("unclaimed when the row is still PENDING afterwards (token mismatch)", async () => {
