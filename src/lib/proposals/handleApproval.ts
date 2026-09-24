@@ -25,7 +25,8 @@
  * assistant message's `approvalResult` field) or an error string the
  * route renders as the assistant text.
  */
-import { Prisma } from "@prisma/client";
+import crypto from "crypto";
+import { Prisma, StrutRunStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
   notifyCanvasUpdated,
@@ -64,6 +65,7 @@ import {
   PROPOSE_CREATE_TRIPLET_TOOL,
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
   PROPOSE_CODE_CHANGE_TOOL,
+  CODE_CHANGE_PROPOSE_KIND,
   type ApprovalIntent,
   type ApprovalResult,
   type FeatureProposalPayload,
@@ -450,6 +452,120 @@ export async function handleApproval(
  *   7. Classified admission failures delete the claim; unknown dispatch
  *      drops keep it, and the next approval attempt runs `reconcilePr`.
  */
+function sha256Hex(text: string): string {
+  return crypto.createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/**
+ * The bytes approval dispatches. With a `StrutRun` row for the proposal
+ * (the strut path), that row's `output.diff` — server-written on strut's
+ * callback — and nothing else; the row must be SUCCESS, the approver's,
+ * and for the same workspace + repo the stored card names. A card that
+ * carries a preview state but has no row is a forgery (or a lost run) and
+ * is refused. Without a row and without a preview state (the synchronous
+ * path, kept for one release), the stored transcript copy as before.
+ */
+async function resolveApprovedDiff(args: {
+  proposalId: string;
+  userId: string;
+  payload: CodeChangeProposalPayload;
+}): Promise<{ ok: true; diff: string } | Extract<HandleApprovalReturn, { ok: false }>> {
+  const { proposalId, userId, payload } = args;
+  const row = await db.strutRun.findFirst({
+    where: { proposalId, kind: CODE_CHANGE_PROPOSE_KIND },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, userId: true, workspaceId: true, status: true, input: true, output: true },
+  });
+
+  if (!row) {
+    if (payload.preview !== undefined) {
+      logger.warn(
+        "[approveCodeChange] Preview card has no StrutRun row — refusing",
+        "approveCodeChange",
+        { userId, proposalId },
+      );
+      return {
+        ok: false,
+        error:
+          "The diff for this proposal is not on record, so it cannot be approved. " +
+          "Please re-generate the proposal.",
+        status: 403,
+      };
+    }
+    if (
+      typeof payload.diff !== "string" ||
+      typeof payload.diffSha256 !== "string" ||
+      payload.diff.length === 0
+    ) {
+      return {
+        ok: false,
+        error:
+          "The stored proposal is missing required fields — please re-generate it.",
+        status: 400,
+      };
+    }
+    return { ok: true, diff: payload.diff };
+  }
+
+  if (row.userId !== userId) {
+    logger.warn(
+      "[approveCodeChange] StrutRun originator mismatch — refusing approval",
+      "approveCodeChange",
+      { userId, proposalId, runId: row.id },
+    );
+    return {
+      ok: false,
+      error:
+        "Only the person who generated this code-change proposal can approve it. " +
+        "Ask the original author to approve, or generate a new proposal yourself.",
+      status: 403,
+    };
+  }
+  const launchedRepo = (row.input as { repo?: unknown } | null)?.repo;
+  if (row.workspaceId !== payload.workspaceId || launchedRepo !== payload.repositoryUrl) {
+    logger.warn(
+      "[approveCodeChange] StrutRun does not match the stored card — refusing",
+      "approveCodeChange",
+      { userId, proposalId, runId: row.id },
+    );
+    return {
+      ok: false,
+      error:
+        "This proposal does not match the run that generated it. " +
+        "Please re-generate the proposal.",
+      status: 403,
+    };
+  }
+  if (row.status === StrutRunStatus.PENDING) {
+    return {
+      ok: false,
+      error: "The diff for this proposal is still being generated. Wait for the card to update.",
+      status: 409,
+    };
+  }
+  if (row.status !== StrutRunStatus.SUCCESS) {
+    return {
+      ok: false,
+      error:
+        "The diff for this proposal was not generated (the run " +
+        `${row.status === StrutRunStatus.CANCELLED ? "was stopped" : "failed"}). ` +
+        "Please re-generate the proposal.",
+      status: 400,
+    };
+  }
+  const diff = (row.output as { diff?: unknown } | null)?.diff;
+  if (typeof diff !== "string" || diff.trim().length === 0) {
+    return {
+      ok: false,
+      error: "The run produced no diff to approve. Please re-generate the proposal.",
+      status: 400,
+    };
+  }
+  // Exactly the bytes the card shows: the completion handler trims the
+  // trailing newline the same way before rendering and hashing.
+  return { ok: true, diff: diff.trimEnd() };
+}
+
 async function approveCodeChange(args: {
   orgId: string;
   userId: string;
@@ -576,10 +692,7 @@ async function approveCodeChange(args: {
     typeof payload?.workspaceId !== "string" ||
     typeof payload?.workspaceSlug !== "string" ||
     typeof payload?.repositoryUrl !== "string" ||
-    typeof payload?.title !== "string" ||
-    typeof payload?.diff !== "string" ||
-    typeof payload?.diffSha256 !== "string" ||
-    payload.diff.length === 0
+    typeof payload?.title !== "string"
   ) {
     return {
       ok: false,
@@ -589,11 +702,29 @@ async function approveCodeChange(args: {
     };
   }
 
+  // ── Step 1b: The diff — from the StrutRun row, never the transcript ─────
+  // The conversation PUT route lets org members append messages to a shared
+  // room, so a forged transcript row could shadow a real proposal's diff.
+  // The `StrutRun` row is written by the SERVER on strut's callback
+  // (`services/strut-runs.ts`) and is the only copy approval trusts: it must
+  // be SUCCESS, belong to the approver, and match the proposal's workspace
+  // and repository. `diffSha256` is re-hashed from those bytes. (Proposals
+  // from the synchronous path — no `preview` state, no row — read the stored
+  // transcript copy for one more release.)
+  const diffSource = await resolveApprovedDiff({
+    proposalId: proposal.proposalId,
+    userId,
+    payload,
+  });
+  if (!diffSource.ok) return diffSource;
+  const approvedDiff = diffSource.diff;
+  const approvedDiffSha256 = sha256Hex(approvedDiff);
+
   // Defence in depth: re-run diff hygiene on the input bytes before dispatch.
   // `createPr` only enforces these on the diff the swarm returns, which is too
   // late — the branch is already pushed by then. Cheap, and it also catches a
   // stored diff that predates a tightening of the caps.
-  const capsResult = enforceDiffCaps(payload.diff);
+  const capsResult = enforceDiffCaps(approvedDiff);
   if (!capsResult.ok) {
     return {
       ok: false,
@@ -603,7 +734,7 @@ async function approveCodeChange(args: {
       status: 400,
     };
   }
-  const secretsResult = scanForSecrets(payload.diff);
+  const secretsResult = scanForSecrets(approvedDiff);
   if (!secretsResult.ok) {
     logger.error(
       "[approveCodeChange] Secret detected in stored diff — refusing dispatch",
@@ -778,7 +909,7 @@ async function approveCodeChange(args: {
         repoName = payload.repositoryUrl;
       }
 
-      const diffDiffs = unifiedDiffToActionResults(payload.diff, repoName);
+      const diffDiffs = unifiedDiffToActionResults(approvedDiff, repoName);
       const diffContent: DiffContent = { diffs: diffDiffs };
 
       const msg = await tx.chatMessage.create({
@@ -973,8 +1104,8 @@ async function approveCodeChange(args: {
       repositoryUrl: payload.repositoryUrl,
       title: prArgs.title,
       body: prArgs.body,
-      approvedDiff: payload.diff,
-      diffSha256: payload.diffSha256,
+      approvedDiff,
+      diffSha256: approvedDiffSha256,
       webhookUrl,
       // Record the dispatch receipt the instant the swarm hands back a
       // request_id. The webhook can arrive at any moment after dispatch and

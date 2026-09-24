@@ -16,38 +16,46 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
 
 const {
-  mockSwarmAccess,
+  mockResolveStrutTarget,
   mockResolveConversation,
-  mockWorkspaceFindUnique,
   mockAgentRunCreate,
   mockAgentRunUpdate,
   mockAgentRunUpdateMany,
-  mockResolveStrutActor,
   mockEnsureStrutDelegation,
 } = vi.hoisted(() => ({
-  mockSwarmAccess: vi.fn(),
+  mockResolveStrutTarget: vi.fn(),
   mockResolveConversation: vi.fn(),
-  mockWorkspaceFindUnique: vi.fn(),
   mockAgentRunCreate: vi.fn(),
   mockAgentRunUpdate: vi.fn(),
   mockAgentRunUpdateMany: vi.fn(),
-  mockResolveStrutActor: vi.fn(),
   mockEnsureStrutDelegation: vi.fn(),
 }));
 
-vi.mock("@/lib/helpers/swarm-access", () => ({ getWorkspaceSwarmAccess: mockSwarmAccess }));
+// Which strut a workspace's chat runs on is the resolver's policy
+// (`services/strut-target.ts`); the tool only consults it.
+vi.mock("@/services/strut-target", () => ({ resolveStrutTarget: mockResolveStrutTarget }));
 vi.mock("@/services/org-canvas-conversation", () => ({ resolveOrgConversationRowId: mockResolveConversation }));
 vi.mock("@/services/bifrost/strut-delegation", () => ({
   STRUT_ACTOR_HEADER: "x-strut-actor",
-  resolveStrutActor: mockResolveStrutActor,
   ensureStrutDelegation: mockEnsureStrutDelegation,
 }));
 vi.mock("@/lib/db", () => ({
   db: {
-    workspace: { findUnique: mockWorkspaceFindUnique },
     agentRun: { create: mockAgentRunCreate, update: mockAgentRunUpdate, updateMany: mockAgentRunUpdateMany },
   },
 }));
+
+const TARGET = {
+  swarmId: "swarm-1",
+  workspaceId: "ws-id",
+  workspaceSlug: "acme",
+  orgId: "org-1",
+  swarmUrl: "https://swarm1.sphinx.chat/api",
+  mcpBase: "https://swarm1.sphinx.chat:3355",
+  labBase: "https://swarm1.sphinx.chat:3355/lab",
+  swarmApiKey: "swarm-key",
+  actor: "alice-user-1",
+};
 
 import { buildStrutTools, lastAssistantText } from "@/lib/ai/strutTools";
 import type { CapabilityContext } from "@/lib/ai/capabilities";
@@ -76,16 +84,11 @@ describe("buildStrutTools", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("fetch", mockFetch);
-    mockSwarmAccess.mockResolvedValue({
-      success: true,
-      data: { workspaceId: "ws-id", swarmUrl: "https://swarm1.sphinx.chat/api", swarmApiKey: "swarm-key" },
-    });
-    mockWorkspaceFindUnique.mockResolvedValue({ sourceControlOrgId: "org-1" });
+    mockResolveStrutTarget.mockResolvedValue({ ok: true, target: TARGET });
     mockResolveConversation.mockResolvedValue("conv-1");
     mockAgentRunCreate.mockResolvedValue({ id: "run-1" });
     mockAgentRunUpdate.mockResolvedValue({});
     mockAgentRunUpdateMany.mockResolvedValue({ count: 0 });
-    mockResolveStrutActor.mockResolvedValue("alice-user-1");
     mockEnsureStrutDelegation.mockResolvedValue({ status: "skipped-gate" });
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -94,15 +97,23 @@ describe("buildStrutTools", () => {
     execute("dispatch_strut", { workspace: "acme", title: "Build clipper", prompt: "build it", ...input }, ctx);
 
   test("no workspace access → error before any credential or strut call", async () => {
-    mockSwarmAccess.mockResolvedValue({ success: false, error: { type: "ACCESS_DENIED" } });
+    mockResolveStrutTarget.mockResolvedValue({ ok: false, error: { type: "ACCESS_DENIED" } });
     const out = await dispatch();
-    expect(out.status).toBe("error");
+    expect(out).toMatchObject({ status: "error", error: expect.stringContaining("not found, or you do not have access") });
+    expect(mockResolveStrutTarget).toHaveBeenCalledWith({ purpose: "chat", workspaceSlug: "acme", userId: "user-1" });
     expect(mockFetch).not.toHaveBeenCalled();
     expect(mockAgentRunCreate).not.toHaveBeenCalled();
   });
 
+  test("a workspace with no active swarm has no strut", async () => {
+    mockResolveStrutTarget.mockResolvedValue({ ok: false, error: { type: "SWARM_NOT_ACTIVE", status: "PENDING" } });
+    const out = await dispatch();
+    expect(out).toMatchObject({ status: "error", error: expect.stringContaining("no active swarm") });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   test("a workspace outside the active org is refused", async () => {
-    mockWorkspaceFindUnique.mockResolvedValue({ sourceControlOrgId: "other-org" });
+    mockResolveStrutTarget.mockResolvedValue({ ok: true, target: { ...TARGET, orgId: "other-org" } });
     const out = await dispatch();
     expect(out).toMatchObject({ status: "error", error: expect.stringContaining("active org") });
     expect(mockFetch).not.toHaveBeenCalled();
@@ -127,9 +138,9 @@ describe("buildStrutTools", () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe("https://swarm1.sphinx.chat:3355/lab/chat");
     expect(init.headers["x-api-token"]).toBe("swarm-key");
-    // The actor strut bills the chat to: the macaroon user_id, not the raw User.id.
+    // The actor strut bills the chat to: the macaroon user_id (resolved by
+    // the target resolver), not the raw User.id.
     expect(init.headers["x-strut-actor"]).toBe("alice-user-1");
-    expect(mockResolveStrutActor).toHaveBeenCalledWith("user-1");
     const body = JSON.parse(init.body);
     expect(body).toMatchObject({ message: "build it", title: "Build clipper" });
     expect(body.chatId).toBeUndefined();
