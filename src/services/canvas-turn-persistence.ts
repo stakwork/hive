@@ -29,6 +29,7 @@ import {
   notifyCanvasConversationUpdated,
   type CanvasConversationUpdateReason,
 } from "@/lib/pusher";
+import { PROPOSE_CODE_CHANGE_TOOL } from "@/lib/proposals/types";
 
 // ───────────────────────────────────────────────────────────────────
 // Stored-message types (the `CanvasChatMessage` JSON shape inside
@@ -513,6 +514,82 @@ export async function patchStoredCodeChangeResult(args: {
 
   if (didChange) {
     notifyCanvasConversationUpdated(conversationId, "code-change-pr-update");
+  }
+  return didChange;
+}
+
+/**
+ * Patch a stored `propose_code_change` tool OUTPUT in place — the
+ * code-change PREVIEW's twin of `patchStoredCodeChangeResult`: the tool
+ * returned the card `pending` (empty diff), and the strut run's completion
+ * arrives minutes later on a different request (`/api/strut-runs/webhook`,
+ * or the reconcile cron).
+ *
+ * Locates every assistant row whose `toolCalls[]` holds a
+ * `propose_code_change` output with this `proposalId` (the server-side
+ * `${turnId}-` row and a client autosave copy alike) under the same
+ * `SELECT … FOR UPDATE` row lock every other conversation writer uses, and
+ * merges `patch` into `output.payload` — a key whose patch value is
+ * `undefined` is REMOVED (that is how `pending` goes away).
+ *
+ * Idempotent by construction: re-applying the same patch produces an
+ * identical row. Returns whether a row actually changed; fires a
+ * `code-change-preview` nudge only then, so open browsers reconcile the
+ * card off "Generating diff…" (`reconcileProposalPreviews`).
+ */
+export async function patchStoredProposalPreview(args: {
+  conversationId: string;
+  proposalId: string;
+  patch: Record<string, unknown>;
+}): Promise<boolean> {
+  const { conversationId, proposalId, patch } = args;
+
+  let didChange = false;
+  await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ messages: unknown }[]>`
+      SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+    `;
+    if (locked.length === 0) return; // conversation deleted
+
+    const existing = Array.isArray(locked[0].messages)
+      ? (locked[0].messages as StoredMessage[])
+      : [];
+
+    const next = existing.map((m) => {
+      if (m.role !== "assistant" || !m.toolCalls?.length) return m;
+      let rowChanged = false;
+      const toolCalls = m.toolCalls.map((tc) => {
+        if (tc.toolName !== PROPOSE_CODE_CHANGE_TOOL) return tc;
+        const out = tc.output as { proposalId?: unknown; payload?: unknown } | null | undefined;
+        if (!out || typeof out !== "object" || out.proposalId !== proposalId) return tc;
+        const payload =
+          out.payload && typeof out.payload === "object"
+            ? { ...(out.payload as Record<string, unknown>) }
+            : {};
+        for (const [k, v] of Object.entries(patch)) {
+          if (v === undefined) delete payload[k];
+          else payload[k] = v;
+        }
+        const patchedOutput = { ...out, payload };
+        if (JSON.stringify(patchedOutput) === JSON.stringify(out)) return tc;
+        rowChanged = true;
+        return { ...tc, output: patchedOutput };
+      });
+      if (!rowChanged) return m;
+      didChange = true;
+      return { ...m, toolCalls };
+    });
+
+    if (!didChange) return;
+
+    await tx.sharedConversation.update({
+      where: { id: conversationId },
+      data: { messages: next as unknown as never },
+    });
+  });
+
+  if (didChange) {
+    notifyCanvasConversationUpdated(conversationId, "code-change-preview");
   }
   return didChange;
 }

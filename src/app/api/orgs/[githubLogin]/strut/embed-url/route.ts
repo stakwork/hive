@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { EncryptionService } from "@/lib/encryption";
-import { resolveOrgSwarmWorkspaceForUser } from "@/lib/helpers/org-workspace";
-import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
-import {
-  ensureStrutDelegation,
-  resolveStrutActor,
-} from "@/services/bifrost/strut-delegation";
+import { ensureStrutDelegation } from "@/services/bifrost/strut-delegation";
+import { resolveStrutTarget } from "@/services/strut-target";
 
 export const runtime = "nodejs";
 
@@ -22,8 +17,9 @@ const MINT_TIMEOUT_MS = 10_000;
  * stakgraph mcp at `/lab`, so Hive can embed it without the user ever
  * seeing the lab's Basic-auth prompt.
  *
- *  1. Auth, then resolve the org's swarm workspace (default workspace
- *     first — the same swarm the Gateway view embeds).
+ *  1. Auth, then resolve the org's strut (`resolveStrutTarget`, purpose
+ *     "embed": the default workspace's swarm first — the same swarm the
+ *     Gateway view embeds).
  *  2. Decrypt `swarmApiKey` and POST `{mcp}/mint-token` with it. mcp
  *     returns a short-lived JWT; the raw key never leaves the server.
  *  3. Return `{mcp}/lab/?key=<jwt>`. The strut UI stashes `?key=` in
@@ -47,43 +43,33 @@ export async function POST(
 
   const { githubLogin } = await params;
 
-  const workspace = await resolveOrgSwarmWorkspaceForUser(
-    githubLogin,
-    userOrResponse.id,
-  );
-  if (!workspace || !workspace.swarm) {
+  const resolved = await resolveStrutTarget({
+    purpose: "embed",
+    orgGithubLogin: githubLogin,
+    userId: userOrResponse.id,
+  });
+  if (!resolved.ok) {
+    if (resolved.error.type === "DECRYPT_FAILED") {
+      return NextResponse.json(
+        { error: `Failed to decrypt swarmApiKey: ${resolved.error.message}` },
+        { status: 500 },
+      );
+    }
+    if (resolved.error.type === "SWARM_NOT_CONFIGURED") {
+      return NextResponse.json(
+        { error: "Swarm is missing swarmUrl or swarmApiKey" },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
       { error: "No swarm configured for any workspace in this org" },
       { status: 404 },
     );
   }
-  const { swarm } = workspace;
-  if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-    return NextResponse.json(
-      { error: "Swarm is missing swarmUrl or swarmApiKey" },
-      { status: 503 },
-    );
-  }
-
-  let apiToken: string;
-  try {
-    apiToken = EncryptionService.getInstance().decryptField(
-      "swarmApiKey",
-      swarm.swarmApiKey,
-    );
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error: `Failed to decrypt swarmApiKey: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      },
-      { status: 500 },
-    );
-  }
-
-  const baseUrl = transformSwarmUrlToRepo2Graph(swarm.swarmUrl);
-  const actor = await resolveStrutActor(userOrResponse.id);
+  const { target } = resolved;
+  const apiToken = target.swarmApiKey;
+  const baseUrl = target.mcpBase;
+  const actor = target.actor;
 
   let resp: Response;
   try {
@@ -123,8 +109,8 @@ export async function POST(
 
   // Never throws: a failed push is logged and the embed goes ahead.
   await ensureStrutDelegation(
-    { workspaceId: workspace.id, workspaceSlug: workspace.slug, userId: userOrResponse.id },
-    { swarmUrl: swarm.swarmUrl, swarmApiKey: apiToken },
+    { workspaceId: target.workspaceId, workspaceSlug: target.workspaceSlug, userId: userOrResponse.id },
+    { swarmUrl: target.swarmUrl, swarmApiKey: apiToken },
     { actor },
   );
 
@@ -134,7 +120,7 @@ export async function POST(
   url.searchParams.set("key", body.token);
 
   return NextResponse.json(
-    { url: url.toString(), workspaceSlug: workspace.slug },
+    { url: url.toString(), workspaceSlug: target.workspaceSlug },
     { headers: { "Cache-Control": "private, no-store" } },
   );
 }

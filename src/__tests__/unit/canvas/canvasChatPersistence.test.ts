@@ -14,6 +14,7 @@ import {
   computeUnsaved,
   mergeServerMessages,
   reconcileApprovalResults,
+  reconcileProposalPreviews,
   reconcilePlannerSources,
   applyFeatureStatusPatch,
   type PersistableMessage,
@@ -447,5 +448,74 @@ describe("reconcileApprovalResults — code-change outcomes swap in", () => {
     ];
     const { messages } = reconcileApprovalResults(local, server);
     expect(messages.map((m) => m.id)).toEqual(["u1", "t1-a0", "u2"]);
+  });
+});
+
+// ─── reconcileProposalPreviews — code-change preview card flip ─────────────
+//
+// The strut run's completion patches the stored `propose_code_change` tool
+// OUTPUT in place (diff, or a failure). Same two gaps as approval results:
+// viewer tabs hold the row id (merge only adds new ids) and the authoring
+// tab filters its own `${turnId}-` rows out. Matched by the output's
+// `proposalId`, per tool call.
+
+describe("reconcileProposalPreviews — code-change previews swap in", () => {
+  const pendingOut = {
+    kind: "codeChange",
+    proposalId: "prop-1",
+    payload: { diff: "", preview: "pending", pending: { runId: "row-1" } },
+  };
+  const readyOut = {
+    kind: "codeChange",
+    proposalId: "prop-1",
+    payload: { diff: "--- a\n+++ b", preview: "ready", filesChanged: 1 },
+  };
+  const call = (output: unknown, id = "tc-1") => ({ id, toolName: "propose_code_change", output });
+
+  test("refreshes a same-id row whose server output changed", () => {
+    const local = [{ id: "t1-a1", content: "", toolCalls: [call(pendingOut)] }];
+    const server = [{ id: "t1-a1", content: "", toolCalls: [call(readyOut)] }];
+    const { messages, changed } = reconcileProposalPreviews(local, server);
+    expect(changed).toBe(true);
+    expect(messages[0].toolCalls![0].output).toEqual(readyOut);
+  });
+
+  test("matches the authoring tab's optimistic row by proposalId across DIFFERENT ids", () => {
+    const local = [{ id: "local-opt-1", content: "", toolCalls: [call(pendingOut, "local-tc")] }];
+    const server = [{ id: "t1-a1", content: "", toolCalls: [call(readyOut)] }];
+    const { messages, changed } = reconcileProposalPreviews(local, server);
+    expect(changed).toBe(true);
+    expect(messages[0].id).toBe("local-opt-1");
+    expect(messages[0].toolCalls![0].id).toBe("local-tc"); // tool-call identity untouched
+    expect(messages[0].toolCalls![0].output).toEqual(readyOut);
+  });
+
+  test("no-ops (same array reference) when the output is unchanged", () => {
+    const local = [{ id: "t1-a1", content: "", toolCalls: [call(readyOut)] }];
+    const server = [{ id: "t1-a1", content: "", toolCalls: [call(readyOut)] }];
+    const { messages, changed } = reconcileProposalPreviews(local, server);
+    expect(changed).toBe(false);
+    expect(messages).toBe(local);
+  });
+
+  test("ignores other tools and non-codeChange outputs", () => {
+    const featureOut = { kind: "feature", proposalId: "prop-1", payload: { title: "x" } };
+    const local = [{ id: "a", content: "", toolCalls: [{ id: "tc", toolName: "propose_feature", output: featureOut }] }];
+    const server = [{ id: "a", content: "", toolCalls: [{ id: "tc", toolName: "propose_feature", output: { ...featureOut, payload: { title: "y" } } }] }];
+    expect(reconcileProposalPreviews(local, server).changed).toBe(false);
+    const errored = [{ id: "b", content: "", toolCalls: [call({ error: "nope" })] }];
+    expect(reconcileProposalPreviews(errored, server).changed).toBe(false);
+  });
+
+  test("never drops, adds, or reorders rows or tool calls", () => {
+    const local = [
+      { id: "u1", content: "hi" },
+      { id: "t1-a1", content: "", toolCalls: [{ id: "x", toolName: "read_canvas", output: 1 }, call(pendingOut)] },
+      { id: "u2", content: "later" },
+    ];
+    const server = [{ id: "t1-a1", content: "", toolCalls: [call(readyOut)] }];
+    const { messages } = reconcileProposalPreviews(local, server);
+    expect(messages.map((m) => m.id)).toEqual(["u1", "t1-a1", "u2"]);
+    expect(messages[1].toolCalls!.map((tc) => tc.toolName)).toEqual(["read_canvas", "propose_code_change"]);
   });
 });

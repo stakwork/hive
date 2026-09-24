@@ -7,9 +7,12 @@
  *   2. Rate-limit (generous, idempotent)
  *   3. Validate org membership (403/404 before any resource access)
  *   4. Resolve conversation + IDOR check
- *   5. Mark abortRequested on all active runs (atomic)
- *   6. Re-resolve swarm creds per run + proxy abort to stakgraph
- *   7. If no runs registered yet, write pending-abort intent
+ *   5. Cancel the conversation's PENDING strut runs (code-change
+ *      previews) on THEIR swarm — from the `StrutRun` row, never the policy
+ *   6. Mark abortRequested on all active runs (atomic)
+ *   7. Re-resolve swarm creds per run + proxy abort to stakgraph (strut
+ *      runs, keyed by their `StrutRun.id`, are skipped — step 5 did them)
+ *   8. If no runs registered yet, write pending-abort intent
  *
  * Never returns the raw activeRuns map; never logs secrets.
  */
@@ -20,11 +23,11 @@ import { resolveOrgConversationRowId } from "@/services/org-canvas-conversation"
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   requestAbortForAllRuns,
-  getActiveRuns,
   areAllRunsAlreadyAborted,
   setPendingAbortIntent,
 } from "@/services/canvas-active-runs";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
+import { cancelPendingStrutRunsForConversation } from "@/services/strut-runs";
 
 export const runtime = "nodejs";
 
@@ -76,14 +79,32 @@ export async function POST(request: NextRequest) {
 
   console.log(`[abort] conversationId: ${rowId} userId: ${userId}`);
 
+  // ── 5. Pending strut runs (code-change previews) → strut cancel ──────
+  // A preview runs on strut, not on the swarm's /repo/agent. Its row knows
+  // its swarm, so the cancel goes there; the callback then settles the row
+  // as `cancelled` and the card flips. Idempotent: a settled row is no
+  // longer PENDING, so a repeat Stop finds nothing. Never blocks the rest.
+  let strutCancelled = 0;
+  const strutRunIds = new Set<string>();
+  try {
+    const strut = await cancelPendingStrutRunsForConversation(rowId);
+    strutCancelled = strut.cancelled;
+    for (const row of strut.rows) strutRunIds.add(row.id);
+    if (strut.rows.length > 0) {
+      console.log(`[abort] strut runs: ${strut.cancelled}/${strut.rows.length} cancelled for conversationId: ${rowId}`);
+    }
+  } catch (err) {
+    console.warn("[abort] strut cancel failed (non-fatal):", String(err));
+  }
+
   // ── Idempotency: if all runs already aborted, short-circuit ─────────
   const alreadyDone = await areAllRunsAlreadyAborted(rowId);
   if (alreadyDone) {
     console.log(`[abort] All runs already aborted for conversationId: ${rowId}`);
-    return NextResponse.json({ ok: true, aborted: 0 });
+    return NextResponse.json({ ok: true, aborted: strutCancelled });
   }
 
-  // ── 5. Get active runs & mark abortRequested atomically ─────────────
+  // ── 6. Get active runs & mark abortRequested atomically ─────────────
   const activeRuns = await requestAbortForAllRuns(rowId);
 
   // ── Start-race: no runs registered yet → write pending-abort intent ──
@@ -94,12 +115,15 @@ export async function POST(request: NextRequest) {
     } else {
       console.log(`[abort] No active runs and no turnId; nothing to cancel for conversationId: ${rowId}`);
     }
-    return NextResponse.json({ ok: true, aborted: 0 });
+    return NextResponse.json({ ok: true, aborted: strutCancelled });
   }
 
-  // ── 6. Proxy abort to stakgraph for each run ─────────────────────────
+  // ── 7. Proxy abort to stakgraph for each run ─────────────────────────
   let abortedCount = 0;
   for (const run of activeRuns) {
+    // A strut run's entry is keyed by its StrutRun id — cancelled above,
+    // on strut; there is no /repo/agent request behind it.
+    if (strutRunIds.has(run.requestId)) continue;
     // Re-resolve swarm creds from workspaceId (never trust a persisted URL).
     const swarmResult = await getSwarmAccessByWorkspaceId(run.workspaceId);
     if (!swarmResult.success) {
@@ -145,6 +169,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  console.log(`[abort] Done. abortedCount: ${abortedCount}/${activeRuns.length} conversationId: ${rowId}`);
-  return NextResponse.json({ ok: true, aborted: abortedCount });
+  console.log(`[abort] Done. abortedCount: ${abortedCount}/${activeRuns.length} strut: ${strutCancelled} conversationId: ${rowId}`);
+  return NextResponse.json({ ok: true, aborted: abortedCount + strutCancelled });
 }

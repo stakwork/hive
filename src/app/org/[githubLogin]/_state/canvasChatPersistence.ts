@@ -108,6 +108,23 @@ interface ReconcilableMessage {
   source?: PlannerSourceLike | { kind?: string } | null;
   content?: string;
   approvalResult?: { proposalId?: string; kind?: string; codeChange?: unknown } | null;
+  toolCalls?: ReconcilableToolCall[];
+}
+
+/** Minimal tool-call shape the preview reconcile compares/refreshes. */
+interface ReconcilableToolCall {
+  toolName: string;
+  output?: unknown;
+}
+
+/** The `propose_code_change` tool name — inlined so this pure module stays import-free. */
+const PROPOSE_CODE_CHANGE_TOOL_NAME = "propose_code_change";
+
+function codeChangeProposalId(tc: ReconcilableToolCall): string | null {
+  if (tc.toolName !== PROPOSE_CODE_CHANGE_TOOL_NAME) return null;
+  const o = tc.output as { proposalId?: unknown; kind?: unknown } | null | undefined;
+  if (!o || typeof o !== "object" || o.kind !== "codeChange") return null;
+  return typeof o.proposalId === "string" ? o.proposalId : null;
 }
 
 /**
@@ -254,4 +271,50 @@ export function applyFeatureStatusPatch<T extends ReconcilableMessage>(
   });
 
   return changed ? { messages: updated, changed: true } : { messages, changed: false };
+}
+
+/**
+ * Server-authoritative refresh of code-change PREVIEW outputs.
+ *
+ * `propose_code_change` (on strut) returns its card `pending` with an
+ * empty diff; the run's completion patches the stored tool OUTPUT in
+ * place (same row id, same tool call) with the diff or an honest failure
+ * and fires a `code-change-preview` nudge. Same two gaps as
+ * `reconcileApprovalResults`: the append-only merge can't refresh an
+ * existing row, and the authoring tab filters its own `${turnId}-` server
+ * rows out entirely. So this matches by the output's `proposalId` (not row
+ * id): for each local `propose_code_change` tool call whose output differs
+ * from the server copy for the same proposal, swap in the server output.
+ * Never drops, reorders, or adds rows or tool calls.
+ */
+export function reconcileProposalPreviews<T extends ReconcilableMessage>(
+  local: T[],
+  server: T[],
+): { messages: T[]; changed: boolean } {
+  const serverByProposal = new Map<string, unknown>();
+  for (const m of server) {
+    for (const tc of m.toolCalls ?? []) {
+      const id = codeChangeProposalId(tc);
+      if (id) serverByProposal.set(id, tc.output);
+    }
+  }
+  if (serverByProposal.size === 0) return { messages: local, changed: false };
+
+  let changed = false;
+  const messages = local.map((m) => {
+    if (!m.toolCalls?.length) return m;
+    let rowChanged = false;
+    const toolCalls = m.toolCalls.map((tc) => {
+      const id = codeChangeProposalId(tc);
+      if (!id || !serverByProposal.has(id)) return tc;
+      const serverOutput = serverByProposal.get(id);
+      if (JSON.stringify(tc.output) === JSON.stringify(serverOutput)) return tc;
+      rowChanged = true;
+      return { ...tc, output: serverOutput };
+    });
+    if (!rowChanged) return m;
+    changed = true;
+    return { ...m, toolCalls } as T;
+  });
+  return changed ? { messages, changed: true } : { messages: local, changed: false };
 }
