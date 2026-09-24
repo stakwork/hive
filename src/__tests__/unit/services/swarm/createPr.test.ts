@@ -12,15 +12,28 @@
  * fetch + Prisma mocks and belong in integration tests.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// ── hardenPrResult is the only pure-function export we need for unit tests.
-// Everything else in createPr.ts requires DB/network mocks which belong in
-// integration tests. We import it directly from the module.
+const { mockWorkspaceFindUnique, mockGetPat, mockRefresh } = vi.hoisted(() => ({
+  mockWorkspaceFindUnique: vi.fn(),
+  mockGetPat: vi.fn(),
+  mockRefresh: vi.fn(),
+}));
+vi.mock("@/lib/db", () => ({ db: { workspace: { findUnique: mockWorkspaceFindUnique } } }));
+vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: mockGetPat }));
+vi.mock("@/lib/githubApp", () => ({ refreshAndUpdateAccessTokens: mockRefresh }));
+vi.mock("@/lib/encryption", () => ({
+  EncryptionService: { getInstance: () => ({ decryptField: (_f: string, v: string) => v }) },
+}));
+vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() } }));
+
 import {
   hardenPrResult,
   _processCompletedResult,
   extractFilePaths,
+  reconcilePr,
+  verifyGithubIdentity,
+  jamiePrTitle,
 } from "@/services/swarm/createPr";
 
 // ── Minimal valid LandChangeSuccess shape ──────────────────────────────────
@@ -305,6 +318,144 @@ describe("_processCompletedResult — already_landed replay", () => {
       REPO_URL,
     );
     expect(result.ok).toBe(false);
+  });
+});
+
+// ─── reconcilePr: the two runners ─────────────────────────────────────────
+//
+// A swarm-landed claim reads the swarm's `/progress` cache first. A
+// strut-landed one (`runner: "strut"`) has no such cache — its run side is
+// the strut-runs cron's job — so only GitHub is asked, by the exact
+// `jamie/…` branch hive named.
+
+const json = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+describe("reconcilePr", () => {
+  const mockFetch = vi.fn();
+  const STRUT_BRANCH = "jamie/0b8e7f1a-abcdef";
+  const STRUT_CLAIM = {
+    requestId: "strut-row-abcdef",
+    repositoryUrl: REPO_URL,
+    userId: "user-1",
+    workspaceSlug: "ws",
+    prBranch: STRUT_BRANCH,
+    approvedPaths: ["foo.ts"],
+    runner: "strut" as const,
+    strutRunId: "1790000000001",
+    swarmId: "swarm-1",
+  };
+  const pull = (ref: string, html_url = `${REPO_URL}/pull/7`) => ({ number: 7, html_url, head: { ref }, user: { login: "alice" } });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", mockFetch);
+    mockGetPat.mockResolvedValue({ username: "alice", token: "ghp_x" });
+    mockRefresh.mockResolvedValue(false);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("a strut claim skips the swarm channel and adopts the PR GitHub has for hive's branch", async () => {
+    mockFetch.mockResolvedValue(json(200, [pull(STRUT_BRANCH)]));
+
+    const out = await reconcilePr(STRUT_CLAIM);
+
+    expect(out).toEqual({ outcome: "landed", prUrl: `${REPO_URL}/pull/7`, prNumber: 7 });
+    expect(mockWorkspaceFindUnique).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const url = new URL(mockFetch.mock.calls[0][0] as string);
+    expect(url.hostname).toBe("api.github.com");
+    expect(url.pathname).toBe("/repos/stakwork/hive/pulls");
+    expect(url.searchParams.get("head")).toBe(`stakwork:${STRUT_BRANCH}`);
+  });
+
+  it("a strut claim ignores a PR on a swarm-shaped branch or for another repository", async () => {
+    mockFetch.mockResolvedValueOnce(json(200, [pull("swarm/swarm-change-abc123")]));
+    expect(await reconcilePr(STRUT_CLAIM)).toEqual({ outcome: "unknown" });
+
+    mockFetch.mockResolvedValueOnce(json(200, [pull(STRUT_BRANCH, "https://github.com/evil/elsewhere/pull/7")]));
+    expect(await reconcilePr(STRUT_CLAIM)).toEqual({ outcome: "unknown" });
+  });
+
+  it("a strut claim without a branch is unknown without a request", async () => {
+    const { prBranch: _b, ...noBranch } = STRUT_CLAIM;
+    expect(await reconcilePr(noBranch)).toEqual({ outcome: "unknown" });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("a swarm claim still reads /progress first", async () => {
+    mockWorkspaceFindUnique.mockResolvedValue({
+      id: "ws-1",
+      sourceControlOrg: { id: "org-1" },
+      swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmApiKey: "k" },
+      members: [{ userId: "user-1" }],
+    });
+    mockFetch.mockResolvedValueOnce(json(200, { status: "completed", result: { pr: VALID_PR } }));
+
+    const out = await reconcilePr({
+      requestId: "req-1",
+      repositoryUrl: REPO_URL,
+      userId: "user-1",
+      workspaceSlug: "ws",
+      prBranch: VALID_PR.branch,
+    });
+
+    expect(out).toEqual({ outcome: "landed", prUrl: VALID_PR.url, prNumber: 42 });
+    expect(String(mockFetch.mock.calls[0][0])).toContain("/progress?request_id=req-1");
+  });
+});
+
+// ─── verifyGithubIdentity: the approver's token, both landing paths ───────
+
+describe("verifyGithubIdentity", () => {
+  const mockFetch = vi.fn();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", mockFetch);
+    mockRefresh.mockResolvedValue(false);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("no token → no_access, nothing asked of GitHub", async () => {
+    mockGetPat.mockResolvedValue(null);
+    expect(await verifyGithubIdentity("user-1", "ws")).toMatchObject({ ok: false, failureCode: "no_access" });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("a token whose login is not the stored username → identity_mismatch", async () => {
+    mockGetPat.mockResolvedValue({ username: "alice", token: "ghp_x" });
+    mockFetch.mockResolvedValue(json(200, { login: "mallory" }));
+    const out = await verifyGithubIdentity("user-1", "ws");
+    expect(out).toMatchObject({ ok: false, failureCode: "identity_mismatch" });
+    expect(JSON.stringify(out)).not.toContain("ghp_x");
+  });
+
+  it("a matching login (case-insensitive) → the username and the token", async () => {
+    mockGetPat.mockResolvedValue({ username: "Alice", token: "ghp_x" });
+    mockFetch.mockResolvedValue(json(200, { login: "alice" }));
+    expect(await verifyGithubIdentity("user-1", "ws")).toEqual({ ok: true, username: "Alice", token: "ghp_x" });
+    expect((mockFetch.mock.calls[0][1] as RequestInit).headers).toMatchObject({ Authorization: "Bearer ghp_x" });
+  });
+
+  it("GitHub unreachable → the stored username stands", async () => {
+    mockGetPat.mockResolvedValue({ username: "alice", token: "ghp_x" });
+    mockFetch.mockRejectedValue(new Error("ECONNRESET"));
+    expect(await verifyGithubIdentity("user-1", "ws")).toEqual({ ok: true, username: "alice", token: "ghp_x" });
+  });
+
+  it("uses the refreshed token when the GitHub App refresh succeeds", async () => {
+    mockGetPat.mockResolvedValueOnce({ username: "alice", token: "ghp_old" }).mockResolvedValueOnce({ username: "alice", token: "ghp_new" });
+    mockRefresh.mockResolvedValue(true);
+    mockFetch.mockResolvedValue(json(200, { login: "alice" }));
+    expect(await verifyGithubIdentity("user-1", "ws")).toEqual({ ok: true, username: "alice", token: "ghp_new" });
+  });
+});
+
+describe("jamiePrTitle", () => {
+  it("prefixes once and collapses newlines", () => {
+    expect(jamiePrTitle("Fix it")).toBe("[Jamie] Fix it");
+    expect(jamiePrTitle("[Jamie] Fix it")).toBe("[Jamie] Fix it");
+    expect(jamiePrTitle("Fix\nit\r\n")).toBe("[Jamie] Fix it");
   });
 });
 
