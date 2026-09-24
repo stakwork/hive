@@ -19,6 +19,7 @@ import {
   buildPlateauCapNodes,
   buildRecursionEdges,
   buildRecursionNodes,
+  withConceptSiblings,
 } from "@/app/api/mock/jarvis/graph/recursion-fixture";
 
 export const runtime = "nodejs";
@@ -158,11 +159,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         { evalSetRefId, scenario },
       );
       const build = MOCK_SCENARIO_BUILDERS[scenario];
+      // Opt-in concept-sibling fixture: only when ?fixture=concept-siblings is present
+      const req = request as { url?: string };
+      const reqUrl = req.url ?? "";
+      const fixtureSiblings =
+        process.env.NODE_ENV !== "production" &&
+        reqUrl.includes("fixture=concept-siblings");
+      const rawNodes = build.nodes();
+      const rawEdges = build.edges();
+      const { nodes, edges } = fixtureSiblings
+        ? withConceptSiblings({ nodes: rawNodes, edges: rawEdges })
+        : { nodes: rawNodes, edges: rawEdges };
       return NextResponse.json({
         success: true,
         data: {
-          nodes: build.nodes(),
-          edges: build.edges(),
+          nodes,
+          edges,
           partial: false,
         },
       });
