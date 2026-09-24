@@ -864,3 +864,54 @@ describe("ProposalCard — approve button blocked by pending blocker", () => {
     expect((approveBtn as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+// ── ProposalCard — code change, preview pending ──────────────────────────────
+//
+// While the strut run generates the diff, the card offers "View run". The link
+// is whatever Hive path the tool stored at dispatch (the org strut view on the
+// run, `strutViewPath`) — rendered as-is, in a new tab like every cross-view
+// link from the canvas, and never rewritten into strut's own URL.
+
+describe("ProposalCard — code change, preview pending", () => {
+  function makePendingCodeChange(
+    pending: Partial<{ runUrl: string }> = {},
+  ): Extract<ProposalOutput, { kind: "codeChange" }> {
+    return {
+      kind: "codeChange",
+      proposalId: "prop-cc-1",
+      payload: {
+        workspaceId: "ws-123",
+        workspaceSlug: "hive",
+        repositoryUrl: "https://github.com/stakwork/hive",
+        title: "Use blue for the sign-in button",
+        body: "",
+        diff: "",
+        diffSha256: "",
+        filesChanged: 0,
+        preview: "pending",
+        pending: { runId: "row-1", strutRunId: "1790000000000", swarmId: "swarm-1", ...pending },
+      },
+      meta: { repoName: "stakwork/hive", workspaceSlug: "hive" },
+    };
+  }
+
+  it("'View run' opens the Hive strut view the payload names, in a new tab", () => {
+    const runUrl = "/org/myorg/strut?strut=wf%3Dcode-change-propose%26run%3D1790000000000";
+    render(
+      <ProposalCard proposal={makePendingCodeChange({ runUrl })} messageId="msg-cc-1" githubLogin="myorg" />,
+    );
+    const link = screen.getByText("View run").closest("a");
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe(runUrl);
+    expect(link!.getAttribute("target")).toBe("_blank");
+    expect(link!.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("offers no run link when the payload carries none", () => {
+    render(
+      <ProposalCard proposal={makePendingCodeChange()} messageId="msg-cc-2" githubLogin="myorg" />,
+    );
+    expect(screen.getByText(/Generating diff/)).toBeTruthy();
+    expect(screen.queryByText("View run")).toBeNull();
+  });
+});

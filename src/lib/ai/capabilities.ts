@@ -616,16 +616,16 @@ automatically.
       orgGate: isCodeChangeCapabilityEnabledForOrg,
     },
     strut: {
-      // The workspace swarm's strut AI builder as a background sub-agent:
+      // The org strut's AI builder (its default swarm) as a background sub-agent:
       // `dispatch_strut` (start / continue a chat; replies land via strut's
       // turn-end callback — see strutTools.ts) + two thin read tools.
       buildTools: (ctx) => buildStrutTools(ctx),
       promptSnippet: getStrutCapabilitySnippet,
       core: false,
       menuBlurb:
-        "**strut** — dispatch a workspace's strut AI builder " +
+        "**strut** — dispatch the org's strut AI builder " +
         "(`dispatch_strut`) to build, revise, run, or evaluate strut " +
-        "workflows on that workspace's swarm, and continue those chats. " +
+        "workflows on the org's default swarm, and continue those chats. " +
         "Runs in the background; replies are posted into this conversation. " +
         "Load when the user asks for a strut workflow, or about a strut run.",
       // Strut has a shell and publishes + runs code on the swarm — a write
