@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { HarveyTask } from "@/lib/harvey-lab-tasks";
 import { WORK_TYPE_STYLES } from "@/lib/harvey-lab-tasks";
 import { formatMB } from "@/lib/utils/format";
@@ -64,7 +65,9 @@ export interface TaskDetailsModalProps {
      *  Omitted when the catalog is unavailable or has no Anthropic models —
      *  the run route then applies its own DEFAULT_JUDGE_MODEL. */
     judgeModel?: string;
-  }) => void;
+    /** Sent only when "strut". Absent means Stakwork. Independent of the card. */
+    runner?: "stakwork" | "strut";
+  }) => void | Promise<void>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -131,6 +134,11 @@ export function TaskDetailsModal({
   const [generateJamieChat, setGenerateJamieChat] = useState(false);
   // The run report bundle, NOT the Jamie chat.
   const [generateRunReport, setGenerateRunReport] = useState(false);
+  // Independent of the task card. Model, Jamie chat, and report changes do
+  // not touch it. Default stakwork. Sent only when strut.
+  const [runner, setRunner] = useState<"stakwork" | "strut">("stakwork");
+  const [isStarting, setIsStarting] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
 
   // ─── Model selection (standard_model / reasoning_model pair) ───────────────
   // Both models are constrained to one provider so the run route can resolve a
@@ -587,24 +595,77 @@ export function TaskDetailsModal({
           </div>
         )}
 
-        <DialogFooter className="border-t px-6 py-4 gap-2 shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="border-t px-6 py-4 gap-2 shrink-0 flex-wrap">
+          <ToggleGroup
+            type="single"
+            size="sm"
+            variant="outline"
+            value={runner}
+            // Radix clears the value when the active item is clicked again;
+            // keep the last choice instead of leaving the toggle blank.
+            onValueChange={(v) => {
+              if (v === "strut" || v === "stakwork") setRunner(v);
+            }}
+            disabled={isStarting}
+            aria-label="Benchmark runner"
+            data-testid="legal-modal-runner-toggle"
+          >
+            <ToggleGroupItem
+              value="stakwork"
+              className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+              aria-label="Run on Stakwork"
+            >
+              Stakwork
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="strut"
+              className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+              aria-label="Run on strut"
+            >
+              strut
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isStarting}>
             Close
           </Button>
           <Button
-            onClick={() => {
-              onOpenChange(false);
-              onRunTask({
-                generateJamieChat,
-                generateRunReport,
-                ...(standardModel ? { standardModel } : {}),
-                ...(reasoningModel ? { reasoningModel } : {}),
-                ...(judgeModel ? { judgeModel } : {}),
-              });
+            disabled={isStarting}
+            onClick={async () => {
+              // Stay open until the POST returns. A 400/503 must surface here,
+              // not as a toast after the control that sent the choice is gone.
+              setIsStarting(true);
+              setRunError(null);
+              try {
+                await onRunTask({
+                  generateJamieChat,
+                  generateRunReport,
+                  ...(standardModel ? { standardModel } : {}),
+                  ...(reasoningModel ? { reasoningModel } : {}),
+                  ...(judgeModel ? { judgeModel } : {}),
+                  ...(runner === "strut" ? { runner } : {}),
+                });
+                onOpenChange(false);
+              } catch (err) {
+                setRunError(err instanceof Error ? err.message : "Failed to start run");
+              } finally {
+                setIsStarting(false);
+              }
             }}
           >
-            Run Task
+            {isStarting ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                Running…
+              </>
+            ) : (
+              "Run Task"
+            )}
           </Button>
+          {runError && (
+            <span className="text-xs text-destructive w-full" data-testid="legal-modal-run-error">
+              {runError}
+            </span>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
