@@ -129,8 +129,9 @@ function describeSwarmDiffError(e: { failure: string; error: string }): string {
 /**
  * Fetch the GitHub default branch for a repo via a plain authenticated GET.
  * Falls back to "main" on any error so a PAT scope issue doesn't block preview.
+ * Exported for approval's strut path (the base branch of last resort).
  */
-async function fetchDefaultBranch(owner: string, repo: string, pat: string): Promise<string> {
+export async function fetchDefaultBranch(owner: string, repo: string, pat: string): Promise<string> {
   try {
     const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
     const res = await fetch(url, {

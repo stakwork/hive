@@ -66,6 +66,8 @@ import {
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
   PROPOSE_CODE_CHANGE_TOOL,
   CODE_CHANGE_PROPOSE_KIND,
+  CODE_CHANGE_LAND_KIND,
+  CODE_CHANGE_LAND_WORKFLOW,
   type ApprovalIntent,
   type ApprovalResult,
   type FeatureProposalPayload,
@@ -84,9 +86,15 @@ import { validateWorkspaceAccessById } from "@/services/workspace";
 import { fetchOrgCanvasConversationMessages } from "@/services/org-canvas-conversation";
 import {
   createPr,
+  extractFilePaths,
+  jamiePrTitle,
   reconcilePr,
+  STRUT_BRANCH_PREFIX,
+  verifyGithubIdentity,
   type CreatePrClaim,
 } from "@/services/swarm/createPr";
+import { dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
+import { codeChangeViaStrut, fetchDefaultBranch } from "@/lib/ai/codeChangeTools";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import {
   attachPrArtifact,
@@ -440,12 +448,20 @@ export async function handleApproval(
  *   4. Claim before write — insert Task with unique `(workspaceId,
  *      proposalId)`. On P2002 return the winner's result, or reconcile
  *      its stored claim when it has no PR artifact yet.
- *   5. Dispatch via `createPr` WITH a per-claim webhook URL, whose
+ *   5. Dispatch. On strut (`CODE_CHANGE_VIA_STRUT`, the default —
+ *      `landViaStrut`): verify the approver's GitHub identity, launch the
+ *      `code-change-land` workflow with exactly the approved bytes (the
+ *      token only as the actor secret), and write the receipt (the
+ *      `StrutRun.id` as requestId, hive's branch name, approved paths,
+ *      conversation/proposal ids, `runner: "strut"`) onto the claim Task;
+ *      the result arrives on `/api/strut-runs/webhook` and
+ *      `services/strut-runs/code-change-land.ts` completes the claim.
+ *      Otherwise via `createPr` WITH a per-claim webhook URL, whose
  *      `onDispatch` hook writes the receipt (requestId + pr_branch +
- *      approved paths + conversation/proposal ids) onto the claim Task.
- *      `createPr` returns as soon as the claim is durable — the terminal
- *      PR result arrives on `/api/code-change/webhook` (reconcile cron
- *      as backstop) and is persisted by `codeChangeCompletion`.
+ *      approved paths + conversation/proposal ids) onto the claim Task —
+ *      the terminal PR result then arrives on `/api/code-change/webhook`
+ *      (reconcile cron as backstop). Both are persisted by
+ *      `codeChangeCompletion`.
  *   6. Return "dispatched, PR pending" — the stored approvalResult row
  *      carries `codeChange.prPending: true` and is patched in place when
  *      the terminal outcome lands.
@@ -464,12 +480,16 @@ function sha256Hex(text: string): string {
  * carries a preview state but has no row is a forgery (or a lost run) and
  * is refused. Without a row and without a preview state (the synchronous
  * path, kept for one release), the stored transcript copy as before.
+ * `baseBranch` is the branch the preview was generated against, when the
+ * row recorded one — what a strut landing applies the diff to.
  */
 async function resolveApprovedDiff(args: {
   proposalId: string;
   userId: string;
   payload: CodeChangeProposalPayload;
-}): Promise<{ ok: true; diff: string } | Extract<HandleApprovalReturn, { ok: false }>> {
+}): Promise<
+  { ok: true; diff: string; baseBranch?: string } | Extract<HandleApprovalReturn, { ok: false }>
+> {
   const { proposalId, userId, payload } = args;
   const row = await db.strutRun.findFirst({
     where: { proposalId, kind: CODE_CHANGE_PROPOSE_KIND },
@@ -553,7 +573,8 @@ async function resolveApprovedDiff(args: {
       status: 400,
     };
   }
-  const diff = (row.output as { diff?: unknown } | null)?.diff;
+  const output = row.output as { diff?: unknown; baseBranch?: unknown } | null;
+  const diff = output?.diff;
   if (typeof diff !== "string" || diff.trim().length === 0) {
     return {
       ok: false,
@@ -563,7 +584,211 @@ async function resolveApprovedDiff(args: {
   }
   // Exactly the bytes the card shows: the completion handler trims the
   // trailing newline the same way before rendering and hashing.
-  return { ok: true, diff: diff.trimEnd() };
+  return {
+    ok: true,
+    diff: diff.trimEnd(),
+    ...(typeof output?.baseBranch === "string" && output.baseBranch ? { baseBranch: output.baseBranch } : {}),
+  };
+}
+
+/** Drop a claim Task that provably has no run behind it (best effort). */
+async function deleteClaimTask(claimTaskId: string, reason: string): Promise<void> {
+  await db.task
+    .delete({ where: { id: claimTaskId } })
+    .catch((deleteErr) =>
+      logger.warn(
+        "[approveCodeChange] Failed to delete claim task",
+        "approveCodeChange",
+        { claimTaskId, reason, error: String(deleteErr) },
+      ),
+    );
+  logger.info("[approveCodeChange] Claim deleted", "approveCodeChange", { claimTaskId, reason });
+}
+
+/**
+ * Land the approved bytes through strut's `code-change-land` workflow
+ * (`CODE_CHANGE_VIA_STRUT`, the default): strut checks the repo out,
+ * `git apply`s exactly `approvedDiff`, pushes the branch HIVE names and
+ * opens the PR — as the approver, with the approver's token, no model in
+ * between. The claim Task already exists (the exactly-once gate); this
+ * verifies the approver's GitHub identity, dispatches, and writes the
+ * receipt the completion handler (`services/strut-runs/code-change-land.ts`)
+ * resolves the claim by.
+ *
+ * The token reaches strut ONLY as the actor secret (`actorSecrets`), never
+ * in the workflow `input` — strut persists the input on `run.start`. The
+ * diff rides in the input; the output echoes its sha256, not the bytes.
+ *
+ * A refusal before anything runs (identity, a dispatch strut turned down)
+ * deletes the claim so the proposal is re-approvable; a failure after the
+ * launch keeps it for the reconcile paths.
+ */
+async function landViaStrut(args: {
+  userId: string;
+  proposalId: string;
+  payload: CodeChangeProposalPayload;
+  prArgs: { title: string; body: string };
+  approvedDiff: string;
+  approvedDiffSha256: string;
+  /** The preview run's base branch, when it recorded one. */
+  previewBaseBranch?: string;
+  claimTaskId: string;
+  conversationId: string;
+  publicBaseUrl: string;
+}): Promise<HandleApprovalReturn> {
+  const {
+    userId,
+    proposalId,
+    payload,
+    prArgs,
+    approvedDiff,
+    approvedDiffSha256,
+    previewBaseBranch,
+    claimTaskId,
+    conversationId,
+    publicBaseUrl,
+  } = args;
+
+  // ── The approver's token, verified against GitHub ──────────────────────
+  // The same check `createPr` runs: no token → no_access, a login other
+  // than the stored username → identity_mismatch. Both are refusals with
+  // nothing running, so the claim goes.
+  const identity = await verifyGithubIdentity(userId, payload.workspaceSlug);
+  if (!identity.ok) {
+    await deleteClaimTask(claimTaskId, identity.failureCode);
+    return { ok: false, error: identity.message, status: 502 };
+  }
+
+  // ── Base branch: the preview's, else the card's, else the repo default ──
+  let baseBranch = previewBaseBranch ?? payload.baseBranchDisplay;
+  if (!baseBranch) {
+    try {
+      const { owner, repo } = parseGithubOwnerRepo(payload.repositoryUrl);
+      baseBranch = await fetchDefaultBranch(owner, repo, identity.token);
+    } catch {
+      baseBranch = "main";
+    }
+  }
+
+  // ── Dispatch ───────────────────────────────────────────────────────────
+  // Hive names the branch — unique per attempt, recorded verbatim on the
+  // claim so reconcile's GitHub channel can query it exactly.
+  const branchFor = (runId: string) => `${STRUT_BRANCH_PREFIX}${proposalId.slice(0, 8)}-${runId.slice(-6)}`;
+  let dispatched: Awaited<ReturnType<typeof dispatchStrutRun>>;
+  try {
+    dispatched = await dispatchStrutRun({
+      workspaceId: payload.workspaceId,
+      userId,
+      kind: CODE_CHANGE_LAND_KIND,
+      workflow: CODE_CHANGE_LAND_WORKFLOW,
+      purpose: "code_change",
+      input: (runId) => ({
+        repo: payload.repositoryUrl,
+        baseBranch,
+        diff: approvedDiff,
+        diffSha256: approvedDiffSha256,
+        branch: branchFor(runId),
+        title: jamiePrTitle(prArgs.title),
+        body: prArgs.body,
+      }),
+      publicBaseUrl,
+      conversationId,
+      proposalId,
+      actorSecrets: { GITHUB_TOKEN: identity.token },
+    });
+  } catch (err) {
+    if (err instanceof StrutDispatchError) {
+      // Strut never started the run (no target, unreachable, the workflow
+      // not seeded, …): nothing to reconcile, the user may re-approve.
+      logger.warn(
+        "[approveCodeChange] Strut refused the landing dispatch — claim deleted",
+        "approveCodeChange",
+        { userId, claimTaskId, code: err.code },
+      );
+      await deleteClaimTask(claimTaskId, `strut_dispatch_${err.code}`);
+      return { ok: false, error: err.message, status: 502 };
+    }
+    // Unknown — a run may have started. Keep the claim for reconciliation.
+    logger.error(
+      "[approveCodeChange] dispatchStrutRun threw unexpectedly — keeping claim for reconciliation",
+      "approveCodeChange",
+      { userId, claimTaskId, error: String(err) },
+    );
+    return {
+      ok: false,
+      error:
+        "PR creation failed with an unexpected error. " +
+        "The system has recorded your approval — contact support if the PR does not appear shortly.",
+      status: 500,
+    };
+  }
+
+  // ── Receipt ────────────────────────────────────────────────────────────
+  // The callback can arrive any moment from here on and resolves the claim
+  // by this receipt (a callback that beats it is retried by strut).
+  const branch = branchFor(dispatched.runId);
+  const claim: CreatePrClaim = {
+    requestId: dispatched.runId,
+    repositoryUrl: payload.repositoryUrl,
+    userId,
+    workspaceSlug: payload.workspaceSlug,
+    prBranch: branch,
+    approvedPaths: [...extractFilePaths(approvedDiff)],
+    conversationId,
+    proposalId,
+    runner: "strut",
+    strutRunId: dispatched.strutRunId,
+    swarmId: dispatched.swarmId,
+  };
+  try {
+    await db.task.update({
+      where: { id: claimTaskId },
+      data: { codeChangeClaim: claim as unknown as Prisma.InputJsonValue },
+    });
+  } catch (err) {
+    logger.error(
+      "[approveCodeChange] Receipt write failed after the strut dispatch — keeping claim",
+      "approveCodeChange",
+      { userId, claimTaskId, runId: dispatched.runId, error: String(err) },
+    );
+    return {
+      ok: false,
+      error:
+        "The PR request was dispatched but could not be recorded. " +
+        "Check the repository for a new pull request before retrying.",
+      status: 500,
+    };
+  }
+
+  logger.info(
+    "[approveCodeChange] Dispatched to strut — PR pending via callback",
+    "approveCodeChange",
+    {
+      userId,
+      claimTaskId,
+      runId: dispatched.runId,
+      strutRunId: dispatched.strutRunId,
+      swarmId: dispatched.swarmId,
+      prBranch: branch,
+      baseBranch,
+    },
+  );
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId,
+      kind: "codeChange",
+      createdEntityId: claimTaskId,
+      landedOn: `ws:${payload.workspaceId}`,
+      workspaceSlug: payload.workspaceSlug,
+      codeChange: {
+        prPending: true,
+        repositoryUrl: payload.repositoryUrl,
+      },
+    },
+  };
 }
 
 async function approveCodeChange(args: {
@@ -860,16 +1085,23 @@ async function approveCodeChange(args: {
     };
   }
 
-  // Per-claim webhook secret: generated fresh for every claim, stored
-  // encrypted on the claim Task, and carried (as a signed JWT) in the
-  // webhook URL's query string — the swarm sends no custom headers.
-  const webhookSecret = generateWebhookSecret();
-  const encryptedWebhookSecret = JSON.stringify(
-    EncryptionService.getInstance().encryptField(
-      "codeChangeWebhookSecret",
-      webhookSecret,
-    ),
-  );
+  // Per-claim webhook secret — the swarm `create_pr` path only: generated
+  // fresh for every claim, stored encrypted on the claim Task, and carried
+  // (as a signed JWT) in the webhook URL's query string — the swarm sends
+  // no custom headers. A strut landing is heard on the strut-runs webhook,
+  // whose token lives on the `StrutRun` row.
+  const viaStrut = codeChangeViaStrut();
+  const legacyWebhook = viaStrut
+    ? null
+    : (() => {
+        const secret = generateWebhookSecret();
+        return {
+          secret,
+          encrypted: JSON.stringify(
+            EncryptionService.getInstance().encryptField("codeChangeWebhookSecret", secret),
+          ),
+        };
+      })();
 
   // ── Step 4: Claim before write ──────────────────────────────────────────
   // Insert the Task with proposalId set. The @@unique([workspaceId, proposalId])
@@ -894,7 +1126,7 @@ async function approveCodeChange(args: {
           repositoryId: dbRepo.id,
           featureId: null,
           proposalId: proposal.proposalId,
-          codeChangeWebhookSecret: encryptedWebhookSecret,
+          codeChangeWebhookSecret: legacyWebhook?.encrypted ?? null,
         },
         select: { id: true },
       });
@@ -1085,14 +1317,30 @@ async function approveCodeChange(args: {
     };
   }
 
-  // ── Step 5: Build the webhook URL, then dispatch via createPr ──────────
+  // ── Step 5 (strut, the default): land through `code-change-land` ────────
+  if (viaStrut || !legacyWebhook) {
+    return landViaStrut({
+      userId,
+      proposalId: proposal.proposalId,
+      payload,
+      prArgs,
+      approvedDiff,
+      approvedDiffSha256,
+      previewBaseBranch: diffSource.baseBranch,
+      claimTaskId,
+      conversationId,
+      publicBaseUrl,
+    });
+  }
+
+  // ── Step 5 (swarm, `CODE_CHANGE_VIA_STRUT=false`): webhook URL + createPr ─
   // The token is a JWT over { taskId } signed with the per-claim secret; the
   // receiver decodes it to find the claim Task, decrypts the stored secret,
   // and verifies. Long-lived — the swarm's orphan sweep can deliver well
   // after dispatch. The full URL embeds the token: NEVER log it.
   const webhookToken = await createCodeChangeWebhookToken(
     claimTaskId,
-    webhookSecret,
+    legacyWebhook.secret,
   );
   const webhookUrl = `${publicBaseUrl}/api/code-change/webhook?token=${encodeURIComponent(webhookToken)}`;
 
