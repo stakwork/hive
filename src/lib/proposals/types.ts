@@ -312,8 +312,14 @@ export interface CodeChangePendingPreview {
   /** Strut's run id on its swarm. */
   strutRunId: string;
   swarmId: string;
-  /** The run in strut's UI (the org strut view). */
-  runUrl: string;
+  /**
+   * The card's "View run": the org strut view opened on this run —
+   * `/org/<githubLogin>/strut?strut=wf%3D…%26run%3D…` (`strutViewPath`),
+   * root-relative. Never strut's own URL on the swarm, which needs the
+   * embed token that view mints. Absent only when the workspace has no
+   * org (and then the dispatch has already been refused).
+   */
+  runUrl?: string;
 }
 
 /** A proposal from the synchronous path carries no `preview` and is ready. */
