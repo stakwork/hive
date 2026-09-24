@@ -6,7 +6,8 @@
  *
  *   - the STRUT path (default): dispatch the `code-change-propose` workflow
  *     with the user's token as an actor secret (never in the input), and
- *     return the card PENDING — no diff, no polling, a link to the run;
+ *     return the card PENDING — no diff, no polling, a link to the run in
+ *     the org strut view (never strut's own URL);
  *   - the legacy synchronous path (`CODE_CHANGE_VIA_STRUT=false`, kept for
  *     one release): which repository the tool accepts, which single
  *     `repo_url` it forwards to the swarm, and how it reads the diff.
@@ -97,6 +98,7 @@ import { db } from "@/lib/db";
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 const ORG_ID = "org-1";
+const ORG_LOGIN = "stakwork";
 const USER_ID = "user-1";
 const WS_ID = "ws-1";
 const WS_SLUG = "hive";
@@ -151,7 +153,7 @@ function mockWorkspace(repoCount: number) {
     slug: WS_SLUG,
     name: "Hive",
     members: [{ userId: USER_ID }],
-    sourceControlOrg: { id: ORG_ID },
+    sourceControlOrg: { id: ORG_ID, githubLogin: ORG_LOGIN },
     swarm: { swarmUrl: "https://swarm.example.com:8444", swarmApiKey: "enc" },
   } as never);
   vi.mocked(db.repository.count).mockResolvedValue(repoCount as never);
@@ -170,7 +172,6 @@ beforeEach(() => {
     runId: "row-1",
     strutRunId: "1790000000000",
     swarmId: "swarm-1",
-    runUrl: "https://swarm.example.com:3355/lab/?wf=code-change-propose&run=1790000000000",
   });
   mockGetBifrost.mockResolvedValue(undefined);
   mockRepoAgent.mockResolvedValue({ content: DIFF });
@@ -244,10 +245,42 @@ describe("propose_code_change — strut path (default)", () => {
         runId: "row-1",
         strutRunId: "1790000000000",
         swarmId: "swarm-1",
-        runUrl: "https://swarm.example.com:3355/lab/?wf=code-change-propose&run=1790000000000",
+        // The org strut view on this run — strut's `wf`/`run` packed as the
+        // one `?strut=` param `StrutView` reads. A Hive path, never the lab.
+        runUrl: `/org/${ORG_LOGIN}/strut?strut=wf%3Dcode-change-propose%26run%3D1790000000000`,
       },
     });
     expect(out.meta).toMatchObject({ repoName: "stakwork/hive", workspaceSlug: WS_SLUG });
+  });
+
+  it("links the run through Hive's org strut view, never strut's own origin", async () => {
+    const out = await run();
+    const pending = (out.payload as { pending: { runUrl?: string } }).pending;
+    expect(pending.runUrl).toMatch(/^\/org\/stakwork\/strut\?strut=/);
+    expect(JSON.stringify(out)).not.toContain("3355");
+    expect(JSON.stringify(out)).not.toContain("/lab");
+    // The packed link is exactly strut's own query for the run.
+    const packed = new URL(pending.runUrl!, "https://hive.test").searchParams.get("strut");
+    expect(Object.fromEntries(new URLSearchParams(packed!))).toEqual({
+      wf: "code-change-propose",
+      run: "1790000000000",
+    });
+  });
+
+  it("omits the run link when the workspace has no org to host the strut view", async () => {
+    // Cannot happen after a successful dispatch (the resolver refuses a
+    // workspace without an org), but the card must not get a broken link.
+    vi.mocked(db.workspace.findUnique).mockResolvedValue({
+      id: WS_ID,
+      slug: WS_SLUG,
+      name: "Hive",
+      members: [{ userId: USER_ID }],
+      sourceControlOrg: null,
+      swarm: { swarmUrl: "https://swarm.example.com:8444", swarmApiKey: "enc" },
+    } as never);
+    const out = await run();
+    expect(out.error).toBeUndefined();
+    expect((out.payload as { pending: Record<string, unknown> }).pending).not.toHaveProperty("runUrl");
   });
 
   it("registers the run for the Stop button, keyed by the StrutRun id", async () => {
