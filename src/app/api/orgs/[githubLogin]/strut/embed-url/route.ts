@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { ensureStrutDelegation } from "@/services/bifrost/strut-delegation";
+import { ensureStrutHiveKey } from "@/services/strut-hive-key";
 import { resolveStrutTarget } from "@/services/strut-target";
+import { getBaseUrl } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -30,8 +32,10 @@ const MINT_TIMEOUT_MS = 10_000;
  * The JWT's `sub` is the user's actor string (the macaroon `user_id`), so
  * strut bills what the user does in the embed to them; and, behind the
  * Bifrost gates, the route makes sure the swarm's strut holds a live
- * standing delegation for that user (`ensureStrutDelegation`). A failed
- * push never blocks the embed.
+ * standing delegation for that user (`ensureStrutDelegation`). It also
+ * makes sure that strut holds the org's `HIVE_API_KEY` + `HIVE_URL`
+ * deployment secrets (`ensureStrutHiveKey`). A failed push never blocks
+ * the embed.
  */
 export async function POST(
   request: NextRequest,
@@ -107,12 +111,23 @@ export async function POST(
     );
   }
 
-  // Never throws: a failed push is logged and the embed goes ahead.
-  await ensureStrutDelegation(
-    { workspaceId: target.workspaceId, workspaceSlug: target.workspaceSlug, userId: userOrResponse.id },
-    { swarmUrl: target.swarmUrl, swarmApiKey: apiToken },
-    { actor },
-  );
+  // Neither throws: a failed push is logged and the embed goes ahead.
+  await Promise.all([
+    ensureStrutDelegation(
+      { workspaceId: target.workspaceId, workspaceSlug: target.workspaceSlug, userId: userOrResponse.id },
+      { swarmUrl: target.swarmUrl, swarmApiKey: apiToken },
+      { actor },
+    ),
+    ensureStrutHiveKey(
+      {
+        swarmId: target.swarmId,
+        workspaceId: target.workspaceId,
+        orgId: target.orgId,
+        lab: { labBase: target.labBase, swarmApiKey: apiToken },
+      },
+      { publicBaseUrl: getBaseUrl(request.headers.get("host")), userId: userOrResponse.id },
+    ),
+  ]);
 
   // Trailing slash matters: the UI's relative `./assets/...` URLs resolve
   // under `/lab/`, and mcp 308s a bare `/lab` there — dropping the `?key=`.
