@@ -25,6 +25,14 @@ export interface CanvasActiveStream {
 const activeStreamKey = (conversationRowId: string) =>
   `canvas:active-stream:${conversationRowId}`;
 
+/**
+ * Bound for the optional pointer read on conversation GET / the relay.
+ * ioredis retries a refused connect indefinitely by default, so an
+ * unreachable Redis would hang the history load until the test (or the
+ * request) times out. A miss must fall through as "no in-flight stream".
+ */
+const ACTIVE_STREAM_READ_TIMEOUT_MS = 1500;
+
 let contextPromise: Promise<ResumableStreamContext> | null = null;
 
 /**
@@ -79,8 +87,17 @@ export function parseActiveStream(raw: string | null): CanvasActiveStream | null
 export async function readActiveStream(
   conversationRowId: string,
 ): Promise<CanvasActiveStream | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const raw = await redis.get(activeStreamKey(conversationRowId));
+    const raw = await Promise.race([
+      redis.get(activeStreamKey(conversationRowId)),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("active stream read timed out")),
+          ACTIVE_STREAM_READ_TIMEOUT_MS,
+        );
+      }),
+    ]);
     return parseActiveStream(raw);
   } catch (err) {
     console.error(
@@ -88,6 +105,8 @@ export async function readActiveStream(
       err,
     );
     return null;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

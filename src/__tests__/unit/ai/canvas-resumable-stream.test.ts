@@ -74,6 +74,11 @@ describe("canvas-resumable-stream", () => {
     await expect(readActiveStream("row-1")).resolves.toBeNull();
   });
 
+  it("returns null when Redis GET never settles so a history load cannot hang", async () => {
+    redisGet.mockReturnValue(new Promise(() => {}));
+    await expect(readActiveStream("row-hang")).resolves.toBeNull();
+  });
+
   it("does not construct the resumable context until create/resume", async () => {
     expect(createResumableStreamContext).not.toHaveBeenCalled();
     expect(duplicate).not.toHaveBeenCalled();
