@@ -3,10 +3,11 @@
  * ONE place "which strut" lives.
  *
  * Coverage:
- *   - `code_change` / `embed` run on the ORG's default workspace swarm
- *     (`resolveOrgSwarmWorkspaceForUser`): by workspace (its org is looked
- *     up) or by org login; NO_ORG_SWARM when nothing is reachable.
- *   - `benchmark` / `chat` run on the workspace's OWN swarm, access-checked:
+ *   - `code_change` / `embed` / `chat` run on the ORG's default workspace
+ *     swarm (`resolveOrgSwarmWorkspaceForUser`): by workspace (its org is
+ *     looked up) or by org login; NO_ORG_SWARM when nothing is reachable.
+ *     `chat` is the row that moved (one strut per org, 2026-09-24).
+ *   - `benchmark` runs on the workspace's OWN swarm, access-checked:
  *     not found, access denied (owner OR member passes), swarm missing /
  *     not active / no key.
  *   - The target: swarm id, lab base, decrypted key, the actor string; a
@@ -62,7 +63,7 @@ beforeEach(() => {
   mockDecrypt.mockImplementation((_f: string, v: string) => `dec(${v})`);
 });
 
-describe("resolveStrutTarget — org-default policy (code_change, embed)", () => {
+describe("resolveStrutTarget — org-default policy (code_change, embed, chat)", () => {
   it("code_change: looks up the workspace's org and returns the org default swarm", async () => {
     mockWorkspaceFindFirst.mockResolvedValue({ sourceControlOrg: { githubLogin: "acme-gh" } });
     mockOrgSwarmWorkspace.mockResolvedValue(orgWorkspace());
@@ -84,6 +85,19 @@ describe("resolveStrutTarget — org-default policy (code_change, embed)", () =>
       actor: "alice-user-1",
     });
     expect(mockResolveStrutActor).toHaveBeenCalledWith(USER);
+  });
+
+  it("chat: Jamie's dispatch lands on the org default swarm, whatever workspace it names", async () => {
+    mockWorkspaceFindFirst.mockResolvedValue({ sourceControlOrg: { githubLogin: "acme-gh" } });
+    mockOrgSwarmWorkspace.mockResolvedValue(orgWorkspace());
+    const out = await resolveStrutTarget({ purpose: "chat", workspaceSlug: "acme", userId: USER });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(mockOrgSwarmWorkspace).toHaveBeenCalledWith("acme-gh", USER);
+    expect(out.target).toMatchObject({ swarmId: "swarm-default", workspaceId: "ws-default", workspaceSlug: "acme-default" });
+    // The named workspace is only read for its org; the access check is on
+    // the org default workspace, inside resolveOrgSwarmWorkspaceForUser.
+    expect(mockWorkspaceFindFirst.mock.calls[0][0].select).toEqual({ sourceControlOrg: { select: { githubLogin: true } } });
   });
 
   it("embed: resolves by org login without a workspace in hand", async () => {
@@ -135,7 +149,7 @@ describe("resolveStrutTarget — org-default policy (code_change, embed)", () =>
   });
 });
 
-describe("resolveStrutTarget — workspace policy (benchmark, chat)", () => {
+describe("resolveStrutTarget — workspace policy (benchmark)", () => {
   it("benchmark: the workspace's own swarm, by slug", async () => {
     mockWorkspaceFindFirst.mockResolvedValue(ownWorkspace());
     const out = await resolveStrutTarget({ purpose: "benchmark", workspaceSlug: "acme", userId: USER });
@@ -156,33 +170,33 @@ describe("resolveStrutTarget — workspace policy (benchmark, chat)", () => {
     expect(mockWorkspaceFindFirst.mock.calls[0][0].select.members.where).toEqual({ userId: USER, leftAt: null });
   });
 
-  it("chat: by id, a member (not the owner) passes", async () => {
+  it("benchmark: by id, a member (not the owner) passes", async () => {
     mockWorkspaceFindFirst.mockResolvedValue(ownWorkspace({ ownerId: "someone-else", members: [{ userId: USER }] }));
-    const out = await resolveStrutTarget({ purpose: "chat", workspaceId: "ws-1", userId: USER });
+    const out = await resolveStrutTarget({ purpose: "benchmark", workspaceId: "ws-1", userId: USER });
     expect(out.ok).toBe(true);
     expect(mockWorkspaceFindFirst.mock.calls[0][0].where).toEqual({ id: "ws-1", deleted: false });
   });
 
   it("ACCESS_DENIED for a non-member, before any credential is decrypted", async () => {
     mockWorkspaceFindFirst.mockResolvedValue(ownWorkspace({ ownerId: "someone-else", members: [] }));
-    const out = await resolveStrutTarget({ purpose: "chat", workspaceSlug: "acme", userId: USER });
+    const out = await resolveStrutTarget({ purpose: "benchmark", workspaceSlug: "acme", userId: USER });
     expect(out).toEqual({ ok: false, error: { type: "ACCESS_DENIED" } });
     expect(mockDecrypt).not.toHaveBeenCalled();
   });
 
   it("WORKSPACE_NOT_FOUND / SWARM_NOT_CONFIGURED / SWARM_NOT_ACTIVE", async () => {
     mockWorkspaceFindFirst.mockResolvedValueOnce(null);
-    expect(await resolveStrutTarget({ purpose: "chat", workspaceSlug: "x", userId: USER })).toEqual({
+    expect(await resolveStrutTarget({ purpose: "benchmark", workspaceSlug: "x", userId: USER })).toEqual({
       ok: false,
       error: { type: "WORKSPACE_NOT_FOUND" },
     });
     mockWorkspaceFindFirst.mockResolvedValueOnce(ownWorkspace({ swarm: null }));
-    expect(await resolveStrutTarget({ purpose: "chat", workspaceSlug: "x", userId: USER })).toEqual({
+    expect(await resolveStrutTarget({ purpose: "benchmark", workspaceSlug: "x", userId: USER })).toEqual({
       ok: false,
       error: { type: "SWARM_NOT_CONFIGURED" },
     });
     mockWorkspaceFindFirst.mockResolvedValueOnce(ownWorkspace({ swarm: { ...SWARM, swarmApiKey: null } }));
-    expect(await resolveStrutTarget({ purpose: "chat", workspaceSlug: "x", userId: USER })).toEqual({
+    expect(await resolveStrutTarget({ purpose: "benchmark", workspaceSlug: "x", userId: USER })).toEqual({
       ok: false,
       error: { type: "SWARM_NOT_CONFIGURED" },
     });
