@@ -2574,4 +2574,68 @@ enum AgentRunStatus {
   FAILED
 }
 
+/// One row per strut workflow launch (`services/strut-runs.ts`) — the
+/// generic tracking row for anything hive runs as a strut workflow and
+/// hears back about through `POST /api/strut-runs/webhook`. Not
+/// `AgentRun` (the swarm `/repo/agent` inline-or-webhook arbitration row
+/// with a chat-text result) and not `StakworkRun` (shaped around a
+/// stakwork project id).
+///
+/// `swarmId` records WHERE the run lives: reconcile, cancel and the
+/// "open in strut" link build their URLs from the row, never by re-running
+/// the target policy (`services/strut-target.ts`). `(swarmId, workflow,
+/// strutRunId)` is an opaque handle — stored and compared, never parsed;
+/// strut run ids are millisecond timestamps, so two struts can collide.
+/// `kind` selects the completion handler that validates `output`.
+/// No FKs, like `AgentRun`.
+model StrutRun {
+  id             String         @id @default(cuid())
+  /// SHA-256 hash of the high-entropy callback bearer token. Never stored plaintext.
+  tokenHash      String         @map("token_hash")
+  /// The workspace the launch was made FOR (the tool's workspace) — not
+  /// necessarily the swarm's own workspace.
+  workspaceId    String         @map("workspace_id")
+  /// The `Swarm` whose strut runs the workflow (the resolved target).
+  swarmId        String         @map("swarm_id")
+  userId         String         @map("user_id")
+  /// Completion-handler discriminator, e.g. "code_change_propose".
+  kind           String
+  /// Strut workflow name, e.g. "code-change-propose".
+  workflow       String
+  /// Strut's run id from the 202; null until the launch returned.
+  strutRunId     String?        @map("strut_run_id")
+  status         StrutRunStatus @default(PENDING)
+  /// The workflow `input` as launched (never a credential — strut persists
+  /// it in the run's event log too).
+  input          Json?
+  /// The run's `output` verbatim from the callback / summary (success only).
+  output         Json?
+  error          String?        @db.Text
+  durationMs     Int?           @map("duration_ms")
+  /// Delivery target for canvas-linked launches (SharedConversation id).
+  conversationId String?        @map("conversation_id")
+  /// The proposal card this launch fills in, when it is one.
+  proposalId     String?        @map("proposal_id")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  settledAt      DateTime?      @map("settled_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  @@unique([swarmId, workflow, strutRunId])
+  @@index([status, createdAt])
+  @@index([proposalId])
+  @@index([conversationId])
+  @@map("strut_runs")
+}
+
+/// Status of a strut launch. LOST = strut answered 404 for the run on
+/// reconcile (a restart before the run was recorded), or the dispatch
+/// never got a run id.
+enum StrutRunStatus {
+  PENDING
+  SUCCESS
+  ERROR
+  CANCELLED
+  LOST
+}
+
 

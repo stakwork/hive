@@ -19,12 +19,11 @@ import { StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { optionalEnvVars } from "@/config/env";
-import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import {
   STRUT_ACTOR_HEADER,
   ensureStrutDelegation,
-  resolveStrutActor,
 } from "@/services/bifrost/strut-delegation";
+import { describeStrutTargetError, resolveStrutTarget } from "@/services/strut-target";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -419,22 +418,32 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     let strutRunUrl: string | undefined;
 
     if (runner === "strut") {
-      // The workspace swarm's stakgraph (:3355) mounts the strut lab at /lab;
-      // `wfbench-run` is the Workflow Editor Benchmark harness there. Same
-      // task fields as the Stakwork set_var vars, as the workflow's `input`
-      // (criteria as the array, workflow_input as the object — the harness
-      // accepts both encodings). Auth is the swarm API key as x-api-token,
-      // the same way every other Hive → stakgraph call authenticates.
-      // `x-strut-actor` names who the run's LLM spend is billed to (the
-      // macaroon `user_id`, not the raw User.id), and — behind the Bifrost
-      // gates — strut is first handed that user's standing delegation.
-      // The push never throws and never blocks the dispatch.
-      const labBase = transformSwarmUrlToRepo2Graph(swarmUrl);
-      const actor = await resolveStrutActor(userId);
+      // Which strut runs a benchmark is a POLICY (`resolveStrutTarget`,
+      // purpose "benchmark" — today the workspace's own swarm, whose
+      // stakgraph (:3355) mounts the strut lab at /lab). `wfbench-run` is
+      // the Workflow Editor Benchmark harness there. Same task fields as
+      // the Stakwork set_var vars, as the workflow's `input` (criteria as
+      // the array, workflow_input as the object — the harness accepts both
+      // encodings). Auth is the swarm API key as x-api-token, the same way
+      // every other Hive → stakgraph call authenticates. `x-strut-actor`
+      // names who the run's LLM spend is billed to (the macaroon `user_id`,
+      // not the raw User.id), and — behind the Bifrost gates — strut is
+      // first handed that user's standing delegation. The push never
+      // throws and never blocks the dispatch.
+      const resolved = await resolveStrutTarget({ purpose: "benchmark", workspaceSlug: slug, userId });
+      if (!resolved.ok) {
+        await db.stakworkRun.delete({ where: { id: run.id } });
+        return NextResponse.json(
+          { error: `Strut is unavailable for this workspace: ${describeStrutTargetError(resolved.error)}` },
+          { status: 503 },
+        );
+      }
+      const { target } = resolved;
+      const labBase = target.labBase;
       await ensureStrutDelegation(
-        { workspaceId, workspaceSlug: slug, userId },
-        { swarmUrl, swarmApiKey },
-        { actor },
+        { workspaceId: target.workspaceId, workspaceSlug: target.workspaceSlug, userId },
+        { swarmUrl: target.swarmUrl, swarmApiKey: target.swarmApiKey },
+        { actor: target.actor },
       );
       const strutInput: Record<string, unknown> = {
         task_slug: task.slug,
@@ -445,12 +454,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         ...(expectedOutput !== undefined ? { [RERUN_EXPECTED_OUTPUT_VAR]: expectedOutput } : {}),
         webhook_url: webhookUrl,
       };
-      const strutResponse = await fetch(`${labBase}/lab/workflows/wfbench-run/run`, {
+      const strutResponse = await fetch(`${labBase}/workflows/wfbench-run/run`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-token": swarmApiKey,
-          [STRUT_ACTOR_HEADER]: actor,
+          "x-api-token": target.swarmApiKey,
+          [STRUT_ACTOR_HEADER]: target.actor,
         },
         body: JSON.stringify({ input: strutInput }),
       });
@@ -463,7 +472,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
       const strutData = (await strutResponse.json().catch(() => ({}))) as { runId?: unknown };
       strutRunId = typeof strutData?.runId === "string" && strutData.runId ? strutData.runId : undefined;
-      strutRunUrl = strutRunId ? `${labBase}/lab/?wf=wfbench-run&run=${encodeURIComponent(strutRunId)}` : undefined;
+      strutRunUrl = strutRunId ? `${labBase}/?wf=wfbench-run&run=${encodeURIComponent(strutRunId)}` : undefined;
     } else {
       const stakworkResponse = await fetch(`${optionalEnvVars.STAKWORK_BASE_URL}/projects`, {
         method: "POST",

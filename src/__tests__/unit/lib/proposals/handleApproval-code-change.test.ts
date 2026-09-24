@@ -46,6 +46,7 @@ vi.mock("@/lib/db", () => ({
     task: { create: vi.fn(), update: vi.fn(), delete: vi.fn(), findFirst: vi.fn() },
     chatMessage: { create: vi.fn(), findFirst: vi.fn() },
     artifact: { create: vi.fn(), updateMany: vi.fn() },
+    strutRun: { findFirst: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -289,6 +290,125 @@ describe("approveCodeChange — payload is bound to the stored transcript", () =
     expect(res.ok).toBe(false);
     expect(mockCreatePr).not.toHaveBeenCalled();
     expect(db.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+// ── Strut path: the diff comes from the StrutRun row ──────────────────────
+//
+// `propose_code_change` on strut returns the card PENDING and strut's
+// callback fills it in. The stored transcript copy of the diff is for
+// display; approval takes the bytes from the server-written `StrutRun` row
+// (`resolveApprovedDiff`), which must be SUCCESS, the approver's, and for
+// the same workspace + repo the card names.
+
+describe("approveCodeChange — the diff comes from the StrutRun row", () => {
+  const strutRow = (over: Record<string, unknown> = {}) => ({
+    id: "strut-run-1",
+    userId: USER_ID,
+    workspaceId: WS_ID,
+    status: "SUCCESS",
+    input: { repo: REPO_URL, prompt: "p" },
+    output: { diff: APPROVED_DIFF + "\n", filesChanged: 1 },
+    ...over,
+  });
+
+  /** A card the strut path wrote and its completion patched `ready` (or left `pending`). */
+  const previewOutput = (over: Record<string, unknown> = {}, preview = "ready") => {
+    const out = codeChangeOutput(over);
+    (out.payload as Record<string, unknown>).preview = preview;
+    return out;
+  };
+
+  it("dispatches the ROW's diff, re-hashed, even when the stored card carries another", async () => {
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(strutRow() as never);
+    // The transcript's copy was tampered with after the fact.
+    mockFetchStored.mockResolvedValue([msg(previewOutput({ diff: FORGED_DIFF }))]);
+
+    const res = await approve([msg(previewOutput({ diff: FORGED_DIFF }))]);
+
+    expect(res.ok).toBe(true);
+    expect(db.strutRun.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { proposalId: PROPOSAL_ID, kind: "code_change_propose" } }),
+    );
+    const dispatched = mockCreatePr.mock.calls[0][0];
+    // Exactly the bytes the card shows: trailing whitespace trimmed, hash of THOSE bytes.
+    expect(dispatched.approvedDiff).toBe(APPROVED_DIFF.trimEnd());
+    expect(dispatched.diffSha256).toBe(sha(APPROVED_DIFF.trimEnd()));
+    expect(dispatched.approvedDiff).not.toContain("prisma/schema.prisma");
+  });
+
+  it("refuses when the row's user is not the approver, before any claim", async () => {
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(strutRow({ userId: OTHER_USER_ID }) as never);
+    // The transcript says the approver is the originator — the row disagrees.
+    mockFetchStored.mockResolvedValue([msg(previewOutput())]);
+
+    const res = await approve([msg(previewOutput())]);
+
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.status).toBe(403);
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(mockCreatePr).not.toHaveBeenCalled();
+  });
+
+  it("refuses a row for another workspace or another repo", async () => {
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(strutRow({ workspaceId: "ws-other" }) as never);
+    mockFetchStored.mockResolvedValue([msg(previewOutput())]);
+    expect((await approve([msg(previewOutput())])).ok).toBe(false);
+
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(
+      strutRow({ input: { repo: "https://github.com/acme/other", prompt: "p" } }) as never,
+    );
+    expect((await approve([msg(previewOutput())])).ok).toBe(false);
+    expect(mockCreatePr).not.toHaveBeenCalled();
+  });
+
+  it("a pending run is 409, a failed / cancelled one 400, an empty diff 400", async () => {
+    mockFetchStored.mockResolvedValue([msg(previewOutput({}, "pending"))]);
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(strutRow({ status: "PENDING", output: null }) as never);
+    let res = await approve([msg(previewOutput())]);
+    expect(res.ok === false && res.status).toBe(409);
+
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(strutRow({ status: "ERROR", output: null }) as never);
+    res = await approve([msg(previewOutput())]);
+    expect(res.ok === false && res.status).toBe(400);
+
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(strutRow({ output: { diff: "", filesChanged: 0 } }) as never);
+    res = await approve([msg(previewOutput())]);
+    expect(res.ok === false && res.status).toBe(400);
+    expect(mockCreatePr).not.toHaveBeenCalled();
+  });
+
+  it("refuses a preview card with no row at all (a forged card, or a lost run)", async () => {
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(null);
+    mockFetchStored.mockResolvedValue([msg(previewOutput())]);
+    const res = await approve([msg(previewOutput())]);
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.status).toBe(403);
+    expect(mockCreatePr).not.toHaveBeenCalled();
+  });
+
+  it("re-runs hygiene on the ROW's bytes", async () => {
+    const secretDiff = [
+      "--- a/.env",
+      "+++ b/.env",
+      "@@ -1 +1,2 @@",
+      " X=1",
+      "+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "",
+    ].join("\n");
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(strutRow({ output: { diff: secretDiff, filesChanged: 1 } }) as never);
+    mockFetchStored.mockResolvedValue([msg(previewOutput())]);
+    const res = await approve([msg(previewOutput())]);
+    expect(res.ok).toBe(false);
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("a proposal from the synchronous path (no preview state, no row) still reads the stored transcript", async () => {
+    vi.mocked(db.strutRun.findFirst).mockResolvedValue(null);
+    mockFetchStored.mockResolvedValue([msg(codeChangeOutput())]);
+    const res = await approve([msg(codeChangeOutput())]);
+    expect(res.ok).toBe(true);
+    expect(mockCreatePr.mock.calls[0][0].approvedDiff).toBe(APPROVED_DIFF);
   });
 });
 

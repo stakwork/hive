@@ -50,6 +50,7 @@ import {
 import {
   mergeServerMessages,
   reconcileApprovalResults,
+  reconcileProposalPreviews,
   reconcilePlannerSources,
 } from "./canvasChatPersistence";
 import {
@@ -209,6 +210,16 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
           mapped,
         );
 
+        // And for code-change PREVIEWS: the strut run's completion patches
+        // the stored `propose_code_change` tool OUTPUT in place (diff, or
+        // an honest failure), so the card leaves "Generating diff…" only
+        // if the local copy is swapped for the server's — matched by the
+        // output's `proposalId`.
+        const reconciledPv = reconcileProposalPreviews(
+          reconciledAr.messages,
+          mapped,
+        );
+
         const store = useCanvasChatStore.getState();
 
         // Title can land independently of messages (LLM title after the
@@ -228,10 +239,11 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
         if (
           merged.added.length === 0 &&
           !reconciled.changed &&
-          !reconciledAr.changed
+          !reconciledAr.changed &&
+          !reconciledPv.changed
         )
           return; // in sync
-        store.setConversationMessages(conversationId, reconciledAr.messages);
+        store.setConversationMessages(conversationId, reconciledPv.messages);
 
         // The user is looking at this chat (only the active conv is
         // subscribed/synced live), and we just merged new server content

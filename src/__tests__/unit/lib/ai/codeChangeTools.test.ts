@@ -1,8 +1,15 @@
 /**
  * Unit tests for `buildCodeChangeTools` — the `propose_code_change` tool.
  *
- * Focus: which repository the tool accepts, and which single `repo_url` it
- * forwards to the swarm.
+ * Two paths share the validation up front (workspace, membership, org,
+ * repository):
+ *
+ *   - the STRUT path (default): dispatch the `code-change-propose` workflow
+ *     with the user's token as an actor secret (never in the input), and
+ *     return the card PENDING — no diff, no polling, a link to the run;
+ *   - the legacy synchronous path (`CODE_CHANGE_VIA_STRUT=false`, kept for
+ *     one release): which repository the tool accepts, which single
+ *     `repo_url` it forwards to the swarm, and how it reads the diff.
  *
  * The tool used to refuse any workspace owning more than one repository, which
  * made it unreachable in most workspaces. `repositoryUrl` is a required input
@@ -14,13 +21,36 @@
 
 // @vitest-environment node
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
-const { mockRepoAgent, mockGetPat, mockGetBifrost } = vi.hoisted(() => ({
+const {
+  mockRepoAgent,
+  mockGetPat,
+  mockGetBifrost,
+  mockDispatchStrutRun,
+  mockCancelStrutRun,
+  mockResolveConversation,
+  mockSetActiveRun,
+  mockNotifyRunActive,
+  MockStrutDispatchError,
+} = vi.hoisted(() => ({
   mockRepoAgent: vi.fn(),
   mockGetPat: vi.fn(),
   mockGetBifrost: vi.fn(),
+  mockDispatchStrutRun: vi.fn(),
+  mockCancelStrutRun: vi.fn(),
+  mockResolveConversation: vi.fn(),
+  mockSetActiveRun: vi.fn(),
+  mockNotifyRunActive: vi.fn(),
+  MockStrutDispatchError: class extends Error {
+    constructor(
+      public readonly code: string,
+      message: string,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -37,6 +67,19 @@ vi.mock("@/lib/ai/askTools", () => ({
 vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: mockGetPat }));
 vi.mock("@/services/bifrost/orchestrator", () => ({
   getBifrostForLLM: mockGetBifrost,
+}));
+vi.mock("@/services/strut-runs", () => ({
+  dispatchStrutRun: mockDispatchStrutRun,
+  cancelStrutRun: mockCancelStrutRun,
+  StrutDispatchError: MockStrutDispatchError,
+}));
+vi.mock("@/services/org-canvas-conversation", () => ({ resolveOrgConversationRowId: mockResolveConversation }));
+vi.mock("@/services/canvas-active-runs-hooks", () => ({
+  setActiveRun: mockSetActiveRun,
+  notifyRunActive: mockNotifyRunActive,
+  // The legacy path's poll hooks.
+  isAbortRequestedForRun: vi.fn().mockResolvedValue(false),
+  clearActiveRun: vi.fn().mockResolvedValue({ wasLast: true }),
 }));
 vi.mock("@/lib/encryption", () => ({
   EncryptionService: {
@@ -72,16 +115,19 @@ const DIFF = [
   "",
 ].join("\n");
 
-function ctx() {
+function ctx(over: Record<string, unknown> = {}) {
   return {
     orgId: ORG_ID,
     userId: USER_ID,
+    currentCanvasConversationId: "conv-1",
+    publicBaseUrl: "https://hive.example.com",
     capturedWebSearchResults: [],
-  } as Parameters<typeof buildCodeChangeTools>[0];
+    ...over,
+  } as unknown as Parameters<typeof buildCodeChangeTools>[0];
 }
 
-function run(args: Record<string, unknown> = {}) {
-  const tools = buildCodeChangeTools(ctx());
+function run(args: Record<string, unknown> = {}, c = ctx()) {
+  const tools = buildCodeChangeTools(c);
   const tool = tools[PROPOSE_CODE_CHANGE_TOOL] as {
     execute: (a: unknown, o?: unknown) => Promise<Record<string, unknown>>;
   };
@@ -111,9 +157,21 @@ function mockWorkspace(repoCount: number) {
   vi.mocked(db.repository.count).mockResolvedValue(repoCount as never);
 }
 
+const ORIGINAL_SWITCH = process.env.CODE_CHANGE_VIA_STRUT;
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetPat.mockResolvedValue({ username: "evanfeenstra", token: "ghp_x" });
+  mockResolveConversation.mockResolvedValue("conv-1");
+  mockSetActiveRun.mockResolvedValue({ abortSelf: false });
+  mockNotifyRunActive.mockResolvedValue(undefined);
+  mockCancelStrutRun.mockResolvedValue(true);
+  mockDispatchStrutRun.mockResolvedValue({
+    runId: "row-1",
+    strutRunId: "1790000000000",
+    swarmId: "swarm-1",
+    runUrl: "https://swarm.example.com:3355/lab/?wf=code-change-propose&run=1790000000000",
+  });
   mockGetBifrost.mockResolvedValue(undefined);
   mockRepoAgent.mockResolvedValue({ content: DIFF });
   // fetchDefaultBranch — non-fatal, display only.
@@ -130,9 +188,131 @@ beforeEach(() => {
       : null) as never);
 });
 
-// ── Tests ──────────────────────────────────────────────────────────────────
+afterEach(() => {
+  if (ORIGINAL_SWITCH === undefined) delete process.env.CODE_CHANGE_VIA_STRUT;
+  else process.env.CODE_CHANGE_VIA_STRUT = ORIGINAL_SWITCH;
+});
+
+// ── Strut path (default) ───────────────────────────────────────────────────
+
+describe("propose_code_change — strut path (default)", () => {
+  beforeEach(() => {
+    delete process.env.CODE_CHANGE_VIA_STRUT;
+    mockWorkspace(4);
+  });
+
+  it("dispatches the code-change-propose workflow and returns the card PENDING", async () => {
+    const out = await run();
+
+    expect(out.error).toBeUndefined();
+    expect(mockRepoAgent).not.toHaveBeenCalled();
+    expect(mockDispatchStrutRun).toHaveBeenCalledTimes(1);
+    const args = mockDispatchStrutRun.mock.calls[0][0];
+    expect(args).toMatchObject({
+      workspaceId: WS_ID,
+      userId: USER_ID,
+      kind: "code_change_propose",
+      workflow: "code-change-propose",
+      purpose: "code_change",
+      publicBaseUrl: "https://hive.example.com",
+      conversationId: "conv-1",
+      proposalId: out.proposalId,
+      actorSecrets: { GITHUB_TOKEN: "ghp_x" },
+    });
+    expect(args.input.repo).toBe(TARGET_REPO);
+    // The prompt says how to work, not how to report: no diff printing, no commit/push.
+    expect(args.input.prompt).toContain("Change bg-orange-500");
+    expect(args.input.prompt).toMatch(/Do not commit, do not push/);
+    expect(args.input.prompt).toMatch(/do not print a diff/);
+    expect(args.input.prompt).not.toContain("git diff");
+    // The token rides ONLY as an actor secret — never in the workflow input.
+    expect(JSON.stringify(args.input)).not.toContain("ghp_x");
+
+    expect(out.kind).toBe("codeChange");
+    expect(out.originatorUserId).toBe(USER_ID);
+    expect(out.payload).toEqual({
+      workspaceId: WS_ID,
+      workspaceSlug: WS_SLUG,
+      repositoryUrl: TARGET_REPO,
+      title: "Use blue for the sign-in button",
+      body: "Swaps the raw orange Tailwind classes for blue.",
+      diff: "",
+      diffSha256: "",
+      filesChanged: 0,
+      preview: "pending",
+      pending: {
+        runId: "row-1",
+        strutRunId: "1790000000000",
+        swarmId: "swarm-1",
+        runUrl: "https://swarm.example.com:3355/lab/?wf=code-change-propose&run=1790000000000",
+      },
+    });
+    expect(out.meta).toMatchObject({ repoName: "stakwork/hive", workspaceSlug: WS_SLUG });
+  });
+
+  it("registers the run for the Stop button, keyed by the StrutRun id", async () => {
+    await run();
+    expect(mockSetActiveRun).toHaveBeenCalledWith(
+      "conv-1",
+      expect.objectContaining({ requestId: "row-1", workspaceId: WS_ID }),
+      "row-1",
+    );
+    expect(mockNotifyRunActive).toHaveBeenCalledWith("conv-1", true);
+    expect(mockCancelStrutRun).not.toHaveBeenCalled();
+  });
+
+  it("a Stop that landed before the dispatch cancels the run at once", async () => {
+    mockSetActiveRun.mockResolvedValue({ abortSelf: true });
+    await run();
+    expect(mockCancelStrutRun).toHaveBeenCalledWith({
+      id: "row-1",
+      swarmId: "swarm-1",
+      workflow: "code-change-propose",
+      strutRunId: "1790000000000",
+    });
+  });
+
+  it("skips the GitHub default-branch fetch and the swarm poll entirely", async () => {
+    await run();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mockGetBifrost).not.toHaveBeenCalled();
+  });
+
+  it("a user with no GitHub token still dispatches (strut's clone fails honestly)", async () => {
+    mockGetPat.mockResolvedValue(null);
+    const out = await run();
+    expect(out.error).toBeUndefined();
+    expect(mockDispatchStrutRun.mock.calls[0][0].actorSecrets).toEqual({ GITHUB_TOKEN: null });
+  });
+
+  it("surfaces a dispatch refusal as the tool's error", async () => {
+    mockDispatchStrutRun.mockRejectedValue(new MockStrutDispatchError("workflow_missing", "Strut has no workflow."));
+    const out = await run();
+    expect(out.kind).toBeUndefined();
+    expect(out.error).toContain("Strut has no workflow.");
+    expect(mockSetActiveRun).not.toHaveBeenCalled();
+  });
+
+  it("refuses without a public base URL or a canvas conversation, before dispatching", async () => {
+    expect((await run({}, ctx({ publicBaseUrl: undefined }))).error).toContain("public URL");
+    mockResolveConversation.mockResolvedValue(null);
+    expect((await run()).error).toContain("canvas conversation");
+    expect(mockDispatchStrutRun).not.toHaveBeenCalled();
+  });
+
+  it("still validates the repository and membership first", async () => {
+    expect((await run({ repositoryUrl: FOREIGN_REPO })).error).toContain("not registered in");
+    expect(mockDispatchStrutRun).not.toHaveBeenCalled();
+  });
+});
+
+// ── Legacy synchronous path (CODE_CHANGE_VIA_STRUT=false) ──────────────────
 
 describe("propose_code_change — repository selection", () => {
+  beforeEach(() => {
+    process.env.CODE_CHANGE_VIA_STRUT = "false";
+  });
+
   it("proposes in a workspace that owns several repositories", async () => {
     mockWorkspace(4);
 
@@ -193,6 +373,10 @@ describe("propose_code_change — repository selection", () => {
 });
 
 describe("propose_code_change — authorization is unchanged", () => {
+  beforeEach(() => {
+    process.env.CODE_CHANGE_VIA_STRUT = "false";
+  });
+
   it("refuses a non-member of the workspace", async () => {
     vi.mocked(db.workspace.findUnique).mockResolvedValue({
       id: WS_ID,
@@ -255,7 +439,10 @@ const WORKTREE_DIFF = [
 ].join("\n");
 
 describe("propose_code_change — diff source", () => {
-  beforeEach(() => mockWorkspace(2));
+  beforeEach(() => {
+    process.env.CODE_CHANGE_VIA_STRUT = "false";
+    mockWorkspace(2);
+  });
 
   it("prefers the swarm's worktree diff over anything in the model's text", async () => {
     mockRepoAgent.mockResolvedValue({
