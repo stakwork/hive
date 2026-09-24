@@ -43,6 +43,7 @@ import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
 import {
   useCanvasChatStore,
   timelineFromToolCalls,
+  sumConversationTokenUsage,
   type CanvasAttachment,
   type CanvasChatMessage,
   type ToolCall,
@@ -544,6 +545,53 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         />
       </div>
     </div>
+  );
+}
+
+/** `12.4K`, `350K`, `1.2M` — compact, no denominator (see `TokenCounter`). */
+function formatCompactTokenCount(n: number): string {
+  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
+
+/**
+ * The active conversation's summed token usage, as a tight selector.
+ *
+ * Recomputes `sumConversationTokenUsage` on every store update (cheap —
+ * a single reduce over the message list), but selects through
+ * `useShallow` so `TokenCounter` only re-renders when one of the five
+ * summed numbers actually changes, not on every streaming text-delta
+ * that touches the messages array.
+ */
+function useConversationTokenTotals() {
+  const activeId = useCanvasChatStore((s) => s.activeConversationId);
+  return useCanvasChatStore(
+    useShallow((s) => {
+      const messages = activeId ? s.conversations[activeId]?.messages : undefined;
+      return messages ? sumConversationTokenUsage(messages) : null;
+    }),
+  );
+}
+
+/**
+ * Header token counter — sits beside `SidebarChatActions` in the org
+ * page's one bar. Sums `CanvasChatMessage.usage` across the active
+ * conversation (input + output tokens; see `sumConversationTokenUsage`)
+ * and renders it compact with no denominator, because there is no
+ * model context-window constant in this repo to divide by. Hidden
+ * whenever there's no usage yet (fresh page load) or the total is 0.
+ */
+export function TokenCounter() {
+  const totals = useConversationTokenTotals();
+  if (!totals || totals.used <= 0) return null;
+  const title =
+    `Tokens used in this chat — input: ${totals.inputTokens.toLocaleString()}, ` +
+    `output: ${totals.outputTokens.toLocaleString()}, ` +
+    `cache read: ${totals.cacheReadTokens.toLocaleString()}, ` +
+    `cache write: ${totals.cacheWriteTokens.toLocaleString()}`;
+  return (
+    <span className="px-1.5 text-xs text-muted-foreground tabular-nums select-none" title={title}>
+      {formatCompactTokenCount(totals.used)}
+    </span>
   );
 }
 

@@ -9,7 +9,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { NodeDetail } from "./NodeDetail";
 import { MultiNodeDetail } from "./MultiNodeDetail";
 import { ConnectionsListBody } from "./ConnectionsListBody";
-import { SidebarChat, SidebarChatActions } from "./SidebarChat";
+import { SidebarChat, SidebarChatActions, TokenCounter } from "./SidebarChat";
 import { ConnectionViewer } from "../connections/ConnectionViewer";
 import type { ConnectionData } from "../connections/types";
 import type { InternalEdge } from "../connections/OrgCanvasBackground";
@@ -303,6 +303,7 @@ export function OrgRightPanel({
         <div className="ml-auto flex items-center gap-1 pr-2">
           {/* Kept mounted: its settings popover and activity hook fetch on mount. */}
           <div className={cn("flex items-center", activeTab !== "chat" && "hidden")}>
+            <TokenCounter />
             <SidebarChatActions githubLogin={githubLogin} hideHistory={!!stage} />
           </div>
           <ActionTip label={stage ? "Canvas" : "Control panel"}>
