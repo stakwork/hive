@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
-import { useCanvasChatStore } from "@/app/org/[githubLogin]/_state/canvasChatStore";
+import { useCanvasChatStore, sumConversationTokenUsage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
+import type { CanvasChatMessage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -269,5 +270,78 @@ describe("canvasChatStore — conversation title", () => {
     useCanvasChatStore.getState().clearActiveConversation();
     expect(useCanvasChatStore.getState().conversations[id].title).toBeNull();
     expect(useCanvasChatStore.getState().conversations[id].serverConversationId).toBeNull();
+  });
+});
+
+// ── sumConversationTokenUsage ────────────────────────────────────────────────
+
+function msg(overrides: Partial<CanvasChatMessage> = {}): CanvasChatMessage {
+  return {
+    id: overrides.id ?? "m",
+    role: overrides.role ?? "assistant",
+    content: overrides.content ?? "",
+    timestamp: new Date(),
+    ...overrides,
+  };
+}
+
+describe("sumConversationTokenUsage", () => {
+  it("returns null when no message carries usage", () => {
+    const messages = [msg({ id: "1" }), msg({ id: "2", content: "hi" })];
+    expect(sumConversationTokenUsage(messages)).toBeNull();
+  });
+
+  it("returns null for an empty message list", () => {
+    expect(sumConversationTokenUsage([])).toBeNull();
+  });
+
+  it("sums inputTokens + outputTokens across messages into `used`", () => {
+    const messages = [
+      msg({ id: "1", usage: { inputTokens: 100, outputTokens: 50 } }),
+      msg({ id: "2", usage: { inputTokens: 200, outputTokens: 25 } }),
+    ];
+    const totals = sumConversationTokenUsage(messages);
+    expect(totals).not.toBeNull();
+    expect(totals!.inputTokens).toBe(300);
+    expect(totals!.outputTokens).toBe(75);
+    expect(totals!.used).toBe(375);
+  });
+
+  it("ignores messages with no usage field while summing the rest", () => {
+    const messages = [
+      msg({ id: "1", usage: { inputTokens: 100, outputTokens: 50 } }),
+      msg({ id: "2" }), // no usage — should be skipped, not treated as zero-and-counted
+      msg({ id: "3", usage: { inputTokens: 10, outputTokens: 5 } }),
+    ];
+    const totals = sumConversationTokenUsage(messages);
+    expect(totals!.used).toBe(165);
+  });
+
+  it("treats missing individual usage fields as 0 without throwing", () => {
+    const messages = [msg({ id: "1", usage: { inputTokens: 100 } })];
+    const totals = sumConversationTokenUsage(messages);
+    expect(totals!.inputTokens).toBe(100);
+    expect(totals!.outputTokens).toBe(0);
+    expect(totals!.used).toBe(100);
+    expect(totals!.cacheReadTokens).toBe(0);
+    expect(totals!.cacheWriteTokens).toBe(0);
+  });
+
+  it("includes cache read/write totals for the tooltip breakdown", () => {
+    const messages = [
+      msg({
+        id: "1",
+        usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 1000, cacheWriteTokens: 200 },
+      }),
+      msg({
+        id: "2",
+        usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 500, cacheWriteTokens: 0 },
+      }),
+    ];
+    const totals = sumConversationTokenUsage(messages);
+    expect(totals!.cacheReadTokens).toBe(1500);
+    expect(totals!.cacheWriteTokens).toBe(200);
+    // Cache tokens are not part of `used` — only input+output are.
+    expect(totals!.used).toBe(17);
   });
 });
