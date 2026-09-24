@@ -42,6 +42,25 @@ let mockStoreState = {
 
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
   useCanvasChatStore: vi.fn((selector: (s: unknown) => unknown) => selector(mockStoreState)),
+  // Real implementation (not the store itself) — `TokenCounter` imports this
+  // as a pure helper, same contract asserted in canvasChatStore.test.ts.
+  sumConversationTokenUsage: (messages: Array<{ usage?: Record<string, number> }>) => {
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cacheReadTokens = 0;
+    let cacheWriteTokens = 0;
+    let sawUsage = false;
+    for (const m of messages) {
+      if (!m.usage) continue;
+      sawUsage = true;
+      inputTokens += m.usage.inputTokens ?? 0;
+      outputTokens += m.usage.outputTokens ?? 0;
+      cacheReadTokens += m.usage.cacheReadTokens ?? 0;
+      cacheWriteTokens += m.usage.cacheWriteTokens ?? 0;
+    }
+    if (!sawUsage) return null;
+    return { used: inputTokens + outputTokens, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens };
+  },
 }));
 
 vi.mock("@/app/org/[githubLogin]/_state/useSendCanvasChatMessage", () => ({
@@ -207,6 +226,13 @@ async function renderSidebarChatActions() {
   return render(<SidebarChatActions githubLogin="test-org" />);
 }
 
+// The header's token counter — `OrgRightPanel` renders it beside
+// `SidebarChatActions` in the same `h-11` bar, chat-tab-only.
+async function renderTokenCounter() {
+  const { TokenCounter } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
+  return render(<TokenCounter />);
+}
+
 describe("SidebarChat — activity indicator", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -223,6 +249,84 @@ describe("SidebarChat — activity indicator", () => {
     mockIsActive = true;
     await renderSidebarChatActions();
     expect(screen.getByLabelText("agent active")).toBeDefined();
+  });
+});
+
+// ── Header token counter ───────────────────────────────────────────────────────
+
+function buildTokenUsageStoreState(messages: Array<{ id: string; usage?: Record<string, number> }>) {
+  return {
+    activeConversationId: "conv-1",
+    conversations: {
+      "conv-1": {
+        messages: messages.map((m) => ({
+          id: m.id,
+          role: "assistant" as const,
+          content: "",
+          timestamp: new Date(),
+          usage: m.usage,
+        })),
+      },
+    },
+    artifacts: {},
+    dismissedArtifactIds: {},
+    pendingInputDraft: null,
+  };
+}
+
+describe("SidebarChat header — TokenCounter", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockStoreState = {
+      activeConversationId: null,
+      conversations: {},
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    };
+  });
+
+  it("renders nothing when there is no active conversation", async () => {
+    const { container } = await renderTokenCounter();
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("renders nothing when no message carries usage", async () => {
+    mockStoreState = buildTokenUsageStoreState([{ id: "m1" }]) as typeof mockStoreState;
+    const { container } = await renderTokenCounter();
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("renders nothing when usage sums to 0", async () => {
+    mockStoreState = buildTokenUsageStoreState([
+      { id: "m1", usage: { inputTokens: 0, outputTokens: 0 } },
+    ]) as typeof mockStoreState;
+    const { container } = await renderTokenCounter();
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("renders the compact sum of input+output across messages", async () => {
+    mockStoreState = buildTokenUsageStoreState([
+      { id: "m1", usage: { inputTokens: 12000, outputTokens: 400 } },
+      { id: "m2", usage: { inputTokens: 5, outputTokens: 0 } },
+    ]) as typeof mockStoreState;
+    const { getByText } = await renderTokenCounter();
+    // 12000 + 400 + 5 + 0 = 12405 → "12.4K"
+    expect(getByText("12.4K")).toBeDefined();
+  });
+
+  it("puts input/output/cache breakdown in the title attribute, not a model limit", async () => {
+    mockStoreState = buildTokenUsageStoreState([
+      { id: "m1", usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 2 } },
+    ]) as typeof mockStoreState;
+    const { getByText } = await renderTokenCounter();
+    const el = getByText("150");
+    const title = el.getAttribute("title") ?? "";
+    expect(title).toContain("input: 100");
+    expect(title).toContain("output: 50");
+    expect(title).toContain("cache read: 10");
+    expect(title).toContain("cache write: 2");
+    expect(title.toLowerCase()).not.toMatch(/context window|limit|max tokens/);
   });
 });
 

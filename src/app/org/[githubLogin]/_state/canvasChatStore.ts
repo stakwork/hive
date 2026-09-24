@@ -962,6 +962,57 @@ export const useCanvasChatStore = create<CanvasChatState>()(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Conversation-level token totals, summed across every message that
+ * carries a `usage` stamp. `used` is what the header counter shows
+ * (input + output — the two halves of what actually flowed through the
+ * model this turn); `cacheReadTokens` / `cacheWriteTokens` ride along
+ * for the tooltip breakdown only.
+ */
+export interface ConversationTokenTotals {
+  used: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+/**
+ * Sum `CanvasChatMessage.usage` across a conversation's messages.
+ *
+ * `usage` is stamped live-stream-only (see `CanvasChatMessage.usage`)
+ * onto the tool-call batch message of a turn once its `finish` event
+ * carries usage data — so a reloaded/shared conversation has no usage
+ * on any message. Returns `null` in that case (and whenever no message
+ * has any usage numbers at all) so callers can hide the counter instead
+ * of rendering a misleading "0" — a fresh page load looks identical to
+ * a conversation that really used zero tokens otherwise.
+ *
+ * Pure and store-independent so it's cheap to unit test and to call
+ * from a tight selector (see `SidebarChat`'s header counter, which
+ * selects only these five numbers — never the message array itself —
+ * so streaming text-deltas on other fields don't re-render it).
+ */
+export function sumConversationTokenUsage(messages: CanvasChatMessage[]): ConversationTokenTotals | null {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
+  let sawUsage = false;
+
+  for (const m of messages) {
+    if (!m.usage) continue;
+    sawUsage = true;
+    inputTokens += m.usage.inputTokens ?? 0;
+    outputTokens += m.usage.outputTokens ?? 0;
+    cacheReadTokens += m.usage.cacheReadTokens ?? 0;
+    cacheWriteTokens += m.usage.cacheWriteTokens ?? 0;
+  }
+
+  if (!sawUsage) return null;
+  return { used: inputTokens + outputTokens, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens };
+}
+
+/**
  * Build the `messages` array that `/api/ask/quick` expects from the
  * UI-side message timeline. Mirrors the AI SDK `ModelMessage[]`
  * shape with separate entries for tool-call / tool-result / text
