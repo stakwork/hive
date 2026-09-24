@@ -76,7 +76,6 @@ import {
   probeStrutRun,
   reconcileStrutRuns,
   StrutDispatchError,
-  strutRunUrl,
   type StrutRunRow,
 } from "@/services/strut-runs";
 
@@ -200,11 +199,12 @@ describe("dispatchStrutRun", () => {
     expect(crypto.createHash("sha256").update(token).digest("hex")).toBe(created.tokenHash);
 
     expect(mockStrutRun.update).toHaveBeenCalledWith({ where: { id: "row-1" }, data: { strutRunId: "1790000000000" } });
+    // No link to the run: that is the caller's to build (the org strut
+    // view, `lib/utils/strut-links`), never the lab's own URL.
     expect(out).toEqual({
       runId: "row-1",
       strutRunId: "1790000000000",
       swarmId: "swarm-1",
-      runUrl: "https://acme.sphinx.chat:3355/lab/?wf=code-change-propose&run=1790000000000",
     });
   });
 
@@ -467,9 +467,5 @@ describe("probeStrutRun / reconcileStrutRuns", () => {
     const stats = await reconcileStrutRuns();
     expect(stats).toMatchObject({ swept: 1, lost: 1 });
     expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it("strutRunUrl escapes the run id", () => {
-    expect(strutRunUrl("https://x:3355/lab", "wf", "a b")).toBe("https://x:3355/lab/?wf=wf&run=a%20b");
   });
 });

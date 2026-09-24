@@ -127,11 +127,6 @@ export function hashStrutRunToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
-/** The run in strut's UI on its swarm (the lab's deep link). */
-export function strutRunUrl(labBase: string, workflow: string, strutRunId: string): string {
-  return `${labBase}/?wf=${encodeURIComponent(workflow)}&run=${encodeURIComponent(strutRunId)}`;
-}
-
 /** The status a terminal completion writes on the row. */
 export function rowStatusFor(status: StrutRunTerminalStatus): StrutRunStatus {
   return status === "success"
@@ -199,14 +194,19 @@ export interface DispatchStrutRunArgs {
   actorSecrets?: Record<string, string | null | undefined>;
 }
 
+/**
+ * No link to the run is handed back: a URL people can open is the
+ * CALLER's to build, from what it knows about where the run is visible —
+ * for a target the org strut view embeds, `strutViewPath(login,
+ * strutRunDeepLink(workflow, strutRunId))` (`lib/utils/strut-links`).
+ * Strut's own URL on the swarm needs the embed token that view mints.
+ */
 export interface DispatchStrutRunResult {
   /** `StrutRun.id` — the active-run key and the webhook's `id`. */
   runId: string;
   /** Strut's run id on its swarm. */
   strutRunId: string;
   swarmId: string;
-  /** The run in strut's UI. */
-  runUrl: string;
 }
 
 async function failRow(id: string, error: string): Promise<void> {
@@ -346,7 +346,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
     workspaceId,
   });
 
-  return { runId: row.id, strutRunId, swarmId: target.swarmId, runUrl: strutRunUrl(target.labBase, workflow, strutRunId) };
+  return { runId: row.id, strutRunId, swarmId: target.swarmId };
 }
 
 // ─── The row's swarm (never the policy) ───────────────────────────────────
