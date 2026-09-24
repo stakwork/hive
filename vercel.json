@@ -98,6 +98,10 @@
     {
       "path": "/api/cron/strut-delegations",
       "schedule": "20 3 * * *"
+    },
+    {
+      "path": "/api/cron/strut-runs-reconcile",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

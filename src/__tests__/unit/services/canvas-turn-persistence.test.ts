@@ -35,6 +35,7 @@ import {
   appendTurnMessages,
   fetchStoredConversationMessages,
   normalizeStoredAttachments,
+  patchStoredProposalPreview,
   redactHtmlToolInput,
   redactHtmlToolOutput,
 } from "@/services/canvas-turn-persistence";
@@ -787,5 +788,79 @@ describe("normalizeStoredAttachments", () => {
       { ...valid, size: "1234" }, // size must be a number
     ]);
     expect(result).toEqual([valid]);
+  });
+});
+
+// ─── patchStoredProposalPreview ───────────────────────────────────────
+//
+// The code-change PREVIEW's in-place patch: the `propose_code_change` tool
+// output was stored `pending`; the strut run's completion merges the diff
+// (or a failure) into `output.payload` under the row lock and nudges
+// `code-change-preview`. Matched by the output's `proposalId`, in every
+// row that carries it; idempotent.
+
+describe("patchStoredProposalPreview", () => {
+  const pendingCall = (proposalId = "prop-1") => ({
+    id: "tc-1",
+    toolName: "propose_code_change",
+    output: {
+      kind: "codeChange",
+      proposalId,
+      payload: { repositoryUrl: "https://github.com/a/b", diff: "", preview: "pending", pending: { runId: "row-1" } },
+    },
+  });
+  const otherCall = { id: "tc-0", toolName: "propose_feature", output: { kind: "feature", proposalId: "prop-1" } };
+  const READY = { preview: "ready", pending: undefined, diff: "--- a\n+++ b", filesChanged: 1 };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    update.mockResolvedValue({});
+  });
+
+  test("merges the patch into the matching tool output, removes `undefined` keys, nudges", async () => {
+    withLockedRows([
+      { id: "u1", role: "user", content: "fix it" },
+      { id: "t1-a1", role: "assistant", content: "", toolCalls: [otherCall, pendingCall()] },
+      { id: "t1-a2", role: "assistant", content: "", toolCalls: [pendingCall("prop-other")] },
+    ]);
+
+    const changed = await patchStoredProposalPreview({ conversationId: "conv-1", proposalId: "prop-1", patch: READY });
+
+    expect(changed).toBe(true);
+    const written = update.mock.calls[0][0].data.messages;
+    const patched = written[1].toolCalls[1].output.payload;
+    expect(patched).toEqual({ repositoryUrl: "https://github.com/a/b", preview: "ready", diff: "--- a\n+++ b", filesChanged: 1 });
+    expect("pending" in patched).toBe(false);
+    // Untouched: the other tool call, the other proposal, the user row.
+    expect(written[1].toolCalls[0]).toEqual(otherCall);
+    expect(written[2].toolCalls[0].output.payload.preview).toBe("pending");
+    expect(written[0]).toEqual({ id: "u1", role: "user", content: "fix it" });
+    expect(notify).toHaveBeenCalledWith("conv-1", "code-change-preview");
+  });
+
+  test("patches every row carrying the proposal (server row + autosave copy)", async () => {
+    withLockedRows([
+      { id: "t1-a1", role: "assistant", content: "", toolCalls: [pendingCall()] },
+      { id: "local-copy", role: "assistant", content: "", toolCalls: [pendingCall()] },
+    ]);
+    await patchStoredProposalPreview({ conversationId: "conv-1", proposalId: "prop-1", patch: READY });
+    const written = update.mock.calls[0][0].data.messages;
+    expect(written.every((m: { toolCalls: { output: { payload: { preview: string } } }[] }) => m.toolCalls[0].output.payload.preview === "ready")).toBe(true);
+  });
+
+  test("is idempotent: an already-applied patch writes nothing and nudges nobody", async () => {
+    const ready = pendingCall();
+    ready.output.payload = { repositoryUrl: "https://github.com/a/b", preview: "ready", diff: "--- a\n+++ b", filesChanged: 1 } as never;
+    withLockedRows([{ id: "t1-a1", role: "assistant", content: "", toolCalls: [ready] }]);
+    const changed = await patchStoredProposalPreview({ conversationId: "conv-1", proposalId: "prop-1", patch: READY });
+    expect(changed).toBe(false);
+    expect(update).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  test("a deleted conversation is a no-op", async () => {
+    withNoRow();
+    expect(await patchStoredProposalPreview({ conversationId: "gone", proposalId: "prop-1", patch: READY })).toBe(false);
+    expect(update).not.toHaveBeenCalled();
   });
 });

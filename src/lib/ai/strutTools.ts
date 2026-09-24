@@ -43,14 +43,9 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import crypto from "crypto";
 import { db } from "@/lib/db";
-import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
-import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { resolveOrgConversationRowId } from "@/services/org-canvas-conversation";
-import {
-  STRUT_ACTOR_HEADER,
-  ensureStrutDelegation,
-  resolveStrutActor,
-} from "@/services/bifrost/strut-delegation";
+import { STRUT_ACTOR_HEADER, ensureStrutDelegation } from "@/services/bifrost/strut-delegation";
+import { resolveStrutTarget, type StrutTarget } from "@/services/strut-target";
 import type { CapabilityContext } from "./capabilities";
 
 export const DISPATCH_STRUT_TOOL = "dispatch_strut";
@@ -61,50 +56,30 @@ const STRUT_TIMEOUT_MS = 15_000;
 const MAX_REPLY_CHARS = 20_000;
 const MAX_LISTED_CHATS = 30;
 
-interface StrutTarget {
-  workspaceId: string;
-  workspaceSlug: string;
-  swarmUrl: string;
-  labBase: string;
-  swarmApiKey: string;
-  /**
-   * Who strut bills this call to: the acting user's actor string — the
-   * macaroon `user_id` (`buildBifrostName`), NOT the raw `User.id`. Sent as
-   * `x-strut-actor`; mcp trusts it because the swarm key proves it is hive.
-   */
-  actor: string;
-}
-
 /**
- * Resolve a workspace's strut lab, validating that the acting user can
+ * Resolve a workspace's strut lab (`resolveStrutTarget`, purpose "chat" —
+ * today the workspace's own swarm), validating that the acting user can
  * access the workspace AND that it belongs to the active org — before any
- * swarm credential is touched.
+ * swarm credential is touched. `target.actor` is who strut bills: the
+ * acting user's actor string — the macaroon `user_id` (`buildBifrostName`),
+ * NOT the raw `User.id` — sent as `x-strut-actor`; mcp trusts it because
+ * the swarm key proves it is hive.
  */
 async function resolveStrut(ctx: CapabilityContext, workspaceSlug: string): Promise<StrutTarget | { error: string }> {
-  const access = await getWorkspaceSwarmAccess(workspaceSlug, ctx.userId);
-  if (!access.success) {
+  const resolved = await resolveStrutTarget({ purpose: "chat", workspaceSlug, userId: ctx.userId });
+  if (!resolved.ok) {
+    const { type } = resolved.error;
     return {
       error:
-        access.error.type === "WORKSPACE_NOT_FOUND" || access.error.type === "ACCESS_DENIED"
+        type === "WORKSPACE_NOT_FOUND" || type === "ACCESS_DENIED"
           ? `Workspace '${workspaceSlug}' not found, or you do not have access to it.`
           : `Workspace '${workspaceSlug}' has no active swarm, so it has no strut.`,
     };
   }
-  const workspace = await db.workspace.findUnique({
-    where: { id: access.data.workspaceId },
-    select: { sourceControlOrgId: true },
-  });
-  if (workspace?.sourceControlOrgId !== ctx.orgId) {
+  if (resolved.target.orgId !== ctx.orgId) {
     return { error: `Workspace '${workspaceSlug}' does not belong to the active org.` };
   }
-  return {
-    workspaceId: access.data.workspaceId,
-    workspaceSlug,
-    swarmUrl: access.data.swarmUrl,
-    labBase: `${transformSwarmUrlToRepo2Graph(access.data.swarmUrl)}/lab`,
-    swarmApiKey: access.data.swarmApiKey,
-    actor: await resolveStrutActor(ctx.userId),
-  };
+  return resolved.target;
 }
 
 async function strutFetch(target: StrutTarget, path: string, init?: { body: unknown }): Promise<Response> {
