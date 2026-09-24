@@ -47,6 +47,7 @@ vi.mock("@/services/swarm/createPr", async (importOriginal) => {
 import {
   completeClaimFromResult,
   markClaimRunFailed,
+  parseCreatePrClaim,
   reconcileClaim,
   DELETABLE_FAILURE_CODES,
 } from "@/lib/proposals/codeChangeCompletion";
@@ -98,6 +99,16 @@ beforeEach(() => {
   } as never);
   vi.mocked(db.artifact.create).mockResolvedValue({} as never);
   mockPatchStored.mockResolvedValue(true);
+});
+
+describe("parseCreatePrClaim", () => {
+  it("carries a strut-landed claim's runner + run ids through, and nothing it does not know", () => {
+    expect(
+      parseCreatePrClaim({ ...CLAIM, runner: "strut", strutRunId: "1790000000001", swarmId: "swarm-1" }),
+    ).toMatchObject({ runner: "strut", strutRunId: "1790000000001", swarmId: "swarm-1", prBranch: CLAIM.prBranch });
+    expect(parseCreatePrClaim({ ...CLAIM, runner: "other" })).not.toHaveProperty("runner");
+    expect(parseCreatePrClaim(CLAIM)).not.toHaveProperty("runner");
+  });
 });
 
 describe("completeClaimFromResult — landed PR", () => {

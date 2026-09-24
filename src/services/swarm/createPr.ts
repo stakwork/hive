@@ -87,6 +87,19 @@ const JAMIE_PREFIX = "[Jamie] ";
 /** Swarm branch naming convention (from the shipped swarm code). */
 const SWARM_BRANCH_PREFIX = "swarm/swarm-change-";
 
+/**
+ * Branch prefix of a change landed by strut (`code-change-land`): hive
+ * names the branch itself and records it on the claim, so reconcile's
+ * GitHub channel can query it exactly.
+ */
+export const STRUT_BRANCH_PREFIX = "jamie/";
+
+/** The PR title as landed: newlines collapsed, `[Jamie] ` prefixed once. */
+export function jamiePrTitle(title: string): string {
+  const normalized = title.replace(/[\r\n]+/g, " ").trim();
+  return normalized.startsWith(JAMIE_PREFIX) ? normalized : `${JAMIE_PREFIX}${normalized}`;
+}
+
 // ─── Public result types ───────────────────────────────────────────────────
 
 export type CreatePrSuccess = {
@@ -158,6 +171,17 @@ export interface CreatePrClaim {
   conversationId?: string;
   /** Proposal id keying that row's `approvalResult.proposalId`. */
   proposalId?: string;
+  /**
+   * Set when strut landed the change (`code-change-land`): `requestId` is
+   * then hive's `StrutRun.id`, `prBranch` the branch HIVE chose, and the
+   * run side of reconciliation belongs to the strut-runs cron — `reconcilePr`
+   * skips the swarm `/progress` channel and goes straight to GitHub.
+   */
+  runner?: "strut";
+  /** Strut's run id on its swarm (strut claims only). */
+  strutRunId?: string;
+  /** The swarm whose strut ran it (strut claims only). */
+  swarmId?: string;
 }
 
 // ─── Classification table ─────────────────────────────────────────────────
@@ -254,6 +278,16 @@ function classify(
         message:
           "The swarm run finished without calling the create_pr tool, so no " +
           "verified pull request was recorded. A branch or PR may still exist " +
+          "on the repository — check it before retrying.",
+      };
+    // Strut landing (hive-side check): the run echoed a checksum other than
+    // the approved diff's. Kept, like pr_create_failed — a PR may exist.
+    case "diff_mismatch":
+      return {
+        failureCode,
+        message:
+          "The landed change does not match the approved diff's checksum, so " +
+          "the result was not trusted. A branch or pull request may still exist " +
           "on the repository — check it before retrying.",
       };
     // HTTP admission codes
@@ -510,6 +544,76 @@ async function resolveSwarmCredentials(
   };
 }
 
+// ─── The approver's GitHub identity ────────────────────────────────────────
+
+export type GithubIdentityCheck =
+  | { ok: true; username: string; token: string }
+  | CreatePrFailure;
+
+/**
+ * The token a PR is landed with, and proof it is the approver's. Resolves
+ * `getGithubUsernameAndPAT(userId, workspaceSlug)` (no token → `no_access`),
+ * refreshes it transparently, then calls `GET /user` and refuses locally as
+ * `identity_mismatch` when the login is not the stored `githubUsername`.
+ * A GitHub outage is non-fatal (the stored username stands). Both landing
+ * paths — the swarm `create_pr` run and strut's `code-change-land` — call
+ * this before anything is dispatched, so the PR author is always the
+ * approver. The token is returned to the caller and never logged.
+ */
+export async function verifyGithubIdentity(
+  userId: string,
+  workspaceSlug: string,
+): Promise<GithubIdentityCheck> {
+  const githubProfile = await getGithubUsernameAndPAT(userId, workspaceSlug);
+  if (!githubProfile) {
+    return { ok: false, ...classify("no_access") };
+  }
+
+  // Attempt a transparent token refresh via the GitHub App refresh flow so
+  // an expired token is not surfaced as `no_access`.
+  let { token } = githubProfile;
+  const { username } = githubProfile;
+  try {
+    const refreshed = await refreshAndUpdateAccessTokens(userId);
+    if (refreshed) {
+      // Re-fetch the updated token.
+      const updated = await getGithubUsernameAndPAT(userId, workspaceSlug);
+      if (updated) token = updated.token;
+    }
+  } catch {
+    // Non-fatal: proceed with the existing token.
+  }
+
+  try {
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (userRes.ok) {
+      const userData = (await userRes.json()) as { login?: string };
+      const tokenLogin = (userData.login ?? "").toLowerCase();
+      const storedLogin = username.toLowerCase();
+      if (tokenLogin && tokenLogin !== storedLogin) {
+        logger.warn("[createPr] GitHub login mismatch — refusing", "createPr", {
+          userId,
+          workspaceSlug,
+          tokenLogin,
+          storedLogin,
+        });
+        return { ok: false, ...classify("identity_mismatch") };
+      }
+    }
+  } catch {
+    // Non-fatal: the stored username stands.
+  }
+
+  return { ok: true, username, token };
+}
+
 // ─── createPr ─────────────────────────────────────────────────────────────
 
 /**
@@ -603,61 +707,13 @@ export async function createPr(params: {
     return { ok: false, ...classify("no_access") };
   }
 
-  const githubProfile = await getGithubUsernameAndPAT(userId, workspaceSlug);
-  if (!githubProfile) {
-    return { ok: false, ...classify("no_access") };
-  }
-
-  // Attempt a transparent token refresh via the GitHub App refresh flow so
-  // an expired token is not surfaced as `no_access`.
-  let { username, token: pat } = githubProfile;
-  try {
-    const refreshed = await refreshAndUpdateAccessTokens(userId);
-    if (refreshed) {
-      // Re-fetch the updated token.
-      const updated = await getGithubUsernameAndPAT(userId, workspaceSlug);
-      if (updated) pat = updated.token;
-    }
-  } catch {
-    // Non-fatal: proceed with the existing token.
-  }
-
-  // ── 4. Verify identity against GitHub ──────────────────────────────
-  // Call `GET /user` with the resolved token and refuse locally if the
-  // returned login doesn't match the stored `githubUsername`. This fires
-  // BEFORE spending a container.
-  try {
-    const userRes = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `Bearer ${pat}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (userRes.ok) {
-      const userData = (await userRes.json()) as { login?: string };
-      const tokenLogin = (userData.login ?? "").toLowerCase();
-      const storedLogin = username.toLowerCase();
-      if (tokenLogin && tokenLogin !== storedLogin) {
-        logger.warn("[createPr] GitHub login mismatch — refusing", "createPr", {
-          userId,
-          workspaceSlug,
-          tokenLogin,
-          storedLogin,
-        });
-        return { ok: false, ...classify("identity_mismatch") };
-      }
-    }
-  } catch {
-    // Non-fatal: let the swarm's own identity check catch drift.
-  }
+  // ── 4. The approver's token, verified against GitHub ───────────────
+  const identity = await verifyGithubIdentity(userId, workspaceSlug);
+  if (!identity.ok) return identity;
+  const { username, token: pat } = identity;
 
   // ── 5. PR title with [Jamie] prefix + body ─────────────────────────
-  const normalizedTitle = title.replace(/[\r\n]+/g, " ").trim();
-  const prTitle = normalizedTitle.startsWith(JAMIE_PREFIX)
-    ? normalizedTitle
-    : `${JAMIE_PREFIX}${normalizedTitle}`;
+  const prTitle = jamiePrTitle(title);
   // The approved body is forwarded verbatim (CRLF normalized only). Both
   // ride the prompt as labelled blocks rather than inline quoted values —
   // a title or body containing a double quote must not corrupt the
@@ -960,9 +1016,14 @@ export async function reconcilePr(claim: CreatePrClaim): Promise<ReconcileOutcom
   const approvedPaths = Array.isArray(claim.approvedPaths)
     ? new Set(claim.approvedPaths)
     : null;
+  // A strut-landed claim's run lives on strut, not in the swarm's `/progress`
+  // cache: its callback and the strut-runs reconcile cron settle that side.
+  // Only GitHub can say whether the branch hive named became a PR.
+  const viaStrut = claim.runner === "strut";
+  const branchPrefix = viaStrut ? STRUT_BRANCH_PREFIX : SWARM_BRANCH_PREFIX;
 
   // ── 1. Re-read swarm progress ───────────────────────────────────────
-  const swarmCreds = await resolveSwarmCredentials(workspaceSlug, userId);
+  const swarmCreds = viaStrut ? null : await resolveSwarmCredentials(workspaceSlug, userId);
   if (swarmCreds) {
     try {
       const progressRes = await fetch(
@@ -1000,7 +1061,7 @@ export async function reconcilePr(claim: CreatePrClaim): Promise<ReconcileOutcom
 
   // ── 2. GitHub direct query (requires the exact branch) ─────────────
   try {
-    if (!prBranch || !prBranch.startsWith(SWARM_BRANCH_PREFIX)) {
+    if (!prBranch || !prBranch.startsWith(branchPrefix)) {
       // Legacy claim (no pr_branch recorded) or an unexpected branch shape —
       // GitHub's `head` filter is an exact match, so guessing yields nothing.
       throw new Error("No usable prBranch on claim");
@@ -1032,7 +1093,7 @@ export async function reconcilePr(claim: CreatePrClaim): Promise<ReconcileOutcom
 
       for (const pull of pulls) {
         // Validate branch naming and URL before persisting.
-        if (!pull.head.ref.startsWith(SWARM_BRANCH_PREFIX)) continue;
+        if (!pull.head.ref.startsWith(branchPrefix)) continue;
         if (!validatePrUrl(pull.html_url, repositoryUrl)) continue;
 
         return {
