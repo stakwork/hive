@@ -16,12 +16,23 @@
  * | ------------- | ------------------------------------------------------- |
  * | `code_change` | the ORG's default workspace swarm (the one the org strut |
  * | `embed`       | view embeds — `resolveOrgSwarmWorkspaceForUser`)        |
- * | `benchmark`   | the workspace's OWN swarm (what these callers always    |
- * | `chat`        | did — behaviour unchanged by the move onto the resolver) |
+ * | `chat`        | the org default too — see below                         |
+ * | `benchmark`   | the workspace's OWN swarm (what this caller always did) |
  *
  * Strut has no tenancy: one strut is one trust domain, which the org-wide
- * embed already assumes. A per-workspace strut for `code_change` is a
- * one-row change in `POLICY`.
+ * embed already assumes. Moving a purpose between the two rows is a
+ * one-line change in `POLICY`; nothing else encodes it.
+ *
+ * `chat` (Jamie's `dispatch_strut` and its read tools) moved to the org
+ * default on 2026-09-24: Jamie is an org-level agent, and an org has one
+ * strut today. A strut per workspace broke it — the `workspace` slug Jamie
+ * fills in picked a workspace swarm that had `STRUT_MOTHERSHIP_REQUIRED=1`
+ * (every swarm does) but that hive had never pushed a delegation to (the
+ * push is gated per workspace slug by `BIFROST_ENABLED`), so the chat's
+ * first LLM call was refused. To go back to a strut per workspace: flip the
+ * `chat` row to `workspace` — the tools still take and pass the slug, the
+ * `workspace` resolver stays exercised by `benchmark`, and the tests cover
+ * both rows — and open the gate for every workspace that has a swarm.
  *
  * The result carries everything a caller needs to talk to the lab and to
  * bill the user: the decrypted swarm API key (mcp's `x-api-token` gate and
@@ -41,8 +52,10 @@ export type StrutPurpose = "code_change" | "benchmark" | "chat" | "embed";
 const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
   code_change: "org-default",
   embed: "org-default",
+  // Jamie's strut tools: one strut per org for now (header comment). The
+  // switch back to a strut per workspace is `"workspace"` here.
+  chat: "org-default",
   benchmark: "workspace",
-  chat: "workspace",
 };
 
 export interface StrutTarget {
