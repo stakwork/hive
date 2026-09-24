@@ -348,6 +348,44 @@ describe("useCanvasChatAutoSave (live-sync)", () => {
     expect(ids).not.toContain("turn-1-a0");
   });
 
+  it("skip-prefix after remount drops the resumed turn's server rows", async () => {
+    // Refresh reattach re-fills locallyAuthoredTurnIds only after SSE
+    // starts. Once marked, live-sync must still drop `${turnId}-*` so the
+    // replayed preview is not duplicated by the persist nudge.
+    _store.setState({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": makeConv({
+          messages: [
+            { id: "turn-9-u", role: "user", content: "Q" },
+            { id: "1750000000001-0", role: "assistant", content: "live" },
+          ],
+          serverConversationId: "server-1",
+        }),
+      },
+      locallyAuthoredTurnIds: new Set(["turn-9"]),
+    });
+
+    global.fetch = fetchReturning([
+      { id: "turn-9-u", role: "user", content: "Q" },
+      { id: "turn-9-a0", role: "assistant", content: "A (server)" },
+    ]);
+
+    renderHook(() => useCanvasChatAutoSave({ githubLogin: "my-org" }));
+    act(() => {
+      _store.setState((s) => ({ ...s }));
+    });
+    await act(async () => {
+      fakePusher.fire("canvas-conversation-updated");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const ids = _store.getState().conversations["conv-1"].messages.map((m) => m.id);
+    expect(ids).toEqual(["turn-9-u", "1750000000001-0"]);
+    expect(ids).not.toContain("turn-9-a0");
+  });
+
   it("defers a mid-stream nudge and syncs once the stream settles", async () => {
     _store.setState({
       activeConversationId: "conv-1",

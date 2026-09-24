@@ -148,6 +148,35 @@ describe("canvasChatStore — agentTurnsInProgress", () => {
   });
 });
 
+describe("canvasChatStore — replaceAssistantStream prefix", () => {
+  beforeEach(freshStore);
+
+  it("strips only the live prefix and keeps seeded turnId user and assistant rows", () => {
+    const id = useCanvasChatStore.getState().startConversation(baseContext, [
+      { id: "turn-9-u", role: "user", content: "hi", timestamp: new Date() },
+      { id: "turn-9-a0", role: "assistant", content: "done", timestamp: new Date() },
+    ]);
+    useCanvasChatStore.getState().replaceAssistantStream(id, "1750000000001", [
+      { id: "1750000000001-0", role: "assistant", content: "live", timestamp: new Date() },
+    ]);
+    const ids = useCanvasChatStore.getState().conversations[id].messages.map((m) => m.id);
+    expect(ids).toContain("turn-9-u");
+    expect(ids).toContain("turn-9-a0");
+    expect(ids).toContain("1750000000001-0");
+  });
+
+  it("would drop the persisted user row if the prefix were the turnId", () => {
+    const id = useCanvasChatStore.getState().startConversation(baseContext, [
+      { id: "turn-9-u", role: "user", content: "hi", timestamp: new Date() },
+    ]);
+    useCanvasChatStore.getState().replaceAssistantStream(id, "turn-9", [
+      { id: "turn-9-0", role: "assistant", content: "oops", timestamp: new Date() },
+    ]);
+    const ids = useCanvasChatStore.getState().conversations[id].messages.map((m) => m.id);
+    expect(ids).not.toContain("turn-9-u");
+  });
+});
+
 describe("canvasChatStore — pendingDeeplink", () => {
   beforeEach(() => {
     useCanvasChatStore.setState({

@@ -46,6 +46,11 @@ import {
   emitProvenance,
   maybeGenerateAndPersistTitle,
 } from "@/services/canvas-turn-enrichments";
+import {
+  clearActiveStream,
+  createCanvasResumableStream,
+  writeActiveStream,
+} from "@/lib/ai/canvas-resumable-stream";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
 // the org-canvas turn is persisted server-side in `after()` so it survives the
@@ -842,6 +847,12 @@ export async function POST(request: NextRequest) {
               idPrefix: assistantPrefix,
               reason: "user-turn",
             });
+            // Drop the active-turn pointer only after the assistant rows
+            // landed. Unrelated after() blocks (title, enrichments,
+            // sub-agents) must not clear it — a refresh during those
+            // still needs the 204/persisted-row path, and TTL covers a
+            // crash here. Keyed by the server-validated row id.
+            await clearActiveStream(rowId);
             // Nested try: an LLM throw must never fall into the persist
             // catch (that catch writes a fake assistant error row).
             // Not gated on isFirstTurn — the helper no-ops once
@@ -891,6 +902,7 @@ export async function POST(request: NextRequest) {
               idPrefix: assistantPrefix,
               reason: "user-turn",
             }).catch(() => {});
+            await clearActiveStream(rowId);
           }
         });
       }
@@ -1024,10 +1036,62 @@ export async function POST(request: NextRequest) {
           // v7: the result-object `toUIMessageStream()` helper is
           // deprecated; use the standalone helper with the streamText
           // result's `fullStream` (ReadableStream<TextStreamPart>).
+          // Persist's `after(() => result.consumeStream())` stays the
+          // sole consumer of `result.fullStream` — do not consume
+          // `uiStream` a second time here.
           writer.merge(toUIMessageStream({ stream: result.fullStream, onError }));
         },
         onError,
       });
+
+      // Org-canvas persist gate only. Approvals / dashboard / public
+      // (no turnId, or no canvas row) skip automatically. Redis down
+      // falls back to the non-resumable response — send must not fail.
+      const resumable =
+        orgId && userId && turnIdStr && canvasConversationRowId
+          ? { rowId: canvasConversationRowId, turnId: turnIdStr }
+          : null;
+
+      if (resumable) {
+        try {
+          await writeActiveStream(resumable.rowId, resumable.turnId);
+          return createUIMessageStreamResponse({
+            stream: uiStream,
+            headers: extraHeaders,
+            // Tee the SSE bytes into Redis. `consumeSseStream` is the
+            // response builder's copy — it does not consume `fullStream`.
+            consumeSseStream: async ({ stream }) => {
+              try {
+                const resumableStream = await createCanvasResumableStream(
+                  resumable.turnId,
+                  stream,
+                );
+                if (resumableStream) {
+                  // Producer must be read or Redis never sees chunks.
+                  // Detached from the HTTP response; `waitUntil: after`
+                  // on the context keeps the invocation alive.
+                  void resumableStream.pipeTo(new WritableStream()).catch((err) => {
+                    console.error(
+                      "❌ [quick-ask] Redis fallback draining resumable stream:",
+                      err,
+                    );
+                  });
+                }
+              } catch (err) {
+                console.error(
+                  "❌ [quick-ask] Redis fallback creating resumable stream:",
+                  err,
+                );
+              }
+            },
+          });
+        } catch (err) {
+          console.error(
+            "❌ [quick-ask] Redis fallback; sending non-resumable stream:",
+            err,
+          );
+        }
+      }
 
       return createUIMessageStreamResponse({
         stream: uiStream,
