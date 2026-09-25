@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import {
+  authenticateCallbackRequest,
+  authorizeCallbackTargets,
+  isValidGitBranchName,
+  CALLBACK_MAX_SUMMARY_LENGTH,
+} from "@/lib/auth/callback-access";
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> },
 ) {
   try {
-    // Validate API token
-    const apiToken = request.headers.get("x-api-token");
-    if (!apiToken || apiToken !== process.env.API_TOKEN) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // Authenticate first — before the body is parsed. Accepts the system
+    // API_TOKEN (unchanged behaviour) or an org hiveorg_… key.
+    const caller = await authenticateCallbackRequest(request);
+    if (caller instanceof NextResponse) return caller;
 
     const { taskId } = await params;
 
@@ -20,6 +25,12 @@ export async function PUT(
         { status: 400 },
       );
     }
+
+    // Authorize the target task before any lookup/update. System callers
+    // pass straight through with no DB reads; org callers are scoped to
+    // their org's workspace(s), resolved from the task record itself.
+    const authorized = await authorizeCallbackTargets(caller, { taskId });
+    if (authorized instanceof NextResponse) return authorized;
 
     const body = await request.json();
     const { branch, summary } = body;
@@ -49,13 +60,42 @@ export async function PUT(
           { status: 400 },
         );
       }
-      updateData.branch = branch.trim();
+      const trimmedBranch = branch.trim();
+      if (authorized.caller.kind === "org" && !isValidGitBranchName(trimmedBranch)) {
+        console.warn("[tasks/webhook] rejected", {
+          reason: "invalid_branch",
+          orgId: authorized.caller.orgId,
+          apiKeyId: authorized.caller.apiKeyId,
+          taskId,
+        });
+        return NextResponse.json(
+          { error: "Invalid branch name" },
+          { status: 400 },
+        );
+      }
+      updateData.branch = trimmedBranch;
     }
 
     if (summary !== undefined) {
       if (summary !== null && typeof summary !== "string") {
         return NextResponse.json(
           { error: "Summary must be a string or null" },
+          { status: 400 },
+        );
+      }
+      if (
+        authorized.caller.kind === "org" &&
+        typeof summary === "string" &&
+        summary.length > CALLBACK_MAX_SUMMARY_LENGTH
+      ) {
+        console.warn("[tasks/webhook] rejected", {
+          reason: "invalid_summary",
+          orgId: authorized.caller.orgId,
+          apiKeyId: authorized.caller.apiKeyId,
+          taskId,
+        });
+        return NextResponse.json(
+          { error: "Summary too long" },
           { status: 400 },
         );
       }
@@ -82,6 +122,14 @@ export async function PUT(
         summary: true,
         workspaceId: true,
       },
+    });
+
+    console.info("[tasks/webhook] success", {
+      callerKind: authorized.caller.kind,
+      orgId: authorized.caller.kind === "org" ? authorized.caller.orgId : undefined,
+      apiKeyId: authorized.caller.kind === "org" ? authorized.caller.apiKeyId : undefined,
+      workspaceId: updatedTask.workspaceId,
+      taskId,
     });
 
     return NextResponse.json(
