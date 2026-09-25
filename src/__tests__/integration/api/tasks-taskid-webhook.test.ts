@@ -1,7 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { PUT } from "@/app/api/tasks/[taskId]/webhook/route";
-import { createRequestWithHeaders } from "@/__tests__/support/helpers";
+import { createRequestWithHeaders, generateUniqueId } from "@/__tests__/support/helpers";
+import { createOrgApiKey } from "@/lib/org-api-keys";
+
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+  getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
+}));
 
 describe("PUT /api/tasks/[taskId]/webhook", () => {
   const API_TOKEN = "test-api-token";
@@ -600,6 +606,144 @@ This task involved implementing a new feature for the application.
       );
     });
   });
+
+  describe("Org API key auth", () => {
+    async function createOrg() {
+      const githubLogin = `org-tasks-webhook-${generateUniqueId()}`;
+      return db.sourceControlOrg.create({
+        data: { githubLogin, githubInstallationId: Math.floor(Math.random() * 1_000_000) + 1, type: "ORG", name: githubLogin },
+      });
+    }
+
+    it("an org key for the right org works", async () => {
+      const org = await createOrg();
+      const testData = await createTestTask();
+      await db.workspace.update({ where: { id: testData.workspace.id }, data: { sourceControlOrgId: org.id } });
+      const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.user.id });
+
+      const request = createRequestWithHeaders(
+        `http://localhost/api/tasks/${testData.task.id}/webhook`,
+        "PUT",
+        { "Content-Type": "application/json", "x-api-token": key },
+        { branch: "feature/org-key" },
+      );
+
+      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.data.branch).toBe("feature/org-key");
+    });
+
+    it("an org key for another org gets 404 and writes nothing", async () => {
+      const orgA = await createOrg();
+      const orgB = await createOrg();
+      const testData = await createTestTask();
+      await db.workspace.update({ where: { id: testData.workspace.id }, data: { sourceControlOrgId: orgB.id } });
+      const { key } = await createOrgApiKey({ orgId: orgA.id, name: "strut", createdById: testData.user.id });
+
+      const request = createRequestWithHeaders(
+        `http://localhost/api/tasks/${testData.task.id}/webhook`,
+        "PUT",
+        { "Content-Type": "application/json", "x-api-token": key },
+        { branch: "feature/should-not-write" },
+      );
+
+      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+
+      expect(response.status).toBe(404);
+      const unchangedTask = await db.task.findUnique({ where: { id: testData.task.id } });
+      expect(unchangedTask?.branch).not.toBe("feature/should-not-write");
+    });
+
+    it("a revoked org key gets 401", async () => {
+      const org = await createOrg();
+      const testData = await createTestTask();
+      await db.workspace.update({ where: { id: testData.workspace.id }, data: { sourceControlOrgId: org.id } });
+      const { id, key } = await createOrgApiKey({ orgId: org.id, name: "revoked", createdById: testData.user.id });
+      await db.orgApiKey.update({ where: { id }, data: { revokedAt: new Date() } });
+
+      const request = createRequestWithHeaders(
+        `http://localhost/api/tasks/${testData.task.id}/webhook`,
+        "PUT",
+        { "Content-Type": "application/json", "x-api-token": key },
+        { branch: "feature/revoked" },
+      );
+
+      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+
+      expect(response.status).toBe(401);
+    });
+
+    it("an org caller with an invalid branch (whitespace) gets 400", async () => {
+      const org = await createOrg();
+      const testData = await createTestTask();
+      await db.workspace.update({ where: { id: testData.workspace.id }, data: { sourceControlOrgId: org.id } });
+      const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.user.id });
+
+      const request = createRequestWithHeaders(
+        `http://localhost/api/tasks/${testData.task.id}/webhook`,
+        "PUT",
+        { "Content-Type": "application/json", "x-api-token": key },
+        { branch: "feature/bad branch" },
+      );
+
+      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("an org caller with a branch containing '..' gets 400", async () => {
+      const org = await createOrg();
+      const testData = await createTestTask();
+      await db.workspace.update({ where: { id: testData.workspace.id }, data: { sourceControlOrgId: org.id } });
+      const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.user.id });
+
+      const request = createRequestWithHeaders(
+        `http://localhost/api/tasks/${testData.task.id}/webhook`,
+        "PUT",
+        { "Content-Type": "application/json", "x-api-token": key },
+        { branch: "feature/../etc" },
+      );
+
+      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("an org caller with an oversized summary gets 400", async () => {
+      const org = await createOrg();
+      const testData = await createTestTask();
+      await db.workspace.update({ where: { id: testData.workspace.id }, data: { sourceControlOrgId: org.id } });
+      const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.user.id });
+
+      const request = createRequestWithHeaders(
+        `http://localhost/api/tasks/${testData.task.id}/webhook`,
+        "PUT",
+        { "Content-Type": "application/json", "x-api-token": key },
+        { summary: "a".repeat(20_001) },
+      );
+
+      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("a system caller with the same invalid-branch input behaves as today (200, no git-ref validation)", async () => {
+      const testData = await createTestTask();
+
+      const request = createRequestWithHeaders(
+        `http://localhost/api/tasks/${testData.task.id}/webhook`,
+        "PUT",
+        { "Content-Type": "application/json", "x-api-token": API_TOKEN },
+        { branch: "feature/bad branch" },
+      );
+
+      const response = await PUT(request, { params: Promise.resolve({ taskId: testData.task.id }) });
+
+      expect(response.status).toBe(200);
+    });
+  });
 });
 
 // Helper function to create test task
@@ -614,7 +758,7 @@ async function createTestTask(overrides: {
   return await db.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
-        email: "test@example.com",
+        email: `test-${generateUniqueId()}@example.com`,
         name: "Test User",
       },
     });
@@ -622,7 +766,7 @@ async function createTestTask(overrides: {
     const workspace = await tx.workspace.create({
       data: {
         name: "Test Workspace",
-        slug: "test-workspace",
+        slug: generateUniqueId("test-workspace"),
         ownerId: user.id,
         members: {
           create: {
