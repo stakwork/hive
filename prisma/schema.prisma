@@ -2657,6 +2657,12 @@ model StrutRun {
   @@index([status, createdAt])
   @@index([proposalId])
   @@index([conversationId])
+  /// Ordinary lookup index for the System Map GET route (activeRun /
+  /// latestTerminalRun), scoped by workspace + kind. The single-active-run
+  /// GUARD is a hand-written partial unique index (see the
+  /// `add_system_map_strut_run_index` migration) — Prisma cannot express a
+  /// `WHERE status = 'PENDING'` predicate here.
+  @@index([workspaceId, kind, status])
   @@map("strut_runs")
 }
 

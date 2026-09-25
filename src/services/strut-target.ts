@@ -46,7 +46,7 @@ import { resolveOrgSwarmWorkspaceForUser } from "@/lib/helpers/org-workspace";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { resolveStrutActor } from "@/services/bifrost/strut-delegation";
 
-export type StrutPurpose = "code_change" | "benchmark" | "chat" | "embed";
+export type StrutPurpose = "code_change" | "benchmark" | "chat" | "embed" | "system_map";
 
 /** Where each purpose runs. `org-default` = the org's default workspace swarm. */
 const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
@@ -56,6 +56,10 @@ const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
   // switch back to a strut per workspace is `"workspace"` here.
   chat: "org-default",
   benchmark: "workspace",
+  // Protect's "System Map" schema sync always runs against the CALLING
+  // workspace's own swarm — never an org default — since it verifies that
+  // workspace's own schema.
+  system_map: "workspace",
 };
 
 export interface StrutTarget {
