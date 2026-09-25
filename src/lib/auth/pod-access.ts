@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { validateApiToken } from "@/lib/auth/api-token";
-import { isOrgApiKey, validateOrgApiKey } from "@/lib/org-api-keys";
+import { classifyCallerToken } from "@/lib/auth/caller-token";
 
 /**
  * Who is calling a pod endpoint, after auth + workspace access checks.
@@ -29,13 +28,10 @@ export async function resolvePodCaller(
   request: NextRequest,
   ref: WorkspaceRef,
 ): Promise<PodCaller | NextResponse> {
-  const headerToken = request.headers.get("x-api-token");
+  const classified = await classifyCallerToken(request);
 
-  if (isOrgApiKey(headerToken)) {
-    const validated = await validateOrgApiKey(headerToken);
-    if (!validated) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (classified?.kind === "org") {
+    const { validated } = classified;
     const workspace = await db.workspace.findFirst({
       where: { ...ref, deleted: false },
       select: { id: true, sourceControlOrgId: true },
@@ -51,10 +47,17 @@ export async function resolvePodCaller(
     };
   }
 
-  if (validateApiToken(request)) {
+  if (classified?.kind === "system") {
     const workspace = await db.workspace.findFirst({ where: ref, select: { id: true } });
     if (!workspace) return notFound();
     return { kind: "system", workspaceId: workspace.id };
+  }
+
+  // A `hiveorg_` token that failed validation is classified as `null` here
+  // (never falls through past this point to the session check).
+  const headerToken = request.headers.get("x-api-token");
+  if (headerToken) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const userOrResponse = requireAuth(getMiddlewareContext(request));
