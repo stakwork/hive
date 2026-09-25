@@ -279,10 +279,14 @@ async function maybeProvisionCallbackKey(
     // Read directly from process.env — optionalEnvVars is a static
     // snapshot captured at module load time and would not reflect
     // runtime changes (e.g. in tests or Vercel env injection).
-    const hivePublicUrl = process.env.HIVE_PUBLIC_URL || "";
+    // Falls back to NEXTAUTH_URL, matching the trust reconciler's
+    // issuer_url resolution, so a deployment that only sets the
+    // NextAuth origin still gets gateway callbacks provisioned.
+    const hivePublicUrl =
+      process.env.HIVE_PUBLIC_URL || process.env.NEXTAUTH_URL || "";
     if (!hivePublicUrl) {
       logger.warn(
-        "HIVE_PUBLIC_URL is not set; skipping gateway callback provisioning",
+        "Neither HIVE_PUBLIC_URL nor NEXTAUTH_URL is set; skipping gateway callback provisioning",
         BIFROST_AGENT_CATALOG_LOG_TAG,
         { workspaceId },
       );

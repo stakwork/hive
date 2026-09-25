@@ -127,6 +127,15 @@ function freshSwarm(overrides: Record<string, unknown> = {}) {
 }
 
 const ORIGINAL_HIVE_PUBLIC_URL = process.env.HIVE_PUBLIC_URL;
+const ORIGINAL_NEXTAUTH_URL = process.env.NEXTAUTH_URL;
+
+function restoreEnv(key: string, original: string | undefined): void {
+  if (original === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = original;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -139,11 +148,8 @@ describe("ensureBifrostAgentCatalog — callback provisioning", () => {
   });
 
   afterEach(() => {
-    if (ORIGINAL_HIVE_PUBLIC_URL === undefined) {
-      delete process.env.HIVE_PUBLIC_URL;
-    } else {
-      process.env.HIVE_PUBLIC_URL = ORIGINAL_HIVE_PUBLIC_URL;
-    }
+    restoreEnv("HIVE_PUBLIC_URL", ORIGINAL_HIVE_PUBLIC_URL);
+    restoreEnv("NEXTAUTH_URL", ORIGINAL_NEXTAUTH_URL);
   });
 
   // -------------------------------------------------------------------------
@@ -349,14 +355,56 @@ describe("ensureBifrostAgentCatalog — callback provisioning", () => {
     );
   });
 
-  it("skips callback provisioning when HIVE_PUBLIC_URL is unset", async () => {
+  it("falls back to NEXTAUTH_URL as hive_url when HIVE_PUBLIC_URL is unset", async () => {
     delete process.env.HIVE_PUBLIC_URL;
-    // Force optionalEnvVars to pick up the unset value
-    // (env config caches at module-load time, so we patch the env var
-    //  and rely on the reconciler reading process.env directly via
-    //  optionalEnvVars which is re-evaluated each call in tests via
-    //  the config module — or we just confirm pushHiveCallback is never
-    //  called, which covers the intent).
+    process.env.NEXTAUTH_URL = "https://nextauth.hive.company.com";
+
+    vi.mocked(dbMock.swarm.findUnique)
+      .mockResolvedValueOnce(freshSwarm() as never)
+      .mockResolvedValueOnce(freshSwarm() as never);
+    vi.mocked(dbMock.swarm.update).mockResolvedValue({} as never);
+
+    const createApiKeyFn = makeCreateApiKeyFn();
+    const client = makePluginClient();
+
+    await ensureBifrostAgentCatalog(WORKSPACE_ID, USER_ID, {
+      pluginClientFactory: () => client,
+      createApiKeyFn,
+    });
+
+    expect(client.pushHiveCallback).toHaveBeenCalledWith(
+      expect.objectContaining({ hive_url: "https://nextauth.hive.company.com" }),
+    );
+  });
+
+  it("prefers HIVE_PUBLIC_URL over NEXTAUTH_URL when both are set", async () => {
+    process.env.HIVE_PUBLIC_URL = "https://public.hive.company.com";
+    process.env.NEXTAUTH_URL = "https://nextauth.hive.company.com";
+
+    vi.mocked(dbMock.swarm.findUnique)
+      .mockResolvedValueOnce(freshSwarm() as never)
+      .mockResolvedValueOnce(freshSwarm() as never);
+    vi.mocked(dbMock.swarm.update).mockResolvedValue({} as never);
+
+    const createApiKeyFn = makeCreateApiKeyFn();
+    const client = makePluginClient();
+
+    await ensureBifrostAgentCatalog(WORKSPACE_ID, USER_ID, {
+      pluginClientFactory: () => client,
+      createApiKeyFn,
+    });
+
+    expect(client.pushHiveCallback).toHaveBeenCalledWith(
+      expect.objectContaining({ hive_url: "https://public.hive.company.com" }),
+    );
+  });
+
+  it("skips callback provisioning when neither HIVE_PUBLIC_URL nor NEXTAUTH_URL is set", async () => {
+    // The reconciler reads process.env directly (not the module-load
+    // snapshot), so clearing both vars here is enough. NEXTAUTH_URL is
+    // cleared too because dotenv may have loaded it from a local .env.
+    delete process.env.HIVE_PUBLIC_URL;
+    delete process.env.NEXTAUTH_URL;
 
     vi.mocked(dbMock.swarm.findUnique)
       .mockResolvedValueOnce(freshSwarm() as never)
