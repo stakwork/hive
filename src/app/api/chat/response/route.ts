@@ -23,6 +23,11 @@ import { fanOutPlannerMessageToCanvas } from "@/services/canvas-planner-fanout";
 import { enrichPublishPromptArtifacts } from "@/lib/helpers/prompt-baseline-snapshot";
 import { enrichPublishScriptArtifacts } from "@/lib/helpers/script-version-snapshot";
 import { enrichWorkflowArtifacts, enrichPublishWorkflowArtifacts } from "@/lib/helpers/workflow-version-snapshot";
+import {
+  authenticateCallbackRequest,
+  authorizeCallbackTargets,
+  parseCallbackIds,
+} from "@/lib/auth/callback-access";
 
 export const fetchCache = "force-no-store";
 
@@ -32,14 +37,21 @@ interface ArtifactRequest {
   icon?: string;
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    // Check API token authentication
-    const apiToken = request.headers.get("x-api-token");
-    if (!apiToken || apiToken !== process.env.API_TOKEN) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+const WORKFLOW_LIKE_ARTIFACT_TYPES = new Set<ArtifactType>([
+  ArtifactType.WORKFLOW,
+  ArtifactType.PUBLISH_WORKFLOW,
+  ArtifactType.PUBLISH_PROMPT,
+  ArtifactType.PUBLISH_SCRIPT,
+  ArtifactType.PUBLISH_SKILL,
+]);
 
+export async function POST(request: NextRequest) {
+  // Authenticate (and rate-limit org callers) before the body is parsed.
+  const caller = await authenticateCallbackRequest(request);
+  if (caller instanceof NextResponse) return caller;
+  const isOrgCaller = caller.kind === "org";
+
+  try {
     const body = await request.json();
     const {
       taskId,
@@ -69,6 +81,78 @@ export async function POST(request: NextRequest) {
         cacheWriteTokens?: number;
       };
     };
+
+    const parsedIds = parseCallbackIds({ taskId, featureId });
+    if (parsedIds instanceof NextResponse) return parsedIds;
+
+    const authorized = await authorizeCallbackTargets(caller, {
+      taskId: parsedIds.taskId,
+      featureId: parsedIds.featureId,
+    });
+    if (authorized instanceof NextResponse) return authorized;
+    const authorizedWorkspaceId = authorized.workspaceId;
+
+    // ── Org-caller payload policy ──────────────────────────────────────────
+    // Checked right after authorization and before chatMessage.create, so a
+    // rejected request writes nothing.
+    if (isOrgCaller) {
+      if (Array.isArray(recordings) && recordings.length > 0) {
+        console.warn("[chat/response] rejected", {
+          reason: "payload_not_allowed",
+          orgId: caller.orgId,
+          apiKeyId: caller.apiKeyId,
+          taskId,
+          featureId,
+        });
+        return NextResponse.json(
+          { error: "recordings are not allowed for org callers" },
+          { status: 400 },
+        );
+      }
+
+      const hasWorkflowLikeArtifact = artifacts.some(
+        (a) => a?.type && WORKFLOW_LIKE_ARTIFACT_TYPES.has(a.type),
+      );
+      if (hasWorkflowLikeArtifact) {
+        console.warn("[chat/response] rejected", {
+          reason: "payload_not_allowed",
+          orgId: caller.orgId,
+          apiKeyId: caller.apiKeyId,
+          taskId,
+          featureId,
+        });
+        return NextResponse.json(
+          { error: "Workflow-related artifacts are not allowed for org callers" },
+          { status: 400 },
+        );
+      }
+
+      const podArtifactCandidate = artifacts.find(
+        (a: ArtifactRequest) =>
+          (a.type === ArtifactType.IDE || a.type === ArtifactType.BROWSER) &&
+          (a.content as unknown as IDEContent | BrowserContent | undefined)?.podId,
+      );
+      if (podArtifactCandidate) {
+        const podId = (podArtifactCandidate.content as unknown as IDEContent | BrowserContent).podId;
+        const pod = podId
+          ? await db.pod.findFirst({
+              where: { podId, deletedAt: null, swarm: { workspaceId: authorizedWorkspaceId } },
+              select: { id: true },
+            })
+          : null;
+        if (!pod) {
+          console.warn("[chat/response] rejected", {
+            reason: "pod_org_mismatch",
+            orgId: caller.orgId,
+            apiKeyId: caller.apiKeyId,
+            taskId,
+            featureId,
+            podId,
+          });
+          return NextResponse.json({ error: "Pod not found in workspace" }, { status: 403 });
+        }
+      }
+    }
 
     let taskMode: string | undefined;
     let task: { id: string; workspaceId: string; mode: string; assigneeId: string | null; createdById: string; title: string } | null = null;
@@ -373,10 +457,14 @@ export async function POST(request: NextRequest) {
 
         if (podId || agentPassword) {
           try {
-            // Validate pod existence before writing to task — skip (don't throw) if not found
+            // Validate pod existence before writing to task — skip (don't throw) if not found.
+            // Org callers are scoped to their authorized workspace so a foreign
+            // pod can never be bound to this task via task.podId.
             if (podId) {
               const podExists = await db.pod.findFirst({
-                where: { podId, deletedAt: null },
+                where: isOrgCaller
+                  ? { podId, deletedAt: null, swarm: { workspaceId: authorizedWorkspaceId } }
+                  : { podId, deletedAt: null },
                 select: { id: true },
               });
               if (!podExists) {
@@ -412,10 +500,15 @@ export async function POST(request: NextRequest) {
               });
 
               // Sync pods table so pool status stays accurate
-              // Stakwork claims pods via Pool Manager directly, so we need to mark the pod as USED here
+              // Stakwork claims pods via Pool Manager directly, so we need to mark the pod as USED here.
+              // For org callers, scope by the authorized workspace too — podId is
+              // @unique so this can't touch another org's pod, but the extra
+              // filter keeps the write consistent with the read-side guard above.
               if (podId) {
                 await tx.pod.updateMany({
-                  where: { podId, deletedAt: null },
+                  where: isOrgCaller
+                    ? { podId, deletedAt: null, swarm: { workspaceId: authorizedWorkspaceId } }
+                    : { podId, deletedAt: null },
                   data: {
                     usageStatus: PodUsageStatus.USED,
                     usageStatusMarkedAt: new Date(),
@@ -667,6 +760,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    console.info("[chat/response] success", {
+      callerKind: caller.kind,
+      orgId: isOrgCaller ? caller.orgId : undefined,
+      apiKeyId: isOrgCaller ? caller.apiKeyId : undefined,
+      workspaceId: authorizedWorkspaceId ?? task?.workspaceId,
+      taskId,
+      featureId,
+    });
+
     return NextResponse.json(
       {
         success: true,
@@ -676,9 +778,13 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    // The full error is always logged server-side; org callers don't get
+    // `detail` in the response body (system callers keep today's response).
     console.error("Error creating chat response:", error);
     return NextResponse.json(
-      { error: "Failed to create chat response", detail },
+      isOrgCaller
+        ? { error: "Failed to create chat response" }
+        : { error: "Failed to create chat response", detail },
       { status: 500 },
     );
   }
