@@ -2,7 +2,7 @@
  * Unit tests for `services/strut-runs/system-map.ts`.
  *
  * Coverage:
- *   - launch: dispatches `swarm-systemmap` with purpose `system_map`, the workspace swarm's
+ *   - launch: dispatches `swarm-systemmap-schema-sync` with purpose `system_map`, the workspace swarm's
  *     stakgraph base as `input.swarm_url` and its secret alias as
  *     `input.swarm_secret_alias`; no swarm / alias → no_target.
  *   - list: rows serialized newest-first with a strut view link; a PENDING
@@ -56,7 +56,7 @@ function row(overrides: Record<string, unknown> = {}) {
     swarmId: "swarm-1",
     userId: "user-1",
     kind: "system_map",
-    workflow: "swarm-systemmap",
+    workflow: "swarm-systemmap-schema-sync",
     strutRunId: "1700000000000",
     status: StrutRunStatus.PENDING,
     input: null,
@@ -98,7 +98,7 @@ describe("launchSystemMapRun", () => {
       workspaceId: "ws-1",
       userId: "user-1",
       kind: "system_map",
-      workflow: "swarm-systemmap",
+      workflow: "swarm-systemmap-schema-sync",
       purpose: "system_map",
       input: {
         workspace: "acme-ws",
@@ -133,7 +133,7 @@ describe("listSystemMapRuns", () => {
     expect(runs).toEqual([
       {
         id: "run-1",
-        workflow: "swarm-systemmap",
+        workflow: "swarm-systemmap-schema-sync",
         strutRunId: "1700000000000",
         status: "SUCCESS",
         output: { summary: "ok" },
@@ -141,7 +141,7 @@ describe("listSystemMapRuns", () => {
         durationMs: 1234,
         createdAt: new Date(NOW.getTime() - 60_000).toISOString(),
         settledAt: NOW.toISOString(),
-        strutUrl: "/org/acme/strut?strut=wf%3Dswarm-systemmap%26run%3D1700000000000",
+        strutUrl: "/org/acme/strut?strut=wf%3Dswarm-systemmap-schema-sync%26run%3D1700000000000",
       },
     ]);
     expect(mockStrutRun.findMany).toHaveBeenCalledWith(
@@ -192,7 +192,7 @@ describe("listSystemMapRuns", () => {
 
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe("PENDING");
-    expect(runs[0].strutUrl).toBe("/org/acme/strut?strut=wf%3Dswarm-systemmap%26run%3D1700000000000");
+    expect(runs[0].strutUrl).toBe("/org/acme/strut?strut=wf%3Dswarm-systemmap-schema-sync%26run%3D1700000000000");
   });
 
   it("omits the strut link when the workspace has no org", async () => {
