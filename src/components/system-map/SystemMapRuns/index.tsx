@@ -2,12 +2,14 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Loader2, Play } from "lucide-react";
+import { ChevronRight, ExternalLink, Loader2, Play } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { SystemMapReport } from "@/components/system-map/SystemMapReport";
+import { parseSystemMapReport } from "@/components/system-map/SystemMapReport/model";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import type { SystemMapRun, SystemMapRunsResponse } from "@/types/system-map";
@@ -66,6 +68,7 @@ function splitOutput(output: unknown): { report: string | null; data: unknown } 
 }
 
 function RunOutput({ run }: { run: SystemMapRun }) {
+  const structured = useMemo(() => parseSystemMapReport(run.output), [run.output]);
   const { report, data } = useMemo(() => splitOutput(run.output), [run.output]);
 
   if (run.status === "PENDING") {
@@ -82,6 +85,9 @@ function RunOutput({ run }: { run: SystemMapRun }) {
         {run.error || "The run did not finish."}
       </p>
     );
+  }
+  if (structured) {
+    return <SystemMapReport report={structured} />;
   }
   if (report === null && data === null) {
     return <p className="text-sm text-muted-foreground">The workflow finished without output.</p>;
@@ -108,11 +114,22 @@ function RunOutput({ run }: { run: SystemMapRun }) {
   );
 }
 
-function RunCard({ run }: { run: SystemMapRun }) {
+function RunCard({ run, defaultExpanded }: { run: SystemMapRun; defaultExpanded: boolean }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   return (
     <Card data-testid="system-map-run">
       <CardContent className="space-y-3 py-4">
         <div className="flex flex-wrap items-center gap-2 text-sm">
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            className="text-muted-foreground"
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse run" : "Expand run"}
+            data-testid="system-map-run-toggle"
+          >
+            <ChevronRight className={`h-4 w-4 transition-transform ${expanded ? "rotate-90" : ""}`} />
+          </button>
           <Badge variant={STATUS_VARIANT[run.status]}>{STATUS_LABEL[run.status]}</Badge>
           <span className="text-muted-foreground">{formatWhen(run.createdAt)}</span>
           {run.durationMs !== null && (
@@ -129,7 +146,7 @@ function RunCard({ run }: { run: SystemMapRun }) {
             </Link>
           )}
         </div>
-        <RunOutput run={run} />
+        {expanded && <RunOutput run={run} />}
       </CardContent>
     </Card>
   );
@@ -225,8 +242,8 @@ export function SystemMapRuns() {
         </Card>
       )}
 
-      {runs.map((run) => (
-        <RunCard key={run.id} run={run} />
+      {runs.map((run, index) => (
+        <RunCard key={run.id} run={run} defaultExpanded={index === 0} />
       ))}
     </div>
   );
