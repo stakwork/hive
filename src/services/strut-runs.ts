@@ -121,6 +121,7 @@ export type StrutRunHandler = (row: StrutRunRow) => Promise<void>;
 const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   code_change_propose: async () => (await import("./strut-runs/code-change-propose")).handleCodeChangeProposeSettled,
   code_change_land: async () => (await import("./strut-runs/code-change-land")).handleCodeChangeLandSettled,
+  system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
 };
 
 export function hashStrutRunToken(token: string): string {
