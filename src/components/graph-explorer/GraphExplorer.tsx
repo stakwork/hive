@@ -251,7 +251,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId, initialCypher }: Gr
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
   const [queryResult, setQueryResult] = useState<StakgraphResult | null>(null);
-  const [tab, setTab] = useState("table");
+  const [tab, setTab] = useState("2d");
 
   // ── Raw graph data fed to 3D canvas ──────────────────────────────────────
   // One piece of state, not two: graph-walk expansion appends to both halves
@@ -452,7 +452,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId, initialCypher }: Gr
       setFocusNotice(null);
       // Focusing clears the query result, so the Table tab is about to vanish —
       // move off it. "2d" is already a graph view, so leave that choice alone.
-      setTab((t) => (t === "2d" ? t : "graph"));
+      setTab((t) => (t === "graph" ? t : "2d"));
 
       const detail = await fetchNodeDetail(refId, expandTypes);
       if (!detail) {
@@ -584,7 +584,7 @@ export function GraphExplorer({ workspaceSlug, initialRefId, initialCypher }: Gr
       // synthetic, so re-centering the walk on it would strand the layout.
       setFocusedNode(null);
       setSearchMatches(null);
-      setTab((t) => (t === "2d" ? t : "graph"));
+      setTab((t) => (t === "graph" ? t : "2d"));
     },
     [workspaceSlug, focusNode, setSearchMatches],
   );

@@ -19,7 +19,7 @@ import {
   hasPendingSystemMapRun,
   launchSystemMapRun,
   listSystemMapRuns,
-  systemMapWorkflowName,
+  SYSTEM_MAP_WORKFLOW,
 } from "@/services/strut-runs/system-map";
 import type { SystemMapRunsResponse } from "@/types/system-map";
 
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (member instanceof NextResponse) return member;
 
     const body: SystemMapRunsResponse = {
-      workflow: systemMapWorkflowName(),
+      workflow: SYSTEM_MAP_WORKFLOW,
       runs: await listSystemMapRuns(member.workspaceId),
     };
     return NextResponse.json(body);
