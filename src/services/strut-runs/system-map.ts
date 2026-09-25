@@ -42,7 +42,7 @@ import type { SystemMapRun } from "@/types/system-map";
 
 export const SYSTEM_MAP_KIND = "system_map";
 /** The strut workflow, as published in the org strut view. */
-export const SYSTEM_MAP_WORKFLOW = "swarm-systemmap";
+export const SYSTEM_MAP_WORKFLOW = "swarm-systemmap-schema-sync";
 /** How many runs the page lists. */
 const LIST_LIMIT = 20;
 /** A PENDING row younger than this is not probed — its callback is on the way. */
