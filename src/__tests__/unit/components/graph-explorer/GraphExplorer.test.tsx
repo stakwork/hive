@@ -384,6 +384,21 @@ describe("GraphExplorer", () => {
     expect(screen.getByText("m")).toBeInTheDocument();
   });
 
+  // ── 3b. Defaults to the 2D pane rather than the 3D graph or table ──────────
+  test("defaults to the 2D tab on mount", async () => {
+    global.fetch = makeFetch({
+      ok: true,
+      status: 200,
+      body: { columns: MOCK_COLUMNS, rows: MOCK_ROWS },
+    });
+
+    render(<GraphExplorer workspaceSlug="test-ws" />);
+    await userEvent.click(screen.getByTestId("run-query-button"));
+
+    await waitFor(() => screen.getByTestId("tab-content-2d"));
+    expect(screen.getByTestId("tab-content-2d")).toBeInTheDocument();
+  });
+
   // ── 4. Shows error state on API failure ────────────────────────────────────
   test("shows error state on API failure", async () => {
     global.fetch = makeFetch({
@@ -711,8 +726,8 @@ describe("GraphExplorer", () => {
     // Panel opens, and the canvas is seeded with the node + its neighbors
     await waitFor(() => screen.getByTestId("node-type-badge"));
     expect(screen.getByTestId("focused-node-badge")).toHaveTextContent("processData");
-    // The graph tab is rendered without any Cypher result behind it
-    expect(screen.getByTestId("tab-content-graph")).toBeInTheDocument();
+    // The 2D tab is rendered without any Cypher result behind it
+    expect(screen.getByTestId("tab-content-2d")).toBeInTheDocument();
   });
 
   // ── 15c. A malformed 200 surfaces an error instead of crashing ────────────
@@ -863,11 +878,11 @@ describe("GraphExplorer", () => {
 
     await waitFor(() => screen.getByTestId("node-detail-panel"));
     // Both visible at once — the panel is a sibling column, not an overlay.
-    expect(screen.getByTestId("tab-content-graph")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-content-2d")).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId("node-detail-close-button"));
     expect(screen.queryByTestId("node-detail-panel")).not.toBeInTheDocument();
-    expect(screen.getByTestId("tab-content-graph")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-content-2d")).toBeInTheDocument();
   });
 
   // ── 19. Expanding never blanks the canvas behind a spinner ────────────────
@@ -898,7 +913,7 @@ describe("GraphExplorer", () => {
     await waitFor(() => screen.getByTestId("focus-loading-state"));
 
     // The accumulated walk stays rendered — the spinner sits in the toolbar.
-    expect(screen.getByTestId("tab-content-graph")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-content-2d")).toBeInTheDocument();
     expect(screen.getByTestId("walk-node-count")).toHaveTextContent("3 nodes");
 
     releaseRef2?.();
@@ -992,7 +1007,7 @@ describe("GraphExplorer", () => {
     await userEvent.click(screen.getByTestId("graph-chat-show-on-graph-button"));
 
     // The star is drawn client-side, so nothing is resolved against the graph…
-    await waitFor(() => expect(screen.getByTestId("tab-graph")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("tab-content-2d")).toBeInTheDocument());
     expect(urlsFor(fetchMock, "/graph/node/")).toHaveLength(0);
   });
 
