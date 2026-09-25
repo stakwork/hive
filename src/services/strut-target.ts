@@ -17,6 +17,7 @@
  * | `code_change` | the ORG's default workspace swarm (the one the org strut |
  * | `embed`       | view embeds — `resolveOrgSwarmWorkspaceForUser`)        |
  * | `chat`        | the org default too — see below                         |
+ * | `system_map`  | the org default (the workflow is authored in that embed) |
  * | `benchmark`   | the workspace's OWN swarm (what this caller always did) |
  *
  * Strut has no tenancy: one strut is one trust domain, which the org-wide
@@ -46,7 +47,7 @@ import { resolveOrgSwarmWorkspaceForUser } from "@/lib/helpers/org-workspace";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { resolveStrutActor } from "@/services/bifrost/strut-delegation";
 
-export type StrutPurpose = "code_change" | "benchmark" | "chat" | "embed";
+export type StrutPurpose = "code_change" | "benchmark" | "chat" | "embed" | "system_map";
 
 /** Where each purpose runs. `org-default` = the org's default workspace swarm. */
 const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
@@ -55,6 +56,9 @@ const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
   // Jamie's strut tools: one strut per org for now (header comment). The
   // switch back to a strut per workspace is `"workspace"` here.
   chat: "org-default",
+  // The System Map page's workflow: authored in the org strut view, so it
+  // runs where it was authored.
+  system_map: "org-default",
   benchmark: "workspace",
 };
 
