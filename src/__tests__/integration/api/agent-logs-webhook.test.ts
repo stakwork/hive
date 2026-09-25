@@ -10,6 +10,12 @@ import { describe, test, expect, beforeEach, afterEach, vi, type Mock } from "vi
 import { put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { generateUniqueId, generateUniqueSlug, generateUniqueEmail } from "@/__tests__/support/helpers";
+import { createOrgApiKey } from "@/lib/org-api-keys";
+
+vi.mock("@/lib/rate-limit", () => ({
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+  getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
+}));
 
 // ── Pusher mock ───────────────────────────────────────────────────────────────
 const { mockPusherTrigger, mockAddNode, mockAddEdge, mockGetJarvisConfig } = vi.hoisted(() => ({
@@ -689,5 +695,364 @@ describe("POST /api/webhook/agent-logs — new payload shape & config persistenc
 
     const sessionCall = mockAddNode.mock.calls[1][1];
     expect(sessionCall.node_data.model).toBe("claude-opus-4");
+  });
+});
+
+// ── Org API key auth ────────────────────────────────────────────────────────────
+
+describe("POST /api/webhook/agent-logs — org API key auth", () => {
+  let testData: Awaited<ReturnType<typeof createTestSetup>>;
+  let org: { id: string };
+
+  function orgRequest(body: Record<string, unknown>, key: string) {
+    return new (require("next/server").NextRequest)("http://localhost/api/webhook/agent-logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-token": key },
+      body: JSON.stringify(body),
+    });
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    process.env.API_TOKEN = "test-token";
+    mockGetJarvisConfig.mockResolvedValue(null);
+    testData = await createTestSetup();
+    org = await db.sourceControlOrg.create({
+      data: {
+        githubLogin: `org-agent-logs-${generateUniqueId()}`,
+        githubInstallationId: Math.floor(Math.random() * 1_000_000) + 1,
+        type: "ORG",
+        name: "org-agent-logs",
+      },
+    });
+    await db.workspace.update({ where: { id: testData.workspace.id }, data: { sourceControlOrgId: org.id } });
+  });
+
+  afterEach(async () => {
+    await db.agentLog.deleteMany({ where: { workspaceId: testData.workspace.id } });
+    await db.feature.deleteMany({ where: { workspaceId: testData.workspace.id } });
+    await db.workspace.deleteMany({ where: { id: testData.workspace.id } });
+    await db.user.deleteMany({ where: { id: testData.owner.id } });
+    await db.sourceControlOrg.deleteMany({ where: { id: org.id } });
+  });
+
+  test("system token still works (unchanged behaviour)", async () => {
+    const { workspace, feature } = testData;
+    const response = await POST(
+      buildRequest({
+        agent: "plan-agent-system",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        logs: [{ role: "assistant", content: "Hello" }],
+      }),
+    );
+    expect(response.status).toBe(201);
+  });
+
+  test("an org key for the right org works", async () => {
+    const { workspace, feature } = testData;
+    const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.owner.id });
+
+    const response = await POST(
+      orgRequest(
+        {
+          agent: "plan-agent-org",
+          workspace_id: workspace.id,
+          feature_id: feature.id,
+          logs: [{ role: "assistant", content: "Hello" }],
+        },
+        key,
+      ),
+    );
+
+    expect(response.status).toBe(201);
+    const row = await db.agentLog.findFirst({ where: { agent: "plan-agent-org", workspaceId: workspace.id } });
+    expect(row?.metadata).toMatchObject({ hiveCaller: { kind: "org" } });
+  });
+
+  test("an org key for another org gets 404 and nothing is written", async () => {
+    const { workspace, feature } = testData;
+    const otherOrg = await db.sourceControlOrg.create({
+      data: {
+        githubLogin: `org-agent-logs-other-${generateUniqueId()}`,
+        githubInstallationId: Math.floor(Math.random() * 1_000_000) + 1,
+        type: "ORG",
+        name: "org-agent-logs-other",
+      },
+    });
+    const { key } = await createOrgApiKey({ orgId: otherOrg.id, name: "strut", createdById: testData.owner.id });
+
+    const response = await POST(
+      orgRequest(
+        {
+          agent: "plan-agent-other-org",
+          workspace_id: workspace.id,
+          feature_id: feature.id,
+          logs: [{ role: "assistant", content: "Hello" }],
+        },
+        key,
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    expect(put).not.toHaveBeenCalled();
+    const row = await db.agentLog.findFirst({ where: { agent: "plan-agent-other-org", workspaceId: workspace.id } });
+    expect(row).toBeNull();
+
+    await db.sourceControlOrg.deleteMany({ where: { id: otherOrg.id } });
+  });
+
+  test("no token gets 401", async () => {
+    const { workspace, feature } = testData;
+    const response = await POST(
+      new (require("next/server").NextRequest)("http://localhost/api/webhook/agent-logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent: "plan-agent-no-token",
+          workspace_id: workspace.id,
+          feature_id: feature.id,
+          logs: [],
+        }),
+      }),
+    );
+    expect(response.status).toBe(401);
+  });
+
+  test("a revoked key gets 401", async () => {
+    const { workspace, feature } = testData;
+    const { id, key } = await createOrgApiKey({ orgId: org.id, name: "revoked", createdById: testData.owner.id });
+    await db.orgApiKey.update({ where: { id }, data: { revokedAt: new Date() } });
+
+    const response = await POST(
+      orgRequest(
+        { agent: "plan-agent-revoked", workspace_id: workspace.id, feature_id: feature.id, logs: [] },
+        key,
+      ),
+    );
+    expect(response.status).toBe(401);
+  });
+
+  test("workspace_id mismatch → 403", async () => {
+    const { workspace, feature } = testData;
+    const otherWorkspace = await db.workspace.create({
+      data: {
+        id: generateUniqueId("ws-mismatch"),
+        name: "Other WS",
+        slug: generateUniqueSlug("ws-mismatch"),
+        ownerId: testData.owner.id,
+      },
+    });
+    const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.owner.id });
+
+    const response = await POST(
+      orgRequest(
+        {
+          agent: "plan-agent-mismatch",
+          workspace_id: otherWorkspace.id,
+          feature_id: feature.id,
+          logs: [],
+        },
+        key,
+      ),
+    );
+
+    expect(response.status).toBe(403);
+    await db.workspace.deleteMany({ where: { id: otherWorkspace.id } });
+  });
+
+  test("task in org A + feature in org B → 404, no AgentLog and no put", async () => {
+    const { workspace } = testData;
+    const otherOrg = await db.sourceControlOrg.create({
+      data: {
+        githubLogin: `org-agent-logs-b-${generateUniqueId()}`,
+        githubInstallationId: Math.floor(Math.random() * 1_000_000) + 1,
+        type: "ORG",
+        name: "org-agent-logs-b",
+      },
+    });
+    const otherWorkspace = await db.workspace.create({
+      data: {
+        id: generateUniqueId("ws-b"),
+        name: "WS B",
+        slug: generateUniqueSlug("ws-b"),
+        ownerId: testData.owner.id,
+        sourceControlOrgId: otherOrg.id,
+      },
+    });
+    const task = await db.task.create({
+      data: {
+        id: generateUniqueId("task-a"),
+        title: "Task A",
+        workspaceId: workspace.id,
+        createdById: testData.owner.id,
+        updatedById: testData.owner.id,
+      },
+    });
+    const featureB = await db.feature.create({
+      data: {
+        id: generateUniqueId("feature-b"),
+        title: "Feature B",
+        brief: "b",
+        workspaceId: otherWorkspace.id,
+        createdById: testData.owner.id,
+        updatedById: testData.owner.id,
+      },
+    });
+    const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.owner.id });
+
+    const response = await POST(
+      orgRequest(
+        {
+          agent: "plan-agent-cross",
+          workspace_id: workspace.id,
+          task_id: task.id,
+          feature_id: featureB.id,
+          logs: [],
+        },
+        key,
+      ),
+    );
+
+    expect([400, 404]).toContain(response.status);
+    expect(put).not.toHaveBeenCalled();
+    const row = await db.agentLog.findFirst({ where: { agent: "plan-agent-cross" } });
+    expect(row).toBeNull();
+
+    await db.task.deleteMany({ where: { id: task.id } });
+    await db.feature.deleteMany({ where: { id: featureB.id } });
+    await db.workspace.deleteMany({ where: { id: otherWorkspace.id } });
+    await db.sourceControlOrg.deleteMany({ where: { id: otherOrg.id } });
+  });
+
+  test("a non-numeric stakwork_run_id → 400 (not 500)", async () => {
+    const { workspace, feature } = testData;
+    const response = await POST(
+      buildRequest({
+        agent: "plan-agent-badrun",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        stakwork_run_id: "not-a-number",
+        logs: [],
+      }),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test("an org caller with agent containing '/' gets 400 and no put", async () => {
+    const { workspace, feature } = testData;
+    const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.owner.id });
+
+    const response = await POST(
+      orgRequest(
+        { agent: "bad/agent", workspace_id: workspace.id, feature_id: feature.id, logs: [] },
+        key,
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  test("an org caller with agent containing '..' gets 400 and no put", async () => {
+    const { workspace, feature } = testData;
+    const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.owner.id });
+
+    const response = await POST(
+      orgRequest(
+        { agent: "bad..agent", workspace_id: workspace.id, feature_id: feature.id, logs: [] },
+        key,
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  test("org caller overwriting a Stakwork-written row → 403, blob and row unchanged", async () => {
+    const { workspace, feature } = testData;
+
+    // System caller writes first (no hiveCaller marker).
+    await POST(
+      buildRequest({
+        agent: "shared-agent",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        logs: [{ role: "assistant", content: "Stakwork wrote this" }],
+      }),
+    );
+    const before = await db.agentLog.findFirst({ where: { agent: "shared-agent", workspaceId: workspace.id } });
+    expect(before).not.toBeNull();
+    const putCallsBefore = (put as Mock).mock.calls.length;
+
+    const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.owner.id });
+    const response = await POST(
+      orgRequest(
+        {
+          agent: "shared-agent",
+          workspace_id: workspace.id,
+          feature_id: feature.id,
+          logs: [{ role: "assistant", content: "Org trying to overwrite" }],
+        },
+        key,
+      ),
+    );
+
+    expect(response.status).toBe(403);
+    expect((put as Mock).mock.calls.length).toBe(putCallsBefore);
+    const after = await db.agentLog.findFirst({ where: { agent: "shared-agent", workspaceId: workspace.id } });
+    expect(after?.blobUrl).toBe(before?.blobUrl);
+    expect(after?.metadata).toEqual(before?.metadata);
+  });
+
+  test("an org row stores metadata.hiveCaller and overwrites a caller-sent hiveCaller key", async () => {
+    const { workspace, feature } = testData;
+    const { key, id: apiKeyId } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: testData.owner.id });
+
+    const response = await POST(
+      orgRequest(
+        {
+          agent: "plan-agent-hivecaller",
+          workspace_id: workspace.id,
+          feature_id: feature.id,
+          logs: [{ role: "assistant", content: "Hello" }],
+          _metadata: { hiveCaller: { kind: "system", apiKeyId: "spoofed" }, other: "value" },
+        },
+        key,
+      ),
+    );
+
+    expect(response.status).toBe(201);
+    const row = await db.agentLog.findFirst({ where: { agent: "plan-agent-hivecaller", workspaceId: workspace.id } });
+    expect(row?.metadata).toMatchObject({ other: "value", hiveCaller: { kind: "org", apiKeyId } });
+  });
+
+  test("system-row metadata is exactly as today (null when no _metadata), and updates still replace", async () => {
+    const { workspace, feature } = testData;
+
+    const response = await POST(
+      buildRequest({
+        agent: "plan-agent-system-meta",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        logs: [{ role: "assistant", content: "Hello" }],
+      }),
+    );
+    expect(response.status).toBe(201);
+
+    const row = await db.agentLog.findFirst({ where: { agent: "plan-agent-system-meta", workspaceId: workspace.id } });
+    expect(row?.metadata).toBeNull();
+
+    // Update path — still no _metadata, still no hiveCaller.
+    await POST(
+      buildRequest({
+        agent: "plan-agent-system-meta",
+        workspace_id: workspace.id,
+        feature_id: feature.id,
+        logs: [{ role: "assistant", content: "Updated" }],
+      }),
+    );
+    const updated = await db.agentLog.findFirst({ where: { agent: "plan-agent-system-meta", workspaceId: workspace.id } });
+    expect(updated?.metadata).toBeNull();
   });
 });
