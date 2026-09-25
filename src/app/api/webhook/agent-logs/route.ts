@@ -7,8 +7,17 @@ import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { extractAgentRoleName } from "@/lib/utils/agent-role";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { parseAgentLogStats } from "@/lib/utils/agent-log-stats";
+import {
+  authenticateCallbackRequest,
+  authorizeCallbackTargets,
+  parseCallbackIds,
+} from "@/lib/auth/callback-access";
 
 export const fetchCache = "force-no-store";
+
+// Org callers only: agent must be a safe path segment — no `/`, no `..` — so
+// a caller can't write outside its `agent-logs/<workspace>/<run>/` prefix.
+const ORG_AGENT_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
 
 /**
  * POST /api/webhook/agent-logs
@@ -34,13 +43,12 @@ export const fetchCache = "force-no-store";
  * At least one of 'stakwork_run_id', 'task_id', or 'feature_id' is required.
  */
 export async function POST(request: NextRequest) {
-  try {
-    // Auth check — same pattern as /api/chat/response
-    const apiToken = request.headers.get("x-api-token");
-    if (!apiToken || apiToken !== process.env.API_TOKEN) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  // Authenticate (and rate-limit org callers) before the body is parsed.
+  const caller = await authenticateCallbackRequest(request);
+  if (caller instanceof NextResponse) return caller;
+  const isOrgCaller = caller.kind === "org";
 
+  try {
     const body = await request.json();
     const { agent, workspace_id } = body;
     // Support both new shape (messages) and legacy shape (logs)
@@ -72,12 +80,6 @@ export async function POST(request: NextRequest) {
     const repos: string[] = Array.isArray(config?.repos)
       ? (config.repos as unknown[]).filter((r): r is string => typeof r === "string")
       : [];
-    // Stakwork sends project IDs as integers
-    const stakwork_run_id = body.stakwork_run_id
-      ? Number(body.stakwork_run_id)
-      : undefined;
-    const task_id = body.task_id ? String(body.task_id) : undefined;
-    const feature_id = body.feature_id ? String(body.feature_id) : undefined;
 
     console.info("[agent-logs] payload shape", {
       isLegacy: !body.messages,
@@ -106,12 +108,61 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate id shapes before any Prisma call — a non-numeric
+    // stakwork_run_id now gets a clean 400 instead of a Prisma 500.
+    const parsedIds = parseCallbackIds({
+      taskId: body.task_id,
+      featureId: body.feature_id,
+      stakworkRunId: body.stakwork_run_id,
+    });
+    if (parsedIds instanceof NextResponse) return parsedIds;
+
+    const task_id = parsedIds.taskId;
+    const feature_id = parsedIds.featureId;
+    const stakwork_run_id = parsedIds.stakworkProjectId;
+
     // At least one association must be provided
     if (!stakwork_run_id && !task_id && !feature_id) {
       return NextResponse.json(
         { error: "At least one of 'stakwork_run_id', 'task_id', or 'feature_id' is required" },
         { status: 400 }
       );
+    }
+
+    // Authorize the target(s) before any workspace lookup or blob put. System
+    // callers pass straight through (no DB reads); org callers are scoped to
+    // their org's workspace, resolved from the task/feature/run records.
+    const authorized = await authorizeCallbackTargets(caller, {
+      taskId: task_id,
+      featureId: feature_id,
+      stakworkProjectId: stakwork_run_id,
+    });
+    if (authorized instanceof NextResponse) return authorized;
+
+    // Org callers: the body's workspace_id is a consistency check only — it
+    // is never used to authorize. A mismatch means the caller's own payload
+    // disagrees with the workspace resolved from its ids.
+    if (isOrgCaller && authorized.workspaceId && authorized.workspaceId !== workspace_id) {
+      console.warn("[agent-logs] rejected", {
+        reason: "workspace_id_mismatch",
+        orgId: caller.orgId,
+        apiKeyId: caller.apiKeyId,
+        workspaceId: authorized.workspaceId,
+        bodyWorkspaceId: workspace_id,
+      });
+      return NextResponse.json({ error: "workspace_id does not match resolved workspace" }, { status: 403 });
+    }
+
+    // Org callers: agent must be a safe path segment so a caller can't write
+    // outside its agent-logs/<workspace>/<run>/ prefix.
+    if (isOrgCaller && (!ORG_AGENT_NAME_PATTERN.test(agent) || agent.includes(".."))) {
+      console.warn("[agent-logs] rejected", {
+        reason: "invalid_agent",
+        orgId: caller.orgId,
+        apiKeyId: caller.apiKeyId,
+        agent,
+      });
+      return NextResponse.json({ error: "Invalid 'agent' field" }, { status: 400 });
     }
 
     // Verify the workspace exists
@@ -171,6 +222,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Find any existing AgentLog for this agent + run/task/feature. Moved
+    // before the blob `put` for org callers so a Stakwork-written row can be
+    // detected and rejected before anything is overwritten.
+    const existing = await db.agentLog.findFirst({
+      where: {
+        agent,
+        workspaceId: workspace_id,
+        stakworkRunId: resolvedStakworkRunId,
+        taskId: task_id || null,
+        featureId: feature_id || null,
+      },
+      select: { id: true, metadata: true },
+    });
+
+    // Org callers may never overwrite a row Stakwork (or a legacy/unmarked
+    // row) wrote — only rows previously written by an org caller.
+    if (isOrgCaller && existing) {
+      const existingMetadata = existing.metadata as { hiveCaller?: { kind?: string } } | null;
+      if (existingMetadata?.hiveCaller?.kind !== "org") {
+        console.warn("[agent-logs] rejected", {
+          reason: "system_log_overwrite",
+          orgId: caller.orgId,
+          apiKeyId: caller.apiKeyId,
+          agentLogId: existing.id,
+        });
+        return NextResponse.json({ error: "Cannot overwrite this log" }, { status: 403 });
+      }
+    }
+
     // Store transcript as blob: { sessionId?, messages } — config and
     // reflection are canonical DB columns
     const blobPayload = {
@@ -194,17 +274,17 @@ export async function POST(request: NextRequest) {
       allowOverwrite: true,
     });
 
-    // Upsert the AgentLog record (overwrite if same agent + run/task/feature)
-    const existing = await db.agentLog.findFirst({
-      where: {
-        agent,
-        workspaceId: workspace_id,
-        stakworkRunId: resolvedStakworkRunId,
-        taskId: task_id || null,
-        featureId: feature_id || null,
-      },
-      select: { id: true },
-    });
+    // System callers write exactly what they write today: metadata is
+    // replaced with `_metadata` (or left alone if missing), never tagged.
+    // Org callers always get a `hiveCaller` marker, applied last so it wins
+    // over anything the caller sent under that key — this is the caller-kind
+    // record for AgentLog rows (chat messages/tasks rely on logging only).
+    const metadataToWrite: Prisma.InputJsonValue | undefined = isOrgCaller
+      ? ({
+          ...(metadata ?? (existing?.metadata as Record<string, unknown> | null) ?? {}),
+          hiveCaller: { kind: "org", apiKeyId: caller.apiKeyId },
+        } as Prisma.InputJsonValue)
+      : (metadata as Prisma.InputJsonValue | undefined);
 
     const agentLog = existing
       ? await db.agentLog.update({
@@ -219,7 +299,7 @@ export async function POST(request: NextRequest) {
             provider: provider ?? null,
             source: source ?? null,
             repos,
-            metadata: metadata as Prisma.InputJsonValue | undefined,
+            metadata: metadataToWrite,
           },
         })
       : await db.agentLog.create({
@@ -236,7 +316,7 @@ export async function POST(request: NextRequest) {
             provider: provider ?? null,
             source: source ?? null,
             repos,
-            metadata: metadata as Prisma.InputJsonValue | undefined,
+            metadata: metadataToWrite,
           },
         });
 
@@ -335,6 +415,16 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       console.error("[agent-logs] Jarvis write failed (non-fatal)", err);
     }
+
+    console.info("[agent-logs] success", {
+      callerKind: caller.kind,
+      orgId: isOrgCaller ? caller.orgId : undefined,
+      apiKeyId: isOrgCaller ? caller.apiKeyId : undefined,
+      workspaceId: workspace_id,
+      taskId: task_id,
+      featureId: feature_id,
+      stakworkProjectId: stakwork_run_id,
+    });
 
     return NextResponse.json(
       {
