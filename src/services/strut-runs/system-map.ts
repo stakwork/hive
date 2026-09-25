@@ -4,8 +4,7 @@
  *
  * The workflow is authored in the org strut view (`/org/<login>/strut`), so
  * the launch targets that strut (`purpose: "system_map"` → the org default
- * swarm). Its name comes from `SYSTEM_MAP_STRUT_WORKFLOW` (default
- * `system-map`). Its subject is the WORKSPACE's swarm — not necessarily the
+ * swarm) as `SYSTEM_MAP_WORKFLOW`. Its subject is the WORKSPACE's swarm — not necessarily the
  * one strut runs on — as its `validate` step reads it:
  *
  *   input.swarm_url            the workspace swarm's stakgraph base (`https://x:3355`)
@@ -42,16 +41,12 @@ import {
 import type { SystemMapRun } from "@/types/system-map";
 
 export const SYSTEM_MAP_KIND = "system_map";
-export const SYSTEM_MAP_DEFAULT_WORKFLOW = "system-map";
+/** The strut workflow, as published in the org strut view. */
+export const SYSTEM_MAP_WORKFLOW = "swarm-systemmap";
 /** How many runs the page lists. */
 const LIST_LIMIT = 20;
 /** A PENDING row younger than this is not probed — its callback is on the way. */
 const PROBE_MIN_AGE_MS = 15_000;
-
-/** The strut workflow name — `SYSTEM_MAP_STRUT_WORKFLOW`, else `system-map`. */
-export function systemMapWorkflowName(): string {
-  return process.env.SYSTEM_MAP_STRUT_WORKFLOW?.trim() || SYSTEM_MAP_DEFAULT_WORKFLOW;
-}
 
 /** The `StrutRunHandler` for `system_map`: the row is the delivery. */
 export const handleSystemMapSettled: StrutRunHandler = async (row) => {
@@ -188,7 +183,7 @@ export async function launchSystemMapRun(args: LaunchSystemMapRunArgs): Promise<
     workspaceId: args.workspaceId,
     userId: args.userId,
     kind: SYSTEM_MAP_KIND,
-    workflow: systemMapWorkflowName(),
+    workflow: SYSTEM_MAP_WORKFLOW,
     purpose: "system_map",
     input: {
       workspace: args.workspaceSlug,

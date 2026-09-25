@@ -193,7 +193,7 @@ export function SystemMapRuns() {
       <div className="flex flex-wrap items-center gap-3">
         <div>
           <p className="text-sm text-muted-foreground">
-            Runs the <code>{data?.workflow ?? "system-map"}</code> strut workflow on the org swarm and
+            Runs the <code>{data?.workflow ?? "swarm-systemmap"}</code> strut workflow on the org swarm and
             shows what it reports.
           </p>
         </div>
