@@ -2,8 +2,7 @@
  * Unit tests for `services/strut-runs/system-map.ts`.
  *
  * Coverage:
- *   - launch: dispatches the configured workflow (env override, default
- *     `system-map`) with purpose `system_map`, the workspace swarm's
+ *   - launch: dispatches `swarm-systemmap` with purpose `system_map`, the workspace swarm's
  *     stakgraph base as `input.swarm_url` and its secret alias as
  *     `input.swarm_secret_alias`; no swarm / alias → no_target.
  *   - list: rows serialized newest-first with a strut view link; a PENDING
@@ -12,7 +11,7 @@
  *     a probe failure leaves the row as is.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { StrutRunStatus } from "@prisma/client";
 
 const { mockStrutRun, mockWorkspace, mockDispatch, mockProbe, mockComplete, FakeDispatchError } = vi.hoisted(() => {
@@ -46,11 +45,7 @@ vi.mock("@/services/strut-runs", () => ({
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import {
-  launchSystemMapRun,
-  listSystemMapRuns,
-  systemMapWorkflowName,
-} from "@/services/strut-runs/system-map";
+import { launchSystemMapRun, listSystemMapRuns } from "@/services/strut-runs/system-map";
 
 const NOW = new Date("2026-09-25T12:00:00Z");
 
@@ -61,7 +56,7 @@ function row(overrides: Record<string, unknown> = {}) {
     swarmId: "swarm-1",
     userId: "user-1",
     kind: "system_map",
-    workflow: "system-map",
+    workflow: "swarm-systemmap",
     strutRunId: "1700000000000",
     status: StrutRunStatus.PENDING,
     input: null,
@@ -81,21 +76,8 @@ beforeEach(() => {
   mockWorkspace.findUnique.mockResolvedValue({ sourceControlOrg: { githubLogin: "acme" } });
 });
 
-afterEach(() => {
-  delete process.env.SYSTEM_MAP_STRUT_WORKFLOW;
-});
-
-describe("systemMapWorkflowName", () => {
-  it("defaults to system-map and honours the env override", () => {
-    expect(systemMapWorkflowName()).toBe("system-map");
-    process.env.SYSTEM_MAP_STRUT_WORKFLOW = "  my-map  ";
-    expect(systemMapWorkflowName()).toBe("my-map");
-  });
-});
-
 describe("launchSystemMapRun", () => {
   it("dispatches the workflow with the workspace swarm's base URL and secret alias as input", async () => {
-    process.env.SYSTEM_MAP_STRUT_WORKFLOW = "my-map";
     mockWorkspace.findUnique.mockResolvedValue({
       swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
     });
@@ -116,7 +98,7 @@ describe("launchSystemMapRun", () => {
       workspaceId: "ws-1",
       userId: "user-1",
       kind: "system_map",
-      workflow: "my-map",
+      workflow: "swarm-systemmap",
       purpose: "system_map",
       input: {
         workspace: "acme-ws",
@@ -151,7 +133,7 @@ describe("listSystemMapRuns", () => {
     expect(runs).toEqual([
       {
         id: "run-1",
-        workflow: "system-map",
+        workflow: "swarm-systemmap",
         strutRunId: "1700000000000",
         status: "SUCCESS",
         output: { summary: "ok" },
@@ -159,7 +141,7 @@ describe("listSystemMapRuns", () => {
         durationMs: 1234,
         createdAt: new Date(NOW.getTime() - 60_000).toISOString(),
         settledAt: NOW.toISOString(),
-        strutUrl: "/org/acme/strut?strut=wf%3Dsystem-map%26run%3D1700000000000",
+        strutUrl: "/org/acme/strut?strut=wf%3Dswarm-systemmap%26run%3D1700000000000",
       },
     ]);
     expect(mockStrutRun.findMany).toHaveBeenCalledWith(
@@ -210,7 +192,7 @@ describe("listSystemMapRuns", () => {
 
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe("PENDING");
-    expect(runs[0].strutUrl).toBe("/org/acme/strut?strut=wf%3Dsystem-map%26run%3D1700000000000");
+    expect(runs[0].strutUrl).toBe("/org/acme/strut?strut=wf%3Dswarm-systemmap%26run%3D1700000000000");
   });
 
   it("omits the strut link when the workspace has no org", async () => {
