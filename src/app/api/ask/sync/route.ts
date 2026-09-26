@@ -453,6 +453,7 @@ export async function POST(request: NextRequest) {
           rows,
           idPrefix: assistantPrefix,
           reason: "user-turn",
+          turnId,
         });
 
         // Snapshot the rendered prefix for the Agent Logs detail view, and
