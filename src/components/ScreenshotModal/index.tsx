@@ -29,27 +29,15 @@ export function ScreenshotModal({
   onNavigate,
 }: ScreenshotModalProps) {
   const { timezone } = useUserTimezone();
-  if (!screenshot) return null;
-
-  const currentIndex = allScreenshots.findIndex((s) => s.id === screenshot.id);
+  const currentIndex = screenshot
+    ? allScreenshots.findIndex((s) => s.id === screenshot.id)
+    : -1;
   const hasPrevious = currentIndex > 0;
   const hasNext = currentIndex < allScreenshots.length - 1;
 
-  const handlePrevious = () => {
-    if (hasPrevious) {
-      onNavigate(allScreenshots[currentIndex - 1]);
-    }
-  };
-
-  const handleNext = () => {
-    if (hasNext) {
-      onNavigate(allScreenshots[currentIndex + 1]);
-    }
-  };
-
   // Keyboard navigation
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !screenshot) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "ArrowLeft" && hasPrevious) {
@@ -63,7 +51,21 @@ export function ScreenshotModal({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, hasPrevious, hasNext, currentIndex, allScreenshots, onNavigate]);
+  }, [isOpen, screenshot, hasPrevious, hasNext, currentIndex, allScreenshots, onNavigate]);
+
+  if (!screenshot) return null;
+
+  const handlePrevious = () => {
+    if (hasPrevious) {
+      onNavigate(allScreenshots[currentIndex - 1]);
+    }
+  };
+
+  const handleNext = () => {
+    if (hasNext) {
+      onNavigate(allScreenshots[currentIndex + 1]);
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
