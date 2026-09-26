@@ -17,7 +17,6 @@
  */
 
 import { getSwarmVanityAddress } from "@/lib/constants";
-import { db } from "@/lib/db";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
 import { validateWorkspaceAccess } from "@/services/workspace";
@@ -215,19 +214,16 @@ export async function runWorkspaceGraphQuery({
     };
   }
 
-  // 5) Swarm resolution.
-  const workspace = await db.workspace.findFirst({
-    where: { slug, deleted: false },
-    select: { id: true },
-  });
-
-  if (!workspace) {
+  // 5) Swarm resolution — keyed off the workspace already authorized above,
+  // never a second slug lookup that could resolve a different row.
+  const authorizedWorkspaceId = access.workspace?.id;
+  if (!authorizedWorkspaceId) {
     return deny(slug, userId, "no-swarm", 404, "Workspace not found");
   }
 
   // Already resolves + decrypts the Swarm row's swarmApiKey. Callers must
   // treat missing keys as a config problem, not an exception.
-  const swarmAccess = await getSwarmAccessByWorkspaceId(workspace.id);
+  const swarmAccess = await getSwarmAccessByWorkspaceId(authorizedWorkspaceId);
 
   if (
     !swarmAccess.success ||
