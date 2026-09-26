@@ -10,9 +10,27 @@ import { Card, CardContent } from "@/components/ui/card";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { SystemMapReport } from "@/components/system-map/SystemMapReport";
 import { parseSystemMapReport } from "@/components/system-map/SystemMapReport/model";
+import { MaterializedGraph } from "@/components/system-map/MaterializedGraph";
+import { parseMaterializedGraph } from "@/components/system-map/MaterializedGraph/model";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
-import type { SystemMapRun, SystemMapRunsResponse } from "@/types/system-map";
+import type { SystemMapRun, SystemMapRunsResponse, SystemMapWorkflowKey } from "@/types/system-map";
+
+/** Per-tab copy. The workflow names come from the API response. */
+const COPY: Record<SystemMapWorkflowKey, { description: string; button: string; empty: string; started: string }> = {
+  schema: {
+    description: "Verifies the Sys* ontology against this workspace's knowledge graph and reports what matched.",
+    button: "Run schema sync",
+    empty: "No runs yet. Start one to check the ontology against this workspace's graph.",
+    started: "Schema sync started",
+  },
+  materialize: {
+    description: "Writes the real system nodes and edges for this workspace into the knowledge graph.",
+    button: "Run graph materialize",
+    empty: "No runs yet. Start one to materialize this workspace's system graph.",
+    started: "Graph materialize started",
+  },
+};
 
 /** Poll cadence while a run is in flight. */
 const POLL_MS = 5_000;
@@ -67,8 +85,21 @@ function splitOutput(output: unknown): { report: string | null; data: unknown } 
   return { report: null, data: output ?? null };
 }
 
-function RunOutput({ run }: { run: SystemMapRun }) {
-  const structured = useMemo(() => parseSystemMapReport(run.output), [run.output]);
+function RunOutput({ run, workflowKey }: { run: SystemMapRun; workflowKey: SystemMapWorkflowKey }) {
+  // Each workflow has a first-choice renderer; the other is tried next so a
+  // workflow that returns the other shape still gets a real view.
+  const structured = useMemo(() => {
+    if (run.status !== "SUCCESS") return null;
+    const asReport = () => {
+      const r = parseSystemMapReport(run.output);
+      return r ? (<SystemMapReport report={r} />) : null;
+    };
+    const asGraph = () => {
+      const g = parseMaterializedGraph(run.output);
+      return g ? (<MaterializedGraph graph={g} />) : null;
+    };
+    return workflowKey === "materialize" ? asGraph() ?? asReport() : asReport() ?? asGraph();
+  }, [run.output, run.status, workflowKey]);
   const { report, data } = useMemo(() => splitOutput(run.output), [run.output]);
 
   if (run.status === "PENDING") {
@@ -87,7 +118,7 @@ function RunOutput({ run }: { run: SystemMapRun }) {
     );
   }
   if (structured) {
-    return <SystemMapReport report={structured} />;
+    return structured;
   }
   if (report === null && data === null) {
     return <p className="text-sm text-muted-foreground">The workflow finished without output.</p>;
@@ -114,7 +145,15 @@ function RunOutput({ run }: { run: SystemMapRun }) {
   );
 }
 
-function RunCard({ run, defaultExpanded }: { run: SystemMapRun; defaultExpanded: boolean }) {
+function RunCard({
+  run,
+  defaultExpanded,
+  workflowKey,
+}: {
+  run: SystemMapRun;
+  defaultExpanded: boolean;
+  workflowKey: SystemMapWorkflowKey;
+}) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   return (
     <Card data-testid="system-map-run">
@@ -146,13 +185,14 @@ function RunCard({ run, defaultExpanded }: { run: SystemMapRun; defaultExpanded:
             </Link>
           )}
         </div>
-        {expanded && <RunOutput run={run} />}
+        {expanded && <RunOutput run={run} workflowKey={workflowKey} />}
       </CardContent>
     </Card>
   );
 }
 
-export function SystemMapRuns() {
+export function SystemMapRuns({ workflowKey = "schema" }: { workflowKey?: SystemMapWorkflowKey }) {
+  const copy = COPY[workflowKey];
   const { workspace } = useWorkspace();
   const { canWrite } = useWorkspaceAccess();
   const slug = workspace?.slug;
@@ -162,7 +202,9 @@ export function SystemMapRuns() {
 
   const load = useCallback(async (workspaceSlug: string) => {
     try {
-      const response = await fetch(`/api/workspaces/${workspaceSlug}/system-map/runs`, { cache: "no-store" });
+      const response = await fetch(`/api/workspaces/${workspaceSlug}/system-map/runs?workflow=${workflowKey}`, {
+        cache: "no-store",
+      });
       if (!response.ok) throw new Error("Failed to load runs");
       setData((await response.json()) as SystemMapRunsResponse);
     } catch (error) {
@@ -172,9 +214,11 @@ export function SystemMapRuns() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [workflowKey]);
 
   useEffect(() => {
+    setLoading(true);
+    setData(null);
     if (slug) void load(slug);
   }, [slug, load]);
 
@@ -191,27 +235,36 @@ export function SystemMapRuns() {
     if (!slug) return;
     setStarting(true);
     try {
-      const response = await fetch(`/api/workspaces/${slug}/system-map/runs`, { method: "POST" });
+      const response = await fetch(`/api/workspaces/${slug}/system-map/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workflow: workflowKey }),
+      });
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not start the workflow");
-      toast.success("System map run started");
+      toast.success(copy.started);
       await load(slug);
     } catch (error) {
-      toast.error("Could not start the system map run", {
+      toast.error("Could not start the run", {
         description: error instanceof Error ? error.message : "Please try again.",
       });
     } finally {
       setStarting(false);
     }
-  }, [slug, load]);
+  }, [slug, load, workflowKey, copy.started]);
 
   return (
     <div className="max-w-6xl space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div>
           <p className="text-sm text-muted-foreground">
-            Runs the <code>{data?.workflow ?? "swarm-systemmap-schema-sync"}</code> strut workflow on the org swarm and
-            shows what it reports.
+            {copy.description}
+            {data?.workflow && (
+              <>
+                {" "}
+                Strut workflow <code>{data.workflow}</code>.
+              </>
+            )}
           </p>
         </div>
         <Button
@@ -221,7 +274,7 @@ export function SystemMapRuns() {
           data-testid="system-map-run-button"
         >
           {starting || inFlight ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-          {inFlight ? "Running…" : "Run system map"}
+          {inFlight ? "Running…" : copy.button}
         </Button>
       </div>
 
@@ -237,13 +290,13 @@ export function SystemMapRuns() {
       {!loading && runs.length === 0 && (
         <Card data-testid="system-map-runs-empty">
           <CardContent className="py-10 text-sm text-muted-foreground">
-            No runs yet. Start one to map this workspace&apos;s systems.
+            {copy.empty}
           </CardContent>
         </Card>
       )}
 
       {runs.map((run, index) => (
-        <RunCard key={run.id} run={run} defaultExpanded={index === 0} />
+        <RunCard key={run.id} run={run} defaultExpanded={index === 0} workflowKey={workflowKey} />
       ))}
     </div>
   );
