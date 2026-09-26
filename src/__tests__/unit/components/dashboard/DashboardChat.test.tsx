@@ -321,6 +321,19 @@ describe("DashboardChat — auto-save", () => {
     expect(sendButton).not.toBeDisabled();
   });
 
+  test("shows Recent Chats and Clear for an unsaved draft with no messages, without POSTing", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ items: [] }) });
+
+    render(<DashboardChat />);
+    // Typing must not create a conversation. The action row appears once
+    // the composer reports a draft; ChatInput is stubbed here, so the
+    // empty chat stays without Recent Chats until a message exists.
+    expect(screen.queryByText("Generate Plan")).not.toBeInTheDocument();
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.some((c: unknown[]) => String(c[0]).includes("/chat/conversations") && (c[1] as { method?: string })?.method === "POST")).toBe(false);
+    expect(screen.queryByTestId("recent-chats-popup")).not.toBeInTheDocument();
+  });
+
   test("RecentChatsPopup is rendered in the action row when messages exist", async () => {
     global.fetch = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/chat/conversations")) {

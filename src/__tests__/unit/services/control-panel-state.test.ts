@@ -525,6 +525,39 @@ describe("archive move and on-stage gating", () => {
     expect(groups.flatMap((g) => g.rows).map((r) => r.item.id)).toEqual(["c2"]);
   });
 
+  test("an inactive draft-only slot stays in Active", () => {
+    const fresh = {
+      localId: "local-active",
+      serverId: null,
+      lastMessageAt: null,
+      lastReply: null,
+      hasMessages: false,
+      isStreaming: false,
+      title: null,
+    };
+    const parked = {
+      localId: "local-parked",
+      serverId: null,
+      lastMessageAt: null,
+      lastReply: null,
+      hasMessages: false,
+      isStreaming: false,
+      title: null,
+      draft: "still typing",
+    };
+    const resolved = resolveControlPanelLists([other], [], fresh, {
+      chatOnStage: true,
+      startedAt,
+      titleForNew: "New chat",
+      unsavedSlots: [parked],
+    });
+    expect(resolved.displayItems.map((i) => i.id)).toEqual(["local-active", "local-parked", "c2"]);
+    expect(resolved.displayItems.find((i) => i.id === "local-parked")).toMatchObject({
+      key: "chat:local-parked",
+      sinceYou: "still typing",
+    });
+  });
+
   test("a brand-new on-stage chat not in either list is prepended into Active", () => {
     const fresh = {
       localId: "local-new",

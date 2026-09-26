@@ -14,7 +14,8 @@ import {
 } from "@/services/orgs/control-panel-state";
 import type { ControlPanelItem } from "@/types/control-panel";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
-import { openOrgConversation, startNewOrgConversation } from "../../_state/openOrgConversation";
+import { openControlPanelChat, startNewOrgConversation } from "../../_state/openOrgConversation";
+import { getDraft, slotHasAttachments } from "@/lib/conversationDrafts";
 import { isTypingTarget, type ControlPanelListProps } from "./ControlPanelList";
 import type { ControlPanelStageProps } from "./ControlPanelStage";
 import { useControlPanelItems } from "./useControlPanelItems";
@@ -103,8 +104,19 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
         hasMessages: conv.messages.length > 0,
         isStreaming: conv.isStreaming,
         title: conv.title,
+        draft: getDraft({ userId: null, scope: `org:${githubLogin}`, conversationKey: conv.id }),
+        hasPendingFiles: slotHasAttachments(conv.id),
       };
     }),
+  );
+  const draftRevision = useCanvasChatStore((s) => (enabled ? s.draftRevision : 0));
+  const unsavedSlotKey = useCanvasChatStore((s) =>
+    enabled
+      ? Object.values(s.conversations)
+          .filter((conv) => !conv.serverConversationId)
+          .map((conv) => conv.id)
+          .join(",")
+      : "",
   );
   const activeLocalId = activeChat?.localId ?? null;
   const activeServerConversationId = activeChat?.serverId ?? null;
@@ -169,12 +181,29 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
   const { displayItems, displayArchivedItems } = useMemo(() => {
     const conv = activeChat ? useCanvasChatStore.getState().conversations[activeChat.localId] : undefined;
     const title = activeChat ? unlistedOnStageChatTitle(activeChat, conv?.messages) : "New chat";
+    const scope = { userId: null, scope: `org:${githubLogin}` };
+    const unsavedSlots: ActiveChatSnapshot[] = enabled
+      ? Object.values(useCanvasChatStore.getState().conversations)
+          .filter((slot) => !slot.serverConversationId)
+          .map((slot) => ({
+            localId: slot.id,
+            serverId: null,
+            lastMessageAt: slot.messages.at(-1)?.timestamp.toISOString() ?? null,
+            lastReply: null,
+            hasMessages: slot.messages.length > 0,
+            isStreaming: slot.isStreaming,
+            title: slot.title,
+            draft: getDraft({ ...scope, conversationKey: slot.id }),
+            hasPendingFiles: slotHasAttachments(slot.id),
+          }))
+      : [];
     return resolveControlPanelLists(items, archivedItems, activeChat, {
       chatOnStage,
       startedAt: newChatStartedAtRef.current,
       titleForNew: title,
+      unsavedSlots,
     });
-  }, [items, archivedItems, activeChat, chatOnStage]);
+  }, [items, archivedItems, activeChat, chatOnStage, enabled, githubLogin, draftRevision, unsavedSlotKey]);
 
   const focusedKey = focus.kind === "chat" ? activeChatKey : `${focus.kind}:${focus.id}`;
   const focusedItem = useMemo(() => {
@@ -198,7 +227,9 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
         changeFocus({ kind: "chat" });
         return;
       }
-      const opened = await openOrgConversation(githubLogin, item.id, { syncUrl: true, markSeen: true });
+      // A local unsaved slot (`conv-…`) switches in place — never GET
+      // `/chat/conversations/${localId}`. Server rows fetch as before.
+      const opened = await openControlPanelChat(githubLogin, item.id, { syncUrl: true, markSeen: true });
       if (opened) changeFocus({ kind: "chat" });
     },
     [githubLogin, changeFocus, activeServerConversationId, activeLocalId],

@@ -20,6 +20,7 @@
  * Returns `true` when the conversation is now active, `false` on any
  * failure (callers leave their own UI state untouched in that case).
  */
+import { clearSlotDraft, slotHasAttachments, slotHasDraft } from "@/lib/conversationDrafts";
 import { useCanvasChatStore, type CanvasChatMessage } from "./canvasChatStore";
 
 export interface OpenOrgConversationOptions {
@@ -111,6 +112,9 @@ function markSeen(githubLogin: string, conversationId: string): void {
  */
 function openSlotFor(conversationId: string): string | null {
   const { conversations } = useCanvasChatStore.getState();
+  // A history click on an unsaved slot passes the Zustand id (`conv-…`).
+  // Match that before the server id so we never GET a local id.
+  if (conversations[conversationId]) return conversationId;
   let best: { id: string; size: number } | null = null;
   for (const conv of Object.values(conversations)) {
     if (conv.serverConversationId !== conversationId) continue;
@@ -118,6 +122,11 @@ function openSlotFor(conversationId: string): string | null {
     if (!best || size >= best.size) best = { id: conv.id, size };
   }
   return best?.id ?? null;
+}
+
+/** Scope for this org's composer drafts. userId is filled in by the composer; touched checks are in-memory. */
+function orgDraftScope(githubLogin: string) {
+  return { userId: null, scope: `org:${githubLogin}` };
 }
 
 function dropChatParam(): void {
@@ -129,6 +138,33 @@ function dropChatParam(): void {
   window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
 }
 
+/**
+ * True when `conversationId` is a Zustand slot id (`conv-…`) rather than
+ * a server `SharedConversation` id. Local history clicks must switch,
+ * never fetch.
+ */
+export function isLocalCanvasSlotId(conversationId: string): boolean {
+  return conversationId.startsWith("conv-") && !!useCanvasChatStore.getState().conversations[conversationId];
+}
+
+/**
+ * Open a control-panel / history row. A Zustand slot id (`conv-…`) is
+ * switched to in place — never fetched. A server id goes through
+ * `openOrgConversation`. Returns whether the row is now the active chat.
+ */
+export async function openControlPanelChat(
+  githubLogin: string,
+  itemId: string,
+  opts: OpenOrgConversationOptions = {},
+): Promise<boolean> {
+  if (isLocalCanvasSlotId(itemId)) {
+    const store = useCanvasChatStore.getState();
+    if (store.activeConversationId !== itemId) store.setActiveConversation(itemId);
+    return true;
+  }
+  return openOrgConversation(githubLogin, itemId, opts);
+}
+
 export async function openOrgConversation(
   githubLogin: string,
   conversationId: string,
@@ -138,8 +174,10 @@ export async function openOrgConversation(
   if (held) {
     const store = useCanvasChatStore.getState();
     if (store.activeConversationId !== held) store.setActiveConversation(held);
-    if (opts.syncUrl && typeof window !== "undefined") setChatParam(conversationId);
-    if (opts.markSeen) markSeen(githubLogin, conversationId);
+    const serverId = store.conversations[held]?.serverConversationId;
+    // A local unsaved slot has no shareable server id — don't write `conv-…` into `?chat=`.
+    if (opts.syncUrl && typeof window !== "undefined" && serverId) setChatParam(serverId);
+    if (opts.markSeen && serverId) markSeen(githubLogin, serverId);
     return true;
   }
 
@@ -182,19 +220,43 @@ export async function openOrgConversation(
  * writing to its own slot and can't bleed into the new one — and drop
  * `?chat=` so a refresh lands in the new chat rather than the old one.
  * An untouched fresh chat already on stage is what "new" means, so it is
- * reused rather than stacked. Either way the composer takes focus (the
- * store's draft hand-off; an empty draft only focuses). Returns the
- * local conversation id.
+ * reused rather than stacked. A slot with a draft or pending files is
+ * touched — New switches away and leaves it listed; it is not discard.
+ * Either way the composer takes focus (the store's draft hand-off; an
+ * empty draft only focuses). Returns the local conversation id.
  */
 export function startNewOrgConversation(githubLogin: string): string {
   const store = useCanvasChatStore.getState();
   const activeId = store.activeConversationId;
   const active = activeId ? store.conversations[activeId] : undefined;
-  const untouched = !!active && !active.serverConversationId && (active.messages?.length ?? 0) === 0;
+  const scope = orgDraftScope(githubLogin);
+  const hasDraft = !!active && slotHasDraft(scope, active.id);
+  const hasFiles = !!active && slotHasAttachments(active.id);
+  const untouched =
+    !!active && !active.serverConversationId && (active.messages?.length ?? 0) === 0 && !hasDraft && !hasFiles;
   const id = untouched
     ? active.id
     : store.startConversation(active?.context ?? fallbackContext(githubLogin), [], undefined, 0);
   dropChatParam();
   store.setPendingInputDraft("");
   return id;
+}
+
+/**
+ * Explicit Discard of the active unsaved slot: drop it, clear its draft
+ * and file bag (revoking preview URLs), and focus a fresh empty composer.
+ * Switching away must not call this. A saved chat (`serverConversationId`
+ * set) is not discardable — New switches away instead.
+ */
+export function discardActiveUnsavedConversation(githubLogin: string, userId?: string | null): void {
+  const store = useCanvasChatStore.getState();
+  const activeId = store.activeConversationId;
+  const active = activeId ? store.conversations[activeId] : undefined;
+  if (!active || active.serverConversationId) return;
+  clearSlotDraft({ userId: userId ?? null, scope: `org:${githubLogin}` }, active.id, null);
+  const context = active.context;
+  store.removeConversation(active.id);
+  store.startConversation(context ?? fallbackContext(githubLogin), [], undefined, 0);
+  dropChatParam();
+  store.setPendingInputDraft("");
 }
