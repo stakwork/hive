@@ -9,6 +9,10 @@ import type { Verdict } from "./model";
  * Verdicts are STATUS colors: each carries an icon and a label, never color
  * alone. MATCH = good, PARTIAL = warning, CONFLICT = critical; MISSING is a
  * neutral absence (most of any report) and UNKNOWN a "needs a look".
+ *
+ * No `dark:` variants: this app switches theme with a class while its
+ * `dark:` utilities compile to `prefers-color-scheme`, so they only follow
+ * the OS. The 600 steps on a 10% tint read on both surfaces.
  */
 export const VERDICT_STYLE: Record<
   Verdict,
@@ -17,42 +21,42 @@ export const VERDICT_STYLE: Record<
   MATCH: {
     label: "Match",
     icon: CheckCircle2,
-    text: "text-emerald-700 dark:text-emerald-400",
+    text: "text-emerald-600",
     fill: "bg-emerald-500 dark:bg-emerald-400",
     ring: "ring-emerald-500/60",
-    tile: "bg-emerald-50 dark:bg-emerald-950/40",
+    tile: "bg-emerald-500/10",
   },
   PARTIAL: {
     label: "Partial",
     icon: CircleDot,
-    text: "text-amber-700 dark:text-amber-400",
+    text: "text-amber-600",
     fill: "bg-amber-500 dark:bg-amber-400",
     ring: "ring-amber-500/60",
-    tile: "bg-amber-50 dark:bg-amber-950/40",
+    tile: "bg-amber-500/10",
   },
   MISSING: {
     label: "Missing",
     icon: Circle,
-    text: "text-slate-500 dark:text-slate-400",
+    text: "text-slate-500",
     fill: "bg-slate-300 dark:bg-slate-600",
     ring: "ring-slate-400/60",
-    tile: "bg-slate-50 dark:bg-slate-900/60",
+    tile: "bg-slate-500/10",
   },
   UNKNOWN: {
     label: "Unknown",
     icon: HelpCircle,
-    text: "text-sky-700 dark:text-sky-400",
+    text: "text-sky-600",
     fill: "bg-sky-500 dark:bg-sky-400",
     ring: "ring-sky-500/60",
-    tile: "bg-sky-50 dark:bg-sky-950/40",
+    tile: "bg-sky-500/10",
   },
   CONFLICT: {
     label: "Conflict",
     icon: AlertTriangle,
-    text: "text-rose-700 dark:text-rose-400",
+    text: "text-rose-600",
     fill: "bg-rose-500 dark:bg-rose-400",
     ring: "ring-rose-500/60",
-    tile: "bg-rose-50 dark:bg-rose-950/40",
+    tile: "bg-rose-500/10",
   },
 };
 
