@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   createAuthenticatedGetRequest,
   createAuthenticatedPostRequest,
@@ -15,6 +15,11 @@ import {
   GET as getConversation,
   PUT as putConversation,
 } from "@/app/api/orgs/[githubLogin]/chat/conversations/[conversationId]/route";
+import { readActiveStream } from "@/lib/ai/canvas-resumable-stream";
+
+vi.mock("@/lib/ai/canvas-resumable-stream", () => ({
+  readActiveStream: vi.fn(async () => null),
+}));
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -280,6 +285,121 @@ describe("GET /api/orgs/[githubLogin]/chat/conversations/[conversationId]", () =
     expect(body.id).toBe(conv.id);
     expect(body.title).toBe("My Conversation");
     expect(body.messages).toHaveLength(2);
+    expect(body.activeStream).toBeNull();
+  });
+
+  it("returns activeStream for the owner when a turn is in flight", async () => {
+    vi.mocked(readActiveStream).mockResolvedValueOnce({ streamId: "turn-1", turnId: "turn-1" });
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    const org = await createOrg(`test-org-get-stream-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const ws = await createWorkspaceInOrg(user.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+
+    const conv = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: user.id,
+        workspaceId: null,
+        messages: sampleMessages as any,
+        title: "Streaming",
+        source: "org-canvas",
+        followUpQuestions: [],
+        lastMessageAt: new Date(),
+      },
+    });
+    createdConversationIds.push(conv.id);
+
+    const req = createAuthenticatedGetRequest(
+      `http://localhost/api/orgs/${org.githubLogin}/chat/conversations/${conv.id}`,
+      { id: user.id, email: user.email ?? "", name: user.name ?? "" },
+    );
+    const res = await getConversation(req, {
+      params: detailParams(org.githubLogin, conv.id),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.activeStream).toEqual({ streamId: "turn-1", turnId: "turn-1" });
+    expect(vi.mocked(readActiveStream)).toHaveBeenCalledWith(conv.id);
+  });
+
+  it("returns activeStream null for an isShared joiner and does not read Redis", async () => {
+    vi.mocked(readActiveStream).mockClear();
+    const owner = await createTestUser();
+    createdUserIds.push(owner.id);
+    const joiner = await createTestUser();
+    createdUserIds.push(joiner.id);
+    const org = await createOrg(`test-org-get-joiner-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+    await db.workspaceMember.create({
+      data: { workspaceId: ws.id, userId: joiner.id, role: "DEVELOPER" },
+    });
+
+    const conv = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: owner.id,
+        workspaceId: null,
+        messages: sampleMessages as any,
+        title: "Shared",
+        source: "org-canvas",
+        isShared: true,
+        followUpQuestions: [],
+        lastMessageAt: new Date(),
+      },
+    });
+    createdConversationIds.push(conv.id);
+
+    const req = createAuthenticatedGetRequest(
+      `http://localhost/api/orgs/${org.githubLogin}/chat/conversations/${conv.id}`,
+      { id: joiner.id, email: joiner.email ?? "", name: joiner.name ?? "" },
+    );
+    const res = await getConversation(req, {
+      params: detailParams(org.githubLogin, conv.id),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.activeStream).toBeNull();
+    expect(vi.mocked(readActiveStream)).not.toHaveBeenCalled();
+  });
+
+  it("returns history with activeStream null when Redis throws", async () => {
+    vi.mocked(readActiveStream).mockResolvedValueOnce(null);
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    const org = await createOrg(`test-org-get-redisdown-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const ws = await createWorkspaceInOrg(user.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+
+    const conv = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: user.id,
+        workspaceId: null,
+        messages: sampleMessages as any,
+        title: "History",
+        source: "org-canvas",
+        followUpQuestions: [],
+        lastMessageAt: new Date(),
+      },
+    });
+    createdConversationIds.push(conv.id);
+
+    const req = createAuthenticatedGetRequest(
+      `http://localhost/api/orgs/${org.githubLogin}/chat/conversations/${conv.id}`,
+      { id: user.id, email: user.email ?? "", name: user.name ?? "" },
+    );
+    const res = await getConversation(req, {
+      params: detailParams(org.githubLogin, conv.id),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.messages).toHaveLength(2);
+    expect(body.activeStream).toBeNull();
   });
 
   it("returns 404 (IDOR) when another user requests the conversation", async () => {
