@@ -10,7 +10,7 @@ import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { EndpointsTab } from "@/components/system-map/EndpointsTab";
 import { SystemMapRuns } from "@/components/system-map/SystemMapRuns";
 
-const TABS = ["overview", "endpoints"] as const;
+const TABS = ["overview", "materialize", "endpoints"] as const;
 type SystemMapTab = (typeof TABS)[number];
 
 function parseTab(value: string | null): SystemMapTab {
@@ -42,12 +42,18 @@ function SystemMapTabs() {
         <TabsTrigger value="overview" data-testid="system-map-tab-overview">
           Overview
         </TabsTrigger>
+        <TabsTrigger value="materialize" data-testid="system-map-tab-materialize">
+          Materialize
+        </TabsTrigger>
         <TabsTrigger value="endpoints" data-testid="system-map-tab-endpoints">
           Endpoints
         </TabsTrigger>
       </TabsList>
       <TabsContent value="overview" className="mt-4">
-        <SystemMapRuns />
+        <SystemMapRuns workflowKey="schema" />
+      </TabsContent>
+      <TabsContent value="materialize" className="mt-4">
+        <SystemMapRuns workflowKey="materialize" />
       </TabsContent>
       <TabsContent value="endpoints" className="mt-4">
         <EndpointsTab />
