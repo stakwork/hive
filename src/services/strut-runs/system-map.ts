@@ -1,11 +1,16 @@
 /**
- * System Map — the strut workflow behind the "Run" button on
- * `/w/<slug>/system-map` (`kind: "system_map"`).
+ * System Map — the strut workflows behind the "Run" buttons on
+ * `/w/<slug>/system-map`, one per tab (`SYSTEM_MAP_WORKFLOWS`):
  *
- * The workflow is authored in the org strut view (`/org/<login>/strut`), so
- * the launch targets that strut (`purpose: "system_map"` → the org default
- * swarm) as `SYSTEM_MAP_WORKFLOW`. Its subject is the WORKSPACE's swarm — not necessarily the
- * one strut runs on — as its `validate` step reads it:
+ *   schema       `swarm-systemmap-schema-sync`       kind `system_map`
+ *                verifies the Sys* ontology against the workspace graph
+ *   materialize  `swarm-systemmap-graph-materialize` kind `system_map_materialize`
+ *                writes the real system nodes and edges into the graph
+ *
+ * Both are authored in the org strut view (`/org/<login>/strut`), so the
+ * launch targets that strut (`purpose: "system_map"` → the org default
+ * swarm). Their subject is the WORKSPACE's swarm — not necessarily the one
+ * strut runs on — as their `validate` step reads it:
  *
  *   input.swarm_url            the workspace swarm's stakgraph base (`https://x:3355`)
  *   input.swarm_secret_alias   the swarm's secret alias (`Swarm.swarmSecretAlias`),
@@ -40,9 +45,23 @@ import {
 } from "@/services/strut-runs";
 import type { SystemMapRun } from "@/types/system-map";
 
-export const SYSTEM_MAP_KIND = "system_map";
-/** The strut workflow, as published in the org strut view. */
-export const SYSTEM_MAP_WORKFLOW = "swarm-systemmap-schema-sync";
+/** The workflows the page can run, keyed by tab. Names as published in the org strut view. */
+export const SYSTEM_MAP_WORKFLOWS = {
+  schema: { kind: "system_map", workflow: "swarm-systemmap-schema-sync", label: "Schema sync" },
+  materialize: { kind: "system_map_materialize", workflow: "swarm-systemmap-graph-materialize", label: "Graph materialize" },
+} as const;
+export type SystemMapWorkflowKey = keyof typeof SYSTEM_MAP_WORKFLOWS;
+
+export function isSystemMapWorkflowKey(value: unknown): value is SystemMapWorkflowKey {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(SYSTEM_MAP_WORKFLOWS, value);
+}
+
+/** Every kind the page owns — the completion handler is shared. */
+export const SYSTEM_MAP_KINDS = Object.values(SYSTEM_MAP_WORKFLOWS).map((w) => w.kind);
+
+// Back-compat names for the first workflow.
+export const SYSTEM_MAP_KIND = SYSTEM_MAP_WORKFLOWS.schema.kind;
+export const SYSTEM_MAP_WORKFLOW = SYSTEM_MAP_WORKFLOWS.schema.workflow;
 /** How many runs the page lists. */
 const LIST_LIMIT = 20;
 /** A PENDING row younger than this is not probed — its callback is on the way. */
@@ -118,15 +137,16 @@ async function settleFromStrut(row: StrutRunRow, now: Date): Promise<StrutRunRow
   return settled ?? row;
 }
 
-/** The workspace's runs, newest first, PENDING ones settled from strut when they are over. */
+/** The workspace's runs of one workflow, newest first, PENDING ones settled from strut when they are over. */
 export async function listSystemMapRuns(
   workspaceId: string,
+  key: SystemMapWorkflowKey = "schema",
   opts: { now?: Date; limit?: number } = {},
 ): Promise<SystemMapRun[]> {
   const now = opts.now ?? new Date();
   const [rows, orgLogin] = await Promise.all([
     db.strutRun.findMany({
-      where: { workspaceId, kind: SYSTEM_MAP_KIND },
+      where: { workspaceId, kind: SYSTEM_MAP_WORKFLOWS[key].kind },
       select: ROW_SELECT,
       orderBy: { createdAt: "desc" },
       take: opts.limit ?? LIST_LIMIT,
@@ -148,10 +168,10 @@ export async function listSystemMapRuns(
   return shown.map((row) => serializeSystemMapRun(row, orgLogin));
 }
 
-/** Is a run already in flight for this workspace? (One at a time.) */
-export async function hasPendingSystemMapRun(workspaceId: string): Promise<boolean> {
+/** Is a run of this workflow already in flight for the workspace? (One at a time, per workflow.) */
+export async function hasPendingSystemMapRun(workspaceId: string, key: SystemMapWorkflowKey = "schema"): Promise<boolean> {
   const row = await db.strutRun.findFirst({
-    where: { workspaceId, kind: SYSTEM_MAP_KIND, status: StrutRunStatus.PENDING },
+    where: { workspaceId, kind: SYSTEM_MAP_WORKFLOWS[key].kind, status: StrutRunStatus.PENDING },
     select: { id: true },
   });
   return row !== null;
@@ -163,6 +183,8 @@ export interface LaunchSystemMapRunArgs {
   userId: string;
   /** Swarm-reachable base URL of this hive (the callback host). */
   publicBaseUrl: string;
+  /** Which workflow; defaults to the schema sync. */
+  key?: SystemMapWorkflowKey;
 }
 
 /**
@@ -179,11 +201,12 @@ export async function launchSystemMapRun(args: LaunchSystemMapRunArgs): Promise<
   if (!swarm?.swarmUrl || !swarm.swarmSecretAlias) {
     throw new StrutDispatchError("no_target", "This workspace has no swarm URL or secret alias to map.");
   }
+  const { kind, workflow } = SYSTEM_MAP_WORKFLOWS[args.key ?? "schema"];
   return dispatchStrutRun({
     workspaceId: args.workspaceId,
     userId: args.userId,
-    kind: SYSTEM_MAP_KIND,
-    workflow: SYSTEM_MAP_WORKFLOW,
+    kind,
+    workflow,
     purpose: "system_map",
     input: {
       workspace: args.workspaceSlug,

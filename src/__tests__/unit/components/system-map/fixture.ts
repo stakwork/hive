@@ -1,0 +1,57 @@
+/** A trimmed `swarm-systemmap-schema-sync` output, shaped like the real run. */
+export const REPORT_FIXTURE = {
+  note: "Graph-only, read-only verification — no repository was cloned.",
+  edges: [
+    { reason: null, verdict: "MISSING", evidence: [], edge_type: "AUTHENTICATES_WITH", source_type: "SysComponent", target_type: "SysResource" },
+    {
+      reason: null,
+      verdict: "MATCH",
+      evidence: ["edge:c176->3780 (CALLS) middleware function calls verifyCookie during request authentication"],
+      edge_type: "CALLS",
+      source_type: "SysComponent",
+      target_type: "SysComponent",
+    },
+    { reason: null, verdict: "MISSING", evidence: [], edge_type: "CHILD_OF", source_type: "SysApplicationComponent", target_type: "SysComponent" },
+    { reason: null, verdict: "MISSING", evidence: [], edge_type: "CHILD_OF", source_type: "SysWebApplication", target_type: "SysApplicationComponent" },
+    { reason: null, verdict: "MISSING", evidence: [], edge_type: "CHILD_OF", source_type: "SysCacheTechnology", target_type: "SysTechnology" },
+    { reason: null, verdict: "MISSING", evidence: [], edge_type: "USES_TECHNOLOGY", source_type: "SysComponent", target_type: "SysTechnology" },
+  ],
+  summary: {
+    counts: { MATCH: 3, MISSING: 7, PARTIAL: 3, UNKNOWN: 1, CONFLICT: 0 },
+    droppedByAgent: { edges: [], nodeTypes: [] },
+    consideredEdges: 6,
+    consideredNodeTypes: 8,
+    unknownCitedByAgent: { edges: [], nodeTypes: [] },
+  },
+  nodeTypes: [
+    { type: "SysComponent", parent: "Thing", reason: "required by dependency closure (parent_closure), no direct evidence cited", verdict: "PARTIAL", evidence: [] },
+    { type: "SysTechnology", parent: "Thing", reason: "required by dependency closure (parent_closure), no direct evidence cited", verdict: "PARTIAL", evidence: [] },
+    { type: "SysApplicationComponent", parent: "SysComponent", reason: "required by dependency closure (parent_closure), no direct evidence cited", verdict: "PARTIAL", evidence: [] },
+    {
+      type: "SysWebApplication",
+      parent: "SysApplicationComponent",
+      reason: null,
+      verdict: "MATCH",
+      evidence: ["node:49a7 (Function) DashboardPage is part of the React/Next.js hive web application"],
+    },
+    { type: "SysMobileApplication", parent: "SysApplicationComponent", reason: null, verdict: "MISSING", evidence: [] },
+    {
+      type: "SysCacheTechnology",
+      parent: "SysTechnology",
+      reason: null,
+      verdict: "MATCH",
+      evidence: ["node:c479 (Function) readCooldownCache retrieves cached host storage readings from Redis"],
+    },
+    {
+      type: "SysFirewallComponent",
+      parent: "SysInfrastructureComponent",
+      reason: "No Kubernetes NetworkPolicy, security-group, or firewall-rule node was found in searches.",
+      verdict: "UNKNOWN",
+      evidence: [],
+    },
+    { type: "SysSearchTechnology", parent: "SysTechnology", reason: null, verdict: "MISSING", evidence: [] },
+  ],
+  sessionId: "cd372c42-723f-47e3-bffd-30e8549b3a92",
+  swarm_url: "https://swarm38.sphinx.chat:3355",
+  ontologyVersion: { hash: "828b3c7d410766cf50d9c334f27ac051008d1bab029b6fb598e71a57bcfdf6d6", edgeCount: 167, typeCount: 144 },
+};
