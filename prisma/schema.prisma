@@ -1789,6 +1789,10 @@ enum StakworkRunType {
   LEGAL_BENCHMARK_RECURSION
   LEGAL_BENCHMARK_CNH_INGEST
   LEGAL_BENCHMARK_CONSOLIDATED
+  // OpenHealth clinical benchmark strut runner. SEPARATE from BENCHMARK_RUNNER
+  // and LEGAL_BENCHMARK_RUNNER — do not reuse either. Domain-discriminated by
+  // result.task / result.gtId, not by a shared enum value.
+  OPENHEALTH_BENCHMARK_RUNNER
   // Generic benchmark run type — workspace-agnostic, domain-discriminated by
   // result.taskSlug. LEGAL_BENCHMARK_RUNNER is a SEPARATE enum value and stays
   // exactly as-is. Migrating legal onto BENCHMARK_RUNNER is deliberately future
