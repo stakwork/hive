@@ -48,6 +48,8 @@ import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
 import { syncPlannerWorkflowStatusToCanvas } from "@/services/canvas-planner-fanout";
 import { z } from "zod";
+import { projectOpenHealthWebhookFields } from "@/lib/openhealth-benchmarks/constants";
+import { pollOpenHealthBenchmarkRuns } from "@/lib/openhealth-benchmarks/poll";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -925,6 +927,83 @@ export async function processStakworkRunWebhook(
       requestedWorkspaceId: workspace_id,
     });
     throw new Error("Unauthorized: workspace mismatch");
+  }
+
+  // ── OPENHEALTH_BENCHMARK_RUNNER: thin webhook, handled BEFORE the shared
+  // status-mapping / updateMany below. This webhook cannot carry the full
+  // score pack — the score is filled by the poll-on-read path in
+  // getStakworkRuns, not here. Do not fall through to the generic branch:
+  // that would default status to COMPLETED when project_status is absent,
+  // and merge every incoming key (including gold-shaped ones) unfiltered.
+  if (type === StakworkRunType.OPENHEALTH_BENCHMARK_RUNNER) {
+    if (run.workspaceId !== workspace_id) {
+      logger.error("[openhealth-benchmark] Workspace mismatch — rejecting webhook", "stakwork-run", {
+        runId: run.id,
+        runWorkspaceId: run.workspaceId,
+        requestedWorkspaceId: workspace_id,
+      });
+      throw new Error("Unauthorized: workspace mismatch");
+    }
+
+    const webhookSecret = process.env.NEXTAUTH_SECRET;
+    if (!webhookSecret || webhookSecret.length < MIN_RUN_TOKEN_SECRET_LENGTH) {
+      logger.error(
+        "[openhealth-benchmark] NEXTAUTH_SECRET missing or too short — rejecting webhook verification",
+        "stakwork-run",
+        { runId: run.id, type: run.type },
+      );
+      throw new Error("Unauthorized: invalid run token");
+    }
+
+    const { run_token } = queryParams;
+    const expected = createHmac("sha256", webhookSecret).update(run.id).digest("hex");
+    let tokenValid = false;
+    try {
+      if (run_token && run_token.length === expected.length) {
+        tokenValid = timingSafeEqual(Buffer.from(run_token, "hex"), Buffer.from(expected, "hex"));
+      }
+    } catch {
+      tokenValid = false;
+    }
+    if (!tokenValid) {
+      logger.error("[openhealth-benchmark] Invalid or missing run_token — rejecting", "stakwork-run", {
+        runId: run.id,
+      });
+      throw new Error("Unauthorized: invalid run token");
+    }
+
+    const incomingFields =
+      typeof result === "object" && result !== null ? (result as Record<string, unknown>) : {};
+    const thinAllowlisted = projectOpenHealthWebhookFields(incomingFields);
+
+    let existingResult: Record<string, unknown> = {};
+    try {
+      existingResult = run.result ? (JSON.parse(run.result) as Record<string, unknown>) : {};
+    } catch {
+      // Malformed existing JSON — start fresh; correlation fields are lost but
+      // that beats crashing.
+    }
+
+    await db.stakworkRun.updateMany({
+      where: {
+        id: run.id,
+        status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS] },
+      },
+      data: {
+        // Deliberately NOT writing `status` here — the thin webhook is never
+        // the settle signal; poll-on-read (getStakworkRuns) owns that.
+        result: JSON.stringify({ ...existingResult, ...thinAllowlisted }),
+        updatedAt: new Date(),
+      },
+    });
+
+    logger.info("[openhealth-benchmark] thin webhook merged", "stakwork-run", {
+      runId: run.id,
+      task: thinAllowlisted.task,
+      gtId: thinAllowlisted.gtId,
+    });
+
+    return { runId: run.id, status: run.status, dataType: run.dataType };
   }
 
   // Map Stakwork status to our internal status
@@ -2219,6 +2298,15 @@ export async function getStakworkRuns(
     },
   });
 
+  // OpenHealth poll-on-read: settle in-progress rows against the strut lab
+  // before the response is built. Kept in a helper (not inlined here) so the
+  // reportUrl-stripping mapper below stays adjacent to the findMany select —
+  // see the "response-shape invariants" test in run-report/invariants.test.ts,
+  // which scans a fixed window from findMany forward for that mapper.
+  if (query.type === StakworkRunType.OPENHEALTH_BENCHMARK_RUNNER) {
+    await settleOpenHealthRunsInPlace(query, runs);
+  }
+
   return {
     // Explicit mapper: destructure reportUrl OUT and expose only a boolean, so
     // the bundle pointer can never be forwarded to a client by accident.
@@ -2231,6 +2319,50 @@ export async function getStakworkRuns(
     limit: query.limit,
     offset: query.offset,
   };
+}
+
+/**
+ * Poll-on-read settle step for OPENHEALTH_BENCHMARK_RUNNER rows, called from
+ * getStakworkRuns. There is no cron for this feature: a settled lab run only
+ * appears once a member has the Runs tab open and calls this list. Probes
+ * every in-progress row against the workspace's strut lab and settles
+ * terminal ones, mutating `runs` in place so the response reflects the
+ * freshest status. Never throws — a probe failure is logged and simply
+ * leaves those rows unsettled for the next read.
+ */
+async function settleOpenHealthRunsInPlace(
+  query: StakworkRunQuery,
+  runs: Array<Record<string, unknown> & { id: string; status: WorkflowStatus }>,
+): Promise<void> {
+  try {
+    await pollOpenHealthBenchmarkRuns(
+      query.workspaceId,
+      runs.map((r) => ({ id: r.id, status: r.status, result: (r as { result?: string | null }).result ?? null })),
+    );
+    // Re-read the settled rows so the response reflects the poll's writes.
+    const settled = await db.stakworkRun.findMany({
+      where: { id: { in: runs.map((r) => r.id) } },
+      select: {
+        id: true,
+        status: true,
+        ...(query.includeResult ? { result: true } : {}),
+        updatedAt: true,
+      },
+    });
+    const byId = new Map(settled.map((s) => [s.id, s]));
+    for (const run of runs) {
+      const fresh = byId.get(run.id);
+      if (fresh) {
+        run.status = fresh.status;
+        run.updatedAt = fresh.updatedAt;
+        if (query.includeResult) run.result = (fresh as { result?: string | null }).result ?? null;
+      }
+    }
+  } catch (err) {
+    logger.warn("[openhealth-benchmark] poll-on-read failed (non-fatal)", "stakwork-run", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 /**
