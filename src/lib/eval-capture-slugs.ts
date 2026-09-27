@@ -13,6 +13,16 @@ export const STAK_TOOLKIT_SLUGS: ReadonlyArray<string> = ["stakwork", "hive"];
 export const LEGAL_SLUGS: ReadonlyArray<string> = ["openlaw"];
 
 /**
+ * Workspaces where the OpenHealth Benchmarks section is visible.
+ *
+ * Kept SEPARATE from LEGAL_SLUGS — do not add "openhealth" there, and do not
+ * import this constant from MCP tools or ask-tool callers. This file is the
+ * single source of truth for the slug list; the sidebar flag it drives is
+ * NOT the page/route gate (each page and API route re-checks independently).
+ */
+export const OPENHEALTH_SLUGS: ReadonlyArray<string> = ["openhealth"];
+
+/**
  * Returns true when eval-capture features should be shown for the given
  * workspace slug.
  */

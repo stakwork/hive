@@ -7,6 +7,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { canReadRunReport } from "@/lib/run-report/types";
 import { redactSensitiveKeys } from "@/lib/run-report/redact";
 import { logger } from "@/lib/logger";
+import { projectOpenHealthRunResponse } from "@/lib/openhealth-benchmarks/constants";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -173,8 +174,16 @@ export async function GET(request: NextRequest) {
               const parsed = typeof run.result === "string"
                 ? JSON.parse(run.result as string)
                 : run.result;
-              const redacted = redactSensitiveKeys(parsed);
-              safeResult = JSON.stringify(redacted);
+              // OPENHEALTH_BENCHMARK_RUNNER must never rely on the generic
+              // key-based redactor: it does not drop task/gtId-adjacent gold
+              // fields (ground_truth, groundTruth, gold, problemList, matched,
+              // the raw missed/extra arrays). Project through the explicit
+              // allowlist instead — this is the only path for this type.
+              const projected =
+                run.type === "OPENHEALTH_BENCHMARK_RUNNER"
+                  ? projectOpenHealthRunResponse(parsed as Record<string, unknown>)
+                  : redactSensitiveKeys(parsed);
+              safeResult = JSON.stringify(projected);
             } catch {
               // If the result isn't valid JSON, redact keys from the raw string
               // is not possible — emit as-is. The result field is best-effort.
