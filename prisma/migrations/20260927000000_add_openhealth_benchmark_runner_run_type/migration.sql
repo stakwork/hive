@@ -1,0 +1,11 @@
+-- AlterEnum
+-- Adds the OPENHEALTH_BENCHMARK_RUNNER type for the OpenHealth clinical
+-- benchmarks strut runner.
+--
+-- IMPORTANT: this is a SEPARATE enum value from both LEGAL_BENCHMARK_RUNNER
+-- and BENCHMARK_RUNNER. Do not reuse either. The discriminator between
+-- benchmark domains is result.task / result.gtId, not a shared enum value.
+--
+-- StakworkRun has no @@unique constraint; uniqueness is APP-LEVEL ONLY via the
+-- single-active-run guard in the dispatch route (not a concurrency guarantee).
+ALTER TYPE "StakworkRunType" ADD VALUE 'OPENHEALTH_BENCHMARK_RUNNER';
