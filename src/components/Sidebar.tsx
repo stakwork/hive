@@ -53,7 +53,7 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { BugReportSlideout } from "./BugReportSlideout";
-import { STAK_TOOLKIT_SLUGS, LEGAL_SLUGS } from "@/lib/eval-capture-slugs";
+import { STAK_TOOLKIT_SLUGS, LEGAL_SLUGS, OPENHEALTH_SLUGS } from "@/lib/eval-capture-slugs";
 
 
 
@@ -509,6 +509,23 @@ export function Sidebar({ user }: SidebarProps) {
       ]
     : [];
 
+  // Create OpenHealth items only in the openhealth workspace — no dev-mode
+  // bypass. This flag is a UX convenience only; the page and its APIs
+  // re-check OPENHEALTH_SLUGS independently and are the real gate.
+  const showOpenHealth = OPENHEALTH_SLUGS.includes(workspaceSlug ?? "");
+  const openHealthItems: NavigationItem[] = showOpenHealth
+    ? [
+        {
+          icon: FlaskConical,
+          label: "OpenHealth",
+          href: "/openhealth",
+          children: [
+            { icon: FlaskConical, label: "OpenHealth Benchmarks", href: "/openhealth/benchmarks" },
+          ],
+        },
+      ]
+    : [];
+
   const excludeLabels: string[] = [];
   if (!canAccessDefense) excludeLabels.push("Protect");
 
@@ -524,6 +541,7 @@ export function Sidebar({ user }: SidebarProps) {
     ...baseNavigationItems.slice(0, 2), // Graph and Capacity
     ...stakToolkitItems, // Stak Toolkit (conditionally)
     ...legalItems, // Legal (conditionally)
+    ...openHealthItems, // OpenHealth (conditionally)
     ...baseNavigationItems.slice(2), // Build, Protect, Context
   ];
 
