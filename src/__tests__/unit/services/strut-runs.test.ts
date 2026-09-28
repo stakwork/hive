@@ -347,7 +347,10 @@ describe("cancelStrutRun / cancelPendingStrutRunsForConversation", () => {
   it("POSTs cancel on the ROW's swarm (decrypted key), never re-resolving the policy", async () => {
     mockFetch.mockResolvedValue(json(200, { ok: true }));
     expect(await cancelStrutRun(row())).toBe(true);
-    expect(mockSwarmFindUnique).toHaveBeenCalledWith({ where: { id: "swarm-1" }, select: { swarmUrl: true, swarmApiKey: true } });
+    expect(mockSwarmFindUnique).toHaveBeenCalledWith({
+      where: { id: "swarm-1" },
+      select: { name: true, swarmUrl: true, swarmApiKey: true },
+    });
     expect(mockResolveStrutTarget).not.toHaveBeenCalled();
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://acme.sphinx.chat:3355/lab/workflows/code-change-propose/runs/1790000000000/cancel");
