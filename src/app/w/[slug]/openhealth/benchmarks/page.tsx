@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { FlaskConical } from "lucide-react";
-import { notFound } from "next/navigation";
+import { notFound, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { OPENHEALTH_SLUGS } from "@/lib/eval-capture-slugs";
 import { PageHeader } from "@/components/ui/page-header";
@@ -12,19 +11,23 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 type TabValue = "tasks" | "runs";
 
+const parseTab = (value: string | null): TabValue => (value === "runs" ? "runs" : "tasks");
+
 export default function OpenHealthBenchmarksPage() {
   const { workspace, loading } = useWorkspace();
-  const [activeTab, setActiveTab] = useState<TabValue>("tasks");
+  const router = useRouter();
+  const pathname = usePathname();
+  // The tab (and the open run) live in the URL: `?tab=runs&run=<id>`.
+  const activeTab = parseTab(useSearchParams().get("tab"));
 
   // Page-level gate — /w/** is "public" in middleware so this guard is
   // required. The sidebar flag is a UX convenience only, NOT the gate: this
   // check (and the API routes' own slug checks) is the real enforcement.
-  // No isDevelopmentMode() bypass here, unlike the Legal gate.
   //
   // While the workspace is still loading, `workspace` is null and a naive
   // `workspace && !OPENHEALTH_SLUGS.includes(...)` guard would render the
-  // tasks panel + run history for ANY slug in that window. Render nothing
-  // until loading settles, then gate on the resolved workspace.
+  // panels for ANY slug in that window. Render nothing until loading
+  // settles, then gate on the resolved workspace.
   if (loading) {
     return null;
   }
@@ -37,11 +40,11 @@ export default function OpenHealthBenchmarksPage() {
       <PageHeader
         icon={FlaskConical}
         title="OpenHealth Benchmarks"
-        description="Clinical benchmark tasks — public-split metadata, strut runs only"
+        description="Pick a patient chart, run the diagnosis workflow on strut, and see how its problem list scored"
       />
       <Tabs
         value={activeTab}
-        onValueChange={(v) => setActiveTab(v as TabValue)}
+        onValueChange={(tab) => router.replace(`${pathname}?tab=${tab}`, { scroll: false })}
         className="flex flex-col flex-1 min-h-0"
       >
         <div className="px-4 pb-3">

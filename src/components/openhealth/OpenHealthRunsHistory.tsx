@@ -1,184 +1,161 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import React, { useCallback, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ChevronRight, Loader2 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useOpenHealthRuns } from "@/hooks/useOpenHealthRuns";
+import { OPENHEALTH_DIFFICULTIES } from "@/lib/openhealth-benchmarks/constants";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { useWorkspace } from "@/hooks/useWorkspace";
+  summarizeByDifficulty,
+  summarizeOpenHealthRuns,
+  type OpenHealthSummary,
+} from "@/lib/openhealth-benchmarks/runs";
+import { OpenHealthRunViewer } from "./OpenHealthRunViewer";
+import {
+  DifficultyBadge,
+  formatCost,
+  formatDuration,
+  formatPercent,
+  formatScore,
+  formatWhen,
+  OutcomeBadge,
+} from "./format";
 
-const POLL_INTERVAL_MS = 15_000;
+const COLUMNS = 11;
 
-interface OpenHealthRunResult {
-  runner?: string;
-  task?: string;
-  split?: string;
-  gtId?: string;
-  patientId?: string;
-  difficulty?: string;
-  tier?: string;
-  weighted_problem_list_f1_neutral?: number;
-  n_matched?: number;
-  n_gt?: number;
-  missedCount?: number | null;
-  extraCount?: number | null;
-  scoreError?: string;
-  dispatchError?: string;
-  gradeError?: string;
-  produceError?: string;
-}
-
-interface RunRow {
-  id: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  result?: string | null;
-}
-
-function parseResult(raw: string | null | undefined): OpenHealthRunResult {
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw) as OpenHealthRunResult;
-  } catch {
-    return {};
-  }
-}
-
-function formatScore(value: number | undefined): string {
-  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "—";
+function SummaryCard({ title, summary, testId }: { title: string; summary: OpenHealthSummary; testId: string }) {
+  return (
+    <Card data-testid={testId}>
+      <CardContent className="space-y-1 py-4">
+        <p className="text-xs font-medium capitalize text-muted-foreground">{title}</p>
+        <p className="text-2xl font-semibold tabular-nums">{formatScore(summary.meanF1)}</p>
+        <p className="text-xs text-muted-foreground">
+          mean F1 · {formatPercent(summary.successRate)} scored ({summary.succeeded}/{summary.attempts})
+        </p>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function OpenHealthRunsHistory() {
-  const { workspace } = useWorkspace();
-  const workspaceId = workspace?.id;
+  const { runs, loading, error, reload } = useOpenHealthRuns();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [expandedId, setExpandedId] = useState<string | null>(searchParams.get("run"));
 
-  const [runs, setRuns] = useState<RunRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const overall = useMemo(() => summarizeOpenHealthRuns(runs), [runs]);
+  const byDifficulty = useMemo(() => summarizeByDifficulty(runs), [runs]);
 
-  const fetchRuns = useCallback(async () => {
-    if (!workspaceId) return;
-    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-    try {
-      const res = await fetch(
-        `/api/stakwork/runs?type=OPENHEALTH_BENCHMARK_RUNNER&workspaceId=${workspaceId}&includeResult=true`,
-      );
-      if (!res.ok) throw new Error(`Failed to fetch runs (${res.status})`);
-      const data = await res.json();
-      setRuns(Array.isArray(data.runs) ? data.runs : []);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [workspaceId]);
+  // The open run is in the URL, so a link to the page opens the same run.
+  const toggle = useCallback(
+    (id: string) => {
+      const next = expandedId === id ? null : id;
+      setExpandedId(next);
+      router.replace(`${pathname}?tab=runs${next ? `&run=${next}` : ""}`, { scroll: false });
+    },
+    [expandedId, router, pathname],
+  );
 
-  useEffect(() => {
-    fetchRuns();
-  }, [fetchRuns]);
-
-  // Poll-on-read is the settle mechanism for this feature — keep polling
-  // while any row is still PENDING/IN_PROGRESS and the tab is visible.
-  useEffect(() => {
-    const hasActive = runs.some((r) => r.status === "PENDING" || r.status === "IN_PROGRESS");
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    if (hasActive && typeof document !== "undefined" && document.visibilityState === "visible") {
-      intervalRef.current = setInterval(fetchRuns, POLL_INTERVAL_MS);
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [runs, fetchRuns]);
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading runs…
+        </CardContent>
+      </Card>
+    );
+  }
+  if (error && runs.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-sm text-destructive" data-testid="openhealth-runs-error">
+          {error}
+        </CardContent>
+      </Card>
+    );
+  }
+  if (runs.length === 0) {
+    return (
+      <Card data-testid="openhealth-runs-empty">
+        <CardContent className="py-10 text-sm text-muted-foreground">
+          No runs yet. Pick a task on the Tasks tab to start one.
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-4 h-full">
-      {error && <div className="text-sm text-destructive">{error}</div>}
-      <div className="flex-1 min-h-0 overflow-auto border rounded-md">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Task</TableHead>
-              <TableHead>GT ID</TableHead>
-              <TableHead>Split</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>F1</TableHead>
-              <TableHead>Matched / Gold</TableHead>
-              <TableHead>Tier</TableHead>
-              <TableHead>Missed / Extra</TableHead>
-              <TableHead>Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center py-8">
-                  <Loader2 className="h-4 w-4 animate-spin inline-block" />
-                </TableCell>
-              </TableRow>
-            ) : runs.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                  No runs yet
-                </TableCell>
-              </TableRow>
-            ) : (
-              runs.map((run) => {
-                const result = parseResult(run.result);
-                // A row with scoreError (or dispatchError) is an error state,
-                // never rendered as a pass and never a blank success — do not
-                // invent pass/fail from status alone.
-                const isError =
-                  run.status === "FAILED" ||
-                  Boolean(result.scoreError) ||
-                  Boolean(result.dispatchError);
-                return (
-                  <TableRow key={run.id}>
-                    <TableCell>{result.task ?? "—"}</TableCell>
-                    <TableCell className="font-mono text-xs">{result.gtId ?? "—"}</TableCell>
-                    <TableCell>{result.split ?? "—"}</TableCell>
-                    <TableCell>
-                      {isError ? (
-                        <Badge variant="destructive">
-                          {result.scoreError ?? result.dispatchError ?? "Failed"}
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">{run.status}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>{isError ? "—" : formatScore(result.weighted_problem_list_f1_neutral)}</TableCell>
-                    <TableCell>
-                      {isError || result.n_matched == null || result.n_gt == null
-                        ? "—"
-                        : `${result.n_matched} / ${result.n_gt}`}
-                    </TableCell>
-                    <TableCell>{isError ? "—" : (result.tier ?? "—")}</TableCell>
-                    <TableCell>
-                      {isError
-                        ? "—"
-                        : `${result.missedCount ?? "—"} / ${result.extraCount ?? "—"}`}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {new Date(run.createdAt).toLocaleString()}
+    <div className="space-y-4" data-testid="openhealth-runs">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <SummaryCard title="All runs" summary={overall} testId="openhealth-summary-all" />
+        {OPENHEALTH_DIFFICULTIES.map((d) => (
+          <SummaryCard key={d} title={d} summary={byDifficulty[d]} testId={`openhealth-summary-${d}`} />
+        ))}
+      </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-8" />
+            <TableHead>Started</TableHead>
+            <TableHead>Task</TableHead>
+            <TableHead>Difficulty</TableHead>
+            <TableHead>Outcome</TableHead>
+            <TableHead className="text-right">F1</TableHead>
+            <TableHead>Tier</TableHead>
+            <TableHead className="text-right">Recall</TableHead>
+            <TableHead className="text-right">Precision</TableHead>
+            <TableHead className="text-right">Cost</TableHead>
+            <TableHead className="text-right">Duration</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {runs.map((run) => {
+            const open = expandedId === run.id;
+            return (
+              <React.Fragment key={run.id}>
+                <TableRow
+                  onClick={() => toggle(run.id)}
+                  aria-expanded={open}
+                  className="cursor-pointer"
+                  data-testid="openhealth-run-row"
+                >
+                  <TableCell>
+                    <ChevronRight
+                      className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`}
+                    />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{formatWhen(run.createdAt)}</TableCell>
+                  <TableCell className="font-mono">{run.gtId ?? "—"}</TableCell>
+                  <TableCell>
+                    <DifficultyBadge difficulty={run.difficulty} />
+                  </TableCell>
+                  <TableCell>
+                    <OutcomeBadge outcome={run.outcome} />
+                  </TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">{formatScore(run.scores?.f1)}</TableCell>
+                  <TableCell>{run.scores?.tier ?? "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatScore(run.scores?.recall)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatScore(run.scores?.precision)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatCost(run.costUsd)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatDuration(run.durationMs)}</TableCell>
+                </TableRow>
+                {open && (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={COLUMNS} className="whitespace-normal bg-muted/20 p-4">
+                      <OpenHealthRunViewer runId={run.id} onSettled={reload} />
                     </TableCell>
                   </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </TableBody>
+      </Table>
     </div>
   );
 }

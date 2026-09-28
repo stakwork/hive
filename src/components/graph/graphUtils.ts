@@ -83,7 +83,7 @@ export const setupZoom = (
   svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
   container: d3.Selection<SVGGElement, unknown, null, undefined>,
   previousTransform: d3.ZoomTransform
-): void => {
+): d3.ZoomBehavior<SVGSVGElement, unknown> => {
   const zoom = d3.zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.1, 4])
     .on("zoom", (event) => {
@@ -100,6 +100,34 @@ export const setupZoom = (
   } catch {
     // Ignore if transform can't be reapplied
   }
+
+  return zoom;
+};
+
+const FIT_PADDING = 60;
+
+/** Zoom and pan so every node is in view. Never zooms in past 1:1. */
+export const fitToView = (
+  svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
+  zoom: d3.ZoomBehavior<SVGSVGElement, unknown>,
+  nodes: D3Node[],
+  width: number,
+  height: number
+): void => {
+  const placed = nodes.filter(n => typeof n.x === "number" && typeof n.y === "number");
+  if (placed.length === 0) return;
+  const [minX, maxX] = d3.extent(placed, n => n.x) as [number, number];
+  const [minY, maxY] = d3.extent(placed, n => n.y) as [number, number];
+  const scale = Math.max(
+    0.1,
+    Math.min(1, width / (maxX - minX + 2 * FIT_PADDING), height / (maxY - minY + 2 * FIT_PADDING))
+  );
+  const transform = d3.zoomIdentity
+    .translate(width / 2, height / 2)
+    .scale(scale)
+    .translate(-(minX + maxX) / 2, -(minY + maxY) / 2);
+   
+  (svg as any).call(zoom.transform, transform);
 };
 
 export const createNodeElements = (
@@ -310,4 +338,34 @@ export const setupNodeHoverHighlight = (
       node.style("opacity", 1);
       link.style("opacity", 0.6);
     });
+};
+
+/**
+ * Ring of an active node (a selection, the current step of a replay): the
+ * text colour, so it stands out from every node fill in both themes.
+ */
+export const ACTIVE_NODE_STROKE = "currentColor";
+
+const linkEndId = (end: string | D3Node): string => (typeof end === "string" ? end : end.id);
+
+/**
+ * Hide and ring nodes of a graph that is already drawn, leaving the
+ * simulation alone: a hidden node keeps its place in the layout, so stepping
+ * through a replay never moves what is on screen.
+ */
+export const applyNodeEmphasis = (
+  svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
+  hiddenIds?: ReadonlySet<string>,
+  activeIds?: ReadonlySet<string>
+): void => {
+  svg.selectAll<SVGGElement, D3Node>("g.nodes > g")
+    .style("display", d => (hiddenIds?.has(d.id) ? "none" : null))
+    .select("circle")
+    .attr("stroke", d => (activeIds?.has(d.id) ? ACTIVE_NODE_STROKE : "#fff"))
+    .attr("stroke-width", d => (activeIds?.has(d.id) ? 4 : 2));
+
+  svg.selectAll<SVGLineElement, D3Link>("g.links > line")
+    .style("display", l =>
+      hiddenIds?.has(linkEndId(l.source)) || hiddenIds?.has(linkEndId(l.target)) ? "none" : null
+    );
 };
