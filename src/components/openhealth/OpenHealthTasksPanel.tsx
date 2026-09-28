@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -21,119 +22,174 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import {
-  OPENHEALTH_DEFAULT_SPLIT,
-  OPENHEALTH_SPLITS,
-  OPENHEALTH_TASK_NAMES,
-  type OpenHealthSplit,
-  type OpenHealthTaskName,
-} from "@/lib/openhealth-benchmarks/constants";
-
-interface InstanceRow {
-  gt_id: string;
-  task: string;
-  granularity: string | null;
-  split: string;
-  patient_id: string | null;
-  encounter_id: string | null;
-  difficulty: string | null;
-  variant?: string | null;
-  clinical_question?: string | null;
-  specialty?: string | null;
-}
-
-const TASK_LABELS: Record<OpenHealthTaskName, string> = {
-  patient_diagnosis: "Patient Diagnosis",
-  context_summarization: "Context Summarization",
-  evidence_retrieval: "Evidence Retrieval",
-  imaging_indication: "Imaging Indication",
-};
+import { OPENHEALTH_DEFAULT_SPLIT, OPENHEALTH_SPLITS, type OpenHealthSplit } from "@/lib/openhealth-benchmarks/constants";
+import type { OpenHealthTaskRow } from "@/lib/openhealth-benchmarks/run-summary";
 
 const SPLIT_LABELS: Record<OpenHealthSplit, string> = {
-  public: "Public (200)",
+  public: "Public",
   heldout: "Heldout",
 };
 
+const POLL_INTERVAL_MS = 5_000;
+
+interface TaskStat {
+  attempts: number;
+  bestF1: number | null;
+}
+
 function cell(value: unknown): string {
-  return value === null || value === undefined || value === "" ? "" : String(value);
+  return value === null || value === undefined || value === "" ? "—" : String(value);
+}
+
+function formatF1(value: number | null): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "—";
 }
 
 export function OpenHealthTasksPanel() {
-  const { workspace } = useWorkspace();
+  const { workspace, role } = useWorkspace();
+  const router = useRouter();
   const slug = workspace?.slug;
+  const canWrite = role ? ["OWNER", "ADMIN", "PM", "DEVELOPER"].includes(role) : false;
 
   const [split, setSplit] = useState<OpenHealthSplit>(OPENHEALTH_DEFAULT_SPLIT);
-  const [taskFilter, setTaskFilter] = useState<OpenHealthTaskName | "all">("all");
-  const [rows, setRows] = useState<InstanceRow[]>([]);
+  const [difficultyFilter, setDifficultyFilter] = useState<string>("all");
+  const [tasks, setTasks] = useState<OpenHealthTaskRow[]>([]);
+  const [sourceRunId, setSourceRunId] = useState<string | null>(null);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [startingKey, setStartingKey] = useState<string | null>(null);
+  const [stats, setStats] = useState<Map<string, TaskStat>>(new Map());
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchTasks = useCallback(async () => {
-    if (!slug) return;
-    setIsLoading(true);
-    setError(null);
+    if (!slug) return null;
     try {
-      const params = new URLSearchParams({ split });
-      if (taskFilter !== "all") params.set("task", taskFilter);
-      const res = await fetch(`/api/workspaces/${slug}/openhealth/benchmarks/tasks?${params}`);
+      const res = await fetch(`/api/workspaces/${slug}/openhealth/benchmarks/tasks?split=${split}`);
       if (!res.ok) throw new Error(`Failed to load tasks (${res.status})`);
       const data = await res.json();
-      setRows(Array.isArray(data.rows) ? data.rows : []);
+      setTasks(Array.isArray(data.tasks) ? data.tasks : []);
+      setSourceRunId(data.sourceRunId ?? null);
+      setFetchedAt(data.fetchedAt ?? null);
+      setError(null);
+      return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
+      return null;
     } finally {
       setIsLoading(false);
     }
-  }, [slug, split, taskFilter]);
+  }, [slug, split]);
 
-  // Default split is public; train is never requested here — there is no
-  // control for it, and this effect only ever sends "public" or "heldout".
+  const fetchStats = useCallback(async () => {
+    if (!slug) return;
+    try {
+      const res = await fetch(`/api/workspaces/${slug}/openhealth/benchmarks/runs`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const map = new Map<string, TaskStat>();
+      for (const run of Array.isArray(data.runs) ? data.runs : []) {
+        if (!run.gtId) continue;
+        const entry = map.get(run.gtId) ?? { attempts: 0, bestF1: null };
+        entry.attempts += 1;
+        if (run.outcome === "success" && typeof run.f1 === "number") {
+          if (entry.bestF1 === null || run.f1 > entry.bestF1) entry.bestF1 = run.f1;
+        }
+        map.set(run.gtId, entry);
+      }
+      setStats(map);
+    } catch {
+      // best-effort — attempts/best F1 simply show "—"
+    }
+  }, [slug]);
+
   useEffect(() => {
+    setIsLoading(true);
     fetchTasks();
-  }, [fetchTasks]);
+    fetchStats();
+  }, [fetchTasks, fetchStats]);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const startRefresh = useCallback(async () => {
+    if (!slug) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch(`/api/workspaces/${slug}/openhealth/benchmarks/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ split }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `Failed to start refresh (${res.status})`);
+      }
+      const priorSourceRunId = sourceRunId;
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        const data = await fetchTasks();
+        if (!data) return;
+        if (data.sourceRunId !== priorSourceRunId || !data.refreshing) {
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+          setRefreshing(false);
+          await fetchStats();
+        }
+      }, POLL_INTERVAL_MS);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to start refresh");
+      setRefreshing(false);
+    }
+  }, [slug, split, sourceRunId, fetchTasks, fetchStats]);
 
   const startRun = useCallback(
-    async (row: InstanceRow) => {
+    async (row: OpenHealthTaskRow) => {
       if (!slug) return;
-      const key = `${row.task}:${row.gt_id}`;
-      setStartingKey(key);
+      setStartingKey(row.gtId);
       try {
         const res = await fetch(`/api/workspaces/${slug}/openhealth/benchmarks/run`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            task: row.task,
-            split: row.split,
-            gtId: row.gt_id,
-            patientId: row.patient_id,
-          }),
+          body: JSON.stringify({ gtId: row.gtId }),
         });
         if (res.status === 409) {
-          toast.error("A run is already in progress for this task");
+          toast.error("A run is already in progress for this case");
           return;
         }
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error ?? `Failed to start run (${res.status})`);
         }
+        const data = await res.json();
         toast.success("Run started");
+        if (data.runId) {
+          router.push(`/w/${slug}/openhealth/benchmarks/runs/${data.runId}`);
+        }
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to start run");
       } finally {
         setStartingKey(null);
       }
     },
-    [slug],
+    [slug, router],
   );
 
-  const showContextColumns = taskFilter === "context_summarization";
+  const difficulties = Array.from(new Set(tasks.map((t) => t.difficulty).filter(Boolean))) as string[];
+  const filteredTasks =
+    difficultyFilter === "all" ? tasks : tasks.filter((t) => t.difficulty === difficultyFilter);
 
   return (
     <div className="flex flex-col gap-4 h-full">
       <div className="flex flex-wrap items-center gap-3">
         <Select value={split} onValueChange={(v) => setSplit(v as OpenHealthSplit)}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[160px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -145,22 +201,36 @@ export function OpenHealthTasksPanel() {
           </SelectContent>
         </Select>
 
-        <Select
-          value={taskFilter}
-          onValueChange={(v) => setTaskFilter(v as OpenHealthTaskName | "all")}
-        >
-          <SelectTrigger className="w-[220px]">
-            <SelectValue placeholder="All task types" />
+        <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All difficulties" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All task types</SelectItem>
-            {OPENHEALTH_TASK_NAMES.map((t) => (
-              <SelectItem key={t} value={t}>
-                {TASK_LABELS[t]}
+            <SelectItem value="all">All difficulties</SelectItem>
+            {difficulties.map((d) => (
+              <SelectItem key={d} value={d}>
+                {d}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+
+        {canWrite && (
+          <Button size="sm" variant="outline" disabled={refreshing} onClick={startRefresh}>
+            {refreshing ? (
+              <Loader2 className="h-3 w-3 animate-spin mr-2" />
+            ) : (
+              <RefreshCw className="h-3 w-3 mr-2" />
+            )}
+            Refresh
+          </Button>
+        )}
+
+        {fetchedAt && (
+          <span className="text-xs text-muted-foreground">
+            Fetched {new Date(fetchedAt).toLocaleString()}
+          </span>
+        )}
       </div>
 
       {error && (
@@ -173,64 +243,59 @@ export function OpenHealthTasksPanel() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Task</TableHead>
               <TableHead>GT ID</TableHead>
-              <TableHead>Granularity</TableHead>
               <TableHead>Patient ID</TableHead>
-              <TableHead>Encounter ID</TableHead>
               <TableHead>Difficulty</TableHead>
-              {showContextColumns && (
-                <>
-                  <TableHead>Variant</TableHead>
-                  <TableHead>Clinical Question</TableHead>
-                  <TableHead>Specialty</TableHead>
-                </>
-              )}
+              <TableHead>Attempts</TableHead>
+              <TableHead>Best F1</TableHead>
               <TableHead className="text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={showContextColumns ? 10 : 7} className="text-center py-8">
+                <TableCell colSpan={6} className="text-center py-8">
                   <Loader2 className="h-4 w-4 animate-spin inline-block" />
                 </TableCell>
               </TableRow>
-            ) : rows.length === 0 ? (
+            ) : filteredTasks.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={showContextColumns ? 10 : 7} className="text-center py-8 text-muted-foreground">
-                  No tasks found
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  {tasks.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <span>No task list yet</span>
+                      {canWrite ? (
+                        <span className="text-xs">Click Refresh above to load one.</span>
+                      ) : (
+                        <span className="text-xs">Ask an editor to refresh.</span>
+                      )}
+                    </div>
+                  ) : (
+                    "No tasks match this filter"
+                  )}
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((row) => {
-                const key = `${row.task}:${row.gt_id}`;
+              filteredTasks.map((row) => {
+                const stat = stats.get(row.gtId);
                 return (
-                  <TableRow key={key}>
-                    <TableCell>{cell(row.task)}</TableCell>
-                    <TableCell className="font-mono text-xs">{cell(row.gt_id)}</TableCell>
-                    <TableCell>{cell(row.granularity)}</TableCell>
-                    <TableCell className="font-mono text-xs">{cell(row.patient_id)}</TableCell>
-                    <TableCell className="font-mono text-xs">{cell(row.encounter_id)}</TableCell>
+                  <TableRow key={row.gtId}>
+                    <TableCell className="font-mono text-xs">{cell(row.gtId)}</TableCell>
+                    <TableCell className="font-mono text-xs">{cell(row.patientId)}</TableCell>
                     <TableCell>{cell(row.difficulty)}</TableCell>
-                    {showContextColumns && (
-                      <>
-                        <TableCell>{cell(row.variant)}</TableCell>
-                        <TableCell className="max-w-[240px] truncate">{cell(row.clinical_question)}</TableCell>
-                        <TableCell>{cell(row.specialty)}</TableCell>
-                      </>
-                    )}
+                    <TableCell>{stat?.attempts ?? 0}</TableCell>
+                    <TableCell>{formatF1(stat?.bestF1 ?? null)}</TableCell>
                     <TableCell className="text-right">
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={startingKey === key}
+                        disabled={!canWrite || startingKey === row.gtId}
                         onClick={() => startRun(row)}
                       >
-                        {startingKey === key ? (
+                        {startingKey === row.gtId ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
                         ) : (
-                          "Start"
+                          "Run"
                         )}
                       </Button>
                     </TableCell>

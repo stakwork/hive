@@ -1,160 +1,157 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { validateWorkspaceAccess } from "@/services/workspace";
-import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
-import { OPENHEALTH_SLUGS } from "@/lib/eval-capture-slugs";
 import {
   isOpenHealthSplit,
-  isOpenHealthTaskName,
-  OPENHEALTH_DEFAULT_SPLIT,
-  projectOpenHealthInstanceSummary,
-  type OpenHealthTaskName,
+  OPENHEALTH_READ_RATE_LIMIT,
+  OPENHEALTH_TASKS_DISPATCH_RATE_LIMIT,
+  bodyHasGoldKey,
 } from "@/lib/openhealth-benchmarks/constants";
-import { fetchOpenHealthInstances } from "@/lib/openhealth-benchmarks/scorer-client";
+import { resolveOpenHealthStrut, OPENHEALTH_WORKFLOWS } from "@/lib/openhealth-benchmarks/strut-client";
+import { resolveCachedTaskList } from "@/lib/openhealth-benchmarks/task-cache";
+import { strutFetch } from "@/lib/strut/fetch";
+import { ensureStrutDelegation } from "@/services/bifrost/strut-delegation";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
+const LOG_TAG = "openhealth-benchmarks";
+
 type RouteParams = { params: Promise<{ slug: string }> };
 
-const MAX_LIMIT = 100;
-const DEFAULT_LIMIT = 50;
-
 /**
- * GET /api/workspaces/[slug]/openhealth/benchmarks/tasks
+ * GET /api/workspaces/[slug]/openhealth/benchmarks/tasks?split=public|heldout
  *
- * Read-only public/heldout-split task metadata list, proxied from the
- * OpenHealth swarm's scorer (`GET /score/instances`). Never returns gold.
- * Gated to the `hive` workspace only.
+ * The task list for a split, read entirely from cached `openhealth-list-tasks`
+ * strut run history — see `resolveCachedTaskList`. No refresh is triggered
+ * by a GET; use POST for that.
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const context = getMiddlewareContext(request);
-    const userOrResponse = requireAuth(context);
-    if (userOrResponse instanceof NextResponse) return userOrResponse;
-    const userId = userOrResponse.id;
-
     const { slug } = await params;
+    const resolved = await resolveOpenHealthStrut(request, slug, { write: false });
+    if (!resolved.ok) return resolved.response;
+    const { target, userId } = resolved;
 
-    // Slug gate FIRST — before any access check, so a non-hive slug
-    // (or a non-member probing it) gets the same 404 either way.
-    if (!OPENHEALTH_SLUGS.includes(slug)) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    // A viewer may read. A non-member gets 404, not 403.
-    const access = await validateWorkspaceAccess(slug, userId, true, {});
-    if (!access.canRead) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    // Fail closed, before any swarm credential use or upstream call.
     let rl: { allowed: boolean; retryAfter?: number };
     try {
-      rl = await checkRateLimit(`openhealth-benchmark-tasks:${userId}`, 60, 60);
-    } catch {
-      return NextResponse.json(
-        { error: "Rate limit service unavailable" },
-        { status: 503 },
+      rl = await checkRateLimit(
+        `openhealth-benchmark-tasks:${userId}`,
+        OPENHEALTH_READ_RATE_LIMIT.limit,
+        OPENHEALTH_READ_RATE_LIMIT.windowSecs,
       );
+    } catch {
+      return NextResponse.json({ error: "Rate limit service unavailable" }, { status: 503 });
     }
     if (!rl.allowed) {
-      return NextResponse.json(
-        { error: "Too many requests", retryAfter: rl.retryAfter },
-        { status: 429 },
-      );
+      return NextResponse.json({ error: "Too many requests", retryAfter: rl.retryAfter }, { status: 429 });
     }
 
     const url = new URL(request.url);
     const splitParam = url.searchParams.get("split");
-    const taskParam = url.searchParams.get("task");
-    const limitParam = url.searchParams.get("limit");
-    const offsetParam = url.searchParams.get("offset");
+    if (!isOpenHealthSplit(splitParam)) {
+      return NextResponse.json({ error: 'split must be "public" or "heldout"' }, { status: 400 });
+    }
 
-    // Default is public when the param is omitted. Any other value —
-    // including empty string, "train", or a typo — is rejected with 400.
-    const split = splitParam === null ? OPENHEALTH_DEFAULT_SPLIT : splitParam;
-    if (!isOpenHealthSplit(split)) {
+    const result = await resolveCachedTaskList(target, splitParam);
+
+    return NextResponse.json({
+      tasks: result.tasks,
+      sourceRunId: result.sourceRunId,
+      fetchedAt: result.fetchedAt,
+      refreshing: result.refreshing,
+    });
+  } catch (error) {
+    logger.error("[openhealth/benchmarks/tasks GET] Unexpected error", LOG_TAG, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+interface RefreshBody {
+  split?: unknown;
+}
+
+/**
+ * POST /api/workspaces/[slug]/openhealth/benchmarks/tasks { split }
+ *
+ * Dispatches a fresh `openhealth-list-tasks` run for one split. Writers
+ * only. Each call adds a strut run — there is no automatic reload; the UI
+ * polls the GET route until this run's `sourceRunId` is picked up.
+ */
+export async function POST(request: NextRequest, { params }: RouteParams) {
+  try {
+    const { slug } = await params;
+    const resolved = await resolveOpenHealthStrut(request, slug, { write: true });
+    if (!resolved.ok) return resolved.response;
+    const { target, userId } = resolved;
+
+    let rl: { allowed: boolean; retryAfter?: number };
+    try {
+      rl = await checkRateLimit(
+        `openhealth-benchmark-tasks-refresh:${userId}`,
+        OPENHEALTH_TASKS_DISPATCH_RATE_LIMIT.limit,
+        OPENHEALTH_TASKS_DISPATCH_RATE_LIMIT.windowSecs,
+      );
+    } catch {
+      return NextResponse.json({ error: "Rate limit service unavailable" }, { status: 503 });
+    }
+    if (!rl.allowed) {
+      return NextResponse.json({ error: "Too many requests", retryAfter: rl.retryAfter }, { status: 429 });
+    }
+
+    let body: RefreshBody;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const goldKey = bodyHasGoldKey(body);
+    if (goldKey) {
+      logger.info("[openhealth/benchmarks/tasks] rejected gold-shaped key", LOG_TAG, { userId, key: goldKey });
       return NextResponse.json(
-        { error: 'split must be "public" or "heldout"' },
+        { error: `Request body must not include a gold-shaped key: "${goldKey}"` },
         { status: 400 },
       );
     }
 
-    let taskName: OpenHealthTaskName | undefined;
-    if (taskParam !== null) {
-      if (!isOpenHealthTaskName(taskParam)) {
-        return NextResponse.json({ error: "Invalid task" }, { status: 400 });
-      }
-      taskName = taskParam;
+    if (!isOpenHealthSplit(body.split)) {
+      return NextResponse.json({ error: 'split must be "public" or "heldout"' }, { status: 400 });
     }
+    const split = body.split;
 
-    let limit = DEFAULT_LIMIT;
-    if (limitParam !== null) {
-      const parsed = parseInt(limitParam, 10);
-      if (Number.isNaN(parsed) || parsed <= 0) {
-        return NextResponse.json({ error: "limit must be a positive integer" }, { status: 400 });
-      }
-      limit = Math.min(parsed, MAX_LIMIT);
-    }
-
-    let offset: number | undefined;
-    if (offsetParam !== null) {
-      const parsed = parseInt(offsetParam, 10);
-      if (Number.isNaN(parsed) || parsed < 0) {
-        return NextResponse.json({ error: "offset must be >= 0" }, { status: 400 });
-      }
-      offset = parsed;
-    }
-
-    // The slug gate above already rejects every non-hive URL before access,
-    // so a successful call has URL slug "hive". Use that literal — not a
-    // second workspace load that could diverge from the URL workspace.
-    const swarmResult = await getWorkspaceSwarmAccess("hive", userId);
-    if (!swarmResult.success) {
-      return NextResponse.json({ error: "Swarm not configured" }, { status: 503 });
-    }
-    const { swarmUrl, swarmApiKey } = swarmResult.data;
-    if (!swarmUrl || !swarmApiKey) {
-      return NextResponse.json({ error: "Swarm not configured" }, { status: 503 });
-    }
-
-    let upstream;
-    try {
-      upstream = await fetchOpenHealthInstances(swarmUrl, swarmApiKey, {
-        split,
-        task: taskName as ReturnType<typeof isOpenHealthTaskName> extends boolean ? never : never as never,
-        limit,
-        offset,
-      } as never);
-    } catch (err) {
-      logger.error("[openhealth/benchmarks/tasks] scorer fetch failed", "openhealth-benchmarks", {
-        split,
-        task: taskName,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return NextResponse.json({ error: "Failed to fetch task list" }, { status: 502 });
-    }
-
-    // Allowlist projection — applied even though the upstream shape is
-    // expected to already exclude gold. A projection that omits gold
-    // upstream is not a substitute for dropping it here too.
-    const rows = upstream.rows.map((row) =>
-      projectOpenHealthInstanceSummary(row as Record<string, unknown>),
+    const delegation = await ensureStrutDelegation(
+      { workspaceId: target.workspaceId, workspaceSlug: target.workspaceSlug, userId },
+      { swarmUrl: target.swarmUrl, swarmApiKey: target.swarmApiKey },
+      { actor: target.actor },
     );
+    if (delegation.status !== "fresh" && delegation.status !== "pushed") {
+      return NextResponse.json({ error: "Strut delegation unavailable" }, { status: 503 });
+    }
 
-    return NextResponse.json({
-      rows,
-      split,
-      task: taskName ?? null,
-      limit,
-      offset: offset ?? 0,
-      total: upstream.total ?? null,
-    });
+    let strutResponse: Response;
+    try {
+      strutResponse = await strutFetch(target, `/workflows/${encodeURIComponent(OPENHEALTH_WORKFLOWS.listTasks)}/run`, {
+        method: "POST",
+        body: { input: { split } },
+      });
+    } catch {
+      return NextResponse.json({ error: "Failed to dispatch job to strut" }, { status: 502 });
+    }
+    if (!strutResponse.ok) {
+      return NextResponse.json({ error: "Failed to dispatch job to strut" }, { status: 502 });
+    }
+
+    const strutData = (await strutResponse.json().catch(() => ({}))) as { runId?: unknown };
+    const runId = typeof strutData.runId === "string" ? strutData.runId : null;
+
+    logger.info("[openhealth/benchmarks/tasks] refresh dispatched", LOG_TAG, { userId, split, runId });
+
+    return NextResponse.json({ runId }, { status: 202 });
   } catch (error) {
-    logger.error("[openhealth/benchmarks/tasks GET] Unexpected error", "openhealth-benchmarks", {
+    logger.error("[openhealth/benchmarks/tasks POST] Unexpected error", LOG_TAG, {
       error: error instanceof Error ? error.message : String(error),
     });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

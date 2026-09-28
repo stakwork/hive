@@ -1,29 +1,17 @@
 /**
  * Shared constants for the OpenHealth Benchmarks feature.
  *
- * Kept in one place so the task-list route, the start route, the runs
- * projection, and the webhook branch all agree on the same allowlists —
- * drift between them is exactly how a gold-shaped key would leak.
+ * This file is deliberately narrow now that the feature reads/writes
+ * exclusively through the `openhealth-run` / `openhealth-list-tasks` strut
+ * (see `strut-client.ts` and `run-summary.ts`). The webhook, probe,
+ * response, and task-list allowlists that used to live here belonged to the
+ * retired `StakworkRun`-backed path (thin webhook + poll-on-read) and are
+ * gone — projection is now `projectRunSummary` / `projectTaskRow` in
+ * `run-summary.ts`, driven by the field names pinned in `contract.ts`.
  */
 
-/** The four task names the OpenHealth strut runner already loads. */
-export const OPENHEALTH_TASK_NAMES = [
-  "patient_diagnosis",
-  "context_summarization",
-  "evidence_retrieval",
-  "imaging_indication",
-] as const;
-export type OpenHealthTaskName = (typeof OPENHEALTH_TASK_NAMES)[number];
-
-export function isOpenHealthTaskName(value: unknown): value is OpenHealthTaskName {
-  return (
-    typeof value === "string" &&
-    (OPENHEALTH_TASK_NAMES as readonly string[]).includes(value)
-  );
-}
-
 /**
- * Allowed dataset splits for BOTH the task-list route and the start route.
+ * Allowed dataset splits for BOTH the task-list route and the run route.
  * "train" (800 patients) is deliberately excluded — it is not a control and
  * must never load on first paint or be dispatchable.
  */
@@ -49,9 +37,23 @@ export function resolveOpenHealthStrutWorkflowName(): string {
   return raw && raw.trim().length > 0 ? raw : OPENHEALTH_DEFAULT_STRUT_WORKFLOW_NAME;
 }
 
+/** Fixed workflow name for the read-only task-list workflow. No env override. */
+export const OPENHEALTH_LIST_TASKS_WORKFLOW = "openhealth-list-tasks";
+
+/** Every GET route: 60/min per user, fail-closed. */
+export const OPENHEALTH_READ_RATE_LIMIT = { limit: 60, windowSecs: 60 } as const;
+
+/** `run` POST: 10/min per user, fail-closed. */
+export const OPENHEALTH_RUN_RATE_LIMIT = { limit: 10, windowSecs: 60 } as const;
+
+/** `tasks` POST (refresh dispatch): 10/min per user, fail-closed. */
+export const OPENHEALTH_TASKS_DISPATCH_RATE_LIMIT = { limit: 10, windowSecs: 60 } as const;
+
 /**
- * Keys that indicate a gold-shaped payload. Reject any request/webhook body
- * carrying one of these, even if the rest of the shape is otherwise valid.
+ * Keys that indicate a gold-shaped payload. Reject any request body
+ * carrying one of these, even if the rest of the shape is otherwise valid —
+ * checked recursively by `bodyHasGoldKey` so a nested `{ input: { gold } }`
+ * is caught too.
  */
 export const OPENHEALTH_GOLD_KEYS = [
   "ground_truth",
@@ -60,142 +62,30 @@ export const OPENHEALTH_GOLD_KEYS = [
   "problemList",
 ] as const;
 
-export function bodyHasGoldKey(body: Record<string, unknown>): string | null {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Recursively scans `body` (including nested objects and array elements)
+ * for a gold-shaped key. Returns the first key name found, else `null`.
+ */
+export function bodyHasGoldKey(body: unknown, _depth = 0): string | null {
+  if (_depth > 10) return null; // guard against pathological nesting
+  if (Array.isArray(body)) {
+    for (const item of body) {
+      const found = bodyHasGoldKey(item, _depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!isPlainObject(body)) return null;
   for (const key of OPENHEALTH_GOLD_KEYS) {
     if (Object.prototype.hasOwnProperty.call(body, key)) return key;
   }
+  for (const value of Object.values(body)) {
+    const found = bodyHasGoldKey(value, _depth + 1);
+    if (found) return found;
+  }
   return null;
-}
-
-/** Response allowlist for GET .../openhealth/benchmarks/tasks rows. */
-export const OPENHEALTH_TASK_LIST_ALLOWLIST = [
-  "gt_id",
-  "task",
-  "granularity",
-  "split",
-  "patient_id",
-  "encounter_id",
-  "difficulty",
-  "variant",
-  "clinical_question",
-  "specialty",
-] as const;
-
-export function projectOpenHealthInstanceSummary(
-  row: Record<string, unknown>,
-): Record<string, unknown> {
-  const projected: Record<string, unknown> = {};
-  for (const key of OPENHEALTH_TASK_LIST_ALLOWLIST) {
-    projected[key] = key in row ? row[key] ?? null : null;
-  }
-  return projected;
-}
-
-/** 30-minute staleness threshold for active runs (mirrors legal benchmarks). */
-export const OPENHEALTH_STALE_RUN_THRESHOLD_MS = 30 * 60 * 1000;
-
-/** Bound on how many candidate active-run rows we scan per dispatch. */
-export const OPENHEALTH_ACTIVE_RUN_SCAN_LIMIT = 25;
-
-/**
- * Allowlist merged into `result` on the thin webhook leg
- * (processStakworkRunWebhook, before the shared updateMany). Everything else
- * — including problemList, ground_truth, groundTruth, gold, matched, and
- * report_url — is dropped.
- */
-export const OPENHEALTH_WEBHOOK_ALLOWLIST = [
-  "task",
-  "gtId",
-  "weighted_problem_list_f1_neutral",
-  "gradeError",
-] as const;
-
-export function projectOpenHealthWebhookFields(
-  incoming: Record<string, unknown>,
-): Record<string, unknown> {
-  const projected: Record<string, unknown> = {};
-  for (const key of OPENHEALTH_WEBHOOK_ALLOWLIST) {
-    if (key in incoming) projected[key] = incoming[key];
-  }
-  return projected;
-}
-
-/**
- * Allowlist copied from a terminal strut probe output into `result` by the
- * poll-on-read path (GET /api/stakwork/runs). `missed` and `extra` are kept
- * ONLY long enough to compute counts — the runs response projects them down
- * to `missedCount` / `extraCount` and must never return the raw arrays.
- */
-export const OPENHEALTH_PROBE_OUTPUT_ALLOWLIST = [
-  "task",
-  "split",
-  "gtId",
-  "patientId",
-  "difficulty",
-  "title",
-  "namespace",
-  "weighted_problem_list_f1_neutral",
-  "problem_list_recall",
-  "problem_list_precision_neutral",
-  "n_matched",
-  "n_gt",
-  "missed",
-  "extra",
-  "tier",
-  "gradeError",
-  "produceError",
-  "evalset_ref",
-] as const;
-
-export function projectOpenHealthProbeOutput(
-  output: Record<string, unknown>,
-): Record<string, unknown> {
-  const projected: Record<string, unknown> = {};
-  for (const key of OPENHEALTH_PROBE_OUTPUT_ALLOWLIST) {
-    if (key in output) projected[key] = output[key];
-  }
-  return projected;
-}
-
-/**
- * Fields the runs list (GET /api/stakwork/runs) may return for
- * OPENHEALTH_BENCHMARK_RUNNER rows. `missed` / `extra` raw arrays are
- * deliberately excluded — only their counts (`missedCount`/`extraCount`,
- * computed by the caller) may reach the client.
- */
-export const OPENHEALTH_RUN_RESPONSE_ALLOWLIST = [
-  "runner",
-  "task",
-  "split",
-  "gtId",
-  "patientId",
-  "difficulty",
-  "title",
-  "namespace",
-  "weighted_problem_list_f1_neutral",
-  "problem_list_recall",
-  "problem_list_precision_neutral",
-  "n_matched",
-  "n_gt",
-  "tier",
-  "gradeError",
-  "produceError",
-  "evalset_ref",
-  "scoreError",
-  "dispatchError",
-  "strutRunId",
-] as const;
-
-export function projectOpenHealthRunResponse(
-  result: Record<string, unknown>,
-): Record<string, unknown> {
-  const projected: Record<string, unknown> = {};
-  for (const key of OPENHEALTH_RUN_RESPONSE_ALLOWLIST) {
-    if (key in result) projected[key] = result[key];
-  }
-  const missed = result.missed;
-  const extra = result.extra;
-  projected.missedCount = Array.isArray(missed) ? missed.length : null;
-  projected.extraCount = Array.isArray(extra) ? extra.length : null;
-  return projected;
 }

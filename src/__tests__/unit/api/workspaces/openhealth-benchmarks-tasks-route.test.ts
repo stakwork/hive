@@ -1,54 +1,78 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const mockRequireAuth = vi.hoisted(() => vi.fn());
-const mockGetMiddlewareContext = vi.hoisted(() => vi.fn());
-const mockValidateWorkspaceAccess = vi.hoisted(() => vi.fn());
-const mockGetWorkspaceSwarmAccess = vi.hoisted(() => vi.fn());
+const mockResolveOpenHealthStrut = vi.hoisted(() => vi.fn());
+const mockResolveCachedTaskList = vi.hoisted(() => vi.fn());
 const mockCheckRateLimit = vi.hoisted(() => vi.fn());
-const mockFetchOpenHealthInstances = vi.hoisted(() => vi.fn());
+const mockEnsureStrutDelegation = vi.hoisted(() => vi.fn());
+const mockStrutFetch = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/middleware/utils", () => ({
-  getMiddlewareContext: mockGetMiddlewareContext,
-  requireAuth: mockRequireAuth,
-}));
+vi.mock("@/lib/openhealth-benchmarks/strut-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/openhealth-benchmarks/strut-client")>();
+  return {
+    ...actual,
+    resolveOpenHealthStrut: mockResolveOpenHealthStrut,
+  };
+});
 
-vi.mock("@/services/workspace", () => ({
-  validateWorkspaceAccess: mockValidateWorkspaceAccess,
-}));
-
-vi.mock("@/lib/helpers/swarm-access", () => ({
-  getWorkspaceSwarmAccess: mockGetWorkspaceSwarmAccess,
+vi.mock("@/lib/openhealth-benchmarks/task-cache", () => ({
+  resolveCachedTaskList: mockResolveCachedTaskList,
 }));
 
 vi.mock("@/lib/rate-limit", () => ({
   checkRateLimit: mockCheckRateLimit,
 }));
 
-vi.mock("@/lib/openhealth-benchmarks/scorer-client", () => ({
-  fetchOpenHealthInstances: mockFetchOpenHealthInstances,
+vi.mock("@/services/bifrost/strut-delegation", () => ({
+  STRUT_ACTOR_HEADER: "x-strut-actor",
+  ensureStrutDelegation: mockEnsureStrutDelegation,
+}));
+
+vi.mock("@/lib/strut/fetch", () => ({
+  strutFetch: mockStrutFetch,
 }));
 
 vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 
+const TARGET = {
+  swarmId: "swarm-1",
+  workspaceId: "ws-hive",
+  workspaceSlug: "hive",
+  orgId: "org-1",
+  swarmUrl: "https://swarm.example.com/api",
+  mcpBase: "https://swarm.example.com:3355",
+  labBase: "https://swarm.example.com:3355/lab",
+  swarmApiKey: "swarm-key",
+  actor: "actor-1",
+};
+
 const USER_ID = "user-1";
 
-function makeRequest(slug: string, query = "") {
-  return new NextRequest(`http://localhost/api/workspaces/${slug}/openhealth/benchmarks/tasks${query}`);
+function makeRequest(
+  slug: string,
+  query = "",
+  init?: { method?: string; headers?: Record<string, string>; body?: string },
+) {
+  return new NextRequest(
+    `http://localhost/api/workspaces/${slug}/openhealth/benchmarks/tasks${query}`,
+    init as ConstructorParameters<typeof NextRequest>[1],
+  );
 }
 
 function setupHappyPath() {
-  mockGetMiddlewareContext.mockReturnValue({});
-  mockRequireAuth.mockReturnValue({ id: USER_ID });
-  mockValidateWorkspaceAccess.mockResolvedValue({ canRead: true, canWrite: true });
+  mockResolveOpenHealthStrut.mockResolvedValue({ ok: true, target: TARGET, userId: USER_ID });
   mockCheckRateLimit.mockResolvedValue({ allowed: true });
-  mockGetWorkspaceSwarmAccess.mockResolvedValue({
-    success: true,
-    data: { swarmUrl: "https://swarm.example.com/api", swarmApiKey: "swarm-key" },
+  mockResolveCachedTaskList.mockResolvedValue({
+    tasks: [],
+    rawTasks: [],
+    sourceRunId: null,
+    fetchedAt: new Date().toISOString(),
+    refreshing: false,
   });
-  mockFetchOpenHealthInstances.mockResolvedValue({ rows: [], total: 0 });
+  mockEnsureStrutDelegation.mockResolvedValue({ status: "fresh" });
+  mockStrutFetch.mockResolvedValue({ ok: true, json: async () => ({ runId: "1700000000001" }) });
 }
 
 describe("GET /api/workspaces/[slug]/openhealth/benchmarks/tasks", () => {
@@ -57,58 +81,40 @@ describe("GET /api/workspaces/[slug]/openhealth/benchmarks/tasks", () => {
     setupHappyPath();
   });
 
-  test("returns 404 for a non-hive slug BEFORE any access check", async () => {
+  test("delegates the slug/access/strut gate entirely to resolveOpenHealthStrut", async () => {
+    mockResolveOpenHealthStrut.mockResolvedValue({
+      ok: false,
+      response: new Response(JSON.stringify({ error: "Not found" }), { status: 404 }),
+    });
     const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
     const req = makeRequest("openlaw");
     const res = await GET(req, { params: Promise.resolve({ slug: "openlaw" }) });
     expect(res.status).toBe(404);
-    expect(mockValidateWorkspaceAccess).not.toHaveBeenCalled();
   });
 
-  test("returns 404 for the openhealth slug BEFORE any access check", async () => {
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("openhealth");
-    const res = await GET(req, { params: Promise.resolve({ slug: "openhealth" }) });
-    expect(res.status).toBe(404);
-    expect(mockValidateWorkspaceAccess).not.toHaveBeenCalled();
-  });
-
-  test("returns 404 (not 403) for a non-member of hive", async () => {
-    mockValidateWorkspaceAccess.mockResolvedValue({ canRead: false, canWrite: false });
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive");
-    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(res.status).toBe(404);
-  });
-
-  test("a viewer (canRead only) may read", async () => {
-    mockValidateWorkspaceAccess.mockResolvedValue({ canRead: true, canWrite: false });
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive");
-    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(res.status).toBe(200);
-  });
-
-  test("fails closed with 503 when the rate limiter throws, before any upstream call", async () => {
+  test("fails closed with 503 when the rate limiter throws, before resolving the cache", async () => {
     mockCheckRateLimit.mockRejectedValue(new Error("redis down"));
     const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
     const req = makeRequest("hive");
     const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(503);
-    expect(mockGetWorkspaceSwarmAccess).not.toHaveBeenCalled();
-    expect(mockFetchOpenHealthInstances).not.toHaveBeenCalled();
+    expect(mockResolveCachedTaskList).not.toHaveBeenCalled();
   });
 
-  test("defaults split to public when omitted", async () => {
+  test("rejects a missing split with 400 — no default, per the split-scoped cache contract", async () => {
     const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
     const req = makeRequest("hive");
     const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
+    expect(res.status).toBe(400);
+    expect(mockResolveCachedTaskList).not.toHaveBeenCalled();
+  });
+
+  test("accepts split=public explicitly", async () => {
+    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
+    const req = makeRequest("hive", "?split=public");
+    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(200);
-    expect(mockFetchOpenHealthInstances).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      expect.objectContaining({ split: "public" }),
-    );
+    expect(mockResolveCachedTaskList).toHaveBeenCalledWith(TARGET, "public");
   });
 
   test("rejects split=train with 400", async () => {
@@ -116,108 +122,73 @@ describe("GET /api/workspaces/[slug]/openhealth/benchmarks/tasks", () => {
     const req = makeRequest("hive", "?split=train");
     const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(400);
-    expect(mockFetchOpenHealthInstances).not.toHaveBeenCalled();
+    expect(mockResolveCachedTaskList).not.toHaveBeenCalled();
   });
 
-  test("rejects an empty split value with 400", async () => {
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive", "?split=");
-    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(res.status).toBe(400);
-  });
-
-  test("accepts split=heldout explicitly", async () => {
+  test("returns tasks/sourceRunId/fetchedAt/refreshing from the cache resolver", async () => {
+    mockResolveCachedTaskList.mockResolvedValue({
+      tasks: [{ gtId: "gt-1", split: "public", difficulty: "easy" }],
+      rawTasks: [{ gtId: "gt-1", split: "public", difficulty: "easy" }],
+      sourceRunId: "1700000000000",
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+      refreshing: true,
+    });
     const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
     const req = makeRequest("hive", "?split=heldout");
     const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(res.status).toBe(200);
-    expect(mockFetchOpenHealthInstances).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      expect.objectContaining({ split: "heldout" }),
-    );
-  });
-
-  test("rejects an unknown task with 400", async () => {
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive", "?task=unknown_task");
-    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(res.status).toBe(400);
-    expect(mockFetchOpenHealthInstances).not.toHaveBeenCalled();
-  });
-
-  test("passes split/task as bound parameters, not interpolated strings", async () => {
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive", "?split=heldout&task=context_summarization");
-    await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(mockFetchOpenHealthInstances).toHaveBeenCalledWith(
-      "https://swarm.example.com/api",
-      "swarm-key",
-      expect.objectContaining({ split: "heldout", task: "context_summarization" }),
-    );
-  });
-
-  test("resolves swarm access with the literal hive slug, and passes the hive swarm URL/key to the scorer", async () => {
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive");
-    await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(mockGetWorkspaceSwarmAccess).toHaveBeenCalledWith("hive", USER_ID);
-    expect(mockFetchOpenHealthInstances).toHaveBeenCalledWith(
-      "https://swarm.example.com/api",
-      "swarm-key",
-      expect.any(Object),
-    );
-  });
-
-  test("caps limit at the server maximum even when a larger value is requested", async () => {
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive", "?limit=99999");
-    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(res.status).toBe(200);
-    const call = mockFetchOpenHealthInstances.mock.calls[0][2];
-    expect(call.limit).toBeLessThanOrEqual(100);
-  });
-
-  test("drops gold keys even when the upstream body contains them", async () => {
-    mockFetchOpenHealthInstances.mockResolvedValue({
-      rows: [
-        {
-          gt_id: "gt-1",
-          task: "patient_diagnosis",
-          granularity: "note",
-          split: "public",
-          patient_id: "p-1",
-          encounter_id: "e-1",
-          difficulty: "easy",
-          ground_truth: { secret: true },
-          groundTruth: { secret: true },
-          gold: "leak",
-        },
-      ],
-    });
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive");
-    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
     const body = await res.json();
-    expect(body.rows[0]).not.toHaveProperty("ground_truth");
-    expect(body.rows[0]).not.toHaveProperty("groundTruth");
-    expect(body.rows[0]).not.toHaveProperty("gold");
-    expect(body.rows[0].gt_id).toBe("gt-1");
+    expect(res.status).toBe(200);
+    expect(body.tasks).toEqual([{ gtId: "gt-1", split: "public", difficulty: "easy" }]);
+    expect(body.sourceRunId).toBe("1700000000000");
+    expect(body.refreshing).toBe(true);
+    expect(mockResolveCachedTaskList).toHaveBeenCalledWith(TARGET, "heldout");
+  });
+});
+
+describe("POST /api/workspaces/[slug]/openhealth/benchmarks/tasks", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupHappyPath();
   });
 
-  test("returns 503 when the swarm is not configured", async () => {
-    mockGetWorkspaceSwarmAccess.mockResolvedValue({ success: false, error: { type: "SWARM_NOT_CONFIGURED" } });
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive");
-    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
+  function postRequest(slug: string, body: unknown) {
+    return makeRequest(slug, "", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  test("rejects a gold-shaped key with 400", async () => {
+    const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
+    const req = postRequest("hive", { split: "public", gold: "leak" });
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
+    expect(res.status).toBe(400);
+    expect(mockStrutFetch).not.toHaveBeenCalled();
+  });
+
+  test("rejects an invalid split with 400", async () => {
+    const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
+    const req = postRequest("hive", { split: "train" });
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 503 when delegation is not fresh/pushed, dispatching nothing", async () => {
+    mockEnsureStrutDelegation.mockResolvedValue({ status: "failed" });
+    const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
+    const req = postRequest("hive", { split: "public" });
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(503);
+    expect(mockStrutFetch).not.toHaveBeenCalled();
   });
 
-  test("returns 502 when the scorer fetch throws", async () => {
-    mockFetchOpenHealthInstances.mockRejectedValue(new Error("scorer down"));
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive");
-    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(res.status).toBe(502);
+  test("happy path dispatches { input: { split } } with no difficulty and returns 202", async () => {
+    const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
+    const req = postRequest("hive", { split: "public" });
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
+    expect(res.status).toBe(202);
+    const [, , opts] = mockStrutFetch.mock.calls[0];
+    expect(opts.body).toEqual({ input: { split: "public" } });
   });
 });

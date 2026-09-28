@@ -44,14 +44,14 @@ import { z } from "zod";
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { resolveOrgConversationRowId } from "@/services/org-canvas-conversation";
-import { STRUT_ACTOR_HEADER, ensureStrutDelegation } from "@/services/bifrost/strut-delegation";
+import { ensureStrutDelegation } from "@/services/bifrost/strut-delegation";
 import { resolveStrutTarget, type StrutTarget } from "@/services/strut-target";
+import { strutFetch } from "@/lib/strut/fetch";
 import type { CapabilityContext } from "./capabilities";
 
 export const DISPATCH_STRUT_TOOL = "dispatch_strut";
 export const STRUT_AGENT_KIND = "strut_chat";
 
-const STRUT_TIMEOUT_MS = 15_000;
 /** Cap on the reply text `check_strut_chat` hands the model. */
 const MAX_REPLY_CHARS = 20_000;
 const MAX_LISTED_CHATS = 30;
@@ -85,18 +85,6 @@ async function resolveStrut(ctx: CapabilityContext, workspaceSlug: string): Prom
   return resolved.target;
 }
 
-async function strutFetch(target: StrutTarget, path: string, init?: { body: unknown }): Promise<Response> {
-  return fetch(`${target.labBase}${path}`, {
-    method: init ? "POST" : "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-token": target.swarmApiKey,
-      [STRUT_ACTOR_HEADER]: target.actor,
-    },
-    ...(init ? { body: JSON.stringify(init.body) } : {}),
-    signal: AbortSignal.timeout(STRUT_TIMEOUT_MS),
-  });
-}
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");

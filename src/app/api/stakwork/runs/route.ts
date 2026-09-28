@@ -7,7 +7,6 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { canReadRunReport } from "@/lib/run-report/types";
 import { redactSensitiveKeys } from "@/lib/run-report/redact";
 import { logger } from "@/lib/logger";
-import { projectOpenHealthRunResponse } from "@/lib/openhealth-benchmarks/constants";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -97,6 +96,18 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
+      // OPENHEALTH_BENCHMARK_RUNNER is retired for this route: OpenHealth
+      // benchmark runs are read exclusively through
+      // /api/workspaces/[slug]/openhealth/benchmarks/runs now, and Hive no
+      // longer creates StakworkRun rows for them. Return an empty list
+      // rather than 400, so an old client polling this URL degrades
+      // quietly instead of erroring.
+      if (type === StakworkRunType.OPENHEALTH_BENCHMARK_RUNNER) {
+        return NextResponse.json(
+          { success: true, runs: [], total: 0, limit: 50, offset: 0 },
+          { status: 200 },
+        );
+      }
       queryData.type = type;
     }
 
@@ -174,16 +185,11 @@ export async function GET(request: NextRequest) {
               const parsed = typeof run.result === "string"
                 ? JSON.parse(run.result as string)
                 : run.result;
-              // OPENHEALTH_BENCHMARK_RUNNER must never rely on the generic
-              // key-based redactor: it does not drop task/gtId-adjacent gold
-              // fields (ground_truth, groundTruth, gold, problemList, matched,
-              // the raw missed/extra arrays). Project through the explicit
-              // allowlist instead — this is the only path for this type.
-              const projected =
-                run.type === "OPENHEALTH_BENCHMARK_RUNNER"
-                  ? projectOpenHealthRunResponse(parsed as Record<string, unknown>)
-                  : redactSensitiveKeys(parsed);
-              safeResult = JSON.stringify(projected);
+              // OPENHEALTH_BENCHMARK_RUNNER is excluded above (the `type`
+              // branch returns early), and getStakworkRuns excludes it from
+              // unfiltered queries — so this path never sees that type. The
+              // generic redactor is safe for every remaining type.
+              safeResult = JSON.stringify(redactSensitiveKeys(parsed));
             } catch {
               // If the result isn't valid JSON, redact keys from the raw string
               // is not possible — emit as-is. The result field is best-effort.
