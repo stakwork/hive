@@ -81,8 +81,24 @@ describe("RunReportView — render states", () => {
   });
 
   it("shows agent commentary slots only when the bundle carries traces", () => {
-    // full fixture has traces -> commentary tier renders
+    // full fixture has traces -> commentary tier renders. Hops 1/3/4 now carry
+    // real agent assessments (not "not yet assessed") since the fixture's R2/R3
+    // traces include the new fields.
     render(<RunReportView payload={payload()} />);
+    expect(
+      screen.getAllByTestId("run-report-hop-commentary-assessed").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("renders 'Agent assessment' on hops 1/3/4 for the full fixture", () => {
+    render(<RunReportView payload={payload()} />);
+    expect(screen.getAllByText(/Agent assessment/i).length).toBeGreaterThan(0);
+  });
+
+  it("shows NOT YET ASSESSED on the legacy fixture (missing new fields)", () => {
+    // legacy-traces deletes the three new fields from every trace, so hops
+    // 1/3/4 fall back to NOT YET ASSESSED per brief item 4.
+    render(<RunReportView payload={payload({ projection: projectionFor("legacy-traces") })} />);
     expect(screen.getAllByText(/not yet assessed/i).length).toBeGreaterThan(0);
   });
 

@@ -14,10 +14,14 @@ import {
   readTraces,
   readSummaries,
   readSynthesis,
+  isNotTracedAnswer,
+  rubricVerdict,
+  failureTraces,
   MAX_HIGHLIGHT_TOKENS,
 } from "@/lib/run-report/derive";
 import { FULL_BUNDLE } from "@/app/api/mock/run-report/fixtures/full";
-import type { SanitizedNode, TimelineStep } from "@/lib/run-report/types";
+import { RUN_REPORT_FIXTURES } from "@/app/api/mock/run-report/fixtures";
+import type { SanitizedNode, TimelineStep, RubricRow, TraceRow } from "@/lib/run-report/types";
 
 describe("toEpochMs", () => {
   it("parses the generator's space-separated form as UTC", () => {
@@ -480,9 +484,32 @@ describe("readTraces", () => {
     expect(traces[0].rubric_id).toBe("R2");
     expect(traces[0].pathway.length).toBeGreaterThan(0);
     expect(traces[0].q_ingested_to_graph).not.toBeNull();
-    expect(traces[0].q_draft_got_it?.answer).toBe("no");
+    expect(traces[0].q_draft_got_it?.answer).toBe("not-traced");
     expect(traces[0].root_cause).toContain("Chunk-boundary");
     expect(traces[0].fix_suggestions.length).toBeGreaterThan(0);
+  });
+
+  it("reads the three new hop 1/3/4 fields", () => {
+    const traces = readTraces(FULL_BUNDLE.analysis);
+    const r2 = traces.find((t) => t.rubric_id === "R2")!;
+    expect(r2.q_deliverable_has_it?.answer).toBe("partial");
+    expect(r2.q_checklist_has_it?.answer).toBe("not-traced");
+    expect(r2.q_checklist_matched_rubric?.answer).toBe("diverged");
+
+    const r3 = traces.find((t) => t.rubric_id === "R3")!;
+    expect(r3.q_deliverable_has_it?.answer).toBe("yes");
+    expect(r3.q_checklist_has_it?.answer).toBe("yes");
+    expect(r3.q_checklist_matched_rubric?.answer).toBe("not-traced");
+  });
+
+  it("gives null for the three new fields on the legacy fixture", () => {
+    const traces = readTraces(RUN_REPORT_FIXTURES["legacy-traces"].analysis);
+    expect(traces.length).toBeGreaterThan(0);
+    for (const t of traces) {
+      expect(t.q_deliverable_has_it).toBeNull();
+      expect(t.q_checklist_has_it).toBeNull();
+      expect(t.q_checklist_matched_rubric).toBeNull();
+    }
   });
 
   it("returns empty array for missing or empty analysis", () => {
@@ -495,6 +522,104 @@ describe("readTraces", () => {
   it("skips entries without a rubric_id", () => {
     const traces = readTraces({ traces: [{ pathway: [], root_cause: "x" }] });
     expect(traces).toHaveLength(0);
+  });
+});
+
+describe("isNotTracedAnswer", () => {
+  it("matches the sentinel in various casings/separators", () => {
+    expect(isNotTracedAnswer("not-traced")).toBe(true);
+    expect(isNotTracedAnswer(" Not Traced ")).toBe(true);
+    expect(isNotTracedAnswer("not_traced")).toBe(true);
+    expect(isNotTracedAnswer("NOT-TRACED")).toBe(true);
+  });
+
+  it("does not match other placeholders or normal answers", () => {
+    expect(isNotTracedAnswer("N/A")).toBe(false);
+    expect(isNotTracedAnswer("")).toBe(false);
+    expect(isNotTracedAnswer("diverged")).toBe(false);
+    expect(isNotTracedAnswer("unknown")).toBe(false);
+    expect(isNotTracedAnswer(undefined)).toBe(false);
+    expect(isNotTracedAnswer(null)).toBe(false);
+  });
+});
+
+describe("rubricVerdict", () => {
+  it("returns pass for a passed row", () => {
+    const row: RubricRow = { id: "R1", title: "t", passed: true, verdict: "pass", reasoning: "", matchCriteria: "", documentExcerpt: "" };
+    expect(rubricVerdict(row)).toBe("pass");
+  });
+
+  it("returns fail for a non-blank verdict that isn't passed", () => {
+    const row: RubricRow = { id: "R2", title: "t", passed: false, verdict: "fail", reasoning: "", matchCriteria: "", documentExcerpt: "" };
+    expect(rubricVerdict(row)).toBe("fail");
+  });
+
+  it("returns unscored for a blank verdict", () => {
+    const row: RubricRow = { id: "R3", title: "t", passed: false, verdict: "", reasoning: "", matchCriteria: "", documentExcerpt: "" };
+    expect(rubricVerdict(row)).toBe("unscored");
+  });
+});
+
+describe("failureTraces", () => {
+  function makeRow(id: string, overrides: Partial<RubricRow> = {}): RubricRow {
+    return { id, title: id, passed: false, verdict: "fail", reasoning: "", matchCriteria: "", documentExcerpt: "", ...overrides };
+  }
+  function makeTrace(rubric_id: string): TraceRow {
+    return {
+      rubric_id,
+      pathway: [],
+      q_ingested_to_graph: null,
+      q_knowable_or_derived: null,
+      q_draft_got_it: null,
+      q_verify_got_it: null,
+      q_deliverable_has_it: null,
+      q_checklist_has_it: null,
+      q_checklist_matched_rubric: null,
+      root_cause: "",
+      classification: "",
+      fix_suggestions: [],
+    };
+  }
+
+  it("drops a trace whose rubric_id matches only passed rows", () => {
+    const traces = [makeTrace("R1")];
+    const rows = [makeRow("R1", { passed: true, verdict: "pass" })];
+    expect(failureTraces(traces, rows)).toHaveLength(0);
+  });
+
+  it("keeps a trace for an unscored row", () => {
+    const traces = [makeTrace("R3")];
+    const rows = [makeRow("R3", { passed: false, verdict: "" })];
+    expect(failureTraces(traces, rows)).toHaveLength(1);
+  });
+
+  it("keeps a trace for a failed row", () => {
+    const traces = [makeTrace("R2")];
+    const rows = [makeRow("R2", { passed: false, verdict: "fail" })];
+    expect(failureTraces(traces, rows)).toHaveLength(1);
+  });
+
+  it("keeps a trace whose rubric_id has no matching row", () => {
+    const traces = [makeTrace("R-unknown")];
+    expect(failureTraces(traces, [])).toHaveLength(1);
+  });
+
+  it("keeps a trace when duplicate rows for the same id disagree on verdict", () => {
+    const traces = [makeTrace("R1")];
+    const rows = [
+      makeRow("R1", { passed: true, verdict: "pass" }),
+      makeRow("R1", { passed: false, verdict: "fail" }),
+    ];
+    expect(failureTraces(traces, rows)).toHaveLength(1);
+  });
+
+  it("drops a trace when all duplicate rows for the id agree on pass", () => {
+    const traces = [makeTrace("R1")];
+    const rows = [
+      makeRow("R1", { passed: true, verdict: "pass" }),
+      makeRow("R1", { passed: true, verdict: "pass" }),
+    ];
+    expect(failureTraces(traces, rows)).toHaveLength(0);
   });
 });
 
