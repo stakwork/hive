@@ -123,6 +123,7 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   code_change_land: async () => (await import("./strut-runs/code-change-land")).handleCodeChangeLandSettled,
   system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
+  openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
 };
 
 export function hashStrutRunToken(token: string): string {
@@ -353,22 +354,25 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
 
 // ─── The row's swarm (never the policy) ───────────────────────────────────
 
-interface RowLab {
+export interface RowLab {
   labBase: string;
   swarmApiKey: string;
+  /** `Swarm.name` — the swarm's other services (stakgraph) are addressed by it. */
+  swarmName: string;
 }
 
 /** Where a row's run lives, from the row's `swarmId`. Null when the swarm is gone. */
 export async function labForRow(row: Pick<StrutRunRow, "swarmId">): Promise<RowLab | null> {
   const swarm = await db.swarm.findUnique({
     where: { id: row.swarmId },
-    select: { swarmUrl: true, swarmApiKey: true },
+    select: { name: true, swarmUrl: true, swarmApiKey: true },
   });
   if (!swarm?.swarmUrl || !swarm.swarmApiKey) return null;
   try {
     return {
       labBase: strutLabBaseUrl(swarm.swarmUrl),
       swarmApiKey: EncryptionService.getInstance().decryptField("swarmApiKey", swarm.swarmApiKey),
+      swarmName: swarm.name,
     };
   } catch (err) {
     logger.warn("Could not decrypt the swarm key for a strut run", STRUT_RUN_LOG_TAG, {

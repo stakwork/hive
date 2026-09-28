@@ -1,12 +1,13 @@
 /**
  * @vitest-environment jsdom
  *
- * Unit tests for the OpenHealth Benchmarks page gate:
- * - Slug "hive" with a resolved workspace renders the existing page.
+ * Unit tests for the OpenHealth Benchmarks page:
+ * - Slug "hive" with a resolved workspace renders the page.
  * - Any other slug (including "openhealth") calls notFound() once the
  *   workspace has resolved.
  * - While useWorkspace().loading is true, neither the tasks panel nor the
  *   run history render — regardless of slug.
+ * - The tab comes from `?tab=`.
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -16,6 +17,7 @@ globalThis.React = React;
 
 const mockUseWorkspace = vi.hoisted(() => vi.fn());
 const mockNotFound = vi.hoisted(() => vi.fn());
+const mockSearchParams = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: mockUseWorkspace,
@@ -23,6 +25,9 @@ vi.mock("@/hooks/useWorkspace", () => ({
 
 vi.mock("next/navigation", () => ({
   notFound: mockNotFound,
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  usePathname: () => "/w/hive/openhealth/benchmarks",
+  useSearchParams: mockSearchParams,
 }));
 
 vi.mock("@/components/openhealth/OpenHealthTasksPanel", () => ({
@@ -40,9 +45,10 @@ const OpenHealthBenchmarksPage = (
 describe("OpenHealthBenchmarksPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSearchParams.mockReturnValue(new URLSearchParams());
   });
 
-  it("renders the existing page for slug hive once resolved", () => {
+  it("renders the page for slug hive once resolved", () => {
     mockUseWorkspace.mockReturnValue({
       workspace: { id: "ws-hive", slug: "hive" },
       loading: false,
@@ -53,6 +59,19 @@ describe("OpenHealthBenchmarksPage", () => {
     expect(mockNotFound).not.toHaveBeenCalled();
     expect(screen.getByText("OpenHealth Benchmarks")).toBeInTheDocument();
     expect(screen.getByTestId("tasks-panel")).toBeInTheDocument();
+  });
+
+  it("opens the runs tab from the URL", () => {
+    mockSearchParams.mockReturnValue(new URLSearchParams("tab=runs&run=run-1"));
+    mockUseWorkspace.mockReturnValue({
+      workspace: { id: "ws-hive", slug: "hive" },
+      loading: false,
+    });
+
+    render(<OpenHealthBenchmarksPage />);
+
+    expect(screen.getByTestId("runs-history")).toBeInTheDocument();
+    expect(screen.queryByTestId("tasks-panel")).not.toBeInTheDocument();
   });
 
   it("calls notFound() for the openhealth slug once the workspace has resolved", () => {
