@@ -23,6 +23,10 @@ import { RubricLedger } from "@/components/run-report/RubricLedger";
 import { buildChainModel } from "@/lib/run-report/chain";
 import type { RunReportProjection, RubricRow } from "@/lib/run-report/types";
 
+// jsdom does not implement scrollIntoView; the rail hash-select handler calls
+// it when a `#rubric-<id>` hash selects a criterion.
+window.HTMLElement.prototype.scrollIntoView = vi.fn();
+
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 vi.mock("@/hooks/useUserTimezone", () => ({
@@ -115,6 +119,37 @@ function makeRow(
     documentExcerpt: "",
     ...overrides,
   };
+}
+
+/** Minimal TraceRow factory — all q_* fields default to null. */
+function makeTrace(
+  rubric_id: string,
+  overrides: Partial<import("@/lib/run-report/types").TraceRow> = {},
+): import("@/lib/run-report/types").TraceRow {
+  return {
+    rubric_id,
+    pathway: [],
+    q_ingested_to_graph: null,
+    q_knowable_or_derived: null,
+    q_draft_got_it: null,
+    q_verify_got_it: null,
+    q_deliverable_has_it: null,
+    q_checklist_has_it: null,
+    q_checklist_matched_rubric: null,
+    root_cause: "",
+    classification: "",
+    fix_suggestions: [],
+    ...overrides,
+  };
+}
+
+/** Build a projection with rubric rows AND matching analysis.traces[]. */
+function makeProjectionWithTraces(
+  rubricRows: RubricRow[],
+  traces: import("@/lib/run-report/types").TraceRow[],
+): RunReportProjection {
+  const projection = makeProjection(rubricRows);
+  return { ...projection, analysis: { summaries: [], traces } };
 }
 
 // ─── Test-local rubric state fixtures ────────────────────────────────────────
@@ -774,6 +809,131 @@ describe("CriterionMarkers — shrink-0 class change-detector", () => {
     // Change-detector: the root span of CriterionMarkers must carry shrink-0
     // so it is never squeezed by a truncating sibling in the 240px rail.
     expect(found).toBe(true);
+  });
+});
+
+// ─── Commentary status: assessed / not-traced / not-traced-passed / legacy ───
+
+describe("RubricLedger — commentary status on hops 1/3/4", () => {
+  it("shows the assessed box on hops 1/3/4 with the deterministic text still present", () => {
+    const row = makeRow({ id: "R-A", title: "Assessed criterion" });
+    const trace = makeTrace("R-A", {
+      q_deliverable_has_it: { answer: "partial", evidence: "Some evidence." },
+      q_checklist_has_it: { answer: "yes", evidence: "" },
+      q_checklist_matched_rubric: { answer: "diverged", evidence: "" },
+    });
+    render(
+      <RubricLedger
+        projection={makeProjectionWithTraces([row], [trace])}
+        chain={buildChainModel(makeProjectionWithTraces([row], [trace]))}
+        onOpenDoc={() => {}}
+      />,
+    );
+    const boxes = screen.getAllByTestId("run-report-hop-commentary-assessed");
+    expect(boxes.length).toBe(3);
+    // The deterministic gap/checklist text for hop 4 (no automatic signal) stays.
+    expect(
+      screen.getByText(/No deterministic signal exists for this/i),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the not-traced pill and no assessed box for a not-traced hop", () => {
+    const row = makeRow({ id: "R-NT", title: "Not traced criterion" });
+    const trace = makeTrace("R-NT", {
+      q_deliverable_has_it: { answer: "not-traced", evidence: "" },
+    });
+    const projection = makeProjectionWithTraces([row], [trace]);
+    render(
+      <RubricLedger projection={projection} chain={buildChainModel(projection)} onOpenDoc={() => {}} />,
+    );
+    expect(screen.getAllByTestId("run-report-hop-commentary-not-traced").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows the verification note under a not-traced pill", () => {
+    // hop 2's primary field (q_draft_got_it) is not-traced, but q_verify_got_it
+    // is a real answer — the note must still surface under the pill.
+    const row = makeRow({ id: "R-V", title: "Verify note criterion" });
+    const trace = makeTrace("R-V", {
+      q_draft_got_it: { answer: "not-traced", evidence: "" },
+      q_verify_got_it: { answer: "no", evidence: "" },
+    });
+    const projection = makeProjectionWithTraces([row], [trace]);
+    render(
+      <RubricLedger projection={projection} chain={buildChainModel(projection)} onOpenDoc={() => {}} />,
+    );
+    expect(screen.getByText("Verification: no")).toBeInTheDocument();
+  });
+
+  it("shows 'not traced (passed)' on hops 2/5/6 and no root-cause box for a passed rubric", () => {
+    const row: RubricRow = {
+      id: "R1",
+      title: "Passed criterion",
+      passed: true,
+      verdict: "pass",
+      reasoning: "",
+      matchCriteria: "",
+      documentExcerpt: "",
+    };
+    const trace = makeTrace("R1", {
+      q_deliverable_has_it: { answer: "yes", evidence: "" },
+      q_checklist_has_it: { answer: "yes", evidence: "" },
+      q_checklist_matched_rubric: { answer: "yes", evidence: "" },
+    });
+    const projection = makeProjectionWithTraces([row], [trace]);
+    render(
+      <RubricLedger projection={projection} chain={buildChainModel(projection)} onOpenDoc={() => {}} />,
+    );
+    // Select via hash since the passed row sits in the folded passes group.
+    window.location.hash = "#rubric-R1";
+    window.dispatchEvent(new Event("hashchange"));
+    const passedPills = screen.getAllByTestId("run-report-hop-commentary-not-traced-passed");
+    expect(passedPills.length).toBe(3);
+    // No root-cause box for a passed rubric.
+    expect(screen.queryByText(/root cause/i)).not.toBeInTheDocument();
+  });
+
+  it("an unscored rubric behaves like a failed one (assessed hops render)", () => {
+    const row = makeRow({ id: "R-U", title: "Unscored criterion", verdict: "", passed: false });
+    const trace = makeTrace("R-U", {
+      q_deliverable_has_it: { answer: "yes", evidence: "" },
+    });
+    const projection = makeProjectionWithTraces([row], [trace]);
+    render(
+      <RubricLedger projection={projection} chain={buildChainModel(projection)} onOpenDoc={() => {}} />,
+    );
+    expect(screen.getAllByTestId("run-report-hop-commentary-assessed").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("legacy fixture (no traces at all) shows not-yet-assessed on every hop", () => {
+    const row = makeRow({ id: "R-LEGACY", title: "Legacy criterion" });
+    const projection = makeProjection([row]); // no traces
+    render(
+      <RubricLedger projection={projection} chain={buildChainModel(projection)} onOpenDoc={() => {}} />,
+    );
+    // hasCommentary gates the whole tier off when there are no traces at all.
+    expect(screen.queryByTestId("run-report-hop-commentary-not-yet-assessed")).not.toBeInTheDocument();
+  });
+
+  it("a bundle with a trace but a missing/blank field keeps NOT YET ASSESSED for that hop", () => {
+    const row = makeRow({ id: "R-BLANK", title: "Blank field criterion" });
+    // Trace exists (so hasCommentary is true) but the hop 1 field is blank.
+    const trace = makeTrace("R-BLANK", {
+      q_deliverable_has_it: { answer: "", evidence: "" },
+      q_checklist_has_it: { answer: "yes", evidence: "" },
+    });
+    const projection = makeProjectionWithTraces([row], [trace]);
+    render(
+      <RubricLedger projection={projection} chain={buildChainModel(projection)} onOpenDoc={() => {}} />,
+    );
+    expect(screen.getAllByTestId("run-report-hop-commentary-not-yet-assessed").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("no traces at all renders no commentary slots", () => {
+    renderLedger([PLAIN_FAIL]);
+    expect(screen.queryByTestId("run-report-hop-commentary-assessed")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("run-report-hop-commentary-not-traced")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("run-report-hop-commentary-not-traced-passed")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("run-report-hop-commentary-not-yet-assessed")).not.toBeInTheDocument();
   });
 });
 

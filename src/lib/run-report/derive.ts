@@ -389,6 +389,9 @@ export function readTraces(analysis: unknown): TraceRow[] {
       q_knowable_or_derived: readQA(entry.q_knowable_or_derived),
       q_draft_got_it: readQA(entry.q_draft_got_it),
       q_verify_got_it: readQA(entry.q_verify_got_it),
+      q_deliverable_has_it: readQA(entry.q_deliverable_has_it),
+      q_checklist_has_it: readQA(entry.q_checklist_has_it),
+      q_checklist_matched_rubric: readQA(entry.q_checklist_matched_rubric),
       root_cause: asString(entry.root_cause) ?? "",
       classification: asString(entry.classification) ?? "",
       fix_suggestions: readArray(entry, "fix_suggestions").filter(
@@ -406,6 +409,58 @@ function readQA(value: unknown): { answer: string; evidence: string } | null {
     answer: asString(value.answer) ?? "",
     evidence: asString(value.evidence) ?? "",
   };
+}
+
+/**
+ * Sentinel check for the producer's "left this rubric out" answer.
+ *
+ * Normalizes by trimming, lowercasing, and collapsing runs of whitespace,
+ * underscores and hyphens into a single hyphen, then compares to
+ * `"not-traced"`. This accepts `not-traced`, `Not Traced`, `not_traced` and
+ * `NOT-TRACED` — but deliberately does NOT match other placeholders like
+ * `N/A` or `unknown`, which are not the contract sentinel.
+ */
+export function isNotTracedAnswer(answer: string | undefined | null): boolean {
+  if (!answer) return false;
+  const normalized = answer
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "-");
+  return normalized === "not-traced";
+}
+
+/**
+ * Single definition of "passed" for a rubric row, shared by the chain builder
+ * (commentary status) and the failure-traces filter (§5) so the two views of
+ * pass/fail can never drift apart.
+ */
+export function rubricVerdict(row: RubricRow): "pass" | "fail" | "unscored" {
+  if (row.passed) return "pass";
+  return row.verdict?.trim() ? "fail" : "unscored";
+}
+
+/**
+ * Filter `traces[]` down to the ones that belong in a failure-only view.
+ *
+ * A trace is dropped only when its `rubric_id` matches at least one row in
+ * `rubricRows` AND every matching row is a `pass`. Unscored rows, failed
+ * rows, ids with no matching row at all, and ids whose duplicate rows
+ * disagree on verdict all keep their trace — when in doubt, the trace stays.
+ */
+export function failureTraces(traces: TraceRow[], rubricRows: RubricRow[]): TraceRow[] {
+  const rowsById = new Map<string, RubricRow[]>();
+  for (const row of rubricRows) {
+    const list = rowsById.get(row.id);
+    if (list) list.push(row);
+    else rowsById.set(row.id, [row]);
+  }
+
+  return traces.filter((trace) => {
+    const matches = rowsById.get(trace.rubric_id);
+    if (!matches || matches.length === 0) return true;
+    const allPass = matches.every((row) => rubricVerdict(row) === "pass");
+    return !allPass;
+  });
 }
 
 /**

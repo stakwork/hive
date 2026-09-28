@@ -119,6 +119,12 @@ export interface TraceRow {
   q_knowable_or_derived: { answer: string; evidence: string } | null;
   q_draft_got_it: { answer: string; evidence: string } | null;
   q_verify_got_it: { answer: string; evidence: string } | null;
+  /** Hop 1 (deliverable) assessment. New field — null on older bundles. */
+  q_deliverable_has_it: { answer: string; evidence: string } | null;
+  /** Hop 3 (checklist) assessment. New field — null on older bundles. */
+  q_checklist_has_it: { answer: string; evidence: string } | null;
+  /** Hop 4 (checklist vs rubric) assessment. New field — null on older bundles. */
+  q_checklist_matched_rubric: { answer: string; evidence: string } | null;
   root_cause: string;
   classification: string;
   fix_suggestions: string[];
