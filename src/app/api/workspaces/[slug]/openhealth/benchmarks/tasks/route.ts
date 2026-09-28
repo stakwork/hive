@@ -27,7 +27,7 @@ const DEFAULT_LIMIT = 50;
  *
  * Read-only public/heldout-split task metadata list, proxied from the
  * OpenHealth swarm's scorer (`GET /score/instances`). Never returns gold.
- * Gated to the `openhealth` workspace only.
+ * Gated to the `hive` workspace only.
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { slug } = await params;
 
-    // Slug gate FIRST — before any access check, so a non-openhealth slug
+    // Slug gate FIRST — before any access check, so a non-hive slug
     // (or a non-member probing it) gets the same 404 either way.
     if (!OPENHEALTH_SLUGS.includes(slug)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -109,7 +109,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       offset = parsed;
     }
 
-    const swarmResult = await getWorkspaceSwarmAccess(slug, userId);
+    // The slug gate above already rejects every non-hive URL before access,
+    // so a successful call has URL slug "hive". Use that literal — not a
+    // second workspace load that could diverge from the URL workspace.
+    const swarmResult = await getWorkspaceSwarmAccess("hive", userId);
     if (!swarmResult.success) {
       return NextResponse.json({ error: "Swarm not configured" }, { status: 503 });
     }

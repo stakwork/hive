@@ -46,7 +46,7 @@ interface StartBody {
  * Start exactly one `openhealth-run` strut instance for a selected
  * (task, gt_id) pair. Creates a single OPENHEALTH_BENCHMARK_RUNNER
  * StakworkRun row, then dispatches to the workspace swarm's strut lab.
- * Gated to the `openhealth` workspace only. No Stakwork runner path, no
+ * Gated to the `hive` workspace only. No Stakwork runner path, no
  * model picker.
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
@@ -141,7 +141,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const swarmResult = await getWorkspaceSwarmAccess(slug, userId);
+    // The slug gate above already rejects every non-hive URL before access,
+    // so a successful call has URL slug "hive". Use that literal — not a
+    // second workspace load that could diverge from the URL workspace.
+    const swarmResult = await getWorkspaceSwarmAccess("hive", userId);
     if (!swarmResult.success) {
       return NextResponse.json(
         { error: "Swarm not configured for the strut runner" },
@@ -160,7 +163,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // status means we must not spend the workspace swarm key. ────────────────
     const actor = await resolveStrutActor(userId);
     const delegation = await ensureStrutDelegation(
-      { workspaceId, workspaceSlug: slug, userId },
+      { workspaceId, workspaceSlug: "hive", userId },
       { swarmUrl, swarmApiKey },
       { actor },
     );
