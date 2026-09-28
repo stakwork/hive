@@ -8,7 +8,10 @@
  *   - list / get: rows serialized, scoped to the workspace and the kind; a
  *     PENDING row past the probe age whose run is over on strut is settled
  *     through `completeStrutRun` and re-read; a fresh PENDING row is not
- *     probed; a probe failure leaves the row as is.
+ *     probed; a probe failure leaves the row as is;
+ *   - improve: dispatches `openhealth-improve` over one benchmark run with
+ *     `apply` on; its runs are found by that run's strut id, and the
+ *     in-flight guard is per benchmark run.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -34,8 +37,11 @@ vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: 
 
 import {
   getOpenHealthRun,
+  hasPendingOpenHealthImprove,
   hasPendingOpenHealthRun,
+  launchOpenHealthImprove,
   launchOpenHealthRun,
+  listOpenHealthImprovements,
   listOpenHealthRuns,
 } from "@/services/strut-runs/openhealth";
 
@@ -216,5 +222,120 @@ describe("getOpenHealthRun", () => {
     const run = await getOpenHealthRun("ws-1", "run-1", { now: NOW });
 
     expect(run).toMatchObject({ id: "run-1", outcome: "succeeded", matched: [{ pred: "N179", gt: "N179" }], extra: ["E876"] });
+  });
+});
+
+describe("launchOpenHealthImprove", () => {
+  it("dispatches openhealth-improve over the one run, with apply on", async () => {
+    mockDispatch.mockResolvedValue({ runId: "improve-1", strutRunId: "2", swarmId: "swarm-1" });
+
+    const out = await launchOpenHealthImprove({
+      workspaceId: "ws-1",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      strutRunId: "1790614605308",
+    });
+
+    expect(out.runId).toBe("improve-1");
+    expect(mockDispatch).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      userId: "user-1",
+      kind: "openhealth_improve",
+      workflow: "openhealth-improve",
+      purpose: "benchmark",
+      input: { runIds: "1790614605308", apply: true },
+      publicBaseUrl: "https://hive.example",
+    });
+  });
+});
+
+describe("hasPendingOpenHealthImprove", () => {
+  it("looks for a PENDING improve run of that benchmark run in the workspace", async () => {
+    mockStrutRun.findFirst.mockResolvedValue({ id: "improve-1" });
+
+    expect(await hasPendingOpenHealthImprove("ws-1", "1790614605308")).toBe(true);
+    expect(mockStrutRun.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          workspaceId: "ws-1",
+          kind: "openhealth_improve",
+          status: StrutRunStatus.PENDING,
+          input: { path: ["runIds"], equals: "1790614605308" },
+        },
+      }),
+    );
+  });
+
+  it("is false when there is none", async () => {
+    mockStrutRun.findFirst.mockResolvedValue(null);
+    expect(await hasPendingOpenHealthImprove("ws-1", "1790614605308")).toBe(false);
+  });
+});
+
+describe("listOpenHealthImprovements", () => {
+  const improve = (overrides: Record<string, unknown> = {}) =>
+    row({
+      id: "improve-1",
+      kind: "openhealth_improve",
+      workflow: "openhealth-improve",
+      strutRunId: "1790625755699",
+      input: { runIds: "1790614605308", apply: true },
+      ...overrides,
+    });
+  const DONE = {
+    status: StrutRunStatus.SUCCESS,
+    output: {
+      applied: true,
+      summary: "One new Concept.",
+      proposals: [{ action: "create", name: "Unifying Diagnosis From Findings", parent: "Problem List" }],
+      created: [{ status: "Success" }],
+    },
+    durationMs: 231_023,
+    settledAt: NOW,
+  };
+
+  it("lists the improve runs of that benchmark run, newest first", async () => {
+    mockStrutRun.findMany.mockResolvedValue([improve({ ...DONE })]);
+
+    const improvements = await listOpenHealthImprovements("ws-1", "1790614605308", { now: NOW });
+
+    expect(mockStrutRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          workspaceId: "ws-1",
+          kind: "openhealth_improve",
+          input: { path: ["runIds"], equals: "1790614605308" },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+    );
+    expect(improvements).toHaveLength(1);
+    expect(improvements[0]).toMatchObject({ id: "improve-1", outcome: "succeeded", applied: true });
+    expect(improvements[0].proposals[0]).toMatchObject({ name: "Unifying Diagnosis From Findings", write: "created" });
+    expect(mockProbe).not.toHaveBeenCalled();
+  });
+
+  it("settles a PENDING row whose run is over on strut", async () => {
+    mockStrutRun.findMany.mockResolvedValue([improve()]);
+    mockProbe.mockResolvedValue({
+      kind: "settled",
+      completion: { status: "success", output: DONE.output, durationMs: DONE.durationMs },
+    });
+    mockStrutRun.findUnique
+      .mockResolvedValueOnce({ id: "improve-1", tokenHash: "hash" })
+      .mockResolvedValueOnce(improve({ ...DONE }));
+
+    const improvements = await listOpenHealthImprovements("ws-1", "1790614605308", { now: NOW });
+
+    expect(mockComplete).toHaveBeenCalledWith(
+      { id: "improve-1", tokenHash: "hash" },
+      expect.objectContaining({ status: "success" }),
+    );
+    expect(improvements[0]).toMatchObject({ outcome: "succeeded" });
+  });
+
+  it("is empty for a run nobody improved", async () => {
+    mockStrutRun.findMany.mockResolvedValue([]);
+    expect(await listOpenHealthImprovements("ws-1", "1790614605308", { now: NOW })).toEqual([]);
   });
 });
