@@ -14,8 +14,6 @@ import {
   createLinkElements,
   updatePositions,
   setupNodeHoverHighlight,
-  applyNodeEmphasis,
-  fitToView,
 } from "./graphUtils";
 
 interface GraphVisualizationProps {
@@ -30,19 +28,7 @@ interface GraphVisualizationProps {
   iconMap?: Record<string, string>;
   /** Per-edge-label stroke style function. */
   edgeStyleFn?: (label: string, sourceType?: string) => EdgeStyle | undefined;
-  /** Nodes (and their edges) kept in the layout but not drawn. */
-  hiddenIds?: ReadonlySet<string>;
-  /** Nodes drawn with a ring. */
-  activeIds?: ReadonlySet<string>;
-  /**
-   * Lay the graph out before it is drawn and zoom to show all of it — for a
-   * graph too large for its canvas at 1:1. The layout does not animate in.
-   */
-  fit?: boolean;
 }
-
-/** Simulation ticks run up front when `fit` is set — about what it takes to settle. */
-const FIT_TICKS = 300;
 
 export function GraphVisualization({
   nodes,
@@ -54,20 +40,9 @@ export function GraphVisualization({
   className = "",
   iconMap,
   edgeStyleFn,
-  hiddenIds,
-  activeIds,
-  fit = false,
 }: GraphVisualizationProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
-  const emphasisRef = useRef<{ hiddenIds?: ReadonlySet<string>; activeIds?: ReadonlySet<string> }>({});
-
-  // Declared before the drawing effect so a redraw reads the current sets.
-  // Restyles the drawn graph in place — the simulation is not restarted.
-  useEffect(() => {
-    emphasisRef.current = { hiddenIds, activeIds };
-    if (svgRef.current) applyNodeEmphasis(d3.select(svgRef.current), hiddenIds, activeIds);
-  }, [hiddenIds, activeIds]);
 
   useEffect(() => {
     if (!svgRef.current || nodes.length === 0) return;
@@ -83,7 +58,7 @@ export function GraphVisualization({
     const container = svg.append("g").attr("class", "graph-container");
 
     // Setup zoom and restore previous state
-    const zoom = setupZoom(svg, container, previousTransform);
+    setupZoom(svg, container, previousTransform);
 
     // Convert to D3 nodes and filter valid links
     const d3Nodes: D3Node[] = nodes.map(node => ({ ...node }));
@@ -124,25 +99,16 @@ export function GraphVisualization({
     // Setup hover highlighting
     setupNodeHoverHighlight(node, link, validLinks);
 
-    applyNodeEmphasis(svg, emphasisRef.current.hiddenIds, emphasisRef.current.activeIds);
-
     // Update positions on simulation tick
     simulation.on("tick", () => {
       updatePositions(link, node);
     });
 
-    if (fit) {
-      simulation.stop();
-      simulation.tick(FIT_TICKS);
-      updatePositions(link, node);
-      fitToView(svg, zoom, d3Nodes, width, height);
-    }
-
     return () => {
       simulation.stop();
       svg.on(".zoom", null);
     };
-  }, [nodes, edges, width, height, colorMap, onNodeClick, fit]);
+  }, [nodes, edges, width, height, colorMap, onNodeClick]);
 
   return (
     <svg

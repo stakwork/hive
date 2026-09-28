@@ -6,7 +6,8 @@
  *   - a node's type is the label left once the structural ones are set aside;
  *   - nodes and the edges among them come back from two queries;
  *   - a ref id that is not id-shaped never reaches a query;
- *   - a graph that cannot answer leaves the nodes as the log named them.
+ *   - a graph that cannot answer leaves the nodes as the log named them,
+ *     and says what it did not read.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -53,6 +54,8 @@ describe("hydrateRunGraph", () => {
         { ref_id: "find-1", node_type: "ClinicalFinding", name: "Lethargic on arrival", namespace: "oh-7532", found: true },
       ],
       edges: [{ source: "doc-1", target: "find-1", edge_type: "CONTAINS" }],
+      nodesRead: true,
+      edgesRead: true,
       truncated: false,
     });
   });
@@ -90,8 +93,29 @@ describe("hydrateRunGraph", () => {
         { ref_id: "b5726f25", node_type: "Node", name: "b5726f25", namespace: null, found: false },
       ],
       edges: [],
+      nodesRead: false,
+      edgesRead: false,
       truncated: false,
     });
+  });
+
+  it("tells edges it could not read from edges that are not there", async () => {
+    const refs = [{ ref_id: "a" }, { ref_id: "b" }];
+    const nodesOnly: CypherRunner = async (query) =>
+      query.includes("-[r]->") ? null : { columns: ["ref_id"], rows: [["a"], ["b"]] };
+    const noEdges: CypherRunner = async (query) =>
+      query.includes("-[r]->") ? { columns: [], rows: [] } : { columns: ["ref_id"], rows: [["a"], ["b"]] };
+
+    expect(await hydrateRunGraph(refs, nodesOnly)).toMatchObject({ edges: [], nodesRead: true, edgesRead: false });
+    expect(await hydrateRunGraph(refs, noEdges)).toMatchObject({ edges: [], nodesRead: true, edgesRead: true });
+  });
+
+  it("tells a node it could not read from a node that is not there", async () => {
+    const gone = await hydrateRunGraph([{ ref_id: "a" }], async () => ({ columns: ["ref_id"], rows: [] }));
+    const unread = await hydrateRunGraph([{ ref_id: "a" }], async () => null);
+
+    expect(gone).toMatchObject({ nodes: [{ ref_id: "a", found: false }], nodesRead: true });
+    expect(unread).toMatchObject({ nodes: [{ ref_id: "a", found: false }], nodesRead: false });
   });
 
   it("marks a node the graph no longer holds", async () => {
@@ -115,7 +139,13 @@ describe("hydrateRunGraph", () => {
 
   it("asks nothing of the graph for a run that touched nothing", async () => {
     const run = vi.fn<CypherRunner>();
-    expect(await hydrateRunGraph([], run)).toEqual({ nodes: [], edges: [], truncated: false });
+    expect(await hydrateRunGraph([], run)).toEqual({
+      nodes: [],
+      edges: [],
+      nodesRead: true,
+      edgesRead: true,
+      truncated: false,
+    });
     expect(run).not.toHaveBeenCalled();
   });
 });
