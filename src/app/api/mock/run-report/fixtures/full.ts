@@ -365,17 +365,36 @@ export const FULL_BUNDLE = {
             "The full text of section 12.4 is in the graph; it was simply not " +
             "retrieved because its relevance score fell below threshold.",
         },
+        // Intentionally "not-traced" (not a normal answer) — pairs with a real
+        // q_verify_got_it below to cover the verification-note edge case: the
+        // commentary note under hop 2 must still surface even though hop 2's
+        // own primary field is not-traced.
         q_draft_got_it: {
-          answer: "no",
-          evidence:
-            "No mention of section 12.4 or unilateral termination appears in the " +
-            "draft output.",
+          answer: "not-traced",
+          evidence: "The agent left this rubric out of the draft-coverage pass.",
         },
         q_verify_got_it: {
           answer: "no",
           evidence:
             "Verification pass did not catch the omission. The rubric criterion was " +
             "not surfaced for verification.",
+        },
+        // ── New hop 1/3/4 fields ──────────────────────────────────────────
+        q_deliverable_has_it: {
+          answer: "partial",
+          evidence:
+            "The deliverable references section 12 generally but omits the " +
+            "unilateral termination language from 12.4.",
+        },
+        q_checklist_has_it: {
+          answer: "not-traced",
+          evidence: "",
+        },
+        q_checklist_matched_rubric: {
+          answer: "diverged",
+          evidence:
+            "The checklist item for section 12 was phrased around notice periods, " +
+            "not the unilateral-termination right the rubric actually tests.",
         },
         root_cause:
           "Chunk-boundary split during ingestion caused section 12.4 to fall below " +
@@ -435,6 +454,19 @@ export const FULL_BUNDLE = {
         q_verify_got_it: {
           answer: "no",
           evidence: "The verification agent did not flag the incorrect governing-law citation.",
+        },
+        // ── New hop 1/3/4 fields ──────────────────────────────────────────
+        q_deliverable_has_it: {
+          answer: "yes",
+          evidence: "The deliverable states a governing-law clause is present.",
+        },
+        q_checklist_has_it: {
+          answer: "yes",
+          evidence: "checklist.md lists a governing-law verification item.",
+        },
+        q_checklist_matched_rubric: {
+          answer: "not-traced",
+          evidence: "",
         },
         root_cause:
           "A boilerplate Delaware-law paragraph outranked the actual section 18 governing-law " +
