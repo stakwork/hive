@@ -36,6 +36,12 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/auth", strategy: "prefix", access: "public" },
   { path: "/prototype", strategy: "prefix", access: "public" },
   { path: "/onboarding", strategy: "prefix", access: "public" },
+  // NOTE: `/w/**` being "public" only lets middleware populate auth headers
+  // when a session exists; it does NOT mean every `/w/[slug]/*` page is
+  // reachable without one. `*/strut/*` pages and API routes (both the org
+  // and workspace embed-url routes) rely on their own server-side session +
+  // Owner/Admin checks and must NEVER be added to a public allowlist here,
+  // and must stay POST-only — a GET variant would bypass those checks.
   { path: "/w/**", strategy: "pattern", access: "public" },
   { path: "/admin", strategy: "prefix", access: "superadmin" },
   { path: "/verify", strategy: "prefix", access: "webhook" }, // Sphinx app auth callback (bypasses landing page)

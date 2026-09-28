@@ -208,6 +208,35 @@ describe("resolveStrutTarget — workspace policy (benchmark)", () => {
   });
 });
 
+describe("resolveStrutTarget — workspace policy (workspace_embed)", () => {
+  it("workspace_embed: resolves the workspace's own swarm by workspaceId, not the org default", async () => {
+    mockWorkspaceFindFirst.mockResolvedValue(ownWorkspace());
+    const out = await resolveStrutTarget({ purpose: "workspace_embed", workspaceId: "ws-1", userId: USER });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.target).toMatchObject({
+      swarmId: "swarm-1",
+      workspaceId: "ws-1",
+      workspaceSlug: "acme",
+      orgId: "org-1",
+    });
+    expect(mockOrgSwarmWorkspace).not.toHaveBeenCalled();
+    expect(mockWorkspaceFindFirst.mock.calls[0][0].where).toEqual({ id: "ws-1", deleted: false });
+  });
+
+  it("workspace_embed: a member (not the owner) passes; a non-member is denied", async () => {
+    mockWorkspaceFindFirst.mockResolvedValueOnce(
+      ownWorkspace({ ownerId: "someone-else", members: [{ userId: USER }] }),
+    );
+    const ok = await resolveStrutTarget({ purpose: "workspace_embed", workspaceId: "ws-1", userId: USER });
+    expect(ok.ok).toBe(true);
+
+    mockWorkspaceFindFirst.mockResolvedValueOnce(ownWorkspace({ ownerId: "someone-else", members: [] }));
+    const denied = await resolveStrutTarget({ purpose: "workspace_embed", workspaceId: "ws-1", userId: USER });
+    expect(denied).toEqual({ ok: false, error: { type: "ACCESS_DENIED" } });
+  });
+});
+
 describe("describeStrutTargetError", () => {
   it("has a sentence for every error", () => {
     expect(describeStrutTargetError({ type: "NO_ORG_SWARM" })).toMatch(/No swarm/);

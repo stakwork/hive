@@ -1,4 +1,4 @@
-import { StrutView } from "../_components/StrutView";
+import { StrutView } from "@/components/strut/StrutView";
 
 interface StrutPageProps {
   params: Promise<{ githubLogin: string }>;
@@ -6,5 +6,9 @@ interface StrutPageProps {
 
 export default async function StrutPage({ params }: StrutPageProps) {
   const { githubLogin } = await params;
-  return <StrutView githubLogin={githubLogin} />;
+  return (
+    <StrutView
+      embedUrlEndpoint={`/api/orgs/${encodeURIComponent(githubLogin)}/strut/embed-url`}
+    />
+  );
 }
