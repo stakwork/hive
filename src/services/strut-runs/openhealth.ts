@@ -12,17 +12,25 @@
  * so the page shows the result with or without callbacks. Missing / stale
  * runs are left to the `strut-runs-reconcile` cron, which owns the LOST
  * verdict.
+ *
+ * A scored run can be improved: `openhealth-improve` reads that run's scoring
+ * errors and writes the Concepts that would have prevented them. It is a
+ * `StrutRun` of its own kind, tied to the benchmark run by the strut run id
+ * in its input, and tracked the same way.
  */
 
 import { StrutRunStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
+  OPENHEALTH_IMPROVE_RUN_KIND,
+  OPENHEALTH_IMPROVE_WORKFLOW,
   OPENHEALTH_RUN_KIND,
   OPENHEALTH_SPLITS,
   openHealthWorkdir,
   resolveOpenHealthStrutWorkflowName,
 } from "@/lib/openhealth-benchmarks/constants";
+import { toOpenHealthImprovement } from "@/lib/openhealth-benchmarks/improve";
 import { toOpenHealthRun, toOpenHealthRunDetail } from "@/lib/openhealth-benchmarks/runs";
 import { cachedDifficultyLookup } from "@/services/openhealth-benchmarks/tasks";
 import {
@@ -34,17 +42,20 @@ import {
   type StrutRunHandler,
   type StrutRunRow,
 } from "@/services/strut-runs";
-import type { OpenHealthRun, OpenHealthRunDetail } from "@/types/openhealth";
+import type { OpenHealthImprovement, OpenHealthRun, OpenHealthRunDetail } from "@/types/openhealth";
 
 /** How many runs the page lists. */
 const LIST_LIMIT = 200;
+/** How many improve runs of one benchmark run the viewer is given. */
+const IMPROVE_LIST_LIMIT = 10;
 /** A PENDING row younger than this is not probed — a run takes minutes. */
 const PROBE_MIN_AGE_MS = 60_000;
 
-/** The `StrutRunHandler` for `openhealth_benchmark`: the row is the delivery. */
+/** The `StrutRunHandler` for `openhealth_benchmark` and `openhealth_improve`: the row is the delivery. */
 export const handleOpenHealthRunSettled: StrutRunHandler = async (row) => {
   logger.info("OpenHealth run settled", STRUT_RUN_LOG_TAG, {
     runId: row.id,
+    kind: row.kind,
     workspaceId: row.workspaceId,
     status: row.status,
   });
@@ -160,6 +171,67 @@ export async function launchOpenHealthRun(args: LaunchOpenHealthRunArgs): Promis
     workflow: resolveOpenHealthStrutWorkflowName(),
     purpose: "benchmark",
     input: { gtId: args.gtId, workdir: openHealthWorkdir(args.gtId) },
+    publicBaseUrl: args.publicBaseUrl,
+  });
+}
+
+// ─── Improve ─────────────────────────────────────────────────────────────
+
+/** The improve runs of one benchmark run, by that run's id on strut. */
+const improveRunsOf = (workspaceId: string, strutRunId: string) => ({
+  workspaceId,
+  kind: OPENHEALTH_IMPROVE_RUN_KIND,
+  input: { path: ["runIds"], equals: strutRunId },
+});
+
+/** The improve runs of one benchmark run, newest first. */
+export async function listOpenHealthImprovements(
+  workspaceId: string,
+  strutRunId: string,
+  opts: { now?: Date } = {},
+): Promise<OpenHealthImprovement[]> {
+  const now = opts.now ?? new Date();
+  const rows = await db.strutRun.findMany({
+    where: improveRunsOf(workspaceId, strutRunId),
+    select: ROW_SELECT,
+    orderBy: { createdAt: "desc" },
+    take: IMPROVE_LIST_LIMIT,
+  });
+  const shown = await Promise.all(rows.map((row) => settleFromStrut(row, now)));
+  return shown.map(toOpenHealthImprovement);
+}
+
+/** Is an improve run of this benchmark run already in flight? (One at a time, per run.) */
+export async function hasPendingOpenHealthImprove(workspaceId: string, strutRunId: string): Promise<boolean> {
+  const row = await db.strutRun.findFirst({
+    where: { ...improveRunsOf(workspaceId, strutRunId), status: StrutRunStatus.PENDING },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
+export interface LaunchOpenHealthImproveArgs {
+  workspaceId: string;
+  userId: string;
+  /** Swarm-reachable base URL of this hive (the callback host). */
+  publicBaseUrl: string;
+  /** The benchmark run's id on strut — the caller checks the run was scored. */
+  strutRunId: string;
+}
+
+/**
+ * Launch one improve run over one benchmark run. `apply` is on: what passes
+ * the workflow's validation is written to the graph.
+ */
+export async function launchOpenHealthImprove(args: LaunchOpenHealthImproveArgs): Promise<DispatchStrutRunResult> {
+  return dispatchStrutRun({
+    workspaceId: args.workspaceId,
+    userId: args.userId,
+    kind: OPENHEALTH_IMPROVE_RUN_KIND,
+    workflow: OPENHEALTH_IMPROVE_WORKFLOW,
+    purpose: "benchmark",
+    // `runIds` is the workflow's comma-separated list; this is a list of one.
+    input: { runIds: args.strutRunId, apply: true },
     publicBaseUrl: args.publicBaseUrl,
   });
 }
