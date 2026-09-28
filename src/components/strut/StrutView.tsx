@@ -4,24 +4,32 @@ import React, { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { STRUT_DEEP_LINK_PARAM } from "@/lib/utils/strut-links";
 
-// The embed token lives 8h (see the embed-url route); re-mint an hour early.
-const TOKEN_REFRESH_THRESHOLD_MS = 7 * 60 * 60 * 1000;
+// Fallback refresh threshold when the route doesn't return `expiresInSeconds`
+// (shouldn't happen, but keeps old behaviour if it does).
+const FALLBACK_REFRESH_THRESHOLD_MS = 7 * 60 * 60 * 1000;
 
 interface StrutViewProps {
-  githubLogin: string;
+  /**
+   * The server-side embed-url route to POST to, e.g.
+   * `/api/orgs/${encodeURIComponent(login)}/strut/embed-url` or
+   * `/api/workspaces/${encodeURIComponent(slug)}/strut/embed-url`.
+   * Must start with `/api/` and must NOT start with `//` (protocol-relative).
+   */
+  embedUrlEndpoint: string;
 }
 
 /**
- * Strut's deep link rides on `/org/<slug>/strut` as ONE opaque param,
- * `?strut=<its query>` (e.g. `?strut=wf%3Ddigest%26run%3D1`), so a Hive
- * link reopens the same view. Strut owns the vocabulary (`wf`, `run`, `v`,
- * `chat`, `elicit`, whatever comes next — `web/src/embed.ts`); Hive only
- * carries what strut reported and hands it back, and never has to learn a
- * key. The frame is untrusted content, so each pair is still bounded and
- * the embed's own `key` / `embed_origin` are dropped unconditionally.
- * Hive mints such links itself too — a code-change card's "View run" is
- * `strutViewPath(login, strutRunDeepLink(wf, run))` — so the param name
- * lives in `lib/utils/strut-links`, shared with the server.
+ * Strut's deep link rides on `/org/<slug>/strut` (or `/w/<slug>/strut`) as
+ * ONE opaque param, `?strut=<its query>` (e.g. `?strut=wf%3Ddigest%26run%3D1`),
+ * so a Hive link reopens the same view. Strut owns the vocabulary (`wf`,
+ * `run`, `v`, `chat`, `elicit`, whatever comes next — `web/src/embed.ts`);
+ * Hive only carries what strut reported and hands it back, and never has
+ * to learn a key. The frame is untrusted content, so each pair is still
+ * bounded and the embed's own `key` / `embed_origin` are dropped
+ * unconditionally. Hive mints such links itself too — a code-change
+ * card's "View run" is `strutViewPath(login, strutRunDeepLink(wf, run))` —
+ * so the param name lives in `lib/utils/strut-links`, shared with the
+ * server.
  */
 const KEY_RE = /^[a-z][a-z0-9_]{0,31}$/;
 const MAX_VALUE_LENGTH = 512;
@@ -77,35 +85,44 @@ function writeDeepLink(packed: string) {
 interface EmbedUrlResponse {
   /** `{mcp}/lab/?key=<jwt>` — ready to drop into the iframe. */
   url: string;
+  /** How long the minted session is good for; drives the refresh threshold. */
+  expiresInSeconds?: number;
 }
 
-async function fetchEmbedUrl(githubLogin: string): Promise<string> {
-  const resp = await fetch(
-    `/api/orgs/${encodeURIComponent(githubLogin)}/strut/embed-url`,
-    { method: "POST" },
-  );
+/** Rejects anything that isn't a same-origin, absolute-path API route. */
+function isValidEmbedUrlEndpoint(endpoint: string): boolean {
+  return endpoint.startsWith("/api/") && !endpoint.startsWith("//");
+}
+
+async function fetchEmbedUrl(endpoint: string): Promise<EmbedUrlResponse> {
+  if (!isValidEmbedUrlEndpoint(endpoint)) {
+    throw new Error("Invalid strut embed endpoint");
+  }
+  const resp = await fetch(endpoint, { method: "POST" });
   if (!resp.ok) {
     const body = await resp.json().catch(() => null);
     throw new Error(body?.error || `HTTP ${resp.status}`);
   }
   const body = (await resp.json()) as EmbedUrlResponse;
   if (!body?.url) throw new Error("No strut URL returned");
-  return body.url;
+  return body;
 }
 
 /**
- * Full-bleed iframe host for the strut workflow builder that the org
- * swarm's stakgraph mcp serves at `/lab`.
+ * Full-bleed iframe host for the strut workflow builder that a swarm's
+ * stakgraph mcp serves at `/lab`.
  *
  * The lab lives on a per-swarm origin (`swarm-abc.sphinx.chat:3355`), so
- * we cross-origin-embed it. Hive mints a short-lived JWT via
- * `/api/orgs/[githubLogin]/strut/embed-url` and loads `/lab/?key=<jwt>`;
- * the strut UI keeps the key in sessionStorage, strips it from the URL,
- * and sends it as a Bearer header from then on — no Basic-auth prompt.
+ * we cross-origin-embed it. Hive mints a short-lived JWT via the given
+ * `embedUrlEndpoint` and loads `/lab/?key=<jwt>`; the strut UI keeps the
+ * key in sessionStorage, strips it from the URL, and sends it as a Bearer
+ * header from then on — no Basic-auth prompt.
  *
- * Like `GatewayView`, a `visibilitychange` listener re-mints and reloads
- * when the user returns to the tab after the token has (nearly) expired.
- * The reload is cheap: strut reattaches its open chat from localStorage.
+ * A `visibilitychange` listener re-mints and reloads when the user returns
+ * to the tab after the token has (nearly) expired — 7/8 of the returned
+ * `expiresInSeconds`, falling back to 7h when it's missing (matches
+ * `GatewayView`'s org-level refresh threshold). The reload is cheap: strut
+ * reattaches its open chat from localStorage.
  *
  * Deep links: strut keeps its own deep link in its own (iframe) URL, which
  * we can't see, so the two sides trade it. On load our `?strut=` goes onto
@@ -116,11 +133,12 @@ async function fetchEmbedUrl(githubLogin: string): Promise<string> {
  * click); a re-mint uses the latest one, so the reload lands where the
  * user was.
  */
-export function StrutView({ githubLogin }: StrutViewProps) {
+export function StrutView({ embedUrlEndpoint }: StrutViewProps) {
   const [src, setSrc] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [mintCount, setMintCount] = useState(0);
   const loadedAt = useRef<number | null>(null);
+  const refreshThresholdMs = useRef<number>(FALLBACK_REFRESH_THRESHOLD_MS);
   // The latest deep link: our URL at mount, then whatever strut reports.
   const deepLink = useRef<Record<string, string> | null>(null);
   if (deepLink.current === null && typeof window !== "undefined") {
@@ -133,9 +151,13 @@ export function StrutView({ githubLogin }: StrutViewProps) {
     setErr(null);
     loadedAt.current = null;
 
-    fetchEmbedUrl(githubLogin)
-      .then((url) => {
+    fetchEmbedUrl(embedUrlEndpoint)
+      .then(({ url, expiresInSeconds }) => {
         if (cancelled) return;
+        refreshThresholdMs.current =
+          typeof expiresInSeconds === "number" && expiresInSeconds > 0
+            ? (expiresInSeconds * 1000 * 7) / 8
+            : FALLBACK_REFRESH_THRESHOLD_MS;
         // Read the link when the ticket lands, not when the mint starts.
         // A `strut:location` can arrive while `src` is nulled and the
         // frame is gone; closing over the ref at effect time would reload
@@ -150,7 +172,7 @@ export function StrutView({ githubLogin }: StrutViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [githubLogin, mintCount]);
+  }, [embedUrlEndpoint, mintCount]);
 
   // The frame origin is stable for a login (the minted URL only rotates
   // the key). Capture it once and keep listening across re-mints: the
@@ -182,7 +204,7 @@ export function StrutView({ githubLogin }: StrutViewProps) {
       if (document.visibilityState !== "visible") return;
       if (
         loadedAt.current !== null &&
-        Date.now() - loadedAt.current > TOKEN_REFRESH_THRESHOLD_MS
+        Date.now() - loadedAt.current > refreshThresholdMs.current
       ) {
         setMintCount((n) => n + 1);
       }

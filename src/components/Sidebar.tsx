@@ -127,6 +127,7 @@ const baseNavigationItems: NavigationItem[] = [
       { icon: CheckSquare, label: "Tasks", href: "/tasks" },
       { icon: Map, label: "Plan", href: "/plan" },
       { icon: PenLine, label: "Whiteboards", href: "/whiteboards" },
+      { icon: Workflow, label: "Strut", href: "/strut" },
     ],
   },
   {
@@ -570,6 +571,17 @@ export function Sidebar({ user }: SidebarProps) {
           ...item,
           children: item.children.filter((child) => child.label !== "Evals"),
         };
+      }
+      // Strut is hidden unless the workspace has an active swarm and the
+      // viewer is an Owner/Admin — it embeds a shell, not just a page.
+      if (item.label === "Build" && item.children) {
+        const showStrut = workspace?.swarmStatus === "ACTIVE" && canAdmin && !isPublicViewer;
+        if (!showStrut) {
+          return {
+            ...item,
+            children: item.children.filter((child) => child.label !== "Strut"),
+          };
+        }
       }
       return item;
     });

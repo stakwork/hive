@@ -159,6 +159,126 @@ describe('Sidebar - Navigation Links', () => {
     });
   });
 
+  it('shows the Strut item under Build when the swarm is active and the viewer can admin', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'workspace-1', name: 'Test Workspace', slug: 'test-workspace', poolState: 'COMPLETE', swarmStatus: 'ACTIVE' },
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+      isPublicViewer: false,
+    } as any);
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: false,
+      hasAccess: true,
+      role: 'ADMIN',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+    const buildButtons = screen.getAllByTestId('nav-build');
+    await user.click(buildButtons[0]);
+
+    await waitFor(() => {
+      const strutLinks = screen.getAllByTestId('nav-strut');
+      expect(strutLinks[0]).toHaveAttribute('href', '/w/test-workspace/strut');
+    });
+  });
+
+  it('hides Strut when the swarm is not active', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'workspace-1', name: 'Test Workspace', slug: 'test-workspace', poolState: 'COMPLETE', swarmStatus: 'PENDING' },
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+      isPublicViewer: false,
+    } as any);
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: false,
+      hasAccess: true,
+      role: 'ADMIN',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+    const buildButtons = screen.getAllByTestId('nav-build');
+    await user.click(buildButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-whiteboards').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByTestId('nav-strut')).toBeNull();
+  });
+
+  it('hides Strut for non-admins even with an active swarm', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'workspace-1', name: 'Test Workspace', slug: 'test-workspace', poolState: 'COMPLETE', swarmStatus: 'ACTIVE' },
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+      isPublicViewer: false,
+    } as any);
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: false,
+      isOwner: false,
+      hasAccess: true,
+      role: 'DEVELOPER',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+    const buildButtons = screen.getAllByTestId('nav-build');
+    await user.click(buildButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-whiteboards').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByTestId('nav-strut')).toBeNull();
+  });
+
+  it('hides Strut when there is no swarm at all', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+      workspace: { id: 'workspace-1', name: 'Test Workspace', slug: 'test-workspace', poolState: 'COMPLETE', swarmStatus: null },
+      slug: 'test-workspace',
+      loading: false,
+      error: null,
+      waitingForInputCount: 0,
+      refreshTaskNotifications: vi.fn(),
+      isPublicViewer: false,
+    } as any);
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+      isOwner: false,
+      hasAccess: true,
+      role: 'ADMIN',
+    } as any);
+
+    render(<Sidebar user={mockUser} />);
+    const buildButtons = screen.getAllByTestId('nav-build');
+    await user.click(buildButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-whiteboards').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByTestId('nav-strut')).toBeNull();
+  });
+
   it('should render Settings as <a> element with correct href', () => {
     const mockWorkspace = {
       id: 'workspace-1',

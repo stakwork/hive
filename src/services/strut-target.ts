@@ -14,11 +14,12 @@
  *
  * | purpose       | target                                                  |
  * | ------------- | ------------------------------------------------------- |
- * | `code_change` | the ORG's default workspace swarm (the one the org strut |
- * | `embed`       | view embeds — `resolveOrgSwarmWorkspaceForUser`)        |
- * | `chat`        | the org default too — see below                         |
- * | `system_map`  | the org default (the workflow is authored in that embed) |
- * | `benchmark`   | the workspace's OWN swarm (what this caller always did) |
+ * | `code_change`    | the ORG's default workspace swarm (the one the org strut |
+ * | `embed`          | view embeds — `resolveOrgSwarmWorkspaceForUser`)        |
+ * | `chat`           | the org default too — see below                         |
+ * | `system_map`     | the org default (the workflow is authored in that embed) |
+ * | `benchmark`      | the workspace's OWN swarm (what this caller always did) |
+ * | `workspace_embed`| the workspace's OWN swarm (`/w/[slug]/strut`'s embed)    |
  *
  * Strut has no tenancy: one strut is one trust domain, which the org-wide
  * embed already assumes. Moving a purpose between the two rows is a
@@ -47,7 +48,13 @@ import { resolveOrgSwarmWorkspaceForUser } from "@/lib/helpers/org-workspace";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { resolveStrutActor } from "@/services/bifrost/strut-delegation";
 
-export type StrutPurpose = "code_change" | "benchmark" | "chat" | "embed" | "system_map";
+export type StrutPurpose =
+  | "code_change"
+  | "benchmark"
+  | "chat"
+  | "embed"
+  | "system_map"
+  | "workspace_embed";
 
 /** Where each purpose runs. `org-default` = the org's default workspace swarm. */
 const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
@@ -60,6 +67,10 @@ const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
   // runs where it was authored.
   system_map: "org-default",
   benchmark: "workspace",
+  // `/w/[slug]/strut`'s embed: the workspace's OWN swarm, never the org
+  // default. `benchmark` already resolves to `"workspace"`, but a named
+  // purpose keeps the policy in one place per caller.
+  workspace_embed: "workspace",
 };
 
 export interface StrutTarget {
