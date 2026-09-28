@@ -124,6 +124,7 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
+  openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
 };
 
 export function hashStrutRunToken(token: string): string {
