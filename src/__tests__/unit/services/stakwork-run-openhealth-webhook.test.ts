@@ -88,7 +88,7 @@ describe("processStakworkRunWebhook — OPENHEALTH_BENCHMARK_RUNNER thin webhook
       workspaceId: WORKSPACE_ID,
       status: WorkflowStatus.IN_PROGRESS,
       result: JSON.stringify({ runner: "strut", task: "patient_diagnosis", gtId: "gt-1" }),
-      workspace: { slug: "openhealth" },
+      workspace: { slug: "hive" },
     });
     mockedDb.stakworkRun.updateMany = vi.fn();
 
@@ -114,7 +114,7 @@ describe("processStakworkRunWebhook — OPENHEALTH_BENCHMARK_RUNNER thin webhook
       workspaceId: WORKSPACE_ID,
       status: WorkflowStatus.IN_PROGRESS,
       result: JSON.stringify({ runner: "strut", task: "patient_diagnosis", gtId: "gt-1", split: "public" }),
-      workspace: { slug: "openhealth" },
+      workspace: { slug: "hive" },
     });
     mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
 
@@ -178,7 +178,7 @@ describe("processStakworkRunWebhook — OPENHEALTH_BENCHMARK_RUNNER thin webhook
       workspaceId: WORKSPACE_ID,
       status: WorkflowStatus.IN_PROGRESS,
       result: "{}",
-      workspace: { slug: "openhealth" },
+      workspace: { slug: "hive" },
     });
 
     await expect(
@@ -201,7 +201,7 @@ describe("processStakworkRunWebhook — OPENHEALTH_BENCHMARK_RUNNER thin webhook
       workspaceId: "some-other-workspace",
       status: WorkflowStatus.IN_PROGRESS,
       result: "{}",
-      workspace: { slug: "openhealth" },
+      workspace: { slug: "hive" },
     });
 
     await expect(
