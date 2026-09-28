@@ -20,7 +20,13 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { layoutRunGraph } from "@/lib/strut-run-graph/layout";
-import { buildRunGraphTree, callLabel, replayFrame, type RunGraphTreeNode } from "@/lib/strut-run-graph/replay";
+import {
+  buildRunGraphTree,
+  callLabel,
+  keepGraphRead,
+  replayFrame,
+  type RunGraphTreeNode,
+} from "@/lib/strut-run-graph/replay";
 import type { RunGraphAccess, RunGraphCall, RunGraphNode, RunGraphTrace } from "@/lib/strut-run-graph/types";
 import { runGraphHops, runGraphLinks, type RunGraphLink } from "@/lib/strut-run-graph/walk";
 import { isProvenanceType, runGraphColorMap } from "./colors";
@@ -141,12 +147,15 @@ function NodeDetail({
   calls,
   links,
   nodeById,
+  graphAnswered,
   onPick,
   onSelect,
   onClose,
 }: {
   node: RunGraphNode;
   color: string;
+  /** False when the graph did not answer for the nodes, which is not a node it no longer holds. */
+  graphAnswered: boolean;
   calls: RunGraphCall[];
   links: RunGraphLink[];
   nodeById: ReadonlyMap<string, RunGraphNode>;
@@ -190,7 +199,13 @@ function NodeDetail({
         </p>
       )}
       <p className="break-all font-mono text-muted-foreground">{node.ref_id}</p>
-      {!node.found && <p className="text-muted-foreground">The graph no longer holds this node.</p>}
+      {!node.found && (
+        <p className="text-muted-foreground" data-testid="run-graph-node-unresolved">
+          {graphAnswered
+            ? "The graph no longer holds this node."
+            : "The graph did not answer, so this is only what the run's log says of the node."}
+        </p>
+      )}
       {node.found && workspace?.slug && (
         <Link
           href={`/w/${workspace.slug}/context/graph?ref_id=${encodeURIComponent(node.ref_id)}`}
@@ -291,8 +306,7 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
       const response = await fetch(endpoint, { cache: "no-store" });
       const body = (await response.json().catch(() => ({}))) as RunGraphTrace & { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not load the graph trace");
-      // A refresh the graph did not answer keeps the edges already read.
-      setTrace((prev) => (body.edgesRead === false && prev?.edgesRead ? { ...body, edges: prev.edges } : body));
+      setTrace((prev) => keepGraphRead(prev, body));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the graph trace");
@@ -516,12 +530,14 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
             {trace.truncated ? " The run touched more than are shown." : ""}
           </p>
         )}
-        {trace.edgesRead === false && (
+        {(trace.nodesRead === false || trace.edgesRead === false) && (
           <p
             className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-            data-testid="run-graph-no-edges"
+            data-testid="run-graph-unread"
           >
-            The graph did not answer for the edges among these nodes, so only the hops the run took are drawn.
+            {trace.nodesRead === false
+              ? "The graph did not answer, so the nodes are as the run's log named them and only the hops the run took are drawn."
+              : "The graph did not answer for the edges among these nodes, so only the hops the run took are drawn."}
             <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => void load()}>
               Ask again
             </Button>
@@ -564,6 +580,7 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
               calls={calls}
               links={links}
               nodeById={nodeById}
+              graphAnswered={trace.nodesRead !== false}
               onPick={pick}
               onSelect={setSelectedId}
               onClose={() => setSelectedId(null)}

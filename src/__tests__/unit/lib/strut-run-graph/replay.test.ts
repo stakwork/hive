@@ -4,8 +4,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildRunGraphTree, callLabel, replayFrame } from "@/lib/strut-run-graph/replay";
-import type { RunGraphCall } from "@/lib/strut-run-graph/types";
+import { buildRunGraphTree, callLabel, keepGraphRead, replayFrame } from "@/lib/strut-run-graph/replay";
+import type { RunGraphCall, RunGraphNode, RunGraphTrace } from "@/lib/strut-run-graph/types";
 
 function call(path: string, refs: string[]): RunGraphCall {
   return {
@@ -89,5 +89,59 @@ describe("replayFrame", () => {
     const frame = replayFrame(CALLS, CALLS.length - 1);
     expect(frame.hidden.size).toBe(0);
     expect(ids(frame.active)).toEqual(["d"]);
+  });
+});
+
+describe("keepGraphRead", () => {
+  const read = (ref_id: string): RunGraphNode => ({
+    ref_id,
+    node_type: "Document",
+    name: `${ref_id}.md`,
+    namespace: "oh-7532",
+    found: true,
+  });
+  const unread = (ref_id: string): RunGraphNode => ({
+    ref_id,
+    node_type: "Node",
+    name: ref_id,
+    namespace: null,
+    found: false,
+  });
+  const EARLIER: RunGraphTrace = {
+    calls: [],
+    nodes: [read("a"), read("b")],
+    edges: [{ source: "a", target: "b", edge_type: "CONTAINS" }],
+    nodesRead: true,
+    edgesRead: true,
+    truncated: false,
+  };
+
+  it("is the refresh when the graph answered it", () => {
+    const next: RunGraphTrace = { ...EARLIER, nodes: [read("a")], edges: [] };
+    expect(keepGraphRead(EARLIER, next)).toBe(next);
+    expect(keepGraphRead(null, next)).toBe(next);
+  });
+
+  it("keeps the nodes and edges an earlier refresh read when the graph does not answer", () => {
+    const next: RunGraphTrace = {
+      calls: [],
+      nodes: [unread("a"), unread("b"), unread("c")],
+      edges: [],
+      nodesRead: false,
+      edgesRead: false,
+      truncated: false,
+    };
+
+    expect(keepGraphRead(EARLIER, next)).toEqual({
+      ...next,
+      nodes: [read("a"), read("b"), unread("c")],
+      edges: EARLIER.edges,
+    });
+  });
+
+  it("has nothing to keep from a refresh the graph did not answer either", () => {
+    const never: RunGraphTrace = { ...EARLIER, nodes: [unread("a")], edges: [], nodesRead: false, edgesRead: false };
+    const next: RunGraphTrace = { ...never, nodes: [unread("a"), unread("b")] };
+    expect(keepGraphRead(never, next)).toBe(next);
   });
 });
