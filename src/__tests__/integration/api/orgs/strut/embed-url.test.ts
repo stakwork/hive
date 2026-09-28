@@ -113,6 +113,18 @@ async function seedOwner(prefix: string) {
   return owner;
 }
 
+async function seedMember(prefix: string, workspaceId: string, role: "ADMIN" | "PM" | "DEVELOPER" | "STAKEHOLDER" | "VIEWER") {
+  const user = await createTestUser({
+    email: `${prefix}-${generateUniqueId()}@example.com`,
+    idempotent: false,
+  });
+  createdUserIds.push(user.id);
+  await db.workspaceMember.create({
+    data: { workspaceId, userId: user.id, role },
+  });
+  return user;
+}
+
 function postAs(githubLogin: string, user: { id: string; email: string | null; name: string | null }) {
   const req = createAuthenticatedPostRequest(
     `/api/orgs/${githubLogin}/strut/embed-url`,
@@ -151,10 +163,11 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
     });
 
     const res = await postAs(githubLogin, owner);
-    const data = await expectJson<{ url: string; workspaceSlug: string }>(res, 200);
+    const data = await expectJson<{ url: string; workspaceSlug: string; expiresInSeconds: number }>(res, 200);
 
     expect(data.url).toBe("https://default.swarm.test:3355/lab/?key=mock.jwt.token");
     expect(data.workspaceSlug).toBe(defaultWs.slug);
+    expect(data.expiresInSeconds).toBe(8 * 60 * 60);
     // The raw swarm key stays server-side: header on the mint, never in the URL.
     expect(data.url).not.toContain("mock-swarm-api-key");
 
@@ -272,6 +285,48 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
 
     const data = await expectJson<{ error: string }>(await postAs(githubLogin, owner), 502);
     expect(data.error).toContain("401");
+    // Generic message only — the upstream body never reaches the client.
+    expect(data.error).not.toContain("Unauthorized");
+  });
+
+  it("returns 403 for a DEVELOPER (not Owner/Admin) member of the resolved workspace", async () => {
+    const githubLogin = `strut-org-dev-${generateUniqueId()}`;
+    const org = await createOrg(githubLogin);
+    createdOrgIds.push(org.id);
+    const owner = await seedOwner("strut-owner-dev");
+
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+    await createTestSwarm({
+      workspaceId: ws.id,
+      swarmUrl: "https://dev-gate.swarm.test/api",
+      swarmApiKey: "key-dev-gate",
+    });
+    const dev = await seedMember("strut-dev", ws.id, "DEVELOPER");
+
+    const data = await expectJson<{ error: string }>(await postAs(githubLogin, dev), 403);
+    expect(data.error).toBe("Owner or Admin access required to open Strut");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 for a VIEWER reached through the first-reachable-workspace fallback", async () => {
+    const githubLogin = `strut-org-viewer-fb-${generateUniqueId()}`;
+    const org = await createOrg(githubLogin);
+    createdOrgIds.push(org.id);
+    const owner = await seedOwner("strut-owner-viewer-fb");
+
+    const ws = await createWorkspaceInOrg(owner.id, org.id);
+    createdWorkspaceIds.push(ws.id);
+    await createTestSwarm({
+      workspaceId: ws.id,
+      swarmUrl: "https://viewer-fb.swarm.test/api",
+      swarmApiKey: "key-viewer-fb",
+    });
+    const viewer = await seedMember("strut-viewer-fb", ws.id, "VIEWER");
+
+    const data = await expectJson<{ error: string }>(await postAs(githubLogin, viewer), 403);
+    expect(data.error).toBe("Owner or Admin access required to open Strut");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   describe("HIVE_API_KEY on the strut", () => {
