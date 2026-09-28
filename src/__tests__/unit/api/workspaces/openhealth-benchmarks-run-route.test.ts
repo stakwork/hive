@@ -115,7 +115,7 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — slug gate", 
     setupHappyPath();
   });
 
-  test("returns 404 for a non-openhealth slug BEFORE any access check", async () => {
+  test("returns 404 for a non-hive slug BEFORE any access check", async () => {
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
     const req = makeRequest("openlaw", VALID_BODY);
     const res = await POST(req, { params: Promise.resolve({ slug: "openlaw" }) });
@@ -123,11 +123,19 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — slug gate", 
     expect(mockValidateWorkspaceAccess).not.toHaveBeenCalled();
   });
 
-  test("returns 404 (not 403) when the caller cannot write", async () => {
-    mockValidateWorkspaceAccess.mockResolvedValue({ canWrite: false, hasAccess: true });
+  test("returns 404 for the openhealth slug BEFORE any access check", async () => {
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
     const req = makeRequest("openhealth", VALID_BODY);
     const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    expect(res.status).toBe(404);
+    expect(mockValidateWorkspaceAccess).not.toHaveBeenCalled();
+  });
+
+  test("returns 404 (not 403) when the caller cannot write", async () => {
+    mockValidateWorkspaceAccess.mockResolvedValue({ canWrite: false, hasAccess: true });
+    const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(404);
   });
 });
@@ -141,8 +149,8 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — rate limit",
   test("fails closed with 503 when the limiter throws, before any DB write", async () => {
     mockCheckRateLimit.mockRejectedValue(new Error("redis down"));
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", VALID_BODY);
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(503);
     expect(mockDbTransaction).not.toHaveBeenCalled();
   });
@@ -161,34 +169,34 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — body validat
     ["problemList"],
   ])("rejects a gold-shaped key (%s) with 400, even if the rest is valid", async (key) => {
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", { ...VALID_BODY, [key]: "leak" });
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", { ...VALID_BODY, [key]: "leak" });
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(400);
     expect(mockDbTransaction).not.toHaveBeenCalled();
   });
 
   test("rejects split=train with 400", async () => {
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", { ...VALID_BODY, split: "train" });
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", { ...VALID_BODY, split: "train" });
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(400);
   });
 
   test("rejects an unknown task with 400", async () => {
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", { ...VALID_BODY, task: "unknown_task" });
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", { ...VALID_BODY, task: "unknown_task" });
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(400);
   });
 
   test("requires gtId and patientId", async () => {
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req1 = makeRequest("openhealth", { ...VALID_BODY, gtId: undefined });
-    const res1 = await POST(req1, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req1 = makeRequest("hive", { ...VALID_BODY, gtId: undefined });
+    const res1 = await POST(req1, { params: Promise.resolve({ slug: "hive" }) });
     expect(res1.status).toBe(400);
 
-    const req2 = makeRequest("openhealth", { ...VALID_BODY, patientId: "" });
-    const res2 = await POST(req2, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req2 = makeRequest("hive", { ...VALID_BODY, patientId: "" });
+    const res2 = await POST(req2, { params: Promise.resolve({ slug: "hive" }) });
     expect(res2.status).toBe(400);
   });
 });
@@ -209,8 +217,8 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — single-activ
       ],
     });
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", VALID_BODY);
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error).toBe("ACTIVE_RUN_EXISTS");
@@ -227,8 +235,8 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — single-activ
       ],
     });
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", VALID_BODY);
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(201);
   });
 });
@@ -241,8 +249,8 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — dispatch", (
 
   test("happy path: creates a row and dispatches with { input, callback } body only", async () => {
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", VALID_BODY);
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(201);
 
     const [, fetchOpts] = mockFetch.mock.calls[0];
@@ -258,8 +266,8 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — dispatch", (
   test("a non-OK lab response deletes the pending row", async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 502, json: async () => ({}) });
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", VALID_BODY);
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(502);
     expect(mockDbStakworkRunDeleteMany).toHaveBeenCalledWith({ where: { id: RUN_ID } });
   });
@@ -270,8 +278,8 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — dispatch", (
       json: async () => ({ callback: false, runId: "lab-run-1" }),
     });
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", VALID_BODY);
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(502);
     expect(mockDbStakworkRunDeleteMany).not.toHaveBeenCalled();
     const updateCall = mockDbStakworkRunUpdate.mock.calls.find(
@@ -286,8 +294,8 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — dispatch", (
       json: async () => ({ callback: true }),
     });
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", VALID_BODY);
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(502);
     expect(mockDbStakworkRunDeleteMany).not.toHaveBeenCalled();
   });
@@ -295,9 +303,35 @@ describe("POST /api/workspaces/[slug]/openhealth/benchmarks/run — dispatch", (
   test("returns 503 when strut delegation is unavailable, creating no row", async () => {
     mockEnsureStrutDelegation.mockResolvedValue({ status: "failed" });
     const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
-    const req = makeRequest("openhealth", VALID_BODY);
-    const res = await POST(req, { params: Promise.resolve({ slug: "openhealth" }) });
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(503);
     expect(mockDbTransaction).not.toHaveBeenCalled();
+  });
+
+  test("returns 503 'Strut delegation unavailable' when delegation status is skipped-gate (e.g. BIFROST_ENABLED excludes hive), not a swarm-config failure", async () => {
+    mockEnsureStrutDelegation.mockResolvedValue({ status: "skipped-gate" });
+    const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toBe("Strut delegation unavailable");
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+  });
+
+  test("resolves swarm access with the literal hive slug, uses hive workspaceId for the run row and delegation context", async () => {
+    const { POST } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/run/route");
+    const req = makeRequest("hive", VALID_BODY);
+    const res = await POST(req, { params: Promise.resolve({ slug: "hive" }) });
+    expect(res.status).toBe(201);
+    expect(mockGetWorkspaceSwarmAccess).toHaveBeenCalledWith("hive", USER_ID);
+    expect(mockEnsureStrutDelegation).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: WORKSPACE_ID, workspaceSlug: "hive" }),
+      expect.objectContaining({ swarmUrl: "https://swarm.example.com/api", swarmApiKey: "swarm-key" }),
+      expect.any(Object),
+    );
+    const [labUrl] = mockFetch.mock.calls[0];
+    expect(labUrl).toContain("swarm.example.com");
   });
 });
