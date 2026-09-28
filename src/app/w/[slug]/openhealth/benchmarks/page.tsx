@@ -13,14 +13,22 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 type TabValue = "tasks" | "runs";
 
 export default function OpenHealthBenchmarksPage() {
-  const { workspace } = useWorkspace();
+  const { workspace, loading } = useWorkspace();
   const [activeTab, setActiveTab] = useState<TabValue>("tasks");
 
   // Page-level gate — /w/** is "public" in middleware so this guard is
   // required. The sidebar flag is a UX convenience only, NOT the gate: this
   // check (and the API routes' own slug checks) is the real enforcement.
   // No isDevelopmentMode() bypass here, unlike the Legal gate.
-  if (workspace && !OPENHEALTH_SLUGS.includes(workspace.slug)) {
+  //
+  // While the workspace is still loading, `workspace` is null and a naive
+  // `workspace && !OPENHEALTH_SLUGS.includes(...)` guard would render the
+  // tasks panel + run history for ANY slug in that window. Render nothing
+  // until loading settles, then gate on the resolved workspace.
+  if (loading) {
+    return null;
+  }
+  if (!workspace || !OPENHEALTH_SLUGS.includes(workspace.slug)) {
     notFound();
   }
 

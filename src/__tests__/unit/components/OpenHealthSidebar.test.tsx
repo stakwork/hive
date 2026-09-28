@@ -86,8 +86,8 @@ describe('Sidebar - OpenHealth Section', () => {
     vi.mocked(useUnresolvedErrorCountModule.useUnresolvedErrorCount).mockReturnValue({ count: 0 });
   });
 
-  it('renders OpenHealth nav item for the openhealth workspace', () => {
-    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('openhealth') as any);
+  it('renders OpenHealth nav item for the hive workspace', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('hive') as any);
     vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
 
     render(<Sidebar user={mockUser} />);
@@ -95,8 +95,8 @@ describe('Sidebar - OpenHealth Section', () => {
     expect(screen.getAllByText('OpenHealth').length).toBeGreaterThan(0);
   });
 
-  it('does not render OpenHealth nav item for a non-openhealth workspace', () => {
-    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('some-other-workspace') as any);
+  it('does not render OpenHealth nav item for a non-hive workspace (including openhealth)', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('openhealth') as any);
     vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
 
     render(<Sidebar user={mockUser} />);
@@ -116,7 +116,7 @@ describe('Sidebar - OpenHealth Section', () => {
 
   it('renders the OpenHealth Benchmarks child link when expanded', async () => {
     const user = userEvent.setup();
-    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('openhealth') as any);
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('hive') as any);
     vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
 
     render(<Sidebar user={mockUser} />);

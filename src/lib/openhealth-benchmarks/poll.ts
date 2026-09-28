@@ -9,7 +9,7 @@
  */
 import { db } from "@/lib/db";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
-import { strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
+import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { WorkflowStatus } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import {
@@ -52,10 +52,28 @@ export async function pollOpenHealthBenchmarkRuns(
     return;
   }
   if (!swarmResult.success) return;
-  const { swarmUrl, swarmApiKey } = swarmResult.data;
-  if (!swarmUrl || !swarmApiKey) return;
+  const { swarmApiKey } = swarmResult.data;
+  if (!swarmApiKey) return;
 
-  const labBase = strutLabBaseUrl(swarmUrl);
+  // getSwarmAccessByWorkspaceId rewrites the stored URL to
+  // `https://${hostname}:3355` (dropping any path) — good enough to confirm
+  // the swarm is active + get the decrypted key, but NOT the host the start
+  // route posted to. Rebuild the lab base from the raw stored swarm URL with
+  // the same transform the start route uses, so a hive-owned row is probed
+  // on the host the start POST actually used. Do not change
+  // getSwarmAccessByWorkspaceId itself — other callers depend on its rewrite.
+  let rawSwarm: { swarmUrl: string | null } | null;
+  try {
+    rawSwarm = await db.swarm.findUnique({
+      where: { workspaceId },
+      select: { swarmUrl: true },
+    });
+  } catch {
+    return;
+  }
+  if (!rawSwarm?.swarmUrl) return;
+
+  const labBase = `${transformSwarmUrlToRepo2Graph(rawSwarm.swarmUrl)}/lab`;
 
   await Promise.all(pending.map((row) => settleOne(row, labBase, swarmApiKey, workflowName)));
 }
