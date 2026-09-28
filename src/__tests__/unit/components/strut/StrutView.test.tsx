@@ -2,7 +2,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
-import { StrutView } from "@/app/org/[githubLogin]/_components/StrutView";
+import { StrutView } from "@/components/strut/StrutView";
 
 const SEVEN_HOURS_MS = 7 * 60 * 60 * 1000;
 const EMBED_URL = "https://swarm-abc.sphinx.chat:3355/lab/?key=jwt-1";
@@ -58,12 +58,68 @@ describe("StrutView", () => {
 
   it("shows a spinner while the embed URL is loading", () => {
     fetchMock.mockReturnValue(new Promise(() => {}));
-    render(<StrutView githubLogin="test-org" />);
+    render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
     expect(document.querySelector(".animate-spin")).toBeTruthy();
   });
 
+  it("rejects an endpoint that doesn't start with /api/", async () => {
+    render(<StrutView embedUrlEndpoint="/orgs/test-org/strut/embed-url" />);
+    await waitFor(() => {
+      expect(screen.getByText("Strut unavailable")).toBeTruthy();
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a protocol-relative (//) endpoint", async () => {
+    render(<StrutView embedUrlEndpoint="//evil.test/api/orgs/test-org/strut/embed-url" />);
+    await waitFor(() => {
+      expect(screen.getByText("Strut unavailable")).toBeTruthy();
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("re-mints at 7/8 of the returned expiresInSeconds, not the 7h fallback", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ url: EMBED_URL, expiresInSeconds: 3600 }), // workspace route's 1h TTL
+    });
+    render(<StrutView embedUrlEndpoint="/api/workspaces/acme/strut/embed-url" />);
+    await findFrame();
+
+    const almostThreshold = (3600 * 1000 * 7) / 8 - 60_000;
+    nowMs += almostThreshold;
+    act(() => setVisibility("visible"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    nowMs += 120_000; // cross the 7/8 threshold
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ url: EMBED_URL.replace("jwt-1", "jwt-2"), expiresInSeconds: 3600 }),
+    });
+    act(() => setVisibility("visible"));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("falls back to the 7h threshold when expiresInSeconds is missing", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ url: EMBED_URL }) });
+    render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
+    await findFrame();
+
+    nowMs += SEVEN_HOURS_MS - 60_000;
+    act(() => setVisibility("visible"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    nowMs += 120_000;
+    act(() => setVisibility("visible"));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("POSTs to the org's strut embed-url route and frames the returned URL", async () => {
-    render(<StrutView githubLogin="test-org" />);
+    render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
     const iframe = (await screen.findByTitle("Strut")) as HTMLIFrameElement;
     expect(iframe.src.startsWith(`${FRAME_ORIGIN}/lab/?`)).toBe(true);
     expect(frameParams(iframe).get("key")).toBe("jwt-1");
@@ -75,7 +131,7 @@ describe("StrutView", () => {
   });
 
   it("delegates the microphone and allows modals (dictation, confirm() on cancel/re-run)", async () => {
-    render(<StrutView githubLogin="test-org" />);
+    render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
     const iframe = await findFrame();
     expect(iframe.getAttribute("allow")).toContain("microphone");
     const sandbox = iframe.getAttribute("sandbox") ?? "";
@@ -90,7 +146,7 @@ describe("StrutView", () => {
       status: 404,
       json: async () => ({ error: "No swarm configured for any workspace in this org" }),
     });
-    render(<StrutView githubLogin="test-org" />);
+    render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
     await waitFor(() => {
       expect(screen.getByText("Strut unavailable")).toBeTruthy();
     });
@@ -106,14 +162,14 @@ describe("StrutView", () => {
         throw new Error("not json");
       },
     });
-    render(<StrutView githubLogin="test-org" />);
+    render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
     await waitFor(() => {
       expect(screen.getByText("HTTP 502")).toBeTruthy();
     });
   });
 
   it("does not re-mint when the tab becomes visible before the token nears expiry", async () => {
-    render(<StrutView githubLogin="test-org" />);
+    render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
     await findFrame();
 
     nowMs += SEVEN_HOURS_MS - 60_000;
@@ -124,7 +180,7 @@ describe("StrutView", () => {
   });
 
   it("re-mints and reloads the frame when the tab becomes visible after 7h", async () => {
-    render(<StrutView githubLogin="test-org" />);
+    render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
     await findFrame();
 
     fetchMock.mockResolvedValueOnce({
@@ -144,7 +200,7 @@ describe("StrutView", () => {
   });
 
   it("ignores the tab going hidden", async () => {
-    render(<StrutView githubLogin="test-org" />);
+    render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
     await findFrame();
 
     nowMs += SEVEN_HOURS_MS + 60_000;
@@ -171,7 +227,7 @@ describe("StrutView", () => {
         "",
         `/org/test-org/strut?strut=${packed({ wf: "clip", run: "123", chat: "c1" })}&key=nope&tab=x`,
       );
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       const p = frameParams((await findFrame()));
       expect(p.get("wf")).toBe("clip");
       expect(p.get("run")).toBe("123");
@@ -184,7 +240,7 @@ describe("StrutView", () => {
 
     it("mirrors strut's location into ?strut= without reloading the frame", async () => {
       window.history.replaceState(null, "", `/org/test-org/strut?strut=${packed({ wf: "old" })}&tab=x`);
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       const iframe = (await screen.findByTitle("Strut")) as HTMLIFrameElement;
       const src = iframe.src;
 
@@ -198,7 +254,7 @@ describe("StrutView", () => {
     });
 
     it("round-trips a key it has never heard of (peer): message → URL → frame", async () => {
-      const { unmount } = render(<StrutView githubLogin="test-org" />);
+      const { unmount } = render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       await findFrame();
       act(() => postFromFrame({ type: "strut:location", params: { peer: "swarm-2", wf: "clip" } }));
       expect(hereLink().get("peer")).toBe("swarm-2");
@@ -206,14 +262,14 @@ describe("StrutView", () => {
 
       // A reload: a fresh mount reads the Hive URL back onto the frame.
       unmount();
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       const p = frameParams((await findFrame()));
       expect(p.get("peer")).toBe("swarm-2");
       expect(p.get("wf")).toBe("clip");
     });
 
     it("carries elicit while strut reports it and drops it once it's gone", async () => {
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       await findFrame();
       act(() => postFromFrame({ type: "strut:location", params: { chat: "c1", elicit: "e1" } }));
       expect(hereLink().get("chat")).toBe("c1");
@@ -230,7 +286,7 @@ describe("StrutView", () => {
         "",
         `/org/test-org/strut?strut=${packed({ key: "k", embed_origin: "https://evil.test", wf: "clip" })}`,
       );
-      const { unmount } = render(<StrutView githubLogin="test-org" />);
+      const { unmount } = render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       let p = frameParams((await findFrame()));
       expect(p.get("key")).toBe("jwt-1");
       expect(p.get("embed_origin")).toBe(window.location.origin);
@@ -247,7 +303,7 @@ describe("StrutView", () => {
       expect(hereLink().has("embed_origin")).toBe(false);
 
       unmount();
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       p = frameParams((await findFrame()));
       expect(p.get("key")).toBe("jwt-1");
       expect(p.get("embed_origin")).toBe(window.location.origin);
@@ -255,7 +311,7 @@ describe("StrutView", () => {
     });
 
     it("ignores messages from other origins, other types, non-object params, and non-string values", async () => {
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       await findFrame();
       act(() => postFromFrame({ type: "strut:location", params: { wf: "evil" } }, "https://evil.test"));
       act(() => postFromFrame({ type: "other", params: { wf: "x" } }));
@@ -274,7 +330,7 @@ describe("StrutView", () => {
     it("bounds keys, values and the whole link", async () => {
       const key32 = "a" + "b".repeat(31);
       const key33 = "a" + "b".repeat(32);
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       await findFrame();
       act(() =>
         postFromFrame({
@@ -306,7 +362,7 @@ describe("StrutView", () => {
     // until ?strut= carried the keys bare).
     it("opens a legacy ?wf=&run= link and rewrites it to ?strut= on the first strut:location", async () => {
       window.history.replaceState(null, "", "/org/test-org/strut?wf=clip&run=42&tab=x");
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       const p = frameParams((await findFrame()));
       expect(p.get("wf")).toBe("clip");
       expect(p.get("run")).toBe("42");
@@ -320,7 +376,7 @@ describe("StrutView", () => {
 
     it("prefers ?strut= over legacy bare keys when both are present", async () => {
       window.history.replaceState(null, "", `/org/test-org/strut?strut=${packed({ wf: "new" })}&wf=old&run=1`);
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       const p = frameParams((await findFrame()));
       expect(p.get("wf")).toBe("new");
       expect(p.has("run")).toBe(false);
@@ -328,14 +384,14 @@ describe("StrutView", () => {
 
     it("removes ?strut= on empty params and leaves other Hive params untouched", async () => {
       window.history.replaceState(null, "", `/org/test-org/strut?strut=${packed({ wf: "clip" })}&tab=x`);
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       await findFrame();
       act(() => postFromFrame({ type: "strut:location", params: {} }));
       expect(window.location.search).toBe("?tab=x");
     });
 
     it("re-mints onto the latest reported link", async () => {
-      render(<StrutView githubLogin="test-org" />);
+      render(<StrutView embedUrlEndpoint="/api/orgs/test-org/strut/embed-url" />);
       await findFrame();
       act(() => postFromFrame({ type: "strut:location", params: { wf: "clip", run: "42", peer: "swarm-2" } }));
 
