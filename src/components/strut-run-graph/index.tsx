@@ -1,22 +1,44 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, ExternalLink, Eye, Loader2, Pause, PenLine, Play, SkipBack, SkipForward, X } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronRight,
+  ExternalLink,
+  Eye,
+  Loader2,
+  Pause,
+  PenLine,
+  Play,
+  SkipBack,
+  SkipForward,
+  X,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { GraphVisualization } from "@/components/graph/GraphVisualization";
-import type { GraphEdge, GraphNode } from "@/components/graph/graphUtils";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { buildRunGraphTree, callLabel, replayFrame, type RunGraphTreeNode } from "@/lib/strut-run-graph/replay";
+import { layoutRunGraph } from "@/lib/strut-run-graph/layout";
+import {
+  buildRunGraphTree,
+  callLabel,
+  keepGraphRead,
+  replayFrame,
+  type RunGraphTreeNode,
+} from "@/lib/strut-run-graph/replay";
 import type { RunGraphAccess, RunGraphCall, RunGraphNode, RunGraphTrace } from "@/lib/strut-run-graph/types";
+import { runGraphHops, runGraphLinks, type RunGraphLink } from "@/lib/strut-run-graph/walk";
 import { isProvenanceType, runGraphColorMap } from "./colors";
+import { RunGraphCanvas, type RunGraphCanvasNode } from "./RunGraphCanvas";
 
 /** Refresh cadence while the run is still going. */
 const LIVE_POLL_MS = 10_000;
 /** One call per tick when playing. */
 const PLAY_INTERVAL_MS = 800;
+
+/** Width the legend takes at the right of the canvas: `w-52` and its margin. */
+const LEGEND_INSET = 232;
 
 const ACCESS_LABEL: Record<RunGraphAccess, string> = { read: "Reads", write: "Writes" };
 
@@ -123,19 +145,38 @@ function NodeDetail({
   node,
   color,
   calls,
+  links,
+  nodeById,
+  graphAnswered,
   onPick,
+  onSelect,
   onClose,
 }: {
   node: RunGraphNode;
   color: string;
+  /** False when the graph did not answer for the nodes, which is not a node it no longer holds. */
+  graphAnswered: boolean;
   calls: RunGraphCall[];
+  links: RunGraphLink[];
+  nodeById: ReadonlyMap<string, RunGraphNode>;
   onPick: (index: number) => void;
+  onSelect: (id: string) => void;
   onClose: () => void;
 }) {
   const { workspace } = useWorkspace();
   const touchedBy = useMemo(
     () => calls.flatMap((call, index) => (call.nodes.some((n) => n.ref_id === node.ref_id) ? [{ call, index }] : [])),
     [calls, node.ref_id],
+  );
+  const linked = useMemo(
+    () =>
+      links.flatMap((link) => {
+        const out = link.source === node.ref_id;
+        if (!out && link.target !== node.ref_id) return [];
+        const other = nodeById.get(out ? link.target : link.source);
+        return other ? [{ link, out, other }] : [];
+      }),
+    [links, node.ref_id, nodeById],
   );
   return (
     <div
@@ -158,7 +199,13 @@ function NodeDetail({
         </p>
       )}
       <p className="break-all font-mono text-muted-foreground">{node.ref_id}</p>
-      {!node.found && <p className="text-muted-foreground">The graph no longer holds this node.</p>}
+      {!node.found && (
+        <p className="text-muted-foreground" data-testid="run-graph-node-unresolved">
+          {graphAnswered
+            ? "The graph no longer holds this node."
+            : "The graph did not answer, so this is only what the run's log says of the node."}
+        </p>
+      )}
       {node.found && workspace?.slug && (
         <Link
           href={`/w/${workspace.slug}/context/graph?ref_id=${encodeURIComponent(node.ref_id)}`}
@@ -168,6 +215,31 @@ function NodeDetail({
           Open in Graph Explorer
           <ExternalLink className="h-3 w-3" />
         </Link>
+      )}
+      {linked.length > 0 && (
+        <div data-testid="run-graph-node-links">
+          <p className="mb-1 font-medium">{linked.length === 1 ? "1 link" : `${linked.length} links`}</p>
+          <ul className="space-y-0.5">
+            {linked.map(({ link, out, other }) => (
+              <li key={`${link.source}|${link.edgeType ?? ""}|${link.target}`}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(other.ref_id)}
+                  className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-muted/60"
+                >
+                  <ArrowRight
+                    className={`h-3 w-3 shrink-0 ${out ? "" : "rotate-180"} ${
+                      link.hops.length > 0 ? "text-sky-500" : "text-muted-foreground"
+                    }`}
+                    aria-label={out ? "to" : "from"}
+                  />
+                  <span className="shrink-0 font-mono text-muted-foreground">{link.edgeType ?? "hop"}</span>
+                  <span className="min-w-0 flex-1 truncate">{other.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       <div>
         <p className="mb-1 font-medium">Touched by {touchedBy.length === 1 ? "1 call" : `${touchedBy.length} calls`}</p>
@@ -212,8 +284,9 @@ function CurrentCall({ call, index, total }: { call: RunGraphCall; index: number
 
 /**
  * The graph trace of a strut run: every call that touched the knowledge
- * graph as a tree under the run, the touched nodes as a 2D graph, and a
- * replay that steps through the calls in the order the run made them.
+ * graph as a tree under the run, the touched nodes laid out by the stage of
+ * the run that first touched them, and a replay that steps through the
+ * calls in the order the run made them.
  *
  * Generic over workflows: `endpoint` answers a `RunGraphTrace`.
  */
@@ -233,7 +306,7 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
       const response = await fetch(endpoint, { cache: "no-store" });
       const body = (await response.json().catch(() => ({}))) as RunGraphTrace & { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not load the graph trace");
-      setTrace(body);
+      setTrace((prev) => keepGraphRead(prev, body));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the graph trace");
@@ -274,19 +347,27 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
     [typeOverrides],
   );
 
-  const graphNodes = useMemo<GraphNode[]>(
+  const graphNodes = useMemo<RunGraphCanvasNode[]>(
     () =>
       touched
         .filter((n) => typeVisible(n.node_type))
         .map((n) => ({ id: n.ref_id, name: n.name, type: n.node_type })),
     [touched, typeVisible],
   );
-  const graphEdges = useMemo<GraphEdge[]>(() => {
+  const links = useMemo(() => {
     const ids = new Set(graphNodes.map((n) => n.id));
-    return (trace?.edges ?? [])
-      .filter((e) => ids.has(e.source) && ids.has(e.target))
-      .map((e) => ({ source: e.source, target: e.target, label: e.edge_type }));
-  }, [graphNodes, trace?.edges]);
+    return runGraphLinks(trace?.edges ?? [], runGraphHops(calls)).filter((l) => ids.has(l.source) && ids.has(l.target));
+  }, [graphNodes, trace?.edges, calls]);
+  const hopCount = useMemo(() => links.filter((l) => l.hops.length > 0).length, [links]);
+  const layout = useMemo(
+    () =>
+      layoutRunGraph(
+        calls,
+        graphNodes.map((n) => n.id),
+        links,
+      ),
+    [calls, graphNodes, links],
+  );
 
   const frame = useMemo(() => replayFrame(calls, current ?? calls.length), [calls, current]);
   const activeIds = useMemo(() => {
@@ -346,26 +427,6 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
       return next;
     });
   }, []);
-  const selectNode = useCallback((node: GraphNode) => setSelectedId(node.id), []);
-
-  // GraphVisualization wants pixels.
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      if (width < 1 || height < 1) return;
-      setSize((prev) =>
-        prev && Math.abs(prev.width - width) < 1 && Math.abs(prev.height - height) < 1
-          ? prev
-          : { width: Math.round(width), height: Math.round(height) },
-      );
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [trace]);
 
   if (error && !trace) {
     return (
@@ -462,10 +523,24 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
         {current !== null ? (
           <CurrentCall call={calls[current]} index={current} total={calls.length} />
         ) : (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground" data-testid="run-graph-summary">
             {calls.length} calls touched {touched.length} nodes
-            {live ? " so far" : ""}. Step through them, or pick one in the tree.
+            {live ? " so far" : ""}, along {hopCount === 1 ? "1 hop" : `${hopCount} hops`}. Step through them, or pick
+            one in the tree.
             {trace.truncated ? " The run touched more than are shown." : ""}
+          </p>
+        )}
+        {(trace.nodesRead === false || trace.edgesRead === false) && (
+          <p
+            className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+            data-testid="run-graph-unread"
+          >
+            {trace.nodesRead === false
+              ? "The graph did not answer, so the nodes are as the run's log named them and only the hops the run took are drawn."
+              : "The graph did not answer for the edges among these nodes, so only the hops the run took are drawn."}
+            <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => void load()}>
+              Ask again
+            </Button>
           </p>
         )}
       </div>
@@ -484,18 +559,18 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
             />
           )}
         </div>
-        <div ref={canvasRef} className="relative min-w-0 overflow-hidden" data-testid="run-graph-canvas">
-          {size && graphNodes.length > 0 && (
-            <GraphVisualization
+        <div className="relative min-w-0 overflow-hidden" data-testid="run-graph-canvas">
+          {graphNodes.length > 0 && (
+            <RunGraphCanvas
+              layout={layout}
               nodes={graphNodes}
-              edges={graphEdges}
-              width={size.width}
-              height={size.height}
+              links={links}
               colorMap={colorMap}
-              onNodeClick={selectNode}
               hiddenIds={frame.hidden}
               activeIds={activeIds}
-              fit
+              step={current}
+              insetRight={LEGEND_INSET}
+              onNodeClick={setSelectedId}
             />
           )}
           {selected && (
@@ -503,7 +578,11 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
               node={selected}
               color={colorMap[selected.node_type] ?? "#6b7280"}
               calls={calls}
+              links={links}
+              nodeById={nodeById}
+              graphAnswered={trace.nodesRead !== false}
               onPick={pick}
+              onSelect={setSelectedId}
               onClose={() => setSelectedId(null)}
             />
           )}
@@ -525,7 +604,10 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
                   >
                     <span
                       className="inline-block size-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: visible ? colorMap[type] : "transparent", border: `1px solid ${colorMap[type]}` }}
+                      style={{
+                        backgroundColor: visible ? colorMap[type] : "transparent",
+                        border: `1px solid ${colorMap[type]}`,
+                      }}
                     />
                     <span className="min-w-0 flex-1 truncate">{type}</span>
                     <span className="tabular-nums text-muted-foreground">{count}</span>
@@ -533,6 +615,13 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
                 </li>
               );
             })}
+            <li className="mt-1 flex items-center gap-2 border-t px-1 pt-1.5 text-muted-foreground">
+              <span className="inline-block h-px w-2.5 shrink-0 bg-muted-foreground" />
+              An edge of the graph
+            </li>
+            <li className="flex items-center gap-2 px-1 text-muted-foreground">
+              <ArrowRight className="-mx-px h-3 w-3 shrink-0 text-sky-500" />A hop the run took
+            </li>
           </ul>
         </div>
       </div>
