@@ -218,6 +218,54 @@ const DETERMINISTIC: Bundle = (() => {
   return b;
 })();
 
+/**
+ * Clone of `FULL_BUNDLE` that APPENDS an R1 (passed) trace holding only
+ * `rubric_id` and the three new hop 1/3/4 fields — no `root_cause`, no old
+ * `q_*` keys. This is what a new-contract producer emits for a passed
+ * rubric: hops 2/5/6 have no signal at all ("not traced (passed)"), while
+ * hops 1/3/4 still carry a real agent assessment.
+ */
+const WITH_PASSED_TRACES: Bundle = (() => {
+  const b = clone(FULL_BUNDLE) as Bundle;
+  const analysis = b.analysis as Record<string, unknown>;
+  const traces = analysis.traces as Array<Record<string, unknown>>;
+  traces.push({
+    rubric_id: "R1",
+    q_deliverable_has_it: {
+      answer: "yes",
+      evidence: "The deliverable names the $2,000,000 aggregate cap in section 8.2.",
+    },
+    q_checklist_has_it: {
+      answer: "yes",
+      evidence: "checklist.md includes an indemnity-cap verification item.",
+    },
+    q_checklist_matched_rubric: {
+      answer: "yes",
+      evidence: "The checklist item matches the rubric's cap-identification criterion.",
+    },
+  });
+  return b;
+})();
+
+/**
+ * Clone of `FULL_BUNDLE` with the three new fields deleted from every trace —
+ * matches an older producer that only emits `q_ingested_to_graph`,
+ * `q_knowable_or_derived`, `q_draft_got_it`, `q_verify_got_it`. No passed-rubric
+ * trace exists here (older producers only emitted failure traces), so hops
+ * 1/3/4 and hops 2/5/6 on passed rubrics all keep NOT YET ASSESSED.
+ */
+const LEGACY_TRACES: Bundle = (() => {
+  const b = clone(FULL_BUNDLE) as Bundle;
+  const analysis = b.analysis as Record<string, unknown>;
+  const traces = analysis.traces as Array<Record<string, unknown>>;
+  for (const trace of traces) {
+    delete trace.q_deliverable_has_it;
+    delete trace.q_checklist_has_it;
+    delete trace.q_checklist_matched_rubric;
+  }
+  return b;
+})();
+
 // ── Export map ───────────────────────────────────────────────────────────────
 
 /** Hardcoded literal record — the only way a variant name resolves. */
@@ -243,6 +291,8 @@ export const RUN_REPORT_FIXTURES = {
   "has-content-absent": HAS_CONTENT_ABSENT,
   "with-judge-dispute": WITH_JUDGE_DISPUTE,
   "with-unscored-roster": WITH_UNSCORED_ROSTER,
+  "with-passed-traces": WITH_PASSED_TRACES,
+  "legacy-traces": LEGACY_TRACES,
 } as const;
 
 export type RunReportFixtureName = keyof typeof RUN_REPORT_FIXTURES;

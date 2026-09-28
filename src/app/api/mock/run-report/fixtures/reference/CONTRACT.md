@@ -87,7 +87,9 @@ activity summaries, not rubric pass/fail results.
 
 ### `analysis.traces[]` — `TRACE_SCHEMA` from `analyze.py`
 
-Per-rubric failure traces. Each trace has a `rubric_id` that matches a `page_data.rubrics[].id`.
+Per-rubric agent traces (failed, unscored and, from this contract version on,
+passed rubrics). Each trace has a `rubric_id` that matches a
+`page_data.rubrics[].id`.
 
 ```
 {
@@ -97,11 +99,36 @@ Per-rubric failure traces. Each trace has a `rubric_id` that matches a `page_dat
   q_knowable_or_derived: {answer, evidence},
   q_draft_got_it:        {answer, evidence},
   q_verify_got_it:       {answer, evidence},
+  q_deliverable_has_it:        {answer, evidence},
+  q_checklist_has_it:          {answer, evidence},
+  q_checklist_matched_rubric:  {answer, evidence},
   root_cause: string,
   classification: string,
   fix_suggestions: string[],
 }
 ```
+
+`q_deliverable_has_it`, `q_checklist_has_it` and `q_checklist_matched_rubric`
+are `{answer, evidence}` pairs, the same shape as the other `q_*` fields:
+
+- `q_deliverable_has_it`: `yes | partial | no | deliverable-missing | not-traced`
+- `q_checklist_has_it`: `yes | partial | no | checklist-missing | not-traced`
+- `q_checklist_matched_rubric`: `yes | partial | diverged | not-applicable | not-traced`
+
+`not-traced` is a sentinel answer meaning the agent left this rubric out of
+the corresponding pass — it is not a normal assessment value and must be
+displayed as its own state rather than as a pass/fail answer.
+
+Traces now also exist for **passed** rubrics. A passed-rubric trace carries
+only `rubric_id` plus the three fields above (no `pathway`, `root_cause`,
+`classification` or `fix_suggestions`), because the pass/fail verdict already
+comes from `page_data.rubrics[].verdict` — the trace only adds the hop 1/3/4
+assessment. Hops 2/5/6 (`q_draft_got_it`, `q_ingested_to_graph`,
+`q_knowable_or_derived`) are not traced on a passed rubric.
+
+Field names and the `not-traced` sentinel: Producer is Stakwork workflow
+58019, script `run-report-build.py`. Contract confirmed in the Stakwork
+feature "Extend Rubric-Trace Agent for Analysis Traces".
 
 ---
 

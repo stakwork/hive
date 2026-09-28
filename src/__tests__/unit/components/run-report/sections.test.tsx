@@ -69,11 +69,53 @@ function analysisWithTrace(pathway: Array<{ station: string; status: string; evi
         q_knowable_or_derived: null,
         q_draft_got_it: null,
         q_verify_got_it: null,
+        q_deliverable_has_it: null,
+        q_checklist_has_it: null,
+        q_checklist_matched_rubric: null,
         root_cause: "",
         classification: "",
         fix_suggestions: [],
       },
     ],
+  };
+}
+
+/** Minimal TraceRow factory for failureTraces / TraceCard tests. */
+function makeTraceRow(
+  rubric_id: string,
+  overrides: Partial<import("@/lib/run-report/types").TraceRow> = {},
+): import("@/lib/run-report/types").TraceRow {
+  return {
+    rubric_id,
+    pathway: [],
+    q_ingested_to_graph: null,
+    q_knowable_or_derived: null,
+    q_draft_got_it: null,
+    q_verify_got_it: null,
+    q_deliverable_has_it: null,
+    q_checklist_has_it: null,
+    q_checklist_matched_rubric: null,
+    root_cause: "",
+    classification: "",
+    fix_suggestions: [],
+    ...overrides,
+  };
+}
+
+/** Minimal RubricRow factory for failureTraces tests. */
+function makeRubricRow(
+  id: string,
+  overrides: Partial<import("@/lib/run-report/types").RubricRow> = {},
+): import("@/lib/run-report/types").RubricRow {
+  return {
+    id,
+    title: id,
+    passed: false,
+    verdict: "fail",
+    reasoning: "",
+    matchCriteria: "",
+    documentExcerpt: "",
+    ...overrides,
   };
 }
 
@@ -172,6 +214,78 @@ describe("TraceCard — station.evidence rendering", () => {
     const { container } = render(<TracesSection projection={projection} />);
     // Raw JSON should not appear as a text node
     expect(container.textContent).not.toContain('{"a":1');
+  });
+});
+
+// ── TracesSection — failureTraces filtering + empty states ───────────────────
+
+describe("TracesSection — failure-only filtering", () => {
+  it("keeps a failed rubric's trace in the failure count and cards", () => {
+    const projection = baseProjection({
+      analysis: { summaries: [], traces: [makeTraceRow("R-FAIL")] },
+      rubricRows: [makeRubricRow("R-FAIL", { passed: false, verdict: "fail" })],
+    });
+    render(<TracesSection projection={projection} />);
+    expect(screen.getByText(/Failure traces \(1\)/)).toBeInTheDocument();
+  });
+
+  it("keeps an unscored rubric's trace in the failure count and cards", () => {
+    const projection = baseProjection({
+      analysis: { summaries: [], traces: [makeTraceRow("R-UNSCORED")] },
+      rubricRows: [makeRubricRow("R-UNSCORED", { passed: false, verdict: "" })],
+    });
+    render(<TracesSection projection={projection} />);
+    expect(screen.getByText(/Failure traces \(1\)/)).toBeInTheDocument();
+  });
+
+  it("drops a passed rubric's trace from the count and cards", () => {
+    const projection = baseProjection({
+      analysis: { summaries: [], traces: [makeTraceRow("R-PASS")] },
+      rubricRows: [makeRubricRow("R-PASS", { passed: true, verdict: "pass" })],
+    });
+    render(<TracesSection projection={projection} />);
+    expect(screen.getByText(/Failure traces \(0\)/)).toBeInTheDocument();
+    expect(screen.getByText(/No failure traces for this run\./i)).toBeInTheDocument();
+  });
+
+  it("shows 'No agent traces for this run.' when there are no traces at all", () => {
+    const projection = baseProjection(); // analysis.traces: []
+    render(<TracesSection projection={projection} />);
+    expect(screen.getByText(/No agent traces for this run\./i)).toBeInTheDocument();
+  });
+
+  it("shows 'No failure traces for this run.' when all traces belong to passed rubrics", () => {
+    const projection = baseProjection({
+      analysis: {
+        summaries: [],
+        traces: [makeTraceRow("R-PASS-1"), makeTraceRow("R-PASS-2")],
+      },
+      rubricRows: [
+        makeRubricRow("R-PASS-1", { passed: true, verdict: "pass" }),
+        makeRubricRow("R-PASS-2", { passed: true, verdict: "pass" }),
+      ],
+    });
+    render(<TracesSection projection={projection} />);
+    expect(screen.getByText(/Failure traces \(0\)/)).toBeInTheDocument();
+    expect(screen.getByText(/No failure traces for this run\./i)).toBeInTheDocument();
+  });
+
+  it("a not-traced old-field answer renders the neutral badge, not 'fail'", () => {
+    const projection = baseProjection({
+      analysis: {
+        summaries: [],
+        traces: [
+          makeTraceRow("R-NT", {
+            q_draft_got_it: { answer: "not-traced", evidence: "" },
+          }),
+        ],
+      },
+      rubricRows: [makeRubricRow("R-NT", { passed: false, verdict: "fail" })],
+    });
+    render(<TracesSection projection={projection} />);
+    expect(screen.getByText("not traced")).toBeInTheDocument();
+    // Should not render the old field's raw answer as a fail-styled badge text.
+    expect(screen.queryByText("not-traced")).not.toBeInTheDocument();
   });
 });
 

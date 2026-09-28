@@ -158,30 +158,53 @@ function HopLinks({
   );
 }
 
+function CommentaryPill({ testId, label }: { testId: string; label: string }) {
+  return (
+    <div
+      data-testid={testId}
+      className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground/60"
+    >
+      {label}
+    </div>
+  );
+}
+
 function CommentarySlot({ hop, show }: { hop: Hop; show: boolean }) {
   if (!show) return null;
-  if (hop.commentary) {
-    return (
-      <div className="mt-2 rounded border border-primary/25 bg-primary/[0.04] px-3 py-2">
-        <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground/70 mb-0.5">
-          Agent assessment
-        </div>
-        <div className="text-[12.5px]">
-          <b>{hop.commentary.answer}</b>
-          {hop.commentary.evidence && (
-            <span className="text-muted-foreground"> — {hop.commentary.evidence}</span>
-          )}
-        </div>
-        {hop.commentaryNote && (
-          <div className="text-[11.5px] text-muted-foreground mt-1">{hop.commentaryNote}</div>
-        )}
-      </div>
-    );
-  }
   return (
-    <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground/60">
-      not yet assessed
-    </div>
+    <>
+      {hop.commentaryStatus === "assessed" && hop.commentary ? (
+        <div
+          data-testid="run-report-hop-commentary-assessed"
+          className="mt-2 rounded border border-primary/25 bg-primary/[0.04] px-3 py-2"
+        >
+          <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground/70 mb-0.5">
+            Agent assessment
+          </div>
+          <div className="text-[12.5px]">
+            <b>{hop.commentary.answer}</b>
+            {hop.commentary.evidence && (
+              <span className="text-muted-foreground"> — {hop.commentary.evidence}</span>
+            )}
+          </div>
+        </div>
+      ) : hop.commentaryStatus === "not-traced" ? (
+        <CommentaryPill testId="run-report-hop-commentary-not-traced" label="not traced" />
+      ) : hop.commentaryStatus === "not-traced-passed" ? (
+        <CommentaryPill
+          testId="run-report-hop-commentary-not-traced-passed"
+          label="not traced (passed)"
+        />
+      ) : (
+        <CommentaryPill
+          testId="run-report-hop-commentary-not-yet-assessed"
+          label="not yet assessed"
+        />
+      )}
+      {hop.commentaryNote && (
+        <div className="text-[11.5px] text-muted-foreground mt-1">{hop.commentaryNote}</div>
+      )}
+    </>
   );
 }
 
@@ -279,8 +302,8 @@ export function RubricLedger({
   graphRubrics?: GraphRubric[] | null;
   onOpenDoc: OpenDoc;
 }) {
-  // Tier 2 renders only when the bundle actually carries failure traces —
-  // a deterministic run shows the pure scaffold, no empty slots.
+  // Tier 2 renders only when the bundle actually carries traces — a
+  // deterministic run shows the pure scaffold, no empty slots.
   const hasCommentary = readTraces(projection.analysis).length > 0;
 
   // ── Contested indexes ──────────────────────────────────────────────────────
