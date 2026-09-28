@@ -55,6 +55,12 @@ function querySummary(call: RunGraphCall): string {
   return Array.isArray(value) ? `${value.length} refs` : String(value);
 }
 
+/** What a call came back with: the nodes it read or wrote, or what a search matched. */
+function answerSummary(call: RunGraphCall): string {
+  if (call.hits === undefined) return String(call.nodes.length);
+  return call.hits === 1 ? "1 hit" : `${call.hits} hits`;
+}
+
 /** `a` → `b` → calls reads as one row, `a / b`, when `a` holds nothing else. */
 function compress(node: RunGraphTreeNode): { label: string; node: RunGraphTreeNode } {
   let label = node.label;
@@ -103,7 +109,7 @@ function TreeBranch({
         <AccessIcon access={call.access} className="h-3 w-3 shrink-0" />
         <span className="shrink-0 font-mono">{callLabel(node.label)}</span>
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{querySummary(call)}</span>
-        <span className="shrink-0 tabular-nums text-muted-foreground">{call.nodes.length}</span>
+        <span className="shrink-0 tabular-nums text-muted-foreground">{answerSummary(call)}</span>
       </button>
     );
   }
@@ -148,6 +154,7 @@ function NodeDetail({
   links,
   nodeById,
   graphAnswered,
+  unreadReason,
   onPick,
   onSelect,
   onClose,
@@ -156,6 +163,8 @@ function NodeDetail({
   color: string;
   /** False when the graph did not answer for the nodes, which is not a node it no longer holds. */
   graphAnswered: boolean;
+  /** Why it did not, in parentheses, or empty. */
+  unreadReason: string;
   calls: RunGraphCall[];
   links: RunGraphLink[];
   nodeById: ReadonlyMap<string, RunGraphNode>;
@@ -203,7 +212,7 @@ function NodeDetail({
         <p className="text-muted-foreground" data-testid="run-graph-node-unresolved">
           {graphAnswered
             ? "The graph no longer holds this node."
-            : "The graph did not answer, so this is only what the run's log says of the node."}
+            : `The graph did not answer${unreadReason}, so this is only what the run's log says of the node.`}
         </p>
       )}
       {node.found && workspace?.slug && (
@@ -273,6 +282,11 @@ function CurrentCall({ call, index, total }: { call: RunGraphCall; index: number
       <Badge variant={call.access === "write" ? "default" : "secondary"}>{call.access}</Badge>
       <span className="font-mono">{call.tool}</span>
       <span className="text-muted-foreground">by the {call.by}</span>
+      {call.hits !== undefined && (
+        <span className="text-muted-foreground" data-testid="run-graph-call-hits">
+          {answerSummary(call)}, drawn only where the run went on to read them
+        </span>
+      )}
       {query.map(([key, value]) => (
         <span key={key} className="max-w-xs truncate text-muted-foreground">
           {key} <span className="font-mono text-foreground">{Array.isArray(value) ? value.join(", ") : String(value)}</span>
@@ -453,6 +467,7 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
 
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const last = calls.length - 1;
+  const unreadReason = trace.unreadReason ? ` (${trace.unreadReason})` : "";
 
   return (
     <div className="flex flex-col" data-testid="run-graph">
@@ -524,7 +539,7 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
           <CurrentCall call={calls[current]} index={current} total={calls.length} />
         ) : (
           <p className="text-xs text-muted-foreground" data-testid="run-graph-summary">
-            {calls.length} calls touched {touched.length} nodes
+            {calls.length} calls read or wrote {touched.length} nodes
             {live ? " so far" : ""}, along {hopCount === 1 ? "1 hop" : `${hopCount} hops`}. Step through them, or pick
             one in the tree.
             {trace.truncated ? " The run touched more than are shown." : ""}
@@ -536,8 +551,8 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
             data-testid="run-graph-unread"
           >
             {trace.nodesRead === false
-              ? "The graph did not answer, so the nodes are as the run's log named them and only the hops the run took are drawn."
-              : "The graph did not answer for the edges among these nodes, so only the hops the run took are drawn."}
+              ? `The graph did not answer${unreadReason}, so the nodes are as the run's log named them and only the hops the run took are drawn.`
+              : `The graph did not answer for the edges among these nodes${unreadReason}, so only the hops the run took are drawn.`}
             <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => void load()}>
               Ask again
             </Button>
@@ -581,6 +596,7 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
               links={links}
               nodeById={nodeById}
               graphAnswered={trace.nodesRead !== false}
+              unreadReason={unreadReason}
               onPick={pick}
               onSelect={setSelectedId}
               onClose={() => setSelectedId(null)}
