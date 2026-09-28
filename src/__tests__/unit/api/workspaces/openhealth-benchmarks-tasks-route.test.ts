@@ -4,9 +4,9 @@ import { NextRequest } from "next/server";
 const mockRequireAuth = vi.hoisted(() => vi.fn());
 const mockGetMiddlewareContext = vi.hoisted(() => vi.fn());
 const mockValidateWorkspaceAccess = vi.hoisted(() => vi.fn());
-const mockGetWorkspaceSwarmAccess = vi.hoisted(() => vi.fn());
 const mockCheckRateLimit = vi.hoisted(() => vi.fn());
 const mockFetchOpenHealthInstances = vi.hoisted(() => vi.fn());
+const mockGetOpenHealthScorerConfig = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/middleware/utils", () => ({
   getMiddlewareContext: mockGetMiddlewareContext,
@@ -17,16 +17,13 @@ vi.mock("@/services/workspace", () => ({
   validateWorkspaceAccess: mockValidateWorkspaceAccess,
 }));
 
-vi.mock("@/lib/helpers/swarm-access", () => ({
-  getWorkspaceSwarmAccess: mockGetWorkspaceSwarmAccess,
-}));
-
 vi.mock("@/lib/rate-limit", () => ({
   checkRateLimit: mockCheckRateLimit,
 }));
 
 vi.mock("@/lib/openhealth-benchmarks/scorer-client", () => ({
   fetchOpenHealthInstances: mockFetchOpenHealthInstances,
+  getOpenHealthScorerConfig: mockGetOpenHealthScorerConfig,
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -34,6 +31,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 const USER_ID = "user-1";
+const SCORER_CONFIG = { baseUrl: "https://scorer.example.com", token: "scorer-token" };
 
 function makeRequest(slug: string, query = "") {
   return new NextRequest(`http://localhost/api/workspaces/${slug}/openhealth/benchmarks/tasks${query}`);
@@ -44,10 +42,7 @@ function setupHappyPath() {
   mockRequireAuth.mockReturnValue({ id: USER_ID });
   mockValidateWorkspaceAccess.mockResolvedValue({ canRead: true, canWrite: true });
   mockCheckRateLimit.mockResolvedValue({ allowed: true });
-  mockGetWorkspaceSwarmAccess.mockResolvedValue({
-    success: true,
-    data: { swarmUrl: "https://swarm.example.com/api", swarmApiKey: "swarm-key" },
-  });
+  mockGetOpenHealthScorerConfig.mockReturnValue(SCORER_CONFIG);
   mockFetchOpenHealthInstances.mockResolvedValue({ rows: [], total: 0 });
 }
 
@@ -95,7 +90,7 @@ describe("GET /api/workspaces/[slug]/openhealth/benchmarks/tasks", () => {
     const req = makeRequest("hive");
     const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(503);
-    expect(mockGetWorkspaceSwarmAccess).not.toHaveBeenCalled();
+    expect(mockGetOpenHealthScorerConfig).not.toHaveBeenCalled();
     expect(mockFetchOpenHealthInstances).not.toHaveBeenCalled();
   });
 
@@ -105,8 +100,7 @@ describe("GET /api/workspaces/[slug]/openhealth/benchmarks/tasks", () => {
     const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(200);
     expect(mockFetchOpenHealthInstances).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
+      SCORER_CONFIG,
       expect.objectContaining({ split: "public" }),
     );
   });
@@ -132,8 +126,7 @@ describe("GET /api/workspaces/[slug]/openhealth/benchmarks/tasks", () => {
     const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(200);
     expect(mockFetchOpenHealthInstances).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
+      SCORER_CONFIG,
       expect.objectContaining({ split: "heldout" }),
     );
   });
@@ -151,22 +144,31 @@ describe("GET /api/workspaces/[slug]/openhealth/benchmarks/tasks", () => {
     const req = makeRequest("hive", "?split=heldout&task=context_summarization");
     await GET(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(mockFetchOpenHealthInstances).toHaveBeenCalledWith(
-      "https://swarm.example.com/api",
-      "swarm-key",
+      SCORER_CONFIG,
       expect.objectContaining({ split: "heldout", task: "context_summarization" }),
     );
   });
 
-  test("resolves swarm access with the literal hive slug, and passes the hive swarm URL/key to the scorer", async () => {
+  test("uses the OPENHEALTH_SCORER_URL/OPENHEALTH_SCORER_TOKEN-derived config for the scorer call", async () => {
     const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
     const req = makeRequest("hive");
     await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(mockGetWorkspaceSwarmAccess).toHaveBeenCalledWith("hive", USER_ID);
+    expect(mockGetOpenHealthScorerConfig).toHaveBeenCalled();
     expect(mockFetchOpenHealthInstances).toHaveBeenCalledWith(
-      "https://swarm.example.com/api",
-      "swarm-key",
+      SCORER_CONFIG,
       expect.any(Object),
     );
+  });
+
+  test("returns 503 with a clear error when the scorer env vars are missing", async () => {
+    mockGetOpenHealthScorerConfig.mockReturnValue(null);
+    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
+    const req = makeRequest("hive");
+    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body).toEqual({ error: "OpenHealth scorer not configured" });
+    expect(mockFetchOpenHealthInstances).not.toHaveBeenCalled();
   });
 
   test("caps limit at the server maximum even when a larger value is requested", async () => {
@@ -174,7 +176,7 @@ describe("GET /api/workspaces/[slug]/openhealth/benchmarks/tasks", () => {
     const req = makeRequest("hive", "?limit=99999");
     const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
     expect(res.status).toBe(200);
-    const call = mockFetchOpenHealthInstances.mock.calls[0][2];
+    const call = mockFetchOpenHealthInstances.mock.calls[0][1];
     expect(call.limit).toBeLessThanOrEqual(100);
   });
 
@@ -203,14 +205,6 @@ describe("GET /api/workspaces/[slug]/openhealth/benchmarks/tasks", () => {
     expect(body.rows[0]).not.toHaveProperty("groundTruth");
     expect(body.rows[0]).not.toHaveProperty("gold");
     expect(body.rows[0].gt_id).toBe("gt-1");
-  });
-
-  test("returns 503 when the swarm is not configured", async () => {
-    mockGetWorkspaceSwarmAccess.mockResolvedValue({ success: false, error: { type: "SWARM_NOT_CONFIGURED" } });
-    const { GET } = await import("@/app/api/workspaces/[slug]/openhealth/benchmarks/tasks/route");
-    const req = makeRequest("hive");
-    const res = await GET(req, { params: Promise.resolve({ slug: "hive" }) });
-    expect(res.status).toBe(503);
   });
 
   test("returns 502 when the scorer fetch throws", async () => {

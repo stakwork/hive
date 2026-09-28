@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { OPENHEALTH_SLUGS } from "@/lib/eval-capture-slugs";
@@ -12,7 +11,10 @@ import {
   projectOpenHealthInstanceSummary,
   type OpenHealthTaskName,
 } from "@/lib/openhealth-benchmarks/constants";
-import { fetchOpenHealthInstances } from "@/lib/openhealth-benchmarks/scorer-client";
+import {
+  fetchOpenHealthInstances,
+  getOpenHealthScorerConfig,
+} from "@/lib/openhealth-benchmarks/scorer-client";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -26,8 +28,9 @@ const DEFAULT_LIMIT = 50;
  * GET /api/workspaces/[slug]/openhealth/benchmarks/tasks
  *
  * Read-only public/heldout-split task metadata list, proxied from the
- * OpenHealth swarm's scorer (`GET /score/instances`). Never returns gold.
- * Gated to the `hive` workspace only.
+ * OpenHealth scorer (`GET /score/instances`) — the `synthetic_hospital`
+ * epic_sim app, not the workspace swarm. Never returns gold. Gated to the
+ * `hive` workspace only.
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
@@ -109,30 +112,28 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       offset = parsed;
     }
 
-    // The slug gate above already rejects every non-hive URL before access,
-    // so a successful call has URL slug "hive". Use that literal — not a
-    // second workspace load that could diverge from the URL workspace.
-    const swarmResult = await getWorkspaceSwarmAccess("hive", userId);
-    if (!swarmResult.success) {
-      return NextResponse.json({ error: "Swarm not configured" }, { status: 503 });
-    }
-    const { swarmUrl, swarmApiKey } = swarmResult.data;
-    if (!swarmUrl || !swarmApiKey) {
-      return NextResponse.json({ error: "Swarm not configured" }, { status: 503 });
+    const scorerConfig = getOpenHealthScorerConfig();
+    if (!scorerConfig) {
+      logger.warn(
+        "[openhealth/benchmarks/tasks] scorer not configured (missing OPENHEALTH_SCORER_URL/OPENHEALTH_SCORER_TOKEN)",
+        "openhealth-benchmarks",
+      );
+      return NextResponse.json({ error: "OpenHealth scorer not configured" }, { status: 503 });
     }
 
     let upstream;
     try {
-      upstream = await fetchOpenHealthInstances(swarmUrl, swarmApiKey, {
+      upstream = await fetchOpenHealthInstances(scorerConfig, {
         split,
-        task: taskName as ReturnType<typeof isOpenHealthTaskName> extends boolean ? never : never as never,
+        task: taskName,
         limit,
         offset,
-      } as never);
+      });
     } catch (err) {
       logger.error("[openhealth/benchmarks/tasks] scorer fetch failed", "openhealth-benchmarks", {
         split,
         task: taskName,
+        status: err instanceof Error && /HTTP (\d+)/.exec(err.message)?.[1],
         error: err instanceof Error ? err.message : String(err),
       });
       return NextResponse.json({ error: "Failed to fetch task list" }, { status: 502 });

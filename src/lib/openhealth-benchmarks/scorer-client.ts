@@ -1,12 +1,14 @@
 /**
- * Client for the OpenHealth swarm scorer's read-only instance list.
+ * Client for the OpenHealth scorer's read-only instance list.
  *
+ * The scorer is the `synthetic_hospital` epic_sim app — it is NOT the
+ * workspace swarm on port 3355 and is not reached via `transformSwarmUrlToRepo2Graph`.
  * There is no Hive client and no graph node for this list — it must be read
- * from the swarm scorer directly (`GET /score/instances`), token-gated with
- * `X-Scorer-Token` (the workspace swarm key). Do NOT call `openhealth/load-task`
+ * from the scorer directly (`GET /score/instances`), token-gated with
+ * `X-Scorer-Token` (the epic_sim `EPIC_SIM_SCORER_TOKEN`, configured here via
+ * `OPENHEALTH_SCORER_TOKEN`). Do NOT call `openhealth/load-task`
  * (it returns `groundTruth`) and do NOT open `benchmark_v1.3.db` directly.
  */
-import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import type { OpenHealthSplit, OpenHealthTaskName } from "./constants";
 
 /** Row shape returned by the scorer's `/score/instances` endpoint. */
@@ -34,19 +36,33 @@ export interface OpenHealthInstanceListResult {
 
 const SCORER_TIMEOUT_MS = 15_000;
 
-/** `{repo2graph}` — the same host strut's lab is mounted on, scorer's own mount point. */
-function scorerBaseUrl(swarmUrl: string): string {
-  return transformSwarmUrlToRepo2Graph(swarmUrl);
+/** Scorer base URL + token, sourced from env. Null when either is unset. */
+export interface OpenHealthScorerConfig {
+  baseUrl: string;
+  token: string;
 }
 
 /**
- * Fetch a page of public/heldout instance metadata from the swarm scorer.
+ * Read the OpenHealth scorer's base URL and token from env.
+ * `OPENHEALTH_SCORER_URL` — the `synthetic_hospital` epic_sim app's base URL
+ * (trailing slash trimmed). `OPENHEALTH_SCORER_TOKEN` — the epic_sim
+ * `EPIC_SIM_SCORER_TOKEN` value. Returns null when either is missing.
+ */
+export function getOpenHealthScorerConfig(): OpenHealthScorerConfig | null {
+  const rawBaseUrl = process.env.OPENHEALTH_SCORER_URL;
+  const token = process.env.OPENHEALTH_SCORER_TOKEN;
+  if (!rawBaseUrl || !token) return null;
+  const baseUrl = rawBaseUrl.replace(/\/+$/, "");
+  return { baseUrl, token };
+}
+
+/**
+ * Fetch a page of public/heldout instance metadata from the OpenHealth scorer.
  * `split` and `task` are bound as query parameters — never interpolated into
  * a SQL or Cypher string. Callers must validate `split`/`task` before calling.
  */
 export async function fetchOpenHealthInstances(
-  swarmUrl: string,
-  swarmApiKey: string,
+  config: OpenHealthScorerConfig,
   params: {
     split: OpenHealthSplit;
     task?: OpenHealthTaskName;
@@ -54,7 +70,7 @@ export async function fetchOpenHealthInstances(
     offset?: number;
   },
 ): Promise<OpenHealthInstanceListResult> {
-  const url = new URL(`${scorerBaseUrl(swarmUrl)}/score/instances`);
+  const url = new URL(`${config.baseUrl}/score/instances`);
   url.searchParams.set("split", params.split);
   if (params.task) url.searchParams.set("task", params.task);
   url.searchParams.set("limit", String(params.limit));
@@ -62,7 +78,7 @@ export async function fetchOpenHealthInstances(
 
   const res = await fetch(url.toString(), {
     method: "GET",
-    headers: { "X-Scorer-Token": swarmApiKey },
+    headers: { "X-Scorer-Token": config.token },
     cache: "no-store",
     signal: AbortSignal.timeout(SCORER_TIMEOUT_MS),
   });
