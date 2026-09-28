@@ -84,6 +84,55 @@ export interface OpenHealthRunDetail extends OpenHealthRun {
   spreadsheetUrl: string | null;
 }
 
+/**
+ * What the graph answered for a Concept the improve run wrote: `created`,
+ * `existed` (the edge to its parent was already there), or `failed`.
+ */
+export type OpenHealthConceptWrite = "created" | "existed" | "failed";
+
+/** One Concept the improve run proposed, after the workflow's own validation. */
+export interface OpenHealthConceptProposal {
+  /** `create` hangs a new Concept under `parent`; `amend` rewrites an existing one. */
+  action: "create" | "amend";
+  name: string;
+  parent: string | null;
+  description: string | null;
+  /** Markdown: the new Concept's docs, or the replacement docs of an amend. */
+  docs: string | null;
+  rationale: string | null;
+  /** The scoring errors it would fix, e.g. "missed P011". */
+  addresses: string[];
+  /** Null when the run reports no write for it: an amend, or a run that did not apply. */
+  write: OpenHealthConceptWrite | null;
+  writeError: string | null;
+}
+
+/** One `openhealth-improve` run over a benchmark run. */
+export interface OpenHealthImprovement {
+  id: string;
+  strutRunId: string | null;
+  outcome: OpenHealthOutcome;
+  /** Did the run write its new Concepts to the graph? */
+  applied: boolean;
+  summary: string | null;
+  /** Scoring errors the run looked at; null when it did not report them. */
+  errorCount: number | null;
+  proposals: OpenHealthConceptProposal[];
+  /** Proposals the workflow's validation refused, with why. */
+  rejected: Array<{ name: string; reasons: string[] }>;
+  /** Errors the run left alone, with why. */
+  notAddressed: Array<{ error: string; reason: string }>;
+  durationMs: number | null;
+  error: string | null;
+  createdAt: string;
+  settledAt: string | null;
+}
+
+export interface OpenHealthImproveResponse {
+  /** Newest first. */
+  improvements: OpenHealthImprovement[];
+}
+
 export type OpenHealthStageStatus = "pending" | "running" | "done" | "failed";
 
 export interface OpenHealthStage {

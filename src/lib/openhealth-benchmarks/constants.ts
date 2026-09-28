@@ -8,6 +8,15 @@ import type { OpenHealthArtifactName, OpenHealthDifficulty, OpenHealthSplit } fr
 /** `StrutRun.kind` for a benchmark run. */
 export const OPENHEALTH_RUN_KIND = "openhealth_benchmark";
 
+/** `StrutRun.kind` for an improve run: one benchmark run's scoring errors → Concepts. */
+export const OPENHEALTH_IMPROVE_RUN_KIND = "openhealth_improve";
+
+/**
+ * The improve workflow. It reads the benchmark run from strut's own run
+ * store, so it is launched on the swarm that ran the benchmark.
+ */
+export const OPENHEALTH_IMPROVE_WORKFLOW = "openhealth-improve";
+
 /** Strut workflow name format. */
 export const OPENHEALTH_STRUT_WORKFLOW_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
