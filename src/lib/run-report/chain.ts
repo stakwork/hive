@@ -7,7 +7,7 @@
  * or collapses a hop, and every derived answer names its method.
  */
 import type { RunReportProjection } from "./types";
-import { isRecord, asString, readTraces } from "./derive";
+import { asString, readTraces, rubricVerdict, isNotTracedAnswer } from "./derive";
 import { buildNodeIdentities } from "./tool-activity";
 
 export type Tone = "pass" | "warn" | "muted";
@@ -24,6 +24,15 @@ export interface HopLink {
   workfile?: string; // workfile name (no viewer mode — inline preview)
 }
 
+/**
+ * Clear commentary status for a hop, distinguishing an actual agent
+ * assessment from the three states where there is nothing to show as an
+ * assessment: not yet assessed (missing/blank field — older bundles), not
+ * traced (the agent explicitly left the rubric out), and not traced (passed)
+ * (a passed rubric's trace only covers hops 1/3/4).
+ */
+export type CommentaryStatus = "assessed" | "not-yet-assessed" | "not-traced" | "not-traced-passed";
+
 export interface Hop {
   n: number;
   question: string;
@@ -32,7 +41,8 @@ export interface Hop {
   method: Method; // how the deterministic answer was derived
   links: HopLink[];
   gap?: string; // named gap class, when the answer is a gap statement
-  commentary?: { answer: string; evidence: string } | null; // null = not yet assessed
+  commentaryStatus: CommentaryStatus;
+  commentary: { answer: string; evidence: string } | null; // non-null only when commentaryStatus === "assessed"
   commentaryNote?: string; // e.g. verification sub-annotation on hop 2
 }
 
@@ -138,11 +148,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
   );
 
   const criteria: CriterionChain[] = projection.rubricRows.map((row) => {
-    const verdict: CriterionChain["verdict"] = row.passed
-      ? "pass"
-      : row.verdict?.trim()
-        ? "fail"
-        : "unscored";
+    const verdict = rubricVerdict(row);
 
     const links = projection.rubricLinks[row.id] ?? [];
     const delivHits = links.filter((l) => deliverableIds.has(l.doc));
@@ -153,12 +159,32 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
     const termable = tokens.length > 0 || links.length > 0;
     const trace = traceById.get(row.id);
 
-    const q = (t: unknown): { answer: string; evidence: string } | null => {
-      if (!isRecord(t)) return null;
-      const answer = asString(t.answer);
-      if (!answer) return null;
-      return { answer, evidence: asString(t.evidence) ?? "" };
+    // A passed rubric only switches to "not traced (passed)" when the bundle
+    // actually carries a trace for it — which only new-contract producers
+    // emit. On legacy bundles (failure-only traces), passed rubrics have no
+    // trace and their hops 2/5/6 keep NOT YET ASSESSED (brief item 4).
+    const passed = verdict === "pass" && trace !== undefined;
+
+    const hopCommentary = (
+      qa: { answer: string; evidence: string } | null | undefined,
+      opts: { passed: boolean },
+    ): Pick<Hop, "commentaryStatus" | "commentary"> => {
+      if (opts.passed) return { commentaryStatus: "not-traced-passed", commentary: null };
+      const answer = qa?.answer?.trim();
+      if (!answer) return { commentaryStatus: "not-yet-assessed", commentary: null };
+      if (isNotTracedAnswer(answer)) return { commentaryStatus: "not-traced", commentary: null };
+      return { commentaryStatus: "assessed", commentary: { answer, evidence: qa?.evidence ?? "" } };
     };
+
+    // Hop 2's verification sub-annotation runs through the same hopCommentary
+    // logic, always non-passed — a real verify answer stays visible even when
+    // the primary hop-2 field is not-traced or blank, and it is never set on
+    // passed rubrics or for a blank/missing/not-traced verify answer.
+    const verifyCommentary = hopCommentary(trace?.q_verify_got_it, { passed: false });
+    const commentaryNote =
+      verifyCommentary.commentaryStatus === "assessed"
+        ? `Verification: ${verifyCommentary.commentary!.answer}`
+        : undefined;
 
     const hops: Hop[] = [
       {
@@ -181,7 +207,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
               links: [],
               gap: "deliverable",
             }),
-        commentary: null,
+        ...hopCommentary(trace?.q_deliverable_has_it, { passed: false }),
       },
       {
         n: 2,
@@ -209,10 +235,8 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
                   method: "none" as Method,
                   links: [],
                 }),
-        commentary: q(trace?.q_draft_got_it),
-        commentaryNote: q(trace?.q_verify_got_it)
-          ? `Verification: ${q(trace?.q_verify_got_it)!.answer}`
-          : undefined,
+        ...hopCommentary(trace?.q_draft_got_it, { passed }),
+        commentaryNote,
       },
       {
         n: 3,
@@ -220,7 +244,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
         ...(checklistWf
           ? { answer: "", tone: "pass" as Tone, method: "artifact" as Method, links: [{ label: checklistWf.name, workfile: checklistWf.name }] }
           : { answer: checklistGap!, tone: "warn" as Tone, method: "none" as Method, links: [], gap: "checklist" }),
-        commentary: null,
+        ...hopCommentary(trace?.q_checklist_has_it, { passed: false }),
       },
       {
         n: 4,
@@ -229,7 +253,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
         tone: "muted",
         method: "none",
         links: [],
-        commentary: null,
+        ...hopCommentary(trace?.q_checklist_matched_rubric, { passed: false }),
       },
       {
         n: 5,
@@ -256,7 +280,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
                 method: "none" as Method,
                 links: [],
               }),
-        commentary: q(trace?.q_ingested_to_graph),
+        ...hopCommentary(trace?.q_ingested_to_graph, { passed }),
       },
       {
         n: 6,
@@ -268,7 +292,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
           ...inputDocs.map((d) => ({ label: d.title, docId: d.id })),
           ...workfiles.slice(0, 12).map((w) => ({ label: w.name, workfile: w.name })),
         ],
-        commentary: q(trace?.q_knowable_or_derived),
+        ...hopCommentary(trace?.q_knowable_or_derived, { passed }),
       },
     ];
 
@@ -286,7 +310,7 @@ export function buildChainModel(projection: RunReportProjection): ChainModel {
       documentExcerpt: row.documentExcerpt ?? "",
       hops,
       tokens,
-      verdictNote: trace && rootCause
+      verdictNote: trace && rootCause && verdict !== "pass"
         ? {
             rootCause,
             classification: asString((trace as unknown as Record<string, unknown>).classification) ?? "",

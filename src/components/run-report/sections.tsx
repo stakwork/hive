@@ -10,6 +10,8 @@ import {
   readSummaries,
   isRecord,
   asString,
+  isNotTracedAnswer,
+  failureTraces,
 } from "@/lib/run-report/derive";
 import type {
   RunReportProjection,
@@ -175,8 +177,16 @@ function TraceCard({
               <MiniHeading>{Q_LABELS[key]}</MiniHeading>
               <div className="text-[13px] space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <StatusBadge kind={/yes|pass|true/i.test(qa.answer) ? "pass" : "fail"}>
-                    {qa.answer}
+                  <StatusBadge
+                    kind={
+                      isNotTracedAnswer(qa.answer)
+                        ? "muted"
+                        : /yes|pass|true/i.test(qa.answer)
+                          ? "pass"
+                          : "fail"
+                    }
+                  >
+                    {isNotTracedAnswer(qa.answer) ? "not traced" : qa.answer}
                   </StatusBadge>
                 </div>
                 {qa.evidence && (
@@ -373,7 +383,8 @@ function DeterministicAgentCard({ agent }: { agent: Record<string, unknown> }) {
 }
 
 export function TracesSection({ projection }: { projection: RunReportProjection }) {
-  const traces = readTraces(projection.analysis);
+  const all = readTraces(projection.analysis);
+  const failures = failureTraces(all, projection.rubricRows);
   const summaries = readSummaries(projection.analysis);
   const deterministicAgents = projection.pageData.agents.filter(isRecord);
   const summarizedNames = new Set(summaries.map((s) => s.agent_name));
@@ -392,13 +403,17 @@ export function TracesSection({ projection }: { projection: RunReportProjection 
   return (
     <Section id="agents" kicker="send_agent_logs" title="Agent roster" data-testid="run-report-section-agents">
       {/* ── Failure traces ──────────────────────────────────────────────── */}
-      <MiniHeading>Failure traces ({traces.length})</MiniHeading>
+      <MiniHeading>Failure traces ({failures.length})</MiniHeading>
       {/* An empty traces array is the deterministic-only run — a LEGITIMATE
-          empty state that must never route to the error state. */}
-      {traces.length === 0 ? (
+          empty state that must never route to the error state. Traces that
+          exist but belong entirely to passed rubrics are kept out of this
+          failure-only view (and out of its count) but are not "no traces". */}
+      {all.length === 0 ? (
         <EmptyPanel label="No agent traces for this run." />
+      ) : failures.length === 0 ? (
+        <EmptyPanel label="No failure traces for this run." />
       ) : (
-        traces.map((trace, i) => (
+        failures.map((trace, i) => (
           <TraceCard
             key={trace.rubric_id}
             trace={trace}
