@@ -3,7 +3,22 @@
  * graph looked like at each step of a replay. Pure.
  */
 
-import type { RunGraphCall } from "./types";
+import type { RunGraphCall, RunGraphTrace } from "./types";
+
+/**
+ * A refresh of the trace the graph did not answer keeps what an earlier one
+ * read of it: the nodes it had resolved, and its edges.
+ */
+export function keepGraphRead(prev: RunGraphTrace | null, next: RunGraphTrace): RunGraphTrace {
+  if (!prev) return next;
+  let kept = next;
+  if (next.nodesRead === false && prev.nodesRead) {
+    const resolved = new Map(prev.nodes.filter((n) => n.found).map((n) => [n.ref_id, n]));
+    kept = { ...kept, nodes: next.nodes.map((n) => resolved.get(n.ref_id) ?? n) };
+  }
+  if (next.edgesRead === false && prev.edgesRead) kept = { ...kept, edges: prev.edges };
+  return kept;
+}
 
 export interface RunGraphTreeNode {
   /** Path from the run root to this node. */

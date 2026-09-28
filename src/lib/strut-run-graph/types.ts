@@ -54,6 +54,10 @@ export interface RunGraphTrace {
   calls: RunGraphCall[];
   nodes: RunGraphNode[];
   edges: RunGraphEdge[];
+  /** False when the graph did not answer for the nodes: they are then as the run's log named them. */
+  nodesRead: boolean;
+  /** False when the graph did not answer for the edges: `edges` is then empty, not known to be. */
+  edgesRead: boolean;
   /** True when the run touched more nodes than were resolved. */
   truncated: boolean;
 }
