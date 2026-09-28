@@ -5,7 +5,8 @@
  * Strut's log names a node by `ref_id` (and sometimes a type); everything
  * else is read from the swarm's graph with two read-only Cypher queries.
  * Hydration is best effort — a graph that cannot answer leaves the nodes as
- * the log named them, it never fails the trace.
+ * the log named them and says its edges were not read (`edgesRead`); it
+ * never fails the trace.
  */
 
 import { getSwarmVanityAddress } from "@/lib/constants";
@@ -86,10 +87,10 @@ function unresolved(ref: RunGraphNodeRef): RunGraphNode {
 export async function hydrateRunGraph(
   refs: RunGraphNodeRef[],
   run: CypherRunner,
-): Promise<{ nodes: RunGraphNode[]; edges: RunGraphEdge[]; truncated: boolean }> {
+): Promise<{ nodes: RunGraphNode[]; edges: RunGraphEdge[]; edgesRead: boolean; truncated: boolean }> {
   const valid = refs.filter((r) => REF_ID_RE.test(r.ref_id));
   const shown = valid.slice(0, RUN_GRAPH_MAX_NODES);
-  if (shown.length === 0) return { nodes: [], edges: [], truncated: false };
+  if (shown.length === 0) return { nodes: [], edges: [], edgesRead: true, truncated: false };
 
   // `Data_Bank` is on every node and carries the `ref_id` index.
   const ids = `WITH [${shown.map((r) => `'${r.ref_id}'`).join(",")}] AS ids`;
@@ -133,6 +134,7 @@ export async function hydrateRunGraph(
   return {
     nodes,
     edges,
+    edgesRead: edgeResult !== null,
     truncated: valid.length > shown.length || edgeRows.length >= ROW_LIMIT,
   };
 }
