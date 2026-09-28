@@ -17,6 +17,7 @@ import type {
 } from "@/types/openhealth";
 import { formatCost, formatDuration, formatScore } from "../format";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { ImprovePanel } from "./ImprovePanel";
 
 /** Poll cadence while the run is in flight. */
 const POLL_MS = 10_000;
@@ -299,6 +300,7 @@ export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSet
       )}
       {run.outcome === "cancelled" && <p className="text-sm text-muted-foreground">The run was cancelled.</p>}
       {run.outcome === "succeeded" && <Scored run={run} />}
+      {run.outcome === "succeeded" && run.strutRunId && <ImprovePanel endpoint={`${base}/improve`} />}
 
       {run.strutRunId && (
         <div className="flex flex-wrap gap-2">
