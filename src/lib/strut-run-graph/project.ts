@@ -5,6 +5,8 @@
  * anything the workflow handled (a benchmark's answer key, a secret-shaped
  * string), so a call keeps only its path, its timing, the nodes it touched,
  * and the allowlisted scalar fields of what it asked for.
+ *
+ * A search touched nothing: what it matched is counted (`hits`), not kept.
  */
 
 import type { RunGraphAccess, RunGraphCall, RunGraphNodeRef, RunGraphQueryValue } from "./types";
@@ -38,6 +40,13 @@ const WRITE_RE = /(^|[/_-])(create|edit|update|delete|remove|write|merge|upsert|
 
 export function accessOf(tool: string): RunGraphAccess {
   return WRITE_RE.test(tool.toLowerCase()) ? "write" : "read";
+}
+
+const SEARCH_RE = /(^|[/_-])search([/_-]|$)/;
+
+/** A search answers with what matched its query, whether or not the run went on to read it. */
+export function isSearch(tool: string): boolean {
+  return accessOf(tool) === "read" && SEARCH_RE.test(tool.toLowerCase());
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -111,6 +120,7 @@ export function projectRunGraphCalls(events: unknown): RunGraphCall[] {
     const byAgent = stepType.startsWith(TOOL_PREFIX);
     const tool = byAgent ? stepType.slice(TOOL_PREFIX.length) : stepType;
     const start = starts.get(event.path);
+    const search = isSearch(tool);
     calls.push({
       path: event.path,
       tool,
@@ -120,13 +130,14 @@ export function projectRunGraphCalls(events: unknown): RunGraphCall[] {
       endedAt: typeof event.ts === "string" ? event.ts : null,
       durationMs: typeof event.durationMs === "number" ? Math.round(event.durationMs) : null,
       query: queryOf(start?.input),
-      nodes,
+      nodes: search ? [] : nodes,
+      ...(search ? { hits: nodes.length } : {}),
     });
   }
   return calls;
 }
 
-/** The distinct nodes a list of calls touched, first touch first. A later ref's type fills an earlier untyped one. */
+/** The distinct nodes a list of calls read or wrote, first touch first. A later ref's type fills an earlier untyped one. */
 export function distinctNodeRefs(calls: RunGraphCall[]): RunGraphNodeRef[] {
   const byRef = new Map<string, RunGraphNodeRef>();
   for (const call of calls) {

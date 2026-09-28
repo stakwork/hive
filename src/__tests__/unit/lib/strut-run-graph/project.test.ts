@@ -7,11 +7,13 @@
  *   - the call keeps the allowlisted scalar query fields of its
  *     `step.start` input and nothing else — no node payload, no output;
  *   - reads and writes are told apart by the step's name;
+ *   - a search keeps its place among the calls and the count of what it
+ *     matched, and none of its hits as nodes;
  *   - node refs are deduplicated and malformed ones dropped.
  */
 
 import { describe, it, expect } from "vitest";
-import { accessOf, distinctNodeRefs, projectRunGraphCalls } from "@/lib/strut-run-graph/project";
+import { accessOf, distinctNodeRefs, isSearch, projectRunGraphCalls } from "@/lib/strut-run-graph/project";
 
 const start = (path: string, stepType: string, input: unknown, ts = "2026-09-28T16:56:45.000Z") => ({
   ts,
@@ -128,9 +130,39 @@ describe("projectRunGraphCalls", () => {
     expect(String(calls[0].query.query)).toHaveLength(301);
   });
 
+  it("counts what a search matched and keeps none of it as nodes", () => {
+    const calls = projectRunGraphCalls([
+      start("wf/seed/003-graph_graph_search", "tool:graph_graph_search", { q: "Chart Neutral", type: "Concept" }),
+      end("wf/seed/003-graph_graph_search", "tool:graph_graph_search", {
+        nodes: [
+          { ref_id: "chart-neutral", node_type: "Concept" },
+          { ref_id: "code-graph-visualization", node_type: "Concept" },
+          { ref_id: "chart-neutral", node_type: "Concept" },
+        ],
+      }),
+      start("wf/seed/find", "graph/graph-search", { q: "sepsis" }),
+      end("wf/seed/find", "graph/graph-search", { nodes: [{ ref_id: "sepsis" }] }),
+      start("wf/seed/004-graph_graph_get", "tool:graph_graph_get", { ref_id: "chart-neutral" }),
+      end("wf/seed/004-graph_graph_get", "tool:graph_graph_get", {
+        nodes: [{ ref_id: "chart-neutral", node_type: "Concept" }],
+      }),
+    ]);
+
+    expect(calls.map((c) => [c.tool, c.access, c.nodes.length, c.hits])).toEqual([
+      ["graph_graph_search", "read", 0, 2],
+      ["graph/graph-search", "read", 0, 1],
+      ["graph_graph_get", "read", 1, undefined],
+    ]);
+    expect(calls[0].query).toEqual({ q: "Chart Neutral" });
+    expect(calls[2]).not.toHaveProperty("hits");
+    // A hit is a node of the run only because a later call read it.
+    expect(distinctNodeRefs(calls)).toEqual([{ ref_id: "chart-neutral", node_type: "Concept" }]);
+    expect(JSON.stringify(calls)).not.toContain("code-graph-visualization");
+  });
+
   it("deduplicates node refs and drops malformed ones", () => {
     const calls = projectRunGraphCalls([
-      end("wf/a/001-graph_graph_search", "tool:graph_graph_search", {
+      end("wf/a/001-graph_graph_neighbors", "tool:graph_graph_neighbors", {
         nodes: [{ ref_id: "a", node_type: "Concept" }, { ref_id: "a" }, { ref_id: "" }, { node_type: "X" }, null, "b"],
       }),
     ]);
@@ -158,6 +190,22 @@ describe("accessOf", () => {
     ["graph/register-namespace", "write"],
   ])("%s is a %s", (tool, access) => {
     expect(accessOf(tool)).toBe(access);
+  });
+});
+
+describe("isSearch", () => {
+  it.each([
+    ["graph/graph-search", true],
+    ["graph_graph_search", true],
+    ["jarvis/search", true],
+    ["graph/graph-get", false],
+    ["graph_graph_get_batched", false],
+    ["graph_graph_neighbors", false],
+    ["graph/walk", false],
+    ["graph/research", false],
+    ["graph/create-search-index", false],
+  ])("%s: %s", (tool, search) => {
+    expect(isSearch(tool)).toBe(search);
   });
 });
 
