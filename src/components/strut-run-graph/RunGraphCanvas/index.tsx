@@ -104,7 +104,7 @@ export function RunGraphCanvas({
     if (!svg) return;
     const behavior = d3Zoom<SVGSVGElement, unknown>()
       .scaleExtent([MIN_ZOOM, MAX_ZOOM])
-      .extent(() => [
+      .extent((): [[number, number], [number, number]] => [
         [0, 0],
         [sizeRef.current.width, sizeRef.current.height],
       ])
