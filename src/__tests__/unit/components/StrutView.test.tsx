@@ -185,7 +185,7 @@ describe("StrutView", () => {
     it("mirrors strut's location into ?strut= without reloading the frame", async () => {
       window.history.replaceState(null, "", `/org/test-org/strut?strut=${packed({ wf: "old" })}&tab=x`);
       render(<StrutView githubLogin="test-org" />);
-      const iframe = (await screen.findByTitle("Strut")) as HTMLIFrameElement;
+      const iframe = await findFrame();
       const src = iframe.src;
 
       act(() => postFromFrame({ type: "strut:location", params: { wf: "digest", run: "1790179200000" } }));

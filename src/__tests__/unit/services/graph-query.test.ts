@@ -8,7 +8,6 @@ import {
 import { buildMockGraphQueryResult } from "@/app/api/mock/graph/query/fixture";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
-import { db } from "@/lib/db";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -20,17 +19,8 @@ vi.mock("@/lib/helpers/swarm-access", () => ({
   getSwarmAccessByWorkspaceId: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
-      findFirst: vi.fn(),
-    },
-  },
-}));
-
 const mockedValidate = vi.mocked(validateWorkspaceAccess);
 const mockedGetSwarmAccess = vi.mocked(getSwarmAccessByWorkspaceId);
-const mockedFindFirst = vi.mocked(db.workspace.findFirst);
 
 function okAccess(): Awaited<ReturnType<typeof validateWorkspaceAccess>> {
   return {
@@ -96,7 +86,6 @@ describe("runWorkspaceGraphQuery", () => {
     vi.clearAllMocks();
     process.env.USE_MOCKS = "false";
     mockedValidate.mockResolvedValue(okAccess());
-    mockedFindFirst.mockResolvedValue({ id: "ws-1" } as never);
     mockedGetSwarmAccess.mockResolvedValue(okSwarmAccess());
   });
 
@@ -121,7 +110,6 @@ describe("runWorkspaceGraphQuery", () => {
       expect(result.message).toBe("Workspace not found or access denied");
     }
     // IDOR gate must precede credential resolution and upstream calls
-    expect(mockedFindFirst).not.toHaveBeenCalled();
     expect(mockedGetSwarmAccess).not.toHaveBeenCalled();
   });
 
@@ -134,6 +122,7 @@ describe("runWorkspaceGraphQuery", () => {
         canWrite: true,
         canAdmin: false,
         userRole,
+        workspace: { id: "ws-1", slug: "ws" },
       } as never);
 
       const fetchMock = vi.fn().mockResolvedValue({
@@ -146,9 +135,10 @@ describe("runWorkspaceGraphQuery", () => {
       const result = await call();
 
       // No admin/owner role required — a plain read query from a non-admin
-      // member succeeds all the way through to the upstream fetch.
+      // member succeeds all the way through to the upstream fetch, using the
+      // workspace id already authorized (no second slug lookup).
       expect(result.ok).toBe(true);
-      expect(mockedFindFirst).toHaveBeenCalled();
+      expect(mockedGetSwarmAccess).toHaveBeenCalledWith("ws-1");
       expect(fetchMock).toHaveBeenCalled();
     },
   );
@@ -171,7 +161,7 @@ describe("runWorkspaceGraphQuery", () => {
     }
     // Rejected by the write-keyword guard before swarm resolution — but it's
     // the write guard, not a defunct admin gate, doing the rejecting.
-    expect(mockedFindFirst).not.toHaveBeenCalled();
+    expect(mockedGetSwarmAccess).not.toHaveBeenCalled();
   });
 
   test("returns 400 when query is missing or not a string", async () => {
@@ -391,7 +381,7 @@ describe("runWorkspaceGraphQuery", () => {
       process.env.USE_MOCKS = "true";
       global.fetch = vi.fn();
       // Make downstream deps explode if they're ever reached
-      mockedFindFirst.mockRejectedValue(new Error("must not reach swarm resolution"));
+      mockedGetSwarmAccess.mockRejectedValue(new Error("must not reach swarm resolution"));
 
       const query = "MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 10";
       const result = await call({ query });
@@ -402,7 +392,7 @@ describe("runWorkspaceGraphQuery", () => {
         expect(Array.isArray((result.data as { rows: [] }).rows)).toBe(true);
         expect(result.meta.requestedLimit).toBe(100);
       }
-      expect(mockedFindFirst).not.toHaveBeenCalled();
+      expect(mockedGetSwarmAccess).not.toHaveBeenCalled();
       expect(global.fetch).not.toHaveBeenCalled();
     });
 
