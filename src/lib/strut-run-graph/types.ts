@@ -6,6 +6,10 @@
  * is any `step.end` in strut's event log that carries `nodes` (strut's
  * provenance marker, `withAccessedNodes`), whether the workflow ran the step
  * or an agent inside it called it as a tool.
+ *
+ * Strut marks a search with every node it matched. Those are hits, not
+ * reads: the call is kept, its hits are counted, and a hit is a node of the
+ * trace only when another call went on to read or write it.
  */
 
 /** A node as strut's event log names it. */
@@ -31,7 +35,10 @@ export interface RunGraphCall {
   durationMs: number | null;
   /** What the call asked for — scalar query fields only, never node payloads. */
   query: Record<string, RunGraphQueryValue>;
+  /** The nodes the call read or wrote; none for a search. */
   nodes: RunGraphNodeRef[];
+  /** On a search: how many nodes it matched. */
+  hits?: number;
 }
 
 /** A touched node, resolved against the graph the run used. */
@@ -58,6 +65,8 @@ export interface RunGraphTrace {
   nodesRead: boolean;
   /** False when the graph did not answer for the edges: `edges` is then empty, not known to be. */
   edgesRead: boolean;
+  /** Why the graph did not answer (`400 query too long`): for the nodes, else for the edges. */
+  unreadReason?: string;
   /** True when the run touched more nodes than were resolved. */
   truncated: boolean;
 }

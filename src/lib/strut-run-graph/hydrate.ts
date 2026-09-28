@@ -6,10 +6,11 @@
  * else is read from the swarm's graph with two read-only Cypher queries.
  * Hydration is best effort — a graph that cannot answer leaves the nodes as
  * the log named them and says what it did not read (`nodesRead`,
- * `edgesRead`); it never fails the trace.
+ * `edgesRead`) and why (`unreadReason`); it never fails the trace.
  */
 
 import { getSwarmVanityAddress } from "@/lib/constants";
+import { logger } from "@/lib/logger";
 import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
 import type { RunGraphEdge, RunGraphNode, RunGraphNodeRef, RunGraphTrace } from "./types";
 
@@ -26,6 +27,8 @@ const REF_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const ROW_LIMIT = 1000;
 const QUERY_TIMEOUT_MS = 20_000;
 const MAX_NAME_CHARS = 160;
+const MAX_REASON_CHARS = 120;
+const LOG_TAG = "STRUT_RUN_GRAPH";
 
 /** Labels every node carries; the one left over is its type. */
 const STRUCTURAL_LABELS: ReadonlySet<string> = new Set(["Data_Bank", "Node"]);
@@ -36,12 +39,30 @@ export interface CypherResult {
   rows: unknown[][];
 }
 
-/** Runs one read-only query; null when the graph could not answer. */
-export type CypherRunner = (query: string, limit: number) => Promise<CypherResult | null>;
+/** Why the graph could not answer a query: `400 query too long`, `no answer in 20 s`. */
+export interface CypherUnread {
+  unread: string;
+}
+
+/** Runs one read-only query, or says why the graph could not answer it. */
+export type CypherRunner = (query: string, limit: number) => Promise<CypherResult | CypherUnread>;
+
+function isUnread(result: CypherResult | CypherUnread): result is CypherUnread {
+  return "unread" in result;
+}
 
 export function swarmCypherRunner(swarm: { name: string; apiKey: string }): CypherRunner {
   const url = `${getStakgraphUrl(getSwarmVanityAddress(swarm.name))}/api/hive/query`;
   return async (query, limit) => {
+    const unread = (reason: string, details?: unknown): CypherUnread => {
+      logger.warn("The graph did not answer a run graph query", LOG_TAG, {
+        swarm: swarm.name,
+        queryChars: query.length,
+        reason,
+        details,
+      });
+      return { unread: reason.slice(0, MAX_REASON_CHARS) };
+    };
     try {
       const res = await fetch(url, {
         method: "POST",
@@ -50,18 +71,29 @@ export function swarmCypherRunner(swarm: { name: string; apiKey: string }): Cyph
         cache: "no-store",
         signal: AbortSignal.timeout(QUERY_TIMEOUT_MS),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        // Upstream's `error` is one of its own fixed phrases; `details` is the database's and stays in the log.
+        const said = (await res.json().catch(() => null)) as { error?: unknown; details?: unknown } | null;
+        const error = typeof said?.error === "string" && said.error ? said.error : res.statusText;
+        return unread(`${res.status} ${error}`.trim(), said?.details);
+      }
       const body = (await res.json()) as Partial<CypherResult>;
-      return Array.isArray(body.columns) && Array.isArray(body.rows) ? { columns: body.columns, rows: body.rows } : null;
-    } catch {
-      return null;
+      return Array.isArray(body.columns) && Array.isArray(body.rows)
+        ? { columns: body.columns, rows: body.rows }
+        : unread("an answer that is not rows");
+    } catch (err) {
+      const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+      return unread(
+        timedOut ? `no answer in ${QUERY_TIMEOUT_MS / 1000} s` : "could not be reached",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   };
 }
 
 /** Rows as records keyed by column — upstream orders columns its own way. */
-function records(result: CypherResult | null): Array<Record<string, unknown>> {
-  if (!result) return [];
+function records(result: CypherResult | CypherUnread): Array<Record<string, unknown>> {
+  if (isUnread(result)) return [];
   return result.rows.map((row) => Object.fromEntries(result.columns.map((column, i) => [column, row[i]])));
 }
 
@@ -131,11 +163,13 @@ export async function hydrateRunGraph(
     edges.push({ source: row.source, target: row.target, edge_type: row.edge_type });
   }
 
+  const unread = [nodeResult, edgeResult].find(isUnread);
   return {
     nodes,
     edges,
-    nodesRead: nodeResult !== null,
-    edgesRead: edgeResult !== null,
+    nodesRead: !isUnread(nodeResult),
+    edgesRead: !isUnread(edgeResult),
+    ...(unread ? { unreadReason: unread.unread } : {}),
     truncated: valid.length > shown.length || edgeRows.length >= ROW_LIMIT,
   };
 }
