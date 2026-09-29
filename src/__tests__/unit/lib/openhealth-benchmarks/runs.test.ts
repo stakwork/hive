@@ -33,7 +33,10 @@ const OUTPUT = {
   n_matched: 7,
   n_gt: 7,
   n_pred: 10,
-  matched: [{ pred: "N179", gt: "N179" }, { pred: "", gt: "I10" }],
+  matched: [
+    { pred: "N179", gt: "N179" },
+    { pred: "", gt: "I10" },
+  ],
   missed: [],
   extra: ["E876", "R197", 12],
   chartChars: 41000,
@@ -133,7 +136,9 @@ describe("toOpenHealthRun", () => {
   });
 
   it("has nothing to report for a run in flight", () => {
-    const run = toOpenHealthRun(row({ status: StrutRunStatus.PENDING, output: null, durationMs: null, settledAt: null }));
+    const run = toOpenHealthRun(
+      row({ status: StrutRunStatus.PENDING, output: null, durationMs: null, settledAt: null }),
+    );
     expect(run).toMatchObject({ outcome: "running", scores: null, error: null, difficulty: null, settledAt: null });
   });
 });
@@ -166,7 +171,9 @@ describe("toOpenHealthRunDetail", () => {
   });
 
   it("only links a sheet over https", () => {
-    expect(toOpenHealthRunDetail(row({ output: { ...OUTPUT, spreadsheetUrl: "javascript:alert(1)" } })).spreadsheetUrl).toBeNull();
+    expect(
+      toOpenHealthRunDetail(row({ output: { ...OUTPUT, spreadsheetUrl: "javascript:alert(1)" } })).spreadsheetUrl,
+    ).toBeNull();
     expect(toOpenHealthRunDetail(row({ output: { ...OUTPUT, spreadsheetUrl: "" } })).spreadsheetUrl).toBeNull();
   });
 
@@ -267,16 +274,10 @@ describe("openHealthClimbSeries", () => {
   ];
 
   it("orders scored runs oldest first under a best-so-far line", () => {
-    const series = openHealthClimbSeries(runs, "best");
+    const series = openHealthClimbSeries(runs);
     expect(series.map((p) => p.runId)).toEqual(["a", "b", "c", "d"]);
-    expect(series.map((p) => p.level)).toEqual([0.6, 0.6, 0.9, 0.9]);
+    expect(series.map((p) => p.best)).toEqual([0.6, 0.6, 0.9, 0.9]);
     expect(series.map((p) => p.newBest)).toEqual([true, false, true, false]);
-  });
-
-  it("draws a rolling mean across tasks", () => {
-    const series = openHealthClimbSeries(runs, "mean");
-    expect(series[1].level).toBeCloseTo(0.5);
-    expect(series[3].level).toBeCloseTo(0.6);
   });
 });
 

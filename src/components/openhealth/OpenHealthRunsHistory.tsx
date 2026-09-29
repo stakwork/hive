@@ -7,10 +7,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOpenHealthRuns } from "@/hooks/useOpenHealthRuns";
+import { OPENHEALTH_DIFFICULTIES } from "@/lib/openhealth-benchmarks/constants";
 import {
-  CLIMB_WINDOW,
   openHealthClimbSeries,
   openHealthRunTasks,
+  summarizeByDifficulty,
   summarizeOpenHealthRuns,
   type OpenHealthSummary,
 } from "@/lib/openhealth-benchmarks/runs";
@@ -56,8 +57,8 @@ export function OpenHealthRunsHistory() {
   const task = tasks.some((t) => String(t.gtId) === taskParam) ? taskParam : ALL_TASKS;
   const shown = useMemo(() => (task === ALL_TASKS ? runs : runs.filter((r) => String(r.gtId) === task)), [runs, task]);
   const summary = useMemo(() => summarizeOpenHealthRuns(shown), [shown]);
-  const climbMode = task === ALL_TASKS ? "mean" : "best";
-  const climb = useMemo(() => openHealthClimbSeries(shown, climbMode), [shown, climbMode]);
+  const byDifficulty = useMemo(() => summarizeByDifficulty(runs), [runs]);
+  const climb = useMemo(() => openHealthClimbSeries(shown), [shown]);
 
   // The task filter and the open run are in the URL, so a link to the page opens the same view.
   const syncUrl = useCallback(
@@ -151,24 +152,24 @@ export function OpenHealthRunsHistory() {
         )}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-4">
-        <SummaryCard
-          title={task === ALL_TASKS ? "All runs" : `Task ${task}`}
-          summary={summary}
-          testId="openhealth-summary-all"
-        />
-        <Card className="lg:col-span-3" data-testid="openhealth-climb">
-          <CardContent className="space-y-2 py-4">
-            <p className="text-xs font-medium text-muted-foreground">
-              F1 over time ·{" "}
-              {climbMode === "best"
-                ? "line is the best so far"
-                : `line is the rolling mean of the last ${CLIMB_WINDOW} scored runs`}
-            </p>
-            <OpenHealthClimbChart points={climb} mode={climbMode} onSelect={openRun} />
-          </CardContent>
-        </Card>
-      </div>
+      {task === ALL_TASKS ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <SummaryCard title="All runs" summary={summary} testId="openhealth-summary-all" />
+          {OPENHEALTH_DIFFICULTIES.map((d) => (
+            <SummaryCard key={d} title={d} summary={byDifficulty[d]} testId={`openhealth-summary-${d}`} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-4">
+          <SummaryCard title={`Task ${task}`} summary={summary} testId="openhealth-summary-all" />
+          <Card className="lg:col-span-3" data-testid="openhealth-climb">
+            <CardContent className="space-y-2 py-4">
+              <p className="text-xs font-medium text-muted-foreground">F1 over time · line is the best so far</p>
+              <OpenHealthClimbChart points={climb} onSelect={openRun} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <Table>
         <TableHeader>

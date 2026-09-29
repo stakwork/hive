@@ -12,18 +12,16 @@ const MAX_X_LABELS = 8;
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
 /**
- * F1 of every scored run over time: one dot per run, the line through them
- * the best-so-far (one task) or a rolling mean (all tasks). A dot below the
- * line is drawn hollow. Clicking a dot opens that run.
+ * One task's F1 over time: one dot per scored run, the line through them the
+ * best so far. A dot below the line is drawn hollow. Clicking a dot opens
+ * that run.
  */
 export function OpenHealthClimbChart({
   points,
-  mode,
   onSelect,
   height = 180,
 }: {
   points: OpenHealthClimbPoint[];
-  mode: "best" | "mean";
   onSelect?: (runId: string) => void;
   height?: number;
 }) {
@@ -66,8 +64,8 @@ export function OpenHealthClimbChart({
   const line = d3
     .line<OpenHealthClimbPoint>()
     .x((_, i) => x(i))
-    .y((p) => y(p.level))
-    .curve(mode === "best" ? d3.curveStepAfter : d3.curveMonotoneX);
+    .y((p) => y(p.best))
+    .curve(d3.curveStepAfter);
   const path = points.length >= 2 ? (line(points) ?? "") : "";
 
   const last = points[points.length - 1];
@@ -114,7 +112,7 @@ export function OpenHealthClimbChart({
             />
           )}
 
-          <g className="text-chart-1">
+          <g className="text-indigo-500 dark:text-indigo-400">
             {path && (
               <path
                 d={path}
@@ -127,7 +125,7 @@ export function OpenHealthClimbChart({
               />
             )}
             {points.map((p, i) => {
-              const hollow = p.f1 < p.level;
+              const hollow = p.f1 < p.best;
               return (
                 <circle
                   key={p.runId}
@@ -146,13 +144,13 @@ export function OpenHealthClimbChart({
 
           <text
             x={x(lastIdx) + 8}
-            y={y(last.level)}
+            y={y(last.best)}
             dy="0.35em"
             fontSize={11}
             fontWeight={600}
             className="fill-foreground tabular-nums"
           >
-            {formatScore(last.level)}
+            {formatScore(last.best)}
           </text>
 
           {points.map((p, i) =>
@@ -196,11 +194,7 @@ export function OpenHealthClimbChart({
             {formatWhen(hovered.createdAt)}
           </div>
           <div className="text-muted-foreground">
-            {mode === "best"
-              ? hovered.newBest
-                ? "new best"
-                : `best so far ${formatScore(hovered.level)}`
-              : `rolling mean ${formatScore(hovered.level)}`}
+            {hovered.newBest ? "new best" : `best so far ${formatScore(hovered.best)}`}
           </div>
           {onSelect && <div className="mt-0.5 text-primary">click to open run</div>}
         </div>
