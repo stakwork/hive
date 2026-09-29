@@ -33,6 +33,7 @@ import { timingSafeEqual } from "@/lib/encryption";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { hardenContent } from "@/services/canvas-agent-run-fanout";
 import { fanOutStrutToCanvas, strutRowId } from "@/services/canvas-strut-fanout";
+import { readStrutChatActivity } from "@/services/strut-chat-activity";
 import { STRUT_AGENT_KIND } from "@/lib/ai/strutTools";
 import { getBaseUrl } from "@/lib/utils";
 
@@ -127,6 +128,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, note: "no delivery target" });
   }
 
+  // What the chat has built and run, for its card. Every post is a moment
+  // it may have changed (a turn published or launched something; a
+  // detached run's end started this turn). Best effort and bounded.
+  const activity = await readStrutChatActivity({ workspaceSlug: row.workspaceSlug, userId: row.userId, chatId });
+
   const fanOut = {
     runId,
     title: row.title,
@@ -139,6 +145,7 @@ export async function POST(request: NextRequest) {
     error: oversized ? "reply too large to post — read it with check_strut_chat" : error,
     settled,
     parked: payload.parked === true,
+    activity,
   } as const;
   const result = await fanOutStrutToCanvas(
     { conversationId: row.conversationId, orgId: row.orgId, userId: row.userId },

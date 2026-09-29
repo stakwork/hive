@@ -21,6 +21,16 @@ export function strutRunDeepLink(workflow: string, strutRunId: string): string {
   return new URLSearchParams({ wf: workflow, run: strutRunId }).toString();
 }
 
+/** Strut's deep link to a builder chat: `chat=<id>`. */
+export function strutChatDeepLink(chatId: string): string {
+  return new URLSearchParams({ chat: chatId }).toString();
+}
+
+/** Strut's deep link to a workflow (its active version): `wf=<workflow>`. */
+export function strutWorkflowDeepLink(workflow: string): string {
+  return new URLSearchParams({ wf: workflow }).toString();
+}
+
 /**
  * The org strut view opened on a deep link, root-relative:
  * `/org/<githubLogin>/strut?strut=wf%3Dclip%26run%3D1`. An empty link is
