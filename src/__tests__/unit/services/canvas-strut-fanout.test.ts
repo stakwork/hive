@@ -4,7 +4,8 @@
  * Coverage:
  *   - renderStrutContent: header names workspace + chat id (the model's only
  *     handle for continuing the chat), interim / parked / settled / error forms.
- *   - fanOutStrutToCanvas: appends + nudges; idempotent per (run, turn, event)
+ *   - fanOutStrutToCanvas: appends + nudges; the row's `source` carries what
+ *     the chat's card reads (parked, activity); idempotent per (run, turn, event)
  *     while distinct turns of ONE dispatch each land; skips on missing
  *     conversation / ownership mismatch; reports `failed` when the DB throws.
  */
@@ -99,6 +100,19 @@ describe("fanOutStrutToCanvas", () => {
       source: { kind: "strut", runId: "run-1", chatId: "chat-9", workspaceSlug: "acme", turn: 0, settled: true },
     });
     expect(mockNotify).toHaveBeenCalledWith("conv-1", "strut");
+  });
+
+  test("the row carries what the chat's card reads", async () => {
+    const activity = {
+      workflows: [{ name: "clipper", version: "v1", action: "created" as const }],
+      runs: [{ workflow: "clipper", runId: "17", status: "running" as const }],
+    };
+    await fanOutStrutToCanvas(ROW, payload({ settled: false, parked: true, activity }));
+    expect(messages[0]).toMatchObject({ source: { settled: false, parked: true, activity } });
+
+    // Strut could not be read: no `activity` key, so the card keeps the last one.
+    await fanOutStrutToCanvas(ROW, payload({ turn: 1, activity: null }));
+    expect((messages[1] as unknown as { source: object }).source).not.toHaveProperty("activity");
   });
 
   test("a retry is a duplicate; later turns and the settled event of the same run each land", async () => {
