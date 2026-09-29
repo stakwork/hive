@@ -10,20 +10,24 @@
  *   - Settled error turn → FAILED. A lost claim schedules no wake.
  *   - Fan-out failure → 500 and nothing claimed (strut retries).
  *   - Delivery target comes from the row, never the payload.
+ *   - The chat's activity is read for the row's chat as the row's user, and
+ *     rides on the fan-out; an unreadable strut costs the post nothing.
  */
 
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import crypto from "crypto";
 import { NextRequest } from "next/server";
 
-const { mockFindUnique, mockUpdateMany, mockRateLimit, mockFanOut, mockWake, afterCallbacks } = vi.hoisted(() => ({
-  mockFindUnique: vi.fn(),
-  mockUpdateMany: vi.fn(),
-  mockRateLimit: vi.fn(),
-  mockFanOut: vi.fn(),
-  mockWake: vi.fn(),
-  afterCallbacks: [] as Array<() => Promise<void>>,
-}));
+const { mockFindUnique, mockUpdateMany, mockRateLimit, mockFanOut, mockWake, mockActivity, afterCallbacks } =
+  vi.hoisted(() => ({
+    mockFindUnique: vi.fn(),
+    mockUpdateMany: vi.fn(),
+    mockRateLimit: vi.fn(),
+    mockFanOut: vi.fn(),
+    mockWake: vi.fn(),
+    mockActivity: vi.fn(),
+    afterCallbacks: [] as Array<() => Promise<void>>,
+  }));
 
 vi.mock("next/server", async (orig) => ({
   ...(await orig<typeof import("next/server")>()),
@@ -39,6 +43,7 @@ vi.mock("@/services/canvas-strut-fanout", () => ({
   fanOutStrutToCanvas: mockFanOut,
   strutRowId: (p: { runId: string; turn: number; event: string }) => `strut-${p.runId}-${p.turn}-${p.event}`,
 }));
+vi.mock("@/services/strut-chat-activity", () => ({ readStrutChatActivity: mockActivity }));
 vi.mock("@/lib/ai/strutTools", () => ({ STRUT_AGENT_KIND: "strut_chat" }));
 vi.mock("@/services/canvas-strut-autoturn", () => ({ invokeCanvasAgentOnStrutSettled: mockWake }));
 
@@ -91,6 +96,7 @@ describe("POST /api/agent-runs/webhook/strut", () => {
     mockFindUnique.mockResolvedValue(row());
     mockUpdateMany.mockResolvedValue({ count: 1 });
     mockFanOut.mockResolvedValue("appended");
+    mockActivity.mockResolvedValue(null);
   });
 
   test("rejects missing id / token, unknown and non-strut rows, and a wrong token", async () => {
@@ -175,6 +181,28 @@ describe("POST /api/agent-runs/webhook/strut", () => {
     await post(body({ text: "x".repeat(500) }));
     expect(mockFanOut.mock.calls[1][1]).toMatchObject({ status: "error", text: null });
     expect(mockUpdateMany.mock.calls[0][0].data.status).toBe("FAILED");
+  });
+
+  test("the chat's activity rides on the fan-out, read as the row's user", async () => {
+    const activity = { workflows: [{ name: "clipper", version: "v1", action: "created" }], runs: [] };
+    mockActivity.mockResolvedValue(activity);
+    await post(body({ settled: false, workspaceSlug: "attacker-ws" }));
+    expect(mockActivity).toHaveBeenCalledWith({ workspaceSlug: "acme", userId: "user-1", chatId: "chat-9" });
+    expect(mockFanOut.mock.calls[0][1]).toMatchObject({ activity });
+  });
+
+  test("an unreadable strut still posts the turn", async () => {
+    mockActivity.mockResolvedValue(null);
+    expect((await post(body())).status).toBe(200);
+    expect(mockFanOut.mock.calls[0][1]).toMatchObject({ activity: null, text: "Published clipper v1." });
+  });
+
+  test("nothing is read for a post that is refused", async () => {
+    await post(body(), "id=run-1&token=wrong");
+    await post(body({ chatId: "other-chat" }));
+    mockFindUnique.mockResolvedValueOnce(row({ status: "FAILED" }));
+    await post(body());
+    expect(mockActivity).not.toHaveBeenCalled();
   });
 
   test("a lost claim schedules no wake", async () => {

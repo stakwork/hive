@@ -14,10 +14,15 @@
  * The content's header line names the workspace + strut chat id. Stored
  * rows reach the model as plain text (`source` is UI-only), and the agent
  * needs that id to continue the chat.
+ *
+ * `source` is what the chat's card (`StrutChatCard`) is drawn from: the
+ * latest row of a chat says whether it is still running and what it has
+ * built and run.
  */
 
 import { db } from "@/lib/db";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
+import type { StrutChatActivity } from "@/lib/strut-chat-activity";
 import type { AgentRunRow } from "@/services/canvas-agent-run-fanout";
 
 export interface StrutFanOutPayload {
@@ -33,6 +38,12 @@ export interface StrutFanOutPayload {
   error: string | null;
   settled: boolean;
   parked: boolean;
+  /**
+   * What the chat has built and run so far (`readStrutChatActivity`), for
+   * its card. Absent when strut could not be read — the card then keeps
+   * what the chat's previous row said.
+   */
+  activity?: StrutChatActivity | null;
 }
 
 type StrutMessageRow = {
@@ -50,6 +61,8 @@ type StrutMessageRow = {
     event: string;
     status: string;
     settled: boolean;
+    parked: boolean;
+    activity?: StrutChatActivity;
   };
 };
 
@@ -133,6 +146,8 @@ export async function fanOutStrutToCanvas(
           event: payload.event,
           status: payload.status,
           settled: payload.settled,
+          parked: payload.parked,
+          ...(payload.activity ? { activity: payload.activity } : {}),
         },
       };
 

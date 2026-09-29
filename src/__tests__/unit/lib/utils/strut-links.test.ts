@@ -11,7 +11,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { STRUT_DEEP_LINK_PARAM, strutRunDeepLink, strutViewPath } from "@/lib/utils/strut-links";
+import {
+  STRUT_DEEP_LINK_PARAM,
+  strutChatDeepLink,
+  strutRunDeepLink,
+  strutViewPath,
+  strutWorkflowDeepLink,
+} from "@/lib/utils/strut-links";
 
 /** What `StrutView.readDeepLink` recovers from a Hive URL. */
 function readAsStrutView(path: string): Record<string, string> | null {
@@ -27,6 +33,20 @@ describe("strutRunDeepLink", () => {
   it("escapes a run id that would otherwise break the query", () => {
     const link = strutRunDeepLink("wf", "a b&c=d#e");
     expect(Object.fromEntries(new URLSearchParams(link))).toEqual({ wf: "wf", run: "a b&c=d#e" });
+  });
+});
+
+describe("strutChatDeepLink / strutWorkflowDeepLink", () => {
+  it("are strut's own queries for a chat and a workflow", () => {
+    expect(strutChatDeepLink("mu4h075f-6wzpvp")).toBe("chat=mu4h075f-6wzpvp");
+    expect(strutWorkflowDeepLink("youtube-clip")).toBe("wf=youtube-clip");
+  });
+
+  it("round-trip through the view's reader, hostile values included", () => {
+    expect(readAsStrutView(strutViewPath("acme", strutChatDeepLink("a&wf=evil #x")))).toEqual({
+      chat: "a&wf=evil #x",
+    });
+    expect(readAsStrutView(strutViewPath("acme", strutWorkflowDeepLink("w&run=1")))).toEqual({ wf: "w&run=1" });
   });
 });
 
