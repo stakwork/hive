@@ -158,6 +158,27 @@ export type CanvasMessageSource =
       /** "ready" | "failed" — status at fan-out time */
       status: string;
       initiativeId?: string;
+    }
+  | {
+      /**
+       * One callback of a dispatched strut chat — a turn end, or the
+       * closing `settled` (`canvas-strut-fanout.ts`). The row renders as a
+       * bubble; `StrutChatCard` reads the chat's state off its latest one.
+       */
+      kind: "strut";
+      runId: string;
+      title: string;
+      workspaceSlug: string;
+      chatId: string;
+      turn: number;
+      event: string;
+      /** "done" | "error" — how the turn ended. */
+      status: string;
+      /** `false` while strut will start another turn on its own. */
+      settled: boolean;
+      parked?: boolean;
+      /** Parsed by `parseStrutChatActivity` — never trusted as typed. */
+      activity?: unknown;
     };
 
 export interface CanvasChatMessage {
