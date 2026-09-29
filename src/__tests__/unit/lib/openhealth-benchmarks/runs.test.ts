@@ -6,6 +6,8 @@
 import { describe, it, expect } from "vitest";
 import { StrutRunStatus } from "@prisma/client";
 import {
+  openHealthClimbSeries,
+  openHealthRunTasks,
   openHealthTaskStats,
   outcomeOf,
   summarizeByDifficulty,
@@ -31,7 +33,10 @@ const OUTPUT = {
   n_matched: 7,
   n_gt: 7,
   n_pred: 10,
-  matched: [{ pred: "N179", gt: "N179" }, { pred: "", gt: "I10" }],
+  matched: [
+    { pred: "N179", gt: "N179" },
+    { pred: "", gt: "I10" },
+  ],
   missed: [],
   extra: ["E876", "R197", 12],
   chartChars: 41000,
@@ -131,7 +136,9 @@ describe("toOpenHealthRun", () => {
   });
 
   it("has nothing to report for a run in flight", () => {
-    const run = toOpenHealthRun(row({ status: StrutRunStatus.PENDING, output: null, durationMs: null, settledAt: null }));
+    const run = toOpenHealthRun(
+      row({ status: StrutRunStatus.PENDING, output: null, durationMs: null, settledAt: null }),
+    );
     expect(run).toMatchObject({ outcome: "running", scores: null, error: null, difficulty: null, settledAt: null });
   });
 });
@@ -164,7 +171,9 @@ describe("toOpenHealthRunDetail", () => {
   });
 
   it("only links a sheet over https", () => {
-    expect(toOpenHealthRunDetail(row({ output: { ...OUTPUT, spreadsheetUrl: "javascript:alert(1)" } })).spreadsheetUrl).toBeNull();
+    expect(
+      toOpenHealthRunDetail(row({ output: { ...OUTPUT, spreadsheetUrl: "javascript:alert(1)" } })).spreadsheetUrl,
+    ).toBeNull();
     expect(toOpenHealthRunDetail(row({ output: { ...OUTPUT, spreadsheetUrl: "" } })).spreadsheetUrl).toBeNull();
   });
 
@@ -250,5 +259,40 @@ describe("openHealthTaskStats", () => {
     expect(stats.get(7)).toEqual({ attempts: 3, succeeded: 2, bestF1: 0.9, latestF1: 0.4, running: true });
     expect(stats.get(8)).toEqual({ attempts: 1, succeeded: 1, bestF1: 0.2, latestF1: 0.2, running: false });
     expect(stats.size).toBe(2);
+  });
+});
+
+describe("openHealthClimbSeries", () => {
+  // Newest first, as the list returns them.
+  const at = (day: number) => `2026-09-${String(day).padStart(2, "0")}T00:00:00.000Z`;
+  const runs = [
+    scored(0.5, { id: "d", createdAt: at(4) }),
+    failed({ id: "x", createdAt: at(3) }),
+    scored(0.9, { id: "c", createdAt: at(3) }),
+    scored(0.4, { id: "b", createdAt: at(2) }),
+    scored(0.6, { id: "a", createdAt: at(1) }),
+  ];
+
+  it("orders scored runs oldest first under a best-so-far line", () => {
+    const series = openHealthClimbSeries(runs);
+    expect(series.map((p) => p.runId)).toEqual(["a", "b", "c", "d"]);
+    expect(series.map((p) => p.best)).toEqual([0.6, 0.6, 0.9, 0.9]);
+    expect(series.map((p) => p.newBest)).toEqual([true, false, true, false]);
+  });
+});
+
+describe("openHealthRunTasks", () => {
+  it("lists tasks most recently run first, with their run counts", () => {
+    expect(
+      openHealthRunTasks([
+        scored(0.4, { gtId: 8, difficulty: null }),
+        failed({ gtId: 7, difficulty: "easy" }),
+        scored(0.9, { gtId: 8, difficulty: "hard" }),
+        scored(1, { gtId: null }),
+      ]),
+    ).toEqual([
+      { gtId: 8, difficulty: "hard", runs: 2 },
+      { gtId: 7, difficulty: "easy", runs: 1 },
+    ]);
   });
 });
