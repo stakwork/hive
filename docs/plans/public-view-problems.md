@@ -27,7 +27,7 @@ when i sign in, i can see a few docs and Concepts on the /learn page. But signed
 
 ### status ✅ DONE
 
-api/w/[slug]/pool/status is returning 401 in public view. Is this a security hole if we expose that to public viewers? If not, lets make that publically accessible too
+api/w/[slug]/pool/status is returning 401 in public view. Is this a security hole if we expose that to public viewers? If not, lets make that publicly accessible too
 
 **Resolution:** Made public. The endpoint returns aggregate pod counters only
 (`runningVms`, `pendingVms`, `failedVms`, `usedVms`, `unusedVms`, `queuedCount`,
