@@ -13,7 +13,7 @@ Every component here sits in one of two piles:
   valuable, because it can do more with the same memory.
 - **Compensates for model weakness**: trained re-rankers, learned edge
   predictors, packaging templates that guess what a consumer needs. These
-  depreciate with every model generation — some are already obsolete.
+  deprecate with every model generation — some are already obsolete.
 
 The engine therefore keeps a deliberately small code surface: **code for
 invariants, math, and measurement; agents for judgment.** Every judgment
