@@ -6,6 +6,8 @@
 import { describe, it, expect } from "vitest";
 import { StrutRunStatus } from "@prisma/client";
 import {
+  openHealthClimbSeries,
+  openHealthRunTasks,
   openHealthTaskStats,
   outcomeOf,
   summarizeByDifficulty,
@@ -250,5 +252,46 @@ describe("openHealthTaskStats", () => {
     expect(stats.get(7)).toEqual({ attempts: 3, succeeded: 2, bestF1: 0.9, latestF1: 0.4, running: true });
     expect(stats.get(8)).toEqual({ attempts: 1, succeeded: 1, bestF1: 0.2, latestF1: 0.2, running: false });
     expect(stats.size).toBe(2);
+  });
+});
+
+describe("openHealthClimbSeries", () => {
+  // Newest first, as the list returns them.
+  const at = (day: number) => `2026-09-${String(day).padStart(2, "0")}T00:00:00.000Z`;
+  const runs = [
+    scored(0.5, { id: "d", createdAt: at(4) }),
+    failed({ id: "x", createdAt: at(3) }),
+    scored(0.9, { id: "c", createdAt: at(3) }),
+    scored(0.4, { id: "b", createdAt: at(2) }),
+    scored(0.6, { id: "a", createdAt: at(1) }),
+  ];
+
+  it("orders scored runs oldest first under a best-so-far line", () => {
+    const series = openHealthClimbSeries(runs, "best");
+    expect(series.map((p) => p.runId)).toEqual(["a", "b", "c", "d"]);
+    expect(series.map((p) => p.level)).toEqual([0.6, 0.6, 0.9, 0.9]);
+    expect(series.map((p) => p.newBest)).toEqual([true, false, true, false]);
+  });
+
+  it("draws a rolling mean across tasks", () => {
+    const series = openHealthClimbSeries(runs, "mean");
+    expect(series[1].level).toBeCloseTo(0.5);
+    expect(series[3].level).toBeCloseTo(0.6);
+  });
+});
+
+describe("openHealthRunTasks", () => {
+  it("lists tasks most recently run first, with their run counts", () => {
+    expect(
+      openHealthRunTasks([
+        scored(0.4, { gtId: 8, difficulty: null }),
+        failed({ gtId: 7, difficulty: "easy" }),
+        scored(0.9, { gtId: 8, difficulty: "hard" }),
+        scored(1, { gtId: null }),
+      ]),
+    ).toEqual([
+      { gtId: 8, difficulty: "hard", runs: 2 },
+      { gtId: 7, difficulty: "easy", runs: 1 },
+    ]);
   });
 });

@@ -220,3 +220,55 @@ export function openHealthTaskStats(runs: OpenHealthRun[]): Map<number, OpenHeal
   }
   return stats;
 }
+
+// ─── Hill climb ──────────────────────────────────────────────────────────
+
+export interface OpenHealthClimbPoint {
+  runId: string;
+  createdAt: string;
+  gtId: number | null;
+  f1: number;
+  /** The line's level at this run: best-so-far for one task, a rolling mean across tasks. */
+  level: number;
+  /** Did this run raise the best so far? Only meaningful for one task. */
+  newBest: boolean;
+}
+
+/** Scored runs a rolling mean spans when the series mixes tasks. */
+export const CLIMB_WINDOW = 5;
+
+/**
+ * Scored runs oldest first, with the line the chart draws through them. For
+ * one task the line is the best F1 so far — the hill climb. Across tasks a
+ * best-so-far would just track the easiest task, so the line is a rolling
+ * mean of the last {@link CLIMB_WINDOW} scored runs instead.
+ */
+export function openHealthClimbSeries(runs: OpenHealthRun[], mode: "best" | "mean"): OpenHealthClimbPoint[] {
+  const scored = runs
+    .filter((r): r is OpenHealthRun & { scores: OpenHealthScores } => r.outcome === "succeeded" && r.scores !== null)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  let best = -Infinity;
+  return scored.map((run, i) => {
+    const f1 = run.scores.f1;
+    const newBest = f1 > best;
+    best = Math.max(best, f1);
+    const window = scored.slice(Math.max(0, i - CLIMB_WINDOW + 1), i + 1);
+    const level = mode === "best" ? best : window.reduce((sum, r) => sum + r.scores.f1, 0) / window.length;
+    return { runId: run.id, createdAt: run.createdAt, gtId: run.gtId, f1, level, newBest };
+  });
+}
+
+/** The tasks the runs cover, most recently run first, with how many runs each has. */
+export function openHealthRunTasks(
+  runs: OpenHealthRun[],
+): Array<{ gtId: number; difficulty: OpenHealthDifficulty | null; runs: number }> {
+  const tasks = new Map<number, { gtId: number; difficulty: OpenHealthDifficulty | null; runs: number }>();
+  for (const run of runs) {
+    if (run.gtId === null) continue;
+    const task = tasks.get(run.gtId) ?? { gtId: run.gtId, difficulty: run.difficulty, runs: 0 };
+    task.runs++;
+    task.difficulty ??= run.difficulty;
+    tasks.set(run.gtId, task);
+  }
+  return [...tasks.values()];
+}
