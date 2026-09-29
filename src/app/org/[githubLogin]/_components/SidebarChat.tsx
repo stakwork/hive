@@ -36,6 +36,7 @@ import { PROPOSE_FEATURE_TOOL, PROPOSE_INITIATIVE_TOOL, PROPOSE_MILESTONE_TOOL }
 import { SubAgentRunCard, getSubAgentRunsFromMessages } from "./SubAgentRunCard";
 import { ResearchRunCard, getResearchRunsFromMessages } from "./ResearchRunCard";
 import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
+import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
@@ -280,6 +281,19 @@ function SidebarChatBody({ githubLogin, draftUserId = null }: SidebarChatProps) 
     return byAnchor;
   }, [messages, githubLogin]);
 
+  // One card per dispatched strut chat, under the latest message about it
+  // (the dispatch, then each reply strut posts back).
+  const strutChatsByAnchor = useMemo(() => {
+    const chats = getStrutChatsFromMessages(messages);
+    const byAnchor = new Map<string, typeof chats>();
+    for (const chat of chats) {
+      const existing = byAnchor.get(chat.anchorMessageId);
+      if (existing) existing.push(chat);
+      else byAnchor.set(chat.anchorMessageId, [chat]);
+    }
+    return byAnchor;
+  }, [messages]);
+
   // Render the SubAgentRunCard(s) anchored to a message. Extracted so it
   // can render under BOTH a normal message AND a suppressed fan-out
   // message (an inbound planner reply / form-answer — whose bubble is
@@ -394,6 +408,7 @@ function SidebarChatBody({ githubLogin, draftUserId = null }: SidebarChatProps) 
               // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
               const researchRuns = researchRunsByAnchor.get(message.id);
               const htmlPages = htmlPagesByAnchor.get(message.id);
+              const strutChats = strutChatsByAnchor.get(message.id);
 
               if (
                 message.source?.kind === "planner" ||
@@ -494,6 +509,9 @@ function SidebarChatBody({ githubLogin, draftUserId = null }: SidebarChatProps) 
                   {htmlPages &&
                     htmlPages.length > 0 &&
                     htmlPages.map((page) => <HtmlPageCard key={page.slug} page={page} githubLogin={githubLogin} />)}
+                  {strutChats?.map((chat) => (
+                    <StrutChatCard key={chat.chatId} chat={chat} githubLogin={githubLogin} />
+                  ))}
                   <MessageArtifacts artifactIds={message.artifactIds} />
                 </div>
               );
