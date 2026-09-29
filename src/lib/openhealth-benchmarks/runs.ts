@@ -220,3 +220,49 @@ export function openHealthTaskStats(runs: OpenHealthRun[]): Map<number, OpenHeal
   }
   return stats;
 }
+
+// ─── Hill climb ──────────────────────────────────────────────────────────
+
+export interface OpenHealthClimbPoint {
+  runId: string;
+  createdAt: string;
+  gtId: number | null;
+  f1: number;
+  /** The best F1 so far, as of this run — the line's level. */
+  best: number;
+  /** Did this run raise the best so far? */
+  newBest: boolean;
+}
+
+/**
+ * One task's scored runs oldest first, with the best F1 so far — the hill
+ * climb. Across tasks a best-so-far would only track the easiest one, so the
+ * page draws this for a single task.
+ */
+export function openHealthClimbSeries(runs: OpenHealthRun[]): OpenHealthClimbPoint[] {
+  const scored = runs
+    .filter((r): r is OpenHealthRun & { scores: OpenHealthScores } => r.outcome === "succeeded" && r.scores !== null)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  let best = -Infinity;
+  return scored.map((run) => {
+    const f1 = run.scores.f1;
+    const newBest = f1 > best;
+    best = Math.max(best, f1);
+    return { runId: run.id, createdAt: run.createdAt, gtId: run.gtId, f1, best, newBest };
+  });
+}
+
+/** The tasks the runs cover, most recently run first, with how many runs each has. */
+export function openHealthRunTasks(
+  runs: OpenHealthRun[],
+): Array<{ gtId: number; difficulty: OpenHealthDifficulty | null; runs: number }> {
+  const tasks = new Map<number, { gtId: number; difficulty: OpenHealthDifficulty | null; runs: number }>();
+  for (const run of runs) {
+    if (run.gtId === null) continue;
+    const task = tasks.get(run.gtId) ?? { gtId: run.gtId, difficulty: run.difficulty, runs: 0 };
+    task.runs++;
+    task.difficulty ??= run.difficulty;
+    tasks.set(run.gtId, task);
+  }
+  return [...tasks.values()];
+}
