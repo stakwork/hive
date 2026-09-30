@@ -2653,6 +2653,11 @@ model StrutRun {
   conversationId String?        @map("conversation_id")
   /// The proposal card this launch fills in, when it is one.
   proposalId     String?        @map("proposal_id")
+  /// The strut JOB the run was launched under (`POST …/run { job }`, strut
+  /// plans/jobs.md): the id hive minted for `start_job`, so `continue_job`
+  /// can find the job's rows and check they are this user's. Null for a
+  /// launch that is not a job turn.
+  jobId          String?        @map("job_id")
   createdAt      DateTime       @default(now()) @map("created_at")
   settledAt      DateTime?      @map("settled_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
@@ -2661,6 +2666,7 @@ model StrutRun {
   @@index([status, createdAt])
   @@index([proposalId])
   @@index([conversationId])
+  @@index([jobId])
   @@map("strut_runs")
 }
 

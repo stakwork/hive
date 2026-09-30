@@ -93,6 +93,8 @@ import {
   buildStrutTools,
   getStrutCapabilitySnippet,
   DISPATCH_STRUT_TOOL,
+  START_JOB_TOOL,
+  CONTINUE_JOB_TOOL,
 } from "@/lib/ai/strutTools";
 import { buildCodeChangeTools } from "@/lib/ai/codeChangeTools";
 import { buildHtmlArtifactTools } from "@/lib/ai/htmlArtifactTools";
@@ -616,21 +618,28 @@ automatically.
       orgGate: isCodeChangeCapabilityEnabledForOrg,
     },
     strut: {
-      // The org strut's AI builder (its default swarm) as a background sub-agent:
-      // `dispatch_strut` (start / continue a chat; replies land via strut's
-      // turn-end callback — see strutTools.ts) + two thin read tools.
+      // The org strut (its default swarm) as a background sub-agent:
+      // `dispatch_strut` (start / continue a builder chat; replies land via
+      // strut's turn-end callback — see strutTools.ts) + two thin read
+      // tools, and `start_job` / `continue_job` (a job: an agent iterating
+      // a plan / document / page in one directory with one memory; replies
+      // land via the `job_turn` StrutRun handler, with artifact cards).
       buildTools: (ctx) => buildStrutTools(ctx),
       promptSnippet: getStrutCapabilitySnippet,
       core: false,
       menuBlurb:
         "**strut** — dispatch the org's strut AI builder " +
         "(`dispatch_strut`) to build, revise, run, or evaluate strut " +
-        "workflows on the org's default swarm, and continue those chats. " +
-        "Runs in the background; replies are posted into this conversation. " +
-        "Load when the user asks for a strut workflow, or about a strut run.",
+        "workflows on the org's default swarm, and continue those chats; " +
+        "or start a job (`start_job` / `continue_job`) for something the " +
+        "user will iterate on — a plan, a document, a page — delivered as " +
+        "artifact cards. Runs in the background; replies are posted into " +
+        "this conversation. Load when the user asks for a strut workflow, " +
+        "about a strut run, or for a plan / document / page to iterate on.",
       // Strut has a shell and publishes + runs code on the swarm — a write
-      // tool in every sense. The two read tools survive readonly mode.
-      writeToolNames: [DISPATCH_STRUT_TOOL],
+      // tool in every sense; a job launches a run there. The two read tools
+      // survive readonly mode.
+      writeToolNames: [DISPATCH_STRUT_TOOL, START_JOB_TOOL, CONTINUE_JOB_TOOL],
       // Org-gated, opt-in. Like the other gated capabilities, must never
       // appear in an `includes` list.
       orgGate: isStrutCapabilityEnabledForOrg,

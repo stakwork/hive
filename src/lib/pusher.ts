@@ -160,6 +160,9 @@ export type CanvasConversationUpdateReason =
   // A dispatched strut chat ended a turn (or settled) and its reply was
   // fanned into the conversation via `/api/agent-runs/webhook/strut`.
   | "strut"
+  // A strut JOB turn settled and its reply (text + artifact refs) was
+  // appended to the conversation (`services/strut-runs/job-turn.ts`).
+  | "job"
   // A code-change claim reached a terminal PR outcome (webhook delivery
   // or reconcile cron) and the stored approvalResult row was patched in
   // place — clients reconcile existing rows so the proposal card flips

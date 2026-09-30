@@ -18,6 +18,7 @@
  * | `embed`          | view embeds — `resolveOrgSwarmWorkspaceForUser`)        |
  * | `chat`           | the org default too — see below                         |
  * | `system_map`     | the org default (the workflow is authored in that embed) |
+ * | `job`            | the org default (a job's files + thread live on one strut) |
  * | `benchmark`      | the workspace's OWN swarm (what this caller always did) |
  * | `workspace_embed`| the workspace's OWN swarm (`/w/[slug]/strut`'s embed)    |
  *
@@ -54,7 +55,8 @@ export type StrutPurpose =
   | "chat"
   | "embed"
   | "system_map"
-  | "workspace_embed";
+  | "workspace_embed"
+  | "job";
 
 /** Where each purpose runs. `org-default` = the org's default workspace swarm. */
 const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
@@ -66,6 +68,11 @@ const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
   // The System Map page's workflow: authored in the org strut view, so it
   // runs where it was authored.
   system_map: "org-default",
+  // Jamie's jobs (`start_job` / `continue_job`, strut plans/jobs.md): the
+  // job's directory and thread live on ONE strut for the job's life, so a
+  // job runs where `chat` does — the org default — and follows it if the
+  // `chat` row moves.
+  job: "org-default",
   benchmark: "workspace",
   // `/w/[slug]/strut`'s embed: the workspace's OWN swarm, never the org
   // default. `benchmark` already resolves to `"workspace"`, but a named
