@@ -114,7 +114,7 @@ export async function createStakworkRun(
       ownerId: true,
       deleted: true,
       members: {
-        where: { userId },
+        where: { userId, leftAt: null },
         select: { role: true },
       },
       swarm: {
@@ -470,7 +470,7 @@ export async function createDiagramStakworkRun(input: {
       ownerId: true,
       deleted: true,
       members: {
-        where: { userId: input.userId },
+        where: { userId: input.userId, leftAt: null },
         select: { role: true },
       },
       swarm: {
@@ -2163,7 +2163,7 @@ export async function getStakworkRuns(
       ownerId: true,
       deleted: true,
       members: {
-        where: { userId },
+        where: { userId, leftAt: null },
         select: { role: true },
       },
     },
@@ -2408,7 +2408,7 @@ export async function updateStakworkRunDecision(
           ownerId: true,
           deleted: true,
           members: {
-            where: { userId },
+            where: { userId, leftAt: null },
             select: { role: true },
           },
         },
@@ -2604,7 +2604,7 @@ export async function stopStakworkRun(
           slug: true,
           ownerId: true,
           deleted: true,
-          members: { where: { userId }, select: { role: true } },
+          members: { where: { userId, leftAt: null }, select: { role: true } },
         },
       },
       feature: { select: { parentCanvasConversationId: true } },

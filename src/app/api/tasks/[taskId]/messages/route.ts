@@ -4,6 +4,7 @@ import { type ChatMessage, type ContextTag, type Artifact, ArtifactType } from "
 import { resolveWorkspaceAccess, requireReadAccess, isPublicViewer } from "@/lib/auth/workspace-access";
 import { toPublicUser, redactArtifactContentForPublic } from "@/lib/auth/public-redact";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { findStakworkWorkspaceForUser } from "@/lib/helpers/stakwork-workspace-access";
 
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
@@ -94,14 +95,7 @@ export async function GET(
     if (!devMode) {
       const userId = request.headers.get("x-middleware-user-id");
       if (userId) {
-        const stakworkWs = await db.workspace.findFirst({
-          where: {
-            slug: "stakwork",
-            OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-          },
-          select: { id: true },
-        });
-        isStakworkMember = !!stakworkWs;
+        isStakworkMember = !!(await findStakworkWorkspaceForUser(userId));
       }
     }
 

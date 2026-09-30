@@ -466,7 +466,7 @@ describe("validateFeatureAccess", () => {
               ownerId: true,
               deleted: true,
               members: {
-                where: { userId: "user-789" },
+                where: { userId: "user-789", leftAt: null },
                 select: { role: true },
               },
             },
@@ -525,7 +525,7 @@ describe("validateFeatureAccess", () => {
               ownerId: true,
               deleted: true,
               members: {
-                where: { userId: "user-789" },
+                where: { userId: "user-789", leftAt: null },
                 select: { role: true },
               },
             },
@@ -631,7 +631,7 @@ describe("validateFeatureAccess", () => {
               ownerId: true,
               deleted: true,
               members: {
-                where: { userId: "user-789" },
+                where: { userId: "user-789", leftAt: null },
                 select: { role: true },
               },
             },
@@ -750,7 +750,7 @@ describe("validateFeatureAccess", () => {
               ownerId: true,
               deleted: true,
               members: {
-                where: { userId: "user-789" },
+                where: { userId: "user-789", leftAt: null },
                 select: { role: true },
               },
             },
@@ -844,7 +844,7 @@ describe("validateFeatureAccess", () => {
             workspace: expect.objectContaining({
               select: expect.objectContaining({
                 members: {
-                  where: { userId: "member-123" },
+                  where: { userId: "member-123", leftAt: null },
                   select: { role: true },
                 },
               }),
@@ -882,7 +882,7 @@ describe("validateFeatureAccess", () => {
               ownerId: true,
               deleted: true,
               members: {
-                where: { userId: "user-789" },
+                where: { userId: "user-789", leftAt: null },
                 select: { role: true },
               },
             },

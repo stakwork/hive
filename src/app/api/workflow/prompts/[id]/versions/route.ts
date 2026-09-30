@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { validateApiToken, API_TOKEN_ACTOR } from "@/lib/auth/api-token";
+import { findStakworkWorkspaceForUser } from "@/lib/helpers/stakwork-workspace-access";
 
 
 export const runtime = "nodejs";
@@ -27,12 +28,7 @@ export async function GET(
 
       const devMode = isDevelopmentMode();
       if (!devMode) {
-        const workspace = await db.workspace.findFirst({
-          where: {
-            slug: "stakwork",
-            OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-          },
-        });
+        const workspace = await findStakworkWorkspaceForUser(userId);
         if (!workspace) {
           return NextResponse.json(
             { error: "Access denied - not a member of stakwork workspace" },

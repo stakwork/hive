@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { STAK_TOOLKIT_SLUGS } from "@/lib/eval-capture-slugs";
+import { findStakworkWorkspaceForUser } from "@/lib/helpers/stakwork-workspace-access";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -30,12 +31,7 @@ async function checkAccess(devMode: boolean): Promise<
     };
   }
 
-  const workspace = await db.workspace.findFirst({
-    where: {
-      slug: { in: STAK_TOOLKIT_SLUGS as string[] },
-      OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-    },
-  });
+  const workspace = await findStakworkWorkspaceForUser(userId, STAK_TOOLKIT_SLUGS as string[]);
 
   if (!workspace) {
     return {

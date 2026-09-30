@@ -13,7 +13,7 @@ async function getWhiteboardWithAccess(whiteboardId: string, userId: string) {
           id: true,
           ownerId: true,
           members: {
-            where: { userId },
+            where: { userId, leftAt: null },
             select: { role: true },
           },
         },

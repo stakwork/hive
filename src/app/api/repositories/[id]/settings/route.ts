@@ -264,7 +264,7 @@ export async function GET(
         workspace: {
           include: {
             members: {
-              where: { userId },
+              where: { userId, leftAt: null },
             },
           },
         },

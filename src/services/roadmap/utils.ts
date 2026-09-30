@@ -17,7 +17,7 @@ export async function validateFeatureAccess(featureId: string, userId: string) {
           ownerId: true,
           deleted: true,
           members: {
-            where: { userId: userId },
+            where: { userId: userId, leftAt: null },
             select: { role: true },
           },
         },

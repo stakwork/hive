@@ -1057,6 +1057,7 @@ describe("Janitor Service", () => {
         where: {
           userId: "assignee-1",
           workspaceId: "ws-1",
+          leftAt: null,
         },
       });
       expect(db.repository.findFirst).toHaveBeenCalledWith({

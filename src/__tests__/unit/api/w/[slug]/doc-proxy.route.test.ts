@@ -3,7 +3,7 @@
  *
  * Verifies:
  * - 401 when unauthenticated (no session)
- * - 403 when authenticated but not a workspace member (IDOR protection)
+ * - 403 when authenticated but not owner/active member of the workspace (IDOR protection)
  * - IDOR: no network call fires before auth checks
  * - 400 for non-HTTPS URL (SSRF guard — http://)
  * - 400 for disallowed domain (SSRF guard — e.g. evil.com)
@@ -28,12 +28,12 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
-const mockFindFirst = vi.fn();
+const mockWorkspaceFindFirst = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   db: {
-    workspaceMember: {
-      findFirst: (...args: unknown[]) => mockFindFirst(...args),
+    workspace: {
+      findFirst: (...args: unknown[]) => mockWorkspaceFindFirst(...args),
     },
   },
 }));
@@ -78,15 +78,15 @@ describe("GET /api/w/[slug]/doc-proxy — auth guards", () => {
 
     expect(res.status).toBe(401);
     // IDOR: db must NOT have been called before auth check
-    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockWorkspaceFindFirst).not.toHaveBeenCalled();
     // No external fetch should have fired
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test("returns 403 when user is not a workspace member (IDOR protection)", async () => {
-    mockGetServerSession.mockResolvedValue({ user: { email: "outsider@example.com" } });
-    // Member lookup returns null → not a member
-    mockFindFirst.mockResolvedValue(null);
+  test("returns 403 when user is not owner or active member of the workspace (IDOR protection)", async () => {
+    mockGetServerSession.mockResolvedValue({ user: { id: "outsider-1", email: "outsider@example.com" } });
+    // Workspace lookup returns null → not owner or active member
+    mockWorkspaceFindFirst.mockResolvedValue(null);
 
     const req = makeRequest("https://app.example.com/api/w/test-slug/doc-proxy", {
       url: "https://raw.githubusercontent.com/stakwork/harvey-labs/main/doc.docx",
@@ -96,6 +96,20 @@ describe("GET /api/w/[slug]/doc-proxy — auth guards", () => {
 
     expect(res.status).toBe(403);
     // IDOR: no external fetch should have fired
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test("returns 403 when session user has no id", async () => {
+    mockGetServerSession.mockResolvedValue({ user: { email: "no-id@example.com" } });
+
+    const req = makeRequest("https://app.example.com/api/w/test-slug/doc-proxy", {
+      url: "https://raw.githubusercontent.com/stakwork/harvey-labs/main/doc.docx",
+    });
+
+    const res = await GET(req, makeParams());
+
+    expect(res.status).toBe(403);
+    expect(mockWorkspaceFindFirst).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -112,7 +126,7 @@ describe("GET /api/w/[slug]/doc-proxy — auth guards", () => {
     expect(res.status).toBe(401);
     // Under no circumstances should external fetch be called before auth
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockWorkspaceFindFirst).not.toHaveBeenCalled();
   });
 });
 
@@ -120,9 +134,9 @@ describe("GET /api/w/[slug]/doc-proxy — SSRF guard", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    // Authenticated member for all SSRF tests
-    mockGetServerSession.mockResolvedValue({ user: { email: "member@example.com" } });
-    mockFindFirst.mockResolvedValue({ id: "member-1" });
+    // Authenticated owner-or-active-member for all SSRF tests
+    mockGetServerSession.mockResolvedValue({ user: { id: "member-1", email: "member@example.com" } });
+    mockWorkspaceFindFirst.mockResolvedValue({ id: "ws-1" });
     fetchSpy = vi.spyOn(globalThis, "fetch");
   });
 
@@ -185,8 +199,8 @@ describe("GET /api/w/[slug]/doc-proxy — successful proxy", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    mockGetServerSession.mockResolvedValue({ user: { email: "member@example.com" } });
-    mockFindFirst.mockResolvedValue({ id: "member-1" });
+    mockGetServerSession.mockResolvedValue({ user: { id: "member-1", email: "member@example.com" } });
+    mockWorkspaceFindFirst.mockResolvedValue({ id: "ws-1" });
     fetchSpy = vi.spyOn(globalThis, "fetch");
   });
 

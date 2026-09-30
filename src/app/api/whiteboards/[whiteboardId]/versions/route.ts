@@ -13,7 +13,7 @@ async function checkWhiteboardAccess(whiteboardId: string, userId: string) {
         select: {
           ownerId: true,
           members: {
-            where: { userId },
+            where: { userId, leftAt: null },
             select: { role: true },
           },
         },

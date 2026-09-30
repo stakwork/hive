@@ -35,6 +35,7 @@ export async function GET(
             members: {
               where: {
                 userId: userOrResponse.id,
+                leftAt: null,
               },
               select: {
                 role: true,

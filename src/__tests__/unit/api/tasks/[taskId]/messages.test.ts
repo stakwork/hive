@@ -19,7 +19,7 @@ vi.mock("@/lib/db", () => ({
       findFirst: vi.fn(),
     },
     workspaceMember: {
-      findUnique: vi.fn(),
+      findFirst: vi.fn(),
     },
     // resolveWorkspaceAccess falls back to a super-admin check via
     // checkIsSuperAdmin when no membership is found. Mock the underlying
@@ -49,7 +49,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       ownerId: mockUserId,
       isPublicViewable: false,
     });
-    (db.workspaceMember.findUnique as Mock).mockResolvedValue(null);
+    (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
     // Default: not a super-admin.
     (db.user.findUnique as Mock).mockResolvedValue({ role: "USER" });
     (db.gitHubAuth.findUnique as Mock).mockResolvedValue(null);
@@ -221,7 +221,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         ownerId: "different-user",
         isPublicViewable: false,
       });
-      (db.workspaceMember.findUnique as Mock).mockResolvedValue(null);
+      (db.workspaceMember.findFirst as Mock).mockResolvedValue(null);
 
       const request = createAuthenticatedRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -262,7 +262,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         ownerId: "different-user",
         isPublicViewable: false,
       });
-      (db.workspaceMember.findUnique as Mock).mockResolvedValue({ role: "DEVELOPER" });
+      (db.workspaceMember.findFirst as Mock).mockResolvedValue({ role: "DEVELOPER" });
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
       const request = createAuthenticatedRequest(

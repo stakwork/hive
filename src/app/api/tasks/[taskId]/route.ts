@@ -40,6 +40,7 @@ export async function PATCH(
             members: {
               where: {
                 userId: userOrResponse.id,
+                leftAt: null,
               },
               select: {
                 role: true,
