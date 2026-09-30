@@ -62,6 +62,7 @@ function row(over: Record<string, unknown> = {}) {
     durationMs: 100,
     conversationId: "conv-1",
     proposalId: "prop-1",
+    jobId: null,
     createdAt: new Date(),
     settledAt: new Date(),
     ...over,

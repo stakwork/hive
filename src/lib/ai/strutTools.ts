@@ -6,6 +6,7 @@
  *   - `dispatch_strut`   — start a strut chat, or continue one by `chatId`.
  *   - `check_strut_chat` — read a chat's status + latest reply (fallback).
  *   - `list_strut_chats` — find a chat id again.
+ *   - `start_job` / `continue_job` — a JOB on the org's strut (below).
  *
  * ## Delivery: strut's turn-end callback, not a poll
  *
@@ -37,18 +38,42 @@
  * `check_strut_chat` is the fallback.
  *
  * NEVER log the raw token or the full callback URL.
+ *
+ * ## Jobs (strut `plans/jobs.md`, V1)
+ *
+ * The builder chat is the wrong shape for work the person will ITERATE on
+ * — a plan, a document, a page. That is a *job*: `start_job` mints an id
+ * and launches the seeded `job` workflow as a `StrutRun` (`kind:
+ * "job_turn"`, `services/strut-runs.ts`) with the id on the launch; strut
+ * keeps one directory and one agent thread per job, the agent writes its
+ * deliverables as files there, and the run's callback carries them as
+ * links. `continue_job` is the same launch with the same id — the next
+ * turn of the same job, revising the same files behind the same links.
+ * The reply is ONE assistant row per turn in this conversation
+ * (`services/strut-runs/job-turn.ts`): a header the model reads the job id
+ * back from, the agent's text, and `artifacts` on the row (the cards).
+ *
+ * Hive's side is a CLOSED contract — start / continue, one handler, one
+ * artifact reader — on purpose: what a job can do grows on the swarm, as
+ * new versions of the `job` workflow (its `params.tools` / `system`),
+ * never as capability-specific fields here.
  */
 
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import crypto from "crypto";
+import { StrutRunStatus } from "@prisma/client";
 import { db } from "@/lib/db";
+import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf } from "@/lib/strut-jobs";
 import { resolveOrgConversationRowId } from "@/services/org-canvas-conversation";
 import { STRUT_ACTOR_HEADER, ensureStrutDelegation } from "@/services/bifrost/strut-delegation";
-import { resolveStrutTarget, type StrutTarget } from "@/services/strut-target";
+import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
+import { resolveStrutTarget, type StrutPurpose, type StrutTarget } from "@/services/strut-target";
 import type { CapabilityContext } from "./capabilities";
 
 export const DISPATCH_STRUT_TOOL = "dispatch_strut";
+export const START_JOB_TOOL = "start_job";
+export const CONTINUE_JOB_TOOL = "continue_job";
 export const STRUT_AGENT_KIND = "strut_chat";
 
 const STRUT_TIMEOUT_MS = 15_000;
@@ -66,8 +91,12 @@ const MAX_LISTED_CHATS = 30;
  * NOT the raw `User.id` — sent as `x-strut-actor`; mcp trusts it because
  * the swarm key proves it is hive.
  */
-async function resolveStrut(ctx: CapabilityContext, workspaceSlug: string): Promise<StrutTarget | { error: string }> {
-  const resolved = await resolveStrutTarget({ purpose: "chat", workspaceSlug, userId: ctx.userId });
+async function resolveStrut(
+  ctx: CapabilityContext,
+  workspaceSlug: string,
+  purpose: StrutPurpose = "chat",
+): Promise<StrutTarget | { error: string }> {
+  const resolved = await resolveStrutTarget({ purpose, workspaceSlug, userId: ctx.userId });
   if (!resolved.ok) {
     const { type } = resolved.error;
     return {
@@ -172,6 +201,102 @@ export function lastAssistantText(messages: unknown): string | null {
     if (text.trim()) return text;
   }
   return null;
+}
+
+/** Where a job's replies land: the canvas conversation this turn is in, owned by the caller, and a public Hive URL for strut to post to. */
+async function jobDelivery(ctx: CapabilityContext): Promise<{ conversationId: string; publicBaseUrl: string } | { status: "error"; error: string }> {
+  if (!ctx.publicBaseUrl) {
+    return { status: "error", error: "Jobs need a public Hive URL for strut to post replies to; none is configured here." };
+  }
+  if (!ctx.currentCanvasConversationId) {
+    return { status: "error", error: "A job replies into a canvas conversation, and this turn is not in one." };
+  }
+  const conversationId = await resolveOrgConversationRowId({
+    conversationId: ctx.currentCanvasConversationId,
+    userId: ctx.userId,
+    orgId: ctx.orgId,
+  });
+  if (!conversationId) return { status: "error", error: "This conversation is not one a job can reply into." };
+  return { conversationId, publicBaseUrl: ctx.publicBaseUrl };
+}
+
+const BUSY_NOTE = "A turn of this job is still running. Its reply will be posted here when it ends — continue the job after that.";
+
+/**
+ * One turn of a job: launch the `job` workflow with the job id on the
+ * launch (`services/strut-runs.ts` `dispatchStrutRun`; the row records
+ * `jobId`), register it for the Stop button, and return at once — the
+ * reply lands through the `job_turn` handler.
+ */
+async function launchJobTurn(
+  ctx: CapabilityContext,
+  target: StrutTarget,
+  turn: { jobId: string; title: string; prompt: string; conversationId: string; publicBaseUrl: string; started: boolean },
+): Promise<Record<string, unknown>> {
+  const { jobId, title, prompt, conversationId, publicBaseUrl, started } = turn;
+  let dispatched: Awaited<ReturnType<typeof dispatchStrutRun>>;
+  try {
+    dispatched = await dispatchStrutRun({
+      workspaceId: target.workspaceId,
+      userId: ctx.userId,
+      kind: JOB_TURN_KIND,
+      workflow: JOB_WORKFLOW,
+      purpose: "job",
+      // `title` rides on the input for the reply's header; strut's `job`
+      // workflow declares only `prompt` and drops the rest.
+      input: { prompt, title },
+      job: jobId,
+      publicBaseUrl,
+      conversationId,
+    });
+  } catch (err) {
+    if (err instanceof StrutDispatchError) {
+      // Strut refusing the launch because the job's previous turn still
+      // holds its directory is "not yet", not a failure.
+      if (/\bjob_busy:/.test(err.message)) return { status: "busy", jobId, note: BUSY_NOTE };
+      console.warn("[job] dispatch refused", { jobId, code: err.code });
+      return {
+        status: "error",
+        error:
+          err.code === "workflow_missing"
+            ? "This swarm's strut has no `job` workflow yet (its lab is not on a build that seeds it). Tell the user; a workspace admin updates the swarm."
+            : err.message,
+      };
+    }
+    console.error("[job] dispatch failed", { jobId, error: err instanceof Error ? err.message : String(err) });
+    return { status: "error", error: "The job turn could not be started." };
+  }
+
+  // The Stop button: register the run (keyed by the StrutRun id) so Stop
+  // cancels it on strut. A Stop that landed before this registration
+  // (pending-abort intent for this turn) cancels it right away.
+  try {
+    const { setActiveRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
+    const { abortSelf } = await setActiveRun(
+      conversationId,
+      { requestId: dispatched.runId, workspaceId: target.workspaceId, startedAt: new Date().toISOString() },
+      dispatched.runId, // turnId fallback
+    );
+    if (abortSelf) {
+      await cancelStrutRun({ id: dispatched.runId, swarmId: dispatched.swarmId, workflow: JOB_WORKFLOW, strutRunId: dispatched.strutRunId });
+    }
+    await notifyRunActive(conversationId, true);
+  } catch (err) {
+    console.warn("[job] active-run registration failed (non-fatal)", {
+      runId: dispatched.runId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  console.log("[job] turn dispatched", { jobId, runId: dispatched.runId, strutRunId: dispatched.strutRunId, started });
+  return {
+    status: started ? "started" : "continued",
+    jobId,
+    title,
+    note:
+      "Strut is working on it in the background. The reply — and what it produced, as artifact cards — lands in this conversation as a **Job** entry; " +
+      "tell the user it's underway and stop. Do not call this tool again for the same request.",
+  };
 }
 
 export function buildStrutTools(ctx: CapabilityContext): ToolSet {
@@ -398,6 +523,80 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         }
       },
     }),
+
+    [START_JOB_TOOL]: tool({
+      description:
+        "Start a JOB on the org's strut: an agent that works on something the user will ITERATE on — a plan, a document, a page — over many turns, " +
+        "in one directory it keeps for the job, with a thread that remembers every earlier turn. It writes its deliverables as files and they land in this conversation as artifact cards. " +
+        "Runs in the BACKGROUND: this returns at once with the `jobId`; the reply is posted into this conversation as a **Job** entry — seconds to minutes later. " +
+        "Tell the user it's underway and stop; do NOT call this again for the same request and do NOT invent results. " +
+        "To revise what a job produced, use `continue_job` with its `jobId` (in the reply's header line) — not a new job. " +
+        "For building strut WORKFLOWS, use `dispatch_strut` instead.",
+      inputSchema: z.object({
+        workspace: z.string().describe("Slug of the workspace the work is for — any workspace in the active org; it selects that org's strut."),
+        title: z.string().min(1).max(120).describe("Short label for the job, shown on every reply of it."),
+        prompt: z
+          .string()
+          .min(1)
+          .describe(
+            "The first turn's message. Self-contained — the job's agent cannot see this conversation: state what to produce, for whom, and what it must cover.",
+          ),
+      }),
+      execute: async ({ workspace, title, prompt }) => {
+        const target = await resolveStrut(ctx, workspace, "job");
+        if ("error" in target) return { status: "error", error: target.error };
+        const delivery = await jobDelivery(ctx);
+        if ("error" in delivery) return delivery;
+        const jobId = crypto.randomUUID();
+        return launchJobTurn(ctx, target, { jobId, title, prompt, ...delivery, started: true });
+      },
+    }),
+
+    [CONTINUE_JOB_TOOL]: tool({
+      description:
+        "The next turn of a JOB started with `start_job`: the same agent, in the same directory, with the whole thread in memory — so 'revise step 2' is enough. " +
+        "The reply (and the revised artifacts, under the same ids) lands in this conversation as a **Job** entry; tell the user it's underway and stop. " +
+        "`status: 'busy'` means the job's previous turn is still running — not a failure; wait for its reply, then continue. " +
+        "Only the person who started a job can continue it.",
+      inputSchema: z.object({
+        workspace: z.string().describe("Slug of a workspace in the active org (it selects the org's strut)."),
+        jobId: z.string().min(1).max(120).describe("The job id from the reply's header line (**Job · <jobId> · …**)."),
+        prompt: z.string().min(1).describe("This turn's message. The agent remembers the earlier turns, so it can be short."),
+      }),
+      execute: async ({ workspace, jobId, prompt }) => {
+        const target = await resolveStrut(ctx, workspace, "job");
+        if ("error" in target) return { status: "error", error: target.error };
+        const delivery = await jobDelivery(ctx);
+        if ("error" in delivery) return delivery;
+
+        // The job must be THIS user's, in the active org: its first turn's
+        // row says who started it and for which workspace.
+        const first = await db.strutRun.findFirst({
+          where: { jobId, kind: JOB_TURN_KIND, userId: ctx.userId },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, workspaceId: true, swarmId: true, input: true },
+        });
+        const notYours = { status: "error", error: `No job '${jobId}' of yours in this org.` };
+        if (!first) return notYours;
+        const workspaceRow = await db.workspace.findFirst({
+          where: { id: first.workspaceId, sourceControlOrgId: ctx.orgId, deleted: false },
+          select: { id: true },
+        });
+        if (!workspaceRow) return notYours;
+        // The job's directory and thread live on the strut that ran its
+        // first turn; a turn elsewhere would start cold.
+        if (first.swarmId !== target.swarmId) {
+          return { status: "error", error: "That job lives on another swarm's strut, so it cannot be continued from here." };
+        }
+        const live = await db.strutRun.findFirst({
+          where: { jobId, kind: JOB_TURN_KIND, status: StrutRunStatus.PENDING },
+          select: { id: true },
+        });
+        if (live) return { status: "busy", jobId, note: BUSY_NOTE };
+
+        return launchJobTurn(ctx, target, { jobId, title: jobTitleOf(first), prompt, ...delivery, started: false });
+      },
+    }),
   };
 }
 
@@ -434,6 +633,15 @@ Prefer continuing an existing chat (\`chatId\` from its header line) over starti
 - A NEW chat's prompt must be self-contained — strut cannot see this conversation. State the goal, the input and output shapes, and how to test it.
 - To evaluate a run, name the workflow and the run id (e.g. from a workflow-benchmark run) and say what you want judged.
 - Strut can list the secret NAMES its swarm has but cannot add one. If it reports a missing secret, relay that to the user — adding it is theirs to do.
+
+### Jobs
+
+For something the user will ITERATE on — a plan, a document, a page — start a **job** instead of a builder chat: **\`start_job({ workspace, title, prompt })\`**. A job is one agent with one directory and one memory for as long as the job lives: it writes its deliverables as files there and they land in this conversation as artifact cards on a **Job · \`<jobId>\` · <title>** entry. To revise them — "split step 2 in two", "make the page darker" — call **\`continue_job({ workspace, jobId, prompt })\`** with the id from that header line: the same files come back under the same ids, a version newer. Never start a second job for a revision.
+
+- Replies land in this conversation on their own, seconds to minutes later: tell the user it's underway and stop. Do not poll, do not re-dispatch, do not invent results.
+- A Job entry that carries a **Question for you** is the agent stopping for a decision; the user's answer goes back as the next \`continue_job\` prompt.
+- \`status: "busy"\` means the job's previous turn is still running — wait for its reply, then continue.
+- \`dispatch_strut\` stays for building and running strut WORKFLOWS; \`start_job\` is for producing something.
 
 ### Caveats
 
