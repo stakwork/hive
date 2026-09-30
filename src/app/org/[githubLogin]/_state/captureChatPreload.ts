@@ -1,5 +1,6 @@
 import type { CanvasChatMessage } from "./canvasChatStore";
 import type { CanvasActiveStream } from "@/types/shared-conversation";
+import { parseArtifactRefs } from "./canvasChatArtifacts";
 
 export interface ChatPreload {
   messages: CanvasChatMessage[] | null;
@@ -22,7 +23,12 @@ export function captureChatPreload(data: {
   const messages = Array.isArray(data.messages)
     ? (data.messages as CanvasChatMessage[]).map((m) => ({
         ...m,
+        // The DB stores `timestamp` as an ISO string; rehydrate to Date so
+        // future consumers (artifacts, telemetry) get a real Date instance.
         timestamp: new Date(m.timestamp as unknown as string),
+        // Stored JSON, like the rest of the row, but these get rendered:
+        // keep only refs that are whole.
+        artifacts: parseArtifactRefs(m.artifacts),
       }))
     : null;
   const title = typeof data.title === "string" ? data.title : null;

@@ -28,7 +28,7 @@ import "react-diff-view/style/index.css";
 
 type Action = ActionResult["action"];
 
-interface ParsedFile {
+export interface ParsedFile {
   fileName: string;
   action: Action;
   repoName: string;
@@ -136,7 +136,7 @@ function getActionInfo(action: Action) {
 
 // ─── Parse helper ─────────────────────────────────────────────────────────────
 
-function parseDiffs(diffs: ActionResult[]): ParsedFile[] {
+export function parseDiffs(diffs: ActionResult[]): ParsedFile[] {
   return diffs.flatMap((diff): ParsedFile[] => {
     try {
       if (!diff.content || diff.content.trim() === "") {

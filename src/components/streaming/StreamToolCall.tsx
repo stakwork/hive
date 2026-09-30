@@ -143,7 +143,7 @@ function KeyValueList({ entries, depth }: { entries: [string, unknown][]; depth:
  * line; anything deeper or stranger falls back to JSON. Memoised because a
  * streaming turn re-renders every open detail many times a second.
  */
-const ToolValue = React.memo(function ToolValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
+export const ToolValue = React.memo(function ToolValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
   const columns = useMemo(() => tableColumns(value), [value]);
   if (value === undefined) return null;
   if (isPrimitive(value)) {
