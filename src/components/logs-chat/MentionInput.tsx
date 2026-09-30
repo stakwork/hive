@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 // outside a mention range shift its `start/end` by the diff. Backspace at
 // the end of a mention range deletes the whole mention atomically.
 
-export type MentionKind = "feature" | "task";
+export type MentionKind = "feature" | "task" | "workflow";
 
 export interface Mention {
   id: string;

@@ -41,6 +41,13 @@ import {
   type CanvasChatMessage,
   type ToolCall,
 } from "./canvasChatStore";
+import type { RangeMention } from "@/hooks/useMentionRanges";
+
+/** What the composer submits for one structured `@workflow` mention.
+ *  Display metadata only — the server treats `id` as a lookup key and
+ *  replaces `name`/range with its own canonical catalog values; nothing
+ *  here is persisted onto `SharedConversation.messages`. */
+export type WorkflowMentionPayload = Pick<RangeMention, "id" | "name" | "start" | "end">;
 
 /**
  * Scan a rebuilt assistant-side timeline for a completed `schedule_check`
@@ -88,6 +95,15 @@ interface SendArgs {
   rejection?: RejectionIntent;
   /** File attachments uploaded before send. Stamped onto the user message and forwarded to the API. */
   attachments?: CanvasAttachment[];
+  /**
+   * Structured `@workflow` mentions selected in the composer. Display
+   * metadata only (`name`/`start`/`end`) — forwarded alongside (never
+   * inside) `attachments`; the server re-validates every `id` against the
+   * caller's authorized Strut catalog and replaces all client metadata
+   * with canonical values before any agent turn sees it. Never persisted
+   * onto `SharedConversation.messages`.
+   */
+  workflowMentions?: WorkflowMentionPayload[];
 }
 
 export function useSendCanvasChatMessage() {
@@ -101,9 +117,17 @@ export function useSendCanvasChatMessage() {
       approval,
       rejection,
       attachments,
+      workflowMentions,
     }: SendArgs) => {
       const trimmed = content.trim();
-      if (!trimmed) return;
+      const hasAttachments = !!attachments?.length;
+      const hasMentions = !!workflowMentions?.length;
+      // Allowed when there's trimmed text, OR at least one attachment, OR
+      // at least one workflow mention — rejected only when all three are
+      // absent (mirrors the composer's own guard; this hook is also
+      // called directly by `<ProposalCard>` for Approve/Reject sends,
+      // which always carry text).
+      if (!trimmed && !hasAttachments && !hasMentions) return;
 
       const {
         appendUserMessage,
@@ -206,6 +230,12 @@ export function useSendCanvasChatMessage() {
               : {}),
             // Attachments: forwarded server-side so the LLM receives image parts.
             ...(attachments?.length ? { attachments } : {}),
+            // Structured `@workflow` mentions — alongside, not inside,
+            // `attachments`. The server re-resolves the authorized Strut
+            // target and re-validates every `id` against its live catalog
+            // before this turn's agent run; submitted `name`/`start`/`end`
+            // are display metadata only.
+            ...(workflowMentions?.length ? { workflowMentions } : {}),
             // Backend-driven persistence: the server writes this turn's
             // rows under `${turnId}-*` and returns the (possibly newly-
             // created) row id in `X-Conversation-Id`.
@@ -223,7 +253,33 @@ export function useSendCanvasChatMessage() {
               conversationId,
               "This conversation has grown too large to continue. Please start a new chat to keep going.",
             );
-            return;
+            throw new Error("payload_too_large");
+          }
+          // Non-2xx JSON error responses carry a stable `code` + a
+          // user-safe `message`/`error` string (documented client
+          // contract — see `services/strut-workflows.ts`'s
+          // `WorkflowMentionValidationError` and `/api/ask/quick`'s
+          // mention-validation branch). Surface THAT message instead of
+          // the generic fallback so a rejected `@workflow` mention (or
+          // any other validation failure) reads clearly, while never
+          // exposing target/credential/upstream details (the server
+          // never puts those in `message`).
+          let serverMessage: string | null = null;
+          let serverCode: string | undefined;
+          try {
+            const body = (await response.clone().json()) as {
+              error?: string;
+              message?: string;
+              code?: string;
+            };
+            serverMessage = body?.message ?? body?.error ?? null;
+            serverCode = body?.code;
+          } catch {
+            // Non-JSON error body — fall through to the generic message.
+          }
+          if (serverMessage) {
+            appendAssistantError(conversationId, serverMessage);
+            throw new Error(serverCode ?? `HTTP error! status: ${response.status}`);
           }
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -528,10 +584,18 @@ export function useSendCanvasChatMessage() {
         setRunActive(conversationId, false);
       } catch (error) {
         console.error("Error calling ask API:", error);
-        appendAssistantError(
-          conversationId,
-          "I'm sorry, but I encountered an error while processing your question. Please try again later.",
-        );
+        // `payload_too_large` and any server-supplied `code`/message were
+        // already appended above by the non-ok branch; only the generic
+        // fallback needs a message here (network failure, thrown mid-stream).
+        const handledCodes = new Set(["payload_too_large"]);
+        const msg = error instanceof Error ? error.message : String(error);
+        if (!handledCodes.has(msg) && !msg.startsWith("WORKFLOW_MENTION_")) {
+          appendAssistantError(
+            conversationId,
+            "I'm sorry, but I encountered an error while processing your question. Please try again later.",
+          );
+        }
+        throw error;
       } finally {
         setIsLoading(conversationId, false);
         setIsStreaming(conversationId, false);
