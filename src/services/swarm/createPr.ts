@@ -507,10 +507,11 @@ async function resolveSwarmCredentials(
     where: { slug: workspaceSlug },
     select: {
       id: true,
+      ownerId: true,
       sourceControlOrg: { select: { id: true } },
       swarm: { select: { swarmUrl: true, swarmApiKey: true } },
       members: {
-        where: { userId },
+        where: { userId, leftAt: null },
         select: { userId: true },
       },
     },
@@ -519,9 +520,10 @@ async function resolveSwarmCredentials(
     return null;
   }
 
-  // Authorization: the caller must be a member of this workspace before
-  // swarm credentials (which include encrypted API keys) are decrypted.
-  if (workspace.members.length === 0) {
+  // Authorization: the caller must own this workspace or be an active
+  // member before swarm credentials (which include encrypted API keys)
+  // are decrypted.
+  if (workspace.ownerId !== userId && workspace.members.length === 0) {
     return null;
   }
 

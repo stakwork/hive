@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { isSafeId } from "@/lib/utils/ids";
+import { findStakworkWorkspaceForUser } from "@/lib/helpers/stakwork-workspace-access";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -18,12 +19,7 @@ export async function POST(
     const userId = userOrResponse.id;
 
     // Verify user has access to stakwork workspace
-    const stakworkWorkspace = await db.workspace.findFirst({
-      where: {
-        slug: "stakwork",
-        OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-      },
-    });
+    const stakworkWorkspace = await findStakworkWorkspaceForUser(userId);
 
     const devMode = isDevelopmentMode();
 

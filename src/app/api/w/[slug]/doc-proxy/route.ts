@@ -42,21 +42,21 @@ export async function GET(
 
   // 2. Workspace membership check (IDOR protection).
   // We perform this BEFORE any external fetch or secret access.
-  // Reject null/undefined email explicitly — passing `undefined` to Prisma's
-  // `where` silently drops the condition, which would match any workspace member.
-  const callerEmail = session.user.email;
-  if (!callerEmail) {
+  // Identified by session.user.id (not email — email is nullable and an
+  // owner or member without one would otherwise always be rejected).
+  const userId = (session.user as { id?: string })?.id;
+  if (!userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { slug } = await params;
-  const member = await db.workspaceMember.findFirst({
+  const workspace = await db.workspace.findFirst({
     where: {
-      workspace: { slug },
-      user: { email: callerEmail },
+      slug,
+      OR: [{ ownerId: userId }, { members: { some: { userId, leftAt: null } } }],
     },
     select: { id: true },
   });
-  if (!member) {
+  if (!workspace) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

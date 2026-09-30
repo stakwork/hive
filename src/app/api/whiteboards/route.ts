@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
         deleted: false,
         OR: [
           { ownerId: userOrResponse.id },
-          { members: { some: { userId: userOrResponse.id } } },
+          { members: { some: { userId: userOrResponse.id, leftAt: null } } },
         ],
       },
     });

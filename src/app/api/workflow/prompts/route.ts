@@ -7,6 +7,7 @@ import { writePromptThrough } from "@/services/prompts/prompt-sync";
 import { BIFROST_AGENT_NAMES } from "@/services/bifrost/agent-names";
 import { validateApiToken, API_TOKEN_ACTOR, resolveSource } from "@/lib/auth/api-token";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { findStakworkWorkspaceForUser } from "@/lib/helpers/stakwork-workspace-access";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -38,12 +39,7 @@ async function requireWriteAccess(
   devMode: boolean,
 ): Promise<NextResponse | { workspaceId: string } | null> {
   if (devMode) return null;
-  const workspace = await db.workspace.findFirst({
-    where: {
-      slug: "stakwork",
-      OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-    },
-  });
+  const workspace = await findStakworkWorkspaceForUser(userId);
   if (!workspace) {
     return NextResponse.json(
       { error: "Access denied - not a member of stakwork workspace" },

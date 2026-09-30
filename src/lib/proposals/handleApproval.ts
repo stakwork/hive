@@ -2432,7 +2432,7 @@ async function approvePromptCreate(args: {
   // a member of that workspace may actually write.
   const stakworkWorkspace = await db.workspace.findFirst({
     where: { name: "stakwork", deleted: false },
-    select: { id: true, slug: true },
+    select: { id: true, slug: true, ownerId: true },
   });
 
   if (!stakworkWorkspace) {
@@ -2460,7 +2460,7 @@ async function approvePromptCreate(args: {
     isMember: !!membership,
   });
 
-  if (!membership) {
+  if (stakworkWorkspace.ownerId !== userId && !membership) {
     return {
       ok: false,
       error:
@@ -2533,7 +2533,7 @@ async function approvePromptUpdate(args: {
   // Cross-tenant guard.
   const stakworkWorkspace = await db.workspace.findFirst({
     where: { name: "stakwork", deleted: false },
-    select: { id: true, slug: true },
+    select: { id: true, slug: true, ownerId: true },
   });
 
   if (!stakworkWorkspace) {
@@ -2561,7 +2561,7 @@ async function approvePromptUpdate(args: {
     isMember: !!membership,
   });
 
-  if (!membership) {
+  if (stakworkWorkspace.ownerId !== userId && !membership) {
     return {
       ok: false,
       error:

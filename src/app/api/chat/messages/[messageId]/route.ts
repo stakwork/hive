@@ -35,7 +35,7 @@ export async function GET(
                 id: true,
                 ownerId: true,
                 members: {
-                  where: { userId },
+                  where: { userId, leftAt: null },
                   select: { role: true },
                 },
               },
@@ -50,7 +50,7 @@ export async function GET(
                 id: true,
                 ownerId: true,
                 members: {
-                  where: { userId },
+                  where: { userId, leftAt: null },
                   select: { role: true },
                 },
               },

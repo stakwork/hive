@@ -11,20 +11,18 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
-const mockFindFirst = vi.fn();
+const mockWorkspaceFindFirst = vi.fn();
 const mockCreate = vi.fn();
 const mockFindUnique = vi.fn();
 const mockSourceControlOrgFindFirst = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   db: {
-    workspaceMember: {
-      findFirst: (...args: unknown[]) => mockFindFirst(...args),
-    },
     voiceCorrectionLearning: {
       create: (...args: unknown[]) => mockCreate(...args),
     },
     workspace: {
+      findFirst: (...args: unknown[]) => mockWorkspaceFindFirst(...args),
       findUnique: (...args: unknown[]) => mockFindUnique(...args),
     },
     sourceControlOrg: {
@@ -94,8 +92,8 @@ describe("POST /api/voice-corrections", () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  test("returns 403 when workspaceId is supplied but caller is not a member", async () => {
-    mockFindFirst.mockResolvedValue(null); // no membership
+  test("returns 403 when workspaceId is supplied but caller is not owner or active member", async () => {
+    mockWorkspaceFindFirst.mockResolvedValue(null); // no ownership/membership
     mockFindUnique.mockResolvedValue({ id: "ws-123" });
 
     const req = makeRequest({ ...validBody, workspaceId: "ws-123" });
@@ -103,11 +101,14 @@ describe("POST /api/voice-corrections", () => {
 
     expect(res.status).toBe(403);
     expect(mockCreate).not.toHaveBeenCalled();
-    expect(mockFindFirst).toHaveBeenCalledWith(
+    expect(mockWorkspaceFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          workspaceId: "ws-123",
-          userId: "user-session-id",
+          id: "ws-123",
+          OR: [
+            { ownerId: "user-session-id" },
+            { members: { some: { userId: "user-session-id", leftAt: null } } },
+          ],
         }),
       }),
     );
@@ -135,8 +136,8 @@ describe("POST /api/voice-corrections", () => {
     expect(body.id).toBe("new-rec-id");
   });
 
-  test("allows valid workspaceId when user is a member", async () => {
-    mockFindFirst.mockResolvedValue({ id: "member-1" });
+  test("allows valid workspaceId when user is owner or active member", async () => {
+    mockWorkspaceFindFirst.mockResolvedValue({ id: "ws-456" });
     mockFindUnique.mockResolvedValue({ id: "ws-456" });
     mockCreate.mockResolvedValue({ id: "rec-ws" });
 
@@ -155,7 +156,7 @@ describe("POST /api/voice-corrections", () => {
     const req = makeRequest(validBody);
     await POST(req);
 
-    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockWorkspaceFindFirst).not.toHaveBeenCalled();
     expect(mockCreate).toHaveBeenCalled();
   });
 
@@ -176,7 +177,7 @@ describe("POST /api/voice-corrections", () => {
     const res = await POST(req);
 
     expect(res.status).toBe(201);
-    expect(mockFindFirst).not.toHaveBeenCalled(); // membership check skipped
+    expect(mockWorkspaceFindFirst).not.toHaveBeenCalled(); // membership check skipped
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ workspaceId: null }),
@@ -184,9 +185,9 @@ describe("POST /api/voice-corrections", () => {
     );
   });
 
-  test("resolves org defaultWorkspaceId when workspaceId is absent and orgGithubLogin is provided, and caller is a member", async () => {
+  test("resolves org defaultWorkspaceId when workspaceId is absent and orgGithubLogin is provided, and caller is owner or active member", async () => {
     mockSourceControlOrgFindFirst.mockResolvedValue({ defaultWorkspaceId: "ws-org-default" });
-    mockFindFirst.mockResolvedValue({ id: "member-1" }); // caller is a member of the resolved workspace
+    mockWorkspaceFindFirst.mockResolvedValue({ id: "ws-org-default" }); // caller owns or is an active member of the resolved workspace
     mockFindUnique.mockResolvedValue({ id: "ws-org-default" });
     mockCreate.mockResolvedValue({ id: "rec-org" });
 
@@ -201,9 +202,15 @@ describe("POST /api/voice-corrections", () => {
         select: { defaultWorkspaceId: true },
       }),
     );
-    expect(mockFindFirst).toHaveBeenCalledWith(
+    expect(mockWorkspaceFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ workspaceId: "ws-org-default", userId: "user-session-id" }),
+        where: expect.objectContaining({
+          id: "ws-org-default",
+          OR: [
+            { ownerId: "user-session-id" },
+            { members: { some: { userId: "user-session-id", leftAt: null } } },
+          ],
+        }),
       }),
     );
     expect(mockCreate).toHaveBeenCalledWith(
@@ -214,9 +221,9 @@ describe("POST /api/voice-corrections", () => {
     expect(body.id).toBe("rec-org");
   });
 
-  test("falls back to workspaceId: null when caller is not a member of the org's default workspace", async () => {
+  test("falls back to workspaceId: null when caller is not owner or active member of the org's default workspace", async () => {
     mockSourceControlOrgFindFirst.mockResolvedValue({ defaultWorkspaceId: "ws-org-default" });
-    mockFindFirst.mockResolvedValue(null); // caller is NOT a member
+    mockWorkspaceFindFirst.mockResolvedValue(null); // caller is NOT owner or active member
     mockCreate.mockResolvedValue({ id: "rec-fallback" });
 
     const req = makeRequest({ ...validBody, orgGithubLogin: "stakwork" });
@@ -259,7 +266,7 @@ describe("POST /api/voice-corrections", () => {
   });
 
   test("falls back to workspaceId: null when resolved workspaceId does not exist in DB", async () => {
-    mockFindFirst.mockResolvedValue({ id: "member-1" }); // member check passes
+    mockWorkspaceFindFirst.mockResolvedValue({ id: "ws-stale" }); // owner/member check passes
     mockFindUnique.mockResolvedValue(null); // but workspace not found
     mockCreate.mockResolvedValue({ id: "rec-fallback" });
 

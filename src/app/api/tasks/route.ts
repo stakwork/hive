@@ -442,6 +442,7 @@ export async function POST(request: NextRequest) {
         members: {
           where: {
             userId: userId,
+            leftAt: null,
           },
           select: {
             role: true,

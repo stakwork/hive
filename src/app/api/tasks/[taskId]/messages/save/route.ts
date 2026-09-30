@@ -52,6 +52,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             members: {
               where: {
                 userId: userId,
+                leftAt: null,
               },
               select: {
                 role: true,
