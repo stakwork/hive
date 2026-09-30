@@ -343,9 +343,8 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      // API doesn't currently check leftAt, returns 200
-      const data = await expectSuccess(response, 200);
-      expect(data).toHaveProperty("data");
+      // A left member gets the same denial as a stranger.
+      await expectForbidden(response);
     });
   });
 
