@@ -42,7 +42,8 @@ const MAX_NAME_LENGTH = 200;
 const MAX_ID_LENGTH = 100;
 const MAX_VERSION_LENGTH = 32;
 
-const bounded = (v: unknown, max: number): string | null =>
+/** A non-empty string no longer than `max`, else null. */
+export const bounded = (v: unknown, max: number): string | null =>
   typeof v === "string" && v.length > 0 && v.length <= max ? v : null;
 
 /**

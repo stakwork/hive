@@ -11,6 +11,7 @@ import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
 import type { ConnectionData } from "../connections/types";
 import { OrgRightPanel } from "./OrgRightPanel";
 import { useCanvasChatStore, type CanvasChatMessage } from "../_state/canvasChatStore";
+import { parseArtifactRefs } from "../_state/canvasChatArtifacts";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
 import { useSubAgentStatusRefresh } from "../_state/useSubAgentStatusRefresh";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -18,6 +19,8 @@ import { AttentionMapProvider } from "../connections/AttentionMapContext";
 import { cn } from "@/lib/utils";
 import { ControlPanelList } from "./control-panel/ControlPanelList";
 import { useControlPanel } from "./control-panel/useControlPanel";
+import { ArtifactPanel } from "./artifacts/ArtifactPanel";
+import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 
 /**
  * Sidebar layout sizes (percent of container width).
@@ -46,6 +49,8 @@ type OrgPageMode = "canvas" | "control-panel";
 const CONTROL_PANEL_STAGE_SIZE = 72;
 /** Programmatic panel resizes animate; a drag must not (the handle turns it off while held). */
 const PANEL_TRANSITION = "transition-[flex-grow] duration-300 ease-in-out";
+/** What fills the left panel — the chat list, the artifact panel — eases in and out. */
+const LEFT_SURFACE_TRANSITION = { duration: 0.25, ease: "easeOut" } as const;
 
 /** Strip the `ws:` prefix from a live workspace id. */
 function stripWsPrefix(liveId: string): string {
@@ -73,6 +78,11 @@ interface OrgCanvasViewProps {
  * switch is one motion and the chat never remounts. Its state lives in
  * `useControlPanel`; this component keeps owning the chat lifecycle and
  * the attention feed for both views.
+ *
+ * In either view, an artifact opened from the chat takes the left panel
+ * (`ArtifactPanel`): the canvas or the chat list gives way to it and the
+ * chat stays beside it at the sidebar's width. Closing it brings back
+ * whichever view it was opened over.
  *
  * This component owns the canvas chat *lifecycle*: starting the
  * active conversation in the store, keeping its `context` up to
@@ -144,7 +154,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     }),
     [],
   );
-  const controlPanel = useControlPanel(githubLogin, mode === "control-panel");
+  // What has the left panel: the canvas, the control panel's chat list,
+  // or — over either — the artifact the chat has open.
+  const artifactOpen = useArtifactPanelOpen();
+  const leftSurface = artifactOpen ? "artifact" : mode === "control-panel" ? "list" : "canvas";
+  const controlPanel = useControlPanel(githubLogin, mode === "control-panel", leftSurface === "list");
 
   // Sync `panelWidth` to the panel's actual rendered width on mount,
   // before the browser paints. Two paths land it at the right value:
@@ -332,6 +346,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
           const seeded: CanvasChatMessage[] = (data.messages as CanvasChatMessage[]).map((m) => ({
             ...m,
             timestamp: new Date(m.timestamp as unknown as string),
+            // Stored JSON, like the rest of the row, but these get rendered: keep only refs that are whole.
+            artifacts: parseArtifactRefs(m.artifacts),
           }));
           setChatInitialMessages(seeded);
         }
@@ -779,8 +795,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   );
 
   // The chat panel grows into the stage while the canvas gives way to
-  // the list — one motion, nothing on the right remounts.
+  // the list — one motion, nothing on the right remounts. Asking for the
+  // other view is asking to see it, so an open artifact steps aside.
   const openControlPanel = useCallback(() => {
+    useCanvasChatStore.getState().closeArtifactPanel();
     modeRef.current = "control-panel";
     const panel = sidebarPanelRef.current;
     if (panel) {
@@ -792,6 +810,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   }, [writeViewParam]);
 
   const closeControlPanel = useCallback(() => {
+    useCanvasChatStore.getState().closeArtifactPanel();
     modeRef.current = "canvas";
     const prior = preStageSizeRef.current;
     preStageSizeRef.current = null;
@@ -810,15 +829,39 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     panel.resize(CONTROL_PANEL_STAGE_SIZE);
   }, []);
 
+  // ─── Artifact panel ─────────────────────────────────────────────────
+  // On the canvas the artifact simply has the canvas's place. On the
+  // control panel the chat is stage-wide, so it steps back to the
+  // sidebar's width while an artifact is up and returns when it closes.
+  useEffect(() => {
+    if (modeRef.current !== "control-panel") return;
+    sidebarPanelRef.current?.resize(
+      artifactOpen ? (preStageSizeRef.current ?? SIDEBAR_DEFAULT_SIZE) : CONTROL_PANEL_STAGE_SIZE,
+    );
+  }, [artifactOpen]);
+
+  // The panel is this page's: the store outlives the page, and an
+  // artifact left open must not be the first thing the next visit shows.
+  useEffect(() => () => useCanvasChatStore.getState().closeArtifactPanel(), []);
+
+  // A plan or task pulled onto the stage needs the stage's width; the
+  // artifact belongs to the chat it left.
+  const stageFocusKind = controlPanel.stage.focus.kind;
+  useEffect(() => {
+    if (mode === "control-panel" && stageFocusKind !== "chat") {
+      useCanvasChatStore.getState().closeArtifactPanel();
+    }
+  }, [mode, stageFocusKind]);
+
   // ─── Canvas chat conversation lifecycle ─────────────────────────────
   // Start the active conversation once everything we need is loaded.
   // Subsequent canvas-scope changes (drilling in, selecting a node)
   // update the conversation's `context` rather than recreating it.
   const [conversationStarted, setConversationStarted] = useState(false);
   const currentCanvasRef = searchParams.get("canvas") ?? "";
-  // The hidden-workspace list comes from the canvas; landing straight on
-  // the control panel has no canvas to report it, so don't wait for it.
-  const chatReady = !loadingWorkspaces && (hiddenInitialized || mode === "control-panel") && chatLoadComplete;
+  // The hidden-workspace list comes from the canvas; without a canvas to
+  // report it (landing straight on the control panel), don't wait for it.
+  const chatReady = !loadingWorkspaces && (hiddenInitialized || leftSurface !== "canvas") && chatLoadComplete;
 
   // What "this" means to Jamie: the canvas selection, or — on the
   // control panel — the plan/task on stage, exactly like a canvas click.
@@ -916,9 +959,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     <AttentionMapProvider githubLogin={githubLogin} visibleWorkspaceSlugs={chatWorkspaceSlugs}>
       <div ref={containerRef} className="relative flex h-full w-full overflow-hidden">
         {/* The canvas, under the panel group. On the control panel it fades
-          out behind the list and is unmounted. */}
+          out behind the list and is unmounted; an open artifact takes its
+          place the same way. */}
         <AnimatePresence initial={false}>
-          {mode === "canvas" && (
+          {leftSurface === "canvas" && (
             <motion.div
               key="canvas"
               className="absolute inset-0 flex"
@@ -966,29 +1010,44 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
             storage={panelStorage}
             className="h-full w-full"
           >
-            {/* Left: transparent over the canvas, or the chat list */}
+            {/* Left: transparent over the canvas, the chat list, or — over
+              either — the artifact the chat has open. One surface eases
+              out while the next eases in, so each fills the panel on its
+              own layer instead of sitting under the other. */}
             <ResizablePanel
               id="org-right-panel-filler"
               order={1}
               defaultSize={100 - SIDEBAR_DEFAULT_SIZE}
               className={cn(
-                mode === "canvas" ? "pointer-events-none" : "pointer-events-auto",
+                "relative",
+                leftSurface === "canvas" ? "pointer-events-none" : "pointer-events-auto",
                 !dragging && PANEL_TRANSITION,
               )}
             >
               <AnimatePresence initial={false}>
-                {mode === "control-panel" && (
+                {leftSurface === "artifact" ? (
+                  <motion.div
+                    key="artifact"
+                    className="absolute inset-0 bg-background"
+                    initial={{ opacity: 0, x: 24 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 24 }}
+                    transition={LEFT_SURFACE_TRANSITION}
+                  >
+                    <ArtifactPanel />
+                  </motion.div>
+                ) : leftSurface === "list" ? (
                   <motion.div
                     key="list"
-                    className="h-full w-full bg-background"
+                    className="absolute inset-0 bg-background"
                     initial={{ opacity: 0, x: -24 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -24 }}
-                    transition={{ duration: 0.25, ease: "easeOut" }}
+                    transition={LEFT_SURFACE_TRANSITION}
                   >
                     <ControlPanelList {...controlPanel.list} />
                   </motion.div>
-                )}
+                ) : null}
               </AnimatePresence>
             </ResizablePanel>
 

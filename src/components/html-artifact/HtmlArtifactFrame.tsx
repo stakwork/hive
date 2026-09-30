@@ -27,7 +27,7 @@
  * raw S3 URLs are never navigated to. `dangerouslySetInnerHTML` and `srcDoc`
  * are deliberately unused.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { htmlArtifactProxyUrl, type HtmlArtifactSource } from "@/lib/utils/html-body-proxy";
@@ -48,9 +48,15 @@ interface HtmlArtifactFrameProps {
    * sidebar card doesn't keep showing a stale blob.
    */
   updatedAt?: string;
+  /**
+   * Inline style for the frame alone — e.g. a fixed size and a scale, to
+   * draw the page as a thumbnail. The loading and error states keep
+   * `className` only, so they stay readable at any scale.
+   */
+  frameStyle?: CSSProperties;
 }
 
-export function HtmlArtifactFrame({ source, title, className, updatedAt }: HtmlArtifactFrameProps) {
+export function HtmlArtifactFrame({ source, title, className, updatedAt, frameStyle }: HtmlArtifactFrameProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,6 +154,7 @@ export function HtmlArtifactFrame({ source, title, className, updatedAt }: HtmlA
       sandbox={HTML_FRAME_SANDBOX}
       referrerPolicy="no-referrer"
       className={cn("h-full w-full border-0 bg-white", className)}
+      style={frameStyle}
     />
   );
 }

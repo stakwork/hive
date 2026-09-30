@@ -60,6 +60,7 @@ import type { ApprovalIntent, ApprovalResult, RejectionIntent } from "@/lib/prop
 import type { ClarifyingQuestion } from "@/types/stakwork";
 import type { StreamTimelineItem, StreamToolCall, ToolCallStatus } from "@/types/streaming";
 import type { TokenUsage } from "@/types/usage";
+import type { ArtifactPanelState, ArtifactRef } from "./canvasChatArtifacts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -203,10 +204,18 @@ export interface CanvasChatMessage {
    */
   timeline?: StreamTimelineItem[];
   /**
-   * Forward-compat: ids referencing entries in `state.artifacts`.
-   * Empty in PR 1; populated when the first artifact type ships.
+   * Ids into the `state.artifacts` registry, which nothing registers in
+   * or reads (see there). Always empty; a message's artifacts are the
+   * refs in `artifacts` below.
    */
   artifactIds?: string[];
+  /**
+   * What this message hands the reader to look at — a plan, a screenshot,
+   * a pull request — as refs: what each is and where its content lives
+   * (see `canvasChatArtifacts.ts`). Each renders as a card under the
+   * message and opens on the artifact panel.
+   */
+  artifacts?: ArtifactRef[];
 
   // ── Agent-proposal lifecycle (see `src/lib/proposals/types.ts`) ──
   // The chat is the source of truth for proposal status. These fields
@@ -476,15 +485,33 @@ interface CanvasChatState {
   // ─── Reserved slots (empty in PR 1; canvas may already select these) ─
   proposals: Record<string, CanvasProposal>;
   subAgentRuns: Record<string, SubAgentRun>;
+  /**
+   * Unused. Nothing registers an artifact here and nothing reads one: the
+   * chat's artifacts are the refs its messages carry
+   * (`CanvasChatMessage.artifacts`), and the one on the panel is
+   * `artifactPanel` below.
+   */
   artifacts: Record<string, CanvasArtifact>;
   /**
-   * Artifacts the user has dismissed for this session. Renderers
-   * (e.g. `MessageArtifacts` in `SidebarChat`) skip ids in this set.
-   * Lives in-memory only; outer code is responsible for persisting
-   * decisions across page loads (e.g. via `sessionStorage`) when
-   * relevant.
+   * Ids of `artifacts` entries dismissed for this session. Unused along
+   * with the registry. Lives in-memory only; outer code is responsible
+   * for persisting decisions across page loads (e.g. via
+   * `sessionStorage`) when relevant.
    */
   dismissedArtifactIds: Record<string, true>;
+
+  // ─── Artifact panel ──────────────────────────────────────────────────
+  /**
+   * The artifact of the active conversation that is up on the artifact
+   * panel, or null when the panel is closed. A card in the chat opens it;
+   * `OrgCanvasView` gives the panel the canvas's place while it is set.
+   * Cleared whenever the active conversation changes — an artifact belongs
+   * to the chat it came from.
+   */
+  artifactPanel: ArtifactPanelState | null;
+  /** Put an artifact on the panel. Omit `version` to follow its newest version. */
+  openArtifactPanel: (artifactId: string, version?: number | null) => void;
+  closeArtifactPanel: () => void;
 
   // ─── Conversation actions ────────────────────────────────────────────
   /**
@@ -597,11 +624,10 @@ interface CanvasChatState {
 
   // ─── Artifact actions ────────────────────────────────────────────────
   /**
-   * Register a `CanvasArtifact` so that `MessageArtifacts` (and any
-   * canvas-side subscribers) can find it by id. Safe to call from
-   * outside React; no re-render cost on the chat scroll because
-   * `SidebarChat` selects only `messages` / `isLoading` /
-   * `activeToolCalls`. Idempotent — same id overwrites in place.
+   * Register a `CanvasArtifact` by id in `state.artifacts`. Nothing
+   * calls this and nothing reads the registry — the chat's cards come
+   * from the refs on its messages. Idempotent — same id overwrites in
+   * place.
    */
   registerArtifact: (artifact: CanvasArtifact) => void;
   /** Mark an artifact as dismissed for the lifetime of the store. */
@@ -629,6 +655,12 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       subAgentRuns: {},
       artifacts: {},
       dismissedArtifactIds: {},
+      artifactPanel: null,
+
+      openArtifactPanel: (artifactId, version = null) =>
+        set({ artifactPanel: { artifactId, version } }, false, "openArtifactPanel"),
+
+      closeArtifactPanel: () => set({ artifactPanel: null }, false, "closeArtifactPanel"),
 
       startConversation: (context, seedMessages, forkedFromShareId, ephemeralSeedCount, serverConversationId, title) => {
         const id = newConversationId();
@@ -651,6 +683,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
             conversations: { ...s.conversations, [id]: conv },
             activeConversationId: id,
             ephemeralSeedCounts: seedSkip > 0 ? { ...s.ephemeralSeedCounts, [id]: seedSkip } : s.ephemeralSeedCounts,
+            artifactPanel: null,
           }),
           false,
           "startConversation",
@@ -659,7 +692,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       },
 
       setActiveConversation: (conversationId) =>
-        set({ activeConversationId: conversationId }, false, "setActiveConversation"),
+        set({ activeConversationId: conversationId, artifactPanel: null }, false, "setActiveConversation"),
 
       markTurnAuthored: (turnId) =>
         set(
@@ -713,6 +746,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
                   title: null,
                 },
               },
+              artifactPanel: null,
             };
           },
           false,
@@ -732,6 +766,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
               conversations: nextConversations,
               activeConversationId: null,
               ephemeralSeedCounts: nextSeedCounts,
+              artifactPanel: null,
             };
           },
           false,
