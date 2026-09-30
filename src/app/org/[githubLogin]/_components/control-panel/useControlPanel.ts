@@ -49,10 +49,13 @@ export interface ControlPanelState {
  * views never remounts the chat. Only the list, the focus and the
  * keyboard live here. While `enabled` is false (the canvas is showing)
  * nothing is fetched, the store is not watched and no keys are bound.
+ * While the list is covered (`listVisible` false — an artifact has its
+ * place) the panel keeps its state and only stops fetching and taking keys.
  */
-export function useControlPanel(githubLogin: string, enabled: boolean): ControlPanelState {
+export function useControlPanel(githubLogin: string, enabled: boolean, listVisible = true): ControlPanelState {
   const searchParams = useSearchParams();
   const pathname = usePathname();
+  const listening = enabled && listVisible;
   const {
     items,
     archivedItems,
@@ -62,7 +65,7 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
     showMore,
     archiveConversation,
     restoreConversation,
-  } = useControlPanelItems(githubLogin, enabled);
+  } = useControlPanelItems(githubLogin, listening);
 
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<ControlPanelFocus>(() => focusFromParams(searchParams));
@@ -296,7 +299,7 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
   );
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!listening) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isTypingTarget(e.target)) return;
@@ -325,7 +328,7 @@ export function useControlPanel(githubLogin: string, enabled: boolean): ControlP
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [enabled, githubLogin, moveCursor, visible, cursorKey, openItem]);
+  }, [listening, githubLogin, moveCursor, visible, cursorKey, openItem]);
 
   return {
     list: {

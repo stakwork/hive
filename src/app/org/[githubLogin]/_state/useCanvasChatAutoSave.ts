@@ -47,6 +47,7 @@ import {
   useCanvasChatStore,
   type CanvasChatMessage,
 } from "./canvasChatStore";
+import { parseArtifactRefs } from "./canvasChatArtifacts";
 import {
   mergeServerMessages,
   reconcileApprovalResults,
@@ -87,6 +88,7 @@ function hydrateServerMessages(raw: unknown[]): CanvasChatMessage[] {
       toolCalls: m.toolCalls as CanvasChatMessage["toolCalls"],
       timeline: m.timeline as CanvasChatMessage["timeline"],
       artifactIds: m.artifactIds as string[] | undefined,
+      artifacts: parseArtifactRefs(m.artifacts),
       attachments: m.attachments as CanvasChatMessage["attachments"],
       approval: m.approval as CanvasChatMessage["approval"],
       rejection: m.rejection as CanvasChatMessage["rejection"],

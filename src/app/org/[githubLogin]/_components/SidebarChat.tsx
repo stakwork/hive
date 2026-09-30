@@ -40,6 +40,7 @@ import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
+import { ArtifactCard } from "./artifacts/ArtifactCard";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
 
 import {
@@ -50,6 +51,12 @@ import {
   type CanvasChatMessage,
   type ToolCall,
 } from "../_state/canvasChatStore";
+import {
+  indexArtifactVersions,
+  listArtifacts,
+  type ArtifactRef,
+  type ArtifactVersion,
+} from "../_state/canvasChatArtifacts";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import { forkCanvasConversation } from "../_state/forkCanvasConversation";
 import { discardActiveUnsavedConversation, startNewOrgConversation } from "../_state/openOrgConversation";
@@ -294,6 +301,10 @@ function SidebarChatBody({ githubLogin, draftUserId = null }: SidebarChatProps) 
     return byAnchor;
   }, [messages]);
 
+  // Where each artifact sits among the versions of it this conversation
+  // holds, so a card can say "v2" and open the panel at its own version.
+  const artifactVersions = useMemo(() => indexArtifactVersions(listArtifacts(messages)), [messages]);
+
   // Render the SubAgentRunCard(s) anchored to a message. Extracted so it
   // can render under BOTH a normal message AND a suppressed fan-out
   // message (an inbound planner reply / form-answer — whose bubble is
@@ -512,7 +523,7 @@ function SidebarChatBody({ githubLogin, draftUserId = null }: SidebarChatProps) 
                   {strutChats?.map((chat) => (
                     <StrutChatCard key={chat.chatId} chat={chat} githubLogin={githubLogin} />
                   ))}
-                  <MessageArtifacts artifactIds={message.artifactIds} />
+                  <MessageArtifacts artifacts={message.artifacts} versions={artifactVersions} />
                 </div>
               );
             })}
@@ -838,39 +849,35 @@ const EMPTY_MESSAGES: CanvasChatMessage[] = [];
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
 
 /**
- * Dispatch point for rich agent artifacts. Selects `state.artifacts`
- * by id (via `useShallow` so streaming text-deltas don't re-render
- * here) and switches on `artifact.type`.
- *
- * Future canvas-bound types (proposals' canvas halos, sub-agent
- * status pills, etc.) layer in additional cases here.
+ * The artifacts a message carries, one card each. How a kind looks is
+ * the viewer registry's business (`artifacts/registry.ts`), and reading
+ * its content the card's own; a card is memoised on its ref, so streaming
+ * text never re-renders one.
  */
-function MessageArtifacts({ artifactIds }: { artifactIds?: string[] }) {
-  const ids = artifactIds ?? EMPTY_ARTIFACT_IDS;
-  // Filter dismissed ids inside the selector so neither the artifact
-  // map mutation nor the dismiss-set mutation alone causes a useless
-  // re-render — only when the *visible* set changes do we rebuild.
-  const artifacts = useCanvasChatStore(
-    useShallow((s) =>
-      ids
-        .filter((id) => !s.dismissedArtifactIds[id])
-        .map((id) => s.artifacts[id])
-        .filter(Boolean),
-    ),
-  );
-  if (ids.length === 0 || artifacts.length === 0) return null;
+function MessageArtifacts({
+  artifacts,
+  versions,
+}: {
+  artifacts?: ArtifactRef[];
+  versions: Map<ArtifactRef, ArtifactVersion>;
+}) {
+  if (!artifacts?.length) return null;
   return (
     <div className="space-y-1.5">
       {artifacts.map((artifact) => {
-        // Unknown artifact type — render nothing rather than crash.
-        void artifact;
-        return null;
+        const version = versions.get(artifact);
+        return (
+          <ArtifactCard
+            key={artifact.id}
+            artifact={artifact}
+            version={version?.index ?? 0}
+            versionCount={version?.count ?? 1}
+          />
+        );
       })}
     </div>
   );
 }
-
-const EMPTY_ARTIFACT_IDS: string[] = [];
 
 // ─── File attachment types ───────────────────────────────────────────────────
 
