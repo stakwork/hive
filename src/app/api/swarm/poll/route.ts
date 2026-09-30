@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
             id: true,
             ownerId: true,
             members: {
-              where: { userId },
+              where: { userId, leftAt: null },
               select: { role: true },
             },
           },

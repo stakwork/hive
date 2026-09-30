@@ -50,7 +50,7 @@ export async function executeWorkflowEditorRetry(
           ownerId: true,
           sourceControlOrgId: true,
           members: {
-            where: { userId },
+            where: { userId, leftAt: null },
             select: { role: true },
           },
           swarm: {

@@ -296,6 +296,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
           members: {
             where: {
               userId: "user-123",
+              leftAt: null,
             },
             select: {
               role: true,

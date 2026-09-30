@@ -18,6 +18,7 @@
  */
 
 import { db } from "@/lib/db";
+import { findActiveMember } from "@/lib/helpers/workspace-member-queries";
 import { parseUrn } from "./parse";
 
 export interface PgAccessContext {
@@ -217,12 +218,14 @@ async function checkWorkspaceScoped(
   // Direct workspace match
   if (ctx.workspaceId && ctx.workspaceId === entityWorkspaceId) return true;
 
-  // Fallback: userId is a member of the entity's workspace
+  // Fallback: userId owns the entity's workspace, or is an active member.
   if (ctx.userId) {
-    const member = await db.workspaceMember.findFirst({
-      where: { workspaceId: entityWorkspaceId, userId: ctx.userId },
-      select: { id: true },
+    const workspace = await db.workspace.findUnique({
+      where: { id: entityWorkspaceId },
+      select: { ownerId: true, deleted: true },
     });
+    if (workspace?.ownerId === ctx.userId && !workspace.deleted) return true;
+    const member = await findActiveMember(entityWorkspaceId, ctx.userId);
     return member !== null;
   }
 

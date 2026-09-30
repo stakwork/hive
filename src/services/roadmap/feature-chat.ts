@@ -147,6 +147,7 @@ const FEATURE_SELECT_FOR_CHAT = {
         },
       },
       members: {
+        where: { leftAt: null },
         select: {
           userId: true,
           role: true,
@@ -245,7 +246,7 @@ export async function resolveExtraSwarms(
         where: {
           slug,
           deleted: false,
-          OR: [{ ownerId: userId }, { members: { some: { userId } } }],
+          OR: [{ ownerId: userId }, { members: { some: { userId, leftAt: null } } }],
         },
         include: {
           swarm: true,

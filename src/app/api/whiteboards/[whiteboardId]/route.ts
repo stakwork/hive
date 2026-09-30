@@ -76,7 +76,7 @@ export async function PATCH(
           select: {
             ownerId: true,
             members: {
-              where: { userId: userOrResponse.id },
+              where: { userId: userOrResponse.id, leftAt: null },
               select: { role: true },
             },
           },
@@ -204,7 +204,7 @@ export async function DELETE(
           select: {
             ownerId: true,
             members: {
-              where: { userId: userOrResponse.id },
+              where: { userId: userOrResponse.id, leftAt: null },
               select: { role: true },
             },
           },

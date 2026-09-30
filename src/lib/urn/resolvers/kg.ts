@@ -11,6 +11,7 @@
 import { db } from "@/lib/db";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { getJarvisUrl } from "@/lib/utils/swarm";
+import { findActiveMember } from "@/lib/helpers/workspace-member-queries";
 import { parseUrn } from "../parse";
 
 export interface KgSeamResult {
@@ -39,17 +40,17 @@ export async function resolveKgSeam(
 
   const ws = await db.workspace.findFirst({
     where: { slug: parsed.workspace, deleted: false },
-    select: { id: true },
+    select: { id: true, ownerId: true },
   });
   if (!ws) return null;
 
-  // Authorization: caller must be a member of this workspace BEFORE
-  // any credential is fetched.
-  const member = await db.workspaceMember.findFirst({
-    where: { workspaceId: ws.id, userId: ctx.userId },
-    select: { id: true },
-  });
-  if (!member) return null;
+  // Authorization: caller must own this workspace, or be an active member
+  // (leftAt: null), BEFORE any credential is fetched. No org filter here —
+  // access is decided purely by ownership/membership.
+  if (ws.ownerId !== ctx.userId) {
+    const member = await findActiveMember(ws.id, ctx.userId);
+    if (!member) return null;
+  }
 
   const result = await getSwarmAccessByWorkspaceId(ws.id);
   if (!result.success) return null;

@@ -44,12 +44,16 @@ export async function POST(request: NextRequest) {
     // Normalize workspaceId — treat "", undefined, null all as absent
     let resolvedWorkspaceId: string | null = (workspaceId ?? "").trim() || null;
 
-    // IDOR guard: verify workspace membership if workspaceId is supplied
+    // IDOR guard: verify workspace ownership/active membership if workspaceId is supplied
     if (resolvedWorkspaceId) {
-      const membership = await db.workspaceMember.findFirst({
-        where: { workspaceId: resolvedWorkspaceId, userId, leftAt: null },
+      const ws = await db.workspace.findFirst({
+        where: {
+          id: resolvedWorkspaceId,
+          OR: [{ ownerId: userId }, { members: { some: { userId, leftAt: null } } }],
+        },
+        select: { id: true },
       });
-      if (!membership) {
+      if (!ws) {
         return NextResponse.json(
           { error: "Forbidden: not a member of this workspace" },
           { status: 403 },
@@ -65,12 +69,17 @@ export async function POST(request: NextRequest) {
       });
       const candidateId = org?.defaultWorkspaceId ?? null;
 
-      // IDOR guard: verify the caller is a member of the resolved workspace before using it
+      // IDOR guard: verify the caller owns or is an active member of the
+      // resolved workspace before using it
       if (candidateId) {
-        const membership = await db.workspaceMember.findFirst({
-          where: { workspaceId: candidateId, userId, leftAt: null },
+        const ws = await db.workspace.findFirst({
+          where: {
+            id: candidateId,
+            OR: [{ ownerId: userId }, { members: { some: { userId, leftAt: null } } }],
+          },
+          select: { id: true },
         });
-        resolvedWorkspaceId = membership ? candidateId : null;
+        resolvedWorkspaceId = ws ? candidateId : null;
       }
     }
 

@@ -846,12 +846,12 @@ async function searchKg(
     }));
   }
 
-  // Fan-out path — all org workspaces the user is a member of
+  // Fan-out path — all org workspaces the user owns or is an active member of
   const workspaces = await db.workspace.findMany({
     where: {
       sourceControlOrg: { githubLogin: urnOrg },
       deleted: false,
-      members: { some: { userId } },
+      OR: [{ ownerId: userId }, { members: { some: { userId, leftAt: null } } }],
     },
     select: { id: true, slug: true },
   });

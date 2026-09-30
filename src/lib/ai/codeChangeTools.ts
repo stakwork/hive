@@ -375,10 +375,11 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
           select: {
             id: true,
             name: true,
+            ownerId: true,
             sourceControlOrg: { select: { id: true, githubLogin: true } },
             swarm: { select: { swarmUrl: true, swarmApiKey: true } },
             members: {
-              where: { userId: ctx.userId },
+              where: { userId: ctx.userId, leftAt: null },
               select: { userId: true },
             },
           },
@@ -387,9 +388,9 @@ export function buildCodeChangeTools(ctx: CapabilityContext): ToolSet {
           return { error: `Workspace '${workspaceSlug}' not found.` };
         }
 
-        // Authorization: verify ctx.userId is a member of this workspace
-        // before any credentials or swarm keys are accessed.
-        if (workspace.members.length === 0) {
+        // Authorization: verify ctx.userId owns this workspace or is an
+        // active member before any credentials or swarm keys are accessed.
+        if (workspace.ownerId !== ctx.userId && workspace.members.length === 0) {
           return {
             error: "You do not have access to workspace '" + workspaceSlug + "'.",
           };

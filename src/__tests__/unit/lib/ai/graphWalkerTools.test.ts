@@ -1001,7 +1001,10 @@ describe("buildGraphWalkerTools", () => {
       expect(dbWorkspace.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            members: { some: { userId: USER_ID } },
+            OR: [
+              { ownerId: USER_ID },
+              { members: { some: { userId: USER_ID, leftAt: null } } },
+            ],
           }),
         }),
       );

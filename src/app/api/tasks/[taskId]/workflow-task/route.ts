@@ -36,7 +36,7 @@ export async function POST(
           select: {
             ownerId: true,
             members: {
-              where: { userId: userOrResponse.id },
+              where: { userId: userOrResponse.id, leftAt: null },
               select: { role: true },
             },
           },

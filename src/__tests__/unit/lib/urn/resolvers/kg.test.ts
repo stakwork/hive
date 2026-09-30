@@ -117,11 +117,10 @@ describe("resolveKgSeam", () => {
 
     expect(mockWsFindFirst).toHaveBeenCalledWith({
       where: { slug: "my-workspace", deleted: false },
-      select: { id: true },
+      select: { id: true, ownerId: true },
     });
     expect(mockMemberFindFirst).toHaveBeenCalledWith({
-      where: { workspaceId: "ws-1", userId: "user-1" },
-      select: { id: true },
+      where: { workspaceId: "ws-1", userId: "user-1", leftAt: null },
     });
     expect(mockGetSwarmAccess).toHaveBeenCalledWith("ws-1");
     expect(result).toEqual({

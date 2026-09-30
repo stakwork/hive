@@ -21,7 +21,7 @@ export async function GET(
           select: {
             ownerId: true,
             members: {
-              where: { userId: userOrResponse.id },
+              where: { userId: userOrResponse.id, leftAt: null },
               select: { role: true },
             },
           },
@@ -81,7 +81,7 @@ export async function POST(
             id: true,
             ownerId: true,
             members: {
-              where: { userId: user.id },
+              where: { userId: user.id, leftAt: null },
               select: { role: true },
             },
           },

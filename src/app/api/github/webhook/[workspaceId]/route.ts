@@ -936,7 +936,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         try {
           // Get any user's token for this workspace to access the repo
           const workspaceUser = await db.workspaceMember.findFirst({
-            where: { workspaceId: repository.workspaceId },
+            where: { workspaceId: repository.workspaceId, leftAt: null },
             select: { userId: true },
           });
 

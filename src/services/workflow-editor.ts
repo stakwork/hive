@@ -216,7 +216,7 @@ export async function triggerWorkflowEditorRun(params: {
           ownerId: true,
           sourceControlOrgId: true,
           members: {
-            where: { userId },
+            where: { userId, leftAt: null },
             select: { role: true },
           },
           swarm: {

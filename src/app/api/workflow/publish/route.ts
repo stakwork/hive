@@ -6,6 +6,7 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { isSafeId } from "@/lib/utils/ids";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
+import { findStakworkWorkspaceForUser } from "@/lib/helpers/stakwork-workspace-access";
 
 export const runtime = "nodejs";
 
@@ -49,12 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access to stakwork workspace
-    const stakworkWorkspace = await db.workspace.findFirst({
-      where: {
-        slug: "stakwork",
-        OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-      },
-    });
+    const stakworkWorkspace = await findStakworkWorkspaceForUser(userId);
 
     const devMode = isDevelopmentMode();
 

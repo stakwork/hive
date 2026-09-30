@@ -32,6 +32,7 @@ export async function GET(
         members: {
           where: {
             userId: userId,
+            leftAt: null,
           },
           select: {
             role: true,
