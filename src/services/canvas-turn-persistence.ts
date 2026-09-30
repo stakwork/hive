@@ -99,6 +99,14 @@ export interface StoredMessage {
   toolCalls?: StoredToolCall[];
   attachments?: StoredAttachment[];
   source?: { kind: string; featureId?: string; plannerMessageId?: string };
+  /**
+   * What the message hands the reader to look at — `ArtifactRef[]`
+   * (`app/org/[githubLogin]/_state/canvasChatArtifacts.ts`), written by a
+   * strut job turn (`services/strut-runs/job-turn.ts`). Untyped here: every
+   * hydration parses it with `parseArtifactRefs`, which drops what does
+   * not fit.
+   */
+  artifacts?: unknown;
   // Approval-flow metadata round-tripping through the JSON. Untyped here
   // (the canonical types live in `src/lib/proposals/types.ts`); the
   // render-side store re-narrows them.

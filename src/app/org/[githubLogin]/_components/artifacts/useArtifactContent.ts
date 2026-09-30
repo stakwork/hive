@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { strutArtifactReaderUrl } from "@/lib/strut-jobs";
 import {
   parseArtifactContent,
   type ArtifactContents,
@@ -9,6 +10,7 @@ import {
   type ArtifactRef,
   type ArtifactSource,
 } from "../../_state/canvasChatArtifacts";
+import { useChatOrgLogin } from "./useArtifactPanel";
 
 /**
  * From a ref to its content. A message only says where an artifact's
@@ -27,21 +29,81 @@ export class ArtifactLoadError extends Error {
   }
 }
 
+/** Where the reading happens from: the org the conversation belongs to. */
+export interface ArtifactLoadContext {
+  githubLogin: string;
+}
+
 /**
  * Reads the content a ref points at, as it comes — it is parsed afterwards.
  * Only asked about content that lives somewhere else: what an `inline` ref
  * carries is read straight off it. Throws `ArtifactLoadError`.
  */
-export type ArtifactLoader = (artifact: ArtifactRef) => Promise<unknown>;
+export type ArtifactLoader = (artifact: ArtifactRef, context: ArtifactLoadContext) => Promise<unknown>;
+
+/** The file's name, for a `code` ref's highlighting. */
+const basename = (key: string): string => key.split("/").pop() ?? key;
 
 /**
- * The loader the app runs on. Nothing reads a `graph` pointer yet: that
- * reader — a Hive route that checks the ref against Hive's own rows before
- * asking the swarm — plugs in here.
+ * A `graph` ref: something on a swarm's strut — a file in a job's
+ * directory or in a run's artifacts (`key` is strut's own link) — read
+ * through Hive's reader route, which checks the ref against Hive's rows
+ * before asking the swarm and serves the bytes from Hive's own origin
+ * (`api/orgs/[githubLogin]/strut/artifacts`). What comes back depends on
+ * the kind: text kinds are fetched and shaped here; media, a PDF and a
+ * page are handed to their viewers as an address on this origin.
  */
-const loadArtifactContent: ArtifactLoader = async () => {
-  throw new ArtifactLoadError("unavailable");
-};
+export async function readStrutArtifact(
+  artifact: ArtifactRef,
+  context: ArtifactLoadContext,
+  fetchImpl: typeof fetch = fetch,
+): Promise<unknown> {
+  const { kind, source } = artifact;
+  if (source.type !== "graph") throw new ArtifactLoadError("unavailable");
+  const url = strutArtifactReaderUrl(context.githubLogin, source.swarmId, source.key);
+  switch (kind) {
+    case "image":
+    case "video":
+    case "audio":
+    case "pdf":
+    case "url":
+      return { url };
+    case "markdown":
+    case "log":
+    case "code":
+    case "json":
+      break;
+    default:
+      // A stored page, a diff's files, a pull request: not something bytes on a swarm are.
+      throw new ArtifactLoadError("unavailable");
+  }
+  let res: Response;
+  try {
+    res = await fetchImpl(url, { credentials: "same-origin" });
+  } catch {
+    throw new ArtifactLoadError("failed");
+  }
+  if (res.status === 401 || res.status === 403) throw new ArtifactLoadError("denied");
+  if (res.status === 404) throw new ArtifactLoadError("unavailable");
+  if (!res.ok) throw new ArtifactLoadError("failed");
+  const text = await res.text();
+  switch (kind) {
+    case "markdown":
+    case "log":
+      return { text };
+    case "code":
+      return { code: text, filename: basename(source.key) };
+    case "json":
+      try {
+        return { value: JSON.parse(text) };
+      } catch {
+        throw new ArtifactLoadError("unavailable");
+      }
+  }
+}
+
+/** The loader the app runs on: `graph` refs through the strut reader; nothing else lives anywhere yet. */
+const loadArtifactContent: ArtifactLoader = (artifact, context) => readStrutArtifact(artifact, context);
 
 /** The loader in force. Only something that stands in for the real readers — a demo, a test — provides another. */
 export const ArtifactLoaderContext = createContext<ArtifactLoader>(loadArtifactContent);
@@ -65,6 +127,7 @@ const failureOf = (error: unknown): ArtifactLoadFailure =>
  */
 export function useArtifactContent(artifact: ArtifactRef, enabled = true): ArtifactContentState {
   const load = useContext(ArtifactLoaderContext);
+  const githubLogin = useChatOrgLogin();
   const { kind, source } = artifact;
 
   // Content on the ref needs no round trip, and so no loading state.
@@ -74,9 +137,9 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
   );
 
   const query = useQuery({
-    queryKey: ["canvas-artifact", kind, sourceKey(source)],
+    queryKey: ["canvas-artifact", kind, sourceKey(source), githubLogin],
     queryFn: async () => {
-      const content = parseArtifactContent(kind, await load(artifact));
+      const content = parseArtifactContent(kind, await load(artifact, { githubLogin }));
       if (!content) throw new ArtifactLoadError("unavailable");
       return content;
     },

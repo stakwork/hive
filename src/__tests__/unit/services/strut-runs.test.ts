@@ -230,6 +230,43 @@ describe("dispatchStrutRun", () => {
     expect(mockStrutRun.updateMany.mock.calls[0][0].data).toMatchObject({ status: "ERROR", error: "strut_http_404: no such workflow" });
   });
 
+  it("a job goes on the LAUNCH beside input (never inside it) and on the row as jobId", async () => {
+    mockFetch.mockResolvedValue(json(202, { runId: "1790000000000", callback: true }));
+    const job = "6f1c0d3e-1111-4222-8333-444455556666";
+    await dispatchStrutRun({
+      ...dispatchArgs,
+      kind: "job_turn",
+      workflow: "job",
+      purpose: "job",
+      input: { prompt: "Plan dark mode", title: "Dark mode plan" },
+      proposalId: undefined,
+      actorSecrets: undefined,
+      job,
+    });
+    expect(mockResolveStrutTarget).toHaveBeenCalledWith({ purpose: "job", userId: "user-1", workspaceId: "ws-1" });
+    const created = mockStrutRun.create.mock.calls[0][0].data;
+    expect(created).toMatchObject({ kind: "job_turn", workflow: "job", jobId: job, input: { prompt: "Plan dark mode", title: "Dark mode plan" } });
+    expect(created.proposalId).toBeUndefined();
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://acme.sphinx.chat:3355/lab/workflows/job/run");
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({ input: { prompt: "Plan dark mode", title: "Dark mode plan" }, callback: { url: expect.any(String) }, job });
+  });
+
+  it("without a job the launch body and the row carry none", async () => {
+    mockFetch.mockResolvedValue(json(202, { runId: "1790000000000", callback: true }));
+    await dispatchStrutRun(dispatchArgs);
+    const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.job).toBeUndefined();
+    expect(mockStrutRun.create.mock.calls[0][0].data.jobId).toBeUndefined();
+  });
+
+  it("a 400 on a job launch is strut refusing the job id", async () => {
+    mockFetch.mockResolvedValue(json(400, { error: "job: not a valid id" }));
+    await expect(dispatchStrutRun({ ...dispatchArgs, job: "bad id" })).rejects.toMatchObject({ code: "bad_job" });
+    expect(mockStrutRun.updateMany.mock.calls[0][0].data).toMatchObject({ status: "ERROR", error: "strut_http_400: job: not a valid id" });
+  });
+
   it("400 = strut refused the callback URL", async () => {
     mockFetch.mockResolvedValue(json(400, { error: "callback.url must be http(s)" }));
     await expect(dispatchStrutRun(dispatchArgs)).rejects.toMatchObject({ code: "bad_callback_url" });
