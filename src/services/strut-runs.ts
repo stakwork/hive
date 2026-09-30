@@ -7,7 +7,7 @@
  *   dispatchStrutRun   resolve the target (ONE policy — `strut-target.ts`)
  *                      → PENDING row with the target's `swarmId`
  *                      → push the user's delegation + actor secrets to it
- *                      → POST {lab}/workflows/<name>/run { input, callback }
+ *                      → POST {lab}/workflows/<name>/run { input, callback, job? }
  *                      → refuse a 202 without `callback: true`
  *                      → store `strutRunId`.
  *   completeStrutRun   the token-gated, idempotent claim PENDING → terminal
@@ -88,6 +88,7 @@ export type StrutRunRow = Pick<
   | "durationMs"
   | "conversationId"
   | "proposalId"
+  | "jobId"
   | "createdAt"
   | "settledAt"
 >;
@@ -107,6 +108,7 @@ const ROW_SELECT = {
   durationMs: true,
   conversationId: true,
   proposalId: true,
+  jobId: true,
   createdAt: true,
   settledAt: true,
 } satisfies Prisma.StrutRunSelect;
@@ -125,6 +127,7 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
+  job_turn: async () => (await import("./strut-runs/job-turn")).handleJobTurnSettled,
 };
 
 export function hashStrutRunToken(token: string): string {
@@ -156,6 +159,7 @@ export type StrutDispatchFailureCode =
   | "no_target"
   | "unreachable"
   | "bad_callback_url"
+  | "bad_job"
   | "workflow_missing"
   | "strut_http"
   | "callbacks_unsupported"
@@ -190,6 +194,14 @@ export interface DispatchStrutRunArgs {
   publicBaseUrl: string;
   conversationId?: string;
   proposalId?: string;
+  /**
+   * The strut JOB to launch the run under (`POST …/run { job }`, strut
+   * plans/jobs.md): a flat id the CALLER mints (a UUID), a sibling of
+   * `input` on the launch and never inside it. Recorded on the row as
+   * `jobId`; strut hands the run one directory and one agent thread per
+   * job, so the same id again is the next turn of the same job.
+   */
+  job?: string;
   /**
    * Per-actor secrets pushed to the target before the launch
    * (`PUT /actors/:actor/secrets/:name`) — the user's `GITHUB_TOKEN` for a
@@ -233,7 +245,7 @@ async function failRow(id: string, error: string): Promise<void> {
  * if created, is marked ERROR with the reason).
  */
 export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<DispatchStrutRunResult> {
-  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId } = args;
+  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job } = args;
   if (!HANDLERS[kind]) throw new Error(`No strut-run handler for kind "${kind}"`);
 
   const resolved = await resolveStrutTarget({ purpose, userId, workspaceId });
@@ -254,6 +266,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
       input: typeof args.input === "function" ? Prisma.DbNull : toJson(args.input),
       ...(conversationId ? { conversationId } : {}),
       ...(proposalId ? { proposalId } : {}),
+      ...(job ? { jobId: job } : {}),
     },
     select: { id: true },
   });
@@ -294,7 +307,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
         "x-api-token": target.swarmApiKey,
         [STRUT_ACTOR_HEADER]: target.actor,
       },
-      body: JSON.stringify({ input, callback: { url: callbackUrl } }),
+      body: JSON.stringify({ input, callback: { url: callbackUrl }, ...(job ? { job } : {}) }),
       cache: "no-store",
       signal: AbortSignal.timeout(LAUNCH_TIMEOUT_MS),
     });
@@ -315,7 +328,14 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
       );
     }
     if (res.status === 400) {
-      throw new StrutDispatchError("bad_callback_url", detail || "Strut refused the launch (400).");
+      // A 400 is strut refusing the LAUNCH body: the callback URL, or with
+      // `job` the id's format. (A job whose previous turn is still running
+      // is not refused here — its run fails at `job/dir` with `job_busy:`
+      // and settles through the callback like any error.)
+      throw new StrutDispatchError(
+        job && /\bjob\b/i.test(detail ?? "") ? "bad_job" : "bad_callback_url",
+        detail || "Strut refused the launch (400).",
+      );
     }
     throw new StrutDispatchError("strut_http", detail || `Strut returned HTTP ${res.status}.`);
   }

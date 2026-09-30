@@ -76,6 +76,7 @@ const ROW_SELECT = {
   durationMs: true,
   conversationId: true,
   proposalId: true,
+  jobId: true,
   createdAt: true,
   settledAt: true,
 } as const;

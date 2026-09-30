@@ -180,6 +180,24 @@ export type CanvasMessageSource =
       parked?: boolean;
       /** Parsed by `parseStrutChatActivity` — never trusted as typed. */
       activity?: unknown;
+    }
+  | {
+      /**
+       * One turn of a strut JOB (`services/strut-runs/job-turn.ts`): the
+       * reply the `job` workflow's agent gave, with what it produced riding
+       * on the row as `artifacts`. Renders as a plain bubble plus its
+       * artifact cards; the header line carries the job id the canvas
+       * agent reads back for `continue_job`.
+       */
+      kind: "job";
+      jobId: string;
+      strutRunId: string;
+      workflow: string;
+      /** "success" | "error" | "cancelled" | "lost" — how the turn ended. */
+      status: string;
+      title?: string;
+      /** The agent stopped for a decision: the question, verbatim. */
+      ask?: string;
     };
 
 export interface CanvasChatMessage {
