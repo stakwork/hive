@@ -83,6 +83,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             members: {
               where: {
                 userId: userId,
+                leftAt: null,
               },
               select: {
                 role: true,

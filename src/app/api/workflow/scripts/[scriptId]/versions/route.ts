@@ -23,12 +23,7 @@ export async function GET(
       return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
-    const stakworkWorkspace = await db.workspace.findFirst({
-      where: {
-        slug: "stakwork",
-        OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-      },
-    });
+    const stakworkWorkspace = await findStakworkWorkspaceForUser(userId);
 
     const devMode = isDevelopmentMode();
 

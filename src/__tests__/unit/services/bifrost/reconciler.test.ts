@@ -116,7 +116,7 @@ describe("reconcileBifrostVK", () => {
   });
 
   it("returns the cached VK without calling Bifrost", async () => {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: JSON.stringify({
         data: "sk-bf-CACHED",
@@ -158,7 +158,7 @@ describe("reconcileBifrostVK", () => {
   });
 
   it("creates customer + VK and persists the VK when nothing exists", async () => {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: null,
       bifrostVkId: null,
@@ -230,7 +230,7 @@ describe("reconcileBifrostVK", () => {
   });
 
   it("reuses an existing customer + VK (idempotent, no creates)", async () => {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: null,
       bifrostVkId: null,
@@ -275,7 +275,7 @@ describe("reconcileBifrostVK", () => {
   });
 
   it("ignores substring-only customer matches and creates", async () => {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: null,
       bifrostVkId: null,
@@ -325,7 +325,7 @@ describe("reconcileBifrostVK", () => {
   });
 
   it("picks the oldest when duplicate exact-name customers exist", async () => {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: null,
       bifrostVkId: null,
@@ -369,7 +369,7 @@ describe("reconcileBifrostVK", () => {
   });
 
   it("throws when the user is not a workspace member", async () => {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce(
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce(
       null as never,
     );
 
@@ -381,7 +381,7 @@ describe("reconcileBifrostVK", () => {
   });
 
   it("re-reconciles when the cached VK fails to decrypt", async () => {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: "{not valid json",
       bifrostVkId: "vk-1",
@@ -424,7 +424,7 @@ describe("reconcileBifrostVK", () => {
   });
 
   it("recovers when Customer create races: 400 dup-key → readback", async () => {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: null,
       bifrostVkId: null,
@@ -497,7 +497,7 @@ describe("reconcileBifrostVK", () => {
   });
 
   it("recovers when VK create races: 400 dup-key → readback", async () => {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: null,
       bifrostVkId: null,
@@ -569,7 +569,7 @@ describe("reconcileBifrostVK", () => {
   });
 
   it("does NOT swallow non-duplicate Bifrost 400s on Customer create", async () => {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: null,
       bifrostVkId: null,
@@ -610,7 +610,7 @@ describe("reconcileBifrostVK", () => {
     async function reconcileWithModel(
       model: string | undefined,
     ): Promise<string> {
-      vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+      vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
         id: "mem-1",
         bifrostVkValue: JSON.stringify({
           data: "sk-bf-CACHED",
@@ -675,7 +675,7 @@ describe("reconcileBifrostVK", () => {
 
   describe("uses the {login}-{userId} naming when GitHubAuth exists", () => {
     it("passes the prefixed name to Bifrost create + lookup", async () => {
-      vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+      vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
         id: "mem-1",
         bifrostVkValue: null,
         bifrostVkId: null,
@@ -790,7 +790,7 @@ describe("provider grants", () => {
     },
   };
   function uncachedMember() {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: null,
       bifrostVkId: null,
@@ -801,7 +801,7 @@ describe("provider grants", () => {
     bifrostSyncedAt: Date | null,
     bifrostVkProviders: string[] = [],
   ) {
-    vi.mocked(dbMock.workspaceMember.findUnique).mockResolvedValueOnce({
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
       id: "mem-1",
       bifrostVkValue: JSON.stringify({
         data: "sk-bf-CACHED",

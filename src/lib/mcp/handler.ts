@@ -1181,15 +1181,8 @@ async function verifyJwt(
 
     const isOwner = workspace.ownerId === wsPayload.userId;
     if (!isOwner) {
-      const membership = await db.workspaceMember.findUnique({
-        where: {
-          workspaceId_userId: {
-            workspaceId: workspace.id,
-            userId: wsPayload.userId,
-          },
-        },
-        select: { role: true },
-      });
+      const { findActiveMember } = await import("@/lib/helpers/workspace-member-queries");
+      const membership = await findActiveMember(workspace.id, wsPayload.userId);
       if (!membership) {
         console.log(
           "[MCP] JWT user is no longer a member of workspace:",

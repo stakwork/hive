@@ -24,7 +24,7 @@ export async function checkWhiteboardAccess(
         select: {
           ownerId: true,
           members: {
-            where: { userId },
+            where: { userId, leftAt: null },
             select: { id: true },
           },
         },

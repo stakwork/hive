@@ -11,7 +11,7 @@ export async function getWorkspaceAdminGithubToken(workspaceSlug: string): Promi
     include: {
       sourceControlOrg: true,
       members: {
-        where: { role: { in: ["OWNER", "ADMIN"] } },
+        where: { role: { in: ["OWNER", "ADMIN"] }, leftAt: null },
         select: { userId: true },
       },
     },

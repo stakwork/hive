@@ -919,7 +919,8 @@ export async function acceptJanitorRecommendation(
     const assigneeExists = await db.workspaceMember.findFirst({
       where: {
         userId: options.assigneeId,
-        workspaceId: recommendation.workspaceId
+        workspaceId: recommendation.workspaceId,
+        leftAt: null,
       }
     });
 

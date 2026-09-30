@@ -41,6 +41,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             id: true,
             ownerId: true,
             members: {
+              where: { userId, leftAt: null },
               select: { userId: true },
             },
             repositories: {

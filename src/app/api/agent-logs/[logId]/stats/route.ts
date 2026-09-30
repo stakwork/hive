@@ -68,8 +68,10 @@ export async function GET(
           workspaceId: true,
           workspace: {
             select: {
+              ownerId: true,
+              deleted: true,
               members: {
-                where: { userId: session.user.id },
+                where: { userId: session.user.id, leftAt: null },
                 select: { id: true },
               },
             },
@@ -84,7 +86,9 @@ export async function GET(
         );
       }
 
-      if (!log.workspace.members.length) {
+      const isOwner = log.workspace.ownerId === session.user.id && !log.workspace.deleted;
+      const isMember = log.workspace.members.length > 0;
+      if (!isOwner && !isMember) {
         return NextResponse.json(
           { error: "Access denied" },
           { status: 403 }

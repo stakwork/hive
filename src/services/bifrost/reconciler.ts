@@ -110,8 +110,8 @@ async function doReconcile(
   // `{login}-{userId}` — purely so the Bifrost admin UI is readable.
   // The login is only consulted on the create path; cached
   // reconciliations don't need it.
-  const member = await db.workspaceMember.findUnique({
-    where: { workspaceId_userId: { workspaceId, userId } },
+  const member = await db.workspaceMember.findFirst({
+    where: { workspaceId, userId, leftAt: null },
     select: {
       id: true,
       bifrostVkValue: true,

@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
             members: {
               where: {
                 userId,
+                leftAt: null,
               },
             },
             owner: true,

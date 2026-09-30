@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { findStakworkWorkspaceForUser } from "@/lib/helpers/stakwork-workspace-access";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -23,12 +24,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
       }
 
-      const stakworkWorkspace = await db.workspace.findFirst({
-        where: {
-          slug: "stakwork",
-          OR: [{ ownerId: userId }, { members: { some: { userId } } }],
-        },
-      });
+      const stakworkWorkspace = await findStakworkWorkspaceForUser(userId);
 
       if (!stakworkWorkspace) {
         return NextResponse.json(

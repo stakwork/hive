@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getMiddlewareContext, checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { WorkspaceRole } from "@/lib/auth/roles";
+import { findActiveMember } from "@/lib/helpers/workspace-member-queries";
 
 /**
  * Result of resolving a request's access to a workspace.
@@ -80,15 +81,7 @@ export async function resolveWorkspaceAccess(
       };
     }
 
-    const membership = await db.workspaceMember.findUnique({
-      where: {
-        workspaceId_userId: {
-          workspaceId: workspace.id,
-          userId,
-        },
-      },
-      select: { role: true },
-    });
+    const membership = await findActiveMember(workspace.id, userId);
 
     if (membership) {
       return {
