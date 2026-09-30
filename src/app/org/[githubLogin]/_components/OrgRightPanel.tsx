@@ -17,6 +17,7 @@ import { useAutomationInbox, type InboxRun } from "../_state/useAutomationInbox"
 import { formatRelativeTime } from "./CanvasHistoryPopover";
 import { PlanStage, taskNodeFor, type ControlPanelStageProps } from "./control-panel/ControlPanelStage";
 import type { ControlPanelFocus } from "./control-panel/types";
+import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 import { ActionTip } from "./ActionTip";
 
 type Tab = "chat" | "details" | "connections";
@@ -159,6 +160,7 @@ export function OrgRightPanel({
   // object on reselect still re-fires.
   const [tab, setTab] = useState<Tab>("chat");
   const [inboxOpen, setInboxOpen] = useState(false);
+  const artifactOpen = useArtifactPanelOpen();
 
   useEffect(() => {
     if (selectedNode) setTab("details");
@@ -227,7 +229,13 @@ export function OrgRightPanel({
   };
 
   return (
-    <div className={cn("h-full w-full flex flex-col bg-background", !stage && "border-l")}>
+    <div
+      className={cn(
+        "h-full w-full flex flex-col bg-background",
+        // Beside the artifact panel the divider alone is the line; the border keeps its width so the chat does not shift.
+        !stage && (artifactOpen ? "border-l border-transparent" : "border-l"),
+      )}
+    >
       {/* One bar for both views: tabs on the left, the chat's actions and
           the view toggle on the right, the same height as the control
           panel's list header across the divider — so switching views only

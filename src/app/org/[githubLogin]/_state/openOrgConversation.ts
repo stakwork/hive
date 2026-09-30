@@ -21,6 +21,7 @@
  * failure (callers leave their own UI state untouched in that case).
  */
 import { useCanvasChatStore, type CanvasChatMessage } from "./canvasChatStore";
+import { parseArtifactRefs } from "./canvasChatArtifacts";
 
 export interface OpenOrgConversationOptions {
   /**
@@ -42,6 +43,7 @@ interface RawStoredMessage {
   toolCalls?: CanvasChatMessage["toolCalls"];
   timeline?: CanvasChatMessage["timeline"];
   artifactIds?: string[];
+  artifacts?: unknown;
   attachments?: CanvasChatMessage["attachments"];
   approval?: CanvasChatMessage["approval"];
   rejection?: CanvasChatMessage["rejection"];
@@ -67,6 +69,7 @@ function toCanvasMessages(raw: unknown): CanvasChatMessage[] {
       toolCalls: m.toolCalls,
       timeline: m.timeline,
       artifactIds: m.artifactIds,
+      artifacts: parseArtifactRefs(m.artifacts),
       attachments: m.attachments,
       approval: m.approval,
       rejection: m.rejection,

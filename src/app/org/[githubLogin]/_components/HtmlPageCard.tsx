@@ -24,7 +24,7 @@ export interface HtmlPageRun {
   updatedAt?: string;
 }
 
-function buildSharePath(githubLogin: string, slug: string): string {
+export function buildSharePath(githubLogin: string, slug: string): string {
   return `/org/${githubLogin}/h/${slug}`;
 }
 
