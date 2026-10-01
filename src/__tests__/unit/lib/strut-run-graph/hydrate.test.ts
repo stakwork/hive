@@ -8,7 +8,9 @@
  *   - a ref id that is not id-shaped never reaches a query;
  *   - a graph that cannot answer leaves the nodes as the log named them,
  *     and says what it did not read, and why;
- *   - the swarm's refusal reaches the trace in its own words.
+ *   - the swarm's refusal reaches the trace in its own words;
+ *   - one node is read whole without its vectors, and a node the graph no
+ *     longer holds is told from one it could not answer for.
  */
 
 import { afterEach, describe, it, expect, vi } from "vitest";
@@ -19,6 +21,8 @@ vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn() } }));
 
 import {
   hydrateRunGraph,
+  isRunGraphRefId,
+  readRunGraphNode,
   RUN_GRAPH_MAX_NODES,
   swarmCypherRunner,
   typeFromLabels,
@@ -233,5 +237,68 @@ describe("swarmCypherRunner", () => {
   it("does not take an answer that is not rows", async () => {
     answer({ ok: true });
     expect(await run("q", 10)).toEqual({ unread: "an answer that is not rows" });
+  });
+});
+
+describe("isRunGraphRefId", () => {
+  it("takes an id and refuses what is not one", () => {
+    expect(isRunGraphRefId("140e5a09-41d3-4692-9dfe-219b00922c2c")).toBe(true);
+    expect(isRunGraphRefId("concept_1")).toBe(true);
+    expect(isRunGraphRefId("")).toBe(false);
+    expect(isRunGraphRefId("a b")).toBe(false);
+    expect(isRunGraphRefId("'}) MATCH (n) DETACH DELETE n //")).toBe(false);
+  });
+});
+
+describe("readRunGraphNode", () => {
+  it("reads a node whole, without its vectors", async () => {
+    const run = vi.fn<CypherRunner>(async () => ({
+      // Upstream orders columns its own way.
+      columns: ["props", "labels"],
+      rows: [
+        [
+          [
+            ["ref_id", "c-1"],
+            ["name", "Problem List"],
+            ["docs", "# Problem List\n\nOne line per problem."],
+            ["weight", 3],
+          ],
+          ["Data_Bank", "Concept", "Domain_general"],
+        ],
+      ],
+    }));
+
+    const read = await readRunGraphNode("c-1", run);
+
+    expect(read).toEqual({
+      found: true,
+      node: {
+        ref_id: "c-1",
+        node_type: "Concept",
+        labels: ["Data_Bank", "Concept", "Domain_general"],
+        properties: { ref_id: "c-1", name: "Problem List", docs: "# Problem List\n\nOne line per problem.", weight: 3 },
+      },
+    });
+    const [query, limit] = run.mock.calls[0];
+    expect(query).toContain("{ref_id: 'c-1'}");
+    // The projection leaves the vectors on the swarm.
+    expect(query).toContain("NOT k IN ['embeddings','text_embeddings']");
+    expect(limit).toBe(1);
+  });
+
+  it("tells a node the graph no longer holds from one it could not answer for", async () => {
+    expect(await readRunGraphNode("gone", async () => ({ columns: ["labels", "props"], rows: [] }))).toEqual({
+      found: false,
+    });
+    expect(await readRunGraphNode("c-1", async () => ({ unread: "no answer in 20 s" }))).toEqual({
+      found: false,
+      unread: "no answer in 20 s",
+    });
+  });
+
+  it("never sends a ref id that is not id-shaped", async () => {
+    const run = vi.fn<CypherRunner>();
+    expect(await readRunGraphNode("'}) MATCH (n) DETACH DELETE n //", run)).toEqual({ found: false });
+    expect(run).not.toHaveBeenCalled();
   });
 });

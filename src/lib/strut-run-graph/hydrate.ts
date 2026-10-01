@@ -12,7 +12,7 @@
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
-import type { RunGraphEdge, RunGraphNode, RunGraphNodeRef, RunGraphTrace } from "./types";
+import type { RunGraphEdge, RunGraphNode, RunGraphNodeBody, RunGraphNodeRef, RunGraphTrace } from "./types";
 
 /**
  * Nodes resolved per trace; a run that touched more is reported `truncated`.
@@ -172,4 +172,45 @@ export async function hydrateRunGraph(
     ...(unread ? { unreadReason: unread.unread } : {}),
     truncated: valid.length > shown.length || edgeRows.length >= ROW_LIMIT,
   };
+}
+
+/** Is this a ref id the graph will ever be asked about? */
+export function isRunGraphRefId(refId: string): boolean {
+  return REF_ID_RE.test(refId);
+}
+
+/** Properties never read back: the vectors are large and mean nothing to a reader. */
+const VECTOR_PROPERTIES: readonly string[] = ["embeddings", "text_embeddings"];
+
+export type RunGraphNodeRead =
+  /** The node, whole. */
+  | { found: true; node: RunGraphNodeBody }
+  /** The graph no longer holds the node — or, with `unread`, could not answer for it. */
+  | { found: false; unread?: string };
+
+/**
+ * One node, whole: its labels and every property but the vectors, for reading
+ * what the run read. The projection is written here, so the vectors never
+ * leave the swarm; a ref id that is not id-shaped is never sent.
+ */
+export async function readRunGraphNode(refId: string, run: CypherRunner): Promise<RunGraphNodeRead> {
+  if (!REF_ID_RE.test(refId)) return { found: false };
+  const skipped = VECTOR_PROPERTIES.map((key) => `'${key}'`).join(",");
+  const result = await run(
+    `MATCH (n:Data_Bank {ref_id: '${refId}'}) RETURN labels(n) AS labels, ` +
+      `[k IN keys(n) WHERE NOT k IN [${skipped}] | [k, n[k]]] AS props`,
+    1,
+  );
+  if (isUnread(result)) return { found: false, unread: result.unread };
+  const row = records(result)[0];
+  if (!row) return { found: false };
+
+  const properties: Record<string, unknown> = {};
+  if (Array.isArray(row.props)) {
+    for (const pair of row.props) {
+      if (Array.isArray(pair) && typeof pair[0] === "string") properties[pair[0]] = pair[1];
+    }
+  }
+  const labels = Array.isArray(row.labels) ? row.labels.filter((l): l is string => typeof l === "string") : [];
+  return { found: true, node: { ref_id: refId, node_type: typeFromLabels(labels), labels, properties } };
 }

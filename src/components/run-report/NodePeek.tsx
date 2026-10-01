@@ -3,6 +3,7 @@
 import React from "react";
 import { Share2 } from "lucide-react";
 import { isRecord } from "@/lib/run-report/derive";
+import { NODE_TEXT_KEYS } from "@/lib/strut-run-graph/node-text";
 import { renderValue } from "./chrome";
 import { SafeMarkdown } from "./SafeMarkdown";
 
@@ -97,9 +98,7 @@ export function NodePeekBody({ payload }: { payload: unknown }) {
   const nested = isRecord(base.properties) ? base.properties : {};
   const merged: Record<string, unknown> = { ...base, ...nested };
   const IDENTITY = new Set(["ref_id", "node_type", "name", "properties", "date_added_to_graph"]);
-  // Concept nodes carry their content in `docs` or the schema-canonical
-  // `documentation` (both are live today); other node types use the rest.
-  const CONTENT_KEYS = ["docs", "documentation", "description", "definition", "body", "content", "text", "summary"];
+  const CONTENT_KEYS = NODE_TEXT_KEYS;
 
   const added = merged.date_added_to_graph ?? base.date_added_to_graph;
   const addedRaw =
