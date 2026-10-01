@@ -77,4 +77,32 @@ describe("projectOpenHealthStages", () => {
   it("reads a replayed step as done", () => {
     expect(status([ev("step.replayed", "openhealth-run/task")])).toMatchObject({ task: "done" });
   });
+
+  it("reads the stages of a run nested in a larger workflow, and only that run's", () => {
+    const under = "openhealth-improve-loop/loop#1/run";
+    const stages = projectOpenHealthStages(
+      [
+        ev("step.start", "openhealth-improve-loop/loop#1"),
+        ev("step.start", under),
+        ev("step.start", `${under}/task`),
+        ev("step.end", `${under}/task`, { output: { sectionCount: 4 } }),
+        ev("step.start", `${under}/ingest`),
+        ev("step.start", `${under}/ingest#0`),
+        ev("step.end", `${under}/ingest#0`),
+        ev("step.end", `${under}/ingest#0/state`),
+        // Another iteration's run, and the loop's own steps, are not this run's.
+        ev("step.end", "openhealth-improve-loop/loop#0/run/produce"),
+        ev("step.end", "openhealth-improve-loop/loop#1/improve"),
+      ],
+      { under },
+    );
+    expect(stages).toEqual([
+      { key: "task", label: "Load chart", status: "done" },
+      { key: "ingest", label: "Ingest sections", status: "running", done: 1, total: 4 },
+      { key: "plan", label: "Plan", status: "pending" },
+      { key: "produce", label: "Produce problem list", status: "pending" },
+      { key: "score", label: "Score", status: "pending" },
+      { key: "result", label: "Result", status: "pending" },
+    ]);
+  });
 });

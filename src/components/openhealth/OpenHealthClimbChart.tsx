@@ -12,18 +12,24 @@ const MAX_X_LABELS = 8;
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
 /**
- * One task's F1 over time: one dot per scored run, the line through them the
- * best so far. A dot below the line is drawn hollow. Clicking a dot opens
- * that run.
+ * One task's F1 over time: one dot per scored run — a run of its own or one
+ * iteration of a climb — the line through them the best so far. A dot below
+ * the line is drawn hollow. Clicking a dot opens what it stands for.
+ * `target` draws a dashed line at a climb's target; `highlight` shades the
+ * span of dots that belong to it (by point key).
  */
 export function OpenHealthClimbChart({
   points,
   onSelect,
   height = 180,
+  target = null,
+  highlight,
 }: {
   points: OpenHealthClimbPoint[];
-  onSelect?: (runId: string) => void;
+  onSelect?: (point: OpenHealthClimbPoint) => void;
   height?: number;
+  target?: number | null;
+  highlight?: ReadonlySet<string>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(FALLBACK_WIDTH);
@@ -79,6 +85,9 @@ export function OpenHealthClimbChart({
     return Math.min(lastIdx, Math.max(0, Math.round(x.invert(px))));
   };
 
+  const marked = highlight ? points.map((p, i) => (highlight.has(p.key) ? i : -1)).filter((i) => i >= 0) : [];
+  const band = marked.length > 0 ? { from: Math.min(...marked), to: Math.max(...marked) } : null;
+
   const hovered = hover !== null ? points[hover] : null;
   const tipLeft = hovered ? Math.min(Math.max(MARGIN.left + x(hover!) - 60, 0), Math.max(width - 140, 0)) : 0;
 
@@ -100,6 +109,26 @@ export function OpenHealthClimbChart({
               </text>
             </g>
           ))}
+
+          {band && (
+            <rect
+              x={x(band.from) - 8}
+              y={0}
+              width={Math.max(x(band.to) - x(band.from) + 16, 16)}
+              height={innerH}
+              rx={4}
+              className="fill-indigo-500/10"
+              data-testid="openhealth-climb-band"
+            />
+          )}
+          {typeof target === "number" && (
+            <g transform={`translate(0,${y(target)})`} data-testid="openhealth-climb-target">
+              <line x1={0} x2={innerW} className="stroke-emerald-500" strokeWidth={1} strokeDasharray="4 3" />
+              <text x={innerW + 8} dy="0.35em" fontSize={10} className="fill-emerald-600 tabular-nums">
+                target {target.toFixed(2)}
+              </text>
+            </g>
+          )}
 
           {hover !== null && (
             <line
@@ -128,7 +157,7 @@ export function OpenHealthClimbChart({
               const hollow = p.f1 < p.best;
               return (
                 <circle
-                  key={p.runId}
+                  key={p.key}
                   cx={x(i)}
                   cy={y(p.f1)}
                   r={hover === i ? 5.5 : 4}
@@ -156,7 +185,7 @@ export function OpenHealthClimbChart({
           {points.map((p, i) =>
             showXLabel(i) ? (
               <text
-                key={p.runId}
+                key={p.key}
                 x={x(i)}
                 y={innerH + 16}
                 textAnchor="middle"
@@ -177,7 +206,7 @@ export function OpenHealthClimbChart({
             style={onSelect ? { cursor: "pointer" } : undefined}
             onPointerMove={(e) => setHover(indexAt(e))}
             onPointerLeave={() => setHover(null)}
-            onClick={(e) => onSelect?.(points[indexAt(e)].runId)}
+            onClick={(e) => onSelect?.(points[indexAt(e)])}
           />
         </g>
       </svg>
@@ -191,12 +220,15 @@ export function OpenHealthClimbChart({
           <div className="font-semibold tabular-nums text-popover-foreground">F1 {formatScore(hovered.f1)}</div>
           <div className="text-muted-foreground">
             {hovered.gtId !== null ? `task ${hovered.gtId} · ` : ""}
+            {hovered.climb ? `climb, run ${hovered.climb.iteration + 1} · ` : ""}
             {formatWhen(hovered.createdAt)}
           </div>
           <div className="text-muted-foreground">
             {hovered.newBest ? "new best" : `best so far ${formatScore(hovered.best)}`}
           </div>
-          {onSelect && <div className="mt-0.5 text-primary">click to open run</div>}
+          {onSelect && (
+            <div className="mt-0.5 text-primary">{hovered.climb ? "click to open climb" : "click to open run"}</div>
+          )}
         </div>
       )}
     </div>

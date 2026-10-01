@@ -11,18 +11,22 @@
  *     probed; a probe failure leaves the row as is;
  *   - improve: dispatches `openhealth-improve` over one benchmark run with
  *     `apply` on; its runs are found by that run's strut id, and the
- *     in-flight guard is per benchmark run.
+ *     in-flight guard is per benchmark run;
+ *   - climbs: dispatches `openhealth-improve-loop` with the task, target
+ *     and run count; the in-flight guard is per task; the list reads the
+ *     event log for a climb in flight only, the detail for every climb.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { StrutRunStatus } from "@prisma/client";
 
-const { mockStrutRun, mockDispatch, mockProbe, mockComplete, mockDifficulty } = vi.hoisted(() => ({
+const { mockStrutRun, mockDispatch, mockProbe, mockComplete, mockDifficulty, mockEvents } = vi.hoisted(() => ({
   mockStrutRun: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
   mockDispatch: vi.fn(),
   mockProbe: vi.fn(),
   mockComplete: vi.fn(),
   mockDifficulty: vi.fn(),
+  mockEvents: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ db: { strutRun: mockStrutRun } }));
@@ -32,15 +36,20 @@ vi.mock("@/services/strut-runs", () => ({
   completeStrutRun: mockComplete,
   STRUT_RUN_LOG_TAG: "STRUT_RUN",
 }));
+vi.mock("@/services/strut-runs/lab", () => ({ fetchStrutRunEvents: mockEvents }));
 vi.mock("@/services/openhealth-benchmarks/tasks", () => ({ cachedDifficultyLookup: mockDifficulty }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import {
+  getOpenHealthClimb,
   getOpenHealthRun,
+  hasPendingOpenHealthClimb,
   hasPendingOpenHealthImprove,
   hasPendingOpenHealthRun,
+  launchOpenHealthClimb,
   launchOpenHealthImprove,
   launchOpenHealthRun,
+  listOpenHealthClimbs,
   listOpenHealthImprovements,
   listOpenHealthRuns,
 } from "@/services/strut-runs/openhealth";
@@ -221,7 +230,12 @@ describe("getOpenHealthRun", () => {
 
     const run = await getOpenHealthRun("ws-1", "run-1", { now: NOW });
 
-    expect(run).toMatchObject({ id: "run-1", outcome: "succeeded", matched: [{ pred: "N179", gt: "N179" }], extra: ["E876"] });
+    expect(run).toMatchObject({
+      id: "run-1",
+      outcome: "succeeded",
+      matched: [{ pred: "N179", gt: "N179" }],
+      extra: ["E876"],
+    });
   });
 });
 
@@ -337,5 +351,183 @@ describe("listOpenHealthImprovements", () => {
   it("is empty for a run nobody improved", async () => {
     mockStrutRun.findMany.mockResolvedValue([]);
     expect(await listOpenHealthImprovements("ws-1", "1790614605308", { now: NOW })).toEqual([]);
+  });
+});
+
+// ─── Climbs ──────────────────────────────────────────────────────────────
+
+function climbRow(overrides: Record<string, unknown> = {}) {
+  return row({
+    id: "climb-1",
+    kind: "openhealth_climb",
+    workflow: "openhealth-improve-loop",
+    strutRunId: "1790830428092",
+    input: { gtId: 7013, target: 1, maxRuns: 5 },
+    ...overrides,
+  });
+}
+
+const LOOP_EVENTS = [
+  { type: "step.start", path: "openhealth-improve-loop/loop#0", ts: "2026-09-28T17:40:00.000Z" },
+  { type: "step.start", path: "openhealth-improve-loop/loop#0/run" },
+  { type: "step.start", path: "openhealth-improve-loop/loop#0/run/task" },
+];
+
+describe("launchOpenHealthClimb", () => {
+  it("dispatches openhealth-improve-loop on the workspace's own swarm with the task and the rules", async () => {
+    mockDispatch.mockResolvedValue({ runId: "climb-1", strutRunId: "1790830428092", swarmId: "swarm-1" });
+
+    const result = await launchOpenHealthClimb({
+      workspaceId: "ws-1",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      gtId: 7013,
+      targetF1: 0.9,
+      maxRuns: 4,
+    });
+
+    expect(result).toEqual({ runId: "climb-1", strutRunId: "1790830428092", swarmId: "swarm-1" });
+    expect(mockDispatch).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      userId: "user-1",
+      kind: "openhealth_climb",
+      workflow: "openhealth-improve-loop",
+      purpose: "benchmark",
+      input: { gtId: 7013, target: 0.9, maxRuns: 4 },
+      publicBaseUrl: "https://hive.example",
+    });
+  });
+});
+
+describe("hasPendingOpenHealthClimb", () => {
+  it("looks for a PENDING climb of that task in the workspace", async () => {
+    mockStrutRun.findFirst.mockResolvedValue({ id: "climb-1" });
+
+    expect(await hasPendingOpenHealthClimb("ws-1", 7013)).toBe(true);
+    expect(mockStrutRun.findFirst).toHaveBeenCalledWith({
+      where: {
+        workspaceId: "ws-1",
+        kind: "openhealth_climb",
+        status: StrutRunStatus.PENDING,
+        input: { path: ["gtId"], equals: 7013 },
+      },
+      select: { id: true },
+    });
+  });
+
+  it("is false when there is none", async () => {
+    mockStrutRun.findFirst.mockResolvedValue(null);
+    expect(await hasPendingOpenHealthClimb("ws-1", 7013)).toBe(false);
+  });
+});
+
+describe("listOpenHealthClimbs", () => {
+  it("lists the workspace's climbs newest first, reading the event log for one in flight only", async () => {
+    const settled = climbRow({
+      id: "climb-2",
+      status: StrutRunStatus.SUCCESS,
+      output: { stopReason: "target_reached", history: [{ iteration: 0, score: 1, improved: false }] },
+      settledAt: NOW,
+    });
+    mockStrutRun.findMany.mockResolvedValue([climbRow(), settled]);
+    mockDifficulty.mockResolvedValue((gtId: number) => (gtId === 7013 ? "medium" : null));
+    mockProbe.mockResolvedValue({ kind: "running" });
+    mockEvents.mockResolvedValue(LOOP_EVENTS);
+
+    const climbs = await listOpenHealthClimbs("ws-1", { now: NOW });
+
+    expect(mockStrutRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workspaceId: "ws-1", kind: "openhealth_climb" },
+        orderBy: { createdAt: "desc" },
+      }),
+    );
+    expect(mockEvents).toHaveBeenCalledTimes(1);
+    expect(mockEvents).toHaveBeenCalledWith(expect.objectContaining({ id: "climb-1" }));
+    expect(climbs.map((c) => [c.id, c.status, c.difficulty, c.attempts])).toEqual([
+      ["climb-1", "running", "medium", 1],
+      ["climb-2", "reached", "medium", 1],
+    ]);
+    expect(climbs[0].steps[0]).toMatchObject({
+      kind: "benchmark",
+      outcome: "running",
+      startedAt: "2026-09-28T17:40:00.000Z",
+    });
+    expect(climbs[0].steps[0].stages?.[0]).toMatchObject({ key: "task", status: "running" });
+  });
+
+  it("settles a PENDING row whose loop is over on strut, and reads no log for it", async () => {
+    const pending = climbRow();
+    const done = climbRow({
+      status: StrutRunStatus.SUCCESS,
+      output: { stopReason: "max_runs", history: [{ iteration: 0, score: 0.4, improved: false }] },
+      settledAt: NOW,
+    });
+    mockStrutRun.findMany.mockResolvedValue([pending]);
+    mockProbe.mockResolvedValue({ kind: "settled", completion: { status: "success", output: done.output } });
+    mockStrutRun.findUnique.mockResolvedValueOnce({ id: "climb-1", tokenHash: "h" }).mockResolvedValueOnce(done);
+    mockDifficulty.mockResolvedValue(() => null);
+
+    const climbs = await listOpenHealthClimbs("ws-1", { now: NOW });
+
+    expect(mockComplete).toHaveBeenCalledWith(
+      { id: "climb-1", tokenHash: "h" },
+      { status: "success", output: done.output },
+    );
+    expect(mockEvents).not.toHaveBeenCalled();
+    expect(climbs[0]).toMatchObject({ status: "exhausted", attempts: 1, bestF1: 0.4 });
+  });
+
+  it("shows a climb in flight with no steps when the lab cannot be read", async () => {
+    mockStrutRun.findMany.mockResolvedValue([climbRow()]);
+    mockProbe.mockResolvedValue({ kind: "running" });
+    mockDifficulty.mockResolvedValue(() => null);
+    mockEvents.mockResolvedValue(null);
+
+    const [climb] = await listOpenHealthClimbs("ws-1", { now: NOW });
+    expect(climb).toMatchObject({ status: "running", attempts: 0, steps: [] });
+  });
+
+  it("asks nothing more of a workspace with no climbs", async () => {
+    mockStrutRun.findMany.mockResolvedValue([]);
+    expect(await listOpenHealthClimbs("ws-1")).toEqual([]);
+    expect(mockDifficulty).not.toHaveBeenCalled();
+    expect(mockEvents).not.toHaveBeenCalled();
+  });
+});
+
+describe("getOpenHealthClimb", () => {
+  it("is scoped to the workspace and the kind", async () => {
+    mockStrutRun.findFirst.mockResolvedValue(null);
+
+    expect(await getOpenHealthClimb("ws-1", "climb-1")).toBeNull();
+    expect(mockStrutRun.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "climb-1", workspaceId: "ws-1", kind: "openhealth_climb" } }),
+    );
+  });
+
+  it("reads the event log even for a settled climb: it alone knows each run's cost and start", async () => {
+    mockStrutRun.findFirst.mockResolvedValue(
+      climbRow({
+        status: StrutRunStatus.SUCCESS,
+        output: { stopReason: "target_reached", history: [{ iteration: 0, score: 1, improved: false }] },
+        settledAt: NOW,
+      }),
+    );
+    mockDifficulty.mockResolvedValue(() => "medium");
+    mockEvents.mockResolvedValue([
+      ...LOOP_EVENTS,
+      {
+        type: "step.end",
+        path: "openhealth-improve-loop/loop#0/run",
+        output: { weighted_problem_list_f1_neutral: 1, produceCost: 0.75, ingested: [{ file: "a.md", cost: 0.25 }] },
+      },
+    ]);
+
+    const climb = await getOpenHealthClimb("ws-1", "climb-1", { now: NOW });
+
+    expect(mockEvents).toHaveBeenCalledTimes(1);
+    expect(climb).toMatchObject({ status: "reached", difficulty: "medium", costUsd: 1 });
+    expect(climb?.steps[0]).toMatchObject({ f1: 1, costUsd: 1, startedAt: "2026-09-28T17:40:00.000Z" });
   });
 });
