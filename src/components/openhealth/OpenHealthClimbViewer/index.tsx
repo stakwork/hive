@@ -143,17 +143,21 @@ function ImproveStep({ step }: { step: OpenHealthClimbStep }) {
 /**
  * One climb: its strip (steps as chips), the selected step in full, and
  * the loop's graph. Polls while the climb runs; the newest step is shown
- * until the member picks one.
+ * until one is picked. The pick is the caller's when `onSelectStep` is
+ * given (so the chart can pick a step too), the viewer's own otherwise.
  */
 export function OpenHealthClimbViewer({
   climbId,
-  initialStep = null,
+  selected = null,
+  onSelectStep,
   onSettled,
   onClimbStarted,
 }: {
   climbId: string;
-  /** The step to open with, as an index into the climb's steps. */
-  initialStep?: number | null;
+  /** The selected step, as an index into the climb's steps; null shows the newest. */
+  selected?: number | null;
+  /** A chip was picked. Given, the caller owns `selected`; absent, the viewer does, starting from it. */
+  onSelectStep?: (index: number) => void;
   onSettled?: () => void;
   onClimbStarted?: (started: { climbId: string }) => void;
 }) {
@@ -163,7 +167,9 @@ export function OpenHealthClimbViewer({
 
   const [climb, setClimb] = useState<OpenHealthClimb | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [picked, setPicked] = useState<number | null>(initialStep);
+  const [ownPick, setOwnPick] = useState<number | null>(selected);
+  const picked = onSelectStep ? selected : ownPick;
+  const pick = onSelectStep ?? setOwnPick;
   const [panel, setPanel] = useState<Panel | null>(null);
   const wasRunning = useRef(false);
 
@@ -228,7 +234,7 @@ export function OpenHealthClimbViewer({
       <OpenHealthClimbStrip
         climb={climb}
         selected={index}
-        onSelectStep={setPicked}
+        onSelectStep={pick}
         onChanged={load}
         onClimbStarted={onClimbStarted}
       />
