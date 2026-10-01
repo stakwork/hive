@@ -1,39 +1,30 @@
 /**
- * Unit tests for the routes that read a run back from strut:
+ * Unit tests for the route that reads a run's files back from strut:
  *   /api/workspaces/[slug]/openhealth/benchmarks/runs/[runId]/artifacts/[name]
- *   /api/workspaces/[slug]/openhealth/benchmarks/runs/[runId]/graph
  *
  * Coverage:
  *   - a file is asked for by name from a closed list; anything else — the
  *     answer key above all — is a 404 that reaches neither the database nor
- *     the lab;
- *   - the graph route answers the projection of the run's events, never
- *     the events themselves.
+ *     the lab.
+ *
+ * The run's graph trace is a strut run surface, tested with its routes in
+ * `strut-runs-graph-route.test.ts`.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { mockAuthorize, mockFindRow, mockArtifact, mockEvents, mockLab, mockHydrate } = vi.hoisted(() => ({
+const { mockAuthorize, mockFindRow, mockArtifact } = vi.hoisted(() => ({
   mockAuthorize: vi.fn(),
   mockFindRow: vi.fn(),
   mockArtifact: vi.fn(),
-  mockEvents: vi.fn(),
-  mockLab: vi.fn(),
-  mockHydrate: vi.fn(),
 }));
 
 vi.mock("@/lib/openhealth-benchmarks/access", () => ({ authorizeOpenHealth: mockAuthorize }));
 vi.mock("@/services/strut-runs/openhealth", () => ({ findOpenHealthRunRow: mockFindRow }));
-vi.mock("@/services/strut-runs/lab", () => ({ fetchStrutArtifact: mockArtifact, fetchStrutRunEvents: mockEvents }));
-vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
-vi.mock("@/lib/strut-run-graph/hydrate", () => ({
-  hydrateRunGraph: mockHydrate,
-  swarmCypherRunner: () => async () => null,
-}));
+vi.mock("@/services/strut-runs/lab", () => ({ fetchStrutArtifact: mockArtifact }));
 
 import { GET as getArtifact } from "@/app/api/workspaces/[slug]/openhealth/benchmarks/runs/[runId]/artifacts/[name]/route";
-import { GET as getGraph } from "@/app/api/workspaces/[slug]/openhealth/benchmarks/runs/[runId]/graph/route";
 
 const BASE = "http://hive.example/api/workspaces/hive/openhealth/benchmarks/runs/run-1";
 const ROW = {
@@ -103,53 +94,5 @@ describe("artifacts", () => {
   it("answers 404 when the run wrote no such file", async () => {
     mockArtifact.mockResolvedValue(null);
     expect((await artifact("checklist")).status).toBe(404);
-  });
-});
-
-describe("graph", () => {
-  const graph = () =>
-    getGraph(new NextRequest(`${BASE}/graph`), { params: Promise.resolve({ slug: "hive", runId: "run-1" }) });
-
-  it("answers the projection of the run's events, never the events", async () => {
-    mockLab.mockResolvedValue({ labBase: "https://swarm:3355/lab", swarmApiKey: "k", swarmName: "swarm38" });
-    mockEvents.mockResolvedValue([
-      { type: "step.end", path: "openhealth-run/task", stepType: "openhealth/load-task", output: { groundTruth: ["I10"] } },
-      { type: "step.start", path: "openhealth-run/produce/001-graph_graph_get", stepType: "tool:graph_graph_get", input: { ref_id: "a" } },
-      {
-        type: "step.end",
-        path: "openhealth-run/produce/001-graph_graph_get",
-        stepType: "tool:graph_graph_get",
-        output: '{"properties":{"groundTruth":"I10"}}',
-        nodes: [{ ref_id: "a", node_type: "Concept" }],
-      },
-    ]);
-    mockHydrate.mockResolvedValue({
-      nodes: [{ ref_id: "a", node_type: "Concept", name: "Problem List", namespace: "default", found: true }],
-      edges: [],
-      truncated: false,
-    });
-
-    const res = await graph();
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.calls).toHaveLength(1);
-    expect(body.calls[0]).toMatchObject({ path: "openhealth-run/produce/001-graph_graph_get", query: { ref_id: "a" } });
-    expect(body.nodes).toHaveLength(1);
-    expect(mockHydrate).toHaveBeenCalledWith([{ ref_id: "a", node_type: "Concept" }], expect.any(Function));
-    expect(JSON.stringify(body)).not.toContain("groundTruth");
-  });
-
-  it("answers 502 when strut cannot be read", async () => {
-    mockLab.mockResolvedValue({ labBase: "x", swarmApiKey: "k", swarmName: "swarm38" });
-    mockEvents.mockResolvedValue(null);
-    expect((await graph()).status).toBe(502);
-    expect(mockHydrate).not.toHaveBeenCalled();
-  });
-
-  it("answers 404 for a run of another workspace or kind", async () => {
-    mockFindRow.mockResolvedValue(null);
-    expect((await graph()).status).toBe(404);
-    expect(mockEvents).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@
  * Unit tests for the climb routes:
  *   /api/workspaces/[slug]/openhealth/benchmarks/climbs           (GET, POST)
  *   /api/workspaces/[slug]/openhealth/benchmarks/climbs/[climbId]  (GET)
- *   …/climbs/[climbId]/cancel, …/graph, …/artifacts/[name]?iteration=N
+ *   …/climbs/[climbId]/cancel, …/artifacts/[name]?iteration=N
  *
  * Coverage:
  *   - GET lists the workspace's climbs behind the gate;
@@ -11,7 +11,7 @@
  *     a body that names no task, a split not offered, a target or run count
  *     out of range, a task the catalogue does not list, a task with a climb
  *     or a run in flight, a rate-limited workspace, a workspace with no strut;
- *   - the detail, cancel and graph routes are scoped to the workspace;
+ *   - the detail and cancel routes are scoped to the workspace;
  *   - an iteration's file is asked for by name from a closed list and an
  *     iteration index, so neither a path nor the answer key can be asked for.
  */
@@ -32,7 +32,6 @@ const {
   mockLaunch,
   mockCancel,
   mockArtifact,
-  mockGraph,
   FakeDispatchError,
 } = vi.hoisted(() => {
   class FakeDispatchError extends Error {
@@ -56,7 +55,6 @@ const {
     mockLaunch: vi.fn(),
     mockCancel: vi.fn(),
     mockArtifact: vi.fn(),
-    mockGraph: vi.fn(),
     FakeDispatchError,
   };
 });
@@ -70,7 +68,6 @@ vi.mock("@/services/strut-target", () => ({
 vi.mock("@/services/openhealth-benchmarks/tasks", () => ({ getOpenHealthTasks: mockTasks }));
 vi.mock("@/services/strut-runs", () => ({ StrutDispatchError: FakeDispatchError, cancelStrutRun: mockCancel }));
 vi.mock("@/services/strut-runs/lab", () => ({ fetchStrutArtifact: mockArtifact }));
-vi.mock("@/services/strut-runs/run-graph", () => ({ readStrutRunGraph: mockGraph }));
 vi.mock("@/services/strut-runs/openhealth", () => ({
   listOpenHealthClimbs: mockList,
   getOpenHealthClimb: mockGet,
@@ -83,7 +80,6 @@ vi.mock("@/services/strut-runs/openhealth", () => ({
 import { GET, POST } from "@/app/api/workspaces/[slug]/openhealth/benchmarks/climbs/route";
 import { GET as getClimb } from "@/app/api/workspaces/[slug]/openhealth/benchmarks/climbs/[climbId]/route";
 import { POST as cancel } from "@/app/api/workspaces/[slug]/openhealth/benchmarks/climbs/[climbId]/cancel/route";
-import { GET as getGraph } from "@/app/api/workspaces/[slug]/openhealth/benchmarks/climbs/[climbId]/graph/route";
 import { GET as getArtifact } from "@/app/api/workspaces/[slug]/openhealth/benchmarks/climbs/[climbId]/artifacts/[name]/route";
 
 const URL = "http://hive.example/api/workspaces/hive/openhealth/benchmarks/climbs";
@@ -300,22 +296,6 @@ describe("POST cancel", () => {
     const res = await cancel(request(), climbParams);
     expect(res.status).toBe(404);
     expect(mockCancel).not.toHaveBeenCalled();
-  });
-});
-
-describe("GET graph", () => {
-  it("answers the loop's trace", async () => {
-    mockGraph.mockResolvedValue({ calls: [], nodes: [], edges: [] });
-    const res = await getGraph(new NextRequest(`${URL}/climb-1/graph`), climbParams);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ calls: [], nodes: [], edges: [] });
-    expect(mockGraph).toHaveBeenCalledWith(ROW);
-  });
-
-  it("is a 502 when strut cannot be read", async () => {
-    mockGraph.mockResolvedValue(null);
-    const res = await getGraph(new NextRequest(`${URL}/climb-1/graph`), climbParams);
-    expect(res.status).toBe(502);
   });
 });
 

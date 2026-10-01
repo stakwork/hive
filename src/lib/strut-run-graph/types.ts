@@ -51,6 +51,14 @@ export interface RunGraphNode {
   found: boolean;
 }
 
+/** One node read whole, for reading what the run read: its labels, and every property but the vectors. */
+export interface RunGraphNodeBody {
+  ref_id: string;
+  node_type: string;
+  labels: string[];
+  properties: Record<string, unknown>;
+}
+
 export interface RunGraphEdge {
   source: string;
   target: string;

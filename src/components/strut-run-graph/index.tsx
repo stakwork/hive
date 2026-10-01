@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  BookOpen,
   ChevronRight,
   ExternalLink,
   Eye,
@@ -27,9 +28,17 @@ import {
   replayFrame,
   type RunGraphTreeNode,
 } from "@/lib/strut-run-graph/replay";
-import type { RunGraphAccess, RunGraphCall, RunGraphNode, RunGraphTrace } from "@/lib/strut-run-graph/types";
+import { nodeText } from "@/lib/strut-run-graph/node-text";
+import type {
+  RunGraphAccess,
+  RunGraphCall,
+  RunGraphNode,
+  RunGraphNodeBody,
+  RunGraphTrace,
+} from "@/lib/strut-run-graph/types";
 import { runGraphHops, runGraphLinks, type RunGraphLink } from "@/lib/strut-run-graph/walk";
 import { isProvenanceType, runGraphColorMap } from "./colors";
+import { RunGraphNodeReader } from "./NodeReader";
 import { RunGraphCanvas, type RunGraphCanvasNode } from "./RunGraphCanvas";
 
 /** Refresh cadence while the run is still going. */
@@ -147,6 +156,65 @@ function TreeBranch({
   );
 }
 
+/** A node's body, as the graph has answered for it so far. */
+type NodeBodyState =
+  | { state: "reading" }
+  | { state: "read"; body: RunGraphNodeBody }
+  | { state: "failed"; error: string };
+
+/** The node's text in the panel: a few lines of its first prose, and the way to read it all. */
+function NodeTextSection({
+  state,
+  onRead,
+  onOpen,
+}: {
+  state: NodeBodyState | undefined;
+  onRead: () => void;
+  onOpen: () => void;
+}) {
+  if (!state || state.state === "reading") {
+    return (
+      <p className="flex items-center gap-1.5 text-muted-foreground" data-testid="run-graph-node-text">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Reading the node…
+      </p>
+    );
+  }
+  if (state.state === "failed") {
+    return (
+      <p className="flex flex-wrap items-center gap-2 text-muted-foreground" data-testid="run-graph-node-text">
+        {state.error}
+        <Button variant="outline" size="sm" className="h-6 text-xs" onClick={onRead}>
+          Ask again
+        </Button>
+      </p>
+    );
+  }
+  const first = nodeText(state.body.properties).prose[0];
+  return (
+    <div className="flex flex-col gap-1" data-testid="run-graph-node-text">
+      {first ? (
+        <>
+          <p className="font-medium">{first[0]}</p>
+          <p className="line-clamp-4 whitespace-pre-wrap text-muted-foreground">{first[1]}</p>
+        </>
+      ) : (
+        <p className="text-muted-foreground">The graph stores no text on this node.</p>
+      )}
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-6 w-fit gap-1 text-xs"
+        onClick={onOpen}
+        data-testid="run-graph-node-read"
+      >
+        <BookOpen className="h-3 w-3" />
+        Read
+      </Button>
+    </div>
+  );
+}
+
 function NodeDetail({
   node,
   color,
@@ -155,6 +223,8 @@ function NodeDetail({
   nodeById,
   graphAnswered,
   unreadReason,
+  body,
+  onRead,
   onPick,
   onSelect,
   onClose,
@@ -168,11 +238,16 @@ function NodeDetail({
   calls: RunGraphCall[];
   links: RunGraphLink[];
   nodeById: ReadonlyMap<string, RunGraphNode>;
+  /** The node's body, once asked for; undefined before. */
+  body: NodeBodyState | undefined;
+  /** Ask the graph for the body (again). */
+  onRead: () => void;
   onPick: (index: number) => void;
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
   const { workspace } = useWorkspace();
+  const [reading, setReading] = useState(false);
   const touchedBy = useMemo(
     () => calls.flatMap((call, index) => (call.nodes.some((n) => n.ref_id === node.ref_id) ? [{ call, index }] : [])),
     [calls, node.ref_id],
@@ -225,6 +300,7 @@ function NodeDetail({
           <ExternalLink className="h-3 w-3" />
         </Link>
       )}
+      {node.found && <NodeTextSection state={body} onRead={onRead} onOpen={() => setReading(true)} />}
       {linked.length > 0 && (
         <div data-testid="run-graph-node-links">
           <p className="mb-1 font-medium">{linked.length === 1 ? "1 link" : `${linked.length} links`}</p>
@@ -268,6 +344,9 @@ function NodeDetail({
           ))}
         </ul>
       </div>
+      {body?.state === "read" && (
+        <RunGraphNodeReader node={node} body={body.body} color={color} open={reading} onOpenChange={setReading} />
+      )}
     </div>
   );
 }
@@ -342,6 +421,28 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
 
   const tree = useMemo(() => buildRunGraphTree(calls), [calls]);
   const nodeById = useMemo(() => new Map((trace?.nodes ?? []).map((n) => [n.ref_id, n])), [trace?.nodes]);
+
+  // A node's body is read when it is first selected and kept, so coming back to it asks nothing.
+  const [bodies, setBodies] = useState<Record<string, NodeBodyState>>({});
+  const readNode = useCallback(
+    async (refId: string) => {
+      setBodies((prev) => ({ ...prev, [refId]: { state: "reading" } }));
+      try {
+        const response = await fetch(`${endpoint}/nodes/${encodeURIComponent(refId)}`, { cache: "no-store" });
+        const body = (await response.json().catch(() => ({}))) as RunGraphNodeBody & { error?: string };
+        if (!response.ok) throw new Error(body.error || "Could not read the node");
+        setBodies((prev) => ({ ...prev, [refId]: { state: "read", body } }));
+      } catch (e) {
+        const error = e instanceof Error ? e.message : "Could not read the node";
+        setBodies((prev) => ({ ...prev, [refId]: { state: "failed", error } }));
+      }
+    },
+    [endpoint],
+  );
+  useEffect(() => {
+    if (!selectedId || bodies[selectedId] || !nodeById.get(selectedId)?.found) return;
+    void readNode(selectedId);
+  }, [selectedId, bodies, nodeById, readNode]);
 
   // Everything the shown calls touched, whatever its type — the legend counts these.
   const touched = useMemo(() => {
@@ -597,6 +698,8 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
               nodeById={nodeById}
               graphAnswered={trace.nodesRead !== false}
               unreadReason={unreadReason}
+              body={bodies[selected.ref_id]}
+              onRead={() => void readNode(selected.ref_id)}
               onPick={pick}
               onSelect={setSelectedId}
               onClose={() => setSelectedId(null)}

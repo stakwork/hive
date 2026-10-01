@@ -256,7 +256,7 @@ export function OpenHealthClimbViewer({
             onOpenChange={toggle("graph")}
             testId="openhealth-climb-graph"
           >
-            <StrutRunGraph endpoint={`${base}/graph`} live={running} />
+            <StrutRunGraph endpoint={`/api/workspaces/${slug}/strut/runs/${climbId}/graph`} live={running} />
           </PillSection>
           {files && (
             <>
