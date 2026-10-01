@@ -384,6 +384,11 @@ export interface RowLab {
 }
 
 /** Where a row's run lives, from the row's `swarmId`. Null when the swarm is gone. */
+/** A run of any kind, scoped to its workspace: for what every strut run has, like its graph trace. */
+export async function findStrutRunRow(workspaceId: string, runId: string): Promise<StrutRunRow | null> {
+  return db.strutRun.findFirst({ where: { id: runId, workspaceId }, select: ROW_SELECT });
+}
+
 export async function labForRow(row: Pick<StrutRunRow, "swarmId">): Promise<RowLab | null> {
   const swarm = await db.swarm.findUnique({
     where: { id: row.swarmId },
