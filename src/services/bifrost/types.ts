@@ -32,7 +32,8 @@ export interface BifrostCustomer {
   budget_id?: string;
   rate_limit_id?: string;
   budget?: BifrostBudget;
-  rate_limit?: BifrostRateLimit;
+  /** Hydrated on list/get/update; `null` once the row has been removed. */
+  rate_limit?: BifrostRateLimit | null;
   teams?: unknown[];
   virtual_keys?: unknown[];
   config_hash?: string;
@@ -100,6 +101,16 @@ export interface ListCustomersResponse {
 }
 
 export interface CreateCustomerResponse {
+  message: string;
+  customer: BifrostCustomer;
+}
+
+/** GET /api/governance/customers/:id — budget + rate_limit hydrated. */
+export interface GetCustomerResponse {
+  customer: BifrostCustomer;
+}
+
+export interface UpdateCustomerResponse {
   message: string;
   customer: BifrostCustomer;
 }
