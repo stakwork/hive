@@ -103,6 +103,8 @@ export function OpenHealthRunsHistory() {
   // The task's newest climb (any state) in the task view; the climbs in flight in the all-tasks view.
   const taskClimb = task === ALL_TASKS ? null : (shownClimbs[0] ?? null);
   const runningClimbs = useMemo(() => climbs.filter((c) => c.status === "running"), [climbs]);
+  // A climb whose row is open shows its strip there: one strip per climb on the page.
+  const openClimbId = expanded?.kind === "climb" ? expanded.id : null;
   const climbKeys = useMemo(
     () =>
       new Set(
@@ -140,6 +142,12 @@ export function OpenHealthRunsHistory() {
   );
   const openRun = useCallback((id: string) => open({ kind: "run", id }), [open]);
   const openClimb = useCallback((id: string, step: number | null) => open({ kind: "climb", id, step }), [open]);
+  // A chip picked in an open climb's own strip: the step changes, the row stays.
+  const selectClimbStep = useCallback(
+    (id: string, step: number) =>
+      setExpanded((prev) => (prev?.kind === "climb" && prev.id === id ? { ...prev, step } : prev)),
+    [],
+  );
 
   const selectTask = useCallback(
     (next: string) => {
@@ -243,16 +251,19 @@ export function OpenHealthRunsHistory() {
       </div>
 
       {task === ALL_TASKS
-        ? runningClimbs.map((c) => (
-            <OpenHealthClimbStrip
-              key={c.id}
-              climb={c}
-              onSelectStep={(step) => openClimb(c.id, step)}
-              onChanged={reloadClimbs}
-              onClimbStarted={(started) => onClimbStarted(c.gtId, started)}
-            />
-          ))
-        : taskClimb && (
+        ? runningClimbs
+            .filter((c) => c.id !== openClimbId)
+            .map((c) => (
+              <OpenHealthClimbStrip
+                key={c.id}
+                climb={c}
+                onSelectStep={(step) => openClimb(c.id, step)}
+                onChanged={reloadClimbs}
+                onClimbStarted={(started) => onClimbStarted(c.gtId, started)}
+              />
+            ))
+        : taskClimb &&
+          taskClimb.id !== openClimbId && (
             <OpenHealthClimbStrip
               climb={taskClimb}
               onSelectStep={(step) => openClimb(taskClimb.id, step)}
@@ -317,6 +328,7 @@ export function OpenHealthRunsHistory() {
                 climb={row.climb}
                 open={expanded?.kind === "climb" && expanded.id === row.climb.id ? expanded : null}
                 onToggle={toggleClimb}
+                onSelectStep={selectClimbStep}
                 onSettled={onSettled}
                 onClimbStarted={(started) => onClimbStarted(row.climb.gtId, started)}
               />
@@ -384,12 +396,14 @@ function ClimbRows({
   climb,
   open,
   onToggle,
+  onSelectStep,
   onSettled,
   onClimbStarted,
 }: {
   climb: OpenHealthClimb;
   open: { step: number | null } | null;
   onToggle: (id: string) => void;
+  onSelectStep: (id: string, step: number) => void;
   onSettled: () => void;
   onClimbStarted: (started: { climbId: string }) => void;
 }) {
@@ -433,7 +447,8 @@ function ClimbRows({
           <TableCell colSpan={COLUMNS} className="whitespace-normal bg-muted/20 p-4">
             <OpenHealthClimbViewer
               climbId={climb.id}
-              initialStep={open.step}
+              selected={open.step}
+              onSelectStep={(step) => onSelectStep(climb.id, step)}
               onSettled={onSettled}
               onClimbStarted={onClimbStarted}
             />
