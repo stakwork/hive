@@ -437,8 +437,8 @@ function ClimbRows({
         </TableCell>
         <TableCell className="text-right font-medium tabular-nums">{span}</TableCell>
         <TableCell>—</TableCell>
-        <TableCell className="text-right tabular-nums">—</TableCell>
-        <TableCell className="text-right tabular-nums">—</TableCell>
+        <TableCell className="text-right tabular-nums">{formatScore(climb.bestRecall)}</TableCell>
+        <TableCell className="text-right tabular-nums">{formatScore(climb.bestPrecision)}</TableCell>
         <TableCell className="text-right tabular-nums">{formatCost(climb.costUsd)}</TableCell>
         <TableCell className="text-right tabular-nums">{formatDuration(climb.durationMs)}</TableCell>
       </TableRow>

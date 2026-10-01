@@ -25,6 +25,8 @@ const runOutput = (f1: number, extra: Record<string, unknown> = {}) => ({
   gtId: 7013,
   difficulty: "medium",
   weighted_problem_list_f1_neutral: f1,
+  problem_list_recall: 0.9,
+  problem_list_precision_neutral: 0.75,
   matched: [{ pred: "I10", gt: "I10" }],
   missed: ["E119"],
   extra: ["R51"],
@@ -58,14 +60,14 @@ const entry = (iteration: number, score: number, improved: boolean, extra: Recor
 });
 
 /** One recorded iteration's events: the run, the improve (or its skip), the record. */
-function iteration(n: number, f1: number, improved: boolean, history: unknown[]) {
+function iteration(n: number, f1: number, improved: boolean, history: unknown[], run: Record<string, unknown> = {}) {
   const at = `${ROOT}/loop#${n}`;
   return [
     ev("step.start", at, { ts: `2026-10-01T0${n}:00:00.000Z`, iteration: n }),
     ev("step.start", `${at}/run`),
     ev("step.start", `${at}/run/task`),
     ev("step.end", `${at}/run/task`, { output: { sectionCount: 4, groundTruth: ["I10"] } }),
-    ev("step.end", `${at}/run`, { output: runOutput(f1) }),
+    ev("step.end", `${at}/run`, { output: runOutput(f1, run) }),
     ev(improved ? "step.start" : "step.skipped", `${at}/improve`),
     ...(improved ? [ev("step.end", `${at}/improve`, { output: { applied: true } })] : []),
     ev("step.end", at, { output: { iteration: n, score: f1, history } }),
@@ -146,6 +148,8 @@ describe("projectOpenHealthClimbEvents", () => {
       run: "done",
       improve: "done",
       f1: 0.6,
+      recall: 0.9,
+      precision: 0.75,
       missed: ["E119"],
       extra: ["R51"],
       costUsd: 1,
@@ -158,6 +162,8 @@ describe("projectOpenHealthClimbEvents", () => {
       run: "running",
       improve: "pending",
       f1: null,
+      recall: null,
+      precision: null,
       costUsd: null,
       recorded: false,
     });
@@ -226,6 +232,8 @@ describe("toOpenHealthClimb", () => {
       bestF1: 1,
       latestF1: 1,
       bestIteration: 1,
+      bestRecall: null,
+      bestPrecision: null,
       costUsd: null,
       durationMs: 1_800_000,
       error: null,
@@ -237,7 +245,14 @@ describe("toOpenHealthClimb", () => {
       ["improve", 0, "succeeded", null, false],
       ["benchmark", 1, "succeeded", 1, true],
     ]);
-    expect(climb.steps[0]).toMatchObject({ missed: ["E119"], extra: ["R51"], costUsd: null, startedAt: null });
+    expect(climb.steps[0]).toMatchObject({
+      missed: ["E119"],
+      extra: ["R51"],
+      recall: null,
+      precision: null,
+      costUsd: null,
+      startedAt: null,
+    });
     expect(climb.steps[1]).toMatchObject({
       applied: true,
       created: ["Diabetes Follow-up", "Headache Red Flags"],
@@ -301,6 +316,8 @@ describe("toOpenHealthClimb", () => {
       attempts: 2,
       startF1: 0.6,
       bestF1: 0.6,
+      bestRecall: 0.9,
+      bestPrecision: 0.75,
       latestF1: 0.6,
       costUsd: 1,
       error: null,
@@ -312,7 +329,12 @@ describe("toOpenHealthClimb", () => {
       ["benchmark", 1, "running"],
     ]);
     // What the log knows and the output does not: the run's cost and start.
-    expect(climb.steps[0]).toMatchObject({ costUsd: 1, startedAt: "2026-10-01T00:00:00.000Z" });
+    expect(climb.steps[0]).toMatchObject({
+      recall: 0.9,
+      precision: 0.75,
+      costUsd: 1,
+      startedAt: "2026-10-01T00:00:00.000Z",
+    });
     expect(climb.steps[2]).toMatchObject({ f1: null, startedAt: "2026-10-01T01:00:00.000Z" });
     expect(climb.steps[2].stages?.[0]).toMatchObject({ key: "task", status: "running" });
   });
@@ -372,18 +394,54 @@ describe("toOpenHealthClimb", () => {
     expect(climb.steps[0]).toMatchObject({ outcome: "cancelled", error: null });
   });
 
-  it("adds the log's cost and timing to a settled climb's recorded runs", () => {
+  it("adds the log's cost, timing, recall and precision to a settled climb's recorded runs", () => {
     const history = [entry(0, 0.6, true), entry(1, 1, false)];
     const events = projectOpenHealthClimbEvents([
-      ...iteration(0, 0.6, true, history.slice(0, 1)),
+      ...iteration(0, 0.6, true, history.slice(0, 1), {
+        problem_list_recall: 0.5,
+        problem_list_precision_neutral: 0.4,
+      }),
       ...iteration(1, 1, false, history),
     ]);
     const climb = toOpenHealthClimb(row({ output: { stopReason: "target_reached", history } }), undefined, events);
     expect(climb.costUsd).toBe(2);
-    expect(climb.steps.filter((s) => s.kind === "benchmark").map((s) => s.startedAt)).toEqual([
-      "2026-10-01T00:00:00.000Z",
-      "2026-10-01T01:00:00.000Z",
+    const runs = climb.steps.filter((s) => s.kind === "benchmark");
+    expect(runs.map((s) => s.startedAt)).toEqual(["2026-10-01T00:00:00.000Z", "2026-10-01T01:00:00.000Z"]);
+    expect(runs.map((s) => [s.recall, s.precision])).toEqual([
+      [0.5, 0.4],
+      [0.9, 0.75],
     ]);
+    expect(climb).toMatchObject({ bestRecall: 0.9, bestPrecision: 0.75 });
+  });
+
+  it("keeps the best run's recall and precision, not the newest's", () => {
+    const history = [entry(0, 0.6, true), entry(1, 0.8, true), entry(2, 0.7, false)];
+    const events = projectOpenHealthClimbEvents([
+      ...iteration(0, 0.6, true, history.slice(0, 1), {
+        problem_list_recall: 0.5,
+        problem_list_precision_neutral: 0.4,
+      }),
+      ...iteration(1, 0.8, true, history.slice(0, 2)),
+      ...iteration(2, 0.7, false, history, { problem_list_recall: 0.7, problem_list_precision_neutral: 0.6 }),
+    ]);
+    const climb = toOpenHealthClimb(row({ output: { stopReason: "max_runs", history } }), undefined, events);
+    expect(climb).toMatchObject({
+      bestF1: 0.8,
+      bestIteration: 1,
+      bestRecall: 0.9,
+      bestPrecision: 0.75,
+      latestF1: 0.7,
+    });
+  });
+
+  it("reads recall and precision off a history entry that carries them", () => {
+    const climb = toOpenHealthClimb(
+      row({
+        output: { stopReason: "target_reached", history: [entry(0, 1, false, { recall: 0.9, precision: 0.75 })] },
+      }),
+    );
+    expect(climb.steps[0]).toMatchObject({ recall: 0.9, precision: 0.75 });
+    expect(climb).toMatchObject({ bestRecall: 0.9, bestPrecision: 0.75 });
   });
 
   it("has no task for a row launched without one", () => {

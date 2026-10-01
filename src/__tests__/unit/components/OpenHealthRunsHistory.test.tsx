@@ -70,6 +70,8 @@ function step(overrides: Partial<OpenHealthClimbStep>): OpenHealthClimbStep {
     iteration: 0,
     outcome: "succeeded",
     f1: 0.6,
+    recall: null,
+    precision: null,
     newBest: true,
     missed: ["E119"],
     extra: ["R51"],
@@ -99,11 +101,13 @@ const CLIMB: OpenHealthClimb = {
   attempts: 2,
   startF1: 0.6,
   bestF1: 0.8,
+  bestRecall: 0.9,
+  bestPrecision: 0.75,
   latestF1: 0.8,
   bestIteration: 1,
   costUsd: 3,
   steps: [
-    step({ iteration: 0, f1: 0.6 }),
+    step({ iteration: 0, f1: 0.6, recall: 0.5, precision: 0.4 }),
     step({
       kind: "improve",
       iteration: 0,
@@ -114,7 +118,7 @@ const CLIMB: OpenHealthClimb = {
       summary: "One Concept.",
       costUsd: null,
     }),
-    step({ iteration: 1, f1: 0.8, startedAt: "2026-10-01T05:10:00.000Z" }),
+    step({ iteration: 1, f1: 0.8, recall: 0.9, precision: 0.75, startedAt: "2026-10-01T05:10:00.000Z" }),
     step({ kind: "improve", iteration: 1, f1: null, newBest: false, outcome: "running", costUsd: null }),
   ],
   durationMs: null,
@@ -161,6 +165,14 @@ describe("OpenHealthRunsHistory with a climb", () => {
     fireEvent.click(screen.getByTestId("openhealth-climb-row"));
     await waitFor(() => expect(screen.getByTestId("openhealth-climb-viewer")).toBeTruthy());
     expect(strips()).toHaveLength(1);
+  });
+
+  it("shows the best run's recall and precision on the climb row", () => {
+    mockSearchParams.mockReturnValue(new URLSearchParams("tab=runs&task=7013"));
+    render(<OpenHealthRunsHistory />);
+    const cells = within(screen.getByTestId("openhealth-climb-row")).getAllByRole("cell");
+    // F1 span, tier, recall, precision.
+    expect(cells.slice(5, 9).map((cell) => cell.textContent)).toEqual(["0.60 → 0.80", "—", "0.90", "0.75"]);
   });
 
   it("shows a running climb's strip once in the all-tasks view too", async () => {
