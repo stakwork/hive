@@ -1,6 +1,7 @@
 /**
  * Unit tests for `lib/openhealth-benchmarks/runs.ts`: a `StrutRun` row →
- * what the page shows, and the metrics over a list of runs.
+ * what the page shows, and the metrics over a list of runs — and over the
+ * benchmark runs inside climbs, which count as attempts too.
  */
 
 import { describe, it, expect } from "vitest";
@@ -16,7 +17,7 @@ import {
   toOpenHealthRunDetail,
   type OpenHealthRunSource,
 } from "@/lib/openhealth-benchmarks/runs";
-import type { OpenHealthRun } from "@/types/openhealth";
+import type { OpenHealthClimb, OpenHealthClimbStep, OpenHealthRun } from "@/types/openhealth";
 
 const OUTPUT = {
   task: "patient_diagnosis",
@@ -293,6 +294,140 @@ describe("openHealthRunTasks", () => {
     ).toEqual([
       { gtId: 8, difficulty: "hard", runs: 2 },
       { gtId: 7, difficulty: "easy", runs: 1 },
+    ]);
+  });
+});
+
+// ─── With climbs ─────────────────────────────────────────────────────────
+
+function climbStep(overrides: Partial<OpenHealthClimbStep>): OpenHealthClimbStep {
+  return {
+    kind: "benchmark",
+    iteration: 0,
+    outcome: "succeeded",
+    f1: 0.5,
+    newBest: true,
+    missed: [],
+    extra: [],
+    costUsd: 1,
+    stages: null,
+    applied: false,
+    created: [],
+    amended: [],
+    rejected: [],
+    summary: null,
+    startedAt: null,
+    error: null,
+    ...overrides,
+  };
+}
+
+function climb(overrides: Partial<OpenHealthClimb> = {}): OpenHealthClimb {
+  return {
+    id: "climb-1",
+    strutRunId: "1790830428092",
+    gtId: 7,
+    difficulty: "medium",
+    status: "reached",
+    stopReason: "Run 3 scored 1.00.",
+    targetF1: 1,
+    maxRuns: 5,
+    attempts: 3,
+    startF1: 0.3,
+    bestF1: 1,
+    latestF1: 1,
+    bestIteration: 2,
+    costUsd: 3,
+    steps: [
+      climbStep({ iteration: 0, f1: 0.3 }),
+      climbStep({ kind: "improve", iteration: 0, f1: null, newBest: false, created: ["A"], applied: true }),
+      climbStep({ iteration: 1, f1: 0.7 }),
+      climbStep({ kind: "improve", iteration: 1, f1: null, newBest: false, amended: ["B"], applied: true }),
+      climbStep({ iteration: 2, f1: 1 }),
+    ],
+    durationMs: 1,
+    error: null,
+    createdAt: "2026-09-29T00:00:00.000Z",
+    settledAt: "2026-09-29T01:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("metrics over runs and climbs", () => {
+  it("counts a climb's benchmark runs as attempts, not its improve runs", () => {
+    const summary = summarizeOpenHealthRuns([scored(0.5, { gtId: 7 })], [climb()]);
+    expect(summary).toMatchObject({ attempts: 4, succeeded: 4 });
+    expect(summary.meanF1).toBeCloseTo((0.5 + 0.3 + 0.7 + 1) / 4);
+    // Only runs of their own report recall and precision.
+    expect(summary.meanRecall).toBeCloseTo(0.5);
+  });
+
+  it("leaves a climb's run in flight out, and counts one that failed", () => {
+    const running = climb({
+      status: "running",
+      steps: [climbStep({ iteration: 0, f1: 0.3 }), climbStep({ iteration: 1, f1: null, outcome: "running" })],
+    });
+    const broken = climb({
+      id: "climb-2",
+      status: "failed",
+      steps: [climbStep({ iteration: 0, f1: null, outcome: "failed", error: "boom" })],
+    });
+    expect(summarizeOpenHealthRuns([], [running, broken])).toMatchObject({
+      attempts: 2,
+      succeeded: 1,
+      successRate: 0.5,
+    });
+    expect(summarizeByDifficulty([], [running]).medium).toMatchObject({ attempts: 1, succeeded: 1 });
+  });
+
+  it("gives the Tasks tab a task's best over its climbs, and marks a climb in flight", () => {
+    const stats = openHealthTaskStats(
+      [scored(0.4, { gtId: 7, createdAt: "2026-09-30T00:00:00.000Z" }), scored(0.2, { gtId: 8 })],
+      [climb(), climb({ id: "climb-2", gtId: 9, status: "running", steps: [], attempts: 0, bestF1: null })],
+    );
+    // The run of its own is newer than the climb, so it is the latest; the climb holds the best.
+    expect(stats.get(7)).toEqual({ attempts: 4, succeeded: 4, bestF1: 1, latestF1: 0.4, running: false });
+    expect(stats.get(8)).toMatchObject({ attempts: 1, bestF1: 0.2 });
+    expect(stats.get(9)).toEqual({ attempts: 0, succeeded: 0, bestF1: null, latestF1: null, running: true });
+  });
+
+  it("draws a climb's runs on the hill climb, in order, keyed by iteration", () => {
+    const series = openHealthClimbSeries(
+      [scored(0.5, { id: "own", gtId: 7, createdAt: "2026-09-28T00:00:00.000Z" })],
+      [climb()],
+    );
+    expect(series.map((p) => p.key)).toEqual(["own", "climb-1#0", "climb-1#1", "climb-1#2"]);
+    expect(series.map((p) => p.best)).toEqual([0.5, 0.5, 0.7, 1]);
+    expect(series.map((p) => p.newBest)).toEqual([true, false, true, true]);
+    expect(series[1]).toMatchObject({ runId: null, climb: { id: "climb-1", iteration: 0 }, gtId: 7, f1: 0.3 });
+    expect(series[0]).toMatchObject({ runId: "own", climb: null });
+  });
+
+  it("orders a climb's runs by when each started, when the log says", () => {
+    const timed = climb({
+      createdAt: "2026-09-29T00:00:00.000Z",
+      steps: [
+        climbStep({ iteration: 0, f1: 0.3, startedAt: "2026-09-29T00:01:00.000Z" }),
+        climbStep({ iteration: 1, f1: 0.7, startedAt: "2026-09-29T00:20:00.000Z" }),
+      ],
+    });
+    const series = openHealthClimbSeries(
+      [scored(0.5, { id: "mid", gtId: 7, createdAt: "2026-09-29T00:10:00.000Z" })],
+      [timed],
+    );
+    expect(series.map((p) => p.key)).toEqual(["climb-1#0", "mid", "climb-1#1"]);
+  });
+
+  it("lists a task that only a climb has tried, with the climb's runs counted", () => {
+    expect(
+      openHealthRunTasks(
+        [scored(0.4, { gtId: 8, difficulty: "hard", createdAt: "2026-09-30T00:00:00.000Z" })],
+        [climb(), climb({ id: "climb-2", gtId: 9, difficulty: null, status: "running", steps: [], attempts: 0 })],
+      ),
+    ).toEqual([
+      { gtId: 8, difficulty: "hard", runs: 1 },
+      { gtId: 7, difficulty: "medium", runs: 3 },
+      { gtId: 9, difficulty: null, runs: 0 },
     ]);
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Circle, ExternalLink, Loader2, Square, X } from "lucide-react";
+import { ExternalLink, Loader2, Square } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,13 +9,9 @@ import { PillSection } from "@/components/legal/PillSection";
 import { StrutRunGraph } from "@/components/strut-run-graph";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
-import type {
-  OpenHealthProgressResponse,
-  OpenHealthRunDetail,
-  OpenHealthStage,
-  OpenHealthStageStatus,
-} from "@/types/openhealth";
+import type { OpenHealthProgressResponse, OpenHealthRunDetail, OpenHealthStage } from "@/types/openhealth";
 import { formatCost, formatDuration, formatScore } from "../format";
+import { DiagnosisList, Stages, Stat } from "../parts";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { ImprovePanel } from "./ImprovePanel";
 
@@ -23,74 +19,6 @@ import { ImprovePanel } from "./ImprovePanel";
 const POLL_MS = 10_000;
 
 type Panel = "graph" | "problem-list" | "timeline" | "checklist" | "ingest";
-
-function StageIcon({ status }: { status: OpenHealthStageStatus }) {
-  if (status === "done") return <Check className="h-4 w-4 text-green-600" />;
-  if (status === "running") return <Loader2 className="h-4 w-4 animate-spin text-blue-600" />;
-  if (status === "failed") return <X className="h-4 w-4 text-destructive" />;
-  return <Circle className="h-4 w-4 text-muted-foreground/40" />;
-}
-
-function Stages({ stages }: { stages: OpenHealthStage[] }) {
-  return (
-    <ol className="flex flex-wrap gap-x-6 gap-y-2" data-testid="openhealth-run-stages">
-      {stages.map((stage) => (
-        <li key={stage.key} className="flex items-center gap-2 text-sm" data-status={stage.status}>
-          <StageIcon status={stage.status} />
-          <span className={stage.status === "pending" ? "text-muted-foreground" : ""}>{stage.label}</span>
-          {stage.total !== undefined && stage.total > 0 && (
-            <span className="tabular-nums text-muted-foreground">
-              {stage.done ?? 0}/{stage.total}
-            </span>
-          )}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function Stat({ label, value, emphasis }: { label: string; value: React.ReactNode; emphasis?: boolean }) {
-  return (
-    <div className="rounded-lg border bg-card px-4 py-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`tabular-nums ${emphasis ? "text-2xl font-semibold" : "text-lg font-medium"}`}>{value}</p>
-    </div>
-  );
-}
-
-function DiagnosisList({
-  title,
-  hint,
-  items,
-  testId,
-}: {
-  title: string;
-  hint: string;
-  items: React.ReactNode[];
-  testId: string;
-}) {
-  return (
-    <div className="rounded-lg border bg-card" data-testid={testId}>
-      <div className="border-b px-4 py-2">
-        <p className="text-sm font-semibold">
-          {title} <span className="font-normal tabular-nums text-muted-foreground">{items.length}</span>
-        </p>
-        <p className="text-xs text-muted-foreground">{hint}</p>
-      </div>
-      {items.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-muted-foreground">None</p>
-      ) : (
-        <ul className="divide-y text-sm">
-          {items.map((item, index) => (
-            <li key={index} className="px-4 py-2">
-              {item}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 function Scored({ run }: { run: OpenHealthRunDetail }) {
   const { scores } = run;

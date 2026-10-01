@@ -5,34 +5,44 @@
  *   - GET lists the workspace's runs behind the gate;
  *   - POST launches one run for a task the catalogue lists, and refuses:
  *     a body that names no task, a split that is not offered, a task the
- *     catalogue does not list, a task already in flight, a rate-limited
- *     workspace, a workspace with no strut.
+ *     catalogue does not list, a task already in flight (a run or a climb),
+ *     a rate-limited workspace, a workspace with no strut.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 
-const { mockAuthorize, mockRateLimit, mockResolveTarget, mockTasks, mockList, mockPending, mockLaunch, FakeDispatchError } =
-  vi.hoisted(() => {
-    class FakeDispatchError extends Error {
-      constructor(
-        public readonly code: string,
-        message: string,
-      ) {
-        super(message);
-      }
+const {
+  mockAuthorize,
+  mockRateLimit,
+  mockResolveTarget,
+  mockTasks,
+  mockList,
+  mockPending,
+  mockPendingClimb,
+  mockLaunch,
+  FakeDispatchError,
+} = vi.hoisted(() => {
+  class FakeDispatchError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string,
+    ) {
+      super(message);
     }
-    return {
-      mockAuthorize: vi.fn(),
-      mockRateLimit: vi.fn(),
-      mockResolveTarget: vi.fn(),
-      mockTasks: vi.fn(),
-      mockList: vi.fn(),
-      mockPending: vi.fn(),
-      mockLaunch: vi.fn(),
-      FakeDispatchError,
-    };
-  });
+  }
+  return {
+    mockAuthorize: vi.fn(),
+    mockRateLimit: vi.fn(),
+    mockResolveTarget: vi.fn(),
+    mockTasks: vi.fn(),
+    mockList: vi.fn(),
+    mockPending: vi.fn(),
+    mockPendingClimb: vi.fn(),
+    mockLaunch: vi.fn(),
+    FakeDispatchError,
+  };
+});
 
 vi.mock("@/lib/openhealth-benchmarks/access", () => ({ authorizeOpenHealth: mockAuthorize }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mockRateLimit }));
@@ -45,6 +55,7 @@ vi.mock("@/services/strut-runs", () => ({ StrutDispatchError: FakeDispatchError 
 vi.mock("@/services/strut-runs/openhealth", () => ({
   listOpenHealthRuns: mockList,
   hasPendingOpenHealthRun: mockPending,
+  hasPendingOpenHealthClimb: mockPendingClimb,
   launchOpenHealthRun: mockLaunch,
 }));
 
@@ -66,11 +77,18 @@ const post = (body: unknown) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuthorize.mockResolvedValue({ kind: "member", userId: "user-1", workspaceId: "ws-1", slug: "hive", role: "DEVELOPER" });
+  mockAuthorize.mockResolvedValue({
+    kind: "member",
+    userId: "user-1",
+    workspaceId: "ws-1",
+    slug: "hive",
+    role: "DEVELOPER",
+  });
   mockRateLimit.mockResolvedValue({ allowed: true });
   mockResolveTarget.mockResolvedValue({ ok: true, target: TARGET });
   mockTasks.mockResolvedValue({ split: "public", total: 1, tasks: [{ gtId: 7532, difficulty: "hard" }] });
   mockPending.mockResolvedValue(false);
+  mockPendingClimb.mockResolvedValue(false);
   mockLaunch.mockResolvedValue({ runId: "run-1", strutRunId: "1790614605308", swarmId: "swarm-1" });
 });
 
@@ -140,6 +158,17 @@ describe("POST", () => {
 
     expect(res.status).toBe(409);
     expect(mockPending).toHaveBeenCalledWith("ws-1", 7532);
+    expect(mockLaunch).not.toHaveBeenCalled();
+  });
+
+  it("refuses a run of a task a climb is working on", async () => {
+    mockPendingClimb.mockResolvedValue(true);
+
+    const res = await post({ gtId: 7532 });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "A climb of this task is in progress" });
+    expect(mockPendingClimb).toHaveBeenCalledWith("ws-1", 7532);
     expect(mockLaunch).not.toHaveBeenCalled();
   });
 

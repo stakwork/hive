@@ -10,6 +10,7 @@
 import type { StrutRunStatus } from "@prisma/client";
 import { isOpenHealthDifficulty, OPENHEALTH_DIFFICULTIES } from "./constants";
 import type {
+  OpenHealthClimb,
   OpenHealthDifficulty,
   OpenHealthIngestedSection,
   OpenHealthOutcome,
@@ -74,7 +75,7 @@ function ingestedOf(output: Record<string, unknown>): OpenHealthIngestedSection[
 }
 
 /** The produce agent plus every ingested section; planning is not reported by the workflow. */
-function costOf(output: Record<string, unknown>): number | null {
+export function openHealthRunCost(output: Record<string, unknown>): number | null {
   const produce = num(output.produceCost);
   const sections = ingestedOf(output);
   if (produce === null && sections.length === 0) return null;
@@ -115,7 +116,7 @@ export function toOpenHealthRun(row: OpenHealthRunSource, difficultyFor?: Diffic
         ? (difficultyFor?.(gtId) ?? null)
         : null,
     scores: outcome === "succeeded" ? scoresOf(output) : null,
-    costUsd: costOf(output),
+    costUsd: openHealthRunCost(output),
     durationMs: row.durationMs,
     error: outcome === "failed" ? (row.error ?? gradeErrorOf(row.status, output) ?? "The run did not finish.") : null,
     createdAt: row.createdAt.toISOString(),
@@ -157,6 +158,69 @@ export function toOpenHealthRunDetail(row: OpenHealthRunSource, difficultyFor?: 
 }
 
 // ─── Metrics ─────────────────────────────────────────────────────────────
+//
+// Every metric is over ATTEMPTS at a task: the runs of their own, and the
+// benchmark runs inside climbs (a climb's improve runs are not attempts).
+// `climbs` is optional everywhere, so a caller with runs alone still works.
+
+/** One attempt at a task: a run of its own, or one benchmark run inside a climb. */
+interface Attempt {
+  /** Unique across runs and climbs: the run's id, or `<climb id>#<iteration>`. */
+  key: string;
+  runId: string | null;
+  climb: { id: string; iteration: number } | null;
+  gtId: number | null;
+  difficulty: OpenHealthDifficulty | null;
+  outcome: OpenHealthOutcome;
+  f1: number | null;
+  recall: number | null;
+  precision: number | null;
+  createdAt: string;
+  /** Order among attempts that share a `createdAt`: a climb's runs share the climb's. */
+  seq: number;
+}
+
+function attemptsOf(runs: OpenHealthRun[], climbs: OpenHealthClimb[]): Attempt[] {
+  const own = runs.map(
+    (run): Attempt => ({
+      key: run.id,
+      runId: run.id,
+      climb: null,
+      gtId: run.gtId,
+      difficulty: run.difficulty,
+      outcome: run.outcome,
+      f1: run.scores?.f1 ?? null,
+      recall: run.scores?.recall ?? null,
+      precision: run.scores?.precision ?? null,
+      createdAt: run.createdAt,
+      seq: 0,
+    }),
+  );
+  const inside = climbs.flatMap((climb) =>
+    climb.steps
+      .filter((step) => step.kind === "benchmark")
+      .map(
+        (step): Attempt => ({
+          key: `${climb.id}#${step.iteration}`,
+          runId: null,
+          climb: { id: climb.id, iteration: step.iteration },
+          gtId: climb.gtId,
+          difficulty: climb.difficulty,
+          outcome: step.outcome,
+          f1: step.outcome === "succeeded" ? step.f1 : null,
+          recall: null,
+          precision: null,
+          createdAt: step.startedAt ?? climb.createdAt,
+          seq: step.iteration,
+        }),
+      ),
+  );
+  return [...own, ...inside];
+}
+
+const byAge = (a: Attempt, b: Attempt) => a.createdAt.localeCompare(b.createdAt) || a.seq - b.seq;
+/** Newest first, as the lists come. */
+const newestFirst = (attempts: Attempt[]) => [...attempts].sort((a, b) => byAge(b, a));
 
 export interface OpenHealthSummary {
   /** Finished attempts: succeeded + failed. Running and cancelled runs are left out. */
@@ -174,22 +238,30 @@ function mean(values: Array<number | null | undefined>): number | null {
   return present.length > 0 ? present.reduce((a, b) => a + b, 0) / present.length : null;
 }
 
-export function summarizeOpenHealthRuns(runs: OpenHealthRun[]): OpenHealthSummary {
-  const succeeded = runs.filter((r) => r.outcome === "succeeded");
-  const attempts = succeeded.length + runs.filter((r) => r.outcome === "failed").length;
+function summarize(attempts: Attempt[]): OpenHealthSummary {
+  const succeeded = attempts.filter((a) => a.outcome === "succeeded" && a.f1 !== null);
+  const finished = succeeded.length + attempts.filter((a) => a.outcome === "failed").length;
   return {
-    attempts,
+    attempts: finished,
     succeeded: succeeded.length,
-    successRate: attempts > 0 ? succeeded.length / attempts : null,
-    meanF1: mean(succeeded.map((r) => r.scores?.f1)),
-    meanRecall: mean(succeeded.map((r) => r.scores?.recall)),
-    meanPrecision: mean(succeeded.map((r) => r.scores?.precision)),
+    successRate: finished > 0 ? succeeded.length / finished : null,
+    meanF1: mean(succeeded.map((a) => a.f1)),
+    meanRecall: mean(succeeded.map((a) => a.recall)),
+    meanPrecision: mean(succeeded.map((a) => a.precision)),
   };
 }
 
-export function summarizeByDifficulty(runs: OpenHealthRun[]): Record<OpenHealthDifficulty, OpenHealthSummary> {
+export function summarizeOpenHealthRuns(runs: OpenHealthRun[], climbs: OpenHealthClimb[] = []): OpenHealthSummary {
+  return summarize(attemptsOf(runs, climbs));
+}
+
+export function summarizeByDifficulty(
+  runs: OpenHealthRun[],
+  climbs: OpenHealthClimb[] = [],
+): Record<OpenHealthDifficulty, OpenHealthSummary> {
+  const attempts = attemptsOf(runs, climbs);
   return Object.fromEntries(
-    OPENHEALTH_DIFFICULTIES.map((d) => [d, summarizeOpenHealthRuns(runs.filter((r) => r.difficulty === d))]),
+    OPENHEALTH_DIFFICULTIES.map((d) => [d, summarize(attempts.filter((a) => a.difficulty === d))]),
   ) as Record<OpenHealthDifficulty, OpenHealthSummary>;
 }
 
@@ -198,25 +270,37 @@ export interface OpenHealthTaskStats {
   attempts: number;
   succeeded: number;
   bestF1: number | null;
-  /** The newest scored run's F1. */
+  /** The newest scored attempt's F1. */
   latestF1: number | null;
+  /** A run or a climb of the task is in flight. */
   running: boolean;
 }
 
-/** Per-task stats, keyed by `gtId`. `runs` newest first, as the list returns them. */
-export function openHealthTaskStats(runs: OpenHealthRun[]): Map<number, OpenHealthTaskStats> {
+/** Per-task stats, keyed by `gtId`. */
+export function openHealthTaskStats(
+  runs: OpenHealthRun[],
+  climbs: OpenHealthClimb[] = [],
+): Map<number, OpenHealthTaskStats> {
   const stats = new Map<number, OpenHealthTaskStats>();
-  for (const run of runs) {
-    if (run.gtId === null) continue;
-    const s = stats.get(run.gtId) ?? { attempts: 0, succeeded: 0, bestF1: null, latestF1: null, running: false };
-    if (run.outcome === "running") s.running = true;
-    if (run.outcome === "succeeded" || run.outcome === "failed") s.attempts++;
-    if (run.outcome === "succeeded" && run.scores) {
+  const statsFor = (gtId: number) => {
+    const s = stats.get(gtId) ?? { attempts: 0, succeeded: 0, bestF1: null, latestF1: null, running: false };
+    stats.set(gtId, s);
+    return s;
+  };
+  for (const attempt of newestFirst(attemptsOf(runs, climbs))) {
+    if (attempt.gtId === null) continue;
+    const s = statsFor(attempt.gtId);
+    if (attempt.outcome === "running") s.running = true;
+    if (attempt.outcome === "succeeded" || attempt.outcome === "failed") s.attempts++;
+    if (attempt.outcome === "succeeded" && attempt.f1 !== null) {
       s.succeeded++;
-      s.bestF1 = s.bestF1 === null ? run.scores.f1 : Math.max(s.bestF1, run.scores.f1);
-      if (s.latestF1 === null) s.latestF1 = run.scores.f1;
+      s.bestF1 = s.bestF1 === null ? attempt.f1 : Math.max(s.bestF1, attempt.f1);
+      if (s.latestF1 === null) s.latestF1 = attempt.f1;
     }
-    stats.set(run.gtId, s);
+  }
+  // A climb that has not started its first run yet is still in flight.
+  for (const climb of climbs) {
+    if (climb.status === "running" && climb.gtId !== null) statsFor(climb.gtId).running = true;
   }
   return stats;
 }
@@ -224,45 +308,65 @@ export function openHealthTaskStats(runs: OpenHealthRun[]): Map<number, OpenHeal
 // ─── Hill climb ──────────────────────────────────────────────────────────
 
 export interface OpenHealthClimbPoint {
-  runId: string;
+  /** Unique across runs and climbs. */
+  key: string;
+  /** A run of its own. */
+  runId: string | null;
+  /** One benchmark run inside a climb. */
+  climb: { id: string; iteration: number } | null;
   createdAt: string;
   gtId: number | null;
   f1: number;
-  /** The best F1 so far, as of this run — the line's level. */
+  /** The best F1 so far, as of this attempt — the line's level. */
   best: number;
-  /** Did this run raise the best so far? */
+  /** Did this attempt raise the best so far? */
   newBest: boolean;
 }
 
 /**
- * One task's scored runs oldest first, with the best F1 so far — the hill
- * climb. Across tasks a best-so-far would only track the easiest one, so the
- * page draws this for a single task.
+ * One task's scored attempts oldest first, with the best F1 so far — the
+ * hill climb. Across tasks a best-so-far would only track the easiest one,
+ * so the page draws this for a single task.
  */
-export function openHealthClimbSeries(runs: OpenHealthRun[]): OpenHealthClimbPoint[] {
-  const scored = runs
-    .filter((r): r is OpenHealthRun & { scores: OpenHealthScores } => r.outcome === "succeeded" && r.scores !== null)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+export function openHealthClimbSeries(runs: OpenHealthRun[], climbs: OpenHealthClimb[] = []): OpenHealthClimbPoint[] {
+  const scored = attemptsOf(runs, climbs)
+    .filter((a): a is Attempt & { f1: number } => a.outcome === "succeeded" && a.f1 !== null)
+    .sort(byAge);
   let best = -Infinity;
-  return scored.map((run) => {
-    const f1 = run.scores.f1;
-    const newBest = f1 > best;
-    best = Math.max(best, f1);
-    return { runId: run.id, createdAt: run.createdAt, gtId: run.gtId, f1, best, newBest };
+  return scored.map((attempt) => {
+    const newBest = attempt.f1 > best;
+    best = Math.max(best, attempt.f1);
+    return {
+      key: attempt.key,
+      runId: attempt.runId,
+      climb: attempt.climb,
+      createdAt: attempt.createdAt,
+      gtId: attempt.gtId,
+      f1: attempt.f1,
+      best,
+      newBest,
+    };
   });
 }
 
-/** The tasks the runs cover, most recently run first, with how many runs each has. */
+/** The tasks the runs and climbs cover, most recently tried first, with how many attempts each has. */
 export function openHealthRunTasks(
   runs: OpenHealthRun[],
+  climbs: OpenHealthClimb[] = [],
 ): Array<{ gtId: number; difficulty: OpenHealthDifficulty | null; runs: number }> {
   const tasks = new Map<number, { gtId: number; difficulty: OpenHealthDifficulty | null; runs: number }>();
-  for (const run of runs) {
-    if (run.gtId === null) continue;
-    const task = tasks.get(run.gtId) ?? { gtId: run.gtId, difficulty: run.difficulty, runs: 0 };
-    task.runs++;
-    task.difficulty ??= run.difficulty;
-    tasks.set(run.gtId, task);
+  const taskFor = (gtId: number, difficulty: OpenHealthDifficulty | null) => {
+    const task = tasks.get(gtId) ?? { gtId, difficulty, runs: 0 };
+    task.difficulty ??= difficulty;
+    tasks.set(gtId, task);
+    return task;
+  };
+  for (const attempt of newestFirst(attemptsOf(runs, climbs))) {
+    if (attempt.gtId !== null) taskFor(attempt.gtId, attempt.difficulty).runs++;
+  }
+  // A climb with no run yet still names its task.
+  for (const climb of climbs) {
+    if (climb.gtId !== null) taskFor(climb.gtId, climb.difficulty);
   }
   return [...tasks.values()];
 }

@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useOpenHealthClimbs } from "@/hooks/useOpenHealthClimbs";
 import { useOpenHealthRuns } from "@/hooks/useOpenHealthRuns";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/openhealth-benchmarks/constants";
 import { openHealthTaskStats } from "@/lib/openhealth-benchmarks/runs";
 import type { OpenHealthDifficulty, OpenHealthSplit, OpenHealthTask, OpenHealthTaskList } from "@/types/openhealth";
+import { ClimbStartPopover } from "./ClimbStartPopover";
 import { DifficultyBadge, formatScore } from "./format";
 
 const SPLIT_LABELS: Record<OpenHealthSplit, string> = { public: "Public", heldout: "Heldout" };
@@ -37,6 +39,7 @@ export function OpenHealthTasksPanel() {
   const pathname = usePathname();
   const slug = workspace?.slug;
   const { runs } = useOpenHealthRuns();
+  const { climbs } = useOpenHealthClimbs();
 
   const [split, setSplit] = useState<OpenHealthSplit>(OPENHEALTH_DEFAULT_SPLIT);
   const [difficulty, setDifficulty] = useState<DifficultyFilter>("all");
@@ -70,7 +73,21 @@ export function OpenHealthTasksPanel() {
     };
   }, [slug, split]);
 
-  const stats = useMemo(() => openHealthTaskStats(runs), [runs]);
+  const stats = useMemo(() => openHealthTaskStats(runs, climbs), [runs, climbs]);
+  const climbing = useMemo(
+    () => new Map(climbs.filter((c) => c.status === "running" && c.gtId !== null).map((c) => [c.gtId, c] as const)),
+    [climbs],
+  );
+  // Mean cost of a task's scored runs, for the climb's estimate.
+  const meanCost = useMemo(() => {
+    const sums = new Map<number, { total: number; n: number }>();
+    for (const run of runs) {
+      if (run.gtId === null || run.outcome !== "succeeded" || run.costUsd === null) continue;
+      const s = sums.get(run.gtId) ?? { total: 0, n: 0 };
+      sums.set(run.gtId, { total: s.total + run.costUsd, n: s.n + 1 });
+    }
+    return new Map([...sums].map(([gtId, s]) => [gtId, s.total / s.n] as const));
+  }, [runs]);
   const tasks = useMemo(() => {
     const needle = search.trim();
     return (list?.tasks ?? []).filter(
@@ -181,6 +198,7 @@ export function OpenHealthTasksPanel() {
           <TableBody>
             {tasks.map((task) => {
               const s = stats.get(task.gtId);
+              const climb = climbing.get(task.gtId);
               const busy = starting === task.gtId || s?.running === true;
               return (
                 <TableRow key={task.gtId} data-testid="openhealth-task-row">
@@ -195,16 +213,33 @@ export function OpenHealthTasksPanel() {
                   <TableCell className="text-right tabular-nums">{s?.attempts ? s.succeeded : "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatScore(s?.bestF1)}</TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!canWrite || busy || starting !== null}
-                      onClick={() => void start(task)}
-                      data-testid="openhealth-task-run"
-                    >
-                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                      {s?.running ? "Running…" : "Run"}
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <ClimbStartPopover
+                        gtId={task.gtId}
+                        split={split}
+                        meanRunCost={meanCost.get(task.gtId) ?? null}
+                        disabled={!canWrite || busy || starting !== null}
+                        onStarted={({ climbId }) =>
+                          router.push(`${pathname}?tab=runs&task=${task.gtId}&climb=${climbId}`)
+                        }
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!canWrite || busy || starting !== null}
+                        onClick={() => void start(task)}
+                        data-testid="openhealth-task-run"
+                      >
+                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                        {climb
+                          ? climb.attempts > 0
+                            ? `Climbing ${climb.attempts}/${climb.maxRuns}`
+                            : "Climbing…"
+                          : s?.running
+                            ? "Running…"
+                            : "Run"}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
