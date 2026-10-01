@@ -169,6 +169,9 @@ export interface OpenHealthClimbStep {
   outcome: OpenHealthOutcome;
   /** Benchmark: weighted F1 once scored. */
   f1: number | null;
+  /** Benchmark: its recall and precision, when the loop's event log reports them (the recorded history does not). */
+  recall: number | null;
+  precision: number | null;
   /** Benchmark: did this run raise the climb's best so far? */
   newBest: boolean;
   /** Benchmark: answer-key diagnoses the run missed, and extras it added. */
@@ -207,6 +210,9 @@ export interface OpenHealthClimb {
   /** The first attempt's F1. */
   startF1: number | null;
   bestF1: number | null;
+  /** The best attempt's recall and precision, when known. */
+  bestRecall: number | null;
+  bestPrecision: number | null;
   /** The newest scored attempt's F1. */
   latestF1: number | null;
   /** The iteration that scored best. */
