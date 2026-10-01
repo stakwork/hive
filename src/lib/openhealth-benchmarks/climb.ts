@@ -7,8 +7,8 @@
  * their own. A settled row carries the loop's output, whose `history` lists
  * every iteration. A row in flight has no output yet: its iterations are
  * read from the run's event log (`projectOpenHealthClimbEvents`), which
- * also carries what the output never does — each run's cost and when it
- * started — and the stages of the run in flight.
+ * also carries what the output never does — each run's cost, recall and
+ * precision, and when it started — and the stages of the run in flight.
  *
  * Like `runs.ts`, everything reads the workflow's fields one by one, so an
  * output of another shape degrades to nulls and empty lists. The improve
@@ -78,6 +78,8 @@ export interface OpenHealthClimbIterationEvents {
   improve: OpenHealthClimbPhase;
   /** From the benchmark run's output, once it ended. */
   f1: number | null;
+  recall: number | null;
+  precision: number | null;
   missed: string[];
   extra: string[];
   costUsd: number | null;
@@ -125,6 +127,8 @@ export function projectOpenHealthClimbEvents(events: unknown): OpenHealthClimbEv
         run: "pending",
         improve: "pending",
         f1: null,
+        recall: null,
+        precision: null,
         missed: [],
         extra: [],
         costUsd: null,
@@ -155,6 +159,8 @@ export function projectOpenHealthClimbEvents(events: unknown): OpenHealthClimbEv
       if (ENDED.has(event.type)) {
         const output = record(event.output);
         it.f1 = num(output.weighted_problem_list_f1_neutral);
+        it.recall = num(output.problem_list_recall);
+        it.precision = num(output.problem_list_precision_neutral);
         it.missed = strings(output.missed);
         it.extra = strings(output.extra);
         it.costUsd = openHealthRunCost(output);
@@ -189,6 +195,8 @@ export interface OpenHealthClimbSource {
 
 const EMPTY_STEP = {
   f1: null,
+  recall: null,
+  precision: null,
   newBest: false,
   missed: [] as string[],
   extra: [] as string[],
@@ -247,6 +255,9 @@ function stepsOf(
     steps.push(
       benchmarkStep(iteration, "succeeded", {
         f1: num(entry.score),
+        // The history records no recall or precision today; the log has them.
+        recall: num(entry.recall) ?? ev?.recall ?? null,
+        precision: num(entry.precision) ?? ev?.precision ?? null,
         missed: strings(entry.missed),
         extra: strings(entry.extra),
         costUsd: ev?.costUsd ?? null,
@@ -272,6 +283,8 @@ function stepsOf(
     steps.push(
       benchmarkStep(it.iteration, outcome, {
         f1: it.f1,
+        recall: it.recall,
+        precision: it.precision,
         missed: it.missed,
         extra: it.extra,
         costUsd: it.costUsd,
@@ -347,6 +360,8 @@ export function toOpenHealthClimb(
 
   let best = -Infinity;
   let bestIteration: number | null = null;
+  let bestRecall: number | null = null;
+  let bestPrecision: number | null = null;
   let startF1: number | null = null;
   let latest: { attempt: number; f1: number } | null = null;
   let cost: number | null = null;
@@ -362,6 +377,8 @@ export function toOpenHealthClimb(
     if (step.newBest) {
       best = step.f1;
       bestIteration = step.iteration;
+      bestRecall = step.recall;
+      bestPrecision = step.precision;
     }
   }
   const bestF1 = bestIteration === null ? null : best;
@@ -379,6 +396,8 @@ export function toOpenHealthClimb(
     attempts,
     startF1,
     bestF1,
+    bestRecall,
+    bestPrecision,
     latestF1: latest?.f1 ?? null,
     bestIteration,
     costUsd: cost,
