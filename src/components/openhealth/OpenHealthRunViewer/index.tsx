@@ -233,7 +233,7 @@ export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSet
       {run.strutRunId && (
         <div className="flex flex-wrap gap-2">
           <PillSection label="Graph" open={panel === "graph"} onOpenChange={toggle("graph")} testId="openhealth-run-graph">
-            <StrutRunGraph endpoint={`${base}/graph`} live={running} />
+            <StrutRunGraph endpoint={`/api/workspaces/${slug}/strut/runs/${runId}/graph`} live={running} />
           </PillSection>
           {hasFiles && (
             <>
