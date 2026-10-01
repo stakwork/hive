@@ -5,7 +5,8 @@
  * - it reads the climb and shows its newest step in full;
  * - a benchmark step shows its score, what it missed and added, and its
  *   files pills addressed by iteration; an improve step shows its Concepts;
- * - `initialStep` opens with that step;
+ * - `selected` opens with that step; with `onSelectStep` the caller owns
+ *   the selection, a chip reports to it, and a change to it shows;
  * - a climb that cannot be read says so.
  */
 import React from "react";
@@ -41,6 +42,8 @@ function step(overrides: Partial<OpenHealthClimbStep>): OpenHealthClimbStep {
     iteration: 0,
     outcome: "succeeded",
     f1: 0.6,
+    recall: null,
+    precision: null,
     newBest: true,
     missed: ["E119"],
     extra: ["R51"],
@@ -69,6 +72,8 @@ const CLIMB: OpenHealthClimb = {
   attempts: 2,
   startF1: 0.6,
   bestF1: 1,
+  bestRecall: null,
+  bestPrecision: null,
   latestF1: 1,
   bestIteration: 1,
   costUsd: 3,
@@ -151,12 +156,28 @@ describe("OpenHealthClimbViewer", () => {
   });
 
   it("opens with the step it is given, and shows the run that step missed", async () => {
-    render(<OpenHealthClimbViewer climbId="climb-1" initialStep={0} />);
+    render(<OpenHealthClimbViewer climbId="climb-1" selected={0} />);
     await waitFor(() => expect(screen.getByTestId("openhealth-climb-step-detail")).toBeTruthy());
 
     expect(screen.getByTestId("openhealth-climb-step-detail").textContent).toContain("Run 1");
     expect(screen.getByTestId("openhealth-climb-step-missed").textContent).toContain("E119");
     expect(screen.getByTestId("openhealth-climb-step-extra").textContent).toContain("R51");
+  });
+
+  it("leaves the selection to the caller that owns it, and follows it when it changes", async () => {
+    const onSelectStep = vi.fn();
+    const view = render(<OpenHealthClimbViewer climbId="climb-1" selected={null} onSelectStep={onSelectStep} />);
+    await waitFor(() => expect(screen.getByTestId("openhealth-climb-step-detail")).toBeTruthy());
+    expect(screen.getByTestId("openhealth-climb-step-detail").textContent).toContain("Run 2");
+
+    // A chip reports the pick; the detail waits for the caller.
+    fireEvent.click(screen.getAllByTestId("openhealth-climb-step")[1]);
+    expect(onSelectStep).toHaveBeenCalledWith(1);
+    expect(screen.getByTestId("openhealth-climb-step-detail").getAttribute("data-kind")).toBe("benchmark");
+
+    view.rerender(<OpenHealthClimbViewer climbId="climb-1" selected={0} onSelectStep={onSelectStep} />);
+    expect(screen.getByTestId("openhealth-climb-step-detail").textContent).toContain("Run 1");
+    expect(screen.getAllByTestId("openhealth-climb-step")[0].getAttribute("aria-pressed")).toBe("true");
   });
 
   it("shows the stages of a run in flight", async () => {
