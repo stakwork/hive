@@ -92,8 +92,6 @@ describe("BifrostClient", () => {
       rate_limit: {
         request_max_limit: 1000,
         request_reset_duration: "1m",
-        token_max_limit: 5_000_000,
-        token_reset_duration: "1m",
       },
     });
 
@@ -103,7 +101,60 @@ describe("BifrostClient", () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.name).toBe("u_alice");
     expect(body.budget.max_limit).toBe(1000);
-    expect(body.rate_limit.request_max_limit).toBe(1000);
+    expect(body.rate_limit).toEqual({
+      request_max_limit: 1000,
+      request_reset_duration: "1m",
+    });
+  });
+
+  it("getCustomer GETs the customer by id", async () => {
+    fetchMock.mockResolvedValueOnce(
+      makeResponse(200, {
+        customer: {
+          id: "cust-1",
+          name: "u_alice",
+          created_at: "2026-05-14T00:00:00Z",
+          rate_limit: { request_max_limit: 1000, request_reset_duration: "1m" },
+        },
+      }),
+    );
+
+    const client = makeClient();
+    const out = await client.getCustomer("cust-1");
+
+    expect(out.customer.rate_limit?.request_max_limit).toBe(1000);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://bifrost.test:8181/api/governance/customers/cust-1");
+    expect((init as RequestInit).method).toBe("GET");
+  });
+
+  it("updateCustomer PUTs exactly the rate_limit it was given", async () => {
+    fetchMock.mockResolvedValueOnce(
+      makeResponse(200, {
+        message: "Customer updated successfully",
+        customer: {
+          id: "cust-1",
+          name: "u_alice",
+          created_at: "2026-05-14T00:00:00Z",
+          rate_limit: { request_max_limit: 1000, request_reset_duration: "1m" },
+        },
+      }),
+    );
+
+    const client = makeClient();
+    const out = await client.updateCustomer("cust-1", {
+      rate_limit: { request_max_limit: 1000, request_reset_duration: "1m" },
+    });
+
+    expect(out.customer.rate_limit?.token_max_limit).toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://bifrost.test:8181/api/governance/customers/cust-1");
+    expect((init as RequestInit).method).toBe("PUT");
+    // Bifrost replaces all four limit fields on PUT, so the body must
+    // carry only what was asked for: no `token_*` keys, not even null.
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      rate_limit: { request_max_limit: 1000, request_reset_duration: "1m" },
+    });
   });
 
   it("listVirtualKeys includes customer_id in the query string", async () => {
