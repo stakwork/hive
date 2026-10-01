@@ -5,7 +5,12 @@
  * stay here: a step's payload can hold an answer key.
  */
 
-import { hydrateRunGraph, swarmCypherRunner } from "@/lib/strut-run-graph/hydrate";
+import {
+  hydrateRunGraph,
+  readRunGraphNode,
+  swarmCypherRunner,
+  type RunGraphNodeRead,
+} from "@/lib/strut-run-graph/hydrate";
 import { distinctNodeRefs, projectRunGraphCalls } from "@/lib/strut-run-graph/project";
 import type { RunGraphTrace } from "@/lib/strut-run-graph/types";
 import { labForRow, type StrutRunRow } from "@/services/strut-runs";
@@ -23,4 +28,14 @@ export async function readStrutRunGraph(row: GraphRow): Promise<RunGraphTrace | 
     swarmCypherRunner({ name: lab.swarmName, apiKey: lab.swarmApiKey }),
   );
   return { calls, ...graph };
+}
+
+/** One node of the graph the run used, whole; null when the swarm could not be read. */
+export async function readStrutRunGraphNode(
+  row: Pick<StrutRunRow, "swarmId">,
+  refId: string,
+): Promise<RunGraphNodeRead | null> {
+  const lab = await labForRow(row);
+  if (!lab) return null;
+  return readRunGraphNode(refId, swarmCypherRunner({ name: lab.swarmName, apiKey: lab.swarmApiKey }));
 }

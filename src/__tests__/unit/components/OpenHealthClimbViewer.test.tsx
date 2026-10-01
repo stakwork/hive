@@ -131,7 +131,10 @@ describe("OpenHealthClimbViewer", () => {
     });
 
     fireEvent.click(screen.getByTestId("openhealth-climb-graph-pill"));
-    await waitFor(() => expect(screen.getByTestId("run-graph").textContent).toBe(`${ENDPOINT}/graph`));
+    // The graph is a strut run surface: the climb is read by its run id, not through the climb routes.
+    await waitFor(() =>
+      expect(screen.getByTestId("run-graph").textContent).toBe("/api/workspaces/hive/strut/runs/climb-1/graph"),
+    );
   });
 
   it("shows an improve step's Concepts when its chip is picked", async () => {
