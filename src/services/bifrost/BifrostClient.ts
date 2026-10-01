@@ -2,7 +2,9 @@ import { BIFROST_HTTP_TIMEOUT_MS } from "./constants";
 import type {
   CreateCustomerResponse,
   CreateVirtualKeyResponse,
+  GetCustomerResponse,
   GetVirtualKeyResponse,
+  UpdateCustomerResponse,
   ListCustomersResponse,
   ListProvidersResponse,
   ListVirtualKeysResponse,
@@ -17,9 +19,9 @@ import type {
  * admin creds. Only what the VK reconciler needs is implemented:
  * Customer + VK list/create, `GET /api/providers` (so grants can be
  * narrowed to what the gateway has configured), and VK get + update
- * for provider-grant top-ups. Offboarding and Customer drift repair
- * (`PUT customers/<id>`) stay deferred to phase 2 per
- * `phase-1-reconciler.md`.
+ * for provider-grant top-ups, and Customer get + update so a leftover
+ * token rate limit can be stripped (`customer-rate-limit.ts`).
+ * Offboarding stays deferred to phase 2 per `phase-1-reconciler.md`.
  */
 
 export class BifrostHttpError extends Error {
@@ -45,6 +47,20 @@ export interface BifrostClientOptions {
 
 interface CreateCustomerInput {
   name: string;
+  budget?: BifrostBudget;
+  rate_limit?: BifrostRateLimit;
+}
+
+/**
+ * `PUT customers/<id>` body. Every field is optional and an omitted
+ * one is left unchanged — except that `rate_limit`, when present,
+ * REPLACES all four limit fields (a field left out of it is cleared),
+ * and an empty `rate_limit: {}` removes the Customer's rate limit
+ * altogether. See `updateCustomer` in
+ * transports/bifrost-http/handlers/governance.go.
+ */
+interface UpdateCustomerInput {
+  name?: string;
   budget?: BifrostBudget;
   rate_limit?: BifrostRateLimit;
 }
@@ -131,6 +147,24 @@ export class BifrostClient {
     return this.request<CreateCustomerResponse>(
       "POST",
       `/api/governance/customers`,
+      input,
+    );
+  }
+
+  async getCustomer(customerId: string): Promise<GetCustomerResponse> {
+    return this.request<GetCustomerResponse>(
+      "GET",
+      `/api/governance/customers/${encodeURIComponent(customerId)}`,
+    );
+  }
+
+  async updateCustomer(
+    customerId: string,
+    input: UpdateCustomerInput,
+  ): Promise<UpdateCustomerResponse> {
+    return this.request<UpdateCustomerResponse>(
+      "PUT",
+      `/api/governance/customers/${encodeURIComponent(customerId)}`,
       input,
     );
   }
