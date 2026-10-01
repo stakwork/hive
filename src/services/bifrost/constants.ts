@@ -1,6 +1,6 @@
 import type { Provider as AieoProvider } from "aieo";
 
-import type { BifrostProvider } from "./types";
+import type { BifrostProvider, BifrostRateLimit } from "./types";
 
 /**
  * Phase-1 defaults for Bifrost Customer + VK provisioning, per
@@ -18,11 +18,29 @@ export const DEFAULT_BUDGET_RESET_DURATION = "1d";
 /** Customer-level request rate limit (requests per minute). */
 export const DEFAULT_REQUEST_MAX_LIMIT = 1000;
 
-/** Customer-level token rate limit (tokens per minute). */
-export const DEFAULT_TOKEN_MAX_LIMIT = 5_000_000;
-
-/** Window for both request and token rate limits. */
+/** Window for the request rate limit. */
 export const DEFAULT_RATE_LIMIT_RESET_DURATION = "1m";
+
+/**
+ * The Customer's rate limit as Hive wants it: a request ceiling only.
+ *
+ * There is deliberately no token-per-minute limit. Bifrost charges a
+ * request's `TotalTokens` against it, and for Anthropic that folds
+ * cache-read and cache-creation tokens into the prompt count — so a
+ * cached 150k-token agent context bills the full 150k against the
+ * window on every turn, even though cache reads cost a tenth on the
+ * bill. One user's parallel agents tripped the old 5M/min cap
+ * (`rate limit violated for customer …: token limit exceeded`) on
+ * ordinary use. The daily budget above is the spend ceiling.
+ *
+ * `ensureCustomer` creates with this, and Customers minted before the
+ * token cap was dropped get it stripped lazily — see
+ * `customer-rate-limit.ts`.
+ */
+export const DEFAULT_CUSTOMER_RATE_LIMIT: BifrostRateLimit = {
+  request_max_limit: DEFAULT_REQUEST_MAX_LIMIT,
+  request_reset_duration: DEFAULT_RATE_LIMIT_RESET_DURATION,
+};
 
 /**
  * Providers the VK is allowed to call. Permissive by default — the

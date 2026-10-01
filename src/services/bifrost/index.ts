@@ -32,6 +32,10 @@ export type {
 // directly — go through `getBifrostForLLM` so the orchestration
 // (failure posture, ordering, gates) stays in one place.
 export { reconcileBifrostVK } from "./reconciler";
+export {
+  hasTokenLimit,
+  stripCustomerTokenLimit,
+} from "./customer-rate-limit";
 export { BifrostClient, BifrostHttpError } from "./BifrostClient";
 export { BifrostPluginClient } from "./BifrostPluginClient";
 export { deriveBifrostBaseUrl, resolveBifrost, BifrostConfigError } from "./resolve";
