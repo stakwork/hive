@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { OpenHealthDifficulty, OpenHealthOutcome } from "@/types/openhealth";
+import type { OpenHealthClimbStatus, OpenHealthDifficulty, OpenHealthOutcome } from "@/types/openhealth";
 
 export const formatScore = (value: number | null | undefined): string =>
   typeof value === "number" ? value.toFixed(2) : "—";
@@ -48,6 +48,31 @@ export function DifficultyBadge({ difficulty }: { difficulty: OpenHealthDifficul
   return (
     <Badge variant="outline" className="capitalize">
       {difficulty}
+    </Badge>
+  );
+}
+
+const CLIMB_LABEL: Record<OpenHealthClimbStatus, string> = {
+  running: "Climbing",
+  reached: "Reached",
+  exhausted: "Runs spent",
+  stopped: "Stopped",
+  failed: "Failed",
+};
+
+const CLIMB_VARIANT: Record<OpenHealthClimbStatus, "default" | "secondary" | "destructive" | "outline"> = {
+  running: "secondary",
+  reached: "default",
+  exhausted: "outline",
+  stopped: "outline",
+  failed: "destructive",
+};
+
+export function ClimbStatusBadge({ status }: { status: OpenHealthClimbStatus }) {
+  return (
+    <Badge variant={CLIMB_VARIANT[status]} className="gap-1" data-testid="openhealth-climb-status">
+      {status === "running" && <Loader2 className="h-3 w-3 animate-spin" />}
+      {CLIMB_LABEL[status]}
     </Badge>
   );
 }
