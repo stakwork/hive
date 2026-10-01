@@ -15,11 +15,10 @@ import {
   BIFROST_VK_PROVIDER_REFRESH_MS,
   DEFAULT_BUDGET_RESET_DURATION,
   DEFAULT_CUSTOMER_BUDGET_USD,
+  DEFAULT_CUSTOMER_RATE_LIMIT,
   DEFAULT_PROVIDERS,
-  DEFAULT_RATE_LIMIT_RESET_DURATION,
-  DEFAULT_REQUEST_MAX_LIMIT,
-  DEFAULT_TOKEN_MAX_LIMIT,
 } from "./constants";
+import { stripCustomerTokenLimit } from "./customer-rate-limit";
 import { resolveBifrost } from "./resolve";
 import type {
   BifrostCustomer,
@@ -35,8 +34,9 @@ import type {
  * For a `(workspaceId, userId)` pair, ensure the workspace's Bifrost
  * has one Customer and one VK named `{githubLogin}-{userId}` (or just
  * `userId` when the user has no GitHubAuth — e.g. Sphinx-only logins).
- * The Customer gets $1000/day, 1000 RPM / 5M TPM; the VK is attached
- * to that Customer with permissive provider configs. Stash the VK
+ * The Customer gets $1000/day and 1000 RPM — no token cap, see
+ * `DEFAULT_CUSTOMER_RATE_LIMIT`; the VK is attached to that Customer
+ * with permissive provider configs. Stash the VK
  * `value` (encrypted) on `WorkspaceMember` keyed by `(workspaceId,
  * userId)`. Idempotent.
  *
@@ -49,9 +49,12 @@ import type {
  * cached VK on `WorkspaceMember` without talking to Bifrost — except
  * once per `BIFROST_VK_PROVIDER_REFRESH_MS`, when the VK's provider
  * grants are re-checked against the gateway (see "Provider grants"
- * below). The grants last observed are snapshotted on the row so a
- * call for a provider the VK doesn't carry can be steered back to
- * the caller's direct key instead of failing at the gateway.
+ * below) and the Customer is read back so a token rate limit left
+ * over from before the cap was dropped can be stripped
+ * (`customer-rate-limit.ts`). The grants last observed are
+ * snapshotted on the row so a call for a provider the VK doesn't
+ * carry can be steered back to the caller's direct key instead of
+ * failing at the gateway.
  *
  * See `gateway/plans/phase-1-reconciler.md`.
  */
@@ -201,6 +204,7 @@ async function doReconcile(
             BIFROST_VK_PROVIDER_MISS_REFRESH_MS,
           ))
       ) {
+        await refreshCustomerRateLimit(client, member.bifrostCustomerId);
         const refreshed = await refreshProviderGrants(
           client,
           member.bifrostVkId,
@@ -286,7 +290,12 @@ async function ensureCustomer(
   name: string,
 ): Promise<{ customer: BifrostCustomer; createdCustomer: boolean }> {
   const existing = await findExactCustomer(client, name);
-  if (existing) return { customer: existing, createdCustomer: false };
+  if (existing) {
+    return {
+      customer: await stripTokenLimitBestEffort(client, existing),
+      createdCustomer: false,
+    };
+  }
 
   // None — create. If a concurrent caller wins the create race (Bifrost
   // has no built-in unique-name check on the handler, but the DB has
@@ -300,12 +309,7 @@ async function ensureCustomer(
         max_limit: DEFAULT_CUSTOMER_BUDGET_USD,
         reset_duration: DEFAULT_BUDGET_RESET_DURATION,
       },
-      rate_limit: {
-        request_max_limit: DEFAULT_REQUEST_MAX_LIMIT,
-        request_reset_duration: DEFAULT_RATE_LIMIT_RESET_DURATION,
-        token_max_limit: DEFAULT_TOKEN_MAX_LIMIT,
-        token_reset_duration: DEFAULT_RATE_LIMIT_RESET_DURATION,
-      },
+      rate_limit: DEFAULT_CUSTOMER_RATE_LIMIT,
     });
     return { customer: created.customer, createdCustomer: true };
   } catch (err) {
@@ -615,6 +619,62 @@ async function refreshProviderGrants(
     );
   }
   return granted;
+}
+
+// ─── Customer rate limit ──────────────────────────────────────────────
+//
+// The strip itself lives in `customer-rate-limit.ts` (shared with the
+// one-shot script). These two wrap it for the LLM path, where a failed
+// repair must never fail the call: the create/miss path already holds
+// the Customer, the cached path reads it back once per refresh window
+// alongside the grant re-check. `refreshProviderGrants` stamps
+// `bifrostSyncedAt` for both.
+
+/**
+ * `stripCustomerTokenLimit`, never throwing: on failure the Customer
+ * is served as is and the next reconcile retries.
+ */
+async function stripTokenLimitBestEffort(
+  client: BifrostClient,
+  customer: BifrostCustomer,
+): Promise<BifrostCustomer> {
+  try {
+    return (await stripCustomerTokenLimit(client, customer)).customer;
+  } catch (err) {
+    logger.warn(
+      "Bifrost Customer token-limit strip failed; leaving the Customer as is",
+      BIFROST_LOG_TAG,
+      {
+        customerId: customer.id,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+    return customer;
+  }
+}
+
+/**
+ * Cached-path companion: read the cached Customer back from the
+ * gateway and strip its token limit if it still has one. One GET per
+ * refresh window, one PUT ever. Best-effort like the grant refresh.
+ */
+async function refreshCustomerRateLimit(
+  client: BifrostClient,
+  customerId: string,
+): Promise<void> {
+  try {
+    const { customer } = await client.getCustomer(customerId);
+    await stripCustomerTokenLimit(client, customer);
+  } catch (err) {
+    logger.warn(
+      "Bifrost Customer rate-limit refresh failed; serving cached VK",
+      BIFROST_LOG_TAG,
+      {
+        customerId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+  }
 }
 
 function isProviderGrantStale(

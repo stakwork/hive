@@ -97,6 +97,17 @@ function makeClientStub(
     createVirtualKey: vi.fn(),
     getVirtualKey: vi.fn(),
     updateVirtualKey: vi.fn(),
+    // Default: a Customer that already carries only the request limit,
+    // so tests that don't care about the token-cap strip see no PUT.
+    getCustomer: vi.fn().mockResolvedValue({
+      customer: {
+        id: "cust-1",
+        name: USER_ID,
+        created_at: "2026-01-01",
+        rate_limit: { request_max_limit: 1000, request_reset_duration: "1m" },
+      },
+    }),
+    updateCustomer: vi.fn(),
     // Default: a gateway with every default provider configured, so
     // tests that don't care about grants see the full set.
     listProviders: vi
@@ -208,6 +219,8 @@ describe("reconcileBifrostVK", () => {
       expect.objectContaining({
         name: USER_ID,
         budget: expect.objectContaining({ max_limit: 1000 }),
+        // Request ceiling only — no token-per-minute cap.
+        rate_limit: { request_max_limit: 1000, request_reset_duration: "1m" },
       }),
     );
     expect(client.createVirtualKey).toHaveBeenCalledWith(
@@ -1071,6 +1084,8 @@ describe("provider grants", () => {
       expect(client.listProviders).not.toHaveBeenCalled();
       expect(client.getVirtualKey).not.toHaveBeenCalled();
       expect(client.updateVirtualKey).not.toHaveBeenCalled();
+      expect(client.getCustomer).not.toHaveBeenCalled();
+      expect(client.updateCustomer).not.toHaveBeenCalled();
       expect(dbMock.workspaceMember.update).not.toHaveBeenCalled();
     });
 
@@ -1360,4 +1375,276 @@ describe("provider grants", () => {
     });
   });
 
+});
+
+describe("customer token limit", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const REQUEST_ONLY = { request_max_limit: 1000, request_reset_duration: "1m" };
+  const LEGACY = {
+    ...REQUEST_ONLY,
+    token_max_limit: 5_000_000,
+    token_reset_duration: "1m",
+  };
+
+  /** A Customer row; `rate_limit === undefined` omits the field entirely. */
+  function customer(rate_limit?: Record<string, unknown> | null, extra = {}) {
+    return {
+      id: "cust-1",
+      name: USER_ID,
+      created_at: "2026-01-01",
+      ...(rate_limit === undefined ? {} : { rate_limit }),
+      ...extra,
+    };
+  }
+  function customerList(c: unknown) {
+    return { customers: [c], count: 1, total_count: 1, limit: 50, offset: 0 };
+  }
+  const existingVks = {
+    virtual_keys: [
+      {
+        id: "vk-1",
+        name: USER_ID,
+        value: "sk-bf-EXISTING",
+        customer_id: "cust-1",
+        created_at: "2026-01-01",
+      },
+    ],
+    count: 1,
+    total_count: 1,
+    limit: 50,
+    offset: 0,
+  };
+  /** A hydrated VK that already carries every provider: no grant PUT. */
+  const fullVk = {
+    virtual_key: {
+      ...existingVks.virtual_keys[0],
+      provider_configs: ALL_PROVIDERS.map((p, i) => hydratedConfig(i + 1, p)),
+    },
+  };
+  function uncachedMember() {
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
+      id: "mem-1",
+      bifrostVkValue: null,
+      bifrostVkId: null,
+      bifrostCustomerId: null,
+    } as never);
+  }
+  function cachedMember(bifrostSyncedAt: Date | null) {
+    vi.mocked(dbMock.workspaceMember.findFirst).mockResolvedValueOnce({
+      id: "mem-1",
+      bifrostVkValue: JSON.stringify({
+        data: "sk-bf-CACHED",
+        iv: "iv",
+        tag: "tag",
+        version: "1",
+        encryptedAt: "x",
+      }),
+      bifrostVkId: "vk-1",
+      bifrostCustomerId: "cust-1",
+      bifrostSyncedAt,
+      bifrostVkProviders: ALL_PROVIDERS,
+    } as never);
+  }
+  /** Client for the miss path: this Customer exists, so does its VK. */
+  function existingClient(c: unknown, overrides: Partial<BifrostClient> = {}) {
+    return makeClientStub({
+      listCustomers: vi.fn().mockResolvedValue(customerList(c)),
+      listVirtualKeys: vi.fn().mockResolvedValue(existingVks),
+      updateCustomer: vi.fn().mockResolvedValue({
+        message: "ok",
+        customer: customer(REQUEST_ONLY),
+      }),
+      ...overrides,
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+  });
+
+  describe("on an existing Customer (miss path)", () => {
+    it("strips a legacy token limit, keeping the request limit verbatim", async () => {
+      uncachedMember();
+      const client = existingClient(
+        customer({ ...LEGACY, request_max_limit: 250 }),
+      );
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(result.customerId).toBe("cust-1");
+      expect(result.created).toBe(false);
+      expect(client.createCustomer).not.toHaveBeenCalled();
+      expect(client.updateCustomer).toHaveBeenCalledTimes(1);
+      expect(client.updateCustomer).toHaveBeenCalledWith("cust-1", {
+        rate_limit: { request_max_limit: 250, request_reset_duration: "1m" },
+      });
+      // The list row was hydrated: no extra read.
+      expect(client.getCustomer).not.toHaveBeenCalled();
+    });
+
+    it("leaves a Customer that has no token limit alone", async () => {
+      uncachedMember();
+      const client = existingClient(customer(REQUEST_ONLY));
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(client.updateCustomer).not.toHaveBeenCalled();
+      expect(client.getCustomer).not.toHaveBeenCalled();
+    });
+
+    it("removes the rate limit outright when the token cap was its only limit", async () => {
+      uncachedMember();
+      const client = existingClient(
+        customer({ token_max_limit: 5_000_000, token_reset_duration: "1m" }),
+      );
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(client.updateCustomer).toHaveBeenCalledWith("cust-1", {
+        rate_limit: {},
+      });
+    });
+
+    it("reads the Customer back when the list didn't hydrate its rate limit", async () => {
+      uncachedMember();
+      const client = existingClient(
+        customer(undefined, { rate_limit_id: "rl-1" }),
+        {
+          getCustomer: vi
+            .fn()
+            .mockResolvedValue({ customer: customer(LEGACY) }),
+        },
+      );
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(client.getCustomer).toHaveBeenCalledWith("cust-1");
+      expect(client.updateCustomer).toHaveBeenCalledWith("cust-1", {
+        rate_limit: REQUEST_ONLY,
+      });
+    });
+
+    it("still reconciles when the strip fails", async () => {
+      uncachedMember();
+      const client = existingClient(customer(LEGACY), {
+        updateCustomer: vi
+          .fn()
+          .mockRejectedValue(
+            new BifrostHttpError(500, undefined, "Failed to update customer"),
+          ),
+      });
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(result.vkValue).toBe("sk-bf-EXISTING");
+      expect(result.customerId).toBe("cust-1");
+      expect(client.createCustomer).not.toHaveBeenCalled();
+      expect(dbMock.workspaceMember.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ bifrostCustomerId: "cust-1" }),
+        }),
+      );
+    });
+  });
+
+  describe("on the cached path", () => {
+    it("does not read the Customer while the cache is fresh", async () => {
+      cachedMember(new Date());
+      const client = makeClientStub();
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(client.getCustomer).not.toHaveBeenCalled();
+      expect(client.updateCustomer).not.toHaveBeenCalled();
+    });
+
+    it("strips the token limit once the cache is older than the refresh window", async () => {
+      cachedMember(new Date(Date.now() - DAY_MS - 60_000));
+      const client = makeClientStub({
+        getCustomer: vi.fn().mockResolvedValue({ customer: customer(LEGACY) }),
+        updateCustomer: vi.fn().mockResolvedValue({
+          message: "ok",
+          customer: customer(REQUEST_ONLY),
+        }),
+        getVirtualKey: vi.fn().mockResolvedValue(fullVk),
+      });
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      // Still the cached VK — the strip is a side effect, not a re-provision.
+      expect(result.vkValue).toBe("sk-bf-CACHED");
+      expect(client.listCustomers).not.toHaveBeenCalled();
+      expect(client.getCustomer).toHaveBeenCalledWith("cust-1");
+      expect(client.updateCustomer).toHaveBeenCalledTimes(1);
+      expect(client.updateCustomer).toHaveBeenCalledWith("cust-1", {
+        rate_limit: REQUEST_ONLY,
+      });
+      // The grant refresh still ran and stamped the row for both.
+      expect(client.getVirtualKey).toHaveBeenCalledWith("vk-1");
+      expect(dbMock.workspaceMember.update).toHaveBeenCalledWith({
+        where: { id: "mem-1" },
+        data: {
+          bifrostSyncedAt: expect.any(Date),
+          bifrostVkProviders: ALL_PROVIDERS,
+        },
+      });
+    });
+
+    it("reads the Customer back but leaves a clean one alone", async () => {
+      cachedMember(null);
+      const client = makeClientStub({
+        getVirtualKey: vi.fn().mockResolvedValue(fullVk),
+      });
+
+      await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(client.getCustomer).toHaveBeenCalledWith("cust-1");
+      expect(client.updateCustomer).not.toHaveBeenCalled();
+    });
+
+    it("serves the cache and still refreshes the grants when the Customer read fails", async () => {
+      cachedMember(null);
+      const client = makeClientStub({
+        getCustomer: vi
+          .fn()
+          .mockRejectedValue(
+            new BifrostHttpError(404, undefined, "Customer not found"),
+          ),
+        getVirtualKey: vi.fn().mockResolvedValue(fullVk),
+      });
+
+      const result = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
+        clientFactory: () => client,
+      });
+
+      expect(result.vkValue).toBe("sk-bf-CACHED");
+      expect(client.updateCustomer).not.toHaveBeenCalled();
+      expect(client.getVirtualKey).toHaveBeenCalledWith("vk-1");
+      expect(dbMock.workspaceMember.update).toHaveBeenCalledWith({
+        where: { id: "mem-1" },
+        data: {
+          bifrostSyncedAt: expect.any(Date),
+          bifrostVkProviders: ALL_PROVIDERS,
+        },
+      });
+    });
+  });
 });
