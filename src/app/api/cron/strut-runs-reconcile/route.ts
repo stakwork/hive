@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { reconcileStrutRuns } from "@/services/strut-runs";
+import { sweepOpenHealthClimbs } from "@/services/strut-runs/openhealth-climb";
 import { logger } from "@/lib/logger";
 
 /**
@@ -13,6 +14,9 @@ import { logger } from "@/lib/logger";
  * marked LOST when strut has no record of it, or reports it `stale` twice
  * ten seconds apart (strut restarted and did not resume it). Never
  * re-dispatches.
+ *
+ * Then the OpenHealth climbs: a climb left RUNNING with a settled step is
+ * advanced again (`sweepOpenHealthClimbs`), which may launch its next step.
  *
  * Enabled by default; `STRUT_RUNS_RECONCILE_CRON_ENABLED=false` disables
  * it (a safety net — opt-out, not opt-in).
@@ -35,7 +39,13 @@ export async function GET(request: NextRequest) {
     }
 
     const stats = await reconcileStrutRuns();
-    return NextResponse.json({ success: true, stats, timestamp: new Date().toISOString() });
+    const climbs = await sweepOpenHealthClimbs().catch((error: unknown) => {
+      logger.error("[StrutRunsReconcileCron] climb sweep failed", "strut-runs-reconcile", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    });
+    return NextResponse.json({ success: true, stats, climbs, timestamp: new Date().toISOString() });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error("[StrutRunsReconcileCron] Unhandled error", "strut-runs-reconcile", { error: errorMessage });

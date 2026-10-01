@@ -17,6 +17,9 @@
  * errors and writes the Concepts that would have prevented them. It is a
  * `StrutRun` of its own kind, tied to the benchmark run by the strut run id
  * in its input, and tracked the same way.
+ *
+ * Both kinds settle through `openhealth-climb.ts`, which advances a climb
+ * (run → improve → run …) when the row is a step of one.
  */
 
 import { StrutRunStatus } from "@prisma/client";
@@ -39,7 +42,6 @@ import {
   probeStrutRun,
   STRUT_RUN_LOG_TAG,
   type DispatchStrutRunResult,
-  type StrutRunHandler,
   type StrutRunRow,
 } from "@/services/strut-runs";
 import type { OpenHealthImprovement, OpenHealthRun, OpenHealthRunDetail } from "@/types/openhealth";
@@ -51,17 +53,7 @@ const IMPROVE_LIST_LIMIT = 10;
 /** A PENDING row younger than this is not probed — a run takes minutes. */
 const PROBE_MIN_AGE_MS = 60_000;
 
-/** The `StrutRunHandler` for `openhealth_benchmark` and `openhealth_improve`: the row is the delivery. */
-export const handleOpenHealthRunSettled: StrutRunHandler = async (row) => {
-  logger.info("OpenHealth run settled", STRUT_RUN_LOG_TAG, {
-    runId: row.id,
-    kind: row.kind,
-    workspaceId: row.workspaceId,
-    status: row.status,
-  });
-};
-
-const ROW_SELECT = {
+export const OPENHEALTH_ROW_SELECT = {
   id: true,
   workspaceId: true,
   swarmId: true,
@@ -77,12 +69,15 @@ const ROW_SELECT = {
   conversationId: true,
   proposalId: true,
   jobId: true,
+  climbId: true,
   createdAt: true,
   settledAt: true,
 } as const;
 
+const ROW_SELECT = OPENHEALTH_ROW_SELECT;
+
 /** Settle a PENDING row from strut's summary when the run is over there. Returns the row to show. */
-async function settleFromStrut(row: StrutRunRow, now: Date): Promise<StrutRunRow> {
+export async function settleFromStrut(row: StrutRunRow, now: Date): Promise<StrutRunRow> {
   if (row.status !== StrutRunStatus.PENDING || !row.strutRunId) return row;
   if (now.getTime() - row.createdAt.getTime() < PROBE_MIN_AGE_MS) return row;
   try {
@@ -161,6 +156,8 @@ export interface LaunchOpenHealthRunArgs {
   publicBaseUrl: string;
   /** A `gtId` from the task catalogue — the caller checks it is one. */
   gtId: number;
+  /** The climb this run is a step of, when it is one. */
+  climbId?: string;
 }
 
 /** Launch one run for one task. Throws `StrutDispatchError` when nothing is running on strut's side. */
@@ -173,6 +170,7 @@ export async function launchOpenHealthRun(args: LaunchOpenHealthRunArgs): Promis
     purpose: "benchmark",
     input: { gtId: args.gtId, workdir: openHealthWorkdir(args.gtId) },
     publicBaseUrl: args.publicBaseUrl,
+    ...(args.climbId ? { climbId: args.climbId } : {}),
   });
 }
 
@@ -218,6 +216,8 @@ export interface LaunchOpenHealthImproveArgs {
   publicBaseUrl: string;
   /** The benchmark run's id on strut — the caller checks the run was scored. */
   strutRunId: string;
+  /** The climb this run is a step of, when it is one. */
+  climbId?: string;
 }
 
 /**
@@ -234,5 +234,6 @@ export async function launchOpenHealthImprove(args: LaunchOpenHealthImproveArgs)
     // `runIds` is the workflow's comma-separated list; this is a list of one.
     input: { runIds: args.strutRunId, apply: true },
     publicBaseUrl: args.publicBaseUrl,
+    ...(args.climbId ? { climbId: args.climbId } : {}),
   });
 }

@@ -15,6 +15,7 @@ import type {
   OpenHealthImproveResponse,
   OpenHealthOutcome,
 } from "@/types/openhealth";
+import { ClimbStartPopover } from "../ClimbStartPopover";
 import { formatDuration, formatWhen } from "../format";
 
 /** Poll cadence while an improve run is in flight. */
@@ -199,8 +200,21 @@ function Result({ improvement }: { improvement: OpenHealthImprovement }) {
 /**
  * Improve a scored run: one click launches `openhealth-improve` over it, and
  * the Concepts it wrote are shown here. `endpoint` is the run's improve route.
+ * With `climbFrom`, "Keep improving" starts a climb seeded with this run.
  */
-export function ImprovePanel({ endpoint }: { endpoint: string }) {
+export function ImprovePanel({
+  endpoint,
+  climbFrom,
+}: {
+  endpoint: string;
+  climbFrom?: {
+    runId: string;
+    gtId: number;
+    f1: number;
+    costUsd: number | null;
+    onStarted?: (started: { climbId: string; runId: string }) => void;
+  };
+}) {
   const { canWrite } = useWorkspaceAccess();
   const [improvements, setImprovements] = useState<OpenHealthImprovement[]>([]);
   const [shownId, setShownId] = useState<string | null>(null);
@@ -272,6 +286,16 @@ export function ImprovePanel({ endpoint }: { endpoint: string }) {
               ))}
             </SelectContent>
           </Select>
+        )}
+        {climbFrom && (
+          <ClimbStartPopover
+            gtId={climbFrom.gtId}
+            seed={{ runId: climbFrom.runId, f1: climbFrom.f1 }}
+            meanRunCost={climbFrom.costUsd}
+            label="Keep improving"
+            disabled={!canWrite || busy}
+            onStarted={climbFrom.onStarted}
+          />
         )}
         <Button
           size="sm"

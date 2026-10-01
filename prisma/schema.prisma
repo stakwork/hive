@@ -2658,6 +2658,10 @@ model StrutRun {
   /// can find the job's rows and check they are this user's. Null for a
   /// launch that is not a job turn.
   jobId          String?        @map("job_id")
+  /// The OpenHealth climb this run is a step of (`services/strut-runs/
+  /// openhealth-climb.ts`): the settle handler advances that climb. Null
+  /// for a run launched by hand.
+  climbId        String?        @map("climb_id")
   createdAt      DateTime       @default(now()) @map("created_at")
   settledAt      DateTime?      @map("settled_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
@@ -2667,6 +2671,7 @@ model StrutRun {
   @@index([proposalId])
   @@index([conversationId])
   @@index([jobId])
+  @@index([climbId])
   @@map("strut_runs")
 }
 
@@ -2679,6 +2684,61 @@ enum StrutRunStatus {
   ERROR
   CANCELLED
   LOST
+}
+
+/// One OpenHealth Benchmarks climb: benchmark run → improve run → benchmark
+/// run … on one task, until a run scores the target, the attempts are
+/// spent, an improve run writes nothing, a step fails, or a member stops
+/// it. The steps are the `StrutRun` rows whose `climbId` is this row (plus
+/// `seedRunId`, a scored run adopted as attempt 1). Driven by the runs'
+/// settle handler (`services/strut-runs/openhealth-climb.ts`).
+model OpenHealthClimb {
+  id            String                @id @default(cuid())
+  workspaceId   String                @map("workspace_id")
+  /// The swarm every step runs on — an improve run reads the benchmark run
+  /// from strut's own run store, so a climb cannot move swarms.
+  swarmId       String                @map("swarm_id")
+  userId        String                @map("user_id")
+  gtId          Int                   @map("gt_id")
+  /// Weighted F1 that ends the climb as REACHED.
+  targetF1      Float                 @map("target_f1")
+  /// Benchmark runs the climb may make, the seed included.
+  maxAttempts   Int                   @map("max_attempts")
+  status        OpenHealthClimbStatus @default(RUNNING)
+  /// Why it ended, for the page.
+  stopReason    String?               @map("stop_reason") @db.Text
+  /// A scored benchmark run adopted as attempt 1 (not a step row of its own).
+  seedRunId     String?               @map("seed_run_id")
+  /// The `StrutRun` the climb waits on; null between steps and once it ended.
+  currentRunId  String?               @map("current_run_id")
+  /// Benchmark runs launched or adopted so far.
+  attempts      Int                   @default(0)
+  startF1       Float?                @map("start_f1")
+  bestF1        Float?                @map("best_f1")
+  /// Swarm-reachable base URL of this hive, captured at launch: the settle
+  /// handler that launches the next step has no request to read it from.
+  publicBaseUrl String                @map("public_base_url")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  settledAt     DateTime?             @map("settled_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  @@index([workspaceId, gtId, createdAt])
+  @@index([status, updatedAt])
+  @@map("openhealth_climbs")
+}
+
+enum OpenHealthClimbStatus {
+  RUNNING
+  /// A run scored the target.
+  REACHED
+  /// The attempts were spent below the target.
+  EXHAUSTED
+  /// An improve run wrote nothing, so another run would only measure noise.
+  STALLED
+  /// A member stopped it.
+  STOPPED
+  /// A step failed, was lost, or could not be launched.
+  FAILED
 }
 
 

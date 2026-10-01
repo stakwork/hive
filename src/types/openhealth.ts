@@ -133,6 +133,65 @@ export interface OpenHealthImproveResponse {
   improvements: OpenHealthImprovement[];
 }
 
+// ─── Climbs ──────────────────────────────────────────────────────────────
+
+/** Lower-case `OpenHealthClimbStatus` from the schema. */
+export type OpenHealthClimbStatus = "running" | "reached" | "exhausted" | "stalled" | "stopped" | "failed";
+
+/** One step of a climb: a benchmark run (an attempt), or the improve run after one. */
+export interface OpenHealthClimbStep {
+  /** The `StrutRun` id on hive — a benchmark step opens in the run viewer. */
+  runId: string;
+  kind: "benchmark" | "improve";
+  /** The attempt this step is (benchmark) or follows (improve), from 1. */
+  attempt: number;
+  outcome: OpenHealthOutcome;
+  /** Benchmark: the run's weighted F1 once scored. */
+  f1: number | null;
+  /** Benchmark: did this run raise the climb's best so far? */
+  newBest: boolean;
+  /** Improve: new Concepts the run wrote to the graph. */
+  created: number | null;
+  /** Improve: existing Concepts it amended. */
+  amended: number | null;
+  costUsd: number | null;
+  error: string | null;
+  createdAt: string;
+  settledAt: string | null;
+}
+
+/** One climb, as the page shows it: its rules, where it stands, and its steps oldest first. */
+export interface OpenHealthClimb {
+  id: string;
+  gtId: number;
+  status: OpenHealthClimbStatus;
+  /** Why it ended; null while it runs. */
+  stopReason: string | null;
+  targetF1: number;
+  maxAttempts: number;
+  /** Benchmark runs launched or adopted so far. */
+  attempts: number;
+  /** The first attempt's F1 — the seed's, or attempt 1's once scored. */
+  startF1: number | null;
+  bestF1: number | null;
+  /** The newest scored attempt's F1. */
+  latestF1: number | null;
+  /** The attempt that scored best — what "Climb again" starts from. */
+  bestRunId: string | null;
+  /** The step in flight, when one is. */
+  currentRunId: string | null;
+  /** USD over the benchmark runs; improve runs report no cost. */
+  costUsd: number | null;
+  steps: OpenHealthClimbStep[];
+  createdAt: string;
+  settledAt: string | null;
+}
+
+export interface OpenHealthClimbsResponse {
+  /** Newest first. */
+  climbs: OpenHealthClimb[];
+}
+
 export type OpenHealthStageStatus = "pending" | "running" | "done" | "failed";
 
 export interface OpenHealthStage {

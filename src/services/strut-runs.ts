@@ -89,6 +89,7 @@ export type StrutRunRow = Pick<
   | "conversationId"
   | "proposalId"
   | "jobId"
+  | "climbId"
   | "createdAt"
   | "settledAt"
 >;
@@ -109,6 +110,7 @@ const ROW_SELECT = {
   conversationId: true,
   proposalId: true,
   jobId: true,
+  climbId: true,
   createdAt: true,
   settledAt: true,
 } satisfies Prisma.StrutRunSelect;
@@ -125,8 +127,8 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   code_change_land: async () => (await import("./strut-runs/code-change-land")).handleCodeChangeLandSettled,
   system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
-  openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
-  openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
+  openhealth_benchmark: async () => (await import("./strut-runs/openhealth-climb")).handleOpenHealthRunSettled,
+  openhealth_improve: async () => (await import("./strut-runs/openhealth-climb")).handleOpenHealthRunSettled,
   job_turn: async () => (await import("./strut-runs/job-turn")).handleJobTurnSettled,
 };
 
@@ -208,6 +210,11 @@ export interface DispatchStrutRunArgs {
    * clone. Never logged, never in `input`, never on the row.
    */
   actorSecrets?: Record<string, string | null | undefined>;
+  /**
+   * The OpenHealth climb this run is a step of — recorded on the row so the
+   * settle handler can advance that climb (`strut-runs/openhealth-climb.ts`).
+   */
+  climbId?: string;
 }
 
 /**
@@ -245,7 +252,7 @@ async function failRow(id: string, error: string): Promise<void> {
  * if created, is marked ERROR with the reason).
  */
 export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<DispatchStrutRunResult> {
-  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job } = args;
+  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, climbId } = args;
   if (!HANDLERS[kind]) throw new Error(`No strut-run handler for kind "${kind}"`);
 
   const resolved = await resolveStrutTarget({ purpose, userId, workspaceId });
@@ -267,6 +274,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
       ...(conversationId ? { conversationId } : {}),
       ...(proposalId ? { proposalId } : {}),
       ...(job ? { jobId: job } : {}),
+      ...(climbId ? { climbId } : {}),
     },
     select: { id: true },
   });

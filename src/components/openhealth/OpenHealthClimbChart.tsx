@@ -14,16 +14,21 @@ const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, {
 /**
  * One task's F1 over time: one dot per scored run, the line through them the
  * best so far. A dot below the line is drawn hollow. Clicking a dot opens
- * that run.
+ * that run. `target` draws a dashed line at a climb's target; `highlight`
+ * shades the span of runs that belong to it.
  */
 export function OpenHealthClimbChart({
   points,
   onSelect,
   height = 180,
+  target = null,
+  highlight,
 }: {
   points: OpenHealthClimbPoint[];
   onSelect?: (runId: string) => void;
   height?: number;
+  target?: number | null;
+  highlight?: ReadonlySet<string>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(FALLBACK_WIDTH);
@@ -79,6 +84,9 @@ export function OpenHealthClimbChart({
     return Math.min(lastIdx, Math.max(0, Math.round(x.invert(px))));
   };
 
+  const marked = highlight ? points.map((p, i) => (highlight.has(p.runId) ? i : -1)).filter((i) => i >= 0) : [];
+  const band = marked.length > 0 ? { from: Math.min(...marked), to: Math.max(...marked) } : null;
+
   const hovered = hover !== null ? points[hover] : null;
   const tipLeft = hovered ? Math.min(Math.max(MARGIN.left + x(hover!) - 60, 0), Math.max(width - 140, 0)) : 0;
 
@@ -100,6 +108,26 @@ export function OpenHealthClimbChart({
               </text>
             </g>
           ))}
+
+          {band && (
+            <rect
+              x={x(band.from) - 8}
+              y={0}
+              width={Math.max(x(band.to) - x(band.from) + 16, 16)}
+              height={innerH}
+              rx={4}
+              className="fill-indigo-500/10"
+              data-testid="openhealth-climb-band"
+            />
+          )}
+          {typeof target === "number" && (
+            <g transform={`translate(0,${y(target)})`} data-testid="openhealth-climb-target">
+              <line x1={0} x2={innerW} className="stroke-emerald-500" strokeWidth={1} strokeDasharray="4 3" />
+              <text x={innerW + 8} dy="0.35em" fontSize={10} className="fill-emerald-600 tabular-nums">
+                target {target.toFixed(2)}
+              </text>
+            </g>
+          )}
 
           {hover !== null && (
             <line

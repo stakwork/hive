@@ -3,9 +3,11 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useOpenHealthClimbs } from "@/hooks/useOpenHealthClimbs";
 import { useOpenHealthRuns } from "@/hooks/useOpenHealthRuns";
 import { OPENHEALTH_DIFFICULTIES } from "@/lib/openhealth-benchmarks/constants";
 import {
@@ -16,6 +18,7 @@ import {
   type OpenHealthSummary,
 } from "@/lib/openhealth-benchmarks/runs";
 import { OpenHealthClimbChart } from "./OpenHealthClimbChart";
+import { OpenHealthClimbStrip } from "./OpenHealthClimbStrip";
 import { OpenHealthRunViewer } from "./OpenHealthRunViewer";
 import {
   DifficultyBadge,
@@ -46,6 +49,7 @@ function SummaryCard({ title, summary, testId }: { title: string; summary: OpenH
 
 export function OpenHealthRunsHistory() {
   const { runs, loading, error, reload } = useOpenHealthRuns();
+  const { climbs, reload: reloadClimbs } = useOpenHealthClimbs();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -59,6 +63,21 @@ export function OpenHealthRunsHistory() {
   const summary = useMemo(() => summarizeOpenHealthRuns(shown), [shown]);
   const byDifficulty = useMemo(() => summarizeByDifficulty(runs), [runs]);
   const climb = useMemo(() => openHealthClimbSeries(shown), [shown]);
+  // The task's newest climb (any state) in the task view; the climbs in flight in the all-tasks view.
+  const taskClimb = useMemo(
+    () => (task === ALL_TASKS ? null : (climbs.find((c) => String(c.gtId) === task) ?? null)),
+    [climbs, task],
+  );
+  const runningClimbs = useMemo(() => climbs.filter((c) => c.status === "running"), [climbs]);
+  const climbRunIds = useMemo(
+    () => new Set(taskClimb?.steps.filter((s) => s.kind === "benchmark").map((s) => s.runId) ?? []),
+    [taskClimb],
+  );
+  const stepByRun = useMemo(() => {
+    const steps = new Map<string, number>();
+    for (const c of climbs) for (const s of c.steps) if (s.kind === "benchmark") steps.set(s.runId, s.attempt);
+    return steps;
+  }, [climbs]);
 
   // The task filter and the open run are in the URL, so a link to the page opens the same view.
   const syncUrl = useCallback(
@@ -97,6 +116,24 @@ export function OpenHealthRunsHistory() {
       syncUrl(task, id);
     },
     [task, syncUrl],
+  );
+
+  const onSettled = useCallback(() => {
+    void reload();
+    void reloadClimbs();
+  }, [reload, reloadClimbs]);
+
+  // A climb started from this page: show its task, open its first step.
+  const onClimbStarted = useCallback(
+    (gtId: number | null, started: { runId: string }) => {
+      const next = gtId === null ? task : String(gtId);
+      setTask(next);
+      setExpandedId(started.runId);
+      syncUrl(next, started.runId);
+      void reload();
+      void reloadClimbs();
+    },
+    [task, syncUrl, reload, reloadClimbs],
   );
 
   if (loading) {
@@ -152,6 +189,25 @@ export function OpenHealthRunsHistory() {
         )}
       </div>
 
+      {task === ALL_TASKS
+        ? runningClimbs.map((c) => (
+            <OpenHealthClimbStrip
+              key={c.id}
+              climb={c}
+              onOpenRun={openRun}
+              onChanged={reloadClimbs}
+              onClimbStarted={(started) => onClimbStarted(c.gtId, started)}
+            />
+          ))
+        : taskClimb && (
+            <OpenHealthClimbStrip
+              climb={taskClimb}
+              onOpenRun={openRun}
+              onChanged={reloadClimbs}
+              onClimbStarted={(started) => onClimbStarted(taskClimb.gtId, started)}
+            />
+          )}
+
       {task === ALL_TASKS ? (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <SummaryCard title="All runs" summary={summary} testId="openhealth-summary-all" />
@@ -165,7 +221,12 @@ export function OpenHealthRunsHistory() {
           <Card className="lg:col-span-3" data-testid="openhealth-climb">
             <CardContent className="space-y-2 py-4">
               <p className="text-xs font-medium text-muted-foreground">F1 over time · line is the best so far</p>
-              <OpenHealthClimbChart points={climb} onSelect={openRun} />
+              <OpenHealthClimbChart
+                points={climb}
+                onSelect={openRun}
+                target={taskClimb?.targetF1 ?? null}
+                highlight={climbRunIds}
+              />
             </CardContent>
           </Card>
         </div>
@@ -204,7 +265,14 @@ export function OpenHealthRunsHistory() {
                     />
                   </TableCell>
                   <TableCell className="text-muted-foreground">{formatWhen(run.createdAt)}</TableCell>
-                  <TableCell className="font-mono">{run.gtId ?? "—"}</TableCell>
+                  <TableCell className="font-mono">
+                    {run.gtId ?? "—"}
+                    {stepByRun.has(run.id) && (
+                      <Badge variant="outline" className="ml-2 font-sans" data-testid="openhealth-run-climb-badge">
+                        climb · run {stepByRun.get(run.id)}
+                      </Badge>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <DifficultyBadge difficulty={run.difficulty} />
                   </TableCell>
@@ -221,7 +289,11 @@ export function OpenHealthRunsHistory() {
                 {open && (
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={COLUMNS} className="whitespace-normal bg-muted/20 p-4">
-                      <OpenHealthRunViewer runId={run.id} onSettled={reload} />
+                      <OpenHealthRunViewer
+                        runId={run.id}
+                        onSettled={onSettled}
+                        onClimbStarted={(started) => onClimbStarted(run.gtId, started)}
+                      />
                     </TableCell>
                   </TableRow>
                 )}

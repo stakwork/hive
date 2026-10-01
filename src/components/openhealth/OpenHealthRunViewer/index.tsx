@@ -167,7 +167,16 @@ function Ingest({ run }: { run: OpenHealthRunDetail }) {
 }
 
 /** One benchmark run: its progress while it runs, its scores and files once it has. */
-export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSettled?: () => void }) {
+export function OpenHealthRunViewer({
+  runId,
+  onSettled,
+  onClimbStarted,
+}: {
+  runId: string;
+  onSettled?: () => void;
+  /** A climb was started from this run (its "Keep improving"). */
+  onClimbStarted?: (started: { climbId: string; runId: string }) => void;
+}) {
   const { workspace } = useWorkspace();
   const { canWrite } = useWorkspaceAccess();
   const slug = workspace?.slug;
@@ -300,7 +309,16 @@ export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSet
       )}
       {run.outcome === "cancelled" && <p className="text-sm text-muted-foreground">The run was cancelled.</p>}
       {run.outcome === "succeeded" && <Scored run={run} />}
-      {run.outcome === "succeeded" && run.strutRunId && <ImprovePanel endpoint={`${base}/improve`} />}
+      {run.outcome === "succeeded" && run.strutRunId && (
+        <ImprovePanel
+          endpoint={`${base}/improve`}
+          climbFrom={
+            run.gtId !== null && run.scores
+              ? { runId: run.id, gtId: run.gtId, f1: run.scores.f1, costUsd: run.costUsd, onStarted: onClimbStarted }
+              : undefined
+          }
+        />
+      )}
 
       {run.strutRunId && (
         <div className="flex flex-wrap gap-2">
