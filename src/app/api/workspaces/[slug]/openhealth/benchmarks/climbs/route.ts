@@ -1,14 +1,23 @@
 /**
- * GET  /api/workspaces/:slug/openhealth/benchmarks/runs
- *      — the workspace's benchmark runs, newest first (PENDING ones settled
- *      from strut when the run is over there and the callback never arrived).
- * POST /api/workspaces/:slug/openhealth/benchmarks/runs  { gtId, split? }
- *      — launch one `openhealth-run` for a task from the catalogue. One run
- *      or climb in flight per task; DEVELOPER and up.
+ * GET  /api/workspaces/:slug/openhealth/benchmarks/climbs
+ *      — the workspace's climbs, newest first. One in flight carries the
+ *      iterations its event log has seen so far.
+ * POST /api/workspaces/:slug/openhealth/benchmarks/climbs
+ *      { gtId, split?, targetF1?, maxRuns? }
+ *      — launch `openhealth-improve-loop` on a task from the catalogue:
+ *      run → improve → run … until a run scores `targetF1` or `maxRuns`
+ *      runs are done. One run or climb in flight per task; DEVELOPER and up.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeOpenHealth } from "@/lib/openhealth-benchmarks/access";
+import {
+  isClimbRuns,
+  isClimbTarget,
+  OPENHEALTH_CLIMB_DEFAULT_RUNS,
+  OPENHEALTH_CLIMB_DEFAULT_TARGET,
+  OPENHEALTH_CLIMB_MAX_RUNS,
+} from "@/lib/openhealth-benchmarks/climb";
 import { isOpenHealthSplit, OPENHEALTH_DEFAULT_SPLIT } from "@/lib/openhealth-benchmarks/constants";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getBaseUrl } from "@/lib/utils";
@@ -17,18 +26,18 @@ import { StrutDispatchError } from "@/services/strut-runs";
 import {
   hasPendingOpenHealthClimb,
   hasPendingOpenHealthRun,
-  launchOpenHealthRun,
-  listOpenHealthRuns,
+  launchOpenHealthClimb,
+  listOpenHealthClimbs,
 } from "@/services/strut-runs/openhealth";
 import { describeStrutTargetError, resolveStrutTarget } from "@/services/strut-target";
-import type { OpenHealthRunsResponse } from "@/types/openhealth";
+import type { OpenHealthClimbsResponse } from "@/types/openhealth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** A run costs a few dollars of LLM usage. */
-const RUN_RATE_LIMIT = 20;
-const RUN_WINDOW_SECS = 60 * 60;
+/** A climb is up to ten benchmark runs and the improve runs between them. */
+const CLIMB_RATE_LIMIT = 10;
+const CLIMB_WINDOW_SECS = 60 * 60;
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
@@ -36,10 +45,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const member = await authorizeOpenHealth(request, slug);
     if (member instanceof NextResponse) return member;
 
-    const body: OpenHealthRunsResponse = { runs: await listOpenHealthRuns(member.workspaceId) };
+    const body: OpenHealthClimbsResponse = { climbs: await listOpenHealthClimbs(member.workspaceId) };
     return NextResponse.json(body);
   } catch (error) {
-    console.error("[OpenHealth] runs GET error:", error);
+    console.error("[OpenHealth] climbs GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -50,7 +59,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const member = await authorizeOpenHealth(request, slug, { launch: true });
     if (member instanceof NextResponse) return member;
 
-    const payload = (await request.json().catch(() => ({}))) as { gtId?: unknown; split?: unknown };
+    const payload = (await request.json().catch(() => ({}))) as {
+      gtId?: unknown;
+      split?: unknown;
+      targetF1?: unknown;
+      maxRuns?: unknown;
+    };
     const gtId = payload.gtId;
     if (typeof gtId !== "number" || !Number.isInteger(gtId) || gtId <= 0) {
       return NextResponse.json({ error: "gtId must be a task id" }, { status: 400 });
@@ -59,17 +73,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!isOpenHealthSplit(split)) {
       return NextResponse.json({ error: 'split must be "public" or "heldout"' }, { status: 400 });
     }
+    const targetF1 = payload.targetF1 ?? OPENHEALTH_CLIMB_DEFAULT_TARGET;
+    if (!isClimbTarget(targetF1)) {
+      return NextResponse.json({ error: "targetF1 must be a score above 0 and at most 1" }, { status: 400 });
+    }
+    const maxRuns = payload.maxRuns ?? OPENHEALTH_CLIMB_DEFAULT_RUNS;
+    if (!isClimbRuns(maxRuns)) {
+      return NextResponse.json(
+        { error: `maxRuns must be a whole number from 1 to ${OPENHEALTH_CLIMB_MAX_RUNS}` },
+        { status: 400 },
+      );
+    }
 
-    const rate = await checkRateLimit(`openhealth:run:${member.workspaceId}`, RUN_RATE_LIMIT, RUN_WINDOW_SECS);
+    const rate = await checkRateLimit(`openhealth:climb:${member.workspaceId}`, CLIMB_RATE_LIMIT, CLIMB_WINDOW_SECS);
     if (!rate.allowed) {
       return NextResponse.json(
-        { error: "Too many benchmark runs. Try again later." },
+        { error: "Too many climbs. Try again later." },
         { status: 429, headers: rate.retryAfter ? { "Retry-After": String(rate.retryAfter) } : undefined },
       );
     }
 
-    // Strut does not check the id up front: an unknown one costs a run that
-    // ends in an error. Only a task the catalogue lists is launched.
+    // Only a task the catalogue lists is launched: strut does not check the
+    // id up front, and an unknown one would cost a run that ends in an error.
     const resolved = await resolveStrutTarget({
       purpose: "benchmark",
       userId: member.userId,
@@ -86,22 +111,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: `No task ${gtId} in the ${split} split` }, { status: 400 });
     }
 
+    // A climb and a run on the same task would improve the same Concepts at once.
+    if (await hasPendingOpenHealthClimb(member.workspaceId, gtId)) {
+      return NextResponse.json({ error: "A climb of this task is already in progress" }, { status: 409 });
+    }
     if (await hasPendingOpenHealthRun(member.workspaceId, gtId)) {
       return NextResponse.json({ error: "A run of this task is already in progress" }, { status: 409 });
     }
-    // A climb runs the task on its own; a run beside it would improve the same Concepts at once.
-    if (await hasPendingOpenHealthClimb(member.workspaceId, gtId)) {
-      return NextResponse.json({ error: "A climb of this task is in progress" }, { status: 409 });
-    }
 
-    const dispatched = await launchOpenHealthRun({
+    const dispatched = await launchOpenHealthClimb({
       workspaceId: member.workspaceId,
       userId: member.userId,
       publicBaseUrl: getBaseUrl(request.headers.get("host")),
       gtId,
+      targetF1,
+      maxRuns,
     });
     return NextResponse.json(
-      { success: true, runId: dispatched.runId, strutRunId: dispatched.strutRunId },
+      { success: true, climbId: dispatched.runId, strutRunId: dispatched.strutRunId },
       { status: 202 },
     );
   } catch (error) {
@@ -109,7 +136,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const status = error.code === "no_target" || error.code === "unreachable" ? 503 : 502;
       return NextResponse.json({ error: error.message, code: error.code }, { status });
     }
-    console.error("[OpenHealth] runs POST error:", error);
+    console.error("[OpenHealth] climbs POST error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

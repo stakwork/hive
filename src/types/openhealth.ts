@@ -151,3 +151,76 @@ export interface OpenHealthRunsResponse {
 export interface OpenHealthProgressResponse {
   stages: OpenHealthStage[];
 }
+
+// ─── Climbs ──────────────────────────────────────────────────────────────
+
+/** Where a climb stands: running, or how it ended. */
+export type OpenHealthClimbStatus = "running" | "reached" | "exhausted" | "stopped" | "failed";
+
+/**
+ * One step of a climb: a benchmark run (an attempt), or the improve run
+ * after one. The loop is one strut run and its steps are subflows of it, so
+ * no step has a run of its own; a step is addressed by its iteration.
+ */
+export interface OpenHealthClimbStep {
+  kind: "benchmark" | "improve";
+  /** The iteration this step belongs to, from 0. Attempt = iteration + 1. */
+  iteration: number;
+  outcome: OpenHealthOutcome;
+  /** Benchmark: weighted F1 once scored. */
+  f1: number | null;
+  /** Benchmark: did this run raise the climb's best so far? */
+  newBest: boolean;
+  /** Benchmark: answer-key diagnoses the run missed, and extras it added. */
+  missed: string[];
+  extra: string[];
+  /** Benchmark: USD, when the loop's event log reports it (the output does not). */
+  costUsd: number | null;
+  /** Benchmark in flight: its stages. */
+  stages: OpenHealthStage[] | null;
+  /** Improve: did it write to the graph? */
+  applied: boolean;
+  /** Improve: the Concepts it created, amended, and refused — by name. */
+  created: string[];
+  amended: string[];
+  rejected: string[];
+  summary: string | null;
+  startedAt: string | null;
+  error: string | null;
+}
+
+/** One climb, as the page shows it: its rules, where it stands, and its steps oldest first. */
+export interface OpenHealthClimb {
+  id: string;
+  strutRunId: string | null;
+  /** Null only for a row launched without a task, which Hive never does. */
+  gtId: number | null;
+  difficulty: OpenHealthDifficulty | null;
+  status: OpenHealthClimbStatus;
+  /** Why it ended, in words; null while it runs. */
+  stopReason: string | null;
+  targetF1: number;
+  /** Benchmark runs at most; improve runs happen between them. */
+  maxRuns: number;
+  /** Benchmark runs started so far, the one in flight included. */
+  attempts: number;
+  /** The first attempt's F1. */
+  startF1: number | null;
+  bestF1: number | null;
+  /** The newest scored attempt's F1. */
+  latestF1: number | null;
+  /** The iteration that scored best. */
+  bestIteration: number | null;
+  /** USD over the benchmark runs that reported a cost; null when none did. */
+  costUsd: number | null;
+  steps: OpenHealthClimbStep[];
+  durationMs: number | null;
+  error: string | null;
+  createdAt: string;
+  settledAt: string | null;
+}
+
+export interface OpenHealthClimbsResponse {
+  /** Newest first. */
+  climbs: OpenHealthClimb[];
+}

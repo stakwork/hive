@@ -17,6 +17,15 @@ export const OPENHEALTH_IMPROVE_RUN_KIND = "openhealth_improve";
  */
 export const OPENHEALTH_IMPROVE_WORKFLOW = "openhealth-improve";
 
+/**
+ * `StrutRun.kind` for a climb: `openhealth-improve-loop`, which runs the
+ * benchmark, improves on its errors, and runs it again until a run scores
+ * the target or the runs are spent. One strut run; its steps are subflows.
+ */
+export const OPENHEALTH_CLIMB_RUN_KIND = "openhealth_climb";
+
+export const OPENHEALTH_CLIMB_WORKFLOW = "openhealth-improve-loop";
+
 /** Strut workflow name format. */
 export const OPENHEALTH_STRUT_WORKFLOW_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
@@ -52,6 +61,11 @@ export function isOpenHealthDifficulty(value: unknown): value is OpenHealthDiffi
 /** Where a run's files live under its artifact root. */
 export function openHealthWorkdir(gtId: number): string {
   return `gt-${gtId}`;
+}
+
+/** Where one iteration's run files live under the loop run's artifact root. */
+export function openHealthIterationWorkdir(iteration: number): string {
+  return `iter-${iteration}`;
 }
 
 /**

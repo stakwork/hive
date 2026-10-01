@@ -1,7 +1,8 @@
 /**
  * Strut run events → the stages of an `openhealth-run`, for a progress
  * view. Pure. Reads event paths and types only, plus one number (the
- * chart's section count) — never a step's payload.
+ * chart's section count) — never a step's payload. The run may be the
+ * whole log or one subflow of it (`under`).
  */
 
 import type { OpenHealthStage, OpenHealthStageStatus } from "@/types/openhealth";
@@ -22,7 +23,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function projectOpenHealthStages(events: unknown): OpenHealthStage[] {
+/**
+ * The step a path names, when it sits directly under `under` (a path
+ * prefix) or, without one, directly under the run: `<workflow>/<step>`.
+ */
+function stepUnder(path: string, under: string | undefined): string | null {
+  if (under === undefined) {
+    const segments = path.split("/");
+    return segments.length === 2 ? segments[1] : null;
+  }
+  if (!path.startsWith(`${under}/`)) return null;
+  const rest = path.slice(under.length + 1);
+  return rest.includes("/") ? null : rest;
+}
+
+/**
+ * `under` names the run inside a larger workflow — an `openhealth-run`
+ * subflow at `openhealth-improve-loop/loop#2/run` — whose stages are wanted.
+ */
+export function projectOpenHealthStages(events: unknown, opts: { under?: string } = {}): OpenHealthStage[] {
   const started = new Set<string>();
   const ended = new Set<string>();
   const failed = new Set<string>();
@@ -30,10 +49,8 @@ export function projectOpenHealthStages(events: unknown): OpenHealthStage[] {
 
   for (const event of Array.isArray(events) ? events : []) {
     if (!isRecord(event) || typeof event.path !== "string") continue;
-    const segments = event.path.split("/");
-    // Top-level steps only: `<workflow>/<step>`.
-    if (segments.length !== 2) continue;
-    const step = segments[1];
+    const step = stepUnder(event.path, opts.under);
+    if (step === null) continue;
     if (event.type === "step.start") started.add(step);
     else if (event.type === "step.end" || event.type === "step.replayed") {
       ended.add(step);
