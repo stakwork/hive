@@ -179,7 +179,7 @@ Most routes guard with session checks and validate inputs via Zod.
   - `stakgraph/`: configure code graph/swarm/services.
   - `roadmap/`: features and planning.
   - `settings/`: workspace settings.
-- Generic pages: onboarding, auth, about, landing, workspace switcher.
+- Generic pages: onboarding, auth, landing, workspace switcher.
 - Components are organized by domain (`components/stakgraph`, `components/roadmap`, `components/wizard`, etc.).
 
 State/UX:
