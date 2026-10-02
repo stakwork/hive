@@ -10,10 +10,12 @@ import { OrgCanvasBackground, type SelectionWithLabels, type InternalEdge } from
 import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
 import type { ConnectionData } from "../connections/types";
 import { OrgRightPanel } from "./OrgRightPanel";
-import { useCanvasChatStore, type CanvasChatMessage } from "../_state/canvasChatStore";
+import { useCanvasChatStore, type CanvasChatMessage, type GraphFocus } from "../_state/canvasChatStore";
+import { GraphView } from "./GraphView";
 import { parseArtifactRefs } from "../_state/canvasChatArtifacts";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
 import { useSubAgentStatusRefresh } from "../_state/useSubAgentStatusRefresh";
+import { useGraphProposalRefresh } from "../_state/useGraphProposalRefresh";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { AttentionMapProvider } from "../connections/AttentionMapContext";
 import { cn } from "@/lib/utils";
@@ -45,7 +47,7 @@ const SIDEBAR_EXPANDED_SIZE = 60;
  * to the list; coming back shrinks it to the width it had. The stage
  * width is never persisted as the sidebar's layout (see `panelStorage`).
  */
-type OrgPageMode = "canvas" | "control-panel";
+type OrgPageMode = "canvas" | "control-panel" | "graph";
 const CONTROL_PANEL_STAGE_SIZE = 72;
 /** Programmatic panel resizes animate; a drag must not (the handle turns it off while held). */
 const PANEL_TRANSITION = "transition-[flex-grow] duration-300 ease-in-out";
@@ -123,9 +125,14 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    */
   const [panelWidth, setPanelWidth] = useState(384);
 
-  const [mode, setMode] = useState<OrgPageMode>(() =>
-    searchParams.get("view") === "control-panel" ? "control-panel" : "canvas",
-  );
+  const [mode, setMode] = useState<OrgPageMode>(() => {
+    const view = searchParams.get("view");
+    return view === "control-panel" || view === "graph" ? view : "canvas";
+  });
+  // On the graph view the chat starts hidden and slides in on "Ask Jamie".
+  const [chatOpen, setChatOpen] = useState(mode !== "graph");
+  /** The graph node in view — what "this" means to Jamie on the graph view. */
+  const [graphFocus, setGraphFocus] = useState<GraphFocus | null>(null);
   const modeRef = useRef(mode);
   /** Sidebar width before it grew into the stage; restored on the way back. */
   const preStageSizeRef = useRef<number | null>(null);
@@ -157,7 +164,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // What has the left panel: the canvas, the control panel's chat list,
   // or — over either — the artifact the chat has open.
   const artifactOpen = useArtifactPanelOpen();
-  const leftSurface = artifactOpen ? "artifact" : mode === "control-panel" ? "list" : "canvas";
+  const leftSurface = artifactOpen ? "artifact" : mode === "control-panel" ? "list" : mode;
   const controlPanel = useControlPanel(githubLogin, mode === "control-panel", leftSurface === "list");
 
   // Sync `panelWidth` to the panel's actual rendered width on mount,
@@ -194,7 +201,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     return () => ro.disconnect();
   }, []);
 
-  const [workspaces, setWorkspaces] = useState<{ id: string; slug: string; isDefault?: boolean }[]>([]);
+  const [workspaces, setWorkspaces] = useState<{ id: string; slug: string; name: string; isDefault?: boolean }[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
   const [hiddenWorkspaceIds, setHiddenWorkspaceIds] = useState<Set<string>>(() => new Set());
   const [hiddenInitialized, setHiddenInitialized] = useState(false);
@@ -311,9 +318,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data)
-          ? data.map((ws: { id: string; slug: string; isDefault?: boolean }) => ({
+          ? data.map((ws: { id: string; slug: string; name: string; isDefault?: boolean }) => ({
               id: ws.id,
               slug: ws.slug,
+              // The graph view's workspace picker shows it.
+              name: ws.name,
               // Needed by the default-first sort in `chatWorkspaceSlugs`.
               isDefault: ws.isDefault,
             }))
@@ -821,12 +830,26 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
 
   // Landing on `?view=control-panel`: the layout restored is the sidebar's,
   // so grow into the stage from it (and remember it for the way back).
+  // Landing on `?view=graph`: the chat waits, collapsed, until asked for —
+  // before paint, so nothing slides away on load.
   useLayoutEffect(() => {
-    if (modeRef.current !== "control-panel") return;
     const panel = sidebarPanelRef.current;
     if (!panel) return;
+    if (modeRef.current === "graph") {
+      panel.collapse();
+      return;
+    }
+    if (modeRef.current !== "control-panel") return;
     preStageSizeRef.current = panel.getSize();
     panel.resize(CONTROL_PANEL_STAGE_SIZE);
+  }, []);
+
+  /** "Ask Jamie" on the graph view: slide the chat in (or back out). */
+  const toggleGraphChat = useCallback(() => {
+    const panel = sidebarPanelRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) panel.expand();
+    else panel.collapse();
   }, []);
 
   // ─── Artifact panel ─────────────────────────────────────────────────
@@ -866,10 +889,12 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // What "this" means to Jamie: the canvas selection, or — on the
   // control panel — the plan/task on stage, exactly like a canvas click.
   const panelFocusNodeId = controlPanel.focusNodeId;
-  const contextNodeId = mode === "control-panel" ? panelFocusNodeId : (selectedNode?.id ?? null);
+  // On the graph view the canvas isn't on screen: its selection isn't "this" — `graphFocus` is.
+  const contextNodeId =
+    mode === "control-panel" ? panelFocusNodeId : mode === "graph" ? null : (selectedNode?.id ?? null);
   const contextNodeIds = useMemo(
-    () => (mode === "control-panel" ? (panelFocusNodeId ? [panelFocusNodeId] : []) : selectedNodes.map((n) => n.id)),
-    [mode, panelFocusNodeId, selectedNodes],
+    () => (mode === "canvas" ? selectedNodes.map((n) => n.id) : contextNodeId ? [contextNodeId] : []),
+    [mode, contextNodeId, selectedNodes],
   );
 
   useEffect(() => {
@@ -908,6 +933,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         currentCanvasBreadcrumb,
         selectedNodeId: contextNodeId,
         selectedNodeIds: contextNodeIds,
+        graphFocus,
       },
       seedMessages,
       sharedChatId ?? undefined,
@@ -936,6 +962,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       currentCanvasBreadcrumb,
       selectedNodeId: contextNodeId,
       selectedNodeIds: contextNodeIds,
+      graphFocus,
     });
   }, [
     conversationStarted,
@@ -947,6 +974,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     currentCanvasBreadcrumb,
     contextNodeId,
     contextNodeIds,
+    graphFocus,
   ]);
 
   // Mount auto-save (write-through to `chat_conversations`). Lives at
@@ -954,6 +982,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // chat unmounts don't lose pending saves.
   useCanvasChatAutoSave({ githubLogin });
   useSubAgentStatusRefresh({ githubLogin });
+  useGraphProposalRefresh();
 
   return (
     <AttentionMapProvider githubLogin={githubLogin} visibleWorkspaceSlugs={chatWorkspaceSlugs}>
@@ -1047,11 +1076,33 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                   >
                     <ControlPanelList {...controlPanel.list} />
                   </motion.div>
+                ) : leftSurface === "graph" ? (
+                  <motion.div
+                    key="graph"
+                    className="absolute inset-0 bg-background"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={LEFT_SURFACE_TRANSITION}
+                  >
+                    <GraphView
+                      workspaces={workspaces}
+                      loading={loadingWorkspaces}
+                      chatOpen={chatOpen}
+                      onToggleChat={toggleGraphChat}
+                      onFocusChange={setGraphFocus}
+                    />
+                  </motion.div>
                 ) : null}
               </AnimatePresence>
             </ResizablePanel>
 
-            <ResizableHandle withHandle className="pointer-events-auto" onDragging={setDragging} />
+            <ResizableHandle
+              withHandle
+              // Nothing to drag while the graph view's chat is tucked away.
+              className={cn("pointer-events-auto", mode === "graph" && !chatOpen && "hidden")}
+              onDragging={setDragging}
+            />
 
             {/* Right panel — the visible sidebar, and the stage */}
             <ResizablePanel
@@ -1061,6 +1112,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               defaultSize={SIDEBAR_DEFAULT_SIZE}
               minSize={SIDEBAR_MIN_SIZE}
               maxSize={SIDEBAR_MAX_SIZE}
+              // Only the graph view tucks the chat away entirely.
+              collapsible={mode === "graph"}
+              collapsedSize={0}
+              onCollapse={() => setChatOpen(false)}
+              onExpand={() => setChatOpen(true)}
               className={cn("pointer-events-auto", !dragging && PANEL_TRANSITION)}
               onResize={(percent) => {
                 const containerWidth = containerRef.current?.offsetWidth ?? 1600;
@@ -1088,7 +1144,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                 controlPanel={
                   mode === "control-panel" ? { ...controlPanel.stage, onExit: closeControlPanel } : undefined
                 }
-                onOpenControlPanel={openControlPanel}
+                // The canvas ⇄ control panel toggle doesn't apply on the graph view.
+                onOpenControlPanel={mode === "graph" ? undefined : openControlPanel}
               />
             </ResizablePanel>
           </ResizablePanelGroup>

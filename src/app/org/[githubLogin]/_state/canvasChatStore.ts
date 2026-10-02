@@ -367,6 +367,14 @@ export interface CanvasConversation {
   context: ConversationContext;
 }
 
+/** The knowledge-graph node the user is looking at on the org page's graph view. */
+export interface GraphFocus {
+  workspaceSlug: string;
+  refId: string;
+  name: string;
+  type: string;
+}
+
 export interface ConversationContext {
   workspaceSlug: string | null;
   workspaceSlugs: string[];
@@ -376,6 +384,8 @@ export interface ConversationContext {
   currentCanvasBreadcrumb: string;
   selectedNodeId: string | null;
   selectedNodeIds: string[];
+  /** Set on the graph view: what "this" means there. */
+  graphFocus?: GraphFocus | null;
 }
 
 // ─── Reserved slots for canvas-bound features (filled in later PRs) ─────────
@@ -658,6 +668,10 @@ interface CanvasChatState {
 
 let conversationCounter = 0;
 const newConversationId = () => `conv-${Date.now().toString(36)}-${(++conversationCounter).toString(36)}`;
+
+/** The active conversation's messages, when there is one. */
+export const selectActiveMessages = (s: CanvasChatState): CanvasChatMessage[] | undefined =>
+  s.activeConversationId ? s.conversations[s.activeConversationId]?.messages : undefined;
 
 export const useCanvasChatStore = create<CanvasChatState>()(
   devtools(

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { PillSection } from "@/components/legal/PillSection";
 import { StrutRunGraph } from "@/components/strut-run-graph";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { openHealthClimbStepPath } from "@/lib/openhealth-benchmarks/climb";
 import type { OpenHealthClimb, OpenHealthClimbStep } from "@/types/openhealth";
 import { formatCost, formatScore, formatWhen } from "../format";
 import { OpenHealthClimbStrip } from "../OpenHealthClimbStrip";
@@ -142,7 +143,8 @@ function ImproveStep({ step }: { step: OpenHealthClimbStep }) {
 
 /**
  * One climb: its strip (steps as chips), the selected step in full, and
- * the loop's graph. Polls while the climb runs; the newest step is shown
+ * the loop's graph, opened on that step's own subflow (the whole loop is a
+ * crumb away). Polls while the climb runs; the newest step is shown
  * until one is picked. The pick is the caller's when `onSelectStep` is
  * given (so the chart can pick a step too), the viewer's own otherwise.
  */
@@ -256,7 +258,11 @@ export function OpenHealthClimbViewer({
             onOpenChange={toggle("graph")}
             testId="openhealth-climb-graph"
           >
-            <StrutRunGraph endpoint={`/api/workspaces/${slug}/strut/runs/${climbId}/graph`} live={running} />
+            <StrutRunGraph
+              endpoint={`/api/workspaces/${slug}/strut/runs/${climbId}/graph`}
+              live={running}
+              scope={step ? openHealthClimbStepPath(step) : null}
+            />
           </PillSection>
           {files && (
             <>

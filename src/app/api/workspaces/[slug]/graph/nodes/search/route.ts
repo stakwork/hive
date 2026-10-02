@@ -42,7 +42,8 @@ export async function GET(
         ? Math.min(Math.floor(parsedLimit), MAX_LIMIT)
         : DEFAULT_LIMIT;
 
-    const access = await resolveJarvisAccess(slug);
+    // Any member: these are reads, like the query route the same pages use.
+    const access = await resolveJarvisAccess(slug, { adminOnly: false });
     if (access instanceof NextResponse) return access;
 
     if (process.env.USE_MOCKS === "true") {

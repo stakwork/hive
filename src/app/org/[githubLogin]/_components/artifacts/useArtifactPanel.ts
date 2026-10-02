@@ -1,7 +1,7 @@
 "use client";
 
 import { useShallow } from "zustand/react/shallow";
-import { useCanvasChatStore } from "../../_state/canvasChatStore";
+import { selectActiveMessages, useCanvasChatStore } from "../../_state/canvasChatStore";
 import { listArtifacts, type ArtifactRef } from "../../_state/canvasChatArtifacts";
 
 /**
@@ -10,20 +10,16 @@ import { listArtifacts, type ArtifactRef } from "../../_state/canvasChatArtifact
  * on every streamed chunk.
  */
 export function useActiveArtifacts(): ArtifactRef[] {
-  return useCanvasChatStore(
-    useShallow((s) =>
-      listArtifacts(s.activeConversationId ? s.conversations[s.activeConversationId]?.messages : undefined),
-    ),
-  );
+  return useCanvasChatStore(useShallow((s) => listArtifacts(selectActiveMessages(s))));
 }
 
 /** True while the artifact panel has something to show: one is open and the active conversation holds it. */
 export function useArtifactPanelOpen(): boolean {
   return useCanvasChatStore((s) => {
     const panel = s.artifactPanel;
-    if (!panel || !s.activeConversationId) return false;
-    const messages = s.conversations[s.activeConversationId]?.messages;
-    return !!messages?.some((m) => m.artifacts?.some((a) => a.id === panel.artifactId));
+    if (!panel) return false;
+    // Proposal-derived graph artifacts count too: their card is the proposal card.
+    return listArtifacts(selectActiveMessages(s)).some((a) => a.id === panel.artifactId);
   });
 }
 

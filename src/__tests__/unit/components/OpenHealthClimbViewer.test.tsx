@@ -7,6 +7,7 @@
  *   files pills addressed by iteration; an improve step shows its Concepts;
  * - `selected` opens with that step; with `onSelectStep` the caller owns
  *   the selection, a chip reports to it, and a change to it shows;
+ * - the graph opens on the selected step's own subflow, and follows a pick;
  * - a climb that cannot be read says so.
  */
 import React from "react";
@@ -25,7 +26,11 @@ vi.mock("@/components/openhealth/ClimbStartPopover", () => ({
   ClimbStartPopover: ({ label }: { label?: string }) => <button data-testid="openhealth-climb-open">{label}</button>,
 }));
 vi.mock("@/components/strut-run-graph", () => ({
-  StrutRunGraph: ({ endpoint }: { endpoint: string }) => <div data-testid="run-graph">{endpoint}</div>,
+  StrutRunGraph: ({ endpoint, scope }: { endpoint: string; scope?: string | null }) => (
+    <div data-testid="run-graph" data-scope={scope ?? ""}>
+      {endpoint}
+    </div>
+  ),
 }));
 vi.mock("@/components/openhealth/OpenHealthRunViewer/ArtifactPanel", () => ({
   ArtifactPanel: (props: { endpoint: string; kind: string }) => {
@@ -139,6 +144,8 @@ describe("OpenHealthClimbViewer", () => {
     await waitFor(() =>
       expect(screen.getByTestId("run-graph").textContent).toBe("/api/workspaces/hive/strut/runs/climb-1/graph"),
     );
+    // Opened on the selected step's own subflow: Run 2 is the loop's second iteration.
+    expect(screen.getByTestId("run-graph").getAttribute("data-scope")).toBe("loop#1/run");
   });
 
   it("shows an improve step's Concepts when its chip is picked", async () => {
@@ -156,6 +163,9 @@ describe("OpenHealthClimbViewer", () => {
     expect(screen.getByTestId("openhealth-climb-step-rejected").textContent).toContain("Too Broad");
     // An improve step has no run files.
     expect(screen.queryByTestId("openhealth-climb-problem-list-pill")).toBeNull();
+    // The graph follows the pick, to the improve subflow.
+    fireEvent.click(screen.getByTestId("openhealth-climb-graph-pill"));
+    await waitFor(() => expect(screen.getByTestId("run-graph").getAttribute("data-scope")).toBe("loop#0/improve"));
   });
 
   it("opens with the step it is given, and shows the run that step missed", async () => {

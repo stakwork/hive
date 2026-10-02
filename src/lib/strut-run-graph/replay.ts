@@ -65,6 +65,32 @@ export function buildRunGraphTree(calls: RunGraphCall[]): RunGraphTreeNode | nul
   return root;
 }
 
+/**
+ * The calls at or under one branch of the run — `scope` is its path under
+ * the run, `loop#1/run` — re-rooted at that branch, so the tree, the lanes
+ * and the replay read the branch as a run of its own. Null is the whole run.
+ */
+export function scopeCalls(calls: RunGraphCall[], scope: string | null): RunGraphCall[] {
+  if (!scope) return calls;
+  const depth = scope.split("/").length;
+  const scoped: RunGraphCall[] = [];
+  for (const call of calls) {
+    const segments = call.path.split("/");
+    if (segments.slice(1, depth + 1).join("/") !== scope) continue;
+    scoped.push({ ...call, path: segments.slice(depth).join("/") });
+  }
+  return scoped;
+}
+
+/**
+ * The scope a branch of the tree opens: its path under the run, given the
+ * scope the tree is drawn in (whose last segment is the tree's root).
+ */
+export function scopeOfBranch(scope: string | null, branchPath: string): string {
+  const segments = branchPath.split("/");
+  return scope ? [...scope.split("/").slice(0, -1), ...segments].join("/") : segments.slice(1).join("/");
+}
+
 export interface ReplayFrame {
   /** Nodes no call has touched yet at this step. */
   hidden: Set<string>;

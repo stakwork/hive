@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 export type OrgView =
   | "canvas"
@@ -22,8 +22,10 @@ export type OrgView =
  */
 export function useOrgView(githubLogin: string): OrgView {
   const pathname = usePathname() ?? "";
+  const searchParams = useSearchParams();
   const base = `/org/${githubLogin}`;
-  if (pathname === base || pathname === `${base}/`) return "canvas";
+  // The graph is a view of the org page itself (`?view=graph`), like the control panel.
+  if (pathname === base || pathname === `${base}/`) return searchParams?.get("view") === "graph" ? "graph" : "canvas";
   if (pathname.startsWith(`${base}/strut`)) return "strut";
   if (pathname.startsWith(`${base}/gateway`)) return "gateway";
   if (pathname.startsWith(`${base}/canvas-demo`)) return "canvas-demo";

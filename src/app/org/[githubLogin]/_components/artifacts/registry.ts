@@ -12,6 +12,7 @@ import {
   Globe,
   Image as ImageIcon,
   ScrollText,
+  Share2,
   type LucideIcon,
 } from "lucide-react";
 import { toJsonText } from "@/components/streaming/toolCallValue";
@@ -21,6 +22,7 @@ import { addressParts, webAddress } from "./address";
 import { lineCount, plural } from "./lines";
 import { CodeInline, CodePanel, codeLanguage } from "./viewers/code";
 import { DiffInline, DiffPanel, diffPatchText } from "./viewers/diff";
+import { GraphInline, GraphPanel } from "./viewers/graph";
 import { HtmlInline, HtmlPanel } from "./viewers/html";
 import { JsonInline, JsonPanel, jsonSummary } from "./viewers/json";
 import { LogInline, LogPanel } from "./viewers/log";
@@ -142,6 +144,19 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Panel: JsonPanel,
     fact: (content) => jsonSummary(content.value),
     copyText: (content) => toJsonText(content.value),
+  },
+  graph: {
+    label: "Graph",
+    Icon: Share2,
+    Inline: GraphInline,
+    Panel: GraphPanel,
+    fact: (content) => content.workspace,
+    // The org page's graph view, on the same workspace and node.
+    address: (content, githubLogin) => {
+      const params = new URLSearchParams({ view: "graph", workspace: content.workspace });
+      if (content.focus) params.set("gnode", content.focus);
+      return `/org/${githubLogin}?${params.toString()}`;
+    },
   },
 };
 

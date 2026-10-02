@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
 /**
- * Unit tests for the run graph's node panel reading a node: the body is
- * asked for when a node is picked, once per node, previewed in the panel
- * and opened whole in the reader.
+ * Unit tests for the run graph:
+ * - the node panel reading a node: the body is asked for when a node is
+ *   picked, once per node, previewed in the panel and opened whole in the
+ *   reader;
+ * - one branch of the run shown on its own: from the crosshair on its row
+ *   or the `scope` it is given, its own steps as the lanes, and back out
+ *   along the breadcrumb.
  */
 
 import React from "react";
@@ -56,9 +60,9 @@ type Answer = { status: number; body: unknown };
 const answer = (status: number, body: unknown): Answer => ({ status, body });
 
 /** `fetch` for the trace and the node, as `{ ok, status, json }` — jsdom has no Response. */
-function stubFetch(node: () => Answer) {
+function stubFetch(node: () => Answer, trace: unknown = TRACE) {
   const fetchMock = vi.fn(async (url: string) => {
-    const got = url === ENDPOINT ? answer(200, TRACE) : url.startsWith(`${ENDPOINT}/nodes/`) ? node() : answer(404, {});
+    const got = url === ENDPOINT ? answer(200, trace) : url.startsWith(`${ENDPOINT}/nodes/`) ? node() : answer(404, {});
     return { ok: got.status < 400, status: got.status, json: async () => got.body };
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -134,5 +138,117 @@ describe("StrutRunGraph node reading", () => {
     expect(await screen.findByTestId("run-graph-node-unresolved")).toBeTruthy();
     expect(screen.queryByTestId("run-graph-node-text")).toBeNull();
     expect(nodeCalls(fetchMock)).toEqual([]);
+  });
+});
+
+/** A call of the loop `loop`, at `path` under it. */
+function call(path: string, access: "read" | "write", refs: string[]) {
+  return {
+    path: `loop/${path}`,
+    tool: path.split("-").pop() ?? "",
+    by: "agent",
+    access,
+    startedAt: null,
+    endedAt: null,
+    durationMs: null,
+    query: {},
+    nodes: refs.map((ref_id) => ({ ref_id })),
+  };
+}
+const node = (ref_id: string, node_type: string, name: string) => ({
+  ref_id,
+  node_type,
+  name,
+  namespace: null,
+  found: true,
+});
+
+/** Two iterations of a loop: a benchmark run under `run` each, the first improved on under `improve`. */
+const LOOP_TRACE = {
+  calls: [
+    call("loop#0/run/ingest#0/ingest/001-graph_create_batch_triplet", "write", ["doc0", "finding0"]),
+    call("loop#0/improve/write/001-graph_create", "write", ["concept0"]),
+    call("loop#1/run/ingest#0/ingest/001-graph_create_batch_triplet", "write", ["doc1"]),
+  ],
+  nodes: [
+    node("doc0", "Document", "enc-0-hpi.md"),
+    node("finding0", "ClinicalFinding", "Lethargic on arrival"),
+    node("concept0", "Concept", "Diabetes Follow-up"),
+    node("doc1", "Document", "enc-1-hpi.md"),
+  ],
+  edges: [{ source: "doc0", target: "finding0", edge_type: "CONTAINS" }],
+  nodesRead: true,
+  edgesRead: true,
+  truncated: false,
+};
+
+const lanes = () => screen.getAllByTestId("run-graph-lane").map((el) => el.getAttribute("data-stage"));
+const drawn = () => screen.queryAllByTestId("run-graph-node").map((el) => el.textContent);
+const crumbs = () => screen.queryByTestId("run-graph-scope")?.textContent ?? null;
+const summary = () => screen.getByTestId("run-graph-summary").textContent ?? "";
+
+describe("StrutRunGraph scope", () => {
+  it("shows one branch of the run on its own, its own steps as the lanes, and climbs back out", async () => {
+    stubFetch(() => answer(404, {}), LOOP_TRACE);
+    render(<StrutRunGraph endpoint={ENDPOINT} />);
+    await screen.findByTestId("run-graph-summary");
+
+    // The whole loop: one lane, a cell per iteration, every node.
+    expect(lanes()).toEqual(["loop"]);
+    expect(screen.getAllByTestId("run-graph-cell").map((el) => el.textContent)).toEqual(["#0", "#1"]);
+    expect(drawn()).toHaveLength(4);
+    expect(crumbs()).toBeNull();
+    // The rows under the root follow on an effect. The `loop#1` row compresses the one branch
+    // under it; its crosshair shows the row's first branch. The root has none: it is already all of it.
+    const loop1 = await screen.findByLabelText("Show only loop#1 / run / ingest#0 / ingest");
+    expect(screen.getAllByTestId("run-graph-focus")).toHaveLength(2);
+
+    fireEvent.click(loop1);
+
+    expect(crumbs()).toBe("looploop#1");
+    expect(lanes()).toEqual(["run"]);
+    expect(drawn()).toEqual(["enc-1-hpi.md"]);
+    expect(summary()).toContain("1 calls under loop#1 read or wrote 1 nodes");
+    // The branch's tree opens down to its one call.
+    expect(screen.getAllByTestId("run-graph-call")).toHaveLength(1);
+
+    fireEvent.click(screen.getAllByTestId("run-graph-crumb")[0]);
+
+    expect(crumbs()).toBeNull();
+    expect(lanes()).toEqual(["loop"]);
+    expect(drawn()).toHaveLength(4);
+  });
+
+  it("opens on the branch it is given, follows a change to it, and says when nothing under it touched the graph", async () => {
+    stubFetch(() => answer(404, {}), LOOP_TRACE);
+    const view = render(<StrutRunGraph endpoint={ENDPOINT} scope="loop#0/improve" />);
+    await screen.findByTestId("run-graph-summary");
+
+    expect(crumbs()).toBe("looploop#0improve");
+    expect(lanes()).toEqual(["write"]);
+    expect(drawn()).toEqual(["Diabetes Follow-up"]);
+
+    view.rerender(<StrutRunGraph endpoint={ENDPOINT} scope="loop#1/run" />);
+    expect(crumbs()).toBe("looploop#1run");
+    expect(drawn()).toEqual(["enc-1-hpi.md"]);
+
+    view.rerender(<StrutRunGraph endpoint={ENDPOINT} scope="loop#2/run" />);
+    expect(drawn()).toEqual([]);
+    expect(summary()).toBe("Nothing under loop#2 / run touched the graph.");
+    fireEvent.click(screen.getAllByTestId("run-graph-crumb")[0]);
+    expect(drawn()).toHaveLength(4);
+  });
+
+  it("goes deeper from inside a branch", async () => {
+    stubFetch(() => answer(404, {}), LOOP_TRACE);
+    render(<StrutRunGraph endpoint={ENDPOINT} scope="loop#0" />);
+    await screen.findByTestId("run-graph-summary");
+    expect(lanes()).toEqual(["run", "improve"]);
+
+    fireEvent.click(await screen.findByLabelText("Show only improve / write"));
+
+    expect(crumbs()).toBe("looploop#0improve");
+    expect(lanes()).toEqual(["write"]);
+    expect(drawn()).toEqual(["Diabetes Follow-up"]);
   });
 });
