@@ -6,6 +6,7 @@ import {
   ArrowRight,
   BookOpen,
   ChevronRight,
+  Crosshair,
   ExternalLink,
   Eye,
   Loader2,
@@ -26,6 +27,8 @@ import {
   callLabel,
   keepGraphRead,
   replayFrame,
+  scopeCalls,
+  scopeOfBranch,
   type RunGraphTreeNode,
 } from "@/lib/strut-run-graph/replay";
 import { nodeText } from "@/lib/strut-run-graph/node-text";
@@ -89,6 +92,7 @@ function TreeBranch({
   expanded,
   onToggle,
   onPick,
+  onFocus,
 }: {
   node: RunGraphTreeNode;
   depth: number;
@@ -97,6 +101,8 @@ function TreeBranch({
   expanded: ReadonlySet<string>;
   onToggle: (path: string) => void;
   onPick: (index: number) => void;
+  /** Show only this branch. */
+  onFocus: (path: string) => void;
 }) {
   const indent = { paddingLeft: `${depth * 14 + 8}px` };
 
@@ -127,18 +133,31 @@ function TreeBranch({
   const open = expanded.has(branch.path);
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => onToggle(branch.path)}
-        style={indent}
-        aria-expanded={open}
-        data-testid="run-graph-branch"
-        className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-xs font-medium transition-colors hover:bg-muted/60"
-      >
-        <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
-        <span className="min-w-0 flex-1 truncate font-mono">{label}</span>
-        <span className="shrink-0 tabular-nums text-muted-foreground">{branch.callCount}</span>
-      </button>
+      <div className="group flex items-center pr-2 transition-colors hover:bg-muted/60" style={indent}>
+        <button
+          type="button"
+          onClick={() => onToggle(branch.path)}
+          aria-expanded={open}
+          data-testid="run-graph-branch"
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left text-xs font-medium"
+        >
+          <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+          <span className="min-w-0 flex-1 truncate font-mono">{label}</span>
+          <span className="shrink-0 tabular-nums text-muted-foreground">{branch.callCount}</span>
+        </button>
+        {depth > 0 && (
+          <button
+            type="button"
+            onClick={() => onFocus(node.path)}
+            aria-label={`Show only ${label}`}
+            title="Show only this"
+            data-testid="run-graph-focus"
+            className="ml-1 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+          >
+            <Crosshair className="h-3 w-3" />
+          </button>
+        )}
+      </div>
       {open &&
         branch.children.map((child) => (
           <TreeBranch
@@ -150,6 +169,7 @@ function TreeBranch({
             expanded={expanded}
             onToggle={onToggle}
             onPick={onPick}
+            onFocus={onFocus}
           />
         ))}
     </div>
@@ -382,8 +402,24 @@ function CurrentCall({ call, index, total }: { call: RunGraphCall; index: number
  * calls in the order the run made them.
  *
  * Generic over workflows: `endpoint` answers a `RunGraphTrace`.
+ *
+ * A branch of the tree can be shown on its own — the crosshair on its row,
+ * or `scope` — one iteration of a loop, or one subflow of it: its calls
+ * alone, its own steps as the lanes, and a breadcrumb back out.
  */
-export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; live?: boolean }) {
+export function StrutRunGraph({
+  endpoint,
+  live = false,
+  scope: scopeProp = null,
+}: {
+  endpoint: string;
+  live?: boolean;
+  /**
+   * The branch to open on: its path under the run (`loop#1/run`). The
+   * reader can climb out of it and into another; a change to it is followed.
+   */
+  scope?: string | null;
+}) {
   const [trace, setTrace] = useState<RunGraphTrace | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [shown, setShown] = useState<Record<RunGraphAccess, boolean>>({ read: true, write: true });
@@ -393,6 +429,8 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
   const [playing, setPlaying] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  /** The branch shown, as its path under the run; null = the whole run. */
+  const [scope, setScope] = useState<string | null>(scopeProp);
 
   const load = useCallback(async () => {
     try {
@@ -416,7 +454,8 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
     return () => clearInterval(timer);
   }, [live, load]);
 
-  const calls = useMemo(() => (trace?.calls ?? []).filter((call) => shown[call.access]), [trace?.calls, shown]);
+  const inScope = useMemo(() => scopeCalls(trace?.calls ?? [], scope), [trace?.calls, scope]);
+  const calls = useMemo(() => inScope.filter((call) => shown[call.access]), [inScope, shown]);
   const current = step !== null && step < calls.length ? step : null;
 
   const tree = useMemo(() => buildRunGraphTree(calls), [calls]);
@@ -502,8 +541,11 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
     });
   }, [current, calls]);
 
+  // The root is always open: the branch it compresses into, when it holds one thing.
   useEffect(() => {
-    if (tree) setExpanded((prev) => (prev.has(tree.path) ? prev : new Set(prev).add(tree.path)));
+    if (!tree) return;
+    const root = compress(tree).node.path;
+    setExpanded((prev) => (prev.has(root) ? prev : new Set(prev).add(root)));
   }, [tree]);
 
   useEffect(() => {
@@ -542,6 +584,18 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
       return next;
     });
   }, []);
+  /** Show one branch of the run (null: all of it), from the start of its replay. */
+  const focus = useCallback((next: string | null) => {
+    setPlaying(false);
+    setStep(null);
+    setSelectedId(null);
+    setExpanded(new Set());
+    setScope(next);
+  }, []);
+  const focusBranch = useCallback((path: string) => focus(scopeOfBranch(scope, path)), [focus, scope]);
+  useEffect(() => {
+    focus(scopeProp);
+  }, [scopeProp, focus]);
 
   if (error && !trace) {
     return (
@@ -569,6 +623,14 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const last = calls.length - 1;
   const unreadReason = trace.unreadReason ? ` (${trace.unreadReason})` : "";
+  const scopeLabel = scope === null ? "" : scope.split("/").join(" / ");
+  const crumbs =
+    scope === null
+      ? []
+      : [
+          { label: trace.calls[0].path.split("/")[0], scope: null as string | null },
+          ...scope.split("/").map((label, i, segments) => ({ label, scope: segments.slice(0, i + 1).join("/") })),
+        ];
 
   return (
     <div className="flex flex-col" data-testid="run-graph">
@@ -638,9 +700,13 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
         </div>
         {current !== null ? (
           <CurrentCall call={calls[current]} index={current} total={calls.length} />
+        ) : scope !== null && inScope.length === 0 ? (
+          <p className="text-xs text-muted-foreground" data-testid="run-graph-summary">
+            Nothing under {scopeLabel} touched the graph.
+          </p>
         ) : (
           <p className="text-xs text-muted-foreground" data-testid="run-graph-summary">
-            {calls.length} calls read or wrote {touched.length} nodes
+            {calls.length} calls{scope !== null ? ` under ${scopeLabel}` : ""} read or wrote {touched.length} nodes
             {live ? " so far" : ""}, along {hopCount === 1 ? "1 hop" : `${hopCount} hops`}. Step through them, or pick
             one in the tree.
             {trace.truncated ? " The run touched more than are shown." : ""}
@@ -663,6 +729,33 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
 
       <div className="grid h-[640px] grid-cols-[minmax(240px,340px)_1fr]">
         <div className="overflow-y-auto border-r py-1" data-testid="run-graph-tree">
+          {scope !== null && (
+            <nav
+              aria-label="The branch shown"
+              className="mb-1 flex flex-wrap items-center gap-y-0.5 border-b px-2 pb-1.5 text-xs"
+              data-testid="run-graph-scope"
+            >
+              {crumbs.map((crumb, i) =>
+                i < crumbs.length - 1 ? (
+                  <React.Fragment key={crumb.scope ?? ""}>
+                    <button
+                      type="button"
+                      onClick={() => focus(crumb.scope)}
+                      data-testid="run-graph-crumb"
+                      className="rounded px-1 py-0.5 font-mono text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                    >
+                      {crumb.label}
+                    </button>
+                    <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  </React.Fragment>
+                ) : (
+                  <span key={crumb.scope ?? ""} className="px-1 py-0.5 font-mono font-medium">
+                    {crumb.label}
+                  </span>
+                ),
+              )}
+            </nav>
+          )}
           {tree && (
             <TreeBranch
               node={tree}
@@ -672,6 +765,7 @@ export function StrutRunGraph({ endpoint, live = false }: { endpoint: string; li
               expanded={expanded}
               onToggle={toggleBranch}
               onPick={pick}
+              onFocus={focusBranch}
             />
           )}
         </div>

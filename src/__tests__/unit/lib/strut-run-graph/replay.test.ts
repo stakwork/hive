@@ -1,10 +1,17 @@
 /**
- * Unit tests for `lib/strut-run-graph/replay.ts`: the call tree and the
- * graph at each step of a replay.
+ * Unit tests for `lib/strut-run-graph/replay.ts`: the call tree, one branch
+ * of it on its own, and the graph at each step of a replay.
  */
 
 import { describe, it, expect } from "vitest";
-import { buildRunGraphTree, callLabel, keepGraphRead, replayFrame } from "@/lib/strut-run-graph/replay";
+import {
+  buildRunGraphTree,
+  callLabel,
+  keepGraphRead,
+  replayFrame,
+  scopeCalls,
+  scopeOfBranch,
+} from "@/lib/strut-run-graph/replay";
 import type { RunGraphCall, RunGraphNode, RunGraphTrace } from "@/lib/strut-run-graph/types";
 
 function call(path: string, refs: string[]): RunGraphCall {
@@ -143,5 +150,50 @@ describe("keepGraphRead", () => {
     const never: RunGraphTrace = { ...EARLIER, nodes: [unread("a")], edges: [], nodesRead: false, edgesRead: false };
     const next: RunGraphTrace = { ...never, nodes: [unread("a"), unread("b")] };
     expect(keepGraphRead(never, next)).toBe(next);
+  });
+});
+
+describe("scopeCalls", () => {
+  const LOOP = [
+    call("wf/loop#0/run/ingest#0/ingest/001-graph_graph_get", ["a"]),
+    call("wf/loop#0/improve/002-graph_create", ["b"]),
+    call("wf/loop#1/run/ingest#0/ingest/001-graph_graph_get", ["c"]),
+    call("wf/003-produce", ["d"]),
+  ];
+
+  it("is every call for the whole run", () => {
+    expect(scopeCalls(LOOP, null)).toBe(LOOP);
+  });
+
+  it("keeps the calls under the branch, re-rooted at it", () => {
+    expect(scopeCalls(LOOP, "loop#0").map((c) => c.path)).toEqual([
+      "loop#0/run/ingest#0/ingest/001-graph_graph_get",
+      "loop#0/improve/002-graph_create",
+    ]);
+    expect(scopeCalls(LOOP, "loop#1/run").map((c) => [c.path, c.nodes[0].ref_id])).toEqual([
+      ["run/ingest#0/ingest/001-graph_graph_get", "c"],
+    ]);
+  });
+
+  it("reads the branch as a run of its own", () => {
+    const tree = buildRunGraphTree(scopeCalls(LOOP, "loop#0"))!;
+    expect(tree.label).toBe("loop#0");
+    expect(tree.children.map((c) => c.label)).toEqual(["run", "improve"]);
+  });
+
+  it("is empty for a branch no call is under, matching whole segments only", () => {
+    expect(scopeCalls(LOOP, "loop#2")).toEqual([]);
+    expect(scopeCalls(LOOP, "loop")).toEqual([]);
+  });
+});
+
+describe("scopeOfBranch", () => {
+  it("is the branch's path under the run", () => {
+    expect(scopeOfBranch(null, "wf/loop#1/run")).toBe("loop#1/run");
+  });
+
+  it("composes a branch of a scoped tree onto the scope", () => {
+    expect(scopeOfBranch("loop#1", "loop#1/run")).toBe("loop#1/run");
+    expect(scopeOfBranch("loop#1/run", "run/ingest#0/ingest")).toBe("loop#1/run/ingest#0/ingest");
   });
 });
