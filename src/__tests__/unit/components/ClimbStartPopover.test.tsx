@@ -100,6 +100,30 @@ describe("ClimbStartPopover", () => {
     });
   });
 
+  it("names the task's benchmark when it has one", async () => {
+    render(
+      <ClimbStartPopover
+        gtId={8290}
+        split="public"
+        benchmark={{ task: "context_summarization", variant: "specialty_conditioned" }}
+      />,
+    );
+    open();
+    await waitFor(() => expect(screen.getByTestId("openhealth-climb-form")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("openhealth-climb-start"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      gtId: 8290,
+      split: "public",
+      task: "context_summarization",
+      variant: "specialty_conditioned",
+      targetF1: 1,
+      maxRuns: 5,
+    });
+  });
+
   it("reports a refused start", async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ error: "A climb of this task is already in progress" }), { status: 409 }),

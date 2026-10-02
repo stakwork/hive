@@ -15,12 +15,14 @@ import {
   OPENHEALTH_CLIMB_DEFAULT_TARGET,
   OPENHEALTH_CLIMB_MAX_RUNS,
 } from "@/lib/openhealth-benchmarks/climb";
-import type { OpenHealthSplit } from "@/types/openhealth";
+import type { OpenHealthBenchmark, OpenHealthSplit } from "@/types/openhealth";
 import { formatCost } from "./format";
 
 export interface ClimbStartPopoverProps {
   gtId: number;
   split?: OpenHealthSplit;
+  /** The task's benchmark; diagnosis when absent. The route checks the task against that catalogue. */
+  benchmark?: OpenHealthBenchmark;
   /** Mean USD of this task's scored runs, for the estimate. */
   meanRunCost?: number | null;
   label?: string;
@@ -32,13 +34,14 @@ export interface ClimbStartPopoverProps {
 }
 
 /**
- * The "Climb" button and its settings: the target F1 and how many runs at
- * most. Starting posts to the climbs route, which launches the loop on
+ * The "Climb" button and its settings: the target score and how many runs
+ * at most. Starting posts to the climbs route, which launches the loop on
  * strut; the page then shows the climb.
  */
 export function ClimbStartPopover({
   gtId,
   split,
+  benchmark,
   meanRunCost,
   label = "Climb",
   disabled,
@@ -73,6 +76,8 @@ export function ClimbStartPopover({
         body: JSON.stringify({
           gtId,
           ...(split ? { split } : {}),
+          ...(benchmark ? { task: benchmark.task } : {}),
+          ...(benchmark?.variant ? { variant: benchmark.variant } : {}),
           targetF1: targetValue,
           maxRuns: runsValue,
         }),
@@ -88,7 +93,7 @@ export function ClimbStartPopover({
     } finally {
       setStarting(false);
     }
-  }, [slug, problem, gtId, split, targetValue, runsValue, onStarted]);
+  }, [slug, problem, gtId, split, benchmark, targetValue, runsValue, onStarted]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -115,7 +120,7 @@ export function ClimbStartPopover({
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label htmlFor={`climb-target-${gtId}`} className="text-xs">
-              Target F1
+              Target score
             </Label>
             <Input
               id={`climb-target-${gtId}`}
