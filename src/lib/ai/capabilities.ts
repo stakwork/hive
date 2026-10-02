@@ -115,6 +115,8 @@ import {
   PROPOSE_NODE_EDIT_TOOL,
   PROPOSE_CREATE_TRIPLET_TOOL,
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+  PROPOSE_DELETE_EDGE_TOOL,
+  PROPOSE_MOVE_NODE_TOOL,
   PROPOSE_CODE_CHANGE_TOOL,
 } from "@/lib/proposals/types";
 import {
@@ -432,7 +434,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // No menuBlurb: core capabilities are inlined, not menu-listed.
       core: true,
       // dispatch_graph_walk and finalize_graph_walk are stripped in readonly mode
-      // to prevent sub-agents from re-dispatching themselves. The four graph-write
+      // to prevent sub-agents from re-dispatching themselves. The graph-write
       // propose tools are also stripped in readonly mode.
       writeToolNames: [
         "dispatch_graph_walk",
@@ -441,6 +443,8 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         PROPOSE_NODE_EDIT_TOOL,
         PROPOSE_CREATE_TRIPLET_TOOL,
         PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+        PROPOSE_DELETE_EDGE_TOOL,
+        PROPOSE_MOVE_NODE_TOOL,
       ],
     },
     infra: {

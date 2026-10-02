@@ -7,6 +7,7 @@ import type { ModelMessage } from "ai";
 import type { StoredMessage } from "@/services/canvas-turn-persistence";
 import { truncateField } from "@/lib/ai/mcpResult";
 import { PROPOSE_CODE_CHANGE_TOOL } from "@/lib/proposals/types";
+import { buildUserContent } from "@/lib/ai/attachmentParts";
 
 /** Max chars of a proposed diff replayed back into model context. */
 const REPLAY_DIFF_CHAR_CAP = 4_000;
@@ -41,15 +42,24 @@ function shrinkToolOutputForReplay(toolName: string, output: unknown): unknown {
 
 /**
  * Converts stored canvas/conversation messages into AI SDK `ModelMessage[]`.
- * Filters out empty messages, expands assistant tool-call turns into the
+ * Filters out empty messages, ships user attachments as content parts
+ * (see `attachmentParts.ts`), expands assistant tool-call turns into the
  * three-part shape the AI SDK expects (tool-call, tool-result, text), and
  * shrinks oversized tool outputs on the way out (see
  * `shrinkToolOutputForReplay`) — the stored rows are left untouched.
  */
 export function toModelMessages(messages: StoredMessage[]): ModelMessage[] {
   return messages
-    .filter((m) => (m.content?.trim() || m.toolCalls) && m.role)
+    .filter((m) => (m.content?.trim() || m.toolCalls || m.attachments?.length) && m.role)
     .flatMap((m): ModelMessage[] => {
+      if (m.role === "user" && m.attachments?.length) {
+        return [
+          {
+            role: "user",
+            content: buildUserContent(m.content ?? "", m.attachments),
+          } as ModelMessage,
+        ];
+      }
       if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
         const out: ModelMessage[] = [];
         out.push({

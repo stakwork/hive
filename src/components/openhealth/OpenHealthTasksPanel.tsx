@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Play } from "lucide-react";
@@ -22,7 +23,7 @@ import {
   openHealthBenchmarkByKey,
   type OpenHealthBenchmarkKey,
 } from "@/lib/openhealth-benchmarks/constants";
-import { openHealthTaskStats } from "@/lib/openhealth-benchmarks/runs";
+import { openHealthRunTasks, openHealthTaskStats } from "@/lib/openhealth-benchmarks/runs";
 import type { OpenHealthDifficulty, OpenHealthSplit, OpenHealthTask, OpenHealthTaskList } from "@/types/openhealth";
 import { ClimbStartPopover } from "./ClimbStartPopover";
 import { DifficultyBadge, formatScore } from "./format";
@@ -86,6 +87,8 @@ export function OpenHealthTasksPanel() {
   }, [slug, split, benchmark.task, benchmark.variant]);
 
   const stats = useMemo(() => openHealthTaskStats(runs, climbs), [runs, climbs]);
+  // The tasks the Runs tab can filter to: a run or a climb of theirs is on it.
+  const onRunsTab = useMemo(() => new Set(openHealthRunTasks(runs, climbs).map((t) => t.gtId)), [runs, climbs]);
   const climbing = useMemo(
     () => new Map(climbs.filter((c) => c.status === "running" && c.gtId !== null).map((c) => [c.gtId, c] as const)),
     [climbs],
@@ -244,7 +247,19 @@ export function OpenHealthTasksPanel() {
               const busy = starting === task.gtId || s?.running === true;
               return (
                 <TableRow key={task.gtId} data-testid="openhealth-task-row">
-                  <TableCell className="font-mono">{task.gtId}</TableCell>
+                  <TableCell className="font-mono">
+                    {onRunsTab.has(task.gtId) ? (
+                      <Link
+                        href={`${pathname}?tab=runs&task=${task.gtId}`}
+                        className="hover:underline underline-offset-4"
+                        data-testid="openhealth-task-link"
+                      >
+                        {task.gtId}
+                      </Link>
+                    ) : (
+                      task.gtId
+                    )}
+                  </TableCell>
                   <TableCell className="font-mono text-muted-foreground">{task.patientId}</TableCell>
                   {bySpecialty && (
                     <TableCell data-testid="openhealth-task-specialty">{specialtyName(task.specialty)}</TableCell>

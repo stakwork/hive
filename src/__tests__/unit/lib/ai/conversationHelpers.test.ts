@@ -5,6 +5,35 @@ import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import type { StoredMessage } from "@/services/canvas-turn-persistence";
 
 describe("toModelMessages", () => {
+  it("replays user attachments as content parts", () => {
+    const stored: StoredMessage[] = [
+      {
+        role: "user",
+        content: "see attached",
+        attachments: [
+          { path: "orgs/acme/canvas/a.png", filename: "a.png", mimeType: "image/png", size: 1 },
+          { path: "orgs/acme/canvas/b.md", filename: "b.md", mimeType: "text/markdown", size: 1 },
+        ],
+      } as StoredMessage,
+      { role: "user", content: "", attachments: [
+        { path: "orgs/acme/canvas/c.md", filename: "c.md", mimeType: "", size: 1 },
+      ] } as StoredMessage,
+    ];
+    const result = toModelMessages(stored);
+    expect(result).toHaveLength(2);
+    expect(result[0].content).toEqual([
+      { type: "text", text: "see attached" },
+      { type: "image", image: "/api/upload/presigned-url?s3Key=orgs%2Facme%2Fcanvas%2Fa.png" },
+      {
+        type: "file",
+        data: "/api/upload/presigned-url?s3Key=orgs%2Facme%2Fcanvas%2Fb.md",
+        mediaType: "text/markdown",
+        filename: "b.md",
+      },
+    ]);
+    expect((result[1].content as Array<{ type: string }>)[0].type).toBe("file");
+  });
+
   it("converts plain text user and assistant messages", () => {
     const stored: StoredMessage[] = [
       { role: "user", content: "Hello" } as StoredMessage,

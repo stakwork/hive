@@ -28,6 +28,7 @@ function Body({
   const proposed = [
     count(pending.created, "new node", "new nodes"),
     count(pending.newEdges.size + pending.links.length, "new link", "new links"),
+    count(pending.removedEdges.size + pending.unlinks.length, "removed link", "removed links"),
     count(pending.edited, "edit", "edits"),
   ].filter(Boolean);
 
@@ -56,7 +57,8 @@ function Body({
           className="border-b border-dashed border-emerald-500 px-4 py-1.5 text-xs text-emerald-700 dark:text-emerald-400"
           data-testid="graph-workbench-proposal"
         >
-          Previewing a proposal: {proposed.join(" · ")}. Dashed is what would change — approve or reject it in the chat.
+          Previewing a proposal: {proposed.join(" · ")}. Dashed is what would change (green added, red removed) —
+          approve or reject it in the chat.
         </p>
       )}
       {notice && (
