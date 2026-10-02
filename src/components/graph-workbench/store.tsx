@@ -55,7 +55,8 @@ export function WorkbenchProvider({
   children,
 }: {
   slug: string;
-  initialFocusId?: string | null;
+  /** Where to land: a node's ref_id, own id or name — or several, the first that exists. */
+  initialFocusId?: string | readonly string[] | null;
   /** A proposal's changes to draw over the graph. */
   changes?: GraphChange[];
   onSelectionChange?: (node: SelectedNode | null) => void;
@@ -67,11 +68,11 @@ export function WorkbenchProvider({
   const [rootId, setRootId] = useState<string | null>(null);
   const [canvasMode, setCanvasMode] = useState<CanvasMode>("tree");
   // The deep link applies to the first graph read only, not to a later change of type.
-  const deepLink = useRef(initialFocusId ?? null);
+  const deepLinks = useRef([initialFocusId ?? []].flat());
   /** Where the next graph should land: a fresh read lands anew, a new edge on its biggest tree. */
   const land = useRef<"read" | "edge" | null>("read");
 
-  const { data: hierarchy, error, isPending } = useQuery(hierarchyQuery(slug, lens.type));
+  const { data: hierarchy, error, isPending, isFetching } = useQuery(hierarchyQuery(slug, lens.type));
 
   const { graph, pending } = useMemo(
     () => (hierarchy ? applyChanges(buildGraph(hierarchy, lens), changes) : { graph: null, pending: NO_PENDING }),
@@ -100,6 +101,11 @@ export function WorkbenchProvider({
   useEffect(() => {
     const kind = land.current;
     if (!graph || !kind) return;
+    const [preferred, ...others] = deepLinks.current;
+    const found = preferred ? findNode(graph, preferred) : null;
+    // The node a deep link prefers may only be in the read still in flight (a concept an approval just made): wait for it.
+    if (preferred && !found && isFetching) return;
+    const linked = found ?? others.map((ref) => findNode(graph, ref)).find(Boolean) ?? null;
     land.current = null;
     const biggest = roots[0]?.node.id ?? null;
     setRootId(biggest);
@@ -108,17 +114,12 @@ export function WorkbenchProvider({
       return;
     }
     // Land on the deep-linked node (by ref_id, own id or name), else what a proposal changes, else the biggest tree.
-    const start =
-      (deepLink.current ? findNode(graph, deepLink.current) : null) ??
-      pending.focus ??
-      biggest ??
-      Object.keys(graph.nodes)[0] ??
-      null;
-    deepLink.current = null;
+    const start = linked ?? pending.focus ?? biggest ?? Object.keys(graph.nodes)[0] ?? null;
+    deepLinks.current = [];
     setCanvasMode("tree");
     if (start) focusNode(start);
     else setSelectedId(null);
-  }, [graph, roots, pending, focusNode]);
+  }, [graph, roots, pending, focusNode, isFetching]);
 
   const setLens = useCallback(
     (next: Partial<TreeLens>) => {
