@@ -669,6 +669,10 @@ interface CanvasChatState {
 let conversationCounter = 0;
 const newConversationId = () => `conv-${Date.now().toString(36)}-${(++conversationCounter).toString(36)}`;
 
+/** The active conversation's messages, when there is one. */
+export const selectActiveMessages = (s: CanvasChatState): CanvasChatMessage[] | undefined =>
+  s.activeConversationId ? s.conversations[s.activeConversationId]?.messages : undefined;
+
 export const useCanvasChatStore = create<CanvasChatState>()(
   devtools(
     (set) => ({

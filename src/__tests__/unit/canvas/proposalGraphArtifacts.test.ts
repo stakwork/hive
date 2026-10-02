@@ -39,6 +39,7 @@ describe("proposalGraphArtifact", () => {
       workspace: "hive",
       focus: "stakwork/hive/idor",
       changes: [{ kind: "docs", node: "stakwork/hive/idor", before: "# old", after: "# new" }],
+      proposal: "p-1",
     });
   });
 
