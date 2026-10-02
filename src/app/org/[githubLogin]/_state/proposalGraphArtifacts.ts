@@ -1,6 +1,7 @@
 /**
  * A proposal that changes a workspace's graph — a new concept, new docs, a
- * node edit, new edges — is itself something to look at on the graph. Each
+ * node edit, new edges, an edge removed, a node moved — is itself something
+ * to look at on the graph. Each
  * one yields a `graph` artifact: the workspace, the node to centre on, and
  * the change to draw. Its card is the proposal card; there is no second one.
  *
@@ -87,6 +88,27 @@ function derive(
         title: changes.length === 1 ? `New ${first.edge} link` : `${changes.length} new links`,
         focus: first.source,
         changes,
+      };
+    }
+    case "graphEdgeDelete": {
+      const { edge_type, source_ref_id, target_ref_id } = p.payload;
+      return {
+        workspace: p.payload.workspaceSlug,
+        title: `Remove ${edge_type} link`,
+        focus: target_ref_id,
+        changes: [{ kind: "unlink", edge: edge_type, source: source_ref_id, target: target_ref_id }],
+      };
+    }
+    case "graphNodeMove": {
+      const { edge_type, ref_id, from_ref_id, to_ref_id } = p.payload;
+      return {
+        workspace: p.payload.workspaceSlug,
+        title: `Move ${p.meta?.node_name ?? ref_id}`,
+        focus: ref_id,
+        changes: [
+          { kind: "unlink", edge: edge_type, source: from_ref_id, target: ref_id },
+          { kind: "edge", edge: edge_type, source: to_ref_id, target: ref_id },
+        ],
       };
     }
     default:

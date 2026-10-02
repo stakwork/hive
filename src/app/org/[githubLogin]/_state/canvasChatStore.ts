@@ -56,6 +56,7 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import type { ModelMessage } from "ai";
+import { buildUserContent } from "@/lib/ai/attachmentParts";
 import type { ApprovalIntent, ApprovalResult, RejectionIntent } from "@/lib/proposals/types";
 import type { ClarifyingQuestion } from "@/types/stakwork";
 import type { StreamTimelineItem, StreamToolCall, ToolCallStatus } from "@/types/streaming";
@@ -1141,22 +1142,10 @@ export function toModelMessages(messages: CanvasChatMessage[]): ModelMessage[] {
   return messages
     .filter((m) => m.content.trim() || m.toolCalls || m.attachments?.length)
     .flatMap((m): ModelMessage[] => {
-      // Multimodal: user messages with image attachments get a content array
+      // Multimodal: user messages with attachments get a content array
+      // (images, text files, and notes for other files — see `attachmentParts.ts`)
       if (m.role === "user" && m.attachments?.length) {
-        const imageAttachments = m.attachments.filter((a) => a.mimeType.startsWith("image/"));
-        if (imageAttachments.length > 0) {
-          const contentParts: Array<{ type: "text"; text: string } | { type: "image"; image: string }> = [];
-          if (m.content.trim()) {
-            contentParts.push({ type: "text", text: m.content });
-          }
-          for (const a of imageAttachments) {
-            contentParts.push({
-              type: "image",
-              image: `/api/upload/presigned-url?s3Key=${encodeURIComponent(a.path)}`,
-            });
-          }
-          return [{ role: "user", content: contentParts as never }];
-        }
+        return [{ role: "user", content: buildUserContent(m.content, m.attachments) as never }];
       }
 
       if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
