@@ -114,6 +114,7 @@ export function proposalGraphArtifact(proposal: ProposalOutput): ArtifactRef | n
             workspace: found.workspace,
             ...(found.focus && { focus: found.focus }),
             changes: found.changes,
+            proposal: proposal.proposalId,
           },
         },
       }

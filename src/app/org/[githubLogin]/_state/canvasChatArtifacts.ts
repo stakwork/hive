@@ -87,9 +87,10 @@ export interface ArtifactContents {
   json: { value: unknown };
   /**
    * A workspace's knowledge graph, opened on the graph workbench — centred on
-   * `focus` when given, with `changes` (a proposal's) drawn on it.
+   * `focus` when given, with `changes` drawn on it. `proposal` is the id of
+   * the proposal those changes are, so the view can follow its decision.
    */
-  graph: { workspace: string; focus?: string; changes?: GraphChange[] };
+  graph: { workspace: string; focus?: string; changes?: GraphChange[]; proposal?: string };
 }
 
 export type ArtifactKind = keyof ArtifactContents;
@@ -279,7 +280,12 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
   graph: (raw) => {
     const workspace = bounded(raw.workspace, MAX_ID_LENGTH);
     return workspace
-      ? { workspace, focus: bounded(raw.focus, MAX_ID_LENGTH) ?? undefined, changes: parseGraphChanges(raw.changes) }
+      ? {
+          workspace,
+          focus: bounded(raw.focus, MAX_ID_LENGTH) ?? undefined,
+          changes: parseGraphChanges(raw.changes),
+          proposal: bounded(raw.proposal, MAX_ID_LENGTH) ?? undefined,
+        }
       : null;
   },
 };

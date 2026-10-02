@@ -17,6 +17,7 @@ import { useResumeCanvasChatStream } from "../_state/useResumeCanvasChatStream";
 import { captureChatPreload } from "../_state/captureChatPreload";
 import type { CanvasActiveStream } from "@/types/shared-conversation";
 import { useSubAgentStatusRefresh } from "../_state/useSubAgentStatusRefresh";
+import { useGraphProposalRefresh } from "../_state/useGraphProposalRefresh";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { AttentionMapProvider } from "../connections/AttentionMapContext";
 import { cn } from "@/lib/utils";
@@ -990,6 +991,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // chat unmounts don't lose pending saves.
   useCanvasChatAutoSave({ githubLogin });
   useSubAgentStatusRefresh({ githubLogin });
+  useGraphProposalRefresh();
 
   return (
     <AttentionMapProvider githubLogin={githubLogin} visibleWorkspaceSlugs={chatWorkspaceSlugs}>
