@@ -27,6 +27,9 @@ function answer(byFragment: Record<string, { columns: string[]; rows: unknown[][
 
 const queries = () => mockedQuery.mock.calls.map(([args]) => String(args.query));
 
+/** Jarvis mutes an edge instead of deleting it: every edge read must leave muted edges out. */
+const LIVE_EDGE = "coalesce(r.is_muted, false) = false AND coalesce(r.is_deleted, false) = false";
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -70,6 +73,7 @@ describe("getHierarchy", () => {
       },
     });
     expect(queries().every((q) => q.includes("`Concept`"))).toBe(true);
+    expect(queries().find((q) => q.includes(HIERARCHY_EDGES))).toContain(`WHERE ${LIVE_EDGE}`);
   });
 
   test("flags a result that hit upstream's row cap", async () => {
@@ -151,6 +155,7 @@ describe("getNodeConnections", () => {
     });
     // The vectors are left on the swarm, not dropped after the read.
     expect(queries().find((q) => q.includes(NODE))).toContain("NOT k IN ['embeddings','text_embeddings'");
+    expect(queries().find((q) => q.includes(CONNECTIONS))).toContain(`-[r]-(o) WHERE ${LIVE_EDGE}`);
     expect(result.data.groups).toEqual([
       {
         edge: "MODIFIES",
@@ -204,7 +209,7 @@ describe("getConnectionPage", () => {
     });
 
     expect(result).toEqual({ ok: true, data: [{ id: "t-1", name: "graph_get", type: "StrutToolCall" }] });
-    expect(queries()[0]).toContain("<-[:`ACCESSED`]-(o:`StrutToolCall`)");
+    expect(queries()[0]).toContain(`<-[r:\`ACCESSED\`]-(o:\`StrutToolCall\`) WHERE ${LIVE_EDGE}`);
     expect(mockedQuery.mock.calls[0][0].limit).toBe(GRAPH_ROW_CAP);
   });
 });

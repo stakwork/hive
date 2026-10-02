@@ -14,6 +14,7 @@ import type { NeighborResult } from "@/lib/graph-walker";
 // timeout) now go through the structured logger — see kgSearch/kgGetNode/
 // kgGetNeighbors.
 import { logger } from "@/lib/logger";
+import { isMutedEdge } from "@/services/swarm/api/nodes";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -640,6 +641,9 @@ export async function kgGetNeighbors(
     const neighbors: KgNeighborResult[] = [];
     const seen = new Set<string>();
     for (const edge of data.edges ?? []) {
+      // Jarvis mutes an edge instead of deleting it (an approved edge delete
+      // or node move), and still lists it here: skip it.
+      if (isMutedEdge(edge.properties)) continue;
       const direction: "forward" | "reverse" =
         edge.source === refId ? "forward" : "reverse";
       const neighborRefId = direction === "forward" ? edge.target : edge.source;

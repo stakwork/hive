@@ -384,6 +384,25 @@ describe("kgGetNeighbors", () => {
     expect(result.root).toBeUndefined();
   });
 
+  it("skips an edge Jarvis has muted (an approved delete or move), so the neighbor is not listed", async () => {
+    globalThis.fetch = mockFetch({
+      nodes: [
+        { ref_id: QUERIED_REF, node_type: "Concept", name: "Security" },
+        { ref_id: "old-parent", node_type: "Concept", name: "Coding" },
+        { ref_id: "new-parent", node_type: "Concept", name: "Ops" },
+      ],
+      edges: [
+        { source: "old-parent", target: QUERIED_REF, edge_type: "PARENT_OF", properties: { is_muted: true } },
+        { source: "new-parent", target: QUERIED_REF, edge_type: "PARENT_OF", properties: {} },
+      ],
+    });
+
+    const result = await kgGetNeighbors(JARVIS_URL, API_KEY, QUERIED_REF);
+
+    expect(result.reachable).toBe(true);
+    expect(result.neighbors.map((n) => n.ref_id)).toEqual(["new-parent"]);
+  });
+
   it("direction forward when edge.source === refId (MODIFIES edge)", async () => {
     const raw = {
       nodes: [

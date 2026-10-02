@@ -1,7 +1,7 @@
 /**
  * Unit tests for the graph-write capability wiring in runCanvasAgent.
  *
- * The four `propose_*` graph-write tools are only composed when
+ * The six `propose_*` graph-write tools are only composed when
  * `CapabilityContext.graphWriteEnabled` is true, and runCanvasAgent is the
  * only place that resolves it (via `isGraphWriteCapabilityEnabledForOrg`).
  * The registry-level tests cover `buildTools` given the flag; these cover
@@ -73,6 +73,8 @@ vi.mock("@/lib/ai/graphWriteTools", () => ({
     propose_node_edit: {},
     propose_create_triplet: {},
     propose_create_batch_triplet: {},
+    propose_delete_edge: {},
+    propose_move_node: {},
   })),
 }));
 vi.mock("@/lib/ai/workflowExplorerTools", () => ({ buildWorkflowExplorerTools: vi.fn(() => ({})) }));
@@ -162,6 +164,8 @@ const WRITE_TOOLS = [
   "propose_node_edit",
   "propose_create_triplet",
   "propose_create_batch_triplet",
+  "propose_delete_edge",
+  "propose_move_node",
 ] as const;
 
 /** Tool names handed to streamText on the most recent run. */
