@@ -721,6 +721,15 @@ export async function patchEdge(
   }
 }
 
+/**
+ * Remove an edge via `DELETE /v2/edges/{ref_id}`.
+ *
+ * Jarvis does not delete the relationship: it sets `is_muted = true` on it
+ * and leaves it in Neo4j, so every read that lists edges must skip muted
+ * ones (see `isMutedEdge`). A ref_id that matches nothing comes back as
+ * 200 + `{ status: "Warning", status_messages: ["Warning: No edge found…"] }`,
+ * surfaced here as `notFound`. Never throws.
+ */
 export async function deleteEdge(
   config: JarvisConnectionConfig,
   edgeRefId: string,
@@ -739,7 +748,36 @@ export async function deleteEdge(
     };
   }
 
+  const body = result.body as
+    | { status?: string; status_messages?: string[] }
+    | undefined;
+  const status = (body?.status ?? "").toLowerCase();
+  if (
+    status === "warning" &&
+    (body?.status_messages ?? []).some((m) => /no edge found/i.test(m))
+  ) {
+    return {
+      success: false,
+      notFound: true,
+      error: describeJarvisFailure("Edge not found", body),
+    };
+  }
+  if (status === "error") {
+    return {
+      success: false,
+      error: describeJarvisFailure("Edge delete returned status Error", body),
+    };
+  }
+
   return { success: true };
+}
+
+/**
+ * True for an edge Jarvis has muted (`DELETE /v2/edges/{ref_id}`) or marked
+ * deleted: it is still stored, but no read should show it.
+ */
+export function isMutedEdge(properties: Record<string, unknown> | undefined): boolean {
+  return properties?.is_muted === true || properties?.is_deleted === true;
 }
 
 // ── Jarvis v2 write helpers (user-approved graph writes) ─────────────────────
@@ -953,6 +991,164 @@ export async function readNodeByRef(
     properties: node?.properties,
     status: "success",
   };
+}
+
+/** A Neo4j relationship type as Jarvis's `edge_type` filter accepts it. */
+const EDGE_TYPE_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+
+/**
+ * Edges of one type read from a node when an edge is looked up by its ends.
+ * Higher than the walker's neighbor cap: one type is bounded, and a parent
+ * with a few hundred children must still find the one child asked about.
+ */
+const EDGE_LOOKUP_LIMIT = 500;
+
+interface ExpandedEdge {
+  ref_id: string;
+  source: string;
+  target: string;
+  edge_type: string;
+  properties: Record<string, unknown>;
+}
+
+/** A node's edges of one type, both directions, with a name for every node in the answer. */
+async function readEdgesOfType(
+  config: JarvisConnectionConfig,
+  ref_id: string,
+  edge_type: string,
+): Promise<{ ok: true; edges: ExpandedEdge[]; names: Map<string, string> } | { ok: false; status?: string; message: string }> {
+  if (!isSafeRefId(ref_id)) {
+    return { ok: false, message: `Invalid ref_id: must match [A-Za-z0-9_\\-.:@]+ (got ${JSON.stringify(ref_id)})` };
+  }
+  if (!EDGE_TYPE_PATTERN.test(edge_type)) {
+    return {
+      ok: false,
+      message: `Invalid edge_type: must match [A-Za-z_][A-Za-z0-9_]* (got ${JSON.stringify(edge_type)})`,
+    };
+  }
+  const params = new URLSearchParams({
+    expand: "edges",
+    edge_type: `["${edge_type}"]`,
+    limit: String(EDGE_LOOKUP_LIMIT),
+    include_properties: "true",
+    canonicalize: "false",
+  });
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}?${params.toString()}`,
+    method: "GET",
+  });
+  if (!result.ok) {
+    return {
+      ok: false,
+      status: String(result.status),
+      message: result.error ?? `Request failed with status ${result.status}`,
+    };
+  }
+  const body = result.body as
+    | {
+        nodes?: Array<{ ref_id?: unknown; name?: unknown; properties?: Record<string, unknown> }>;
+        edges?: Array<{
+          ref_id?: unknown;
+          source?: unknown;
+          target?: unknown;
+          edge_type?: unknown;
+          properties?: Record<string, unknown>;
+        }>;
+      }
+    | undefined;
+  const names = new Map<string, string>();
+  for (const n of body?.nodes ?? []) {
+    const name = n?.properties?.name ?? n?.properties?.title ?? n?.name;
+    if (typeof n?.ref_id === "string" && typeof name === "string" && name) names.set(n.ref_id, name);
+  }
+  const edges: ExpandedEdge[] = [];
+  for (const e of body?.edges ?? []) {
+    if (typeof e?.ref_id !== "string" || !e.ref_id) continue;
+    if (typeof e.source !== "string" || typeof e.target !== "string" || e.edge_type !== edge_type) continue;
+    edges.push({ ref_id: e.ref_id, source: e.source, target: e.target, edge_type, properties: e.properties ?? {} });
+  }
+  return { ok: true, edges, names };
+}
+
+export interface JarvisEdgeMatch {
+  ref_id: string;
+  properties: Record<string, unknown>;
+  source_name?: string;
+  target_name?: string;
+}
+
+/**
+ * Find one edge by its ends and type: `(source)-[:edge_type]->(target)`.
+ *
+ * Jarvis addresses edges by an opaque `ref_id` that no read tool surfaces to
+ * the model, so an approved edge delete or node move resolves the edge here
+ * through `GET /v2/nodes/{ref_id}?expand=edges`. The source side is read
+ * first; when a hub source cuts the list short, the target side is read too.
+ * Muted or soft-deleted edges count as absent.
+ *
+ * `success: true` without `edge` means the edge is not there. Never throws.
+ */
+export async function findEdgeByEndpoints(
+  config: JarvisConnectionConfig,
+  edge: { source_ref_id: string; edge_type: string; target_ref_id: string },
+): Promise<JarvisV2Result & { edge?: JarvisEdgeMatch }> {
+  const { source_ref_id, edge_type, target_ref_id } = edge;
+  for (const side of [source_ref_id, target_ref_id]) {
+    const read = await readEdgesOfType(config, side, edge_type);
+    if (!read.ok) return { success: false, status: read.status, message: read.message };
+    const match = read.edges.find(
+      (e) => e.source === source_ref_id && e.target === target_ref_id && !isMutedEdge(e.properties),
+    );
+    if (match) {
+      const source_name = read.names.get(source_ref_id);
+      const target_name = read.names.get(target_ref_id);
+      return {
+        success: true,
+        status: "success",
+        ref_id: match.ref_id,
+        edge: {
+          ref_id: match.ref_id,
+          properties: match.properties,
+          ...(source_name ? { source_name } : {}),
+          ...(target_name ? { target_name } : {}),
+        },
+      };
+    }
+  }
+  return { success: true, status: "success" };
+}
+
+export interface JarvisIncomingEdge {
+  ref_id: string;
+  source_ref_id: string;
+  source_name?: string;
+  properties: Record<string, unknown>;
+}
+
+/**
+ * The live edges of one type that point AT a node — its parents along
+ * PARENT_OF, say. What a node move reads to learn where the node sits now.
+ * Never throws.
+ */
+export async function listIncomingEdges(
+  config: JarvisConnectionConfig,
+  args: { ref_id: string; edge_type: string },
+): Promise<JarvisV2Result & { edges: JarvisIncomingEdge[] }> {
+  const read = await readEdgesOfType(config, args.ref_id, args.edge_type);
+  if (!read.ok) return { success: false, status: read.status, message: read.message, edges: [] };
+  const edges = read.edges
+    .filter((e) => e.target === args.ref_id && e.source !== args.ref_id && !isMutedEdge(e.properties))
+    .map((e) => {
+      const source_name = read.names.get(e.source);
+      return {
+        ref_id: e.ref_id,
+        source_ref_id: e.source,
+        ...(source_name ? { source_name } : {}),
+        properties: e.properties,
+      };
+    });
+  return { success: true, status: "success", edges };
 }
 
 // ── Error-impact centrality helpers ──────────────────────────────────────────

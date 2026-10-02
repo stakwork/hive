@@ -47,7 +47,7 @@ function renderDetails(n: WorkbenchNode, role?: WorkspaceRole) {
       children: {},
       edgeTypes: [],
     },
-    pending: { links: [] },
+    pending: { links: [], unlinks: [] },
     select: vi.fn(),
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
