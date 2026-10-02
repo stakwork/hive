@@ -15,6 +15,9 @@
  * 11. Re-approving (prior approvalResult exists) → idempotent no-op
  * 12. Proposal not found → 404
  * 13. Caller is org member but not workspace member → 403
+ * 14. approveGraphEdgeDelete: finds the edge by its ends, mutes it; gone → 404; refused → 400
+ * 15. approveGraphNodeMove: links to the new parent THEN unlinks the old; a failed unlink is an
+ *     error (retryable); cycle / mirror-owned / missing → refused before any write
  */
 
 // @vitest-environment node
@@ -28,12 +31,18 @@ const {
   mockUpdateNodeV2,
   mockAddEdgeV2,
   mockReadNodeByRef,
+  mockDeleteEdge,
+  mockFindEdgeByEndpoints,
+  mockKgGetNode,
 } = vi.hoisted(() => ({
   mockResolveGraphJarvis: vi.fn(),
   mockAddNode: vi.fn(),
   mockUpdateNodeV2: vi.fn(),
   mockAddEdgeV2: vi.fn(),
   mockReadNodeByRef: vi.fn(),
+  mockDeleteEdge: vi.fn(),
+  mockFindEdgeByEndpoints: vi.fn(),
+  mockKgGetNode: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -62,6 +71,13 @@ vi.mock("@/services/swarm/api/nodes", () => ({
   updateNodeV2: mockUpdateNodeV2,
   addEdgeV2: mockAddEdgeV2,
   readNodeByRef: mockReadNodeByRef,
+  deleteEdge: mockDeleteEdge,
+  findEdgeByEndpoints: mockFindEdgeByEndpoints,
+}));
+
+// The move's cycle check reads the destination's ancestors through kg-adapter.
+vi.mock("@/lib/ai/kg-adapter", () => ({
+  kgGetNode: mockKgGetNode,
 }));
 
 vi.mock("@/lib/canvas", () => ({
@@ -100,6 +116,8 @@ import {
   PROPOSE_NODE_EDIT_TOOL,
   PROPOSE_CREATE_TRIPLET_TOOL,
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+  PROPOSE_DELETE_EDGE_TOOL,
+  PROPOSE_MOVE_NODE_TOOL,
 } from "@/lib/proposals/types";
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
@@ -238,6 +256,54 @@ function makeBatchMsg(proposalId = PROPOSAL_ID, count = 2): MessageLike {
   };
 }
 
+function makeEdgeDeleteMsg(meta: Record<string, unknown> = {}): MessageLike {
+  return {
+    role: "assistant",
+    toolCalls: [
+      {
+        toolName: PROPOSE_DELETE_EDGE_TOOL,
+        output: {
+          kind: "graphEdgeDelete",
+          proposalId: PROPOSAL_ID,
+          payload: {
+            workspaceId: WS_ID,
+            workspaceSlug: WS_SLUG,
+            edge_type: "PARENT_OF",
+            source_ref_id: "parent-1",
+            target_ref_id: "node-ref-123",
+          },
+          meta: { workspaceSlug: WS_SLUG, edge_ref_id: "stale-edge-ref", ...meta },
+        },
+      },
+    ],
+  };
+}
+
+function makeMoveMsg(overrides: Record<string, unknown> = {}, meta: Record<string, unknown> = {}): MessageLike {
+  return {
+    role: "assistant",
+    toolCalls: [
+      {
+        toolName: PROPOSE_MOVE_NODE_TOOL,
+        output: {
+          kind: "graphNodeMove",
+          proposalId: PROPOSAL_ID,
+          payload: {
+            workspaceId: WS_ID,
+            workspaceSlug: WS_SLUG,
+            ref_id: "node-ref-123",
+            edge_type: "PARENT_OF",
+            from_ref_id: "parent-1",
+            to_ref_id: "parent-2",
+            ...overrides,
+          },
+          meta: { workspaceSlug: WS_SLUG, ...meta },
+        },
+      },
+    ],
+  };
+}
+
 const baseIntent = { proposalId: PROPOSAL_ID };
 
 beforeEach(() => {
@@ -252,6 +318,14 @@ beforeEach(() => {
     node_type: "Concept",
     properties: {},
   });
+  mockDeleteEdge.mockResolvedValue({ success: true });
+  mockFindEdgeByEndpoints.mockResolvedValue({
+    success: true,
+    status: "success",
+    ref_id: "edge-live-001",
+    edge: { ref_id: "edge-live-001", properties: {} },
+  });
+  mockKgGetNode.mockResolvedValue({ ref_id: "parent-2", node_type: "Concept", name: "Ops" });
 });
 
 // ── approveGraphNodeCreate ────────────────────────────────────────────────
@@ -631,5 +705,222 @@ describe("idempotency and proposal lookup", () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(404);
+  });
+});
+
+// ── approveGraphEdgeDelete ────────────────────────────────────────────────
+
+describe("approveGraphEdgeDelete", () => {
+  it("finds the edge by its ends at approval time and mutes that one, not the ref_id on the card", async () => {
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeEdgeDeleteMsg()], intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result).toEqual({
+        proposalId: PROPOSAL_ID,
+        kind: "graphEdgeDelete",
+        createdEntityId: "edge-live-001",
+        landedOn: `workspace:${WS_ID}`,
+        workspaceSlug: WS_SLUG,
+      });
+    }
+    expect(mockFindEdgeByEndpoints).toHaveBeenCalledWith(ACCESS_OK.access.config, {
+      source_ref_id: "parent-1",
+      edge_type: "PARENT_OF",
+      target_ref_id: "node-ref-123",
+    });
+    expect(mockDeleteEdge).toHaveBeenCalledWith(ACCESS_OK.access.config, "edge-live-001");
+  });
+
+  it("says so when the edge is already gone, without writing", async () => {
+    mockFindEdgeByEndpoints.mockResolvedValue({ success: true, status: "success" });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeEdgeDeleteMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 404, error: expect.stringContaining("already have been removed") });
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
+  });
+
+  it("refuses a card the propose tool refused", async () => {
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeEdgeDeleteMsg({ refusedReason: "No edge." })], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 400, error: "No edge." });
+    expect(mockFindEdgeByEndpoints).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed mute as 502 so the approval can be retried", async () => {
+    mockDeleteEdge.mockResolvedValue({ success: false, error: "Request failed with status 500" });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeEdgeDeleteMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 502, error: expect.stringContaining("500") });
+  });
+
+  it("denies a caller who is not a member of the workspace before any read", async () => {
+    mockResolveGraphJarvis.mockResolvedValue(ACCESS_DENIED);
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeEdgeDeleteMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 403 });
+    expect(mockFindEdgeByEndpoints).not.toHaveBeenCalled();
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
+  });
+});
+
+// ── approveGraphNodeMove ──────────────────────────────────────────────────
+
+describe("approveGraphNodeMove", () => {
+  it("links the node under its new parent first, then mutes the old link", async () => {
+    const order: string[] = [];
+    mockAddEdgeV2.mockImplementation(async () => {
+      order.push("link");
+      return { success: true, ref_id: "edge-new", status: "success" };
+    });
+    mockDeleteEdge.mockImplementation(async () => {
+      order.push("unlink");
+      return { success: true };
+    });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result).toEqual({
+        proposalId: PROPOSAL_ID,
+        kind: "graphNodeMove",
+        createdEntityId: "node-ref-123",
+        landedOn: `workspace:${WS_ID}`,
+        workspaceSlug: WS_SLUG,
+        alreadyExisted: undefined,
+      });
+    }
+    expect(order).toEqual(["link", "unlink"]);
+    expect(mockAddEdgeV2).toHaveBeenCalledWith(ACCESS_OK.access.config, {
+      edge: { edge_type: "PARENT_OF" },
+      source: { ref_id: "parent-2" },
+      target: { ref_id: "node-ref-123" },
+    });
+    // The old edge is found by its ends, never taken from the card.
+    expect(mockFindEdgeByEndpoints).toHaveBeenCalledWith(ACCESS_OK.access.config, {
+      source_ref_id: "parent-1",
+      edge_type: "PARENT_OF",
+      target_ref_id: "node-ref-123",
+    });
+    expect(mockDeleteEdge).toHaveBeenCalledWith(ACCESS_OK.access.config, "edge-live-001");
+  });
+
+  it("flags a new link that already existed, and still removes the old one", async () => {
+    mockAddEdgeV2.mockResolvedValue({ success: true, ref_id: "edge-new", status: "Warning", alreadyExists: true });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.result.alreadyExisted).toBe(true);
+    expect(mockDeleteEdge).toHaveBeenCalledOnce();
+  });
+
+  it("leaves the node under both parents and reports an error when the old link can't be removed", async () => {
+    mockDeleteEdge.mockResolvedValue({ success: false, error: "Request failed with status 500" });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 502,
+      error: expect.stringContaining("Approve again to retry"),
+    });
+    expect(mockAddEdgeV2).toHaveBeenCalledOnce();
+  });
+
+  it("does not touch the old link when the new one can't be made", async () => {
+    mockAddEdgeV2.mockResolvedValue({ success: false, message: "Edge creation returned unexpected status" });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 502 });
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
+  });
+
+  it("says so when the node is no longer under the parent it was to leave", async () => {
+    mockFindEdgeByEndpoints.mockResolvedValue({ success: true, status: "success" });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 404, error: expect.stringContaining("no longer under") });
+    expect(mockAddEdgeV2).not.toHaveBeenCalled();
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
+  });
+
+  it("refuses a destination under the node itself before any write", async () => {
+    mockKgGetNode.mockResolvedValue({
+      ref_id: "parent-2",
+      node_type: "Concept",
+      name: "Ops",
+      ancestors: [{ ref_id: "node-ref-123", name: "Security", node_type: "Concept", depth: 2, parents: [] }],
+    });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 400, error: expect.stringContaining("cycle") });
+    expect(mockAddEdgeV2).not.toHaveBeenCalled();
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
+  });
+
+  it("refuses a mirror-owned node, a missing node and a missing destination", async () => {
+    mockReadNodeByRef.mockResolvedValueOnce({ success: true, ref_id: "node-ref-123", node_type: "HiveFeature", properties: {} });
+    expect(
+      await handleApproval({ orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent }),
+    ).toMatchObject({ ok: false, status: 400, error: expect.stringContaining("mirror-owned") });
+
+    mockReadNodeByRef.mockResolvedValueOnce({ success: false, message: "not found" });
+    expect(
+      await handleApproval({ orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent }),
+    ).toMatchObject({ ok: false, status: 404, error: expect.stringContaining('Node "node-ref-123" not found') });
+
+    mockReadNodeByRef
+      .mockResolvedValueOnce({ success: true, ref_id: "node-ref-123", node_type: "Concept", properties: {} })
+      .mockResolvedValueOnce({ success: false, message: "not found" });
+    expect(
+      await handleApproval({ orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent }),
+    ).toMatchObject({ ok: false, status: 404, error: expect.stringContaining('Destination "parent-2" not found') });
+
+    expect(mockAddEdgeV2).not.toHaveBeenCalled();
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
+  });
+
+  it("rejects a forged payload that moves a node under itself, and a card the tool refused", async () => {
+    expect(
+      await handleApproval({
+        orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg({ to_ref_id: "node-ref-123" })], intent: baseIntent,
+      }),
+    ).toMatchObject({ ok: false, status: 400 });
+    expect(
+      await handleApproval({
+        orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg({}, { refusedReason: "Has 2 parents." })], intent: baseIntent,
+      }),
+    ).toMatchObject({ ok: false, status: 400, error: "Has 2 parents." });
+    expect(mockReadNodeByRef).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,10 @@
 /**
  * Graph-write tools for Jamie (the canvas agent).
  *
- * Exposes four `propose_*` tools that emit approvable proposal cards
- * without performing any Jarvis writes. The write only happens after
+ * Exposes six `propose_*` tools that emit approvable proposal cards
+ * without performing any Jarvis writes — four that add to the graph
+ * (a node, a node edit, one or many edges) and two that edit it (remove
+ * an edge, move a node to a new parent). The write only happens after
  * the user clicks Approve in the ProposalCard UI, which calls the
  * approval handlers in `handleApproval.ts`.
  *
@@ -18,14 +20,22 @@ import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { resolveGraphJarvis } from "@/lib/ai/graphWriteAuth";
-import { readNodeByRef } from "@/services/swarm/api/nodes";
+import {
+  findEdgeByEndpoints,
+  listIncomingEdges,
+  readNodeByRef,
+} from "@/services/swarm/api/nodes";
 import { kgGetOntology } from "@/lib/ai/kg-adapter";
-import { findReservedKeys } from "@/lib/proposals/graphWriteValidation";
+import { DEFAULT_MOVE_EDGE, findReservedKeys, wouldCycle } from "@/lib/proposals/graphWriteValidation";
 import {
   PROPOSE_CREATE_NODE_TOOL,
   PROPOSE_NODE_EDIT_TOOL,
   PROPOSE_CREATE_TRIPLET_TOOL,
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+  PROPOSE_DELETE_EDGE_TOOL,
+  PROPOSE_MOVE_NODE_TOOL,
+  type GraphEdgeDeleteProposalPayload,
+  type GraphNodeMoveProposalPayload,
 } from "@/lib/proposals/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -70,6 +80,12 @@ function validateEndpoint(endpoint: unknown, label: string): string | null {
     return `${label}: provide either ref_id OR (node_type + node_data).`;
   }
   return null;
+}
+
+/** A node's display name off its Jarvis properties, when it has one. */
+function nameOf(properties: Record<string, unknown> | undefined): string | undefined {
+  const name = properties?.name ?? properties?.title;
+  return typeof name === "string" && name ? name : undefined;
 }
 
 // ─── Ontology helpers ─────────────────────────────────────────────────────
@@ -131,7 +147,7 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
         "Propose creating a new node in the workspace knowledge graph. " +
         "Emits an approvable card — no write happens until the user clicks Approve. " +
         "Requires a valid `node_type` from `graph_ontology`. " +
-        "Reserved attribute keys (status, is_deleted, boost, ref_id, algo_*) are rejected. " +
+        "Reserved attribute keys (status, is_deleted, is_muted, boost, ref_id, algo_*) are rejected. " +
         "No `namespace` or `create_schema_if_missing` parameter.",
       inputSchema: z.object({
         workspaceSlug: z
@@ -147,7 +163,7 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
         node_data: z
           .record(z.string(), z.unknown())
           .describe(
-            "Node attributes. Reserved keys (status, is_deleted, boost, ref_id, algo_*) are rejected.",
+            "Node attributes. Reserved keys (status, is_deleted, is_muted, boost, ref_id, algo_*) are rejected.",
           ),
         rationale: z
           .string()
@@ -525,6 +541,259 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
           },
           ...(rationale ? { rationale } : {}),
           meta: { workspaceSlug: verifiedSlug },
+        };
+      },
+    }),
+
+    // ── propose_delete_edge ───────────────────────────────────────────────
+
+    [PROPOSE_DELETE_EDGE_TOOL]: tool({
+      description:
+        "Propose removing one existing relationship (source)-[:edge_type]->(target) from the workspace KG. " +
+        "Both ends are ref_ids of existing nodes (from graph_get / graph_neighbors / graph_search). " +
+        "The edge is looked up by its ends at propose time to confirm it exists, and again on approval. " +
+        "Emits an approvable card — nothing is removed until the user clicks Approve. " +
+        "To put a node under a different parent, use propose_move_node instead of a delete plus a create.",
+      inputSchema: z.object({
+        workspaceSlug: z
+          .string()
+          .min(1)
+          .describe("Slug of the workspace the edge belongs to."),
+        edge_type: z
+          .string()
+          .min(1)
+          .describe("Relationship type of the edge to remove, e.g. PARENT_OF."),
+        source_ref_id: z
+          .string()
+          .min(1)
+          .describe("ref_id of the node the edge starts from (the parent, for PARENT_OF)."),
+        target_ref_id: z
+          .string()
+          .min(1)
+          .describe("ref_id of the node the edge points to (the child, for PARENT_OF)."),
+        rationale: z
+          .string()
+          .optional()
+          .describe("Why this relationship should be removed."),
+      }),
+      execute: async ({ workspaceSlug, edge_type, source_ref_id, target_ref_id, rationale }) => {
+        if (source_ref_id === target_ref_id) {
+          return { error: "source_ref_id and target_ref_id must be different nodes." };
+        }
+
+        const resolved = await resolveGraphJarvis(orgId, userId, {
+          slug: workspaceSlug,
+        });
+        if (!resolved.ok) return { error: resolved.error };
+        const {
+          workspaceId,
+          workspaceSlug: verifiedSlug,
+          config,
+        } = resolved.access;
+
+        const payload: GraphEdgeDeleteProposalPayload = {
+          workspaceId,
+          workspaceSlug: verifiedSlug,
+          edge_type,
+          source_ref_id,
+          target_ref_id,
+        };
+
+        // Read the edge to confirm it exists and to name its ends on the card.
+        // Credentials are discarded; the proposal carries only safe fields.
+        const found = await findEdgeByEndpoints(config, { source_ref_id, edge_type, target_ref_id });
+        if (!found.success) {
+          return { error: found.message ?? "Could not read the edge from the workspace's graph." };
+        }
+        if (!found.edge) {
+          return {
+            kind: "graphEdgeDelete" as const,
+            proposalId: nanoid(),
+            payload,
+            meta: {
+              workspaceSlug: verifiedSlug,
+              refusedReason: `No ${edge_type} edge from "${source_ref_id}" to "${target_ref_id}" was found in this workspace's graph.`,
+            },
+          };
+        }
+
+        return {
+          kind: "graphEdgeDelete" as const,
+          proposalId: nanoid(),
+          payload,
+          ...(rationale ? { rationale } : {}),
+          meta: {
+            workspaceSlug: verifiedSlug,
+            edge_ref_id: found.edge.ref_id,
+            ...(found.edge.source_name ? { source_name: found.edge.source_name } : {}),
+            ...(found.edge.target_name ? { target_name: found.edge.target_name } : {}),
+          },
+        };
+      },
+    }),
+
+    // ── propose_move_node ─────────────────────────────────────────────────
+
+    [PROPOSE_MOVE_NODE_TOOL]: tool({
+      description:
+        "Propose moving a node from under its current parent to under another, along one edge type " +
+        "(PARENT_OF by default — the concept tree). The node is the edge's target; the parents are its sources. " +
+        "On approval the new link is created first and the old one removed second, so the node is never left orphaned. " +
+        "`from_ref_id` can be omitted when the node has exactly one parent along that edge; " +
+        "a node with several parents needs it. A node with no parent is not a move — use propose_create_triplet. " +
+        "Refused for mirror-owned node types and, along PARENT_OF, for a destination under the node itself (a cycle). " +
+        "Emits an approvable card — nothing changes until the user clicks Approve.",
+      inputSchema: z.object({
+        workspaceSlug: z
+          .string()
+          .min(1)
+          .describe("Slug of the workspace the node belongs to."),
+        ref_id: z.string().min(1).describe("ref_id of the node to move."),
+        to_ref_id: z
+          .string()
+          .min(1)
+          .describe("ref_id of the node it should sit under afterwards."),
+        from_ref_id: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            "ref_id of the parent it sits under now. Optional when the node has exactly one parent along edge_type.",
+          ),
+        edge_type: z
+          .string()
+          .min(1)
+          .default(DEFAULT_MOVE_EDGE)
+          .describe("Edge type the move follows (parent → node). Defaults to PARENT_OF."),
+        rationale: z
+          .string()
+          .optional()
+          .describe("Why the node belongs under the new parent."),
+      }),
+      execute: async ({ workspaceSlug, ref_id, to_ref_id, from_ref_id, edge_type, rationale }) => {
+        if (to_ref_id === ref_id) {
+          return { error: "to_ref_id must be a different node from ref_id — a node cannot be its own parent." };
+        }
+        if (from_ref_id && from_ref_id === to_ref_id) {
+          return { error: "from_ref_id and to_ref_id are the same node — nothing would move." };
+        }
+
+        const resolved = await resolveGraphJarvis(orgId, userId, {
+          slug: workspaceSlug,
+        });
+        if (!resolved.ok) return { error: resolved.error };
+        const {
+          workspaceId,
+          workspaceSlug: verifiedSlug,
+          config,
+        } = resolved.access;
+
+        const refuse = (
+          from: string,
+          meta: Omit<Extract<ReturnType<typeof refuse>, { kind: "graphNodeMove" }>["meta"], "refusedReason" | "workspaceSlug">,
+          refusedReason: string,
+        ) => ({
+          kind: "graphNodeMove" as const,
+          proposalId: nanoid(),
+          payload: {
+            workspaceId,
+            workspaceSlug: verifiedSlug,
+            ref_id,
+            edge_type,
+            from_ref_id: from,
+            to_ref_id,
+          } satisfies GraphNodeMoveProposalPayload,
+          meta: { workspaceSlug: verifiedSlug, ...meta, refusedReason },
+        });
+
+        // 1. The node: must exist and must not be mirror-owned (its links
+        //    would be restored by the next sync pass).
+        const node = await readNodeByRef(config, ref_id);
+        if (!node.success) {
+          return refuse(from_ref_id ?? "", {}, `Node "${ref_id}" was not found in this workspace's graph.`);
+        }
+        const node_type = node.node_type ?? "";
+        const node_name = nameOf(node.properties);
+        const names = { ...(node_name ? { node_name } : {}), ...(node_type ? { node_type } : {}) };
+        if (MIRROR_OWNED_TYPES.has(node_type)) {
+          return refuse(
+            from_ref_id ?? "",
+            names,
+            `"${node_type}" is a mirror-owned type — its links would be silently restored by the next sync pass.`,
+          );
+        }
+
+        // 2. Where it sits now: the edge to remove.
+        const incoming = await listIncomingEdges(config, { ref_id, edge_type });
+        if (!incoming.success) {
+          return { error: incoming.message ?? "Could not read the node's links from the workspace's graph." };
+        }
+        let from: { ref_id: string; name?: string; edge_ref_id: string };
+        if (from_ref_id) {
+          const match = incoming.edges.find((e) => e.source_ref_id === from_ref_id);
+          if (match) {
+            from = { ref_id: from_ref_id, name: match.source_name, edge_ref_id: match.ref_id };
+          } else {
+            // The node's own listing can be cut short on a hub: look the one edge up by its ends.
+            const found = await findEdgeByEndpoints(config, { source_ref_id: from_ref_id, edge_type, target_ref_id: ref_id });
+            if (!found.success) {
+              return { error: found.message ?? "Could not read the edge from the workspace's graph." };
+            }
+            if (!found.edge) {
+              return refuse(from_ref_id, names, `"${ref_id}" is not under "${from_ref_id}" along ${edge_type}.`);
+            }
+            from = { ref_id: from_ref_id, name: found.edge.source_name, edge_ref_id: found.edge.ref_id };
+          }
+        } else if (incoming.edges.length === 1) {
+          const [e] = incoming.edges;
+          from = { ref_id: e.source_ref_id, name: e.source_name, edge_ref_id: e.ref_id };
+        } else if (incoming.edges.length === 0) {
+          return refuse(
+            "",
+            names,
+            `"${ref_id}" has no ${edge_type} parent to move it from — use propose_create_triplet to link it under "${to_ref_id}".`,
+          );
+        } else {
+          const parents = incoming.edges.map((e) => e.source_name ?? e.source_ref_id).join(", ");
+          return refuse(
+            "",
+            names,
+            `"${ref_id}" has ${incoming.edges.length} ${edge_type} parents (${parents}) — pass from_ref_id to say which link to move.`,
+          );
+        }
+        const fromMeta = { ...names, ...(from.name ? { from_name: from.name } : {}), edge_ref_id: from.edge_ref_id };
+        if (from.ref_id === to_ref_id) {
+          return refuse(from.ref_id, fromMeta, `"${ref_id}" is already under "${to_ref_id}".`);
+        }
+
+        // 3. The destination: must exist, and must not sit under the node itself.
+        const to = await readNodeByRef(config, to_ref_id);
+        if (!to.success) {
+          return refuse(from.ref_id, fromMeta, `Destination "${to_ref_id}" was not found in this workspace's graph.`);
+        }
+        const to_name = nameOf(to.properties);
+        const meta = { ...fromMeta, ...(to_name ? { to_name } : {}) };
+        if (await wouldCycle(config, { ref_id, to_ref_id, edge_type })) {
+          return refuse(
+            from.ref_id,
+            meta,
+            `"${to_ref_id}" sits under "${ref_id}" — moving the node there would make a cycle.`,
+          );
+        }
+
+        return {
+          kind: "graphNodeMove" as const,
+          proposalId: nanoid(),
+          payload: {
+            workspaceId,
+            workspaceSlug: verifiedSlug,
+            ref_id,
+            edge_type,
+            from_ref_id: from.ref_id,
+            to_ref_id,
+          } satisfies GraphNodeMoveProposalPayload,
+          ...(rationale ? { rationale } : {}),
+          meta: { workspaceSlug: verifiedSlug, ...meta },
         };
       },
     }),
