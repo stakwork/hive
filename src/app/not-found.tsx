@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Home, ArrowLeft, Heart } from "lucide-react";
+import { Home, ArrowLeft } from "lucide-react";
 
 export default function NotFound() {
   return (
@@ -15,25 +14,13 @@ export default function NotFound() {
 
           <div className="space-y-3">
             <h2 className="text-2xl md:text-3xl font-bold">
-              Still waiting on design
+              Page not found
             </h2>
             <p className="text-muted-foreground">
-              Every great feature starts with a 404.
+              The page you are looking for does not exist or has been moved.
             </p>
           </div>
         </div>
-
-        {/* PM Humor Card */}
-        <Card className="bg-muted/20">
-          <CardContent className="p-6">
-            <p className="text-sm italic text-muted-foreground">
-              &quot;It’s MVP for now—we’ll iterate later.&quot;
-            </p>
-            <p className="text-xs text-muted-foreground/70 mt-2">
-              — Never iterated again
-            </p>
-          </CardContent>
-        </Card>
 
         {/* Simple Actions */}
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -51,12 +38,6 @@ export default function NotFound() {
             </Link>
           </Button>
         </div>
-
-        {/* Footer */}
-        <p className="text-xs text-muted-foreground/60">
-          In loving memory of the feature this page was meant to be.{" "}
-          <Heart className="w-3 h-3 inline" />
-        </p>
       </div>
     </div>
   );
