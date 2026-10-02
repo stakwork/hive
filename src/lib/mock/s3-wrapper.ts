@@ -314,18 +314,6 @@ export class S3MockWrapper {
     return `voice-signatures/${userId}/signature.wav`;
   }
 
-  /**
-   * Generate whiteboard image path
-   */
-  generateWhiteboardImagePath(
-    workspaceId: string,
-    whiteboardId: string,
-    fileId: string,
-    mimeType: string
-  ): string {
-    const ext = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'bin'
-    return `whiteboards/${workspaceId}/${whiteboardId}/${fileId}.${ext}`
-  }
 }
 
 // Export factory function for consistency

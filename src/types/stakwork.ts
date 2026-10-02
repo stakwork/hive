@@ -76,6 +76,9 @@ export const CreateStakworkRunSchema = z.object({
   })).optional(),
   includeHistory: z.boolean().optional(),
   autoAccept: z.boolean().optional(),
+}).refine((data) => data.type !== StakworkRunType.DIAGRAM_GENERATION, {
+  message: "DIAGRAM_GENERATION run type is retired",
+  path: ["type"],
 });
 
 export const StakworkRunWebhookSchema = z.object({

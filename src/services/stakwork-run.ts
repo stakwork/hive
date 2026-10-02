@@ -13,7 +13,6 @@ import {
   UpdateStakworkRunDecisionInput,
   StakworkRunQuery,
   DataType,
-  isClarifyingQuestions,
 } from "@/types/stakwork";
 import { parseBenchmarkRunResult } from "@/types/legal";
 import { validateReportUrl, classifyS3HostForm } from "@/lib/run-report/url-guard";
@@ -25,7 +24,6 @@ import { getBaseUrl } from "@/lib/utils";
 import {
   pusherServer,
   getWorkspaceChannelName,
-  getWhiteboardChannelName,
   getFeatureChannelName,
   PUSHER_EVENTS,
 } from "@/lib/pusher";
@@ -33,15 +31,11 @@ import { mapStakworkStatus } from "@/utils/conversions";
 import { buildFeatureContext } from "@/lib/ai/utils";
 import { EncryptionService } from "@/lib/encryption";
 import { createUserStory } from "@/services/roadmap/user-stories";
-import type { ParsedDiagram } from "@/services/excalidraw-layout";
 import { isDevelopmentMode } from "@/lib/runtime";
-import { sanitiseDiagram } from "@/services/excalidraw-layout";
-import { tagElementsAsAi, mergeWhiteboardElements } from "@/services/whiteboard-elements";
 import { logger } from "@/lib/logger";
 import { getStakworkTokenReference } from "@/lib/vercel/stakwork-token";
 import { sendToSphinx } from "@/lib/sphinx/daily-pr-summary";
 import { saveWorkflowArtifact } from "@/services/workflow-editor";
-import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { optionalEnvVars } from "@/config/env";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
@@ -105,6 +99,14 @@ export async function createStakworkRun(
   input: CreateStakworkRunInput,
   userId: string
 ) {
+  // DIAGRAM_GENERATION is retired: the Excalidraw Whiteboards feature has
+  // been removed. Reject before any DB write, secret decryption or Stakwork
+  // call so no caller can slip past the schema-level refine() in
+  // CreateStakworkRunSchema (e.g. via a path that bypasses zod parsing).
+  if (input.type === StakworkRunType.DIAGRAM_GENERATION) {
+    throw new Error("DIAGRAM_GENERATION run type is retired");
+  }
+
   // Validate workspace access and fetch related data
   const workspace = await db.workspace.findUnique({
     where: { id: input.workspaceId },
@@ -449,348 +451,6 @@ export async function createStakworkRun(
 }
 
 /**
- * Create a Stakwork run for diagram generation, including swarm credentials,
- * GitHub PAT, repo URLs, and whiteboard message history in the payload.
- */
-export async function createDiagramStakworkRun(input: {
-  workspaceId: string;
-  featureId?: string;
-  whiteboardId: string;
-  architectureText: string;
-  layout: string;
-  userId: string;
-  diagramContext?: string | null;
-  currentMessageId?: string;
-}) {
-  // Validate workspace access and fetch related credentials
-  const workspace = await db.workspace.findUnique({
-    where: { id: input.workspaceId },
-    select: {
-      id: true,
-      ownerId: true,
-      deleted: true,
-      members: {
-        where: { userId: input.userId, leftAt: null },
-        select: { role: true },
-      },
-      swarm: {
-        select: {
-          swarmUrl: true,
-          swarmApiKey: true,
-          swarmSecretAlias: true,
-          poolName: true,
-          id: true,
-        },
-      },
-      sourceControlOrg: {
-        include: {
-          tokens: {
-            where: { userId: input.userId },
-            take: 1,
-          },
-        },
-      },
-      repositories: {
-        orderBy: { createdAt: "asc" },
-        select: { repositoryUrl: true, branch: true },
-      },
-    },
-  });
-
-  if (!workspace || workspace.deleted) {
-    throw new Error("Workspace not found");
-  }
-
-  const isOwner = workspace.ownerId === input.userId;
-  const isMember = workspace.members.length > 0;
-
-  if (!isOwner && !isMember) {
-    throw new Error("Access denied");
-  }
-
-  // Decrypt sensitive credentials
-  const decryptedPAT = workspace.sourceControlOrg?.tokens[0]?.token
-    ? encryptionService.decryptField(
-      "access_token",
-      workspace.sourceControlOrg.tokens[0].token
-    )
-    : null;
-
-  const user = await db.user.findUnique({
-    where: { id: input.userId },
-    include: {
-      githubAuth: {
-        select: { githubUsername: true },
-      },
-    },
-  });
-  const githubUsername = user?.githubAuth?.githubUsername || null;
-
-  // Fetch whiteboard message history excluding the just-created message
-  const whiteboardHistory = input.currentMessageId
-    ? await db.whiteboardMessage.findMany({
-      where: {
-        whiteboardId: input.whiteboardId,
-        id: { not: input.currentMessageId },
-      },
-      orderBy: { createdAt: "asc" },
-      select: { role: true, content: true },
-    })
-    : [];
-  const history = whiteboardHistory.map((m) => ({
-    role: m.role.toLowerCase() as "user" | "assistant",
-    content: m.content,
-  }));
-
-  const baseUrl = getBaseUrl();
-
-  // Create DB record with PENDING status
-  let run = await db.stakworkRun.create({
-    data: {
-      type: StakworkRunType.DIAGRAM_GENERATION,
-      workspaceId: input.workspaceId,
-      featureId: input.featureId ?? null,
-      status: WorkflowStatus.PENDING,
-      webhookUrl: "",
-      dataType: "string",
-    },
-  });
-
-  // Build webhook URL with layout param for post-processing
-  const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=DIAGRAM_GENERATION&workspace_id=${input.workspaceId}&whiteboard_id=${input.whiteboardId}&layout=${input.layout}${input.featureId ? `&feature_id=${input.featureId}` : ''}`;
-  const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?run_id=${run.id}`;
-
-  await db.stakworkRun.update({
-    where: { id: run.id },
-    data: { webhookUrl },
-  });
-
-  try {
-    const workflowId = config.STAKWORK_DIAGRAM_WORKFLOW_ID;
-    if (!workflowId) {
-      throw new Error("STAKWORK_DIAGRAM_WORKFLOW_ID not configured");
-    }
-
-    const vars: Record<string, unknown> = {
-      runId: run.id,
-      workspaceId: input.workspaceId,
-      featureId: input.featureId ?? null,
-      whiteboardId: input.whiteboardId,
-      architectureText: input.architectureText,
-      layout: input.layout,
-      webhookUrl,
-      tokenReference: getStakworkTokenReference(),
-      swarmUrl: workspace.swarm?.swarmUrl || null,
-      swarmSecretAlias: workspace.swarm?.swarmSecretAlias || null,
-      poolName: workspace.swarm?.poolName || workspace.swarm?.id || null,
-      username: githubUsername,
-      pat: decryptedPAT,
-      repo_url: workspace.repositories.map((r) => r.repositoryUrl).join(",") || null,
-      base_branch: workspace.repositories[0]?.branch || null,
-      history,
-    };
-    if (input.diagramContext) {
-      vars.diagramContext = input.diagramContext;
-    }
-
-    const stakworkPayload = {
-      name: `diagram-gen-${Date.now()}`,
-      workflow_id: parseInt(workflowId),
-      webhook_url: workflowWebhookUrl,
-      workflow_params: {
-        set_var: {
-          attributes: { vars },
-        },
-      },
-    };
-
-    const response = await stakworkService().stakworkRequest<{
-      success: boolean;
-      data: { project_id: number };
-    }>("/projects", stakworkPayload);
-
-    const projectId = response?.data?.project_id;
-    if (!projectId) {
-      throw new Error("Failed to get project ID from Stakwork");
-    }
-
-    run = await db.stakworkRun.update({
-      where: { id: run.id },
-      data: {
-        projectId,
-        status: WorkflowStatus.IN_PROGRESS,
-      },
-    });
-
-    return run;
-  } catch (error) {
-    await db.stakworkRun.update({
-      where: { id: run.id },
-      data: { status: WorkflowStatus.FAILED },
-    });
-    throw error;
-  }
-}
-
-const MAX_DIAGRAM_VERSIONS = 10;
-
-/**
- * Merge existing whiteboard elements with newly AI-generated ones.
- * - Preserves all user-created elements (those WITHOUT customData.source === "ai")
- * - Replaces all previously AI-generated elements (those WITH customData.source === "ai")
- *   with the new aiGenerated set
- */
-export { mergeWhiteboardElements, tagElementsAsAi } from "@/services/whiteboard-elements";
-
-/**
- * Snapshot the current whiteboard elements before an AI diagram generation overwrites them.
- * Skipped when the whiteboard has no existing elements (first-time creation).
- * Prunes oldest versions so the total stays at MAX_DIAGRAM_VERSIONS.
- */
-async function snapshotWhiteboardBeforeAiUpdate(whiteboardId: string): Promise<void> {
-  const existing = await db.whiteboard.findUnique({
-    where: { id: whiteboardId },
-    select: { elements: true, appState: true, files: true },
-  });
-
-  const elements = existing?.elements as unknown[];
-  if (!existing || !Array.isArray(elements) || elements.length === 0) return;
-
-  await db.$transaction(async (tx) => {
-    const label = `Before AI diagram – ${new Date().toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    })}`;
-
-    await tx.whiteboardVersion.create({
-      data: {
-        whiteboardId,
-        elements: existing.elements ?? [],
-        appState: existing.appState ?? {},
-        files: existing.files ?? {},
-        label,
-      },
-    });
-
-    const all = await tx.whiteboardVersion.findMany({
-      where: { whiteboardId },
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    });
-
-    if (all.length > MAX_DIAGRAM_VERSIONS) {
-      const toDelete = all.slice(0, all.length - MAX_DIAGRAM_VERSIONS);
-      await tx.whiteboardVersion.deleteMany({
-        where: { id: { in: toDelete.map((v) => v.id) } },
-      });
-    }
-  });
-}
-
-/**
- * Extract diagram data (components + connections) from a Stakwork webhook result.
- * Checks the following paths in order (most specific → least specific):
- *
- * 1. Top-level `components` (backward compat)
- * 2. `request_params.result.components`
- * 3. `request_params.components`
- * 4. `.result.components`
- * 5. `.result` (parsed as JSON string) `.components`
- * 6. `artifacts[].content.components` — new Stakwork format where diagram data
- *    is delivered as `{ artifacts: [{ type: "DIAGRAM", content: { components, connections } }] }`
- */
-function extractDiagramData(parsed: unknown): ParsedDiagram {
-  logger.info("[diagram] extractDiagramData input", "stakwork-run", { type: typeof parsed });
-  if (parsed && typeof parsed === "object") {
-    const obj = parsed as Record<string, unknown>;
-    const topKeys = Object.keys(obj);
-    logger.info("[diagram] extractDiagramData top-level keys", "stakwork-run", { keys: topKeys });
-
-    // Helper to check for non-empty components at a given level
-    const tryExtract = (source: Record<string, unknown>, label: string): ParsedDiagram | null => {
-      if (Array.isArray(source.components) && source.components.length > 0) {
-        logger.info(`[diagram] Found components at ${label}`, "stakwork-run", { count: source.components.length });
-        const raw: ParsedDiagram = { components: source.components, connections: (source.connections as ParsedDiagram["connections"]) ?? [] };
-        return sanitiseDiagram(raw);
-      }
-      if (Array.isArray(source.components)) {
-        logger.info(`[diagram] Found empty components at ${label}, searching deeper`, "stakwork-run");
-      }
-      return null;
-    };
-
-    // Top-level components (backward compat)
-    const topLevel = tryExtract(obj, "top-level");
-    if (topLevel) return topLevel;
-
-    // Nested under request_params.result (current Stakwork format)
-    const rp = obj.request_params as Record<string, unknown> | undefined;
-    if (rp && typeof rp === "object") {
-      logger.info("[diagram] Found request_params", "stakwork-run", { keys: Object.keys(rp) });
-      if (rp.result && typeof rp.result === "object") {
-        const inner = rp.result as Record<string, unknown>;
-        logger.info("[diagram] Found request_params.result", "stakwork-run", { keys: Object.keys(inner) });
-        const nested = tryExtract(inner, "request_params.result");
-        if (nested) return nested;
-      }
-      // Also try extracting directly from request_params (without .result nesting)
-      const rpDirect = tryExtract(rp, "request_params");
-      if (rpDirect) return rpDirect;
-    }
-
-    // Nested under .result (fallback)
-    if (obj.result && typeof obj.result === "object") {
-      const inner = obj.result as Record<string, unknown>;
-      logger.info("[diagram] Found .result", "stakwork-run", { keys: Object.keys(inner) });
-      const resultLevel = tryExtract(inner, ".result");
-      if (resultLevel) return resultLevel;
-    }
-
-    // If result is a string, try parsing it as JSON (double-stringified)
-    if (typeof obj.result === "string") {
-      try {
-        const innerParsed = JSON.parse(obj.result);
-        if (innerParsed && typeof innerParsed === "object") {
-          logger.info("[diagram] Parsed string .result as JSON", "stakwork-run", { keys: Object.keys(innerParsed) });
-          const stringResult = tryExtract(innerParsed as Record<string, unknown>, ".result (parsed string)");
-          if (stringResult) return stringResult;
-        }
-      } catch {
-        // Not valid JSON, ignore
-      }
-    }
-
-    // New Stakwork format: artifacts array with type === "DIAGRAM"
-    if (Array.isArray(obj.artifacts)) {
-      for (const artifact of obj.artifacts) {
-        if (
-          artifact &&
-          typeof artifact === "object" &&
-          (artifact as Record<string, unknown>).type === "DIAGRAM"
-        ) {
-          const content = (artifact as Record<string, unknown>).content;
-          if (content && typeof content === "object") {
-            logger.info("[diagram] Found components in artifacts[].content", "stakwork-run");
-            const extracted = tryExtract(content as Record<string, unknown>, "artifacts[].content");
-            if (extracted) return extracted;
-          }
-        }
-      }
-    }
-
-    // Log the actual structure to help debug
-    logger.error("[diagram] Could not find non-empty components array", "stakwork-run", { structure: JSON.stringify(parsed).slice(0, 1000) });
-  } else {
-    logger.error("[diagram] Parsed result is not an object", "stakwork-run", { type: typeof parsed, value: String(parsed).slice(0, 200) });
-  }
-
-  throw new Error("Diagram data not found: expected components array in result");
-}
-
-/**
  * Minimum acceptable length (bytes, as a UTF-8 string) for NEXTAUTH_SECRET
  * before webhook run_token verification trusts it. Mirrors the dispatch
  * route's signing-side check
@@ -837,8 +497,6 @@ export async function processStakworkRunWebhook(
     type: string;
     workspace_id: string;
     feature_id?: string;
-    whiteboard_id?: string;
-    layout?: string;
     run_id?: string;
     run_token?: string;
   }
@@ -931,7 +589,15 @@ export async function processStakworkRunWebhook(
   // rows now (services/strut-runs/openhealth.ts) and settle through
   // /api/strut-runs/webhook. Nothing is dispatched with this type, so a
   // webhook naming it is refused rather than merged by the generic branch.
-  if (type === StakworkRunType.OPENHEALTH_BENCHMARK_RUNNER) {
+  //
+  // DIAGRAM_GENERATION is also retired: the Excalidraw Whiteboards feature
+  // has been removed, so no run is ever dispatched with this type. Any
+  // webhook naming it — including late callbacks from in-flight runs — is
+  // refused rather than merged by the generic branch.
+  if (
+    type === StakworkRunType.OPENHEALTH_BENCHMARK_RUNNER ||
+    type === StakworkRunType.DIAGRAM_GENERATION
+  ) {
     throw new Error("Unauthorized: run type retired");
   }
 
@@ -1058,9 +724,9 @@ export async function processStakworkRunWebhook(
   // ── Run report bundle pointer ────────────────────────────────────────────
   // Accepted ONLY for LEGAL_BENCHMARK_* types, which are exactly the types
   // whose run_token HMAC was verified above. An unauthenticated caller posting
-  // type=DIAGRAM_GENERATION|TASK_GENERATION|DAILY_RECAP with a workspace_id and
-  // no run_id reaches the match-any fallback arm with zero verification, so on
-  // any other type the value is dropped and a warn is logged.
+  // type=TASK_GENERATION|DAILY_RECAP with a workspace_id and no run_id reaches
+  // the match-any fallback arm with zero verification, so on any other type
+  // the value is dropped and a warn is logged.
   const isLegalBenchmarkType =
     run.type === StakworkRunType.LEGAL_BENCHMARK_RUNNER ||
     run.type === StakworkRunType.LEGAL_BENCHMARK_SCORER ||
@@ -1361,256 +1027,6 @@ export async function processStakworkRunWebhook(
       });
     }
     return { runId: run.id, status, dataType };
-  }
-
-  // Step 2: Post-process DIAGRAM_GENERATION — run ELK layout and upsert/update whiteboard
-  const { whiteboard_id } = queryParams;
-  logger.debug("[diagram] Post-process check", "stakwork-run", {
-    type,
-    status,
-    hasResult: !!serializedResult,
-    resultLength: serializedResult?.length,
-    feature_id,
-    whiteboard_id,
-  });
-
-  if (
-    type === "DIAGRAM_GENERATION" &&
-    status === WorkflowStatus.COMPLETED &&
-    serializedResult &&
-    (feature_id || whiteboard_id)
-  ) {
-    try {
-      logger.info("[diagram] Starting post-processing", "stakwork-run", { feature_id, whiteboard_id });
-      logger.debug("[diagram] Raw serializedResult (first 500 chars)", "stakwork-run", { preview: serializedResult.slice(0, 500) });
-
-      const {
-        relayoutDiagram,
-        computeUserElementsBoundingBox,
-        computePlacementOffset,
-        offsetExcalidrawElements,
-      } = await import("@/services/excalidraw-layout");
-      // Strip markdown code fences if LLM wrapped the JSON in ```json ... ```
-      let cleanedResult = serializedResult.trim();
-      if (cleanedResult.startsWith("```")) {
-        cleanedResult = cleanedResult.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
-      }
-      const parsedResult = JSON.parse(cleanedResult);
-      logger.debug("[diagram] Parsed result", "stakwork-run", { type: typeof parsedResult, isArray: Array.isArray(parsedResult) });
-
-      // Early-exit: if the AI returned clarifying questions instead of a diagram, persist them and broadcast
-      if (isClarifyingQuestions(parsedResult)) {
-        logger.info("[diagram] Clarifying questions response detected — skipping diagram generation", "stakwork-run", { whiteboard_id, feature_id });
-        const targetWhiteboardId = whiteboard_id
-          ?? (feature_id
-            ? (await db.whiteboard.findUnique({ where: { featureId: feature_id }, select: { id: true } }))?.id
-            : null);
-        if (targetWhiteboardId) {
-          const assistantMessage = await db.whiteboardMessage.create({
-            data: {
-              whiteboardId: targetWhiteboardId,
-              role: "ASSISTANT",
-              content: "I have a few questions before generating the diagram.",
-              status: "SENT",
-              metadata: parsedResult as unknown as Prisma.InputJsonValue,
-            },
-          });
-          const clarifyChannel = getWhiteboardChannelName(targetWhiteboardId);
-          await pusherServer.trigger(clarifyChannel, PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE, {
-            message: assistantMessage,
-            timestamp: new Date(),
-          });
-        }
-        return { runId: run.id, status };
-      }
-
-      const useStakworkPositioning = canAccessServerFeature(
-        FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING
-      );
-
-      let aiElements: unknown[];
-      let appStateForSave: { viewBackgroundColor: string; gridSize: number | null };
-
-      if (useStakworkPositioning && Array.isArray(parsedResult)) {
-        // Flag ON: use raw pre-positioned Excalidraw elements from Stakwork
-        logger.info("[diagram] Using Stakwork positioning (ELK skipped)", "stakwork-run");
-        aiElements = tagElementsAsAi(parsedResult);
-        appStateForSave = { viewBackgroundColor: "#ffffff", gridSize: null };
-      } else {
-        // Flag OFF (default): run extractDiagramData -> ELK relayoutDiagram as today
-        const diagramData = extractDiagramData(parsedResult);
-        logger.info("[diagram] Extracted diagram", "stakwork-run", {
-          componentCount: diagramData.components.length,
-          connectionCount: diagramData.connections.length,
-          componentNames: diagramData.components.map((c: { name?: string }) => c.name).slice(0, 10),
-        });
-
-        if (diagramData.components.length === 0) {
-          throw new Error("Diagram has no components to layout");
-        }
-
-        const validLayouts = ["layered", "force", "stress", "mrtree"] as const;
-        const layoutAlgo = validLayouts.includes(queryParams.layout as typeof validLayouts[number])
-          ? (queryParams.layout as typeof validLayouts[number])
-          : "layered";
-        logger.info("[diagram] Running ELK layout", "stakwork-run", { algorithm: layoutAlgo });
-
-        const layoutData = await relayoutDiagram(diagramData, layoutAlgo);
-        logger.info("[diagram] Layout complete", "stakwork-run", { elementCount: layoutData.elements.length });
-        aiElements = layoutData.elements as unknown[];
-        appStateForSave = layoutData.appState;
-      }
-
-      let upsertedWhiteboard: { id: string } | null = null;
-
-      if (feature_id) {
-        // Feature-linked path: upsert whiteboard by featureId
-        const feature = await db.feature.findUnique({
-          where: { id: feature_id },
-          select: { title: true },
-        });
-
-        // Snapshot existing whiteboard before AI overwrites it, and fetch existing elements for merge
-        const existingByFeature = await db.whiteboard.findUnique({
-          where: { featureId: feature_id },
-          select: { id: true, elements: true },
-        });
-        if (existingByFeature) {
-          await snapshotWhiteboardBeforeAiUpdate(existingByFeature.id);
-        }
-
-        const existingFeatureElements = (existingByFeature?.elements as unknown[]) ?? [];
-
-        // Offset AI elements to avoid overlapping user-created content
-        const featureUserBbox = computeUserElementsBoundingBox(existingFeatureElements);
-        let featureAiElements = aiElements;
-        if (featureUserBbox) {
-          const aiMinX = Math.min(...featureAiElements.map((e: any) => typeof e.x === "number" ? e.x : Infinity));
-          const aiMinY = Math.min(...featureAiElements.map((e: any) => typeof e.y === "number" ? e.y : Infinity));
-          const aiMaxX = Math.max(...featureAiElements.map((e: any) => typeof e.x === "number" && typeof e.width === "number" ? e.x + e.width : -Infinity));
-          const aiMaxY = Math.max(...featureAiElements.map((e: any) => typeof e.y === "number" && typeof e.height === "number" ? e.y + e.height : -Infinity));
-          const { offsetX, offsetY } = computePlacementOffset(featureUserBbox, aiMaxX - aiMinX, aiMaxY - aiMinY);
-          featureAiElements = offsetExcalidrawElements(featureAiElements, offsetX - aiMinX, offsetY - aiMinY);
-        }
-
-        await db.whiteboard.upsert({
-          where: { featureId: feature_id },
-          update: {
-            elements: mergeWhiteboardElements(
-              existingFeatureElements,
-              featureAiElements as unknown[]
-            ) as unknown as Prisma.InputJsonValue,
-            appState: appStateForSave as Prisma.InputJsonValue,
-            version: { increment: 1 },
-          },
-          create: {
-            name: `${feature?.title || "Feature"} - Architecture`,
-            workspaceId: workspace_id,
-            featureId: feature_id,
-            elements: aiElements as unknown as Prisma.InputJsonValue,
-            appState: appStateForSave as Prisma.InputJsonValue,
-            files: {},
-          },
-        });
-        logger.info("[diagram] Whiteboard upserted successfully", "stakwork-run", { feature_id });
-
-        upsertedWhiteboard = await db.whiteboard.findUnique({
-          where: { featureId: feature_id },
-          select: { id: true },
-        });
-      } else if (whiteboard_id) {
-        // Standalone path: whiteboard already exists, just update elements
-        await snapshotWhiteboardBeforeAiUpdate(whiteboard_id);
-
-        // Fetch existing elements before overwriting so we can preserve user content
-        const existingWhiteboard = await db.whiteboard.findUnique({
-          where: { id: whiteboard_id },
-          select: { elements: true },
-        });
-
-        // Offset AI elements to avoid overlapping user-created content
-        const standaloneExistingElements = (existingWhiteboard?.elements as unknown[]) ?? [];
-        const standaloneUserBbox = computeUserElementsBoundingBox(standaloneExistingElements);
-        let standaloneAiElements = aiElements;
-        if (standaloneUserBbox) {
-          const aiMinX = Math.min(...standaloneAiElements.map((e: any) => typeof e.x === "number" ? e.x : Infinity));
-          const aiMinY = Math.min(...standaloneAiElements.map((e: any) => typeof e.y === "number" ? e.y : Infinity));
-          const aiMaxX = Math.max(...standaloneAiElements.map((e: any) => typeof e.x === "number" && typeof e.width === "number" ? e.x + e.width : -Infinity));
-          const aiMaxY = Math.max(...standaloneAiElements.map((e: any) => typeof e.y === "number" && typeof e.height === "number" ? e.y + e.height : -Infinity));
-          const { offsetX, offsetY } = computePlacementOffset(standaloneUserBbox, aiMaxX - aiMinX, aiMaxY - aiMinY);
-          standaloneAiElements = offsetExcalidrawElements(standaloneAiElements, offsetX - aiMinX, offsetY - aiMinY);
-        }
-
-        await db.whiteboard.update({
-          where: { id: whiteboard_id },
-          data: {
-            elements: mergeWhiteboardElements(
-              standaloneExistingElements,
-              standaloneAiElements
-            ) as unknown as Prisma.InputJsonValue,
-            appState: appStateForSave as Prisma.InputJsonValue,
-            version: { increment: 1 },
-          },
-        });
-        logger.info("[diagram] Whiteboard updated successfully", "stakwork-run", { whiteboard_id });
-
-        upsertedWhiteboard = await db.whiteboard.findUnique({
-          where: { id: whiteboard_id },
-          select: { id: true },
-        });
-      }
-
-      // Persist ASSISTANT message and broadcast via Pusher
-      if (upsertedWhiteboard) {
-        const assistantMessage = await db.whiteboardMessage.create({
-          data: {
-            whiteboardId: upsertedWhiteboard.id,
-            role: "ASSISTANT",
-            content: "Diagram updated based on your request.",
-            status: "SENT",
-          },
-        });
-
-        try {
-          const whiteboardChannel = getWhiteboardChannelName(upsertedWhiteboard.id);
-          await pusherServer.trigger(
-            whiteboardChannel,
-            PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE,
-            { message: assistantMessage, timestamp: new Date() }
-          );
-        } catch (pusherError) {
-          logger.error("[diagram] Failed to broadcast chat message", "stakwork-run", { error: String(pusherError) });
-        }
-      }
-    } catch (postProcessError) {
-      logger.error("[diagram] Error post-processing diagram generation", "stakwork-run", { error: String(postProcessError) });
-      // Don't throw — the result is already saved in the run
-
-      // Notify the user so the chat panel clears the spinner
-      const errorWhiteboardId = whiteboard_id
-        ?? (feature_id ? (await db.whiteboard.findUnique({ where: { featureId: feature_id }, select: { id: true } }))?.id : null);
-
-      if (errorWhiteboardId) {
-        try {
-          const errorMessage = await db.whiteboardMessage.create({
-            data: {
-              whiteboardId: errorWhiteboardId,
-              role: "ASSISTANT",
-              content: "Sorry, I couldn't process the diagram. Please try again.",
-              status: "SENT",
-            },
-          });
-
-          const errorChannel = getWhiteboardChannelName(errorWhiteboardId);
-          await pusherServer.trigger(errorChannel, PUSHER_EVENTS.WHITEBOARD_CHAT_MESSAGE, {
-            message: errorMessage,
-            timestamp: new Date(),
-          });
-        } catch (notifyError) {
-          logger.error("[diagram] Failed to notify user of error", "stakwork-run", { error: String(notifyError) });
-        }
-      }
-    }
   }
 
   // Step 3: Broadcast via Pusher for real-time updates
@@ -2679,9 +2095,9 @@ export async function stopStakworkRun(
   }
 
   // Only a PLAN_CHAT run owns the feature's workflowStatus (feature-chat.ts
-  // sets it IN_PROGRESS on dispatch). DIAGRAM_GENERATION / TASK_GENERATION
-  // runs also carry a featureId but must not halt the plan. Guarded so a
-  // feature the webhook already moved to a terminal state isn't clobbered.
+  // sets it IN_PROGRESS on dispatch). TASK_GENERATION runs also carry a
+  // featureId but must not halt the plan. Guarded so a feature the webhook
+  // already moved to a terminal state isn't clobbered.
   if (run.type === StakworkRunType.PLAN_CHAT && run.featureId) {
     const halted = await db.feature.updateMany({
       where: { id: run.featureId, workflowStatus: WorkflowStatus.IN_PROGRESS },

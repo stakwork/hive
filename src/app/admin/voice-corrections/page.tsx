@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-const SURFACES = ["task_chat", "plan_chat", "plan_start", "task_start", "whiteboard", "sidebar"] as const;
+const SURFACES = ["task_chat", "plan_chat", "plan_start", "task_start", "sidebar"] as const;
 
 function truncate(str: string, len = 80) {
   if (!str) return "";

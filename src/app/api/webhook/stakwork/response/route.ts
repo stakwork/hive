@@ -99,8 +99,6 @@ function normalizeLegalBenchmarkPayload(body: Record<string, unknown>): Record<s
  *   workspace_id  — workspace that owns the run
  *   run_id        — (preferred) exact StakworkRun id
  *   feature_id    — (optional) feature FK
- *   whiteboard_id — (optional) whiteboard FK for DIAGRAM_GENERATION
- *   layout        — (optional) ELK layout algorithm for DIAGRAM_GENERATION
  *   run_token     — (required for LEGAL_BENCHMARK_*) HMAC-SHA256 token
  *                   embedded in the webhook_url at run-creation time
  */
@@ -111,8 +109,6 @@ export async function POST(request: NextRequest) {
     const type = url.searchParams.get("type");
     const workspace_id = url.searchParams.get("workspace_id");
     const feature_id = url.searchParams.get("feature_id");
-    const whiteboard_id = url.searchParams.get("whiteboard_id");
-    const layout = url.searchParams.get("layout");
     const run_id = url.searchParams.get("run_id");
     const run_token = url.searchParams.get("run_token");
 
@@ -167,8 +163,6 @@ export async function POST(request: NextRequest) {
       type,
       workspace_id,
       feature_id: feature_id || undefined,
-      whiteboard_id: whiteboard_id || undefined,
-      layout: layout || undefined,
       run_id: run_id || undefined,
       run_token: run_token || undefined,
     });
