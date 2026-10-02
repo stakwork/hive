@@ -210,6 +210,7 @@ export function OpenHealthClimbStrip({
             climb.gtId !== null && (
               <ClimbStartPopover
                 gtId={climb.gtId}
+                benchmark={{ task: climb.task, variant: climb.variant }}
                 meanRunCost={climb.costUsd !== null && climb.attempts > 0 ? climb.costUsd / climb.attempts : null}
                 label="Climb again"
                 disabled={!canWrite}

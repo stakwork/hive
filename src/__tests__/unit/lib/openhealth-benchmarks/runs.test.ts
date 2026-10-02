@@ -7,6 +7,8 @@
 import { describe, it, expect } from "vitest";
 import { StrutRunStatus } from "@prisma/client";
 import {
+  benchmarkOfRow,
+  headlineOf,
   openHealthClimbSeries,
   openHealthRunTasks,
   openHealthTaskStats,
@@ -15,6 +17,7 @@ import {
   summarizeOpenHealthRuns,
   toOpenHealthRun,
   toOpenHealthRunDetail,
+  type OpenHealthCatalogueEntry,
   type OpenHealthRunSource,
 } from "@/lib/openhealth-benchmarks/runs";
 import type { OpenHealthClimb, OpenHealthClimbStep, OpenHealthRun } from "@/types/openhealth";
@@ -56,6 +59,43 @@ const OUTPUT = {
   spreadsheetUrl: "https://docs.google.com/spreadsheets/d/abc",
   outputDir: "/data/artifacts/1790614605308/gt-7532",
   problemList: "/artifacts/1790614605308/gt-7532/output/problem-list.json",
+};
+
+/** The output of a whole-patient summary run, as the workflow reports it since it took on the task. */
+const SUMMARY_OUTPUT = {
+  task: "context_summarization",
+  variant: "unconditioned",
+  specialty: null,
+  clinicalQuestion: "What is the current active problem list and clinical trajectory for this patient?",
+  split: "public",
+  gtId: 8274,
+  patientId: 1675,
+  difficulty: "medium",
+  title: "context_summarization gt 8274 patient 1675",
+  metric: "clinical_f1",
+  score: 0.7,
+  found: ["Hypertension", "Proteinuria", "Headache", "Gestational age", "Severe headache", "Upper abdominal pain", "Primigravida"],
+  missed: ["Uterine artery Doppler high resistance flow", "Severe hypertension", "Gestational age 34 weeks"],
+  extra: [],
+  metrics: { clinical_f1: 0.7, omission_rate: 0.3, mean_summary_words: 142 },
+  summaryWords: 142,
+  criticalCount: null,
+  involved: null,
+  tier: "A",
+  // The diagnosis keys, null on a summary run.
+  weighted_problem_list_f1_neutral: null,
+  problem_list_recall: null,
+  n_matched: null,
+  produceCost: 0.9,
+  ingested: [],
+  summaryPath: "/artifacts/1790614605308/gt-8274/output/summary.json",
+};
+
+const DIAGNOSIS_ENTRY: OpenHealthCatalogueEntry = {
+  difficulty: "hard",
+  task: "patient_diagnosis",
+  variant: null,
+  specialty: null,
 };
 
 function row(overrides: Partial<OpenHealthRunSource> = {}): OpenHealthRunSource {
@@ -104,7 +144,19 @@ describe("toOpenHealthRun", () => {
       gtId: 7532,
       patientId: 2201,
       difficulty: "hard",
-      scores: { f1: 0.82, recall: 1, precision: 0.7, tier: "A", nMatched: 7, nGt: 7, nPred: 10 },
+      task: "patient_diagnosis",
+      variant: null,
+      specialty: null,
+      scores: {
+        f1: 0.82,
+        metric: "weighted_problem_list_f1_neutral",
+        recall: 1,
+        precision: 0.7,
+        tier: "A",
+        nMatched: 7,
+        nGt: 7,
+        nPred: 10,
+      },
       // The produce agent plus every ingested section.
       costUsd: 1.57,
       durationMs: 1_569_998,
@@ -117,15 +169,116 @@ describe("toOpenHealthRun", () => {
   it("takes a failed run's task from its input and its difficulty from the catalogue", () => {
     const run = toOpenHealthRun(
       row({ status: StrutRunStatus.ERROR, output: null, error: "no problem list produced" }),
-      (gtId) => (gtId === 7532 ? "hard" : null),
+      (gtId) => (gtId === 7532 ? DIAGNOSIS_ENTRY : null),
     );
     expect(run).toMatchObject({
       outcome: "failed",
       gtId: 7532,
       difficulty: "hard",
+      task: "patient_diagnosis",
       scores: null,
       costUsd: null,
       error: "no problem list produced",
+    });
+  });
+
+  it("reads a scored summary run by its task-neutral headline", () => {
+    const run = toOpenHealthRun(row({ input: { gtId: 8274, task: "context_summarization", workdir: "gt-8274" }, output: SUMMARY_OUTPUT }));
+    expect(run).toMatchObject({
+      outcome: "succeeded",
+      gtId: 8274,
+      task: "context_summarization",
+      variant: "unconditioned",
+      specialty: null,
+      // A whole-patient summary is scored by recall alone: nothing beside its score.
+      scores: { f1: 0.7, metric: "clinical_f1", recall: null, precision: null, tier: "A", nMatched: 7, nGt: 10, nPred: null },
+      costUsd: 0.9,
+    });
+  });
+
+  it("reads a specialty summary's recall and precision from the scorer's metrics", () => {
+    const output = {
+      ...SUMMARY_OUTPUT,
+      variant: "specialty_conditioned",
+      specialty: "Cardiology",
+      metric: "conditioned_f1",
+      score: 0.62,
+      criticalCount: 3,
+      involved: true,
+      metrics: { conditioned_f1: 0.62, primary_recall_critical: 0.5, leakage_rate: 0.2 },
+    };
+    const run = toOpenHealthRun(row({ output }));
+    expect(run).toMatchObject({ variant: "specialty_conditioned", specialty: "Cardiology" });
+    expect(run.scores).toMatchObject({ f1: 0.62, metric: "conditioned_f1", recall: 0.5 });
+    expect(run.scores?.precision).toBeCloseTo(0.8);
+  });
+
+  it("takes a failed summary run's benchmark from its launch, and its variant and specialty from the catalogue", () => {
+    const run = toOpenHealthRun(
+      row({
+        status: StrutRunStatus.ERROR,
+        input: { gtId: 8290, task: "context_summarization", workdir: "gt-8290" },
+        output: null,
+        error: "no summary produced",
+      }),
+      (gtId) =>
+        gtId === 8290
+          ? { difficulty: "easy", task: "context_summarization", variant: "specialty_conditioned", specialty: "Dermatology" }
+          : null,
+    );
+    expect(run).toMatchObject({
+      outcome: "failed",
+      task: "context_summarization",
+      variant: "specialty_conditioned",
+      specialty: "Dermatology",
+      difficulty: "easy",
+    });
+  });
+
+  it("calls a row that names no benchmark a diagnosis, and a summary of no known variant a whole-patient one", () => {
+    expect(benchmarkOfRow({}, {}, null)).toEqual({ task: "patient_diagnosis", variant: null, specialty: null });
+    expect(benchmarkOfRow({ task: "context_summarization" }, {}, null)).toEqual({
+      task: "context_summarization",
+      variant: "unconditioned",
+      specialty: null,
+    });
+    // A specialty is only a specialty summary's.
+    expect(benchmarkOfRow({}, { task: "context_summarization", variant: "unconditioned", specialty: "Cardiology" }, null)).toEqual({
+      task: "context_summarization",
+      variant: "unconditioned",
+      specialty: null,
+    });
+  });
+});
+
+describe("headlineOf", () => {
+  it("reads metric + score, and falls back to the diagnosis key for an older run", () => {
+    expect(headlineOf({ metric: "clinical_f1", score: 0.7 })).toEqual({
+      metric: "clinical_f1",
+      score: 0.7,
+      recall: null,
+      precision: null,
+    });
+    expect(headlineOf({ weighted_problem_list_f1_neutral: 0.82, problem_list_recall: 1, problem_list_precision_neutral: 0.7 })).toEqual({
+      metric: "weighted_problem_list_f1_neutral",
+      score: 0.82,
+      recall: 1,
+      precision: 0.7,
+    });
+    // A diagnosis run reporting both: the neutral keys win, the numbers agree.
+    expect(headlineOf({ metric: "weighted_problem_list_f1_neutral", score: 0.82, weighted_problem_list_f1_neutral: 0.82 })).toMatchObject({
+      score: 0.82,
+    });
+    expect(headlineOf({ gtId: 1 })).toBeNull();
+    expect(headlineOf({ score: "0.7" })).toBeNull();
+  });
+
+  it("scores an absent specialty by whether it abstained, with nothing beside", () => {
+    expect(headlineOf({ metric: "abstention_accuracy", score: 1, metrics: { abstention_accuracy: 1, absent_leakage_rate: 0 } })).toEqual({
+      metric: "abstention_accuracy",
+      score: 1,
+      recall: null,
+      precision: null,
     });
   });
 
@@ -163,6 +316,23 @@ describe("toOpenHealthRunDetail", () => {
       { file: "enc-2-labs.md", needed: null, cost: null, steps: null, error: "timed out" },
     ]);
     expect(detail.spreadsheetUrl).toBe("https://docs.google.com/spreadsheets/d/abc");
+    // Nothing of a summary on a diagnosis run.
+    expect(detail).toMatchObject({ found: [], summaryWords: null, criticalCount: null, metrics: {}, clinicalQuestion: null });
+  });
+
+  it("reads a summary's question, the findings it named and missed, its length and every metric", () => {
+    const detail = toOpenHealthRunDetail(row({ output: { ...SUMMARY_OUTPUT, metrics: { ...SUMMARY_OUTPUT.metrics, bogus: "x" } } }));
+    expect(detail).toMatchObject({
+      clinicalQuestion: SUMMARY_OUTPUT.clinicalQuestion,
+      found: SUMMARY_OUTPUT.found,
+      missed: SUMMARY_OUTPUT.missed,
+      extra: [],
+      matched: [],
+      summaryWords: 142,
+      criticalCount: null,
+      metrics: { clinical_f1: 0.7, omission_rate: 0.3, mean_summary_words: 142 },
+    });
+    expect(JSON.stringify(detail)).not.toContain("summary.json");
   });
 
   it("never carries a server path", () => {
@@ -193,7 +363,10 @@ function run(overrides: Partial<OpenHealthRun>): OpenHealthRun {
     gtId: 1,
     patientId: 1,
     difficulty: "easy",
-    scores: { f1: 0.5, recall: 0.5, precision: 0.5, tier: "B", nMatched: 1, nGt: 2, nPred: 2 },
+    task: "patient_diagnosis",
+    variant: null,
+    specialty: null,
+    scores: { f1: 0.5, metric: "weighted_problem_list_f1_neutral", recall: 0.5, precision: 0.5, tier: "B", nMatched: 1, nGt: 2, nPred: 2 },
     costUsd: 1,
     durationMs: 1,
     error: null,
@@ -204,7 +377,10 @@ function run(overrides: Partial<OpenHealthRun>): OpenHealthRun {
 }
 
 const scored = (f1: number, overrides: Partial<OpenHealthRun> = {}) =>
-  run({ scores: { f1, recall: f1, precision: f1, tier: "B", nMatched: 1, nGt: 2, nPred: 2 }, ...overrides });
+  run({
+    scores: { f1, metric: "weighted_problem_list_f1_neutral", recall: f1, precision: f1, tier: "B", nMatched: 1, nGt: 2, nPred: 2 },
+    ...overrides,
+  });
 const failed = (overrides: Partial<OpenHealthRun> = {}) =>
   run({ status: "ERROR", outcome: "failed", scores: null, error: "boom", ...overrides });
 
@@ -292,8 +468,20 @@ describe("openHealthRunTasks", () => {
         scored(1, { gtId: null }),
       ]),
     ).toEqual([
-      { gtId: 8, difficulty: "hard", runs: 2 },
-      { gtId: 7, difficulty: "easy", runs: 1 },
+      { gtId: 8, difficulty: "hard", task: "patient_diagnosis", variant: null, specialty: null, runs: 2 },
+      { gtId: 7, difficulty: "easy", task: "patient_diagnosis", variant: null, specialty: null, runs: 1 },
+    ]);
+  });
+
+  it("names each task's benchmark, so the filter can say which is which", () => {
+    expect(
+      openHealthRunTasks([
+        scored(0.4, { gtId: 8290, task: "context_summarization", variant: "specialty_conditioned", specialty: "Dermatology" }),
+        scored(0.9, { gtId: 8274, task: "context_summarization", variant: "unconditioned" }),
+      ]),
+    ).toEqual([
+      { gtId: 8290, difficulty: "easy", task: "context_summarization", variant: "specialty_conditioned", specialty: "Dermatology", runs: 1 },
+      { gtId: 8274, difficulty: "easy", task: "context_summarization", variant: "unconditioned", specialty: null, runs: 1 },
     ]);
   });
 });
@@ -306,6 +494,7 @@ function climbStep(overrides: Partial<OpenHealthClimbStep>): OpenHealthClimbStep
     iteration: 0,
     outcome: "succeeded",
     f1: 0.5,
+    metric: null,
     recall: null,
     precision: null,
     newBest: true,
@@ -330,6 +519,9 @@ function climb(overrides: Partial<OpenHealthClimb> = {}): OpenHealthClimb {
     strutRunId: "1790830428092",
     gtId: 7,
     difficulty: "medium",
+    task: "patient_diagnosis",
+    variant: null,
+    specialty: null,
     status: "reached",
     stopReason: "Run 3 scored 1.00.",
     targetF1: 1,
@@ -429,9 +621,9 @@ describe("metrics over runs and climbs", () => {
         [climb(), climb({ id: "climb-2", gtId: 9, difficulty: null, status: "running", steps: [], attempts: 0 })],
       ),
     ).toEqual([
-      { gtId: 8, difficulty: "hard", runs: 1 },
-      { gtId: 7, difficulty: "medium", runs: 3 },
-      { gtId: 9, difficulty: null, runs: 0 },
+      { gtId: 8, difficulty: "hard", task: "patient_diagnosis", variant: null, specialty: null, runs: 1 },
+      { gtId: 7, difficulty: "medium", task: "patient_diagnosis", variant: null, specialty: null, runs: 3 },
+      { gtId: 9, difficulty: null, task: "patient_diagnosis", variant: null, specialty: null, runs: 0 },
     ]);
   });
 });

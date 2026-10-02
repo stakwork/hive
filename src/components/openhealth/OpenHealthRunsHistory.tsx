@@ -9,7 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOpenHealthClimbs } from "@/hooks/useOpenHealthClimbs";
 import { useOpenHealthRuns } from "@/hooks/useOpenHealthRuns";
-import { OPENHEALTH_DIFFICULTIES } from "@/lib/openhealth-benchmarks/constants";
+import {
+  OPENHEALTH_BENCHMARKS,
+  OPENHEALTH_DIFFICULTIES,
+  openHealthBenchmarkByKey,
+  openHealthBenchmarkKey,
+  type OpenHealthBenchmarkKey,
+} from "@/lib/openhealth-benchmarks/constants";
 import {
   openHealthClimbSeries,
   openHealthRunTasks,
@@ -24,8 +30,10 @@ import { OpenHealthClimbStrip } from "./OpenHealthClimbStrip";
 import { OpenHealthClimbViewer } from "./OpenHealthClimbViewer";
 import { OpenHealthRunViewer } from "./OpenHealthRunViewer";
 import {
+  BenchmarkBadge,
   ClimbStatusBadge,
   DifficultyBadge,
+  formatBenchmark,
   formatCost,
   formatDuration,
   formatPercent,
@@ -36,6 +44,12 @@ import {
 
 const COLUMNS = 11;
 const ALL_TASKS = "all";
+const ALL_BENCHMARKS = "all";
+
+type BenchmarkFilter = OpenHealthBenchmarkKey | typeof ALL_BENCHMARKS;
+
+const benchmarkKeyOf = (row: { task: OpenHealthRun["task"]; variant: OpenHealthRun["variant"] }) =>
+  openHealthBenchmarkKey({ task: row.task, variant: row.variant });
 
 /** The open row: a run, or a climb (with the step to show, as an index into its steps). */
 type Expanded = { kind: "run"; id: string } | { kind: "climb"; id: string; step: number | null } | null;
@@ -50,7 +64,7 @@ function SummaryCard({ title, summary, testId }: { title: string; summary: OpenH
         <p className="text-xs font-medium capitalize text-muted-foreground">{title}</p>
         <p className="text-2xl font-semibold tabular-nums">{formatScore(summary.meanF1)}</p>
         <p className="text-xs text-muted-foreground">
-          mean F1 · {formatPercent(summary.successRate)} scored ({summary.succeeded}/{summary.attempts})
+          mean score · {formatPercent(summary.successRate)} scored ({summary.succeeded}/{summary.attempts})
         </p>
       </CardContent>
     </Card>
@@ -77,17 +91,30 @@ export function OpenHealthRunsHistory() {
     return run ? { kind: "run", id: run } : climb ? { kind: "climb", id: climb, step: null } : null;
   });
   const [taskParam, setTask] = useState<string>(searchParams.get("task") ?? ALL_TASKS);
+  // The benchmark filter: a mean over diagnoses and summaries together would mean nothing.
+  const [benchmark, setBenchmark] = useState<BenchmarkFilter>(() => {
+    const key = searchParams.get("benchmark");
+    return openHealthBenchmarkByKey(key) ? (key as OpenHealthBenchmarkKey) : ALL_BENCHMARKS;
+  });
 
-  const tasks = useMemo(() => openHealthRunTasks(runs, climbs), [runs, climbs]);
+  const benchmarkRuns = useMemo(
+    () => (benchmark === ALL_BENCHMARKS ? runs : runs.filter((r) => benchmarkKeyOf(r) === benchmark)),
+    [runs, benchmark],
+  );
+  const benchmarkClimbs = useMemo(
+    () => (benchmark === ALL_BENCHMARKS ? climbs : climbs.filter((c) => benchmarkKeyOf(c) === benchmark)),
+    [climbs, benchmark],
+  );
+  const tasks = useMemo(() => openHealthRunTasks(benchmarkRuns, benchmarkClimbs), [benchmarkRuns, benchmarkClimbs]);
   // A linked task with nothing in the list falls back to all tasks.
   const task = tasks.some((t) => String(t.gtId) === taskParam) ? taskParam : ALL_TASKS;
   const shownRuns = useMemo(
-    () => (task === ALL_TASKS ? runs : runs.filter((r) => String(r.gtId) === task)),
-    [runs, task],
+    () => (task === ALL_TASKS ? benchmarkRuns : benchmarkRuns.filter((r) => String(r.gtId) === task)),
+    [benchmarkRuns, task],
   );
   const shownClimbs = useMemo(
-    () => (task === ALL_TASKS ? climbs : climbs.filter((c) => String(c.gtId) === task)),
-    [climbs, task],
+    () => (task === ALL_TASKS ? benchmarkClimbs : benchmarkClimbs.filter((c) => String(c.gtId) === task)),
+    [benchmarkClimbs, task],
   );
   const rows = useMemo(
     () =>
@@ -98,11 +125,14 @@ export function OpenHealthRunsHistory() {
     [shownRuns, shownClimbs],
   );
   const summary = useMemo(() => summarizeOpenHealthRuns(shownRuns, shownClimbs), [shownRuns, shownClimbs]);
-  const byDifficulty = useMemo(() => summarizeByDifficulty(runs, climbs), [runs, climbs]);
+  const byDifficulty = useMemo(
+    () => summarizeByDifficulty(benchmarkRuns, benchmarkClimbs),
+    [benchmarkRuns, benchmarkClimbs],
+  );
   const series = useMemo(() => openHealthClimbSeries(shownRuns, shownClimbs), [shownRuns, shownClimbs]);
   // The task's newest climb (any state) in the task view; the climbs in flight in the all-tasks view.
   const taskClimb = task === ALL_TASKS ? null : (shownClimbs[0] ?? null);
-  const runningClimbs = useMemo(() => climbs.filter((c) => c.status === "running"), [climbs]);
+  const runningClimbs = useMemo(() => benchmarkClimbs.filter((c) => c.status === "running"), [benchmarkClimbs]);
   // A climb whose row is open shows its strip there: one strip per climb on the page.
   const openClimbId = expanded?.kind === "climb" ? expanded.id : null;
   const climbKeys = useMemo(
@@ -113,15 +143,40 @@ export function OpenHealthRunsHistory() {
     [taskClimb],
   );
 
-  // The task filter and the open row are in the URL, so a link to the page opens the same view.
+  // The filters and the open row are in the URL, so a link to the page opens the same view.
   const syncUrl = useCallback(
-    (nextTask: string, next: Expanded) => {
+    (nextTask: string, next: Expanded, nextBenchmark: BenchmarkFilter = benchmark) => {
       const params = new URLSearchParams({ tab: "runs" });
+      if (nextBenchmark !== ALL_BENCHMARKS) params.set("benchmark", nextBenchmark);
       if (nextTask !== ALL_TASKS) params.set("task", nextTask);
       if (next) params.set(next.kind, next.id);
       router.replace(`${pathname}?${params}`, { scroll: false });
     },
-    [router, pathname],
+    [router, pathname, benchmark],
+  );
+
+  // Switching benchmarks drops a task or open row of another benchmark.
+  const selectBenchmark = useCallback(
+    (next: string) => {
+      const nextBenchmark = openHealthBenchmarkByKey(next) ? (next as OpenHealthBenchmarkKey) : ALL_BENCHMARKS;
+      setBenchmark(nextBenchmark);
+      const fits = (row: { task: OpenHealthRun["task"]; variant: OpenHealthRun["variant"] }) =>
+        nextBenchmark === ALL_BENCHMARKS || benchmarkKeyOf(row) === nextBenchmark;
+      const keepTask = task !== ALL_TASKS && runs.some((r) => String(r.gtId) === task && fits(r));
+      const keepTaskByClimb = task !== ALL_TASKS && climbs.some((c) => String(c.gtId) === task && fits(c));
+      const nextTask = keepTask || keepTaskByClimb ? task : ALL_TASKS;
+      const keepOpen =
+        expanded &&
+        (expanded.kind === "run"
+          ? runs.some((r) => r.id === expanded.id && fits(r) && (nextTask === ALL_TASKS || String(r.gtId) === nextTask))
+          : climbs.some(
+              (c) => c.id === expanded.id && fits(c) && (nextTask === ALL_TASKS || String(c.gtId) === nextTask),
+            ));
+      if (nextTask !== task) setTask(nextTask);
+      if (!keepOpen) setExpanded(null);
+      syncUrl(nextTask, keepOpen ? expanded : null, nextBenchmark);
+    },
+    [task, runs, climbs, expanded, syncUrl],
   );
 
   const open = useCallback(
@@ -228,9 +283,22 @@ export function OpenHealthRunsHistory() {
 
   return (
     <div className="space-y-4" data-testid="openhealth-runs">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Select value={benchmark} onValueChange={selectBenchmark}>
+          <SelectTrigger className="w-44" data-testid="openhealth-benchmark-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_BENCHMARKS}>All benchmarks</SelectItem>
+            {OPENHEALTH_BENCHMARKS.map((b) => (
+              <SelectItem key={b.key} value={b.key}>
+                {b.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={task} onValueChange={selectTask}>
-          <SelectTrigger className="w-64" data-testid="openhealth-task-filter">
+          <SelectTrigger className="w-72" data-testid="openhealth-task-filter">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -238,12 +306,15 @@ export function OpenHealthRunsHistory() {
             {tasks.map((t) => (
               <SelectItem key={t.gtId} value={String(t.gtId)}>
                 Task {t.gtId}
+                {benchmark === ALL_BENCHMARKS || t.task !== "patient_diagnosis"
+                  ? ` · ${formatBenchmark({ task: t.task, variant: t.variant }, t.specialty)}`
+                  : ""}
                 {t.difficulty ? ` · ${t.difficulty}` : ""} · {t.runs} {t.runs === 1 ? "run" : "runs"}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {task !== ALL_TASKS && (
+        {(task !== ALL_TASKS || benchmark !== ALL_BENCHMARKS) && (
           <span className="text-sm text-muted-foreground">
             Showing {rows.length} of {runs.length + climbs.length} rows
           </span>
@@ -284,7 +355,7 @@ export function OpenHealthRunsHistory() {
           <SummaryCard title={`Task ${task}`} summary={summary} testId="openhealth-summary-all" />
           <Card className="lg:col-span-3" data-testid="openhealth-climb-card">
             <CardContent className="space-y-2 py-4">
-              <p className="text-xs font-medium text-muted-foreground">F1 over time · line is the best so far</p>
+              <p className="text-xs font-medium text-muted-foreground">Score over time · line is the best so far</p>
               <OpenHealthClimbChart
                 points={series}
                 onSelect={selectPoint}
@@ -304,7 +375,7 @@ export function OpenHealthRunsHistory() {
             <TableHead>Task</TableHead>
             <TableHead>Difficulty</TableHead>
             <TableHead>Outcome</TableHead>
-            <TableHead className="text-right">F1</TableHead>
+            <TableHead className="text-right">Score</TableHead>
             <TableHead>Tier</TableHead>
             <TableHead className="text-right">Recall</TableHead>
             <TableHead className="text-right">Precision</TableHead>
@@ -367,7 +438,14 @@ function RunRows({
           <Chevron open={open} />
         </TableCell>
         <TableCell className="text-muted-foreground">{formatWhen(run.createdAt)}</TableCell>
-        <TableCell className="font-mono">{run.gtId ?? "—"}</TableCell>
+        <TableCell className="font-mono">
+          {run.gtId ?? "—"}
+          {run.task !== "patient_diagnosis" && (
+            <span className="ml-2">
+              <BenchmarkBadge benchmark={{ task: run.task, variant: run.variant }} specialty={run.specialty} />
+            </span>
+          )}
+        </TableCell>
         <TableCell>
           <DifficultyBadge difficulty={run.difficulty} />
         </TableCell>
@@ -425,6 +503,11 @@ function ClimbRows({
         <TableCell className="text-muted-foreground">{formatWhen(climb.createdAt)}</TableCell>
         <TableCell className="font-mono">
           {climb.gtId ?? "—"}
+          {climb.task !== "patient_diagnosis" && (
+            <span className="ml-2">
+              <BenchmarkBadge benchmark={{ task: climb.task, variant: climb.variant }} specialty={climb.specialty} />
+            </span>
+          )}
           <Badge variant="outline" className="ml-2 font-sans" data-testid="openhealth-climb-badge">
             climb · {climb.attempts} {climb.attempts === 1 ? "run" : "runs"}
           </Badge>

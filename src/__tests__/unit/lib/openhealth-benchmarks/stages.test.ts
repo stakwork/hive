@@ -46,7 +46,7 @@ describe("projectOpenHealthStages", () => {
       { key: "task", label: "Load chart", status: "done" },
       { key: "ingest", label: "Ingest sections", status: "running", done: 2, total: 37 },
       { key: "plan", label: "Plan", status: "running" },
-      { key: "produce", label: "Produce problem list", status: "pending" },
+      { key: "produce", label: "Produce", status: "pending" },
       { key: "score", label: "Score", status: "pending" },
       { key: "result", label: "Result", status: "pending" },
     ]);
@@ -100,7 +100,7 @@ describe("projectOpenHealthStages", () => {
       { key: "task", label: "Load chart", status: "done" },
       { key: "ingest", label: "Ingest sections", status: "running", done: 1, total: 4 },
       { key: "plan", label: "Plan", status: "pending" },
-      { key: "produce", label: "Produce problem list", status: "pending" },
+      { key: "produce", label: "Produce", status: "pending" },
       { key: "score", label: "Score", status: "pending" },
       { key: "result", label: "Result", status: "pending" },
     ]);

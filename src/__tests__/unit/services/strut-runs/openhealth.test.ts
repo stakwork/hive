@@ -3,7 +3,7 @@
  *
  * Coverage:
  *   - launch: dispatches `openhealth-run` with purpose `benchmark` and the
- *     task's id and folder as input;
+ *     task's id, benchmark and folder as input;
  *   - the in-flight guard is per task;
  *   - list / get: rows serialized, scoped to the workspace and the kind; a
  *     PENDING row past the probe age whose run is over on strut is settled
@@ -20,12 +20,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { StrutRunStatus } from "@prisma/client";
 
-const { mockStrutRun, mockDispatch, mockProbe, mockComplete, mockDifficulty, mockEvents } = vi.hoisted(() => ({
+const { mockStrutRun, mockDispatch, mockProbe, mockComplete, mockCatalogue, mockEvents } = vi.hoisted(() => ({
   mockStrutRun: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
   mockDispatch: vi.fn(),
   mockProbe: vi.fn(),
   mockComplete: vi.fn(),
-  mockDifficulty: vi.fn(),
+  mockCatalogue: vi.fn(),
   mockEvents: vi.fn(),
 }));
 
@@ -37,7 +37,7 @@ vi.mock("@/services/strut-runs", () => ({
   STRUT_RUN_LOG_TAG: "STRUT_RUN",
 }));
 vi.mock("@/services/strut-runs/lab", () => ({ fetchStrutRunEvents: mockEvents }));
-vi.mock("@/services/openhealth-benchmarks/tasks", () => ({ cachedDifficultyLookup: mockDifficulty }));
+vi.mock("@/services/openhealth-benchmarks/tasks", () => ({ cachedTaskLookup: mockCatalogue }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import {
@@ -55,6 +55,14 @@ import {
 } from "@/services/strut-runs/openhealth";
 
 const NOW = new Date("2026-09-28T18:00:00Z");
+
+/** A catalogue lookup answering one entry for every task. */
+const entry = (difficulty: "easy" | "medium" | "hard") => () => ({
+  difficulty,
+  task: "patient_diagnosis" as const,
+  variant: null,
+  specialty: null,
+});
 
 function row(overrides: Record<string, unknown> = {}) {
   return {
@@ -87,7 +95,7 @@ const SETTLED = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockDifficulty.mockResolvedValue(() => "medium");
+  mockCatalogue.mockResolvedValue(entry("medium"));
 });
 
 describe("launchOpenHealthRun", () => {
@@ -108,9 +116,25 @@ describe("launchOpenHealthRun", () => {
       kind: "openhealth_benchmark",
       workflow: "openhealth-run",
       purpose: "benchmark",
-      input: { gtId: 7532, workdir: "gt-7532" },
+      input: { gtId: 7532, task: "patient_diagnosis", workdir: "gt-7532" },
       publicBaseUrl: "https://hive.example",
     });
+  });
+
+  it("names the benchmark the task belongs to", async () => {
+    mockDispatch.mockResolvedValue({ runId: "run-2", strutRunId: "2", swarmId: "swarm-1" });
+
+    await launchOpenHealthRun({
+      workspaceId: "ws-1",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      gtId: 8274,
+      task: "context_summarization",
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ input: { gtId: 8274, task: "context_summarization", workdir: "gt-8274" } }),
+    );
   });
 });
 
@@ -200,14 +224,14 @@ describe("listOpenHealthRuns", () => {
 
     const runs = await listOpenHealthRuns("ws-1", { now: NOW });
 
-    expect(mockDifficulty).toHaveBeenCalledWith("swarm-1", ["public", "heldout"]);
+    expect(mockCatalogue).toHaveBeenCalledWith("swarm-1", ["public", "heldout"]);
     expect(runs[0]).toMatchObject({ outcome: "failed", difficulty: "medium", error: "no problem list produced" });
   });
 
   it("asks nothing more of a workspace with no runs", async () => {
     mockStrutRun.findMany.mockResolvedValue([]);
     expect(await listOpenHealthRuns("ws-1", { now: NOW })).toEqual([]);
-    expect(mockDifficulty).not.toHaveBeenCalled();
+    expect(mockCatalogue).not.toHaveBeenCalled();
   });
 });
 
@@ -393,9 +417,27 @@ describe("launchOpenHealthClimb", () => {
       kind: "openhealth_climb",
       workflow: "openhealth-improve-loop",
       purpose: "benchmark",
-      input: { gtId: 7013, target: 0.9, maxRuns: 4 },
+      input: { gtId: 7013, task: "patient_diagnosis", target: 0.9, maxRuns: 4 },
       publicBaseUrl: "https://hive.example",
     });
+  });
+
+  it("names the benchmark the task belongs to", async () => {
+    mockDispatch.mockResolvedValue({ runId: "climb-2", strutRunId: "2", swarmId: "swarm-1" });
+
+    await launchOpenHealthClimb({
+      workspaceId: "ws-1",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      gtId: 8274,
+      task: "context_summarization",
+      targetF1: 1,
+      maxRuns: 2,
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ input: { gtId: 8274, task: "context_summarization", target: 1, maxRuns: 2 } }),
+    );
   });
 });
 
@@ -430,7 +472,7 @@ describe("listOpenHealthClimbs", () => {
       settledAt: NOW,
     });
     mockStrutRun.findMany.mockResolvedValue([climbRow(), settled]);
-    mockDifficulty.mockResolvedValue((gtId: number) => (gtId === 7013 ? "medium" : null));
+    mockCatalogue.mockResolvedValue((gtId: number) => (gtId === 7013 ? entry("medium")() : null));
     mockProbe.mockResolvedValue({ kind: "running" });
     mockEvents.mockResolvedValue(LOOP_EVENTS);
 
@@ -466,7 +508,7 @@ describe("listOpenHealthClimbs", () => {
     mockStrutRun.findMany.mockResolvedValue([pending]);
     mockProbe.mockResolvedValue({ kind: "settled", completion: { status: "success", output: done.output } });
     mockStrutRun.findUnique.mockResolvedValueOnce({ id: "climb-1", tokenHash: "h" }).mockResolvedValueOnce(done);
-    mockDifficulty.mockResolvedValue(() => null);
+    mockCatalogue.mockResolvedValue(() => null);
 
     const climbs = await listOpenHealthClimbs("ws-1", { now: NOW });
 
@@ -481,7 +523,7 @@ describe("listOpenHealthClimbs", () => {
   it("shows a climb in flight with no steps when the lab cannot be read", async () => {
     mockStrutRun.findMany.mockResolvedValue([climbRow()]);
     mockProbe.mockResolvedValue({ kind: "running" });
-    mockDifficulty.mockResolvedValue(() => null);
+    mockCatalogue.mockResolvedValue(() => null);
     mockEvents.mockResolvedValue(null);
 
     const [climb] = await listOpenHealthClimbs("ws-1", { now: NOW });
@@ -491,7 +533,7 @@ describe("listOpenHealthClimbs", () => {
   it("asks nothing more of a workspace with no climbs", async () => {
     mockStrutRun.findMany.mockResolvedValue([]);
     expect(await listOpenHealthClimbs("ws-1")).toEqual([]);
-    expect(mockDifficulty).not.toHaveBeenCalled();
+    expect(mockCatalogue).not.toHaveBeenCalled();
     expect(mockEvents).not.toHaveBeenCalled();
   });
 });
@@ -514,7 +556,7 @@ describe("getOpenHealthClimb", () => {
         settledAt: NOW,
       }),
     );
-    mockDifficulty.mockResolvedValue(() => "medium");
+    mockCatalogue.mockResolvedValue(entry("medium"));
     mockEvents.mockResolvedValue([
       ...LOOP_EVENTS,
       {

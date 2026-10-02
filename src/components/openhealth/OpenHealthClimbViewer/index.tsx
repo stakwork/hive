@@ -7,8 +7,9 @@ import { PillSection } from "@/components/legal/PillSection";
 import { StrutRunGraph } from "@/components/strut-run-graph";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { openHealthClimbStepPath } from "@/lib/openhealth-benchmarks/climb";
+import { openHealthDeliverable } from "@/lib/openhealth-benchmarks/constants";
 import type { OpenHealthClimb, OpenHealthClimbStep } from "@/types/openhealth";
-import { formatCost, formatScore, formatWhen } from "../format";
+import { formatCost, formatMetric, formatScore, formatWhen } from "../format";
 import { OpenHealthClimbStrip } from "../OpenHealthClimbStrip";
 import { ArtifactPanel } from "../OpenHealthRunViewer/ArtifactPanel";
 import { DiagnosisList, Stages, Stat } from "../parts";
@@ -16,7 +17,7 @@ import { DiagnosisList, Stages, Stat } from "../parts";
 /** Poll cadence while the climb is in flight. */
 const POLL_MS = 10_000;
 
-type Panel = "graph" | "problem-list" | "timeline" | "checklist";
+type Panel = "graph" | "problem-list" | "summary" | "timeline" | "checklist";
 
 function NameList({ title, hint, names, testId }: { title: string; hint: string; names: string[]; testId: string }) {
   if (names.length === 0) return null;
@@ -39,7 +40,9 @@ function NameList({ title, hint, names, testId }: { title: string; hint: string;
   );
 }
 
-function BenchmarkStep({ step }: { step: OpenHealthClimbStep }) {
+function BenchmarkStep({ step, climb }: { step: OpenHealthClimbStep; climb: OpenHealthClimb }) {
+  const summary = climb.task === "context_summarization";
+  const specialty = climb.variant === "specialty_conditioned";
   if (step.outcome === "running") {
     return (
       <div className="rounded-lg border bg-card px-4 py-3" data-testid="openhealth-climb-step-running">
@@ -67,24 +70,33 @@ function BenchmarkStep({ step }: { step: OpenHealthClimbStep }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4" data-testid="openhealth-climb-step-scores">
-        <Stat label="Weighted F1" value={formatScore(step.f1)} emphasis />
-        <Stat label="Missed / extra" value={`${step.missed.length} / ${step.extra.length}`} />
+        <Stat
+          label={formatMetric(step.metric ?? (summary ? null : "weighted_problem_list_f1_neutral"))}
+          value={formatScore(step.f1)}
+          emphasis
+        />
+        <Stat
+          label={summary ? (specialty ? "Missed / leaked" : "Missed") : "Missed / extra"}
+          value={summary && !specialty ? step.missed.length : `${step.missed.length} / ${step.extra.length}`}
+        />
         <Stat label="Cost" value={formatCost(step.costUsd)} />
         <Stat label="Started" value={step.startedAt ? formatWhen(step.startedAt) : "—"} />
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
         <DiagnosisList
           title="Missed"
-          hint="In the answer key, not in the model's list"
+          hint={summary ? "In the answer key, not named in the summary" : "In the answer key, not in the model's list"}
           testId="openhealth-climb-step-missed"
           items={step.missed}
         />
-        <DiagnosisList
-          title="Extra"
-          hint="In the model's list, matched nothing"
-          testId="openhealth-climb-step-extra"
-          items={step.extra}
-        />
+        {(!summary || specialty) && (
+          <DiagnosisList
+            title={summary ? "Leaked" : "Extra"}
+            hint={summary ? "Findings outside the specialty that the summary mentions" : "In the model's list, matched nothing"}
+            testId="openhealth-climb-step-extra"
+            items={step.extra}
+          />
+        )}
       </div>
     </>
   );
@@ -230,6 +242,9 @@ export function OpenHealthClimbViewer({
   const step = index >= 0 ? climb.steps[index] : null;
   const toggle = (name: Panel) => (open: boolean) => setPanel(open ? name : null);
   const files = step?.kind === "benchmark" && step.outcome === "succeeded" ? `?iteration=${step.iteration}` : null;
+  // The run's deliverable: a problem list, or a summary.
+  const deliverable = openHealthDeliverable(climb.task);
+  const deliverableLabel = deliverable === "summary" ? "Summary" : "Problem list";
 
   return (
     <div className="space-y-4" data-testid="openhealth-climb-viewer">
@@ -246,7 +261,7 @@ export function OpenHealthClimbViewer({
           <p className="text-sm font-semibold">
             {step.kind === "benchmark" ? `Run ${step.iteration + 1}` : `Improve after run ${step.iteration + 1}`}
           </p>
-          {step.kind === "benchmark" ? <BenchmarkStep step={step} /> : <ImproveStep step={step} />}
+          {step.kind === "benchmark" ? <BenchmarkStep step={step} climb={climb} /> : <ImproveStep step={step} />}
         </div>
       )}
 
@@ -267,12 +282,12 @@ export function OpenHealthClimbViewer({
           {files && (
             <>
               <PillSection
-                label="Problem list"
-                open={panel === "problem-list"}
-                onOpenChange={toggle("problem-list")}
-                testId="openhealth-climb-problem-list"
+                label={deliverableLabel}
+                open={panel === deliverable}
+                onOpenChange={toggle(deliverable)}
+                testId={`openhealth-climb-${deliverable}`}
               >
-                <ArtifactPanel endpoint={`${base}/artifacts/problem-list${files}`} kind="problem-list" />
+                <ArtifactPanel endpoint={`${base}/artifacts/${deliverable}${files}`} kind={deliverable} />
               </PillSection>
               <PillSection
                 label="Timeline"
