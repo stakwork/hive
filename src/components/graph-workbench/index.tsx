@@ -3,10 +3,9 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, Loader2 } from "lucide-react";
-import type { GraphChange } from "./changes";
 import { GraphCanvas } from "./GraphCanvas";
 import { NodeDetails } from "./NodeDetails";
-import { WorkbenchProvider, useWorkbench, type SelectedNode } from "./store";
+import { WorkbenchProvider, useWorkbench, type WorkbenchOptions } from "./store";
 import { Toolbar } from "./Toolbar";
 import { TreeCanvas } from "./TreeCanvas";
 
@@ -107,32 +106,19 @@ function Body({
  */
 export function GraphWorkbench({
   workspaceSlug,
-  initialFocusId,
-  changes,
-  onSelectionChange,
   notice,
   leading,
   trailing,
-}: {
+  ...options
+}: WorkbenchOptions & {
   workspaceSlug: string;
-  /** Centre on this node when the graph loads (a deep link): its ref_id, own id, or name — or the first of several that exists. */
-  initialFocusId?: string | readonly string[] | null;
-  /** A proposal's changes, drawn dashed over the graph. */
-  changes?: GraphChange[];
-  /** The selected node, when it exists in the graph — keep it stable, it's an effect dependency. */
-  onSelectionChange?: (node: SelectedNode | null) => void;
   /** A line under the toolbar, e.g. what became of the proposal being shown. */
   notice?: string;
   leading?: React.ReactNode;
   trailing?: React.ReactNode;
 }) {
   return (
-    <WorkbenchProvider
-      slug={workspaceSlug}
-      initialFocusId={initialFocusId}
-      changes={changes}
-      onSelectionChange={onSelectionChange}
-    >
+    <WorkbenchProvider slug={workspaceSlug} {...options}>
       <Body leading={leading} trailing={trailing} notice={notice} />
     </WorkbenchProvider>
   );

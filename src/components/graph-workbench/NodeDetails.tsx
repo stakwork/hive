@@ -2,10 +2,11 @@
 
 import React, { useDeferredValue, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Pencil, X } from "lucide-react";
+import { ChevronRight, Link, Pencil, X } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { UnifiedDiffView } from "@/components/diff/UnifiedDiffView";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { Textarea } from "@/components/ui/textarea";
 import { computeUnifiedDiff } from "@/lib/diff/unifiedLineDiff";
 import { nodeText } from "@/lib/strut-run-graph/node-text";
@@ -242,7 +243,7 @@ function DocsEditor({
 
 /** One node, whichever type: where it sits, what it says, how it connects. */
 export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }) {
-  const { slug, graph, pending, select } = useWorkbench();
+  const { slug, graph, pending, select, nodeLink } = useWorkbench();
   const node = graph?.nodes[id];
   const isNew = node?.proposed === "new";
   const edit = node?.edit;
@@ -278,6 +279,16 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
       <div className="flex items-center gap-2">
         <TypeBadge type={type} />
         <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{name}</h2>
+        {/* A node a proposal would create has nowhere to link to yet. */}
+        {nodeLink && !isNew && (node || data) && (
+          <CopyButton
+            value={nodeLink({ id, type })}
+            label="Copy link to this node"
+            icon={Link}
+            className="rounded p-1 hover:bg-accent"
+            iconClassName="h-4 w-4"
+          />
+        )}
         <button
           type="button"
           onClick={onClose}

@@ -1,10 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useCallback } from "react";
 import { GraphWorkbench } from "@/components/graph-workbench";
 import { getProposalStatus } from "@/lib/proposals/types";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { selectActiveMessages, useCanvasChatStore } from "../../../_state/canvasChatStore";
+import { orgGraphHref } from "../../graphHref";
+import { useChatOrgLogin } from "../useArtifactPanel";
 
 const NOTICE = {
   approved: "Approved — this is the graph with the change made.",
@@ -37,6 +39,13 @@ export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) 
     return content.proposal && messages ? getProposalStatus(messages, content.proposal).status : null;
   });
   const decided = status === "approved" || status === "rejected" ? status : null;
+  const githubLogin = useChatOrgLogin();
+  // A node shared from here opens on the org page's graph view.
+  const nodeLink = useCallback(
+    (node: { id: string; type: string }) =>
+      `${window.location.origin}${orgGraphHref(githubLogin, { workspace: content.workspace, type: node.type, refId: node.id })}`,
+    [githubLogin, content.workspace],
+  );
   const created = content.changes?.find((c) => c.kind === "node")?.name;
   // An approval lands on what it created, else where the proposal was centred.
   const approvedFocus = [created, content.focus].filter((ref): ref is string => !!ref);
@@ -49,6 +58,7 @@ export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) 
         initialFocusId={decided === "approved" ? approvedFocus : content.focus}
         changes={decided ? undefined : content.changes}
         notice={decided ? NOTICE[decided] : undefined}
+        nodeLink={githubLogin ? nodeLink : undefined}
       />
     </div>
   );

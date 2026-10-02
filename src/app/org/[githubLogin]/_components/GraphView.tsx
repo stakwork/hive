@@ -6,6 +6,7 @@ import { MessageSquare } from "lucide-react";
 import { GraphWorkbench, Picker, type SelectedNode } from "@/components/graph-workbench";
 import { Button } from "@/components/ui/button";
 import type { GraphFocus } from "../_state/canvasChatStore";
+import { graphParams } from "./graphHref";
 
 export interface GraphWorkspace {
   slug: string;
@@ -26,8 +27,9 @@ interface GraphViewProps {
 
 /**
  * The org page's graph view: the graph workbench over one workspace's graph.
- * `?workspace=<slug>` picks the workspace (the default one otherwise) and
- * `?gnode=<ref_id>` centres on a node (`?node=` is the canvas's).
+ * `?workspace=<slug>` picks the workspace (the default one otherwise),
+ * `?ref_id=` centres on a node and `?type=` opens its type's trees. The
+ * selected node is written back, so the URL is a link to what's on screen.
  */
 export function GraphView({ workspaces, loading, chatOpen, onToggleChat, onFocusChange }: GraphViewProps) {
   const pathname = usePathname();
@@ -40,10 +42,32 @@ export function GraphView({ workspaces, loading, chatOpen, onToggleChat, onFocus
   const current = ordered.find((ws) => ws.slug === requested) ?? ordered[0];
   const slug = current?.slug;
 
+  // `history.replaceState`, not the router: a router navigation re-runs this
+  // protected route's middleware and page query (see OrgCanvasView).
+  const replaceParams = useCallback(
+    (params: URLSearchParams) => window.history.replaceState(null, "", `${pathname}?${params.toString()}`),
+    [pathname],
+  );
+
   const onSelectionChange = useCallback(
-    (node: SelectedNode | null) =>
-      onFocusChange(slug && node ? { workspaceSlug: slug, refId: node.id, name: node.name, type: node.type } : null),
-    [slug, onFocusChange],
+    (node: SelectedNode | null) => {
+      onFocusChange(slug && node ? { workspaceSlug: slug, refId: node.id, name: node.name, type: node.type } : null);
+      if (!slug) return;
+      const here = new URLSearchParams(window.location.search);
+      if (node) replaceParams(graphParams({ workspace: slug, type: node.type, refId: node.id }, here));
+      else if (here.has("ref_id")) {
+        here.delete("ref_id");
+        replaceParams(here);
+      }
+    },
+    [slug, onFocusChange, replaceParams],
+  );
+
+  /** A link to a node on this graph view, to share. */
+  const nodeLink = useCallback(
+    (node: { id: string; type: string }) =>
+      `${window.location.origin}${pathname}?${graphParams({ workspace: slug, type: node.type, refId: node.id })}`,
+    [pathname, slug],
   );
 
   if (loading) {
@@ -54,22 +78,18 @@ export function GraphView({ workspaces, loading, chatOpen, onToggleChat, onFocus
     return <p className="text-muted-foreground text-center py-12">No workspaces with a graph to explore.</p>;
   }
 
-  // `history.replaceState`, not the router: a router navigation re-runs this
-  // protected route's middleware and page query (see OrgCanvasView).
-  const pick = (next: string) => {
-    const params = new URLSearchParams(window.location.search);
-    params.set("workspace", next);
-    params.delete("gnode");
-    window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
-  };
+  const pick = (next: string) =>
+    replaceParams(graphParams({ workspace: next }, new URLSearchParams(window.location.search)));
 
   return (
     <GraphWorkbench
       // A new workspace is a new graph: remount rather than carry state across.
       key={current.slug}
       workspaceSlug={current.slug}
-      initialFocusId={searchParams.get("gnode")}
+      initialFocusId={searchParams.get("ref_id")}
+      initialType={searchParams.get("type")}
       onSelectionChange={onSelectionChange}
+      nodeLink={nodeLink}
       leading={
         <Picker
           label="Workspace"

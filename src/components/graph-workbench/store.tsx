@@ -34,6 +34,8 @@ interface WorkbenchState {
   rootId: string | null;
   canvasMode: CanvasMode;
   setCanvasMode: (mode: CanvasMode) => void;
+  /** A shareable link to a node, when the host gives one. */
+  nodeLink?: (node: { id: string; type: string }) => string;
 }
 
 const Ctx = createContext<WorkbenchState | null>(null);
@@ -47,22 +49,29 @@ export function useWorkbench(): WorkbenchState {
 /** A node in the graph a host can point at: one that exists, not one a proposal would create. */
 export type SelectedNode = Pick<WorkbenchNode, "id" | "name" | "type">;
 
+export interface WorkbenchOptions {
+  /** Centre on this node when the graph loads (a deep link): its ref_id, own id or name — or the first of several that exists. */
+  initialFocusId?: string | readonly string[] | null;
+  /** Open on this node type's trees, rather than the default tree's. */
+  initialType?: string | null;
+  /** A proposal's changes, drawn dashed over the graph. */
+  changes?: GraphChange[];
+  /** The selected node, when it exists in the graph — keep it stable, it's an effect dependency. */
+  onSelectionChange?: (node: SelectedNode | null) => void;
+  /** A shareable link to a node. The host knows where its graph lives; without one there's no share button. */
+  nodeLink?: (node: { id: string; type: string }) => string;
+}
+
 export function WorkbenchProvider({
   slug,
   initialFocusId,
+  initialType,
   changes,
   onSelectionChange,
+  nodeLink,
   children,
-}: {
-  slug: string;
-  /** Where to land: a node's ref_id, own id or name — or several, the first that exists. */
-  initialFocusId?: string | readonly string[] | null;
-  /** A proposal's changes to draw over the graph. */
-  changes?: GraphChange[];
-  onSelectionChange?: (node: SelectedNode | null) => void;
-  children: React.ReactNode;
-}) {
-  const [lens, setLensState] = useState<TreeLens>(DEFAULT_TREE);
+}: WorkbenchOptions & { slug: string; children: React.ReactNode }) {
+  const [lens, setLensState] = useState<TreeLens>(() => ({ ...DEFAULT_TREE, type: initialType || DEFAULT_TREE.type }));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ id: string | null; nonce: number }>({ id: null, nonce: 0 });
   const [rootId, setRootId] = useState<string | null>(null);
@@ -158,6 +167,7 @@ export function WorkbenchProvider({
       rootId,
       canvasMode,
       setCanvasMode,
+      nodeLink,
     }),
     [
       slug,
@@ -175,6 +185,7 @@ export function WorkbenchProvider({
       focusNode,
       rootId,
       canvasMode,
+      nodeLink,
     ],
   );
 

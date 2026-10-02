@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, type LucideIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -9,12 +9,17 @@ import { cn } from "@/lib/utils";
 export function CopyButton({
   value,
   label = "Copy",
+  icon: Icon = Copy,
   className,
+  iconClassName,
 }: {
   value: string;
   /** Tooltip and accessible name, e.g. "Copy output". */
   label?: string;
+  /** What's copied, when it isn't text — a link, say. */
+  icon?: LucideIcon;
   className?: string;
+  iconClassName?: string;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -38,7 +43,11 @@ export function CopyButton({
             className,
           )}
         >
-          {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+          {copied ? (
+            <Check className={cn("h-3 w-3 text-emerald-500", iconClassName)} />
+          ) : (
+            <Icon className={cn("h-3 w-3", iconClassName)} />
+          )}
         </button>
       </TooltipTrigger>
       <TooltipContent side="top">
