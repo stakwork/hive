@@ -38,7 +38,7 @@ const ITEMS: RailItem[] = [
   { view: "workspaces", label: "Workspaces", icon: LayoutGrid, path: "/workspaces" },
   { view: "members", label: "Members", icon: Users, path: "/members" },
   { view: "schematic", label: "Schematic", icon: GitBranch, path: "/schematic" },
-  { view: "graph", label: "Graph", icon: Workflow, path: "/graph" },
+  { view: "graph", label: "Graph", icon: Workflow, path: "?view=graph" },
   { view: "settings", label: "Settings", icon: Settings, path: "/settings" },
 ];
 

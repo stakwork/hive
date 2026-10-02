@@ -11,6 +11,7 @@ import {
   Info,
   FileDiff,
   Code2,
+  Share2,
 } from "lucide-react";
 import { computeUnifiedDiff, type UnifiedDiff } from "@/lib/diff/unifiedLineDiff";
 import {
@@ -50,6 +51,7 @@ import {
   type CanvasChatMessage,
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+import { proposalGraphArtifact } from "../_state/proposalGraphArtifacts";
 import {
   Dialog,
   DialogContent,
@@ -263,6 +265,8 @@ export function ProposalCard({
   // Details dialog state
   const [detailsOpen, setDetailsOpen] = useState(false);
   const hasDetails = useMemo(() => proposalHasDetails(proposal), [proposal]);
+  // A graph change opens on the graph instead of in the details dialog.
+  const graphArtifact = proposalGraphArtifact(proposal);
 
   // Track the resolved publish state from PublishPromptSlot so we can
   // conditionally suppress the "New draft version saved ✓" subtext.
@@ -751,7 +755,19 @@ export function ProposalCard({
               </DropdownMenu>
             )}
             <div className="ml-auto flex items-center gap-1">
-              {hasDetails && (
+              {graphArtifact ? (
+                // A graph change is looked at on the graph: open it on the left, centred on what changes.
+                <button
+                  type="button"
+                  onClick={() => useCanvasChatStore.getState().openArtifactPanel(graphArtifact.id)}
+                  title="Open in graph"
+                  aria-label="Open in graph"
+                  className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                  data-testid="proposal-open-in-graph"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                </button>
+              ) : hasDetails && (
                 <button
                   type="button"
                   onClick={() => setDetailsOpen(true)}

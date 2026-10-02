@@ -23,7 +23,8 @@ export function useArtifactPanelOpen(): boolean {
     const panel = s.artifactPanel;
     if (!panel || !s.activeConversationId) return false;
     const messages = s.conversations[s.activeConversationId]?.messages;
-    return !!messages?.some((m) => m.artifacts?.some((a) => a.id === panel.artifactId));
+    // Proposal-derived graph artifacts count too: their card is the proposal card.
+    return listArtifacts(messages).some((a) => a.id === panel.artifactId);
   });
 }
 
