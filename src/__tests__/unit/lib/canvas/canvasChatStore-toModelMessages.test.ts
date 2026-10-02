@@ -88,7 +88,7 @@ describe("toModelMessages — multimodal attachments", () => {
     expect(imageParts[1].image).toContain(encodeURIComponent("uploads/ws-1/canvas/b.png"));
   });
 
-  it("falls through to plain string for non-image attachments (e.g. video)", () => {
+  it("adds a text note (not the bytes) for binary non-image attachments (e.g. video)", () => {
     const attachment: CanvasAttachment = {
       path: "uploads/ws-1/canvas/clip.mp4",
       filename: "clip.mp4",
@@ -96,9 +96,30 @@ describe("toModelMessages — multimodal attachments", () => {
       size: 5000,
     };
     const msgs = toModelMessages([makeUserMsg("watch this", [attachment])]);
-    // video attachment → no image parts → fallthrough to text-only
     expect(msgs).toHaveLength(1);
-    expect(msgs[0]).toEqual({ role: "user", content: "watch this" });
+    const parts = msgs[0].content as Array<{ type: string; text?: string }>;
+    expect(parts[0]).toEqual({ type: "text", text: "watch this" });
+    expect(parts[1].type).toBe("text");
+    expect(parts[1].text).toContain('"clip.mp4"');
+  });
+
+  it("ships a markdown attachment as a file part, even with an empty mimeType", () => {
+    const attachment: CanvasAttachment = {
+      path: "orgs/acme/canvas/notes.md",
+      filename: "notes.md",
+      mimeType: "",
+      size: 42,
+    };
+    const msgs = toModelMessages([makeUserMsg("", [attachment])]);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].content).toEqual([
+      {
+        type: "file",
+        data: `/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.path)}`,
+        mediaType: "text/plain",
+        filename: "notes.md",
+      },
+    ]);
   });
 
   it("does not affect assistant messages", () => {
