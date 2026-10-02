@@ -36,6 +36,7 @@ import {
   PROPOSE_MOVE_NODE_TOOL,
   type GraphEdgeDeleteProposalPayload,
   type GraphNodeMoveProposalPayload,
+  type ProposalOutput,
 } from "@/lib/proposals/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -81,6 +82,12 @@ function validateEndpoint(endpoint: unknown, label: string): string | null {
   }
   return null;
 }
+
+/** What a move proposal's card shows besides the workspace and a refusal: the names read at propose time. */
+type MoveMeta = Omit<
+  Extract<ProposalOutput, { kind: "graphNodeMove" }>["meta"],
+  "refusedReason" | "workspaceSlug"
+>;
 
 /** A node's display name off its Jarvis properties, when it has one. */
 function nameOf(properties: Record<string, unknown> | undefined): string | undefined {
@@ -688,11 +695,7 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
           config,
         } = resolved.access;
 
-        const refuse = (
-          from: string,
-          meta: Omit<Extract<ReturnType<typeof refuse>, { kind: "graphNodeMove" }>["meta"], "refusedReason" | "workspaceSlug">,
-          refusedReason: string,
-        ) => ({
+        const refuse = (from: string, meta: MoveMeta, refusedReason: string) => ({
           kind: "graphNodeMove" as const,
           proposalId: nanoid(),
           payload: {
