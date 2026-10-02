@@ -74,13 +74,13 @@ export const nodeSearchQuery = (slug: string, type: string, q: string, limit: nu
   });
 
 /**
- * Save a concept's docs through the Learn page's endpoint. `key` is the
- * concept's own `id`, not its ref_id: the swarm writes `docs` on the Concept
- * matching that `id`, and matches nothing by ref_id.
+ * Save a Concept's docs straight to the graph, addressed by its `ref_id`. This
+ * works for any Concept, including ones without a gitree `id` (the Learn
+ * page's endpoint is keyed by that slug, and the swarm matches nothing by ref_id).
  */
-export const saveConceptDocs = (slug: string, key: string, documentation: string) =>
-  getJson(`/api/learnings/concepts/${encodeURIComponent(key)}/documentation`, {
+export const saveConceptDocs = (slug: string, refId: string, documentation: string) =>
+  getJson(`/api/workspaces/${slug}/nodes/${encodeURIComponent(refId)}/docs`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ documentation, workspace: slug }),
+    body: JSON.stringify({ docs: documentation }),
   });

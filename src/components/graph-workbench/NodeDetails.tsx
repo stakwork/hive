@@ -169,14 +169,11 @@ function ProposedEdit({ edit }: { edit: NodeEdit }) {
  */
 function DocsEditor({
   refId,
-  conceptKey,
   type,
   docs,
   onDone,
 }: {
   refId: string;
-  /** The concept's own `id`, which the save addresses it by. */
-  conceptKey: string;
   type: string;
   docs: string;
   onDone: () => void;
@@ -188,7 +185,7 @@ function DocsEditor({
   const diff = useMemo(() => computeUnifiedDiff(docs, settled), [docs, settled]);
   const changed = draft !== docs;
   const save = useMutation({
-    mutationFn: (text: string) => saveConceptDocs(slug, conceptKey, text),
+    mutationFn: (text: string) => saveConceptDocs(slug, refId, text),
     onSuccess: (_, text) => {
       // The swarm holds the new docs now: show them without reading the whole graph again.
       queryClient.setQueryData(
@@ -259,9 +256,9 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
   // The tree's own edge already has its sections (parents and children).
   const groups = (data?.groups ?? []).filter((g) => !(node && graph && g.edge === graph.lens.edge && g.other === type));
   // Concepts' docs can be edited in place; a proposal's node can't, until it's approved or rejected.
-  const conceptKey = node && !node.proposed && node.type === "Concept" ? node.key : null;
+  const conceptRef = node && !node.proposed && node.type === "Concept" ? node.id : null;
   const [editing, setEditing] = useState(false);
-  const editDocs = conceptKey && (
+  const editDocs = conceptRef && (
     <button
       type="button"
       onClick={() => setEditing(true)}
@@ -319,10 +316,9 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
         </div>
       )}
 
-      {editing && node && conceptKey ? (
+      {editing && node && conceptRef ? (
         <DocsEditor
-          refId={id}
-          conceptKey={conceptKey}
+          refId={conceptRef}
           type={node.type}
           docs={node.docs ?? ""}
           onDone={() => setEditing(false)}
