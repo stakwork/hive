@@ -96,6 +96,15 @@ export interface OpenHealthClimbEvents {
   iterations: OpenHealthClimbIterationEvents[];
 }
 
+/**
+ * Where a step's subflow is in the loop's event log, under the run:
+ * `loop#1/run`, `loop#0/improve` — the graph viewer's scope for the step.
+ * The twin of the parse below.
+ */
+export function openHealthClimbStepPath(step: Pick<OpenHealthClimbStep, "kind" | "iteration">): string {
+  return `loop#${step.iteration}/${step.kind === "benchmark" ? "run" : "improve"}`;
+}
+
 const ITERATION_RE = /^loop#(\d+)$/;
 const ENDED = new Set(["step.end", "step.replayed"]);
 
