@@ -1,6 +1,12 @@
 import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { OpenHealthClimbStatus, OpenHealthDifficulty, OpenHealthOutcome } from "@/types/openhealth";
+import { openHealthBenchmarkLabel, openHealthMetricLabel } from "@/lib/openhealth-benchmarks/constants";
+import type {
+  OpenHealthBenchmark,
+  OpenHealthClimbStatus,
+  OpenHealthDifficulty,
+  OpenHealthOutcome,
+} from "@/types/openhealth";
 
 export const formatScore = (value: number | null | undefined): string =>
   typeof value === "number" ? value.toFixed(2) : "—";
@@ -19,6 +25,13 @@ export function formatDuration(ms: number | null | undefined): string {
 }
 
 export const formatWhen = (iso: string): string => new Date(iso).toLocaleString();
+
+/** "Weighted F1", "Clinical F1", "Conditioned F1", "Abstention"; "Score" when the metric is unknown. */
+export const formatMetric = (metric: string | null | undefined): string => openHealthMetricLabel(metric);
+
+/** "Diagnosis", "Summary", "Cardiology summary". */
+export const formatBenchmark = (benchmark: OpenHealthBenchmark, specialty?: string | null): string =>
+  openHealthBenchmarkLabel(benchmark, specialty);
 
 const OUTCOME_LABEL: Record<OpenHealthOutcome, string> = {
   running: "Running",
@@ -48,6 +61,21 @@ export function DifficultyBadge({ difficulty }: { difficulty: OpenHealthDifficul
   return (
     <Badge variant="outline" className="capitalize">
       {difficulty}
+    </Badge>
+  );
+}
+
+/** Which benchmark a row is: shown beside the task id wherever runs of several benchmarks mix. */
+export function BenchmarkBadge({
+  benchmark,
+  specialty,
+}: {
+  benchmark: OpenHealthBenchmark;
+  specialty?: string | null;
+}) {
+  return (
+    <Badge variant="secondary" className="font-sans font-normal" data-testid="openhealth-benchmark">
+      {formatBenchmark(benchmark, specialty)}
     </Badge>
   );
 }

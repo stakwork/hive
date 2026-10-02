@@ -155,15 +155,26 @@ describe("POST climbs", () => {
     expect(res.status).toBe(202);
     expect(await res.json()).toEqual({ success: true, climbId: "climb-1", strutRunId: "1790830428092" });
     expect(mockAuthorize).toHaveBeenCalledWith(expect.anything(), "hive", { launch: true });
-    expect(mockTasks).toHaveBeenCalledWith(TARGET, "public");
+    expect(mockTasks).toHaveBeenCalledWith(TARGET, "public", { task: "patient_diagnosis", variant: null });
     expect(mockLaunch).toHaveBeenCalledWith({
       workspaceId: "ws-1",
       userId: "user-1",
       publicBaseUrl: "https://hive.example",
       gtId: 7013,
+      task: "patient_diagnosis",
       targetF1: 1,
       maxRuns: 5,
     });
+  });
+
+  it("climbs a summarization task against that benchmark's catalogue", async () => {
+    mockTasks.mockResolvedValue({ split: "public", total: 1, tasks: [{ gtId: 8274 }] });
+
+    const res = await post({ gtId: 8274, task: "context_summarization" });
+
+    expect(res.status).toBe(202);
+    expect(mockTasks).toHaveBeenCalledWith(TARGET, "public", { task: "context_summarization", variant: "unconditioned" });
+    expect(mockLaunch).toHaveBeenCalledWith(expect.objectContaining({ gtId: 8274, task: "context_summarization" }));
   });
 
   it("launches with the member's target and run count, on the split they chose", async () => {
@@ -172,7 +183,7 @@ describe("POST climbs", () => {
     const res = await post({ gtId: 7013, split: "heldout", targetF1: 0.9, maxRuns: 3 });
 
     expect(res.status).toBe(202);
-    expect(mockTasks).toHaveBeenCalledWith(TARGET, "heldout");
+    expect(mockTasks).toHaveBeenCalledWith(TARGET, "heldout", { task: "patient_diagnosis", variant: null });
     expect(mockLaunch).toHaveBeenCalledWith(expect.objectContaining({ targetF1: 0.9, maxRuns: 3 }));
   });
 
@@ -180,6 +191,8 @@ describe("POST climbs", () => {
     [{}, "gtId must be a task id"],
     [{ gtId: "7013" }, "gtId must be a task id"],
     [{ gtId: 7013, split: "train" }, 'split must be "public" or "heldout"'],
+    [{ gtId: 7013, task: "evidence_retrieval" }, "task or variant is not one the page offers"],
+    [{ gtId: 7013, task: "context_summarization", variant: "encounter" }, "task or variant is not one the page offers"],
     [{ gtId: 7013, targetF1: 0 }, "targetF1 must be a score above 0 and at most 1"],
     [{ gtId: 7013, targetF1: 1.5 }, "targetF1 must be a score above 0 and at most 1"],
     [{ gtId: 7013, maxRuns: 0 }, "maxRuns must be a whole number from 1 to 10"],
@@ -302,6 +315,7 @@ describe("POST cancel", () => {
 describe("GET artifacts", () => {
   it.each([
     ["problem-list", "iter-2/output/problem-list.json", "application/json; charset=utf-8"],
+    ["summary", "iter-2/output/summary.json", "application/json; charset=utf-8"],
     ["timeline", "iter-2/timeline.md", "text/markdown; charset=utf-8"],
     ["checklist", "iter-2/checklist.md", "text/markdown; charset=utf-8"],
   ])("serves %s from the iteration's own folder", async (name, path, contentType) => {
