@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
+import { parseGraphFocus } from "@/lib/canvas/graph-focus";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
 import { ModelMessage, createUIMessageStream, createUIMessageStreamResponse, toUIMessageStream } from "ai";
@@ -92,6 +93,8 @@ export async function POST(request: NextRequest) {
       currentCanvasBreadcrumb,
       selectedNodeId,
       selectedNodeIds,
+      // The knowledge-graph node in view on the org page's graph view.
+      graphFocus,
       // When true, skip the post-stream `after()` enrichment block
       // (follow-up questions + provenance). Surfaces that don't render
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
@@ -663,6 +666,7 @@ export async function POST(request: NextRequest) {
                   (x): x is string => typeof x === "string",
                 )
               : undefined,
+            graphFocus: parseGraphFocus(graphFocus, slugs),
           },
           messages: convertedMessages,
           // The validated SharedConversation.id (or null when the

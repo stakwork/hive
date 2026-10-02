@@ -29,7 +29,9 @@
  * dropped, never repaired.
  */
 import type { Action, ActionResult, DiffContent } from "@/lib/chat";
+import { parseGraphChanges, type GraphChange } from "@/components/graph-workbench/changes";
 import { bounded } from "@/lib/strut-chat-activity";
+import { proposalGraphArtifacts } from "./proposalGraphArtifacts";
 
 // ─── Kinds and their content ────────────────────────────────────────────
 
@@ -83,6 +85,11 @@ export interface ArtifactContents {
   };
   log: { text: string };
   json: { value: unknown };
+  /**
+   * A workspace's knowledge graph, opened on the graph workbench — centred on
+   * `focus` when given, with `changes` (a proposal's) drawn on it.
+   */
+  graph: { workspace: string; focus?: string; changes?: GraphChange[] };
 }
 
 export type ArtifactKind = keyof ArtifactContents;
@@ -269,6 +276,12 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
       ? { code: raw.code, language: optional(raw.language), filename: optional(raw.filename) }
       : null,
   json: (raw) => ("value" in raw ? { value: raw.value } : null),
+  graph: (raw) => {
+    const workspace = bounded(raw.workspace, MAX_ID_LENGTH);
+    return workspace
+      ? { workspace, focus: bounded(raw.focus, MAX_ID_LENGTH) ?? undefined, changes: parseGraphChanges(raw.changes) }
+      : null;
+  },
 };
 
 const KINDS = Object.keys(CONTENT_PARSERS) as ArtifactKind[];
@@ -284,12 +297,20 @@ export function parseArtifactContent<K extends ArtifactKind>(kind: K, raw: unkno
 // ─── Versions ───────────────────────────────────────────────────────────
 
 /**
- * Every artifact a conversation's messages carry, oldest first. The same
- * objects the messages hold, so a `useShallow` selector over this only
- * changes when an artifact does.
+ * Every artifact a conversation holds, oldest first: the refs messages carry,
+ * and the graph artifact each graph proposal yields (`proposalGraphArtifacts`).
+ * The same objects every time — the messages' own, and proposal artifacts
+ * cached per proposal — so a `useShallow` selector over this only changes
+ * when an artifact does.
  */
-export function listArtifacts(messages: ReadonlyArray<{ artifacts?: ArtifactRef[] }> | undefined): ArtifactRef[] {
-  return (messages ?? []).flatMap((message) => message.artifacts ?? []);
+export function listArtifacts(
+  messages: ReadonlyArray<{ artifacts?: ArtifactRef[]; toolCalls?: ReadonlyArray<{ output?: unknown }> }> | undefined,
+): ArtifactRef[] {
+  return (messages ?? []).flatMap((message) =>
+    message.toolCalls?.length
+      ? [...(message.artifacts ?? []), ...proposalGraphArtifacts(message.toolCalls)]
+      : (message.artifacts ?? []),
+  );
 }
 
 export interface ArtifactVersion {

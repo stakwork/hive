@@ -1,14 +1,16 @@
-import { GraphView } from "../_components/GraphView";
+import { redirect } from "next/navigation";
 
 interface GraphPageProps {
   params: Promise<{ githubLogin: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function GraphPage({ params }: GraphPageProps) {
+/** The graph is a view of the org page now (`?view=graph`); old links land there. */
+export default async function GraphPage({ params, searchParams }: GraphPageProps) {
   const { githubLogin } = await params;
-  return (
-    <div className="flex-1 flex flex-col min-h-0 h-full">
-      <GraphView githubLogin={githubLogin} />
-    </div>
-  );
+  const query = await searchParams;
+  const next = new URLSearchParams({ view: "graph" });
+  if (typeof query.workspace === "string") next.set("workspace", query.workspace);
+  if (typeof query.node === "string") next.set("gnode", query.node);
+  redirect(`/org/${githubLogin}?${next.toString()}`);
 }
