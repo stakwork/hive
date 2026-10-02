@@ -15,7 +15,15 @@ const SLIDE = { duration: 0.2, ease: [0.22, 1, 0.36, 1] as const };
 /** "3 new nodes", or nothing for none. */
 const count = (n: number, one: string, many: string) => n > 0 && `${n} ${n === 1 ? one : many}`;
 
-function Body({ leading, trailing }: { leading?: React.ReactNode; trailing?: React.ReactNode }) {
+function Body({
+  leading,
+  trailing,
+  notice,
+}: {
+  leading?: React.ReactNode;
+  trailing?: React.ReactNode;
+  notice?: string;
+}) {
   const { graph, lens, pending, loading, error, truncated, selectedId, select, canvasMode } = useWorkbench();
   const proposed = [
     count(pending.created, "new node", "new nodes"),
@@ -49,6 +57,11 @@ function Body({ leading, trailing }: { leading?: React.ReactNode; trailing?: Rea
           data-testid="graph-workbench-proposal"
         >
           Previewing a proposal: {proposed.join(" · ")}. Dashed is what would change — approve or reject it in the chat.
+        </p>
+      )}
+      {notice && (
+        <p className="border-b px-4 py-1.5 text-xs text-muted-foreground" data-testid="graph-workbench-notice">
+          {notice}
         </p>
       )}
       {truncated && (
@@ -97,16 +110,19 @@ export function GraphWorkbench({
   initialFocusId,
   changes,
   onSelectionChange,
+  notice,
   leading,
   trailing,
 }: {
   workspaceSlug: string;
-  /** Centre on this node when the graph loads (a deep link): its ref_id, own id, or name. */
-  initialFocusId?: string | null;
+  /** Centre on this node when the graph loads (a deep link): its ref_id, own id, or name — or the first of several that exists. */
+  initialFocusId?: string | readonly string[] | null;
   /** A proposal's changes, drawn dashed over the graph. */
   changes?: GraphChange[];
   /** The selected node, when it exists in the graph — keep it stable, it's an effect dependency. */
   onSelectionChange?: (node: SelectedNode | null) => void;
+  /** A line under the toolbar, e.g. what became of the proposal being shown. */
+  notice?: string;
   leading?: React.ReactNode;
   trailing?: React.ReactNode;
 }) {
@@ -117,7 +133,7 @@ export function GraphWorkbench({
       changes={changes}
       onSelectionChange={onSelectionChange}
     >
-      <Body leading={leading} trailing={trailing} />
+      <Body leading={leading} trailing={trailing} notice={notice} />
     </WorkbenchProvider>
   );
 }
