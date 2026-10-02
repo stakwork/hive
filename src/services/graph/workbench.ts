@@ -17,6 +17,9 @@ const IDENT = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 /** A readable name for a node of any type. */
 const nameOf = (v: string) => `coalesce(${v}.name, ${v}.title, ${v}.tool_name, ${v}.file, ${v}.path, ${v}.ref_id)`;
 
+/** An edge still in force: Jarvis mutes an edge instead of deleting it (an approved delete or move), and keeps it stored. */
+const live = (r: string) => `coalesce(${r}.is_muted, false) = false AND coalesce(${r}.is_deleted, false) = false`;
+
 /** Upstream returns at most this many rows whatever limit is asked for. */
 export const GRAPH_ROW_CAP = 1000;
 
@@ -108,7 +111,8 @@ export async function getHierarchy(caller: Caller, label: string): Promise<Workb
     ),
     rows(
       caller,
-      `MATCH (a:${L})-[r]->(b:${L}) ` + `RETURN type(r) AS type, a.ref_id AS source, b.ref_id AS target`,
+      `MATCH (a:${L})-[r]->(b:${L}) WHERE ${live("r")} ` +
+        `RETURN type(r) AS type, a.ref_id AS source, b.ref_id AS target`,
       GRAPH_ROW_CAP,
     ),
   ]);
@@ -188,7 +192,7 @@ export async function getNodeConnections(caller: Caller, refId: string): Promise
     ),
     rows(
       caller,
-      `MATCH (c:Data_Bank {ref_id: '${refId}'})-[r]-(o) ` +
+      `MATCH (c:Data_Bank {ref_id: '${refId}'})-[r]-(o) WHERE ${live("r")} ` +
         `WITH type(r) AS edge, startNode(r) = c AS outgoing, labels(o) AS labels, o ` +
         `WITH edge, outgoing, labels, count(o) AS count, ` +
         `collect({id: o.ref_id, name: ${nameOf("o")}})[0..${CONNECTION_SAMPLE}] AS items ` +
@@ -250,11 +254,11 @@ export async function getConnectionPage(
   if (useMocks()) return { ok: true, data: mockConnectionPage({ refId, edge, outgoing, other, limit }) };
   const target = `(o:\`${other}\`)`;
   const pattern = outgoing
-    ? `(c:Data_Bank {ref_id: '${refId}'})-[:\`${edge}\`]->${target}`
-    : `(c:Data_Bank {ref_id: '${refId}'})<-[:\`${edge}\`]-${target}`;
+    ? `(c:Data_Bank {ref_id: '${refId}'})-[r:\`${edge}\`]->${target}`
+    : `(c:Data_Bank {ref_id: '${refId}'})<-[r:\`${edge}\`]-${target}`;
   const result = await rows(
     caller,
-    `MATCH ${pattern} RETURN o.ref_id AS id, ${nameOf("o")} AS name, labels(o) AS labels`,
+    `MATCH ${pattern} WHERE ${live("r")} RETURN o.ref_id AS id, ${nameOf("o")} AS name, labels(o) AS labels`,
     Math.min(Math.max(1, Math.floor(limit)), GRAPH_ROW_CAP),
   );
   if (!result.ok) return result;

@@ -57,6 +57,59 @@ describe("proposalGraphArtifact", () => {
   test("gives the same ref for the same proposal while a reply streams", () => {
     expect(proposalGraphArtifact(conceptUpdate)).toBe(proposalGraphArtifact(conceptUpdate));
   });
+
+  test("turns an edge delete into the graph centred on the child, with the link going", () => {
+    const ref = proposalGraphArtifact({
+      kind: "graphEdgeDelete",
+      proposalId: "p-4",
+      payload: {
+        workspaceId: "ws-1",
+        workspaceSlug: "hive",
+        edge_type: "PARENT_OF",
+        source_ref_id: "c-1",
+        target_ref_id: "c-2",
+      },
+      meta: { workspaceSlug: "hive", source_name: "Coding", target_name: "Security" },
+    });
+
+    expect(ref).toMatchObject({ id: "proposal:p-4", kind: "graph", title: "Remove PARENT_OF link" });
+    const content = ref?.source.type === "inline" ? parseArtifactContent("graph", ref.source.content) : null;
+    expect(content).toEqual({
+      workspace: "hive",
+      focus: "c-2",
+      changes: [{ kind: "unlink", edge: "PARENT_OF", source: "c-1", target: "c-2" }],
+      proposal: "p-4",
+    });
+  });
+
+  test("turns a node move into the graph centred on the node, with the old link going and the new one coming", () => {
+    const ref = proposalGraphArtifact({
+      kind: "graphNodeMove",
+      proposalId: "p-5",
+      payload: {
+        workspaceId: "ws-1",
+        workspaceSlug: "hive",
+        ref_id: "c-2",
+        edge_type: "PARENT_OF",
+        from_ref_id: "c-1",
+        to_ref_id: "c-3",
+      },
+      rationale: "Security is an ops concern.",
+      meta: { workspaceSlug: "hive", node_name: "Security", from_name: "Coding", to_name: "Ops" },
+    });
+
+    expect(ref).toMatchObject({ id: "proposal:p-5", title: "Move Security", summary: "Security is an ops concern." });
+    const content = ref?.source.type === "inline" ? parseArtifactContent("graph", ref.source.content) : null;
+    expect(content).toEqual({
+      workspace: "hive",
+      focus: "c-2",
+      changes: [
+        { kind: "unlink", edge: "PARENT_OF", source: "c-1", target: "c-2" },
+        { kind: "edge", edge: "PARENT_OF", source: "c-3", target: "c-2" },
+      ],
+      proposal: "p-5",
+    });
+  });
 });
 
 describe("proposalGraphArtifacts", () => {

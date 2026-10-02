@@ -60,10 +60,11 @@ export async function isPromptsCapabilityEnabledForOrg(
 
 /**
  * Whether the `graph_walker` graph-write propose tools are available to the
- * given source-control org. Controls the four `propose_create_node`,
- * `propose_node_edit`, `propose_create_triplet`, `propose_create_batch_triplet`
- * tools. When this gate is off the read-only graph_walker tools remain; only
- * the write-propose tools are suppressed.
+ * given source-control org. Controls the `propose_create_node`,
+ * `propose_node_edit`, `propose_create_triplet`, `propose_create_batch_triplet`,
+ * `propose_delete_edge` and `propose_move_node` tools. When this gate is off
+ * the read-only graph_walker tools remain; only the write-propose tools are
+ * suppressed.
  *
  * Driven by `GRAPH_WRITE_CAPABILITY_ORG_LOGINS` (comma-separated GitHub
  * logins, case-insensitive). Defaults to "" (empty → disabled for all orgs)
