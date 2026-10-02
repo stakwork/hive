@@ -7,13 +7,21 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { UnifiedDiffView } from "@/components/diff/UnifiedDiffView";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { hasRoleLevel, WorkspaceRole } from "@/lib/auth/roles";
 import { computeUnifiedDiff } from "@/lib/diff/unifiedLineDiff";
 import { nodeText } from "@/lib/strut-run-graph/node-text";
 import { cn } from "@/lib/utils";
 import type { ConnectionGroup } from "@/services/graph/workbench";
 import type { NodeEdit } from "./changes";
 import { childrenOf, hasDocs, parentsOf, type WorkbenchGraph } from "./model";
-import { CONNECTION_PAGE, connectionPageQuery, connectionsQuery, hierarchyQuery, saveConceptDocs } from "./queries";
+import {
+  CONNECTION_PAGE,
+  connectionPageQuery,
+  connectionsQuery,
+  hierarchyQuery,
+  saveConceptDocs,
+  workspaceRoleQuery,
+} from "./queries";
 import { useWorkbench } from "./store";
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
@@ -167,20 +175,7 @@ function ProposedEdit({ edit }: { edit: NodeEdit }) {
  * A concept's docs as markdown, saved back to the graph. ⌘↵ saves; Esc
  * leaves while nothing has changed.
  */
-function DocsEditor({
-  refId,
-  conceptKey,
-  type,
-  docs,
-  onDone,
-}: {
-  refId: string;
-  /** The concept's own `id`, which the save addresses it by. */
-  conceptKey: string;
-  type: string;
-  docs: string;
-  onDone: () => void;
-}) {
+function DocsEditor({ refId, type, docs, onDone }: { refId: string; type: string; docs: string; onDone: () => void }) {
   const { slug } = useWorkbench();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(docs);
@@ -188,7 +183,7 @@ function DocsEditor({
   const diff = useMemo(() => computeUnifiedDiff(docs, settled), [docs, settled]);
   const changed = draft !== docs;
   const save = useMutation({
-    mutationFn: (text: string) => saveConceptDocs(slug, conceptKey, text),
+    mutationFn: (text: string) => saveConceptDocs(slug, refId, text),
     onSuccess: (_, text) => {
       // The swarm holds the new docs now: show them without reading the whole graph again.
       queryClient.setQueryData(
@@ -258,10 +253,12 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
   const fields = documented ? [] : [...prose.slice(1), ...rest];
   // The tree's own edge already has its sections (parents and children).
   const groups = (data?.groups ?? []).filter((g) => !(node && graph && g.edge === graph.lens.edge && g.other === type));
-  // Concepts' docs can be edited in place; a proposal's node can't, until it's approved or rejected.
-  const conceptKey = node && !node.proposed && node.type === "Concept" ? node.key : null;
+  const { data: role } = useQuery(workspaceRoleQuery(slug));
+  // Developers and up edit a Concept's docs in place; a proposal's node can't be, until it's approved or rejected.
+  const canEdit = !!role && hasRoleLevel(role, WorkspaceRole.DEVELOPER);
+  const conceptRef = canEdit && node && !node.proposed && node.type === "Concept" ? node.id : null;
   const [editing, setEditing] = useState(false);
-  const editDocs = conceptKey && (
+  const editDocs = conceptRef && (
     <button
       type="button"
       onClick={() => setEditing(true)}
@@ -319,14 +316,8 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
         </div>
       )}
 
-      {editing && node && conceptKey ? (
-        <DocsEditor
-          refId={id}
-          conceptKey={conceptKey}
-          type={node.type}
-          docs={node.docs ?? ""}
-          onDone={() => setEditing(false)}
-        />
+      {editing && node && conceptRef ? (
+        <DocsEditor refId={conceptRef} type={node.type} docs={node.docs ?? ""} onDone={() => setEditing(false)} />
       ) : documented ? (
         <div className="space-y-1">
           <LabelRow label="Docs" action={editDocs} />
