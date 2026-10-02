@@ -11,8 +11,9 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import type { OpenHealthProgressResponse, OpenHealthRunDetail, OpenHealthStage } from "@/types/openhealth";
 import { formatCost, formatDuration, formatScore } from "../format";
-import { DiagnosisList, Stages, Stat } from "../parts";
+import { CONTESTED_BADGE, ContestedNote, contestedLabel, contestedTitle, DiagnosisList, Stages, Stat } from "../parts";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { ContestedList } from "./ContestedList";
 import { ImprovePanel } from "./ImprovePanel";
 
 /** Poll cadence while the run is in flight. */
@@ -23,10 +24,16 @@ type Panel = "graph" | "problem-list" | "timeline" | "checklist" | "ingest";
 function Scored({ run }: { run: OpenHealthRunDetail }) {
   const { scores } = run;
   if (!scores) return null;
+  const contests = run.contested.length > 0 || run.contestsRejected.length > 0;
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8" data-testid="openhealth-run-scores">
-        <Stat label="Weighted F1" value={formatScore(scores.f1)} emphasis />
+        <Stat
+          label="Weighted F1"
+          value={formatScore(scores.f1)}
+          sub={<ContestedNote official={scores.official} contested={scores.contested} />}
+          emphasis
+        />
         <Stat label="Tier" value={scores.tier ?? "—"} emphasis />
         <Stat label="Recall" value={formatScore(scores.recall)} />
         <Stat label="Precision" value={formatScore(scores.precision)} />
@@ -35,7 +42,7 @@ function Scored({ run }: { run: OpenHealthRunDetail }) {
         <Stat label="Cost" value={formatCost(run.costUsd)} />
         <Stat label="Duration" value={formatDuration(run.durationMs)} />
       </div>
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className={`grid gap-3 ${contests ? "lg:grid-cols-2 xl:grid-cols-4" : "lg:grid-cols-3"}`}>
         <DiagnosisList
           title="Matched"
           hint="The model's diagnosis and the answer-key diagnosis it matched"
@@ -62,6 +69,7 @@ function Scored({ run }: { run: OpenHealthRunDetail }) {
           testId="openhealth-run-extra"
           items={run.extra}
         />
+        {contests && <ContestedList contested={run.contested} rejected={run.contestsRejected} />}
       </div>
     </>
   );
@@ -191,6 +199,16 @@ export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSet
         {run.chart && run.chart.sectionsFailed.length > 0 && (
           <Badge variant="destructive">{run.chart.sectionsFailed.length} sections failed to ingest</Badge>
         )}
+        {run.scores && run.scores.contested > 0 && (
+          <Badge
+            variant="outline"
+            className={CONTESTED_BADGE}
+            title={contestedTitle(run.scores.contested, run.scores.official)}
+            data-testid="openhealth-run-contested-badge"
+          >
+            {contestedLabel(run.scores.contested)}
+          </Badge>
+        )}
         {run.spreadsheetUrl && (
           <a
             href={run.spreadsheetUrl}
@@ -222,7 +240,10 @@ export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSet
         </div>
       )}
       {run.outcome === "failed" && (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" data-testid="openhealth-run-failure">
+        <p
+          className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          data-testid="openhealth-run-failure"
+        >
           {run.error}
         </p>
       )}
@@ -232,7 +253,12 @@ export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSet
 
       {run.strutRunId && (
         <div className="flex flex-wrap gap-2">
-          <PillSection label="Graph" open={panel === "graph"} onOpenChange={toggle("graph")} testId="openhealth-run-graph">
+          <PillSection
+            label="Graph"
+            open={panel === "graph"}
+            onOpenChange={toggle("graph")}
+            testId="openhealth-run-graph"
+          >
             <StrutRunGraph endpoint={`/api/workspaces/${slug}/strut/runs/${runId}/graph`} live={running} />
           </PillSection>
           {hasFiles && (

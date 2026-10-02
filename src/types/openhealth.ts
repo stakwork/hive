@@ -25,8 +25,15 @@ export interface OpenHealthTaskList {
 export type OpenHealthOutcome = "running" | "succeeded" | "failed" | "cancelled";
 
 export interface OpenHealthScores {
-  /** Headline score: weighted F1, 0–1. */
+  /**
+   * Headline score: weighted F1, 0–1. Since workflow v12 this is the ADJUSTED
+   * score: answer-key items with an accepted contest are excluded from it.
+   */
   f1: number;
+  /** The untouched benchmark score; null when the workflow did not report one (before v12). */
+  official: number | null;
+  /** Answer-key items excluded from `f1` as contested; `official` scores them. */
+  contested: number;
   recall: number | null;
   precision: number | null;
   tier: string | null;
@@ -63,6 +70,34 @@ export interface OpenHealthIngestedSection {
 
 export type OpenHealthArtifactName = "problem-list" | "timeline" | "checklist";
 
+/**
+ * One answer-key item excluded from a run's score: an improve run showed
+ * the chart contradicts it, and the graph holds it as an `EvalRequirement`
+ * with `contested: true` under the task's EvalSet.
+ */
+export interface OpenHealthContest {
+  /** The EvalRequirement's id: `<evalsetId>-contested-<list>-<slug>`. */
+  id: string | null;
+  /** The EvalRequirement node, for a link to the graph. */
+  refId: string | null;
+  /** The answer-key item, as the gold names it. */
+  name: string;
+  /** The gold list it sits in: `must_include_findings`, `diagnoses`, … */
+  list: string | null;
+  icd10: string | null;
+  /** Why the chart contradicts it, and who contested it. */
+  reason: string | null;
+  /** Verbatim quotes from the chart and the gold. */
+  evidence: string[];
+}
+
+/** A contest the workflow's checks refused (a quote that is not in the chart); it never affects a score. */
+export interface OpenHealthContestRejected {
+  /** The scoring error it was raised for, or the item's name. */
+  error: string;
+  reason: string | null;
+}
+
 /** A run with everything its viewer shows. */
 export interface OpenHealthRunDetail extends OpenHealthRun {
   title: string | null;
@@ -79,6 +114,10 @@ export interface OpenHealthRunDetail extends OpenHealthRun {
     withheldSections: string[];
   } | null;
   ingested: OpenHealthIngestedSection[];
+  /** Answer-key items excluded from the score; `scores.contested` counts them. */
+  contested: OpenHealthContest[];
+  /** Contests recorded against the task that did not pass the workflow's checks. */
+  contestsRejected: OpenHealthContestRejected[];
   produceCost: number | null;
   produceSteps: number | null;
   spreadsheetUrl: string | null;
@@ -122,6 +161,14 @@ export interface OpenHealthImprovement {
   rejected: Array<{ name: string; reasons: string[] }>;
   /** Errors the run left alone, with why. */
   notAddressed: Array<{ error: string; reason: string }>;
+  /**
+   * Answer-key items the run contested and the graph recorded: the chart
+   * contradicts them, and they are excluded from the score from the next
+   * run on. Empty when the run did not apply.
+   */
+  contestsAccepted: OpenHealthContest[];
+  /** Contests the workflow's checks refused. */
+  contestsRejected: OpenHealthContestRejected[];
   durationMs: number | null;
   error: string | null;
   createdAt: string;
@@ -167,8 +214,12 @@ export interface OpenHealthClimbStep {
   /** The iteration this step belongs to, from 0. Attempt = iteration + 1. */
   iteration: number;
   outcome: OpenHealthOutcome;
-  /** Benchmark: weighted F1 once scored. */
+  /** Benchmark: weighted F1 once scored — the adjusted score, contested items excluded. */
   f1: number | null;
+  /** Benchmark: the untouched score, when the loop reports one. */
+  f1Official: number | null;
+  /** Benchmark: answer-key items excluded from `f1` as contested, by name. */
+  contested: string[];
   /** Benchmark: its recall and precision, when the loop's event log reports them (the recorded history does not). */
   recall: number | null;
   precision: number | null;
@@ -187,6 +238,10 @@ export interface OpenHealthClimbStep {
   created: string[];
   amended: string[];
   rejected: string[];
+  /** Improve: answer-key items it contested and the graph recorded — excluded from the next run on. */
+  contestsAccepted: string[];
+  /** Improve: contests the workflow's checks refused. */
+  contestsRejected: OpenHealthContestRejected[];
   summary: string | null;
   startedAt: string | null;
   error: string | null;
@@ -210,6 +265,8 @@ export interface OpenHealthClimb {
   /** The first attempt's F1. */
   startF1: number | null;
   bestF1: number | null;
+  /** The best attempt's untouched score, when the loop reports one. */
+  bestF1Official: number | null;
   /** The best attempt's recall and precision, when known. */
   bestRecall: number | null;
   bestPrecision: number | null;
@@ -219,6 +276,8 @@ export interface OpenHealthClimb {
   bestIteration: number | null;
   /** USD over the benchmark runs that reported a cost; null when none did. */
   costUsd: number | null;
+  /** Every answer-key item contested over the climb, by name: excluded from its runs' scores or accepted by its improve runs. */
+  contested: string[];
   steps: OpenHealthClimbStep[];
   durationMs: number | null;
   error: string | null;

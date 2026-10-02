@@ -9,7 +9,7 @@ import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import type { OpenHealthClimb, OpenHealthClimbStep } from "@/types/openhealth";
 import { ClimbStartPopover } from "../ClimbStartPopover";
 import { formatCost, formatScore } from "../format";
-import { describeStage } from "../parts";
+import { CONTESTED_TEXT, contestedLabel, contestedTitle, describeStage } from "../parts";
 
 /** What the climb's improve runs changed in the graph, by count. */
 export function climbConcepts(climb: OpenHealthClimb): { created: number; amended: number } {
@@ -37,7 +37,11 @@ function headline(climb: OpenHealthClimb): { title: string; meta: string } {
       : `best ${formatScore(climb.bestF1)}`;
   const runs = `${climb.attempts} ${climb.attempts === 1 ? "run" : "runs"}`;
   const cost = climb.costUsd !== null ? formatCost(climb.costUsd) : null;
-  const tail = [runs, span, concepts || null, cost].filter(Boolean).join(" · ");
+  const contested =
+    climb.contested.length > 0
+      ? `${contestedLabel(climb.contested.length)}${climb.bestF1Official !== null ? `, ${formatScore(climb.bestF1Official)} official` : ""}`
+      : null;
+  const tail = [runs, span, contested, concepts || null, cost].filter(Boolean).join(" · ");
   switch (climb.status) {
     case "running":
       return {
@@ -73,6 +77,7 @@ function stepDetail(step: OpenHealthClimbStep): string {
   const wrote = [
     step.created.length ? `+${step.created.length}` : null,
     step.amended.length ? `${step.amended.length} amended` : null,
+    step.contestsAccepted.length ? contestedLabel(step.contestsAccepted.length) : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -114,6 +119,15 @@ function StepChip({ step, selected, onOpen }: { step: OpenHealthClimbStep; selec
       {step.kind === "benchmark" && step.f1 !== null && (
         <span className={`text-[10px] ${step.newBest ? "text-green-600" : "text-muted-foreground"}`}>
           {step.newBest ? "new best" : "below best"}
+        </span>
+      )}
+      {step.kind === "benchmark" && step.contested.length > 0 && (
+        <span
+          className={`text-[10px] ${CONTESTED_TEXT}`}
+          title={contestedTitle(step.contested.length, step.f1Official)}
+          data-testid="openhealth-climb-step-contested"
+        >
+          {contestedLabel(step.contested.length)}
         </span>
       )}
     </button>

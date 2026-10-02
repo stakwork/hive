@@ -7,23 +7,36 @@ import { PillSection } from "@/components/legal/PillSection";
 import { StrutRunGraph } from "@/components/strut-run-graph";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { openHealthClimbStepPath } from "@/lib/openhealth-benchmarks/climb";
-import type { OpenHealthClimb, OpenHealthClimbStep } from "@/types/openhealth";
+import type { OpenHealthClimb, OpenHealthClimbStep, OpenHealthContestRejected } from "@/types/openhealth";
 import { formatCost, formatScore, formatWhen } from "../format";
 import { OpenHealthClimbStrip } from "../OpenHealthClimbStrip";
 import { ArtifactPanel } from "../OpenHealthRunViewer/ArtifactPanel";
-import { DiagnosisList, Stages, Stat } from "../parts";
+import { CONTESTED_TEXT, ContestedNote, DiagnosisList, Stages, Stat } from "../parts";
 
 /** Poll cadence while the climb is in flight. */
 const POLL_MS = 10_000;
 
 type Panel = "graph" | "problem-list" | "timeline" | "checklist";
 
-function NameList({ title, hint, names, testId }: { title: string; hint: string; names: string[]; testId: string }) {
+function NameList({
+  title,
+  hint,
+  names,
+  testId,
+  tone = "",
+}: {
+  title: string;
+  hint: string;
+  names: string[];
+  testId: string;
+  /** Classes for the title and the frame: the contested lists are violet. */
+  tone?: string;
+}) {
   if (names.length === 0) return null;
   return (
-    <div className="rounded-lg border bg-card" data-testid={testId}>
+    <div className={`rounded-lg border bg-card ${tone ? "border-violet-500/40" : ""}`} data-testid={testId}>
       <div className="border-b px-4 py-2">
-        <p className="text-sm font-semibold">
+        <p className={`text-sm font-semibold ${tone}`}>
           {title} <span className="font-normal tabular-nums text-muted-foreground">{names.length}</span>
         </p>
         <p className="text-xs text-muted-foreground">{hint}</p>
@@ -32,6 +45,28 @@ function NameList({ title, hint, names, testId }: { title: string; hint: string;
         {names.map((name) => (
           <li key={name} className="px-4 py-2">
             {name}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RejectedContests({ items }: { items: OpenHealthContestRejected[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-lg border bg-card" data-testid="openhealth-climb-step-contests-rejected">
+      <div className="border-b px-4 py-2">
+        <p className="text-sm font-semibold">
+          Contests refused <span className="font-normal tabular-nums text-muted-foreground">{items.length}</span>
+        </p>
+        <p className="text-xs text-muted-foreground">Did not pass the workflow&apos;s checks; the score is unchanged</p>
+      </div>
+      <ul className="divide-y text-sm">
+        {items.map((item, index) => (
+          <li key={`${item.error}-${index}`} className="px-4 py-2">
+            <span className="font-mono text-xs">{item.error}</span>
+            {item.reason && <span className="block text-xs text-muted-foreground">{item.reason}</span>}
           </li>
         ))}
       </ul>
@@ -67,12 +102,17 @@ function BenchmarkStep({ step }: { step: OpenHealthClimbStep }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4" data-testid="openhealth-climb-step-scores">
-        <Stat label="Weighted F1" value={formatScore(step.f1)} emphasis />
+        <Stat
+          label="Weighted F1"
+          value={formatScore(step.f1)}
+          sub={<ContestedNote official={step.f1Official} contested={step.contested.length} />}
+          emphasis
+        />
         <Stat label="Missed / extra" value={`${step.missed.length} / ${step.extra.length}`} />
         <Stat label="Cost" value={formatCost(step.costUsd)} />
         <Stat label="Started" value={step.startedAt ? formatWhen(step.startedAt) : "—"} />
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className={`grid gap-3 ${step.contested.length > 0 ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
         <DiagnosisList
           title="Missed"
           hint="In the answer key, not in the model's list"
@@ -84,6 +124,13 @@ function BenchmarkStep({ step }: { step: OpenHealthClimbStep }) {
           hint="In the model's list, matched nothing"
           testId="openhealth-climb-step-extra"
           items={step.extra}
+        />
+        <NameList
+          title="Contested"
+          hint="In the answer key, but the chart contradicts it: excluded from the score"
+          names={step.contested}
+          testId="openhealth-climb-step-contested-list"
+          tone={CONTESTED_TEXT}
         />
       </div>
     </>
@@ -109,7 +156,7 @@ function ImproveStep({ step }: { step: OpenHealthClimbStep }) {
       </p>
     );
   }
-  const nothing = step.created.length + step.amended.length + step.rejected.length === 0;
+  const nothing = step.created.length + step.amended.length + step.rejected.length + step.contestsAccepted.length === 0;
   return (
     <div className="space-y-3" data-testid="openhealth-climb-step-improve">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -137,6 +184,14 @@ function ImproveStep({ step }: { step: OpenHealthClimbStep }) {
         names={step.rejected}
         testId="openhealth-climb-step-rejected"
       />
+      <NameList
+        title="Contested gold"
+        hint="Answer-key items the chart contradicts, recorded in the graph: excluded from the score from the next run on"
+        names={step.contestsAccepted}
+        testId="openhealth-climb-step-contests"
+        tone={CONTESTED_TEXT}
+      />
+      <RejectedContests items={step.contestsRejected} />
     </div>
   );
 }

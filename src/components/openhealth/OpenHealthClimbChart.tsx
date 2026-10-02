@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { OpenHealthClimbPoint } from "@/lib/openhealth-benchmarks/runs";
 import { formatScore, formatWhen } from "./format";
+import { contestedLabel } from "./parts";
 
 const MARGIN = { top: 14, right: 44, bottom: 24, left: 36 };
 const FALLBACK_WIDTH = 640;
@@ -156,17 +157,30 @@ export function OpenHealthClimbChart({
             {points.map((p, i) => {
               const hollow = p.f1 < p.best;
               return (
-                <circle
-                  key={p.key}
-                  cx={x(i)}
-                  cy={y(p.f1)}
-                  r={hover === i ? 5.5 : 4}
-                  fill={hollow ? "none" : "currentColor"}
-                  stroke="currentColor"
-                  strokeOpacity={hollow ? 0.6 : 1}
-                  strokeWidth={1.5}
-                  data-testid="openhealth-climb-dot"
-                />
+                <g key={p.key}>
+                  {p.contested > 0 && (
+                    <circle
+                      cx={x(i)}
+                      cy={y(p.f1)}
+                      r={hover === i ? 9 : 7.5}
+                      fill="none"
+                      className="stroke-violet-500"
+                      strokeWidth={1.5}
+                      strokeDasharray="2 2"
+                      data-testid="openhealth-climb-contested-ring"
+                    />
+                  )}
+                  <circle
+                    cx={x(i)}
+                    cy={y(p.f1)}
+                    r={hover === i ? 5.5 : 4}
+                    fill={hollow ? "none" : "currentColor"}
+                    stroke="currentColor"
+                    strokeOpacity={hollow ? 0.6 : 1}
+                    strokeWidth={1.5}
+                    data-testid="openhealth-climb-dot"
+                  />
+                </g>
               );
             })}
           </g>
@@ -226,6 +240,12 @@ export function OpenHealthClimbChart({
           <div className="text-muted-foreground">
             {hovered.newBest ? "new best" : `best so far ${formatScore(hovered.best)}`}
           </div>
+          {hovered.contested > 0 && (
+            <div className="text-violet-600 dark:text-violet-400" data-testid="openhealth-climb-tooltip-contested">
+              {contestedLabel(hovered.contested)}
+              {hovered.f1Official !== null && ` · ${formatScore(hovered.f1Official)} official`}
+            </div>
+          )}
           {onSelect && (
             <div className="mt-0.5 text-primary">{hovered.climb ? "click to open climb" : "click to open run"}</div>
           )}

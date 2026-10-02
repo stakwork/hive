@@ -23,6 +23,7 @@ import { OpenHealthClimbChart } from "./OpenHealthClimbChart";
 import { OpenHealthClimbStrip } from "./OpenHealthClimbStrip";
 import { OpenHealthClimbViewer } from "./OpenHealthClimbViewer";
 import { OpenHealthRunViewer } from "./OpenHealthRunViewer";
+import { CONTESTED_TEXT, contestedLabel, ScoreCell } from "./parts";
 import {
   ClimbStatusBadge,
   DifficultyBadge,
@@ -51,6 +52,16 @@ function SummaryCard({ title, summary, testId }: { title: string; summary: OpenH
         <p className="text-2xl font-semibold tabular-nums">{formatScore(summary.meanF1)}</p>
         <p className="text-xs text-muted-foreground">
           mean F1 · {formatPercent(summary.successRate)} scored ({summary.succeeded}/{summary.attempts})
+          {summary.contested > 0 && (
+            <span
+              className={CONTESTED_TEXT}
+              title={`${summary.contested} of the scored runs exclude contested answer-key items; the mean is over those adjusted scores`}
+              data-testid="openhealth-summary-contested"
+            >
+              {" · "}
+              {contestedLabel(summary.contested)}
+            </span>
+          )}
         </p>
       </CardContent>
     </Card>
@@ -374,7 +385,13 @@ function RunRows({
         <TableCell>
           <OutcomeBadge outcome={run.outcome} />
         </TableCell>
-        <TableCell className="text-right font-medium tabular-nums">{formatScore(run.scores?.f1)}</TableCell>
+        <TableCell className="text-right font-medium tabular-nums">
+          <ScoreCell
+            value={formatScore(run.scores?.f1)}
+            official={run.scores?.official ?? null}
+            contested={run.scores?.contested ?? 0}
+          />
+        </TableCell>
         <TableCell>{run.scores?.tier ?? "—"}</TableCell>
         <TableCell className="text-right tabular-nums">{formatScore(run.scores?.recall)}</TableCell>
         <TableCell className="text-right tabular-nums">{formatScore(run.scores?.precision)}</TableCell>
@@ -435,7 +452,9 @@ function ClimbRows({
         <TableCell>
           <ClimbStatusBadge status={climb.status} />
         </TableCell>
-        <TableCell className="text-right font-medium tabular-nums">{span}</TableCell>
+        <TableCell className="text-right font-medium tabular-nums">
+          <ScoreCell value={span} official={climb.bestF1Official} contested={climb.contested.length} />
+        </TableCell>
         <TableCell>—</TableCell>
         <TableCell className="text-right tabular-nums">{formatScore(climb.bestRecall)}</TableCell>
         <TableCell className="text-right tabular-nums">{formatScore(climb.bestPrecision)}</TableCell>

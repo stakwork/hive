@@ -10,6 +10,11 @@
  * also carries what the output never does — each run's cost, recall and
  * precision, and when it started — and the stages of the run in flight.
  *
+ * Scores are the loop's ADJUSTED scores (contested answer-key items
+ * excluded; `contests.ts`). Each run also reports its untouched score, and
+ * an improve run the contests it had the graph record, which take effect
+ * from the next run on.
+ *
  * Like `runs.ts`, everything reads the workflow's fields one by one, so an
  * output of another shape degrades to nulls and empty lists. The improve
  * files the history names (`report`, `analysis`, `backup`, `problemList`)
@@ -21,9 +26,11 @@ import type {
   OpenHealthClimb,
   OpenHealthClimbStatus,
   OpenHealthClimbStep,
+  OpenHealthContestRejected,
   OpenHealthOutcome,
   OpenHealthStage,
 } from "@/types/openhealth";
+import { contestNames, rejectedContestsOf } from "./contests";
 import { openHealthRunCost, type DifficultyLookup } from "./runs";
 import { projectOpenHealthStages } from "./stages";
 
@@ -78,11 +85,16 @@ export interface OpenHealthClimbIterationEvents {
   improve: OpenHealthClimbPhase;
   /** From the benchmark run's output, once it ended. */
   f1: number | null;
+  f1Official: number | null;
+  contested: string[];
   recall: number | null;
   precision: number | null;
   missed: string[];
   extra: string[];
   costUsd: number | null;
+  /** From the improve run's output, once it ended. */
+  contestsAccepted: string[];
+  contestsRejected: OpenHealthContestRejected[];
   /** The benchmark run's stages while it runs. */
   stages: OpenHealthStage[] | null;
   /** The loop recorded this iteration: `history` holds it. */
@@ -136,11 +148,15 @@ export function projectOpenHealthClimbEvents(events: unknown): OpenHealthClimbEv
         run: "pending",
         improve: "pending",
         f1: null,
+        f1Official: null,
+        contested: [],
         recall: null,
         precision: null,
         missed: [],
         extra: [],
         costUsd: null,
+        contestsAccepted: [],
+        contestsRejected: [],
         stages: null,
         recorded: false,
       };
@@ -168,6 +184,8 @@ export function projectOpenHealthClimbEvents(events: unknown): OpenHealthClimbEv
       if (ENDED.has(event.type)) {
         const output = record(event.output);
         it.f1 = num(output.weighted_problem_list_f1_neutral);
+        it.f1Official = num(output.scoreOfficial);
+        it.contested = contestNames(output.contested);
         it.recall = num(output.problem_list_recall);
         it.precision = num(output.problem_list_precision_neutral);
         it.missed = strings(output.missed);
@@ -176,6 +194,11 @@ export function projectOpenHealthClimbEvents(events: unknown): OpenHealthClimbEv
       }
     } else if (segments.length === 3 && segments[2] === "improve") {
       it.improve = phaseAfter(event.type, it.improve);
+      if (ENDED.has(event.type)) {
+        const output = record(event.output);
+        it.contestsAccepted = contestNames(output.contests_accepted);
+        it.contestsRejected = rejectedContestsOf(output.contests_rejected);
+      }
     }
   }
 
@@ -204,6 +227,8 @@ export interface OpenHealthClimbSource {
 
 const EMPTY_STEP = {
   f1: null,
+  f1Official: null,
+  contested: [] as string[],
   recall: null,
   precision: null,
   newBest: false,
@@ -215,6 +240,8 @@ const EMPTY_STEP = {
   created: [] as string[],
   amended: [] as string[],
   rejected: [] as string[],
+  contestsAccepted: [] as string[],
+  contestsRejected: [] as OpenHealthContestRejected[],
   summary: null,
   startedAt: null,
   error: null,
@@ -264,6 +291,8 @@ function stepsOf(
     steps.push(
       benchmarkStep(iteration, "succeeded", {
         f1: num(entry.score),
+        f1Official: num(entry.scoreOfficial),
+        contested: contestNames(entry.contested),
         // The history records no recall or precision today; the log has them.
         recall: num(entry.recall) ?? ev?.recall ?? null,
         precision: num(entry.precision) ?? ev?.precision ?? null,
@@ -280,6 +309,8 @@ function stepsOf(
           created: strings(entry.creates),
           amended: strings(entry.amends),
           rejected: strings(entry.rejected),
+          contestsAccepted: contestNames(entry.contestsAccepted),
+          contestsRejected: rejectedContestsOf(entry.contestsRejected),
           summary: str(entry.summary),
         }),
       );
@@ -292,6 +323,8 @@ function stepsOf(
     steps.push(
       benchmarkStep(it.iteration, outcome, {
         f1: it.f1,
+        f1Official: it.f1Official,
+        contested: it.contested,
         recall: it.recall,
         precision: it.precision,
         missed: it.missed,
@@ -306,6 +339,8 @@ function stepsOf(
       const improveOutcome = unrecordedOutcome(row.status, it.improve);
       steps.push(
         improveStep(it.iteration, improveOutcome, {
+          contestsAccepted: it.contestsAccepted,
+          contestsRejected: it.contestsRejected,
           error: improveOutcome === "failed" ? (row.error ?? "The improve run did not finish.") : null,
         }),
       );
@@ -369,6 +404,7 @@ export function toOpenHealthClimb(
 
   let best = -Infinity;
   let bestIteration: number | null = null;
+  let bestOfficial: number | null = null;
   let bestRecall: number | null = null;
   let bestPrecision: number | null = null;
   let startF1: number | null = null;
@@ -386,12 +422,17 @@ export function toOpenHealthClimb(
     if (step.newBest) {
       best = step.f1;
       bestIteration = step.iteration;
+      bestOfficial = step.f1Official;
       bestRecall = step.recall;
       bestPrecision = step.precision;
     }
   }
   const bestF1 = bestIteration === null ? null : best;
   const { status, stopReason } = statusOf(row, output, history, rules, latest, bestF1);
+  // The loop names them once it settles; before that, the steps do.
+  const contested = Array.isArray(output.contested)
+    ? contestNames(output.contested)
+    : [...new Set(steps.flatMap((s) => (s.kind === "benchmark" ? s.contested : s.contestsAccepted)))].sort();
 
   return {
     id: row.id,
@@ -405,11 +446,13 @@ export function toOpenHealthClimb(
     attempts,
     startF1,
     bestF1,
+    bestF1Official: bestOfficial,
     bestRecall,
     bestPrecision,
     latestF1: latest?.f1 ?? null,
     bestIteration,
     costUsd: cost,
+    contested,
     steps,
     durationMs: row.durationMs,
     error: status === "failed" ? stopReason : null,

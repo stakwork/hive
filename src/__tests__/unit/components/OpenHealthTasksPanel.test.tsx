@@ -52,7 +52,9 @@ function run(gtId: number, outcome: OpenHealthRun["outcome"]): OpenHealthRun {
     gtId,
     patientId: gtId * 10,
     difficulty: "medium",
-    scores: scored ? { f1: 0.5, recall: 0.5, precision: 0.5, tier: "B", nMatched: 1, nGt: 2, nPred: 2 } : null,
+    scores: scored
+      ? { f1: 0.5, official: null, contested: 0, recall: 0.5, precision: 0.5, tier: "B", nMatched: 1, nGt: 2, nPred: 2 }
+      : null,
     costUsd: scored ? 1 : null,
     durationMs: scored ? 1 : null,
     error: null,
@@ -75,6 +77,8 @@ function climb(gtId: number): OpenHealthClimb {
     attempts: 0,
     startF1: null,
     bestF1: null,
+    bestF1Official: null,
+    contested: [],
     bestRecall: null,
     bestPrecision: null,
     latestF1: null,
