@@ -7,12 +7,16 @@
 
 import type { OpenHealthStage, OpenHealthStageStatus } from "@/types/openhealth";
 
-/** The workflow's top-level steps that mark each stage, in order. */
+/**
+ * The workflow's top-level steps that mark each stage, in order. The same
+ * ids on both of the workflow's paths (a problem list, a summary), so the
+ * stages read without knowing the task.
+ */
 const STAGES: Array<{ key: string; label: string; steps: string[] }> = [
   { key: "task", label: "Load chart", steps: ["task"] },
   { key: "ingest", label: "Ingest sections", steps: ["ingest"] },
   { key: "plan", label: "Plan", steps: ["seed_checklist", "write_checklist"] },
-  { key: "produce", label: "Produce problem list", steps: ["produce"] },
+  { key: "produce", label: "Produce", steps: ["produce"] },
   { key: "score", label: "Score", steps: ["scored"] },
   { key: "result", label: "Result", steps: ["result"] },
 ];

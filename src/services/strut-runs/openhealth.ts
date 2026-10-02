@@ -1,8 +1,12 @@
 /**
  * OpenHealth Benchmarks — the `openhealth-run` strut workflow behind
- * `/w/<slug>/openhealth/benchmarks`. One run takes one task (`gtId`, a
- * patient): agents read the chart and write a problem list, which is scored
- * against a hidden answer key.
+ * `/w/<slug>/openhealth/benchmarks`. One run takes one task (`gtId`: a
+ * patient, or one specialty's view of one) of one benchmark (`task`:
+ * `patient_diagnosis` or `context_summarization`): agents read the chart
+ * and write a problem list or a summary, which is scored against a hidden
+ * answer key. The run's output carries a task-neutral `metric` + `score`
+ * beside the task's own numbers; the readers in `lib/openhealth-benchmarks`
+ * fall back to the diagnosis keys for rows older than that contract.
  *
  * The launch targets the workspace's own swarm (`purpose: "benchmark"`).
  * There is nothing to deliver on completion: the `StrutRun` row IS the
@@ -36,6 +40,7 @@ import {
 import {
   OPENHEALTH_CLIMB_RUN_KIND,
   OPENHEALTH_CLIMB_WORKFLOW,
+  OPENHEALTH_DEFAULT_TASK,
   OPENHEALTH_IMPROVE_RUN_KIND,
   OPENHEALTH_IMPROVE_WORKFLOW,
   OPENHEALTH_RUN_KIND,
@@ -45,7 +50,7 @@ import {
 } from "@/lib/openhealth-benchmarks/constants";
 import { toOpenHealthImprovement } from "@/lib/openhealth-benchmarks/improve";
 import { toOpenHealthRun, toOpenHealthRunDetail } from "@/lib/openhealth-benchmarks/runs";
-import { cachedDifficultyLookup } from "@/services/openhealth-benchmarks/tasks";
+import { cachedTaskLookup } from "@/services/openhealth-benchmarks/tasks";
 import {
   completeStrutRun,
   dispatchStrutRun,
@@ -56,7 +61,13 @@ import {
   type StrutRunRow,
 } from "@/services/strut-runs";
 import { fetchStrutRunEvents } from "@/services/strut-runs/lab";
-import type { OpenHealthClimb, OpenHealthImprovement, OpenHealthRun, OpenHealthRunDetail } from "@/types/openhealth";
+import type {
+  OpenHealthBenchmarkTask,
+  OpenHealthClimb,
+  OpenHealthImprovement,
+  OpenHealthRun,
+  OpenHealthRunDetail,
+} from "@/types/openhealth";
 
 /** How many runs the page lists. */
 const LIST_LIMIT = 200;
@@ -125,11 +136,11 @@ export async function listOpenHealthRuns(workspaceId: string, opts: { now?: Date
     take: LIST_LIMIT,
   });
   if (rows.length === 0) return [];
-  const [shown, difficultyFor] = await Promise.all([
+  const [shown, catalogue] = await Promise.all([
     Promise.all(rows.map((row) => settleFromStrut(row, now))),
-    cachedDifficultyLookup(rows[0].swarmId, OPENHEALTH_SPLITS),
+    cachedTaskLookup(rows[0].swarmId, OPENHEALTH_SPLITS),
   ]);
-  return shown.map((row) => toOpenHealthRun(row, difficultyFor));
+  return shown.map((row) => toOpenHealthRun(row, catalogue));
 }
 
 /** One of the workspace's benchmark runs as stored; null when it is not one. */
@@ -147,11 +158,11 @@ export async function getOpenHealthRun(
 ): Promise<OpenHealthRunDetail | null> {
   const row = await findOpenHealthRunRow(workspaceId, runId);
   if (!row) return null;
-  const [shown, difficultyFor] = await Promise.all([
+  const [shown, catalogue] = await Promise.all([
     settleFromStrut(row, opts.now ?? new Date()),
-    cachedDifficultyLookup(row.swarmId, OPENHEALTH_SPLITS),
+    cachedTaskLookup(row.swarmId, OPENHEALTH_SPLITS),
   ]);
-  return toOpenHealthRunDetail(shown, difficultyFor);
+  return toOpenHealthRunDetail(shown, catalogue);
 }
 
 /** Is a run of this task already in flight for the workspace? (One at a time, per task.) */
@@ -175,9 +186,16 @@ export interface LaunchOpenHealthRunArgs {
   publicBaseUrl: string;
   /** A `gtId` from the task catalogue — the caller checks it is one. */
   gtId: number;
+  /** The benchmark the task belongs to: the workflow's `input.task`. Diagnosis when the caller names none. */
+  task?: OpenHealthBenchmarkTask;
 }
 
-/** Launch one run for one task. Throws `StrutDispatchError` when nothing is running on strut's side. */
+/**
+ * Launch one run for one task. The variant of a summarization task is the
+ * row's own (the workflow reads it from the answer key), so the launch
+ * names the task only. Throws `StrutDispatchError` when nothing is running
+ * on strut's side.
+ */
 export async function launchOpenHealthRun(args: LaunchOpenHealthRunArgs): Promise<DispatchStrutRunResult> {
   return dispatchStrutRun({
     workspaceId: args.workspaceId,
@@ -185,7 +203,7 @@ export async function launchOpenHealthRun(args: LaunchOpenHealthRunArgs): Promis
     kind: OPENHEALTH_RUN_KIND,
     workflow: resolveOpenHealthStrutWorkflowName(),
     purpose: "benchmark",
-    input: { gtId: args.gtId, workdir: openHealthWorkdir(args.gtId) },
+    input: { gtId: args.gtId, task: args.task ?? OPENHEALTH_DEFAULT_TASK, workdir: openHealthWorkdir(args.gtId) },
     publicBaseUrl: args.publicBaseUrl,
   });
 }
@@ -276,14 +294,14 @@ export async function listOpenHealthClimbs(workspaceId: string, opts: { now?: Da
     take: CLIMB_LIST_LIMIT,
   });
   if (rows.length === 0) return [];
-  const [shown, difficultyFor] = await Promise.all([
+  const [shown, catalogue] = await Promise.all([
     Promise.all(rows.map((row) => settleFromStrut(row, now))),
-    cachedDifficultyLookup(rows[0].swarmId, OPENHEALTH_SPLITS),
+    cachedTaskLookup(rows[0].swarmId, OPENHEALTH_SPLITS),
   ]);
   const events = await Promise.all(
     shown.map((row) => (row.status === StrutRunStatus.PENDING ? readOpenHealthClimbEvents(row) : null)),
   );
-  return shown.map((row, index) => toOpenHealthClimb(row, difficultyFor, events[index]));
+  return shown.map((row, index) => toOpenHealthClimb(row, catalogue, events[index]));
 }
 
 /** One of the workspace's climbs as stored; null when it is not one. */
@@ -306,11 +324,11 @@ export async function getOpenHealthClimb(
 ): Promise<OpenHealthClimb | null> {
   const row = await findOpenHealthClimbRow(workspaceId, climbId);
   if (!row) return null;
-  const [shown, difficultyFor] = await Promise.all([
+  const [shown, catalogue] = await Promise.all([
     settleFromStrut(row, opts.now ?? new Date()),
-    cachedDifficultyLookup(row.swarmId, OPENHEALTH_SPLITS),
+    cachedTaskLookup(row.swarmId, OPENHEALTH_SPLITS),
   ]);
-  return toOpenHealthClimb(shown, difficultyFor, await readOpenHealthClimbEvents(shown));
+  return toOpenHealthClimb(shown, catalogue, await readOpenHealthClimbEvents(shown));
 }
 
 /** Is a climb of this task already in flight for the workspace? (One at a time, per task.) */
@@ -334,6 +352,8 @@ export interface LaunchOpenHealthClimbArgs {
   publicBaseUrl: string;
   /** A `gtId` from the task catalogue — the caller checks it is one. */
   gtId: number;
+  /** The benchmark the task belongs to: the loop's `input.task`. Diagnosis when the caller names none. */
+  task?: OpenHealthBenchmarkTask;
   /** The loop stops at the first run scoring this. The caller checks the range. */
   targetF1: number;
   /** Benchmark runs at most. The caller checks the range. */
@@ -348,7 +368,7 @@ export async function launchOpenHealthClimb(args: LaunchOpenHealthClimbArgs): Pr
     kind: OPENHEALTH_CLIMB_RUN_KIND,
     workflow: OPENHEALTH_CLIMB_WORKFLOW,
     purpose: "benchmark",
-    input: { gtId: args.gtId, target: args.targetF1, maxRuns: args.maxRuns },
+    input: { gtId: args.gtId, task: args.task ?? OPENHEALTH_DEFAULT_TASK, target: args.targetF1, maxRuns: args.maxRuns },
     publicBaseUrl: args.publicBaseUrl,
   });
 }
