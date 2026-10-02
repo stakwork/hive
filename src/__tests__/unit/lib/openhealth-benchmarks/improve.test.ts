@@ -242,3 +242,15 @@ describe("toOpenHealthImprovement", () => {
     });
   });
 });
+
+describe("describeScoringError for a summary's errors", () => {
+  it("reads a finding's slug back into words, and the specialty an absent summary did not abstain for", () => {
+    expect(describeScoringError("1790623913185:missed_finding:uterine-artery-doppler-high-resistance-flow")).toBe(
+      "missed finding uterine artery doppler high resistance flow",
+    );
+    expect(describeScoringError("1790623913185:leaked:hypertension")).toBe("leaked hypertension");
+    expect(describeScoringError("1790623913185:abstain:cardiology")).toBe("did not abstain for cardiology");
+    // A diagnosis code is shown as it is.
+    expect(describeScoringError("1790623913185:missed:P011")).toBe("missed P011");
+  });
+});

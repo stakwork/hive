@@ -40,7 +40,7 @@ export default function OpenHealthBenchmarksPage() {
       <PageHeader
         icon={FlaskConical}
         title="OpenHealth Benchmarks"
-        description="Pick a patient chart, run the diagnosis workflow on strut, and see how its problem list scored"
+        description="Pick a patient chart and a benchmark, run it on strut, and see how the problem list or summary scored"
       />
       <Tabs
         value={activeTab}

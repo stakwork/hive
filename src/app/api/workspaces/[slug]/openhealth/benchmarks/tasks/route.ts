@@ -1,12 +1,19 @@
 /**
- * GET /api/workspaces/:slug/openhealth/benchmarks/tasks?split=public|heldout
+ * GET /api/workspaces/:slug/openhealth/benchmarks/tasks?split=public|heldout&task=&variant=
  *     — the benchmark tasks of a split, from the workspace strut's
- *     `openhealth-list-tasks` workflow (cached). Default `public`.
+ *     `openhealth-list-tasks` workflow (cached). `task` is one the page
+ *     offers (`patient_diagnosis`, the default, or `context_summarization`)
+ *     and `variant` a summarization variant (`unconditioned`, the default,
+ *     or `specialty_conditioned`).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeOpenHealth } from "@/lib/openhealth-benchmarks/access";
-import { isOpenHealthSplit, OPENHEALTH_DEFAULT_SPLIT } from "@/lib/openhealth-benchmarks/constants";
+import {
+  isOpenHealthSplit,
+  OPENHEALTH_DEFAULT_SPLIT,
+  openHealthBenchmarkFrom,
+} from "@/lib/openhealth-benchmarks/constants";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getOpenHealthTasks } from "@/services/openhealth-benchmarks/tasks";
 import { describeStrutTargetError, resolveStrutTarget } from "@/services/strut-target";
@@ -24,6 +31,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!isOpenHealthSplit(split)) {
       return NextResponse.json({ error: 'split must be "public" or "heldout"' }, { status: 400 });
     }
+    const benchmark = openHealthBenchmarkFrom(
+      request.nextUrl.searchParams.get("task"),
+      request.nextUrl.searchParams.get("variant"),
+    );
+    if (!benchmark) {
+      return NextResponse.json(
+        { error: 'task must be "patient_diagnosis" or "context_summarization"; variant "unconditioned" or "specialty_conditioned"' },
+        { status: 400 },
+      );
+    }
 
     const rate = await checkRateLimit(`openhealth:tasks:${member.userId}`, 60, 60);
     if (!rate.allowed) {
@@ -39,7 +56,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: describeStrutTargetError(resolved.error) }, { status: 503 });
     }
 
-    const list = await getOpenHealthTasks(resolved.target, split);
+    const list = await getOpenHealthTasks(resolved.target, split, benchmark);
     if (!list) return NextResponse.json({ error: "Could not load the task list from strut" }, { status: 502 });
     return NextResponse.json(list);
   } catch (error) {
