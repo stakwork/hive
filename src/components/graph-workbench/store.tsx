@@ -5,11 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import type { GraphChange } from "./changes";
 import { DEFAULT_TREE, buildGraph, rootsOf, type TreeLens, type WorkbenchGraph, type WorkbenchNode } from "./model";
 import { NO_PENDING, applyChanges, findNode, type Pending } from "./pending";
-import { hierarchyQuery } from "./queries";
+import { connectionsQuery, hierarchyQuery } from "./queries";
 
 type CanvasMode = "tree" | "graph";
 
-interface WorkbenchState {
+interface WorkbenchState extends Pick<WorkbenchOptions, "nodeLink"> {
   slug: string;
   /** Which nodes make the trees, and the edge that runs from parent to child. */
   lens: TreeLens;
@@ -34,8 +34,6 @@ interface WorkbenchState {
   rootId: string | null;
   canvasMode: CanvasMode;
   setCanvasMode: (mode: CanvasMode) => void;
-  /** A shareable link to a node, when the host gives one. */
-  nodeLink?: (node: { id: string; type: string }) => string;
 }
 
 const Ctx = createContext<WorkbenchState | null>(null);
@@ -56,10 +54,10 @@ export interface WorkbenchOptions {
   initialType?: string | null;
   /** A proposal's changes, drawn dashed over the graph. */
   changes?: GraphChange[];
-  /** The selected node, when it exists in the graph — keep it stable, it's an effect dependency. */
+  /** The selected node, when it exists (not one a proposal would create) — keep it stable, it's an effect dependency. */
   onSelectionChange?: (node: SelectedNode | null) => void;
   /** A shareable link to a node. The host knows where its graph lives; without one there's no share button. */
-  nodeLink?: (node: { id: string; type: string }) => string;
+  nodeLink?: (node: Pick<SelectedNode, "id" | "type">) => string;
 }
 
 export function WorkbenchProvider({
@@ -141,13 +139,28 @@ export function WorkbenchProvider({
     [lens, graph],
   );
 
-  const selected = selectedId ? graph?.nodes[selectedId] : undefined;
-  const selectedNode = selected && !selected.proposed ? selected : null;
+  const inTree = selectedId ? graph?.nodes[selectedId] : undefined;
+  // A node outside the trees (a neighbour, a Graph-mode click) is known from its own read: the one its details make.
+  const outside = !!selectedId && !!graph && !inTree;
+  const { data: read, isPending: reading } = useQuery({
+    ...connectionsQuery(slug, selectedId ?? ""),
+    enabled: outside,
+  });
+  const selectedNode: SelectedNode | null = inTree
+    ? inTree.proposed
+      ? null
+      : inTree
+    : outside && read
+      ? { id: read.node.id, name: read.node.name, type: read.node.type }
+      : null;
+  const resolving = outside && reading;
   useEffect(() => {
+    // A node outside the trees is reported once its read is in, not as nothing meanwhile.
+    if (resolving) return;
     onSelectionChange?.(selectedNode && { id: selectedNode.id, name: selectedNode.name, type: selectedNode.type });
     // Report a change of node, not every rebuild of the same one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNode?.id, selectedNode?.name, selectedNode?.type, onSelectionChange]);
+  }, [selectedNode?.id, selectedNode?.name, selectedNode?.type, resolving, onSelectionChange]);
 
   const value = useMemo<WorkbenchState>(
     () => ({

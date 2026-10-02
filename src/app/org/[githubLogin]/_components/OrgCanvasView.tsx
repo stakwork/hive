@@ -1086,6 +1086,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                     transition={LEFT_SURFACE_TRANSITION}
                   >
                     <GraphView
+                      githubLogin={githubLogin}
                       workspaces={workspaces}
                       loading={loadingWorkspaces}
                       chatOpen={chatOpen}

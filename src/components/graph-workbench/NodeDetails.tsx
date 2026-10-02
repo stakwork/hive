@@ -285,8 +285,7 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
             value={nodeLink({ id, type })}
             label="Copy link to this node"
             icon={Link}
-            className="rounded p-1 hover:bg-accent"
-            iconClassName="h-4 w-4"
+            className="rounded p-1 hover:bg-accent [&_svg]:h-4 [&_svg]:w-4"
           />
         )}
         <button

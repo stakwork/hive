@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 import { GraphWorkbench, Picker, type SelectedNode } from "@/components/graph-workbench";
 import { Button } from "@/components/ui/button";
 import type { GraphFocus } from "../_state/canvasChatStore";
-import { graphParams } from "./graphHref";
+import { graphParams, orgGraphNodeLink } from "./graphHref";
 
 export interface GraphWorkspace {
   slug: string;
@@ -15,6 +15,7 @@ export interface GraphWorkspace {
 }
 
 interface GraphViewProps {
+  githubLogin: string;
   /** The org's workspaces, as the page already holds them. */
   workspaces: GraphWorkspace[];
   loading: boolean;
@@ -31,7 +32,7 @@ interface GraphViewProps {
  * `?ref_id=` centres on a node and `?type=` opens its type's trees. The
  * selected node is written back, so the URL is a link to what's on screen.
  */
-export function GraphView({ workspaces, loading, chatOpen, onToggleChat, onFocusChange }: GraphViewProps) {
+export function GraphView({ githubLogin, workspaces, loading, chatOpen, onToggleChat, onFocusChange }: GraphViewProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const ordered = useMemo(
@@ -43,32 +44,34 @@ export function GraphView({ workspaces, loading, chatOpen, onToggleChat, onFocus
   const slug = current?.slug;
 
   // `history.replaceState`, not the router: a router navigation re-runs this
-  // protected route's middleware and page query (see OrgCanvasView).
+  // protected route's middleware and page query (see OrgCanvasView). An
+  // unchanged URL isn't written: every write re-renders what reads the params.
   const replaceParams = useCallback(
-    (params: URLSearchParams) => window.history.replaceState(null, "", `${pathname}?${params.toString()}`),
+    (params: URLSearchParams) => {
+      const next = params.toString();
+      if (next !== window.location.search.slice(1)) window.history.replaceState(null, "", `${pathname}?${next}`);
+    },
     [pathname],
   );
+
+  /** The node in the URL. Only closing it takes `ref_id` away — not the workbench starting out with nothing selected. */
+  const linked = useRef<string | null>(null);
 
   const onSelectionChange = useCallback(
     (node: SelectedNode | null) => {
       onFocusChange(slug && node ? { workspaceSlug: slug, refId: node.id, name: node.name, type: node.type } : null);
-      if (!slug) return;
       const here = new URLSearchParams(window.location.search);
       if (node) replaceParams(graphParams({ workspace: slug, type: node.type, refId: node.id }, here));
-      else if (here.has("ref_id")) {
+      else if (linked.current) {
         here.delete("ref_id");
         replaceParams(here);
       }
+      linked.current = node?.id ?? null;
     },
     [slug, onFocusChange, replaceParams],
   );
 
-  /** A link to a node on this graph view, to share. */
-  const nodeLink = useCallback(
-    (node: { id: string; type: string }) =>
-      `${window.location.origin}${pathname}?${graphParams({ workspace: slug, type: node.type, refId: node.id })}`,
-    [pathname, slug],
-  );
+  const nodeLink = useMemo(() => (slug ? orgGraphNodeLink(githubLogin, slug) : undefined), [githubLogin, slug]);
 
   if (loading) {
     return <div className="h-full bg-muted animate-pulse" />;

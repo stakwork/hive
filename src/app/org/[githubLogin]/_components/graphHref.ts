@@ -1,4 +1,5 @@
 import { DEFAULT_TREE } from "@/components/graph-workbench/model";
+import type { WorkbenchOptions } from "@/components/graph-workbench/store";
 
 /** Where the org page's graph view opens: a workspace's graph, on a node's tree. */
 export interface GraphLocation {
@@ -26,3 +27,9 @@ export function graphParams(location: GraphLocation, base?: URLSearchParams): UR
 /** A link to the org page's graph view. */
 export const orgGraphHref = (githubLogin: string, location: GraphLocation) =>
   `/org/${githubLogin}?${graphParams(location).toString()}`;
+
+/** Share links to nodes of one workspace's graph: absolute, so they paste anywhere. */
+export const orgGraphNodeLink =
+  (githubLogin: string, workspace: string): NonNullable<WorkbenchOptions["nodeLink"]> =>
+  (node) =>
+    `${window.location.origin}${orgGraphHref(githubLogin, { workspace, type: node.type, refId: node.id })}`;

@@ -11,7 +11,6 @@ export function CopyButton({
   label = "Copy",
   icon: Icon = Copy,
   className,
-  iconClassName,
 }: {
   value: string;
   /** Tooltip and accessible name, e.g. "Copy output". */
@@ -19,7 +18,6 @@ export function CopyButton({
   /** What's copied, when it isn't text — a link, say. */
   icon?: LucideIcon;
   className?: string;
-  iconClassName?: string;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -43,11 +41,7 @@ export function CopyButton({
             className,
           )}
         >
-          {copied ? (
-            <Check className={cn("h-3 w-3 text-emerald-500", iconClassName)} />
-          ) : (
-            <Icon className={cn("h-3 w-3", iconClassName)} />
-          )}
+          {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Icon className="h-3 w-3" />}
         </button>
       </TooltipTrigger>
       <TooltipContent side="top">
