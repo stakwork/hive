@@ -17,7 +17,8 @@ import { getBaseUrl } from "@/lib/utils";
 import { validateApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
 import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
-import { resolveMessageImageUrls } from "@/lib/ai/resolveMessageImages";
+import { resolveMessageAttachments } from "@/lib/ai/resolveMessageAttachments";
+import { buildUserContent } from "@/lib/ai/attachmentParts";
 import {
   runCanvasAgent,
   extractConceptIdsFromStep,
@@ -290,31 +291,19 @@ export async function POST(request: NextRequest) {
       userText = message.trim();
       userAttachments = normalizeStoredAttachments(attachments);
 
-      // Build the new user ModelMessage. With image attachments the content
-      // is a multi-part array (`{type:"text"} + {type:"image"}`) mirroring
-      // the web client's `toModelMessages`; `resolveMessageImageUrls`
-      // rewrites the relative presigned-url paths into absolute signed URLs.
-      const imageAttachments = userAttachments.filter((a) =>
-        a.mimeType.startsWith("image/"),
-      );
-      const newUserMessage: ModelMessage =
-        imageAttachments.length > 0
-          ? ({
-              role: "user",
-              content: [
-                ...(userText ? [{ type: "text", text: userText }] : []),
-                ...imageAttachments.map((a) => ({
-                  type: "image",
-                  image: `/api/upload/presigned-url?s3Key=${encodeURIComponent(a.path)}`,
-                })),
-              ],
-            } as ModelMessage)
-          : ({ role: "user", content: userText } as ModelMessage);
+      // Build the new user ModelMessage the same way the web client's
+      // `toModelMessages` does (see `attachmentParts.ts`);
+      // `resolveMessageAttachments` turns the placeholders into signed image
+      // URLs and inlined text-file contents.
+      const newUserMessage = {
+        role: "user",
+        content: buildUserContent(userText, userAttachments),
+      } as ModelMessage;
 
       convertedMessages = [...toModelMessages(history), newUserMessage];
     }
 
-    await resolveMessageImageUrls(convertedMessages);
+    await resolveMessageAttachments(convertedMessages, { userId });
 
     // Org-canvas prompt cache (read-only; speeds up by skipping the swarm
     // `listConcepts` call). No-ops without a conversationId (replay mode).

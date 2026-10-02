@@ -14,7 +14,8 @@ import {
 } from "@/lib/ai/publicChatBudget";
 import { db } from "@/lib/db";
 import { healUserChatAgentModel, loadUserChatAgentModel } from "@/lib/ai/resolve-model";
-import { resolveMessageImageUrls } from "@/lib/ai/resolveMessageImages";
+import { resolveMessageAttachments } from "@/lib/ai/resolveMessageAttachments";
+import { buildUserContent } from "@/lib/ai/attachmentParts";
 import type { MessageLike } from "@/lib/proposals/handleApproval";
 import { runProposalIntent } from "@/lib/proposals/runProposalIntent";
 import {
@@ -332,7 +333,10 @@ export async function POST(request: NextRequest) {
       console.log("[quick-ask] timing", { stage: "loadConversationHistory", ms: Date.now() - tHistory, messages: stored.length, workspaces: slugs, orgId: orgId ?? null });
       convertedMessages = [
         ...toModelMessages(stored),
-        { role: "user", content: body.message.trim() } as ModelMessage,
+        {
+          role: "user",
+          content: buildUserContent(body.message.trim(), normalizeStoredAttachments(attachments)),
+        } as ModelMessage,
       ];
     } else {
       // Normalize incoming messages to ModelMessage[] format
@@ -352,11 +356,11 @@ export async function POST(request: NextRequest) {
         .filter((msg: ModelMessage | null): msg is ModelMessage => msg !== null);
     }
 
-    // Rewrite relative image-attachment URLs to absolute signed S3 URLs
-    // the AI SDK can actually download (see `resolveMessageImageUrls`).
+    // Rewrite relative attachment URLs into absolute signed S3 URLs (images)
+    // and inlined contents (text files) — see `resolveMessageAttachments`.
     const tImages = Date.now();
-    await resolveMessageImageUrls(convertedMessages);
-    console.log("[quick-ask] timing", { stage: "resolveMessageImageUrls", ms: Date.now() - tImages, workspaces: slugs, orgId: orgId ?? null });
+    await resolveMessageAttachments(convertedMessages, { userId });
+    console.log("[quick-ask] timing", { stage: "resolveMessageAttachments", ms: Date.now() - tImages, workspaces: slugs, orgId: orgId ?? null });
 
     // Org-membership gating for any request that carries an orgId
     // (canvas chat, single- or multi-workspace). Validated here so
