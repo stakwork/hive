@@ -15,9 +15,9 @@ describe("saveConceptDocs", () => {
   });
 
   test("PUTs docs to the ref_id-keyed route", async () => {
-    await saveConceptDocs("my-ws", "ref/1", "# Docs");
+    await saveConceptDocs("my ws", "ref/1", "# Docs");
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/workspaces/my-ws/nodes/ref%2F1/docs", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/workspaces/my%20ws/graph/node/ref%2F1/docs", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ docs: "# Docs" }),
