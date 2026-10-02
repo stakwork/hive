@@ -808,7 +808,9 @@ export interface ApprovalResult {
   landedOnName?: string;
   /**
    * Slug of the workspace the entity belongs to.
-   * Present for `kind === "feature"` and `kind === "promptUpdate"` approvals.
+   * Present for `feature`, `promptUpdate` and the graph approvals
+   * (`conceptCreate`, `conceptUpdate`, `graphNodeCreate`, `graphNodeEdit`,
+   * `graphTripletCreate`, `graphBatchTripletCreate`).
    * Absent on older results that pre-date this field — client must
    * degrade gracefully (text-only, no link) when missing.
    */

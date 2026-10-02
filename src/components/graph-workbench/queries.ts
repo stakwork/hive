@@ -28,9 +28,6 @@ export const hierarchyQuery = (slug: string, type: string) =>
   queryOptions({
     queryKey: [...workbenchKey(slug), "hierarchy", type],
     queryFn: () => getJson<Hierarchy>(`${graphApi(slug)}/hierarchy?label=${encodeURIComponent(type)}`),
-    // The graph changes under its reader (Jamie's writes, approvals): every mount reads it again,
-    // showing what's cached meanwhile.
-    staleTime: 0,
   });
 
 /** A node's properties and edge groups. */

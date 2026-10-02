@@ -94,16 +94,13 @@ function derive(
   }
 }
 
-/** What a proposal does to a graph, or null when it changes none (or is a tool error). */
-const graphChange = (p: ProposalOutput) => (typeof p.proposalId === "string" && !("error" in p) ? derive(p) : null);
-
 /** One artifact per proposal object, so the panel sees the same ref while a reply streams. */
 const cache = new WeakMap<object, ArtifactRef | null>();
 
 /** The graph artifact a proposal yields, or null when it changes no graph. Its card opens it. */
 export function proposalGraphArtifact(proposal: ProposalOutput): ArtifactRef | null {
   if (cache.has(proposal)) return cache.get(proposal) ?? null;
-  const found = graphChange(proposal);
+  const found = typeof proposal.proposalId === "string" && !("error" in proposal) ? derive(proposal) : null;
   const ref: ArtifactRef | null = found
     ? {
         id: `proposal:${proposal.proposalId}`,
@@ -134,29 +131,4 @@ export function proposalGraphArtifacts(toolCalls: ReadonlyArray<{ output?: unkno
     const ref = proposalGraphArtifact(tc.output as ProposalOutput);
     return ref ? [ref] : [];
   });
-}
-
-/**
- * The graphs this conversation's approved proposals changed: each approved
- * graph proposal's id and workspace, so a graph open on it can be read again.
- */
-export function approvedGraphChanges(
-  messages: ReadonlyArray<{
-    role: string;
-    toolCalls?: ReadonlyArray<{ output?: unknown }>;
-    approvalResult?: { proposalId: string };
-  }>,
-): Array<{ proposalId: string; workspace: string }> {
-  const approved = new Set(
-    messages.flatMap((m) => (m.role === "assistant" && m.approvalResult ? [m.approvalResult.proposalId] : [])),
-  );
-  if (approved.size === 0) return [];
-  return messages.flatMap((m) =>
-    (m.toolCalls ?? []).flatMap((tc) => {
-      if (!tc.output || typeof tc.output !== "object") return [];
-      const proposal = tc.output as ProposalOutput;
-      const found = approved.has(proposal.proposalId) ? graphChange(proposal) : null;
-      return found ? [{ proposalId: proposal.proposalId, workspace: found.workspace }] : [];
-    }),
-  );
 }

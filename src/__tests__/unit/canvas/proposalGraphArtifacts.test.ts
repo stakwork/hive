@@ -5,11 +5,7 @@
  */
 import { describe, test, expect } from "vitest";
 import { listArtifacts, parseArtifactContent } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
-import {
-  approvedGraphChanges,
-  proposalGraphArtifact,
-  proposalGraphArtifacts,
-} from "@/app/org/[githubLogin]/_state/proposalGraphArtifacts";
+import { proposalGraphArtifact, proposalGraphArtifacts } from "@/app/org/[githubLogin]/_state/proposalGraphArtifacts";
 import type { ProposalOutput } from "@/lib/proposals/types";
 
 const conceptUpdate: ProposalOutput = {
@@ -85,31 +81,5 @@ describe("proposalGraphArtifacts", () => {
     };
     const ids = listArtifacts([{ artifacts: [plan], toolCalls: [{ output: conceptUpdate }] }]).map((a) => a.id);
     expect(ids).toEqual(["plan", "proposal:p-1"]);
-  });
-});
-
-describe("approvedGraphChanges", () => {
-  const approval = (proposalId: string) => ({ role: "assistant", approvalResult: { proposalId } });
-
-  test("names the workspace of each approved graph proposal", () => {
-    const messages = [{ role: "assistant", toolCalls: [{ output: conceptUpdate }] }, { role: "user" }, approval("p-1")];
-    expect(approvedGraphChanges(messages)).toEqual([{ proposalId: "p-1", workspace: "hive" }]);
-  });
-
-  test("skips proposals that are still open, and approvals of proposals that change no graph", () => {
-    const feature = { kind: "feature", proposalId: "p-3", payload: {} };
-    const messages = [
-      { role: "assistant", toolCalls: [{ output: conceptUpdate }, { output: feature }] },
-      approval("p-3"),
-    ];
-    expect(approvedGraphChanges(messages)).toEqual([]);
-  });
-
-  test("ignores an approval result that isn't the assistant's", () => {
-    const messages = [
-      { role: "assistant", toolCalls: [{ output: conceptUpdate }] },
-      { ...approval("p-1"), role: "user" },
-    ];
-    expect(approvedGraphChanges(messages)).toEqual([]);
   });
 });

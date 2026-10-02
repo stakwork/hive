@@ -4,7 +4,7 @@ import React from "react";
 import { GraphWorkbench } from "@/components/graph-workbench";
 import { getProposalStatus } from "@/lib/proposals/types";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
-import { useCanvasChatStore } from "../../../_state/canvasChatStore";
+import { selectActiveMessages, useCanvasChatStore } from "../../../_state/canvasChatStore";
 
 const NOTICE = {
   approved: "Approved — this is the graph with the change made.",
@@ -33,7 +33,7 @@ export function GraphInline({ artifact, content }: ArtifactViewerProps<"graph">)
  */
 export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) {
   const status = useCanvasChatStore((s) => {
-    const messages = s.activeConversationId ? s.conversations[s.activeConversationId]?.messages : undefined;
+    const messages = selectActiveMessages(s);
     return content.proposal && messages ? getProposalStatus(messages, content.proposal).status : null;
   });
   const decided = status === "approved" || status === "rejected" ? status : null;
