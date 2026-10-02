@@ -1,18 +1,35 @@
 /**
- * The OpenHealth task catalogue: the tasks of a split, read from the
+ * The OpenHealth task catalogue: the tasks of a split for one benchmark
+ * (a task, and for summarization its variant), read from the
  * `openhealth-list-tasks` strut workflow and cached.
  *
  * The catalogue is static and every read of it is a strut run (it adds a
- * line to that workflow's history), so a split is fetched once per swarm and
- * kept — in Redis, and in this process as the fallback when Redis is away.
+ * line to that workflow's history), so a split of a benchmark is fetched
+ * once per swarm and kept — in Redis, and in this process as the fallback
+ * when Redis is away.
  */
 
 import { logger } from "@/lib/logger";
 import { redis } from "@/lib/redis";
-import { isOpenHealthDifficulty, OPENHEALTH_DIFFICULTIES, OPENHEALTH_LIST_TASKS_WORKFLOW } from "@/lib/openhealth-benchmarks/constants";
+import {
+  isOpenHealthDifficulty,
+  isOpenHealthTask,
+  isOpenHealthVariant,
+  OPENHEALTH_BENCHMARKS,
+  OPENHEALTH_DEFAULT_BENCHMARK,
+  OPENHEALTH_DIFFICULTIES,
+  OPENHEALTH_LIST_TASKS_WORKFLOW,
+} from "@/lib/openhealth-benchmarks/constants";
 import { STRUT_ACTOR_HEADER } from "@/services/bifrost/strut-delegation";
 import type { StrutTarget } from "@/services/strut-target";
-import type { OpenHealthDifficulty, OpenHealthSplit, OpenHealthTask, OpenHealthTaskList } from "@/types/openhealth";
+import type { OpenHealthCatalogueEntry, OpenHealthCatalogueLookup } from "@/lib/openhealth-benchmarks/runs";
+import type {
+  OpenHealthBenchmark,
+  OpenHealthDifficulty,
+  OpenHealthSplit,
+  OpenHealthTask,
+  OpenHealthTaskList,
+} from "@/types/openhealth";
 
 const LOG_TAG = "openhealth-benchmarks";
 const CACHE_TTL_SECS = 12 * 60 * 60;
@@ -25,19 +42,27 @@ type CatalogueTarget = Pick<StrutTarget, "swarmId" | "labBase" | "swarmApiKey" |
 
 const memory = new Map<string, { list: OpenHealthTaskList; expiresAt: number }>();
 
-const cacheKey = (swarmId: string, split: OpenHealthSplit) => `openhealth:tasks:${swarmId}:${split}`;
+const cacheKey = (swarmId: string, split: OpenHealthSplit, benchmark: OpenHealthBenchmark) =>
+  `openhealth:tasks:${swarmId}:${split}:${benchmark.task}:${benchmark.variant ?? ""}`;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const int = (value: unknown): number | null => (typeof value === "number" && Number.isInteger(value) ? value : null);
+const str = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value : null);
 
-function toTask(value: unknown): OpenHealthTask | null {
+/**
+ * One row of the workflow's output as a task. The row's own `task` and
+ * `variant` win; a row that names none (an older workflow version) is of
+ * the benchmark it was listed for.
+ */
+function toTask(value: unknown, benchmark: OpenHealthBenchmark): OpenHealthTask | null {
   if (!isRecord(value)) return null;
   const gtId = int(value.gtId);
   const patientId = int(value.patientId);
   if (gtId === null || patientId === null || !isOpenHealthDifficulty(value.difficulty)) return null;
+  const task = isOpenHealthTask(value.task) ? value.task : benchmark.task;
   return {
     gtId,
     patientId,
@@ -46,17 +71,32 @@ function toTask(value: unknown): OpenHealthTask | null {
     age: int(value.age),
     sex: value.sex === "F" || value.sex === "M" ? value.sex : null,
     numEncounters: int(value.numEncounters),
+    task,
+    variant: task === "context_summarization" ? (isOpenHealthVariant(value.variant) ? value.variant : benchmark.variant) : null,
+    specialty: str(value.specialty),
+    clinicalQuestion: str(value.clinicalQuestion),
   };
 }
 
 /** The workflow's output, reduced to the fields a task has. Null when it is not a task list. */
-export function parseOpenHealthTaskList(output: unknown, split: OpenHealthSplit): OpenHealthTaskList | null {
+export function parseOpenHealthTaskList(
+  output: unknown,
+  split: OpenHealthSplit,
+  benchmark: OpenHealthBenchmark = OPENHEALTH_DEFAULT_BENCHMARK,
+): OpenHealthTaskList | null {
   if (!isRecord(output) || !Array.isArray(output.tasks)) return null;
-  const tasks = output.tasks.map(toTask).filter((t): t is OpenHealthTask => t !== null);
+  const tasks = output.tasks.map((t) => toTask(t, benchmark)).filter((t): t is OpenHealthTask => t !== null);
   const byDifficulty = Object.fromEntries(
     OPENHEALTH_DIFFICULTIES.map((d) => [d, tasks.filter((t) => t.difficulty === d).length]),
   ) as Record<OpenHealthDifficulty, number>;
-  return { split, total: tasks.length, byDifficulty, tasks: tasks.sort((a, b) => a.gtId - b.gtId) };
+  return {
+    split,
+    task: benchmark.task,
+    variant: benchmark.variant,
+    total: tasks.length,
+    byDifficulty,
+    tasks: tasks.sort((a, b) => a.gtId - b.gtId),
+  };
 }
 
 async function readCache(key: string): Promise<OpenHealthTaskList | null> {
@@ -82,17 +122,22 @@ async function writeCache(key: string, list: OpenHealthTaskList): Promise<void> 
   }
 }
 
-async function runListTasks(target: CatalogueTarget, split: OpenHealthSplit): Promise<OpenHealthTaskList | null> {
+async function runListTasks(
+  target: CatalogueTarget,
+  split: OpenHealthSplit,
+  benchmark: OpenHealthBenchmark,
+): Promise<OpenHealthTaskList | null> {
   const headers = {
     "Content-Type": "application/json",
     "x-api-token": target.swarmApiKey,
     [STRUT_ACTOR_HEADER]: target.actor,
   };
   const workflow = `${target.labBase}/workflows/${OPENHEALTH_LIST_TASKS_WORKFLOW}`;
+  const input = { split, task: benchmark.task, ...(benchmark.variant ? { variant: benchmark.variant } : {}) };
   const launched = await fetch(`${workflow}/run`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ input: { split } }),
+    body: JSON.stringify({ input }),
     cache: "no-store",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
@@ -111,44 +156,60 @@ async function runListTasks(target: CatalogueTarget, split: OpenHealthSplit): Pr
     const summary = (await res.json()) as { status?: unknown; partial?: unknown; output?: unknown };
     if (summary.partial === true || summary.status === "running") continue;
     if (summary.status !== "success") throw new Error(`the run ended ${String(summary.status)}`);
-    return parseOpenHealthTaskList(summary.output, split);
+    return parseOpenHealthTaskList(summary.output, split, benchmark);
   }
   throw new Error("the run did not finish in time");
 }
 
-/** The tasks of a split on this swarm's strut; null when the lab could not list them. */
+/** The tasks of a split for one benchmark on this swarm's strut; null when the lab could not list them. */
 export async function getOpenHealthTasks(
   target: CatalogueTarget,
   split: OpenHealthSplit,
+  benchmark: OpenHealthBenchmark = OPENHEALTH_DEFAULT_BENCHMARK,
 ): Promise<OpenHealthTaskList | null> {
-  const key = cacheKey(target.swarmId, split);
+  const key = cacheKey(target.swarmId, split, benchmark);
   const cached = await readCache(key);
   if (cached) return cached;
   try {
-    const list = await runListTasks(target, split);
+    const list = await runListTasks(target, split, benchmark);
     if (list && list.tasks.length > 0) await writeCache(key, list);
     return list;
   } catch (err) {
     logger.warn("OpenHealth task list unavailable", LOG_TAG, {
       split,
+      task: benchmark.task,
+      variant: benchmark.variant,
       error: err instanceof Error ? err.message : String(err),
     });
     return null;
   }
 }
 
+export type { OpenHealthCatalogueEntry, OpenHealthCatalogueLookup };
+
 /**
- * A task's difficulty from whatever is already cached for the swarm — for
- * runs whose output does not name it. Never launches a strut run.
+ * A task's catalogue entry from whatever is already cached for the swarm —
+ * for runs whose output does not name it (a failed run has no output). A
+ * gt id is unique across tasks and variants, so one map serves every
+ * benchmark. Never launches a strut run.
  */
-export async function cachedDifficultyLookup(
+export async function cachedTaskLookup(
   swarmId: string,
   splits: readonly OpenHealthSplit[],
-): Promise<(gtId: number) => OpenHealthDifficulty | null> {
-  const byGtId = new Map<number, OpenHealthDifficulty>();
+): Promise<OpenHealthCatalogueLookup> {
+  const byGtId = new Map<number, OpenHealthCatalogueEntry>();
   for (const split of splits) {
-    const list = await readCache(cacheKey(swarmId, split));
-    for (const task of list?.tasks ?? []) byGtId.set(task.gtId, task.difficulty);
+    for (const benchmark of OPENHEALTH_BENCHMARKS) {
+      const list = await readCache(cacheKey(swarmId, split, benchmark));
+      for (const task of list?.tasks ?? []) {
+        byGtId.set(task.gtId, {
+          difficulty: task.difficulty,
+          task: task.task,
+          variant: task.variant,
+          specialty: task.specialty,
+        });
+      }
+    }
   }
   return (gtId) => byGtId.get(gtId) ?? null;
 }

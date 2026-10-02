@@ -11,7 +11,9 @@
  * precision, and when it started — and the stages of the run in flight.
  *
  * Like `runs.ts`, everything reads the workflow's fields one by one, so an
- * output of another shape degrades to nulls and empty lists. The improve
+ * output of another shape degrades to nulls and empty lists, and a run's
+ * score is read through `headlineOf` (`metric` + `score`, else the
+ * diagnosis key). The improve
  * files the history names (`report`, `analysis`, `backup`, `problemList`)
  * are paths on the lab and are not carried over.
  */
@@ -24,7 +26,7 @@ import type {
   OpenHealthOutcome,
   OpenHealthStage,
 } from "@/types/openhealth";
-import { openHealthRunCost, type DifficultyLookup } from "./runs";
+import { benchmarkOfRow, headlineOf, openHealthRunCost, type OpenHealthCatalogueLookup } from "./runs";
 import { projectOpenHealthStages } from "./stages";
 
 /** The target a climb is given when the member picks none. */
@@ -78,6 +80,7 @@ export interface OpenHealthClimbIterationEvents {
   improve: OpenHealthClimbPhase;
   /** From the benchmark run's output, once it ended. */
   f1: number | null;
+  metric: string | null;
   recall: number | null;
   precision: number | null;
   missed: string[];
@@ -136,6 +139,7 @@ export function projectOpenHealthClimbEvents(events: unknown): OpenHealthClimbEv
         run: "pending",
         improve: "pending",
         f1: null,
+        metric: null,
         recall: null,
         precision: null,
         missed: [],
@@ -167,9 +171,11 @@ export function projectOpenHealthClimbEvents(events: unknown): OpenHealthClimbEv
       it.run = phaseAfter(event.type, it.run);
       if (ENDED.has(event.type)) {
         const output = record(event.output);
-        it.f1 = num(output.weighted_problem_list_f1_neutral);
-        it.recall = num(output.problem_list_recall);
-        it.precision = num(output.problem_list_precision_neutral);
+        const headline = headlineOf(output);
+        it.f1 = headline?.score ?? null;
+        it.metric = headline?.metric ?? null;
+        it.recall = headline?.recall ?? null;
+        it.precision = headline?.precision ?? null;
         it.missed = strings(output.missed);
         it.extra = strings(output.extra);
         it.costUsd = openHealthRunCost(output);
@@ -204,6 +210,7 @@ export interface OpenHealthClimbSource {
 
 const EMPTY_STEP = {
   f1: null,
+  metric: null as string | null,
   recall: null,
   precision: null,
   newBest: false,
@@ -264,6 +271,7 @@ function stepsOf(
     steps.push(
       benchmarkStep(iteration, "succeeded", {
         f1: num(entry.score),
+        metric: str(entry.metric) ?? ev?.metric ?? null,
         // The history records no recall or precision today; the log has them.
         recall: num(entry.recall) ?? ev?.recall ?? null,
         precision: num(entry.precision) ?? ev?.precision ?? null,
@@ -292,6 +300,7 @@ function stepsOf(
     steps.push(
       benchmarkStep(it.iteration, outcome, {
         f1: it.f1,
+        metric: it.metric,
         recall: it.recall,
         precision: it.precision,
         missed: it.missed,
@@ -354,12 +363,13 @@ function statusOf(
 
 export function toOpenHealthClimb(
   row: OpenHealthClimbSource,
-  difficultyFor?: DifficultyLookup,
+  catalogue?: OpenHealthCatalogueLookup,
   events?: OpenHealthClimbEvents | null,
 ): OpenHealthClimb {
   const input = record(row.input);
   const output = record(row.output);
   const gtId = num(input.gtId) ?? num(output.gtId);
+  const entry = gtId !== null ? (catalogue?.(gtId) ?? null) : null;
   const rules = {
     targetF1: num(input.target) ?? WORKFLOW_DEFAULT_TARGET,
     maxRuns: num(input.maxRuns) ?? WORKFLOW_DEFAULT_RUNS,
@@ -397,7 +407,9 @@ export function toOpenHealthClimb(
     id: row.id,
     strutRunId: row.strutRunId,
     gtId,
-    difficulty: gtId === null ? null : (difficultyFor?.(gtId) ?? null),
+    difficulty: entry?.difficulty ?? null,
+    // The loop's output names no benchmark; the launch does, else the catalogue.
+    ...benchmarkOfRow(input, output, entry),
     status,
     stopReason,
     targetF1: rules.targetF1,

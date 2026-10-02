@@ -3,8 +3,9 @@
  *
  * Coverage:
  *   - GET lists the workspace's runs behind the gate;
- *   - POST launches one run for a task the catalogue lists, and refuses:
- *     a body that names no task, a split that is not offered, a task the
+ *   - POST launches one run for a task the catalogue of its benchmark lists
+ *     (diagnosis unless the body names one), and refuses: a body that names
+ *     no task, a split or benchmark that is not offered, a task the
  *     catalogue does not list, a task already in flight (a run or a climb),
  *     a rate-limited workspace, a workspace with no strut.
  */
@@ -120,13 +121,35 @@ describe("POST", () => {
     expect(res.status).toBe(202);
     expect(await res.json()).toEqual({ success: true, runId: "run-1", strutRunId: "1790614605308" });
     expect(mockAuthorize).toHaveBeenCalledWith(expect.anything(), "hive", { launch: true });
-    expect(mockTasks).toHaveBeenCalledWith(TARGET, "public");
+    expect(mockTasks).toHaveBeenCalledWith(TARGET, "public", { task: "patient_diagnosis", variant: null });
     expect(mockLaunch).toHaveBeenCalledWith({
       workspaceId: "ws-1",
       userId: "user-1",
       publicBaseUrl: "https://hive.example",
       gtId: 7532,
+      task: "patient_diagnosis",
     });
+  });
+
+  it("launches a summarization task against that benchmark's catalogue", async () => {
+    mockTasks.mockResolvedValue({ split: "public", total: 1, tasks: [{ gtId: 8290, difficulty: "easy" }] });
+
+    const res = await post({ gtId: 8290, task: "context_summarization", variant: "specialty_conditioned" });
+
+    expect(res.status).toBe(202);
+    expect(mockTasks).toHaveBeenCalledWith(TARGET, "public", {
+      task: "context_summarization",
+      variant: "specialty_conditioned",
+    });
+    expect(mockLaunch).toHaveBeenCalledWith(expect.objectContaining({ gtId: 8290, task: "context_summarization" }));
+  });
+
+  it("refuses a benchmark the page does not offer", async () => {
+    const res = await post({ gtId: 7532, task: "imaging_indication" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "task or variant is not one the page offers" });
+    expect(mockTasks).not.toHaveBeenCalled();
+    expect(mockLaunch).not.toHaveBeenCalled();
   });
 
   it.each([{}, { gtId: "7532" }, { gtId: 7532.5 }, { gtId: -1 }, { gtId: null }, "not json"])(
