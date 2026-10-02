@@ -102,8 +102,8 @@ interface OrgRightPanelProps {
    * Details tab renders a canvas node.
    */
   controlPanel?: ControlPanelStageProps;
-  /** Switch the org page to the control panel (the chat grows into its stage). */
-  onOpenControlPanel: () => void;
+  /** Switch the org page to the control panel (the chat grows into its stage). Absent where it doesn't apply. */
+  onOpenControlPanel?: () => void;
 }
 
 /**
@@ -314,16 +314,18 @@ export function OrgRightPanel({
             <TokenCounter />
             <SidebarChatActions githubLogin={githubLogin} hideHistory={!!stage} />
           </div>
-          <ActionTip label={stage ? "Canvas" : "Control panel"}>
-            <button
-              type="button"
-              onClick={stage ? stage.onExit : onOpenControlPanel}
-              aria-label={stage ? "Canvas" : "Control panel"}
-              className="p-1.5 rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              {stage ? <Network className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
-            </button>
-          </ActionTip>
+          {(stage || onOpenControlPanel) && (
+            <ActionTip label={stage ? "Canvas" : "Control panel"}>
+              <button
+                type="button"
+                onClick={stage ? stage.onExit : onOpenControlPanel}
+                aria-label={stage ? "Canvas" : "Control panel"}
+                className="p-1.5 rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {stage ? <Network className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
+              </button>
+            </ActionTip>
+          )}
         </div>
       </div>
 
