@@ -2,8 +2,9 @@
  * Shared resolution for the Graph Explorer's Jarvis-backed routes.
  *
  * Every `/api/workspaces/[slug]/graph/*` route that talks to Jarvis needs the
- * same three things: an authenticated session, the admin gate the Graph
- * Explorer page enforces, and the workspace's decrypted swarm credentials.
+ * same three things: an authenticated session, a role gate (admins and owners
+ * by default; any member with `adminOnly: false`), and the workspace's
+ * decrypted swarm credentials.
  * Returning a `NextResponse` for the failure cases keeps each route's happy
  * path flat.
  */
@@ -29,7 +30,10 @@ export interface JarvisAccess {
  *   const access = await resolveJarvisAccess(slug);
  *   if (access instanceof NextResponse) return access;
  */
-export async function resolveJarvisAccess(slug: string): Promise<JarvisAccess | NextResponse> {
+export async function resolveJarvisAccess(
+  slug: string,
+  { adminOnly = true }: { adminOnly?: boolean } = {},
+): Promise<JarvisAccess | NextResponse> {
   const session = await getServerSession(authOptions);
 
   if (!session?.user) {
@@ -50,8 +54,8 @@ export async function resolveJarvisAccess(slug: string): Promise<JarvisAccess | 
     );
   }
 
-  // Role gate — admins and owners only
-  if (!access.canAdmin) {
+  // Role gate — admins and owners only, unless the caller opts into any member.
+  if (adminOnly && !access.canAdmin) {
     return NextResponse.json(
       { success: false, message: "Forbidden: admin access required" },
       { status: 403 },

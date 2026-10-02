@@ -182,6 +182,26 @@ export function isRunGraphRefId(refId: string): boolean {
 /** Properties never read back: the vectors are large and mean nothing to a reader. */
 const VECTOR_PROPERTIES: readonly string[] = ["embeddings", "text_embeddings"];
 
+/**
+ * Cypher for node `v`'s properties as `[key, value]` pairs, less the vectors
+ * and any `skip` — projected in the query, so they never leave the swarm.
+ */
+export function propertyPairs(v: string, skip: readonly string[] = []): string {
+  const skipped = [...VECTOR_PROPERTIES, ...skip].map((key) => `'${key}'`).join(",");
+  return `[k IN keys(${v}) WHERE NOT k IN [${skipped}] | [k, ${v}[k]]]`;
+}
+
+/** What `propertyPairs` returns, as an object. */
+export function fromPropertyPairs(pairs: unknown): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  if (Array.isArray(pairs)) {
+    for (const pair of pairs) {
+      if (Array.isArray(pair) && typeof pair[0] === "string") properties[pair[0]] = pair[1];
+    }
+  }
+  return properties;
+}
+
 export type RunGraphNodeRead =
   /** The node, whole. */
   | { found: true; node: RunGraphNodeBody }
@@ -195,22 +215,15 @@ export type RunGraphNodeRead =
  */
 export async function readRunGraphNode(refId: string, run: CypherRunner): Promise<RunGraphNodeRead> {
   if (!REF_ID_RE.test(refId)) return { found: false };
-  const skipped = VECTOR_PROPERTIES.map((key) => `'${key}'`).join(",");
   const result = await run(
-    `MATCH (n:Data_Bank {ref_id: '${refId}'}) RETURN labels(n) AS labels, ` +
-      `[k IN keys(n) WHERE NOT k IN [${skipped}] | [k, n[k]]] AS props`,
+    `MATCH (n:Data_Bank {ref_id: '${refId}'}) RETURN labels(n) AS labels, ${propertyPairs("n")} AS props`,
     1,
   );
   if (isUnread(result)) return { found: false, unread: result.unread };
   const row = records(result)[0];
   if (!row) return { found: false };
 
-  const properties: Record<string, unknown> = {};
-  if (Array.isArray(row.props)) {
-    for (const pair of row.props) {
-      if (Array.isArray(pair) && typeof pair[0] === "string") properties[pair[0]] = pair[1];
-    }
-  }
+  const properties = fromPropertyPairs(row.props);
   const labels = Array.isArray(row.labels) ? row.labels.filter((l): l is string => typeof l === "string") : [];
   return { found: true, node: { ref_id: refId, node_type: typeFromLabels(labels), labels, properties } };
 }
