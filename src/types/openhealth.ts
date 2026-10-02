@@ -3,7 +3,23 @@ import type { StrutRunStatus } from "@prisma/client";
 export type OpenHealthSplit = "public" | "heldout";
 export type OpenHealthDifficulty = "easy" | "medium" | "hard";
 
-/** One benchmark task (a patient), as `openhealth-list-tasks` returns it. */
+/** A benchmark task, as strut's workflows name it (`input.task`). */
+export type OpenHealthBenchmarkTask = "patient_diagnosis" | "context_summarization";
+
+/**
+ * A summarization row's variant: the whole patient, or one specialty's view
+ * of the chart (where the right answer may be to abstain). Diagnosis rows
+ * have none.
+ */
+export type OpenHealthVariant = "unconditioned" | "specialty_conditioned";
+
+/** What the page offers: a task, and for summarization its variant. */
+export interface OpenHealthBenchmark {
+  task: OpenHealthBenchmarkTask;
+  variant: OpenHealthVariant | null;
+}
+
+/** One benchmark task (a patient, or one specialty's view of one), as `openhealth-list-tasks` returns it. */
 export interface OpenHealthTask {
   /** The task id — what a run is launched with. */
   gtId: number;
@@ -13,10 +29,17 @@ export interface OpenHealthTask {
   age: number | null;
   sex: "F" | "M" | null;
   numEncounters: number | null;
+  task: OpenHealthBenchmarkTask;
+  variant: OpenHealthVariant | null;
+  /** The specialty of a specialty-conditioned summary, e.g. "Cardiology". */
+  specialty: string | null;
+  clinicalQuestion: string | null;
 }
 
 export interface OpenHealthTaskList {
   split: OpenHealthSplit;
+  task: OpenHealthBenchmarkTask;
+  variant: OpenHealthVariant | null;
   total: number;
   byDifficulty: Record<OpenHealthDifficulty, number>;
   tasks: OpenHealthTask[];
@@ -25,8 +48,15 @@ export interface OpenHealthTaskList {
 export type OpenHealthOutcome = "running" | "succeeded" | "failed" | "cancelled";
 
 export interface OpenHealthScores {
-  /** Headline score: weighted F1, 0–1. */
+  /**
+   * Headline score, 0–1: the paper's primary metric for the task. Named
+   * `f1` because every task's headline is an F1 (weighted F1 for
+   * diagnosis, clinical F1 for a summary, conditioned F1 for a specialty
+   * summary) but one: an absent specialty's abstention accuracy, 1 or 0.
+   */
   f1: number;
+  /** The metric `f1` is: `weighted_problem_list_f1_neutral`, `clinical_f1`, `conditioned_f1`, `abstention_accuracy`. */
+  metric: string;
   recall: number | null;
   precision: number | null;
   tier: string | null;
@@ -44,6 +74,9 @@ export interface OpenHealthRun {
   gtId: number | null;
   patientId: number | null;
   difficulty: OpenHealthDifficulty | null;
+  task: OpenHealthBenchmarkTask;
+  variant: OpenHealthVariant | null;
+  specialty: string | null;
   scores: OpenHealthScores | null;
   /** USD: the produce agent plus every ingested section. */
   costUsd: number | null;
@@ -61,15 +94,31 @@ export interface OpenHealthIngestedSection {
   error: string | null;
 }
 
-export type OpenHealthArtifactName = "problem-list" | "timeline" | "checklist";
+export type OpenHealthArtifactName = "problem-list" | "summary" | "timeline" | "checklist";
 
 /** A run with everything its viewer shows. */
 export interface OpenHealthRunDetail extends OpenHealthRun {
   title: string | null;
   namespace: string | null;
+  clinicalQuestion: string | null;
+  /** Diagnosis: the model's code and the answer-key code it matched. */
   matched: Array<{ pred: string; gt: string }>;
+  /** Answer-key items the run did not produce: codes for diagnosis, finding names for a summary. */
   missed: string[];
+  /** Diagnosis: codes that matched nothing. Specialty summary: off-specialty findings it leaked. */
   extra: string[];
+  /** Summary: the must-include findings the summary named. */
+  found: string[];
+  /** Summary: its length, the covariate the recall-only metric needs beside it. */
+  summaryWords: number | null;
+  /**
+   * Specialty summary: how many critical findings the answer key holds. The
+   * paper's scorer gives an involved specialty with none a 0 whatever the
+   * summary says, so the viewer flags those.
+   */
+  criticalCount: number | null;
+  /** Every metric the scorer computed, by its name. */
+  metrics: Record<string, number>;
   chart: {
     chartChars: number | null;
     sectionCount: number | null;
@@ -167,14 +216,16 @@ export interface OpenHealthClimbStep {
   /** The iteration this step belongs to, from 0. Attempt = iteration + 1. */
   iteration: number;
   outcome: OpenHealthOutcome;
-  /** Benchmark: weighted F1 once scored. */
+  /** Benchmark: the headline score once scored (see `OpenHealthScores.f1`). */
   f1: number | null;
+  /** Benchmark: the metric `f1` is, when the loop reports it. */
+  metric: string | null;
   /** Benchmark: its recall and precision, when the loop's event log reports them (the recorded history does not). */
   recall: number | null;
   precision: number | null;
   /** Benchmark: did this run raise the climb's best so far? */
   newBest: boolean;
-  /** Benchmark: answer-key diagnoses the run missed, and extras it added. */
+  /** Benchmark: answer-key items the run missed, and extras it added (codes, or finding names). */
   missed: string[];
   extra: string[];
   /** Benchmark: USD, when the loop's event log reports it (the output does not). */
@@ -199,21 +250,25 @@ export interface OpenHealthClimb {
   /** Null only for a row launched without a task, which Hive never does. */
   gtId: number | null;
   difficulty: OpenHealthDifficulty | null;
+  task: OpenHealthBenchmarkTask;
+  variant: OpenHealthVariant | null;
+  specialty: string | null;
   status: OpenHealthClimbStatus;
   /** Why it ended, in words; null while it runs. */
   stopReason: string | null;
+  /** The score the loop stops at (see `OpenHealthScores.f1` for the name). */
   targetF1: number;
   /** Benchmark runs at most; improve runs happen between them. */
   maxRuns: number;
   /** Benchmark runs started so far, the one in flight included. */
   attempts: number;
-  /** The first attempt's F1. */
+  /** The first attempt's score. */
   startF1: number | null;
   bestF1: number | null;
   /** The best attempt's recall and precision, when known. */
   bestRecall: number | null;
   bestPrecision: number | null;
-  /** The newest scored attempt's F1. */
+  /** The newest scored attempt's score. */
   latestF1: number | null;
   /** The iteration that scored best. */
   bestIteration: number | null;

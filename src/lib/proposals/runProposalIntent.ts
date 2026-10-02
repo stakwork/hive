@@ -143,9 +143,13 @@ export async function runProposalIntent(args: {
                           ? "graph triplet"
                           : r.kind === "graphBatchTripletCreate"
                             ? "graph batch triplet"
-                            : r.kind === "codeChange"
-                              ? "code change"
-                              : "feature";
+                            : r.kind === "graphEdgeDelete"
+                              ? "graph link removal"
+                              : r.kind === "graphNodeMove"
+                                ? "graph node move"
+                                : r.kind === "codeChange"
+                                  ? "code change"
+                                  : "feature";
 
       // For graph writes, `landedOn` is `workspace:<id>` — map it to a
       // sensible display label rather than falling through to "the canvas".
@@ -189,6 +193,12 @@ export async function runProposalIntent(args: {
                                 }
                                 return `Created ${ok} of ${items.length} relationship${items.length === 1 ? "" : "s"} in ${graphWhere} (${fail} failed — see details).`;
                               })()
+                            : r.kind === "graphEdgeDelete"
+                              ? `Removed the relationship from ${graphWhere}.`
+                              : r.kind === "graphNodeMove"
+                                ? r.alreadyExisted
+                                  ? `Moved the node in ${graphWhere} — it was already linked to its new parent, so only the old link was removed.`
+                                  : `Moved the node in ${graphWhere}.`
                             : r.kind === "codeChange"
                               ? (() => {
                                   const cc = r.codeChange;

@@ -2,14 +2,19 @@
  * GET  /api/workspaces/:slug/openhealth/benchmarks/runs
  *      — the workspace's benchmark runs, newest first (PENDING ones settled
  *      from strut when the run is over there and the callback never arrived).
- * POST /api/workspaces/:slug/openhealth/benchmarks/runs  { gtId, split? }
- *      — launch one `openhealth-run` for a task from the catalogue. One run
- *      or climb in flight per task; DEVELOPER and up.
+ * POST /api/workspaces/:slug/openhealth/benchmarks/runs  { gtId, split?, task?, variant? }
+ *      — launch one `openhealth-run` for a task from the catalogue of that
+ *      benchmark (`task` + `variant`, diagnosis when unnamed). One run or
+ *      climb in flight per task; DEVELOPER and up.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeOpenHealth } from "@/lib/openhealth-benchmarks/access";
-import { isOpenHealthSplit, OPENHEALTH_DEFAULT_SPLIT } from "@/lib/openhealth-benchmarks/constants";
+import {
+  isOpenHealthSplit,
+  OPENHEALTH_DEFAULT_SPLIT,
+  openHealthBenchmarkFrom,
+} from "@/lib/openhealth-benchmarks/constants";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getBaseUrl } from "@/lib/utils";
 import { getOpenHealthTasks } from "@/services/openhealth-benchmarks/tasks";
@@ -50,7 +55,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const member = await authorizeOpenHealth(request, slug, { launch: true });
     if (member instanceof NextResponse) return member;
 
-    const payload = (await request.json().catch(() => ({}))) as { gtId?: unknown; split?: unknown };
+    const payload = (await request.json().catch(() => ({}))) as {
+      gtId?: unknown;
+      split?: unknown;
+      task?: unknown;
+      variant?: unknown;
+    };
     const gtId = payload.gtId;
     if (typeof gtId !== "number" || !Number.isInteger(gtId) || gtId <= 0) {
       return NextResponse.json({ error: "gtId must be a task id" }, { status: 400 });
@@ -58,6 +68,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const split = payload.split ?? OPENHEALTH_DEFAULT_SPLIT;
     if (!isOpenHealthSplit(split)) {
       return NextResponse.json({ error: 'split must be "public" or "heldout"' }, { status: 400 });
+    }
+    const benchmark = openHealthBenchmarkFrom(payload.task, payload.variant);
+    if (!benchmark) {
+      return NextResponse.json({ error: "task or variant is not one the page offers" }, { status: 400 });
     }
 
     const rate = await checkRateLimit(`openhealth:run:${member.workspaceId}`, RUN_RATE_LIMIT, RUN_WINDOW_SECS);
@@ -78,7 +92,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!resolved.ok) {
       return NextResponse.json({ error: describeStrutTargetError(resolved.error) }, { status: 503 });
     }
-    const catalogue = await getOpenHealthTasks(resolved.target, split);
+    const catalogue = await getOpenHealthTasks(resolved.target, split, benchmark);
     if (!catalogue) {
       return NextResponse.json({ error: "Could not load the task list from strut" }, { status: 502 });
     }
@@ -99,6 +113,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       userId: member.userId,
       publicBaseUrl: getBaseUrl(request.headers.get("host")),
       gtId,
+      task: benchmark.task,
     });
     return NextResponse.json(
       { success: true, runId: dispatched.runId, strutRunId: dispatched.strutRunId },
