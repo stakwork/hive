@@ -11,6 +11,7 @@ import {
   isClimbIteration,
   isClimbRuns,
   isClimbTarget,
+  openHealthClimbStepPath,
   projectOpenHealthClimbEvents,
   toOpenHealthClimb,
   type OpenHealthClimbEvents,
@@ -449,5 +450,22 @@ describe("toOpenHealthClimb", () => {
       gtId: null,
       difficulty: null,
     });
+  });
+});
+
+describe("openHealthClimbStepPath", () => {
+  it("is the step's subflow under the loop's run, as the event log names it", () => {
+    expect(openHealthClimbStepPath({ kind: "benchmark", iteration: 0 })).toBe("loop#0/run");
+    expect(openHealthClimbStepPath({ kind: "improve", iteration: 2 })).toBe("loop#2/improve");
+
+    const run = openHealthClimbStepPath({ kind: "benchmark", iteration: 2 });
+    const improve = openHealthClimbStepPath({ kind: "improve", iteration: 2 });
+    const { iterations } = projectOpenHealthClimbEvents([
+      ev("step.start", `${ROOT}/loop#2`),
+      ev("step.start", `${ROOT}/${run}`),
+      ev("step.end", `${ROOT}/${run}`, { output: runOutput(0.5) }),
+      ev("step.start", `${ROOT}/${improve}`),
+    ]);
+    expect(iterations).toMatchObject([{ iteration: 2, run: "done", improve: "running", f1: 0.5 }]);
   });
 });
