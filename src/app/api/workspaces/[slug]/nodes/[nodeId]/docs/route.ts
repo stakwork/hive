@@ -5,7 +5,7 @@ import { requireMemberAccess, resolveWorkspaceAccess } from "@/lib/auth/workspac
 import { hasRoleLevel, WorkspaceRole } from "@/lib/auth/roles";
 import { readNodeByRef, updateNodeV2 } from "@/services/swarm/api/nodes";
 
-type RouteParams = { params: Promise<{ slug: string; refId: string }> };
+type RouteParams = { params: Promise<{ slug: string; nodeId: string }> };
 
 /**
  * Write a Concept node's `docs` straight to Jarvis, addressed by its graph
@@ -15,7 +15,7 @@ type RouteParams = { params: Promise<{ slug: string; refId: string }> };
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
-    const { slug, refId } = await params;
+    const { slug, nodeId: refId } = await params;
 
     const body = await request.json().catch(() => null);
     if (!body || typeof body.docs !== "string") {

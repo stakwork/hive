@@ -1,5 +1,5 @@
 /**
- * Unit tests for PUT /api/workspaces/[slug]/nodes/[refId]/docs — the graph
+ * Unit tests for PUT /api/workspaces/[slug]/nodes/[nodeId]/docs — the graph
  * workbench's docs save, keyed by ref_id and written straight to Jarvis.
  */
 
@@ -24,14 +24,14 @@ vi.mock("@/services/swarm/api/nodes", () => ({
   updateNodeV2: vi.fn(),
 }));
 
-import { PUT } from "@/app/api/workspaces/[slug]/nodes/[refId]/docs/route";
+import { PUT } from "@/app/api/workspaces/[slug]/nodes/[nodeId]/docs/route";
 import { db } from "@/lib/db";
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 import { resolveGraphJarvis } from "@/lib/ai/graphWriteAuth";
 import { readNodeByRef, updateNodeV2 } from "@/services/swarm/api/nodes";
 
 const config = { jarvisUrl: "https://jarvis.test", apiKey: "key" };
-const params = Promise.resolve({ slug: "ws", refId: "ref-1" });
+const params = Promise.resolve({ slug: "ws", nodeId: "ref-1" });
 
 const makeRequest = (body: unknown) =>
   new NextRequest("http://localhost/api/workspaces/ws/nodes/ref-1/docs", {
@@ -55,7 +55,7 @@ function grant(role = "DEVELOPER") {
   });
 }
 
-describe("PUT /api/workspaces/[slug]/nodes/[refId]/docs", () => {
+describe("PUT /api/workspaces/[slug]/nodes/[nodeId]/docs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     grant();
