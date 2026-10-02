@@ -178,6 +178,7 @@ export function useSendCanvasChatMessage() {
               : {}),
             ...(ctx.selectedNodeId ? { selectedNodeId: ctx.selectedNodeId } : {}),
             ...(ctx.selectedNodeIds?.length ? { selectedNodeIds: ctx.selectedNodeIds } : {}),
+            ...(ctx.graphFocus ? { graphFocus: { ...ctx.graphFocus, org: ctx.githubLogin } } : {}),
             // Sidebar chat doesn't render follow-ups or provenance;
             // skip the server-side enrichment block to save tokens
             // and a stakgraph round-trip per turn.

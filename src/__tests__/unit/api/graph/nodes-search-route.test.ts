@@ -58,6 +58,14 @@ describe("GET /api/workspaces/[slug]/graph/nodes/search", () => {
     expect(kgSearch).not.toHaveBeenCalled();
   });
 
+  test("lets any workspace member search, not only admins", async () => {
+    grantAccess();
+
+    await searchGET(searchRequest({ q: "auth" }), { params });
+
+    expect(resolveJarvisAccess).toHaveBeenCalledWith("ws", { adminOnly: false });
+  });
+
   test("returns 400 when q is missing or blank", async () => {
     grantAccess();
 
@@ -159,6 +167,15 @@ describe("GET /api/workspaces/[slug]/graph/node-types", () => {
 
     expect(res.status).toBe(401);
     expect(kgGetOntology).not.toHaveBeenCalled();
+  });
+
+  test("lets any workspace member read the types, not only admins", async () => {
+    grantAccess();
+    (kgGetOntology as Mock).mockResolvedValue({ domains: [], node_types: [] });
+
+    await typesGET(new NextRequest("http://localhost/x"), { params });
+
+    expect(resolveJarvisAccess).toHaveBeenCalledWith("ws", { adminOnly: false });
   });
 
   test("returns the ontology's node types", async () => {

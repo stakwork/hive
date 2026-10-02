@@ -21,7 +21,8 @@ export async function GET(
   try {
     const { slug } = await params;
 
-    const access = await resolveJarvisAccess(slug);
+    // Any member: these are reads, like the query route the same pages use.
+    const access = await resolveJarvisAccess(slug, { adminOnly: false });
     if (access instanceof NextResponse) return access;
 
     if (process.env.USE_MOCKS === "true") {

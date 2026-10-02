@@ -1,4 +1,5 @@
 import { ModelMessage } from "ai";
+import type { GraphFocusHint } from "@/lib/canvas/graph-focus";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
 import { shouldTrimConceptsToIds, MAX_SEEDED_CONCEPTS_PER_WORKSPACE, isConceptSeedingEnabled } from "@/lib/ai/concepts";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
@@ -1088,6 +1089,12 @@ export interface CanvasScopeHint {
     slug: string;
     name: string;
   }>;
+  /**
+   * The knowledge-graph node the user is looking at on the org page's
+   * graph view (validated by `parseGraphFocus`). When set, it — not the
+   * canvas — is what "this" means.
+   */
+  graphFocus?: GraphFocusHint;
 }
 
 export function getMultiWorkspacePrefixMessages(
@@ -1212,7 +1219,18 @@ function getCanvasScopeHint(scope?: CanvasScopeHint): string {
   const ref = scope.currentCanvasRef ?? "";
   const selected = scope.selectedNodeId;
   const breadcrumb = scope.currentCanvasBreadcrumb?.trim();
-  if (!refProvided && !selected && !(scope.selectedNodeIds?.length)) return "";
+  if (!refProvided && !selected && !(scope.selectedNodeIds?.length) && !scope.graphFocus) return "";
+
+  // On the graph view the canvas isn't on screen: the graph node is the scope.
+  if (scope.graphFocus) {
+    const f = scope.graphFocus;
+    return [
+      "",
+      "## Current graph focus",
+      "",
+      `The user is looking at the knowledge graph of workspace \`${f.workspaceSlug}\`, focused on the ${f.type} **${f.name}** (\`${f.urn}\`). Treat "this node", "this ${f.type.toLowerCase()}", or "it" as that node when context is otherwise ambiguous. Read it with \`graph_get\` before proposing changes to it.`,
+    ].join("\n");
+  }
 
   // Compose the human-friendly description. The breadcrumb (when
   // available) is the agent's preferred way to *talk about* the scope

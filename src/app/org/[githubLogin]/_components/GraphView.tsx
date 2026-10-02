@@ -1,47 +1,98 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { GraphPortal } from "@/components/GraphPortal";
-import type { WorkspaceWithRole } from "@/types/workspace";
+import { useCallback, useMemo } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { MessageSquare } from "lucide-react";
+import { GraphWorkbench, Picker, type SelectedNode } from "@/components/graph-workbench";
+import { Button } from "@/components/ui/button";
+import type { GraphFocus } from "../_state/canvasChatStore";
 
-interface GraphViewProps {
-  githubLogin: string;
+export interface GraphWorkspace {
+  slug: string;
+  name: string;
+  isDefault?: boolean;
 }
 
-export function GraphView({ githubLogin }: GraphViewProps) {
-  const [workspaces, setWorkspaces] = useState<WorkspaceWithRole[]>([]);
-  const [loading, setLoading] = useState(true);
+interface GraphViewProps {
+  /** The org's workspaces, as the page already holds them. */
+  workspaces: GraphWorkspace[];
+  loading: boolean;
+  /** Whether the org page's Jamie chat is showing beside the graph. */
+  chatOpen: boolean;
+  onToggleChat: () => void;
+  /** Reports the node in view, so Jamie knows what "this" is. Keep it stable. */
+  onFocusChange: (focus: GraphFocus | null) => void;
+}
 
-  useEffect(() => {
-    fetch(`/api/orgs/${githubLogin}/workspaces`)
-      .then((res) => res.json())
-      .then((data) => setWorkspaces(Array.isArray(data) ? data : []))
-      .catch(() => setWorkspaces([]))
-      .finally(() => setLoading(false));
-  }, [githubLogin]);
+/**
+ * The org page's graph view: the graph workbench over one workspace's graph.
+ * `?workspace=<slug>` picks the workspace (the default one otherwise) and
+ * `?gnode=<ref_id>` centres on a node (`?node=` is the canvas's).
+ */
+export function GraphView({ workspaces, loading, chatOpen, onToggleChat, onFocusChange }: GraphViewProps) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const ordered = useMemo(
+    () => [...workspaces].sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0)),
+    [workspaces],
+  );
+  const requested = searchParams.get("workspace");
+  const current = ordered.find((ws) => ws.slug === requested) ?? ordered[0];
+  const slug = current?.slug;
+
+  const onSelectionChange = useCallback(
+    (node: SelectedNode | null) =>
+      onFocusChange(slug && node ? { workspaceSlug: slug, refId: node.id, name: node.name, type: node.type } : null),
+    [slug, onFocusChange],
+  );
 
   if (loading) {
-    return <div className="h-[calc(100vh-200px)] bg-muted animate-pulse" />;
+    return <div className="h-full bg-muted animate-pulse" />;
   }
 
-  if (workspaces.length === 0) {
-    return (
-      <p className="text-muted-foreground text-center py-12">
-        No workspaces available to visualize.
-      </p>
-    );
+  if (!current) {
+    return <p className="text-muted-foreground text-center py-12">No workspaces with a graph to explore.</p>;
   }
+
+  // `history.replaceState`, not the router: a router navigation re-runs this
+  // protected route's middleware and page query (see OrgCanvasView).
+  const pick = (next: string) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("workspace", next);
+    params.delete("gnode");
+    window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
+  };
 
   return (
-    <GraphPortal
-      workspaces={workspaces.map((ws) => ({
-        id: ws.id,
-        name: ws.name,
-        slug: ws.slug,
-        userRole: ws.userRole,
-        memberCount: ws.memberCount,
-      }))}
-      embedded
+    <GraphWorkbench
+      // A new workspace is a new graph: remount rather than carry state across.
+      key={current.slug}
+      workspaceSlug={current.slug}
+      initialFocusId={searchParams.get("gnode")}
+      onSelectionChange={onSelectionChange}
+      leading={
+        <Picker
+          label="Workspace"
+          value={current.name}
+          selected={current.slug}
+          onSelect={pick}
+          heading="Each workspace has its own graph"
+          items={ordered.map((ws) => ({ key: ws.slug, label: ws.name }))}
+          testId="org-graph-workspace"
+        />
+      }
+      trailing={
+        <Button
+          variant={chatOpen ? "secondary" : "outline"}
+          size="sm"
+          className="h-8 gap-1.5"
+          onClick={onToggleChat}
+          data-testid="org-graph-ask-jamie"
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          {chatOpen ? "Hide Jamie" : "Ask Jamie"}
+        </Button>
+      }
     />
   );
 }
