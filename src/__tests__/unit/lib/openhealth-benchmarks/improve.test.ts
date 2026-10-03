@@ -155,6 +155,53 @@ describe("toOpenHealthImprovement", () => {
       { name: "Obstetrics", reasons: ["a Concept named 'Obstetrics' already exists — propose an amend instead"] },
     ]);
     expect(improvement.notAddressed).toEqual([{ error: "extra F411", reason: "Chart-neutral; costs nothing." }]);
+    expect(improvement.contestsAccepted).toEqual([]);
+    expect(improvement.contestsRejected).toEqual([]);
+  });
+
+  it("reads the answer-key items the run contested and the graph recorded, and the contests refused", () => {
+    const improvement = toOpenHealthImprovement(
+      row({
+        output: {
+          ...OUTPUT,
+          contests_proposed: [
+            {
+              error_id: "1790972203341/iter-3:missed_finding:primigravida",
+              reason: "The chart documents a prior pregnancy.",
+              evidence: [{ source: "chart", quote: "Cesarean section (low transverse, 2 years prior)" }],
+            },
+            { error_id: "1790972203341/iter-3:missed_finding:proteinuria", reason: "…", evidence: [] },
+          ],
+          contests_accepted: [
+            {
+              id: "oh-context-summarization-public-8274-contested-must-include-findings-primigravida",
+              ref_id: "89aa4209-4e75-4715-959a-72ba20fbfe54",
+              list: "must_include_findings",
+              name: "Primigravida",
+              reason: "The chart documents a prior pregnancy.",
+              evidence: [{ source: "chart", quote: "Cesarean section (low transverse, 2 years prior)" }],
+            },
+          ],
+          contests_rejected: [
+            { error_id: "1790972203341/iter-3:missed_finding:proteinuria", why: "The quote is not in the chart." },
+          ],
+        },
+      }),
+    );
+    expect(improvement.contestsAccepted).toEqual([
+      {
+        id: "oh-context-summarization-public-8274-contested-must-include-findings-primigravida",
+        refId: "89aa4209-4e75-4715-959a-72ba20fbfe54",
+        name: "Primigravida",
+        list: "must_include_findings",
+        icd10: null,
+        reason: "The chart documents a prior pregnancy.",
+        evidence: ['chart: "Cesarean section (low transverse, 2 years prior)"'],
+      },
+    ]);
+    expect(improvement.contestsRejected).toEqual([
+      { error: "1790972203341/iter-3:missed_finding:proteinuria", reason: "The quote is not in the chart." },
+    ]);
   });
 
   it("names none of the run's files", () => {

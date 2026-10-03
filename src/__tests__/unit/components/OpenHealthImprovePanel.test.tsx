@@ -74,6 +74,8 @@ function improvement(overrides: Partial<OpenHealthImprovement> = {}): OpenHealth
     ],
     rejected: [{ name: "Obstetrics", reasons: ["a Concept named 'Obstetrics' already exists"] }],
     notAddressed: [{ error: "extra F411", reason: "Chart-neutral; costs nothing." }],
+    contestsAccepted: [],
+    contestsRejected: [],
     durationMs: 231_023,
     error: null,
     createdAt: "2026-09-28T20:02:35.000Z",

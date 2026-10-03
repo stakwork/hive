@@ -39,7 +39,19 @@ vi.mock("@/components/openhealth/ClimbStartPopover", () => ({
 const { OpenHealthTasksPanel } = await import("@/components/openhealth/OpenHealthTasksPanel");
 
 function task(gtId: number): OpenHealthTask {
-  return { gtId, patientId: gtId * 10, difficulty: "medium", split: "public", age: 40, sex: "F", numEncounters: 3 };
+  return {
+    gtId,
+    patientId: gtId * 10,
+    difficulty: "medium",
+    split: "public",
+    age: 40,
+    sex: "F",
+    numEncounters: 3,
+    task: "patient_diagnosis",
+    variant: null,
+    specialty: null,
+    clinicalQuestion: null,
+  };
 }
 
 function run(gtId: number, outcome: OpenHealthRun["outcome"]): OpenHealthRun {
@@ -52,7 +64,23 @@ function run(gtId: number, outcome: OpenHealthRun["outcome"]): OpenHealthRun {
     gtId,
     patientId: gtId * 10,
     difficulty: "medium",
-    scores: scored ? { f1: 0.5, recall: 0.5, precision: 0.5, tier: "B", nMatched: 1, nGt: 2, nPred: 2 } : null,
+    task: "patient_diagnosis",
+    variant: null,
+    specialty: null,
+    scores: scored
+      ? {
+          f1: 0.5,
+          metric: "weighted_problem_list_f1_neutral",
+          official: null,
+          contested: 0,
+          recall: 0.5,
+          precision: 0.5,
+          tier: "B",
+          nMatched: 1,
+          nGt: 2,
+          nPred: 2,
+        }
+      : null,
     costUsd: scored ? 1 : null,
     durationMs: scored ? 1 : null,
     error: null,
@@ -68,6 +96,9 @@ function climb(gtId: number): OpenHealthClimb {
     strutRunId: "2",
     gtId,
     difficulty: "medium",
+    task: "patient_diagnosis",
+    variant: null,
+    specialty: null,
     status: "running",
     stopReason: null,
     targetF1: 1,
@@ -75,6 +106,8 @@ function climb(gtId: number): OpenHealthClimb {
     attempts: 0,
     startF1: null,
     bestF1: null,
+    bestF1Official: null,
+    contested: [],
     bestRecall: null,
     bestPrecision: null,
     latestF1: null,
@@ -90,6 +123,8 @@ function climb(gtId: number): OpenHealthClimb {
 
 const TASKS: OpenHealthTaskList = {
   split: "public",
+  task: "patient_diagnosis",
+  variant: null,
   total: 4,
   byDifficulty: { easy: 0, medium: 4, hard: 0 },
   tasks: [task(7039), task(7040), task(7041), task(7042)],

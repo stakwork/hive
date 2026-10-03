@@ -12,8 +12,9 @@ import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { openHealthDeliverable } from "@/lib/openhealth-benchmarks/constants";
 import type { OpenHealthProgressResponse, OpenHealthRunDetail, OpenHealthStage } from "@/types/openhealth";
 import { BenchmarkBadge, formatCost, formatDuration, formatMetric, formatScore } from "../format";
-import { DiagnosisList, Stages, Stat } from "../parts";
+import { CONTESTED_BADGE, ContestedNote, contestedLabel, contestedTitle, DiagnosisList, Stages, Stat } from "../parts";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { ContestedList } from "./ContestedList";
 import { ImprovePanel } from "./ImprovePanel";
 
 /** Poll cadence while the run is in flight. */
@@ -21,13 +22,22 @@ const POLL_MS = 10_000;
 
 type Panel = "graph" | "problem-list" | "summary" | "timeline" | "checklist" | "ingest";
 
+/** Columns for the lists under the scores, by how many there are. */
+const LIST_COLUMNS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-2 xl:grid-cols-4"];
+
 function ScoredDiagnosis({ run }: { run: OpenHealthRunDetail }) {
   const { scores } = run;
   if (!scores) return null;
+  const contests = run.contested.length > 0 || run.contestsRejected.length > 0;
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8" data-testid="openhealth-run-scores">
-        <Stat label={formatMetric(scores.metric)} value={formatScore(scores.f1)} emphasis />
+        <Stat
+          label={formatMetric(scores.metric)}
+          value={formatScore(scores.f1)}
+          sub={<ContestedNote official={scores.official} contested={scores.contested} />}
+          emphasis
+        />
         <Stat label="Tier" value={scores.tier ?? "—"} emphasis />
         <Stat label="Recall" value={formatScore(scores.recall)} />
         <Stat label="Precision" value={formatScore(scores.precision)} />
@@ -36,7 +46,7 @@ function ScoredDiagnosis({ run }: { run: OpenHealthRunDetail }) {
         <Stat label="Cost" value={formatCost(run.costUsd)} />
         <Stat label="Duration" value={formatDuration(run.durationMs)} />
       </div>
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className={`grid gap-3 ${LIST_COLUMNS[contests ? 4 : 3]}`}>
         <DiagnosisList
           title="Matched"
           hint="The model's diagnosis and the answer-key diagnosis it matched"
@@ -63,6 +73,7 @@ function ScoredDiagnosis({ run }: { run: OpenHealthRunDetail }) {
           testId="openhealth-run-extra"
           items={run.extra}
         />
+        {contests && <ContestedList contested={run.contested} rejected={run.contestsRejected} />}
       </div>
     </>
   );
@@ -78,15 +89,25 @@ function ScoredSummary({ run }: { run: OpenHealthRunDetail }) {
   if (!scores) return null;
   const abstention = scores.metric === "abstention_accuracy";
   const specialty = run.variant === "specialty_conditioned";
+  const contests = run.contested.length > 0 || run.contestsRejected.length > 0;
   const mustInclude = run.found.length + run.missed.length;
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" data-testid="openhealth-run-scores">
-        <Stat label={formatMetric(scores.metric)} value={formatScore(scores.f1)} emphasis />
+        <Stat
+          label={formatMetric(scores.metric)}
+          value={formatScore(scores.f1)}
+          sub={<ContestedNote official={scores.official} contested={scores.contested} />}
+          emphasis
+        />
         {abstention ? (
           <Stat label="Abstained" value={scores.f1 >= 0.5 ? "Yes" : "No"} emphasis />
         ) : (
-          <Stat label={specialty ? "Critical findings named" : "Findings named"} value={`${run.found.length} / ${mustInclude}`} emphasis />
+          <Stat
+            label={specialty ? "Critical findings named" : "Findings named"}
+            value={`${run.found.length} / ${mustInclude}`}
+            emphasis
+          />
         )}
         {specialty && <Stat label="Leaked" value={run.extra.length} />}
         <Stat label="Words" value={run.summaryWords ?? "—"} />
@@ -109,12 +130,16 @@ function ScoredSummary({ run }: { run: OpenHealthRunDetail }) {
             : "The chart has no active problem in this specialty; the right answer was one short sentence saying so, and the summary did not abstain."}
         </p>
       ) : null}
-      <div className={`grid gap-3 ${specialty ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+      <div className={`grid gap-3 ${LIST_COLUMNS[(specialty ? 3 : 2) + (contests ? 1 : 0)]}`}>
         {!abstention && (
           <>
             <DiagnosisList
               title="Named"
-              hint={specialty ? "Critical findings of the specialty the summary names" : "Must-include findings the summary names"}
+              hint={
+                specialty
+                  ? "Critical findings of the specialty the summary names"
+                  : "Must-include findings the summary names"
+              }
               testId="openhealth-run-found"
               items={run.found}
             />
@@ -134,6 +159,7 @@ function ScoredSummary({ run }: { run: OpenHealthRunDetail }) {
             items={run.extra}
           />
         )}
+        {contests && <ContestedList contested={run.contested} rejected={run.contestsRejected} />}
       </div>
     </>
   );
@@ -273,6 +299,16 @@ export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSet
         {run.chart && run.chart.sectionsFailed.length > 0 && (
           <Badge variant="destructive">{run.chart.sectionsFailed.length} sections failed to ingest</Badge>
         )}
+        {run.scores && run.scores.contested > 0 && (
+          <Badge
+            variant="outline"
+            className={CONTESTED_BADGE}
+            title={contestedTitle(run.scores.contested, run.scores.official)}
+            data-testid="openhealth-run-contested-badge"
+          >
+            {contestedLabel(run.scores.contested)}
+          </Badge>
+        )}
         {run.spreadsheetUrl && (
           <a
             href={run.spreadsheetUrl}
@@ -309,7 +345,10 @@ export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSet
         </div>
       )}
       {run.outcome === "failed" && (
-        <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" data-testid="openhealth-run-failure">
+        <p
+          className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          data-testid="openhealth-run-failure"
+        >
           {run.error}
         </p>
       )}
@@ -319,7 +358,12 @@ export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSet
 
       {run.strutRunId && (
         <div className="flex flex-wrap gap-2">
-          <PillSection label="Graph" open={panel === "graph"} onOpenChange={toggle("graph")} testId="openhealth-run-graph">
+          <PillSection
+            label="Graph"
+            open={panel === "graph"}
+            onOpenChange={toggle("graph")}
+            testId="openhealth-run-graph"
+          >
             <StrutRunGraph endpoint={`/api/workspaces/${slug}/strut/runs/${runId}/graph`} live={running} />
           </PillSection>
           {hasFiles && (

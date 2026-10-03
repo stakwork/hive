@@ -5,9 +5,14 @@
  * Like `runs.ts`, this reads the workflow's `output` field by field, so an
  * output of another shape degrades to nulls and empty lists. The run's
  * files (`digest.md` holds the answer key) are not named in what it returns.
+ *
+ * Besides Concepts, an improve run may CONTEST answer-key items the chart
+ * contradicts (`contests.ts`): the ones the graph recorded are excluded from
+ * the score from the next run on.
  */
 
 import type { StrutRunStatus } from "@prisma/client";
+import { contestsOf, rejectedContestsOf } from "./contests";
 import type {
   OpenHealthConceptProposal,
   OpenHealthConceptWrite,
@@ -122,6 +127,8 @@ export function toOpenHealthImprovement(row: OpenHealthImproveSource): OpenHealt
       const id = str(e.error_id);
       return id ? [{ error: describeScoringError(id), reason: str(e.reason) ?? "" }] : [];
     }),
+    contestsAccepted: contestsOf(output.contests_accepted),
+    contestsRejected: rejectedContestsOf(output.contests_rejected),
     durationMs: row.durationMs,
     error: outcome === "failed" ? (row.error ?? "The run did not finish.") : null,
     createdAt: row.createdAt.toISOString(),
