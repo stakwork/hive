@@ -48,6 +48,12 @@ import {
   emitProvenance,
   maybeGenerateAndPersistTitle,
 } from "@/services/canvas-turn-enrichments";
+import { resolveStrutTarget } from "@/services/strut-target";
+import {
+  validateWorkflowMentions,
+  WorkflowMentionValidationError,
+} from "@/services/strut-workflows";
+import type { CanvasWorkflowRef } from "@/lib/constants/prompt";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
 // the org-canvas turn is persisted server-side in `after()` so it survives the
@@ -127,6 +133,13 @@ export async function POST(request: NextRequest) {
       // The model sees them as image parts embedded in `messages`; this
       // top-level copy is what we persist so they survive reload.
       attachments,
+      // Structured `@workflow` mention occurrences from the composer
+      // (`{ id, name, start, end }[]`). Display metadata only — every
+      // `id` is independently re-validated below against the caller's
+      // authorized Strut target's live catalog before it reaches
+      // `runCanvasAgent`. Absent → unchanged behavior (no validation, no
+      // workflow context).
+      workflowMentions,
     } = body;
 
     // Server-history mode: mobile clients send { message, conversationId, workspaceSlugs[] }
@@ -376,6 +389,65 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ============================================================
+    // Structured `@workflow` mention validation. Runs AFTER org-
+    // membership gating (above) but BEFORE persistCanvasUserMessage /
+    // runCanvasAgent — a rejected reference must never reach the DB or
+    // the model. The target org identity is derived from the AUTHORIZED
+    // `orgId` (validated above), never from a client-supplied workspace/
+    // org value — so `resolveStrutTarget` resolves against the caller's
+    // own org, not whatever the client happened to submit. `target.orgId
+    // === orgId` is re-checked defensively even though the org-default
+    // policy already scopes to this org.
+    //
+    // Absent `workflowMentions` → no behavior change at all (existing
+    // callers, and any non-canvas caller, are untouched).
+    // ============================================================
+    let workflowRefs: CanvasWorkflowRef[] | undefined;
+    if (Array.isArray(workflowMentions) && workflowMentions.length > 0) {
+      if (!orgId || !userId) {
+        throw validationError("workflowMentions require an authenticated org-canvas request");
+      }
+      const org = await db.sourceControlOrg.findUnique({
+        where: { id: orgId },
+        select: { githubLogin: true },
+      });
+      if (!org?.githubLogin) {
+        return NextResponse.json(
+          { error: "Could not verify workflow references", code: "WORKFLOW_MENTION_INVALID" },
+          { status: 400 },
+        );
+      }
+      const targetResolved = await resolveStrutTarget({
+        purpose: "chat",
+        userId,
+        orgGithubLogin: org.githubLogin,
+      });
+      if (!targetResolved.ok || targetResolved.target.orgId !== orgId) {
+        return NextResponse.json(
+          { error: "Could not verify workflow references", code: "WORKFLOW_MENTION_INVALID" },
+          { status: 400 },
+        );
+      }
+      try {
+        workflowRefs = await validateWorkflowMentions(targetResolved.target, workflowMentions);
+      } catch (err) {
+        if (err instanceof WorkflowMentionValidationError) {
+          console.warn("[quick-ask] workflow mention validation failed", {
+            code: err.code,
+            orgId,
+            userId,
+            referenceCount: Array.isArray(workflowMentions) ? workflowMentions.length : 0,
+          });
+          return NextResponse.json(
+            { error: err.message, message: err.message, code: err.code },
+            { status: 400 },
+          );
+        }
+        throw err;
+      }
+    }
+
     // Resolve the SharedConversation row this turn should attribute
     // tokens to. Validation rules:
     //   - Member: the row must belong to this user AND this workspace.
@@ -574,6 +646,9 @@ export async function POST(request: NextRequest) {
           orgId: orgId || undefined,
           workspaceSlugs: slugs,
           modelName: chatAgentModel,
+          // Server-validated `@workflow` mentions for THIS turn only —
+          // never reconstructed from history. Absent/empty → unchanged.
+          ...(workflowRefs?.length ? { workflowRefs } : {}),
           // Reuse cached concepts (skips the swarm `listConcepts` call)
           // when we have them for this org-canvas conversation. The prefix
           // is still rebuilt fresh each turn for an accurate scope hint.

@@ -28,7 +28,14 @@ import { useShallow } from "zustand/react/shallow";
 import { StreamingMessage } from "@/components/streaming";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import {
+  useMentionRanges,
+  filterValidMentions,
+  type RangeMention,
+  type MentionRangeSuggestion,
+} from "@/hooks/useMentionRanges";
 import { SidebarChatMessage } from "./SidebarChatMessage";
 import { ProposalCard, getProposalsFromMessage, sortProposalsByDependency } from "./ProposalCard";
 import { PROPOSE_FEATURE_TOOL, PROPOSE_INITIATIVE_TOOL, PROPOSE_MILESTONE_TOOL } from "@/lib/proposals/types";
@@ -205,14 +212,25 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
     setUserScrolledUp(!atBottom);
   };
 
-  const handleSend = async (content: string, attachments: CanvasAttachment[], clearInput: () => void) => {
+  const handleSend = async (
+    content: string,
+    attachments: CanvasAttachment[],
+    workflowMentions: RangeMention[],
+    callbacks: { onResponseStart: () => void; onFailure: () => void },
+  ) => {
     if (!activeId) return;
-    await sendMessage({
-      conversationId: activeId,
-      content,
-      attachments,
-      onResponseStart: () => clearInput(),
-    });
+    try {
+      await sendMessage({
+        conversationId: activeId,
+        content,
+        attachments,
+        workflowMentions,
+        onResponseStart: callbacks.onResponseStart,
+      });
+    } catch {
+      callbacks.onFailure();
+      return;
+    }
   };
 
   const hasMessages = messages.length > 0;
@@ -835,12 +853,46 @@ interface SidebarChatInputHandle {
 }
 
 interface SidebarChatInputProps {
-  onSend: (message: string, attachments: CanvasAttachment[], clearInput: () => void) => Promise<void>;
+  onSend: (
+    message: string,
+    attachments: CanvasAttachment[],
+    workflowMentions: RangeMention[],
+    callbacks: {
+      /** Called when the assistant's first chunk arrives (the send is going through). */
+      onResponseStart: () => void;
+      /**
+       * Called on a validation or request failure. Restores the exact
+       * text/attachments/mentions snapshot taken at send time — UNLESS
+       * the user has already started a newer draft (any of input,
+       * pending files, or mentions is non-empty), in which case the
+       * newer draft is left alone and the old snapshot is discarded.
+       */
+      onFailure: () => void;
+    },
+  ) => Promise<void>;
   disabled?: boolean;
   /** Workspace id for the S3 upload context. */
   workspaceId: string;
-  /** Fallback org id when workspaceId is absent (org canvas context). */
+  /** Fallback org id when workspaceId is absent (org canvas context). Also the
+   *  githubLogin used to scope the `@workflow` mention suggestion proxy. */
   orgId?: string;
+}
+
+/** Bounded fetch of workflow suggestions for the `@` mention dropdown —
+ *  `GET /api/orgs/[githubLogin]/strut/workflows?q=`. Returns `{ id, name }`
+ *  records only; never the swarm URL/key. Resolved empty (closes the menu,
+ *  no error surfaced) when there's no org context or the request fails —
+ *  the composer's normal send path stays unaffected either way. */
+async function fetchWorkflowSuggestions(githubLogin: string | undefined, query: string): Promise<MentionRangeSuggestion[]> {
+  if (!githubLogin) return [];
+  try {
+    const res = await fetch(`/api/orgs/${encodeURIComponent(githubLogin)}/strut/workflows?q=${encodeURIComponent(query)}`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as { workflows?: MentionRangeSuggestion[] };
+    return Array.isArray(data.workflows) ? data.workflows : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -859,8 +911,31 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
 ) {
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [workflowMentions, setWorkflowMentions] = useState<RangeMention[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Mirror of `pendingFiles` for the failure-restore check below (reading
+  // live state without adding `pendingFiles` to a callback's deps).
+  const pendingFilesRef = useRef<PendingFile[]>([]);
+  useEffect(() => {
+    pendingFilesRef.current = pendingFiles;
+  }, [pendingFiles]);
+
+  const fetchWorkflowSuggestionsForOrg = useCallback(
+    (query: string) => fetchWorkflowSuggestions(orgId, query),
+    [orgId],
+  );
+  const mentionRanges = useMentionRanges({
+    value: input,
+    mentions: workflowMentions,
+    onChange: (value, next) => {
+      setInput(value);
+      setWorkflowMentions(next);
+    },
+    fetchSuggestions: fetchWorkflowSuggestionsForOrg,
+    textareaRef: inputRef,
+    disabled,
+  });
 
   // Grow with the content; the class list's `max-h` caps it and it
   // scrolls from there. `field-sizing: content` covers Chromium; this
@@ -893,12 +968,17 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
     orgGithubLogin: orgId, // orgId prop is already githubLogin
   });
 
-  // Append transcript to existing input (do not overwrite)
+  // Append transcript to existing input (do not overwrite). Goes through
+  // `applyExternalValue` (not `setInput` directly) so any mention whose
+  // text this replacement touches is dropped/shifted correctly — this
+  // update doesn't carry a cursor position, so the hook recovers the
+  // edited span via a prefix/suffix diff.
   useEffect(() => {
     if (transcript) {
       const newValue = preVoiceInputRef.current ? `${preVoiceInputRef.current} ${transcript}`.trim() : transcript;
-      setInput(newValue);
+      mentionRanges.applyExternalValue(newValue);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transcript]);
 
   const toggleListening = useCallback(() => {
@@ -1004,10 +1084,19 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   }, []);
 
   // ─── Submit ─────────────────────────────────────────────────────────
+  // Allowed when there's trimmed text, OR at least one prepared
+  // attachment, OR at least one still-valid workflow mention — still
+  // rejected when all three are absent (a mention-only or attachment-only
+  // send must go through).
+  const validWorkflowMentions = mentionRanges.getValidMentions();
+  const hasSendableContent =
+    !!input.trim() ||
+    pendingFiles.some((f) => f.s3Path) ||
+    validWorkflowMentions.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || disabled) return;
+    if (!hasSendableContent || disabled) return;
 
     if (pendingFiles.some((f) => f.uploading)) {
       toast.error("Please wait for uploads to finish");
@@ -1036,18 +1125,37 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
         mimeType: f.mimeType,
         size: f.size,
       }));
+    // Only mentions whose visible text still spells `@name` ride the send
+    // — anything invalidated by an edit is silently dropped here rather
+    // than sent stale.
+    const sentMentions = mentionRanges.getValidMentions();
+
+    // Snapshot for failure-restore: a validation/request failure puts the
+    // user's exact text/mentions back — UNLESS they've already started a
+    // newer draft (any of input/files/mentions non-empty at restore time).
+    const snapshot = { input: message, mentions: sentMentions };
 
     // Revoke preview URLs and clear pending files
     pendingFiles.forEach((f) => URL.revokeObjectURL(f.preview));
     setPendingFiles([]);
     setInput(""); // clear immediately on send
+    setWorkflowMentions([]);
+    mentionRanges.closeMenu();
 
-    await onSend(message, attachments, () => {
-      inputRef.current?.focus();
+    await onSend(message, attachments, sentMentions, {
+      onResponseStart: () => inputRef.current?.focus(),
+      onFailure: () => {
+        setInput((current) => {
+          if (current.trim() || pendingFilesRef.current.length > 0) return current;
+          setWorkflowMentions(snapshot.mentions);
+          return snapshot.input;
+        });
+      },
     });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionRanges.handleKeyDown(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSubmit(e as unknown as React.FormEvent);
@@ -1055,7 +1163,7 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
+    mentionRanges.handleChange(e);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1132,13 +1240,46 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
           disabled && "opacity-70",
         )}
       >
-        <div className="min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1">
+          {/* `@workflow` mention suggestions — opens on `@`, closes on
+              Escape/selection/blur-away. Positioned above the composer so
+              it never gets clipped by the scroll container below it. */}
+          {mentionRanges.isMenuOpen && (
+            <div className="absolute bottom-full left-0 right-0 mb-1 z-20" data-testid="workflow-mention-dropdown">
+              <Command className="rounded-lg border shadow-md bg-popover" shouldFilter={false}>
+                <CommandList>
+                  {mentionRanges.isFetching && mentionRanges.suggestions.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">Searching…</div>
+                  )}
+                  {mentionRanges.suggestions.length === 0 && !mentionRanges.isFetching && (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">No workflows found</div>
+                  )}
+                  {mentionRanges.suggestions.map((s, idx) => (
+                    <CommandItem
+                      key={s.id}
+                      value={s.id}
+                      onSelect={() => mentionRanges.selectSuggestion(s)}
+                      className={cn(
+                        "cursor-pointer px-3 py-2 text-sm",
+                        idx === mentionRanges.activeIndex && "bg-accent text-accent-foreground",
+                      )}
+                      data-testid={`workflow-mention-item-${s.id}`}
+                    >
+                      <span className="truncate">{s.name}</span>
+                    </CommandItem>
+                  ))}
+                </CommandList>
+              </Command>
+            </div>
+          )}
           <Textarea
             ref={inputRef}
             placeholder={isListening ? "Listening…" : `Message ${jamieName}`}
             value={input}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onSelect={mentionRanges.handleSelect}
+            onClick={mentionRanges.handleSelect}
             onPaste={handlePaste}
             disabled={disabled}
             isUploading={isUploading}
@@ -1200,7 +1341,7 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
               type="submit"
               size="icon"
               aria-label="Send"
-              disabled={!input.trim() || disabled || isUploading}
+              disabled={!hasSendableContent || disabled || isUploading}
               className="h-7 w-7 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground/60 disabled:opacity-100"
             >
               <ArrowUp className="h-4 w-4" />

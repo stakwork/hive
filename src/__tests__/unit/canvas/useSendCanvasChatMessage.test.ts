@@ -403,8 +403,12 @@ describe("useSendCanvasChatMessage — isStreaming lifecycle", () => {
 
     const { result } = renderHook(() => useSendCanvasChatMessage());
 
+    // The hook now rethrows after appending the error message (so callers
+    // like `SidebarChat.handleSend` can restore the composer's draft on
+    // failure) — the `finally` cleanup this test cares about still runs
+    // before the rejection propagates.
     await act(async () => {
-      await result.current({ conversationId: "conv-1", content: "hello" });
+      await result.current({ conversationId: "conv-1", content: "hello" }).catch(() => {});
     });
 
     const calls = (mockState.setIsStreaming as ReturnType<typeof vi.fn>).mock.calls;
@@ -423,8 +427,9 @@ describe("useSendCanvasChatMessage — isStreaming lifecycle", () => {
     // Make the stream reject
     rejectStream(new Error("stream broke"));
 
+    // The hook rethrows after its `finally` cleanup runs (see above).
     await act(async () => {
-      await result.current({ conversationId: "conv-1", content: "hello" });
+      await result.current({ conversationId: "conv-1", content: "hello" }).catch(() => {});
     });
 
     const calls = (mockState.setIsStreaming as ReturnType<typeof vi.fn>).mock.calls;
@@ -516,8 +521,12 @@ describe("useSendCanvasChatMessage — agentTurnsInProgress lifecycle", () => {
 
     const { result } = renderHook(() => useSendCanvasChatMessage());
 
+    // The hook rethrows after its `finally` cleanup runs (so callers like
+    // `SidebarChat.handleSend` can restore the composer's draft on
+    // failure) — swallow it here since this test only cares about the
+    // cleanup itself.
     await act(async () => {
-      await result.current({ conversationId: "conv-1", content: "hello" });
+      await result.current({ conversationId: "conv-1", content: "hello" }).catch(() => {});
     });
 
     const calls = (mockState.bumpAgentTurns as ReturnType<typeof vi.fn>).mock.calls;
@@ -533,8 +542,9 @@ describe("useSendCanvasChatMessage — agentTurnsInProgress lifecycle", () => {
 
     rejectStream(new Error("stream broke"));
 
+    // The hook rethrows after its `finally` cleanup runs (see above).
     await act(async () => {
-      await result.current({ conversationId: "conv-1", content: "hello" });
+      await result.current({ conversationId: "conv-1", content: "hello" }).catch(() => {});
     });
 
     const calls = (mockState.bumpAgentTurns as ReturnType<typeof vi.fn>).mock.calls;
