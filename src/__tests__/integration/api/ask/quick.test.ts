@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   createAuthenticatedPostRequest,
   createPostRequest,
@@ -116,9 +116,40 @@ vi.mock('@/lib/pusher', () => ({
   },
 }));
 
-import { streamText } from 'ai';
+import { streamText, createUIMessageStreamResponse } from 'ai';
 import { getModel } from '@/lib/ai/provider';
 import { getQuickAskPrefixMessages } from '@/lib/constants/prompt';
+
+const redisSet = vi.fn();
+vi.mock('@/lib/redis', () => ({
+  redis: {
+    incr: vi.fn().mockResolvedValue(1),
+    expire: vi.fn().mockResolvedValue(1),
+    ttl: vi.fn().mockResolvedValue(60),
+    get: vi.fn().mockResolvedValue(null),
+    set: (...args: unknown[]) => redisSet(...args),
+    del: vi.fn().mockResolvedValue(1),
+    duplicate: vi.fn(),
+  },
+}));
+
+const createCanvasResumableStream = vi.fn();
+vi.mock('@/lib/ai/canvas-resumable-stream', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/ai/canvas-resumable-stream')>();
+  return {
+    ...actual,
+    writeActiveStream: async (rowId: string, turnId: string) => {
+      await redisSet(
+        `canvas:active-stream:${rowId}`,
+        JSON.stringify({ streamId: turnId, turnId }),
+        'EX',
+        800,
+      );
+    },
+    createCanvasResumableStream: (...args: unknown[]) => createCanvasResumableStream(...args),
+    clearActiveStream: vi.fn(),
+  };
+});
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -1680,6 +1711,91 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
           workspace: expect.objectContaining({ slug: workspace.slug }),
         }),
       );
+    });
+
+    it('writes the Redis pointer keyed by the canvas row and makes the stream resumable', async () => {
+      redisSet.mockReset();
+      redisSet.mockResolvedValue('OK');
+      createCanvasResumableStream.mockReset();
+      createCanvasResumableStream.mockResolvedValue(
+        new ReadableStream({ start: (c) => c.close() }),
+      );
+      const { owner, org, workspace } = await setupSingleWorkspaceOrg();
+      mockStream();
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/quick',
+          {
+            messages: [{ role: 'user', content: 'plan the launch' }],
+            workspaceSlug: workspace.slug,
+            orgId: org.id,
+            turnId: 'turn-row-1',
+          },
+          owner,
+        ),
+      );
+      expect(response.status).toBe(200);
+      const rowId = response.headers.get('X-Conversation-Id');
+      expect(rowId).toBeTruthy();
+      expect(redisSet).toHaveBeenCalledWith(
+        `canvas:active-stream:${rowId}`,
+        JSON.stringify({ streamId: 'turn-row-1', turnId: 'turn-row-1' }),
+        'EX',
+        800,
+      );
+      // Never the raw client conversationId (absent here) — the server row.
+      const keys = redisSet.mock.calls.map((c) => String(c[0]));
+      expect(keys.every((k) => k === `canvas:active-stream:${rowId}`)).toBe(true);
+      expect(createUIMessageStreamResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ consumeSseStream: expect.any(Function) }),
+      );
+    });
+
+    it('falls back to a non-resumable send when Redis is down', async () => {
+      redisSet.mockReset();
+      redisSet.mockRejectedValue(new Error('redis down'));
+      createCanvasResumableStream.mockReset();
+      const { owner, org, workspace } = await setupSingleWorkspaceOrg();
+      mockStream();
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/quick',
+          {
+            messages: [{ role: 'user', content: 'still send' }],
+            workspaceSlug: workspace.slug,
+            orgId: org.id,
+            turnId: 'turn-redis-down',
+          },
+          owner,
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect(createCanvasResumableStream).not.toHaveBeenCalled();
+      const lastCall = vi.mocked(createUIMessageStreamResponse).mock.calls.at(-1)?.[0] as
+        | { consumeSseStream?: unknown }
+        | undefined;
+      expect(lastCall?.consumeSseStream).toBeUndefined();
+    });
+
+    it('does not write an active-stream pointer for dashboard chat', async () => {
+      redisSet.mockReset();
+      const { owner, workspace } = await setupSingleWorkspaceOrg();
+      mockStream();
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/quick',
+          {
+            messages: [{ role: 'user', content: 'hi' }],
+            workspaceSlug: workspace.slug,
+          },
+          owner,
+        ),
+      );
+      expect(response.status).toBe(200);
+      expect(redisSet).not.toHaveBeenCalled();
     });
 
     it('still runs the plain per-workspace agent when no orgId is sent (dashboard chat)', async () => {

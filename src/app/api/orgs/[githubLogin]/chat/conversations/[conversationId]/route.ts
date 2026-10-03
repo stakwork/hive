@@ -13,6 +13,7 @@ import {
   redactHtmlToolOutput,
 } from "@/services/canvas-turn-persistence";
 import type { ConversationDetail, UpdateConversationRequest } from "@/types/shared-conversation";
+import { readActiveStream } from "@/lib/ai/canvas-resumable-stream";
 
 /**
  * The client autosave PUT is a second writer into
@@ -117,6 +118,16 @@ export async function GET(
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
+    // Owner-only live buffer. In-flight reasoning and unredacted tool
+    // payloads are stripped only at persist, so a share-link joiner must
+    // not learn that a turn is still generating. Redis is optional: a
+    // thrown GET logs inside `readActiveStream` and returns null — this
+    // history load must never 500 because Redis is down.
+    const isOwner = conversation.userId === userOrResponse.id;
+    const activeStream = isOwner
+      ? await readActiveStream(conversation.id)
+      : null;
+
     const response: ConversationDetail = {
       id: conversation.id,
       workspaceId: null as any, // org-scoped; no workspace
@@ -138,6 +149,7 @@ export async function GET(
             email: conversation.user.email,
           }
         : null,
+      activeStream,
     };
 
     return NextResponse.json(response);

@@ -81,9 +81,22 @@ export interface ConversationListItem {
   unread?: boolean;
 }
 
+/**
+ * In-flight org-canvas turn the caller may reattach to. Comes from Redis
+ * (`canvas:active-stream:{conversationId}`), not Postgres. `streamId` equals
+ * `turnId`. Owner-only: share-link joiners always get `null`.
+ */
+export interface CanvasActiveStream {
+  streamId: string;
+  turnId: string;
+}
+
 // Full conversation detail for GET /conversations/[id]
 export interface ConversationDetail extends SharedConversationData {
   // Inherits all fields from SharedConversationData
+  // Additive. Null when no turn is generating, Redis is down, or the
+  // caller is not the conversation owner.
+  activeStream?: CanvasActiveStream | null;
 }
 
 // Request to update conversation with new messages
