@@ -32,7 +32,7 @@ vi.mock("@/components/plan/InvitePopover", () => ({
   InvitePopover: () => null,
 }));
 
-vi.mock("@/components/whiteboard/CollaboratorAvatars", () => ({
+vi.mock("@/components/collaboration/CollaboratorAvatars", () => ({
   CollaboratorAvatars: () => null,
 }));
 

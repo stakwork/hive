@@ -54,7 +54,6 @@ export const optionalEnvVars = {
   STAKWORK_POD_REPAIR_WORKFLOW_ID: process.env.STAKWORK_POD_REPAIR_WORKFLOW_ID,
   STAKWORK_TASK_WORKFLOW_ID: process.env.STAKWORK_TASK_WORKFLOW_ID,
   STAKWORK_BOUNTY_WORKFLOW_ID: process.env.STAKWORK_BOUNTY_WORKFLOW_ID,
-  STAKWORK_DIAGRAM_WORKFLOW_ID: process.env.STAKWORK_DIAGRAM_WORKFLOW_ID,
   STAKWORK_LEARNING_WORKFLOW_ID: process.env.STAKWORK_LEARNING_WORKFLOW_ID,
   // PROMPT_GRAPH_TARGET_* vars are consumed directly by getPromptGraphTargets()
   // (src/lib/helpers/prompt-graph-targets.ts) and intentionally omitted here —

@@ -312,7 +312,7 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/workspaces/my-workspace/search", "POST")).toBe("protected");
     });
 
-    it("lets GET through for tasks, features, phases, tickets, whiteboards", () => {
+    it("lets GET through for tasks, features, phases, tickets", () => {
       expect(resolveRouteAccess("/api/tasks", "GET")).toBe("public");
       expect(resolveRouteAccess("/api/tasks/stats", "GET")).toBe("public");
       expect(resolveRouteAccess("/api/tasks/task-123/messages", "GET")).toBe("public");
@@ -323,10 +323,6 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/features/feat-1/attachments", "GET")).toBe("public");
       expect(resolveRouteAccess("/api/phases/phase-1", "GET")).toBe("public");
       expect(resolveRouteAccess("/api/tickets/ticket-1", "GET")).toBe("public");
-      expect(resolveRouteAccess("/api/whiteboards", "GET")).toBe("public");
-      expect(resolveRouteAccess("/api/whiteboards/wb-1", "GET")).toBe("public");
-      expect(resolveRouteAccess("/api/whiteboards/wb-1/images", "GET")).toBe("public");
-      expect(resolveRouteAccess("/api/whiteboards/wb-1/versions", "GET")).toBe("public");
       expect(resolveRouteAccess("/api/swarm/jarvis/schema", "GET")).toBe("public");
       expect(resolveRouteAccess("/api/swarm/jarvis/nodes", "GET")).toBe("public");
     });
@@ -339,8 +335,10 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/features/feat-1", "DELETE")).toBe("protected");
       expect(resolveRouteAccess("/api/phases/phase-1", "PATCH")).toBe("protected");
       expect(resolveRouteAccess("/api/tickets/ticket-1", "PATCH")).toBe("protected");
-      expect(resolveRouteAccess("/api/whiteboards", "POST")).toBe("protected");
-      expect(resolveRouteAccess("/api/whiteboards/wb-1", "PATCH")).toBe("protected");
+    });
+
+    it("treats removed whiteboard routes as protected (feature removed)", () => {
+      expect(resolveRouteAccess("/api/whiteboards/x", "GET")).toBe("protected");
     });
 
     it("does NOT expose sensitive workspace subtrees as public GET", () => {
