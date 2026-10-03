@@ -19,6 +19,7 @@ import {
   OPENHEALTH_DEFAULT_TASK,
   OPENHEALTH_DIFFICULTIES,
 } from "./constants";
+import { contestsOf, rejectedContestsOf } from "./contests";
 import type {
   OpenHealthBenchmarkTask,
   OpenHealthClimb,
@@ -105,6 +106,8 @@ function scoresOf(output: Record<string, unknown>): OpenHealthScores | null {
   return {
     f1: headline.score,
     metric: headline.metric,
+    official: num(output.scoreOfficial),
+    contested: contestsOf(output.contested).length,
     recall: headline.recall,
     precision: headline.precision,
     tier: str(output.tier),
@@ -248,6 +251,8 @@ export function toOpenHealthRunDetail(
         }
       : null,
     ingested: ingestedOf(output),
+    contested: contestsOf(output.contested),
+    contestsRejected: rejectedContestsOf(output.contestsNotAccepted),
     produceCost: num(output.produceCost),
     produceSteps: num(output.produceSteps),
     spreadsheetUrl: /^https:\/\//.test(str(output.spreadsheetUrl) ?? "") ? str(output.spreadsheetUrl) : null,
@@ -273,6 +278,10 @@ interface Attempt {
   benchmark: OpenHealthRowBenchmark;
   outcome: OpenHealthOutcome;
   f1: number | null;
+  /** The untouched score, when known; `f1` has the contested items excluded. */
+  f1Official: number | null;
+  /** How many answer-key items were excluded from `f1` as contested. */
+  contested: number;
   recall: number | null;
   precision: number | null;
   createdAt: string;
@@ -291,6 +300,8 @@ function attemptsOf(runs: OpenHealthRun[], climbs: OpenHealthClimb[]): Attempt[]
       benchmark: { task: run.task, variant: run.variant, specialty: run.specialty },
       outcome: run.outcome,
       f1: run.scores?.f1 ?? null,
+      f1Official: run.scores?.official ?? null,
+      contested: run.scores?.contested ?? 0,
       recall: run.scores?.recall ?? null,
       precision: run.scores?.precision ?? null,
       createdAt: run.createdAt,
@@ -310,6 +321,8 @@ function attemptsOf(runs: OpenHealthRun[], climbs: OpenHealthClimb[]): Attempt[]
           benchmark: { task: climb.task, variant: climb.variant, specialty: climb.specialty },
           outcome: step.outcome,
           f1: step.outcome === "succeeded" ? step.f1 : null,
+          f1Official: step.outcome === "succeeded" ? step.f1Official : null,
+          contested: step.contested.length,
           recall: null,
           precision: null,
           createdAt: step.startedAt ?? climb.createdAt,
@@ -333,6 +346,8 @@ export interface OpenHealthSummary {
   meanF1: number | null;
   meanRecall: number | null;
   meanPrecision: number | null;
+  /** Scored attempts whose F1 excludes contested answer-key items — `meanF1` is over adjusted scores. */
+  contested: number;
 }
 
 function mean(values: Array<number | null | undefined>): number | null {
@@ -350,6 +365,7 @@ function summarize(attempts: Attempt[]): OpenHealthSummary {
     meanF1: mean(succeeded.map((a) => a.f1)),
     meanRecall: mean(succeeded.map((a) => a.recall)),
     meanPrecision: mean(succeeded.map((a) => a.precision)),
+    contested: succeeded.filter((a) => a.contested > 0).length,
   };
 }
 
@@ -372,6 +388,8 @@ export interface OpenHealthTaskStats {
   attempts: number;
   succeeded: number;
   bestF1: number | null;
+  /** The best attempt's F1 excludes contested answer-key items. */
+  bestContested: boolean;
   /** The newest scored attempt's F1. */
   latestF1: number | null;
   /** A run or a climb of the task is in flight. */
@@ -385,7 +403,14 @@ export function openHealthTaskStats(
 ): Map<number, OpenHealthTaskStats> {
   const stats = new Map<number, OpenHealthTaskStats>();
   const statsFor = (gtId: number) => {
-    const s = stats.get(gtId) ?? { attempts: 0, succeeded: 0, bestF1: null, latestF1: null, running: false };
+    const s = stats.get(gtId) ?? {
+      attempts: 0,
+      succeeded: 0,
+      bestF1: null,
+      bestContested: false,
+      latestF1: null,
+      running: false,
+    };
     stats.set(gtId, s);
     return s;
   };
@@ -396,7 +421,10 @@ export function openHealthTaskStats(
     if (attempt.outcome === "succeeded" || attempt.outcome === "failed") s.attempts++;
     if (attempt.outcome === "succeeded" && attempt.f1 !== null) {
       s.succeeded++;
-      s.bestF1 = s.bestF1 === null ? attempt.f1 : Math.max(s.bestF1, attempt.f1);
+      if (s.bestF1 === null || attempt.f1 > s.bestF1) {
+        s.bestF1 = attempt.f1;
+        s.bestContested = attempt.contested > 0;
+      }
       if (s.latestF1 === null) s.latestF1 = attempt.f1;
     }
   }
@@ -416,6 +444,10 @@ export interface OpenHealthClimbPoint {
   climb: { id: string; iteration: number } | null;
   gtId: number | null;
   f1: number;
+  /** The untouched score, when known. */
+  f1Official: number | null;
+  /** How many answer-key items were excluded from `f1` as contested. */
+  contested: number;
   best: number;
   newBest: boolean;
   createdAt: string;
@@ -430,7 +462,18 @@ export function openHealthClimbSeries(runs: OpenHealthRun[], climbs: OpenHealthC
   return scored.map((a) => {
     const newBest = a.f1 > best;
     if (newBest) best = a.f1;
-    return { key: a.key, runId: a.runId, climb: a.climb, gtId: a.gtId, f1: a.f1, best, newBest, createdAt: a.createdAt };
+    return {
+      key: a.key,
+      runId: a.runId,
+      climb: a.climb,
+      gtId: a.gtId,
+      f1: a.f1,
+      f1Official: a.f1Official,
+      contested: a.contested,
+      best,
+      newBest,
+      createdAt: a.createdAt,
+    };
   });
 }
 
