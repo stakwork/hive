@@ -16,6 +16,7 @@ import type {
   OpenHealthOutcome,
 } from "@/types/openhealth";
 import { formatDuration, formatWhen } from "../format";
+import { CONTESTED_TEXT } from "../parts";
 
 /** Poll cadence while an improve run is in flight. */
 const POLL_MS = 10_000;
@@ -84,19 +85,22 @@ function Group({
   hint,
   count,
   testId,
+  tone = "",
   children,
 }: {
   title: string;
   hint: string;
   count: number;
   testId: string;
+  /** Classes for the title and the frame: the contested group is violet. */
+  tone?: string;
   children: React.ReactNode;
 }) {
   if (count === 0) return null;
   return (
-    <div className="rounded-lg border" data-testid={testId}>
+    <div className={`rounded-lg border ${tone ? "border-violet-500/40" : ""}`} data-testid={testId}>
       <div className="border-b px-4 py-2">
-        <p className="text-sm font-semibold">
+        <p className={`text-sm font-semibold ${tone}`}>
           {title} <span className="font-normal tabular-nums text-muted-foreground">{count}</span>
         </p>
         <p className="text-xs text-muted-foreground">{hint}</p>
@@ -129,7 +133,11 @@ function Result({ improvement }: { improvement: OpenHealthImprovement }) {
   const creates = improvement.proposals.filter((p) => p.action === "create");
   const amends = improvement.proposals.filter((p) => p.action === "amend");
   const nothing =
-    improvement.proposals.length === 0 && improvement.rejected.length === 0 && improvement.notAddressed.length === 0;
+    improvement.proposals.length === 0 &&
+    improvement.rejected.length === 0 &&
+    improvement.notAddressed.length === 0 &&
+    improvement.contestsAccepted.length === 0 &&
+    improvement.contestsRejected.length === 0;
   return (
     <div className="space-y-3" data-testid="openhealth-improve-result">
       <p className="text-xs text-muted-foreground">
@@ -176,6 +184,42 @@ function Result({ improvement }: { improvement: OpenHealthImprovement }) {
           <li key={`${proposal.name}-${index}`} className="px-4 py-2">
             <span className="font-medium">{proposal.name}</span>
             <span className="block text-xs text-muted-foreground">{proposal.reasons.join("; ")}</span>
+          </li>
+        ))}
+      </Group>
+      <Group
+        title="Contested gold"
+        hint="Answer-key items the chart contradicts, recorded in the graph: excluded from the score from the next run on"
+        count={improvement.contestsAccepted.length}
+        testId="openhealth-improve-contests"
+        tone={CONTESTED_TEXT}
+      >
+        {improvement.contestsAccepted.map((contest, index) => (
+          <li key={contest.id ?? `${contest.name}-${index}`} className="space-y-1 px-4 py-2">
+            <span className="font-medium">{contest.name}</span>
+            {contest.reason && <span className="block text-xs text-muted-foreground">{contest.reason}</span>}
+            {contest.evidence.length > 0 && (
+              <ul className="space-y-0.5">
+                {contest.evidence.map((quote) => (
+                  <li key={quote} className="border-l-2 border-violet-500/40 pl-2 font-mono text-xs">
+                    {quote}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        ))}
+      </Group>
+      <Group
+        title="Contests refused"
+        hint="Did not pass the workflow's checks; the score is unchanged"
+        count={improvement.contestsRejected.length}
+        testId="openhealth-improve-contests-rejected"
+      >
+        {improvement.contestsRejected.map((entry, index) => (
+          <li key={`${entry.error}-${index}`} className="px-4 py-2">
+            <span className="font-mono text-xs">{entry.error}</span>
+            {entry.reason && <span className="block text-xs text-muted-foreground">{entry.reason}</span>}
           </li>
         ))}
       </Group>
