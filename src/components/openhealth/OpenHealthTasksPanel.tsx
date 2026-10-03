@@ -27,6 +27,7 @@ import { openHealthRunTasks, openHealthTaskStats } from "@/lib/openhealth-benchm
 import type { OpenHealthDifficulty, OpenHealthSplit, OpenHealthTask, OpenHealthTaskList } from "@/types/openhealth";
 import { ClimbStartPopover } from "./ClimbStartPopover";
 import { DifficultyBadge, formatScore } from "./format";
+import { CONTESTED_TEXT } from "./parts";
 
 const SPLIT_LABELS: Record<OpenHealthSplit, string> = { public: "Public", heldout: "Heldout" };
 
@@ -271,7 +272,18 @@ export function OpenHealthTasksPanel() {
                   <TableCell className="text-right tabular-nums">{task.numEncounters ?? "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{s?.attempts || "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{s?.attempts ? s.succeeded : "—"}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatScore(s?.bestF1)}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatScore(s?.bestF1)}
+                    {s?.bestContested && (
+                      <span
+                        className={`ml-1 text-[10px] ${CONTESTED_TEXT}`}
+                        title="The best score excludes contested answer-key items: the chart contradicts them"
+                        data-testid="openhealth-task-contested"
+                      >
+                        contested
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <ClimbStartPopover
