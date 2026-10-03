@@ -42,17 +42,24 @@ const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v !== "") : [];
 
 const ERROR_KINDS: Record<string, string> = {
+  // Diagnosis: the code is an ICD-10-CM code.
   missed: "missed",
   extra: "extra",
   code: "wrong code",
   acuity: "wrong acuity",
+  // Summary: the code is a finding's name as a slug (`uterine-artery-doppler…`), or the specialty's.
+  missed_finding: "missed finding",
+  leaked: "leaked",
+  abstain: "did not abstain for",
 };
 
-/** `<run id>:<kind>:<code>` → "missed P011". An id of another form is shown as it is. */
+const SLUG_KINDS = new Set(["missed_finding", "leaked", "abstain"]);
+
+/** `<run id>:<kind>:<code>` → "missed P011", "missed finding severe headache". An id of another form is shown as it is. */
 export function describeScoringError(id: string): string {
   const [, kind, code, ...rest] = id.split(":");
   if (!kind || !code || rest.length > 0 || !ERROR_KINDS[kind]) return id;
-  return `${ERROR_KINDS[kind]} ${code}`;
+  return `${ERROR_KINDS[kind]} ${SLUG_KINDS.has(kind) ? code.replace(/-/g, " ") : code}`;
 }
 
 /**

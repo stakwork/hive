@@ -2,7 +2,8 @@
  * A proposed change to a graph, as the workbench draws it before anyone has
  * approved it. Endpoints name nodes loosely — a ref_id, a concept's own id,
  * or a name — because proposals do; `findNode` resolves them against what's
- * loaded, and anything it can't resolve is drawn as a new node.
+ * loaded, and an end of a new edge it can't resolve is drawn as a new node
+ * (an edge to remove needs both ends loaded, or there is nothing to draw).
  */
 
 import { bounded } from "@/lib/strut-chat-activity";
@@ -19,7 +20,9 @@ export type GraphChange =
   | { kind: "node"; name: string; type?: string; parent?: string; description?: string; docs?: string }
   | (NodeEdit & { node: string })
   /** An edge that would be added. */
-  | { kind: "edge"; edge: string; source: string; target: string };
+  | { kind: "edge"; edge: string; source: string; target: string }
+  /** An edge that would be removed. */
+  | { kind: "unlink"; edge: string; source: string; target: string };
 
 const MAX_CHANGES = 50;
 const MAX_TEXT = 100_000;
@@ -51,11 +54,12 @@ function parseChange(raw: unknown): GraphChange | null {
       const after = typeof r.after === "string" && r.after.length <= MAX_TEXT ? r.after : null;
       return node && before !== null && after !== null ? { kind: r.kind, node, before, after } : null;
     }
-    case "edge": {
+    case "edge":
+    case "unlink": {
       const edge = str(r.edge);
       const source = str(r.source);
       const target = str(r.target);
-      return edge && source && target ? { kind: "edge", edge, source, target } : null;
+      return edge && source && target ? { kind: r.kind, edge, source, target } : null;
     }
     default:
       return null;

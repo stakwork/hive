@@ -13,7 +13,7 @@ const MAX_X_LABELS = 8;
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
 /**
- * One task's F1 over time: one dot per scored run — a run of its own or one
+ * One task's score over time: one dot per scored run — a run of its own or one
  * iteration of a climb — the line through them the best so far. A dot below
  * the line is drawn hollow. Clicking a dot opens what it stands for.
  * `target` draws a dashed line at a climb's target; `highlight` shades the
@@ -99,7 +99,7 @@ export function OpenHealthClimbChart({
         className="w-full overflow-visible"
         style={{ height }}
         role="img"
-        aria-label={`F1 over ${points.length} scored runs, latest ${formatScore(last.f1)}`}
+        aria-label={`Score over ${points.length} scored runs, latest ${formatScore(last.f1)}`}
       >
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
           {[0, 0.5, 1].map((v) => (
@@ -231,7 +231,7 @@ export function OpenHealthClimbChart({
           style={{ left: tipLeft, minWidth: 120 }}
           data-testid="openhealth-climb-tooltip"
         >
-          <div className="font-semibold tabular-nums text-popover-foreground">F1 {formatScore(hovered.f1)}</div>
+          <div className="font-semibold tabular-nums text-popover-foreground">Score {formatScore(hovered.f1)}</div>
           <div className="text-muted-foreground">
             {hovered.gtId !== null ? `task ${hovered.gtId} · ` : ""}
             {hovered.climb ? `climb, run ${hovered.climb.iteration + 1} · ` : ""}

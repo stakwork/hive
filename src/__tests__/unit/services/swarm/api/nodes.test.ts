@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, getReferencedNodeCentrality, searchNodesByAttributes } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, findEdgeByEndpoints, listIncomingEdges, isMutedEdge, getReferencedNodeCentrality, searchNodesByAttributes } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -1042,6 +1042,36 @@ describe("deleteEdge", () => {
       expect(result.success).toBe(false);
       expect(result.notFound).toBe(true);
     });
+
+    test("reads Jarvis's 200 + Warning 'No edge found' body as notFound", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: "Warning",
+          status_messages: ["Warning: No edge found with ref_id: edge-gone"],
+        }),
+      });
+
+      const result = await deleteEdge(config, "edge-gone");
+
+      expect(result).toMatchObject({ success: false, notFound: true });
+      expect(result.error).toContain("No edge found");
+    });
+
+    test("reads a 200 + Error body as a failure", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "Error", status_messages: ["ERROR: boom"] }),
+      });
+
+      const result = await deleteEdge(config, "edge-1");
+
+      expect(result.success).toBe(false);
+      expect(result.notFound).toBeUndefined();
+      expect(result.error).toContain("boom");
+    });
   });
 
   describe("Failure cases", () => {
@@ -1066,6 +1096,164 @@ describe("deleteEdge", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe("Timeout");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isMutedEdge / findEdgeByEndpoints / listIncomingEdges
+// ---------------------------------------------------------------------------
+
+describe("isMutedEdge", () => {
+  test("is true for a muted or soft-deleted edge and false otherwise", () => {
+    expect(isMutedEdge({ is_muted: true })).toBe(true);
+    expect(isMutedEdge({ is_deleted: true })).toBe(true);
+    expect(isMutedEdge({ is_muted: false })).toBe(false);
+    expect(isMutedEdge({})).toBe(false);
+    expect(isMutedEdge(undefined)).toBe(false);
+  });
+});
+
+/** An expand=edges answer: the queried node, its neighbours and the edges among them. */
+function expanded(nodes: Array<[string, string]>, edges: Array<Record<string, unknown>>) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      nodes: nodes.map(([ref_id, name]) => ({ ref_id, node_type: "Concept", properties: { name } })),
+      edges,
+    }),
+  };
+}
+
+describe("findEdgeByEndpoints", () => {
+  test("reads the source side with the edge type filtered, and names both ends", async () => {
+    mockFetch.mockResolvedValueOnce(
+      expanded(
+        [
+          ["parent", "Coding"],
+          ["child", "Security"],
+        ],
+        [{ ref_id: "e-1", source: "parent", target: "child", edge_type: "PARENT_OF", properties: {} }],
+      ),
+    );
+
+    const result = await findEdgeByEndpoints(config, {
+      source_ref_id: "parent",
+      edge_type: "PARENT_OF",
+      target_ref_id: "child",
+    });
+
+    expect(result).toEqual({
+      success: true,
+      status: "success",
+      ref_id: "e-1",
+      edge: { ref_id: "e-1", properties: {}, source_name: "Coding", target_name: "Security" },
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const url = new URL(mockFetch.mock.calls[0][0] as string);
+    expect(url.pathname).toBe("/v2/nodes/parent");
+    expect(url.searchParams.get("expand")).toBe("edges");
+    expect(url.searchParams.get("edge_type")).toBe('["PARENT_OF"]');
+    expect(url.searchParams.get("limit")).toBe("500");
+  });
+
+  test("falls back to the target side when the source side doesn't list the edge", async () => {
+    mockFetch
+      .mockResolvedValueOnce(expanded([["parent", "Coding"]], []))
+      .mockResolvedValueOnce(
+        expanded(
+          [["child", "Security"]],
+          [{ ref_id: "e-2", source: "parent", target: "child", edge_type: "PARENT_OF", properties: {} }],
+        ),
+      );
+
+    const result = await findEdgeByEndpoints(config, {
+      source_ref_id: "parent",
+      edge_type: "PARENT_OF",
+      target_ref_id: "child",
+    });
+
+    expect(result.edge?.ref_id).toBe("e-2");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(new URL(mockFetch.mock.calls[1][0] as string).pathname).toBe("/v2/nodes/child");
+  });
+
+  test("treats a muted edge, the reverse direction and another type as absent", async () => {
+    const edges = [
+      { ref_id: "muted", source: "parent", target: "child", edge_type: "PARENT_OF", properties: { is_muted: true } },
+      { ref_id: "reverse", source: "child", target: "parent", edge_type: "PARENT_OF", properties: {} },
+      { ref_id: "other", source: "parent", target: "child", edge_type: "RELATED_TO", properties: {} },
+    ];
+    mockFetch.mockResolvedValueOnce(expanded([], edges)).mockResolvedValueOnce(expanded([], edges));
+
+    const result = await findEdgeByEndpoints(config, {
+      source_ref_id: "parent",
+      edge_type: "PARENT_OF",
+      target_ref_id: "child",
+    });
+
+    expect(result).toEqual({ success: true, status: "success" });
+  });
+
+  test("rejects an unsafe ref_id or edge type without calling Jarvis", async () => {
+    const bad = await findEdgeByEndpoints(config, { source_ref_id: "a b", edge_type: "PARENT_OF", target_ref_id: "c" });
+    expect(bad.success).toBe(false);
+    expect(bad.message).toContain("Invalid ref_id");
+
+    const badType = await findEdgeByEndpoints(config, {
+      source_ref_id: "a",
+      edge_type: 'X"]; DROP',
+      target_ref_id: "c",
+    });
+    expect(badType.success).toBe(false);
+    expect(badType.message).toContain("Invalid edge_type");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test("surfaces a failed read", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 503, text: async () => "down" });
+
+    const result = await findEdgeByEndpoints(config, { source_ref_id: "a", edge_type: "PARENT_OF", target_ref_id: "c" });
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe("503");
+  });
+});
+
+describe("listIncomingEdges", () => {
+  test("lists the live edges of the type pointing at the node, with their sources' names", async () => {
+    mockFetch.mockResolvedValueOnce(
+      expanded(
+        [
+          ["node", "Security"],
+          ["p1", "Coding"],
+          ["p2", "Ops"],
+          ["kid", "SSRF"],
+        ],
+        [
+          { ref_id: "e-1", source: "p1", target: "node", edge_type: "PARENT_OF", properties: {} },
+          { ref_id: "e-2", source: "p2", target: "node", edge_type: "PARENT_OF", properties: { is_muted: true } },
+          { ref_id: "e-3", source: "node", target: "kid", edge_type: "PARENT_OF", properties: {} },
+          { ref_id: "e-4", source: "node", target: "node", edge_type: "PARENT_OF", properties: {} },
+        ],
+      ),
+    );
+
+    const result = await listIncomingEdges(config, { ref_id: "node", edge_type: "PARENT_OF" });
+
+    expect(result).toEqual({
+      success: true,
+      status: "success",
+      edges: [{ ref_id: "e-1", source_ref_id: "p1", source_name: "Coding", properties: {} }],
+    });
+  });
+
+  test("returns no edges and the failure when the read fails", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Timeout"));
+
+    const result = await listIncomingEdges(config, { ref_id: "node", edge_type: "PARENT_OF" });
+
+    expect(result).toMatchObject({ success: false, edges: [] });
   });
 });
 

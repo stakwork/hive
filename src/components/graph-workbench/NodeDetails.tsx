@@ -241,7 +241,10 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
   const node = graph?.nodes[id];
   const isNew = node?.proposed === "new";
   const edit = node?.edit;
-  const links = pending.links.filter((l) => l.source === id || l.target === id);
+  const links = [
+    ...pending.links.map((l) => ({ ...l, going: false })),
+    ...pending.unlinks.map((l) => ({ ...l, going: true })),
+  ].filter((l) => l.source === id || l.target === id);
   // A proposed node isn't in the graph yet: nothing to read.
   const { data, error, isLoading: loading } = useQuery({ ...connectionsQuery(slug, id), enabled: !isNew });
   const name = node?.name ?? data?.node.name ?? (loading ? "Loading…" : id);
@@ -302,10 +305,14 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
             const other = l.source === id ? l.target : l.source;
             return (
               <button
-                key={`${l.edge}:${l.source}>${l.target}`}
+                key={`${l.going ? "going" : "proposed"}:${l.edge}:${l.source}>${l.target}`}
                 type="button"
                 onClick={() => select(other)}
-                className="flex w-full items-center gap-2 rounded-md border border-dashed border-emerald-500 px-2 py-1 text-left text-xs hover:bg-accent/50"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md border border-dashed px-2 py-1 text-left text-xs hover:bg-accent/50",
+                  l.going ? "border-rose-500" : "border-emerald-500",
+                )}
+                title={l.going ? "This link would be removed" : "This link would be added"}
               >
                 <span className="text-muted-foreground">{l.source === id ? "→" : "←"}</span>
                 <span className="font-mono text-[11px]">{l.edge}</span>

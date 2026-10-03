@@ -49,7 +49,21 @@ const RUN: OpenHealthRunDetail = {
   gtId: 8274,
   patientId: 1675,
   difficulty: "medium",
-  scores: { f1: 1, official: 0.92, contested: 1, recall: 1, precision: 1, tier: "A", nMatched: 12, nGt: 12, nPred: 12 },
+  task: "patient_diagnosis",
+  variant: null,
+  specialty: null,
+  scores: {
+    f1: 1,
+    metric: "weighted_problem_list_f1_neutral",
+    official: 0.92,
+    contested: 1,
+    recall: 1,
+    precision: 1,
+    tier: "A",
+    nMatched: 12,
+    nGt: 12,
+    nPred: 12,
+  },
   costUsd: 1.2,
   durationMs: 174_000,
   error: null,
@@ -57,9 +71,14 @@ const RUN: OpenHealthRunDetail = {
   settledAt: "2026-10-02T22:18:00.000Z",
   title: "context_summarization gt 8274 patient 1675",
   namespace: "oh-public-p1675",
+  clinicalQuestion: null,
   matched: [{ pred: "Hypertension", gt: "Hypertension" }],
   missed: [],
   extra: [],
+  found: [],
+  summaryWords: null,
+  criticalCount: null,
+  metrics: {},
   chart: {
     chartChars: 5849,
     sectionCount: 36,
@@ -82,6 +101,7 @@ function step(overrides: Partial<OpenHealthClimbStep>): OpenHealthClimbStep {
     iteration: 0,
     outcome: "succeeded",
     f1: 0.6,
+    metric: null,
     f1Official: null,
     contested: [],
     recall: null,
@@ -109,6 +129,9 @@ const CLIMB: OpenHealthClimb = {
   strutRunId: "1790979304680",
   gtId: 8274,
   difficulty: "medium",
+  task: "patient_diagnosis",
+  variant: null,
+  specialty: null,
   status: "reached",
   stopReason: "Run 2 scored 1.00.",
   targetF1: 1,
@@ -168,6 +191,27 @@ describe("the run viewer", () => {
       `/w/hive/context/graph?ref_id=${CONTEST.refId}`,
     );
     expect(screen.getByTestId("openhealth-run-contests-rejected").textContent).toContain("Upper abdominal pain");
+  });
+
+  it("shows the contested list on a summary run too", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      const body = url.endsWith("/improve")
+        ? { improvements: [] }
+        : {
+            ...RUN,
+            task: "context_summarization",
+            scores: { ...RUN.scores!, metric: "clinical_f1", recall: null, precision: null, tier: null },
+            matched: [],
+            found: ["Hypertension", "Headache"],
+            summaryWords: 437,
+          };
+      return { ok: true, json: async () => body } as Response;
+    });
+    render(<OpenHealthRunViewer runId="run-1" />);
+    await waitFor(() => expect(screen.getByTestId("openhealth-run-contested")).toBeDefined());
+    expect(screen.getByTestId("openhealth-run-found").textContent).toContain("Hypertension");
+    expect(screen.getByTestId("openhealth-contested-note").textContent).toBe("0.92 official · 1 contested");
+    expect(screen.getByTestId("openhealth-run-contested").textContent).toContain("Primigravida");
   });
 
   it("shows nothing about contests on a run that had none", async () => {

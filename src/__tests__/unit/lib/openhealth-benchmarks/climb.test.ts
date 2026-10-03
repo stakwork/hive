@@ -201,7 +201,8 @@ describe("projectOpenHealthClimbEvents", () => {
 });
 
 describe("toOpenHealthClimb", () => {
-  const difficultyFor = (gtId: number) => (gtId === 7013 ? ("medium" as const) : null);
+  const difficultyFor = (gtId: number) =>
+    gtId === 7013 ? { difficulty: "medium" as const, task: "patient_diagnosis" as const, variant: null, specialty: null } : null;
 
   it("reads a climb that reached its target from the loop's output", () => {
     const climb = toOpenHealthClimb(
@@ -224,6 +225,9 @@ describe("toOpenHealthClimb", () => {
       strutRunId: "1790830428092",
       gtId: 7013,
       difficulty: "medium",
+      task: "patient_diagnosis",
+      variant: null,
+      specialty: null,
       status: "reached",
       stopReason: "Run 2 scored 1.00.",
       targetF1: 1,
@@ -449,7 +453,51 @@ describe("toOpenHealthClimb", () => {
     expect(toOpenHealthClimb(row({ input: {}, output: { history: [] } }), difficultyFor)).toMatchObject({
       gtId: null,
       difficulty: null,
+      task: "patient_diagnosis",
     });
+  });
+
+  it("reads a summary climb: the benchmark from the launch, each run's score by its headline", () => {
+    const summaryRun = {
+      gtId: 8290,
+      task: "context_summarization",
+      variant: "specialty_conditioned",
+      specialty: "Dermatology",
+      metric: "conditioned_f1",
+      score: 0.4,
+      found: ["Psoriasis"],
+      missed: ["Nail pitting"],
+      extra: ["Hypertension"],
+      metrics: { conditioned_f1: 0.4, primary_recall_critical: 0.5, leakage_rate: 0.3 },
+      weighted_problem_list_f1_neutral: null,
+      produceCost: 0.5,
+    };
+    const history = [{ iteration: 0, score: 0.4, metric: "conditioned_f1", missed: ["Nail pitting"], extra: ["Hypertension"], improved: false }];
+    const events = projectOpenHealthClimbEvents([
+      ev("step.start", `${ROOT}/loop#0`, { ts: "2026-10-02T00:00:00.000Z" }),
+      ev("step.start", `${ROOT}/loop#0/run`),
+      ev("step.end", `${ROOT}/loop#0/run`, { output: summaryRun }),
+      ev("step.skipped", `${ROOT}/loop#0/improve`),
+      ev("step.end", `${ROOT}/loop#0`, { output: { iteration: 0, score: 0.4, history } }),
+    ]);
+    const climb = toOpenHealthClimb(
+      row({ input: { gtId: 8290, task: "context_summarization", target: 1, maxRuns: 1 }, output: { stopReason: "max_runs", history } }),
+      (gtId) =>
+        gtId === 8290 ? { difficulty: "easy", task: "context_summarization", variant: "specialty_conditioned", specialty: "Dermatology" } : null,
+      events,
+    );
+    expect(climb).toMatchObject({
+      task: "context_summarization",
+      variant: "specialty_conditioned",
+      specialty: "Dermatology",
+      difficulty: "easy",
+      status: "exhausted",
+      bestF1: 0.4,
+      bestRecall: 0.5,
+    });
+    expect(climb.bestPrecision).toBeCloseTo(0.7);
+    expect(climb.steps[0]).toMatchObject({ f1: 0.4, metric: "conditioned_f1", missed: ["Nail pitting"], extra: ["Hypertension"], costUsd: 0.5 });
+    expect(events.iterations[0]).toMatchObject({ f1: 0.4, metric: "conditioned_f1", recall: 0.5 });
   });
 });
 

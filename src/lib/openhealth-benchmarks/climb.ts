@@ -16,7 +16,9 @@
  * from the next run on.
  *
  * Like `runs.ts`, everything reads the workflow's fields one by one, so an
- * output of another shape degrades to nulls and empty lists. The improve
+ * output of another shape degrades to nulls and empty lists, and a run's
+ * score is read through `headlineOf` (`metric` + `score`, else the
+ * diagnosis key). The improve
  * files the history names (`report`, `analysis`, `backup`, `problemList`)
  * are paths on the lab and are not carried over.
  */
@@ -31,7 +33,7 @@ import type {
   OpenHealthStage,
 } from "@/types/openhealth";
 import { contestNames, rejectedContestsOf } from "./contests";
-import { openHealthRunCost, type DifficultyLookup } from "./runs";
+import { benchmarkOfRow, headlineOf, openHealthRunCost, type OpenHealthCatalogueLookup } from "./runs";
 import { projectOpenHealthStages } from "./stages";
 
 /** The target a climb is given when the member picks none. */
@@ -85,6 +87,7 @@ export interface OpenHealthClimbIterationEvents {
   improve: OpenHealthClimbPhase;
   /** From the benchmark run's output, once it ended. */
   f1: number | null;
+  metric: string | null;
   f1Official: number | null;
   contested: string[];
   recall: number | null;
@@ -148,6 +151,7 @@ export function projectOpenHealthClimbEvents(events: unknown): OpenHealthClimbEv
         run: "pending",
         improve: "pending",
         f1: null,
+        metric: null,
         f1Official: null,
         contested: [],
         recall: null,
@@ -183,11 +187,13 @@ export function projectOpenHealthClimbEvents(events: unknown): OpenHealthClimbEv
       it.run = phaseAfter(event.type, it.run);
       if (ENDED.has(event.type)) {
         const output = record(event.output);
-        it.f1 = num(output.weighted_problem_list_f1_neutral);
+        const headline = headlineOf(output);
+        it.f1 = headline?.score ?? null;
+        it.metric = headline?.metric ?? null;
         it.f1Official = num(output.scoreOfficial);
         it.contested = contestNames(output.contested);
-        it.recall = num(output.problem_list_recall);
-        it.precision = num(output.problem_list_precision_neutral);
+        it.recall = headline?.recall ?? null;
+        it.precision = headline?.precision ?? null;
         it.missed = strings(output.missed);
         it.extra = strings(output.extra);
         it.costUsd = openHealthRunCost(output);
@@ -227,6 +233,7 @@ export interface OpenHealthClimbSource {
 
 const EMPTY_STEP = {
   f1: null,
+  metric: null as string | null,
   f1Official: null,
   contested: [] as string[],
   recall: null,
@@ -291,6 +298,7 @@ function stepsOf(
     steps.push(
       benchmarkStep(iteration, "succeeded", {
         f1: num(entry.score),
+        metric: str(entry.metric) ?? ev?.metric ?? null,
         f1Official: num(entry.scoreOfficial),
         contested: contestNames(entry.contested),
         // The history records no recall or precision today; the log has them.
@@ -323,6 +331,7 @@ function stepsOf(
     steps.push(
       benchmarkStep(it.iteration, outcome, {
         f1: it.f1,
+        metric: it.metric,
         f1Official: it.f1Official,
         contested: it.contested,
         recall: it.recall,
@@ -389,12 +398,13 @@ function statusOf(
 
 export function toOpenHealthClimb(
   row: OpenHealthClimbSource,
-  difficultyFor?: DifficultyLookup,
+  catalogue?: OpenHealthCatalogueLookup,
   events?: OpenHealthClimbEvents | null,
 ): OpenHealthClimb {
   const input = record(row.input);
   const output = record(row.output);
   const gtId = num(input.gtId) ?? num(output.gtId);
+  const entry = gtId !== null ? (catalogue?.(gtId) ?? null) : null;
   const rules = {
     targetF1: num(input.target) ?? WORKFLOW_DEFAULT_TARGET,
     maxRuns: num(input.maxRuns) ?? WORKFLOW_DEFAULT_RUNS,
@@ -438,7 +448,9 @@ export function toOpenHealthClimb(
     id: row.id,
     strutRunId: row.strutRunId,
     gtId,
-    difficulty: gtId === null ? null : (difficultyFor?.(gtId) ?? null),
+    difficulty: entry?.difficulty ?? null,
+    // The loop's output names no benchmark; the launch does, else the catalogue.
+    ...benchmarkOfRow(input, output, entry),
     status,
     stopReason,
     targetF1: rules.targetF1,

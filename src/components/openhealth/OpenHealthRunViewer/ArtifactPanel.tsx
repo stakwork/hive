@@ -64,8 +64,34 @@ function ProblemList({ text }: { text: string }) {
   );
 }
 
+/** The model's answer: `{ summary }`. Null when the file is not one. */
+export function parseSummary(text: string): string | null {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return isRecord(parsed) && typeof parsed.summary === "string" ? parsed.summary : null;
+  } catch {
+    return null;
+  }
+}
+
+const words = (text: string) => text.split(/\s+/).filter(Boolean).length;
+
+function Summary({ text }: { text: string }) {
+  const summary = parseSummary(text);
+  if (summary === null) return <pre className="overflow-auto p-4 font-mono text-xs">{text}</pre>;
+  const sentences = summary.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0).length;
+  return (
+    <div className="space-y-2 p-4" data-testid="openhealth-summary-text">
+      <p className="text-xs text-muted-foreground">
+        {words(summary)} words · {sentences} {sentences === 1 ? "sentence" : "sentences"}
+      </p>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed">{summary || "(empty)"}</p>
+    </div>
+  );
+}
+
 /** One of the run's files, fetched when its panel opens. */
-export function ArtifactPanel({ endpoint, kind }: { endpoint: string; kind: "problem-list" | "markdown" }) {
+export function ArtifactPanel({ endpoint, kind }: { endpoint: string; kind: "problem-list" | "summary" | "markdown" }) {
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,6 +121,7 @@ export function ArtifactPanel({ endpoint, kind }: { endpoint: string; kind: "pro
     );
   }
   if (kind === "problem-list") return <ProblemList text={text} />;
+  if (kind === "summary") return <Summary text={text} />;
   return (
     <div className="max-h-[640px] overflow-auto p-4">
       <MarkdownRenderer size="compact">{text}</MarkdownRenderer>

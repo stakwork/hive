@@ -49,6 +49,7 @@ beforeEach(() => {
 describe("artifacts", () => {
   it.each([
     ["problem-list", "gt-7532/output/problem-list.json", "application/json; charset=utf-8"],
+    ["summary", "gt-7532/output/summary.json", "application/json; charset=utf-8"],
     ["timeline", "gt-7532/timeline.md", "text/markdown; charset=utf-8"],
     ["checklist", "gt-7532/checklist.md", "text/markdown; charset=utf-8"],
   ])("serves %s from the run's own folder", async (name, path, contentType) => {

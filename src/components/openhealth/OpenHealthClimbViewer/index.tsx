@@ -7,8 +7,9 @@ import { PillSection } from "@/components/legal/PillSection";
 import { StrutRunGraph } from "@/components/strut-run-graph";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { openHealthClimbStepPath } from "@/lib/openhealth-benchmarks/climb";
+import { openHealthDeliverable } from "@/lib/openhealth-benchmarks/constants";
 import type { OpenHealthClimb, OpenHealthClimbStep, OpenHealthContestRejected } from "@/types/openhealth";
-import { formatCost, formatScore, formatWhen } from "../format";
+import { formatCost, formatMetric, formatScore, formatWhen } from "../format";
 import { OpenHealthClimbStrip } from "../OpenHealthClimbStrip";
 import { ArtifactPanel } from "../OpenHealthRunViewer/ArtifactPanel";
 import { CONTESTED_TEXT, ContestedNote, DiagnosisList, Stages, Stat } from "../parts";
@@ -16,7 +17,10 @@ import { CONTESTED_TEXT, ContestedNote, DiagnosisList, Stages, Stat } from "../p
 /** Poll cadence while the climb is in flight. */
 const POLL_MS = 10_000;
 
-type Panel = "graph" | "problem-list" | "timeline" | "checklist";
+type Panel = "graph" | "problem-list" | "summary" | "timeline" | "checklist";
+
+/** Columns for the lists under a run's scores, by how many there are. */
+const LIST_COLUMNS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3"];
 
 function NameList({
   title,
@@ -74,7 +78,9 @@ function RejectedContests({ items }: { items: OpenHealthContestRejected[] }) {
   );
 }
 
-function BenchmarkStep({ step }: { step: OpenHealthClimbStep }) {
+function BenchmarkStep({ step, climb }: { step: OpenHealthClimbStep; climb: OpenHealthClimb }) {
+  const summary = climb.task === "context_summarization";
+  const specialty = climb.variant === "specialty_conditioned";
   if (step.outcome === "running") {
     return (
       <div className="rounded-lg border bg-card px-4 py-3" data-testid="openhealth-climb-step-running">
@@ -103,28 +109,39 @@ function BenchmarkStep({ step }: { step: OpenHealthClimbStep }) {
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4" data-testid="openhealth-climb-step-scores">
         <Stat
-          label="Weighted F1"
+          label={formatMetric(step.metric ?? (summary ? null : "weighted_problem_list_f1_neutral"))}
           value={formatScore(step.f1)}
           sub={<ContestedNote official={step.f1Official} contested={step.contested.length} />}
           emphasis
         />
-        <Stat label="Missed / extra" value={`${step.missed.length} / ${step.extra.length}`} />
+        <Stat
+          label={summary ? (specialty ? "Missed / leaked" : "Missed") : "Missed / extra"}
+          value={summary && !specialty ? step.missed.length : `${step.missed.length} / ${step.extra.length}`}
+        />
         <Stat label="Cost" value={formatCost(step.costUsd)} />
         <Stat label="Started" value={step.startedAt ? formatWhen(step.startedAt) : "—"} />
       </div>
-      <div className={`grid gap-3 ${step.contested.length > 0 ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+      <div
+        className={`grid gap-3 ${LIST_COLUMNS[1 + (!summary || specialty ? 1 : 0) + (step.contested.length > 0 ? 1 : 0)]}`}
+      >
         <DiagnosisList
           title="Missed"
-          hint="In the answer key, not in the model's list"
+          hint={summary ? "In the answer key, not named in the summary" : "In the answer key, not in the model's list"}
           testId="openhealth-climb-step-missed"
           items={step.missed}
         />
-        <DiagnosisList
-          title="Extra"
-          hint="In the model's list, matched nothing"
-          testId="openhealth-climb-step-extra"
-          items={step.extra}
-        />
+        {(!summary || specialty) && (
+          <DiagnosisList
+            title={summary ? "Leaked" : "Extra"}
+            hint={
+              summary
+                ? "Findings outside the specialty that the summary mentions"
+                : "In the model's list, matched nothing"
+            }
+            testId="openhealth-climb-step-extra"
+            items={step.extra}
+          />
+        )}
         <NameList
           title="Contested"
           hint="In the answer key, but the chart contradicts it: excluded from the score"
@@ -285,6 +302,9 @@ export function OpenHealthClimbViewer({
   const step = index >= 0 ? climb.steps[index] : null;
   const toggle = (name: Panel) => (open: boolean) => setPanel(open ? name : null);
   const files = step?.kind === "benchmark" && step.outcome === "succeeded" ? `?iteration=${step.iteration}` : null;
+  // The run's deliverable: a problem list, or a summary.
+  const deliverable = openHealthDeliverable(climb.task);
+  const deliverableLabel = deliverable === "summary" ? "Summary" : "Problem list";
 
   return (
     <div className="space-y-4" data-testid="openhealth-climb-viewer">
@@ -301,7 +321,7 @@ export function OpenHealthClimbViewer({
           <p className="text-sm font-semibold">
             {step.kind === "benchmark" ? `Run ${step.iteration + 1}` : `Improve after run ${step.iteration + 1}`}
           </p>
-          {step.kind === "benchmark" ? <BenchmarkStep step={step} /> : <ImproveStep step={step} />}
+          {step.kind === "benchmark" ? <BenchmarkStep step={step} climb={climb} /> : <ImproveStep step={step} />}
         </div>
       )}
 
@@ -322,12 +342,12 @@ export function OpenHealthClimbViewer({
           {files && (
             <>
               <PillSection
-                label="Problem list"
-                open={panel === "problem-list"}
-                onOpenChange={toggle("problem-list")}
-                testId="openhealth-climb-problem-list"
+                label={deliverableLabel}
+                open={panel === deliverable}
+                onOpenChange={toggle(deliverable)}
+                testId={`openhealth-climb-${deliverable}`}
               >
-                <ArtifactPanel endpoint={`${base}/artifacts/problem-list${files}`} kind="problem-list" />
+                <ArtifactPanel endpoint={`${base}/artifacts/${deliverable}${files}`} kind={deliverable} />
               </PillSection>
               <PillSection
                 label="Timeline"
