@@ -198,6 +198,34 @@ describe("RecentChatsPopup", () => {
     });
   });
 
+  test("prepends a local Untitled row and restores it without a GET", async () => {
+    global.fetch = buildFetch(mockRecentItems, {
+      "conv-1": mockConversationOwner,
+    });
+
+    render(
+      <RecentChatsPopup
+        {...defaultProps}
+        unsavedDraft="typed but not sent"
+      />,
+    );
+    await userEvent.click(screen.getByText("Recent Chats"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Untitled")).toBeInTheDocument();
+      expect(screen.getByText("typed but not sent")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("Untitled"));
+
+    expect(mockOnLoadConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ local: true, conversationId: null, messages: [] }),
+    );
+    const urls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+    expect(urls.some((url) => url.includes("__new__"))).toBe(false);
+    expect(urls.some((url) => url.includes("/chat/conversations/"))).toBe(false);
+  });
+
   test("maps messages correctly from stored format to local Message[]", async () => {
     global.fetch = buildFetch([mockRecentItems[0]], { "conv-1": mockConversationOwner });
 

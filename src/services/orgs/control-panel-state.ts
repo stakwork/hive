@@ -136,12 +136,23 @@ export interface ActiveChatSnapshot {
   isStreaming: boolean;
   /** Store title when set (LLM / seeded); null while still generating. */
   title: string | null;
+  /** Unsent composer text, when the slot has a draft. Not a message. */
+  draft?: string | null;
+  /** True when the slot has pending attachments and no draft text. */
+  hasPendingFiles?: boolean;
 }
 
 function sinceYouOf(chat: ActiveChatSnapshot): string {
   if (chat.isStreaming) return "Jamie is replying";
   if (chat.lastReply) return previewLine(chat.lastReply);
+  if (chat.draft?.trim()) return previewLine(chat.draft);
+  if (chat.hasPendingFiles) return "Unsent attachment";
   return chat.hasMessages ? "No reply yet" : "Empty chat";
+}
+
+/** A draft or pending files makes an otherwise empty slot listable. */
+export function chatIsListable(chat: ActiveChatSnapshot): boolean {
+  return chat.hasMessages || !!chat.draft?.trim() || !!chat.hasPendingFiles;
 }
 
 /**
@@ -155,6 +166,8 @@ export function unlistedOnStageChatTitle(
 ): string {
   if (chat.title) return chat.title;
   if (chat.hasMessages && messages) return generateTitle(messages);
+  if (chat.draft?.trim()) return previewLine(chat.draft);
+  if (chat.hasPendingFiles) return "Unsent attachment";
   return "New chat";
 }
 
@@ -321,35 +334,73 @@ export function moveChatToActive(
  * row already holds it; only a brand-new chat (in neither list) is prepended
  * into Active.
  */
+function prependUnlisted(
+  items: ControlPanelItem[],
+  chat: ActiveChatSnapshot,
+  startedAt: string,
+  title: string,
+): ControlPanelItem[] {
+  const row = activeChatItem(chat, startedAt, title);
+  if (items.some((item) => item.key === row.key)) return items;
+  return [row, ...items];
+}
+
+/**
+ * Place the on-stage chat into Active or Archive without re-injecting an
+ * archived chat into the active list. Overlay live store data onto whichever
+ * row already holds it; a brand-new chat (in neither list) is prepended
+ * into Active when it is on stage or listable (messages, draft, or files).
+ *
+ * `unsavedSlots` are other in-memory chats with no server id that the user
+ * has touched. They stay listed when the user switches away. Session-only.
+ */
 export function resolveControlPanelLists(
   items: ControlPanelItem[],
   archivedItems: ControlPanelItem[],
   activeChat: ActiveChatSnapshot | null,
-  opts: { chatOnStage: boolean; startedAt: string; titleForNew: string },
+  opts: {
+    chatOnStage: boolean;
+    startedAt: string;
+    titleForNew: string;
+    unsavedSlots?: ActiveChatSnapshot[];
+  },
 ): { displayItems: ControlPanelItem[]; displayArchivedItems: ControlPanelItem[] } {
+  let displayItems = items;
+  for (const slot of opts.unsavedSlots ?? []) {
+    if (slot.serverId) continue;
+    if (activeChat && slot.localId === activeChat.localId) continue;
+    if (!chatIsListable(slot)) continue;
+    const title = slot.draft?.trim()
+      ? previewLine(slot.draft)
+      : slot.hasPendingFiles
+        ? "Unsent attachment"
+        : slot.title || "New chat";
+    displayItems = prependUnlisted(displayItems, slot, opts.startedAt, title);
+  }
+
   if (!activeChat) {
-    return { displayItems: items, displayArchivedItems: archivedItems };
+    return { displayItems, displayArchivedItems: archivedItems };
   }
   const key = `chat:${activeChat.serverId ?? activeChat.localId}`;
-  if (items.some((item) => item.key === key)) {
+  if (displayItems.some((item) => item.key === key)) {
     return {
-      displayItems: items.map((item) => (item.key === key ? overlayActiveChat(item, activeChat) : item)),
+      displayItems: displayItems.map((item) => (item.key === key ? overlayActiveChat(item, activeChat) : item)),
       displayArchivedItems: archivedItems,
     };
   }
   if (archivedItems.some((item) => item.key === key)) {
     return {
-      displayItems: items,
+      displayItems,
       displayArchivedItems: archivedItems.map((item) =>
         item.key === key ? overlayActiveChat(item, activeChat) : item,
       ),
     };
   }
-  if (!activeChat.hasMessages && !opts.chatOnStage) {
-    return { displayItems: items, displayArchivedItems: archivedItems };
+  if (!chatIsListable(activeChat) && !opts.chatOnStage) {
+    return { displayItems, displayArchivedItems: archivedItems };
   }
   return {
-    displayItems: [activeChatItem(activeChat, opts.startedAt, opts.titleForNew), ...items],
+    displayItems: prependUnlisted(displayItems, activeChat, opts.startedAt, opts.titleForNew),
     displayArchivedItems: archivedItems,
   };
 }
