@@ -5,11 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import type { GraphChange } from "./changes";
 import { DEFAULT_TREE, buildGraph, rootsOf, type TreeLens, type WorkbenchGraph, type WorkbenchNode } from "./model";
 import { NO_PENDING, applyChanges, findNode, type Pending } from "./pending";
-import { hierarchyQuery } from "./queries";
+import { connectionsQuery, hierarchyQuery } from "./queries";
 
 type CanvasMode = "tree" | "graph";
 
-interface WorkbenchState {
+interface WorkbenchState extends Pick<WorkbenchOptions, "nodeLink"> {
   slug: string;
   /** Which nodes make the trees, and the edge that runs from parent to child. */
   lens: TreeLens;
@@ -47,22 +47,29 @@ export function useWorkbench(): WorkbenchState {
 /** A node in the graph a host can point at: one that exists, not one a proposal would create. */
 export type SelectedNode = Pick<WorkbenchNode, "id" | "name" | "type">;
 
+export interface WorkbenchOptions {
+  /** Centre on this node when the graph loads (a deep link): its ref_id, own id or name — or the first of several that exists. */
+  initialFocusId?: string | readonly string[] | null;
+  /** Open on this node type's trees, rather than the default tree's. */
+  initialType?: string | null;
+  /** A proposal's changes, drawn dashed over the graph. */
+  changes?: GraphChange[];
+  /** The selected node, when it exists (not one a proposal would create) — keep it stable, it's an effect dependency. */
+  onSelectionChange?: (node: SelectedNode | null) => void;
+  /** A shareable link to a node. The host knows where its graph lives; without one there's no share button. */
+  nodeLink?: (node: Pick<SelectedNode, "id" | "type">) => string;
+}
+
 export function WorkbenchProvider({
   slug,
   initialFocusId,
+  initialType,
   changes,
   onSelectionChange,
+  nodeLink,
   children,
-}: {
-  slug: string;
-  /** Where to land: a node's ref_id, own id or name — or several, the first that exists. */
-  initialFocusId?: string | readonly string[] | null;
-  /** A proposal's changes to draw over the graph. */
-  changes?: GraphChange[];
-  onSelectionChange?: (node: SelectedNode | null) => void;
-  children: React.ReactNode;
-}) {
-  const [lens, setLensState] = useState<TreeLens>(DEFAULT_TREE);
+}: WorkbenchOptions & { slug: string; children: React.ReactNode }) {
+  const [lens, setLensState] = useState<TreeLens>(() => ({ ...DEFAULT_TREE, type: initialType || DEFAULT_TREE.type }));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ id: string | null; nonce: number }>({ id: null, nonce: 0 });
   const [rootId, setRootId] = useState<string | null>(null);
@@ -132,13 +139,28 @@ export function WorkbenchProvider({
     [lens, graph],
   );
 
-  const selected = selectedId ? graph?.nodes[selectedId] : undefined;
-  const selectedNode = selected && !selected.proposed ? selected : null;
+  const inTree = selectedId ? graph?.nodes[selectedId] : undefined;
+  // A node outside the trees (a neighbour, a Graph-mode click) is known from its own read: the one its details make.
+  const outside = !!selectedId && !!graph && !inTree;
+  const { data: read, isPending: reading } = useQuery({
+    ...connectionsQuery(slug, selectedId ?? ""),
+    enabled: outside,
+  });
+  const selectedNode: SelectedNode | null = inTree
+    ? inTree.proposed
+      ? null
+      : inTree
+    : outside && read
+      ? { id: read.node.id, name: read.node.name, type: read.node.type }
+      : null;
+  const resolving = outside && reading;
   useEffect(() => {
+    // A node outside the trees is reported once its read is in, not as nothing meanwhile.
+    if (resolving) return;
     onSelectionChange?.(selectedNode && { id: selectedNode.id, name: selectedNode.name, type: selectedNode.type });
     // Report a change of node, not every rebuild of the same one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNode?.id, selectedNode?.name, selectedNode?.type, onSelectionChange]);
+  }, [selectedNode?.id, selectedNode?.name, selectedNode?.type, resolving, onSelectionChange]);
 
   const value = useMemo<WorkbenchState>(
     () => ({
@@ -158,6 +180,7 @@ export function WorkbenchProvider({
       rootId,
       canvasMode,
       setCanvasMode,
+      nodeLink,
     }),
     [
       slug,
@@ -175,6 +198,7 @@ export function WorkbenchProvider({
       focusNode,
       rootId,
       canvasMode,
+      nodeLink,
     ],
   );
 

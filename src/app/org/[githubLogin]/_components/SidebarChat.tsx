@@ -21,6 +21,7 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
 import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
+import { GraphFocusChip } from "./GraphFocusChip";
 import { CanvasHistoryPopover } from "./CanvasHistoryPopover";
 import { CanvasAgentSettingsPopover } from "./CanvasAgentSettingsPopover";
 import { toast } from "sonner";
@@ -1122,6 +1123,9 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
           ))}
         </div>
       )}
+
+      {/* The graph node Jamie is told about, on the graph view. */}
+      <GraphFocusChip />
 
       {/* ── Composer ──────────────────────────────────────────────────── */}
       <form
