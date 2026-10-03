@@ -501,6 +501,101 @@ describe("toOpenHealthClimb", () => {
   });
 });
 
+describe("contested gold", () => {
+  /** One contested answer-key item, as the benchmark subflow's output names it. */
+  const CONTEST = {
+    id: "oh-context-summarization-public-8274-contested-must-include-findings-primigravida",
+    ref_id: "89aa4209-4e75-4715-959a-72ba20fbfe54",
+    list: "must_include_findings",
+    name: "Primigravida",
+    reason: "The chart documents a prior pregnancy.",
+    evidence: ['chart.md: "Cesarean section (low transverse, 2 years prior)"'],
+  };
+  const REFUSED = {
+    error_id: "1790972203341/iter-0:missed_finding:proteinuria",
+    why: "The quote is not in the chart.",
+  };
+
+  it("reads each run's official score and contested items, and each improve's contests, off the history", () => {
+    const history = [
+      entry(0, 0.92, true, {
+        scoreOfficial: 0.92,
+        contested: [],
+        contestsAccepted: ["Primigravida"],
+        contestsRejected: [REFUSED],
+      }),
+      entry(1, 1, false, { scoreOfficial: 0.92, contested: ["Primigravida"] }),
+    ];
+    const climb = toOpenHealthClimb(
+      row({
+        output: {
+          stopReason: "target_reached",
+          firstScore: 0.92,
+          finalScore: 1,
+          firstScoreOfficial: 0.92,
+          finalScoreOfficial: 0.92,
+          contested: ["Primigravida"],
+          history,
+        },
+      }),
+    );
+    expect(climb.steps[0]).toMatchObject({ kind: "benchmark", f1: 0.92, f1Official: 0.92, contested: [] });
+    expect(climb.steps[1]).toMatchObject({
+      kind: "improve",
+      contestsAccepted: ["Primigravida"],
+      contestsRejected: [{ error: REFUSED.error_id, reason: REFUSED.why }],
+    });
+    expect(climb.steps[2]).toMatchObject({ kind: "benchmark", f1: 1, f1Official: 0.92, contested: ["Primigravida"] });
+    expect(climb).toMatchObject({ status: "reached", bestF1: 1, bestF1Official: 0.92, contested: ["Primigravida"] });
+  });
+
+  it("reads them off the event log while the loop runs, and names the contested items from its steps", () => {
+    const at = `${ROOT}/loop#0`;
+    const events = projectOpenHealthClimbEvents([
+      ev("run.start", ROOT),
+      ev("step.start", `${ROOT}/loop`),
+      ev("step.start", at, { ts: "2026-10-02T22:15:00.000Z", iteration: 0 }),
+      ev("step.start", `${at}/run`),
+      ev("step.end", `${at}/run`, { output: runOutput(1, { scoreOfficial: 0.92, contested: [CONTEST] }) }),
+      ev("step.start", `${at}/improve`),
+      ev("step.end", `${at}/improve`, {
+        output: {
+          applied: true,
+          contests_accepted: [{ ...CONTEST, name: "Proteinuria" }],
+          contests_rejected: [REFUSED],
+        },
+      }),
+    ]);
+    expect(events.iterations[0]).toMatchObject({
+      f1: 1,
+      f1Official: 0.92,
+      contested: ["Primigravida"],
+      contestsAccepted: ["Proteinuria"],
+      contestsRejected: [{ error: REFUSED.error_id, reason: REFUSED.why }],
+    });
+
+    const climb = toOpenHealthClimb(row({ status: StrutRunStatus.PENDING, settledAt: null }), undefined, events);
+    expect(climb.steps[0]).toMatchObject({
+      kind: "benchmark",
+      outcome: "succeeded",
+      f1Official: 0.92,
+      contested: ["Primigravida"],
+    });
+    expect(climb.steps[1]).toMatchObject({ kind: "improve", outcome: "succeeded", contestsAccepted: ["Proteinuria"] });
+    expect(climb).toMatchObject({
+      status: "running",
+      bestF1Official: 0.92,
+      contested: ["Primigravida", "Proteinuria"],
+    });
+  });
+
+  it("has no official score and nothing contested for a climb before the loop reported them", () => {
+    const climb = toOpenHealthClimb(row({ output: { stopReason: "target_reached", history: [entry(0, 1, false)] } }));
+    expect(climb.steps[0]).toMatchObject({ f1Official: null, contested: [] });
+    expect(climb).toMatchObject({ bestF1Official: null, contested: [] });
+  });
+});
+
 describe("openHealthClimbStepPath", () => {
   it("is the step's subflow under the loop's run, as the event log names it", () => {
     expect(openHealthClimbStepPath({ kind: "benchmark", iteration: 0 })).toBe("loop#0/run");
