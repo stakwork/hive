@@ -509,7 +509,8 @@ export async function searchNodesByAttributes(
  *
  * `startingAfter` is jarvis' cursor (the last `ref_id` of the previous page);
  * `fields` restricts `properties` to the named keys so large bodies stay
- * server-side.
+ * server-side. An empty `nodeType` omits the type filter; `namespace` adds
+ * jarvis' `n.namespace = $namespace` partition filter.
  *
  * Never throws. Returns `{ ok }` so callers can distinguish a failed Jarvis
  * read from a legitimately empty result — `kgGetNodesByType` cannot.
@@ -518,12 +519,11 @@ export async function listNodesByType(
   config: JarvisConnectionConfig,
   nodeType: string,
   limit = 500,
-  options: { startingAfter?: string; fields?: string[] } = {},
+  options: { startingAfter?: string; fields?: string[]; namespace?: string } = {},
 ): Promise<SearchLatestResult> {
-  const params = new URLSearchParams({
-    type: nodeType,
-    limit: String(limit),
-  });
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (nodeType) params.set("type", nodeType);
+  if (options.namespace) params.set("namespace", options.namespace);
   if (options.startingAfter) params.set("starting_after", options.startingAfter);
   if (options.fields?.length) params.set("fields", options.fields.join(","));
 
@@ -1149,6 +1149,62 @@ export async function listIncomingEdges(
       };
     });
   return { success: true, status: "success", edges };
+}
+
+export interface JarvisGraphEdge {
+  source: string;
+  target: string;
+  edge_type: string;
+  properties?: Record<string, unknown>;
+}
+
+export interface NodeEdgesResult {
+  ok: boolean;
+  edges: JarvisGraphEdge[];
+  /** The neighbours the edges point at (and the node itself), with properties. */
+  nodes: JarvisGraphNode[];
+  status?: number;
+  error?: string;
+}
+
+/** jarvis reads list filters as Python list literals: `["A","B"]`. */
+function toListLiteral(values: string[]): string {
+  return `[${values.map((v) => JSON.stringify(v)).join(",")}]`;
+}
+
+/**
+ * A node's edges via `GET /v2/nodes/:ref_id?expand=edges`, raw — no neighbor
+ * dedup, so parallel edges of different types all come back. `limit` bounds
+ * jarvis' traversal (a hub node can OOM Neo4j without one) and applies AFTER
+ * the `nodeTypes` / `edgeTypes` filters, so filter to keep a hub's many
+ * irrelevant edges from crowding out the ones wanted.
+ *
+ * Never throws. Returns `{ ok: false }` on any transport/HTTP failure.
+ */
+export async function getNodeEdges(
+  config: JarvisConnectionConfig,
+  refId: string,
+  options: { limit?: number; nodeTypes?: string[]; edgeTypes?: string[] } = {},
+): Promise<NodeEdgesResult> {
+  if (!isSafeRefId(refId)) {
+    return { ok: false, edges: [], nodes: [], error: `Invalid ref_id: ${JSON.stringify(refId)}` };
+  }
+  const params = new URLSearchParams({ expand: "edges", limit: String(options.limit ?? 200) });
+  if (options.nodeTypes?.length) params.set("node_type", toListLiteral(options.nodeTypes));
+  if (options.edgeTypes?.length) params.set("edge_type", toListLiteral(options.edgeTypes));
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/${encodeURIComponent(refId)}?${params.toString()}`,
+    method: "GET",
+  });
+  if (!result.ok) return { ok: false, edges: [], nodes: [], status: result.status, error: result.error };
+  const body = result.body as { edges?: JarvisGraphEdge[]; nodes?: JarvisGraphNode[] } | undefined;
+  return {
+    ok: true,
+    edges: Array.isArray(body?.edges) ? body!.edges : [],
+    nodes: Array.isArray(body?.nodes) ? body!.nodes : [],
+    status: result.status,
+  };
 }
 
 // ── Error-impact centrality helpers ──────────────────────────────────────────
