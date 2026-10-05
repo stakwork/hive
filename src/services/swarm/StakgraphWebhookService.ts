@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { computeHmacSha256Hex, timingSafeEqual, EncryptionService } from "@/lib/encryption";
 import { WebhookPayload } from "@/types";
 import { updateStakgraphStatus } from "@/services/swarm/stakgraph-status";
+import { runPendingAutoLearn } from "@/services/swarm/auto-learn";
 
 export class StakgraphWebhookService {
   private encryptionService: EncryptionService;
@@ -59,6 +60,30 @@ export class StakgraphWebhookService {
         swarmId: swarm.id,
         status: payload.status,
       });
+
+      // The sync is over (Complete or Failed): run the auto-learn (gitree) that the push
+      // webhook deferred for this request_id. Never fails the webhook; stakgraph already did
+      // its part and the push path has a stale-marker fallback.
+      try {
+        const autoLearn = await runPendingAutoLearn({ swarm, requestId: request_id, status: payload.status });
+        if (autoLearn.terminal) {
+          console.log("[StakgraphWebhookService] Pending auto-learn processed", {
+            requestId: request_id,
+            workspaceId: swarm.workspaceId,
+            swarmId: swarm.id,
+            status: payload.status,
+            matched: autoLearn.matched,
+            fired: autoLearn.fired,
+          });
+        }
+      } catch (error) {
+        console.error("[StakgraphWebhookService] Pending auto-learn failed", {
+          requestId: request_id,
+          workspaceId: swarm.workspaceId,
+          swarmId: swarm.id,
+          error,
+        });
+      }
 
       return { success: true, status: 200 };
     } catch (error) {

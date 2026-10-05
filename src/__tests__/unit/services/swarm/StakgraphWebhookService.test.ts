@@ -1,12 +1,17 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { StakgraphWebhookService } from "@/services/swarm/StakgraphWebhookService";
 import { updateStakgraphStatus } from "@/services/swarm/stakgraph-status";
+import { runPendingAutoLearn } from "@/services/swarm/auto-learn";
 import { computeHmacSha256Hex, timingSafeEqual } from "@/lib/encryption";
 import { db } from "@/lib/db";
 import type { WebhookPayload } from "@/types";
 
 vi.mock("@/services/swarm/stakgraph-status", () => ({
   updateStakgraphStatus: vi.fn(),
+}));
+
+vi.mock("@/services/swarm/auto-learn", () => ({
+  runPendingAutoLearn: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -28,6 +33,7 @@ vi.mock("@/lib/encryption", () => ({
 }));
 
 const mockedUpdateStakgraphStatus = vi.mocked(updateStakgraphStatus);
+const mockedRunPendingAutoLearn = vi.mocked(runPendingAutoLearn);
 const mockedDbSwarm = vi.mocked(db.swarm);
 const mockedComputeHmac = vi.mocked(computeHmacSha256Hex);
 const mockedTimingSafeEqual = vi.mocked(timingSafeEqual);
@@ -39,6 +45,7 @@ describe("StakgraphWebhookService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     service = new StakgraphWebhookService();
+    mockedRunPendingAutoLearn.mockResolvedValue({ terminal: true, matched: 0, fired: 0 });
 
     mockSwarm = {
       id: "swarm-123",
@@ -82,6 +89,80 @@ describe("StakgraphWebhookService", () => {
 
       expect(result).toEqual({ success: true, status: 200 });
       expect(mockedUpdateStakgraphStatus).toHaveBeenCalledWith(mockSwarm, validPayload);
+      expect(mockedRunPendingAutoLearn).toHaveBeenCalledWith({
+        swarm: mockSwarm,
+        requestId: "req-123",
+        status: "Complete",
+      });
+    });
+
+    test("runs the deferred auto-learn after a Failed sync too", async () => {
+      mockedDbSwarm.findFirst.mockResolvedValueOnce({
+        id: mockSwarm.id,
+        workspaceId: mockSwarm.workspaceId,
+        swarmApiKey: "encrypted-key",
+      } as any);
+      (service as any).encryptionService = {
+        decryptField: vi.fn().mockReturnValue("decrypted-key"),
+      };
+      mockedComputeHmac.mockReturnValue("valid-signature");
+      mockedTimingSafeEqual.mockReturnValue(true);
+      mockedUpdateStakgraphStatus.mockResolvedValueOnce();
+
+      const failedPayload = { ...validPayload, status: "Failed", error: "Neo4j error: connection timed out" };
+      const result = await service.processWebhook(signature, JSON.stringify(failedPayload), failedPayload, "header-123");
+
+      expect(result).toEqual({ success: true, status: 200 });
+      expect(mockedRunPendingAutoLearn).toHaveBeenCalledWith({
+        swarm: mockSwarm,
+        requestId: "req-123",
+        status: "Failed",
+      });
+    });
+
+    test("runs auto-learn only after the status update succeeded", async () => {
+      mockedDbSwarm.findFirst.mockResolvedValueOnce({
+        id: mockSwarm.id,
+        workspaceId: mockSwarm.workspaceId,
+        swarmApiKey: "encrypted-key",
+      } as any);
+      (service as any).encryptionService = {
+        decryptField: vi.fn().mockReturnValue("decrypted-key"),
+      };
+      mockedComputeHmac.mockReturnValue("valid-signature");
+      mockedTimingSafeEqual.mockReturnValue(true);
+
+      const order: string[] = [];
+      mockedUpdateStakgraphStatus.mockImplementationOnce(async () => {
+        order.push("status");
+      });
+      mockedRunPendingAutoLearn.mockImplementationOnce(async () => {
+        order.push("auto-learn");
+        return { terminal: true, matched: 1, fired: 1 };
+      });
+
+      await service.processWebhook(signature, rawBody, validPayload, "header-123");
+
+      expect(order).toEqual(["status", "auto-learn"]);
+    });
+
+    test("an auto-learn failure does not fail the webhook", async () => {
+      mockedDbSwarm.findFirst.mockResolvedValueOnce({
+        id: mockSwarm.id,
+        workspaceId: mockSwarm.workspaceId,
+        swarmApiKey: "encrypted-key",
+      } as any);
+      (service as any).encryptionService = {
+        decryptField: vi.fn().mockReturnValue("decrypted-key"),
+      };
+      mockedComputeHmac.mockReturnValue("valid-signature");
+      mockedTimingSafeEqual.mockReturnValue(true);
+      mockedUpdateStakgraphStatus.mockResolvedValueOnce();
+      mockedRunPendingAutoLearn.mockRejectedValueOnce(new Error("gitree lookup failed"));
+
+      const result = await service.processWebhook(signature, rawBody, validPayload, "header-123");
+
+      expect(result).toEqual({ success: true, status: 200 });
     });
 
     test("should return error for missing request_id", async () => {
@@ -121,6 +202,7 @@ describe("StakgraphWebhookService", () => {
         message: "Unauthorized",
       });
       expect(mockedUpdateStakgraphStatus).not.toHaveBeenCalled();
+      expect(mockedRunPendingAutoLearn).not.toHaveBeenCalled();
     });
 
     test("should return error for missing swarm", async () => {
@@ -134,6 +216,7 @@ describe("StakgraphWebhookService", () => {
         message: "Unauthorized",
       });
       expect(mockedUpdateStakgraphStatus).not.toHaveBeenCalled();
+      expect(mockedRunPendingAutoLearn).not.toHaveBeenCalled();
     });
 
     test("should handle updateStakgraphStatus errors", async () => {
@@ -160,6 +243,7 @@ describe("StakgraphWebhookService", () => {
         status: 500,
         message: "Failed to process webhook",
       });
+      expect(mockedRunPendingAutoLearn).not.toHaveBeenCalled();
     });
   });
 });
