@@ -16,6 +16,7 @@
 
 import { db } from "@/lib/db";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
+import { isRemovedTurn } from "@/lib/canvas/tombstones";
 
 export interface GraphWalkFanOutPayload {
   graphWalkId: string;
@@ -31,6 +32,13 @@ export interface GraphWalkFanOutPayload {
    * failed (non-fatal — the answer bubble still lands).
    */
   detailConversationId?: string;
+  /**
+   * The turn that dispatched this graph walk (`dispatch_graph_walk`'s
+   * caller). When present, the fan-out skips entirely once this turn is
+   * tombstoned, and stamps it onto the result row so a LATER edit also
+   * removes this row.
+   */
+  originTurnId?: string;
 };
 
 /** Row shape written into SharedConversation.messages. */
@@ -39,6 +47,7 @@ type GraphWalkMessageRow = {
   role: "assistant";
   content: string;
   timestamp: string;
+  originTurnId?: string;
   source: {
     kind: "graph_walk";
     graphWalkId: string;
@@ -53,24 +62,41 @@ type GraphWalkMessageRow = {
  *
  * Idempotent: if a row with `source.graphWalkId === payload.graphWalkId`
  * already exists, this is a silent no-op (safe for worker retries).
+ *
+ * When `payload.originTurnId` is set and that turn is tombstoned by the
+ * time this runs, the whole append is skipped (see `fanOutResearchToCanvas`
+ * for the identical pattern).
  */
 export async function fanOutGraphWalkToCanvas(
   conversationId: string,
   payload: GraphWalkFanOutPayload,
 ): Promise<void> {
-  const { graphWalkId, title, answer, status, detailConversationId } = payload;
+  const {
+    graphWalkId,
+    title,
+    answer,
+    status,
+    detailConversationId,
+    originTurnId,
+  } = payload;
 
   try {
     let didAppend = false;
+    let skippedTombstoned = false;
 
     await db.$transaction(async (tx) => {
       // Row-level lock against concurrent autosave PUTs — same pattern
       // as fanOutResearchToCanvas / fanOutPlannerMessageToCanvas.
-      const locked = await tx.$queryRaw<{ messages: unknown }[]>`
-        SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+      const locked = await tx.$queryRaw<{ messages: unknown; settings: unknown }[]>`
+        SELECT messages, settings FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
       `;
       if (locked.length === 0) {
         // Conversation was deleted; nothing to do.
+        return;
+      }
+
+      if (originTurnId && isRemovedTurn(locked[0].settings, originTurnId)) {
+        skippedTombstoned = true;
         return;
       }
 
@@ -97,6 +123,7 @@ export async function fanOutGraphWalkToCanvas(
             ? answer
             : `Graph walk failed for: ${title}`,
         timestamp: new Date().toISOString(),
+        ...(originTurnId ? { originTurnId } : {}),
         source: {
           kind: "graph_walk",
           graphWalkId,
@@ -115,6 +142,15 @@ export async function fanOutGraphWalkToCanvas(
       });
       didAppend = true;
     });
+
+    if (skippedTombstoned) {
+      console.log("[canvas-turn] tombstoned-write-skipped", {
+        conversationId,
+        turnId: originTurnId,
+        writer: "graph-walk",
+      });
+      return;
+    }
 
     console.log("[canvas-graph-walk-fanout]", {
       conversationId,

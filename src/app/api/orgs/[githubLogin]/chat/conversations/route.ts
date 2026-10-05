@@ -7,6 +7,7 @@ import {
   getMessagePreview,
   getLastMessageTimestamp,
 } from "@/lib/ai/conversationHelpers";
+import { stripServerOnlySettingsKeys } from "@/lib/canvas/tombstones";
 import type { ConversationListItem } from "@/types/shared-conversation";
 
 async function resolveOrg(githubLogin: string) {
@@ -128,6 +129,16 @@ export async function POST(
     const title = body.title || generateTitle(body.messages);
     const lastMessageAt = getLastMessageTimestamp(body.messages);
 
+    // Strip server-only tombstone/title-tracking keys before persisting —
+    // a client (including `forkCanvasConversation.ts`, which copies a
+    // source conversation's settings verbatim) must never be able to
+    // seed `removedTurnIds` / `truncationEpoch` / `titleSource` on a
+    // fresh row. Those are written only by `truncateAndAppendTurn` /
+    // title-generation code.
+    const safeSettings = body.settings
+      ? stripServerOnlySettingsKeys(body.settings as Record<string, unknown>)
+      : {};
+
     const conversation = await db.sharedConversation.create({
       data: {
         sourceControlOrgId: org.id,
@@ -137,7 +148,7 @@ export async function POST(
         title,
         lastMessageAt,
         source: body.source ?? "org-canvas",
-        settings: (body.settings as any) ?? {},
+        settings: safeSettings as any,
         followUpQuestions: [],
         isShared: false,
       },

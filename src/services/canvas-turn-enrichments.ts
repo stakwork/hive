@@ -33,6 +33,7 @@ import {
 import { swarmFetch } from "@/lib/ai/concepts";
 import { TITLE_MAX_LENGTH } from "@/lib/ai/conversationHelpers";
 import { db } from "@/lib/db";
+import { isRemovedTurn } from "@/lib/canvas/tombstones";
 
 /**
  * Provenance data shape returned by `${swarmUrl}/gitree/provenance`.
@@ -274,45 +275,72 @@ export async function generateConversationTitle(
  * user message can equal a valid LLM title. Retry-safe: if a prior
  * `after()` died before this write, `titleSource` is still unset and
  * a later successful non-error turn will generate.
+ *
+ * The read-check-write for `titleSource` runs inside a `FOR UPDATE`
+ * transaction (not a plain `findUnique` + `$executeRaw`) so it
+ * serializes against `truncateAndAppendTurn` and `appendTurnMessages`.
+ * When `turnId` is supplied and it's tombstoned by the time this runs,
+ * the whole write is skipped — a stopped turn's delayed `after()` must
+ * never overwrite the title the edit flow already reset for the NEW
+ * turn, even when the stale append landed before the cut.
  */
 export async function maybeGenerateAndPersistTitle(args: {
   rowId: string;
   userText: string;
   assistantText: string;
   assistantIsError: boolean;
+  /** The turn this title is derived from. When tombstoned, the write is skipped. */
+  turnId?: string;
 }): Promise<void> {
-  const { rowId, userText, assistantText, assistantIsError } = args;
+  const { rowId, userText, assistantText, assistantIsError, turnId } = args;
   try {
     if (assistantIsError) return;
     if (!assistantText.trim()) return;
 
-    const row = await db.sharedConversation.findUnique({
-      where: { id: rowId },
-      select: { title: true, settings: true },
-    });
-    if (!row) return;
-
-    const settings =
-      row.settings &&
-      typeof row.settings === "object" &&
-      !Array.isArray(row.settings)
-        ? (row.settings as Record<string, unknown>)
-        : {};
-    if (settings.titleSource === "llm") return;
-
+    // Resolve the title OUTSIDE the lock (it's an LLM round-trip; holding
+    // a row lock across that would serialize every other writer on this
+    // conversation behind a multi-second network call). The tombstone /
+    // titleSource checks are re-verified INSIDE the lock right before
+    // the write, so a race during generation can't resurrect a cut turn's
+    // title.
     const title = await generateConversationTitle(userText, assistantText);
     if (!title) return;
 
-    // jsonb `||` merge so a concurrent after() writing promptConcepts /
-    // promptPrefix is not clobbered by a full settings replace. Title
-    // is a scalar column so it can sit on the same UPDATE.
-    const patch = JSON.stringify({ titleSource: "llm" });
-    await db.$executeRaw`
-      UPDATE shared_conversations
-      SET title = ${title},
-          settings = COALESCE(settings, '{}'::jsonb) || ${patch}::jsonb
-      WHERE id = ${rowId}
-    `;
+    let wrote = false;
+    await db.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ settings: unknown }[]>`
+        SELECT settings FROM shared_conversations WHERE id = ${rowId} FOR UPDATE
+      `;
+      if (locked.length === 0) return;
+
+      if (turnId && isRemovedTurn(locked[0].settings, turnId)) {
+        console.log("[canvas-turn] tombstoned-write-skipped", {
+          conversationId: rowId,
+          turnId,
+          writer: "title",
+        });
+        return;
+      }
+
+      const settings =
+        locked[0].settings &&
+        typeof locked[0].settings === "object" &&
+        !Array.isArray(locked[0].settings)
+          ? (locked[0].settings as Record<string, unknown>)
+          : {};
+      if (settings.titleSource === "llm") return;
+
+      await tx.sharedConversation.update({
+        where: { id: rowId },
+        data: {
+          title,
+          settings: { ...settings, titleSource: "llm" } as unknown as never,
+        },
+      });
+      wrote = true;
+    });
+
+    if (!wrote) return;
 
     notifyCanvasConversationUpdated(rowId, "user-turn");
     console.log("✅ Conversation title persisted:", title);

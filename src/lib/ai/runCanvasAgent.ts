@@ -983,6 +983,7 @@ export async function runCanvasAgent(
           graphWalkAnswerSink,
           publicBaseUrl,
           graphWriteEnabled,
+          dispatchTurnId: turnId,
         }),
       };
     }
@@ -1144,6 +1145,7 @@ export async function runCanvasAgent(
           graphWalkAnswerSink,
           publicBaseUrl,
           graphWriteEnabled,
+          dispatchTurnId: turnId,
         }),
       };
     }

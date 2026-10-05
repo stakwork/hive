@@ -133,6 +133,8 @@ export interface ResearchSubAgentArgs {
   userId: string;
   workspaceSlugs: string[];
   initiativeId?: string;
+  /** The turn that dispatched this research — threaded to `fanOutResearchToCanvas`. */
+  originTurnId?: string;
 }
 
 /**
@@ -155,6 +157,7 @@ export async function runResearchSubAgent(
     userId,
     workspaceSlugs,
     initiativeId,
+    originTurnId,
   } = args;
 
   const lockKey = `canvas-research:${conversationId}:${researchId}`;
@@ -313,6 +316,7 @@ export async function runResearchSubAgent(
       status,
       initiativeId,
       subAgentMessages,
+      originTurnId,
     });
   } catch (e) {
     console.error("[canvas-research] failed (non-fatal)", {
@@ -332,6 +336,7 @@ export async function runResearchSubAgent(
         summary,
         status: "failed",
         initiativeId,
+        originTurnId,
       });
     } catch (fanoutErr) {
       console.error("[canvas-research] fan-out on error also failed", {

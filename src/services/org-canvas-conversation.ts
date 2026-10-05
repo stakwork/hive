@@ -18,12 +18,21 @@ import { ModelMessage } from "ai";
 import { db } from "@/lib/db";
 import type { CachedConcepts } from "@/lib/ai/runCanvasAgent";
 import { generateTitle } from "@/lib/ai/conversationHelpers";
+import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 import {
   appendTurnMessages,
   type StoredMessage,
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
-import { addTombstone, isRemovedTurn } from "@/lib/canvas/tombstones";
+import {
+  addTombstone,
+  isRemovedTurn,
+  readTombstoneSettings,
+} from "@/lib/canvas/tombstones";
+import {
+  findEditableLastUserRow,
+  computeTruncation,
+} from "@/lib/canvas/turnEdit";
 
 /**
  * Org-canvas sibling of `resolveTokenAttributionRowId`. Org-canvas
@@ -197,6 +206,210 @@ export async function persistCanvasUserMessage(args: {
     });
   });
   return created ? created.id : null;
+}
+
+/** Discriminated result of {@link truncateAndAppendTurn}. */
+export type TruncateAndAppendResult =
+  | { kind: "not-found" }
+  | {
+      kind: "rejected";
+      reason: "not-last" | "approval-row" | "not-author" | "no-author";
+    }
+  | {
+      kind: "ok";
+      rowId: string;
+      truncationEpoch: number;
+      removedCount: number;
+      /** True when `replacesTurnId` was already tombstoned (idempotent retry). */
+      alreadyTombstoned: boolean;
+    };
+
+/**
+ * Cut the turn `replacesTurnId` out of an org-canvas conversation and
+ * append `newUserRow` in its place, as ONE locked transaction — "edit
+ * last message". See the feature architecture (section 2) for the full
+ * design; this is the single entry point both resolution paths in
+ * `/api/ask/quick/route.ts` (known row id, or a turn-id lookup) funnel
+ * into.
+ *
+ * Steps, all under one `SELECT … FOR UPDATE`:
+ *   1. Lock the row, scoped by org + (owner OR shared). No match →
+ *      `{ kind: "not-found" }`.
+ *   2. If `replacesTurnId` is already tombstoned, this is an idempotent
+ *      retry: skip the cut and just append `newUserRow`.
+ *   3. If the turn isn't present in `messages` yet (the early-Stop race
+ *      — the user's Stop/edit beat the original request's own user-row
+ *      persist to the lock), tombstone it anyway and append. The
+ *      original request's later persist / assistant append then both
+ *      no-op against the now-tombstoned id.
+ *   4. Otherwise, `findEditableLastUserRow` must return exactly the
+ *      `${replacesTurnId}-u` row — any other outcome is a 409 and NO
+ *      write happens.
+ *   5. Apply `computeTruncation`, push the tombstone, bump
+ *      `truncationEpoch`, append `newUserRow`. On an index-0 cut, reset
+ *      the title to a placeholder generated from the new row and clear
+ *      `settings.titleSource` so the LLM title regenerates for the new
+ *      turn.
+ *
+ * Exactly one `notifyCanvasConversationUpdated` fires, after the
+ * transaction commits, with reason `"truncate"`.
+ */
+export async function truncateAndAppendTurn(args: {
+  orgId: string;
+  conversationId: string;
+  userId: string;
+  replacesTurnId: string;
+  newUserRow: StoredMessage;
+  newTurnId: string;
+}): Promise<TruncateAndAppendResult> {
+  const { orgId, conversationId, userId, replacesTurnId, newUserRow } = args;
+
+  let outcome: TruncateAndAppendResult = { kind: "not-found" };
+
+  await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<
+      {
+        messages: unknown;
+        settings: unknown;
+        title: string | null;
+        userId: string | null;
+        isShared: boolean;
+      }[]
+    >`
+      SELECT messages, settings, title, "userId", "isShared"
+      FROM shared_conversations
+      WHERE id = ${conversationId}
+        AND "sourceControlOrgId" = ${orgId}
+        AND source = 'org-canvas'
+        AND ("userId" = ${userId} OR "isShared" = true)
+      FOR UPDATE
+    `;
+    if (locked.length === 0) {
+      outcome = { kind: "not-found" };
+      return;
+    }
+
+    const row = locked[0];
+    const messages = Array.isArray(row.messages)
+      ? (row.messages as StoredMessage[])
+      : [];
+
+    // 2. Idempotent retry: already tombstoned → just append.
+    if (isRemovedTurn(row.settings, replacesTurnId)) {
+      const { truncationEpoch } = readTombstoneSettings(row.settings);
+      await tx.sharedConversation.update({
+        where: { id: conversationId },
+        data: {
+          messages: [...messages, newUserRow] as unknown as never,
+          lastMessageAt: new Date(),
+        },
+      });
+      outcome = {
+        kind: "ok",
+        rowId: conversationId,
+        truncationEpoch,
+        removedCount: 0,
+        alreadyTombstoned: true,
+      };
+      return;
+    }
+
+    const turnPresent = messages.some(
+      (m) => typeof m.id === "string" && m.id === `${replacesTurnId}-u`,
+    );
+
+    if (turnPresent) {
+      // 4. Validate this is genuinely the latest editable message.
+      const editable = findEditableLastUserRow(messages, userId);
+      if (!editable || editable.id !== `${replacesTurnId}-u`) {
+        const lastUserRow = [...messages].reverse().find((m) => m.role === "user");
+        const reason: "not-last" | "approval-row" | "not-author" | "no-author" =
+          !lastUserRow || lastUserRow.id !== `${replacesTurnId}-u`
+            ? "not-last"
+            : lastUserRow.approval != null || lastUserRow.rejection != null
+              ? "approval-row"
+              : !lastUserRow.authorId
+                ? "no-author"
+                : "not-author";
+        outcome = { kind: "rejected", reason };
+        return;
+      }
+    }
+
+    // 3/5. Apply the cut (a no-op split when the turn wasn't present
+    // yet — `computeTruncation` just returns everything as `kept`).
+    const { kept, removed } = computeTruncation(messages, replacesTurnId);
+    const tombstones = addTombstone(row.settings, replacesTurnId);
+
+    const existingSettings =
+      row.settings && typeof row.settings === "object" && !Array.isArray(row.settings)
+        ? (row.settings as Record<string, unknown>)
+        : {};
+
+    const isIndexZeroCut = messages.length > 0 && messages[0]?.id === `${replacesTurnId}-u`;
+    const nextSettings: Record<string, unknown> = {
+      ...existingSettings,
+      removedTurnIds: tombstones.removedTurnIds,
+      truncationEpoch: tombstones.truncationEpoch,
+    };
+    if (isIndexZeroCut) {
+      delete nextSettings.titleSource;
+    }
+
+    await tx.sharedConversation.update({
+      where: { id: conversationId },
+      data: {
+        messages: [...kept, newUserRow] as unknown as never,
+        lastMessageAt: new Date(),
+        settings: nextSettings as unknown as never,
+        ...(isIndexZeroCut ? { title: generateTitle([newUserRow]) } : {}),
+      },
+    });
+
+    outcome = {
+      kind: "ok",
+      rowId: conversationId,
+      truncationEpoch: tombstones.truncationEpoch,
+      removedCount: removed.length,
+      alreadyTombstoned: false,
+    };
+  });
+
+  if (outcome.kind === "ok") {
+    notifyCanvasConversationUpdated(conversationId, "truncate");
+  }
+  return outcome;
+}
+
+/**
+ * Look up the org-canvas row that holds a given turn's user row, for the
+ * edit flow's fallback when the client doesn't know (or no longer
+ * trusts) the conversation row id. Owner-only (deliberately excludes
+ * shared rooms — the edit's write path is already owner-gated by
+ * `findEditableLastUserRow`'s `authorId` check, but this lookup itself
+ * must not let one shared-room member discover another's row by turn
+ * id), scoped to recent rows (15 minutes — well past any plausible
+ * edit-after-send gap), and matches the row id EXACTLY via a jsonb
+ * containment query — never `LIKE` / a prefix, which could match an
+ * unrelated row whose turn id happens to share a prefix.
+ */
+export async function findOrgCanvasRowByTurnId(args: {
+  orgId: string;
+  userId: string;
+  turnId: string;
+}): Promise<string | null> {
+  const { orgId, userId, turnId } = args;
+  const containment = JSON.stringify([{ id: `${turnId}-u`, authorId: userId }]);
+  const rows = await db.$queryRaw<{ id: string }[]>`
+    SELECT id FROM shared_conversations
+    WHERE "sourceControlOrgId" = ${orgId}
+      AND "userId" = ${userId}
+      AND source = 'org-canvas'
+      AND "createdAt" > now() - interval '15 minutes'
+      AND messages @> ${containment}::jsonb
+    LIMIT 1
+  `;
+  return rows[0]?.id ?? null;
 }
 
 /**

@@ -12,7 +12,25 @@ import {
   redactHtmlToolInput,
   redactHtmlToolOutput,
 } from "@/services/canvas-turn-persistence";
+import {
+  isRemovedTurn,
+  stripServerOnlySettingsKeys,
+} from "@/lib/canvas/tombstones";
+import { turnIdFromRowId } from "@/lib/canvas/turnEdit";
 import type { ConversationDetail, UpdateConversationRequest } from "@/types/shared-conversation";
+
+/**
+ * Server-owned row id shapes this client-facing PUT must never accept,
+ * even from the authoring tab's own autosave: `${turnId}-u` (the user
+ * row) and `${turnId}-a*` / `${turnId}-n*` (assistant rows). Those are
+ * written ONLY by `persistCanvasUserMessage` / `appendTurnMessages` —
+ * accepting a client-supplied copy here would let a stale/forged client
+ * row resurrect content a tombstone already removed, or shadow-write
+ * over the server's own row under the same id.
+ */
+function isServerOwnedTurnRowId(id: unknown): boolean {
+  return typeof id === "string" && turnIdFromRowId(id) !== undefined;
+}
 
 /**
  * The client autosave PUT is a second writer into
@@ -204,9 +222,9 @@ export async function PUT(
     }
 
     const isOwner = existing.userId === userOrResponse.id;
-    const hasNewMessages = body.messages.length > 0;
 
     // SELECT FOR UPDATE serializes concurrent appends (same pattern as workspace route)
+    let droppedCount = 0;
     const updated = await db.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<
         { messages: unknown; title: string | null; settings: unknown }[]
@@ -218,10 +236,44 @@ export async function PUT(
       }
 
       const existingMessages = (locked[0].messages as any[]) ?? [];
-      const updatedMessages = [
-        ...existingMessages,
-        ...redactIncomingMessages(body.messages),
-      ];
+      const settings = locked[0].settings;
+
+      // Drop any incoming row this PUT must never accept: a
+      // server-owned turn-row id (`${turnId}-u`/`-a*`/`-n*` — those are
+      // written ONLY by the server turn writer), or a row tied (by id
+      // prefix or `originTurnId`) to a turn that's been tombstoned by an
+      // edit. Logged, not rejected — a client autosave racing a
+      // server-side truncation is an expected, non-error event.
+      const redacted = redactIncomingMessages(body.messages).map((m) => {
+        if (!m || typeof m !== "object") return m;
+        const record = m as Record<string, unknown>;
+        // Authorship is session-derived, never client-trusted: a client
+        // could otherwise forge `authorId` to make a row editable (or
+        // non-editable) by someone else.
+        if (record.role === "user") {
+          return { ...record, authorId: userOrResponse.id };
+        }
+        return record;
+      });
+      const incoming = redacted.filter((m) => {
+        if (!m || typeof m !== "object") return true;
+        const record = m as Record<string, unknown>;
+        if (isServerOwnedTurnRowId(record.id)) {
+          droppedCount++;
+          return false;
+        }
+        const originTurnId =
+          typeof record.originTurnId === "string" ? record.originTurnId : undefined;
+        const taggedTurnId = turnIdFromRowId(record.id) ?? originTurnId;
+        if (taggedTurnId && isRemovedTurn(settings, taggedTurnId)) {
+          droppedCount++;
+          return false;
+        }
+        return true;
+      });
+      const hasNewMessages = incoming.length > 0;
+
+      const updatedMessages = [...existingMessages, ...incoming];
 
       // Self-heal placeholder titles. The title is generated once at
       // create time from the first user message; if the creating POST's
@@ -238,6 +290,14 @@ export async function PUT(
         ? generateTitle(updatedMessages)
         : null;
 
+      // Incoming `body.settings` is client-supplied — strip server-only
+      // tombstone/title-tracking keys before merging so a client can
+      // never clear or forge `removedTurnIds` / `truncationEpoch` /
+      // `titleSource` (even an innocent echo of a GET response body).
+      const safeIncomingSettings = body.settings
+        ? stripServerOnlySettingsKeys(body.settings as Record<string, unknown>)
+        : undefined;
+
       return tx.sharedConversation.update({
         where: { id: conversationId },
         data: {
@@ -245,7 +305,7 @@ export async function PUT(
           // Only bump the timestamp when we actually appended — a pure
           // metadata write (e.g. the Share button flipping `isShared`
           // with an empty `messages` array) shouldn't reorder history.
-          ...(hasNewMessages && { lastMessageAt: getLastMessageTimestamp(body.messages) }),
+          ...(hasNewMessages && { lastMessageAt: getLastMessageTimestamp(incoming as any[]) }),
           ...(body.title && { title: body.title }),
           ...(healedTitle && healedTitle !== UNTITLED_CONVERSATION
             ? { title: healedTitle }
@@ -257,10 +317,10 @@ export async function PUT(
           // `promptPrefix` (the cached agent prompt prefix written by
           // `/api/ask/quick`). Spreading the locked row's settings first
           // preserves those while still applying the client's keys.
-          ...(body.settings !== undefined && {
+          ...(safeIncomingSettings !== undefined && {
             settings: {
-              ...((locked[0].settings as Record<string, unknown> | null) ?? {}),
-              ...(body.settings as Record<string, unknown>),
+              ...((settings as Record<string, unknown> | null) ?? {}),
+              ...safeIncomingSettings,
             } as any,
           }),
           // Only the owner can change the shared-room flag (typically the
@@ -275,10 +335,18 @@ export async function PUT(
       });
     });
 
+    if (droppedCount > 0) {
+      console.log("[org-chat] put-dropped-rows", {
+        conversationId,
+        droppedCount,
+        reason: "tombstoned-or-server-owned",
+      });
+    }
+
     // Live-sync: tell everyone sitting on this conversation's channel to
     // refetch. Only meaningful when messages were actually appended (a
     // pure share-flip changes no messages). Fire-and-forget; never throws.
-    if (hasNewMessages) {
+    if (body.messages.length > droppedCount) {
       notifyCanvasConversationUpdated(conversationId, "user-message");
     }
 

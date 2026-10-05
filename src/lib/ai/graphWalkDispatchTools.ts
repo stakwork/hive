@@ -34,6 +34,14 @@ export interface DispatchedGraphWalkIntent {
   conversationId: string;
   orgId: string;
   userId: string;
+  /**
+   * The turn that dispatched this graph walk. Stamped onto the fan-out's
+   * result row as `originTurnId` so "edit last message" removes it along
+   * with the rest of the turn if the user edits-and-replaces before the
+   * sub-agent reports back; `fanOutGraphWalkToCanvas` also uses it to
+   * skip writing entirely once the dispatching turn is tombstoned.
+   */
+  originTurnId?: string;
 }
 
 /**
@@ -105,6 +113,7 @@ export function buildGraphWalkDispatchTools(ctx: CapabilityContext): ToolSet {
         graphWalkId,
         title,
         prompt,
+        originTurnId: ctx.dispatchTurnId,
         conversationId: ctx.currentCanvasConversationId,
         orgId: ctx.orgId,
         userId: ctx.userId,

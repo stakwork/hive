@@ -185,6 +185,15 @@ export interface CapabilityContext {
   dispatchedGraphWalks?: DispatchedGraphWalkIntent[];
   graphWalkAnswerSink?: { answer: string | null };
   /**
+   * The turn id of THIS invocation (threaded from `runCanvasAgent`'s
+   * `turnId` option). Stamped as `originTurnId` on `dispatch_research` /
+   * `dispatch_graph_walk` intents so "edit last message" can tie a
+   * sub-agent's late-arriving fan-out row back to the turn that
+   * dispatched it (`fanOutResearchToCanvas` / `fanOutGraphWalkToCanvas`
+   * skip the write once that turn is tombstoned).
+   */
+  dispatchTurnId?: string;
+  /**
    * Set to `true` when the calling org has been granted the graph-write
    * propose tools (checked via `isGraphWriteCapabilityEnabledForOrg` by
    * the caller before composing the capability context). Defaults to
