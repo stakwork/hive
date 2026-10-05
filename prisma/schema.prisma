@@ -646,6 +646,10 @@ model Repository {
   shallowClone          Boolean                 @default(false) @map("shallow_clone")
   blobSizeLimit         String?                 @map("blob_size_limit")
   allowAutoMerge        Boolean                 @default(false) @map("allow_auto_merge")
+  // Auto-learn (gitree) deferred until the stakgraph sync with this request_id
+  // reports Complete/Failed; `pendingAutoLearnAt` is when the wait started.
+  pendingAutoLearnRequestId String?             @map("pending_auto_learn_request_id")
+  pendingAutoLearnAt        DateTime?           @map("pending_auto_learn_at")
   deployments           Deployment[]
   recommendations       JanitorRecommendation[]
   janitorRuns           JanitorRun[]
