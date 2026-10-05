@@ -617,7 +617,7 @@ Example queries:
     const swarmHost = new URL(swarmUrl).hostname;
     const jarvisBase = `https://${swarmHost}:8444`;
     stakworkSearchWorkflowsTool = tool({
-      description: "Search Stakwork for workflows by keyword. Returns [{ id, workflow_id, name, description, published_version_id }].",
+      description: "Search Stakwork for workflows by keyword — ONLY when the user explicitly asks about Stakwork workflows; a bare 'workflow' means a strut workflow (dispatch_strut), not this. Returns [{ id, workflow_id, name, description, published_version_id }].",
       inputSchema: z.object({
         query: z.string().describe("Workflow search term"),
       }),

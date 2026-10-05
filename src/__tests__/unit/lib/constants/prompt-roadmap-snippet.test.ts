@@ -35,3 +35,36 @@ describe("getCanvasPromptSuffix — includes Stakwork workflow routing rule", ()
     expect(suffix).toContain("ask the user which workspace owns the workflow");
   });
 });
+
+describe("getRoadmapCapabilitySnippet — a bare 'workflow' means strut", () => {
+  const snippet = getRoadmapCapabilitySnippet();
+
+  it("states the strut default and the tools it resolves to", () => {
+    expect(snippet).toContain('**"Workflow" means strut by default.**');
+    expect(snippet).toContain(
+      'that is the `strut` capability (`learn_capability("strut")`, then `dispatch_strut`)'
+    );
+  });
+
+  it("names every Stakwork surface a bare workflow must NOT be routed to", () => {
+    expect(snippet).toContain(
+      "Do NOT route it to the stakwork workspace, its `stakwork__*` tools, the Stakwork workflow library (`workflow_explorer_agent`), or a feature in the stakwork workspace"
+    );
+  });
+
+  it("does not fall back to Stakwork when strut is unavailable", () => {
+    expect(snippet).toContain("do not fall back to Stakwork");
+  });
+
+  it("puts the strut default BEFORE the stakwork-workspace rule and gates that rule on the user saying Stakwork", () => {
+    const strutRule = snippet.indexOf('"Workflow" means strut by default');
+    const stakworkRule = snippet.indexOf(
+      "If — and only if — a workspace named `stakwork` exists"
+    );
+    expect(strutRule).toBeGreaterThan(-1);
+    expect(stakworkRule).toBeGreaterThan(strutRule);
+    expect(snippet).toContain(
+      "Stakwork tools are for requests that explicitly say **Stakwork**, and only then:"
+    );
+  });
+});
