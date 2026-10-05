@@ -104,7 +104,8 @@ export function applyChanges(
         });
         // A new node's parent link is PARENT_OF; it only shapes a tree drawn along that edge.
         if (parent && base.lens.edge === "PARENT_OF") link(parent, id);
-        if (parent) touch(parent, id);
+        // The new node comes first so the canvas lands on it; the parent is touched too, so it stays pinned beside it.
+        if (parent) touch(id, parent);
         else touch(id);
         break;
       }
