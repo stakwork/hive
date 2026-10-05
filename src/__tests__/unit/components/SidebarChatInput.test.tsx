@@ -92,10 +92,36 @@ vi.mock("@/lib/upload-image-to-s3", () => ({
   uploadFileToS3: (...args: unknown[]) => mockUploadFileToS3(...args),
 }));
 
-// Canvas store mock — only needed for pendingInputDraft
-vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
-  useCanvasChatStore: (selector: (s: unknown) => unknown) =>
-    selector({ pendingInputDraft: null }),
+const { mockCanvasStore } = vi.hoisted(() => {
+  const mockCanvasStore = {
+    pendingInputDraft: null as string | null,
+    conversations: {
+      "conv-a": { serverConversationId: null as string | null },
+      "conv-b": { serverConversationId: null as string | null },
+    },
+    setPendingInputDraft: vi.fn(),
+  };
+  return { mockCanvasStore };
+});
+
+vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => {
+  const useCanvasChatStore = (selector: (s: typeof mockCanvasStore) => unknown) =>
+    selector(mockCanvasStore);
+  (useCanvasChatStore as typeof useCanvasChatStore & { getState: () => typeof mockCanvasStore }).getState =
+    () => mockCanvasStore;
+  return { useCanvasChatStore };
+});
+
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: { user: { id: "user-1" } } }),
+}));
+
+vi.mock("@/hooks/useVoiceLearningPreference", () => ({
+  useVoiceLearningPreference: () => ({ nudgeIfNeeded: vi.fn() }),
+}));
+
+vi.mock("@/hooks/useVoiceCorrectionCapture", () => ({
+  useVoiceCorrectionCapture: () => ({ capture: vi.fn() }),
 }));
 
 vi.mock("@/components/dashboard/DashboardChat/ToolCallIndicator", () => ({
@@ -118,9 +144,9 @@ function TestSidebarChatInput({
     e.preventDefault();
     if (!input.trim() || disabled) return;
     const message = input.trim();
-    setInput(""); // clear immediately on send
     await onSend(message, () => {
-      inputRef.current?.focus(); // callback now only handles re-focus
+      setInput("");
+      inputRef.current?.focus();
     });
   };
 
@@ -172,7 +198,8 @@ function TestSidebarChatInputWithDraft({
 
   React.useEffect(() => {
     if (pendingDraft === null) return;
-    setInput(pendingDraft);
+    // Empty string only focuses and does not clobber a restored draft.
+    if (pendingDraft) setInput(pendingDraft);
     requestAnimationFrame(() => {
       const el = inputRef.current;
       if (el) {
@@ -276,11 +303,13 @@ describe("SidebarChatInput — CSS-native field-sizing-content", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("clears input immediately on submit, before onSend resolves", async () => {
+  it("leaves input in place until onSend calls clearInput", async () => {
     let resolveSend!: () => void;
+    let clearInput!: () => void;
     const onSend = vi.fn(
-      () =>
+      (_msg: string, clear: () => void) =>
         new Promise<void>((resolve) => {
+          clearInput = clear;
           resolveSend = resolve;
         }),
     );
@@ -297,8 +326,13 @@ describe("SidebarChatInput — CSS-native field-sizing-content", () => {
       fireEvent.submit(ta.closest("form")!);
     });
 
-    expect(ta.value).toBe("");
+    expect(ta.value).toBe("hello world");
     expect(onSend).toHaveBeenCalledWith("hello world", expect.any(Function));
+
+    act(() => {
+      clearInput();
+    });
+    expect(ta.value).toBe("");
 
     resolveSend();
   });
@@ -344,6 +378,26 @@ describe("SidebarChatInput — pendingDraft injection", () => {
     );
 
     expect(onDraftConsumed).not.toHaveBeenCalled();
+  });
+
+  it("empty pendingDraft focuses without clobbering existing text", async () => {
+    const onDraftConsumed = vi.fn();
+    const { rerender } = render(
+      <TestSidebarChatInputWithDraft
+        pendingDraft="kept draft"
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
+    await waitFor(() => expect(ta.value).toBe("kept draft"));
+
+    rerender(
+      <TestSidebarChatInputWithDraft
+        pendingDraft=""
+        onDraftConsumed={onDraftConsumed}
+      />,
+    );
+    expect(ta.value).toBe("kept draft");
   });
 });
 
@@ -661,9 +715,11 @@ function TestSidebarChatInputWithAttachments({
         mimeType: f.mimeType,
         size: f.size,
       }));
-    setPendingFiles([]);
-    setInput("");
-    await onSend(message, attachments, () => inputRef.current?.focus());
+    await onSend(message, attachments, () => {
+      setPendingFiles([]);
+      setInput("");
+      inputRef.current?.focus();
+    });
   };
 
   return (
@@ -1033,5 +1089,156 @@ describe("SidebarChatInput — file attachments", () => {
         workspaceId: "ws-priority",
       });
     });
+  });
+});
+
+// ── Real composer: per-chat drafts ────────────────────────────────────────────
+
+import { SidebarChatInput } from "@/app/org/[githubLogin]/_components/SidebarChat";
+import {
+  getDraft,
+  getDraftFiles,
+  orgDraftScope,
+  resetConversationDraftsForTests,
+  setDraft,
+} from "@/lib/conversationDrafts";
+
+describe("SidebarChatInput — per-chat drafts (real composer)", () => {
+  beforeEach(() => {
+    resetConversationDraftsForTests();
+    mockCanvasStore.pendingInputDraft = null;
+    mockCanvasStore.conversations["conv-a"].serverConversationId = null;
+    mockCanvasStore.conversations["conv-b"].serverConversationId = null;
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:preview"),
+      revokeObjectURL: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    resetConversationDraftsForTests();
+  });
+
+  const draftRef = (key: string) => ({
+    userId: "user-1",
+    scope: orgDraftScope("acme"),
+    conversationKey: key,
+  });
+
+  it("saves text on unmount and restores it for the same activeId", async () => {
+    const onSend = vi.fn(async () => {});
+    const { unmount } = render(
+      <SidebarChatInput
+        activeId="conv-a"
+        githubLogin="acme"
+        workspaceId="ws-1"
+        onSend={onSend}
+      />,
+    );
+    const ta = screen.getByPlaceholderText(/Message/) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(ta, { target: { value: "hello A" } });
+    });
+    unmount();
+    expect(getDraft(draftRef("conv-a"))).toBe("hello A");
+
+    render(
+      <SidebarChatInput
+        activeId="conv-a"
+        githubLogin="acme"
+        workspaceId="ws-1"
+        onSend={onSend}
+      />,
+    );
+    expect((screen.getByPlaceholderText(/Message/) as HTMLTextAreaElement).value).toBe("hello A");
+  });
+
+  it("does not leak chat A text into chat B", async () => {
+    const onSend = vi.fn(async () => {});
+    const { unmount } = render(
+      <SidebarChatInput
+        activeId="conv-a"
+        githubLogin="acme"
+        workspaceId="ws-1"
+        onSend={onSend}
+      />,
+    );
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText(/Message/), {
+        target: { value: "only A" },
+      });
+    });
+    unmount();
+
+    render(
+      <SidebarChatInput
+        activeId="conv-b"
+        githubLogin="acme"
+        workspaceId="ws-1"
+        onSend={onSend}
+      />,
+    );
+    expect((screen.getByPlaceholderText(/Message/) as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("leaves text in place when send fails (clearInput never called)", async () => {
+    const onSend = vi.fn(async () => {
+      throw new Error("POST failed");
+    });
+    render(
+      <SidebarChatInput
+        activeId="conv-a"
+        githubLogin="acme"
+        workspaceId="ws-1"
+        onSend={onSend}
+      />,
+    );
+    const ta = screen.getByPlaceholderText(/Message/) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(ta, { target: { value: "retry me" } });
+    });
+    await act(async () => {
+      fireEvent.submit(ta.closest("form")!);
+    });
+    expect(ta.value).toBe("retry me");
+  });
+
+  it("clears the draft only when onSend calls clearInput (successful send)", async () => {
+    const onSend = vi.fn(async (_msg, _att, clear: () => void) => {
+      clear();
+    });
+    render(
+      <SidebarChatInput
+        activeId="conv-a"
+        githubLogin="acme"
+        workspaceId="ws-1"
+        onSend={onSend}
+      />,
+    );
+    const ta = screen.getByPlaceholderText(/Message/) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(ta, { target: { value: "sent" } });
+    });
+    await act(async () => {
+      fireEvent.submit(ta.closest("form")!);
+    });
+    expect(ta.value).toBe("");
+    expect(getDraft(draftRef("conv-a"))).toBe("");
+  });
+
+  it("does not revoke preview URLs on unmount/switch", async () => {
+    const revoke = URL.revokeObjectURL as unknown as ReturnType<typeof vi.fn>;
+    const onSend = vi.fn(async () => {});
+    const { unmount } = render(
+      <SidebarChatInput
+        activeId="conv-a"
+        githubLogin="acme"
+        workspaceId="ws-1"
+        onSend={onSend}
+      />,
+    );
+    unmount();
+    expect(revoke).not.toHaveBeenCalled();
   });
 });

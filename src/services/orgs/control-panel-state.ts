@@ -133,6 +133,8 @@ export interface ActiveChatSnapshot {
   /** Jamie's last message, when Jamie spoke last and the turn has settled. */
   lastReply: string | null;
   hasMessages: boolean;
+  /** Unsent composer text or pending files — listable like messages. */
+  hasUnsavedDraft?: boolean;
   isStreaming: boolean;
   /** Store title when set (LLM / seeded); null while still generating. */
   title: string | null;
@@ -141,7 +143,9 @@ export interface ActiveChatSnapshot {
 function sinceYouOf(chat: ActiveChatSnapshot): string {
   if (chat.isStreaming) return "Jamie is replying";
   if (chat.lastReply) return previewLine(chat.lastReply);
-  return chat.hasMessages ? "No reply yet" : "Empty chat";
+  if (chat.hasMessages) return "No reply yet";
+  if (chat.hasUnsavedDraft) return "Draft";
+  return "Empty chat";
 }
 
 /**
@@ -155,6 +159,7 @@ export function unlistedOnStageChatTitle(
 ): string {
   if (chat.title) return chat.title;
   if (chat.hasMessages && messages) return generateTitle(messages);
+  if (chat.hasUnsavedDraft) return "Untitled";
   return "New chat";
 }
 
@@ -345,13 +350,32 @@ export function resolveControlPanelLists(
       ),
     };
   }
-  if (!activeChat.hasMessages && !opts.chatOnStage) {
+  const listable = activeChat.hasMessages || !!activeChat.hasUnsavedDraft;
+  if (!listable && !opts.chatOnStage) {
     return { displayItems: items, displayArchivedItems: archivedItems };
   }
   return {
     displayItems: [activeChatItem(activeChat, opts.startedAt, opts.titleForNew), ...items],
     displayArchivedItems: archivedItems,
   };
+}
+
+/** Prepend every touched unsaved local slot that the server lists do not already hold. */
+export function prependUnsavedLocalChats(
+  items: ControlPanelItem[],
+  localChats: ActiveChatSnapshot[],
+  startedAt: string,
+): ControlPanelItem[] {
+  const known = new Set(items.map((item) => item.id));
+  const extras: ControlPanelItem[] = [];
+  for (const chat of localChats) {
+    if (chat.serverId) continue;
+    if (!chat.hasMessages && !chat.hasUnsavedDraft) continue;
+    if (known.has(chat.localId)) continue;
+    extras.push(activeChatItem(chat, startedAt, unlistedOnStageChatTitle(chat, undefined)));
+    known.add(chat.localId);
+  }
+  return extras.length ? [...extras, ...items] : items;
 }
 
 /**

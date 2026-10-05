@@ -321,6 +321,17 @@ describe("DashboardChat — auto-save", () => {
     expect(sendButton).not.toBeDisabled();
   });
 
+  test("RecentChatsPopup is not rendered before messages or a draft exist", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ items: [] }),
+    });
+
+    render(<DashboardChat />);
+
+    expect(screen.queryByTestId("recent-chats-popup")).not.toBeInTheDocument();
+  });
+
   test("RecentChatsPopup is rendered in the action row when messages exist", async () => {
     global.fetch = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/chat/conversations")) {

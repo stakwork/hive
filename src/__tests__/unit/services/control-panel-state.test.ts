@@ -27,9 +27,10 @@ import {
   moveChatToActive,
   moveChatToArchive,
   overlayActiveChat,
+  prependUnsavedLocalChats,
+  resolveControlPanelLists,
   unlistedOnStageChatTitle,
   previewLine,
-  resolveControlPanelLists,
   sortControlPanelItems,
   visibleControlPanelItems,
 } from "@/services/orgs/control-panel-state";
@@ -523,6 +524,55 @@ describe("archive move and on-stage gating", () => {
     });
     const groups = buildControlPanelGroups(resolved.displayItems);
     expect(groups.flatMap((g) => g.rows).map((r) => r.item.id)).toEqual(["c2"]);
+  });
+
+  test("an inactive draft-only slot stays in Active", () => {
+    const draftOnly = {
+      localId: "conv-draft",
+      serverId: null,
+      lastMessageAt: null,
+      lastReply: null,
+      hasMessages: false,
+      hasUnsavedDraft: true,
+      isStreaming: false,
+      title: null,
+    };
+    const resolved = resolveControlPanelLists([other], [], draftOnly, {
+      chatOnStage: false,
+      startedAt,
+      titleForNew: "Untitled",
+    });
+    expect(resolved.displayItems.map((i) => i.id)).toEqual(["conv-draft", "c2"]);
+  });
+
+  test("prependUnsavedLocalChats keeps inactive draft-only slots listed", () => {
+    const extras = prependUnsavedLocalChats(
+      [other],
+      [
+        {
+          localId: "conv-a",
+          serverId: null,
+          lastMessageAt: null,
+          lastReply: null,
+          hasMessages: false,
+          hasUnsavedDraft: true,
+          isStreaming: false,
+          title: null,
+        },
+        {
+          localId: "conv-b",
+          serverId: null,
+          lastMessageAt: null,
+          lastReply: null,
+          hasMessages: false,
+          hasUnsavedDraft: true,
+          isStreaming: false,
+          title: null,
+        },
+      ],
+      startedAt,
+    );
+    expect(extras.map((i) => i.id)).toEqual(["conv-a", "conv-b", "c2"]);
   });
 
   test("a brand-new on-stage chat not in either list is prepended into Active", () => {

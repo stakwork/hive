@@ -180,3 +180,79 @@ describe("DashboardChat/ChatInput — drag overlay regression", () => {
     expect(screen.getByText("Drop image here")).toBeInTheDocument();
   });
 });
+
+import {
+  NEW_CONVERSATION_KEY,
+  getDraft,
+  resetConversationDraftsForTests,
+  setDraft,
+  workspaceDraftScope,
+} from "@/lib/conversationDrafts";
+
+describe("DashboardChat/ChatInput — per-conversation drafts", () => {
+  beforeEach(() => {
+    resetConversationDraftsForTests();
+  });
+
+  it("keys the composer by conversationKey and restores on switch", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ChatInput
+        onSend={onSend}
+        conversationKey={NEW_CONVERSATION_KEY}
+        userId="user-1"
+        currentWorkspaceSlug="hive"
+      />,
+    );
+    const ta = document.querySelector("textarea") as HTMLTextAreaElement;
+    expect(ta.dataset.conversationKey).toBe(NEW_CONVERSATION_KEY);
+
+    await act(async () => {
+      fireEvent.change(ta, { target: { value: "unsaved new" } });
+    });
+
+    rerender(
+      <ChatInput
+        onSend={onSend}
+        conversationKey="srv-1"
+        userId="user-1"
+        currentWorkspaceSlug="hive"
+      />,
+    );
+    const after = document.querySelector("textarea") as HTMLTextAreaElement;
+    expect(after.dataset.conversationKey).toBe("srv-1");
+    expect(after.value).toBe("");
+    expect(
+      getDraft({
+        userId: "user-1",
+        scope: workspaceDraftScope("hive"),
+        conversationKey: NEW_CONVERSATION_KEY,
+      }),
+    ).toBe("unsaved new");
+
+    rerender(
+      <ChatInput
+        onSend={onSend}
+        conversationKey={NEW_CONVERSATION_KEY}
+        userId="user-1"
+        currentWorkspaceSlug="hive"
+      />,
+    );
+    expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("unsaved new");
+  });
+
+  it("does not write __new__ to localStorage", async () => {
+    render(
+      <ChatInput
+        onSend={vi.fn().mockResolvedValue(undefined)}
+        conversationKey={NEW_CONVERSATION_KEY}
+        userId="user-1"
+        currentWorkspaceSlug="hive"
+      />,
+    );
+    await act(async () => {
+      fireEvent.change(document.querySelector("textarea")!, { target: { value: "local only" } });
+    });
+    expect(window.localStorage.length).toBe(0);
+  });
+});

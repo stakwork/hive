@@ -7,11 +7,13 @@ import {
   buildArchivedRows,
   buildControlPanelGroups,
   matchesControlPanelQuery,
+  prependUnsavedLocalChats,
   resolveControlPanelLists,
   unlistedOnStageChatTitle,
   visibleControlPanelItems,
   type ActiveChatSnapshot,
 } from "@/services/orgs/control-panel-state";
+import { hasLocalUnsavedState, useConversationDraftsVersion } from "@/lib/conversationDrafts";
 import type { ControlPanelItem } from "@/types/control-panel";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import { openOrgConversation, startNewOrgConversation } from "../../_state/openOrgConversation";
@@ -92,6 +94,7 @@ export function useControlPanel(githubLogin: string, enabled: boolean, listVisib
   // only, so streaming's per-chunk store writes don't re-render the page
   // (Jamie's reply is left out until the turn settles for the same
   // reason), and nothing at all while the canvas is showing.
+  useConversationDraftsVersion();
   const activeChat = useCanvasChatStore(
     useShallow((s): ActiveChatSnapshot | null => {
       if (!enabled) return null;
@@ -104,9 +107,34 @@ export function useControlPanel(githubLogin: string, enabled: boolean, listVisib
         lastMessageAt: last ? last.timestamp.toISOString() : null,
         lastReply: !conv.isStreaming && last?.role === "assistant" ? last.content : null,
         hasMessages: conv.messages.length > 0,
+        hasUnsavedDraft: hasLocalUnsavedState(conv.id),
         isStreaming: conv.isStreaming,
         title: conv.title,
       };
+    }),
+  );
+  const unsavedLocalChats = useCanvasChatStore(
+    useShallow((s): ActiveChatSnapshot[] => {
+      if (!enabled) return [];
+      return Object.values(s.conversations)
+        .filter(
+          (conv) =>
+            conv.serverConversationId == null &&
+            (conv.messages.length > 0 || hasLocalUnsavedState(conv.id)),
+        )
+        .map((conv) => {
+          const last = conv.messages[conv.messages.length - 1];
+          return {
+            localId: conv.id,
+            serverId: conv.serverConversationId,
+            lastMessageAt: last ? last.timestamp.toISOString() : null,
+            lastReply: !conv.isStreaming && last?.role === "assistant" ? last.content : null,
+            hasMessages: conv.messages.length > 0,
+            hasUnsavedDraft: true,
+            isStreaming: conv.isStreaming,
+            title: conv.title,
+          };
+        });
     }),
   );
   const activeLocalId = activeChat?.localId ?? null;
@@ -172,12 +200,16 @@ export function useControlPanel(githubLogin: string, enabled: boolean, listVisib
   const { displayItems, displayArchivedItems } = useMemo(() => {
     const conv = activeChat ? useCanvasChatStore.getState().conversations[activeChat.localId] : undefined;
     const title = activeChat ? unlistedOnStageChatTitle(activeChat, conv?.messages) : "New chat";
-    return resolveControlPanelLists(items, archivedItems, activeChat, {
+    const resolved = resolveControlPanelLists(items, archivedItems, activeChat, {
       chatOnStage,
       startedAt: newChatStartedAtRef.current,
       titleForNew: title,
     });
-  }, [items, archivedItems, activeChat, chatOnStage]);
+    return {
+      displayItems: prependUnsavedLocalChats(resolved.displayItems, unsavedLocalChats, newChatStartedAtRef.current),
+      displayArchivedItems: resolved.displayArchivedItems,
+    };
+  }, [items, archivedItems, activeChat, chatOnStage, unsavedLocalChats]);
 
   const focusedKey = focus.kind === "chat" ? activeChatKey : `${focus.kind}:${focus.id}`;
   const focusedItem = useMemo(() => {
@@ -198,6 +230,14 @@ export function useControlPanel(githubLogin: string, enabled: boolean, listVisib
       }
       // The chat on stage is already open — nothing to fetch or switch.
       if (item.id === activeServerConversationId || item.id === activeLocalId) {
+        changeFocus({ kind: "chat" });
+        return;
+      }
+      // Local unsaved slots (conv-*) live only in the Zustand store —
+      // never GET `/api/orgs/.../chat/conversations/${localId}`.
+      const localSlot = useCanvasChatStore.getState().conversations[item.id];
+      if (localSlot && localSlot.serverConversationId == null) {
+        useCanvasChatStore.getState().setActiveConversation(item.id);
         changeFocus({ kind: "chat" });
         return;
       }

@@ -1,12 +1,20 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { History, PlusCircle } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ConversationListItem } from "@/types/shared-conversation";
 import { UNTITLED_CONVERSATION } from "@/lib/ai/conversationHelpers";
 import { openOrgConversation, startNewOrgConversation } from "../_state/openOrgConversation";
+import { useCanvasChatStore } from "../_state/canvasChatStore";
+import {
+  hasLocalUnsavedState,
+  localDraftPreview,
+  useConversationDraftsVersion,
+} from "@/lib/conversationDrafts";
+
+type HistoryRow = ConversationListItem & { local?: boolean; localId?: string };
 
 interface CanvasHistoryPopoverProps {
   githubLogin: string;
@@ -33,6 +41,35 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
   const [items, setItems] = useState<ConversationListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
+  useConversationDraftsVersion();
+  const conversations = useCanvasChatStore((s) => s.conversations);
+
+  const displayItems: HistoryRow[] = useMemo(() => {
+    const localRows: HistoryRow[] = Object.values(conversations)
+      .filter(
+        (conv) =>
+          conv.serverConversationId == null &&
+          (conv.messages.length > 0 || hasLocalUnsavedState(conv.id)),
+      )
+      .map((conv) => {
+        const preview = localDraftPreview(conv.id);
+        const last = conv.messages[conv.messages.length - 1];
+        return {
+          id: `local:${conv.id}`,
+          local: true,
+          localId: conv.id,
+          title: conv.title,
+          lastMessageAt: last ? last.timestamp.toISOString() : new Date().toISOString(),
+          preview: preview || "Untitled",
+          source: "org-canvas",
+          isShared: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          unread: false,
+        };
+      });
+    return [...localRows, ...items];
+  }, [conversations, items]);
 
   const fetchList = useCallback(async () => {
     setIsLoading(true);
@@ -56,7 +93,12 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
     }
   };
 
-  const handleItemClick = async (item: ConversationListItem) => {
+  const handleItemClick = async (item: HistoryRow) => {
+    if (item.local && item.localId) {
+      useCanvasChatStore.getState().setActiveConversation(item.localId);
+      setOpen(false);
+      return;
+    }
     setLoadingItemId(item.id);
     try {
       // Hydrates the store, syncs `?chat=<id>` (shareable, survives a
@@ -121,14 +163,14 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
                   </div>
                 ))}
               </div>
-            ) : items.length === 0 ? (
+            ) : displayItems.length === 0 ? (
               <div className="px-3 py-6 text-center">
                 <History className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
                 <p className="text-xs text-muted-foreground">No previous conversations</p>
               </div>
             ) : (
               <div className="py-1">
-                {items.map((item) => {
+                {displayItems.map((item) => {
                   // A stored placeholder title (legacy rows created before
                   // title self-heal) is treated as empty so the first-user-
                   // message preview wins.
