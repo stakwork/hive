@@ -1,6 +1,7 @@
 import z from "zod";
 import { generateObject } from "ai";
 import { getApiKeyForProvider, getModel, Provider } from "@/lib/ai/provider";
+import { PINNED_UTILITY_ANTHROPIC_MODEL } from "@/lib/ai/models";
 import { db } from "@/lib/db";
 
 export async function generateCommitMessage(
@@ -87,7 +88,15 @@ Never use 'prototype' or 'wip' as a branch prefix.`;
 
   const provider: Provider = "anthropic";
   const apiKey = getApiKeyForProvider(provider);
-  const model = getModel(provider, apiKey);
+  // Pinned to claude-sonnet-5 so an aieo upgrade that shifts the
+  // Anthropic default (e.g. to a 5.5-generation model) doesn't silently
+  // change this call's model, cost, or latency.
+  const model = getModel(
+    provider,
+    apiKey,
+    undefined,
+    provider === "anthropic" ? PINNED_UTILITY_ANTHROPIC_MODEL : undefined,
+  );
   const schema = z.object({
     commit_message: z.string(),
     branch_name: z.string(),

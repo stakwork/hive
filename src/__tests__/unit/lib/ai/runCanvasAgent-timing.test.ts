@@ -14,6 +14,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ---------------------------------------------------------------------------
+// Hoisted mock fns — referenced inside vi.mock factories below, so they must
+// be created via vi.hoisted() to exist before those factories run.
+// ---------------------------------------------------------------------------
+const { mockGetModel, mockGetProviderOptions } = vi.hoisted(() => ({
+  mockGetModel: vi.fn(() => ({ modelId: "mock-model" })),
+  mockGetProviderOptions: vi.fn(() => ({})),
+}));
+
+// ---------------------------------------------------------------------------
 // Module mocks — must come before any import that transitively loads them.
 // ---------------------------------------------------------------------------
 vi.mock("@/lib/db", () => ({
@@ -68,7 +77,7 @@ vi.mock("@/lib/ai/message-sanitizer", () => ({
   sanitizeAndCompleteToolCalls: vi.fn(async (msgs: unknown) => msgs),
 }));
 vi.mock("@/lib/ai/provider", () => ({
-  getModel: vi.fn(() => ({ modelId: "mock-model" })),
+  getModel: mockGetModel,
   getApiKeyForProvider: vi.fn(() => "api-key"),
   WEB_SEARCH_TOOL_NAME: "web_search",
   WEB_FETCH_TOOL_NAME: "web_fetch",
@@ -89,7 +98,10 @@ vi.mock("@/lib/ai/provider", () => ({
     formatOutput: (markdown: string) => ({ content: markdown, converted: 0, skipped: 0 }),
   })),
 }));
-vi.mock("aieo", () => ({ getProviderOptions: vi.fn(() => ({})) }));
+vi.mock("aieo", () => ({
+  getProviderOptions: mockGetProviderOptions,
+  PROVIDERS: ["anthropic", "google", "openai", "openrouter", "xai"],
+}));
 vi.mock("@/services/bifrost/orchestrator", () => ({
   getBifrostForLLM: vi.fn(async () => undefined),
 }));
@@ -487,5 +499,50 @@ describe("runCanvasAgent — stage-timing logs", () => {
     expect(conceptLog).toBeDefined();
     expect(conceptLog!.skipped).toBe("seeding disabled");
     expect(conceptLog!.ms).toBe(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // 10. `buildCanvasProviderOptions` threads the resolved model id (or
+  //     `modelOverride` fallback) through to aieo's `getProviderOptions`
+  //     with the "fast" thinking speed — never a bare `undefined` when a
+  //     model was requested.
+  // -------------------------------------------------------------------------
+  it("calls getProviderOptions with (\"anthropic\", \"fast\", <modelId>) using the resolved getModel id", async () => {
+    mockStreamText.mockImplementation(makeStreamResult([]));
+
+    await runCanvasAgent(baseOpts());
+
+    // Default mocked getModel() returns { modelId: "mock-model" }.
+    expect(mockGetProviderOptions).toHaveBeenCalledWith("anthropic", "fast", "mock-model");
+  });
+
+  it("passes the user-selected model id through from modelName -> getModel -> provider options", async () => {
+    mockGetModel.mockReturnValueOnce({ modelId: "claude-opus-5-5" });
+    mockStreamText.mockImplementation(makeStreamResult([]));
+
+    await runCanvasAgent(baseOpts({ modelName: "anthropic/claude-opus-5-5" }));
+
+    expect(mockGetProviderOptions).toHaveBeenCalledWith(
+      "anthropic",
+      "fast",
+      "claude-opus-5-5",
+    );
+  });
+
+  it("forwards modelOverride instead of undefined when getModel resolves no modelId", async () => {
+    mockGetModel.mockReturnValueOnce({ modelId: undefined as unknown as string });
+    mockStreamText.mockImplementation(makeStreamResult([]));
+
+    await runCanvasAgent(baseOpts({ modelName: "anthropic/claude-sonnet-5-5" }));
+
+    // resolvedModelId falls back to "unknown" here, so the helper must be
+    // handed modelOverride ("anthropic/claude-sonnet-5-5") rather than a
+    // bare `undefined` — passing undefined would make aieo silently
+    // assume its own Anthropic default instead of the user's selection.
+    expect(mockGetProviderOptions).toHaveBeenCalledWith(
+      "anthropic",
+      "fast",
+      "anthropic/claude-sonnet-5-5",
+    );
   });
 });

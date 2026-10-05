@@ -84,7 +84,8 @@ import {
   WEB_FETCH_TOOL_NAME,
   type Provider,
 } from "@/lib/ai/provider";
-import { getProviderOptions, hasApiKeyForProvider, PROVIDERS } from "aieo";
+import { hasApiKeyForProvider, PROVIDERS } from "aieo";
+import { buildCanvasProviderOptions } from "@/lib/ai/canvasProviderOptions";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import {
@@ -748,12 +749,12 @@ export async function runCanvasAgent(
   // configured API key switches the whole call (client, key, provider
   // options) to that provider — e.g. "openrouter/stealth/ox-alpha" runs
   // through OpenRouter. Anything else falls back to Anthropic (aieo's
-  // default sonnet), LOUDLY: a selected model must never silently
-  // answer as a different one. The `getModel` call is deferred until
-  // after workspace resolution so we can thread Bifrost overrides
-  // (baseUrl + `x-macaroon` headers, for whichever provider won) when
-  // the rollout flag is on for the primary workspace — see
-  // `getBifrostForLLM` below.
+  // default, `DEFAULT_MODELS.anthropic` — currently `claude-sonnet-5-5`),
+  // LOUDLY: a selected model must never silently answer as a different
+  // one. The `getModel` call is deferred until after workspace
+  // resolution so we can thread Bifrost overrides (baseUrl +
+  // `x-macaroon` headers, for whichever provider won) when the rollout
+  // flag is on for the primary workspace — see `getBifrostForLLM` below.
   let provider: Provider = "anthropic";
   if (modelName?.includes("/")) {
     const prefix = modelName.split("/")[0] as Provider;
@@ -1333,21 +1334,39 @@ export async function runCanvasAgent(
 
   // ------------------------------------------------------------------
   // Provider options — enables Anthropic auto prompt caching
-  // (top-level `cache_control` field). Also threads `thinking` config.
+  // (top-level `cache_control` field). Also threads `thinking`/`effort`
+  // config.
   //
-  // aieo 0.2.0 no longer nests its own SDK copy: it hoists onto this
-  // repo's single root `ai@7` / `@ai-sdk/anthropic@4`, so the same
-  // installed provider that aieo built the model with is the one that
-  // serializes these options into the API request
-  // (`cache_control: anthropicOptions.cacheControl`). One SDK, one set
-  // of `SharedV4ProviderOptions` types — no duplicate-copy mismatch.
+  // aieo hoists onto this repo's single root `ai@7` / `@ai-sdk/anthropic@4`
+  // rather than nesting its own SDK copy, so the same installed provider
+  // that aieo built the model with is the one that serializes these
+  // options into the API request (`cache_control: anthropicOptions.cacheControl`).
+  // One SDK, one set of `SharedV4ProviderOptions` types — no duplicate-copy
+  // mismatch.
+  //
+  // `buildCanvasProviderOptions` threads the model that will actually run
+  // the turn (`resolvedModelId`, falling back to `modelOverride` when
+  // `getModel` couldn't resolve an id) through aieo's "fast" thinking
+  // speed for Anthropic. That gives Sonnet 5.5 / Opus 5.5 / Fable the
+  // `{ effort: "low" }` shape they require (no `thinking` field — they
+  // reject `thinking: { type: "disabled" }`), while every other Claude
+  // model keeps today's `thinking: { type: "disabled" }`. We never pass a
+  // bare `undefined` when `modelOverride` exists, since aieo would then
+  // assume its own Anthropic default (`DEFAULT_MODELS.anthropic`).
   //
   // The cast stays only because `getProviderOptions` returns a
   // per-provider union rather than the SDK's index-signature
   // `ProviderOptions`; the runtime payload is unchanged.
-  const providerOptions = getProviderOptions(
+  const providerOptions = buildCanvasProviderOptions(
     provider,
+    resolvedModelId !== "unknown" ? resolvedModelId : modelOverride,
   ) as unknown as Parameters<typeof streamText>[0]["providerOptions"];
+
+  const anthropicProviderOptions = (
+    providerOptions as {
+      anthropic?: { cacheControl?: unknown; thinking?: unknown; effort?: unknown };
+    }
+  )?.anthropic;
 
   console.log("[runCanvasAgent] streamText:", {
     model: (model as { modelId?: string })?.modelId,
@@ -1360,8 +1379,9 @@ export async function runCanvasAgent(
     bifrost: bifrost
       ? { runId: bifrost.runId, agentName: bifrost.agentName }
       : null,
-    cacheControl: (providerOptions as { anthropic?: { cacheControl?: unknown } })
-      ?.anthropic?.cacheControl ?? null,
+    cacheControl: anthropicProviderOptions?.cacheControl ?? null,
+    thinking: anthropicProviderOptions?.thinking ?? null,
+    effort: anthropicProviderOptions?.effort ?? null,
   });
 
   // ------------------------------------------------------------------

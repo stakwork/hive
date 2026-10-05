@@ -17,6 +17,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { PINNED_UTILITY_ANTHROPIC_MODEL } from "@/lib/ai/models";
 import {
   createInMemoryEditor,
   applyEdit,
@@ -129,7 +130,7 @@ export async function runImprovement({
   ].join("\n");
 
   const apiKey = getApiKeyForProvider("anthropic");
-  const model = getModel("anthropic", apiKey, undefined, "sonnet");
+  const model = getModel("anthropic", apiKey, undefined, PINNED_UTILITY_ANTHROPIC_MODEL);
 
   const result = await generateText({
     model,

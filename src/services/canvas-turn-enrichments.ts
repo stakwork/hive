@@ -23,6 +23,7 @@
 import { ModelMessage, generateObject } from "ai";
 import { z } from "zod";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { PINNED_UTILITY_ANTHROPIC_MODEL } from "@/lib/ai/models";
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import {
   getWorkspaceChannelName,
@@ -131,19 +132,22 @@ export async function emitFollowUpQuestions(args: {
     // fragment the per-surface rollups operators actually want. Returns
     // `undefined` and falls back to the default key when BIFROST_ENABLED
     // doesn't cover the primary slug, or for public-viewer requests.
+    // Pinned to claude-sonnet-5 (both here and in the Bifrost grant
+    // lookup) so an aieo upgrade that shifts the Anthropic default
+    // doesn't silently change this call's model, cost, or latency.
     const followUpBifrost = await getBifrostForLLM(
       {
         workspaceId: primaryWorkspaceId,
         workspaceSlug: primarySlug,
         userId: primaryUserId,
       },
-      { agentName },
+      { agentName, model: PINNED_UTILITY_ANTHROPIC_MODEL },
     );
     const followUpModel = getModel(
       "anthropic",
       followUpBifrost?.apiKey ?? followUpApiKey,
       primarySlug,
-      undefined,
+      PINNED_UTILITY_ANTHROPIC_MODEL,
       followUpBifrost
         ? {
             baseUrl: followUpBifrost.baseUrl,
@@ -238,7 +242,10 @@ export async function generateConversationTitle(
 ): Promise<string | null> {
   try {
     const apiKey = getApiKeyForProvider("anthropic");
-    const model = getModel("anthropic", apiKey);
+    // Pinned to claude-sonnet-5 so an aieo upgrade that shifts the
+    // Anthropic default doesn't silently change this call's model, cost,
+    // or latency.
+    const model = getModel("anthropic", apiKey, undefined, PINNED_UTILITY_ANTHROPIC_MODEL);
 
     const result = await generateObject({
       model,

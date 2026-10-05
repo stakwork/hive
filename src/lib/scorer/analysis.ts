@@ -8,6 +8,7 @@
 import { generateText } from "ai";
 import { db } from "@/lib/db";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { PINNED_UTILITY_ANTHROPIC_MODEL } from "@/lib/ai/models";
 import { assembleFullSession, sessionToText } from "./session";
 import { resolvePrompt } from "./prompts";
 
@@ -44,7 +45,7 @@ export async function analyzeSingleSession(
   const prompt = promptTemplate.replace("{session}", sessionText);
 
   const apiKey = getApiKeyForProvider("anthropic");
-  const model = getModel("anthropic", apiKey, undefined, "sonnet");
+  const model = getModel("anthropic", apiKey, undefined, PINNED_UTILITY_ANTHROPIC_MODEL);
 
   const result = await generateText({
     model,
@@ -108,7 +109,7 @@ export async function analyzePatterns(
     .replace("{digests}", digestsText);
 
   const apiKey = getApiKeyForProvider("anthropic");
-  const model = getModel("anthropic", apiKey, undefined, "sonnet");
+  const model = getModel("anthropic", apiKey, undefined, PINNED_UTILITY_ANTHROPIC_MODEL);
 
   const result = await generateText({
     model,

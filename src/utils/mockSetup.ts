@@ -1099,6 +1099,38 @@ export async function ensureMockLlmModels(): Promise<void> {
       outputPricePer1M: 15,
     },
     {
+      // Placeholder for aieo's new Anthropic default (DEFAULT_MODELS.anthropic
+      // / MODELS.anthropic.sonnet in aieo 0.2.3+) — the canvas agent's fallback
+      // when no model is selected. Without this row, selecting/healing it
+      // locally is impossible (healUserChatAgentModel drops unknown names).
+      // ⚠️ pricing copied from claude-sonnet-5 — confirm with product.
+      name: "claude-sonnet-5-5",
+      provider: LlmProvider.ANTHROPIC,
+      inputPricePer1M: 3,
+      outputPricePer1M: 15,
+    },
+    {
+      // Placeholder for aieo's new Anthropic "opus" shortcut
+      // (MODELS.anthropic.opus in aieo 0.2.3+). Requires the "fast"
+      // low-effort path (see buildCanvasProviderOptions) — it rejects
+      // `thinking: { type: "disabled" }`.
+      // ⚠️ pricing copied from claude-opus-4-6 — confirm with product.
+      name: "claude-opus-5-5",
+      provider: LlmProvider.ANTHROPIC,
+      inputPricePer1M: 15,
+      outputPricePer1M: 75,
+    },
+    {
+      // Placeholder for the new Anthropic "Fable" model. Also requires
+      // the "fast" low-effort path (see buildCanvasProviderOptions) — it
+      // rejects `thinking: { type: "disabled" }`.
+      // ⚠️ pricing copied from claude-sonnet-5 — confirm with product.
+      name: "claude-fable-5",
+      provider: LlmProvider.ANTHROPIC,
+      inputPricePer1M: 3,
+      outputPricePer1M: 15,
+    },
+    {
       // xAI/Grok — exercises "users pick it from the existing model
       // dropdowns" for the new direct-provider path before production.
       // Like the Anthropic rows above, this must be a real xAI model id

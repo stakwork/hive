@@ -19,9 +19,22 @@ export const DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-4-6";
 /**
  * Default standard/reasoning model pair for Legal Benchmark runs.
  * Both must share a provider so a single `apiKey` env credential covers the run.
+ * Note: this is the Legal Benchmark picker default — it is unrelated to the
+ * canvas agent's default model, which comes from aieo's `DEFAULT_MODELS.anthropic`
+ * (currently `claude-sonnet-5-5`) via `getModel`/`buildCanvasProviderOptions`.
  */
 export const DEFAULT_STANDARD_MODEL = "anthropic/claude-sonnet-5";
 export const DEFAULT_REASONING_MODEL = "anthropic/claude-opus-5";
+
+/**
+ * Model id pinned for Hive's own in-process Claude calls (scorer, feature/task
+ * extraction, commit-message generation, canvas turn enrichments) so that
+ * upgrading aieo — which can change `MODELS.anthropic.sonnet`/`DEFAULT_MODELS.anthropic`
+ * to a newer generation — doesn't silently change these utility calls' model,
+ * reasoning effort, cost, or latency. Only the canvas agent itself should follow
+ * aieo's shifting default; everything else uses this constant explicitly.
+ */
+export const PINNED_UTILITY_ANTHROPIC_MODEL = "claude-sonnet-5";
 
 /** Human-readable labels for LlmProvider enum values, for provider pickers. */
 export const PROVIDER_DISPLAY_LABELS: Record<string, string> = {

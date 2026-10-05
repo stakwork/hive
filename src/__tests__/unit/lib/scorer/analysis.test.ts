@@ -137,6 +137,19 @@ describe("analyzeSingleSession", () => {
     expect(mockResolvePrompt).toHaveBeenCalledWith("single", workspacePrompt);
   });
 
+  test("pins the model to claude-sonnet-5, not the 'sonnet' shortcut", async () => {
+    await analyzeSingleSession(featureId, workspaceId);
+
+    // Pinned so an aieo upgrade that shifts the Anthropic default/shortcuts
+    // doesn't silently change this call's model, cost, or latency.
+    expect(mockGetModel).toHaveBeenCalledWith(
+      "anthropic",
+      "fake-api-key",
+      undefined,
+      "claude-sonnet-5",
+    );
+  });
+
   test("returns insightCount equal to saved insight records", async () => {
     const result = await analyzeSingleSession(featureId, workspaceId);
     expect(result.insightCount).toBe(1);

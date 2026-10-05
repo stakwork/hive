@@ -116,7 +116,14 @@ describe("generateConversationTitle", () => {
 
     expect(title).toBe("Auth token refresh");
     expect(getApiKeyMock).toHaveBeenCalledWith("anthropic");
-    expect(getModelMock).toHaveBeenCalledWith("anthropic", "test-api-key");
+    // Pinned to claude-sonnet-5 so an aieo upgrade that shifts the
+    // Anthropic default doesn't silently change this call's model.
+    expect(getModelMock).toHaveBeenCalledWith(
+      "anthropic",
+      "test-api-key",
+      undefined,
+      "claude-sonnet-5",
+    );
     expect(getBifrostMock).not.toHaveBeenCalled();
 
     const call = generateObjectMock.mock.calls[0][0];

@@ -1,6 +1,7 @@
 import { generateObject, type ModelMessage } from "ai";
 import { z } from "zod";
 import { getModel, getApiKeyForProvider, type Provider } from "@/lib/ai/provider";
+import { PINNED_UTILITY_ANTHROPIC_MODEL } from "@/lib/ai/models";
 
 /**
  * Converts AI SDK messages to a transcript string
@@ -81,7 +82,10 @@ export async function extractFeatureFromTranscript(
 
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
-    const model = getModel(provider, apiKey, workspaceSlug); // Use default model for quality
+    // Pinned to claude-sonnet-5 so an aieo upgrade that shifts the
+    // Anthropic default (e.g. to a 5.5-generation model) doesn't silently
+    // change this call's model, cost, or latency.
+    const model = getModel(provider, apiKey, workspaceSlug, PINNED_UTILITY_ANTHROPIC_MODEL);
 
     const result = await generateObject({
       model,

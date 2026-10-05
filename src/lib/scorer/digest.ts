@@ -12,6 +12,7 @@
 import { generateText } from "ai";
 import { db } from "@/lib/db";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { PINNED_UTILITY_ANTHROPIC_MODEL } from "@/lib/ai/models";
 import { assembleFullSession, sessionToText } from "./session";
 import { DIGEST_COMPRESSION_PROMPT } from "./prompts";
 
@@ -26,7 +27,7 @@ export async function generateDigest(featureId: string): Promise<string> {
   const prompt = DIGEST_COMPRESSION_PROMPT.replace("{session}", sessionText);
 
   const apiKey = getApiKeyForProvider("anthropic");
-  const model = getModel("anthropic", apiKey, undefined, "sonnet");
+  const model = getModel("anthropic", apiKey, undefined, PINNED_UTILITY_ANTHROPIC_MODEL);
 
   const result = await generateText({
     model,
