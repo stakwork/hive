@@ -11,7 +11,7 @@
  * search, reading workflow recipes) so the canvas agent can ground new
  * workflow designs in proven, reusable building blocks.
  *
- * Composed via the `workflows` capability, which is org-gated to the
+ * Composed via the `stakwork_workflows` capability, which is org-gated to the
  * Stakwork source-control org (see `capabilities.ts`) — other orgs' agents
  * never see this tool.
  *
@@ -58,7 +58,7 @@ const WORKFLOW_LIBRARY_WORKSPACE_SLUG = "stakwork";
 /**
  * Resolve the workflow-library workspace's swarm credentials by slug.
  * Deliberately skips per-user membership validation — the tool is a
- * fixed backend shared by every caller the `workflows` capability gate
+ * fixed backend shared by every caller the `stakwork_workflows` capability gate
  * admits, not a per-user workspace surface. Mirrors the URL/decrypt
  * conventions of `buildWorkspaceConfigs`.
  */
@@ -185,7 +185,8 @@ export function buildWorkflowExplorerTools(ctx?: CapabilityContext): ToolSet {
         "Dispatch a research agent over the Stakwork workflow library (the stakwork workspace's knowledge graph) to find existing Workflows, Skills, and Scripts relevant to a workflow being designed. " +
         "It searches components semantically by what they take as input and produce as output, reads full workflow recipes (step orderings + the skills each step uses), and reports proven, reusable building blocks with usage statistics — plus gaps where nothing exists yet. " +
         "It researches how workflows are DEFINED, not how they ran: for run history, run logs, or diagnosing why a workflow/run failed, use the stakwork workspace's logs_agent (stakwork__logs_agent) instead — it sees the full, untruncated run logs. " +
-        "Use it when designing or discussing a NEW Stakwork workflow: e.g. 'what existing skills take a video url as input?', 'is there already a transcription workflow, and how does it compose its steps?'. " +
+        "Use it ONLY when the user explicitly names Stakwork and is designing or discussing a NEW Stakwork workflow: e.g. 'what existing skills take a video url as input?', 'is there already a transcription workflow, and how does it compose its steps?'. " +
+        "A bare 'workflow' (Stakwork not named) is a strut workflow — that goes through the strut capability (dispatch_strut), never this tool. " +
         "READ-ONLY by default — it cannot create or modify workflows. Pass run_step: true (ONLY when the user explicitly asks to run/execute/test a specific step) to additionally let it execute one workflow step with supplied inputs and report the output. " +
         "Heavy/slow (minutes): call it ONCE with a complete, self-contained prompt rather than several times. " +
         "In a canvas conversation this tool runs in the BACKGROUND: it returns immediately with a dispatch confirmation (no findings), and the explorer's full report is posted directly into the conversation when it finishes. Tell the user it's underway — do NOT re-call the tool to fetch results and do NOT invent findings.",
