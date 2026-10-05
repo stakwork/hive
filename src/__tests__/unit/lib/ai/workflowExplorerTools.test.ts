@@ -123,6 +123,16 @@ describe("buildWorkflowExplorerTools", () => {
     expect(tools).toHaveProperty("workflow_explorer_agent");
   });
 
+  test("its description is Stakwork-only and sends a bare 'workflow' to strut", () => {
+    const tool = buildWorkflowExplorerTools()["workflow_explorer_agent"] as unknown as {
+      description: string;
+    };
+    expect(tool.description).toContain("Use it ONLY when the user explicitly names Stakwork");
+    expect(tool.description).toContain(
+      "A bare 'workflow' (Stakwork not named) is a strut workflow — that goes through the strut capability (dispatch_strut), never this tool.",
+    );
+  });
+
   // ── Isolation: no-context callers use the inline poll path ───────────────────
 
   test("no ctx: polls inline — no AgentRun row, no dispatch, no webhookUrl", async () => {
