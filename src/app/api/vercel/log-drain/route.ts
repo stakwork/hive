@@ -5,7 +5,13 @@ import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/push
 import { matchPathToEndpoint, type EndpointNode } from "@/lib/vercel/path-matcher";
 import type { VercelLogEntry } from "@/types/vercel";
 import { NextRequest, NextResponse } from "next/server";
-import { endpointCache, inflight, ENDPOINT_CACHE_TTL_MS } from "./endpoint-cache";
+import {
+  endpointCache,
+  inflight,
+  ENDPOINT_CACHE_TTL_MS,
+  ENDPOINT_EMPTY_CACHE_TTL_MS,
+  ENDPOINT_FETCH_TIMEOUT_MS,
+} from "./endpoint-cache";
 
 /**
  * Compute HMAC-SHA1 signature for Vercel webhook verification
@@ -192,8 +198,10 @@ async function processLogEntry(
  * Fetch endpoint nodes from workspace swarm with per-swarm caching and
  * in-flight coalescing to avoid hammering the /nodes endpoint.
  *
- * Cache TTL: 60 s. Empty successful results are not cached (swarm may be
- * mid-ingest). Errors are never cached (no poisoning).
+ * A non-empty list is reused for ENDPOINT_CACHE_TTL_MS. An empty list, a
+ * non-OK response and a fetch error are remembered for the much shorter
+ * ENDPOINT_EMPTY_CACHE_TTL_MS: the swarm may be mid-ingest and must be retried,
+ * but not on every log batch, because `GET /nodes` scans every Endpoint node.
  */
 async function fetchEndpointNodes(swarm: {
   id: string;
@@ -247,31 +255,37 @@ async function fetchEndpointNodes(swarm: {
         headers: {
           "x-api-token": apiKey,
         },
+        signal: AbortSignal.timeout(ENDPOINT_FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) {
         console.error(`[Vercel Logs] Failed to fetch endpoints: ${response.status} from ${url.toString()}`);
         inflight.delete(key);
+        rememberEmpty(key);
         return [];
       }
 
-      const nodes: EndpointNode[] = await response.json();
+      const body: unknown = await response.json();
+      const nodes: EndpointNode[] = Array.isArray(body) ? (body as EndpointNode[]) : [];
 
       console.log(`[Vercel Logs] Fetched ${nodes.length} endpoints from swarm`);
 
       inflight.delete(key);
 
-      // Only cache non-empty results — a swarm mid-ingest should be retried
-      // on the next batch rather than stuck empty for the full TTL.
       if (nodes.length > 0) {
         endpointCache.set(key, { nodes, expiresAt: Date.now() + ENDPOINT_CACHE_TTL_MS });
+      } else {
+        // Mid-ingest swarm: retry later, not on the next batch.
+        rememberEmpty(key);
       }
 
       return nodes;
     } catch (error) {
       console.error("[Vercel Logs] Error fetching endpoint nodes:", error);
       inflight.delete(key);
-      // Do not write endpointCache — error must not poison the cache.
+      // A short negative entry: the error must not poison the cache for long,
+      // but a struggling swarm must not be asked again on every batch either.
+      rememberEmpty(key);
       return [];
     }
   })();
@@ -280,6 +294,10 @@ async function fetchEndpointNodes(swarm: {
   inflight.set(key, promise);
 
   return promise;
+}
+
+function rememberEmpty(key: string): void {
+  endpointCache.set(key, { nodes: [], expiresAt: Date.now() + ENDPOINT_EMPTY_CACHE_TTL_MS });
 }
 
 /**

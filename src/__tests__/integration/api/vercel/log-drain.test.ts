@@ -1,7 +1,12 @@
 import crypto from "crypto";
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
 import { POST } from "@/app/api/vercel/log-drain/route";
-import { resetEndpointCache } from "@/app/api/vercel/log-drain/endpoint-cache";
+import {
+  resetEndpointCache,
+  endpointCache,
+  ENDPOINT_CACHE_TTL_MS,
+  ENDPOINT_EMPTY_CACHE_TTL_MS,
+} from "@/app/api/vercel/log-drain/endpoint-cache";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { generateUniqueId, generateUniqueSlug } from "@/__tests__/support/helpers";
@@ -15,7 +20,8 @@ import { NextRequest } from "next/server";
  * - Per-workspace authentication via vercelWebhookSecret
  * - NDJSON payload parsing
  * - Path matching and highlighting
- * - Endpoint-node caching and in-flight coalescing
+ * - Endpoint-node caching (long TTL for a real list, short negative TTL for
+ *   empty/failed lookups) and in-flight coalescing
  */
 
 // Mock Pusher service
@@ -137,6 +143,13 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
   // Helper: a single endpoint node
   function makeEndpointNode(name: string, refId: string) {
     return { name, file: `src/app${name}/route.ts`, ref_id: refId };
+  }
+
+  // Helper: age every cache entry past its TTL without touching the clock
+  function expireEndpointCache() {
+    for (const entry of endpointCache.values()) {
+      entry.expiresAt = 0;
+    }
   }
 
   beforeEach(() => {
@@ -584,8 +597,9 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       expect(mockedFetch).toHaveBeenCalledTimes(1);
     });
 
-    // (c) A fetch error is not cached; next batch retries (fetch called again)
-    test("(c) fetch error is not cached — subsequent batch retries", async () => {
+    // (c) A fetch error is remembered for the short negative TTL, then retried.
+    // Without this a lock-bound swarm was asked again on every log batch.
+    test("(c) fetch error is not retried on the next batch, only after the negative TTL", async () => {
       const { workspace } = await createTestWorkspace();
 
       // First call: network error
@@ -599,21 +613,25 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       expect(d1.success).toBe(true);
       expect(d1.highlighted).toBe(0);
 
-      // Second call: recovers and returns a node
+      // Second batch inside the negative TTL: no second /nodes call
+      const r2 = await POST(createRequest(workspace.slug, body));
+      expect((await r2.json()).highlighted).toBe(0);
+      expect(mockedFetch).toHaveBeenCalledTimes(1);
+
+      // After the negative TTL the swarm is asked again and recovers
+      expireEndpointCache();
       mockedFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => [makeEndpointNode("/api/health", "endpoint-1")],
       } as Response);
 
-      const r2 = await POST(createRequest(workspace.slug, body));
-      expect((await r2.json()).highlighted).toBe(1);
-
-      // fetch was called for both batches (no caching of the error)
+      const r3 = await POST(createRequest(workspace.slug, body));
+      expect((await r3.json()).highlighted).toBe(1);
       expect(mockedFetch).toHaveBeenCalledTimes(2);
     });
 
-    // (c-variant) A non-OK response is not cached; next batch retries
-    test("(c) non-OK /nodes response is not cached — subsequent batch retries", async () => {
+    // (c-variant) A non-OK response follows the same short negative TTL
+    test("(c) non-OK /nodes response is retried only after the negative TTL", async () => {
       const { workspace } = await createTestWorkspace();
 
       mockedFetch.mockResolvedValueOnce({ ok: false, status: 503 } as Response);
@@ -622,21 +640,25 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       const r1 = await POST(createRequest(workspace.slug, body));
       expect(r1.status).toBe(200);
 
+      const r2 = await POST(createRequest(workspace.slug, body));
+      expect((await r2.json()).highlighted).toBe(0);
+      expect(mockedFetch).toHaveBeenCalledTimes(1);
+
+      expireEndpointCache();
       mockedFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => [makeEndpointNode("/api/health", "endpoint-1")],
       } as Response);
 
-      const r2 = await POST(createRequest(workspace.slug, body));
-      expect((await r2.json()).highlighted).toBe(1);
+      const r3 = await POST(createRequest(workspace.slug, body));
+      expect((await r3.json()).highlighted).toBe(1);
       expect(mockedFetch).toHaveBeenCalledTimes(2);
     });
 
-    // (d) Successful empty [] is not cached; next batch re-fetches
-    test("(d) successful empty /nodes response is not cached — next batch re-fetches", async () => {
+    // (d) Successful empty [] (swarm mid-ingest) is remembered for the short TTL, then re-fetched
+    test("(d) successful empty /nodes response is re-fetched only after the negative TTL", async () => {
       const { workspace } = await createTestWorkspace();
 
-      // Both calls return empty initially
       mockedFetch
         .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
         .mockResolvedValueOnce({
@@ -650,10 +672,45 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       expect((await r1.json()).highlighted).toBe(0); // empty nodes → no match
 
       const r2 = await POST(createRequest(workspace.slug, body));
-      expect((await r2.json()).highlighted).toBe(1); // second fetch returned a node
+      expect((await r2.json()).highlighted).toBe(0); // still inside the negative TTL
+      expect(mockedFetch).toHaveBeenCalledTimes(1);
 
-      // Two fetches: empty was not cached
+      expireEndpointCache();
+      const r3 = await POST(createRequest(workspace.slug, body));
+      expect((await r3.json()).highlighted).toBe(1); // second fetch returned a node
       expect(mockedFetch).toHaveBeenCalledTimes(2);
+    });
+
+    // (d-variant) A real list lives for the long TTL, an empty one only for the short TTL
+    test("(d) non-empty lists get the long TTL, empty ones the short negative TTL", async () => {
+      const { workspace, swarm } = await createTestWorkspace();
+      const body = JSON.stringify(makeLogEntry("/api/health"));
+
+      mockedFetch.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response);
+      await POST(createRequest(workspace.slug, body));
+
+      const emptyEntry = endpointCache.get(swarm!.id);
+      expect(emptyEntry?.nodes).toEqual([]);
+      const emptyTtl = emptyEntry!.expiresAt - Date.now();
+      expect(emptyTtl).toBeGreaterThan(ENDPOINT_EMPTY_CACHE_TTL_MS - 5_000);
+      expect(emptyTtl).toBeLessThanOrEqual(ENDPOINT_EMPTY_CACHE_TTL_MS);
+
+      expireEndpointCache();
+      mockedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [makeEndpointNode("/api/health", "endpoint-1")],
+      } as Response);
+      await POST(createRequest(workspace.slug, body));
+
+      const fullEntry = endpointCache.get(swarm!.id);
+      expect(fullEntry?.nodes).toHaveLength(1);
+      const fullTtl = fullEntry!.expiresAt - Date.now();
+      expect(fullTtl).toBeGreaterThan(ENDPOINT_EMPTY_CACHE_TTL_MS);
+      expect(fullTtl).toBeLessThanOrEqual(ENDPOINT_CACHE_TTL_MS);
+
+      // The /nodes request is bounded by a timeout so a lock-bound swarm cannot pin the handler
+      const init = mockedFetch.mock.calls[0][1] as RequestInit;
+      expect(init.signal).toBeInstanceOf(AbortSignal);
     });
 
     // (e) Pathless-only batch → success, fetch never called
