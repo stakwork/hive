@@ -127,8 +127,8 @@ describe("prompts capability org-gating", () => {
   });
 });
 
-describe("workflows capability org-gating", () => {
-  // `workflows` (the workflow_explorer_agent over the stakwork workspace's
+describe("stakwork_workflows capability org-gating", () => {
+  // `stakwork_workflows` (the workflow_explorer_agent over the stakwork workspace's
   // workflow library) reuses the same Stakwork-org allow-list gate as
   // `prompts` — these tests lock the same contract for it.
   beforeEach(() => {
@@ -136,37 +136,37 @@ describe("workflows capability org-gating", () => {
   });
 
   it("is in ALL_CAPABILITIES (default selection, subject to the gate)", () => {
-    expect(ALL_CAPABILITIES).toContain("workflows");
+    expect(ALL_CAPABILITIES).toContain("stakwork_workflows");
   });
 
-  it("roadmap's sync includes expansion does NOT pull in workflows", () => {
+  it("roadmap's sync includes expansion does NOT pull in stakwork_workflows", () => {
     const resolved = resolveCapabilities(["roadmap"]);
-    expect(resolved).not.toContain("workflows");
+    expect(resolved).not.toContain("stakwork_workflows");
   });
 
-  it("keeps workflows for an allow-listed (stakwork) org", async () => {
+  it("keeps stakwork_workflows for an allow-listed (stakwork) org", async () => {
     isPromptsCapabilityEnabledForOrg.mockResolvedValue(true);
     const resolved = await resolveOrgCapabilities(
-      ["roadmap", "workflows"],
+      ["roadmap", "stakwork_workflows"],
       "org-stakwork",
     );
-    expect(resolved).toContain("workflows");
+    expect(resolved).toContain("stakwork_workflows");
     expect(isPromptsCapabilityEnabledForOrg).toHaveBeenCalledWith("org-stakwork");
   });
 
-  it("drops workflows for a non-allow-listed org even when explicitly selected", async () => {
+  it("drops stakwork_workflows for a non-allow-listed org even when explicitly selected", async () => {
     isPromptsCapabilityEnabledForOrg.mockResolvedValue(false);
     const resolved = await resolveOrgCapabilities(
-      ["roadmap", "workflows"],
+      ["roadmap", "stakwork_workflows"],
       "org-other",
     );
-    expect(resolved).not.toContain("workflows");
+    expect(resolved).not.toContain("stakwork_workflows");
     expect(resolved).toContain("roadmap");
   });
 
   it("drops workflows when orgId is undefined (fails closed)", async () => {
     isPromptsCapabilityEnabledForOrg.mockResolvedValue(false);
-    const resolved = await resolveOrgCapabilities(["workflows"], undefined);
-    expect(resolved).not.toContain("workflows");
+    const resolved = await resolveOrgCapabilities(["stakwork_workflows"], undefined);
+    expect(resolved).not.toContain("stakwork_workflows");
   });
 });
