@@ -50,11 +50,28 @@ describe("applyChanges", () => {
 
     const id = childrenOf(graph, "security")[0];
     expect(graph.nodes[id]).toMatchObject({ name: "SSRF Check", proposed: "new", docs: "# SSRF" });
-    expect(pending).toMatchObject({ created: 1, edited: 0, focus: "security" });
+    expect(pending).toMatchObject({ created: 1, edited: 0, focus: id });
     expect(pending.newEdges).toEqual(new Set([`security>${id}`]));
     expect(pending.touched).toEqual(new Set(["security", id]));
     expect(childrenOf(g, "security")).toEqual([]);
     expect(g.nodes[id]).toBeUndefined();
+  });
+
+  test("focuses a new node rather than its parent, and keeps the parent pinned beside it", () => {
+    const { graph, pending } = applyChanges(base(), [{ kind: "node", name: "SSRF Check", parent: "Security" }]);
+
+    expect(pending.focus).toBe("pending:0");
+    expect(graph.nodes[pending.focus!].proposed).toBe("new");
+    expect(pending.touched).toEqual(new Set(["pending:0", "security"]));
+  });
+
+  test("still focuses the existing concept for a docs change", () => {
+    const { graph, pending } = applyChanges(base(), [
+      { kind: "docs", node: "coding", before: "# old", after: "# new" },
+    ]);
+
+    expect(pending.focus).toBe("coding");
+    expect(graph.nodes.coding.proposed).toBe("changed");
   });
 
   test("marks a docs change on the node it addresses", () => {
