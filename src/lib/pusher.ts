@@ -172,7 +172,13 @@ export type CanvasConversationUpdateReason =
   // reconcile cron) patched the stored `propose_code_change` tool output in
   // place — the diff, or an honest failure — so clients reconcile the card
   // off "Generating diff…" (`reconcileProposalPreviews`).
-  | "code-change-preview";
+  | "code-change-preview"
+  // "Edit last message": a turn was cut (truncated) and replaced with a
+  // fresh user turn (`truncateAndAppendTurn`). Purely informational for
+  // client-side logging/diagnostics — the client doesn't branch on this
+  // reason; it always re-syncs via `settings.removedTurnIds` /
+  // `truncationEpoch` on the next GET regardless of reason.
+  | "truncate";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON

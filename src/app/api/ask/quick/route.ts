@@ -919,17 +919,25 @@ export async function POST(request: NextRequest) {
                 source: { kind: "error" },
               });
             }
-            await appendTurnMessages({
+            const appendResult = await appendTurnMessages({
               conversationId: rowId,
               rows,
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              turnId: turnIdStr,
             });
             // Nested try: an LLM throw must never fall into the persist
             // catch (that catch writes a fake assistant error row).
             // Not gated on isFirstTurn — the helper no-ops once
             // settings.titleSource === "llm", and retries if a prior
-            // after() died before the title write.
+            // after() died before the title write. Skipped entirely when
+            // the turn was tombstoned (the user edited-and-replaced it
+            // before this append landed) — generating a title from
+            // content that was just cut would resurrect exactly what the
+            // edit removed.
+            if (appendResult === "tombstoned") {
+              return;
+            }
             try {
               const assistantIsError =
                 errMsg !== null ||
@@ -973,6 +981,7 @@ export async function POST(request: NextRequest) {
               rows: [errorRow],
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              turnId: turnIdStr,
             }).catch(() => {});
           }
         });

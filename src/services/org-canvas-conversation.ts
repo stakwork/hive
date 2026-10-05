@@ -23,6 +23,7 @@ import {
   type StoredMessage,
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
+import { addTombstone, isRemovedTurn } from "@/lib/canvas/tombstones";
 
 /**
  * Org-canvas sibling of `resolveTokenAttributionRowId`. Org-canvas
@@ -93,7 +94,7 @@ export async function persistCanvasUserMessage(args: {
   attachments?: StoredAttachment[];
   workspaceSlugs: string[];
   isShared?: boolean;
-}): Promise<string> {
+}): Promise<string | null> {
   const {
     orgId,
     userId,
@@ -108,37 +109,94 @@ export async function persistCanvasUserMessage(args: {
   const userRow: StoredMessage = {
     id: `${turnId}-u`,
     role: "user",
+    // Always stamp the author so "edit last message"
+    // (`findEditableLastUserRow`) can recognize this row later. There is
+    // no fallback to row ownership — a row without `authorId` is never
+    // editable.
+    authorId: userId,
     content,
     timestamp: new Date().toISOString(),
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
   };
 
   if (existingRowId) {
-    await appendTurnMessages({
+    const result = await appendTurnMessages({
       conversationId: existingRowId,
       rows: [userRow],
       idPrefix: `${turnId}-u`,
       reason: "user-message",
+      turnId,
     });
+    // `truncateAndAppendTurn` may have already cut this exact turn id
+    // out from under us (the first-turn / mid-conversation edit race:
+    // the edit ran its lookup-or-create and tombstoned `turnId` before
+    // this original request's append reached the lock). Appending
+    // nothing here is correct — the edit's own `newUserRow` already
+    // landed under a DIFFERENT (fresh) turn id, so there's no data to
+    // recover, and the caller must not attribute the rest of this
+    // request (the assistant turn, title generation) to a row that no
+    // longer reflects it.
+    if (result === "tombstoned") return null;
     return existingRowId;
   }
 
-  const created = await db.sharedConversation.create({
-    data: {
-      sourceControlOrgId: orgId,
-      userId,
-      workspaceId: null,
-      messages: [userRow] as unknown as never,
-      title: generateTitle([userRow]),
-      lastMessageAt: new Date(),
-      source: "org-canvas",
-      settings: { extraWorkspaceSlugs: workspaceSlugs } as unknown as never,
-      followUpQuestions: [],
-      isShared,
-    },
-    select: { id: true },
+  // First-turn race guard: the edit flow's lookup-or-create AND this
+  // create both take the same advisory lock keyed on `userId:turnId`
+  // before creating a row, so the two can never interleave — either
+  // this create wins (and the edit later tombstones it in a
+  // `truncateAndAppendTurn` retry), or the edit's create-with-tombstone
+  // wins first (in which case this create must become a no-op; see
+  // below).
+  const lockKey = `${userId}:${turnId}`;
+  let created: { id: string } | null = null;
+  await db.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
+    `;
+
+    // Before creating, check whether a recent owner row already exists
+    // that has THIS turn tombstoned — that can only mean the edit flow
+    // already ran its lookup-or-create (under the same lock, so it must
+    // have gone first) and created the row itself with the tombstone
+    // pre-set. If so, skip the create entirely: the route's
+    // `canvasConversationRowId` comes back null and nothing further is
+    // written for this turn.
+    const recent = await tx.sharedConversation.findFirst({
+      where: {
+        sourceControlOrgId: orgId,
+        userId,
+        source: "org-canvas",
+        createdAt: { gt: new Date(Date.now() - 15 * 60 * 1000) },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, settings: true },
+    });
+    if (recent && isRemovedTurn(recent.settings, turnId)) {
+      console.log("[canvas-turn] tombstoned-write-skipped", {
+        conversationId: recent.id,
+        turnId,
+        writer: "create",
+      });
+      return;
+    }
+
+    created = await tx.sharedConversation.create({
+      data: {
+        sourceControlOrgId: orgId,
+        userId,
+        workspaceId: null,
+        messages: [userRow] as unknown as never,
+        title: generateTitle([userRow]),
+        lastMessageAt: new Date(),
+        source: "org-canvas",
+        settings: { extraWorkspaceSlugs: workspaceSlugs } as unknown as never,
+        followUpQuestions: [],
+        isShared,
+      },
+      select: { id: true },
+    });
   });
-  return created.id;
+  return created ? created.id : null;
 }
 
 /**
