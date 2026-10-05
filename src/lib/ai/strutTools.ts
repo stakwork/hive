@@ -305,6 +305,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
       description:
         "Dispatch the org's strut AI builder — the workflow-authoring agent on the org's default swarm (one strut per org). " +
         "It builds and revises strut workflows and custom steps, runs them, and evaluates their runs (run logs, outputs, claims/evidence). " +
+        "This is where a 'workflow' request goes by default: unless the user explicitly names Stakwork, a workflow to build, change, run, or evaluate is a strut workflow — not a Stakwork one. " +
         "Omit `chatId` to start a NEW strut conversation; pass a `chatId` to CONTINUE one — strut keeps the whole transcript, so a follow-up can be short. " +
         "Runs in the BACKGROUND: this returns at once with the `chatId`, and strut's replies are posted into this conversation as they land — seconds to hours later, and possibly several (a long workflow run ends one reply with 'I'll report back' and the verdict arrives as a later one). " +
         "Tell the user it's underway; do NOT re-dispatch to fetch results and do NOT invent findings. " +
@@ -611,6 +612,8 @@ export function getStrutCapabilitySnippet(): string {
 ## Strut (workflow builder sub-agent)
 
 Each org's default swarm hosts **strut**, a workflow engine with its own AI builder — an agent that authors strut workflows (YAML) and custom steps, runs them, and evaluates their runs (run logs, outputs, claims and evidence). You dispatch that builder; you do not write strut workflows yourself.
+
+**"Workflow" means strut by default.** Unless the user explicitly names Stakwork, a workflow to build, revise, run, or evaluate — and a workflow run to check on — is a strut workflow and goes through these tools: not the Stakwork workflow library (\`workflow_explorer_agent\`), not the stakwork workspace's \`stakwork__*\` tools, and not a feature in the stakwork workspace.
 
 ### Tools
 

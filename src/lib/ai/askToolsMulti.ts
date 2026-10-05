@@ -514,7 +514,7 @@ export function askToolsMulti(
       const swarmHost = new URL(ws.swarmUrl).hostname;
       const jarvisBase = `https://${swarmHost}:8444`;
       allTools[`${prefix}__search_workflows`] = tool({
-        description: `[${ws.slug}] Search Stakwork for workflows by keyword. Returns [{ id, workflow_id, name, description, published_version_id }].`,
+        description: `[${ws.slug}] Search Stakwork for workflows by keyword — ONLY when the user explicitly asks about Stakwork workflows; a bare 'workflow' means a strut workflow (dispatch_strut), not this. Returns [{ id, workflow_id, name, description, published_version_id }].`,
         inputSchema: z.object({
           query: z.string().describe("Workflow search term"),
         }),

@@ -88,6 +88,7 @@ import { hasApiKeyForProvider, PROVIDERS } from "aieo";
 import { buildCanvasProviderOptions } from "@/lib/ai/canvasProviderOptions";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import { isBifrostEnabledForAgent, isBifrostEnabledForWorkspace } from "@/config/env";
 import {
   startCanvasSessionIngest,
   type CanvasSessionIngest,
@@ -814,6 +815,48 @@ export async function runCanvasAgent(
     string,
     { prompt_id: string; prompt_version_id: string | null }
   > = {};
+  // `agentName` splits on `orgId` so operators can attribute Bifrost
+  // spend to the user-facing surface:
+  //   - `"canvas-agent"` — org canvas SidebarChat (orgId present;
+  //     canvas / initiative / research / connection tools merged in;
+  //     proposal flows; typically deeper agentic loops).
+  //   - `"chat-agent"` — workspace dashboard chat (no orgId; per-
+  //     workspace ask tools only; typically read-only Q&A).
+  // Same loop, same prompt assembly, but different cost profiles —
+  // mirrors the `repo-agent` vs `diagram-agent` convention of naming
+  // by user-facing purpose, not by underlying function. Derived here,
+  // ahead of the `getBifrostForLLM` call further down, because the
+  // web-tool handles below need the same rollout gates.
+  const agentName = orgId ? "canvas-agent" : "chat-agent";
+
+  // Anthropic's native `web_search` / `web_fetch` are *server tools*,
+  // and the Bifrost gateway is not a passthrough for them: it normalizes
+  // the request into its own Responses schema (which carries no tool
+  // version) and re-derives the version from the model name on the way
+  // out — `web_search_20250305` leaves as `web_search_20260209`, and
+  // `web_fetch_20250910` as a 2026 variant, on 4.6+ / Sonnet 5 / Opus
+  // 5.5. Those versions run on a code-execution container, so the model
+  // is handed a `code_execution` sandbox we never declared: the AI SDK
+  // rejects the call, Bifrost re-encodes the failed result with
+  // mismatched block types, and Anthropic 400s the next step — the turn
+  // dies with no visible text. So when this call will ride Bifrost,
+  // pin both tools to aieo's shims (Exa for search, guarded HTTP for
+  // fetch) instead of the native ones. Same gates the orchestrator
+  // applies, evaluated here because the handles must exist before the
+  // tool branches; if the VK mint later fails and the call goes direct,
+  // the shims still work. Off-Anthropic providers already get the
+  // shims, so `backend` is left to aieo's per-provider default there.
+  const ridesBifrost =
+    !isPublicViewer &&
+    isBifrostEnabledForWorkspace(primarySlug) &&
+    isBifrostEnabledForAgent(agentName);
+  const shimWebTools = provider === "anthropic" && ridesBifrost;
+  if (shimWebTools) {
+    console.log(
+      "[runCanvasAgent] bifrost-routed run: web_search -> exa shim, web_fetch -> http shim (the gateway re-versions Anthropic server tools)",
+      { workspaces: workspaceSlugs, orgId: orgId ?? null },
+    );
+  }
   // Per-run web_search handle. Owns the tool itself (native on
   // Anthropic, Exa-backed shim elsewhere), the ordered result list
   // `update_research` cites into, and the citation treatment applied to
@@ -823,11 +866,16 @@ export async function runCanvasAgent(
     provider,
     apiKey,
     citations: !!opts.webSearchCitations,
+    ...(shimWebTools ? { backend: "exa" as const } : {}),
   });
   // Per-run web_fetch handle, same two-flow shape as the search handle:
   // native on Anthropic, guarded HTTP shim elsewhere. `results` lists
   // every page fetched during the run, in order.
-  const webFetch = createWebFetch({ provider, apiKey });
+  const webFetch = createWebFetch({
+    provider,
+    apiKey,
+    ...(shimWebTools ? { backend: "http" as const } : {}),
+  });
 
   // Turn-level cancellation flag, shared with the repo_agent tool
   // executes (via AskToolsContext). When the user stops a run, the
@@ -1269,17 +1317,9 @@ export async function runCanvasAgent(
   // orchestrator returns `undefined` and `getModel` falls back to the
   // default key path (behavior unchanged from pre-Bifrost).
   //
-  // `agentName` splits on `orgId` so operators can attribute spend to
-  // the user-facing surface:
-  //   - `"canvas-agent"` — org canvas SidebarChat (orgId present;
-  //     canvas / initiative / research / connection tools merged in;
-  //     proposal flows; typically deeper agentic loops).
-  //   - `"chat-agent"` — workspace dashboard chat (no orgId; per-
-  //     workspace ask tools only; typically read-only Q&A).
-  // Same loop, same prompt assembly, but different cost profiles —
-  // mirrors the `repo-agent` vs `diagram-agent` convention of naming
-  // by user-facing purpose, not by underlying function.
-  const agentName = orgId ? "canvas-agent" : "chat-agent";
+  // `agentName` is derived above, next to the web-tool handles (which
+  // consult the same rollout gates to decide between Anthropic's native
+  // server tools and aieo's shims).
 
   // Honor the caller's model preference when it targets the resolved
   // provider (which was itself derived from the same prefix, so any
