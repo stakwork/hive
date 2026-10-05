@@ -857,6 +857,13 @@ describe("askTools", () => {
       expect(tools).toHaveProperty("stakwork__search_workflows");
     });
 
+    it("describes itself as Stakwork-only — a bare 'workflow' means strut", () => {
+      const tools = askTools(stakworkSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, stakworkAuth);
+      const description = (tools.stakwork__search_workflows as { description?: string }).description ?? "";
+      expect(description).toContain("ONLY when the user explicitly asks about Stakwork workflows");
+      expect(description).toContain("a bare 'workflow' means a strut workflow (dispatch_strut), not this");
+    });
+
     it("is absent when workspaceSlug is not 'stakwork'", () => {
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, [mockRepoUrl], mockPat, mockApiKey, {
         workspaceId: "ws-other",
