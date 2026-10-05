@@ -379,10 +379,7 @@ function SidebarChatBody({ githubLogin, draftUserId = null }: SidebarChatProps) 
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/10 text-sky-500">
                 <MessageCircle className="h-4 w-4" />
               </span>
-              <p className="text-sm font-medium">Message {jamieName}</p>
-              <p className="max-w-[260px] text-xs text-muted-foreground">
-                Ask about the org, start a plan, or check on what&apos;s running.
-              </p>
+              <p className="text-sm font-medium">What should we work on?</p>
             </div>
           )}
           <div className="space-y-2">
