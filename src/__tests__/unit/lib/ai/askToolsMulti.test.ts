@@ -107,6 +107,16 @@ describe("askToolsMulti", () => {
       expect(tools).toHaveProperty("stakwork__search_workflows");
     });
 
+    it("describes itself as Stakwork-only — a bare 'workflow' means strut", () => {
+      const tools = askToolsMulti(
+        [ws("stakwork", { swarmUrl: "https://stakwork.sphinx.chat:3355" })],
+        "api-key",
+      );
+      const description = (tools.stakwork__search_workflows as { description?: string }).description ?? "";
+      expect(description).toContain("ONLY when the user explicitly asks about Stakwork workflows");
+      expect(description).toContain("a bare 'workflow' means a strut workflow (dispatch_strut), not this");
+    });
+
     it("is absent for non-stakwork workspaces", () => {
       const tools = askToolsMulti([ws("other"), ws("another")], "api-key");
       expect(tools).not.toHaveProperty("other__search_workflows");
