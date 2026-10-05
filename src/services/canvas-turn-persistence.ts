@@ -472,14 +472,19 @@ export async function appendTurnMessages(args: {
   const { conversationId, rows, idPrefix, reason, turnId } = args;
   if (rows.length === 0) return "duplicate";
 
-  let result: AppendTurnResult = "duplicate";
-  await db.$transaction(async (tx) => {
+  // The transaction callback RETURNS its outcome rather than mutating a
+  // captured outer `let` — TypeScript's control-flow narrowing doesn't
+  // track reassignments made inside a closure, so checking the mutated
+  // variable after `await db.$transaction(...)` resolves to its
+  // pre-callback narrowed type (a real TS limitation, not a logic bug).
+  // Returning the value sidesteps that entirely.
+  const result: AppendTurnResult = await db.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<
       { messages: unknown; settings: unknown }[]
     >`
       SELECT messages, settings FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
     `;
-    if (locked.length === 0) return; // conversation deleted mid-turn
+    if (locked.length === 0) return "duplicate"; // conversation deleted mid-turn
 
     const existing = Array.isArray(locked[0].messages)
       ? (locked[0].messages as StoredMessage[])
@@ -488,16 +493,15 @@ export async function appendTurnMessages(args: {
     const alreadyAppended = existing.some(
       (m) => typeof m.id === "string" && m.id.startsWith(idPrefix),
     );
-    if (alreadyAppended) return; // result stays "duplicate"
+    if (alreadyAppended) return "duplicate";
 
     if (turnId && isRemovedTurn(locked[0].settings, turnId)) {
-      result = "tombstoned";
       console.log("[canvas-turn] tombstoned-write-skipped", {
         conversationId,
         turnId,
         writer: "append",
       });
-      return;
+      return "tombstoned";
     }
 
     await tx.sharedConversation.update({
@@ -507,7 +511,7 @@ export async function appendTurnMessages(args: {
         lastMessageAt: new Date(),
       },
     });
-    result = "appended";
+    return "appended";
   });
 
   if (result === "appended") notifyCanvasConversationUpdated(conversationId, reason);

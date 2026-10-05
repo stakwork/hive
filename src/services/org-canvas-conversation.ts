@@ -157,9 +157,17 @@ export async function persistCanvasUserMessage(args: {
   // wins first (in which case this create must become a no-op; see
   // below).
   const lockKey = `${userId}:${turnId}`;
-  let created: { id: string } | null = null;
-  await db.$transaction(async (tx) => {
-    await tx.$queryRaw`
+  // The transaction returns its outcome directly (rather than mutating a
+  // captured outer `let`) — see the comment on `appendTurnMessages` for
+  // why: TS control-flow narrowing doesn't track reassignments made
+  // inside a closure, so reading a mutated variable after the `await`
+  // resolves to its pre-callback type, not the narrowed one.
+  const created: { id: string } | null = await db.$transaction(async (tx) => {
+    // `pg_advisory_xact_lock` returns `void` — Prisma's `$queryRaw` can't
+    // deserialize a void column ("Failed to deserialize column of type
+    // 'void'"), so this must go through `$executeRaw` instead (which
+    // ignores the return value), not `$queryRaw`.
+    await tx.$executeRaw`
       SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
     `;
 
@@ -186,10 +194,10 @@ export async function persistCanvasUserMessage(args: {
         turnId,
         writer: "create",
       });
-      return;
+      return null;
     }
 
-    created = await tx.sharedConversation.create({
+    return tx.sharedConversation.create({
       data: {
         sourceControlOrgId: orgId,
         userId,
@@ -264,9 +272,12 @@ export async function truncateAndAppendTurn(args: {
 }): Promise<TruncateAndAppendResult> {
   const { orgId, conversationId, userId, replacesTurnId, newUserRow } = args;
 
-  let outcome: TruncateAndAppendResult = { kind: "not-found" };
-
-  await db.$transaction(async (tx) => {
+  // The transaction returns its outcome directly (rather than mutating a
+  // captured outer `let`) — see the comment on `appendTurnMessages` for
+  // why: TS control-flow narrowing doesn't track reassignments made
+  // inside a closure, so reading a mutated variable after the `await`
+  // resolves to its pre-callback type, not the narrowed one.
+  const outcome: TruncateAndAppendResult = await db.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<
       {
         messages: unknown;
@@ -285,8 +296,7 @@ export async function truncateAndAppendTurn(args: {
       FOR UPDATE
     `;
     if (locked.length === 0) {
-      outcome = { kind: "not-found" };
-      return;
+      return { kind: "not-found" };
     }
 
     const row = locked[0];
@@ -304,14 +314,13 @@ export async function truncateAndAppendTurn(args: {
           lastMessageAt: new Date(),
         },
       });
-      outcome = {
+      return {
         kind: "ok",
         rowId: conversationId,
         truncationEpoch,
         removedCount: 0,
         alreadyTombstoned: true,
       };
-      return;
     }
 
     const turnPresent = messages.some(
@@ -331,8 +340,7 @@ export async function truncateAndAppendTurn(args: {
               : !lastUserRow.authorId
                 ? "no-author"
                 : "not-author";
-        outcome = { kind: "rejected", reason };
-        return;
+        return { kind: "rejected", reason };
       }
     }
 
@@ -366,7 +374,7 @@ export async function truncateAndAppendTurn(args: {
       },
     });
 
-    outcome = {
+    return {
       kind: "ok",
       rowId: conversationId,
       truncationEpoch: tombstones.truncationEpoch,
