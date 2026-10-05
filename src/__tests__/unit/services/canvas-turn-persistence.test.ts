@@ -273,7 +273,7 @@ describe("appendTurnMessages", () => {
       reason: "user-turn",
     });
 
-    expect(did).toBe(true);
+    expect(did).toBe("appended");
     expect(update).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith("conv-1", "user-turn");
   });
@@ -290,7 +290,7 @@ describe("appendTurnMessages", () => {
       reason: "user-turn",
     });
 
-    expect(did).toBe(false);
+    expect(did).toBe("duplicate");
     expect(update).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
   });
@@ -302,7 +302,7 @@ describe("appendTurnMessages", () => {
       idPrefix: "turn-1-a",
       reason: "user-turn",
     });
-    expect(did).toBe(false);
+    expect(did).toBe("duplicate");
     expect(txn).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
   });
@@ -317,7 +317,7 @@ describe("appendTurnMessages", () => {
       reason: "user-turn",
     });
 
-    expect(did).toBe(false);
+    expect(did).toBe("duplicate");
     expect(update).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
   });
