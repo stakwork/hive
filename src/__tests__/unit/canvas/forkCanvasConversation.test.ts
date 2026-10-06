@@ -24,7 +24,7 @@ describe("forkCanvasConversation", () => {
     useCanvasChatStore.getState().startConversation(context);
   });
 
-  it("POSTs the source title and preserves settings.titleSource, then seeds the store", async () => {
+  it("POSTs the source title, strips server-only settings keys, then seeds the store", async () => {
     fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
       if (!opts || opts.method !== "POST") {
         return Promise.resolve({
@@ -36,7 +36,12 @@ describe("forkCanvasConversation", () => {
                 { id: "m2", role: "assistant", content: "hi" },
               ],
               title: "Auth token refresh",
-              settings: { titleSource: "llm", extraWorkspaceSlugs: ["hive"] },
+              settings: {
+                titleSource: "llm",
+                extraWorkspaceSlugs: ["hive"],
+                removedTurnIds: [{ turnId: "turn-1", at: new Date().toISOString() }],
+                truncationEpoch: 3,
+              },
             }),
         });
       }
@@ -53,7 +58,11 @@ describe("forkCanvasConversation", () => {
     expect(postCall?.[0]).toBe("/api/orgs/acme/chat/conversations");
     const body = JSON.parse((postCall![1] as RequestInit).body as string);
     expect(body.title).toBe("Auth token refresh");
-    expect(body.settings).toEqual({ titleSource: "llm", extraWorkspaceSlugs: ["hive"] });
+    // Server-only tombstone/title-tracking keys (`titleSource`,
+    // `removedTurnIds`, `truncationEpoch`) are stripped before the fork's
+    // POST — they're meaningless on a new row with a disjoint id, and
+    // must never be client-seedable. Only non-server-only keys survive.
+    expect(body.settings).toEqual({ extraWorkspaceSlugs: ["hive"] });
 
     const state = useCanvasChatStore.getState();
     const active = state.conversations[state.activeConversationId!];
