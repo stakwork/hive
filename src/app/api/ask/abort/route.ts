@@ -1,7 +1,11 @@
 /**
  * POST /api/ask/abort
  *
- * Cancels all in-flight repo_agent runs for a canvas conversation.
+ * With a `turnId` (the composer's Stop button): signals that one turn to
+ * stop via Redis and cancels its pending strut runs — see the per-turn
+ * block below. Without one (the header "Stop investigation" button):
+ * cancels all in-flight repo_agent runs for a canvas conversation.
+ *
  * Security-critical order of operations:
  *   1. Authenticate (401 if no session)
  *   2. Rate-limit (generous, idempotent)
@@ -28,6 +32,11 @@ import {
 } from "@/services/canvas-active-runs";
 import { getSwarmAccessByWorkspaceId } from "@/lib/helpers/swarm-access";
 import { cancelPendingStrutRunsForConversation } from "@/services/strut-runs";
+import {
+  isValidTurnId,
+  requestTurnAbort,
+  TurnAbortUnavailable,
+} from "@/services/canvas-turn-abort";
 
 export const runtime = "nodejs";
 
@@ -47,16 +56,26 @@ export async function POST(request: NextRequest) {
   }
   const { conversationId, orgId, turnId } = body;
 
-  if (!conversationId || typeof conversationId !== "string") {
-    return NextResponse.json({ error: "conversationId is required" }, { status: 400 });
+  if (
+    (!conversationId || typeof conversationId !== "string") &&
+    (!turnId || typeof turnId !== "string")
+  ) {
+    return NextResponse.json(
+      { error: "conversationId or turnId is required" },
+      { status: 400 },
+    );
   }
   if (!orgId || typeof orgId !== "string") {
     return NextResponse.json({ error: "orgId is required" }, { status: 400 });
   }
+  if (turnId !== undefined && typeof turnId === "string" && !isValidTurnId(turnId)) {
+    return NextResponse.json({ error: "Invalid turnId" }, { status: 400 });
+  }
 
   // ── 2. Rate-limit (generous — users must never be 429'd from Stop) ──
-  // Keyed by userId + conversationId so repeated Stop clicks are cheap.
-  const rlKey = `abort:${userId}:${conversationId}`;
+  // Keyed by userId + (conversationId ?? turnId) so repeated Stop clicks
+  // are cheap even on the very first turn (no conversationId yet).
+  const rlKey = `abort:${userId}:${conversationId ?? turnId}`;
   const rl = await checkRateLimit(rlKey, 60, 60); // 60 req/min
   if (!rl.allowed) {
     return NextResponse.json(
@@ -69,6 +88,60 @@ export async function POST(request: NextRequest) {
   const isMember = await validateUserBelongsToOrg(orgId, userId, "id");
   if (!isMember) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // Per-turn Stop path (`turnId` present — the composer's Stop button).
+  // NEVER falls through to the conversation-wide path below.
+  //
+  // The Redis key is the whole signal: the instance generating the turn
+  // polls it and aborts the reply stream, the tool loop (repo_agent runs
+  // tell stakgraph to stop themselves — they hold the swarm creds and
+  // request_id) and any sub-agents not yet started. The only thing that
+  // outlives the turn's own instance is a PENDING strut run (a code-change
+  // preview or job) the turn dispatched, so that is cancelled here.
+  // ════════════════════════════════════════════════════════════════════
+  if (typeof turnId === "string" && turnId.length > 0) {
+    let requested: Awaited<ReturnType<typeof requestTurnAbort>>;
+    try {
+      requested = await requestTurnAbort({ turnId, userId, orgId });
+    } catch (err) {
+      if (err instanceof TurnAbortUnavailable) {
+        console.warn("[quick-ask] turn-abort-unavailable", { turnId, op: "request" });
+        return NextResponse.json({ error: "Abort temporarily unavailable" }, { status: 503 });
+      }
+      throw err;
+    }
+    console.log("[quick-ask] turn-abort-requested", { turnId, userId, ownerMatched: !!requested.owner });
+
+    if (!requested.owner) {
+      // Not registered yet, or caller isn't the owner. Identical response
+      // either way so nobody can probe who owns a turn.
+      return NextResponse.json({ accepted: true }, { status: 202 });
+    }
+
+    const { rowId, startedAt } = requested.owner;
+    try {
+      const strut = await cancelPendingStrutRunsForConversation(rowId, {
+        userId,
+        since: new Date(startedAt),
+      });
+      if (strut.rows.length > 0) {
+        console.log(`[abort] turn strut runs: ${strut.cancelled}/${strut.rows.length} cancelled turnId: ${turnId}`);
+      }
+    } catch (err) {
+      console.warn("[abort] turn strut cancel failed (non-fatal):", String(err));
+    }
+
+    return NextResponse.json({ accepted: true, conversationId: rowId }, { status: 202 });
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // Conversation-wide path (no turnId — the header "Stop investigation"
+  // button). Behavior below this point is unchanged.
+  // ════════════════════════════════════════════════════════════════════
+  if (!conversationId || typeof conversationId !== "string") {
+    return NextResponse.json({ error: "conversationId is required" }, { status: 400 });
   }
 
   // ── 4. IDOR: resolve conversation (must belong to this org + caller) ─

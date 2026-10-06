@@ -274,6 +274,27 @@ export interface CanvasAgentHooks {
    * truncated transcript). Must not throw; exceptions are swallowed.
    */
   onError?: (args: { error: unknown; message: string }) => void;
+  /**
+   * Called when the user's Stop press aborts the SDK's `streamText` call
+   * (via `opts.abortSignal`), INSTEAD of `onFinish`/`onError`. Receives
+   * the steps that completed before the abort, the interrupted step as
+   * far as it got (`partialStep` — the SDK leaves it out of `steps`; its
+   * tool calls carry a result only if one streamed before the abort), and
+   * the completed steps' summed usage (the SDK reports none for the
+   * interrupted step). Must not throw; exceptions are swallowed.
+   */
+  onAbort?: (args: {
+    steps: unknown[];
+    partialStep: PartialStep;
+    usage: { inputTokens: number; outputTokens: number };
+  }) => void | Promise<void>;
+}
+
+/** The step a Stop interrupted, rebuilt from its streamed chunks. */
+export interface PartialStep {
+  text: string;
+  toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>;
+  toolResults: Array<{ toolCallId: string; output: unknown }>;
 }
 
 /**
@@ -481,6 +502,14 @@ export interface RunCanvasAgentOptions {
    * (which falls back to `localhost:3000` with no request context).
    */
   publicBaseUrl?: string;
+  /**
+   * The user's Stop signal for this turn. Forwarded to `streamText`, and
+   * into `AskToolsContext` so a running repo_agent tells stakgraph to stop
+   * and returns at once. Other tools read it off the SDK's own
+   * `options.abortSignal` on `execute`. Absent → the turn has no Stop
+   * control (auto-turns, sub-agent workers).
+   */
+  abortSignal?: AbortSignal;
 }
 
 export interface RunCanvasAgentResult {
@@ -723,6 +752,7 @@ export async function runCanvasAgent(
     modelName,
     userTimezone,
     publicBaseUrl,
+    abortSignal,
   } = opts;
 
   // When cached concepts are supplied we skip the slow per-workspace
@@ -954,6 +984,7 @@ export async function runCanvasAgent(
       conversationId: currentCanvasConversationId,
       turnId,
       cancellation,
+      abortSignal,
     });
 
     if (orgId) {
@@ -1076,6 +1107,7 @@ export async function runCanvasAgent(
       conversationId: currentCanvasConversationId,
       turnId: opts.turnId,
       cancellation,
+      abortSignal,
     });
 
     // Best-effort: a swarm timeout/outage here must NOT kill the whole
@@ -1430,6 +1462,12 @@ export async function runCanvasAgent(
     console.warn("[runCanvasAgent] session ingest setup failed", err);
   }
 
+  // The in-progress step, rebuilt from its chunks and reset whenever a
+  // step finishes. The SDK leaves an aborted step out of `onAbort`'s
+  // `steps`, so this is the only record of what it streamed — its text,
+  // and tool calls that may already have taken effect.
+  let partialStep: PartialStep = { text: "", toolCalls: [], toolResults: [] };
+
   // ------------------------------------------------------------------
   // Kick off the agentic loop
   // ------------------------------------------------------------------
@@ -1445,6 +1483,7 @@ export async function runCanvasAgent(
     // `demoteCallerSystemMessages`, so this does not widen injection
     // surface.
     allowSystemInMessages: true,
+    ...(abortSignal ? { abortSignal } : {}),
     providerOptions,
     // The SDK default (2 retries, quick backoff) is easily exhausted by a
     // transient network flake (e.g. ECONNRESET to the provider) or a
@@ -1489,6 +1528,7 @@ export async function runCanvasAgent(
     },
     onStepFinish: async (sf) => {
       logStep(sf.content);
+      partialStep = { text: "", toolCalls: [], toolResults: [] };
       // Internal bookkeeping is SYNCHRONOUS and non-awaiting on
       // Pusher — matches pre-extraction behavior where the original
       // route's `onStepFinish` was a sync arrow function. We do NOT
@@ -1535,6 +1575,13 @@ export async function runCanvasAgent(
           console.log("[runCanvasAgent] timing", { stage: "tool-round-trip", tool: chunk.toolName, ms: Date.now() - callTs, workspaces: workspaceSlugs, orgId: orgId ?? null });
         }
       }
+      if (chunk.type === "text-delta") {
+        partialStep.text += chunk.text;
+      } else if (chunk.type === "tool-call") {
+        partialStep.toolCalls.push({ toolCallId: chunk.toolCallId, toolName: chunk.toolName, input: chunk.input });
+      } else if (chunk.type === "tool-result") {
+        partialStep.toolResults.push({ toolCallId: chunk.toolCallId, output: chunk.output });
+      }
       // TTFT: fire once on first text-delta only (not tool-call/reasoning chunks).
       if (!firstTokenLogged && chunk.type === "text-delta") {
         firstTokenLogged = true;
@@ -1542,6 +1589,9 @@ export async function runCanvasAgent(
       }
     },
     onFinish: async ({ usage, finishReason, text, steps }) => {
+      // On a Stop after at least one finished step the SDK fires onFinish
+      // too, after onAbort — which has already closed out the turn.
+      if (abortSignal?.aborted) return;
       console.log("[runCanvasAgent] timing", { stage: "streaming-duration-total", ms: Date.now() - streamStart, model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
       // Abnormal-finish detection. A turn can end "successfully" (no
       // onError) while the user sees nothing: text across every step is
@@ -1643,6 +1693,28 @@ export async function runCanvasAgent(
         hooks?.onError?.({ error: err, message });
       } catch {
         // swallowed by contract (see CanvasAgentHooks.onError)
+      }
+    },
+    // Fires when `abortSignal` aborts (the user pressed Stop), after any
+    // tool still executing has returned. `steps` holds only the steps
+    // that finished; the interrupted one is `partialStep`. The SDK
+    // reports no usage for the interrupted step, so it isn't counted.
+    onAbort: async ({ steps }) => {
+      const usage = { inputTokens: 0, outputTokens: 0 };
+      for (const s of steps) {
+        usage.inputTokens += s.usage.inputTokens ?? 0;
+        usage.outputTokens += s.usage.outputTokens ?? 0;
+      }
+      sessionIngest?.end({
+        status: "aborted",
+        ...(resolvedModelId && resolvedModelId !== "unknown" ? { model: resolvedModelId } : {}),
+        usage,
+      });
+      void externalMcpCleanup?.();
+      try {
+        await hooks?.onAbort?.({ steps, partialStep, usage });
+      } catch {
+        // swallowed by contract, mirrors onError
       }
     },
   });

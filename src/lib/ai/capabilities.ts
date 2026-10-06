@@ -117,6 +117,7 @@ import {
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
   PROPOSE_DELETE_EDGE_TOOL,
   PROPOSE_MOVE_NODE_TOOL,
+  PROPOSE_DELETE_NODE_TOOL,
   PROPOSE_CODE_CHANGE_TOOL,
 } from "@/lib/proposals/types";
 import {
@@ -445,6 +446,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
         PROPOSE_DELETE_EDGE_TOOL,
         PROPOSE_MOVE_NODE_TOOL,
+        PROPOSE_DELETE_NODE_TOOL,
       ],
     },
     infra: {

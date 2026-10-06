@@ -75,6 +75,7 @@ vi.mock("@/lib/ai/graphWriteTools", () => ({
     propose_create_batch_triplet: {},
     propose_delete_edge: {},
     propose_move_node: {},
+    propose_delete_node: {},
   })),
 }));
 vi.mock("@/lib/ai/workflowExplorerTools", () => ({ buildWorkflowExplorerTools: vi.fn(() => ({})) }));
@@ -166,6 +167,7 @@ const WRITE_TOOLS = [
   "propose_create_batch_triplet",
   "propose_delete_edge",
   "propose_move_node",
+  "propose_delete_node",
 ] as const;
 
 /** Tool names handed to streamText on the most recent run. */

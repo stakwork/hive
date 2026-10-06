@@ -4,10 +4,9 @@
  */
 
 import type { ModelMessage } from "ai";
-import type { StoredMessage } from "@/services/canvas-turn-persistence";
 import { truncateField } from "@/lib/ai/mcpResult";
 import { PROPOSE_CODE_CHANGE_TOOL } from "@/lib/proposals/types";
-import { buildUserContent } from "@/lib/ai/attachmentParts";
+import { buildUserContent, type AttachmentLike } from "@/lib/ai/attachmentParts";
 
 /** Max chars of a proposed diff replayed back into model context. */
 const REPLAY_DIFF_CHAR_CAP = 4_000;
@@ -40,18 +39,47 @@ function shrinkToolOutputForReplay(toolName: string, output: unknown): unknown {
   };
 }
 
+/** The stored text of the row that ends a stopped turn (`source.kind: "stopped"`). */
+export const STOPPED_TURN_TEXT = "Stopped by user.";
+
+/** Replayed in place of a stopped turn's "Stopped" row, as the user's words. */
+export const STOPPED_TURN_NOTICE = "(The user stopped your previous reply at this point.)";
+
+/** The replayed result of a tool call that never produced one (a Stop cut it off). */
+export const INTERRUPTED_TOOL_RESULT =
+  "Interrupted: the user stopped the turn while this tool was running. It may or may not have taken effect.";
+
+/** What `toModelMessages` reads — a stored row and the client's `CanvasChatMessage` both fit. */
+export interface ReplayMessage {
+  role: "user" | "assistant";
+  content: string;
+  toolCalls?: Array<{ id: string; toolName: string; input?: unknown; output?: unknown; errorText?: string }>;
+  attachments?: AttachmentLike[];
+  source?: { kind: string };
+}
+
 /**
  * Converts stored canvas/conversation messages into AI SDK `ModelMessage[]`.
- * Filters out empty messages, ships user attachments as content parts
- * (see `attachmentParts.ts`), expands assistant tool-call turns into the
- * three-part shape the AI SDK expects (tool-call, tool-result, text), and
- * shrinks oversized tool outputs on the way out (see
- * `shrinkToolOutputForReplay`) — the stored rows are left untouched.
+ * Used for server-side history and for the history the org-canvas chat
+ * sends with each turn. Filters out empty messages, ships user attachments
+ * as content parts (see `attachmentParts.ts`), expands assistant tool-call
+ * turns into the three-part shape the AI SDK expects (tool-call,
+ * tool-result, text), and shrinks oversized tool outputs on the way out
+ * (see `shrinkToolOutputForReplay`) — the stored rows are left untouched.
+ *
+ * Every tool call is replayed with a result — a provider rejects a call
+ * without one — so a call that has no output (an interrupted or failed
+ * one) gets an error-text result. A stopped turn's "Stopped" row becomes
+ * `STOPPED_TURN_NOTICE` from the user, so the model is told it was cut
+ * off and never sees (or learns to write) the marker itself.
  */
-export function toModelMessages(messages: StoredMessage[]): ModelMessage[] {
+export function toModelMessages(messages: ReplayMessage[]): ModelMessage[] {
   return messages
     .filter((m) => (m.content?.trim() || m.toolCalls || m.attachments?.length) && m.role)
     .flatMap((m): ModelMessage[] => {
+      if (m.source?.kind === "stopped") {
+        return [{ role: "user", content: STOPPED_TURN_NOTICE }];
+      }
       if (m.role === "user" && m.attachments?.length) {
         return [
           {
@@ -71,31 +99,28 @@ export function toModelMessages(messages: StoredMessage[]): ModelMessage[] {
             input: tc.input || {},
           })),
         });
-        const toolResults = m.toolCalls.filter(
-          (tc) => tc.output !== undefined || tc.errorText !== undefined,
-        );
-        if (toolResults.length > 0) {
-          out.push({
-            role: "tool",
-            content: toolResults.map((tc) => {
-              const shrunk = shrinkToolOutputForReplay(tc.toolName, tc.output);
-              let wrappedOutput = shrunk;
-              if (
-                shrunk &&
-                typeof shrunk === "object" &&
-                !("type" in shrunk)
-              ) {
-                wrappedOutput = { type: "json", value: shrunk };
-              }
-              return {
-                type: "tool-result" as const,
-                toolCallId: tc.id,
-                toolName: tc.toolName,
-                output: wrappedOutput as never,
-              };
-            }),
-          } as ModelMessage);
-        }
+        out.push({
+          role: "tool",
+          content: m.toolCalls.map((tc) => {
+            const shrunk = shrinkToolOutputForReplay(tc.toolName, tc.output);
+            let wrappedOutput = shrunk;
+            if (shrunk === undefined) {
+              wrappedOutput = { type: "error-text", value: tc.errorText ?? INTERRUPTED_TOOL_RESULT };
+            } else if (
+              shrunk &&
+              typeof shrunk === "object" &&
+              !("type" in shrunk)
+            ) {
+              wrappedOutput = { type: "json", value: shrunk };
+            }
+            return {
+              type: "tool-result" as const,
+              toolCallId: tc.id,
+              toolName: tc.toolName,
+              output: wrappedOutput as never,
+            };
+          }),
+        } as ModelMessage);
         if (m.content) {
           out.push({ role: "assistant", content: m.content });
         }

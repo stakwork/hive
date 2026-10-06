@@ -148,6 +148,94 @@ describe("canvasChatStore — agentTurnsInProgress", () => {
   });
 });
 
+describe("canvasChatStore — stopping and editing a turn", () => {
+  beforeEach(freshStore);
+
+  function seedStoppableTurn() {
+    const id = useCanvasChatStore.getState().startConversation(baseContext);
+    const earlier: CanvasChatMessage = {
+      id: "t0-a-0",
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      toolCalls: [{ id: "z", toolName: "search", status: "input-available" }],
+    };
+    const user: CanvasChatMessage = { id: "t1-u", role: "user", content: "Explain auth", timestamp: new Date() };
+    const toolRow: CanvasChatMessage = {
+      id: "t1-a-0",
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      toolCalls: [
+        { id: "a", toolName: "search", status: "output-available", output: { hits: 1 } },
+        { id: "b", toolName: "save_doc", status: "input-available" },
+      ],
+      timeline: [
+        { type: "toolCall", id: "a", data: { id: "a", toolName: "search", status: "output-available" } },
+        { type: "toolCall", id: "b", data: { id: "b", toolName: "save_doc", status: "input-available" } },
+      ],
+    };
+    useCanvasChatStore.getState().setConversationMessages(id, [earlier, user, toolRow]);
+    return id;
+  }
+
+  it("finishStoppedTurn marks the turn's unfinished tool calls interrupted and ends it with a Stopped row", () => {
+    const id = seedStoppableTurn();
+
+    useCanvasChatStore.getState().finishStoppedTurn(id, "t1");
+
+    const conv = useCanvasChatStore.getState().conversations[id];
+    // Only the stopped turn's rows are touched.
+    expect(conv.messages[0].toolCalls?.[0].status).toBe("input-available");
+    expect(conv.messages[2].toolCalls?.map((tc) => tc.status)).toEqual(["output-available", "interrupted"]);
+    expect(conv.messages[2].timeline?.map((item) => (item.data as { status: string }).status)).toEqual([
+      "output-available",
+      "interrupted",
+    ]);
+    expect(conv.messages[3]).toMatchObject({
+      id: "t1-astopped",
+      role: "assistant",
+      content: "Stopped by user.",
+      source: { kind: "stopped" },
+    });
+    expect(conv.stoppedTurnId).toBe("t1");
+  });
+
+  it("setEditingTurn puts the stopped turn's message in the composer", () => {
+    const id = seedStoppableTurn();
+    useCanvasChatStore.getState().finishStoppedTurn(id, "t1");
+
+    useCanvasChatStore.getState().setEditingTurn(id, "t1");
+
+    expect(useCanvasChatStore.getState().conversations[id].editingTurnId).toBe("t1");
+    expect(useCanvasChatStore.getState().pendingInputDraft).toBe("Explain auth");
+  });
+
+  it("removeTurn drops the turn's rows and ends the edit", () => {
+    const id = seedStoppableTurn();
+    useCanvasChatStore.getState().finishStoppedTurn(id, "t1");
+    useCanvasChatStore.getState().setEditingTurn(id, "t1");
+
+    useCanvasChatStore.getState().removeTurn(id, "t1");
+
+    const conv = useCanvasChatStore.getState().conversations[id];
+    expect(conv.messages.map((m) => m.id)).toEqual(["t0-a-0"]);
+    expect(conv.stoppedTurnId).toBeNull();
+    expect(conv.editingTurnId).toBeNull();
+  });
+
+  it("a new turn starting ends the chance to edit the stopped one", () => {
+    const id = seedStoppableTurn();
+    useCanvasChatStore.getState().finishStoppedTurn(id, "t1");
+
+    useCanvasChatStore
+      .getState()
+      .setActiveTurn(id, { turnId: "t2", controller: new AbortController(), canStop: true, stopping: false });
+
+    expect(useCanvasChatStore.getState().conversations[id].stoppedTurnId).toBeNull();
+  });
+});
+
 describe("canvasChatStore — pendingDeeplink", () => {
   beforeEach(() => {
     useCanvasChatStore.setState({

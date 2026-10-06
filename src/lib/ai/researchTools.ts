@@ -265,21 +265,34 @@ export function buildResearchTools(
             "Cuid of the initiative this research belongs to. Omit for org-wide research on the root canvas.",
           ),
       }),
-      execute: async ({
-        slug,
-        topic,
-        title,
-        summary,
-        prompt,
-        initiativeId,
-      }: {
-        slug: string;
-        topic: string;
-        title: string;
-        summary: string;
-        prompt: string;
-        initiativeId?: string;
-      }) => {
+      execute: async (
+        {
+          slug,
+          topic,
+          title,
+          summary,
+          prompt,
+          initiativeId,
+        }: {
+          slug: string;
+          topic: string;
+          title: string;
+          summary: string;
+          prompt: string;
+          initiativeId?: string;
+        },
+        options?: { abortSignal?: AbortSignal },
+      ) => {
+        // The turn was already stopped before this call reached execute —
+        // never create the Research row or notify the canvas. The model
+        // will see this as a terminal "cancelled" result, matching the
+        // shape a dispatched-then-cancelled intent eventually settles to.
+        if (options?.abortSignal?.aborted) {
+          return {
+            status: "cancelled",
+            reason: "The user stopped this turn before research could be dispatched.",
+          };
+        }
         try {
           // IDOR guard: validate initiativeId belongs to this org.
           let resolvedInitiativeId: string | null = null;

@@ -66,6 +66,7 @@ import {
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
   PROPOSE_DELETE_EDGE_TOOL,
   PROPOSE_MOVE_NODE_TOOL,
+  PROPOSE_DELETE_NODE_TOOL,
   PROPOSE_CODE_CHANGE_TOOL,
   CODE_CHANGE_PROPOSE_KIND,
   CODE_CHANGE_LAND_KIND,
@@ -83,6 +84,7 @@ import {
   type GraphBatchTripletCreateProposalPayload,
   type GraphEdgeDeleteProposalPayload,
   type GraphNodeMoveProposalPayload,
+  type GraphNodeDeleteProposalPayload,
   type CodeChangeProposalPayload,
 } from "./types";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -131,6 +133,7 @@ import {
   readNodeByRef,
   deleteNode,
   deleteEdge,
+  deleteSingleNode,
   findEdgeByEndpoints,
   searchNodesByAttributes,
   type JarvisEdgeEndpoint,
@@ -198,6 +201,7 @@ function findProposal(
         tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL &&
         tc.toolName !== PROPOSE_DELETE_EDGE_TOOL &&
         tc.toolName !== PROPOSE_MOVE_NODE_TOOL &&
+        tc.toolName !== PROPOSE_DELETE_NODE_TOOL &&
         tc.toolName !== PROPOSE_CODE_CHANGE_TOOL
       )
         continue;
@@ -420,6 +424,9 @@ export async function handleApproval(
   }
   if (proposal.kind === "graphNodeMove") {
     return approveGraphNodeMove({ orgId, userId, proposal });
+  }
+  if (proposal.kind === "graphNodeDelete") {
+    return approveGraphNodeDelete({ orgId, userId, proposal });
   }
   if (proposal.kind === "codeChange") {
     return approveCodeChange({
@@ -3876,6 +3883,79 @@ async function approveGraphNodeMove(args: {
       landedOn: `workspace:${workspaceId}`,
       workspaceSlug,
       alreadyExisted: created.alreadyExists,
+    },
+  };
+}
+
+// ── Approve: graph node delete ───────────────────────────────────────
+
+/**
+ * Soft-delete one node. Jarvis marks it deleted and mutes its edges in one
+ * write and returns `is_deleted` from that write, so `deleteSingleNode`
+ * succeeding IS the check that the node is gone — no second read.
+ */
+async function approveGraphNodeDelete(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "graphNodeDelete" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal } = args;
+  // Ignore intent.payload — always use the server-persisted proposal payload.
+  const payload = proposal.payload as GraphNodeDeleteProposalPayload;
+
+  if (!payload.workspaceId || !payload.ref_id) {
+    return { ok: false, error: "Invalid graph node delete proposal payload.", status: 400 };
+  }
+
+  // Authorization runs before reading meta or any external call.
+  const resolved = await resolveGraphJarvis(orgId, userId, {
+    workspaceId: payload.workspaceId,
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { workspaceId, workspaceSlug, config } = resolved.access;
+
+  const meta = proposal.meta as { refusedReason?: string } | undefined;
+  if (meta?.refusedReason) {
+    return { ok: false, error: meta.refusedReason, status: 400 };
+  }
+
+  const result = await deleteSingleNode(config, payload.ref_id);
+
+  const outcome = result.success ? "deleted" : result.notFound ? "not-found" : "failed";
+  logger.info(
+    `[handleApproval.approveGraphNodeDelete] ${outcome}`,
+    "handleApproval",
+    {
+      workspaceId,
+      workspaceSlug,
+      kind: "graphNodeDelete",
+      ref_id: payload.ref_id,
+      outcome,
+      ...(result.success
+        ? { muted_edge_count: result.mutedEdgeCount }
+        : { message: result.error }),
+    },
+  );
+
+  if (!result.success) {
+    return {
+      ok: false,
+      error: result.error ?? "Failed to delete the node from the knowledge graph.",
+      status: result.notFound ? 404 : 502,
+    };
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "graphNodeDelete",
+      createdEntityId: payload.ref_id,
+      landedOn: `workspace:${workspaceId}`,
+      workspaceSlug,
     },
   };
 }
