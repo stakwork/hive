@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 /**
- * Unit tests for the run graph's canvas: what it draws of a layout, at the
+ * Unit tests for the run graph's canvas: what it draws of a layout — a node
+ * in every cell that touched it, each cell's own edges and hops — at the
  * whole run and at a step of a replay.
  */
 
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RunGraphCanvas } from "@/components/strut-run-graph/RunGraphCanvas";
 import { layoutRunGraph } from "@/lib/strut-run-graph/layout";
 import { replayFrame } from "@/lib/strut-run-graph/replay";
@@ -52,7 +53,12 @@ const LAYOUT = layoutRunGraph(
   LINKS,
 );
 
-function renderAt(step: number | null, onNodeClick = vi.fn()) {
+function renderAt(
+  step: number | null,
+  selectedId: string | null = null,
+  onNodeClick = vi.fn(),
+  onFocus?: (path: string) => void,
+) {
   const frame = replayFrame(CALLS, step ?? CALLS.length);
   render(
     <RunGraphCanvas
@@ -60,16 +66,24 @@ function renderAt(step: number | null, onNodeClick = vi.fn()) {
       nodes={NODES}
       links={LINKS}
       colorMap={{ Document: "#3b82f6" }}
-      hiddenIds={frame.hidden}
       activeIds={frame.active}
+      selectedId={selectedId}
       step={step}
       onNodeClick={onNodeClick}
+      onFocus={onFocus}
     />,
   );
   return onNodeClick;
 }
 
 const linkStates = () => screen.queryAllByTestId("run-graph-link").map((el) => el.getAttribute("data-state"));
+const drawn = () =>
+  screen.getAllByTestId("run-graph-node").map((el) => `${el.getAttribute("data-cell")} ${el.textContent}`);
+const active = () =>
+  screen
+    .getAllByTestId("run-graph-node")
+    .filter((el) => el.getAttribute("data-active") === "true")
+    .map((el) => `${el.getAttribute("data-cell")} ${el.textContent}`);
 
 describe("RunGraphCanvas", () => {
   it("draws the stages as lanes and a looping stage's iterations as cells", () => {
@@ -84,38 +98,79 @@ describe("RunGraphCanvas", () => {
     expect(screen.getAllByTestId("run-graph-cell").map((el) => el.textContent)).toEqual(["#0", "#1"]);
   });
 
-  it("draws the graph's edges and, over them, the hops the run took", () => {
+  it("draws a node in every cell whose calls touched it, with each cell's own edges and hops", () => {
     renderAt(null);
 
-    expect(screen.getAllByTestId("run-graph-node")).toHaveLength(4);
-    // doc-2 → finding is an edge; doc → finding was walked; doc → concept is a hop with no edge under it.
+    expect(drawn()).toEqual([
+      "seed# Problem List",
+      "ingest#0 enc-0-hpi.md",
+      "ingest#0 Lethargic on arrival",
+      "ingest#1 enc-1-hpi.md",
+      "produce# enc-0-hpi.md",
+      "produce# Lethargic on arrival",
+      "produce# Problem List",
+    ]);
+    // In the ingest, doc → finding is an edge; in produce it was walked, and doc → concept is a hop with no
+    // edge under it. doc-2 → finding joins two cells and is drawn in neither.
     expect(linkStates()).toEqual(["edge", "walked", "walked"]);
   });
 
   it("draws only what the run had touched at a step of the replay", () => {
     renderAt(1);
 
-    expect(screen.getAllByTestId("run-graph-node")).toHaveLength(3);
+    expect(drawn()).toEqual(["seed# Problem List", "ingest#0 enc-0-hpi.md", "ingest#0 Lethargic on arrival"]);
     expect(linkStates()).toEqual(["edge"]);
-    expect(
-      screen
-        .getAllByTestId("run-graph-node")
-        .filter((el) => el.getAttribute("data-active") === "true")
-        .map((el) => el.textContent),
-    ).toEqual(["enc-0-hpi.md", "Lethargic on arrival"]);
+    expect(active()).toEqual(["ingest#0 enc-0-hpi.md", "ingest#0 Lethargic on arrival"]);
   });
 
-  it("brings out the hops of the step's own call", () => {
+  it("brings out the hops of the step's own call, in its cell", () => {
     renderAt(3);
 
     expect(linkStates()).toEqual(["edge", "current", "current"]);
+    expect(active()).toEqual(["produce# enc-0-hpi.md", "produce# Lethargic on arrival", "produce# Problem List"]);
+  });
+
+  it("rings the picked node wherever it is drawn", () => {
+    renderAt(1, "doc");
+
+    expect(active()).toEqual(["ingest#0 enc-0-hpi.md", "ingest#0 Lethargic on arrival"]);
+    cleanup();
+    renderAt(null, "doc");
+    expect(active()).toEqual(["ingest#0 enc-0-hpi.md", "produce# enc-0-hpi.md"]);
   });
 
   it("tells which node was clicked", () => {
     const onNodeClick = renderAt(null);
 
-    fireEvent.click(screen.getByText("enc-0-hpi.md"));
+    fireEvent.click(screen.getAllByText("enc-0-hpi.md")[1]);
 
     expect(onNodeClick).toHaveBeenCalledWith("doc");
+  });
+
+  it("opens a branch from a lane's name, or from a cell's number when the lane loops", () => {
+    const onFocus = vi.fn();
+    renderAt(null, null, vi.fn(), onFocus);
+
+    fireEvent.click(screen.getByLabelText("Show only produce"));
+    expect(onFocus).toHaveBeenCalledWith("produce");
+
+    // The ingest loops: its iterations are the branches, the lane itself is none.
+    expect(screen.queryByLabelText("Show only ingest")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Show only ingest#1"));
+    expect(onFocus).toHaveBeenCalledWith("ingest#1");
+
+    fireEvent.keyDown(screen.getByLabelText("Show only seed"), { key: "Enter" });
+    expect(onFocus).toHaveBeenLastCalledWith("seed");
+  });
+
+  it("names the lanes plainly when there is no one to open a branch", () => {
+    renderAt(null);
+
+    expect(screen.queryByLabelText("Show only produce")).toBeNull();
+    expect(screen.getAllByTestId("run-graph-lane-name").map((el) => el.textContent)).toEqual([
+      "seed",
+      "ingest",
+      "produce",
+    ]);
   });
 });
