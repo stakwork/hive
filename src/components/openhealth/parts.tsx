@@ -81,8 +81,8 @@ export function contestedTitle(count: number, official: number | null): string {
 }
 
 /**
- * The note beside a score that excludes contested answer-key items: the
- * untouched score and how many were excluded. Nothing when none were.
+ * The note beside a score that excludes contested answer-key items: how many
+ * were excluded, with the untouched score in the title. Nothing when none were.
  */
 export function ContestedNote({
   official,
@@ -100,7 +100,6 @@ export function ContestedNote({
       title={contestedTitle(contested, official)}
       data-testid="openhealth-contested-note"
     >
-      {official !== null && `${formatScore(official)} official · `}
       {contestedLabel(contested)}
     </span>
   );

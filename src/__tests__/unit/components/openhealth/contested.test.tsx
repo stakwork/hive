@@ -180,7 +180,7 @@ describe("the run viewer", () => {
     await waitFor(() => expect(screen.getByTestId("openhealth-run-contested-badge")).toBeDefined());
     expect(screen.getByTestId("openhealth-run-contested-badge").textContent).toBe("1 contested");
     expect(screen.getByTestId("openhealth-run-scores").textContent).toContain("1.00");
-    expect(screen.getByTestId("openhealth-contested-note").textContent).toBe("0.92 official · 1 contested");
+    expect(screen.getByTestId("openhealth-contested-note").textContent).toBe("1 contested");
 
     const list = screen.getByTestId("openhealth-run-contested");
     expect(list.textContent).toContain("Primigravida");
@@ -210,7 +210,7 @@ describe("the run viewer", () => {
     render(<OpenHealthRunViewer runId="run-1" />);
     await waitFor(() => expect(screen.getByTestId("openhealth-run-contested")).toBeDefined());
     expect(screen.getByTestId("openhealth-run-found").textContent).toContain("Hypertension");
-    expect(screen.getByTestId("openhealth-contested-note").textContent).toBe("0.92 official · 1 contested");
+    expect(screen.getByTestId("openhealth-contested-note").textContent).toBe("1 contested");
     expect(screen.getByTestId("openhealth-run-contested").textContent).toContain("Primigravida");
   });
 
@@ -266,8 +266,10 @@ describe("the score cell", () => {
     expect(renderToStaticMarkup(<ScoreCell value="0.82" official={null} contested={0} />)).not.toContain("contested");
     const marked = renderToStaticMarkup(<ScoreCell value="1.00" official={0.92} contested={2} />);
     expect(marked).toContain("1.00");
-    expect(marked).toContain("0.92 official · 2 contested");
+    expect(marked).toContain("2 contested");
+    expect(marked).not.toContain("official");
     expect(marked).toContain("2 answer-key items are contested");
+    expect(marked).toContain("The untouched benchmark score is 0.92.");
     expect(renderToStaticMarkup(<ContestedNote official={null} contested={1} />)).toContain("1 contested");
   });
 });
