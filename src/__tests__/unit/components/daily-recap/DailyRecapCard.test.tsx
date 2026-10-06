@@ -175,6 +175,14 @@ describe("DailyRecapCard", () => {
     expect(screen.queryByRole("link", { name: /My Activity/i })).toBeNull();
   });
 
+  it("merges a custom className onto the root element", async () => {
+    mockFetch({ recap: RECAP_TEXT, generatedAt: GENERATED_AT });
+    render(<DailyRecapCard className="mb-3" />);
+    const card = await screen.findByTestId("daily-recap-card");
+    expect(card).toHaveClass("mb-3");
+    expect(card).toHaveClass("rounded");
+  });
+
   // ── Error / network ──────────────────────────────────────────────────────
 
   it("renders null when fetch throws (network error)", async () => {
