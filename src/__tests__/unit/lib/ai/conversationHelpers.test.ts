@@ -1,7 +1,12 @@
 // @vitest-environment node
 
 import { describe, it, expect } from "vitest";
-import { toModelMessages } from "@/lib/ai/conversationHelpers";
+import {
+  INTERRUPTED_TOOL_RESULT,
+  STOPPED_TURN_NOTICE,
+  STOPPED_TURN_TEXT,
+  toModelMessages,
+} from "@/lib/ai/conversationHelpers";
 import type { StoredMessage } from "@/services/canvas-turn-persistence";
 
 describe("toModelMessages", () => {
@@ -99,7 +104,7 @@ describe("toModelMessages", () => {
     });
   });
 
-  it("omits tool-result message when tool call has no output or errorText", () => {
+  it("replays a tool call with no output as interrupted — every call gets a result", () => {
     const stored: StoredMessage[] = [
       {
         role: "assistant",
@@ -109,6 +114,7 @@ describe("toModelMessages", () => {
             id: "tc2",
             toolName: "no_result_tool",
             input: {},
+            status: "interrupted",
             // output and errorText intentionally absent
           },
         ],
@@ -117,19 +123,63 @@ describe("toModelMessages", () => {
 
     const result = toModelMessages(stored);
 
-    // Only the tool-call entry; no tool-result, no trailing text
-    expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
-      role: "assistant",
+    expect(result).toEqual([
+      {
+        role: "assistant",
+        content: [{ type: "tool-call", toolCallId: "tc2", toolName: "no_result_tool", input: {} }],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "tc2",
+            toolName: "no_result_tool",
+            output: { type: "error-text", value: INTERRUPTED_TOOL_RESULT },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("replays a failed call's errorText when it has no output", () => {
+    const stored = [
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "tc3", toolName: "flaky", input: {}, status: "output-error", errorText: "Tool call failed" }],
+      },
+    ] as StoredMessage[];
+
+    const [, toolMsg] = toModelMessages(stored);
+
+    expect(toolMsg).toEqual({
+      role: "tool",
       content: [
         {
-          type: "tool-call",
-          toolCallId: "tc2",
-          toolName: "no_result_tool",
-          input: {},
+          type: "tool-result",
+          toolCallId: "tc3",
+          toolName: "flaky",
+          output: { type: "error-text", value: "Tool call failed" },
         },
       ],
     });
+  });
+
+  it("replays a stopped turn's marker as a notice from the user, never its stored text", () => {
+    const stored = [
+      { id: "t-u", role: "user", content: "Explain the auth flow" },
+      { id: "t-a0", role: "assistant", content: "The auth flow starts" },
+      { id: "t-astopped", role: "assistant", content: STOPPED_TURN_TEXT, source: { kind: "stopped" } },
+      { id: "t2-u", role: "user", content: "Actually, explain billing" },
+    ] as StoredMessage[];
+
+    expect(toModelMessages(stored)).toEqual([
+      { role: "user", content: "Explain the auth flow" },
+      { role: "assistant", content: "The auth flow starts" },
+      { role: "user", content: STOPPED_TURN_NOTICE },
+      { role: "user", content: "Actually, explain billing" },
+    ]);
   });
 
   it("filters out messages with empty content and no toolCalls", () => {

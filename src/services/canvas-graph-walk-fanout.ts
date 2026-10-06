@@ -21,8 +21,11 @@ export interface GraphWalkFanOutPayload {
   graphWalkId: string;
   title: string;
   answer: string;
-  /** "ready" when the sub-agent produced an answer; "failed" otherwise. */
-  status: "ready" | "failed";
+  /**
+   * "ready" when the sub-agent produced an answer; "failed" on an error;
+   * "cancelled" when the user stopped the turn before it ran.
+   */
+  status: "ready" | "failed" | "cancelled";
   /**
    * Id of the standalone (history-hidden, `source: "graph-walk"`)
    * SharedConversation row that holds the sub-agent's full tool-call
@@ -95,7 +98,9 @@ export async function fanOutGraphWalkToCanvas(
         content:
           status === "ready"
             ? answer
-            : `Graph walk failed for: ${title}`,
+            : status === "cancelled"
+              ? `Graph walk cancelled: ${title}`
+              : `Graph walk failed for: ${title}`,
         timestamp: new Date().toISOString(),
         source: {
           kind: "graph_walk",

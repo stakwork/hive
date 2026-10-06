@@ -317,9 +317,12 @@ export function askToolsMulti(
                   },
                   isAbortRequested: async () =>
                     isAbortRequestedForRun(convId, activeRequestId ?? ""),
+                  abortSignal: context?.abortSignal,
                 };
               })()
-            : undefined;
+            : context?.abortSignal
+              ? { abortSignal: context.abortSignal }
+              : undefined;
 
           const rr = await repoAgent(
             ws.swarmUrl,

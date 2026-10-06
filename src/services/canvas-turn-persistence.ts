@@ -243,6 +243,12 @@ export function messagesFromSteps(
   steps: StepLike[],
   idPrefix: string,
   stripToolNames: ReadonlySet<string> = NO_STRIP,
+  /**
+   * The step a Stop cut off (stopped turns only), appended after `steps`.
+   * A tool call in it with no result is persisted as `"interrupted"` —
+   * it may already have taken effect, so it is kept, not dropped.
+   */
+  interruptedStep?: StepLike,
 ): StoredMessage[] {
   const rows: StoredMessage[] = [];
   let idx = 0;
@@ -254,7 +260,7 @@ export function messagesFromSteps(
   // that steps without their own timestamp stay in chronological order.
   let lastTimestamp = now;
 
-  for (const step of steps) {
+  for (const step of interruptedStep ? [...steps, interruptedStep] : steps) {
     // Derive per-step timestamp from response.timestamp (the moment the model's
     // response for this step arrived).  Note: this reflects model-response
     // completion, not necessarily when a tool call *inside* the step finished
@@ -321,7 +327,9 @@ export function messagesFromSteps(
           output,
           status:
             output === undefined
-              ? "input-available"
+              ? step === interruptedStep
+                ? "interrupted"
+                : "input-available"
               : isError
                 ? "output-error"
                 : "output-available",
@@ -425,8 +433,13 @@ export async function appendTurnMessages(args: {
   rows: StoredMessage[];
   idPrefix: string;
   reason: CanvasConversationUpdateReason;
+  /**
+   * Append only while this row is still there — a stopped turn's reply is
+   * dropped once an edited resend has replaced the turn (its `-u` row).
+   */
+  requireRowId?: string;
 }): Promise<boolean> {
-  const { conversationId, rows, idPrefix, reason } = args;
+  const { conversationId, rows, idPrefix, reason, requireRowId } = args;
   if (rows.length === 0) return false;
 
   let didAppend = false;
@@ -444,6 +457,7 @@ export async function appendTurnMessages(args: {
       (m) => typeof m.id === "string" && m.id.startsWith(idPrefix),
     );
     if (alreadyAppended) return;
+    if (requireRowId && !existing.some((m) => m.id === requireRowId)) return;
 
     await tx.sharedConversation.update({
       where: { id: conversationId },
@@ -457,6 +471,38 @@ export async function appendTurnMessages(args: {
 
   if (didAppend) notifyCanvasConversationUpdated(conversationId, reason);
   return didAppend;
+}
+
+/**
+ * Remove a stopped turn's rows (`${turnId}-…`) so an edited resend takes
+ * its place. Only while it is still the conversation's last turn — a user
+ * row after it means the conversation moved on, and nothing is removed.
+ * Rows that aren't the turn's own (e.g. a cancelled research fan-out) stay.
+ * The caller checks the turn is the caller's own stopped turn.
+ */
+export async function removeStoppedTurn(args: { conversationId: string; turnId: string }): Promise<boolean> {
+  const { conversationId, turnId } = args;
+  const prefix = `${turnId}-`;
+  let removed = false;
+  await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ messages: unknown }[]>`
+      SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+    `;
+    if (locked.length === 0) return;
+    const existing = Array.isArray(locked[0].messages) ? (locked[0].messages as StoredMessage[]) : [];
+    const userIdx = existing.findIndex((m) => m.id === `${turnId}-u`);
+    if (userIdx === -1) return;
+    if (existing.slice(userIdx + 1).some((m) => m.role === "user")) return;
+
+    await tx.sharedConversation.update({
+      where: { id: conversationId },
+      data: {
+        messages: existing.filter((m) => !(typeof m.id === "string" && m.id.startsWith(prefix))) as unknown as never,
+      },
+    });
+    removed = true;
+  });
+  return removed;
 }
 
 /**

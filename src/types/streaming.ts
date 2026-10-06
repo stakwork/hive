@@ -26,7 +26,9 @@ export type ToolCallStatus =
   | "input-available"
   | "input-error"
   | "output-available"
-  | "output-error";
+  | "output-error"
+  /** Its turn was stopped before it produced a result. */
+  | "interrupted";
 
 export interface BaseStreamEvent {
   type: StreamEventType;

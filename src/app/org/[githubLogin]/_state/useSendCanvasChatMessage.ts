@@ -88,6 +88,82 @@ interface SendArgs {
   rejection?: RejectionIntent;
   /** File attachments uploaded before send. Stamped onto the user message and forwarded to the API. */
   attachments?: CanvasAttachment[];
+  /**
+   * A stopped turn this send replaces — the edited resend of its message.
+   * The turn leaves the transcript here and on the server, and its
+   * attachments carry over.
+   */
+  replacesTurnId?: string;
+}
+
+/**
+ * Follow the `SharedConversation` row the server says this conversation
+ * persisted to. The server is authoritative and we always reconcile to it
+ * when it differs from what we hold:
+ *   - First turn of a fresh chat → the row the server just created.
+ *   - Joined `?chat=<id>` room → the same shared id (no change).
+ *   - We tried to adopt an inaccessible `?chat=<id>` (deleted / wrong
+ *     org) → the server forked a fresh owned row and we follow it, so the
+ *     client never diverges from the DB.
+ * Adopting it keeps live-sync subscribed to the right channel and later
+ * turns/approvals referencing the same row.
+ */
+function adoptServerConversationId(conversationId: string, serverId: string): void {
+  const { conversations, activeConversationId, setServerConversationId } = useCanvasChatStore.getState();
+  if (conversations[conversationId]?.serverConversationId === serverId) return;
+  setServerConversationId(conversationId, serverId);
+  // Reflect the live row in the URL (`?chat=<id>`) the moment it exists,
+  // so a reload-for-any-reason re-preloads and RESUMES this same
+  // conversation instead of forking a fresh one. Every org-canvas row is
+  // a joinable room, so this URL is also the share link — no separate
+  // Share step. Only do this for the active conversation (a backgrounded
+  // send must not hijack the URL). `history.replaceState` (NOT
+  // `router.replace`) to avoid a Next navigation / RSC refetch on this
+  // `protected` route.
+  if (activeConversationId === conversationId && typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("chat") !== serverId) {
+      params.set("chat", serverId);
+      window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+    }
+  }
+}
+
+/**
+ * The composer's Stop button. Asks the server to stop the turn; only once
+ * it has accepted does this tab abort its request, and the send hook then
+ * ends the turn locally as stopped. Returns false when the Stop failed —
+ * the turn is still running, and the UI must not show it as stopped.
+ */
+export async function stopCanvasChatTurn(conversationId: string): Promise<boolean> {
+  const { conversations, setActiveTurn } = useCanvasChatStore.getState();
+  const conv = conversations[conversationId];
+  const turn = conv?.activeTurn;
+  if (!conv || !turn || !turn.canStop || turn.stopping) return true;
+  setActiveTurn(conversationId, { ...turn, stopping: true });
+  try {
+    const res = await fetch("/api/ask/abort", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        turnId: turn.turnId,
+        orgId: conv.context.orgId,
+        ...(conv.serverConversationId ? { conversationId: conv.serverConversationId } : {}),
+      }),
+    });
+    if (!res.ok) throw new Error(`abort answered ${res.status}`);
+    // A first turn stopped before its response named the row: adopt it,
+    // so the next send continues this conversation instead of starting one.
+    const { conversationId: serverId } = (await res.json()) as { conversationId?: string };
+    if (serverId) adoptServerConversationId(conversationId, serverId);
+    turn.controller.abort();
+    return true;
+  } catch (err) {
+    console.error("[canvas-chat] Stop failed:", err);
+    const current = useCanvasChatStore.getState().conversations[conversationId]?.activeTurn;
+    if (current?.turnId === turn.turnId) setActiveTurn(conversationId, { ...current, stopping: false });
+    return false;
+  }
 }
 
 export function useSendCanvasChatMessage() {
@@ -100,7 +176,8 @@ export function useSendCanvasChatMessage() {
       onResponseStart,
       approval,
       rejection,
-      attachments,
+      attachments: newAttachments,
+      replacesTurnId,
     }: SendArgs) => {
       const trimmed = content.trim();
       if (!trimmed) return;
@@ -114,9 +191,14 @@ export function useSendCanvasChatMessage() {
         setRunActive,
         appendAssistantError,
         markTurnAuthored,
-        setServerConversationId,
         bumpAgentTurns,
+        setActiveTurn,
+        finishStoppedTurn,
+        removeTurn,
       } = useCanvasChatStore.getState();
+      // One turn at a time per conversation: the composer shows Stop
+      // while one runs, and other senders wait for it to end.
+      if (useCanvasChatStore.getState().conversations[conversationId]?.activeTurn) return;
 
       // Backend-driven persistence id for this turn
       // (docs/plans/backend-driven-canvas-turns.md). The server persists
@@ -138,8 +220,16 @@ export function useSendCanvasChatMessage() {
         useCanvasChatStore.getState().conversations[conversationId];
       if (!conv) return;
 
+      const replaced = replacesTurnId ? conv.messages.find((m) => m.id === `${replacesTurnId}-u`) : undefined;
+      const attachments = replaced?.attachments?.length
+        ? [...replaced.attachments, ...(newAttachments ?? [])]
+        : newAttachments;
+      if (replacesTurnId) removeTurn(conversationId, replacesTurnId);
+
+      // Local rows carry the ids the server persists the turn under, so
+      // the whole turn is `${turnId}-…` on both sides.
       const userMessage: CanvasChatMessage = {
-        id: Date.now().toString(),
+        id: `${turnId}-u`,
         role: "user",
         content: trimmed,
         timestamp: new Date(),
@@ -147,12 +237,18 @@ export function useSendCanvasChatMessage() {
         ...(approval ? { approval } : {}),
         ...(rejection ? { rejection } : {}),
       };
-      const updatedMessages = [...conv.messages, userMessage];
+      const priorMessages = replacesTurnId
+        ? conv.messages.filter((m) => !m.id.startsWith(`${replacesTurnId}-`))
+        : conv.messages;
+      const updatedMessages = [...priorMessages, userMessage];
+      const messageId = `${turnId}-a`;
+      const controller = new AbortController();
 
       appendUserMessage(conversationId, userMessage);
       setIsLoading(conversationId, true);
       setIsStreaming(conversationId, true);
       bumpAgentTurns(conversationId, 1);
+      setActiveTurn(conversationId, { turnId, controller, canStop: !approval && !rejection, stopping: false });
 
       let firstChunk = true;
       const ctx = conv.context;
@@ -161,6 +257,9 @@ export function useSendCanvasChatMessage() {
         const response = await fetch(`/api/ask/quick`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // Aborted only by `stopCanvasChatTurn`, after the server has
+          // accepted the Stop.
+          signal: controller.signal,
           body: JSON.stringify({
             messages: toModelMessages(updatedMessages),
             ...(ctx.workspaceSlugs.length > 0
@@ -211,6 +310,7 @@ export function useSendCanvasChatMessage() {
             // rows under `${turnId}-*` and returns the (possibly newly-
             // created) row id in `X-Conversation-Id`.
             turnId,
+            ...(replacesTurnId ? { replacesTurnId } : {}),
           }),
         });
 
@@ -229,45 +329,11 @@ export function useSendCanvasChatMessage() {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        // The server is authoritative about which `SharedConversation`
-        // row this turn actually persisted to, and hands it back here.
-        // We always reconcile to it when it differs from what we hold:
-        //   - First turn of a fresh chat → the row the server just created.
-        //   - Joined `?chat=<id>` room → the same shared id (no change).
-        //   - We tried to adopt an inaccessible `?chat=<id>` (deleted /
-        //     wrong org) → the server forked a fresh owned row and we
-        //     follow it, so the client never diverges from the DB.
-        // Adopting it keeps live-sync subscribed to the right channel and
-        // later turns/approvals referencing the same row.
+        // The server hands back the row this turn persisted to.
         const serverConversationIdHeader =
           response.headers.get("X-Conversation-Id");
-        if (
-          serverConversationIdHeader &&
-          serverConversationIdHeader !== conv.serverConversationId
-        ) {
-          setServerConversationId(conversationId, serverConversationIdHeader);
-          // Reflect the live row in the URL (`?chat=<id>`) the moment it
-          // exists, so a reload-for-any-reason re-preloads and RESUMES
-          // this same conversation instead of forking a fresh one. Every
-          // org-canvas row is a joinable room, so this URL is also the
-          // share link — no separate Share step. Only do this for the
-          // active conversation (a backgrounded send must not hijack the
-          // URL). `history.replaceState` (NOT `router.replace`) to avoid
-          // a Next navigation / RSC refetch on this `protected` route.
-          const isActive =
-            useCanvasChatStore.getState().activeConversationId ===
-            conversationId;
-          if (isActive && typeof window !== "undefined") {
-            const params = new URLSearchParams(window.location.search);
-            if (params.get("chat") !== serverConversationIdHeader) {
-              params.set("chat", serverConversationIdHeader);
-              window.history.replaceState(
-                null,
-                "",
-                `${window.location.pathname}?${params.toString()}`,
-              );
-            }
-          }
+        if (serverConversationIdHeader) {
+          adoptServerConversationId(conversationId, serverConversationIdHeader);
         }
 
         // The proposal-approval endpoint stamps the structured
@@ -288,10 +354,11 @@ export function useSendCanvasChatMessage() {
           }
         }
 
-        const messageId = (Date.now() + 1).toString();
         const loggedToolCalls = new Set<string>();
 
         await processStream(response, messageId, (updatedMessage) => {
+          // A debounced update can land after a Stop has finished the turn.
+          if (controller.signal.aborted) return;
           if (firstChunk) {
             firstChunk = false;
             setIsLoading(conversationId, false);
@@ -528,12 +595,19 @@ export function useSendCanvasChatMessage() {
         // Stream finished cleanly — ensure runActive is cleared locally.
         setRunActive(conversationId, false);
       } catch (error) {
-        console.error("Error calling ask API:", error);
-        appendAssistantError(
-          conversationId,
-          "I'm sorry, but I encountered an error while processing your question. Please try again later.",
-        );
+        if (controller.signal.aborted) {
+          // The user pressed Stop and the server accepted it: keep what
+          // streamed and end the turn as stopped, not as an error.
+          finishStoppedTurn(conversationId, turnId);
+        } else {
+          console.error("Error calling ask API:", error);
+          appendAssistantError(
+            conversationId,
+            "I'm sorry, but I encountered an error while processing your question. Please try again later.",
+          );
+        }
       } finally {
+        setActiveTurn(conversationId, null);
         setIsLoading(conversationId, false);
         setIsStreaming(conversationId, false);
         bumpAgentTurns(conversationId, -1);

@@ -17,8 +17,11 @@ export interface ResearchRun {
   slug: string;
   topic: string;
   title: string;
-  /** "dispatched" while running, "ready" on success, "failed" on failure */
-  status: "dispatched" | "ready" | "failed";
+  /**
+   * "dispatched" while running, "ready" on success, "failed" on failure,
+   * "cancelled" when the user stopped the turn before it started.
+   */
+  status: "dispatched" | "ready" | "failed" | "cancelled";
   anchorMessageId: string;
   initiativeId?: string;
 }
@@ -94,7 +97,7 @@ export function getResearchRunsFromMessages(
 
 // ── Status pill helpers ──────────────────────────────────────────────────────
 
-type ResearchStatusTone = "running" | "ready" | "failed";
+type ResearchStatusTone = "running" | "ready" | "failed" | "cancelled";
 
 const TONE_PILL_CLASSES: Record<ResearchStatusTone, string> = {
   running:
@@ -103,11 +106,13 @@ const TONE_PILL_CLASSES: Record<ResearchStatusTone, string> = {
     "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
   failed:
     "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/20",
+  cancelled: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
 };
 
 function toneForStatus(status: ResearchRun["status"]): ResearchStatusTone {
   if (status === "ready") return "ready";
   if (status === "failed") return "failed";
+  if (status === "cancelled") return "cancelled";
   return "running";
 }
 
@@ -118,7 +123,9 @@ function StatusPill({ status }: { status: ResearchRun["status"] }) {
       ? "Researching\u2026"
       : status === "ready"
         ? "Ready"
-        : "Failed";
+        : status === "cancelled"
+          ? "Cancelled"
+          : "Failed";
   return (
     <span
       className={`inline-flex flex-shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${TONE_PILL_CLASSES[tone]}`}
@@ -148,8 +155,9 @@ export function ResearchRunCard({
 
   // Deep-link to the org canvas with the research node pre-selected.
   // Pattern mirrors the ?r=<slug> deep-link format used elsewhere.
+  // A cancelled run's Research row is deleted — nothing to open.
   const researchHref =
-    run.slug ? `/org/${githubLogin}?r=${run.slug}` : null;
+    run.slug && run.status !== "cancelled" ? `/org/${githubLogin}?r=${run.slug}` : null;
 
   const Chevron = collapsed ? (
     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
