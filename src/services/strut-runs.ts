@@ -455,12 +455,22 @@ export async function cancelStrutRun(row: Pick<StrutRunRow, "id" | "swarmId" | "
  * The Stop button: cancel every PENDING strut run a conversation is
  * waiting on. Returns the rows it addressed (so the caller can skip them
  * in the swarm `/repo/agent` abort loop) and how many strut acknowledged.
+ *
+ * `turn` narrows it to the runs one turn launched (the composer's Stop).
+ * `StrutRun` has no `turnId` column, so the scope is the turn's user +
+ * `createdAt >= since` (the turn's start) — precise because the client
+ * blocks a new send while a turn is running.
  */
 export async function cancelPendingStrutRunsForConversation(
   conversationId: string,
+  turn?: { userId: string; since: Date },
 ): Promise<{ rows: Array<{ id: string; kind: string }>; cancelled: number }> {
   const rows = await db.strutRun.findMany({
-    where: { conversationId, status: StrutRunStatus.PENDING },
+    where: {
+      conversationId,
+      status: StrutRunStatus.PENDING,
+      ...(turn ? { userId: turn.userId, createdAt: { gte: turn.since } } : {}),
+    },
     select: { id: true, kind: true, swarmId: true, workflow: true, strutRunId: true },
   });
   let cancelled = 0;

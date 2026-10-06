@@ -78,6 +78,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { jamieName } from "@/lib/constants/jamie";
 import { getPlanRepoPreference, setPlanRepoPreference } from "@/lib/ai/models";
 
 /**
@@ -135,6 +136,10 @@ export function ProposalCard({
       (activeId
         ? s.conversations[activeId]?.context.currentCanvasRef
         : "") ?? "",
+  );
+  // Approve / Reject are sends, and a send waits for the running turn.
+  const turnRunning = useCanvasChatStore(
+    (s) => !!(activeId && s.conversations[activeId]?.activeTurn),
   );
 
   const status = useMemo(
@@ -814,6 +819,7 @@ export function ProposalCard({
                       disabled={
                         !isPending ||
                         isInFlight ||
+                        turnRunning ||
                         !allBlockersApproved ||
                         !repoSelectionValid ||
                         !previewReady
@@ -821,7 +827,9 @@ export function ProposalCard({
                       title={
                         !previewReady
                           ? "Waiting for the diff"
-                          : !allBlockersApproved
+                          : turnRunning
+                            ? `Waiting for ${jamieName} to finish`
+                            : !allBlockersApproved
                             ? "Approve blocking features first"
                             : !repoSelectionValid
                               ? "Select at least one repository"
@@ -839,8 +847,8 @@ export function ProposalCard({
                   <button
                     type="button"
                     onClick={handleReject}
-                    disabled={!isPending || isInFlight}
-                    title="Reject"
+                    disabled={!isPending || isInFlight || turnRunning}
+                    title={turnRunning ? `Waiting for ${jamieName} to finish` : "Reject"}
                     className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
                   >
                     <X className="h-3.5 w-3.5" />

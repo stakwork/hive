@@ -20,6 +20,8 @@ import {
 import { createTestUser, createTestSwarm } from "@/__tests__/support/factories";
 import { db } from "@/lib/db";
 import { POST } from "@/app/api/ask/abort/route";
+import { registerTurn } from "@/services/canvas-turn-abort";
+import { redis } from "@/lib/redis";
 
 // ── Mock external deps ────────────────────────────────────────────────────────
 
@@ -32,14 +34,50 @@ vi.mock("@/lib/pusher", () => ({
   getCanvasConversationChannelName: (id: string) => `canvas-conversation-${id}`,
 }));
 
-// Mock redis (rate-limit)
-vi.mock("@/lib/redis", () => ({
-  redis: {
-    incr: vi.fn().mockResolvedValue(1),
-    expire: vi.fn().mockResolvedValue(1),
-    ttl: vi.fn().mockResolvedValue(60),
-  },
-}));
+// Minimal in-memory fake standing in for ioredis — supports just the
+// rate-limit counter commands and the turn-abort SET NX/EX + GET pair used
+// by `@/services/canvas-turn-abort`.
+function createFakeRedis() {
+  const store = new Map<string, { value: string; expiresAt: number | null }>();
+  function isLive(key: string): boolean {
+    const entry = store.get(key);
+    if (!entry) return false;
+    if (entry.expiresAt !== null && entry.expiresAt < Date.now()) {
+      store.delete(key);
+      return false;
+    }
+    return true;
+  }
+  return {
+    incr: vi.fn(async (key: string) => {
+      const current = isLive(key) ? Number(store.get(key)!.value) : 0;
+      const next = current + 1;
+      const prevExpiresAt = isLive(key) ? store.get(key)!.expiresAt : null;
+      store.set(key, { value: String(next), expiresAt: prevExpiresAt });
+      return next;
+    }),
+    expire: vi.fn(async (key: string, secs: number) => {
+      const entry = store.get(key);
+      if (!entry) return 0;
+      entry.expiresAt = Date.now() + secs * 1000;
+      return 1;
+    }),
+    ttl: vi.fn(async () => 60),
+    // Supports both the rate-limit shape (no NX) and the turn-abort shape
+    // (EX secs [NX]).
+    set: vi.fn(async (key: string, value: string, ...rest: unknown[]) => {
+      const nx = rest.includes("NX");
+      if (nx && isLive(key)) return null;
+      const exIdx = rest.indexOf("EX");
+      const expiresAt = exIdx >= 0 ? Date.now() + Number(rest[exIdx + 1]) * 1000 : null;
+      store.set(key, { value, expiresAt });
+      return "OK";
+    }),
+    get: vi.fn(async (key: string) => (isLive(key) ? store.get(key)!.value : null)),
+  };
+}
+
+vi.mock("@/lib/redis", () => ({ redis: createFakeRedis() }));
 
 // fetchMock — tracks outbound swarm abort calls
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -268,19 +306,12 @@ describe("POST /api/ask/abort", () => {
     expect(res.status).not.toBe(429);
   });
 
-  it("records pending-abort intent when Stop is pressed before request_id is registered", async () => {
+  it("rejects a non-UUID turnId with 400 before any Redis/DB work", async () => {
     const user = await createTestUser();
-    const org = await createOrg(`abort-race-${generateUniqueId()}`);
+    const org = await createOrg(`abort-badturn-${generateUniqueId()}`);
     createdOrgIds.push(org.id);
-
     await createWorkspaceInOrg(user.id, org.id);
-
-    // No active runs yet
-    const conv = await createConversation({
-      userId: user.id,
-      orgId: org.id,
-      isShared: false,
-    });
+    const conv = await createConversation({ userId: user.id, orgId: org.id, isShared: false });
 
     const req = createAuthenticatedPostRequest(
       "/api/ask/abort",
@@ -288,17 +319,57 @@ describe("POST /api/ask/abort", () => {
       abortBody(conv.id, org.id, "turn-xyz"),
     );
     const res = await POST(req);
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.aborted).toBe(0); // no runs to abort yet
+    expect(res.status).toBe(400);
+  });
 
-    // Verify pending-abort intent was written to DB.
+  it("signals the owner's turn through Redis and hands back its conversation id", async () => {
+    const user = await createTestUser();
+    const org = await createOrg(`abort-turn-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    await createWorkspaceInOrg(user.id, org.id);
+    const conv = await createConversation({ userId: user.id, orgId: org.id, isShared: false });
+
+    const turnId = crypto.randomUUID();
+    // What `/api/ask/quick` does right before it starts streaming.
+    await registerTurn({ turnId, userId: user.id, orgId: org.id, rowId: conv.id });
+
+    // Sent without a conversationId, like a first turn's Stop.
+    const req = createAuthenticatedPostRequest(
+      "/api/ask/abort",
+      { id: user.id, email: user.email ?? "u@test.com", name: user.name ?? "U" },
+      { orgId: org.id, turnId },
+    );
+    const res = await POST(req);
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ accepted: true, conversationId: conv.id });
+
+    // The key the turn's own instance polls.
+    expect(await redis.get(`canvas:turn-abort:${user.id}:${turnId}`)).toBe("1");
+  });
+
+  it("a Stop for an unregistered/non-owned turn gets the same 202 and cancels nothing", async () => {
+    const user = await createTestUser();
+    const org = await createOrg(`abort-unowned-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    await createWorkspaceInOrg(user.id, org.id);
+    const conv = await createConversation({ userId: user.id, orgId: org.id, isShared: false });
+
+    const turnId = crypto.randomUUID(); // never registered
+    const req = createAuthenticatedPostRequest(
+      "/api/ask/abort",
+      { id: user.id, email: user.email ?? "u@test.com", name: user.name ?? "U" },
+      abortBody(conv.id, org.id, turnId),
+    );
+    const res = await POST(req);
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ accepted: true });
+
     const updated = await db.sharedConversation.findUnique({
       where: { id: conv.id },
       select: { activeRuns: true },
     });
-    const doc = updated?.activeRuns as { pendingAbortIntent?: { turnId: string } } | null;
-    expect(doc?.pendingAbortIntent?.turnId).toBe("turn-xyz");
+    const doc = updated?.activeRuns as { pendingAbortIntent?: unknown } | null;
+    expect(doc?.pendingAbortIntent).toBeUndefined();
   });
 
   it("response body never contains active_runs column data", async () => {

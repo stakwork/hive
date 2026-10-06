@@ -57,6 +57,8 @@ interface MockConv {
   isStreaming: boolean;
   agentTurnsInProgress: number;
   activeToolCalls: unknown[];
+  activeTurn?: { turnId: string; controller: AbortController; canStop: boolean; stopping: boolean } | null;
+  serverConversationId?: string | null;
   context: ConvContext;
 }
 
@@ -72,6 +74,9 @@ interface MockStoreState {
   markTurnAuthored: ReturnType<typeof vi.fn>;
   setServerConversationId: ReturnType<typeof vi.fn>;
   bumpAgentTurns: ReturnType<typeof vi.fn>;
+  setActiveTurn: ReturnType<typeof vi.fn>;
+  finishStoppedTurn: ReturnType<typeof vi.fn>;
+  removeTurn: ReturnType<typeof vi.fn>;
 }
 
 const baseContext: ConvContext = {
@@ -128,6 +133,13 @@ function makeTrackedState(): MockStoreState {
         state.conversations[id] = { ...state.conversations[id], agentTurnsInProgress: next };
       }
     }),
+    setActiveTurn: vi.fn().mockImplementation((id: string, activeTurn: MockConv["activeTurn"]) => {
+      if (state.conversations[id]) {
+        state.conversations[id] = { ...state.conversations[id], activeTurn };
+      }
+    }),
+    finishStoppedTurn: vi.fn(),
+    removeTurn: vi.fn(),
   };
   return state;
 }
@@ -141,7 +153,10 @@ vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
 
 // ── Import after mocks ─────────────────────────────────────────────────────
 
-import { useSendCanvasChatMessage } from "@/app/org/[githubLogin]/_state/useSendCanvasChatMessage";
+import {
+  stopCanvasChatTurn,
+  useSendCanvasChatMessage,
+} from "@/app/org/[githubLogin]/_state/useSendCanvasChatMessage";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -563,66 +578,147 @@ describe("useSendCanvasChatMessage — agentTurnsInProgress lifecycle", () => {
     await act(async () => { await sendPromise!; });
   });
 
-  it("overlap regression: two interleaved sends keep the count justified until both settle", async () => {
+  it("refuses a second send while a turn runs, and takes one again once it ends", async () => {
     global.fetch = buildOkFetch();
-
-    // Independent stream promises for two concurrent turns sharing conv-1.
-    let resolveA: () => void = () => {};
-    let resolveB: () => void = () => {};
-    const streamA = new Promise<void>((res) => { resolveA = res; });
-    const streamB = new Promise<void>((res) => { resolveB = res; });
-
-    // The default mock's processStream shares one module-level
-    // `streamPromise`, which can't represent two independently-settling
-    // concurrent turns — override it for this test only, so each call
-    // resolves against its own promise.
-    let call = 0;
-    const streamingModule = await import("@/lib/streaming");
-    const processStreamSpy = vi
-      .spyOn(streamingModule, "useStreamProcessor")
-      .mockReturnValue({
-        processStream: vi.fn(
-          (
-            _response: Response,
-            _messageId: string,
-            onUpdate: (message: never) => void,
-          ) => {
-            call += 1;
-            const isFirst = call === 1;
-            onUpdate({ timeline: [], isStreaming: true } as never);
-            return (isFirst ? streamA : streamB).then(() => {
-              onUpdate({ timeline: [], isStreaming: false } as never);
-            });
-          },
-        ),
-      } as ReturnType<typeof streamingModule.useStreamProcessor>);
-
     const { result } = renderHook(() => useSendCanvasChatMessage());
 
-    let sendA: Promise<void>;
-    let sendB: Promise<void>;
-
+    let first: Promise<void>;
     act(() => {
-      sendA = result.current({ conversationId: "conv-1", content: "first turn" });
+      first = result.current({ conversationId: "conv-1", content: "first turn" });
     });
+    expect(mockState.conversations["conv-1"].activeTurn).toBeTruthy();
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "second turn" });
+    });
+    expect(mockState.appendUserMessage).toHaveBeenCalledTimes(1);
     expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(1);
 
-    act(() => {
-      sendB = result.current({ conversationId: "conv-1", content: "second turn" });
-    });
-    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(2);
-
-    // Settle the first turn — count should drop to 1, NOT 0 (dots still justified).
-    resolveA();
-    await act(async () => { await sendA!; });
-    expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(1);
-
-    // Settle the second turn — count reaches 0.
-    resolveB();
-    await act(async () => { await sendB!; });
+    resolveStream();
+    await act(async () => { await first!; });
+    expect(mockState.conversations["conv-1"].activeTurn).toBeNull();
     expect(mockState.conversations["conv-1"].agentTurnsInProgress).toBe(0);
 
-    processStreamSpy.mockRestore();
+    resetStreamPromise();
+    resolveStream();
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "third turn" });
+    });
+    expect(mockState.appendUserMessage).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("useSendCanvasChatMessage — Stop", () => {
+  let abortResponse: { ok: boolean; status: number; json: () => Promise<unknown> };
+
+  beforeEach(() => {
+    const quickFetch = buildOkFetch();
+    mockState = makeTrackedState();
+    mockTimeline = [];
+    mockFinalUsage = undefined;
+    resetStreamPromise();
+    vi.clearAllMocks();
+    abortResponse = { ok: true, status: 202, json: async () => ({ accepted: true, conversationId: "row-9" }) };
+    global.fetch = vi.fn((url: string, init: RequestInit) =>
+      url === "/api/ask/abort" ? Promise.resolve(abortResponse) : quickFetch(url, init),
+    ) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function startTurnWith(extra: Record<string, unknown> = {}) {
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+    let send: Promise<void>;
+    act(() => {
+      send = result.current({ conversationId: "conv-1", content: "explain auth", ...extra });
+    });
+    return () => send!;
+  }
+  const startTurn = () => startTurnWith();
+
+  it("asks the server to stop this turn, then ends it as stopped — not as an error", async () => {
+    const send = startTurn();
+    const turn = mockState.conversations["conv-1"].activeTurn!;
+
+    let stopped: boolean;
+    await act(async () => {
+      stopped = await stopCanvasChatTurn("conv-1");
+    });
+    expect(stopped!).toBe(true);
+    expect(turn.controller.signal.aborted).toBe(true);
+
+    const abortCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url]) => url === "/api/ask/abort")!;
+    expect(JSON.parse(abortCall[1].body)).toEqual({ turnId: turn.turnId, orgId: "org-1" });
+    // A first turn stopped before its response named the row adopts it.
+    expect(mockState.setServerConversationId).toHaveBeenCalledWith("conv-1", "row-9");
+
+    // The aborted request rejects the stream read.
+    rejectStream(new DOMException("The operation was aborted.", "AbortError") as unknown as Error);
+    await act(async () => { await send(); });
+
+    expect(mockState.finishStoppedTurn).toHaveBeenCalledWith("conv-1", turn.turnId);
+    expect(mockState.appendAssistantError).not.toHaveBeenCalled();
+    expect(mockState.conversations["conv-1"].activeTurn).toBeNull();
+  });
+
+  it("keeps the turn running when the server doesn't accept the Stop", async () => {
+    abortResponse = { ok: false, status: 503, json: async () => ({}) };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const send = startTurn();
+    const turn = mockState.conversations["conv-1"].activeTurn!;
+
+    let stopped: boolean;
+    await act(async () => {
+      stopped = await stopCanvasChatTurn("conv-1");
+    });
+    expect(stopped!).toBe(false);
+    expect(turn.controller.signal.aborted).toBe(false);
+    expect(mockState.conversations["conv-1"].activeTurn).toMatchObject({ turnId: turn.turnId, stopping: false });
+
+    resolveStream();
+    await act(async () => { await send(); });
+    expect(mockState.finishStoppedTurn).not.toHaveBeenCalled();
+  });
+
+  it("offers no Stop for an Approve / Reject turn — the server answers it without the model", async () => {
+    const send = startTurnWith({ approval: { proposalId: "p-1" } as never });
+    expect(mockState.conversations["conv-1"].activeTurn).toMatchObject({ canStop: false });
+
+    expect(await stopCanvasChatTurn("conv-1")).toBe(true);
+    expect(global.fetch).not.toHaveBeenCalledWith("/api/ask/abort", expect.anything());
+
+    resolveStream();
+    await act(async () => { await send(); });
+  });
+
+  it("an edited resend replaces the stopped turn here and on the server, keeping its attachments", async () => {
+    const attachment = { path: "uploads/a.png", filename: "a.png", mimeType: "image/png", size: 1 };
+    mockState.conversations["conv-1"].messages = [
+      { id: "old-u", role: "user", content: "Explain auth", attachments: [attachment] },
+      { id: "old-a-0", role: "assistant", content: "Auth starts" },
+      { id: "old-astopped", role: "assistant", content: "Stopped by user." },
+    ] as MockConv["messages"];
+
+    const send = startTurnWith({ content: "Explain auth in one paragraph", replacesTurnId: "old" });
+    resolveStream();
+    await act(async () => { await send(); });
+
+    expect(mockState.removeTurn).toHaveBeenCalledWith("conv-1", "old");
+    const quickCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url]) => url === "/api/ask/quick")!;
+    const body = JSON.parse(quickCall[1].body);
+    expect(body.replacesTurnId).toBe("old");
+    expect(body.attachments).toEqual([attachment]);
+    // The history sent with the turn leaves the replaced turn out.
+    expect(body.messages.map((m: { content: string }) => m.content)).toEqual(["Explain auth in one paragraph"]);
+    const userMessage = mockState.appendUserMessage.mock.calls[0][1];
+    expect(userMessage).toMatchObject({ id: `${body.turnId}-u`, attachments: [attachment] });
+  });
+
+  it("is a no-op when no turn is running", async () => {
+    expect(await stopCanvasChatTurn("conv-1")).toBe(true);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 

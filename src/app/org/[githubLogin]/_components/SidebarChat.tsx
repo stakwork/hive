@@ -11,10 +11,12 @@ import {
   MicOff,
   OctagonX,
   Paperclip,
+  Pencil,
   Plus,
   RefreshCw,
   Share2,
   Split,
+  Square,
   X,
 } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -56,7 +58,7 @@ import {
   type ArtifactRef,
   type ArtifactVersion,
 } from "../_state/canvasChatArtifacts";
-import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+import { stopCanvasChatTurn, useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
 import { forkCanvasConversation } from "../_state/forkCanvasConversation";
 import { startNewOrgConversation } from "../_state/openOrgConversation";
 import { ActionTip } from "./ActionTip";
@@ -112,10 +114,9 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   const isLoading = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isLoading : false) ?? false);
   // Refcount of unsettled agent turns in this conversation — unlike
   // `isLoading` (cleared on the first stream chunk), this stays > 0 for
-  // the full send→finally lifetime of every in-flight turn, so the
-  // thinking dots survive turns that open with a tool call and stay
-  // justified while a second overlapping turn (e.g. a proposal
-  // approval) is still streaming. See `CanvasConversation.agentTurnsInProgress`.
+  // the full send→finally lifetime of the in-flight turn, so the
+  // thinking dots survive turns that open with a tool call. See
+  // `CanvasConversation.agentTurnsInProgress`.
   const agentTurnsInProgress = useCanvasChatStore(
     (s) => (activeId ? s.conversations[activeId]?.agentTurnsInProgress : 0) ?? 0,
   );
@@ -125,6 +126,12 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   // True for the full lifetime of a streaming response (the last message
   // renders as streaming until it settles).
   const isStreaming = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false);
+  // The turn this tab is streaming — while it runs, Send becomes Stop.
+  const activeTurn = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.activeTurn : null) ?? null);
+  // A turn this tab stopped can have its message edited and sent again in its place.
+  const stoppedTurnId = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.stoppedTurnId : null) ?? null);
+  const editingTurnId = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.editingTurnId : null) ?? null);
+  const setEditingTurn = useCanvasChatStore((s) => s.setEditingTurn);
 
   const { id: workspaceId } = useWorkspace();
 
@@ -212,7 +219,14 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       content,
       attachments,
       onResponseStart: () => clearInput(),
+      ...(editingTurnId ? { replacesTurnId: editingTurnId } : {}),
     });
+  };
+
+  const handleStop = async () => {
+    if (activeId && !(await stopCanvasChatTurn(activeId))) {
+      toast.error(`Couldn't stop ${jamieName} — it's still running.`);
+    }
   };
 
   const hasMessages = messages.length > 0;
@@ -395,6 +409,20 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               const htmlPages = htmlPagesByAnchor.get(message.id);
               const strutChats = strutChatsByAnchor.get(message.id);
 
+              // The end of a turn the user stopped: a quiet marker, not a bubble.
+              if (message.source?.kind === "stopped") {
+                return (
+                  <div
+                    key={message.id}
+                    className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground"
+                    data-testid="stopped-turn-marker"
+                  >
+                    <Square className="h-2.5 w-2.5 fill-current" />
+                    Stopped
+                  </div>
+                );
+              }
+
               if (
                 message.source?.kind === "planner" ||
                 message.source?.kind === "user-answered-planner-form" ||
@@ -468,6 +496,18 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                     </div>
                   ) : (
                     <SidebarChatMessage message={message} isStreaming={isMessageStreaming} />
+                  )}
+                  {activeId && message.id === `${stoppedTurnId}-u` && editingTurnId !== stoppedTurnId && (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setEditingTurn(activeId, stoppedTurnId)}
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Edit
+                      </button>
+                    </div>
                   )}
                   {proposals.length > 0 && (
                     <div className="space-y-1.5">
@@ -565,7 +605,15 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         <SidebarChatInput
           ref={composerRef}
           onSend={handleSend}
-          disabled={isLoading}
+          runningTurn={
+            activeTurn && {
+              stopping: activeTurn.stopping,
+              onStop: activeTurn.canStop ? () => void handleStop() : null,
+            }
+          }
+          onCancelEdit={
+            activeId && editingTurnId ? () => setEditingTurn(activeId, null) : null
+          }
           workspaceId={workspaceId}
           orgId={githubLogin}
         />
@@ -825,6 +873,10 @@ interface PendingFile {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
+/** Send and Stop share one place and one look — Stop is the same button while a turn runs. */
+const SEND_BUTTON_CLASS =
+  "h-7 w-7 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground/60 disabled:opacity-100";
+
 /** What the chat surface can ask of its composer. */
 interface SidebarChatInputHandle {
   /** Queue files as pending attachments — how a drop anywhere on the chat gets in. */
@@ -833,7 +885,14 @@ interface SidebarChatInputHandle {
 
 interface SidebarChatInputProps {
   onSend: (message: string, attachments: CanvasAttachment[], clearInput: () => void) => Promise<void>;
-  disabled?: boolean;
+  /**
+   * The turn this tab is streaming, while it runs. Typing stays open but
+   * sending waits for it, and the send button becomes Stop — or stays a
+   * disabled Send for a turn that can't be stopped (`onStop` null).
+   */
+  runningTurn?: { stopping: boolean; onStop: (() => void) | null } | null;
+  /** Set while the composer holds a stopped turn's message for editing — sending replaces that turn. */
+  onCancelEdit?: (() => void) | null;
   /** Workspace id for the S3 upload context. */
   workspaceId: string;
   /** Fallback org id when workspaceId is absent (org canvas context). */
@@ -851,7 +910,7 @@ interface SidebarChatInputProps {
  * sharing would require ugly conditionals (workspace pills, etc.).
  */
 const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProps>(function SidebarChatInput(
-  { onSend, disabled = false, workspaceId, orgId },
+  { onSend, runningTurn, onCancelEdit, workspaceId, orgId },
   ref,
 ) {
   const [input, setInput] = useState("");
@@ -915,7 +974,7 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
       startListening();
     },
     onStop: stopListening,
-    enabled: isSupported && !disabled,
+    enabled: isSupported,
   });
 
   // ─── Pending-draft consumption ─────────────────────────────────────
@@ -1004,7 +1063,8 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || disabled) return;
+    // A turn is running: keep the draft, send it once the turn ends.
+    if (!input.trim() || runningTurn) return;
 
     if (pendingFiles.some((f) => f.uploading)) {
       toast.error("Please wait for uploads to finish");
@@ -1068,6 +1128,23 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
 
   return (
     <div className="flex flex-col gap-1.5">
+      {onCancelEdit && (
+        <div className="flex items-center gap-1.5 px-2 text-xs text-muted-foreground" data-testid="editing-turn">
+          <Pencil className="h-3 w-3 shrink-0" />
+          <span className="min-w-0 truncate">Editing your message — sending replaces the stopped turn</span>
+          <button
+            type="button"
+            aria-label="Cancel edit"
+            onClick={() => {
+              setInput("");
+              onCancelEdit();
+            }}
+            className="ml-auto shrink-0 rounded p-0.5 transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
       {/* ── Pending file chips ─────────────────────────────────────────── */}
       {pendingFiles.length > 0 && (
         <div className="grid grid-cols-3 gap-1.5 px-1 pb-1.5" data-testid="pending-files-grid">
@@ -1126,7 +1203,6 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
         className={cn(
           "flex items-end gap-1 rounded-2xl border bg-background px-1.5 py-1.5 transition-[border-color,box-shadow,opacity]",
           "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10",
-          disabled && "opacity-70",
         )}
       >
         <div className="min-w-0 flex-1">
@@ -1137,7 +1213,6 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            disabled={disabled}
             isUploading={isUploading}
             rows={1}
             className="field-sizing-content max-h-[200px] min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-1.5 text-sm shadow-none placeholder:text-muted-foreground/60 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed md:text-sm dark:bg-transparent"
@@ -1151,7 +1226,6 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
               size="icon"
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
-              disabled={disabled}
               aria-label="Attach file"
               data-testid="paperclip-button"
               className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
@@ -1178,7 +1252,6 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
                 size="icon"
                 variant="ghost"
                 onClick={toggleListening}
-                disabled={disabled}
                 aria-label={isListening ? "Stop recording" : "Voice input"}
                 data-testid="mic-button"
                 className={cn(
@@ -1192,17 +1265,36 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
               </Button>
             </ActionTip>
           )}
-          <ActionTip label="Send" side="top">
-            <Button
-              type="submit"
-              size="icon"
-              aria-label="Send"
-              disabled={!input.trim() || disabled || isUploading}
-              className="h-7 w-7 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground/60 disabled:opacity-100"
-            >
-              <ArrowUp className="h-4 w-4" />
-            </Button>
-          </ActionTip>
+          {runningTurn?.onStop ? (
+            <ActionTip label={runningTurn.stopping ? "Stopping…" : "Stop"} side="top">
+              <Button
+                type="button"
+                size="icon"
+                aria-label="Stop"
+                onClick={runningTurn.onStop}
+                disabled={runningTurn.stopping}
+                className={SEND_BUTTON_CLASS}
+              >
+                {runningTurn.stopping ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Square className="h-3 w-3 fill-current" />
+                )}
+              </Button>
+            </ActionTip>
+          ) : (
+            <ActionTip label="Send" side="top">
+              <Button
+                type="submit"
+                size="icon"
+                aria-label="Send"
+                disabled={!input.trim() || isUploading || !!runningTurn}
+                className={SEND_BUTTON_CLASS}
+              >
+                <ArrowUp className="h-4 w-4" />
+              </Button>
+            </ActionTip>
+          )}
         </div>
       </form>
     </div>
