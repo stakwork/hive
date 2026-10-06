@@ -66,17 +66,16 @@ function SummaryCard({ title, summary, testId }: { title: string; summary: OpenH
         <p className="text-2xl font-semibold tabular-nums">{formatScore(summary.meanF1)}</p>
         <p className="text-xs text-muted-foreground">
           mean score · {formatPercent(summary.successRate)} scored ({summary.succeeded}/{summary.attempts})
-          {summary.contested > 0 && (
-            <span
-              className={CONTESTED_TEXT}
-              title={`${summary.contested} of the scored runs exclude contested answer-key items; the mean is over those adjusted scores`}
-              data-testid="openhealth-summary-contested"
-            >
-              {" · "}
-              {contestedLabel(summary.contested)}
-            </span>
-          )}
         </p>
+        {summary.contested > 0 && (
+          <p
+            className={`text-xs ${CONTESTED_TEXT}`}
+            title={`${summary.contested} of the scored runs exclude contested answer-key items; the mean is over those adjusted scores`}
+            data-testid="openhealth-summary-contested"
+          >
+            {contestedLabel(summary.contested)}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

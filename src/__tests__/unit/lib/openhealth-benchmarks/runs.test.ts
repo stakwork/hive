@@ -1,7 +1,8 @@
 /**
  * Unit tests for `lib/openhealth-benchmarks/runs.ts`: a `StrutRun` row →
  * what the page shows, and the metrics over a list of runs — and over the
- * benchmark runs inside climbs, which count as attempts too.
+ * benchmark runs inside climbs, which count as attempts too (once per climb,
+ * by its final run, on the summaries).
  */
 
 import { describe, it, expect } from "vitest";
@@ -774,30 +775,52 @@ function climb(overrides: Partial<OpenHealthClimb> = {}): OpenHealthClimb {
 }
 
 describe("metrics over runs and climbs", () => {
-  it("counts a climb's benchmark runs as attempts, not its improve runs", () => {
+  it("counts a climb once on the summary, by its final run, never its improve runs", () => {
     const summary = summarizeOpenHealthRuns([scored(0.5, { gtId: 7 })], [climb()]);
-    expect(summary).toMatchObject({ attempts: 4, succeeded: 4 });
-    expect(summary.meanF1).toBeCloseTo((0.5 + 0.3 + 0.7 + 1) / 4);
+    expect(summary).toMatchObject({ attempts: 2, succeeded: 2 });
+    expect(summary.meanF1).toBeCloseTo((0.5 + 1) / 2);
     // Only runs of their own report recall and precision.
     expect(summary.meanRecall).toBeCloseTo(0.5);
+    expect(summarizeByDifficulty([], [climb()]).medium.meanF1).toBeCloseTo(1);
+    expect(summarizeByDifficulty([], [climb()]).easy).toMatchObject({ attempts: 0, meanF1: null });
   });
 
-  it("leaves a climb's run in flight out, and counts one that failed", () => {
+  it("takes a climb's last finished run while one is in flight or was stopped, and counts one that failed", () => {
     const running = climb({
       status: "running",
       steps: [climbStep({ iteration: 0, f1: 0.3 }), climbStep({ iteration: 1, f1: null, outcome: "running" })],
+    });
+    const stopped = climb({
+      id: "climb-stopped",
+      status: "stopped",
+      steps: [
+        climbStep({ iteration: 0, f1: 0.2 }),
+        climbStep({ iteration: 1, f1: 0.6 }),
+        climbStep({ iteration: 2, f1: null, outcome: "cancelled" }),
+      ],
     });
     const broken = climb({
       id: "climb-2",
       status: "failed",
       steps: [climbStep({ iteration: 0, f1: null, outcome: "failed", error: "boom" })],
     });
+    const brokenLate = climb({
+      id: "climb-3",
+      status: "failed",
+      steps: [climbStep({ iteration: 0, f1: 0.9 }), climbStep({ iteration: 1, f1: null, outcome: "failed" })],
+    });
+    expect(summarizeOpenHealthRuns([], [running])).toMatchObject({ attempts: 1, succeeded: 1, meanF1: 0.3 });
+    expect(summarizeOpenHealthRuns([], [stopped])).toMatchObject({ attempts: 1, succeeded: 1, meanF1: 0.6 });
+    expect(summarizeOpenHealthRuns([], [broken])).toMatchObject({ attempts: 1, succeeded: 0, meanF1: null });
+    expect(summarizeOpenHealthRuns([], [brokenLate])).toMatchObject({ attempts: 1, succeeded: 0, meanF1: null });
     expect(summarizeOpenHealthRuns([], [running, broken])).toMatchObject({
       attempts: 2,
       succeeded: 1,
       successRate: 0.5,
     });
     expect(summarizeByDifficulty([], [running]).medium).toMatchObject({ attempts: 1, succeeded: 1 });
+    // A climb that has not run yet is not an attempt.
+    expect(summarizeOpenHealthRuns([], [climb({ status: "running", steps: [], attempts: 0 })]).attempts).toBe(0);
   });
 
   it("gives the Tasks tab a task's best over its climbs, and marks a climb in flight", () => {
@@ -835,6 +858,14 @@ describe("metrics over runs and climbs", () => {
       contested: ["Primigravida"],
     });
     expect(summarizeOpenHealthRuns([], [contested]).contested).toBe(1);
+    // The summary marks the climb by its final run, not an earlier contested one.
+    const contestedEarly = climb({
+      steps: [
+        climbStep({ iteration: 0, f1: 0.6, f1Official: 0.5, contested: ["Primigravida"] }),
+        climbStep({ iteration: 1, f1: 1 }),
+      ],
+    });
+    expect(summarizeOpenHealthRuns([], [contestedEarly]).contested).toBe(0);
     expect(openHealthTaskStats([], [contested]).get(7)).toMatchObject({ bestF1: 1, bestContested: true });
     expect(openHealthClimbSeries([], [contested])[1]).toMatchObject({ f1: 1, f1Official: 0.9, contested: 1 });
   });
