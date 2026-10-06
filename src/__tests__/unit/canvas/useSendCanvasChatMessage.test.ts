@@ -341,6 +341,57 @@ describe("useSendCanvasChatMessage — timeline ordering: interleaved text and t
   });
 });
 
+describe("useSendCanvasChatMessage — reasoning timeline items", () => {
+  beforeEach(() => {
+    mockState = makeTrackedState();
+    mockTimeline = [];
+    mockFinalUsage = undefined;
+    resetStreamPromise();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("flushes pending text and tools before emitting a reasoning row", async () => {
+    mockTimeline = [
+      { type: "text", data: { content: "Looking" } },
+      {
+        type: "toolCall",
+        data: { id: "tc-1", toolName: "web_search", input: {}, output: { ok: true }, status: "output" },
+      },
+      { type: "reasoning", id: "r-1", data: { id: "r-1", content: "weighing the results" } },
+      { type: "text", data: { content: "Done" } },
+    ];
+
+    global.fetch = buildOkFetch();
+    resolveStream();
+
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "hello" });
+    });
+
+    const calls = (mockState.replaceAssistantStream as ReturnType<typeof vi.fn>).mock.calls;
+    const lastCall = calls[calls.length - 1];
+    const timelineMessages = lastCall[2] as Array<{
+      content: string;
+      toolCalls?: Array<{ toolName: string }>;
+      timeline?: Array<{ type: string; data: { content?: string } }>;
+    }>;
+
+    expect(timelineMessages).toHaveLength(4);
+    expect(timelineMessages[0].content).toBe("Looking");
+    expect(timelineMessages[1].toolCalls?.[0].toolName).toBe("web_search");
+    expect(timelineMessages[2].content).toBe("");
+    expect(timelineMessages[2].timeline?.[0].type).toBe("reasoning");
+    expect(timelineMessages[2].timeline?.[0].data.content).toBe("weighing the results");
+    expect(timelineMessages[3].content).toBe("Done");
+  });
+});
+
 describe("useSendCanvasChatMessage — isStreaming lifecycle", () => {
   beforeEach(() => {
     mockState = makeTrackedState();

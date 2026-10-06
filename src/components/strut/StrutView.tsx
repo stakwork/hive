@@ -158,6 +158,10 @@ export function StrutView({ embedUrlEndpoint }: StrutViewProps) {
           typeof expiresInSeconds === "number" && expiresInSeconds > 0
             ? (expiresInSeconds * 1000 * 7) / 8
             : FALLBACK_REFRESH_THRESHOLD_MS;
+        // Read the link when the ticket lands, not when the mint starts.
+        // A `strut:location` can arrive while `src` is nulled and the
+        // frame is gone; closing over the ref at effect time would reload
+        // onto the link from before that report.
         setSrc(frameUrl(url, deepLink.current ?? {}));
         loadedAt.current = Date.now();
       })
@@ -170,11 +174,17 @@ export function StrutView({ embedUrlEndpoint }: StrutViewProps) {
     };
   }, [embedUrlEndpoint, mintCount]);
 
+  // The frame origin is stable for a login (the minted URL only rotates
+  // the key). Capture it once and keep listening across re-mints: the
+  // mint effect nulls `src` while the new ticket is in flight, and a
+  // listener keyed on `src` would drop a `strut:location` that lands in
+  // that gap — the reload would then come back without the latest link.
+  const frameOrigin = useRef<string | null>(null);
+  if (src) frameOrigin.current = new URL(src).origin;
+
   useEffect(() => {
-    if (!src) return;
-    const frameOrigin = new URL(src).origin;
     const handleMessage = (e: MessageEvent) => {
-      if (e.origin !== frameOrigin) return;
+      if (!frameOrigin.current || e.origin !== frameOrigin.current) return;
       const data = e.data as { type?: unknown; params?: unknown } | null;
       if (data?.type !== "strut:location") return;
       const params = data.params;
@@ -187,7 +197,7 @@ export function StrutView({ embedUrlEndpoint }: StrutViewProps) {
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [src]);
+  }, []);
 
   useEffect(() => {
     const handleVisibility = () => {

@@ -168,6 +168,7 @@
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "resumable-stream": "^2.2.13",
     "sharp": "0.34.4",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",

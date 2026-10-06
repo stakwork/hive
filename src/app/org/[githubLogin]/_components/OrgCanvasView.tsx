@@ -12,8 +12,10 @@ import type { ConnectionData } from "../connections/types";
 import { OrgRightPanel } from "./OrgRightPanel";
 import { useCanvasChatStore, type CanvasChatMessage, type GraphFocus } from "../_state/canvasChatStore";
 import { GraphView } from "./GraphView";
-import { parseArtifactRefs } from "../_state/canvasChatArtifacts";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
+import { useResumeCanvasChatStream } from "../_state/useResumeCanvasChatStream";
+import { captureChatPreload } from "../_state/captureChatPreload";
+import type { CanvasActiveStream } from "@/types/shared-conversation";
 import { useSubAgentStatusRefresh } from "../_state/useSubAgentStatusRefresh";
 import { useGraphProposalRefresh } from "../_state/useGraphProposalRefresh";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -269,6 +271,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const sharedChatId = searchParams.get("chat");
   const [chatInitialMessages, setChatInitialMessages] = useState<CanvasChatMessage[] | null>(null);
   const [chatInitialTitle, setChatInitialTitle] = useState<string | null>(null);
+  // In-flight turn pointer from conversation GET. Null when the turn
+  // already finished, Redis is down, or the caller isn't the owner.
+  const [chatActiveStream, setChatActiveStream] = useState<CanvasActiveStream | null>(null);
   const [chatLoadComplete, setChatLoadComplete] = useState(false);
 
   const setUrlSlug = useCallback(
@@ -337,6 +342,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // the conversation. Mount-only effect (deps are stable identifiers).
   useEffect(() => {
     if (!sharedChatId) {
+      setChatActiveStream(null);
       setChatLoadComplete(true);
       return;
     }
@@ -348,21 +354,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return;
-        if (data?.messages && Array.isArray(data.messages)) {
-          // The DB stores `timestamp` as an ISO string; rehydrate to
-          // Date so future consumers (artifacts, telemetry) get a
-          // real Date instance.
-          const seeded: CanvasChatMessage[] = (data.messages as CanvasChatMessage[]).map((m) => ({
-            ...m,
-            timestamp: new Date(m.timestamp as unknown as string),
-            // Stored JSON, like the rest of the row, but these get rendered: keep only refs that are whole.
-            artifacts: parseArtifactRefs(m.artifacts),
-          }));
-          setChatInitialMessages(seeded);
-        }
-        if (typeof data?.title === "string") {
-          setChatInitialTitle(data.title);
-        }
+        const captured = captureChatPreload(data);
+        if (captured.messages) setChatInitialMessages(captured.messages);
+        if (captured.title) setChatInitialTitle(captured.title);
+        setChatActiveStream(captured.activeStream);
       })
       .catch(() => {})
       .finally(() => {
@@ -947,6 +942,20 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     // the patch effect below, not by restarting the conversation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatReady]);
+
+  // Reattach to an in-flight turn after a `?chat=` refresh. The relay
+  // URL uses the `?chat=` id, never the Zustand slot id returned by
+  // `startConversation`. History/inbox openers (`openOrgConversation`)
+  // are intentionally not wired here.
+  const activeConversationId = useCanvasChatStore((s) => s.activeConversationId);
+  useResumeCanvasChatStream({
+    conversationId: conversationStarted ? activeConversationId : null,
+    serverConversationId: sharedChatId,
+    githubLogin,
+    activeStream: chatActiveStream,
+    seededMessages: chatInitialMessages,
+    enabled: conversationStarted,
+  });
 
   // Keep the active conversation's `context` in sync with what the
   // user is currently looking at. The store does an Object.is check
