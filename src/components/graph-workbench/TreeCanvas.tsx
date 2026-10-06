@@ -88,8 +88,7 @@ const TreeNode = memo(function TreeNode({ data }: NodeProps<Node<TreeNodeData>>)
           className={cn(
             "group relative flex h-[38px] w-[196px] items-center gap-2 rounded-md border bg-card px-2.5 text-xs shadow-sm transition-colors",
             onPath && !selected && "border-foreground/30",
-            proposed && proposed !== "removed" && "border-dashed border-emerald-500",
-            proposed === "removed" && "border-dashed border-rose-500",
+            proposed && "border-dashed border-emerald-500",
             selected && "border-primary ring-2 ring-primary/30",
           )}
           data-testid={`tree-node-${node.id}`}
@@ -105,17 +104,10 @@ const TreeNode = memo(function TreeNode({ data }: NodeProps<Node<TreeNodeData>>)
           <span
             className={cn("h-2 w-2 shrink-0 rounded-full", hasDocs(node) ? "bg-amber-500" : "border border-amber-500")}
           />
-          <span className={cn("truncate font-medium", proposed === "removed" && "line-through text-rose-600 dark:text-rose-400")}>
-            {node.name}
-          </span>
+          <span className="truncate font-medium">{node.name}</span>
           {proposed ? (
-            <span
-              className={cn(
-                "ml-auto shrink-0 text-[10px]",
-                proposed === "removed" ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400",
-              )}
-            >
-              {proposed === "new" ? "proposed" : proposed === "removed" ? "removed" : "changed"}
+            <span className="ml-auto shrink-0 text-[10px] text-emerald-600 dark:text-emerald-400">
+              {proposed === "new" ? "proposed" : "changed"}
             </span>
           ) : (
             isFocus && <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">focus</span>

@@ -79,6 +79,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { jamieName } from "@/lib/constants/jamie";
 import { getPlanRepoPreference, setPlanRepoPreference } from "@/lib/ai/models";
 
 /**
@@ -137,6 +138,10 @@ export function ProposalCard({
         ? s.conversations[activeId]?.context.currentCanvasRef
         : "") ?? "",
   );
+  // Approve / Reject are sends, and a send waits for the running turn.
+  const turnRunning = useCanvasChatStore(
+    (s) => !!(activeId && s.conversations[activeId]?.activeTurn),
+  );
 
   const status = useMemo(
     () => getProposalStatus(messages, proposal.proposalId),
@@ -175,11 +180,9 @@ export function ProposalCard({
                         ? "Batch Triplets"
                         : proposal.kind === "graphEdgeDelete"
                           ? proposal.payload.edge_type
-                          : proposal.kind === "graphNodeMove"
+                          : proposal.kind === "graphNodeMove" || proposal.kind === "graphNodeDelete"
                             ? (proposal.meta.node_name ?? proposal.payload.ref_id)
-                            : proposal.kind === "graphNodeDelete"
-                              ? (proposal.meta.node_name ?? proposal.payload.ref_id)
-                              : proposal.payload.title;
+                            : proposal.payload.title;
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
   // Prompt/concept/graph proposals forward no inline-edit override (handleApprove
@@ -495,14 +498,12 @@ export function ProposalCard({
           : `Relationship created in ${where} ✓`;
       } else if (r.kind === "graphEdgeDelete") {
         text = `Relationship removed from ${where} ✓`;
+      } else if (r.kind === "graphNodeDelete") {
+        text = `Node deleted from ${where} ✓`;
       } else if (r.kind === "graphNodeMove") {
         text = r.alreadyExisted
           ? `Node moved in ${where} — it was already linked to the new parent, so only the old link was removed ✓`
           : `Node moved in ${where} ✓`;
-      } else if (r.kind === "graphNodeDelete") {
-        text = r.alreadyExisted
-          ? `Node was already removed from ${where} ✓`
-          : `Node removed from ${where} ✓`;
       } else {
         // graphBatchTripletCreate — may be partial
         const items = r.items ?? [];
@@ -593,10 +594,10 @@ export function ProposalCard({
                                 : proposal.kind === "graphNodeMove"
                                   ? "Proposed Node Move"
                                   : proposal.kind === "graphNodeDelete"
-                                    ? "Proposed Node Removal"
+                                    ? "Proposed Node Delete"
                                     : proposal.kind === "codeChange"
-                                      ? "Proposed Code Change"
-                                      : `Proposed ${proposal.kind}`}
+                                    ? "Proposed Code Change"
+                                    : `Proposed ${proposal.kind}`}
             </span>
           </div>
           {/* Title — inline-editable on click while pending (roadmap kinds only) */}
@@ -829,6 +830,7 @@ export function ProposalCard({
                       disabled={
                         !isPending ||
                         isInFlight ||
+                        turnRunning ||
                         !allBlockersApproved ||
                         !repoSelectionValid ||
                         !previewReady
@@ -836,7 +838,9 @@ export function ProposalCard({
                       title={
                         !previewReady
                           ? "Waiting for the diff"
-                          : !allBlockersApproved
+                          : turnRunning
+                            ? `Waiting for ${jamieName} to finish`
+                            : !allBlockersApproved
                             ? "Approve blocking features first"
                             : !repoSelectionValid
                               ? "Select at least one repository"
@@ -854,8 +858,8 @@ export function ProposalCard({
                   <button
                     type="button"
                     onClick={handleReject}
-                    disabled={!isPending || isInFlight}
-                    title="Reject"
+                    disabled={!isPending || isInFlight || turnRunning}
+                    title={turnRunning ? `Waiting for ${jamieName} to finish` : "Reject"}
                     className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -918,7 +922,7 @@ function ProposalDetailsDialog({
                           : proposal.kind === "graphNodeMove"
                             ? "Graph Node Move"
                             : proposal.kind === "graphNodeDelete"
-                              ? "Graph Node Removal"
+                              ? "Graph Node Delete"
                               : "Feature";
 
   const title =
@@ -944,11 +948,9 @@ function ProposalDetailsDialog({
                         ? "Batch Triplets"
                         : proposal.kind === "graphEdgeDelete"
                           ? proposal.payload.edge_type
-                          : proposal.kind === "graphNodeMove"
+                          : proposal.kind === "graphNodeMove" || proposal.kind === "graphNodeDelete"
                             ? (proposal.meta.node_name ?? proposal.payload.ref_id)
-                            : proposal.kind === "graphNodeDelete"
-                              ? (proposal.meta.node_name ?? proposal.payload.ref_id)
-                              : proposal.payload.title;
+                            : proposal.payload.title;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -2136,7 +2138,7 @@ function GraphNodeMoveMeta({
   );
 }
 
-/** Compact body for a node-delete proposal: name, type, ref_id, and the edges it would take with it. */
+/** Compact body for a node-delete proposal: the node, then each edge that will be hidden with it. */
 function GraphNodeDeleteMeta({
   proposal,
 }: {
@@ -2144,39 +2146,36 @@ function GraphNodeDeleteMeta({
 }) {
   const { payload, meta } = proposal;
   const edges = meta.edges ?? [];
-  const total = meta.edge_total ?? edges.length;
-  const extra = total - edges.length;
   return (
     <div className="mt-0.5 space-y-0.5">
       <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
-        <span>{meta.workspaceSlug ?? payload.workspaceSlug}</span>
+        <span>{meta.workspaceName ?? meta.workspaceSlug ?? payload.workspaceSlug}</span>
         {meta.node_type && <span className="font-mono">{meta.node_type}</span>}
         <span className="font-mono text-muted-foreground/60">{payload.ref_id}</span>
       </div>
+      {!meta.refusedReason && (
+        <div className="text-[11px] text-muted-foreground">
+          {edges.length === 0
+            ? "deletes the node · it has no links"
+            : `deletes the node · hides ${edges.length + (meta.more_edge_count ?? 0)} link${
+                edges.length + (meta.more_edge_count ?? 0) === 1 ? "" : "s"
+              }`}
+        </div>
+      )}
       {edges.length > 0 && (
-        <ul className="mt-1 space-y-0.5 font-mono text-[11px] break-all">
+        <div className="mt-1 space-y-0.5 font-mono text-[11px] break-all">
           {edges.map((e, i) => (
-            <li key={i} className="flex items-center gap-1 text-rose-600 dark:text-rose-400 line-through">
-              <span>
-                {e.direction === "outgoing" ? "→" : "←"}
-                {e.edge_type}
-              </span>
-              <span>{e.other_name ?? e.other_ref_id}</span>
-              {e.muted && <span className="shrink-0 text-muted-foreground no-underline">(muted)</span>}
-            </li>
+            <div key={`${e.edge_type}-${e.direction}-${e.other_ref_id}-${i}`} className="flex items-center gap-1">
+              <span className="shrink-0 text-rose-600 dark:text-rose-400">−</span>
+              {e.direction === "in" && <GraphNodeLabel name={e.other_name} refId={e.other_ref_id} />}
+              <span className="shrink-0 text-muted-foreground line-through">—{e.edge_type}→</span>
+              {e.direction === "out" && <GraphNodeLabel name={e.other_name} refId={e.other_ref_id} />}
+            </div>
           ))}
-          {extra > 0 && <li className="text-muted-foreground">+{extra} more</li>}
-        </ul>
-      )}
-      {total > 0 && (
-        <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
-          these {total} edge{total === 1 ? "" : "s"} will be permanently deleted
-        </p>
-      )}
-      {(meta.kept_edges ?? 0) > 0 && (
-        <p className="text-[11px] text-muted-foreground">
-          {meta.kept_edges} edge{meta.kept_edges === 1 ? "" : "s"} to other namespaces are kept
-        </p>
+          {!!meta.more_edge_count && (
+            <div className="text-muted-foreground">and {meta.more_edge_count} more</div>
+          )}
+        </div>
       )}
       {meta.refusedReason && <GraphRefusedNote reason={meta.refusedReason} />}
     </div>
@@ -2208,6 +2207,7 @@ export function getProposalsFromMessage(
       tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL &&
       tc.toolName !== PROPOSE_DELETE_EDGE_TOOL &&
       tc.toolName !== PROPOSE_MOVE_NODE_TOOL &&
+      tc.toolName !== PROPOSE_DELETE_NODE_TOOL &&
       tc.toolName !== PROPOSE_CODE_CHANGE_TOOL
     )
       continue;

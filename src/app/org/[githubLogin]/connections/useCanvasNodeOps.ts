@@ -283,10 +283,15 @@ export function useCanvasNodeOps({
       // <topic>', that's the signal"). The agent extracts the topic
       // and is told to pass it as `topic` verbatim into save_research,
       // which is what makes the IO-layer text-equality dedupe work.
-      void sendCanvasChatMessage({
-        conversationId,
-        content: `Research: ${trimmedTopic}`,
-      });
+      const content = `Research: ${trimmedTopic}`;
+      const store = useCanvasChatStore.getState();
+      if (store.conversations[conversationId]?.activeTurn) {
+        // A send waits for the running turn — hand the request to the
+        // composer for the user to send when it ends.
+        store.setPendingInputDraft(content);
+        return;
+      }
+      void sendCanvasChatMessage({ conversationId, content });
     },
     [sendCanvasChatMessage],
   );

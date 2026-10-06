@@ -55,8 +55,7 @@
  */
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
-import type { ModelMessage } from "ai";
-import { buildUserContent } from "@/lib/ai/attachmentParts";
+import { STOPPED_TURN_TEXT } from "@/lib/ai/conversationHelpers";
 import type { ApprovalIntent, ApprovalResult, RejectionIntent } from "@/lib/proposals/types";
 import type { ClarifyingQuestion } from "@/types/stakwork";
 import type { StreamTimelineItem, StreamToolCall, ToolCallStatus } from "@/types/streaming";
@@ -157,7 +156,7 @@ export type CanvasMessageSource =
       slug: string;
       topic: string;
       title: string;
-      /** "ready" | "failed" — status at fan-out time */
+      /** "ready" | "failed" | "cancelled" — status at fan-out time */
       status: string;
       initiativeId?: string;
     }
@@ -199,6 +198,14 @@ export type CanvasMessageSource =
       title?: string;
       /** The agent stopped for a decision: the question, verbatim. */
       ask?: string;
+    }
+  | {
+      /**
+       * The end of a turn the user stopped — after whatever it got
+       * through. Renders as a muted "Stopped" line; replayed to the model
+       * as a notice from the user (`toModelMessages`).
+       */
+      kind: "stopped";
     };
 
 export interface CanvasChatMessage {
@@ -355,17 +362,39 @@ export interface CanvasConversation {
   /**
    * Reference count of unsettled agent turns in this conversation.
    * Incremented on send, decremented only in the send hook's `finally`
-   * block. A refcount (not a boolean) is required because overlapping
-   * sends are reachable — the composer re-enables once `isLoading`
-   * clears on the first chunk, and `ProposalCard` approve/reject fires
-   * the same send hook behind only an `isPending` guard — so a
-   * first-settling turn must not extinguish the indicator for a
-   * still-streaming second turn. The "Ask Jamie" thinking dots gate on
+   * block. A send now waits for the running turn (`activeTurn`), so it is
+   * 0 or 1 in practice; the refcount stays so a stray settle can never
+   * extinguish the indicator early. The "Ask Jamie" thinking dots gate on
    * `agentTurnsInProgress > 0`.
    */
   agentTurnsInProgress: number;
+  /**
+   * The turn this tab is streaming, from send until its reply ends — what
+   * the composer's Stop button cancels. A new send waits for it to end.
+   */
+  activeTurn?: ActiveTurn | null;
+  /**
+   * The turn this tab last stopped, while it is still the conversation's
+   * last — its message can be edited and sent again in its place.
+   */
+  stoppedTurnId?: string | null;
+  /** Set while the composer holds `stoppedTurnId`'s message for editing. */
+  editingTurnId?: string | null;
   /** Hint context used when building `/api/ask/quick` requests. */
   context: ConversationContext;
+}
+
+export interface ActiveTurn {
+  turnId: string;
+  /** Aborts this tab's request once the server has accepted the Stop. */
+  controller: AbortController;
+  /**
+   * False for an Approve / Reject turn — the server answers it without
+   * the model, so there is nothing to stop; it still holds the slot.
+   */
+  canStop: boolean;
+  /** A Stop was sent and hasn't been answered yet. */
+  stopping: boolean;
 }
 
 /** The knowledge-graph node the user is looking at on the org page's graph view. */
@@ -623,6 +652,20 @@ interface CanvasChatState {
   stopRun: (opts: { serverConversationId: string; orgId: string; turnId?: string }) => Promise<void>;
   /** Append a synthetic assistant error message to a conversation. */
   appendAssistantError: (conversationId: string, content: string) => void;
+  /** Starting a turn also ends any edit of the stopped one before it. */
+  setActiveTurn: (conversationId: string, turn: ActiveTurn | null) => void;
+  /**
+   * End a stopped turn's streamed rows (`${turnId}-a…`): tool calls still
+   * in flight become "interrupted", and a "Stopped" row follows.
+   */
+  finishStoppedTurn: (conversationId: string, turnId: string) => void;
+  /**
+   * Put the stopped turn's message in the composer to edit, or (`null`)
+   * stop editing — the composer clears its own text on cancel.
+   */
+  setEditingTurn: (conversationId: string, turnId: string | null) => void;
+  /** Drop a turn's rows (`${turnId}-…`) — an edited resend takes its place. */
+  removeTurn: (conversationId: string, turnId: string) => void;
 
   /**
    * Queue text for the chat input to adopt on its next render. Pass
@@ -1013,6 +1056,98 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           "appendAssistantError",
         ),
 
+      setActiveTurn: (conversationId, activeTurn) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: {
+                  ...conv,
+                  activeTurn,
+                  ...(activeTurn ? { stoppedTurnId: null, editingTurnId: null } : {}),
+                },
+              },
+            };
+          },
+          false,
+          "setActiveTurn",
+        ),
+
+      finishStoppedTurn: (conversationId, turnId) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            const prefix = `${turnId}-a`;
+            const stopped: CanvasChatMessage = {
+              id: `${prefix}stopped`,
+              role: "assistant",
+              content: STOPPED_TURN_TEXT,
+              timestamp: new Date(),
+              source: { kind: "stopped" },
+            };
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: {
+                  ...conv,
+                  messages: [
+                    ...conv.messages.map((m) => (m.id.startsWith(prefix) ? interruptUnfinishedToolCalls(m) : m)),
+                    stopped,
+                  ],
+                  activeToolCalls: [],
+                  stoppedTurnId: turnId,
+                },
+              },
+            };
+          },
+          false,
+          "finishStoppedTurn",
+        ),
+
+      setEditingTurn: (conversationId, turnId) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            const draft = turnId ? conv.messages.find((m) => m.id === `${turnId}-u`)?.content : undefined;
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: { ...conv, editingTurnId: turnId },
+              },
+              // Editing starts with the message in the composer.
+              ...(draft !== undefined ? { pendingInputDraft: draft } : {}),
+            };
+          },
+          false,
+          "setEditingTurn",
+        ),
+
+      removeTurn: (conversationId, turnId) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            return {
+              conversations: {
+                ...s.conversations,
+                [conversationId]: {
+                  ...conv,
+                  messages: conv.messages.filter((m) => !m.id.startsWith(`${turnId}-`)),
+                  stoppedTurnId: null,
+                  editingTurnId: null,
+                },
+              },
+            };
+          },
+          false,
+          "removeTurn",
+        ),
+
       registerArtifact: (artifact) =>
         set(
           (s) => ({
@@ -1101,56 +1236,24 @@ export function sumConversationTokenUsage(messages: CanvasChatMessage[]): Conver
   return { used: inputTokens + outputTokens, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens };
 }
 
-/**
- * Build the `messages` array that `/api/ask/quick` expects from the
- * UI-side message timeline. Mirrors the AI SDK `ModelMessage[]`
- * shape with separate entries for tool-call / tool-result / text
- * blocks.
- */
-export function toModelMessages(messages: CanvasChatMessage[]): ModelMessage[] {
-  return messages
-    .filter((m) => m.content.trim() || m.toolCalls || m.attachments?.length)
-    .flatMap((m): ModelMessage[] => {
-      // Multimodal: user messages with attachments get a content array
-      // (images, text files, and notes for other files — see `attachmentParts.ts`)
-      if (m.role === "user" && m.attachments?.length) {
-        return [{ role: "user", content: buildUserContent(m.content, m.attachments) as never }];
-      }
-
-      if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-        const out: ModelMessage[] = [];
-        out.push({
-          role: m.role,
-          content: m.toolCalls.map((tc) => ({
-            type: "tool-call" as const,
-            toolCallId: tc.id,
-            toolName: tc.toolName,
-            input: tc.input || {},
-          })),
-        });
-        const toolResults = m.toolCalls.filter((tc) => tc.output !== undefined || tc.errorText !== undefined);
-        if (toolResults.length > 0) {
-          out.push({
-            role: "tool" as const,
-            content: toolResults.map((tc) => {
-              let wrappedOutput = tc.output;
-              if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
-                wrappedOutput = { type: "json", value: tc.output };
-              }
-              return {
-                type: "tool-result" as const,
-                toolCallId: tc.id,
-                toolName: tc.toolName,
-                output: wrappedOutput as never,
-              };
-            }),
-          } satisfies ModelMessage);
-        }
-        if (m.content) {
-          out.push({ role: m.role, content: m.content });
-        }
-        return out;
-      }
-      return [{ role: m.role, content: m.content }];
-    });
+/** A tool call that hasn't produced a result yet. */
+function isUnfinished(status: string): boolean {
+  return status !== "output-available" && status !== "output-error" && status !== "input-error";
 }
+
+/** A stopped turn's in-flight tool calls never finish — mark them, so they stop spinning. */
+function interruptUnfinishedToolCalls(m: CanvasChatMessage): CanvasChatMessage {
+  if (!m.toolCalls?.length) return m;
+  return {
+    ...m,
+    toolCalls: m.toolCalls.map((tc) => (isUnfinished(tc.status) ? { ...tc, status: "interrupted" } : tc)),
+    timeline: m.timeline?.map((item) => {
+      if (item.type !== "toolCall") return item;
+      const tc = item.data as StreamToolCall;
+      return isUnfinished(tc.status) ? { ...item, data: { ...tc, status: "interrupted" } } : item;
+    }),
+  };
+}
+
+/** The org-canvas chat sends its own history each turn, built the same way as server-side history. */
+export { toModelMessages } from "@/lib/ai/conversationHelpers";

@@ -11,9 +11,8 @@ import { mockSearchNodes } from "../search-fixtures";
 /**
  * Mock routes for /v2/nodes/{ref_id}
  *
- * POST   — updateNodeV2 (merge node_data onto existing node)
- * GET    — readNodeByRef (fetch a single node by ref_id)
- * DELETE — deleteNodeV2 (soft-delete a single node)
+ * POST — updateNodeV2 (merge node_data onto existing node)
+ * GET  — readNodeByRef (fetch a single node by ref_id)
  *
  * Supports three scenarios via `_mock_scenario` in request body (POST) or
  * query param (GET):
@@ -27,16 +26,6 @@ import { mockSearchNodes } from "../search-fixtures";
  * or the attempt report page's EvalTriggerOutput check — pass in mock mode,
  * and the fix reader's "open live node" peek shows real content. Unknown
  * ref_ids keep the original generic-Concept fallback.
- *
- * DELETE sends no body or query string, so its failure scenarios are keyed
- * on sentinel ref_ids instead (mirroring the verify-delete mock in
- * `nodeDeleteSummary.ts`), reachable from the app in dev mock mode:
- *   - "mock-delete-not-found"      → 404
- *   - "mock-delete-legacy-missing" → 400 { error: "ERROR_INVALID_REF_ID" }
- *   - "mock-delete-duplicate"      → 409
- *   - "mock-delete-forbidden"      → 403
- *   - "mock-delete-fail"           → 200 { status: "fail" }
- *   - default                      → 200 { status: "success", counts }
  */
 
 /** Lazy, memoized ref_id → fixture-node index across all fixture sources. */
@@ -148,29 +137,6 @@ export async function GET(
       ],
       edges: [],
     },
-    { status: 200 },
-  );
-}
-
-const DELETE_SENTINELS: Record<string, { status: number; body: Record<string, unknown> }> = {
-  "mock-delete-not-found": { status: 404, body: { error: "Not found" } },
-  "mock-delete-legacy-missing": { status: 400, body: { error: "ERROR_INVALID_REF_ID" } },
-  "mock-delete-duplicate": { status: 409, body: { error: "Duplicate ref_id" } },
-  "mock-delete-forbidden": { status: 403, body: { error: "Forbidden" } },
-  "mock-delete-fail": { status: 200, body: { status: "fail", message: "Could not delete" } },
-};
-
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ ref_id: string }> },
-): Promise<NextResponse> {
-  const { ref_id } = await params;
-  const sentinel = DELETE_SENTINELS[ref_id];
-  if (sentinel) {
-    return NextResponse.json(sentinel.body, { status: sentinel.status });
-  }
-  return NextResponse.json(
-    { status: "success", is_deleted_node_count: 1, deleted_edge_count: 2 },
     { status: 200 },
   );
 }

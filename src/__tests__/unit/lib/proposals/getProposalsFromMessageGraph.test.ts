@@ -2,7 +2,7 @@
  * Unit tests for `getProposalsFromMessage` — specifically the graph-write
  * proposal kinds (propose_create_node, propose_node_edit,
  * propose_create_triplet, propose_create_batch_triplet, propose_delete_edge,
- * propose_move_node).
+ * propose_move_node, propose_delete_node).
  *
  * Prior to this ticket these tool names were absent from the allowlist,
  * so every graph-write tool call was silently dropped; these tests lock
@@ -257,6 +257,21 @@ describe("getProposalsFromMessage — graph-write tool names", () => {
     expect(proposals).toHaveLength(1);
     expect(proposals[0].kind).toBe("graphNodeMove");
     expect(proposals[0].proposalId).toBe("p6");
+  });
+
+  it("returns a propose_delete_node output", () => {
+    const output = {
+      kind: "graphNodeDelete",
+      proposalId: "p7",
+      payload: { ...BASE_PAYLOAD, ref_id: "n" },
+      meta: { workspaceSlug: "my-ws", node_name: "Node", edges: [] },
+    };
+    const proposals = getProposalsFromMessage(
+      makeMessage([{ id: "tc-7", toolName: "propose_delete_node", output }]),
+    );
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].kind).toBe("graphNodeDelete");
+    expect(proposals[0].proposalId).toBe("p7");
   });
 
   it("skips tool calls with error outputs", () => {

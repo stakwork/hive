@@ -33,6 +33,7 @@ import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 import {
   messagesFromSteps,
   appendTurnMessages,
+  removeStoppedTurn,
   fetchStoredConversationMessages,
   normalizeStoredAttachments,
   patchStoredProposalPreview,
@@ -101,6 +102,43 @@ describe("messagesFromSteps", () => {
       status: "output-available",
     });
     expect(rows[2]).toMatchObject({ content: "Here's the answer." });
+  });
+
+  test("appends a stopped turn's interrupted step: its text, and its unfinished calls as interrupted", () => {
+    const finished = [
+      {
+        toolCalls: [{ toolCallId: "tc1", toolName: "search", input: { q: "x" } }],
+        toolResults: [{ toolCallId: "tc1", output: { hits: 2 } }],
+      },
+    ];
+    const interrupted = {
+      text: "Found it. Now writing the doc[END_OF_ANSWER]",
+      toolCalls: [
+        { toolCallId: "tc2", toolName: "read_doc", input: { id: "d1" } },
+        { toolCallId: "tc3", toolName: "save_doc", input: { id: "d2" } },
+      ],
+      toolResults: [{ toolCallId: "tc2", output: { body: "…" } }],
+    };
+
+    const rows = messagesFromSteps(finished, "turn-1-a", undefined, interrupted);
+
+    expect(rows.map((r) => r.id)).toEqual(["turn-1-a0", "turn-1-a1", "turn-1-a2"]);
+    expect(rows[0].toolCalls?.[0]).toMatchObject({ id: "tc1", status: "output-available" });
+    expect(rows[1]).toMatchObject({ content: "Found it. Now writing the doc" });
+    expect(rows[2].toolCalls).toEqual([
+      expect.objectContaining({ id: "tc2", status: "output-available" }),
+      { id: "tc3", toolName: "save_doc", input: { id: "d2" }, output: undefined, status: "interrupted" },
+    ]);
+  });
+
+  test("a finished step's call with no result is not marked interrupted", () => {
+    const rows = messagesFromSteps(
+      [{ toolCalls: [{ toolCallId: "tc1", toolName: "search", input: {} }] }],
+      "turn-1-a",
+      undefined,
+      { text: "" },
+    );
+    expect(rows[0].toolCalls?.[0]?.status).toBe("input-available");
   });
 
   test("strips leaked [END_OF_ANSWER] markers from step text", () => {
@@ -320,6 +358,54 @@ describe("appendTurnMessages", () => {
     expect(did).toBe(false);
     expect(update).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  test("drops a stopped turn's reply once an edited resend has replaced the turn", async () => {
+    withLockedRows([{ id: "turn-2-u", role: "user", content: "Edited question" }]);
+
+    const did = await appendTurnMessages({
+      conversationId: "conv-1",
+      rows,
+      idPrefix: "turn-1-a",
+      reason: "user-turn",
+      requireRowId: "turn-1-u",
+    });
+
+    expect(did).toBe(false);
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("removeStoppedTurn", () => {
+  const stoppedTurn = [
+    { id: "turn-0-u", role: "user", content: "Earlier" },
+    { id: "turn-0-a0", role: "assistant", content: "Earlier answer" },
+    { id: "turn-1-u", role: "user", content: "Explain auth" },
+    { id: "turn-1-a0", role: "assistant", content: "Auth starts" },
+    { id: "turn-1-astopped", role: "assistant", content: "Stopped by user.", source: { kind: "stopped" } },
+    { id: "research-r1", role: "assistant", content: "Research cancelled", source: { kind: "research" } },
+  ];
+
+  test("removes the last turn's own rows and keeps everything else", async () => {
+    withLockedRows(stoppedTurn);
+
+    expect(await removeStoppedTurn({ conversationId: "conv-1", turnId: "turn-1" })).toBe(true);
+    const written = update.mock.calls[0][0].data.messages as Array<{ id: string }>;
+    expect(written.map((m) => m.id)).toEqual(["turn-0-u", "turn-0-a0", "research-r1"]);
+  });
+
+  test("removes nothing once the conversation has moved on past the turn", async () => {
+    withLockedRows([...stoppedTurn, { id: "turn-2-u", role: "user", content: "Next" }]);
+
+    expect(await removeStoppedTurn({ conversationId: "conv-1", turnId: "turn-1" })).toBe(false);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  test("removes nothing for a turn that isn't there", async () => {
+    withLockedRows(stoppedTurn);
+
+    expect(await removeStoppedTurn({ conversationId: "conv-1", turnId: "turn-9" })).toBe(false);
+    expect(update).not.toHaveBeenCalled();
   });
 });
 

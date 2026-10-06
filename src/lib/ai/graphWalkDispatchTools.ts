@@ -83,13 +83,24 @@ export function buildGraphWalkDispatchTools(ctx: CapabilityContext): ToolSet {
           "what question to answer, and what to include in the synthesized response.",
         ),
     }),
-    execute: async ({
-      title,
-      prompt,
-    }: {
-      title: string;
-      prompt: string;
-    }) => {
+    execute: async (
+      {
+        title,
+        prompt,
+      }: {
+        title: string;
+        prompt: string;
+      },
+      options?: { abortSignal?: AbortSignal },
+    ) => {
+      // The turn was already stopped before this call reached execute —
+      // never dispatch. Mirrors `dispatch_research`'s abort check.
+      if (options?.abortSignal?.aborted) {
+        return {
+          status: "cancelled",
+          reason: "The user stopped this turn before the graph walk could be dispatched.",
+        };
+      }
       if (!ctx.dispatchedGraphWalks || !ctx.currentCanvasConversationId) {
         return {
           status: "no-op",

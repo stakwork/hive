@@ -19,10 +19,9 @@ export interface Pending {
   touched: Set<string>;
   /** Where the canvas should centre: what the first change is about. */
   focus: string | null;
-  /** How many nodes it would create, how many it would change, and how many it would delete. */
+  /** How many nodes it would create, and how many it would change. */
   created: number;
   edited: number;
-  removed: number;
 }
 
 const emptyPending = (): Pending => ({
@@ -34,7 +33,6 @@ const emptyPending = (): Pending => ({
   focus: null,
   created: 0,
   edited: 0,
-  removed: 0,
 });
 
 export const NO_PENDING = emptyPending();
@@ -139,15 +137,6 @@ export function applyChanges(
         }
         const known = [source, target].filter((id): id is string => !!id);
         if (known.length) touch(...known);
-        break;
-      }
-      case "remove": {
-        // Counted even when the node isn't loaded — a removal the canvas can't draw is still a removal.
-        pending.removed++;
-        const id = findNode(graph, change.node);
-        if (!id) break;
-        nodes[id] = { ...nodes[id], proposed: "removed" };
-        touch(id);
         break;
       }
     }

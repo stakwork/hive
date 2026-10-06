@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, findEdgeByEndpoints, listIncomingEdges, isMutedEdge, getReferencedNodeCentrality, searchNodesByAttributes } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, deleteSingleNode, findEdgeByEndpoints, listIncomingEdges, isMutedEdge, getReferencedNodeCentrality, searchNodesByAttributes } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -986,6 +986,52 @@ describe("deleteNode", () => {
 // ---------------------------------------------------------------------------
 // deleteEdge
 // ---------------------------------------------------------------------------
+
+describe("deleteSingleNode", () => {
+  const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+
+  test("calls DELETE /v2/nodes/{refId}/single as admin and succeeds when Jarvis confirms", async () => {
+    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "node-1", is_deleted: true, muted_edge_count: 3 }));
+
+    const result = await deleteSingleNode(config, "node-1");
+
+    expect(result).toEqual({ success: true, mutedEdgeCount: 3 });
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://test-swarm.sphinx.chat:8444/v2/nodes/node-1/single",
+      expect.objectContaining({
+        method: "DELETE",
+        headers: expect.objectContaining({ "x-api-token": "test-api-key", "X-Is-Admin": "true" }),
+      }),
+    );
+  });
+
+  test("does not count a 200 without is_deleted: true as success", async () => {
+    mockFetch.mockResolvedValueOnce(ok({ status: "success" }));
+    expect(await deleteSingleNode(config, "node-1")).toMatchObject({ success: false, error: expect.stringContaining("did not confirm") });
+
+    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "other", is_deleted: true }));
+    expect((await deleteSingleNode(config, "node-1")).success).toBe(false);
+  });
+
+  test.each([404, 409])("treats %i as not found", async (status) => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status, text: async () => "{}" });
+    expect(await deleteSingleNode(config, "node-1")).toMatchObject({ success: false, notFound: true });
+  });
+
+  test("passes other failures through as errors", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500, text: async () => "boom" });
+    expect(await deleteSingleNode(config, "node-1")).toEqual({
+      success: false,
+      notFound: false,
+      error: "Request failed with status 500",
+    });
+  });
+
+  test("rejects an unsafe ref_id without calling Jarvis", async () => {
+    expect((await deleteSingleNode(config, "bad id/../x")).success).toBe(false);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
 
 describe("deleteEdge", () => {
   describe("Success cases", () => {

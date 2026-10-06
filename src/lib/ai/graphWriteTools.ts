@@ -1,10 +1,10 @@
 /**
  * Graph-write tools for Jamie (the canvas agent).
  *
- * Exposes six `propose_*` tools that emit approvable proposal cards
+ * Exposes seven `propose_*` tools that emit approvable proposal cards
  * without performing any Jarvis writes — four that add to the graph
- * (a node, a node edit, one or many edges) and two that edit it (remove
- * an edge, move a node to a new parent). The write only happens after
+ * (a node, a node edit, one or many edges) and three that edit it (remove
+ * an edge, move a node to a new parent, delete a node). The write only happens after
  * the user clicks Approve in the ProposalCard UI, which calls the
  * approval handlers in `handleApproval.ts`.
  *
@@ -22,14 +22,13 @@ import { nanoid } from "nanoid";
 import { resolveGraphJarvis } from "@/lib/ai/graphWriteAuth";
 import {
   findEdgeByEndpoints,
-  isSafeRefId,
+  getNodeEdges,
+  isMutedEdge,
   listIncomingEdges,
   readNodeByRef,
 } from "@/services/swarm/api/nodes";
 import { kgGetOntology } from "@/lib/ai/kg-adapter";
 import { DEFAULT_MOVE_EDGE, findReservedKeys, wouldCycle } from "@/lib/proposals/graphWriteValidation";
-import { readNodeDeleteSummary } from "@/lib/proposals/nodeDeleteSummary";
-import { typeFromLabels } from "@/lib/strut-run-graph/hydrate";
 import {
   PROPOSE_CREATE_NODE_TOOL,
   PROPOSE_NODE_EDIT_TOOL,
@@ -39,8 +38,9 @@ import {
   PROPOSE_MOVE_NODE_TOOL,
   PROPOSE_DELETE_NODE_TOOL,
   type GraphEdgeDeleteProposalPayload,
-  type GraphNodeMoveProposalPayload,
+  type GraphNodeDeleteEdge,
   type GraphNodeDeleteProposalPayload,
+  type GraphNodeMoveProposalPayload,
   type ProposalOutput,
 } from "@/lib/proposals/types";
 
@@ -64,43 +64,8 @@ const MIRROR_OWNED_TYPES = new Set([
   "Research",
 ]);
 
-/**
- * stakgraph-ingested node types (stakgraph's `NodeType`). Written by the
- * code-ingestion pipeline keyed on `unique_source_id`; a graph-write delete
- * or edit of one of these would be silently merged back or duplicated on
- * the next ingestion pass. Checked against both the resolved `node_type`
- * and every label on the node — an ingested node can carry a `Domain_*`
- * label alongside its real type.
- */
-export const CODE_GRAPH_OWNED_TYPES = new Set([
-  "Repository",
-  "Directory",
-  "File",
-  "Function",
-  "Class",
-  "Trait",
-  "Datamodel",
-  "Request",
-  "Endpoint",
-  "Page",
-  "Var",
-  "Import",
-  "Library",
-  "Language",
-  "UnitTest",
-  "IntegrationTest",
-  "E2etest",
-]);
-
-/**
- * Guards `propose_delete_node` / `approveGraphNodeDelete` against the
- * `unique_source_id` cascade on a swarm still running today's Jarvis
- * (`DELETE /v2/nodes/<ref_id>` deletes every node sharing the same
- * `unique_source_id`, not just the target). Flip to `true` only after
- * every swarm runs the single-node delete — see the feature's Jarvis
- * dependency note.
- */
-export const ALLOW_UNIQUE_SOURCE_ID_DELETE = false;
+/** How many of a node's edges a delete card lists before "and N more". */
+const DELETE_CARD_EDGE_CAP = 20;
 
 // ─── Validation helpers ───────────────────────────────────────────────────
 
@@ -129,12 +94,6 @@ function validateEndpoint(endpoint: unknown, label: string): string | null {
 /** What a move proposal's card shows besides the workspace and a refusal: the names read at propose time. */
 type MoveMeta = Omit<
   Extract<ProposalOutput, { kind: "graphNodeMove" }>["meta"],
-  "refusedReason" | "workspaceSlug"
->;
-
-/** What a delete proposal's card shows besides the workspace and a refusal. */
-type DeleteMeta = Omit<
-  Extract<ProposalOutput, { kind: "graphNodeDelete" }>["meta"],
   "refusedReason" | "workspaceSlug"
 >;
 
@@ -854,13 +813,12 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
 
     [PROPOSE_DELETE_NODE_TOOL]: tool({
       description:
-        "Propose soft-deleting a single node from the workspace knowledge graph. " +
-        "Jarvis marks the node deleted and hard-deletes its edges in the same namespace " +
-        "(edges to other namespaces or to system nodes are kept). " +
-        "Refused for a node that can't be found, is already deleted, is a sync-owned or " +
-        "code-graph type, or is an ingested node Jarvis can't yet delete safely. " +
-        "Emits an approvable card showing the node's name, type and edges, with a warning " +
-        "that those edges will be permanently deleted — nothing happens until the user clicks Approve.",
+        "Propose deleting one stale, duplicate or wrong node from the workspace KG. " +
+        "The node is soft-deleted (it can be restored) and every edge touching it is hidden; " +
+        "nothing else is removed. The card lists the edges that will go. " +
+        "Refused for mirror-owned node types and Schema nodes. " +
+        "If only a link is wrong, use propose_delete_edge or propose_move_node instead. " +
+        "Emits an approvable card — nothing changes until the user clicks Approve.",
       inputSchema: z.object({
         workspaceSlug: z
           .string()
@@ -870,89 +828,88 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
         rationale: z
           .string()
           .optional()
-          .describe("Why this node should be removed."),
+          .describe("Why this node should be deleted."),
       }),
       execute: async ({ workspaceSlug, ref_id, rationale }) => {
-        // 1. ref_id shape — before anything is read or written.
-        if (!isSafeRefId(ref_id)) {
-          return { error: "Not a valid node id." };
-        }
-
         const resolved = await resolveGraphJarvis(orgId, userId, {
           slug: workspaceSlug,
         });
         if (!resolved.ok) return { error: resolved.error };
-        const { workspaceId, workspaceSlug: verifiedSlug } = resolved.access;
+        const {
+          workspaceId,
+          workspaceSlug: verifiedSlug,
+          config,
+        } = resolved.access;
 
-        const refuse = (refusedReason: string, meta: Partial<DeleteMeta> = {}) => ({
-          kind: "graphNodeDelete" as const,
-          proposalId: nanoid(),
-          payload: {
-            workspaceId,
-            workspaceSlug: verifiedSlug,
-            ref_id,
-          } satisfies GraphNodeDeleteProposalPayload,
-          meta: { workspaceSlug: verifiedSlug, ...meta, refusedReason },
-        });
+        const payload: GraphNodeDeleteProposalPayload = {
+          workspaceId,
+          workspaceSlug: verifiedSlug,
+          ref_id,
+        };
 
-        // 2. The summary runs first — never readNodeByRef, which hides
-        //    soft-deleted nodes and would turn "already deleted" into
-        //    "not found".
-        const summary = await readNodeDeleteSummary(verifiedSlug, userId, ref_id);
-        if (!summary.ok) {
-          if (summary.reason === "not_found") {
-            return refuse('Not found, or not a node Jarvis can delete.');
-          }
-          if (summary.reason === "ambiguous") {
-            return refuse("That id matches more than one node.");
-          }
-          return { error: "Couldn't read the node right now." };
+        const node = await readNodeByRef(config, ref_id);
+        if (!node.success) {
+          return {
+            kind: "graphNodeDelete" as const,
+            proposalId: nanoid(),
+            payload,
+            meta: {
+              workspaceSlug: verifiedSlug,
+              refusedReason: `Node "${ref_id}" was not found in this workspace's graph.`,
+            },
+          };
+        }
+        const node_type = node.node_type ?? "";
+        const node_name = nameOf(node.properties);
+        const names = { ...(node_name ? { node_name } : {}), ...(node_type ? { node_type } : {}) };
+
+        // Mirror-owned nodes would be re-created by the next sync pass, and
+        // Jarvis restores a deleted node when it is re-created.
+        const refusedReason = MIRROR_OWNED_TYPES.has(node_type)
+          ? `"${node_type}" is a mirror-owned type — the next sync pass would bring it back.`
+          : node_type === "Schema"
+            ? "Schema nodes define a type and cannot be deleted here."
+            : undefined;
+        if (refusedReason) {
+          return {
+            kind: "graphNodeDelete" as const,
+            proposalId: nanoid(),
+            payload,
+            meta: { workspaceSlug: verifiedSlug, ...names, refusedReason },
+          };
         }
 
-        const { labels, name, is_deleted, unique_source_id, edges, edge_total, kept_edges } = summary.summary;
-
-        // 3. Already deleted.
-        if (is_deleted) {
-          return refuse("This node has already been deleted.", { node_name: name });
+        const read = await getNodeEdges(config, ref_id);
+        if (!read.ok) {
+          return { error: read.error ?? "Could not read the node's edges from the workspace's graph." };
         }
+        const nameByRef = new Map(read.nodes.map((n) => [n.ref_id, nameOf(n.properties)]));
+        const edges: GraphNodeDeleteEdge[] = read.edges
+          .filter((e) => !isMutedEdge(e.properties) && (e.source === ref_id || e.target === ref_id))
+          .map((e) => {
+            const out = e.source === ref_id;
+            const other_ref_id = out ? e.target : e.source;
+            const other_name = nameByRef.get(other_ref_id);
+            return {
+              edge_type: e.edge_type,
+              direction: out ? ("out" as const) : ("in" as const),
+              other_ref_id,
+              ...(other_name ? { other_name } : {}),
+            };
+          });
 
-        // 4. Domain type — no fallback. No domain label means "not found."
-        const node_type = typeFromLabels(labels, "");
-        if (!node_type) {
-          return refuse('Not found, or not a node Jarvis can delete.');
-        }
-        const baseMeta: Partial<DeleteMeta> = { node_name: name, node_type };
-
-        // 5. Sync-owned or code-graph types — by resolved type OR any label.
-        const owned = (t: string) => MIRROR_OWNED_TYPES.has(t) || CODE_GRAPH_OWNED_TYPES.has(t);
-        if (owned(node_type) || labels.some(owned)) {
-          return refuse(
-            `"${node_type}" is owned by a sync job — deleting it here would be merged back or duplicated on the next pass.`,
-            baseMeta,
-          );
-        }
-
-        // 6. Ingested nodes — guarded until every swarm runs the single-node delete.
-        if (unique_source_id && !ALLOW_UNIQUE_SOURCE_ID_DELETE) {
-          return refuse("Jarvis can't safely delete ingested nodes yet.", baseMeta);
-        }
-
-        // 7. Emit the card.
         return {
           kind: "graphNodeDelete" as const,
           proposalId: nanoid(),
-          payload: {
-            workspaceId,
-            workspaceSlug: verifiedSlug,
-            ref_id,
-          } satisfies GraphNodeDeleteProposalPayload,
+          payload,
           ...(rationale ? { rationale } : {}),
           meta: {
             workspaceSlug: verifiedSlug,
-            ...baseMeta,
-            edges,
-            edge_total,
-            kept_edges,
+            ...names,
+            edges: edges.slice(0, DELETE_CARD_EDGE_CAP),
+            ...(edges.length > DELETE_CARD_EDGE_CAP
+              ? { more_edge_count: edges.length - DELETE_CARD_EDGE_CAP }
+              : {}),
           },
         };
       },

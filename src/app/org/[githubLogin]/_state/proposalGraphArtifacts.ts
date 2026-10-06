@@ -25,7 +25,7 @@ const nameOf = (data: Record<string, unknown>) => (typeof data.name === "string"
 /** The graph a proposal changes, and how — or null for a proposal that changes no graph. */
 function derive(
   p: ProposalOutput,
-): { workspace: string; title: string; focus?: string; changes: GraphChange[]; approvedFocus?: string } | null {
+): { workspace: string; title: string; focus?: string; changes: GraphChange[] } | null {
   switch (p.kind) {
     case "conceptCreate":
       return {
@@ -112,16 +112,20 @@ function derive(
       };
     }
     case "graphNodeDelete": {
+      // The workbench has no "node removed" change; show the links that go with it.
       const { ref_id } = p.payload;
-      // After approval the deleted ref_id can never be focused again — centre
-      // on the first edge's other end instead, when one was recorded.
-      const approvedFocus = p.meta?.edges?.[0]?.other_ref_id;
+      const edges = p.meta?.edges ?? [];
+      if (p.meta?.refusedReason || edges.length === 0) return null;
       return {
         workspace: p.payload.workspaceSlug,
-        title: `Remove ${p.meta?.node_name ?? ref_id}`,
+        title: `Delete ${p.meta?.node_name ?? ref_id}`,
         focus: ref_id,
-        changes: [{ kind: "remove", node: ref_id }],
-        ...(approvedFocus ? { approvedFocus } : {}),
+        changes: edges.map((e) => ({
+          kind: "unlink" as const,
+          edge: e.edge_type,
+          source: e.direction === "out" ? ref_id : e.other_ref_id,
+          target: e.direction === "out" ? e.other_ref_id : ref_id,
+        })),
       };
     }
     default:

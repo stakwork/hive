@@ -512,27 +512,20 @@ export type ProposalOutput =
       payload: GraphNodeDeleteProposalPayload;
       rationale?: string;
       /**
-       * Render-only: the node and its edges as they were found at propose
-       * time. The approval handler re-reads the node and does NOT trust this.
+       * Render-only: the node and its edges as read at propose time. The
+       * approval handler deletes by ref_id and does NOT trust this; Jarvis
+       * mutes whatever edges the node has when the delete runs.
        */
       meta: {
+        workspaceName?: string;
         workspaceSlug?: string;
         node_name?: string;
         node_type?: string;
-        /** At most 25 edges Jarvis will hard-delete on approval. */
-        edges?: Array<{
-          edge_type: string;
-          direction: "outgoing" | "incoming";
-          other_ref_id: string;
-          other_name?: string;
-          muted: boolean;
-        }>;
-        /** Total count of edges that will be deleted (may exceed `edges.length`). */
-        edge_total?: number;
-        /** Edges to other namespaces (and system nodes) that are kept. */
-        kept_edges?: number;
-        /** Set when the propose tool refused the delete. The card renders
-         *  as disabled-with-reason. */
+        edges?: GraphNodeDeleteEdge[];
+        /** Edges beyond `edges` that the card does not list. */
+        more_edge_count?: number;
+        /** Set when the propose tool refused (node missing, mirror-owned
+         *  or a Schema node). */
         refusedReason?: string;
       };
     }
@@ -744,15 +737,23 @@ export interface GraphNodeMoveProposalPayload {
 }
 
 /**
- * Payload for soft-deleting a single KG node. `ref_id` is re-resolved and
- * re-checked against live graph data at approval time — the payload itself
- * is just the target. See `nodeDeleteSummary.ts` for the read that backs
- * both the propose-time card and the approval-time re-check.
+ * Payload for soft-deleting one node. Jarvis marks the node deleted and
+ * mutes its edges in one write (`DELETE /v2/nodes/<ref_id>/single`), so it
+ * can be restored; nothing else from the node's ingestion run is touched.
  */
 export interface GraphNodeDeleteProposalPayload {
   workspaceId: string;
   workspaceSlug: string;
   ref_id: string;
+}
+
+/** One edge a node delete will hide, as the card lists it. */
+export interface GraphNodeDeleteEdge {
+  edge_type: string;
+  /** `out` = the deleted node is the source. */
+  direction: "in" | "out";
+  other_ref_id: string;
+  other_name?: string;
 }
 
 /**
@@ -769,7 +770,7 @@ export const PROPOSE_NEW_CONCEPT_TOOL = "propose_new_concept" as const;
 export const PROPOSE_CONCEPT_UPDATE_TOOL = "propose_concept_update" as const;
 
 // ─── Graph write tool name constants ──────────────────────────────────────
-// These six tools emit approvable proposal cards; the actual Jarvis write
+// These seven tools emit approvable proposal cards; the actual Jarvis write
 // happens only after the user clicks Approve. Named distinctly from the
 // read-only graph_walker tools so the card scanner and route handler have
 // a single enum-like source to key off.
@@ -933,7 +934,7 @@ export interface ApprovalResult {
    * Present for `feature`, `promptUpdate` and the graph approvals
    * (`conceptCreate`, `conceptUpdate`, `graphNodeCreate`, `graphNodeEdit`,
    * `graphTripletCreate`, `graphBatchTripletCreate`, `graphEdgeDelete`,
-   * `graphNodeMove`).
+   * `graphNodeMove`, `graphNodeDelete`).
    * Absent on older results that pre-date this field — client must
    * degrade gracefully (text-only, no link) when missing.
    */
