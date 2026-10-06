@@ -29,18 +29,21 @@ async function jarvisRequest({
   method = "GET",
   data,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  extraHeaders,
 }: {
   config: JarvisConnectionConfig;
   endpoint: string;
   method?: "GET" | "POST" | "PUT" | "DELETE";
   data?: unknown;
   timeoutMs?: number;
+  extraHeaders?: Record<string, string>;
 }): Promise<JarvisApiResponse> {
   const url = `${config.jarvisUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
   try {
     const headers: Record<string, string> = {
       "x-api-token": config.apiKey,
       "Content-Type": "application/json",
+      ...extraHeaders,
     };
 
     const response = await fetch(url, {
@@ -770,6 +773,54 @@ export async function deleteEdge(
   }
 
   return { success: true };
+}
+
+/**
+ * Soft-delete exactly one node via `DELETE /v2/nodes/{ref_id}/single`.
+ *
+ * Jarvis marks the node `is_deleted` and mutes its edges in one write, and
+ * returns the node's `is_deleted` from that write. Success here means that
+ * value came back true for this ref_id — never just a 200. A node that is
+ * missing (404) or already deleted (409) is surfaced as `notFound`. Unlike
+ * `deleteNode`, nothing else from the node's ingestion run is touched.
+ * Never throws.
+ */
+export async function deleteSingleNode(
+  config: JarvisConnectionConfig,
+  refId: string,
+): Promise<{ success: boolean; notFound?: boolean; mutedEdgeCount?: number; error?: string }> {
+  if (!isSafeRefId(refId)) {
+    return { success: false, error: `Invalid ref_id: ${JSON.stringify(refId)}` };
+  }
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/${encodeURIComponent(refId)}/single`,
+    method: "DELETE",
+    extraHeaders: { "X-Is-Admin": "true" },
+  });
+
+  if (!result.ok) {
+    const gone = result.status === 404 || result.status === 409;
+    return {
+      success: false,
+      notFound: gone,
+      error: gone
+        ? "Node not found — it may already have been deleted."
+        : result.error || `Request failed with status ${result.status}`,
+    };
+  }
+
+  const body = result.body as
+    | { ref_id?: string; is_deleted?: boolean; muted_edge_count?: number }
+    | undefined;
+  if (body?.ref_id !== refId || body?.is_deleted !== true) {
+    return {
+      success: false,
+      error: "Jarvis did not confirm the node was deleted.",
+    };
+  }
+
+  return { success: true, mutedEdgeCount: body.muted_edge_count ?? 0 };
 }
 
 /**
