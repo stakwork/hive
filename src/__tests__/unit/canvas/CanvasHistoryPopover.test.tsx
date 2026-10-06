@@ -64,6 +64,8 @@ const mockStoreState = {
   setServerConversationId: mockSetServerConversationId,
   clearActiveConversation: mockClearActiveConversation,
   setPendingInputDraft: mockSetPendingInputDraft,
+  draftRevision: 0,
+  setActiveConversation: vi.fn(),
 };
 
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
@@ -166,6 +168,8 @@ describe("CanvasHistoryPopover", () => {
       return {
         ...mockStoreState,
         activeConversationId: lastNewId ?? mockStoreState.activeConversationId,
+        setActiveConversation: vi.fn(),
+        draftRevision: 0,
       };
     });
   });
