@@ -28,12 +28,16 @@ export interface RunGraphBox {
 export interface RunGraphCell extends RunGraphBox {
   /** The loop iteration; null for a stage that does not loop. */
   iteration: number | null;
+  /** The cell's segment of the run's paths (`ingest#3`): the branch of the run it is. */
+  path: string;
   /** Nodes drawn in the cell. */
   nodes: number;
 }
 
 export interface RunGraphLane extends RunGraphBox {
   stage: string;
+  /** The stage's segment of the run's paths (`003-produce`): the branch of the run it is. Null when it loops: its cells are the branches. */
+  path: string | null;
   calls: number;
   /** Nodes drawn in the lane, over its cells. */
   nodes: number;
@@ -286,15 +290,22 @@ function placeCell(ids: string[], links: Link[], parents: ReadonlyMap<string, st
 
 interface Group {
   iteration: number | null;
+  /** The segment of the run's paths the group's calls share. */
+  segment: string;
   ids: string[];
   since: Map<string, number>;
 }
 
 interface Stage {
   stage: string;
+  /** The segment of the first call that reached the stage. */
+  segment: string;
   calls: number;
   groups: Map<number | null, Group>;
 }
+
+/** The segment of a call's path directly under the run. */
+const segmentOf = (path: string): string => path.split("/")[1] ?? path;
 
 /**
  * Place `nodeIds` for a canvas about `aspect` times as wide as it is tall:
@@ -317,7 +328,7 @@ export function layoutRunGraph(
     callCells.push(cellKey(stage, iteration));
     let entry = stages.get(stage);
     if (!entry) {
-      entry = { stage, calls: 0, groups: new Map() };
+      entry = { stage, segment: segmentOf(call.path), calls: 0, groups: new Map() };
       stages.set(stage, entry);
     }
     entry.calls++;
@@ -326,7 +337,7 @@ export function layoutRunGraph(
       if (!wanted.has(id)) continue;
       let group = entry.groups.get(iteration);
       if (!group) {
-        group = { iteration, ids: [], since: new Map() };
+        group = { iteration, segment: segmentOf(call.path), ids: [], since: new Map() };
         entry.groups.set(iteration, group);
       }
       if (group.since.has(id)) continue;
@@ -370,6 +381,7 @@ export function layoutRunGraph(
       const top = LANE_HEADER + y;
       cells.push({
         iteration: cell.group.iteration,
+        path: cell.group.segment,
         nodes: cell.group.ids.length,
         x: left,
         y: top,
@@ -393,6 +405,7 @@ export function layoutRunGraph(
     const width = Math.max(LANE_MIN_WIDTH, right + 2 * LANE_PAD);
     lanes.push({
       stage: s.stage,
+      path: s.cells.some((c) => c.group.iteration !== null) ? null : s.segment,
       calls: s.calls,
       nodes: cells.reduce((sum, c) => sum + c.nodes, 0),
       cells,

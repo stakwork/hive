@@ -611,6 +611,13 @@ export function StrutRunGraph({
     setScope(next);
   }, []);
   const focusBranch = useCallback((path: string) => focus(scopeOfBranch(scope, path)), [focus, scope]);
+  /** A lane or cell of the canvas names its branch by its segment under the root of the tree. */
+  const focusLane = useCallback(
+    (segment: string) => {
+      if (tree) focusBranch(`${tree.path}/${segment}`);
+    },
+    [tree, focusBranch],
+  );
   useEffect(() => {
     focus(scopeProp);
   }, [scopeProp, focus]);
@@ -801,6 +808,7 @@ export function StrutRunGraph({
               step={current}
               insetRight={LEGEND_INSET}
               onNodeClick={setSelectedId}
+              onFocus={focusLane}
             />
           )}
           {selected && (

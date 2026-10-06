@@ -14,7 +14,7 @@
 
 import React from "react";
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 vi.mock("@/hooks/useWorkspace", () => ({ useWorkspace: () => ({ workspace: { slug: "hive" } }) }));
 // Radix measures the slider with ResizeObserver, which jsdom does not have.
@@ -240,6 +240,26 @@ describe("StrutRunGraph scope", () => {
     expect(summary()).toBe("Nothing under loop#2 / run touched the graph.");
     fireEvent.click(screen.getAllByTestId("run-graph-crumb")[0]);
     expect(drawn()).toHaveLength(4);
+  });
+
+  it("opens a branch from the canvas: a lane's name, or a cell's number when the lane loops", async () => {
+    stubFetch(() => answer(404, {}), LOOP_TRACE);
+    render(<StrutRunGraph endpoint={ENDPOINT} />);
+    await screen.findByTestId("run-graph-summary");
+
+    // The loop lane loops, so its name opens nothing; its cells do (the tree offers the same branch).
+    const canvas = () => within(screen.getByTestId("run-graph-canvas"));
+    expect(canvas().queryByLabelText("Show only loop")).toBeNull();
+    fireEvent.click(canvas().getByLabelText("Show only loop#0"));
+
+    expect(crumbs()).toBe("looploop#0");
+    expect(lanes()).toEqual(["run", "improve"]);
+
+    fireEvent.click(canvas().getByLabelText("Show only improve"));
+
+    expect(crumbs()).toBe("looploop#0improve");
+    expect(lanes()).toEqual(["write"]);
+    expect(drawn()).toEqual(["Diabetes Follow-up"]);
   });
 
   it("goes deeper from inside a branch", async () => {

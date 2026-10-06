@@ -53,7 +53,12 @@ const LAYOUT = layoutRunGraph(
   LINKS,
 );
 
-function renderAt(step: number | null, selectedId: string | null = null, onNodeClick = vi.fn()) {
+function renderAt(
+  step: number | null,
+  selectedId: string | null = null,
+  onNodeClick = vi.fn(),
+  onFocus?: (path: string) => void,
+) {
   const frame = replayFrame(CALLS, step ?? CALLS.length);
   render(
     <RunGraphCanvas
@@ -65,6 +70,7 @@ function renderAt(step: number | null, selectedId: string | null = null, onNodeC
       selectedId={selectedId}
       step={step}
       onNodeClick={onNodeClick}
+      onFocus={onFocus}
     />,
   );
   return onNodeClick;
@@ -139,5 +145,32 @@ describe("RunGraphCanvas", () => {
     fireEvent.click(screen.getAllByText("enc-0-hpi.md")[1]);
 
     expect(onNodeClick).toHaveBeenCalledWith("doc");
+  });
+
+  it("opens a branch from a lane's name, or from a cell's number when the lane loops", () => {
+    const onFocus = vi.fn();
+    renderAt(null, null, vi.fn(), onFocus);
+
+    fireEvent.click(screen.getByLabelText("Show only produce"));
+    expect(onFocus).toHaveBeenCalledWith("produce");
+
+    // The ingest loops: its iterations are the branches, the lane itself is none.
+    expect(screen.queryByLabelText("Show only ingest")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Show only ingest#1"));
+    expect(onFocus).toHaveBeenCalledWith("ingest#1");
+
+    fireEvent.keyDown(screen.getByLabelText("Show only seed"), { key: "Enter" });
+    expect(onFocus).toHaveBeenLastCalledWith("seed");
+  });
+
+  it("names the lanes plainly when there is no one to open a branch", () => {
+    renderAt(null);
+
+    expect(screen.queryByLabelText("Show only produce")).toBeNull();
+    expect(screen.getAllByTestId("run-graph-lane-name").map((el) => el.textContent)).toEqual([
+      "seed",
+      "ingest",
+      "produce",
+    ]);
   });
 });

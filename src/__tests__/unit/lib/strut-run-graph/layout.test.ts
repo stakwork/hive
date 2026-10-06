@@ -93,6 +93,16 @@ describe("layoutRunGraph", () => {
     ]);
   });
 
+  it("names the branch of the run each lane is, or each cell when the lane loops", () => {
+    expect(layout.lanes.map((l) => [l.stage, l.path])).toEqual([
+      ["seed", "seed"],
+      ["ingest", null],
+      ["produce", "003-produce"],
+    ]);
+    expect(layout.lanes[1].cells.map((c) => c.path)).toEqual(["ingest#0", "ingest#1"]);
+    expect(layout.lanes[2].cells.map((c) => c.path)).toEqual(["003-produce"]);
+  });
+
   it("draws a node in every cell whose calls touched it, once per cell", () => {
     expect(idsIn(layout, "seed#")).toEqual(["a", "b", "c"]);
     expect(idsIn(layout, "ingest#0")).toEqual(["d0", "f0", "b"]);

@@ -32,6 +32,8 @@ interface RunGraphCanvasProps {
   /** Width at the right of the canvas that something else is drawn over. */
   insetRight?: number;
   onNodeClick: (id: string) => void;
+  /** Show only one branch of the run, by its segment under the root (`003-produce`, `ingest#3`). */
+  onFocus?: (path: string) => void;
 }
 
 const FIT_PADDING = 32;
@@ -65,6 +67,57 @@ function clipName(name: string): string {
   return name.length > MAX_NAME_CHARS ? `${name.slice(0, MAX_NAME_CHARS)}…` : name;
 }
 
+/** A lane's or cell's name; with a branch to open and someone to open it, a button to show only that branch. */
+function BranchLabel({
+  x,
+  y,
+  className,
+  fontSize,
+  path,
+  onFocus,
+  testId,
+  children,
+}: {
+  x: number;
+  y: number;
+  className: string;
+  fontSize: string;
+  path: string | null;
+  onFocus?: (path: string) => void;
+  testId: string;
+  children: React.ReactNode;
+}) {
+  if (path === null || !onFocus) {
+    return (
+      <text x={x} y={y} className={className} style={{ fontSize }} data-testid={testId}>
+        {children}
+      </text>
+    );
+  }
+  const open = () => onFocus(path);
+  return (
+    <text
+      x={x}
+      y={y}
+      className={`${className} cursor-pointer hover:underline focus-visible:underline focus-visible:outline-none`}
+      style={{ fontSize }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Show only ${path}`}
+      onClick={open}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      }}
+      data-testid={testId}
+    >
+      {children}
+    </text>
+  );
+}
+
 interface DrawnLink {
   key: string;
   link: RunGraphLink;
@@ -79,7 +132,8 @@ interface DrawnLink {
  * A run's nodes where `layout` put them: the stages as lanes, a looping
  * stage's iterations as cells, and in each cell the graph's edges and the
  * run's hops between the nodes drawn there. Pans and zooms; opens showing
- * all of it.
+ * all of it. A lane's name, or a cell's number, opens that branch of the
+ * run on its own, as the crosshair in the tree does.
  */
 export function RunGraphCanvas({
   layout,
@@ -91,6 +145,7 @@ export function RunGraphCanvas({
   step,
   insetRight = 0,
   onNodeClick,
+  onFocus,
 }: RunGraphCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const viewRef = useRef<SVGGElement>(null);
@@ -253,14 +308,17 @@ export function RunGraphCanvas({
                   strokeWidth={1}
                   vectorEffect="non-scaling-stroke"
                 />
-                <text
+                <BranchLabel
                   x={lane.x + 20}
                   y={lane.y + 40}
                   className="fill-foreground font-medium"
-                  style={{ fontSize: LANE_FONT }}
+                  fontSize={LANE_FONT}
+                  path={lane.path}
+                  onFocus={onFocus}
+                  testId="run-graph-lane-name"
                 >
                   {lane.stage}
-                </text>
+                </BranchLabel>
                 {lane.cells
                   .filter((cell) => cell.iteration !== null)
                   .map((cell) => (
@@ -275,14 +333,17 @@ export function RunGraphCanvas({
                         strokeWidth={1}
                         vectorEffect="non-scaling-stroke"
                       />
-                      <text
+                      <BranchLabel
                         x={cell.x + 12}
                         y={cell.y + 22}
                         className="fill-muted-foreground font-mono"
-                        style={{ fontSize: CELL_FONT }}
+                        fontSize={CELL_FONT}
+                        path={cell.path}
+                        onFocus={onFocus}
+                        testId="run-graph-cell-name"
                       >
                         #{cell.iteration}
-                      </text>
+                      </BranchLabel>
                     </g>
                   ))}
               </g>
