@@ -7,7 +7,7 @@ import { estimateTokens } from "@/lib/utils/token-estimate";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Flag, Waypoints, AlertTriangle, Share2 } from "lucide-react";
+import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Flag, Waypoints, AlertTriangle, Share2, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
@@ -303,6 +303,10 @@ export function MessageBubble({
   // truncation) — rendered as a destructive-tinted bubble so failures are
   // scannable in the trace instead of reading like a normal reply.
   const isTurnError = isAssistant && message.isError === true;
+  // The end of a turn the user stopped — a quiet neutral marker, not an
+  // error. Mirrors the live canvas chat's "Stopped" row so reload/shared
+  // views match.
+  const isStoppedTurn = isAssistant && message.isStopped === true;
 
   // Graph-walk result rows link into their standalone sub-agent trace.
   const graphWalkTrace = message.graphWalkTrace;
@@ -458,11 +462,20 @@ export function MessageBubble({
           <User className="w-3.5 h-3.5 text-primary-foreground" />
         ) : isTurnError ? (
           <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
+        ) : isStoppedTurn ? (
+          <Square className="w-3 h-3 fill-current text-muted-foreground" />
         ) : (
           <Bot className="w-3.5 h-3.5 text-muted-foreground" />
         )}
       </div>
-      {message.timestamp ? (
+      {isStoppedTurn ? (
+        <div
+          data-testid="stopped-turn-marker"
+          className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground"
+        >
+          Stopped
+        </div>
+      ) : message.timestamp ? (
         <Tooltip>
           <TooltipTrigger asChild>
             <div
