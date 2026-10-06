@@ -4,7 +4,8 @@
  *
  * Coverage:
  *   - a node's type is the label left once the structural ones are set aside;
- *   - nodes and the edges among them come back from two queries;
+ *   - nodes, the edges among them and their lineage come back from three
+ *     queries, an ancestor the run never touched marked as such;
  *   - a ref id that is not id-shaped never reaches a query;
  *   - a graph that cannot answer leaves the nodes as the log named them,
  *     and says what it did not read, and why;
@@ -43,34 +44,129 @@ describe("typeFromLabels", () => {
   });
 });
 
+/** Which of the three queries this is. */
+const kind = (query: string): "nodes" | "edges" | "lineage" =>
+  query.includes("PARENT_OF*") ? "lineage" : query.includes("-[r]->") ? "edges" : "nodes";
+
+const CONCEPT = ["Data_Bank", "Node", "Concept", "Domain_general"];
+
 describe("hydrateRunGraph", () => {
-  it("resolves nodes and the edges among them", async () => {
-    const run = vi.fn<CypherRunner>(async (query) =>
-      query.includes("-[r]->")
-        ? { columns: ["edge_type", "source", "target"], rows: [["CONTAINS", "doc-1", "find-1"]] }
-        : {
+  it("resolves nodes, the edges among them, and the lineage above them", async () => {
+    const run = vi.fn<CypherRunner>(async (query) => {
+      switch (kind(query)) {
+        case "edges":
+          return { columns: ["edge_type", "source", "target"], rows: [["CONTAINS", "doc-1", "find-1"]] };
+        case "lineage":
+          // Every edge on the way up from a touched node, with the parent it comes from.
+          return {
+            columns: ["labels", "name", "namespace", "source", "target"],
+            rows: [
+              [CONCEPT, "Medicine", "default", "root", "list"],
+              [CONCEPT, "Problem List", "default", "list", "rule"],
+            ],
+          };
+        default:
+          return {
             // Upstream orders columns its own way.
             columns: ["labels", "name", "namespace", "ref_id"],
             rows: [
               [["Data_Bank", "Document", "Node", "Domain_content"], "enc-0-hpi.md", "oh-7532", "doc-1"],
-              [["Data_Bank", "Node", "Domain_entity", "ClinicalFinding"], "  Lethargic on arrival  ", "oh-7532", "find-1"],
+              [
+                ["Data_Bank", "Node", "Domain_entity", "ClinicalFinding"],
+                "  Lethargic on arrival  ",
+                "oh-7532",
+                "find-1",
+              ],
+              [CONCEPT, "Longitudinal Problem List Rules", "default", "rule"],
             ],
-          },
+          };
+      }
+    });
+
+    const graph = await hydrateRunGraph(
+      [{ ref_id: "doc-1", node_type: "Document" }, { ref_id: "find-1" }, { ref_id: "rule", node_type: "Concept" }],
+      run,
     );
 
-    const graph = await hydrateRunGraph([{ ref_id: "doc-1", node_type: "Document" }, { ref_id: "find-1" }], run);
-
-    expect(run).toHaveBeenCalledTimes(2);
+    expect(run).toHaveBeenCalledTimes(3);
     expect(graph).toEqual({
       nodes: [
         { ref_id: "doc-1", node_type: "Document", name: "enc-0-hpi.md", namespace: "oh-7532", found: true },
-        { ref_id: "find-1", node_type: "ClinicalFinding", name: "Lethargic on arrival", namespace: "oh-7532", found: true },
+        {
+          ref_id: "find-1",
+          node_type: "ClinicalFinding",
+          name: "Lethargic on arrival",
+          namespace: "oh-7532",
+          found: true,
+        },
+        {
+          ref_id: "rule",
+          node_type: "Concept",
+          name: "Longitudinal Problem List Rules",
+          namespace: "default",
+          found: true,
+        },
+        { ref_id: "root", node_type: "Concept", name: "Medicine", namespace: "default", found: true, ancestor: true },
+        {
+          ref_id: "list",
+          node_type: "Concept",
+          name: "Problem List",
+          namespace: "default",
+          found: true,
+          ancestor: true,
+        },
       ],
-      edges: [{ source: "doc-1", target: "find-1", edge_type: "CONTAINS" }],
+      edges: [
+        { source: "doc-1", target: "find-1", edge_type: "CONTAINS" },
+        { source: "root", target: "list", edge_type: "PARENT_OF" },
+        { source: "list", target: "rule", edge_type: "PARENT_OF" },
+      ],
       nodesRead: true,
       edgesRead: true,
+      lineageRead: true,
       truncated: false,
     });
+    const lineage = run.mock.calls.map(([query]) => query).find((query) => kind(query) === "lineage") ?? "";
+    expect(lineage).toContain("-[:PARENT_OF*1..10]->");
+    expect(lineage).toContain("['doc-1','find-1','rule']");
+  });
+
+  it("marks no ancestor the run touched, and keeps a lineage edge the edges gave once", async () => {
+    const run: CypherRunner = async (query) => {
+      switch (kind(query)) {
+        case "edges":
+          return { columns: ["edge_type", "source", "target"], rows: [["PARENT_OF", "list", "rule"]] };
+        case "lineage":
+          return {
+            columns: ["labels", "name", "namespace", "source", "target"],
+            rows: [
+              [CONCEPT, "Medicine", "default", "root", "list"],
+              [CONCEPT, "Problem List", "default", "list", "rule"],
+              [CONCEPT, "Not an id", "default", "'] DETACH DELETE n //", "rule"],
+            ],
+          };
+        default:
+          return {
+            columns: ["labels", "name", "namespace", "ref_id"],
+            rows: [
+              [CONCEPT, "Longitudinal Problem List Rules", "default", "rule"],
+              [CONCEPT, "Problem List", "default", "list"],
+            ],
+          };
+      }
+    };
+
+    const graph = await hydrateRunGraph([{ ref_id: "rule" }, { ref_id: "list" }], run);
+
+    expect(graph.nodes.map((n) => [n.ref_id, n.ancestor ?? false])).toEqual([
+      ["rule", false],
+      ["list", false],
+      ["root", true],
+    ]);
+    expect(graph.edges).toEqual([
+      { source: "list", target: "rule", edge_type: "PARENT_OF" },
+      { source: "root", target: "list", edge_type: "PARENT_OF" },
+    ]);
   });
 
   it("never sends a ref id that is not id-shaped", async () => {
@@ -108,9 +204,44 @@ describe("hydrateRunGraph", () => {
       edges: [],
       nodesRead: false,
       edgesRead: false,
+      lineageRead: false,
       unreadReason: "400 query too long",
       truncated: false,
     });
+  });
+
+  it("tells a lineage it could not read from nodes with nothing above them", async () => {
+    const refs = [{ ref_id: "a" }];
+    const nodesAndEdges = { columns: ["ref_id"], rows: [["a"]] };
+    const unread = await hydrateRunGraph(refs, async (query) =>
+      kind(query) === "lineage" ? { unread: "no answer in 20 s" } : nodesAndEdges,
+    );
+    const none = await hydrateRunGraph(refs, async (query) =>
+      kind(query) === "lineage" ? { columns: [], rows: [] } : nodesAndEdges,
+    );
+
+    expect(unread).toMatchObject({
+      nodes: [{ ref_id: "a", found: true }],
+      nodesRead: true,
+      edgesRead: true,
+      lineageRead: false,
+      unreadReason: "no answer in 20 s",
+    });
+    expect(none).toMatchObject({ nodes: [{ ref_id: "a", found: true }], lineageRead: true });
+    expect(none).not.toHaveProperty("unreadReason");
+  });
+
+  it("says so when the lineage ran into the row cap", async () => {
+    const graph = await hydrateRunGraph([{ ref_id: "a" }], async (query) =>
+      kind(query) === "lineage"
+        ? {
+            columns: ["labels", "name", "namespace", "source", "target"],
+            rows: Array.from({ length: 1000 }, (_, i) => [CONCEPT, `Concept ${i}`, "default", `c${i}`, "a"]),
+          }
+        : { columns: ["ref_id"], rows: [["a"]] },
+    );
+    expect(graph.truncated).toBe(true);
+    expect(graph.nodes).toHaveLength(1001);
   });
 
   it("tells edges it could not read from edges that are not there", async () => {
@@ -143,9 +274,7 @@ describe("hydrateRunGraph", () => {
     const graph = await hydrateRunGraph([{ ref_id: "gone" }], async (query) =>
       query.includes("-[r]->") ? { columns: [], rows: [] } : { columns: ["ref_id"], rows: [] },
     );
-    expect(graph.nodes).toEqual([
-      { ref_id: "gone", node_type: "Node", name: "gone", namespace: null, found: false },
-    ]);
+    expect(graph.nodes).toEqual([{ ref_id: "gone", node_type: "Node", name: "gone", namespace: null, found: false }]);
   });
 
   it("resolves no more than the cap and says so", async () => {
@@ -165,6 +294,7 @@ describe("hydrateRunGraph", () => {
       edges: [],
       nodesRead: true,
       edgesRead: true,
+      lineageRead: true,
       truncated: false,
     });
     expect(run).not.toHaveBeenCalled();
@@ -174,7 +304,10 @@ describe("hydrateRunGraph", () => {
 describe("swarmCypherRunner", () => {
   const run = swarmCypherRunner({ name: "swarm38", apiKey: "key" });
   const answer = (body: unknown, init?: ResponseInit) =>
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), init)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(body), init)),
+    );
 
   afterEach(() => {
     vi.unstubAllGlobals();

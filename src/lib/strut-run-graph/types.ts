@@ -10,6 +10,11 @@
  * Strut marks a search with every node it matched. Those are hits, not
  * reads: the call is kept, its hits are counted, and a hit is a node of the
  * trace only when another call went on to read or write it.
+ *
+ * A touched node is read with its lineage: the nodes above it along
+ * `PARENT_OF` (a Concept's parents up to the root of its tree), so the viewer
+ * can draw it where it belongs. An ancestor no call touched is in `nodes`
+ * too, marked as such.
  */
 
 /** A node as strut's event log names it. */
@@ -49,6 +54,8 @@ export interface RunGraphNode {
   namespace: string | null;
   /** False when the graph no longer holds the node (deleted, or another database). */
   found: boolean;
+  /** True for a node no call touched: it is here as an ancestor, along `PARENT_OF`, of one that was. */
+  ancestor?: true;
 }
 
 /** One node read whole, for reading what the run read: its labels, and every property but the vectors. */
@@ -73,7 +80,9 @@ export interface RunGraphTrace {
   nodesRead: boolean;
   /** False when the graph did not answer for the edges: `edges` is then empty, not known to be. */
   edgesRead: boolean;
-  /** Why the graph did not answer (`400 query too long`): for the nodes, else for the edges. */
+  /** False when the graph did not answer for the lineage: the touched nodes are then without their ancestors. */
+  lineageRead: boolean;
+  /** Why the graph did not answer (`400 query too long`): for the nodes, else the edges, else the lineage. */
   unreadReason?: string;
   /** True when the run touched more nodes than were resolved. */
   truncated: boolean;
