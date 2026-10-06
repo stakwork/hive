@@ -1,10 +1,10 @@
 /**
  * Graph-write tools for Jamie (the canvas agent).
  *
- * Exposes six `propose_*` tools that emit approvable proposal cards
+ * Exposes seven `propose_*` tools that emit approvable proposal cards
  * without performing any Jarvis writes — four that add to the graph
- * (a node, a node edit, one or many edges) and two that edit it (remove
- * an edge, move a node to a new parent). The write only happens after
+ * (a node, a node edit, one or many edges) and three that edit it (remove
+ * an edge, move a node to a new parent, delete a node). The write only happens after
  * the user clicks Approve in the ProposalCard UI, which calls the
  * approval handlers in `handleApproval.ts`.
  *
@@ -22,6 +22,8 @@ import { nanoid } from "nanoid";
 import { resolveGraphJarvis } from "@/lib/ai/graphWriteAuth";
 import {
   findEdgeByEndpoints,
+  getNodeEdges,
+  isMutedEdge,
   listIncomingEdges,
   readNodeByRef,
 } from "@/services/swarm/api/nodes";
@@ -34,7 +36,10 @@ import {
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
   PROPOSE_DELETE_EDGE_TOOL,
   PROPOSE_MOVE_NODE_TOOL,
+  PROPOSE_DELETE_NODE_TOOL,
   type GraphEdgeDeleteProposalPayload,
+  type GraphNodeDeleteEdge,
+  type GraphNodeDeleteProposalPayload,
   type GraphNodeMoveProposalPayload,
   type ProposalOutput,
 } from "@/lib/proposals/types";
@@ -58,6 +63,9 @@ const MIRROR_OWNED_TYPES = new Set([
   "Milestone",
   "Research",
 ]);
+
+/** How many of a node's edges a delete card lists before "and N more". */
+const DELETE_CARD_EDGE_CAP = 20;
 
 // ─── Validation helpers ───────────────────────────────────────────────────
 
@@ -797,6 +805,112 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
           } satisfies GraphNodeMoveProposalPayload,
           ...(rationale ? { rationale } : {}),
           meta: { workspaceSlug: verifiedSlug, ...meta },
+        };
+      },
+    }),
+
+    // ── propose_delete_node ───────────────────────────────────────────────
+
+    [PROPOSE_DELETE_NODE_TOOL]: tool({
+      description:
+        "Propose deleting one stale, duplicate or wrong node from the workspace KG. " +
+        "The node is soft-deleted (it can be restored) and every edge touching it is hidden; " +
+        "nothing else is removed. The card lists the edges that will go. " +
+        "Refused for mirror-owned node types and Schema nodes. " +
+        "If only a link is wrong, use propose_delete_edge or propose_move_node instead. " +
+        "Emits an approvable card — nothing changes until the user clicks Approve.",
+      inputSchema: z.object({
+        workspaceSlug: z
+          .string()
+          .min(1)
+          .describe("Slug of the workspace the node belongs to."),
+        ref_id: z.string().min(1).describe("ref_id of the node to delete."),
+        rationale: z
+          .string()
+          .optional()
+          .describe("Why this node should be deleted."),
+      }),
+      execute: async ({ workspaceSlug, ref_id, rationale }) => {
+        const resolved = await resolveGraphJarvis(orgId, userId, {
+          slug: workspaceSlug,
+        });
+        if (!resolved.ok) return { error: resolved.error };
+        const {
+          workspaceId,
+          workspaceSlug: verifiedSlug,
+          config,
+        } = resolved.access;
+
+        const payload: GraphNodeDeleteProposalPayload = {
+          workspaceId,
+          workspaceSlug: verifiedSlug,
+          ref_id,
+        };
+
+        const node = await readNodeByRef(config, ref_id);
+        if (!node.success) {
+          return {
+            kind: "graphNodeDelete" as const,
+            proposalId: nanoid(),
+            payload,
+            meta: {
+              workspaceSlug: verifiedSlug,
+              refusedReason: `Node "${ref_id}" was not found in this workspace's graph.`,
+            },
+          };
+        }
+        const node_type = node.node_type ?? "";
+        const node_name = nameOf(node.properties);
+        const names = { ...(node_name ? { node_name } : {}), ...(node_type ? { node_type } : {}) };
+
+        // Mirror-owned nodes would be re-created by the next sync pass, and
+        // Jarvis restores a deleted node when it is re-created.
+        const refusedReason = MIRROR_OWNED_TYPES.has(node_type)
+          ? `"${node_type}" is a mirror-owned type — the next sync pass would bring it back.`
+          : node_type === "Schema"
+            ? "Schema nodes define a type and cannot be deleted here."
+            : undefined;
+        if (refusedReason) {
+          return {
+            kind: "graphNodeDelete" as const,
+            proposalId: nanoid(),
+            payload,
+            meta: { workspaceSlug: verifiedSlug, ...names, refusedReason },
+          };
+        }
+
+        const read = await getNodeEdges(config, ref_id);
+        if (!read.ok) {
+          return { error: read.error ?? "Could not read the node's edges from the workspace's graph." };
+        }
+        const nameByRef = new Map(read.nodes.map((n) => [n.ref_id, nameOf(n.properties)]));
+        const edges: GraphNodeDeleteEdge[] = read.edges
+          .filter((e) => !isMutedEdge(e.properties) && (e.source === ref_id || e.target === ref_id))
+          .map((e) => {
+            const out = e.source === ref_id;
+            const other_ref_id = out ? e.target : e.source;
+            const other_name = nameByRef.get(other_ref_id);
+            return {
+              edge_type: e.edge_type,
+              direction: out ? ("out" as const) : ("in" as const),
+              other_ref_id,
+              ...(other_name ? { other_name } : {}),
+            };
+          });
+
+        return {
+          kind: "graphNodeDelete" as const,
+          proposalId: nanoid(),
+          payload,
+          ...(rationale ? { rationale } : {}),
+          meta: {
+            workspaceSlug: verifiedSlug,
+            ...names,
+            edges: edges.slice(0, DELETE_CARD_EDGE_CAP),
+            ...(edges.length > DELETE_CARD_EDGE_CAP
+              ? { more_edge_count: edges.length - DELETE_CARD_EDGE_CAP }
+              : {}),
+          },
         };
       },
     }),

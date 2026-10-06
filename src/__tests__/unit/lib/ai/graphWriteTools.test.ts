@@ -20,6 +20,8 @@
  * 16. propose_delete_edge: refuses an edge that isn't there, names the ends of one that is, never writes
  * 17. propose_move_node: finds the single parent, needs from_ref_id for several, refuses no parent,
  *     mirror-owned, missing nodes, a destination under the node (cycle), never writes
+ * 18. propose_delete_node: lists the live edges on the card, caps the list, refuses missing,
+ *     mirror-owned and Schema nodes, never writes
  */
 
 // @vitest-environment node
@@ -34,6 +36,7 @@ const {
   mockKgGetNode,
   mockFindEdgeByEndpoints,
   mockListIncomingEdges,
+  mockGetNodeEdges,
 } = vi.hoisted(() => ({
   mockResolveGraphJarvis: vi.fn(),
   mockReadNodeByRef: vi.fn(),
@@ -41,6 +44,7 @@ const {
   mockKgGetNode: vi.fn(),
   mockFindEdgeByEndpoints: vi.fn(),
   mockListIncomingEdges: vi.fn(),
+  mockGetNodeEdges: vi.fn(),
 }));
 
 vi.mock("@/lib/ai/graphWriteAuth", () => ({
@@ -52,6 +56,9 @@ vi.mock("@/services/swarm/api/nodes", () => ({
   readNodeByRef: mockReadNodeByRef,
   findEdgeByEndpoints: mockFindEdgeByEndpoints,
   listIncomingEdges: mockListIncomingEdges,
+  getNodeEdges: mockGetNodeEdges,
+  isMutedEdge: (p?: Record<string, unknown>) => p?.is_muted === true || p?.is_deleted === true,
+  deleteSingleNode: vi.fn(),
   addNode: vi.fn(),
   updateNodeV2: vi.fn(),
   addEdgeV2: vi.fn(),
@@ -636,5 +643,107 @@ describe("propose_move_node", () => {
       await tools.propose_move_node.execute({ ...args, from_ref_id: "parent-2" }, {} as never),
     ).toMatchObject({ error: expect.stringContaining("nothing would move") });
     expect(mockResolveGraphJarvis).not.toHaveBeenCalled();
+  });
+});
+
+// ── propose_delete_node ───────────────────────────────────────────────────
+
+describe("propose_delete_node", () => {
+  const args = { workspaceSlug: WS_SLUG, ref_id: "node-123" };
+
+  it("lists the node's live edges on the card, without writing", async () => {
+    mockGetNodeEdges.mockResolvedValue({
+      ok: true,
+      edges: [
+        { source: "parent-1", target: "node-123", edge_type: "PARENT_OF", properties: {} },
+        { source: "node-123", target: "doc-1", edge_type: "DESCRIBES", properties: {} },
+        { source: "node-123", target: "doc-2", edge_type: "DESCRIBES", properties: { is_muted: true } },
+      ],
+      nodes: [
+        { ref_id: "parent-1", node_type: "Concept", properties: { name: "Coding" } },
+        { ref_id: "doc-1", node_type: "Document", properties: { title: "Notes" } },
+      ],
+    });
+    const tools = getTools();
+    const result = await tools.propose_delete_node.execute(
+      { ...args, rationale: "Duplicate of Security v2." },
+      {} as never,
+    );
+    expect(result).toEqual({
+      kind: "graphNodeDelete",
+      proposalId: expect.any(String),
+      payload: { workspaceId: WS_ID, workspaceSlug: WS_SLUG, ref_id: "node-123" },
+      rationale: "Duplicate of Security v2.",
+      meta: {
+        workspaceSlug: WS_SLUG,
+        node_name: "Old Name",
+        node_type: "Concept",
+        edges: [
+          { edge_type: "PARENT_OF", direction: "in", other_ref_id: "parent-1", other_name: "Coding" },
+          { edge_type: "DESCRIBES", direction: "out", other_ref_id: "doc-1", other_name: "Notes" },
+        ],
+      },
+    });
+    const { deleteSingleNode } = await import("@/services/swarm/api/nodes");
+    expect(vi.mocked(deleteSingleNode)).not.toHaveBeenCalled();
+    const str = JSON.stringify(result);
+    expect(str).not.toContain("apiKey");
+    expect(str).not.toContain("jarvisUrl");
+  });
+
+  it("lists the first 20 edges and counts the rest", async () => {
+    mockGetNodeEdges.mockResolvedValue({
+      ok: true,
+      edges: Array.from({ length: 23 }, (_, i) => ({
+        source: "node-123",
+        target: `doc-${i}`,
+        edge_type: "DESCRIBES",
+        properties: {},
+      })),
+      nodes: [],
+    });
+    const tools = getTools();
+    const result = await tools.propose_delete_node.execute(args, {} as never);
+    expect(result).toMatchObject({ meta: { more_edge_count: 3 } });
+    expect((result as { meta: { edges: unknown[] } }).meta.edges).toHaveLength(20);
+  });
+
+  it("refuses a node that isn't in the graph", async () => {
+    mockReadNodeByRef.mockResolvedValue({ success: false, message: "not found" });
+    const tools = getTools();
+    const result = await tools.propose_delete_node.execute(args, {} as never);
+    expect(result).toMatchObject({
+      kind: "graphNodeDelete",
+      meta: { refusedReason: expect.stringContaining("was not found") },
+    });
+    expect(mockGetNodeEdges).not.toHaveBeenCalled();
+  });
+
+  it("refuses mirror-owned and Schema nodes", async () => {
+    const tools = getTools();
+    mockReadNodeByRef.mockResolvedValue({ success: true, ref_id: "node-123", node_type: "HiveTask", properties: {} });
+    expect(await tools.propose_delete_node.execute(args, {} as never)).toMatchObject({
+      meta: { node_type: "HiveTask", refusedReason: expect.stringContaining("mirror-owned") },
+    });
+    mockReadNodeByRef.mockResolvedValue({ success: true, ref_id: "node-123", node_type: "Schema", properties: {} });
+    expect(await tools.propose_delete_node.execute(args, {} as never)).toMatchObject({
+      meta: { node_type: "Schema", refusedReason: expect.stringContaining("Schema") },
+    });
+    expect(mockGetNodeEdges).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed edge read as a tool error", async () => {
+    mockGetNodeEdges.mockResolvedValue({ ok: false, edges: [], nodes: [], error: "Request failed with status 503" });
+    const tools = getTools();
+    const result = await tools.propose_delete_node.execute(args, {} as never);
+    expect(result).toEqual({ error: "Request failed with status 503" });
+  });
+
+  it("returns error when access is denied", async () => {
+    mockResolveGraphJarvis.mockResolvedValue(ACCESS_DENIED);
+    const tools = getTools();
+    const result = await tools.propose_delete_node.execute(args, {} as never);
+    expect(result).toMatchObject({ error: expect.stringContaining("access denied") });
+    expect(mockReadNodeByRef).not.toHaveBeenCalled();
   });
 });

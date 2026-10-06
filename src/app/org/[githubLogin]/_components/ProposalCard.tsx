@@ -35,6 +35,7 @@ import {
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
   PROPOSE_DELETE_EDGE_TOOL,
   PROPOSE_MOVE_NODE_TOOL,
+  PROPOSE_DELETE_NODE_TOOL,
   PROPOSE_CODE_CHANGE_TOOL,
   getProposalStatus,
   getCodeChangePreviewState,
@@ -174,7 +175,7 @@ export function ProposalCard({
                         ? "Batch Triplets"
                         : proposal.kind === "graphEdgeDelete"
                           ? proposal.payload.edge_type
-                          : proposal.kind === "graphNodeMove"
+                          : proposal.kind === "graphNodeMove" || proposal.kind === "graphNodeDelete"
                             ? (proposal.meta.node_name ?? proposal.payload.ref_id)
                             : proposal.payload.title;
   const [editedTitle, setEditedTitle] = useState(initialTitle);
@@ -193,6 +194,7 @@ export function ProposalCard({
     proposal.kind !== "graphBatchTripletCreate" &&
     proposal.kind !== "graphEdgeDelete" &&
     proposal.kind !== "graphNodeMove" &&
+    proposal.kind !== "graphNodeDelete" &&
     // codeChange: the title becomes the PR title — editing it here would
     // desync from what was actually verified server-side.
     proposal.kind !== "codeChange";
@@ -346,6 +348,7 @@ export function ProposalCard({
       proposal.kind === "graphBatchTripletCreate" ||
       proposal.kind === "graphEdgeDelete" ||
       proposal.kind === "graphNodeMove" ||
+      proposal.kind === "graphNodeDelete" ||
       proposal.kind === "codeChange"
     ) {
       // Prompt/concept/graph/codeChange proposals have no inline-edit overrides —
@@ -473,7 +476,8 @@ export function ProposalCard({
       r.kind === "graphTripletCreate" ||
       r.kind === "graphBatchTripletCreate" ||
       r.kind === "graphEdgeDelete" ||
-      r.kind === "graphNodeMove"
+      r.kind === "graphNodeMove" ||
+      r.kind === "graphNodeDelete"
     ) {
       const where = r.landedOnName ? `**${r.landedOnName}**` : "the workspace KG";
       let text: string;
@@ -489,6 +493,8 @@ export function ProposalCard({
           : `Relationship created in ${where} ✓`;
       } else if (r.kind === "graphEdgeDelete") {
         text = `Relationship removed from ${where} ✓`;
+      } else if (r.kind === "graphNodeDelete") {
+        text = `Node deleted from ${where} ✓`;
       } else if (r.kind === "graphNodeMove") {
         text = r.alreadyExisted
           ? `Node moved in ${where} — it was already linked to the new parent, so only the old link was removed ✓`
@@ -582,7 +588,9 @@ export function ProposalCard({
                                 ? "Proposed Link Removal"
                                 : proposal.kind === "graphNodeMove"
                                   ? "Proposed Node Move"
-                                  : proposal.kind === "codeChange"
+                                  : proposal.kind === "graphNodeDelete"
+                                    ? "Proposed Node Delete"
+                                    : proposal.kind === "codeChange"
                                     ? "Proposed Code Change"
                                     : `Proposed ${proposal.kind}`}
             </span>
@@ -665,6 +673,9 @@ export function ProposalCard({
           )}
           {proposal.kind === "graphNodeMove" && (
             <GraphNodeMoveMeta proposal={proposal} />
+          )}
+          {proposal.kind === "graphNodeDelete" && (
+            <GraphNodeDeleteMeta proposal={proposal} />
           )}
           {proposal.kind === "codeChange" && (
             <CodeChangeMeta
@@ -902,7 +913,9 @@ function ProposalDetailsDialog({
                           ? "Graph Link Removal"
                           : proposal.kind === "graphNodeMove"
                             ? "Graph Node Move"
-                            : "Feature";
+                            : proposal.kind === "graphNodeDelete"
+                              ? "Graph Node Delete"
+                              : "Feature";
 
   const title =
     proposal.kind === "initiative"
@@ -927,7 +940,7 @@ function ProposalDetailsDialog({
                         ? "Batch Triplets"
                         : proposal.kind === "graphEdgeDelete"
                           ? proposal.payload.edge_type
-                          : proposal.kind === "graphNodeMove"
+                          : proposal.kind === "graphNodeMove" || proposal.kind === "graphNodeDelete"
                             ? (proposal.meta.node_name ?? proposal.payload.ref_id)
                             : proposal.payload.title;
 
@@ -1198,6 +1211,7 @@ export function proposalHasDetails(p: ProposalOutput): boolean {
   if (p.kind === "graphBatchTripletCreate") return false;
   if (p.kind === "graphEdgeDelete") return false;
   if (p.kind === "graphNodeMove") return false;
+  if (p.kind === "graphNodeDelete") return false;
   if (p.kind === "codeChange") return false;
   // milestone
   return !!(p.payload.description || p.payload.status || p.payload.dueDate);
@@ -2116,6 +2130,50 @@ function GraphNodeMoveMeta({
   );
 }
 
+/** Compact body for a node-delete proposal: the node, then each edge that will be hidden with it. */
+function GraphNodeDeleteMeta({
+  proposal,
+}: {
+  proposal: Extract<ProposalOutput, { kind: "graphNodeDelete" }>;
+}) {
+  const { payload, meta } = proposal;
+  const edges = meta.edges ?? [];
+  return (
+    <div className="mt-0.5 space-y-0.5">
+      <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+        <span>{meta.workspaceName ?? meta.workspaceSlug ?? payload.workspaceSlug}</span>
+        {meta.node_type && <span className="font-mono">{meta.node_type}</span>}
+        <span className="font-mono text-muted-foreground/60">{payload.ref_id}</span>
+      </div>
+      {!meta.refusedReason && (
+        <div className="text-[11px] text-muted-foreground">
+          {edges.length === 0
+            ? "deletes the node · it has no links"
+            : `deletes the node · hides ${edges.length + (meta.more_edge_count ?? 0)} link${
+                edges.length + (meta.more_edge_count ?? 0) === 1 ? "" : "s"
+              }`}
+        </div>
+      )}
+      {edges.length > 0 && (
+        <div className="mt-1 space-y-0.5 font-mono text-[11px] break-all">
+          {edges.map((e, i) => (
+            <div key={`${e.edge_type}-${e.direction}-${e.other_ref_id}-${i}`} className="flex items-center gap-1">
+              <span className="shrink-0 text-rose-600 dark:text-rose-400">−</span>
+              {e.direction === "in" && <GraphNodeLabel name={e.other_name} refId={e.other_ref_id} />}
+              <span className="shrink-0 text-muted-foreground line-through">—{e.edge_type}→</span>
+              {e.direction === "out" && <GraphNodeLabel name={e.other_name} refId={e.other_ref_id} />}
+            </div>
+          ))}
+          {!!meta.more_edge_count && (
+            <div className="text-muted-foreground">and {meta.more_edge_count} more</div>
+          )}
+        </div>
+      )}
+      {meta.refusedReason && <GraphRefusedNote reason={meta.refusedReason} />}
+    </div>
+  );
+}
+
 /**
  * Helper consumed by `SidebarChat` to extract proposal tool outputs
  * from a message's `toolCalls` array. Returns the typed `ProposalOutput`
@@ -2141,6 +2199,7 @@ export function getProposalsFromMessage(
       tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL &&
       tc.toolName !== PROPOSE_DELETE_EDGE_TOOL &&
       tc.toolName !== PROPOSE_MOVE_NODE_TOOL &&
+      tc.toolName !== PROPOSE_DELETE_NODE_TOOL &&
       tc.toolName !== PROPOSE_CODE_CHANGE_TOOL
     )
       continue;

@@ -111,6 +111,23 @@ function derive(
         ],
       };
     }
+    case "graphNodeDelete": {
+      // The workbench has no "node removed" change; show the links that go with it.
+      const { ref_id } = p.payload;
+      const edges = p.meta?.edges ?? [];
+      if (p.meta?.refusedReason || edges.length === 0) return null;
+      return {
+        workspace: p.payload.workspaceSlug,
+        title: `Delete ${p.meta?.node_name ?? ref_id}`,
+        focus: ref_id,
+        changes: edges.map((e) => ({
+          kind: "unlink" as const,
+          edge: e.edge_type,
+          source: e.direction === "out" ? ref_id : e.other_ref_id,
+          target: e.direction === "out" ? e.other_ref_id : ref_id,
+        })),
+      };
+    }
     default:
       return null;
   }

@@ -18,6 +18,7 @@
  * 14. approveGraphEdgeDelete: finds the edge by its ends, mutes it; gone → 404; refused → 400
  * 15. approveGraphNodeMove: links to the new parent THEN unlinks the old; a failed unlink is an
  *     error (retryable); cycle / mirror-owned / missing → refused before any write
+ * 16. approveGraphNodeDelete: deletes by ref_id; gone → 404; failed → 502; refused → 400
  */
 
 // @vitest-environment node
@@ -34,6 +35,7 @@ const {
   mockDeleteEdge,
   mockFindEdgeByEndpoints,
   mockKgGetNode,
+  mockDeleteSingleNode,
 } = vi.hoisted(() => ({
   mockResolveGraphJarvis: vi.fn(),
   mockAddNode: vi.fn(),
@@ -43,6 +45,7 @@ const {
   mockDeleteEdge: vi.fn(),
   mockFindEdgeByEndpoints: vi.fn(),
   mockKgGetNode: vi.fn(),
+  mockDeleteSingleNode: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -73,6 +76,7 @@ vi.mock("@/services/swarm/api/nodes", () => ({
   readNodeByRef: mockReadNodeByRef,
   deleteEdge: mockDeleteEdge,
   findEdgeByEndpoints: mockFindEdgeByEndpoints,
+  deleteSingleNode: mockDeleteSingleNode,
 }));
 
 // The move's cycle check reads the destination's ancestors through kg-adapter.
@@ -118,6 +122,7 @@ import {
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
   PROPOSE_DELETE_EDGE_TOOL,
   PROPOSE_MOVE_NODE_TOOL,
+  PROPOSE_DELETE_NODE_TOOL,
 } from "@/lib/proposals/types";
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
@@ -922,5 +927,88 @@ describe("approveGraphNodeMove", () => {
       }),
     ).toMatchObject({ ok: false, status: 400, error: "Has 2 parents." });
     expect(mockReadNodeByRef).not.toHaveBeenCalled();
+  });
+});
+
+// ── approveGraphNodeDelete ────────────────────────────────────────────────
+
+function makeNodeDeleteMsg(meta: Record<string, unknown> = {}): MessageLike {
+  return {
+    role: "assistant",
+    toolCalls: [
+      {
+        toolName: PROPOSE_DELETE_NODE_TOOL,
+        output: {
+          kind: "graphNodeDelete",
+          proposalId: PROPOSAL_ID,
+          payload: { workspaceId: WS_ID, workspaceSlug: WS_SLUG, ref_id: "node-ref-123" },
+          meta: { workspaceSlug: WS_SLUG, node_name: "Old Concept", ...meta },
+        },
+      },
+    ],
+  };
+}
+
+describe("approveGraphNodeDelete", () => {
+  beforeEach(() => {
+    mockDeleteSingleNode.mockResolvedValue({ success: true, mutedEdgeCount: 2 });
+  });
+
+  it("deletes the node by its ref_id", async () => {
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeNodeDeleteMsg()], intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result).toEqual({
+        proposalId: PROPOSAL_ID,
+        kind: "graphNodeDelete",
+        createdEntityId: "node-ref-123",
+        landedOn: `workspace:${WS_ID}`,
+        workspaceSlug: WS_SLUG,
+      });
+    }
+    expect(mockDeleteSingleNode).toHaveBeenCalledWith(ACCESS_OK.access.config, "node-ref-123");
+  });
+
+  it("says so when the node is already gone", async () => {
+    mockDeleteSingleNode.mockResolvedValue({ success: false, notFound: true, error: "Node not found — it may already have been deleted." });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeNodeDeleteMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 404, error: expect.stringContaining("already have been deleted") });
+  });
+
+  it("surfaces an unconfirmed delete as 502 so the approval can be retried", async () => {
+    mockDeleteSingleNode.mockResolvedValue({ success: false, error: "Jarvis did not confirm the node was deleted." });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeNodeDeleteMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 502, error: expect.stringContaining("did not confirm") });
+  });
+
+  it("refuses a card the propose tool refused", async () => {
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeNodeDeleteMsg({ refusedReason: "Schema nodes define a type." })], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 400, error: "Schema nodes define a type." });
+    expect(mockDeleteSingleNode).not.toHaveBeenCalled();
+  });
+
+  it("denies a caller who is not a member of the workspace before any write", async () => {
+    mockResolveGraphJarvis.mockResolvedValue(ACCESS_DENIED);
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeNodeDeleteMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 403 });
+    expect(mockDeleteSingleNode).not.toHaveBeenCalled();
   });
 });
