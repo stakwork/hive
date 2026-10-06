@@ -4,7 +4,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { select, zoom as d3Zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior } from "d3";
 import { Maximize } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { RUN_GRAPH_NODE_RADIUS, type RunGraphLayout, type RunGraphPoint } from "@/lib/strut-run-graph/layout";
+import {
+  RUN_GRAPH_NODE_RADIUS,
+  type RunGraphLayout,
+  type RunGraphPlace,
+  type RunGraphPoint,
+} from "@/lib/strut-run-graph/layout";
 import { linkState, type RunGraphLink, type RunGraphLinkState } from "@/lib/strut-run-graph/walk";
 
 export interface RunGraphCanvasNode {
@@ -18,10 +23,10 @@ interface RunGraphCanvasProps {
   nodes: RunGraphCanvasNode[];
   links: RunGraphLink[];
   colorMap: Record<string, string>;
-  /** Nodes no call has touched yet at this step of the replay. */
-  hiddenIds: ReadonlySet<string>;
-  /** Nodes drawn with a ring: the step's own, and the selection. */
+  /** Nodes the step's own call touched: ringed in the cell that call is in. */
   activeIds: ReadonlySet<string>;
+  /** The picked node: ringed wherever it is drawn. */
+  selectedId?: string | null;
   /** The replay's step; null = the whole run. */
   step: number | null;
   /** Width at the right of the canvas that something else is drawn over. */
@@ -53,8 +58,6 @@ const LINK_CLASS: Record<Exclude<RunGraphLinkState, "hidden">, string> = {
   walked: "stroke-sky-500",
   current: "stroke-sky-400",
 };
-/** An edge between two cells, under the hover that brings it out. */
-const FAR_EDGE_OPACITY = 0.3;
 const LINK_WIDTH: Record<Exclude<RunGraphLinkState, "hidden">, number> = { edge: 1.25, walked: 1.75, current: 2.75 };
 const ARROW_CLASS: Record<"walked" | "current", string> = { walked: "fill-sky-500", current: "fill-sky-400" };
 
@@ -70,22 +73,21 @@ interface DrawnLink {
   to: RunGraphPoint;
   /** Direction of the link, in degrees. */
   angle: number;
-  /** Its two nodes sit in different cells. */
-  far: boolean;
 }
 
 /**
  * A run's nodes where `layout` put them: the stages as lanes, a looping
- * stage's iterations as cells, the graph's edges and the run's hops between
- * the nodes. Pans and zooms; opens showing all of it.
+ * stage's iterations as cells, and in each cell the graph's edges and the
+ * run's hops between the nodes drawn there. Pans and zooms; opens showing
+ * all of it.
  */
 export function RunGraphCanvas({
   layout,
   nodes,
   links,
   colorMap,
-  hiddenIds,
   activeIds,
+  selectedId = null,
   step,
   insetRight = 0,
   onNodeClick,
@@ -162,36 +164,59 @@ export function RunGraphCanvas({
     fit();
   }, [fit]);
 
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+
+  /** The cell of the step's call, where its nodes are ringed. */
+  const activeCell = step === null ? null : (layout.callCells[step] ?? null);
+
+  // What is in the picture at this step: a place from the first call that put it there.
+  const shown = useMemo(() => {
+    const byCell = new Map<string, Map<string, RunGraphPlace>>();
+    for (const place of layout.places.values()) {
+      if (step !== null && place.since > step) continue;
+      let cell = byCell.get(place.cell);
+      if (!cell) {
+        cell = new Map();
+        byCell.set(place.cell, cell);
+      }
+      cell.set(place.id, place);
+    }
+    return byCell;
+  }, [layout.places, step]);
+
   const drawn = useMemo<DrawnLink[]>(() => {
     const list: DrawnLink[] = [];
-    for (const link of links) {
-      if (hiddenIds.has(link.source) || hiddenIds.has(link.target)) continue;
-      const { state, hop } = linkState(link, step);
-      if (state === "hidden") continue;
-      const source = layout.positions.get(hop?.source ?? link.source);
-      const target = layout.positions.get(hop?.target ?? link.target);
-      if (!source || !target) continue;
-      const dx = target.x - source.x;
-      const dy = target.y - source.y;
-      const length = Math.hypot(dx, dy);
-      const reach = RUN_GRAPH_NODE_RADIUS + ARROW_GAP;
-      if (length <= 2 * reach) continue;
-      const ux = dx / length;
-      const uy = dy / length;
-      list.push({
-        key: `${link.source}|${link.edgeType ?? ""}|${link.target}`,
-        link,
-        state,
-        from: { x: source.x + ux * RUN_GRAPH_NODE_RADIUS, y: source.y + uy * RUN_GRAPH_NODE_RADIUS },
-        to: { x: target.x - ux * reach, y: target.y - uy * reach },
-        angle: (Math.atan2(dy, dx) * 180) / Math.PI,
-        far: source.cell !== target.cell,
-      });
+    for (const [cellKey, cell] of shown) {
+      for (const link of links) {
+        if (!cell.has(link.source) || !cell.has(link.target)) continue;
+        // Only the hops this cell's own calls took are drawn in it.
+        const hops = link.hops.filter((hop) => layout.callCells[hop.call] === cellKey);
+        const { state, hop } = linkState({ ...link, hops }, step);
+        if (state === "hidden") continue;
+        const source = cell.get(hop?.source ?? link.source);
+        const target = cell.get(hop?.target ?? link.target);
+        if (!source || !target) continue;
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const length = Math.hypot(dx, dy);
+        const reach = RUN_GRAPH_NODE_RADIUS + ARROW_GAP;
+        if (length <= 2 * reach) continue;
+        const ux = dx / length;
+        const uy = dy / length;
+        list.push({
+          key: `${cellKey}|${link.source}|${link.edgeType ?? ""}|${link.target}`,
+          link,
+          state,
+          from: { x: source.x + ux * RUN_GRAPH_NODE_RADIUS, y: source.y + uy * RUN_GRAPH_NODE_RADIUS },
+          to: { x: target.x - ux * reach, y: target.y - uy * reach },
+          angle: (Math.atan2(dy, dx) * 180) / Math.PI,
+        });
+      }
     }
     // The run's own path is drawn over the edges it did not take.
     const order: Record<DrawnLink["state"], number> = { edge: 0, walked: 1, current: 2 };
     return list.sort((a, b) => order[a.state] - order[b.state]);
-  }, [links, hiddenIds, step, layout.positions]);
+  }, [shown, links, layout.callCells, step]);
 
   const beside = useMemo(() => {
     if (!hoverId) return null;
@@ -265,9 +290,9 @@ export function RunGraphCanvas({
           </g>
 
           <g data-testid="run-graph-links" fill="none" strokeLinecap="round">
-            {drawn.map(({ key, link, state, from, to, angle, far }) => {
+            {drawn.map(({ key, link, state, from, to, angle }) => {
               const hovered = link.source === hoverId || link.target === hoverId;
-              const opacity = hoverId !== null ? (hovered ? 1 : 0.12) : far && state === "edge" ? FAR_EDGE_OPACITY : 1;
+              const opacity = hoverId !== null ? (hovered ? 1 : 0.12) : 1;
               return (
                 <g
                   key={key}
@@ -301,47 +326,52 @@ export function RunGraphCanvas({
           </g>
 
           <g data-testid="run-graph-nodes">
-            {nodes.map((node) => {
-              const point = layout.positions.get(node.id);
-              if (!point || hiddenIds.has(node.id)) return null;
-              const active = activeIds.has(node.id);
-              const emphasised = node.id === hoverId || (active && activeIds.size <= MAX_NAMED_ACTIVE);
-              return (
-                <g
-                  key={node.id}
-                  transform={`translate(${point.x},${point.y})`}
-                  opacity={beside && !beside.has(node.id) ? 0.25 : 1}
-                  className="cursor-pointer"
-                  data-testid="run-graph-node"
-                  data-active={active}
-                  onClick={() => onNodeClick(node.id)}
-                  onMouseEnter={() => setHoverId(node.id)}
-                  onMouseLeave={() => setHoverId((id) => (id === node.id ? null : id))}
-                >
-                  <circle
-                    r={RUN_GRAPH_NODE_RADIUS}
-                    fill={colorMap[node.type] ?? "#6b7280"}
-                    className={active ? "stroke-foreground" : "stroke-card"}
-                    strokeWidth={active ? 3 : 1.5}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                  <text
-                    y={-(RUN_GRAPH_NODE_RADIUS + 6)}
-                    textAnchor="middle"
-                    className={`pointer-events-none fill-foreground stroke-card font-medium ${
-                      emphasised ? "" : "[[data-names=emphasised]_&]:hidden"
-                    }`}
-                    strokeWidth={3}
-                    strokeLinejoin="round"
-                    paintOrder="stroke"
-                    vectorEffect="non-scaling-stroke"
-                    style={{ fontSize: NAME_FONT }}
+            {[...shown.values()].flatMap((cell) =>
+              [...cell.values()].map((place) => {
+                const node = nodeById.get(place.id);
+                if (!node) return null;
+                const active =
+                  place.id === selectedId ||
+                  (activeIds.has(place.id) && (activeCell === null || place.cell === activeCell));
+                const emphasised = place.id === hoverId || (active && activeIds.size <= MAX_NAMED_ACTIVE);
+                return (
+                  <g
+                    key={`${place.cell}|${place.id}`}
+                    transform={`translate(${place.x},${place.y})`}
+                    opacity={beside && !beside.has(place.id) ? 0.25 : 1}
+                    className="cursor-pointer"
+                    data-testid="run-graph-node"
+                    data-cell={place.cell}
+                    data-active={active}
+                    onClick={() => onNodeClick(place.id)}
+                    onMouseEnter={() => setHoverId(place.id)}
+                    onMouseLeave={() => setHoverId((id) => (id === place.id ? null : id))}
                   >
-                    {clipName(node.name)}
-                  </text>
-                </g>
-              );
-            })}
+                    <circle
+                      r={RUN_GRAPH_NODE_RADIUS}
+                      fill={colorMap[node.type] ?? "#6b7280"}
+                      className={active ? "stroke-foreground" : "stroke-card"}
+                      strokeWidth={active ? 3 : 1.5}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    <text
+                      y={-(RUN_GRAPH_NODE_RADIUS + 6)}
+                      textAnchor="middle"
+                      className={`pointer-events-none fill-foreground stroke-card font-medium ${
+                        emphasised ? "" : "[[data-names=emphasised]_&]:hidden"
+                      }`}
+                      strokeWidth={3}
+                      strokeLinejoin="round"
+                      paintOrder="stroke"
+                      vectorEffect="non-scaling-stroke"
+                      style={{ fontSize: NAME_FONT }}
+                    >
+                      {clipName(node.name)}
+                    </text>
+                  </g>
+                );
+              }),
+            )}
           </g>
         </g>
       </svg>

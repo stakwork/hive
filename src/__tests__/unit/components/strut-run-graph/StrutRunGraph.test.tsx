@@ -6,7 +6,10 @@
  *   reader;
  * - one branch of the run shown on its own: from the crosshair on its row
  *   or the `scope` it is given, its own steps as the lanes, and back out
- *   along the breadcrumb.
+ *   along the breadcrumb;
+ * - the lineage above the touched nodes: drawn and counted with them, an
+ *   ancestor the run never touched said to be one, and a lineage the graph
+ *   did not answer for said so.
  */
 
 import React from "react";
@@ -250,5 +253,65 @@ describe("StrutRunGraph scope", () => {
     expect(crumbs()).toBe("looploop#0improve");
     expect(lanes()).toEqual(["write"]);
     expect(drawn()).toEqual(["Diabetes Follow-up"]);
+  });
+});
+
+/** One call reading a rule, under Medicine → Problem List, which the run never read itself. */
+const LINEAGE_TRACE = {
+  calls: [call("plan/001-graph_graph_get", "read", ["rule"])],
+  nodes: [
+    node("rule", "Concept", "Unifying Diagnosis"),
+    { ...node("list", "Concept", "Problem List"), ancestor: true },
+    { ...node("medicine", "Concept", "Medicine"), ancestor: true },
+  ],
+  edges: [
+    { source: "medicine", target: "list", edge_type: "PARENT_OF" },
+    { source: "list", target: "rule", edge_type: "PARENT_OF" },
+  ],
+  nodesRead: true,
+  edgesRead: true,
+  lineageRead: true,
+  truncated: false,
+};
+
+describe("StrutRunGraph lineage", () => {
+  it("draws the touched nodes under their lineage, counts both, and says which the run never touched", async () => {
+    stubFetch(() => answer(404, {}), LINEAGE_TRACE);
+    render(<StrutRunGraph endpoint={ENDPOINT} />);
+    await screen.findByTestId("run-graph-summary");
+
+    expect(drawn().sort()).toEqual(["Medicine", "Problem List", "Unifying Diagnosis"]);
+    expect(summary()).toContain("1 calls read or wrote 1 nodes, under the 2 nodes they descend from");
+    expect(screen.getByTestId("run-graph-legend").textContent).toContain("Concept3");
+    expect(screen.getAllByTestId("run-graph-link").map((el) => el.getAttribute("data-state"))).toEqual([
+      "edge",
+      "edge",
+    ]);
+    expect(screen.queryByTestId("run-graph-unread")).toBeNull();
+
+    fireEvent.click(screen.getByText("Medicine"));
+    expect(screen.getByTestId("run-graph-node-ancestor").textContent).toContain("No call touched this node");
+
+    fireEvent.click(screen.getByText("Unifying Diagnosis"));
+    expect(screen.queryByTestId("run-graph-node-ancestor")).toBeNull();
+    expect(screen.getByTestId("run-graph-node-detail").textContent).toContain("Touched by 1 call");
+  });
+
+  it("says when the graph did not answer for the lineage", async () => {
+    stubFetch(() => answer(404, {}), {
+      ...LINEAGE_TRACE,
+      nodes: [LINEAGE_TRACE.nodes[0]],
+      edges: [],
+      lineageRead: false,
+      unreadReason: "no answer in 20 s",
+    });
+    render(<StrutRunGraph endpoint={ENDPOINT} />);
+    await screen.findByTestId("run-graph-summary");
+
+    expect(drawn()).toEqual(["Unifying Diagnosis"]);
+    expect(summary()).not.toContain("descend from");
+    expect(screen.getByTestId("run-graph-unread").textContent).toContain(
+      "The graph did not answer for the lineage of these nodes (no answer in 20 s)",
+    );
   });
 });

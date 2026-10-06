@@ -1,14 +1,20 @@
 /**
- * Where the viewer draws a run's nodes: by the stage of the run that first
+ * Where the viewer draws a run's nodes: by the stages of the run that
  * touched them. Pure, and the same for the same input.
  *
  * A stage is a step directly under the run. Stages are lanes, left to right
  * in the order the run reached them; a stage that loops has one cell per
- * iteration. Inside a cell the nodes settle by the links among them. A stage
- * that only went back to nodes an earlier one touched is an empty lane.
+ * iteration. A cell draws every node its own calls touched — a node two
+ * stages read is drawn in both — and, above each of them, its lineage: the
+ * nodes it descends from along `PARENT_OF`, up to the root of its tree,
+ * whether or not the run touched those. A tree is drawn as rings around its
+ * root, one ring per level; anything else in the cell settles by the links
+ * among it. A cell depends on nothing outside itself, so a finished cell
+ * stays as it was while the run goes on.
  */
 
 import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type SimulationNodeDatum } from "d3";
+import { ancestorsOf } from "./lineage";
 import { callLabel } from "./replay";
 import type { RunGraphCall } from "./types";
 
@@ -22,12 +28,14 @@ export interface RunGraphBox {
 export interface RunGraphCell extends RunGraphBox {
   /** The loop iteration; null for a stage that does not loop. */
   iteration: number | null;
+  /** Nodes drawn in the cell. */
   nodes: number;
 }
 
 export interface RunGraphLane extends RunGraphBox {
   stage: string;
   calls: number;
+  /** Nodes drawn in the lane, over its cells. */
   nodes: number;
   cells: RunGraphCell[];
 }
@@ -37,16 +45,22 @@ export interface RunGraphPoint {
   y: number;
 }
 
+/** One drawing of a node: a node is drawn once in each cell whose calls touched it. */
 export interface RunGraphPlace extends RunGraphPoint {
-  /** The cell the node sits in: two nodes are drawn together when theirs is the same. */
+  id: string;
   cell: string;
+  /** Index of the first call that puts it in the picture: one of the cell's touching it, or a node under it. */
+  since: number;
 }
 
 export interface RunGraphLayout {
   width: number;
   height: number;
-  positions: Map<string, RunGraphPlace>;
+  /** Every drawing of a node, keyed by `placeKey`. */
+  places: Map<string, RunGraphPlace>;
   lanes: RunGraphLane[];
+  /** The cell each call is in, by its index. */
+  callCells: string[];
 }
 
 /** Radius a node is drawn with. */
@@ -58,9 +72,16 @@ const COLLIDE_RADIUS = 28;
 const GRAVITY = 0.12;
 const TICKS = 200;
 
+/** The least arc two neighbours on a ring are apart: room for a node and most of its name. */
+const MIN_ARC = 80;
+/** The widest fan a node's children spread over — the root's spread all the way round. */
+const MAX_FAN = (2 * Math.PI) / 3;
+
 const CELL_PAD = 32;
 const CELL_HEADER = 28;
 const CELL_GAP = 16;
+/** Between the separate parts of one cell: a tree, a cluster, the loose nodes. */
+const PART_GAP = 48;
 const LANE_PAD = 20;
 const LANE_HEADER = 56;
 const LANE_GAP = 48;
@@ -75,23 +96,55 @@ export function stageOf(path: string): { stage: string; iteration: number | null
   return match ? { stage: match[1], iteration: Number(match[2]) } : { stage: segment, iteration: null };
 }
 
-interface Settling extends SimulationNodeDatum {
-  id: string;
+/** The key of a stage's cell: `ingest#3`, `seed#`. */
+export function cellKey(stage: string, iteration: number | null): string {
+  return `${stage}#${iteration ?? ""}`;
 }
 
-interface Settled {
+/** The cell a call is in. */
+export function cellOf(path: string): string {
+  const { stage, iteration } = stageOf(path);
+  return cellKey(stage, iteration);
+}
+
+export function placeKey(cell: string, id: string): string {
+  return `${cell}|${id}`;
+}
+
+type Link = { source: string; target: string };
+
+/** Nodes placed together, the origin at their top left. */
+interface Part {
   width: number;
   height: number;
   points: Map<string, RunGraphPoint>;
 }
 
-/** The nodes of one cell, settled by the links among them; the origin is the cell's top left. */
-function settle(ids: string[], links: Array<{ source: string; target: string }>): Settled {
-  const nodes: Settling[] = ids.map((id) => ({ id }));
+/** The points moved so the least of them is at the origin, and the box they fill. */
+function boxed(points: Map<string, RunGraphPoint>): Part {
+  const xs = [...points.values()].map((p) => p.x);
+  const ys = [...points.values()].map((p) => p.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const moved = new Map<string, RunGraphPoint>();
+  for (const [id, p] of points) moved.set(id, { x: p.x - minX, y: p.y - minY });
+  return { width: Math.max(...xs) - minX, height: Math.max(...ys) - minY, points: moved };
+}
+
+interface Settling extends SimulationNodeDatum {
+  id: string;
+}
+
+/** The nodes settled by the links among them; a pinned node stays where it is put. */
+function settle(ids: string[], links: Link[], pinned: ReadonlyMap<string, RunGraphPoint>): Part {
+  const nodes: Settling[] = ids.map((id) => {
+    const pin = pinned.get(id);
+    return pin ? { id, x: pin.x, y: pin.y, fx: pin.x, fy: pin.y } : { id };
+  });
   forceSimulation(nodes)
     .force(
       "link",
-      forceLink<Settling, { source: string; target: string }>(links.map((l) => ({ ...l })))
+      forceLink<Settling, Link>(links.map((l) => ({ ...l })))
         .id((d) => d.id)
         .distance(LINK_DISTANCE),
     )
@@ -101,25 +154,140 @@ function settle(ids: string[], links: Array<{ source: string; target: string }>)
     .force("y", forceY(0).strength(GRAVITY))
     .stop()
     .tick(TICKS);
+  return boxed(new Map(nodes.map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }])));
+}
 
-  const xs = nodes.map((n) => n.x ?? 0);
-  const ys = nodes.map((n) => n.y ?? 0);
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
-  const points = new Map<string, RunGraphPoint>();
-  for (const node of nodes) {
-    points.set(node.id, { x: (node.x ?? 0) - minX + CELL_PAD, y: (node.y ?? 0) - minY + CELL_PAD });
-  }
-  return {
-    width: Math.max(...xs) - minX + 2 * CELL_PAD,
-    height: Math.max(...ys) - minY + 2 * CELL_PAD,
-    points,
+/**
+ * A tree as rings around its root: each level one ring out, each subtree
+ * within the slice of the circle its leaves earn. Below the root a node's
+ * children fan out over no more than `MAX_FAN`, centred on it, so a chain
+ * of single children stays on one side. The rings are far enough apart
+ * that no two neighbours on one come closer than `MIN_ARC`.
+ */
+function radialTree(root: string, children: ReadonlyMap<string, string[]>): Map<string, RunGraphPoint> {
+  const leaves = new Map<string, number>();
+  const countLeaves = (id: string): number => {
+    const known = leaves.get(id);
+    if (known !== undefined) return known;
+    const kids = children.get(id) ?? [];
+    const count = kids.length === 0 ? 1 : kids.reduce((sum, kid) => sum + countLeaves(kid), 0);
+    leaves.set(id, count);
+    return count;
   };
+  countLeaves(root);
+
+  const angle = new Map<string, number>();
+  const depth = new Map<string, number>();
+  const fan = new Map<string, number>();
+  const assign = (id: string, level: number, start: number, span: number) => {
+    const mid = start + span / 2;
+    angle.set(id, mid);
+    depth.set(id, level);
+    const kids = children.get(id) ?? [];
+    if (kids.length === 0) return;
+    const spread = level === 0 ? span : Math.min(span, MAX_FAN);
+    fan.set(id, spread);
+    let from = mid - spread / 2;
+    for (const kid of kids) {
+      const slice = (spread * countLeaves(kid)) / countLeaves(id);
+      assign(kid, level + 1, from, slice);
+      from += slice;
+    }
+  };
+  assign(root, 0, -Math.PI / 2, 2 * Math.PI);
+
+  let gap = LINK_DISTANCE;
+  for (const [id, spread] of fan) {
+    gap = Math.max(gap, (countLeaves(id) * MIN_ARC) / (spread * ((depth.get(id) ?? 0) + 1)));
+  }
+
+  const points = new Map<string, RunGraphPoint>();
+  for (const [id, a] of angle) {
+    const r = (depth.get(id) ?? 0) * gap;
+    points.set(id, r === 0 ? { x: 0, y: 0 } : { x: Math.cos(a) * r, y: Math.sin(a) * r });
+  }
+  return points;
+}
+
+/**
+ * One connected part of a cell. The biggest tree in it, by its lineage, is
+ * drawn as rings around its root; whatever else is in the part settles
+ * around that.
+ */
+function placePart(ids: string[], links: Link[], parents: ReadonlyMap<string, string[]>): Part {
+  const within = new Set(ids);
+  const parentOf = new Map<string, string>();
+  const children = new Map<string, string[]>();
+  for (const id of ids) {
+    const parent = (parents.get(id) ?? []).find((p) => within.has(p) && p !== id);
+    if (parent === undefined) continue;
+    parentOf.set(id, parent);
+    const kids = children.get(parent);
+    if (kids) kids.push(id);
+    else children.set(parent, [id]);
+  }
+  const roots = ids.filter((id) => !parentOf.has(id) && children.has(id));
+  if (roots.length === 0) return settle(ids, links, new Map());
+
+  const sizeOf = (id: string): number => 1 + (children.get(id) ?? []).reduce((sum, kid) => sum + sizeOf(kid), 0);
+  const root = roots.reduce((best, id) => (sizeOf(id) > sizeOf(best) ? id : best));
+  const tree = radialTree(root, children);
+  return tree.size === ids.length ? boxed(tree) : settle(ids, links, tree);
+}
+
+/** The nodes of one cell: its connected parts side by side, the loose nodes together at the end. */
+function placeCell(ids: string[], links: Link[], parents: ReadonlyMap<string, string[]>): Part {
+  const within = new Set(ids);
+  const inCell = links.filter((l) => l.source !== l.target && within.has(l.source) && within.has(l.target));
+
+  const leader = new Map<string, string>(ids.map((id) => [id, id]));
+  const find = (id: string): string => {
+    let top = id;
+    while (leader.get(top) !== top) top = leader.get(top) as string;
+    return top;
+  };
+  for (const link of inCell) leader.set(find(link.source), find(link.target));
+
+  const members = new Map<string, string[]>();
+  for (const id of ids) {
+    const top = find(id);
+    const list = members.get(top);
+    if (list) list.push(id);
+    else members.set(top, [id]);
+  }
+  const parts: Part[] = [];
+  const loose: string[] = [];
+  for (const group of members.values()) {
+    if (group.length === 1) loose.push(group[0]);
+    else {
+      const inGroup = new Set(group);
+      parts.push(
+        placePart(
+          group,
+          inCell.filter((l) => inGroup.has(l.source)),
+          parents,
+        ),
+      );
+    }
+  }
+  if (loose.length > 0) parts.push(settle(loose, [], new Map()));
+  parts.sort((a, b) => b.points.size - a.points.size);
+
+  const tallest = Math.max(0, ...parts.map((p) => p.height));
+  const points = new Map<string, RunGraphPoint>();
+  let x = CELL_PAD;
+  for (const part of parts) {
+    const top = CELL_PAD + (tallest - part.height) / 2;
+    for (const [id, p] of part.points) points.set(id, { x: x + p.x, y: top + p.y });
+    x += part.width + PART_GAP;
+  }
+  return { width: x - PART_GAP + CELL_PAD, height: tallest + 2 * CELL_PAD, points };
 }
 
 interface Group {
   iteration: number | null;
   ids: string[];
+  since: Map<string, number>;
 }
 
 interface Stage {
@@ -129,55 +297,49 @@ interface Stage {
 }
 
 /**
- * Place `nodeIds` for a canvas about `aspect` times as wide as it is tall.
- * A node the calls never touched is left out.
+ * Place `nodeIds` for a canvas about `aspect` times as wide as it is tall:
+ * in each cell, what its calls touched and the lineage above that, by
+ * `parents` (each node's parents along `PARENT_OF`). A node not among
+ * `nodeIds` is left out, lineage or not.
  */
 export function layoutRunGraph(
   calls: RunGraphCall[],
   nodeIds: string[],
-  links: Array<{ source: string; target: string }>,
+  links: Link[],
+  parents: ReadonlyMap<string, string[]> = new Map(),
   aspect = 1.6,
 ): RunGraphLayout {
   const wanted = new Set(nodeIds);
   const stages = new Map<string, Stage>();
-  const groupOf = new Map<string, Group>();
-  for (const call of calls) {
+  const callCells: string[] = [];
+  calls.forEach((call, index) => {
     const { stage, iteration } = stageOf(call.path);
+    callCells.push(cellKey(stage, iteration));
     let entry = stages.get(stage);
     if (!entry) {
       entry = { stage, calls: 0, groups: new Map() };
       stages.set(stage, entry);
     }
     entry.calls++;
-    for (const node of call.nodes) {
-      if (!wanted.has(node.ref_id) || groupOf.has(node.ref_id)) continue;
+    const touched = call.nodes.map((n) => n.ref_id);
+    for (const id of [...touched, ...ancestorsOf(touched, parents)]) {
+      if (!wanted.has(id)) continue;
       let group = entry.groups.get(iteration);
       if (!group) {
-        group = { iteration, ids: [] };
+        group = { iteration, ids: [], since: new Map() };
         entry.groups.set(iteration, group);
       }
-      group.ids.push(node.ref_id);
-      groupOf.set(node.ref_id, group);
+      if (group.since.has(id)) continue;
+      group.ids.push(id);
+      group.since.set(id, index);
     }
-  }
-
-  const within = new Map<Group, Array<{ source: string; target: string }>>();
-  for (const link of links) {
-    const group = groupOf.get(link.source);
-    if (!group || group !== groupOf.get(link.target)) continue;
-    const list = within.get(group);
-    if (list) list.push(link);
-    else within.set(group, [link]);
-  }
+  });
 
   const settled = [...stages.values()].map((s) => {
     const looped = [...s.groups.keys()].some((iteration) => iteration !== null);
     const cells = [...s.groups.values()]
       .sort((a, b) => (a.iteration ?? -1) - (b.iteration ?? -1))
-      .map((group) => {
-        const cell = settle(group.ids, within.get(group) ?? []);
-        return { group, ...cell, header: looped ? CELL_HEADER : 0 };
-      });
+      .map((group) => ({ group, ...placeCell(group.ids, links, parents), header: looped ? CELL_HEADER : 0 }));
     return { ...s, cells };
   });
 
@@ -186,7 +348,7 @@ export function layoutRunGraph(
   const area = settled.reduce((sum, s) => sum + s.cells.reduce((a, c) => a + footprint(c), 0), 0);
   const targetHeight = Math.sqrt(area / aspect) || 1;
 
-  const positions = new Map<string, RunGraphPlace>();
+  const places = new Map<string, RunGraphPlace>();
   const lanes: RunGraphLane[] = [];
   let laneX = 0;
   for (const s of settled) {
@@ -214,9 +376,15 @@ export function layoutRunGraph(
         width: cell.width,
         height,
       });
-      const key = `${s.stage}#${cell.group.iteration ?? ""}`;
+      const key = cellKey(s.stage, cell.group.iteration);
       for (const [id, point] of cell.points) {
-        positions.set(id, { x: left + point.x, y: top + cell.header + point.y, cell: key });
+        places.set(placeKey(key, id), {
+          id,
+          cell: key,
+          since: cell.group.since.get(id) ?? 0,
+          x: left + point.x,
+          y: top + cell.header + point.y,
+        });
       }
       x += cell.width + CELL_GAP;
       right = Math.max(right, x - CELL_GAP);
@@ -238,5 +406,5 @@ export function layoutRunGraph(
 
   const height = Math.max(0, ...lanes.map((l) => l.height));
   for (const lane of lanes) lane.height = height;
-  return { width: Math.max(0, laneX - LANE_GAP), height, positions, lanes };
+  return { width: Math.max(0, laneX - LANE_GAP), height, places, lanes, callCells };
 }
