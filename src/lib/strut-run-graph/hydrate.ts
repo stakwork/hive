@@ -3,15 +3,19 @@
  * type, name and namespace, and the edges among them. Server-only.
  *
  * Strut's log names a node by `ref_id` (and sometimes a type); everything
- * else is read from the swarm's graph with two read-only Cypher queries.
+ * else is read from the swarm's graph with three read-only Cypher queries:
+ * the nodes, the edges among them, and their lineage — the nodes above them
+ * along `PARENT_OF`, up to the root, which the run need not have touched.
  * Hydration is best effort — a graph that cannot answer leaves the nodes as
  * the log named them and says what it did not read (`nodesRead`,
- * `edgesRead`) and why (`unreadReason`); it never fails the trace.
+ * `edgesRead`, `lineageRead`) and why (`unreadReason`); it never fails the
+ * trace.
  */
 
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
+import { LINEAGE_EDGE_TYPE } from "./lineage";
 import type { RunGraphEdge, RunGraphNode, RunGraphNodeBody, RunGraphNodeRef, RunGraphTrace } from "./types";
 
 /**
@@ -25,6 +29,8 @@ export const RUN_GRAPH_MAX_NODES = 1000;
 const REF_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 /** Upstream answers at most this many rows. */
 const ROW_LIMIT = 1000;
+/** How far up a lineage is read. A Concept tree is a few levels deep; a cycle would otherwise never end. */
+const LINEAGE_DEPTH = 10;
 const QUERY_TIMEOUT_MS = 20_000;
 const MAX_NAME_CHARS = 160;
 const MAX_REASON_CHARS = 120;
@@ -33,6 +39,9 @@ const LOG_TAG = "STRUT_RUN_GRAPH";
 /** Labels every node carries; the one left over is its type. */
 const STRUCTURAL_LABELS: ReadonlySet<string> = new Set(["Data_Bank", "Node"]);
 const DOMAIN_LABEL_PREFIX = "Domain_";
+
+/** Cypher for the name of node `v`, whichever property holds it. */
+const nameOf = (v: string): string => `coalesce(${v}.name, ${v}.title, ${v}.label, ${v}.file_name, ${v}.source_link)`;
 
 export interface CypherResult {
   columns: string[];
@@ -116,20 +125,36 @@ function unresolved(ref: RunGraphNodeRef): RunGraphNode {
   };
 }
 
+/** A node as a row of the graph answers for it. */
+function resolved(refId: string, row: Record<string, unknown>, loggedType?: string): RunGraphNode {
+  const name = typeof row.name === "string" && row.name.trim() ? row.name.trim() : refId.slice(0, 8);
+  return {
+    ref_id: refId,
+    node_type: typeFromLabels(row.labels, loggedType),
+    name: name.length > MAX_NAME_CHARS ? `${name.slice(0, MAX_NAME_CHARS)}…` : name,
+    namespace: typeof row.namespace === "string" ? row.namespace : null,
+    found: true,
+  };
+}
+
+const edgeKey = (edge: RunGraphEdge): string => `${edge.source}|${edge.edge_type}|${edge.target}`;
+
 export async function hydrateRunGraph(
   refs: RunGraphNodeRef[],
   run: CypherRunner,
 ): Promise<Omit<RunGraphTrace, "calls">> {
   const valid = refs.filter((r) => REF_ID_RE.test(r.ref_id));
   const shown = valid.slice(0, RUN_GRAPH_MAX_NODES);
-  if (shown.length === 0) return { nodes: [], edges: [], nodesRead: true, edgesRead: true, truncated: false };
+  if (shown.length === 0) {
+    return { nodes: [], edges: [], nodesRead: true, edgesRead: true, lineageRead: true, truncated: false };
+  }
 
   // `Data_Bank` is on every node and carries the `ref_id` index.
   const ids = `WITH [${shown.map((r) => `'${r.ref_id}'`).join(",")}] AS ids`;
-  const [nodeResult, edgeResult] = await Promise.all([
+  const [nodeResult, edgeResult, lineageResult] = await Promise.all([
     run(
       `${ids} MATCH (n:Data_Bank) WHERE n.ref_id IN ids RETURN n.ref_id AS ref_id, labels(n) AS labels, ` +
-        `coalesce(n.name, n.title, n.label, n.file_name, n.source_link) AS name, n.namespace AS namespace`,
+        `${nameOf("n")} AS name, n.namespace AS namespace`,
       ROW_LIMIT,
     ),
     run(
@@ -137,40 +162,63 @@ export async function hydrateRunGraph(
         `RETURN DISTINCT n.ref_id AS source, type(r) AS edge_type, m.ref_id AS target`,
       ROW_LIMIT,
     ),
+    // Every edge on every path from a touched node up to the root of its tree, with the parent it comes from.
+    run(
+      `${ids} MATCH (n:Data_Bank) WHERE n.ref_id IN ids ` +
+        `MATCH p = (a:Data_Bank)-[:${LINEAGE_EDGE_TYPE}*1..${LINEAGE_DEPTH}]->(n) ` +
+        `UNWIND relationships(p) AS r WITH DISTINCT startNode(r) AS s, endNode(r) AS t ` +
+        `RETURN s.ref_id AS source, t.ref_id AS target, labels(s) AS labels, ${nameOf("s")} AS name, s.namespace AS namespace`,
+      ROW_LIMIT,
+    ),
   ]);
 
-  const resolved = new Map<string, Record<string, unknown>>();
+  const rows = new Map<string, Record<string, unknown>>();
   for (const row of records(nodeResult)) {
-    if (typeof row.ref_id === "string") resolved.set(row.ref_id, row);
+    if (typeof row.ref_id === "string") rows.set(row.ref_id, row);
   }
   const nodes = shown.map((ref): RunGraphNode => {
-    const row = resolved.get(ref.ref_id);
-    if (!row) return unresolved(ref);
-    const name = typeof row.name === "string" && row.name.trim() ? row.name.trim() : ref.ref_id.slice(0, 8);
-    return {
-      ref_id: ref.ref_id,
-      node_type: typeFromLabels(row.labels, ref.node_type),
-      name: name.length > MAX_NAME_CHARS ? `${name.slice(0, MAX_NAME_CHARS)}…` : name,
-      namespace: typeof row.namespace === "string" ? row.namespace : null,
-      found: true,
-    };
+    const row = rows.get(ref.ref_id);
+    return row ? resolved(ref.ref_id, row, ref.node_type) : unresolved(ref);
   });
 
-  const edgeRows = records(edgeResult);
   const edges: RunGraphEdge[] = [];
-  for (const row of edgeRows) {
+  const known = new Set<string>();
+  for (const row of records(edgeResult)) {
     if (typeof row.source !== "string" || typeof row.target !== "string" || typeof row.edge_type !== "string") continue;
-    edges.push({ source: row.source, target: row.target, edge_type: row.edge_type });
+    const edge = { source: row.source, target: row.target, edge_type: row.edge_type };
+    if (!known.has(edgeKey(edge))) {
+      known.add(edgeKey(edge));
+      edges.push(edge);
+    }
+  }
+  const edgesAmongTouched = edges.length;
+
+  // An ancestor is a parent on some path up; it is named by every edge it is the parent of.
+  const touched = new Set(shown.map((r) => r.ref_id));
+  const ancestors = new Map<string, RunGraphNode>();
+  const lineageRows = records(lineageResult);
+  for (const row of lineageRows) {
+    if (typeof row.source !== "string" || typeof row.target !== "string") continue;
+    if (!REF_ID_RE.test(row.source) || !REF_ID_RE.test(row.target)) continue;
+    const edge = { source: row.source, target: row.target, edge_type: LINEAGE_EDGE_TYPE };
+    if (!known.has(edgeKey(edge))) {
+      known.add(edgeKey(edge));
+      edges.push(edge);
+    }
+    if (!touched.has(row.source) && !ancestors.has(row.source)) {
+      ancestors.set(row.source, { ...resolved(row.source, row), ancestor: true });
+    }
   }
 
-  const unread = [nodeResult, edgeResult].find(isUnread);
+  const unread = [nodeResult, edgeResult, lineageResult].find(isUnread);
   return {
-    nodes,
+    nodes: [...nodes, ...ancestors.values()],
     edges,
     nodesRead: !isUnread(nodeResult),
     edgesRead: !isUnread(edgeResult),
+    lineageRead: !isUnread(lineageResult),
     ...(unread ? { unreadReason: unread.unread } : {}),
-    truncated: valid.length > shown.length || edgeRows.length >= ROW_LIMIT,
+    truncated: valid.length > shown.length || edgesAmongTouched >= ROW_LIMIT || lineageRows.length >= ROW_LIMIT,
   };
 }
 
