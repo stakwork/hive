@@ -25,7 +25,7 @@ const nameOf = (data: Record<string, unknown>) => (typeof data.name === "string"
 /** The graph a proposal changes, and how — or null for a proposal that changes no graph. */
 function derive(
   p: ProposalOutput,
-): { workspace: string; title: string; focus?: string; changes: GraphChange[] } | null {
+): { workspace: string; title: string; focus?: string; changes: GraphChange[]; approvedFocus?: string } | null {
   switch (p.kind) {
     case "conceptCreate":
       return {
@@ -109,6 +109,19 @@ function derive(
           { kind: "unlink", edge: edge_type, source: from_ref_id, target: ref_id },
           { kind: "edge", edge: edge_type, source: to_ref_id, target: ref_id },
         ],
+      };
+    }
+    case "graphNodeDelete": {
+      const { ref_id } = p.payload;
+      // After approval the deleted ref_id can never be focused again — centre
+      // on the first edge's other end instead, when one was recorded.
+      const approvedFocus = p.meta?.edges?.[0]?.other_ref_id;
+      return {
+        workspace: p.payload.workspaceSlug,
+        title: `Remove ${p.meta?.node_name ?? ref_id}`,
+        focus: ref_id,
+        changes: [{ kind: "remove", node: ref_id }],
+        ...(approvedFocus ? { approvedFocus } : {}),
       };
     }
     default:

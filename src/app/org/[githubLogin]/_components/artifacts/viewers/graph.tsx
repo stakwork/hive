@@ -38,8 +38,12 @@ export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) 
   });
   const decided = status === "approved" || status === "rejected" ? status : null;
   const created = content.changes?.find((c) => c.kind === "node")?.name;
-  // An approval lands on what it created, else where the proposal was centred.
-  const approvedFocus = [created, content.focus].filter((ref): ref is string => !!ref);
+  // An approval lands on what it created, else where the proposal was centred —
+  // unless the proposal set an explicit override (a node delete must never
+  // re-focus the now-deleted ref_id).
+  const approvedFocus = content.approvedFocus
+    ? [content.approvedFocus]
+    : [created, content.focus].filter((ref): ref is string => !!ref);
   return (
     <div className="h-full">
       <GraphWorkbench

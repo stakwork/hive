@@ -240,6 +240,7 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
   const { slug, graph, pending, select } = useWorkbench();
   const node = graph?.nodes[id];
   const isNew = node?.proposed === "new";
+  const isRemoved = node?.proposed === "removed";
   const edit = node?.edit;
   const links = [
     ...pending.links.map((l) => ({ ...l, going: false })),
@@ -288,7 +289,13 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
         </button>
       </div>
 
-      {(isNew || edit || links.length > 0) && (
+      {isRemoved && (
+        <p className="text-xs text-rose-700 dark:text-rose-400" data-testid="graph-workbench-proposed-removal">
+          Proposed removal — this node and its edges stay until the proposal is approved.
+        </p>
+      )}
+
+      {!isRemoved && (isNew || edit || links.length > 0) && (
         <p className="text-xs text-emerald-700 dark:text-emerald-400">
           {isNew
             ? "Proposed — this node doesn't exist until the proposal is approved."

@@ -20,6 +20,13 @@ const nameOf = (v: string) => `coalesce(${v}.name, ${v}.title, ${v}.tool_name, $
 /** An edge still in force: Jarvis mutes an edge instead of deleting it (an approved delete or move), and keeps it stored. */
 const live = (r: string) => `coalesce(${r}.is_muted, false) = false AND coalesce(${r}.is_deleted, false) = false`;
 
+/**
+ * A node not soft-deleted. Deliberately `is_deleted` only — a muted node
+ * (which only applies to edges) stays visible in the workbench today, so
+ * this must not also filter `is_muted`.
+ */
+const notDeleted = (r: string) => `coalesce(${r}.is_deleted, false) = false`;
+
 /** Upstream returns at most this many rows whatever limit is asked for. */
 export const GRAPH_ROW_CAP = 1000;
 
@@ -41,8 +48,13 @@ interface Caller {
 
 const invalid = (message: string): WorkspaceGraphQueryFailure => ({ ok: false, status: 400, message });
 
-async function rows(caller: Caller, query: string, limit: number): Promise<WorkbenchResult<Record<string, unknown>[]>> {
-  const result = await runWorkspaceGraphQuery({ ...caller, query, limit });
+export async function rows(
+  caller: Caller,
+  query: string,
+  limit: number,
+  timeoutMs?: number,
+): Promise<WorkbenchResult<Record<string, unknown>[]>> {
+  const result = await runWorkspaceGraphQuery({ ...caller, query, limit, ...(timeoutMs !== undefined ? { timeoutMs } : {}) });
   if (!result.ok) return result;
   const { columns, rows: raw } = (result.data ?? {}) as { columns?: unknown; rows?: unknown };
   if (!Array.isArray(columns) || !Array.isArray(raw)) {
@@ -104,14 +116,14 @@ export async function getHierarchy(caller: Caller, label: string): Promise<Workb
   const [nodes, edges] = await Promise.all([
     rows(
       caller,
-      `MATCH (n:${L}) RETURN n.ref_id AS id, n.id AS key, n.name AS name, ` +
+      `MATCH (n:${L}) WHERE ${notDeleted("n")} RETURN n.ref_id AS id, n.id AS key, n.name AS name, ` +
         `n.description AS description, n.docs AS docs, n.repo AS repo, ` +
         `size([(n)<-[:ACCESSED|READ_CONCEPT]-() | 1]) AS reads, [(n)<-[:APPROVED]-(m) | m.name] AS approvers`,
       GRAPH_ROW_CAP,
     ),
     rows(
       caller,
-      `MATCH (a:${L})-[r]->(b:${L}) WHERE ${live("r")} ` +
+      `MATCH (a:${L})-[r]->(b:${L}) WHERE ${live("r")} AND ${notDeleted("a")} AND ${notDeleted("b")} ` +
         `RETURN type(r) AS type, a.ref_id AS source, b.ref_id AS target`,
       GRAPH_ROW_CAP,
     ),
@@ -192,7 +204,7 @@ export async function getNodeConnections(caller: Caller, refId: string): Promise
     ),
     rows(
       caller,
-      `MATCH (c:Data_Bank {ref_id: '${refId}'})-[r]-(o) WHERE ${live("r")} ` +
+      `MATCH (c:Data_Bank {ref_id: '${refId}'})-[r]-(o) WHERE ${live("r")} AND ${notDeleted("o")} ` +
         `WITH type(r) AS edge, startNode(r) = c AS outgoing, labels(o) AS labels, o ` +
         `WITH edge, outgoing, labels, count(o) AS count, ` +
         `collect({id: o.ref_id, name: ${nameOf("o")}})[0..${CONNECTION_SAMPLE}] AS items ` +
@@ -258,7 +270,7 @@ export async function getConnectionPage(
     : `(c:Data_Bank {ref_id: '${refId}'})<-[r:\`${edge}\`]-${target}`;
   const result = await rows(
     caller,
-    `MATCH ${pattern} WHERE ${live("r")} RETURN o.ref_id AS id, ${nameOf("o")} AS name, labels(o) AS labels`,
+    `MATCH ${pattern} WHERE ${live("r")} AND ${notDeleted("o")} RETURN o.ref_id AS id, ${nameOf("o")} AS name, labels(o) AS labels`,
     Math.min(Math.max(1, Math.floor(limit)), GRAPH_ROW_CAP),
   );
   if (!result.ok) return result;

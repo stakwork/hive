@@ -30,6 +30,7 @@ function Body({
     count(pending.newEdges.size + pending.links.length, "new link", "new links"),
     count(pending.removedEdges.size + pending.unlinks.length, "removed link", "removed links"),
     count(pending.edited, "edit", "edits"),
+    count(pending.removed, "node removal", "node removals"),
   ].filter(Boolean);
 
   // The toolbar stays through loading and errors, so the source can always be changed.

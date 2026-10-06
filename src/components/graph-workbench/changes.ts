@@ -22,7 +22,9 @@ export type GraphChange =
   /** An edge that would be added. */
   | { kind: "edge"; edge: string; source: string; target: string }
   /** An edge that would be removed. */
-  | { kind: "unlink"; edge: string; source: string; target: string };
+  | { kind: "unlink"; edge: string; source: string; target: string }
+  /** A node that would be soft-deleted, with its edges. */
+  | { kind: "remove"; node: string };
 
 const MAX_CHANGES = 50;
 const MAX_TEXT = 100_000;
@@ -60,6 +62,10 @@ function parseChange(raw: unknown): GraphChange | null {
       const source = str(r.source);
       const target = str(r.target);
       return edge && source && target ? { kind: r.kind, edge, source, target } : null;
+    }
+    case "remove": {
+      const node = str(r.node);
+      return node ? { kind: "remove", node } : null;
     }
     default:
       return null;

@@ -147,9 +147,11 @@ export async function runProposalIntent(args: {
                               ? "graph link removal"
                               : r.kind === "graphNodeMove"
                                 ? "graph node move"
-                                : r.kind === "codeChange"
-                                  ? "code change"
-                                  : "feature";
+                                : r.kind === "graphNodeDelete"
+                                  ? "graph node removal"
+                                  : r.kind === "codeChange"
+                                    ? "code change"
+                                    : "feature";
 
       // For graph writes, `landedOn` is `workspace:<id>` — map it to a
       // sensible display label rather than falling through to "the canvas".

@@ -48,6 +48,7 @@ import {
   MILESTONE_H,
 } from "@/lib/canvas/geometry";
 import type { CanvasNode } from "@/lib/canvas/types";
+import { typeFromLabels } from "@/lib/strut-run-graph/hydrate";
 import { createFeature } from "@/services/roadmap";
 import { detectFeatureDependencyCycle } from "@/services/roadmap/feature-dependency";
 import { notifyFeatureReassignmentRefresh } from "@/lib/canvas";
@@ -66,6 +67,7 @@ import {
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
   PROPOSE_DELETE_EDGE_TOOL,
   PROPOSE_MOVE_NODE_TOOL,
+  PROPOSE_DELETE_NODE_TOOL,
   PROPOSE_CODE_CHANGE_TOOL,
   CODE_CHANGE_PROPOSE_KIND,
   CODE_CHANGE_LAND_KIND,
@@ -83,6 +85,7 @@ import {
   type GraphBatchTripletCreateProposalPayload,
   type GraphEdgeDeleteProposalPayload,
   type GraphNodeMoveProposalPayload,
+  type GraphNodeDeleteProposalPayload,
   type CodeChangeProposalPayload,
 } from "./types";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -130,12 +133,15 @@ import {
   addEdgeV2,
   readNodeByRef,
   deleteNode,
+  deleteNodeV2,
   deleteEdge,
   findEdgeByEndpoints,
   searchNodesByAttributes,
   type JarvisEdgeEndpoint,
 } from "@/services/swarm/api/nodes";
 import { findReservedKeyViolation, wouldCycle } from "@/lib/proposals/graphWriteValidation";
+import { readNodeDeleteSummary, verifyNodeSoftDeleted } from "@/lib/proposals/nodeDeleteSummary";
+import { ALLOW_UNIQUE_SOURCE_ID_DELETE, CODE_GRAPH_OWNED_TYPES } from "@/lib/ai/graphWriteTools";
 import {
   HIVE_WORKSPACE,
   HIVE_WORKSPACE_MEMBER,
@@ -198,6 +204,7 @@ function findProposal(
         tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL &&
         tc.toolName !== PROPOSE_DELETE_EDGE_TOOL &&
         tc.toolName !== PROPOSE_MOVE_NODE_TOOL &&
+        tc.toolName !== PROPOSE_DELETE_NODE_TOOL &&
         tc.toolName !== PROPOSE_CODE_CHANGE_TOOL
       )
         continue;
@@ -420,6 +427,9 @@ export async function handleApproval(
   }
   if (proposal.kind === "graphNodeMove") {
     return approveGraphNodeMove({ orgId, userId, proposal });
+  }
+  if (proposal.kind === "graphNodeDelete") {
+    return approveGraphNodeDelete({ orgId, userId, proposal });
   }
   if (proposal.kind === "codeChange") {
     return approveCodeChange({
@@ -3876,6 +3886,176 @@ async function approveGraphNodeMove(args: {
       landedOn: `workspace:${workspaceId}`,
       workspaceSlug,
       alreadyExisted: created.alreadyExists,
+    },
+  };
+}
+
+// ── Approve: graph node delete ───────────────────────────────────────
+
+/**
+ * Soft-delete one node. Every refusal `propose_delete_node` checks is
+ * re-checked here against live graph data — the proposal's `meta` is
+ * client-supplied and display-only. The summary read runs first (never
+ * `readNodeByRef`, which hides soft-deleted nodes). Success is reported
+ * ONLY when `verifyNodeSoftDeleted` confirms `is_deleted === true`; an
+ * unconfirmable result is a 502, not a success — a retry from there lands
+ * in `already_removed` on the next summary read.
+ */
+async function approveGraphNodeDelete(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "graphNodeDelete" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal } = args;
+  // Ignore intent.payload — always use the server-persisted proposal payload.
+  const payload = proposal.payload as GraphNodeDeleteProposalPayload;
+
+  if (!payload.workspaceId || !payload.ref_id) {
+    return { ok: false, error: "Invalid graph node delete proposal payload.", status: 400 };
+  }
+
+  // Authorization runs before reading meta or any external call.
+  const resolved = await resolveGraphJarvis(orgId, userId, {
+    workspaceId: payload.workspaceId,
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { workspaceId, workspaceSlug } = resolved.access;
+
+  const meta = proposal.meta as { refusedReason?: string } | undefined;
+  if (meta?.refusedReason) {
+    return { ok: false, error: meta.refusedReason, status: 400 };
+  }
+
+  const log = (outcome: string, extra: Record<string, unknown> = {}) =>
+    logger.info(`[handleApproval.approveGraphNodeDelete] ${outcome}`, "handleApproval", {
+      workspaceId,
+      workspaceSlug,
+      kind: "graphNodeDelete",
+      ref_id: payload.ref_id,
+      outcome,
+      ...extra,
+    });
+
+  // 1. Re-run every propose-time check on live data, summary first — a
+  //    client-forged card for a node propose would have refused is caught
+  //    here before anything is written.
+  const summary = await readNodeDeleteSummary(workspaceSlug, userId, payload.ref_id);
+  if (!summary.ok) {
+    if (summary.reason === "not_found") {
+      log("refused", { reason: "not_found" });
+      return { ok: false, error: `Node "${payload.ref_id}" was not found in this workspace's graph.`, status: 404 };
+    }
+    if (summary.reason === "ambiguous") {
+      log("duplicate", { reason: "ambiguous" });
+      return { ok: false, error: `"${payload.ref_id}" matches more than one node.`, status: 409 };
+    }
+    log("failed", { reason: "unavailable" });
+    return { ok: false, error: "Couldn't read the node right now.", status: 502 };
+  }
+
+  if (summary.summary.is_deleted) {
+    log("already_removed");
+    return {
+      ok: true,
+      alreadyApproved: false,
+      result: {
+        proposalId: proposal.proposalId,
+        kind: "graphNodeDelete",
+        createdEntityId: payload.ref_id,
+        landedOn: `workspace:${workspaceId}`,
+        workspaceSlug,
+        alreadyExisted: true,
+      },
+    };
+  }
+
+  const node_type = typeFromLabels(summary.summary.labels, "");
+  if (!node_type) {
+    log("refused", { reason: "no_domain_label" });
+    return { ok: false, error: `Node "${payload.ref_id}" was not found in this workspace's graph.`, status: 404 };
+  }
+  const owned = (t: string) => GRAPH_MIRROR_OWNED_TYPES.has(t) || CODE_GRAPH_OWNED_TYPES.has(t);
+  if (owned(node_type) || summary.summary.labels.some(owned)) {
+    log("refused", { reason: "owned", node_type });
+    return {
+      ok: false,
+      error: `"${node_type}" is owned by a sync job — deleting it here would be merged back or duplicated on the next pass.`,
+      status: 409,
+    };
+  }
+  if (summary.summary.unique_source_id && !ALLOW_UNIQUE_SOURCE_ID_DELETE) {
+    log("refused", { reason: "unique_source_id", node_type });
+    return { ok: false, error: "Jarvis can't safely delete ingested nodes yet.", status: 409 };
+  }
+
+  // 2. The write.
+  const deleted = await deleteNodeV2(resolved.access.config, payload.ref_id);
+  if (deleted.outcome === "not_found") {
+    // The summary just saw it live — a race with another approval. Verify
+    // before reporting anything: it may have been deleted between the two reads.
+    const verified = await verifyNodeSoftDeleted(workspaceSlug, userId, payload.ref_id);
+    if (verified === true) {
+      log("already_removed", { node_type });
+      return {
+        ok: true,
+        alreadyApproved: false,
+        result: {
+          proposalId: proposal.proposalId,
+          kind: "graphNodeDelete",
+          createdEntityId: payload.ref_id,
+          landedOn: `workspace:${workspaceId}`,
+          workspaceSlug,
+          alreadyExisted: true,
+        },
+      };
+    }
+    log("failed", { reason: "not_found", node_type });
+    return { ok: false, error: `Node "${payload.ref_id}" was not found in this workspace's graph.`, status: 404 };
+  }
+  if (deleted.outcome === "duplicate") {
+    log("duplicate", { node_type });
+    return { ok: false, error: `"${payload.ref_id}" matches more than one node.`, status: 409 };
+  }
+  if (deleted.outcome === "forbidden") {
+    log("refused", { reason: "forbidden", node_type });
+    return { ok: false, error: "Not authorized to delete this node.", status: 403 };
+  }
+  if (deleted.outcome === "failed") {
+    log("failed", { node_type, message: deleted.message });
+    return { ok: false, error: "Failed to delete the node in the knowledge graph.", status: 502 };
+  }
+
+  // 3. Honest result: only a confirmed `is_deleted === true` is success.
+  const verified = await verifyNodeSoftDeleted(workspaceSlug, userId, payload.ref_id);
+  if (verified === false) {
+    log("unverified", { node_type, reason: "still_live" });
+    return { ok: false, error: "The delete did not take effect — the node is still live. Approve again to retry.", status: 502 };
+  }
+  if (verified === "unknown") {
+    log("unverified", { node_type, reason: "unconfirmable" });
+    return {
+      ok: false,
+      error: "Couldn't confirm the delete took effect. Approve again — a retry will report it as already removed if it did.",
+      status: 502,
+    };
+  }
+
+  log("removed", {
+    node_type,
+    is_deleted_node_count: deleted.is_deleted_node_count,
+    deleted_edge_count: deleted.deleted_edge_count,
+  });
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "graphNodeDelete",
+      createdEntityId: payload.ref_id,
+      landedOn: `workspace:${workspaceId}`,
+      workspaceSlug,
     },
   };
 }

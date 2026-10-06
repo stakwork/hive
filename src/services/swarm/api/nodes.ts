@@ -29,18 +29,22 @@ async function jarvisRequest({
   method = "GET",
   data,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  headers: extraHeaders,
 }: {
   config: JarvisConnectionConfig;
   endpoint: string;
   method?: "GET" | "POST" | "PUT" | "DELETE";
   data?: unknown;
   timeoutMs?: number;
+  /** Merged OVER the fixed `x-api-token` / `Content-Type` set — lets a caller add e.g. `X-Is-Admin`. */
+  headers?: Record<string, string>;
 }): Promise<JarvisApiResponse> {
   const url = `${config.jarvisUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
   try {
     const headers: Record<string, string> = {
       "x-api-token": config.apiKey,
       "Content-Type": "application/json",
+      ...extraHeaders,
     };
 
     const response = await fetch(url, {
@@ -686,6 +690,96 @@ export async function deleteNode(
   }
 }
 
+/** Outcome of `deleteNodeV2`, collapsed to what `approveGraphNodeDelete` branches on. */
+export type DeleteNodeV2Outcome = "deleted" | "not_found" | "duplicate" | "forbidden" | "failed";
+
+export interface DeleteNodeV2Result {
+  outcome: DeleteNodeV2Outcome;
+  /**
+   * Whitelisted numeric counts from the Jarvis plan, when present. Optional —
+   * a missing count is never treated as an error. Field names are
+   * provisional pending the final Jarvis contract.
+   */
+  is_deleted_node_count?: number;
+  deleted_edge_count?: number;
+  /** Server-side diagnostic only — never surfaced in a user-facing reason. */
+  message?: string;
+}
+
+function numOrUndefined(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+/**
+ * Soft-delete a single node via `DELETE /v2/nodes/{ref_id}`, with admin
+ * authority (`X-Is-Admin: true`).
+ *
+ * This is the one `src/services/swarm/api/*` write that intentionally runs
+ * as admin from a user-approved click: Hive has no per-user owner identity
+ * to send instead, a human has already approved the delete in the
+ * ProposalCard UI, and `approveGraphNodeDelete` re-checks every refusal
+ * against live graph data before this is ever called. Every other v2 write
+ * in this module omits `X-Is-Admin` deliberately — this is the sole,
+ * explicit exception, not a precedent.
+ *
+ * Maps the planned Jarvis contract (404 missing/already-deleted, 409
+ * duplicate ref_id, counts on success) AND today's `master` (400
+ * `ERROR_INVALID_REF_ID` for a missing node, `{status:"success"}` with no
+ * counts) onto one outcome so callers don't need to know which version of
+ * Jarvis answered. Success never depends on the response body carrying
+ * counts — only on `res.ok && status === "success"`. Never throws.
+ */
+export async function deleteNodeV2(
+  config: JarvisConnectionConfig,
+  ref_id: string,
+): Promise<DeleteNodeV2Result> {
+  if (!isSafeRefId(ref_id)) {
+    return { outcome: "failed", message: `Invalid ref_id: must match [A-Za-z0-9_\\-.:@]+ (got ${JSON.stringify(ref_id)})` };
+  }
+
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}`,
+    method: "DELETE",
+    headers: { "X-Is-Admin": "true" },
+  });
+
+  const body = result.body as
+    | {
+        status?: string;
+        error?: string;
+        message?: string;
+        status_messages?: string[];
+        is_deleted_node_count?: unknown;
+        deleted_edge_count?: unknown;
+      }
+    | undefined;
+
+  if (!result.ok) {
+    // Today's Jarvis: 400 ERROR_INVALID_REF_ID for a missing node.
+    if (result.status === 404 || (result.status === 400 && body?.error === "ERROR_INVALID_REF_ID")) {
+      return { outcome: "not_found", message: describeJarvisFailure("Node not found", body) };
+    }
+    if (result.status === 409) {
+      return { outcome: "duplicate", message: describeJarvisFailure("Duplicate ref_id", body) };
+    }
+    if (result.status === 401 || result.status === 403) {
+      return { outcome: "forbidden", message: describeJarvisFailure("Not authorized", body) };
+    }
+    return { outcome: "failed", message: result.error ?? `Request failed with status ${result.status}` };
+  }
+
+  if (body?.status !== "success") {
+    return { outcome: "failed", message: describeJarvisFailure("Node delete returned unexpected status", body) };
+  }
+
+  return {
+    outcome: "deleted",
+    is_deleted_node_count: numOrUndefined(body.is_deleted_node_count),
+    deleted_edge_count: numOrUndefined(body.deleted_edge_count),
+  };
+}
+
 export async function patchEdge(
   config: JarvisConnectionConfig,
   edgeRefId: string,
@@ -801,7 +895,7 @@ export interface JarvisV2Result {
  */
 const REF_ID_SAFE_RE = /^[A-Za-z0-9_\-.:@]+$/;
 
-function isSafeRefId(ref_id: string): boolean {
+export function isSafeRefId(ref_id: string): boolean {
   return typeof ref_id === "string" && ref_id.length > 0 && REF_ID_SAFE_RE.test(ref_id);
 }
 

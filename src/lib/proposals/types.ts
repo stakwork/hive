@@ -507,6 +507,36 @@ export type ProposalOutput =
       };
     }
   | {
+      kind: "graphNodeDelete";
+      proposalId: string;
+      payload: GraphNodeDeleteProposalPayload;
+      rationale?: string;
+      /**
+       * Render-only: the node and its edges as they were found at propose
+       * time. The approval handler re-reads the node and does NOT trust this.
+       */
+      meta: {
+        workspaceSlug?: string;
+        node_name?: string;
+        node_type?: string;
+        /** At most 25 edges Jarvis will hard-delete on approval. */
+        edges?: Array<{
+          edge_type: string;
+          direction: "outgoing" | "incoming";
+          other_ref_id: string;
+          other_name?: string;
+          muted: boolean;
+        }>;
+        /** Total count of edges that will be deleted (may exceed `edges.length`). */
+        edge_total?: number;
+        /** Edges to other namespaces (and system nodes) that are kept. */
+        kept_edges?: number;
+        /** Set when the propose tool refused the delete. The card renders
+         *  as disabled-with-reason. */
+        refusedReason?: string;
+      };
+    }
+  | {
       kind: "codeChange";
       proposalId: string;
       payload: CodeChangeProposalPayload;
@@ -714,6 +744,18 @@ export interface GraphNodeMoveProposalPayload {
 }
 
 /**
+ * Payload for soft-deleting a single KG node. `ref_id` is re-resolved and
+ * re-checked against live graph data at approval time — the payload itself
+ * is just the target. See `nodeDeleteSummary.ts` for the read that backs
+ * both the propose-time card and the approval-time re-check.
+ */
+export interface GraphNodeDeleteProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  ref_id: string;
+}
+
+/**
  * Tool name constants — referenced by the chat UI to find proposal
  * tool calls inside `message.toolCalls[]`, by the route's scanner, and
  * by the agent tool factory. Single source so a rename is one edit.
@@ -739,6 +781,7 @@ export const PROPOSE_CREATE_BATCH_TRIPLET_TOOL =
   "propose_create_batch_triplet" as const;
 export const PROPOSE_DELETE_EDGE_TOOL = "propose_delete_edge" as const;
 export const PROPOSE_MOVE_NODE_TOOL = "propose_move_node" as const;
+export const PROPOSE_DELETE_NODE_TOOL = "propose_delete_node" as const;
 export const PROPOSE_CODE_CHANGE_TOOL = "propose_code_change" as const;
 
 /**
@@ -773,6 +816,7 @@ export type ProposeToolName =
   | typeof PROPOSE_CREATE_BATCH_TRIPLET_TOOL
   | typeof PROPOSE_DELETE_EDGE_TOOL
   | typeof PROPOSE_MOVE_NODE_TOOL
+  | typeof PROPOSE_DELETE_NODE_TOOL
   | typeof PROPOSE_CODE_CHANGE_TOOL;
 
 /**
@@ -872,6 +916,7 @@ export interface ApprovalResult {
     | "graphBatchTripletCreate"
     | "graphEdgeDelete"
     | "graphNodeMove"
+    | "graphNodeDelete"
     | "codeChange";
   createdEntityId: string;
   /** Canvas ref the new node landed on. Empty string = root. */

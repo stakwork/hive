@@ -89,8 +89,10 @@ export interface ArtifactContents {
    * A workspace's knowledge graph, opened on the graph workbench — centred on
    * `focus` when given, with `changes` drawn on it. `proposal` is the id of
    * the proposal those changes are, so the view can follow its decision.
+   * `approvedFocus` overrides where the panel centres once the proposal is
+   * approved — a node delete must never re-focus the now-gone ref_id.
    */
-  graph: { workspace: string; focus?: string; changes?: GraphChange[]; proposal?: string };
+  graph: { workspace: string; focus?: string; changes?: GraphChange[]; proposal?: string; approvedFocus?: string };
 }
 
 export type ArtifactKind = keyof ArtifactContents;
@@ -285,6 +287,7 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
           focus: bounded(raw.focus, MAX_ID_LENGTH) ?? undefined,
           changes: parseGraphChanges(raw.changes),
           proposal: bounded(raw.proposal, MAX_ID_LENGTH) ?? undefined,
+          approvedFocus: bounded(raw.approvedFocus, MAX_ID_LENGTH) ?? undefined,
         }
       : null;
   },

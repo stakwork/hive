@@ -24,7 +24,7 @@ export interface WorkbenchNode {
   /** Has children and no parent. Inferred — the graph stores no root flag. */
   root: boolean;
   /** Part of a proposal being previewed: a node it would create, or one it would change (`edit`). */
-  proposed?: "new" | "changed";
+  proposed?: "new" | "changed" | "removed";
   edit?: NodeEdit;
 }
 
