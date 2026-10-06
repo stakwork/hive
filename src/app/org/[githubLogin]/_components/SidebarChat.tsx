@@ -368,7 +368,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
       )}
       <div className="relative flex-1 min-h-0">
         <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto h-full px-4 py-3">
-          <DailyRecapCard dismissible showActivityLink />
+          <DailyRecapCard dismissible showActivityLink className="mb-3" />
           {!hasMessages && activeToolCalls.length === 0 && (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/10 text-sky-500">
