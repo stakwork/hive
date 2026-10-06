@@ -263,6 +263,8 @@ export function toOpenHealthRunDetail(
 //
 // Every metric is over ATTEMPTS at a task: the runs of their own, and the
 // benchmark runs inside climbs (a climb's improve runs are not attempts).
+// The summaries count a climb ONCE, by its final run (`finalAttemptsOf`);
+// the per-task stats, the task list and the hill climb see every run.
 // `climbs` is optional everywhere, so a caller with runs alone still works.
 // The caller filters to one benchmark first when a mean across them would
 // mean nothing (the Runs tab does).
@@ -333,12 +335,35 @@ function attemptsOf(runs: OpenHealthRun[], climbs: OpenHealthClimb[]): Attempt[]
   return [...own, ...inside];
 }
 
+/**
+ * A climb's one attempt for the summaries: its final benchmark run — the last
+ * that finished (succeeded or failed), so a run in flight or cut short by a
+ * stop does not hide the result the climb reached; the last run of any kind
+ * when none has finished. Null for a climb that has not run yet.
+ */
+function finalAttemptOf(climb: OpenHealthClimb): Attempt | null {
+  const attempts = attemptsOf([], [climb]);
+  const finished = attempts.filter((a) => a.outcome === "succeeded" || a.outcome === "failed");
+  return (finished.length > 0 ? finished : attempts).reduce<Attempt | null>(
+    (last, a) => (last === null || a.seq > last.seq ? a : last),
+    null,
+  );
+}
+
+/** The runs of their own, and each climb once: what the summaries are over. */
+function finalAttemptsOf(runs: OpenHealthRun[], climbs: OpenHealthClimb[]): Attempt[] {
+  return [...attemptsOf(runs, []), ...climbs.flatMap((climb) => finalAttemptOf(climb) ?? [])];
+}
+
 const byAge = (a: Attempt, b: Attempt) => a.createdAt.localeCompare(b.createdAt) || a.seq - b.seq;
 /** Newest first, as the lists come. */
 const newestFirst = (attempts: Attempt[]) => [...attempts].sort((a, b) => byAge(b, a));
 
 export interface OpenHealthSummary {
-  /** Finished attempts: succeeded + failed. Running and cancelled runs are left out. */
+  /**
+   * Finished attempts: succeeded + failed. Running and cancelled runs are left
+   * out, and a climb counts once, by its final run.
+   */
   attempts: number;
   succeeded: number;
   /** succeeded / attempts; null with no attempts. */
@@ -369,15 +394,17 @@ function summarize(attempts: Attempt[]): OpenHealthSummary {
   };
 }
 
+/** The summary over runs of their own and each climb's final run. */
 export function summarizeOpenHealthRuns(runs: OpenHealthRun[], climbs: OpenHealthClimb[] = []): OpenHealthSummary {
-  return summarize(attemptsOf(runs, climbs));
+  return summarize(finalAttemptsOf(runs, climbs));
 }
 
+/** Per difficulty, the summary over runs of their own and each climb's final run. */
 export function summarizeByDifficulty(
   runs: OpenHealthRun[],
   climbs: OpenHealthClimb[] = [],
 ): Record<OpenHealthDifficulty, OpenHealthSummary> {
-  const attempts = attemptsOf(runs, climbs);
+  const attempts = finalAttemptsOf(runs, climbs);
   return Object.fromEntries(
     OPENHEALTH_DIFFICULTIES.map((d) => [d, summarize(attempts.filter((a) => a.difficulty === d))]),
   ) as Record<OpenHealthDifficulty, OpenHealthSummary>;
