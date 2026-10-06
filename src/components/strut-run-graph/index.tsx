@@ -754,7 +754,7 @@ export function StrutRunGraph({
         )}
       </div>
 
-      <div className="grid h-[640px] grid-cols-[minmax(240px,340px)_1fr]">
+      <div className="grid h-[640px] grid-cols-[minmax(220px,260px)_1fr]">
         <div className="overflow-y-auto border-r py-1" data-testid="run-graph-tree">
           {scope !== null && (
             <nav
