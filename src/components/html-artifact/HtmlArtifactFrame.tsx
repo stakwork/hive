@@ -22,16 +22,24 @@
  * Content-Security-Policy meta tag that limits where the sandboxed page may
  * load code and assets from (a fixed CDN allowlist) and what it may talk to.
  * See `@/lib/utils/html-artifact-csp` for the policy and its rationale.
+ * `injectHtmlArtifactNavBridge` also forwards clicks on internal `/org/` and
+ * `/w/` links to this component, which validates and routes them.
  *
  * The blob URL is the only value ever assigned to `src`; the proxy URL and
  * raw S3 URLs are never navigated to. `dangerouslySetInnerHTML` and `srcDoc`
  * are deliberately unused.
  */
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { htmlArtifactProxyUrl, type HtmlArtifactSource } from "@/lib/utils/html-body-proxy";
 import { injectHtmlArtifactCsp } from "@/lib/utils/html-artifact-csp";
+import {
+  HTML_ARTIFACT_NAV_MESSAGE_TYPE,
+  injectHtmlArtifactNavBridge,
+  isAllowedArtifactNavPath,
+} from "@/lib/utils/html-artifact-nav";
 
 export type { HtmlArtifactSource };
 
@@ -61,8 +69,21 @@ export function HtmlArtifactFrame({ source, title, className, updatedAt, frameSt
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const objectUrlRef = useRef<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const router = useRouter();
 
   const url = htmlArtifactProxyUrl(source);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.data?.type !== HTML_ARTIFACT_NAV_MESSAGE_TYPE) return;
+      if (!isAllowedArtifactNavPath(event.data.href)) return;
+      router.push(event.data.href);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +115,7 @@ export function HtmlArtifactFrame({ source, title, className, updatedAt, frameSt
         // Re-type the opaque download as HTML only inside the blob, which
         // renders in the sandboxed frame's opaque origin, with the CSP
         // meta tag prepended so the policy governs everything in the page.
-        const htmlBlob = new Blob([injectHtmlArtifactCsp(html)], {
+        const htmlBlob = new Blob([injectHtmlArtifactNavBridge(injectHtmlArtifactCsp(html))], {
           type: "text/html; charset=utf-8",
         });
         revoke();
@@ -149,6 +170,7 @@ export function HtmlArtifactFrame({ source, title, className, updatedAt, frameSt
 
   return (
     <iframe
+      ref={iframeRef}
       src={blobUrl}
       title={title || "HTML artifact"}
       sandbox={HTML_FRAME_SANDBOX}
