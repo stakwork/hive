@@ -16,6 +16,7 @@
 import { db } from "@/lib/db";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 import type { StoredMessage } from "@/services/canvas-turn-persistence";
+import { isRemovedTurn } from "@/lib/canvas/tombstones";
 
 export interface ResearchFanOutPayload {
   researchId: string;
@@ -31,6 +32,14 @@ export interface ResearchFanOutPayload {
    * Filtered (code_execution / srvtoolu_ traces stripped) before write.
    */
   subAgentMessages?: StoredMessage[];
+  /**
+   * The turn that dispatched this research (`dispatch_research`'s
+   * caller). When present, the fan-out skips entirely once this turn is
+   * tombstoned (the user edited-and-replaced before the sub-agent
+   * reported back), and stamps it onto the result row so a LATER edit
+   * also removes this row.
+   */
+  originTurnId?: string;
 }
 
 /**
@@ -58,6 +67,7 @@ type ResearchMessageRow = {
   role: "assistant";
   content: string;
   timestamp: string;
+  originTurnId?: string;
   source: {
     kind: "research";
     researchId: string;
@@ -74,16 +84,31 @@ type ResearchMessageRow = {
  *
  * Idempotent: if a row with `source.researchId === payload.researchId`
  * already exists, this is a silent no-op (safe for worker retries).
+ *
+ * When `payload.originTurnId` is set and that turn is tombstoned by the
+ * time this runs (the user edited-and-replaced the dispatching turn
+ * before the sub-agent reported back), the whole append is skipped —
+ * the result row is stamped `originTurnId` so a tombstone that fires
+ * AFTER this write still removes it on the next cut.
  */
 export async function fanOutResearchToCanvas(
   conversationId: string,
   payload: ResearchFanOutPayload,
 ): Promise<void> {
-  const { researchId, slug, topic, title, summary, status, initiativeId } =
-    payload;
+  const {
+    researchId,
+    slug,
+    topic,
+    title,
+    summary,
+    status,
+    initiativeId,
+    originTurnId,
+  } = payload;
 
   try {
     let didAppend = false;
+    let skippedTombstoned = false;
 
     const filteredSubAgentMsgs = payload.subAgentMessages
       ? filterSubAgentMessages(payload.subAgentMessages)
@@ -92,11 +117,16 @@ export async function fanOutResearchToCanvas(
     await db.$transaction(async (tx) => {
       // Row-level lock against concurrent autosave PUTs — same pattern
       // as fanOutPlannerMessageToCanvas.
-      const locked = await tx.$queryRaw<{ messages: unknown }[]>`
-        SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+      const locked = await tx.$queryRaw<{ messages: unknown; settings: unknown }[]>`
+        SELECT messages, settings FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
       `;
       if (locked.length === 0) {
         // Conversation was deleted; nothing to do.
+        return;
+      }
+
+      if (originTurnId && isRemovedTurn(locked[0].settings, originTurnId)) {
+        skippedTombstoned = true;
         return;
       }
 
@@ -123,6 +153,7 @@ export async function fanOutResearchToCanvas(
             ? `Research ready: **${title}** — ${summary} (slug: \`${slug}\`)`
             : `Research failed for topic: ${topic}`,
         timestamp: new Date().toISOString(),
+        ...(originTurnId ? { originTurnId } : {}),
         source: {
           kind: "research",
           researchId,
@@ -143,6 +174,15 @@ export async function fanOutResearchToCanvas(
       });
       didAppend = true;
     });
+
+    if (skippedTombstoned) {
+      console.log("[canvas-turn] tombstoned-write-skipped", {
+        conversationId,
+        turnId: originTurnId,
+        writer: "research",
+      });
+      return;
+    }
 
     console.log("[canvas-research-fanout]", {
       conversationId,

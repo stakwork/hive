@@ -266,6 +266,7 @@ export async function runProposalIntent(args: {
       rows: [clickRow, resultRow],
       idPrefix: `${turnId}-`,
       reason: "user-turn",
+      turnId,
     }).catch((err) =>
       console.error("❌ [quick-ask] Proposal persist failed:", err),
     );

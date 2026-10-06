@@ -50,7 +50,7 @@ import {
   getMultiWorkspacePrefixMessages,
   getQuickAskPrefixMessages,
 } from "@/lib/constants/prompt";
-import type { CanvasScopeHint } from "@/lib/constants/prompt";
+import type { CanvasScopeHint, CanvasWorkflowRef } from "@/lib/constants/prompt";
 import { getCanvasSystemPrompt } from "@/lib/ai/canvas-system-prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
 import { isConceptSeedingEnabled } from "@/lib/ai/concepts";
@@ -481,6 +481,15 @@ export interface RunCanvasAgentOptions {
    * (which falls back to `localhost:3000` with no request context).
    */
   publicBaseUrl?: string;
+  /**
+   * Server-validated `@workflow` mention references for THIS turn only
+   * (deduplicated canonical `{id,name}` pairs — `/api/ask/quick` produces
+   * these via `validateWorkflowMentions` BEFORE calling this function).
+   * Rendered into the trailing canvas-scope message as a bounded,
+   * explicitly-untrusted JSON block; never reconstructed from history.
+   * Absent/empty → no behavior change (existing callers untouched).
+   */
+  workflowRefs?: CanvasWorkflowRef[];
 }
 
 export interface RunCanvasAgentResult {
@@ -974,6 +983,7 @@ export async function runCanvasAgent(
           graphWalkAnswerSink,
           publicBaseUrl,
           graphWriteEnabled,
+          dispatchTurnId: turnId,
         }),
       };
     }
@@ -1135,6 +1145,7 @@ export async function runCanvasAgent(
           graphWalkAnswerSink,
           publicBaseUrl,
           graphWriteEnabled,
+          dispatchTurnId: turnId,
         }),
       };
     }
@@ -1285,7 +1296,7 @@ export async function runCanvasAgent(
   //
   // Keep this the final append. Anything inserted after it re-creates
   // the exact problem this fixes.
-  const canvasScopeMessage = buildCanvasScopeMessage(canvasScope);
+  const canvasScopeMessage = buildCanvasScopeMessage(canvasScope, opts.workflowRefs);
   const rawMessages: ModelMessage[] = [
     // `prefixMessages` is server-authored: its leading `role:"system"`
     // row is the stable longest-common-prefix Anthropic caches against

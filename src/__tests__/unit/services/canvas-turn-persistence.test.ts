@@ -266,14 +266,14 @@ describe("appendTurnMessages", () => {
   test("appends and fires a nudge on a fresh write", async () => {
     withLockedRows([{ id: "turn-1-u", role: "user", content: "Q" }]);
 
-    const did = await appendTurnMessages({
+    const result = await appendTurnMessages({
       conversationId: "conv-1",
       rows,
       idPrefix: "turn-1-a",
       reason: "user-turn",
     });
 
-    expect(did).toBe(true);
+    expect(result).toBe("appended");
     expect(update).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith("conv-1", "user-turn");
   });
@@ -283,26 +283,26 @@ describe("appendTurnMessages", () => {
       { id: "turn-1-a0", role: "assistant", content: "Hi (already)" },
     ]);
 
-    const did = await appendTurnMessages({
+    const result = await appendTurnMessages({
       conversationId: "conv-1",
       rows,
       idPrefix: "turn-1-a",
       reason: "user-turn",
     });
 
-    expect(did).toBe(false);
+    expect(result).toBe("duplicate");
     expect(update).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
   });
 
   test("no-ops on an empty rows array", async () => {
-    const did = await appendTurnMessages({
+    const result = await appendTurnMessages({
       conversationId: "conv-1",
       rows: [],
       idPrefix: "turn-1-a",
       reason: "user-turn",
     });
-    expect(did).toBe(false);
+    expect(result).toBe("duplicate");
     expect(txn).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
   });
@@ -310,14 +310,41 @@ describe("appendTurnMessages", () => {
   test("no-ops when the conversation row was deleted mid-turn", async () => {
     withNoRow();
 
-    const did = await appendTurnMessages({
+    const result = await appendTurnMessages({
       conversationId: "conv-1",
       rows,
       idPrefix: "turn-1-a",
       reason: "user-turn",
     });
 
-    expect(did).toBe(false);
+    expect(result).toBe("duplicate");
+    expect(update).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  test("returns 'tombstoned' and skips the write when turnId is tombstoned", async () => {
+    txn.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([
+          {
+            messages: [{ id: "turn-1-u", role: "user", content: "Q" }],
+            settings: { removedTurnIds: [{ turnId: "turn-1", at: new Date().toISOString() }] },
+          },
+        ]),
+        sharedConversation: { update },
+      };
+      return cb(tx);
+    });
+
+    const result = await appendTurnMessages({
+      conversationId: "conv-1",
+      rows,
+      idPrefix: "turn-1-a",
+      reason: "user-turn",
+      turnId: "turn-1",
+    });
+
+    expect(result).toBe("tombstoned");
     expect(update).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
   });

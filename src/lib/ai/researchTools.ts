@@ -74,6 +74,14 @@ export interface DispatchedResearchIntent {
   conversationId: string;
   orgId: string;
   userId: string;
+  /**
+   * The turn that dispatched this research. Stamped onto the fan-out's
+   * result row as `originTurnId` so "edit last message" removes it along
+   * with the rest of the turn if the user edits-and-replaces before the
+   * sub-agent reports back; `fanOutResearchToCanvas` also uses it to
+   * skip writing entirely once the dispatching turn is tombstoned.
+   */
+  originTurnId?: string;
 }
 
 /**
@@ -102,6 +110,7 @@ export function buildResearchTools(
   webSearch: WebSearchHandle,
   dispatchedResearch?: DispatchedResearchIntent[],
   conversationId?: string,
+  dispatchTurnId?: string,
 ): ToolSet {
   return {
     save_research: tool({
@@ -330,6 +339,7 @@ export function buildResearchTools(
               conversationId,
               orgId,
               userId,
+              originTurnId: dispatchTurnId,
             });
           }
 

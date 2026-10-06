@@ -206,6 +206,7 @@ export async function runGraphWalkSubAgent(
     orgId,
     userId,
     workspaceSlugs,
+    originTurnId,
   } = args;
 
   const lockKey = `canvas-graph-walk:${conversationId}:${graphWalkId}`;
@@ -352,6 +353,7 @@ export async function runGraphWalkSubAgent(
       answer: answer ?? "",
       status,
       detailConversationId,
+      originTurnId,
     });
   } catch (e) {
     console.error("[canvas-graph-walk] failed (non-fatal)", {
@@ -368,6 +370,7 @@ export async function runGraphWalkSubAgent(
         title,
         answer: "",
         status: "failed",
+        originTurnId,
       });
     } catch (fanoutErr) {
       console.error(

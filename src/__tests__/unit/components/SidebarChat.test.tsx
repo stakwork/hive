@@ -1063,7 +1063,10 @@ describe("SidebarChat — Fork chat button", () => {
     expect(postCall![0]).toBe("/api/orgs/test-org/chat/conversations");
     const postBody = JSON.parse((postCall![1] as RequestInit).body as string);
     expect(postBody.title).toBe("Auth token refresh");
-    expect(postBody.settings).toEqual({ titleSource: "llm" });
+    // `titleSource` is a server-only tombstone/title-tracking key —
+    // `forkCanvasConversation` strips it (via `stripServerOnlySettingsKeys`)
+    // before POSTing, so the fork's settings body no longer carries it.
+    expect(postBody.settings).toEqual({});
 
     // 3. store.startConversation was called with forkedFromShareId = "srv-1",
     //    ephemeralSeedCount = 2 (two messages), serverConversationId = "fork-srv-1"

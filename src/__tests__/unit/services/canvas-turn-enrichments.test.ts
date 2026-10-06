@@ -4,8 +4,15 @@
  * `generateConversationTitle` is a Bifrost-free generateObject one-shot.
  * `maybeGenerateAndPersistTitle` is the persist-side writer: skip on
  * error/empty, write once via settings.titleSource === "llm", retry when
- * that marker is unset, and never throw (so an LLM failure cannot fall
- * into /api/ask/quick's persist catch and append a fake error row).
+ * that marker is unset, skip when the turn is tombstoned, and never
+ * throw (so an LLM failure cannot fall into /api/ask/quick's persist
+ * catch and append a fake error row).
+ *
+ * The read-check-write for `titleSource` runs inside a `db.$transaction`
+ * (`tx.$queryRaw` SELECT ... FOR UPDATE + `tx.sharedConversation.update`),
+ * not a plain `findUnique` + `$executeRaw` — this serializes against
+ * `truncateAndAppendTurn` / `appendTurnMessages` and lets a tombstoned
+ * turn skip the write. See `withLockedSettings` / `withNoLockedRow`.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -29,7 +36,7 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(),
       update: vi.fn(),
     },
-    $executeRaw: vi.fn(),
+    $transaction: vi.fn(),
   },
 }));
 
@@ -56,13 +63,39 @@ const generateObjectMock = generateObject as ReturnType<typeof vi.fn>;
 const getModelMock = getModel as ReturnType<typeof vi.fn>;
 const getApiKeyMock = getApiKeyForProvider as ReturnType<typeof vi.fn>;
 const getBifrostMock = getBifrostForLLM as ReturnType<typeof vi.fn>;
-const findUnique = db.sharedConversation.findUnique as ReturnType<typeof vi.fn>;
+const txn = db.$transaction as ReturnType<typeof vi.fn>;
 const prismaUpdate = db.sharedConversation.update as ReturnType<typeof vi.fn>;
-const executeRaw = db.$executeRaw as ReturnType<typeof vi.fn>;
 const notify = notifyCanvasConversationUpdated as ReturnType<typeof vi.fn>;
 
 const USER = "How does the auth middleware work when tokens expire?";
 const ASSISTANT = "It refreshes the access token using the refresh token cookie.";
+
+/**
+ * Run the `$transaction` callback against a `tx` whose locked
+ * `SELECT settings FOR UPDATE` read returns `settings`. Mirrors the
+ * `tx.sharedConversation.update` spy onto the shared `prismaUpdate`
+ * mock so assertions can inspect it either way.
+ */
+function withLockedSettings(settings: unknown) {
+  txn.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ settings }]),
+      sharedConversation: { update: prismaUpdate },
+    };
+    return cb(tx);
+  });
+}
+
+/** Run the `$transaction` callback against a `tx` whose locked read is empty (row gone). */
+function withNoLockedRow() {
+  txn.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      sharedConversation: { update: prismaUpdate },
+    };
+    return cb(tx);
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,11 +104,7 @@ beforeEach(() => {
   generateObjectMock.mockResolvedValue({
     object: { title: "Auth token refresh" },
   });
-  findUnique.mockResolvedValue({
-    title: USER.slice(0, 200),
-    settings: { extraWorkspaceSlugs: ["acme"] },
-  });
-  executeRaw.mockResolvedValue(1);
+  withLockedSettings({ extraWorkspaceSlugs: ["acme"] });
 });
 
 describe("sanitizeGeneratedTitle", () => {
@@ -165,9 +194,8 @@ describe("maybeGenerateAndPersistTitle", () => {
       assistantText: ASSISTANT,
       assistantIsError: true,
     });
-    expect(findUnique).not.toHaveBeenCalled();
+    expect(txn).not.toHaveBeenCalled();
     expect(generateObjectMock).not.toHaveBeenCalled();
-    expect(executeRaw).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
   });
 
@@ -178,16 +206,12 @@ describe("maybeGenerateAndPersistTitle", () => {
       assistantText: "  \n  ",
       assistantIsError: false,
     });
-    expect(findUnique).not.toHaveBeenCalled();
+    expect(txn).not.toHaveBeenCalled();
     expect(generateObjectMock).not.toHaveBeenCalled();
-    expect(executeRaw).not.toHaveBeenCalled();
   });
 
   it("writes title + settings.titleSource=llm on a fresh row", async () => {
-    findUnique.mockResolvedValue({
-      title: "Untitled Conversation",
-      settings: {},
-    });
+    withLockedSettings({});
 
     await maybeGenerateAndPersistTitle({
       rowId,
@@ -197,38 +221,16 @@ describe("maybeGenerateAndPersistTitle", () => {
     });
 
     expect(generateObjectMock).toHaveBeenCalledOnce();
-    expect(executeRaw).toHaveBeenCalledOnce();
-    const serialized = JSON.stringify(executeRaw.mock.calls[0]);
+    expect(prismaUpdate).toHaveBeenCalledOnce();
+    const serialized = JSON.stringify(prismaUpdate.mock.calls[0]);
     expect(serialized).toContain("Auth token refresh");
     expect(serialized).toContain("titleSource");
     expect(serialized).toContain(rowId);
-    expect(prismaUpdate).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith(rowId, "user-turn");
   });
 
   it("no-ops when settings.titleSource is already llm", async () => {
-    findUnique.mockResolvedValue({
-      title: "Auth token refresh",
-      settings: { titleSource: "llm" },
-    });
-
-    await maybeGenerateAndPersistTitle({
-      rowId,
-      userText: USER,
-      assistantText: ASSISTANT,
-      assistantIsError: false,
-    });
-
-    expect(generateObjectMock).not.toHaveBeenCalled();
-    expect(executeRaw).not.toHaveBeenCalled();
-    expect(notify).not.toHaveBeenCalled();
-  });
-
-  it("retries when titleSource is unset even if a placeholder title exists", async () => {
-    findUnique.mockResolvedValue({
-      title: USER.slice(0, 200),
-      settings: { extraWorkspaceSlugs: ["acme"] },
-    });
+    withLockedSettings({ titleSource: "llm" });
 
     await maybeGenerateAndPersistTitle({
       rowId,
@@ -238,8 +240,56 @@ describe("maybeGenerateAndPersistTitle", () => {
     });
 
     expect(generateObjectMock).toHaveBeenCalledOnce();
-    expect(executeRaw).toHaveBeenCalledOnce();
+    expect(prismaUpdate).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("retries when titleSource is unset even if a placeholder title exists", async () => {
+    withLockedSettings({ extraWorkspaceSlugs: ["acme"] });
+
+    await maybeGenerateAndPersistTitle({
+      rowId,
+      userText: USER,
+      assistantText: ASSISTANT,
+      assistantIsError: false,
+    });
+
+    expect(generateObjectMock).toHaveBeenCalledOnce();
+    expect(prismaUpdate).toHaveBeenCalledOnce();
     expect(notify).toHaveBeenCalledWith(rowId, "user-turn");
+  });
+
+  it("skips the write when the turn is tombstoned", async () => {
+    withLockedSettings({
+      removedTurnIds: [{ turnId: "turn-1", at: new Date().toISOString() }],
+    });
+
+    await maybeGenerateAndPersistTitle({
+      rowId,
+      userText: USER,
+      assistantText: ASSISTANT,
+      assistantIsError: false,
+      turnId: "turn-1",
+    });
+
+    expect(generateObjectMock).toHaveBeenCalledOnce();
+    expect(prismaUpdate).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("no-ops when the conversation row was deleted mid-turn", async () => {
+    withNoLockedRow();
+
+    await maybeGenerateAndPersistTitle({
+      rowId,
+      userText: USER,
+      assistantText: ASSISTANT,
+      assistantIsError: false,
+    });
+
+    expect(generateObjectMock).toHaveBeenCalledOnce();
+    expect(prismaUpdate).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("does not write when the LLM returns an empty title", async () => {
@@ -252,7 +302,7 @@ describe("maybeGenerateAndPersistTitle", () => {
       assistantIsError: false,
     });
 
-    expect(executeRaw).not.toHaveBeenCalled();
+    expect(txn).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
   });
 
@@ -268,7 +318,7 @@ describe("maybeGenerateAndPersistTitle", () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(executeRaw).not.toHaveBeenCalled();
+    expect(txn).not.toHaveBeenCalled();
     expect(prismaUpdate).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
   });
@@ -293,12 +343,12 @@ describe("maybeGenerateAndPersistTitle", () => {
     }
 
     expect(persistCatch).not.toHaveBeenCalled();
-    expect(executeRaw).not.toHaveBeenCalled();
+    expect(txn).not.toHaveBeenCalled();
     expect(prismaUpdate).not.toHaveBeenCalled();
   });
 
   it("swallows DB errors so a title failure cannot append an assistant error row", async () => {
-    findUnique.mockRejectedValue(new Error("db down"));
+    txn.mockRejectedValue(new Error("db down"));
 
     await expect(
       maybeGenerateAndPersistTitle({
@@ -309,7 +359,7 @@ describe("maybeGenerateAndPersistTitle", () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(executeRaw).not.toHaveBeenCalled();
+    expect(prismaUpdate).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
   });
 });

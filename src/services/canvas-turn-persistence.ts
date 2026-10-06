@@ -30,6 +30,11 @@ import {
   type CanvasConversationUpdateReason,
 } from "@/lib/pusher";
 import { PROPOSE_CODE_CHANGE_TOOL } from "@/lib/proposals/types";
+import {
+  isRemovedTurn,
+  readTombstoneSettings,
+  type TombstoneSettings,
+} from "@/lib/canvas/tombstones";
 
 // ───────────────────────────────────────────────────────────────────
 // Stored-message types (the `CanvasChatMessage` JSON shape inside
@@ -99,6 +104,23 @@ export interface StoredMessage {
   toolCalls?: StoredToolCall[];
   attachments?: StoredAttachment[];
   source?: { kind: string; featureId?: string; plannerMessageId?: string };
+  /**
+   * The user who authored this row (`persistCanvasUserMessage` always
+   * stamps it on the user row). Powers "edit last message"
+   * (`src/lib/canvas/turnEdit.ts`'s `findEditableLastUserRow`): a row
+   * without `authorId` — everything saved before this feature, plus
+   * system-written user rows (planner-form answers, automation prompts)
+   * — is never editable. There is no owner fallback.
+   */
+  authorId?: string;
+  /**
+   * Stamps a row written by a sub-agent fan-out (research / graph-walk)
+   * with the turn id that DISPATCHED it, so cutting that turn
+   * (`computeTruncation`) also removes the fan-out's late-arriving
+   * result row even though the row's own id has a different prefix
+   * (`research-<id>-...` / `graph-walk-<id>`, not `${turnId}-...`).
+   */
+  originTurnId?: string;
   /**
    * What the message hands the reader to look at — `ArtifactRef[]`
    * (`app/org/[githubLogin]/_state/canvasChatArtifacts.ts`), written by a
@@ -409,12 +431,26 @@ export async function fetchStoredConversationMessages(args: {
   return Array.isArray(row.messages) ? (row.messages as unknown as StoredMessage[]) : [];
 }
 
+/** Result of {@link appendTurnMessages} — a tri-state, not a boolean, so
+ *  callers can distinguish "already written" (dedup, fine to proceed)
+ *  from "turn was cut out from under us" (the tombstone fired after this
+ *  write was scheduled — the caller must NOT treat its content as live,
+ *  e.g. title generation must skip). */
+export type AppendTurnResult = "appended" | "duplicate" | "tombstoned";
+
 /**
  * Append rows into a canvas conversation under the same row-level lock
  * the fan-out worker and the autosave PUT use, so all writers serialize
  * on the conversation row. Idempotent on the `idPrefix`: if any existing
  * row id already starts with it, this is a no-op (a retried `after()`,
- * a re-delivered webhook). Returns whether THIS call appended.
+ * a re-delivered webhook).
+ *
+ * When `turnId` is supplied and it EXACTLY matches a tombstoned turn
+ * (`settings.removedTurnIds`), this no-ops and returns `"tombstoned"` —
+ * a late writer (a stopped turn's `after()`, a re-delivered webhook)
+ * for a turn the user has since edited-and-replaced must never resurrect
+ * it. Matching is exact (`turnId === entry.turnId`), never a prefix —
+ * tombstoning `"a"` must not block appending `"ab-…"`.
  *
  * Fires a `CANVAS_CONVERSATION_UPDATED` nudge only on a fresh append, so
  * open browsers live-sync the new rows in. Never throws on the Pusher
@@ -425,16 +461,30 @@ export async function appendTurnMessages(args: {
   rows: StoredMessage[];
   idPrefix: string;
   reason: CanvasConversationUpdateReason;
-}): Promise<boolean> {
-  const { conversationId, rows, idPrefix, reason } = args;
-  if (rows.length === 0) return false;
+  /**
+   * The turn id these rows belong to. When present and tombstoned, the
+   * append no-ops (`"tombstoned"`). Optional for backward compatibility
+   * with callers that don't participate in edit/truncate (planner,
+   * autoturn, automation fan-outs — see the feature's Gaps).
+   */
+  turnId?: string;
+}): Promise<AppendTurnResult> {
+  const { conversationId, rows, idPrefix, reason, turnId } = args;
+  if (rows.length === 0) return "duplicate";
 
-  let didAppend = false;
-  await db.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ messages: unknown }[]>`
-      SELECT messages FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
+  // The transaction callback RETURNS its outcome rather than mutating a
+  // captured outer `let` — TypeScript's control-flow narrowing doesn't
+  // track reassignments made inside a closure, so checking the mutated
+  // variable after `await db.$transaction(...)` resolves to its
+  // pre-callback narrowed type (a real TS limitation, not a logic bug).
+  // Returning the value sidesteps that entirely.
+  const result: AppendTurnResult = await db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<
+      { messages: unknown; settings: unknown }[]
+    >`
+      SELECT messages, settings FROM shared_conversations WHERE id = ${conversationId} FOR UPDATE
     `;
-    if (locked.length === 0) return; // conversation deleted mid-turn
+    if (locked.length === 0) return "duplicate"; // conversation deleted mid-turn
 
     const existing = Array.isArray(locked[0].messages)
       ? (locked[0].messages as StoredMessage[])
@@ -443,7 +493,16 @@ export async function appendTurnMessages(args: {
     const alreadyAppended = existing.some(
       (m) => typeof m.id === "string" && m.id.startsWith(idPrefix),
     );
-    if (alreadyAppended) return;
+    if (alreadyAppended) return "duplicate";
+
+    if (turnId && isRemovedTurn(locked[0].settings, turnId)) {
+      console.log("[canvas-turn] tombstoned-write-skipped", {
+        conversationId,
+        turnId,
+        writer: "append",
+      });
+      return "tombstoned";
+    }
 
     await tx.sharedConversation.update({
       where: { id: conversationId },
@@ -452,11 +511,11 @@ export async function appendTurnMessages(args: {
         lastMessageAt: new Date(),
       },
     });
-    didAppend = true;
+    return "appended";
   });
 
-  if (didAppend) notifyCanvasConversationUpdated(conversationId, reason);
-  return didAppend;
+  if (result === "appended") notifyCanvasConversationUpdated(conversationId, reason);
+  return result;
 }
 
 /**

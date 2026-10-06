@@ -42,12 +42,23 @@ import {
   persistOrgCanvasPromptCache,
   fetchOrgCanvasConversationMessages,
   persistOrgCanvasPromptResolutions,
+  truncateAndAppendTurn,
+  findOrgCanvasRowByTurnId,
 } from "@/services/org-canvas-conversation";
 import {
   emitFollowUpQuestions,
   emitProvenance,
   maybeGenerateAndPersistTitle,
 } from "@/services/canvas-turn-enrichments";
+import { resolveStrutTarget } from "@/services/strut-target";
+import {
+  validateWorkflowMentions,
+  WorkflowMentionValidationError,
+} from "@/services/strut-workflows";
+import type { CanvasWorkflowRef } from "@/lib/constants/prompt";
+import { isValidTurnId } from "@/lib/canvas/turnEdit";
+import { readTombstoneSettings } from "@/lib/canvas/tombstones";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
 // the org-canvas turn is persisted server-side in `after()` so it survives the
@@ -127,7 +138,45 @@ export async function POST(request: NextRequest) {
       // The model sees them as image parts embedded in `messages`; this
       // top-level copy is what we persist so they survive reload.
       attachments,
+      // Structured `@workflow` mention occurrences from the composer
+      // (`{ id, name, start, end }[]`). Display metadata only — every
+      // `id` is independently re-validated below against the caller's
+      // authorized Strut target's live catalog before it reaches
+      // `runCanvasAgent`. Absent → unchanged behavior (no validation, no
+      // workflow context).
+      workflowMentions,
+      // "Edit last message" (org-canvas only). When set, this turn
+      // REPLACES `replacesTurnId` instead of appending after it — see
+      // `truncateAndAppendTurn`. Absent → unchanged legacy append
+      // behavior. `truncationEpoch` is the client's last-applied epoch
+      // (from a prior response's `X-Truncation-Epoch` / the GET's
+      // `settings.truncationEpoch`); used to detect a stale transcript
+      // (the client built `messages` before seeing a truncation another
+      // tab caused).
+      replacesTurnId,
+      truncationEpoch: clientTruncationEpoch,
     } = body;
+
+    // ============================================================
+    // "Edit last message" guards. Run immediately after body parsing,
+    // before ANY other validation or DB work — a malformed/misused
+    // `replacesTurnId` must never reach a write.
+    // ============================================================
+    if (replacesTurnId !== undefined && (approvalIntent || rejectionIntent)) {
+      return NextResponse.json(
+        { error: "replacesTurnId cannot be combined with approvalIntent/rejectionIntent" },
+        { status: 400 },
+      );
+    }
+    if (
+      (typeof turnId === "string" && turnId.length > 0 && !isValidTurnId(turnId)) ||
+      (replacesTurnId !== undefined && !isValidTurnId(replacesTurnId))
+    ) {
+      return NextResponse.json(
+        { error: "Malformed turnId or replacesTurnId" },
+        { status: 400 },
+      );
+    }
 
     // Server-history mode: mobile clients send { message, conversationId, workspaceSlugs[] }
     // instead of the full messages array. Detected when `message` is a non-empty string
@@ -376,6 +425,65 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ============================================================
+    // Structured `@workflow` mention validation. Runs AFTER org-
+    // membership gating (above) but BEFORE persistCanvasUserMessage /
+    // runCanvasAgent — a rejected reference must never reach the DB or
+    // the model. The target org identity is derived from the AUTHORIZED
+    // `orgId` (validated above), never from a client-supplied workspace/
+    // org value — so `resolveStrutTarget` resolves against the caller's
+    // own org, not whatever the client happened to submit. `target.orgId
+    // === orgId` is re-checked defensively even though the org-default
+    // policy already scopes to this org.
+    //
+    // Absent `workflowMentions` → no behavior change at all (existing
+    // callers, and any non-canvas caller, are untouched).
+    // ============================================================
+    let workflowRefs: CanvasWorkflowRef[] | undefined;
+    if (Array.isArray(workflowMentions) && workflowMentions.length > 0) {
+      if (!orgId || !userId) {
+        throw validationError("workflowMentions require an authenticated org-canvas request");
+      }
+      const org = await db.sourceControlOrg.findUnique({
+        where: { id: orgId },
+        select: { githubLogin: true },
+      });
+      if (!org?.githubLogin) {
+        return NextResponse.json(
+          { error: "Could not verify workflow references", code: "WORKFLOW_MENTION_INVALID" },
+          { status: 400 },
+        );
+      }
+      const targetResolved = await resolveStrutTarget({
+        purpose: "chat",
+        userId,
+        orgGithubLogin: org.githubLogin,
+      });
+      if (!targetResolved.ok || targetResolved.target.orgId !== orgId) {
+        return NextResponse.json(
+          { error: "Could not verify workflow references", code: "WORKFLOW_MENTION_INVALID" },
+          { status: 400 },
+        );
+      }
+      try {
+        workflowRefs = await validateWorkflowMentions(targetResolved.target, workflowMentions);
+      } catch (err) {
+        if (err instanceof WorkflowMentionValidationError) {
+          console.warn("[quick-ask] workflow mention validation failed", {
+            code: err.code,
+            orgId,
+            userId,
+            referenceCount: Array.isArray(workflowMentions) ? workflowMentions.length : 0,
+          });
+          return NextResponse.json(
+            { error: err.message, message: err.message, code: err.code },
+            { status: 400 },
+          );
+        }
+        throw err;
+      }
+    }
+
     // Resolve the SharedConversation row this turn should attribute
     // tokens to. Validation rules:
     //   - Member: the row must belong to this user AND this workspace.
@@ -458,6 +566,10 @@ export async function POST(request: NextRequest) {
     // ============================================================
     const turnIdStr: string | null =
       typeof turnId === "string" && turnId.length > 0 ? turnId : null;
+    const replacesTurnIdStr: string | null =
+      typeof replacesTurnId === "string" && replacesTurnId.length > 0
+        ? replacesTurnId
+        : null;
     // The latest user turn's text. With an image attachment the content is
     // a multi-part array (`{type:"text"} + {type:"image"}`), so pull the
     // text part out — otherwise a string content collapses to "" and the
@@ -482,15 +594,165 @@ export async function POST(request: NextRequest) {
     const userAttachments: StoredAttachment[] =
       normalizeStoredAttachments(attachments);
     let canvasConversationRowId: string | null = null;
+    // Set once the response headers are built — reflects the epoch after
+    // THIS request's write (a successful edit, or the row's current
+    // epoch on a legacy append).
+    let responseTruncationEpoch: number | undefined;
     // Persist when there's text OR an attachment — an image-only turn has
     // no text but still must be saved.
     const tPersist = Date.now();
-    if (
-      orgId &&
-      userId &&
-      turnIdStr &&
-      (newUserContent.trim() || userAttachments.length > 0)
-    ) {
+    const hasTurnContent = newUserContent.trim() || userAttachments.length > 0;
+
+    if (orgId && userId && replacesTurnIdStr && hasTurnContent && turnIdStr) {
+      // ============================================================
+      // "Edit last message" — replace `replacesTurnIdStr` with this
+      // turn instead of appending after it.
+      // ============================================================
+      const rateLimitKey = `edit:${userId}:${promptCache?.rowId ?? replacesTurnIdStr}`;
+      const rl = await checkRateLimit(rateLimitKey, 20, 60);
+      if (!rl.allowed) {
+        console.log("[quick-ask] edit-rejected", {
+          rowId: promptCache?.rowId ?? null,
+          replacesTurnId: replacesTurnIdStr,
+          reason: "rate-limited",
+        });
+        return NextResponse.json(
+          { error: "Too many edits — please slow down.", code: "rate-limited" },
+          {
+            status: 429,
+            headers: { "Retry-After": String(rl.retryAfter ?? 60) },
+          },
+        );
+      }
+
+      let resolvedVia: "client" | "turn-lookup" | "none" = "none";
+      let rowId: string | null = promptCache?.rowId ?? null;
+      if (rowId) {
+        resolvedVia = "client";
+      } else {
+        rowId = await findOrgCanvasRowByTurnId({
+          orgId,
+          userId,
+          turnId: replacesTurnIdStr,
+        });
+        if (rowId) resolvedVia = "turn-lookup";
+      }
+
+      const newUserRow: StoredMessage = {
+        id: `${turnIdStr}-u`,
+        role: "user",
+        authorId: userId,
+        content: newUserContent,
+        timestamp: new Date().toISOString(),
+        ...(userAttachments.length > 0 ? { attachments: userAttachments } : {}),
+      };
+
+      if (!rowId) {
+        // Nothing saved yet (the very first message was stopped before
+        // it ever reached the DB) — this edit is simply a fresh first
+        // turn, with the tombstone already set so the original request's
+        // eventual create becomes a no-op (the advisory-lock race in
+        // `persistCanvasUserMessage`).
+        rowId = await persistCanvasUserMessage({
+          orgId,
+          userId,
+          existingRowId: null,
+          turnId: turnIdStr,
+          content: newUserContent,
+          attachments: userAttachments,
+          workspaceSlugs: slugs,
+        });
+        if (rowId) {
+          // Seed the tombstone immediately so the original request's
+          // later create/append (if it lands after all) is rejected.
+          await truncateAndAppendTurn({
+            orgId,
+            conversationId: rowId,
+            userId,
+            replacesTurnId: replacesTurnIdStr,
+            newUserRow: { ...newUserRow, id: `${turnIdStr}-u-noop` } as StoredMessage,
+            newTurnId: `${turnIdStr}-noop`,
+          }).catch(() => {});
+        }
+        canvasConversationRowId = rowId;
+        responseTruncationEpoch = 1;
+        console.log("[quick-ask] edit-truncate", {
+          rowId,
+          replacesTurnId: replacesTurnIdStr,
+          removedCount: 0,
+          resolvedVia: "none",
+          alreadyTombstoned: false,
+        });
+      } else {
+        // Stale-transcript guard: the client's `messages` array was
+        // built from ITS OWN view of history. If the row has since been
+        // truncated beyond what this client knows about, its transcript
+        // (and thus the content it's about to send Jamie) may include
+        // rows that no longer exist. Reject before any write.
+        const rowForEpoch = await db.sharedConversation.findUnique({
+          where: { id: rowId },
+          select: { settings: true },
+        });
+        const { truncationEpoch: serverEpoch } = readTombstoneSettings(
+          rowForEpoch?.settings,
+        );
+        const clientEpoch =
+          typeof clientTruncationEpoch === "number" ? clientTruncationEpoch : 0;
+        if (serverEpoch > clientEpoch) {
+          console.log("[quick-ask] edit-rejected", {
+            rowId,
+            replacesTurnId: replacesTurnIdStr,
+            reason: "stale-transcript",
+          });
+          return NextResponse.json(
+            { error: "Conversation changed in another tab.", code: "stale-transcript" },
+            { status: 409 },
+          );
+        }
+
+        const result = await truncateAndAppendTurn({
+          orgId,
+          conversationId: rowId,
+          userId,
+          replacesTurnId: replacesTurnIdStr,
+          newUserRow,
+          newTurnId: turnIdStr,
+        });
+
+        if (result.kind === "not-found") {
+          console.log("[quick-ask] edit-rejected", {
+            rowId,
+            replacesTurnId: replacesTurnIdStr,
+            reason: "not-last",
+          });
+          return NextResponse.json(
+            { error: "Conversation not found" },
+            { status: 404 },
+          );
+        }
+        if (result.kind === "rejected") {
+          console.log("[quick-ask] edit-rejected", {
+            rowId,
+            replacesTurnId: replacesTurnIdStr,
+            reason: result.reason,
+          });
+          return NextResponse.json(
+            { error: "This message can no longer be edited.", code: result.reason },
+            { status: 409 },
+          );
+        }
+
+        canvasConversationRowId = result.rowId;
+        responseTruncationEpoch = result.truncationEpoch;
+        console.log("[quick-ask] edit-truncate", {
+          rowId: result.rowId,
+          replacesTurnId: replacesTurnIdStr,
+          removedCount: result.removedCount,
+          resolvedVia,
+          alreadyTombstoned: result.alreadyTombstoned,
+        });
+      }
+    } else if (orgId && userId && turnIdStr && hasTurnContent) {
       canvasConversationRowId = await persistCanvasUserMessage({
         orgId,
         userId,
@@ -574,6 +836,9 @@ export async function POST(request: NextRequest) {
           orgId: orgId || undefined,
           workspaceSlugs: slugs,
           modelName: chatAgentModel,
+          // Server-validated `@workflow` mentions for THIS turn only —
+          // never reconstructed from history. Absent/empty → unchanged.
+          ...(workflowRefs?.length ? { workflowRefs } : {}),
           // Reuse cached concepts (skips the swarm `listConcepts` call)
           // when we have them for this org-canvas conversation. The prefix
           // is still rebuilt fresh each turn for an accurate scope hint.
@@ -844,17 +1109,25 @@ export async function POST(request: NextRequest) {
                 source: { kind: "error" },
               });
             }
-            await appendTurnMessages({
+            const appendResult = await appendTurnMessages({
               conversationId: rowId,
               rows,
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              turnId: turnIdStr,
             });
             // Nested try: an LLM throw must never fall into the persist
             // catch (that catch writes a fake assistant error row).
             // Not gated on isFirstTurn — the helper no-ops once
             // settings.titleSource === "llm", and retries if a prior
-            // after() died before the title write.
+            // after() died before the title write. Skipped entirely when
+            // the turn was tombstoned (the user edited-and-replaced it
+            // before this append landed) — generating a title from
+            // content that was just cut would resurrect exactly what the
+            // edit removed.
+            if (appendResult === "tombstoned") {
+              return;
+            }
             try {
               const assistantIsError =
                 errMsg !== null ||
@@ -873,6 +1146,7 @@ export async function POST(request: NextRequest) {
                 userText: newUserContent,
                 assistantText,
                 assistantIsError,
+                turnId: turnIdStr ?? undefined,
               });
             } catch (titleErr) {
               console.error(
@@ -898,6 +1172,7 @@ export async function POST(request: NextRequest) {
               rows: [errorRow],
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              turnId: turnIdStr,
             }).catch(() => {});
           }
         });
@@ -964,7 +1239,35 @@ export async function POST(request: NextRequest) {
           workspaces: slugs,
           orgId: orgId ?? null,
         });
-        if (dispatchedResearch.length > 0) {
+        // "Edit last message": a research/graph-walk sub-agent dispatched
+        // by THIS turn must not report back once this turn has been
+        // edited-and-replaced (tombstoned) — re-check right before
+        // scheduling, since the edit can land any time between dispatch
+        // and this point. The worker/fan-out also re-checks at write
+        // time (closes the race where the edit lands DURING the worker
+        // run), but skipping the schedule entirely here avoids wasted
+        // web-search/graph-walk spend for an edit that already happened.
+        let dispatchTombstoned = false;
+        if (
+          (dispatchedResearch.length > 0 || dispatchedGraphWalks.length > 0) &&
+          canvasConversationRowId &&
+          turnIdStr
+        ) {
+          const row = await db.sharedConversation.findUnique({
+            where: { id: canvasConversationRowId },
+            select: { settings: true },
+          });
+          if (row) {
+            const { readTombstoneSettings: readTS } = await import(
+              "@/lib/canvas/tombstones"
+            );
+            dispatchTombstoned = readTS(row.settings).removedTurnIds.some(
+              (e) => e.turnId === turnIdStr,
+            );
+          }
+        }
+
+        if (dispatchedResearch.length > 0 && !dispatchTombstoned) {
           const { runResearchSubAgent } = await import(
             "@/services/canvas-research-worker"
           );
@@ -980,7 +1283,7 @@ export async function POST(request: NextRequest) {
         // CRITICAL: same pattern as dispatchedResearch — the collector is
         // populated during stream consumption, so we must consume first
         // (already done above) then iterate.
-        if (dispatchedGraphWalks.length > 0) {
+        if (dispatchedGraphWalks.length > 0 && !dispatchTombstoned) {
           const { runGraphWalkSubAgent } = await import(
             "@/services/canvas-graph-walk-worker"
           );
@@ -1001,7 +1304,12 @@ export async function POST(request: NextRequest) {
       const extraHeaders: Record<string, string> = canvasConversationRowId
         ? {
             "X-Conversation-Id": canvasConversationRowId,
-            "Access-Control-Expose-Headers": "X-Conversation-Id",
+            "Access-Control-Expose-Headers": responseTruncationEpoch !== undefined
+              ? "X-Conversation-Id, X-Truncation-Epoch"
+              : "X-Conversation-Id",
+            ...(responseTruncationEpoch !== undefined
+              ? { "X-Truncation-Epoch": String(responseTruncationEpoch) }
+              : {}),
           }
         : {};
 

@@ -30,6 +30,7 @@ import {
   type CanvasChatMessage,
 } from "./canvasChatStore";
 import { parseArtifactRefs } from "./canvasChatArtifacts";
+import { stripServerOnlySettingsKeys } from "@/lib/canvas/tombstones";
 
 export async function forkCanvasConversation(
   githubLogin: string,
@@ -49,7 +50,15 @@ export async function forkCanvasConversation(
   const rawMessages: unknown[] = Array.isArray(sourceConv.messages)
     ? sourceConv.messages
     : [];
-  const settings = sourceConv.settings ?? {};
+  // Strip server-only tombstone/title-tracking keys from the copied
+  // settings — the fork must not inherit `removedTurnIds` /
+  // `truncationEpoch` from the source (they're meaningless on a new
+  // row with a disjoint id), and `titleSource` is preserved so an
+  // LLM-titled source doesn't get silently retitled, but only via the
+  // explicit `title: sourceConv.title` passed below, not from settings.
+  const settings = stripServerOnlySettingsKeys(
+    (sourceConv.settings ?? {}) as Record<string, unknown>,
+  );
 
   // ── 2. Create the fork ───────────────────────────────────────────────
   const postRes = await fetch(
@@ -110,7 +119,7 @@ export async function forkCanvasConversation(
       orgId: "",
       githubLogin,
       workspaceSlug: null,
-      workspaceSlugs: settings?.extraWorkspaceSlugs ?? [],
+      workspaceSlugs: (settings?.extraWorkspaceSlugs as string[] | undefined) ?? [],
       currentCanvasRef: "",
       currentCanvasBreadcrumb: "",
       selectedNodeId: null,
