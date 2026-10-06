@@ -82,6 +82,34 @@ describe("proposalGraphArtifact", () => {
     });
   });
 
+  test("turns a node delete into the graph centred on the node, with each of its links going", () => {
+    const ref = proposalGraphArtifact({
+      kind: "graphNodeDelete",
+      proposalId: "p-6",
+      payload: { workspaceId: "ws-1", workspaceSlug: "hive", ref_id: "c-2" },
+      meta: {
+        workspaceSlug: "hive",
+        node_name: "Security",
+        edges: [
+          { edge_type: "PARENT_OF", direction: "in", other_ref_id: "c-1" },
+          { edge_type: "DESCRIBES", direction: "out", other_ref_id: "d-1" },
+        ],
+      },
+    });
+
+    expect(ref).toMatchObject({ id: "proposal:p-6", kind: "graph", title: "Delete Security" });
+    const content = ref?.source.type === "inline" ? parseArtifactContent("graph", ref.source.content) : null;
+    expect(content).toEqual({
+      workspace: "hive",
+      focus: "c-2",
+      changes: [
+        { kind: "unlink", edge: "PARENT_OF", source: "c-1", target: "c-2" },
+        { kind: "unlink", edge: "DESCRIBES", source: "c-2", target: "d-1" },
+      ],
+      proposal: "p-6",
+    });
+  });
+
   test("turns a node move into the graph centred on the node, with the old link going and the new one coming", () => {
     const ref = proposalGraphArtifact({
       kind: "graphNodeMove",

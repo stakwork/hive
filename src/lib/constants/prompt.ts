@@ -991,7 +991,7 @@ kg traversal talks to the live swarm, so it can fail if the swarm is unconfigure
 
 ### Graph-write propose tools (when available)
 
-When the \`propose_*\` graph tools are present in your toolset, you can propose knowledge-graph changes that the user approves with a single click. Four add to the graph — \`propose_create_node\`, \`propose_node_edit\`, \`propose_create_triplet\`, \`propose_create_batch_triplet\` — and two edit it — \`propose_delete_edge\` removes one relationship, \`propose_move_node\` puts a node under a different parent. **These tools never write directly — the write happens only after the user clicks Approve on the card.**
+When the \`propose_*\` graph tools are present in your toolset, you can propose knowledge-graph changes that the user approves with a single click. Four add to the graph — \`propose_create_node\`, \`propose_node_edit\`, \`propose_create_triplet\`, \`propose_create_batch_triplet\` — and three edit it — \`propose_delete_edge\` removes one relationship, \`propose_move_node\` puts a node under a different parent, \`propose_delete_node\` deletes one node. **These tools never write directly — the write happens only after the user clicks Approve on the card.**
 
 #### Rules
 
@@ -1007,11 +1007,13 @@ When the \`propose_*\` graph tools are present in your toolset, you can propose 
 
 6. **Validate types and shapes before writing.** Before calling \`propose_create_node\`, \`propose_create_triplet\`, or \`propose_create_batch_triplet\`: first call \`graph_ontology({ workspace })\` to confirm the \`node_type\` / \`edge_type\` is valid for that workspace, then call \`get_ontology_type({ workspace, type })\` to learn which attributes the type requires (required vs optional), its \`node_key\`, and its valid edge schemas — so \`node_data\`/\`edge_data\` matches the expected shape before proposing. Jarvis remains the authoritative validator; this step is to self-correct up front and reduce rejected proposals.
 
-7. **Mirror-owned types are not editable.** \`propose_node_edit\` and \`propose_move_node\` will refuse \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`, \`ErrorIssue\`, \`Initiative\`, \`Milestone\`, and \`Research\` nodes — those are written by sync crons and any edit would be silently reverted on the next pass.
+7. **Mirror-owned types are not editable.** \`propose_node_edit\`, \`propose_move_node\` and \`propose_delete_node\` will refuse \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`, \`ErrorIssue\`, \`Initiative\`, \`Milestone\`, and \`Research\` nodes — those are written by sync crons and any edit would be silently reverted on the next pass.
 
 8. **Edges are addressed by their ends, never by an edge id.** \`propose_delete_edge({ workspaceSlug, edge_type, source_ref_id, target_ref_id })\` names the relationship as \`(source)-[:edge_type]->(target)\` with both ends' \`ref_id\`s from \`graph_get\` / \`graph_neighbors\` / \`graph_search\` (a \`graph_neighbors\` result gives you the neighbor's \`ref_id\`, the \`edgeType\`, and the \`direction\` — \`forward\` means the queried node is the source). The tool confirms the edge exists when you propose; the card is refused if it doesn't. Remove one relationship at a time, and say in \`rationale\` why it is wrong.
 
 9. **Moving a node is one proposal, not a delete plus a create.** \`propose_move_node({ workspaceSlug, ref_id, to_ref_id, from_ref_id?, edge_type? })\` moves \`ref_id\` from under \`from_ref_id\` to under \`to_ref_id\` along \`edge_type\` (default \`PARENT_OF\`, the concept tree: parent → child). Omit \`from_ref_id\` when the node has exactly one parent; a node with several parents needs it. A node with no parent isn't moved — link it with \`propose_create_triplet\`. The tool refuses a destination that sits under the node itself (a cycle). On approval the new link is made before the old one is removed, so the node is never left without a parent.
+
+10. **Delete a node only when the node itself is wrong.** \`propose_delete_node({ workspaceSlug, ref_id, rationale })\` is for a stale, duplicate or wrong node — an outdated Concept, say. If only a link is wrong, use \`propose_delete_edge\` or \`propose_move_node\`. For a duplicate, say in \`rationale\` which node it duplicates and keep that one. One node per card. On approval the node is soft-deleted (it can be restored) and every edge touching it is hidden; nothing else changes. Schema nodes are refused.
 ` + getGraphWalkDispatchSnippet() + `
 `;
 }

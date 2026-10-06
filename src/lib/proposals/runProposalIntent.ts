@@ -147,7 +147,9 @@ export async function runProposalIntent(args: {
                               ? "graph link removal"
                               : r.kind === "graphNodeMove"
                                 ? "graph node move"
-                                : r.kind === "codeChange"
+                                : r.kind === "graphNodeDelete"
+                                  ? "graph node delete"
+                                  : r.kind === "codeChange"
                                   ? "code change"
                                   : "feature";
 
@@ -199,6 +201,8 @@ export async function runProposalIntent(args: {
                                 ? r.alreadyExisted
                                   ? `Moved the node in ${graphWhere} — it was already linked to its new parent, so only the old link was removed.`
                                   : `Moved the node in ${graphWhere}.`
+                              : r.kind === "graphNodeDelete"
+                                ? `Deleted the node from ${graphWhere}. Its links are hidden, and it can be restored.`
                             : r.kind === "codeChange"
                               ? (() => {
                                   const cc = r.codeChange;
