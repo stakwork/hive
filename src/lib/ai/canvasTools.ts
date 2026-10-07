@@ -348,7 +348,14 @@ function applyPatchOp(canvas: CanvasData, op: PatchOp): CanvasData {
 const REF_DESCRIPTION =
   'Canvas scope. Omit (or pass "") for the org root canvas. Pass a ' +
   'sub-canvas ref (e.g. "node:<id>" to zoom into an authored node) ' +
-  "to address a different canvas.";
+  "to address a different canvas. Two projected kinds also have an " +
+  'addressable sub-canvas: `ws:<cuid>` is a workspace\'s sub-canvas ' +
+  "(shows that workspace's repos and any loose features), and " +
+  '`initiative:<cuid>` is an initiative\'s sub-canvas (shows that ' +
+  "initiative's milestones ordered by sequence, every feature anchored " +
+  "to it, and synthetic membership edges from each feature to its " +
+  "milestone when one is set). Milestones have NO sub-canvas — they " +
+  "are leaf cards on their parent initiative's canvas.";
 
 export function buildCanvasTools(orgId: string): ToolSet {
   return {
@@ -359,7 +366,15 @@ export function buildCanvasTools(orgId: string): ToolSet {
         "what the user has already built or edited so you can preserve " +
         "their work. Returns authored nodes AND projected live nodes " +
         "(ids prefixed with `ws:`, `feature:`, etc.) merged into one " +
-        "array; you don't need to distinguish them for reads.",
+        "array; you don't need to distinguish them for reads. Projected " +
+        "node id kinds you'll see in results: `ws:<cuid>` (Workspace), " +
+        "`repo:<cuid>` (Repository — only on a workspace's sub-canvas), " +
+        "`initiative:<cuid>` (Initiative — on the org root canvas), " +
+        "`milestone:<cuid>` (Milestone — on an initiative's sub-canvas, " +
+        "NOT drillable), `feature:<cuid>` (Feature — loose on a " +
+        "workspace sub-canvas, or anchored on an initiative sub-canvas), " +
+        "and `research:<cuid>` (Research doc). These are DB-backed — " +
+        "never create or edit a `<kind>:` node via a canvas tool.",
       inputSchema: z.object({
         ref: z.string().describe(REF_DESCRIPTION).optional(),
       }),

@@ -65,7 +65,7 @@ export function buildGraphWalkDispatchTools(ctx: CapabilityContext): ToolSet {
       "an assistant bubble. Returns { status: 'dispatched' } immediately — do NOT wait for the result.\n\n" +
       "Use `dispatch_graph_walk` for: multi-hop traversals, large ontology scans, or any graph work " +
       "that might take more than a few seconds.\n" +
-      "Use `learn_capability('graph_walker')` + inline tools for: quick single-node lookups, " +
+      "Use the inline graph_walker tools (already loaded) for: quick single-node lookups, " +
       "a single `graph_search` call, or when you need the answer synchronously in this turn.",
     inputSchema: z.object({
       title: z

@@ -49,6 +49,7 @@ export function PlannerFormSlot({
 }: PlannerFormSlotProps) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [alreadyAnswered, setAlreadyAnswered] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (formattedAnswers: string) => {
@@ -69,12 +70,33 @@ export function PlannerFormSlot({
           | null;
         throw new Error(data?.error || `Request failed (${res.status})`);
       }
-      setSubmitted(true);
+      const data = (await res.json().catch(() => null)) as
+        | { status?: string }
+        | null;
+      // Under the FORM rule, Jamie can authorize-and-send an answer via
+      // `send_to_feature_planner` without going through this slot. If
+      // the route's stale-FORM guard already found that reply, it
+      // returns `already_answered` instead of re-forwarding — show the
+      // same "already answered" state so the user doesn't try again.
+      if (data?.status === "already_answered") {
+        setAlreadyAnswered(true);
+      } else {
+        setSubmitted(true);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit answer");
       setSubmitting(false);
     }
   };
+
+  if (alreadyAnswered) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+        <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+        <span>Already answered in chat.</span>
+      </div>
+    );
+  }
 
   if (submitted) {
     return (

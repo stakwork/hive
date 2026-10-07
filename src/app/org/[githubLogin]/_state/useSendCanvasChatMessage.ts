@@ -41,6 +41,7 @@ import {
   type CanvasChatMessage,
   type ToolCall,
 } from "./canvasChatStore";
+import { readSlimPromptPreference } from "./slimPromptPreference";
 
 /**
  * Scan a rebuilt assistant-side timeline for a completed `schedule_check`
@@ -278,6 +279,7 @@ export function useSendCanvasChatMessage() {
             ...(ctx.selectedNodeId ? { selectedNodeId: ctx.selectedNodeId } : {}),
             ...(ctx.selectedNodeIds?.length ? { selectedNodeIds: ctx.selectedNodeIds } : {}),
             ...(ctx.graphFocus ? { graphFocus: { ...ctx.graphFocus, org: ctx.githubLogin } } : {}),
+            ...(readSlimPromptPreference() ? { slimPrompt: true } : {}),
             // Sidebar chat doesn't render follow-ups or provenance;
             // skip the server-side enrichment block to save tokens
             // and a stakgraph round-trip per turn.
