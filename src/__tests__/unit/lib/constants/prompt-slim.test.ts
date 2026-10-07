@@ -5,13 +5,15 @@ import {
   getPlannerCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
   getConceptsCapabilitySnippet,
+  getGraphWalkDispatchSnippet,
+} from "@/lib/constants/prompt";
+import {
   getConceptTreeEntrySnippet,
   getSlimRoadmapCapabilitySnippet,
   getSlimPlannerCapabilitySnippet,
   getSlimGraphWalkerCapabilitySnippet,
   getSlimConceptsCapabilitySnippet,
-  getGraphWalkDispatchSnippet,
-} from "@/lib/constants/prompt";
+} from "@/lib/constants/prompt-slim";
 import {
   PLANNER_FORM_RULE,
   PLANNER_FORM_WAKE_RULE,

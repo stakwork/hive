@@ -122,7 +122,6 @@ import {
 } from "@/lib/proposals/types";
 import {
   getConceptsCapabilitySnippet,
-  getConceptTreeEntrySnippet,
   getConnectionsCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
   getHtmlPagesCapabilitySnippet,
@@ -131,13 +130,16 @@ import {
   getPromptsCapabilitySnippet,
   getResearchCapabilitySnippet,
   getRoadmapCapabilitySnippet,
+  getWhiteboardCapabilitySnippet,
+  getWorkflowsCapabilitySnippet,
+} from "@/lib/constants/prompt";
+import {
+  getConceptTreeEntrySnippet,
   getSlimConceptsCapabilitySnippet,
   getSlimGraphWalkerCapabilitySnippet,
   getSlimPlannerCapabilitySnippet,
   getSlimRoadmapCapabilitySnippet,
-  getWhiteboardCapabilitySnippet,
-  getWorkflowsCapabilitySnippet,
-} from "@/lib/constants/prompt";
+} from "@/lib/constants/prompt-slim";
 
 export type OrgCapability =
   | "roadmap"
