@@ -33,14 +33,24 @@
  * by row id `job-<StrutRun.id>` — and never throws for a missing target.
  * `error` / `cancelled` / LOST rows append a row saying so.
  *
- * No canvas-agent wake in V1: the row IS the reply, and stored rows reach
+ * The row is the record, not the reply the user reads: the chat shows it
+ * collapsed (`JobTurnCard`), since a job's text is written in detail (a
+ * code change lists files, functions and line numbers). Once the row has
+ * landed — exactly once, on `appended` — the handler wakes the canvas
+ * agent (`invokeCanvasAgentOnJobTurn`, `canvas-strut-autoturn.ts`) to
+ * summarize it, relay the job's question, or continue the job; the wake
+ * runs in `after()` so the callback answers at once, and is gated there
+ * (owner opt-in, master kill switch, loop breaker). Stored rows also reach
  * the model as text on the next human message.
  *
  * Retry contract (`completeStrutRun`): a transient failure reading the
  * artifacts list throws, so the webhook answers 5xx and strut re-posts;
  * a 404 (the run is gone from strut) delivers the text without artifacts.
+ * The wake is never a reason to retry: it is scheduled after the append
+ * and its failures are its own.
  */
 
+import { after } from "next/server";
 import { z } from "zod";
 import { StrutRunStatus } from "@prisma/client";
 import type { ArtifactKind, ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
@@ -48,7 +58,8 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf, parseStrutArtifactKey } from "@/lib/strut-jobs";
-import { labForRow, type StrutRunRow } from "@/services/strut-runs";
+import { getBaseUrl } from "@/lib/utils";
+import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
 
 export { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf };
 
@@ -438,8 +449,49 @@ export async function appendJobRow(
   return result;
 }
 
+// ─── The wake ─────────────────────────────────────────────────────────────
+
+/** What the wake needs from the delivered row — built here so the test can see it whole. */
+export interface JobWake {
+  conversationId: string;
+  wakeId: string;
+  jobId: string;
+  title: string;
+  outcome: JobTurnOutcome;
+  ask?: string;
+  artifacts: Array<{ title: string; kind: string; label?: string }>;
+  publicBaseUrl: string;
+}
+
+/**
+ * Wake the canvas agent on the row that just landed, after the response:
+ * the turn is a full LLM turn and must not hold strut's callback (or make
+ * it retry). Outside a request (no `after`), it runs detached. Never
+ * throws — the row is delivered either way.
+ */
+function scheduleJobWake(row: Pick<StrutRunRow, "id" | "workspaceId">, wake: JobWake): void {
+  const run = async () => {
+    try {
+      const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
+      if (!workspace) return;
+      const { invokeCanvasAgentOnJobTurn } = await import("@/services/canvas-strut-autoturn");
+      await invokeCanvasAgentOnJobTurn({ ...wake, workspaceSlug: workspace.slug });
+    } catch (err) {
+      logger.warn("Job turn wake failed (non-fatal)", LOG_TAG, {
+        runId: row.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+  try {
+    after(run);
+  } catch {
+    void run();
+  }
+}
+
 /** The `StrutRunHandler` for `job_turn`. Throws to be retried. */
-export async function handleJobTurnSettled(row: StrutRunRow): Promise<void> {
+export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandlerContext): Promise<void> {
   const jobId = row.jobId;
   if (!jobId) {
     logger.error("Settled job turn has no job id", LOG_TAG, { runId: row.id });
@@ -485,6 +537,20 @@ export async function handleJobTurnSettled(row: StrutRunRow): Promise<void> {
     dropped: dropped.length,
     result,
   });
+
+  // The row landed (once): the agent's turn is the reply the user reads.
+  if (result === "appended" && row.conversationId) {
+    scheduleJobWake(row, {
+      conversationId: row.conversationId,
+      wakeId: jobRowId(row),
+      jobId,
+      title,
+      outcome: reply.outcome,
+      ...(reply.ask ? { ask: reply.ask } : {}),
+      artifacts: refs.map((r) => ({ title: r.title, kind: r.kind, ...(r.label ? { label: r.label } : {}) })),
+      publicBaseUrl: ctx?.publicBaseUrl ?? getBaseUrl(null),
+    });
+  }
 
   // The Stop button: this run is no longer something to stop.
   if (row.conversationId) {

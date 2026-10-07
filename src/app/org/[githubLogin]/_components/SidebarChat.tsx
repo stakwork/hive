@@ -38,6 +38,7 @@ import { SubAgentRunCard, getSubAgentRunsFromMessages } from "./SubAgentRunCard"
 import { ResearchRunCard, getResearchRunsFromMessages } from "./ResearchRunCard";
 import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
+import { JobTurnCard } from "./JobTurnCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
@@ -419,6 +420,17 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                   >
                     <Square className="h-2.5 w-2.5 fill-current" />
                     Stopped
+                  </div>
+                );
+              }
+
+              // A job turn's reply: collapsed to its header line (the canvas
+              // agent's own turn summarizes it), its artifacts as cards under it.
+              if (message.source?.kind === "job") {
+                return (
+                  <div key={message.id} className="space-y-1.5">
+                    <JobTurnCard message={message} source={message.source} />
+                    <MessageArtifacts artifacts={message.artifacts} versions={artifactVersions} />
                   </div>
                 );
               }

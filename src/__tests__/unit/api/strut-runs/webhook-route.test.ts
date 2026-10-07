@@ -109,12 +109,17 @@ describe("POST /api/strut-runs/webhook", () => {
     const res = await post(body({ conversationId: "attacker-conv", proposalId: "attacker-prop" }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, outcome: "claimed" });
-    expect(mockComplete).toHaveBeenCalledWith(row(), {
-      status: "success",
-      output: { diff: "d", filesChanged: 1 },
-      error: null,
-      durationMs: 4200,
-    });
+    expect(mockComplete).toHaveBeenCalledWith(
+      row(),
+      {
+        status: "success",
+        output: { diff: "d", filesChanged: 1 },
+        error: null,
+        durationMs: 4200,
+      },
+      // The callback's host, for a handler that wakes the canvas agent.
+      { publicBaseUrl: expect.stringMatching(/^https?:\/\//) },
+    );
     // Nothing about where to deliver comes from the payload.
     expect(JSON.stringify(mockComplete.mock.calls[0])).not.toContain("attacker");
   });
@@ -150,7 +155,7 @@ describe("POST /api/strut-runs/webhook", () => {
     const res = await post(body());
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, note: "already settled" });
-    expect(mockComplete).toHaveBeenCalledWith(row({ status: "SUCCESS" }), { status: "success" });
+    expect(mockComplete).toHaveBeenCalledWith(row({ status: "SUCCESS" }), { status: "success" }, expect.objectContaining({ publicBaseUrl: expect.any(String) }));
 
     mockComplete.mockResolvedValue("retry");
     expect((await post(body())).status).toBe(500);
