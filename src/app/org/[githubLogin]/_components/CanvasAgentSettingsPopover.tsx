@@ -29,9 +29,9 @@ import { readSlimPromptPreference, writeSlimPromptPreference } from "../_state/s
  *     form. Empty = inherit the admin-configured default.
  *
  *   - **Concept-tree prompt** — experimental, per-browser (localStorage,
- *     see `slimPromptPreference.ts`): the canvas agent gets the slim prompt
- *     and walks the Glimmer concept tree for how-to detail. Off = the full
- *     prompt.
+ *     see `slimPromptPreference.ts`): the canvas agent gets the shorter
+ *     capability sections and relies on the concept tree for how-to
+ *     detail. Off = the full sections.
  *
  * The first two are user-level preferences (not per-conversation), persisted
  * via `/api/user/preferences`. Fetched once on mount; changes are saved
@@ -171,7 +171,7 @@ export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: strin
             <div className="space-y-0.5">
               <p className="text-sm font-medium leading-none">Concept-tree prompt</p>
               <p className="text-xs text-muted-foreground">
-                Experimental, this browser only. Use a slim prompt and let the agent walk the Glimmer concept tree to learn how it works.
+                Experimental, this browser only. Use shorter capability sections and rely on the concept tree for detail.
               </p>
             </div>
             <Switch
