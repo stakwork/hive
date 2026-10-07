@@ -2671,6 +2671,12 @@ model StrutRun {
   @@index([proposalId])
   @@index([conversationId])
   @@index([jobId])
+  /// Documents a partial unique index Prisma cannot express directly: at most
+  /// one PENDING row per (workspace_id, kind) for the System Map kinds
+  /// (system_map, system_map_materialize, system_map_cwe_check). Lives only
+  /// in migration SQL (`add_strut_run_system_map_pending_unique`) — the
+  /// atomic single-flight claim the System Map run POST relies on via P2002.
+  @@index([workspaceId, kind])
   @@map("strut_runs")
 }
 

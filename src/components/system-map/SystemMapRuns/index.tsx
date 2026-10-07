@@ -30,6 +30,16 @@ const COPY: Record<SystemMapWorkflowKey, { description: string; button: string; 
     empty: "No runs yet. Start one to materialize this workspace's system graph.",
     started: "Graph materialize started",
   },
+  // Not surfaced on the System Map page's tabs (`/w/<slug>/system-map` only
+  // renders `schema` and `materialize`) — this entry exists so `COPY` stays
+  // total over `SystemMapWorkflowKey`. The workflow inspector's SystemMap
+  // tab has its own copy (`WorkflowSystemMapTab`), not `SystemMapRuns`.
+  cwe_check: {
+    description: "Writes the infosec namespace's security graph for this workspace into the knowledge graph.",
+    button: "Run CWE check",
+    empty: "No runs yet. Start one to build this workspace's security graph.",
+    started: "CWE check started",
+  },
 };
 
 /** Poll cadence while a run is in flight. */

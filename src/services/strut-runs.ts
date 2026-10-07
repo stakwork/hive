@@ -139,6 +139,7 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   code_change_land: async () => (await import("./strut-runs/code-change-land")).handleCodeChangeLandSettled,
   system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
+  system_map_cwe_check: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_climb: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
@@ -178,7 +179,9 @@ export type StrutDispatchFailureCode =
   | "workflow_missing"
   | "strut_http"
   | "callbacks_unsupported"
-  | "no_run_id";
+  | "no_run_id"
+  /** A DB-enforced single-flight claim (e.g. System Map's per-workspace-per-kind partial unique index) already owns this slot. */
+  | "conflict";
 
 export class StrutDispatchError extends Error {
   constructor(
@@ -270,21 +273,33 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
   const { target } = resolved;
 
   const rawToken = crypto.randomBytes(32).toString("hex");
-  const row = await db.strutRun.create({
-    data: {
-      tokenHash: hashStrutRunToken(rawToken),
-      workspaceId,
-      swarmId: target.swarmId,
-      userId,
-      kind,
-      workflow,
-      input: typeof args.input === "function" ? Prisma.DbNull : toJson(args.input),
-      ...(conversationId ? { conversationId } : {}),
-      ...(proposalId ? { proposalId } : {}),
-      ...(job ? { jobId: job } : {}),
-    },
-    select: { id: true },
-  });
+  let row: { id: string };
+  try {
+    row = await db.strutRun.create({
+      data: {
+        tokenHash: hashStrutRunToken(rawToken),
+        workspaceId,
+        swarmId: target.swarmId,
+        userId,
+        kind,
+        workflow,
+        input: typeof args.input === "function" ? Prisma.DbNull : toJson(args.input),
+        ...(conversationId ? { conversationId } : {}),
+        ...(proposalId ? { proposalId } : {}),
+        ...(job ? { jobId: job } : {}),
+      },
+      select: { id: true },
+    });
+  } catch (e) {
+    // A DB-enforced single-flight claim (a partial unique index scoped to
+    // PENDING rows, e.g. System Map's per-workspace-per-kind one) refused a
+    // second concurrent launch. No row was created, so nothing to retire —
+    // the caller turns this into a 409 rather than a dispatch failure.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      throw new StrutDispatchError("conflict", "A run of this kind is already in progress for this workspace.");
+    }
+    throw e;
+  }
   // An input derived from the row's id is stored once it exists, before the
   // launch — the row is what the handler reads back.
   let input: Record<string, unknown>;

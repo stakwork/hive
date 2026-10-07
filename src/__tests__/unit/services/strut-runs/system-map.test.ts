@@ -45,8 +45,14 @@ vi.mock("@/services/strut-runs", () => ({
   STRUT_RUN_LOG_TAG: "STRUT_RUN",
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }) }));
 
-import { launchSystemMapRun, listSystemMapRuns } from "@/services/strut-runs/system-map";
+import {
+  getSystemMapRunStatus,
+  launchSystemMapRun,
+  listSystemMapRuns,
+  SYSTEM_MAP_WORKFLOWS,
+} from "@/services/strut-runs/system-map";
 
 const NOW = new Date("2026-09-25T12:00:00Z");
 
@@ -231,5 +237,95 @@ describe("listSystemMapRuns", () => {
 
     expect(runs[0].strutUrl).toBeNull();
     expect(runs[0].error).toBe("nope");
+  });
+});
+
+describe("SYSTEM_MAP_WORKFLOWS registration", () => {
+  it("registers cwe_check with its own kind and workflow name", () => {
+    expect(SYSTEM_MAP_WORKFLOWS.cwe_check).toEqual({
+      kind: "system_map_cwe_check",
+      workflow: "swarm-systemmap-cwe-check-templates",
+      label: "CWE check",
+    });
+  });
+
+  it("dispatches cwe_check with the same input shape as the other workflows", async () => {
+    mockWorkspace.findUnique.mockResolvedValue({
+      swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
+    });
+    mockDispatch.mockResolvedValue({ runId: "run-3", strutRunId: "3", swarmId: "swarm-1" });
+
+    await launchSystemMapRun({
+      workspaceId: "ws-1",
+      workspaceSlug: "acme-ws",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      key: "cwe_check",
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      userId: "user-1",
+      kind: "system_map_cwe_check",
+      workflow: "swarm-systemmap-cwe-check-templates",
+      purpose: "system_map",
+      input: {
+        workspace: "acme-ws",
+        swarm_url: "https://acme.sphinx.chat:3355",
+        swarm_secret_alias: "{{SWARM_123_API_KEY}}",
+      },
+      publicBaseUrl: "https://hive.example",
+    });
+  });
+});
+
+describe("getSystemMapRunStatus", () => {
+  it("returns null for a run that does not belong to this workspace (IDOR)", async () => {
+    mockStrutRun.findFirst.mockResolvedValue(null);
+
+    const result = await getSystemMapRunStatus("ws-1", "run-of-another-workspace", { now: NOW });
+
+    expect(result).toBeNull();
+    expect(mockStrutRun.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "run-of-another-workspace", workspaceId: "ws-1", kind: { in: expect.any(Array) } },
+      }),
+    );
+  });
+
+  it("serializes a settled run without probing strut", async () => {
+    mockStrutRun.findFirst.mockResolvedValue(row({ status: StrutRunStatus.SUCCESS, output: "ok", settledAt: NOW }));
+
+    const result = await getSystemMapRunStatus("ws-1", "run-1", { now: NOW });
+
+    expect(mockProbe).not.toHaveBeenCalled();
+    expect(result?.status).toBe("SUCCESS");
+    expect(result?.output).toBe("ok");
+  });
+
+  it("settles a pending run past the probe age from strut's summary", async () => {
+    const pending = row();
+    const settled = row({ status: StrutRunStatus.SUCCESS, output: "done", settledAt: NOW });
+    mockStrutRun.findFirst.mockResolvedValueOnce(pending);
+    mockProbe.mockResolvedValue({ kind: "settled", completion: { status: "success", output: "done" } });
+    mockStrutRun.findUnique
+      .mockResolvedValueOnce({ id: "run-1", tokenHash: "hash" })
+      .mockResolvedValueOnce(settled);
+    mockComplete.mockResolvedValue("claimed");
+
+    const result = await getSystemMapRunStatus("ws-1", "run-1", { now: NOW });
+
+    expect(mockProbe).toHaveBeenCalledWith(pending);
+    expect(result?.status).toBe("SUCCESS");
+  });
+
+  it("leaves a fresh pending row alone without probing", async () => {
+    const fresh = row({ createdAt: new Date(NOW.getTime() - 2_000) });
+    mockStrutRun.findFirst.mockResolvedValue(fresh);
+
+    const result = await getSystemMapRunStatus("ws-1", "run-1", { now: NOW });
+
+    expect(mockProbe).not.toHaveBeenCalled();
+    expect(result?.status).toBe("PENDING");
   });
 });

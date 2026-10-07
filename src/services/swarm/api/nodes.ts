@@ -1251,7 +1251,7 @@ function toListLiteral(values: string[]): string {
 export async function getNodeEdges(
   config: JarvisConnectionConfig,
   refId: string,
-  options: { limit?: number; nodeTypes?: string[]; edgeTypes?: string[] } = {},
+  options: { limit?: number; nodeTypes?: string[]; edgeTypes?: string[]; namespace?: string } = {},
 ): Promise<NodeEdgesResult> {
   if (!isSafeRefId(refId)) {
     return { ok: false, edges: [], nodes: [], error: `Invalid ref_id: ${JSON.stringify(refId)}` };
@@ -1259,6 +1259,11 @@ export async function getNodeEdges(
   const params = new URLSearchParams({ expand: "edges", limit: String(options.limit ?? 200) });
   if (options.nodeTypes?.length) params.set("node_type", toListLiteral(options.nodeTypes));
   if (options.edgeTypes?.length) params.set("edge_type", toListLiteral(options.edgeTypes));
+  // Namespace-scoped expansion, where the backend supports it: without it, a
+  // ref_id collision across namespaces could expand the wrong namespace's
+  // node. Sent whenever a caller names one (documented unverified on older
+  // backends — they ignore unknown query params).
+  if (options.namespace) params.set("namespace", options.namespace);
   const result = await jarvisRequest({
     config,
     endpoint: `/v2/nodes/${encodeURIComponent(refId)}?${params.toString()}`,

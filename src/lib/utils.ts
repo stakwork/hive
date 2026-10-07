@@ -22,6 +22,19 @@ export function getBaseUrl(hostHeader?: string | null): string {
 }
 
 /**
+ * The origin to build a bearer-token-bearing callback URL from (strut run
+ * dispatch). The request's `Host` header is attacker-controllable — trusting
+ * it for a URL that carries a credential means a forged `Host` can redirect
+ * the token to an attacker's origin. Prefer the deployment's own canonical
+ * origin (`NEXTAUTH_URL`); only when that's unset does this fall back to
+ * `getBaseUrl`'s `Host`-header behavior, same as every other caller today.
+ */
+export function resolveTrustedOrigin(hostHeader?: string | null): string {
+  if (process.env.NEXTAUTH_URL) return process.env.NEXTAUTH_URL;
+  return getBaseUrl(hostHeader);
+}
+
+/**
  * Extracts the relative URL (pathname + search + hash) from a full URL
  * and removes workspace prefix (/w/[slug]) to show only the page path
  * Returns "/" if the URL is just a domain without a path

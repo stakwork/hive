@@ -272,17 +272,21 @@ export function DomainGraph({
   endpointsById,
   selectedId,
   onSelect,
+  height = GRAPH_HEIGHT,
 }: {
   /** The nodes passing the current filters. */
   nodes: SystemMapDomainNode[];
   /** Every node, so a connection to a filtered-out node still resolves. */
   allNodes: SystemMapDomainNode[];
   edges: SystemMapDomainEdge[];
-  /** Bundles to draw; one whose nodes are all filtered out is skipped. */
+  /** Bundles to draw; one whose nodes are all filtered out is skipped. Pass `[]` when the caller has no endpoint-bundle concept (e.g. the infosec graph). */
   bundles: EndpointBundle[];
+  /** Pass an empty `Map` when the caller has no endpoints to resolve bundle labels against. */
   endpointsById: Map<string, SystemMapEndpoint>;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Canvas height in px. Defaults to the Domain nodes tab's fixed 620 — callers in a narrower panel (the workflow inspector) should pass something responsive to their own layout. */
+  height?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState<number | null>(null);
@@ -373,7 +377,7 @@ export function DomainGraph({
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-lg border bg-muted/20"
-        style={{ height: GRAPH_HEIGHT }}
+        style={{ height }}
         data-testid="system-map-graph"
       >
         {width !== null && elements.nodes.length > 0 ? (
@@ -381,7 +385,7 @@ export function DomainGraph({
             nodes={elements.nodes}
             edges={elements.edges}
             width={width}
-            height={GRAPH_HEIGHT}
+            height={height}
             colorMap={elements.colorMap}
             onNodeClick={onNodeClick}
             edgeStyleFn={edgeStyle}

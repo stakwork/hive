@@ -1,14 +1,24 @@
 /**
  * System Map — the strut workflows behind the "Run" buttons on
- * `/w/<slug>/system-map`, one per tab (`SYSTEM_MAP_WORKFLOWS`):
+ * `/w/<slug>/system-map` and the workflow inspector's SystemMap tab, one
+ * per workflow (`SYSTEM_MAP_WORKFLOWS`):
  *
- *   schema       `swarm-systemmap-schema-sync`       kind `system_map`
+ *   schema       `swarm-systemmap-schema-sync`              kind `system_map`
  *                verifies the Sys* ontology against the workspace graph
- *   materialize  `swarm-systemmap-graph-materialize` kind `system_map_materialize`
+ *   materialize  `swarm-systemmap-graph-materialize`         kind `system_map_materialize`
  *                writes the real system nodes and edges into the graph
+ *   cwe_check    `swarm-systemmap-cwe-check-templates`       kind `system_map_cwe_check`
+ *                writes the `infosec` namespace's security graph, surfaced
+ *                on the workflow inspector's SystemMap tab. Its workflow
+ *                name and input shape are a deployment prerequisite (must
+ *                be seeded on the target strut), not something this repo
+ *                can confirm — it reuses the same `{ workspace, swarm_url,
+ *                swarm_secret_alias }` input the other two workflows use,
+ *                and the same `workflow_missing` (404) failure path when
+ *                the target strut hasn't seeded it yet.
  *
- * Both are authored in the org strut view (`/org/<login>/strut`), so the
- * launch targets that strut (`purpose: "system_map"` → the org default
+ * All three are authored in the org strut view (`/org/<login>/strut`), so
+ * the launch targets that strut (`purpose: "system_map"` → the org default
  * swarm). Their subject is the WORKSPACE's swarm — not necessarily the one
  * strut runs on — as their `validate` step reads it:
  *
@@ -31,6 +41,7 @@
 import { StrutRunStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { strutRunDeepLink, strutViewPath } from "@/lib/utils/strut-links";
 import {
@@ -49,6 +60,11 @@ import type { SystemMapRun } from "@/types/system-map";
 export const SYSTEM_MAP_WORKFLOWS = {
   schema: { kind: "system_map", workflow: "swarm-systemmap-schema-sync", label: "Schema sync" },
   materialize: { kind: "system_map_materialize", workflow: "swarm-systemmap-graph-materialize", label: "Graph materialize" },
+  cwe_check: {
+    kind: "system_map_cwe_check",
+    workflow: "swarm-systemmap-cwe-check-templates",
+    label: "CWE check",
+  },
 } as const;
 export type SystemMapWorkflowKey = keyof typeof SYSTEM_MAP_WORKFLOWS;
 
@@ -66,12 +82,22 @@ export const SYSTEM_MAP_WORKFLOW = SYSTEM_MAP_WORKFLOWS.schema.workflow;
 const LIST_LIMIT = 20;
 /** A PENDING row younger than this is not probed — its callback is on the way. */
 const PROBE_MIN_AGE_MS = 15_000;
+/**
+ * Minimum time between two LIVE strut probes for the SAME run, across every
+ * caller (the page's list poll, the workflow inspector's run-scoped status
+ * poll, a concurrent tab). Below this, a poll is served the row as already
+ * read from the DB rather than round-tripping to strut again — a cheap
+ * cooldown so N concurrent pollers of one run don't turn into N probes.
+ */
+const PROBE_INTERVAL_SECS = 4;
 
-/** The `StrutRunHandler` for `system_map`: the row is the delivery. */
+/** The `StrutRunHandler` shared by every System Map kind: the row is the delivery. */
 export const handleSystemMapSettled: StrutRunHandler = async (row) => {
   logger.info("System map run settled", STRUT_RUN_LOG_TAG, {
     runId: row.id,
     workspaceId: row.workspaceId,
+    kind: row.kind,
+    workflow: row.workflow,
     status: row.status,
   });
 };
@@ -169,13 +195,49 @@ export async function listSystemMapRuns(
   return shown.map((row) => serializeSystemMapRun(row, orgLogin));
 }
 
-/** Is a run of this workflow already in flight for the workspace? (One at a time, per workflow.) */
-export async function hasPendingSystemMapRun(workspaceId: string, key: SystemMapWorkflowKey = "schema"): Promise<boolean> {
+/**
+ * Run-scoped status for one launched run: verifies the run belongs to the
+ * CALLER's workspace (IDOR — never looks a run up by id alone), settles a
+ * PENDING row from strut when it's old enough to probe, and otherwise
+ * serves the cached DB row.
+ *
+ * Probing is both age-gated (`PROBE_MIN_AGE_MS`, same as the list path) AND
+ * rate-limited per run (`PROBE_INTERVAL_SECS`) so concurrent pollers of the
+ * SAME run — the inspector tab open in two tabs, a client retry storm —
+ * can't turn into N strut round-trips; only the poll that wins the rate
+ * limit key actually probes, everyone else reads the row as last settled.
+ * `completeStrutRun` is itself idempotent (claim gated on PENDING + token
+ * hash), so even if two probes raced past the rate limit, settlement only
+ * runs once.
+ */
+export async function getSystemMapRunStatus(
+  workspaceId: string,
+  runId: string,
+  opts: { now?: Date } = {},
+): Promise<SystemMapRun | null> {
+  const now = opts.now ?? new Date();
   const row = await db.strutRun.findFirst({
-    where: { workspaceId, kind: SYSTEM_MAP_WORKFLOWS[key].kind, status: StrutRunStatus.PENDING },
-    select: { id: true },
+    where: { id: runId, workspaceId, kind: { in: SYSTEM_MAP_KINDS } },
+    select: ROW_SELECT,
   });
-  return row !== null;
+  if (!row) return null;
+
+  let shown = row;
+  if (row.status === StrutRunStatus.PENDING && row.strutRunId) {
+    const rate = await checkRateLimit(`system-map:probe:${row.id}`, 1, PROBE_INTERVAL_SECS);
+    if (rate.allowed) {
+      try {
+        shown = await settleFromStrut(row, now);
+      } catch (err) {
+        logger.warn("System map run status probe failed (showing as pending)", STRUT_RUN_LOG_TAG, {
+          runId: row.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+  const orgLogin = await orgLoginFor(workspaceId);
+  return serializeSystemMapRun(shown, orgLogin);
 }
 
 export interface LaunchSystemMapRunArgs {

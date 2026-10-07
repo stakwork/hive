@@ -71,6 +71,24 @@ describe("listSystemMapDomainNodes", () => {
     expect(nodes.getNodeEdges).toHaveBeenCalledWith(CONFIG, "a", {
       limit: 200,
       nodeTypes: ["SysComponent", "SysTechnology"],
+      namespace: "systemmap",
+    });
+  });
+
+  it("reads and filters a different namespace when the caller passes one (infosec)", async () => {
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: true,
+      nodes: [node("a", "Finding", "kept"), node("b", "Finding", "dropped", { namespace: "systemmap" })],
+    });
+
+    const result = await listSystemMapDomainNodes(CONFIG, "infosec");
+
+    expect(nodes.listNodesByType).toHaveBeenCalledWith(CONFIG, "", 500, { startingAfter: undefined, namespace: "infosec" });
+    expect(result.ok && result.nodes.map((n) => n.name)).toEqual(["kept"]);
+    expect(nodes.getNodeEdges).toHaveBeenCalledWith(CONFIG, "a", {
+      limit: 200,
+      nodeTypes: ["Finding"],
+      namespace: "infosec",
     });
   });
 

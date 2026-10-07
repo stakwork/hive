@@ -28,6 +28,18 @@ import type { WorkflowTransition } from "@/types/stakwork/workflow";
 import { mergeWorkflowRunStatus } from "@/lib/utils/merge-workflow-run-status";
 import { STAK_TOOLKIT_SLUGS } from "@/lib/eval-capture-slugs";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { WorkflowSystemMapTab } from "@/components/system-map/WorkflowSystemMapTab";
+
+/**
+ * Canonical identity of the one workflow the SystemMap tab supports. Compared
+ * against EVERY version's `workflow_name` (not just the selected one) so the
+ * tab doesn't flicker in or out when switching versions, and so an absent
+ * `workflow_name` on the currently selected version doesn't hide a tab that
+ * other versions of the same workflow would show.
+ */
+const SYSTEM_MAP_TARGET_WORKFLOW_NAME = "swarm-systemmap-cwe-check-templates";
 
 function parseWorkflowJson(workflowJson: string | null | undefined): Record<string, unknown> | null {
   if (!workflowJson) return null;
@@ -128,6 +140,16 @@ export default function WorkflowInspectorPage() {
   }, [parsedWorkflowData]);
   const hasChildWorkflows = childWorkflows.length > 0;
   const showMocksTab = STAK_TOOLKIT_SLUGS.includes(slug ?? "") || isDevelopmentMode();
+
+  // Stable across version switches: union over every version's name rather
+  // than just the selected one, so an absent `workflow_name` on the
+  // currently selected version doesn't flicker the tab away, and so a
+  // version that happens to omit it doesn't hide a tab the workflow
+  // otherwise qualifies for. When no version carries a name at all, there
+  // is no reliable identity — the tab stays hidden rather than guessing.
+  const isSystemMapWorkflow = versions.some((v) => v.workflow_name === SYSTEM_MAP_TARGET_WORKFLOW_NAME);
+  const systemMapFeatureEnabled = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
+  const showSystemMapTab = isSystemMapWorkflow && systemMapFeatureEnabled;
 
   const historyVersion = useMemo(
     () => versions.find((v) => v.workflow_version_id === historyVersionId) ?? null,
@@ -336,6 +358,11 @@ export default function WorkflowInspectorPage() {
                 <TabsTrigger value="prompts" className="shrink-0">Prompts</TabsTrigger>
                 {showMocksTab && <TabsTrigger value="mocks" className="shrink-0">Mocks</TabsTrigger>}
                 {hasChildWorkflows && <TabsTrigger value="children" className="shrink-0">Child Workflows</TabsTrigger>}
+                {showSystemMapTab && (
+                  <TabsTrigger value="system-map" className="shrink-0" data-testid="workflow-tab-system-map">
+                    SystemMap
+                  </TabsTrigger>
+                )}
               </TabsList>
             </div>
 
@@ -444,6 +471,12 @@ export default function WorkflowInspectorPage() {
                       ))}
                     </TableBody>
                   </Table>
+                </TabsContent>
+              )}
+
+              {showSystemMapTab && (
+                <TabsContent value="system-map" className="mt-0 flex-1 overflow-auto" data-testid="workflow-tab-content-system-map">
+                  <WorkflowSystemMapTab />
                 </TabsContent>
               )}
             </div>
