@@ -56,8 +56,8 @@ export function strutArtifactReaderUrl(githubLogin: string, swarmId: string, key
   return `/api/orgs/${encodeURIComponent(githubLogin)}/strut/artifacts?${new URLSearchParams({ swarmId, key })}`;
 }
 
-/** The workflow `input` a job turn is launched with: the prompt, and the job's title riding along for the reply's header (strut ignores it). */
-export const jobTurnInputSchema = z.object({ prompt: z.string(), title: z.string().optional() }).passthrough();
+/** The workflow `input` a job turn is launched with: the prompt, the job's title riding along for the reply's header (strut ignores it), and the workspace the job belongs to — the hive workspace id a pod is claimed for (strut's `job` v6 declares it; an older one strips it). */
+export const jobTurnInputSchema = z.object({ prompt: z.string(), title: z.string().optional(), workspace: z.string().optional() }).passthrough();
 
 /** The title `start_job` put on the launch, carried on every turn's input. */
 export function jobTitleOf(row: { input: unknown }): string {
