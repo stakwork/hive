@@ -16,11 +16,14 @@
  *     turn's title.
  *   - dispatch refusals: `workflow_missing` → a clear message; a strut
  *     `job_busy:` refusal → `busy`.
+ *   - the user's GitHub token rides to strut as the actor secret
+ *     `GITHUB_TOKEN` on EVERY turn (start and continue), never in `input`;
+ *     no token, or a lookup that throws, launches without it.
  */
 
 import { describe, test, expect, vi, beforeEach } from "vitest";
 
-const { mockResolveStrutTarget, mockResolveConversation, mockDispatch, mockCancel, mockStrutRunFindFirst, mockWorkspaceFindFirst, mockSetActiveRun, mockNotifyRunActive, FakeDispatchError } =
+const { mockResolveStrutTarget, mockResolveConversation, mockDispatch, mockCancel, mockStrutRunFindFirst, mockWorkspaceFindFirst, mockSetActiveRun, mockNotifyRunActive, mockGetPat, FakeDispatchError } =
   vi.hoisted(() => {
     class FakeDispatchError extends Error {
       constructor(
@@ -40,6 +43,7 @@ const { mockResolveStrutTarget, mockResolveConversation, mockDispatch, mockCance
       mockWorkspaceFindFirst: vi.fn(),
       mockSetActiveRun: vi.fn(),
       mockNotifyRunActive: vi.fn(),
+      mockGetPat: vi.fn(),
       FakeDispatchError,
     };
   });
@@ -53,6 +57,7 @@ vi.mock("@/services/strut-runs", () => ({
   StrutDispatchError: FakeDispatchError,
 }));
 vi.mock("@/services/canvas-active-runs-hooks", () => ({ setActiveRun: mockSetActiveRun, notifyRunActive: mockNotifyRunActive }));
+vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: mockGetPat }));
 vi.mock("@/lib/db", () => ({
   db: {
     strutRun: { findFirst: mockStrutRunFindFirst },
@@ -106,6 +111,7 @@ beforeEach(() => {
   mockSetActiveRun.mockResolvedValue({ abortSelf: false });
   mockNotifyRunActive.mockResolvedValue(undefined);
   mockWorkspaceFindFirst.mockResolvedValue({ id: "ws-id" });
+  mockGetPat.mockResolvedValue({ username: "alice", token: "ghp_test_token" });
 });
 
 describe("start_job", () => {
@@ -148,14 +154,27 @@ describe("start_job", () => {
       job: out.jobId,
       publicBaseUrl: "https://hive.example.com",
       conversationId: "conv-1",
+      // The user's GitHub token, as the actor secret the launch pushes first.
+      actorSecrets: { GITHUB_TOKEN: "ghp_test_token" },
     });
-    // The id is a sibling of `input`, never inside it.
+    expect(mockGetPat).toHaveBeenCalledWith("user-1", "acme");
+    // The id is a sibling of `input`, never inside it — and so is the token.
     expect(args.input.job).toBeUndefined();
+    expect(JSON.stringify(args.input)).not.toContain("ghp_test_token");
     expect(mockResolveConversation).toHaveBeenCalledWith({ conversationId: "conv-1", userId: "user-1", orgId: "org-1" });
 
     expect(mockSetActiveRun).toHaveBeenCalledWith("conv-1", expect.objectContaining({ requestId: "row-1", workspaceId: "ws-id" }), "row-1");
     expect(mockNotifyRunActive).toHaveBeenCalledWith("conv-1", true);
     expect(mockCancel).not.toHaveBeenCalled();
+  });
+
+  test("no GitHub token, or a lookup that throws → the turn launches without one", async () => {
+    mockGetPat.mockResolvedValue(null);
+    expect(await start()).toMatchObject({ status: "started" });
+    expect(mockDispatch.mock.calls[0][0].actorSecrets).toEqual({ GITHUB_TOKEN: null });
+    mockGetPat.mockRejectedValue(new Error("github down"));
+    expect(await start()).toMatchObject({ status: "started" });
+    expect(mockDispatch.mock.calls[1][0].actorSecrets).toEqual({ GITHUB_TOKEN: null });
   });
 
   test("two starts are two jobs", async () => {
@@ -198,6 +217,8 @@ describe("continue_job", () => {
       kind: "job_turn",
       workflow: "job",
       purpose: "job",
+      // Every turn pushes the token, not only the first.
+      actorSecrets: { GITHUB_TOKEN: "ghp_test_token" },
       job: JOB,
       input: { prompt: "Split step 2", title: "Dark mode plan" },
       conversationId: "conv-1",
