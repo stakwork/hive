@@ -38,7 +38,7 @@ import { SubAgentRunCard, getSubAgentRunsFromMessages } from "./SubAgentRunCard"
 import { ResearchRunCard, getResearchRunsFromMessages } from "./ResearchRunCard";
 import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
-import { JobTurnCard } from "./JobTurnCard";
+import { JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
@@ -293,6 +293,20 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
     return byAnchor;
   }, [messages]);
 
+  // A job turn strut is still working on: a card under the message whose
+  // `start_job` / `continue_job` call launched it, until its row lands
+  // (and renders as `JobTurnCard` in its own place).
+  const pendingJobTurnsByAnchor = useMemo(() => {
+    const turns = getPendingJobTurnsFromMessages(messages);
+    const byAnchor = new Map<string, typeof turns>();
+    for (const turn of turns) {
+      const existing = byAnchor.get(turn.anchorMessageId);
+      if (existing) existing.push(turn);
+      else byAnchor.set(turn.anchorMessageId, [turn]);
+    }
+    return byAnchor;
+  }, [messages]);
+
   // Where each artifact sits among the versions of it this conversation
   // holds, so a card can say "v2" and open the panel at its own version.
   const artifactVersions = useMemo(() => indexArtifactVersions(listArtifacts(messages)), [messages]);
@@ -415,6 +429,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               const researchRuns = researchRunsByAnchor.get(message.id);
               const htmlPages = htmlPagesByAnchor.get(message.id);
               const strutChats = strutChatsByAnchor.get(message.id);
+              const pendingJobTurns = pendingJobTurnsByAnchor.get(message.id);
 
               // The end of a turn the user stopped: a quiet marker, not a bubble.
               if (message.source?.kind === "stopped") {
@@ -554,6 +569,9 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                     htmlPages.map((page) => <HtmlPageCard key={page.slug} page={page} githubLogin={githubLogin} />)}
                   {strutChats?.map((chat) => (
                     <StrutChatCard key={chat.chatId} chat={chat} githubLogin={githubLogin} />
+                  ))}
+                  {pendingJobTurns?.map((turn) => (
+                    <PendingJobTurnCard key={turn.jobId} turn={turn} />
                   ))}
                   <MessageArtifacts artifacts={message.artifacts} versions={artifactVersions} />
                 </div>
