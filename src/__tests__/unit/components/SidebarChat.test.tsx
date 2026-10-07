@@ -884,6 +884,20 @@ describe("SidebarChat — DailyRecapCard placement", () => {
     expect(card!.compareDocumentPosition(placeholder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("empty-state wrapper fills remaining space (flex-1, no h-full) inside a flex-col scroll container", async () => {
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
+    const { container } = render(<SidebarChat githubLogin="test-org" />);
+
+    const wrapper = screen.getByText("What should we work on?").parentElement!;
+    expect(wrapper).toHaveClass("flex-1");
+    expect(wrapper).not.toHaveClass("h-full");
+
+    const scrollContainer = wrapper.parentElement!;
+    expect(scrollContainer).toHaveClass("flex-col");
+    expect(scrollContainer).toHaveClass("overflow-y-auto");
+    expect(container.contains(scrollContainer)).toBe(true);
+  });
+
   it("renders exactly one DailyRecapCard when messages are present", async () => {
     mockStoreState = {
       activeConversationId: "conv-1",

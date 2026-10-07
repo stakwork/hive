@@ -33,6 +33,7 @@ import {
   appendAnswerRow,
   answerAlreadyRecorded,
 } from "@/services/canvas-planner-forms";
+import { findClarifyingReply } from "@/lib/utils/clarifying-questions";
 
 export const runtime = "nodejs";
 
@@ -112,6 +113,43 @@ export async function POST(
       if (already) {
         return NextResponse.json({ status: "already_answered" });
       }
+    }
+
+    // Stale-FORM guard: under the FORM rule, Jamie can answer a FORM
+    // the user has authorised with a plain `send_to_feature_planner`,
+    // which the planner pairs to the FORM by position (the first USER
+    // message after it) rather than an explicit `replyId`. That answer
+    // never touches the canvas-conversation `user-answered-planner-form`
+    // row the check above looks for, so the canvas FORM slot and the
+    // control-panel's `hasPendingPlannerForm` would still show this
+    // FORM as pending. If the user then submits it here too, the
+    // planner would receive a second answer for the same question.
+    // Guard against that by checking the feature's own chat history
+    // (the source of truth `findClarifyingReply`/`sendFeatureChatMessage`
+    // read and write) for any reply — explicit `replyId` OR a later
+    // USER message — that already answers this FORM.
+    const chatMessages = await db.chatMessage.findMany({
+      where: { featureId },
+      select: { id: true, role: true, replyId: true },
+      orderBy: { createdAt: "asc" },
+    });
+    if (findClarifyingReply(chatMessages, plannerMessageId)) {
+      if (conversationId) {
+        try {
+          await appendAnswerRow(
+            conversationId,
+            featureId,
+            plannerMessageId,
+            "(already answered in chat)",
+          );
+        } catch (e) {
+          console.error(
+            "[planner-forms/answer] stale-FORM canvas append failed (non-fatal):",
+            e,
+          );
+        }
+      }
+      return NextResponse.json({ status: "already_answered" });
     }
 
     // 1. Forward to the planner (same path the plan page uses). This

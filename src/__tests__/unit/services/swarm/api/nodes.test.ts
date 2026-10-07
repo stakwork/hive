@@ -1018,6 +1018,51 @@ describe("deleteSingleNode", () => {
     expect(await deleteSingleNode(config, "node-1")).toMatchObject({ success: false, notFound: true });
   });
 
+  test("appends the namespace query param, URL-encoded", async () => {
+    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "node-1", is_deleted: true }));
+
+    await deleteSingleNode(config, "node-1", "my ns/1");
+
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "https://test-swarm.sphinx.chat:8444/v2/nodes/node-1/single?namespace=my%20ns%2F1",
+    );
+  });
+
+  test.each([undefined, ""])("sends no namespace param when namespace is %j", async (namespace) => {
+    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "node-1", is_deleted: true }));
+
+    await deleteSingleNode(config, "node-1", namespace);
+
+    expect(mockFetch.mock.calls[0][0]).toBe("https://test-swarm.sphinx.chat:8444/v2/nodes/node-1/single");
+  });
+
+  test("404 names the default namespace when none was given", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 404, text: async () => "{}" });
+    expect(await deleteSingleNode(config, "node-1")).toEqual({
+      success: false,
+      notFound: true,
+      error: 'Node not found in namespace "default" — it may live in a different namespace or not exist.',
+    });
+  });
+
+  test("404 names the requested namespace", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 404, text: async () => "{}" });
+    expect(await deleteSingleNode(config, "node-1", "ns-a")).toEqual({
+      success: false,
+      notFound: true,
+      error: 'Node not found in namespace "ns-a" — it may live in a different namespace or not exist.',
+    });
+  });
+
+  test("409 says the node was already deleted", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 409, text: async () => "{}" });
+    expect(await deleteSingleNode(config, "node-1", "ns-a")).toEqual({
+      success: false,
+      notFound: true,
+      error: "Node was already deleted.",
+    });
+  });
+
   test("passes other failures through as errors", async () => {
     mockFetch.mockResolvedValueOnce({ ok: false, status: 500, text: async () => "boom" });
     expect(await deleteSingleNode(config, "node-1")).toEqual({
