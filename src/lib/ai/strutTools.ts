@@ -56,7 +56,13 @@
  * Hive's side is a CLOSED contract — start / continue, one handler, one
  * artifact reader — on purpose: what a job can do grows on the swarm, as
  * new versions of the `job` workflow (its `params.tools` / `system`),
- * never as capability-specific fields here.
+ * never as capability-specific fields here. The one thing hive hands over
+ * besides the prompt is the USER's standing credential: every turn pushes
+ * their GitHub token to strut as that actor's `GITHUB_TOKEN` before the
+ * launch (`ensureStrutActorSecrets`, as `propose_code_change` does), so a
+ * turn that runs the swarm's code-change workflow checks out, pushes and
+ * opens the pull request as them — strut binds every nested run's secrets
+ * to the job's principal. Which turns need it is the job's business.
  */
 
 import { tool, type ToolSet } from "ai";
@@ -234,6 +240,22 @@ async function launchJobTurn(
   turn: { jobId: string; title: string; prompt: string; conversationId: string; publicBaseUrl: string; started: boolean },
 ): Promise<Record<string, unknown>> {
   const { jobId, title, prompt, conversationId, publicBaseUrl, started } = turn;
+
+  // The user's GitHub token, pushed to strut as THIS actor's secret before
+  // the launch (`dispatchStrutRun` → `ensureStrutActorSecrets`: idempotent,
+  // never in `input`, never logged) — the same push `propose_code_change`
+  // makes. Every turn, whatever it does: a turn that runs the code-change
+  // workflow then clones, pushes and opens the pull request as the user,
+  // and push-before-dispatch is what handles rotation. No token → nothing
+  // pushed; a private clone fails inside the run, honestly.
+  let pat: string | null = null;
+  try {
+    const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+    pat = (await getGithubUsernameAndPAT(ctx.userId, target.workspaceSlug))?.token ?? null;
+  } catch (err) {
+    console.warn("[job] github token lookup failed; launching without it", { jobId, error: err instanceof Error ? err.message : String(err) });
+  }
+
   let dispatched: Awaited<ReturnType<typeof dispatchStrutRun>>;
   try {
     dispatched = await dispatchStrutRun({
@@ -248,6 +270,7 @@ async function launchJobTurn(
       job: jobId,
       publicBaseUrl,
       conversationId,
+      actorSecrets: { GITHUB_TOKEN: pat },
     });
   } catch (err) {
     if (err instanceof StrutDispatchError) {
@@ -527,8 +550,9 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
 
     [START_JOB_TOOL]: tool({
       description:
-        "Start a JOB on the org's strut: an agent that works on something the user will ITERATE on — a plan, a document, a page — over many turns, " +
+        "Start a JOB on the org's strut: an agent that works on something the user will ITERATE on — a plan, a document, a page, or a CODE CHANGE delivered as a pull request — over many turns, " +
         "in one directory it keeps for the job, with a thread that remembers every earlier turn. It writes its deliverables as files and they land in this conversation as artifact cards. " +
+        "For a code change, name the repository URL (https://github.com/owner/repo) in the prompt: the job's agent runs the swarm's code-change workflow as the user and the pull request lands here as a card; a follow-up revises that same pull request. " +
         "Runs in the BACKGROUND: this returns at once with the `jobId`; the reply is posted into this conversation as a **Job** entry — seconds to minutes later. " +
         "Tell the user it's underway and stop; do NOT call this again for the same request and do NOT invent results. " +
         "To revise what a job produced, use `continue_job` with its `jobId` (in the reply's header line) — not a new job. " +
@@ -540,7 +564,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
           .string()
           .min(1)
           .describe(
-            "The first turn's message. Self-contained — the job's agent cannot see this conversation: state what to produce, for whom, and what it must cover.",
+            "The first turn's message. Self-contained — the job's agent cannot see this conversation or the workspace's repository list: state what to produce, for whom, and what it must cover; for a code change, the repository URL and the exact change.",
           ),
       }),
       execute: async ({ workspace, title, prompt }) => {
@@ -555,7 +579,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
 
     [CONTINUE_JOB_TOOL]: tool({
       description:
-        "The next turn of a JOB started with `start_job`: the same agent, in the same directory, with the whole thread in memory — so 'revise step 2' is enough. " +
+        "The next turn of a JOB started with `start_job`: the same agent, in the same directory, with the whole thread in memory — so 'revise step 2' or 'also rename the helper' is enough (a code-change job revises its pull request). " +
         "The reply (and the revised artifacts, under the same ids) lands in this conversation as a **Job** entry; tell the user it's underway and stop. " +
         "`status: 'busy'` means the job's previous turn is still running — not a failure; wait for its reply, then continue. " +
         "Only the person who started a job can continue it.",
@@ -639,11 +663,12 @@ Prefer continuing an existing chat (\`chatId\` from its header line) over starti
 
 ### Jobs
 
-For something the user will ITERATE on — a plan, a document, a page — start a **job** instead of a builder chat: **\`start_job({ workspace, title, prompt })\`**. A job is one agent with one directory and one memory for as long as the job lives: it writes its deliverables as files there and they land in this conversation as artifact cards on a **Job · \`<jobId>\` · <title>** entry. To revise them — "split step 2 in two", "make the page darker" — call **\`continue_job({ workspace, jobId, prompt })\`** with the id from that header line: the same files come back under the same ids, a version newer. Never start a second job for a revision.
+For something the user will ITERATE on — a plan, a document, a page, a code change the user wants as a pull request — start a **job** instead of a builder chat: **\`start_job({ workspace, title, prompt })\`**. A job is one agent with one directory and one memory for as long as the job lives: it writes its deliverables as files there and they land in this conversation as artifact cards on a **Job · \`<jobId>\` · <title>** entry. To revise them — "split step 2 in two", "make the page darker" — call **\`continue_job({ workspace, jobId, prompt })\`** with the id from that header line: the same files come back under the same ids, a version newer. Never start a second job for a revision.
 
 - Replies land in this conversation on their own, seconds to minutes later: tell the user it's underway and stop. Do not poll, do not re-dispatch, do not invent results.
 - A Job entry that carries a **Question for you** is the agent stopping for a decision; the user's answer goes back as the next \`continue_job\` prompt.
 - \`status: "busy"\` means the job's previous turn is still running — wait for its reply, then continue.
+- **A code change as a job.** Name the repository URL in the prompt — pick it the way you would for \`propose_code_change\`, and if you are guessing between repositories, ask the user first. The job's agent runs the swarm's code-change workflow with the user's own GitHub token; the pull request lands here as a card, and "also rename the helper" is a \`continue_job\` that revises the same pull request. Use a job when the user asks for one, when the change belongs to a job that already exists (a plan the job wrote), or when they want the pull request directly; \`propose_code_change\` stays for a small change they want to approve as a diff before anything is pushed.
 - \`dispatch_strut\` stays for building and running strut WORKFLOWS; \`start_job\` is for producing something.
 
 ### Caveats
