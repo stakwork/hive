@@ -113,8 +113,22 @@ const ROW_SELECT = {
   settledAt: true,
 } satisfies Prisma.StrutRunSelect;
 
+/**
+ * What the delivery that settled a row knows beyond the row. Nothing a
+ * handler needs; something one may use.
+ */
+export interface StrutRunHandlerContext {
+  /**
+   * This deployment's swarm-reachable base URL, from the callback request's
+   * `host` header: strut reached us there, so a canvas-agent turn a handler
+   * wakes builds its own launches' callback URLs from it. Absent on the
+   * reconcile path (no request).
+   */
+  publicBaseUrl?: string;
+}
+
 /** A kind's completion handler: idempotent, throws to ask for a retry. */
-export type StrutRunHandler = (row: StrutRunRow) => Promise<void>;
+export type StrutRunHandler = (row: StrutRunRow, ctx?: StrutRunHandlerContext) => Promise<void>;
 
 /**
  * Kind → handler. Lazy so this module stays light (a handler pulls in the
@@ -500,6 +514,7 @@ export type CompleteStrutRunOutcome =
 export async function completeStrutRun(
   row: { id: string; tokenHash: string },
   completion: StrutRunCompletion,
+  ctx?: StrutRunHandlerContext,
 ): Promise<CompleteStrutRunOutcome> {
   const { count } = await db.strutRun.updateMany({
     where: { id: row.id, tokenHash: row.tokenHash, status: StrutRunStatus.PENDING },
@@ -522,11 +537,11 @@ export async function completeStrutRun(
     status: settled.status,
     outcome,
   });
-  return (await runHandler(settled)) ? outcome : "retry";
+  return (await runHandler(settled, ctx)) ? outcome : "retry";
 }
 
 /** Run a settled row's kind handler. `false` = it threw (retry). */
-export async function runHandler(row: StrutRunRow): Promise<boolean> {
+export async function runHandler(row: StrutRunRow, ctx?: StrutRunHandlerContext): Promise<boolean> {
   const load = HANDLERS[row.kind];
   if (!load) {
     logger.error("No handler for a settled strut run", STRUT_RUN_LOG_TAG, { runId: row.id, kind: row.kind });
@@ -534,7 +549,7 @@ export async function runHandler(row: StrutRunRow): Promise<boolean> {
   }
   try {
     const handler = await load();
-    await handler(row);
+    await handler(row, ctx);
     return true;
   } catch (err) {
     logger.error("Strut run handler failed", STRUT_RUN_LOG_TAG, {

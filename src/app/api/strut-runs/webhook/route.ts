@@ -26,6 +26,7 @@ import { db } from "@/lib/db";
 import { StrutRunStatus } from "@prisma/client";
 import { timingSafeEqual } from "@/lib/encryption";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { getBaseUrl } from "@/lib/utils";
 import { completeStrutRun, hashStrutRunToken, type StrutRunTerminalStatus } from "@/services/strut-runs";
 
 export const runtime = "nodejs";
@@ -98,11 +99,15 @@ export async function POST(request: NextRequest) {
     await db.strutRun.updateMany({ where: { id: row.id, strutRunId: null }, data: { strutRunId: runId } }).catch(() => undefined);
   }
 
+  // Strut reached us on this host, so it is swarm-reachable: a handler that
+  // wakes the canvas agent hands it on for the launches that turn makes.
+  const ctx = { publicBaseUrl: getBaseUrl(request.headers.get("host")) };
+
   if (row.status !== StrutRunStatus.PENDING) {
     // Already settled (a replay, or reconcile got there first). The handler
     // re-runs idempotently so a delivery that failed after the claim lands;
     // 200 either way unless it fails again — strut may retry that.
-    const outcome = await completeStrutRun(row, { status });
+    const outcome = await completeStrutRun(row, { status }, ctx);
     if (outcome === "retry") {
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
@@ -116,7 +121,7 @@ export async function POST(request: NextRequest) {
     durationMs: typeof payload.durationMs === "number" && Number.isFinite(payload.durationMs) ? payload.durationMs : null,
   };
 
-  const outcome = await completeStrutRun(row, completion);
+  const outcome = await completeStrutRun(row, completion, ctx);
   console.log("[strut-runs-webhook] settled", { id, kind: row.kind, status, outcome });
   if (outcome === "retry") {
     // 5xx so strut retries; the claim stands and the handler is idempotent.

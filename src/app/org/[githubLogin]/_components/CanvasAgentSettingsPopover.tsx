@@ -15,9 +15,11 @@ import { AutomationsSection } from "./AutomationsSection";
  * for how the agent behaves. Currently a single toggle:
  *
  *   - **Auto-respond to planners** (`canvasAutonomousTurns`) — when on,
- *     the canvas agent may reply to lower-level planner agents on its
- *     own, without the user prompting it. Server-side gate lives in
- *     `src/services/canvas-agent-autoturn.ts`; a global
+ *     the canvas agent may act on its own, without the user prompting
+ *     it, when a lower-level agent reports: a planner's message, a
+ *     settled strut chat, a job turn's reply (which it summarizes).
+ *     Server-side gates live in `src/services/canvas-agent-autoturn.ts`
+ *     and `canvas-strut-autoturn.ts`; a global
  *     `CANVAS_AUTONOMOUS_TURNS_ENABLED=false` env var can still
  *     master-kill the feature regardless of this flag.
  *
@@ -138,7 +140,7 @@ export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: strin
             <div className="space-y-0.5">
               <p className="text-sm font-medium leading-none">Auto-respond to planners</p>
               <p className="text-xs text-muted-foreground">
-                Let the agent reply to lower-level planner agents on its own, without prompting you.
+                Let the agent act on its own when a planner, a strut chat, or a job reports back — without prompting you.
               </p>
             </div>
             <Switch
