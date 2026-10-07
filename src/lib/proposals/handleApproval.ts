@@ -3932,6 +3932,7 @@ async function approveGraphNodeDelete(args: {
       workspaceSlug,
       kind: "graphNodeDelete",
       ref_id: payload.ref_id,
+      namespace: payload.namespace ?? "default",
       outcome,
       ...(result.success
         ? { muted_edge_count: result.mutedEdgeCount }
