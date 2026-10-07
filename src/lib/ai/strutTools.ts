@@ -56,12 +56,18 @@
  * Hive's side is a CLOSED contract — start / continue, one handler, one
  * artifact reader — on purpose: what a job can do grows on the swarm, as
  * new versions of the `job` workflow (its `params.tools` / `system`),
- * never as capability-specific fields here. The prompt is the user's
- * request as they said it: HOW each kind of work is done (a plan, a page, a
- * code change) is the swarm's business — the job's agent has its own pages
- * for it — so hive adds no format, outline or rules of its own; a spec
- * written here would override those pages, and the agent cannot tell the
- * assistant's words from the user's. The one thing hive hands over
+ * never as capability-specific fields here. The prompt is two parts in one
+ * message, each under a heading saying whose words it is: context first —
+ * facts the job's agent cannot see, each with its source (the user said,
+ * the workspace's repositories, a kg node by name) — and the user's request
+ * last, verbatim. HOW each kind of work is done (a plan, a page, a code
+ * change) is the swarm's business — the job's agent has its own pages for
+ * it — so the context carries facts, never a format, outline or rules; a
+ * spec written here would override those pages, and without the headings
+ * the agent cannot tell the assistant's words from the user's (the first
+ * Plan Mode job in prod came back as a markdown spec for exactly that
+ * reason). One prose convention, no field: any dispatch can use it, and
+ * nothing on the swarm has to know about hive. The one thing hive hands over
  * besides the prompt is the USER's standing credential: every turn pushes
  * their GitHub token to strut as that actor's `GITHUB_TOKEN` before the
  * launch (`ensureStrutActorSecrets`, as `propose_code_change` does), so a
@@ -573,9 +579,10 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
           .string()
           .min(1)
           .describe(
-            "The user's request, in their own words — forward it as they said it. " +
-              "Add only what the job's agent cannot see (it cannot see this conversation or the workspace's repository list): for a code change, the repository URL; a thing the user pointed at. " +
-              "Never add a format, a file type, an outline, sections or rules of your own: how each kind of work is done — a plan, a page, a code change — is the swarm's business, and the job's agent has its own pages for it. A spec from you overrides them.",
+            "Two parts in one message, each under a heading that says whose words it is. " +
+              "FIRST, under `Context from the assistant (facts, each with its source)`: what the job's agent cannot see — it cannot see this conversation, the workspace's repository list or hive's features and tasks — such as the repository URL for a code change, the feature or earlier job this belongs to, a decision made in this conversation; name the source of each (the user said; the workspace's repositories; a kg node, by name — point at what the swarm can read rather than pasting it). " +
+              "Facts, never how: no format, file type, outline, sections or rules — how each kind of work is done (a plan, a page, a code change) is the swarm's business and the job's agent has its own pages for it. Leave this part out when there is nothing it cannot see. " +
+              "LAST, under `The user's request, in their words`: their request verbatim.",
           ),
       }),
       execute: async ({ workspace, title, prompt }) => {
@@ -597,7 +604,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
       inputSchema: z.object({
         workspace: z.string().describe("Slug of a workspace in the active org (it selects the org's strut)."),
         jobId: z.string().min(1).max(120).describe("The job id from the reply's header line (**Job · <jobId> · …**)."),
-        prompt: z.string().min(1).describe("This turn's message, in the user's own words. The agent remembers the earlier turns, so it can be short."),
+        prompt: z.string().min(1).describe("This turn's message, in the same two-part shape as `start_job`'s: new context first (facts, with sources), the user's words last under `The user's request, in their words`. The agent remembers the earlier turns, so it can be short — a one-line answer from the user needs no context part."),
       }),
       execute: async ({ workspace, jobId, prompt }) => {
         const target = await resolveStrut(ctx, workspace, "job");
@@ -676,7 +683,7 @@ Prefer continuing an existing chat (\`chatId\` from its header line) over starti
 
 For something the user will ITERATE on — a plan, a document, a page, a code change the user wants as a pull request — start a **job** instead of a builder chat: **\`start_job({ workspace, title, prompt })\`**. A job is one agent with one directory and one memory for as long as the job lives: it writes its deliverables as files there and they land in this conversation as artifact cards on a **Job · \`<jobId>\` · <title>** entry. To revise them — "split step 2 in two", "make the page darker" — call **\`continue_job({ workspace, jobId, prompt })\`** with the id from that header line: the same files come back under the same ids, a version newer. Never start a second job for a revision.
 
-- **The prompt is the user's words.** Forward their request as they said it. Add only what the job's agent cannot see: the repository URL for a code change, the thing they pointed at. Do not add a format, a file type, an outline or rules of your own — how each kind of work is done (a plan, a page, a code change) is the swarm's business, the job's agent has its own pages for it, and a spec from you overrides them; it cannot tell your words from the user's.
+- **The prompt is two parts, the user's words last.** Open with \`Context from the assistant (facts, each with its source)\`: what the job's agent cannot see — the repository URL for a code change, the feature or earlier job this belongs to, a decision made in this conversation — each with where it came from (the user said; the workspace's repositories; a kg node, by name, so the agent reads it itself). Facts, never how: no format, file type, outline or rules — how each kind of work is done (a plan, a page, a code change) is the swarm's business and the job's agent has its own pages for it. Skip this part when there is nothing it cannot see. Then, under \`The user's request, in their words\`, their request verbatim — the headings are how the agent tells your words from theirs.
 - Replies land in this conversation on their own, seconds to minutes later: tell the user it's underway and stop. Do not poll, do not re-dispatch, do not invent results.
 - **A Job entry is the record; your words are the reply.** The entry is written in detail (a code change lists files, functions and line numbers) and the chat shows it collapsed — the user expands it only to check. When one lands (you may be woken for it) or the user asks about it, answer with ONE short paragraph in your own words: what the job produced, the question it asked if any, and the next step. Never restate the entry, never list files, functions or line numbers, never describe the cards — the user sees them.
 - A Job entry that carries a **Question for you** is the agent stopping for a decision; the user's answer goes back as the next \`continue_job\` prompt.
