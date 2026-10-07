@@ -15,13 +15,26 @@
  *     model reads the job id from, `source.kind: "job"`, `artifacts` on
  *     the row; idempotent on replay; read from the ROW's swarm; a 404
  *     from strut delivers the text alone; a 5xx throws (strut retries);
- *     an error row appends without reading strut.
+ *     an error row appends without reading strut;
+ *   - the wake: once the row is appended (not on a replay, not without a
+ *     conversation) the canvas agent is woken after the response with the
+ *     outcome, the question, the cards and the callback's host.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { StrutRunStatus } from "@prisma/client";
 
-const { mockTx, mockTransaction, mockNotify, mockLab, mockClearActiveRun, mockNotifyRunActive } = vi.hoisted(() => {
+const {
+  mockTx,
+  mockTransaction,
+  mockNotify,
+  mockLab,
+  mockClearActiveRun,
+  mockNotifyRunActive,
+  mockWorkspaceFindUnique,
+  mockWake,
+  afterCallbacks,
+} = vi.hoisted(() => {
   const mockTx = {
     workspace: { findUnique: vi.fn() },
     sharedConversation: { findUnique: vi.fn(), update: vi.fn() },
@@ -34,10 +47,18 @@ const { mockTx, mockTransaction, mockNotify, mockLab, mockClearActiveRun, mockNo
     mockLab: vi.fn(),
     mockClearActiveRun: vi.fn(),
     mockNotifyRunActive: vi.fn(),
+    mockWorkspaceFindUnique: vi.fn(),
+    mockWake: vi.fn(),
+    afterCallbacks: [] as Array<() => Promise<void>>,
   };
 });
 
-vi.mock("@/lib/db", () => ({ db: { $transaction: mockTransaction } }));
+vi.mock("next/server", async (orig) => ({
+  ...(await orig<typeof import("next/server")>()),
+  after: (fn: () => Promise<void>) => void afterCallbacks.push(fn),
+}));
+vi.mock("@/lib/db", () => ({ db: { $transaction: mockTransaction, workspace: { findUnique: mockWorkspaceFindUnique } } }));
+vi.mock("@/services/canvas-strut-autoturn", () => ({ invokeCanvasAgentOnJobTurn: mockWake }));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: mockNotify }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
@@ -99,7 +120,15 @@ beforeEach(() => {
   mockTx.sharedConversation.update.mockResolvedValue({});
   mockClearActiveRun.mockResolvedValue({ wasLast: true });
   mockNotifyRunActive.mockResolvedValue(undefined);
+  mockWorkspaceFindUnique.mockResolvedValue({ slug: "acme" });
+  mockWake.mockResolvedValue(undefined);
+  afterCallbacks.length = 0;
 });
+
+/** Run what the handler scheduled for after the response. */
+async function flushAfter(): Promise<void> {
+  for (const fn of afterCallbacks.splice(0)) await fn();
+}
 
 describe("parseStrutArtifacts", () => {
   it("keeps whole entries in order and drops the rest", () => {
@@ -398,5 +427,95 @@ describe("handleJobTurnSettled", () => {
     await handleJobTurnSettled(row({ jobId: null }));
     expect(mockFetch).not.toHaveBeenCalled();
     expect(mockTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleJobTurnSettled — the wake", () => {
+  const artifactsBody = {
+    artifacts: [
+      { id: "plan", kind: "markdown", title: "Plan", label: "plan", url: `/jobs/${JOB}/files/plan.md` },
+      { id: "pr", kind: "pull_request", title: "PR", url: "https://github.com/acme/app/pull/7" },
+    ],
+  };
+
+  it("once the row is appended: after the response, with the outcome, the cards and the callback's host", async () => {
+    mockFetch.mockResolvedValue(json(200, artifactsBody));
+    await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });
+
+    // Scheduled, not run: the callback answers first.
+    expect(mockWake).not.toHaveBeenCalled();
+    expect(afterCallbacks).toHaveLength(1);
+    await flushAfter();
+
+    expect(mockWorkspaceFindUnique).toHaveBeenCalledWith({ where: { id: "ws-1" }, select: { slug: true } });
+    expect(mockWake).toHaveBeenCalledTimes(1);
+    expect(mockWake).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      wakeId: "job-row-1",
+      workspaceSlug: "acme",
+      jobId: JOB,
+      title: "Dark mode plan",
+      outcome: "success",
+      artifacts: [
+        { title: "Plan", kind: "markdown", label: "plan" },
+        { title: "PR", kind: "pull_request" },
+      ],
+      publicBaseUrl: "https://hive.example.com",
+    });
+  });
+
+  it("carries the job's question, and a failed turn's outcome", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row({ output: { text: "Two candidates.", ask: { message: "Which repo?" } } }), {
+      publicBaseUrl: "https://hive.example.com",
+    });
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0]).toMatchObject({ outcome: "success", ask: "Which repo?", artifacts: [] });
+
+    mockWake.mockClear();
+    await handleJobTurnSettled(row({ id: "row-2", status: StrutRunStatus.ERROR, output: null, error: "boom" }));
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0]).toMatchObject({ wakeId: "job-row-2", outcome: "error" });
+    expect(mockWake.mock.calls[0][0].ask).toBeUndefined();
+  });
+
+  it("without a callback host (the reconcile path) the deployment's own URL is used", async () => {
+    vi.stubEnv("NEXTAUTH_URL", "https://hive.internal");
+    mockFetch.mockResolvedValue(json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row());
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0].publicBaseUrl).toBe("https://hive.internal");
+    vi.unstubAllEnvs();
+  });
+
+  it("not on a replay, not without a conversation, not when the conversation is someone else's", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    mockTx.$queryRaw.mockResolvedValue([{ messages: [{ id: "job-row-1", role: "assistant", content: "earlier" }] }]);
+    await handleJobTurnSettled(row());
+    await flushAfter();
+    expect(mockWake).not.toHaveBeenCalled();
+
+    mockTx.$queryRaw.mockResolvedValue([{ messages: [] }]);
+    await handleJobTurnSettled(row({ conversationId: null }));
+    await flushAfter();
+    expect(mockWake).not.toHaveBeenCalled();
+
+    mockTx.sharedConversation.findUnique.mockResolvedValue({ userId: "someone-else", sourceControlOrgId: "org-1", isShared: false });
+    await handleJobTurnSettled(row());
+    await flushAfter();
+    expect(mockWake).not.toHaveBeenCalled();
+  });
+
+  it("a wake that fails never fails the delivery, and a workspace that is gone wakes nothing", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    mockWake.mockRejectedValue(new Error("llm down"));
+    await handleJobTurnSettled(row());
+    await expect(flushAfter()).resolves.toBeUndefined();
+
+    mockWake.mockClear();
+    mockWorkspaceFindUnique.mockResolvedValue(null);
+    await handleJobTurnSettled(row({ id: "row-3" }));
+    await flushAfter();
+    expect(mockWake).not.toHaveBeenCalled();
   });
 });
