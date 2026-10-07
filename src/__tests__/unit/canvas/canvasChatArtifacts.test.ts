@@ -158,6 +158,15 @@ describe("parseArtifactContent", () => {
     expect(parseArtifactContent("pull_request", { ...pullRequest, diffs: "a patch" })).toBeNull();
   });
 
+  test("a pull request keeps an artifact id string when present", () => {
+    expect(parseArtifactContent("pull_request", { ...pullRequest, artifactId: "art-1" })).toEqual({
+      ...pullRequest,
+      artifactId: "art-1",
+    });
+    expect(parseArtifactContent("pull_request", { ...pullRequest, artifactId: "" })).toEqual(pullRequest);
+    expect(parseArtifactContent("pull_request", { ...pullRequest, artifactId: 7 })).toEqual(pullRequest);
+  });
+
   test("code needs its code", () => {
     expect(parseArtifactContent("code", { filename: "a.ts" })).toBeNull();
   });
