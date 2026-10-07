@@ -7,11 +7,12 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { CweCheckTab } from "@/components/system-map/CweCheckTab";
 import { DomainNodesTab } from "@/components/system-map/DomainNodesTab";
 import { EndpointsTab } from "@/components/system-map/EndpointsTab";
 import { SystemMapRuns } from "@/components/system-map/SystemMapRuns";
 
-const TABS = ["overview", "materialize", "nodes", "endpoints"] as const;
+const TABS = ["overview", "materialize", "cwe-check", "nodes", "endpoints"] as const;
 type SystemMapTab = (typeof TABS)[number];
 
 function parseTab(value: string | null): SystemMapTab {
@@ -46,6 +47,9 @@ function SystemMapTabs() {
         <TabsTrigger value="materialize" data-testid="system-map-tab-materialize">
           Materialize workflow
         </TabsTrigger>
+        <TabsTrigger value="cwe-check" data-testid="system-map-tab-cwe-check">
+          CWE check workflow
+        </TabsTrigger>
         <TabsTrigger value="nodes" data-testid="system-map-tab-nodes">
           Domain nodes
         </TabsTrigger>
@@ -58,6 +62,9 @@ function SystemMapTabs() {
       </TabsContent>
       <TabsContent value="materialize" className="mt-4">
         <SystemMapRuns workflowKey="materialize" />
+      </TabsContent>
+      <TabsContent value="cwe-check" className="mt-4">
+        <CweCheckTab />
       </TabsContent>
       <TabsContent value="nodes" className="mt-4">
         <DomainNodesTab />

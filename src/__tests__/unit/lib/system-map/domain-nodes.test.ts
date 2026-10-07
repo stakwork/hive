@@ -74,6 +74,18 @@ describe("listSystemMapDomainNodes", () => {
     });
   });
 
+  it("reads another namespace when asked (infosec), dropping nodes that name a different one", async () => {
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: true,
+      nodes: [node("a", "Finding", "kept"), node("b", "Finding", "dropped", { namespace: "systemmap" })],
+    });
+
+    const result = await listSystemMapDomainNodes(CONFIG, "infosec");
+
+    expect(nodes.listNodesByType).toHaveBeenCalledWith(CONFIG, "", 500, { startingAfter: undefined, namespace: "infosec" });
+    expect(result.ok && result.nodes.map((n) => n.name)).toEqual(["kept"]);
+  });
+
   it("counts nodes whose edges failed to load instead of failing the read", async () => {
     vi.mocked(nodes.listNodesByType).mockResolvedValue({ ok: true, nodes: [node("a", "SysComponent", "a")] });
     vi.mocked(nodes.getNodeEdges).mockResolvedValue({ ok: false, edges: [], nodes: [], error: "timeout" });
