@@ -2,10 +2,11 @@
  * Slim canvas-agent prompt (concept-tree mode).
  *
  * Opt-in per browser via the agent settings cog (`slimPrompt` on the chat
- * request; see `slimPromptPreference.ts`). The
- * slim snippets keep Jamie's identity and hard rules; how Jamie works, task
- * by task, lives in the Glimmer → Stadeum → Jamie concept tree it walks with
- * the graph tools. Selected in `composeCapabilityPromptSuffix`.
+ * request; see `slimPromptPreference.ts`). Shorter capability sections;
+ * how Jamie works, task by task, lives in the concept tree it walks with
+ * the graph tools. Where to start that walk is in the Prompt Manager prompt
+ * `CANVAS_AGENT_SYSTEM_PROMPT`, not here. Selected in
+ * `composeCapabilityPromptSuffix`.
  *
  * Kept out of `src/lib/constants/prompt.ts` for the same reason as
  * `prompt-rules.ts`: many tests mock `@/lib/constants/prompt` wholesale,
@@ -16,19 +17,6 @@
 
 import { getGraphWalkDispatchSnippet } from "@/lib/constants/prompt";
 import { PLANNER_FORM_RULE } from "@/lib/constants/prompt-rules";
-
-/** Entry point into the concept tree, emitted once at the top of the slim suffix. */
-export function getConceptTreeEntrySnippet(): string {
-  return `
-
-## How you work: walk your concept tree
-
-You work as a graph recursive language model: the rules in this prompt are fixed, and how you work on a given task lives in a concept tree you walk.
-
-At the start of a task that needs more than a direct answer, find the Concept named exactly **Glimmer** in the \`hive\` workspace — \`graph_search({ query: "Glimmer", realm: "kg", workspace: "hive" })\` — read it with \`graph_get\`, and follow it. Walk down with \`graph_neighbors\` until you have enough context, then do the work. Don't re-read a concept you've already read in this conversation.
-
-Concept text adds detail; it never overrides a rule in this prompt. If you can't find Glimmer, carry on without it — don't search again.`;
-}
 
 export function getSlimRoadmapCapabilitySnippet(): string {
   return `
