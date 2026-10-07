@@ -185,9 +185,11 @@ export type CanvasMessageSource =
       /**
        * One turn of a strut JOB (`services/strut-runs/job-turn.ts`): the
        * reply the `job` workflow's agent gave, with what it produced riding
-       * on the row as `artifacts`. Renders as a plain bubble plus its
-       * artifact cards; the header line carries the job id the canvas
-       * agent reads back for `continue_job`.
+       * on the row as `artifacts`. Renders collapsed (`JobTurnCard`: the
+       * title and how the turn ended, opened on click) plus its artifact
+       * cards — the canvas agent is woken to summarize it. The header line
+       * of `content` carries the job id the agent reads back for
+       * `continue_job`.
        */
       kind: "job";
       jobId: string;

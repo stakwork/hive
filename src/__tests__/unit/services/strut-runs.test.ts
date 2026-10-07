@@ -323,6 +323,7 @@ describe("completeStrutRun", () => {
     const out = await completeStrutRun(
       { id: "row-1", tokenHash: HASH },
       { status: "success", output: { diff: "d", filesChanged: 1 }, durationMs: 4200.4 },
+      { publicBaseUrl: "https://hive.example.com" },
     );
 
     expect(out).toBe("claimed");
@@ -336,7 +337,8 @@ describe("completeStrutRun", () => {
         settledAt: expect.any(Date),
       }),
     });
-    expect(mockHandler).toHaveBeenCalledWith(settled);
+    // The delivery's context (the callback's host) is handed to the handler as is.
+    expect(mockHandler).toHaveBeenCalledWith(settled, { publicBaseUrl: "https://hive.example.com" });
   });
 
   it("an error completion stores the message; a cancelled one no error and no output", async () => {
@@ -368,7 +370,7 @@ describe("completeStrutRun", () => {
     const settled = row({ kind: "code_change_land", workflow: "code-change-land", status: "SUCCESS", output: { url: "u" } });
     mockStrutRun.findUnique.mockResolvedValue(settled);
     expect(await completeStrutRun({ id: "row-1", tokenHash: HASH }, { status: "success", output: { url: "u" } })).toBe("claimed");
-    expect(mockLandHandler).toHaveBeenCalledWith(settled);
+    expect(mockLandHandler).toHaveBeenCalledWith(settled, undefined);
     expect(mockHandler).not.toHaveBeenCalled();
   });
 
@@ -468,7 +470,8 @@ describe("probeStrutRun / reconcileStrutRuns", () => {
       where: { id: "lost", status: "PENDING" },
       data: expect.objectContaining({ status: "LOST" }),
     });
-    expect(mockHandler).toHaveBeenCalledWith(expect.objectContaining({ id: "lost", status: "LOST" }));
+    // The reconcile path has no request, so no handler context.
+    expect(mockHandler).toHaveBeenCalledWith(expect.objectContaining({ id: "lost", status: "LOST" }), undefined);
   });
 
   it("a stale run is re-probed after the wait and LOST only if still stale", async () => {
@@ -497,8 +500,8 @@ describe("probeStrutRun / reconcileStrutRuns", () => {
       data: expect.objectContaining({ status: "LOST", error: expect.stringContaining("did not resume") }),
     });
     expect(mockStrutRun.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: "resuming", status: "PENDING" } }));
-    expect(mockHandler).toHaveBeenCalledWith(expect.objectContaining({ id: "dead", status: "LOST" }));
-    expect(mockHandler).toHaveBeenCalledWith(expect.objectContaining({ id: "finished", status: "SUCCESS" }));
+    expect(mockHandler).toHaveBeenCalledWith(expect.objectContaining({ id: "dead", status: "LOST" }), undefined);
+    expect(mockHandler).toHaveBeenCalledWith(expect.objectContaining({ id: "finished", status: "SUCCESS" }), undefined);
   });
 
   it("a row with no run id past the threshold is LOST (the dispatch died)", async () => {
