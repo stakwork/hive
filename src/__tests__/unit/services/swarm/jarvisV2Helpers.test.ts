@@ -348,6 +348,37 @@ describe("readNodeByRef", () => {
     expect(result.properties).toEqual({ name: "n", namespace: "other-ns" });
   });
 
+  it("reads namespace from the top level of a wrapped node (real Jarvis shape)", async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse({
+        status: "success",
+        nodes: [{ ref_id: "ns-ref", node_type: "Concept", namespace: "other-ns", properties: { name: "n" } }],
+      }),
+    );
+
+    const result = await readNodeByRef(config, "ns-ref");
+
+    expect(result.success).toBe(true);
+    expect(result.namespace).toBe("other-ns");
+    expect(result.properties).toEqual({ name: "n" });
+  });
+
+  it("reads namespace from the top level of an unwrapped node", async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse({
+        ref_id: "ns-ref",
+        node_type: "Concept",
+        namespace: "other-ns",
+        properties: { name: "n" },
+      }),
+    );
+
+    const result = await readNodeByRef(config, "ns-ref");
+
+    expect(result.success).toBe(true);
+    expect(result.namespace).toBe("other-ns");
+  });
+
   it("omits namespace when the node properties have none", async () => {
     mockFetch.mockResolvedValue(
       makeResponse({
