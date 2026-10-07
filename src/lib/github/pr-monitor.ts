@@ -13,7 +13,7 @@
 import { put } from "@vercel/blob";
 import { Octokit } from "@octokit/rest";
 import { db } from "@/lib/db";
-import { Prisma, ChatRole, ChatStatus, TaskStatus } from "@prisma/client";
+import { Prisma, ChatRole, ChatStatus, TaskStatus, ArtifactType } from "@prisma/client";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
@@ -1708,6 +1708,7 @@ export async function triggerLiveModeFix(
     const task = await db.task.findUnique({
       where: { id: taskId },
       select: {
+        id: true,
         mode: true,
         workflowStatus: true,
         createdById: true,
@@ -1771,6 +1772,34 @@ export async function triggerLiveModeFix(
           success: false,
           error:
             "Creator credentials not available for this Jamie-originated task. " +
+            "Fix skipped to avoid identity escalation.",
+        };
+      }
+      const latestPrArtifact = await db.artifact.findFirst({
+        where: {
+          type: ArtifactType.PULL_REQUEST,
+          message: { taskId },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { content: true },
+      });
+      const jobId =
+        typeof latestPrArtifact?.content === "object" && latestPrArtifact.content !== null
+          ? (latestPrArtifact.content as Record<string, unknown>).jobId
+          : undefined;
+      if (typeof jobId === "string" && jobId.trim().length > 0) {
+        log.warn(
+          "Skipping live mode fix for job task — creator credentials missing, refusing owner escalation",
+          {
+            taskId,
+            createdById: task.createdById,
+            jobId,
+          },
+        );
+        return {
+          success: false,
+          error:
+            "Creator credentials not available for this job-originated task. " +
             "Fix skipped to avoid identity escalation.",
         };
       }
