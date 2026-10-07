@@ -28,7 +28,7 @@ import type { WorkspaceConfig } from "@/lib/ai/types";
 // `@/lib/db` mock is needed here; only `execute()` calls would need one.
 
 /**
- * Jamie slim prompt (concept-tree mode, opt-in via `User.jamieSlimPrompt`)
+ * Jamie slim prompt (concept-tree mode, opt-in via the per-browser settings switch)
  * — asserts the toggle selects the right text, the slim prompt carries a
  * single Glimmer entry point and no hardcoded concept names, every
  * seed-list safety rule still has a string that keeps it alive, and no

@@ -181,31 +181,3 @@ export async function isCodeChangeCapabilityEnabledForOrg(
     return false;
   }
 }
-
-/**
- * Whether the user has opted into the slim canvas-agent prompt
- * (`User.jamieSlimPrompt`, the "Concept-tree prompt" switch in the agent
- * settings cog). A per-user gate, unlike the org gates above.
- *
- * Fails closed: no userId (public viewer), an unknown user, or a lookup
- * error → false, i.e. the full prompt.
- */
-export async function isJamieSlimPromptEnabledForUser(
-  userId: string | null | undefined,
-): Promise<boolean> {
-  if (!userId) return false;
-  try {
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { jamieSlimPrompt: true },
-    });
-    return user?.jamieSlimPrompt === true;
-  } catch (err) {
-    logger.error(
-      "[capabilityGates] jamieSlimPrompt lookup failed — using full prompt",
-      "capabilityGates",
-      { userId, error: err instanceof Error ? err.message : String(err) },
-    );
-    return false;
-  }
-}

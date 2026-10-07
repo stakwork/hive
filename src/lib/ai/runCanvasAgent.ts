@@ -71,7 +71,7 @@ import {
   resolveOrgCapabilities,
   type OrgCapability,
 } from "@/lib/ai/capabilities";
-import { isGraphWriteCapabilityEnabledForOrg, isJamieSlimPromptEnabledForUser } from "@/lib/ai/capabilityGates";
+import { isGraphWriteCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import { connectExternalMcpTools } from "@/lib/ai/externalMcpTools";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
@@ -357,6 +357,13 @@ export interface RunCanvasAgentOptions {
    * does omitting this entirely.
    */
   modelName?: string;
+  /**
+   * Opt in to the slim prompt (concept-tree mode): slim core snippets and
+   * the FORM rule on `send_to_feature_planner`. Sent by the canvas
+   * SidebarChat when its settings switch is on; omitted → full prompt
+   * (including every server-side caller, e.g. planner wake turns).
+   */
+  slimPrompt?: boolean;
   /**
    * Cached concepts from a previous turn of the SAME conversation. When
    * provided, we SKIP the slow per-workspace `listConcepts` swarm
@@ -750,6 +757,7 @@ export async function runCanvasAgent(
     prepareStep,
     extraStopConditions,
     modelName,
+    slimPrompt = false,
     userTimezone,
     publicBaseUrl,
     abortSignal,
@@ -919,9 +927,6 @@ export async function runCanvasAgent(
   // Stakwork source-control org) filtered out for orgs that fail the gate.
   // The prompt suffix is the matching snippet concatenation.
   const orgCapabilities = await resolveOrgCapabilities(capabilities, orgId);
-  // Per-user opt-in to the slim prompt (concept-tree mode); selects the
-  // slim core snippets and the FORM rule on `send_to_feature_planner`.
-  const slimPrompt = await isJamieSlimPromptEnabledForUser(userId);
   const orgPromptSuffix = orgId
     ? composeCapabilityPromptSuffix(orgCapabilities, { slimPrompt })
     : undefined;

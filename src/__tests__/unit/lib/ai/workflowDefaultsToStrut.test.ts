@@ -66,7 +66,6 @@ vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_CODE_CHANGE_TOOL: "propose_code_change",
 }));
 vi.mock("@/lib/ai/capabilityGates", () => ({
-  isJamieSlimPromptEnabledForUser: vi.fn(async () => false),
   isPromptsCapabilityEnabledForOrg: vi.fn(async () => false),
   isGraphWriteCapabilityEnabledForOrg: vi.fn(async () => false),
   isCodeChangeCapabilityEnabledForOrg: vi.fn(async () => false),

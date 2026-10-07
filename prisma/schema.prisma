@@ -66,11 +66,6 @@ model User {
   // menu on the canvas Agent chat panel. Named `chatAgentModel` (not just
   // `agentModel`) to leave room for per-agent defaults later.
   chatAgentModel           String?                  @map("chat_agent_model")
-  // Per-user opt-in for the slim canvas-agent prompt (concept-tree mode):
-  // when true, Jamie gets the slim prompt and walks the Glimmer concept
-  // tree for how-to detail. Toggled from the gear menu on the canvas
-  // Agent chat panel. Defaults off (the full prompt).
-  jamieSlimPrompt          Boolean                  @default(false) @map("jamie_slim_prompt")
   createdAt                DateTime                 @default(now()) @map("created_at")
   updatedAt                DateTime                 @updatedAt @map("updated_at")
   deleted                  Boolean                  @default(false)

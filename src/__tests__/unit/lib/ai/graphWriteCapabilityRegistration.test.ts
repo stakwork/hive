@@ -102,7 +102,6 @@ const isGraphWriteCapabilityEnabledForOrg = vi.fn<
   (orgId: string | undefined) => Promise<boolean>
 >();
 vi.mock("@/lib/ai/capabilityGates", () => ({
-  isJamieSlimPromptEnabledForUser: vi.fn(async () => false),
   isPromptsCapabilityEnabledForOrg: (orgId: string | undefined) =>
     isPromptsCapabilityEnabledForOrg(orgId),
   isGraphWriteCapabilityEnabledForOrg: (orgId: string | undefined) =>

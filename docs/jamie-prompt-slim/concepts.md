@@ -1,9 +1,10 @@
 # Jamie prompt slim-down — concept handoff & audit
 
 Companion record for the PR that adds the slim canvas-agent prompt
-(concept-tree mode). The slim prompt is opt-in per user via
-`User.jamieSlimPrompt` (the "Concept-tree prompt" switch in the agent
-settings cog); with it off, Jamie gets the full prompt unchanged.
+(concept-tree mode). The slim prompt is opt-in per browser via the
+"Concept-tree prompt" switch in the agent settings cog (stored in
+localStorage and sent as `slimPrompt` on each canvas chat request); with
+it off, or on planner wake turns, Jamie gets the full prompt unchanged.
 
 In slim mode the prompt keeps Jamie's identity and hard rules, and a
 single entry point tells Jamie to find the **Glimmer** root concept in the

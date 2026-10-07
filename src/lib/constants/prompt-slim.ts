@@ -1,7 +1,8 @@
 /**
  * Slim canvas-agent prompt (concept-tree mode).
  *
- * Opt-in per user via `User.jamieSlimPrompt` (the agent settings cog). The
+ * Opt-in per browser via the agent settings cog (`slimPrompt` on the chat
+ * request; see `slimPromptPreference.ts`). The
  * slim snippets keep Jamie's identity and hard rules; how Jamie works, task
  * by task, lives in the Glimmer → Stadeum → Jamie concept tree it walks with
  * the graph tools. Selected in `composeCapabilityPromptSuffix`.

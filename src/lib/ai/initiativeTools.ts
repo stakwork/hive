@@ -147,7 +147,7 @@ export function buildInitiativeTools(
    */
   chatAgentModel?: string,
   /**
-   * The user's `jamieSlimPrompt` preference. In slim-prompt mode the
+   * Slim-prompt mode (the per-browser settings switch). In that mode the
    * `send_to_feature_planner` description carries the FORM rule; the
    * full prompt keeps its own FORM guidance in the planner snippet.
    */

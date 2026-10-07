@@ -97,7 +97,6 @@ vi.mock("@/lib/ai/canvas-system-prompt", () => ({
   getCanvasSystemPrompt: vi.fn(async () => ({ value: "system", promptId: null })),
 }));
 vi.mock("@/lib/ai/capabilityGates", () => ({
-  isJamieSlimPromptEnabledForUser: vi.fn(async () => false),
   isPromptsCapabilityEnabledForOrg: vi.fn(async () => false),
   isGraphWriteCapabilityEnabledForOrg: vi.fn(async () => false),
   isCodeChangeCapabilityEnabledForOrg: vi.fn(async () => false),

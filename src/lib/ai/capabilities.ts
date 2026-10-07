@@ -183,7 +183,7 @@ export interface CapabilityContext {
    */
   chatAgentModel?: string;
   /**
-   * The user's `jamieSlimPrompt` preference. Forwarded to
+   * Slim-prompt mode (the per-browser settings switch). Forwarded to
    * `buildInitiativeTools` so `send_to_feature_planner` carries the FORM
    * rule only in slim-prompt mode (the full prompt keeps its own FORM
    * guidance).
@@ -216,7 +216,7 @@ interface CapabilityDefinition {
   promptSnippet(): string;
   /**
    * Slim-prompt variant (concept-tree mode), used instead of
-   * `promptSnippet` when the user has `jamieSlimPrompt` on. Core
+   * `promptSnippet` when slim-prompt mode is on. Core
    * capabilities only; absent → `promptSnippet` in both modes.
    */
   slimPromptSnippet?(): string;
