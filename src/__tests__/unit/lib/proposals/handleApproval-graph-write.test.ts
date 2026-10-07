@@ -114,6 +114,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 // ── Imports ────────────────────────────────────────────────────────────────
+import { logger } from "@/lib/logger";
 import { handleApproval, type MessageLike } from "@/lib/proposals/handleApproval";
 import {
   PROPOSE_CREATE_NODE_TOOL,
@@ -452,6 +453,40 @@ describe("approveGraphNodeEdit", () => {
       expect(result.result.kind).toBe("graphNodeEdit");
     }
     expect(mockUpdateNodeV2).toHaveBeenCalledOnce();
+  });
+
+  it("passes the node's namespace to updateNodeV2 and logs it", async () => {
+    mockReadNodeByRef.mockResolvedValue({
+      success: true,
+      ref_id: "node-ref-123",
+      node_type: "Concept",
+      properties: {},
+      namespace: "other-ns",
+    });
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeNodeEditMsg()], intent: baseIntent,
+    });
+    expect(result.ok).toBe(true);
+    expect(mockUpdateNodeV2.mock.calls[0][3]).toBe("other-ns");
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("approveGraphNodeEdit"),
+      "handleApproval",
+      expect.objectContaining({ namespace: "other-ns" }),
+    );
+  });
+
+  it("passes an undefined namespace when the read returns none (logged as default)", async () => {
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeNodeEditMsg()], intent: baseIntent,
+    });
+    expect(result.ok).toBe(true);
+    expect(mockUpdateNodeV2).toHaveBeenCalledOnce();
+    expect(mockUpdateNodeV2.mock.calls[0][3]).toBeUndefined();
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("approveGraphNodeEdit"),
+      "handleApproval",
+      expect.objectContaining({ namespace: "default" }),
+    );
   });
 });
 
