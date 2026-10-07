@@ -13,7 +13,9 @@ import { healUserChatAgentModel } from "@/lib/ai/resolve-model";
  * - `chatAgentModel` — the per-user default model for the canvas Agent
  *   chat, in `getModelValue()` "provider/name" form. Null = inherit the
  *   admin-configured default.
- * Both are edited from the gear menu on the canvas Agent chat panel.
+ * - `jamieSlimPrompt` — the per-user opt-in for the slim canvas-agent
+ *   prompt (concept-tree mode).
+ * All three are edited from the gear menu on the canvas Agent chat panel.
  */
 
 /** GET /api/user/preferences — read the current user's preferences. */
@@ -25,7 +27,7 @@ export async function GET() {
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, dailyRecapEnabled: true, voiceLearningEnabled: true },
+    select: { canvasAutonomousTurns: true, chatAgentModel: true, jamieSlimPrompt: true, timezone: true, dailyRecapEnabled: true, voiceLearningEnabled: true },
   });
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -38,6 +40,7 @@ export async function GET() {
   return NextResponse.json({
     canvasAutonomousTurns: user.canvasAutonomousTurns,
     chatAgentModel,
+    jamieSlimPrompt: user.jamieSlimPrompt,
     timezone: user.timezone ?? "UTC",
     dailyRecapEnabled: user.dailyRecapEnabled,
     voiceLearningEnabled: user.voiceLearningEnabled,
@@ -53,7 +56,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { canvasAutonomousTurns, chatAgentModel, timezone, dailyRecapEnabled, voiceLearningEnabled } = body;
+    const { canvasAutonomousTurns, chatAgentModel, jamieSlimPrompt, timezone, dailyRecapEnabled, voiceLearningEnabled } = body;
 
     if (
       canvasAutonomousTurns !== undefined &&
@@ -72,6 +75,13 @@ export async function PATCH(request: NextRequest) {
     ) {
       return NextResponse.json(
         { error: "chatAgentModel must be a string or null" },
+        { status: 400 },
+      );
+    }
+
+    if (jamieSlimPrompt !== undefined && typeof jamieSlimPrompt !== "boolean") {
+      return NextResponse.json(
+        { error: "jamieSlimPrompt must be a boolean" },
         { status: 400 },
       );
     }
@@ -104,17 +114,19 @@ export async function PATCH(request: NextRequest) {
       data: {
         ...(canvasAutonomousTurns !== undefined && { canvasAutonomousTurns }),
         ...(chatAgentModel !== undefined && { chatAgentModel }),
+        ...(jamieSlimPrompt !== undefined && { jamieSlimPrompt }),
         ...(timezone !== undefined && { timezone }),
         ...(dailyRecapEnabled !== undefined && { dailyRecapEnabled }),
         ...(voiceLearningEnabled !== undefined && { voiceLearningEnabled }),
       },
-      select: { canvasAutonomousTurns: true, chatAgentModel: true, timezone: true, dailyRecapEnabled: true, voiceLearningEnabled: true },
+      select: { canvasAutonomousTurns: true, chatAgentModel: true, jamieSlimPrompt: true, timezone: true, dailyRecapEnabled: true, voiceLearningEnabled: true },
     });
 
     logger.info("User preferences updated", "USER_PREFERENCES_UPDATE", {
       userId: session.user.id,
       canvasAutonomousTurns: updated.canvasAutonomousTurns,
       chatAgentModel: updated.chatAgentModel,
+      jamieSlimPrompt: updated.jamieSlimPrompt,
       timezone: updated.timezone,
       dailyRecapEnabled: updated.dailyRecapEnabled,
       voiceLearningEnabled: updated.voiceLearningEnabled,
@@ -123,6 +135,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       canvasAutonomousTurns: updated.canvasAutonomousTurns,
       chatAgentModel: updated.chatAgentModel,
+      jamieSlimPrompt: updated.jamieSlimPrompt,
       timezone: updated.timezone ?? "UTC",
       dailyRecapEnabled: updated.dailyRecapEnabled,
       voiceLearningEnabled: updated.voiceLearningEnabled,

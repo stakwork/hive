@@ -415,3 +415,40 @@ describe("PATCH /api/user/preferences — voiceLearningEnabled", () => {
     );
   });
 });
+
+describe("PATCH /api/user/preferences — jamieSlimPrompt", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetServerSession.mockResolvedValue({ user: { id: "user-1" } });
+  });
+
+  test("accepts a boolean and returns the updated value", async () => {
+    mockUserUpdate.mockResolvedValue({
+      canvasAutonomousTurns: false,
+      chatAgentModel: null,
+      jamieSlimPrompt: true,
+      timezone: "UTC",
+      dailyRecapEnabled: true,
+    });
+
+    const res = await PATCH(makeRequest({ jamieSlimPrompt: true }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.jamieSlimPrompt).toBe(true);
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ jamieSlimPrompt: true }),
+      }),
+    );
+  });
+
+  test("rejects a non-boolean with 400", async () => {
+    const res = await PATCH(makeRequest({ jamieSlimPrompt: "yes" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("jamieSlimPrompt must be a boolean");
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
+});

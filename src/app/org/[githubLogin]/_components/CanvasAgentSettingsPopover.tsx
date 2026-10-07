@@ -27,6 +27,10 @@ import { AutomationsSection } from "./AutomationsSection";
  *     canvas agent chats with, stored in `getModelValue()` "provider/name"
  *     form. Empty = inherit the admin-configured default.
  *
+ *   - **Concept-tree prompt** (`jamieSlimPrompt`) — experimental: the
+ *     canvas agent gets the slim prompt and walks the Glimmer concept
+ *     tree for how-to detail. Off = the full prompt.
+ *
  * The values are user-level preferences (not per-conversation), persisted
  * via `/api/user/preferences`. Fetched once on mount; changes are saved
  * optimistically with a rollback on failure.
@@ -35,6 +39,8 @@ export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: strin
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
+  const [slimPrompt, setSlimPrompt] = useState<boolean | null>(null);
+  const [savingSlim, setSavingSlim] = useState(false);
   const [models, setModels] = useState<LlmModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [savingModel, setSavingModel] = useState(false);
@@ -48,6 +54,7 @@ export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: strin
       .then((data) => {
         if (!cancelled && data) {
           setEnabled(!!data.canvasAutonomousTurns);
+          setSlimPrompt(!!data.jamieSlimPrompt);
           setSelectedModel(data.chatAgentModel ?? "");
         }
       })
@@ -76,26 +83,37 @@ export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: strin
     };
   }, []);
 
-  const handleToggle = async (next: boolean) => {
-    const prev = enabled;
-    setEnabled(next); // optimistic
-    setSaving(true);
+  const saveBooleanPreference = async (
+    key: "canvasAutonomousTurns" | "jamieSlimPrompt",
+    next: boolean,
+    prev: boolean | null,
+    setValue: (value: boolean) => void,
+    setBusy: (busy: boolean) => void,
+  ) => {
+    setValue(next); // optimistic
+    setBusy(true);
     try {
       const res = await fetch("/api/user/preferences", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ canvasAutonomousTurns: next }),
+        body: JSON.stringify({ [key]: next }),
       });
       if (!res.ok) throw new Error("Request failed");
     } catch {
-      setEnabled(prev ?? false); // rollback
+      setValue(prev ?? false); // rollback
       toast.error("Couldn't save that setting", {
         description: "Please try again.",
       });
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   };
+
+  const handleToggle = (next: boolean) =>
+    saveBooleanPreference("canvasAutonomousTurns", next, enabled, setEnabled, setSaving);
+
+  const handleSlimToggle = (next: boolean) =>
+    saveBooleanPreference("jamieSlimPrompt", next, slimPrompt, setSlimPrompt, setSavingSlim);
 
   const handleModelChange = async (next: string) => {
     const prev = selectedModel;
@@ -148,6 +166,21 @@ export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: strin
               onCheckedChange={handleToggle}
               disabled={enabled === null || saving}
               aria-label="Auto-respond to planners"
+            />
+          </div>
+
+          <div className="flex items-start justify-between gap-3 border-t pt-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium leading-none">Concept-tree prompt</p>
+              <p className="text-xs text-muted-foreground">
+                Experimental. Use a slim prompt and let the agent walk the Glimmer concept tree to learn how it works.
+              </p>
+            </div>
+            <Switch
+              checked={slimPrompt ?? false}
+              onCheckedChange={handleSlimToggle}
+              disabled={slimPrompt === null || savingSlim}
+              aria-label="Concept-tree prompt"
             />
           </div>
 

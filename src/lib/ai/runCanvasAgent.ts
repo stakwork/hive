@@ -71,7 +71,7 @@ import {
   resolveOrgCapabilities,
   type OrgCapability,
 } from "@/lib/ai/capabilities";
-import { isGraphWriteCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
+import { isGraphWriteCapabilityEnabledForOrg, isJamieSlimPromptEnabledForUser } from "@/lib/ai/capabilityGates";
 import { connectExternalMcpTools } from "@/lib/ai/externalMcpTools";
 import { getLinkedWorkspacesForInitiative } from "@/lib/canvas/linkedWorkspaces";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
@@ -919,8 +919,11 @@ export async function runCanvasAgent(
   // Stakwork source-control org) filtered out for orgs that fail the gate.
   // The prompt suffix is the matching snippet concatenation.
   const orgCapabilities = await resolveOrgCapabilities(capabilities, orgId);
+  // Per-user opt-in to the slim prompt (concept-tree mode); selects the
+  // slim core snippets and the FORM rule on `send_to_feature_planner`.
+  const slimPrompt = await isJamieSlimPromptEnabledForUser(userId);
   const orgPromptSuffix = orgId
-    ? composeCapabilityPromptSuffix(orgCapabilities)
+    ? composeCapabilityPromptSuffix(orgCapabilities, { slimPrompt })
     : undefined;
   // `graph_walker` is core (read tools always composed), so its four
   // graph-write propose tools cannot ride an `orgGate` on the capability
@@ -999,6 +1002,7 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
+          slimPrompt,
           webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
@@ -1161,6 +1165,7 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
+          slimPrompt,
           webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,

@@ -12,6 +12,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     feature: { findUnique: vi.fn() },
     sharedConversation: { findUnique: vi.fn(), update: vi.fn() },
+    chatMessage: { findMany: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   },
@@ -36,6 +37,7 @@ const { POST } = await import(
 
 const mockFeatureFind = db.feature.findUnique as Mock;
 const mockConvFind = db.sharedConversation.findUnique as Mock;
+const mockChatMessageFindMany = db.chatMessage.findMany as Mock;
 const mockResolveOrg = resolveAuthorizedOrgId as Mock;
 const mockSend = sendFeatureChatMessage as Mock;
 const mockTransaction = db.$transaction as Mock;
@@ -79,6 +81,7 @@ describe("POST /api/orgs/[githubLogin]/planner-forms/answer", () => {
       workspace: { sourceControlOrgId: "org-1" },
     });
     mockConvFind.mockResolvedValue({ messages: [] }); // not yet answered
+    mockChatMessageFindMany.mockResolvedValue([]); // no existing reply
     mockSend.mockResolvedValue({ chatMessage: { id: "x" } });
     // Append transaction: run the callback with a tx stub.
     mockTransaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
@@ -155,5 +158,27 @@ describe("POST /api/orgs/[githubLogin]/planner-forms/answer", () => {
     );
     const res = await POST(makeRequest(validBody), params);
     expect(res.status).toBe(409);
+  });
+
+  it("is already_answered when a later USER chat message already replied to the FORM — does not re-forward", async () => {
+    mockChatMessageFindMany.mockResolvedValue([
+      { id: "pm-1", role: "ASSISTANT", replyId: null },
+      { id: "u-1", role: "USER", replyId: null },
+    ]);
+    const res = await POST(makeRequest(validBody), params);
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ status: "already_answered" });
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("is already_answered when an explicit replyId already answered the FORM — does not re-forward", async () => {
+    mockChatMessageFindMany.mockResolvedValue([
+      { id: "pm-1", role: "ASSISTANT", replyId: null },
+      { id: "u-1", role: "USER", replyId: "pm-1" },
+    ]);
+    const res = await POST(makeRequest(validBody), params);
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ status: "already_answered" });
+    expect(mockSend).not.toHaveBeenCalled();
   });
 });

@@ -44,6 +44,7 @@ import { db } from "@/lib/db";
 import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
 import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
+import { PLANNER_FORM_RULE, PLANNER_FORM_WAKE_RULE } from "@/lib/constants/prompt-rules";
 import {
   messagesFromSteps,
   appendTurnMessages,
@@ -267,12 +268,7 @@ function buildWakeMessage(
       "clearly delegated this kind of decision and a " +
       "`send_to_feature_planner` reply would be redundant noise.\n\n" +
       (wakeReason === "form"
-        ? "This wake reason is `form`: the planner emitted a structured " +
-          "clarifying-question FORM — its explicit *a human must pick* " +
-          "signal. NEVER auto-answer a FORM with `send_to_feature_planner`; " +
-          "that defeats the planner's escalation. Choose **escalate** (a " +
-          "one-paragraph note pointing at the question) or **stay silent** " +
-          "(the FORM surfaces to the user directly anyway)."
+        ? `This wake reason is \`form\`. ${PLANNER_FORM_RULE} ${PLANNER_FORM_WAKE_RULE}`
         : wakeReason === "completed"
           ? plan.tasksGenerated
             ? "This wake reason is `completed`, and the `Tasks` stage above " +

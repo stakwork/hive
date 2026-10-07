@@ -122,6 +122,7 @@ import {
 } from "@/lib/proposals/types";
 import {
   getConceptsCapabilitySnippet,
+  getConceptTreeEntrySnippet,
   getConnectionsCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
   getHtmlPagesCapabilitySnippet,
@@ -130,6 +131,10 @@ import {
   getPromptsCapabilitySnippet,
   getResearchCapabilitySnippet,
   getRoadmapCapabilitySnippet,
+  getSlimConceptsCapabilitySnippet,
+  getSlimGraphWalkerCapabilitySnippet,
+  getSlimPlannerCapabilitySnippet,
+  getSlimRoadmapCapabilitySnippet,
   getWhiteboardCapabilitySnippet,
   getWorkflowsCapabilitySnippet,
 } from "@/lib/constants/prompt";
@@ -176,6 +181,13 @@ export interface CapabilityContext {
    */
   chatAgentModel?: string;
   /**
+   * The user's `jamieSlimPrompt` preference. Forwarded to
+   * `buildInitiativeTools` so `send_to_feature_planner` carries the FORM
+   * rule only in slim-prompt mode (the full prompt keeps its own FORM
+   * guidance).
+   */
+  slimPrompt?: boolean;
+  /**
    * The run's `web_search` handle (from `createWebSearch`). Carries the
    * ordered result list `update_research` cites into and the citation
    * treatment for written-up text — which differs by backend, so tools
@@ -200,6 +212,12 @@ export type { DispatchedGraphWalkIntent };
 interface CapabilityDefinition {
   buildTools(ctx: CapabilityContext): ToolSet;
   promptSnippet(): string;
+  /**
+   * Slim-prompt variant (concept-tree mode), used instead of
+   * `promptSnippet` when the user has `jamieSlimPrompt` on. Core
+   * capabilities only; absent → `promptSnippet` in both modes.
+   */
+  slimPromptSnippet?(): string;
   /**
    * Core capabilities are taught up-front in the system prompt every
    * turn; loadable ones (`core: false`) are taught only when the agent
@@ -311,11 +329,13 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
             ctx.userId,
             ctx.currentCanvasConversationId,
             ctx.chatAgentModel,
+            ctx.slimPrompt,
           ),
           ROADMAP_INITIATIVE_TOOL_NAMES,
         ),
       }),
       promptSnippet: getRoadmapCapabilitySnippet,
+      slimPromptSnippet: getSlimRoadmapCapabilitySnippet,
       core: true,
       writeToolNames: [
         "assign_feature_to_initiative",
@@ -343,10 +363,12 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
             ctx.userId,
             ctx.currentCanvasConversationId,
             ctx.chatAgentModel,
+            ctx.slimPrompt,
           ),
           PLANNER_TOOL_NAMES,
         ),
       promptSnippet: getPlannerCapabilitySnippet,
+      slimPromptSnippet: getSlimPlannerCapabilitySnippet,
       core: true,
       // send_to_feature_planner survives readonly mode — it messages an
       // agent rather than mutating org state directly. cancel_feature_planner
@@ -428,6 +450,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
           : {}),
       }),
       promptSnippet: getGraphWalkerCapabilitySnippet,
+      slimPromptSnippet: getSlimGraphWalkerCapabilitySnippet,
       // CORE: graph traversal is a hot path (walking roadmap→code, URN
       // dereference from other tools), so its snippet rides in the
       // up-front prompt every turn rather than behind `learn_capability`.
@@ -485,6 +508,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // runCanvasAgent composes.
       buildTools: (ctx) => buildConceptTools(ctx.orgId, ctx.userId),
       promptSnippet: getConceptsCapabilitySnippet,
+      slimPromptSnippet: getSlimConceptsCapabilitySnippet,
       // CORE: "remember this" / "note this down" is a common, low-ceremony
       // ask, and behind `learn_capability` the agent rarely recognized it as
       // a concept write at all — the menu blurb was the only thing steering
@@ -816,12 +840,20 @@ export function composeCapabilityTools(
  */
 export function composeCapabilityPromptSuffix(
   selected: readonly OrgCapability[],
+  { slimPrompt = false }: { slimPrompt?: boolean } = {},
 ): string {
   const resolved = resolveCapabilities(selected);
-  const core = resolved
-    .filter((cap) => CAPABILITY_REGISTRY[cap].core)
-    .map((cap) => CAPABILITY_REGISTRY[cap].promptSnippet())
-    .join("");
+  const core =
+    (slimPrompt ? getConceptTreeEntrySnippet() : "") +
+    resolved
+      .filter((cap) => CAPABILITY_REGISTRY[cap].core)
+      .map((cap) => {
+        const def = CAPABILITY_REGISTRY[cap];
+        return slimPrompt && def.slimPromptSnippet
+          ? def.slimPromptSnippet()
+          : def.promptSnippet();
+      })
+      .join("");
 
   const loadable = loadableCapabilities(resolved);
   if (loadable.length === 0) return core;
