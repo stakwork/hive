@@ -272,6 +272,7 @@ export function DomainGraph({
   endpointsById,
   selectedId,
   onSelect,
+  height = GRAPH_HEIGHT,
 }: {
   /** The nodes passing the current filters. */
   nodes: SystemMapDomainNode[];
@@ -283,6 +284,8 @@ export function DomainGraph({
   endpointsById: Map<string, SystemMapEndpoint>;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Canvas height in px. */
+  height?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState<number | null>(null);
@@ -373,7 +376,7 @@ export function DomainGraph({
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-lg border bg-muted/20"
-        style={{ height: GRAPH_HEIGHT }}
+        style={{ height }}
         data-testid="system-map-graph"
       >
         {width !== null && elements.nodes.length > 0 ? (
@@ -381,7 +384,7 @@ export function DomainGraph({
             nodes={elements.nodes}
             edges={elements.edges}
             width={width}
-            height={GRAPH_HEIGHT}
+            height={height}
             colorMap={elements.colorMap}
             onNodeClick={onNodeClick}
             edgeStyleFn={edgeStyle}

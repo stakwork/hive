@@ -13,6 +13,8 @@ import type {
 
 /** Every node the System Map workflows write carries `namespace: "systemmap"`. */
 export const SYSTEM_MAP_NAMESPACE = "systemmap";
+/** The CWE check workflow's namespace — a separate namespace in the same graph. */
+export const INFOSEC_NAMESPACE = "infosec";
 export const MAX_DOMAIN_NODES = 5000;
 const PAGE_SIZE = 500;
 const MAX_PAGES = MAX_DOMAIN_NODES / PAGE_SIZE;
@@ -36,9 +38,9 @@ export function parseDomainNode(node: JarvisGraphNode): SystemMapDomainNode | nu
  * in `properties`, so only a node that names a different namespace is dropped
  * (a guard against a jarvis that ignores the filter).
  */
-function notInOtherNamespace(node: JarvisGraphNode): boolean {
-  const namespace = node.properties?.namespace ?? (node as { namespace?: unknown }).namespace;
-  return namespace === undefined || namespace === null || namespace === SYSTEM_MAP_NAMESPACE;
+function notInOtherNamespace(node: JarvisGraphNode, namespace: string): boolean {
+  const nodeNamespace = node.properties?.namespace ?? (node as { namespace?: unknown }).namespace;
+  return nodeNamespace === undefined || nodeNamespace === null || nodeNamespace === namespace;
 }
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -67,19 +69,21 @@ export type ListSystemMapDomainNodesResult =
   | { ok: false; error: string };
 
 /**
- * The workspace graph's `systemmap` namespace as a graph, read through
- * boltwall: the nodes from `GET /v2/nodes?namespace=systemmap` (paged), then
- * each node's `GET /v2/nodes/:ref_id?expand=edges`, keeping only the edges
- * whose both ends are System Map nodes.
+ * One namespace of the workspace graph (`systemmap` unless told otherwise)
+ * as a graph, read through boltwall: the nodes from
+ * `GET /v2/nodes?namespace=<namespace>` (paged), then each node's
+ * `GET /v2/nodes/:ref_id?expand=edges`, keeping only the edges whose both
+ * ends are nodes of that read.
  */
 export async function listSystemMapDomainNodes(
   config: JarvisConnectionConfig,
+  namespace: string = SYSTEM_MAP_NAMESPACE,
 ): Promise<ListSystemMapDomainNodesResult> {
   const raw: JarvisGraphNode[] = [];
   let startingAfter: string | undefined;
   let truncated = true;
   for (let page = 0; page < MAX_PAGES; page++) {
-    const result = await listNodesByType(config, "", PAGE_SIZE, { startingAfter, namespace: SYSTEM_MAP_NAMESPACE });
+    const result = await listNodesByType(config, "", PAGE_SIZE, { startingAfter, namespace });
     if (!result.ok) {
       return { ok: false, error: result.error || `Failed to read nodes from ${config.jarvisUrl}` };
     }
@@ -93,7 +97,7 @@ export async function listSystemMapDomainNodes(
   }
 
   const byRef = new Map<string, SystemMapDomainNode>();
-  for (const node of raw.filter(notInOtherNamespace)) {
+  for (const node of raw.filter((n) => notInOtherNamespace(n, namespace))) {
     const parsed = parseDomainNode(node);
     if (parsed && !byRef.has(parsed.refId)) byRef.set(parsed.refId, parsed);
   }
@@ -127,6 +131,7 @@ export async function listSystemMapDomainNodes(
 
   logger.info("[SystemMap] domain graph", "system-map", {
     jarvisUrl: config.jarvisUrl,
+    namespace,
     nodes: nodes.length,
     edges: edges.size,
     edgeReadFailures,
