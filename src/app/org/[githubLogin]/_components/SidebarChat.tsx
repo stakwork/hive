@@ -364,17 +364,23 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         </div>
       )}
       <div className="relative flex-1 min-h-0">
-        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto h-full px-4 py-3">
-          <DailyRecapCard dismissible showActivityLink className="mb-3" />
+        <div ref={scrollRef} onScroll={handleScroll} className="flex flex-col min-h-0 overflow-y-auto h-full px-4 py-3">
+          <div className="shrink-0">
+            <DailyRecapCard dismissible showActivityLink className="mb-3" />
+          </div>
           {!hasMessages && activeToolCalls.length === 0 && (
-            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+            <motion.div
+              layout
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center"
+            >
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/10 text-sky-500">
                 <MessageCircle className="h-4 w-4" />
               </span>
               <p className="text-sm font-medium">What should we work on?</p>
-            </div>
+            </motion.div>
           )}
-          <div className="space-y-2">
+          <div className="space-y-2 shrink-0">
             {messages.map((message, index) => {
               const isLastMessage = index === messages.length - 1;
               // `isStreaming` (true until the stream settles), NOT `isLoading`

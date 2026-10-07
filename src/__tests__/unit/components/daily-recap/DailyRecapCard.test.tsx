@@ -143,7 +143,8 @@ describe("DailyRecapCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
 
-    expect(screen.queryByTestId("daily-recap-card")).toBeNull();
+    // The card exits via AnimatePresence, so it is removed asynchronously.
+    await waitFor(() => expect(screen.queryByTestId("daily-recap-card")).toBeNull());
     expect(sessionStorageMock.setItem).toHaveBeenCalledWith("hive:daily-recap-dismissed", "1");
   });
 
