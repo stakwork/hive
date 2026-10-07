@@ -6,10 +6,11 @@ Companion record for the PR that adds the slim canvas-agent prompt
 localStorage and sent as `slimPrompt` on each canvas chat request); with
 it off, or on planner wake turns, Jamie gets the full prompt unchanged.
 
-In slim mode the prompt keeps Jamie's identity and hard rules, and a
-single entry point tells Jamie to find the **Glimmer** root concept in the
-`hive` workspace and walk down (Glimmer → Stadeum → Jamie) for how-to
-detail. No concept below the root is named in code.
+In slim mode the code-built capability sections are shorter, and Jamie
+relies on the concept tree for how-to detail. Where to start the walk
+(`Glimmer (gRLM)` → Stadeum → Jamie) is set in the Prompt Manager prompt
+`CANVAS_AGENT_SYSTEM_PROMPT`, for every turn; the code adds no entry
+section of its own. No concept is named in code.
 
 For each section the slim prompt drops, this lists the exact text removed,
 so a reviewer can check the concept tree carries it. It also carries the
@@ -280,7 +281,7 @@ fixture (one-line descriptions, 3-person roster), plus
 | Commit | System prompt | Capability suffix (core) | Total |
 |---|---|---|---|
 | Before (commit 1, pre-edit) | 9,552 | 55,844 | **65,396** |
-| Slim mode (measured with the earlier per-section pointers; the single Glimmer entry is about the same size) | 9,701 | 25,905 | **35,606** |
+| Slim mode (measured with the earlier per-section pointers, since removed) | 9,701 | 25,905 | **35,606** |
 
 The after-total is higher than the plan's 22–28k estimate (mostly because
 the roadmap snippet's Tools list and the graph-walker Read-tools list are
