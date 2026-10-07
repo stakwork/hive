@@ -160,7 +160,20 @@ describe("PUT /api/workspaces/[slug]/graph/node/[ref_id]/docs", () => {
     expect(res.status).toBe(200);
     expect(getSwarmAccessByWorkspaceId).toHaveBeenCalledWith("ws-1");
     expect(readNodeByRef).toHaveBeenCalledWith(config, "ref-1");
-    expect(updateNodeV2).toHaveBeenCalledWith(config, "ref-1", { docs: "# New docs" });
+    expect(updateNodeV2).toHaveBeenCalledWith(config, "ref-1", { docs: "# New docs" }, undefined);
     expect(await res.json()).toEqual({ success: true, ref_id: "ref-1", docs: "# New docs" });
+  });
+
+  test("passes the node's namespace through to updateNodeV2", async () => {
+    (readNodeByRef as Mock).mockResolvedValue({
+      success: true,
+      node_type: "Concept",
+      namespace: "other-ns",
+    });
+
+    const res = await PUT(makeRequest({ docs: "# New docs" }), { params });
+
+    expect(res.status).toBe(200);
+    expect(updateNodeV2).toHaveBeenCalledWith(config, "ref-1", { docs: "# New docs" }, "other-ns");
   });
 });

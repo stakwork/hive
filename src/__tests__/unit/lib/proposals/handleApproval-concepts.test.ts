@@ -722,9 +722,12 @@ describe("approveConceptUpdate — jarvis update path", () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(mockUpdateNodeV2).toHaveBeenCalledWith(expect.anything(), "ref-by-node-key", {
-      docs: "# A\nDetails.",
-    });
+    expect(mockUpdateNodeV2).toHaveBeenCalledWith(
+      expect.anything(),
+      "ref-by-node-key",
+      { docs: "# A\nDetails." },
+      undefined,
+    );
   });
 
   it("resolves a concept by bare ref_id when neither id nor node_key match", async () => {
@@ -751,6 +754,7 @@ describe("approveConceptUpdate — jarvis update path", () => {
       expect.anything(),
       "d2047c31-8dfc-438b-b464-4635b7e04bf0",
       { docs: "# A\nDetails." },
+      undefined,
     );
   });
 
@@ -789,6 +793,65 @@ describe("approveConceptUpdate — jarvis update path", () => {
       "Could not reach the workspace graph",
     );
     expect(mockUpdateNodeV2).not.toHaveBeenCalled();
+  });
+
+  it("passes the node's namespace through to updateNodeV2", async () => {
+    mockReadNodeByRef.mockResolvedValue({
+      success: true,
+      node_type: "Concept",
+      namespace: "other-ns",
+    });
+
+    const result = await approve(
+      makeUpdateMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        conceptId: "acme/hive/auth-guide",
+        documentation: "# A\nDetails.",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockReadNodeByRef).toHaveBeenCalledWith(expect.anything(), "ref-parent");
+    expect(mockUpdateNodeV2).toHaveBeenCalledWith(
+      expect.anything(),
+      "ref-parent",
+      { docs: "# A\nDetails." },
+      "other-ns",
+    );
+  });
+
+  it("passes an undefined namespace when the node has none", async () => {
+    mockReadNodeByRef.mockResolvedValue({ success: true, node_type: "Concept" });
+
+    const result = await approve(
+      makeUpdateMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        conceptId: "acme/hive/auth-guide",
+        documentation: "# A\nDetails.",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockUpdateNodeV2.mock.calls[0][3]).toBeUndefined();
+  });
+
+  it("writes without a namespace and still succeeds when the node read fails", async () => {
+    mockReadNodeByRef.mockResolvedValue({ success: false, message: "boom" });
+
+    const result = await approve(
+      makeUpdateMessages({
+        workspaceId: "ws-cuid-1",
+        workspaceSlug: "acme",
+        conceptId: "acme/hive/auth-guide",
+        documentation: "# A\nDetails.",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockUpdateNodeV2).toHaveBeenCalledOnce();
+    expect(mockUpdateNodeV2.mock.calls[0][3]).toBeUndefined();
   });
 
   it("propagates an updateNodeV2 failure", async () => {
