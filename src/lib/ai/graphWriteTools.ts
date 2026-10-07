@@ -859,6 +859,11 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
             },
           };
         }
+        // Jarvis deletes by namespace, so carry the node's own namespace.
+        const rawNamespace = node.namespace ?? node.properties?.namespace;
+        if (typeof rawNamespace === "string" && rawNamespace) {
+          payload.namespace = rawNamespace;
+        }
         const node_type = node.node_type ?? "";
         const node_name = nameOf(node.properties);
         const names = { ...(node_name ? { node_name } : {}), ...(node_type ? { node_type } : {}) };

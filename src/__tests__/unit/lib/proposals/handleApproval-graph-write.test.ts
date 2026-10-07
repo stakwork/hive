@@ -932,7 +932,10 @@ describe("approveGraphNodeMove", () => {
 
 // ── approveGraphNodeDelete ────────────────────────────────────────────────
 
-function makeNodeDeleteMsg(meta: Record<string, unknown> = {}): MessageLike {
+function makeNodeDeleteMsg(
+  meta: Record<string, unknown> = {},
+  payloadExtra: Record<string, unknown> = {},
+): MessageLike {
   return {
     role: "assistant",
     toolCalls: [
@@ -941,7 +944,7 @@ function makeNodeDeleteMsg(meta: Record<string, unknown> = {}): MessageLike {
         output: {
           kind: "graphNodeDelete",
           proposalId: PROPOSAL_ID,
-          payload: { workspaceId: WS_ID, workspaceSlug: WS_SLUG, ref_id: "node-ref-123" },
+          payload: { workspaceId: WS_ID, workspaceSlug: WS_SLUG, ref_id: "node-ref-123", ...payloadExtra },
           meta: { workspaceSlug: WS_SLUG, node_name: "Old Concept", ...meta },
         },
       },
@@ -969,7 +972,16 @@ describe("approveGraphNodeDelete", () => {
         workspaceSlug: WS_SLUG,
       });
     }
-    expect(mockDeleteSingleNode).toHaveBeenCalledWith(ACCESS_OK.access.config, "node-ref-123");
+    expect(mockDeleteSingleNode).toHaveBeenCalledWith(ACCESS_OK.access.config, "node-ref-123", undefined);
+  });
+
+  it("passes the payload namespace to deleteSingleNode", async () => {
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeNodeDeleteMsg({}, { namespace: "other-ns" })], intent: baseIntent,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mockDeleteSingleNode).toHaveBeenCalledWith(ACCESS_OK.access.config, "node-ref-123", "other-ns");
   });
 
   it("says so when the node is already gone", async () => {

@@ -358,6 +358,13 @@ export interface RunCanvasAgentOptions {
    */
   modelName?: string;
   /**
+   * Opt in to the slim prompt (concept-tree mode): slim core snippets and
+   * the FORM rule on `send_to_feature_planner`. Sent by the canvas
+   * SidebarChat when its settings switch is on; omitted → full prompt
+   * (including every server-side caller, e.g. planner wake turns).
+   */
+  slimPrompt?: boolean;
+  /**
    * Cached concepts from a previous turn of the SAME conversation. When
    * provided, we SKIP the slow per-workspace `listConcepts` swarm
    * round-trip (a swarm can be slow or offline, and re-fetching the
@@ -750,6 +757,7 @@ export async function runCanvasAgent(
     prepareStep,
     extraStopConditions,
     modelName,
+    slimPrompt = false,
     userTimezone,
     publicBaseUrl,
     abortSignal,
@@ -920,7 +928,7 @@ export async function runCanvasAgent(
   // The prompt suffix is the matching snippet concatenation.
   const orgCapabilities = await resolveOrgCapabilities(capabilities, orgId);
   const orgPromptSuffix = orgId
-    ? composeCapabilityPromptSuffix(orgCapabilities)
+    ? composeCapabilityPromptSuffix(orgCapabilities, { slimPrompt })
     : undefined;
   // `graph_walker` is core (read tools always composed), so its four
   // graph-write propose tools cannot ride an `orgGate` on the capability
@@ -999,6 +1007,7 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
+          slimPrompt,
           webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
@@ -1161,6 +1170,7 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
+          slimPrompt,
           webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
