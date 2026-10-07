@@ -76,6 +76,8 @@ export interface ArtifactContents {
     checks?: PullRequestCheck[];
     /** The files changed, when the producer has them. */
     diffs?: ActionResult[];
+    /** Backing artifact id when the live read can refresh it. */
+    artifactId?: string;
   };
   code: {
     code: string;
@@ -259,6 +261,7 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
     const checks = raw.checks === undefined ? undefined : parseEach(raw.checks, parseCheck);
     const diffs = raw.diffs === undefined ? undefined : parseEach(raw.diffs, parseDiffFile);
     if (checks === null || diffs === null) return null;
+    const artifactId = bounded(raw.artifactId, MAX_ID_LENGTH) ?? undefined;
     return {
       ...base,
       repo,
@@ -270,6 +273,7 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
       body: optional(raw.body),
       checks,
       diffs,
+      ...(artifactId ? { artifactId } : {}),
     };
   },
   code: (raw) =>
