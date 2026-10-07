@@ -299,4 +299,10 @@ describe("a bare 'workflow' means strut", () => {
     expect(snippet).toContain("not the stakwork workspace's `stakwork__*` tools");
     expect(snippet).toContain("not a feature in the stakwork workspace");
   });
+
+  test("the strut capability snippet tells the agent a job entry is the record and its reply is a summary", () => {
+    const snippet = getStrutCapabilitySnippet();
+    expect(snippet).toContain("**A Job entry is the record; your words are the reply.**");
+    expect(snippet).toContain("never list files, functions or line numbers");
+  });
 });
