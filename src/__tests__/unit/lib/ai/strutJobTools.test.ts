@@ -150,7 +150,9 @@ describe("start_job", () => {
       kind: "job_turn",
       workflow: "job",
       purpose: "job",
-      input: { prompt: "Write a plan for dark mode", title: "Dark mode plan" },
+      // The workspace the job belongs to rides on the input: what strut's
+      // `job` claims a pod for (its input block declares it).
+      input: { prompt: "Write a plan for dark mode", title: "Dark mode plan", workspace: "ws-id" },
       job: out.jobId,
       publicBaseUrl: "https://hive.example.com",
       conversationId: "conv-1",
@@ -220,7 +222,7 @@ describe("continue_job", () => {
       // Every turn pushes the token, not only the first.
       actorSecrets: { GITHUB_TOKEN: "ghp_test_token" },
       job: JOB,
-      input: { prompt: "Split step 2", title: "Dark mode plan" },
+      input: { prompt: "Split step 2", title: "Dark mode plan", workspace: "ws-id" },
       conversationId: "conv-1",
     });
   });
