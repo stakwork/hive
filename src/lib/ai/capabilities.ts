@@ -134,7 +134,6 @@ import {
   getWorkflowsCapabilitySnippet,
 } from "@/lib/constants/prompt";
 import {
-  getConceptTreeEntrySnippet,
   getSlimConceptsCapabilitySnippet,
   getSlimGraphWalkerCapabilitySnippet,
   getSlimPlannerCapabilitySnippet,
@@ -845,17 +844,15 @@ export function composeCapabilityPromptSuffix(
   { slimPrompt = false }: { slimPrompt?: boolean } = {},
 ): string {
   const resolved = resolveCapabilities(selected);
-  const core =
-    (slimPrompt ? getConceptTreeEntrySnippet() : "") +
-    resolved
-      .filter((cap) => CAPABILITY_REGISTRY[cap].core)
-      .map((cap) => {
-        const def = CAPABILITY_REGISTRY[cap];
-        return slimPrompt && def.slimPromptSnippet
-          ? def.slimPromptSnippet()
-          : def.promptSnippet();
-      })
-      .join("");
+  const core = resolved
+    .filter((cap) => CAPABILITY_REGISTRY[cap].core)
+    .map((cap) => {
+      const def = CAPABILITY_REGISTRY[cap];
+      return slimPrompt && def.slimPromptSnippet
+        ? def.slimPromptSnippet()
+        : def.promptSnippet();
+    })
+    .join("");
 
   const loadable = loadableCapabilities(resolved);
   if (loadable.length === 0) return core;

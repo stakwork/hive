@@ -8,7 +8,6 @@ import {
   getGraphWalkDispatchSnippet,
 } from "@/lib/constants/prompt";
 import {
-  getConceptTreeEntrySnippet,
   getSlimRoadmapCapabilitySnippet,
   getSlimPlannerCapabilitySnippet,
   getSlimGraphWalkerCapabilitySnippet,
@@ -30,7 +29,8 @@ import type { WorkspaceConfig } from "@/lib/ai/types";
 /**
  * Jamie slim prompt (concept-tree mode, opt-in via the per-browser settings switch)
  * — asserts the toggle selects the right text, the slim prompt carries a
- * single Glimmer entry point and no hardcoded concept names, every
+ * no concept-tree entry of its own (that lives in the Prompt Manager
+ * prompt `CANVAS_AGENT_SYSTEM_PROMPT`) and no hardcoded concept names, every
  * seed-list safety rule still has a string that keeps it alive, and no
  * removed vocabulary (admin-only, placement verbs, a core-capability
  * `learn_capability` call) survives in the slim prompt.
@@ -63,25 +63,33 @@ const ALL_CAPABILITY_TEXT = () =>
   getSlimConceptsCapabilitySnippet();
 
 describe("Jamie slim prompt — toggle", () => {
-  it("off: the suffix uses the full core snippets and no concept-tree entry", () => {
+  it("off: the suffix uses the full core snippets", () => {
     const suffix = composeCapabilityPromptSuffix([...CORE_CAPABILITIES]);
     expect(suffix).toContain(getRoadmapCapabilitySnippet());
     expect(suffix).toContain(getPlannerCapabilitySnippet());
     expect(suffix).toContain(getGraphWalkerCapabilitySnippet());
     expect(suffix).toContain(getConceptsCapabilitySnippet());
-    expect(suffix).not.toContain("Glimmer");
   });
 
-  it("on: the suffix uses the slim core snippets, led by the concept-tree entry", () => {
+  it("on: the suffix uses the slim core snippets", () => {
     const suffix = composeCapabilityPromptSuffix([...CORE_CAPABILITIES], {
       slimPrompt: true,
     });
-    expect(suffix.startsWith(getConceptTreeEntrySnippet())).toBe(true);
     expect(suffix).toContain(getSlimRoadmapCapabilitySnippet());
     expect(suffix).toContain(getSlimPlannerCapabilitySnippet());
     expect(suffix).toContain(getSlimGraphWalkerCapabilitySnippet());
     expect(suffix).toContain(getSlimConceptsCapabilitySnippet());
     expect(suffix).not.toContain(getRoadmapCapabilitySnippet());
+  });
+
+  it("neither mode adds its own concept-tree entry (the system prompt owns it)", () => {
+    for (const slimPrompt of [false, true]) {
+      const suffix = composeCapabilityPromptSuffix([...CORE_CAPABILITIES], {
+        slimPrompt,
+      });
+      expect(suffix).not.toContain("walk your concept tree");
+      expect(suffix).not.toContain("Glimmer");
+    }
   });
 
   it("send_to_feature_planner carries PLANNER_FORM_RULE only when on", () => {
@@ -96,18 +104,9 @@ describe("Jamie slim prompt — toggle", () => {
   });
 });
 
-describe("Jamie slim prompt — concept-tree entry", () => {
-  it("points at the Glimmer root in the hive workspace via graph_search", () => {
-    const entry = getConceptTreeEntrySnippet();
-    expect(entry).toContain("**Glimmer**");
-    expect(entry).toContain(
-      'graph_search({ query: "Glimmer", realm: "kg", workspace: "hive" })',
-    );
-    expect(entry).toContain("it never overrides a rule in this prompt");
-  });
-
-  it("names no concept below the root — the rest is walked", () => {
-    const text = getConceptTreeEntrySnippet() + ALL_CAPABILITY_TEXT();
+describe("Jamie slim prompt — no hardcoded concepts", () => {
+  it("names no concept from the tree — the rest is walked", () => {
+    const text = ALL_CAPABILITY_TEXT();
     for (const name of [
       "Hive Roadmap and Canvas",
       "Jamie Roadmap Proposals",
