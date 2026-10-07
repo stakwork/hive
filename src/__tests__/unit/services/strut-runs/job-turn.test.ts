@@ -51,6 +51,7 @@ import {
   jobRowId,
   mapStrutArtifacts,
   parseStrutArtifacts,
+  pullRequestContent,
   renderJobContent,
   replyForRow,
   type StrutArtifact,
@@ -165,13 +166,14 @@ describe("mapStrutArtifacts", () => {
     ]);
   });
 
-  it("an absolute url → inline { url }: the kind kept for media and pages, `url` for anything else", () => {
+  it("an absolute url → inline { url }: the kind kept for media and pages, a GitHub pull request link as the pull request, `url` for anything else", () => {
     const { refs } = mapStrutArtifacts(
       [
         entry({ id: "pod", kind: "url", url: "https://pod.example/" }),
         entry({ id: "shot", kind: "image", url: "https://cdn.example/shot.png" }),
         entry({ id: "doc", kind: "markdown", url: "https://docs.example/plan.md" }),
         entry({ id: "pr", kind: "pull_request", url: "https://github.com/acme/widgets/pull/7" }),
+        entry({ id: "notpr", kind: "pull_request", url: "https://gitlab.example/acme/widgets/-/merge_requests/7" }),
       ],
       "swarm-1",
     );
@@ -179,7 +181,8 @@ describe("mapStrutArtifacts", () => {
       ["pod", "url", { type: "inline", content: { url: "https://pod.example/" } }],
       ["shot", "image", { type: "inline", content: { url: "https://cdn.example/shot.png" } }],
       ["doc", "url", { type: "inline", content: { url: "https://docs.example/plan.md" } }],
-      ["pr", "url", { type: "inline", content: { url: "https://github.com/acme/widgets/pull/7" } }],
+      ["pr", "pull_request", { type: "inline", content: { url: "https://github.com/acme/widgets/pull/7", repo: "acme/widgets", number: 7, state: "open" } }],
+      ["notpr", "url", { type: "inline", content: { url: "https://gitlab.example/acme/widgets/-/merge_requests/7" } }],
     ]);
   });
 
@@ -196,6 +199,9 @@ describe("mapStrutArtifacts", () => {
         entry({ id: "html", kind: "html", content: "<h1>hi</h1>" }),
         entry({ id: "link", kind: "url", content: "https://example.test/" }),
         entry({ id: "pr", kind: "pull_request", content: { url: "https://github.com/a/b/pull/1", repo: "a/b", number: 1, state: "open" } }),
+        entry({ id: "pr2", kind: "pull_request", content: '{"url":"https://github.com/a/b/pull/2","repo":"a/b","number":2,"state":"open"}' }),
+        entry({ id: "pr3", kind: "pull_request", content: "https://github.com/a/b/pull/3" }),
+        entry({ id: "pr4", kind: "pull_request", content: "opened it" }),
         entry({ id: "img", kind: "image", content: "not an address" }),
         entry({ id: "big", kind: "markdown", content: "x".repeat(50_001) }),
       ],
@@ -212,8 +218,11 @@ describe("mapStrutArtifacts", () => {
       ["html", "code", { type: "inline", content: { code: "<h1>hi</h1>", language: "html" } }],
       ["link", "url", { type: "inline", content: { url: "https://example.test/" } }],
       ["pr", "pull_request", { type: "inline", content: { url: "https://github.com/a/b/pull/1", repo: "a/b", number: 1, state: "open" } }],
+      ["pr2", "pull_request", { type: "inline", content: { url: "https://github.com/a/b/pull/2", repo: "a/b", number: 2, state: "open" } }],
+      ["pr3", "pull_request", { type: "inline", content: { url: "https://github.com/a/b/pull/3", repo: "a/b", number: 3, state: "open" } }],
     ]);
     expect(dropped).toEqual([
+      { title: "A", reason: "unsupported content" },
       { title: "A", reason: "unsupported content" },
       { title: "A", reason: "unsupported content" },
     ]);
@@ -229,6 +238,31 @@ describe("mapStrutArtifacts", () => {
       { title: "Missing", reason: "not found" },
       { title: "Nothing", reason: "nothing to show" },
     ]);
+  });
+});
+
+describe("pullRequestContent", () => {
+  const PR = { url: "https://github.com/a/b/pull/5", repo: "a/b", number: 5, state: "open" };
+  it("fills what the link implies: repo, number, and the link from repo + number", () => {
+    expect(pullRequestContent({ url: PR.url })).toEqual(PR);
+    expect(pullRequestContent({ repo: "a/b", number: 5 })).toEqual(PR);
+    expect(pullRequestContent(PR.url)).toEqual(PR);
+    expect(pullRequestContent(JSON.stringify({ url: PR.url }))).toEqual(PR);
+  });
+  it("state defaults to open, is lowercased, and anything else is open", () => {
+    expect(pullRequestContent({ ...PR, state: "MERGED" })?.state).toBe("merged");
+    expect(pullRequestContent({ ...PR, state: "shipped" })?.state).toBe("open");
+  });
+  it("a numeric string number is read; the given fields win over the link's", () => {
+    expect(pullRequestContent({ ...PR, number: "5" })).toEqual(PR);
+    expect(pullRequestContent({ url: PR.url, repo: "c/d", number: 9, body: "x" })).toEqual({ url: PR.url, repo: "c/d", number: 9, state: "open", body: "x" });
+  });
+  it("null when neither the fields nor the link say which pull request", () => {
+    expect(pullRequestContent({ state: "open" })).toBeNull();
+    expect(pullRequestContent({ repo: "a/b" })).toBeNull();
+    expect(pullRequestContent("opened it")).toBeNull();
+    expect(pullRequestContent("{not json")).toBeNull();
+    expect(pullRequestContent(42)).toBeNull();
   });
 });
 
