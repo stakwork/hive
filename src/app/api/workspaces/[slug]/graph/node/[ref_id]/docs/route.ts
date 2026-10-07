@@ -52,7 +52,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Only Concept nodes have editable docs" }, { status: 400 });
     }
 
-    const result = await updateNodeV2(config, ref_id, { docs });
+    const result = await updateNodeV2(config, ref_id, { docs }, node.namespace);
     if (!result.success) {
       return NextResponse.json({ error: result.message ?? "Failed to update node docs" }, { status: 502 });
     }

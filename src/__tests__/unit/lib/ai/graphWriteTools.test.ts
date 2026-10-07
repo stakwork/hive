@@ -706,6 +706,19 @@ describe("propose_delete_node", () => {
     });
   });
 
+  it("uses the node's top-level namespace when properties carry none", async () => {
+    mockReadNodeByRef.mockResolvedValue({
+      success: true,
+      ref_id: "node-123",
+      node_type: "Concept",
+      properties: { name: "Old Name" },
+      namespace: "other-ns",
+    });
+    const tools = getTools();
+    const result = await tools.propose_delete_node.execute(args, {} as never);
+    expect((result as { payload: { namespace?: string } }).payload.namespace).toBe("other-ns");
+  });
+
   it("omits namespace from the payload when the node has none", async () => {
     mockReadNodeByRef.mockResolvedValue({
       success: true,
