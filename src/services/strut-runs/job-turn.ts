@@ -131,6 +131,15 @@ const isAbsolute = (url: string): boolean => /^https?:\/\//i.test(url);
 /** A strut-relative link: what the reader route accepts (`/jobs/<job>/files/…`, `/artifacts/<runId>/…`). */
 const isStrutKey = (url: string): boolean => parseStrutArtifactKey(url) !== null;
 
+const parseJsonObject = (text: string): Record<string, unknown> | null => {
+  try {
+    const value: unknown = JSON.parse(text);
+    return isRecord(value) ? value : null;
+  } catch {
+    return null;
+  }
+};
+
 /** The content an inline `content` value becomes, per kind — null when it is not something that kind can show. */
 function inlineContent(kind: string, content: unknown): { kind: ArtifactKind; content: Record<string, unknown> } | null {
   if (isRecord(content)) {
@@ -142,6 +151,12 @@ function inlineContent(kind: string, content: unknown): { kind: ArtifactKind; co
     return kind === "json" && content !== undefined ? { kind: "json", content: { value: content } } : null;
   }
   if (content.length > MAX_INLINE_CHARS) return null;
+  // A pull request has no text form: a model whose output schema only
+  // allowed a string sends the object as JSON text. Read it as the object.
+  if (kind === "pull_request") {
+    const parsed = parseJsonObject(content);
+    return parsed ? inlineContent(kind, parsed) : null;
+  }
   switch (kind) {
     case "markdown":
     case "log":

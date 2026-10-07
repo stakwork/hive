@@ -196,6 +196,8 @@ describe("mapStrutArtifacts", () => {
         entry({ id: "html", kind: "html", content: "<h1>hi</h1>" }),
         entry({ id: "link", kind: "url", content: "https://example.test/" }),
         entry({ id: "pr", kind: "pull_request", content: { url: "https://github.com/a/b/pull/1", repo: "a/b", number: 1, state: "open" } }),
+        entry({ id: "pr2", kind: "pull_request", content: '{"url":"https://github.com/a/b/pull/2","repo":"a/b","number":2,"state":"open"}' }),
+        entry({ id: "pr3", kind: "pull_request", content: "https://github.com/a/b/pull/3" }),
         entry({ id: "img", kind: "image", content: "not an address" }),
         entry({ id: "big", kind: "markdown", content: "x".repeat(50_001) }),
       ],
@@ -212,8 +214,10 @@ describe("mapStrutArtifacts", () => {
       ["html", "code", { type: "inline", content: { code: "<h1>hi</h1>", language: "html" } }],
       ["link", "url", { type: "inline", content: { url: "https://example.test/" } }],
       ["pr", "pull_request", { type: "inline", content: { url: "https://github.com/a/b/pull/1", repo: "a/b", number: 1, state: "open" } }],
+      ["pr2", "pull_request", { type: "inline", content: { url: "https://github.com/a/b/pull/2", repo: "a/b", number: 2, state: "open" } }],
     ]);
     expect(dropped).toEqual([
+      { title: "A", reason: "unsupported content" },
       { title: "A", reason: "unsupported content" },
       { title: "A", reason: "unsupported content" },
     ]);
