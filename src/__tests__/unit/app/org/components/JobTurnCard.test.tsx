@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
- * Unit tests for `JobTurnCard` — a job turn's row shown collapsed — and its
- * pure helpers (`jobTurnLook`, `jobTurnBody`).
+ * Unit tests for `JobTurnCard` — a job turn's row shown collapsed — its
+ * pure helpers (`jobTurnLook`, `jobTurnBody`), and the pending side: the
+ * `getPendingJobTurnsFromMessages` projection and `PendingJobTurnCard`.
  */
 
 import React from "react";
@@ -9,10 +10,13 @@ import { describe, test, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import {
   JobTurnCard,
+  PendingJobTurnCard,
+  getPendingJobTurnsFromMessages,
   jobTurnBody,
   jobTurnLook,
   type JobTurnSource,
 } from "@/app/org/[githubLogin]/_components/JobTurnCard";
+import type { CanvasChatMessage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
 
 vi.mock("@/components/MarkdownRenderer", () => ({
   MarkdownRenderer: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
@@ -107,5 +111,152 @@ describe("JobTurnCard", () => {
     render(<JobTurnCard message={{ content: "" }} source={source({ title: undefined })} />);
     expect(screen.getByText("Job")).toBeInTheDocument();
     expect(screen.queryByTestId("job-turn-toggle")).toBeNull();
+  });
+});
+
+// ── Pending turns ────────────────────────────────────────────────────────────
+
+const JOB_2 = "7a2d1e4f-2222-4333-8444-555566667777";
+
+type LaunchTool = "start_job" | "continue_job";
+
+/** An assistant message whose tool call launched a job turn. */
+function launch(
+  id: string,
+  over: {
+    tool?: LaunchTool;
+    jobId?: string;
+    /** `null`: the call never got an output (interrupted). */
+    output?: Record<string, unknown> | null;
+    errorText?: string;
+    input?: Record<string, unknown>;
+  } = {},
+): CanvasChatMessage {
+  const tool = over.tool ?? "start_job";
+  const jobId = over.jobId ?? JOB;
+  const input =
+    over.input ??
+    (tool === "start_job"
+      ? { workspace: "acme", title: "Dark mode plan", prompt: "Plan it" }
+      : { workspace: "acme", jobId, prompt: "Revise it" });
+  const output =
+    over.output === undefined
+      ? { status: tool === "start_job" ? "started" : "continued", jobId, title: "Dark mode plan", note: "Underway." }
+      : over.output;
+  return {
+    id,
+    role: "assistant",
+    content: "",
+    timestamp: new Date(),
+    toolCalls: [
+      {
+        id: `tc-${id}`,
+        toolName: tool,
+        input,
+        status: over.errorText ? "output-error" : output === null ? "interrupted" : "output-available",
+        ...(output === null ? {} : { output }),
+        ...(over.errorText ? { errorText: over.errorText } : {}),
+      },
+    ],
+  };
+}
+
+/** The job row a settled turn appends. */
+function row(id: string, over: Partial<JobTurnSource> = {}): CanvasChatMessage {
+  return { id, role: "assistant", content: content("Wrote the plan."), timestamp: new Date(), source: source(over) };
+}
+
+describe("getPendingJobTurnsFromMessages", () => {
+  test("a launch strut accepted is a pending turn, anchored on the launching message", () => {
+    expect(getPendingJobTurnsFromMessages([launch("m1")])).toEqual([
+      { jobId: JOB, title: "Dark mode plan", anchorMessageId: "m1" },
+    ]);
+  });
+
+  test("the job's row settles it, whatever the row says", () => {
+    expect(getPendingJobTurnsFromMessages([launch("m1"), row("job-1")])).toEqual([]);
+    expect(getPendingJobTurnsFromMessages([launch("m1"), row("job-1", { status: "error" })])).toEqual([]);
+    expect(getPendingJobTurnsFromMessages([launch("m1"), row("job-1", { status: "cancelled" })])).toEqual([]);
+  });
+
+  test("a continue_job after the row is the next pending turn, titled from its output or the job's earlier row", () => {
+    expect(
+      getPendingJobTurnsFromMessages([launch("m1"), row("job-1"), launch("m2", { tool: "continue_job" })]),
+    ).toEqual([{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "m2" }]);
+
+    // The output carries no title: the row's stands in.
+    expect(
+      getPendingJobTurnsFromMessages([
+        launch("m1"),
+        row("job-1"),
+        launch("m2", { tool: "continue_job", output: { status: "continued", jobId: JOB } }),
+      ]),
+    ).toEqual([{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "m2" }]);
+
+    // Nothing carries a title: the card falls back to its own name.
+    expect(
+      getPendingJobTurnsFromMessages([
+        launch("m1", { tool: "continue_job", output: { status: "continued", jobId: JOB } }),
+      ]),
+    ).toEqual([{ jobId: JOB, title: "", anchorMessageId: "m1" }]);
+  });
+
+  test("a refused launch, a failed call, an unfinished call, or one with no job id draws nothing", () => {
+    expect(getPendingJobTurnsFromMessages([launch("m1", { output: { status: "busy", jobId: JOB } })])).toEqual([]);
+    expect(getPendingJobTurnsFromMessages([launch("m1", { output: { status: "error", error: "no strut" } })])).toEqual(
+      [],
+    );
+    expect(getPendingJobTurnsFromMessages([launch("m1", { errorText: "boom" })])).toEqual([]);
+    expect(getPendingJobTurnsFromMessages([launch("m1", { output: null })])).toEqual([]);
+    expect(getPendingJobTurnsFromMessages([launch("m1", { output: { status: "started" } })])).toEqual([]);
+  });
+
+  test("jobs are independent, and a row with no launch settles nothing", () => {
+    const messages = [
+      row("job-0"),
+      launch("m1"),
+      launch("m2", { jobId: JOB_2, output: { status: "started", jobId: JOB_2, title: "Landing page" } }),
+      row("job-1"),
+    ];
+    expect(getPendingJobTurnsFromMessages(messages)).toEqual([
+      { jobId: JOB_2, title: "Landing page", anchorMessageId: "m2" },
+    ]);
+  });
+
+  test("other tool calls and plain messages are ignored", () => {
+    const other: CanvasChatMessage = {
+      id: "m0",
+      role: "assistant",
+      content: "Underway.",
+      timestamp: new Date(),
+      toolCalls: [
+        {
+          id: "tc-0",
+          toolName: "dispatch_strut",
+          status: "output-available",
+          output: { status: "dispatched", chatId: "c1" },
+        },
+      ],
+    };
+    const user: CanvasChatMessage = { id: "u1", role: "user", content: "Plan dark mode", timestamp: new Date() };
+    expect(getPendingJobTurnsFromMessages([user, other])).toEqual([]);
+  });
+});
+
+describe("PendingJobTurnCard", () => {
+  test("the title and a running pill, nothing to open", () => {
+    render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "m1" }} />);
+    const card = screen.getByTestId("job-turn-pending-card");
+    expect(card).toHaveAttribute("data-job-id", JOB);
+    expect(screen.getByText("Dark mode plan")).toBeInTheDocument();
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.queryByTestId("job-turn-toggle")).toBeNull();
+    expect(screen.queryByTestId("job-turn-body")).toBeNull();
+    expect(screen.queryByTestId("job-turn-card")).toBeNull();
+  });
+
+  test("a title-less turn still has a name", () => {
+    render(<PendingJobTurnCard turn={{ jobId: JOB, title: "", anchorMessageId: "m1" }} />);
+    expect(screen.getByText("Job")).toBeInTheDocument();
   });
 });
