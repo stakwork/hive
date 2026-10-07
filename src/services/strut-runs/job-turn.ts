@@ -140,8 +140,40 @@ const parseJsonObject = (text: string): Record<string, unknown> | null => {
   }
 };
 
+const PR_URL = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)(?:[/?#]|$)/i;
+const PR_STATES: ReadonlySet<string> = new Set(["open", "draft", "merged", "closed"]);
+
+/**
+ * A pull request as a model reports it → the `pull_request` content, or null.
+ * Lenient: the object, its JSON text, or the bare GitHub link; `repo` and
+ * `number` read off the link when missing (and the link built from them);
+ * a numeric string number; `state` defaults to `open` — a job reports the PR
+ * it just opened, and the panel's live read corrects it.
+ */
+export function pullRequestContent(raw: unknown): Record<string, unknown> | null {
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    raw = text.startsWith("{") ? parseJsonObject(text) : { url: text };
+  }
+  if (!isRecord(raw)) return null;
+  const given = typeof raw.url === "string" ? raw.url.trim() : "";
+  const match = PR_URL.exec(given);
+  const repo = typeof raw.repo === "string" && raw.repo.includes("/") ? raw.repo : match?.[1];
+  const n = typeof raw.number === "string" ? Number(raw.number) : raw.number;
+  const number = typeof n === "number" && Number.isInteger(n) && n > 0 ? n : match ? Number(match[2]) : undefined;
+  if (!repo || !number) return null;
+  const url = /^https?:\/\//i.test(given) ? given : `https://github.com/${repo}/pull/${number}`;
+  const state = typeof raw.state === "string" && PR_STATES.has(raw.state.toLowerCase()) ? raw.state.toLowerCase() : "open";
+  return { ...raw, url, repo, number, state };
+}
+
 /** The content an inline `content` value becomes, per kind — null when it is not something that kind can show. */
 function inlineContent(kind: string, content: unknown): { kind: ArtifactKind; content: Record<string, unknown> } | null {
+  if (kind === "pull_request") {
+    if (typeof content === "string" && content.length > MAX_INLINE_CHARS) return null;
+    const pr = pullRequestContent(content);
+    return pr && { kind: "pull_request", content: pr };
+  }
   if (isRecord(content)) {
     // Already the kind's shape (a pull request, a diff's files): the ref's
     // parser at hydration keeps it or drops it.
@@ -151,12 +183,6 @@ function inlineContent(kind: string, content: unknown): { kind: ArtifactKind; co
     return kind === "json" && content !== undefined ? { kind: "json", content: { value: content } } : null;
   }
   if (content.length > MAX_INLINE_CHARS) return null;
-  // A pull request has no text form: a model whose output schema only
-  // allowed a string sends the object as JSON text. Read it as the object.
-  if (kind === "pull_request") {
-    const parsed = parseJsonObject(content);
-    return parsed ? inlineContent(kind, parsed) : null;
-  }
   switch (kind) {
     case "markdown":
     case "log":
@@ -219,6 +245,11 @@ export function mapStrutArtifacts(
               ? "code"
               : (entry.kind as ArtifactKind);
         refs.push({ ...base, kind, source: { type: "graph", swarmId, key: entry.url } });
+        continue;
+      }
+      const pr = entry.kind === "pull_request" ? pullRequestContent(entry.url) : null;
+      if (pr) {
+        refs.push({ ...base, kind: "pull_request", source: { type: "inline", content: pr } });
         continue;
       }
       if (isAbsolute(entry.url)) {
