@@ -880,12 +880,16 @@ function isSafeRefId(ref_id: string): boolean {
  * Does NOT send `X-Is-Admin` — user-approved writes must not execute with
  * admin authority on Jarvis.
  *
+ * Jarvis looks the node up by namespace (default "default" when the query
+ * param is absent), so a node in another namespace needs `namespace`.
+ *
  * Never throws.
  */
 export async function updateNodeV2(
   config: JarvisConnectionConfig,
   ref_id: string,
   node_data: Record<string, unknown>,
+  namespace?: string,
 ): Promise<JarvisV2Result> {
   if (!isSafeRefId(ref_id)) {
     return {
@@ -896,7 +900,9 @@ export async function updateNodeV2(
 
   const result = await jarvisRequest({
     config,
-    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}`,
+    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}${
+      namespace?.trim() ? `?namespace=${encodeURIComponent(namespace)}` : ""
+    }`,
     method: "POST",
     data: { node_data },
   });

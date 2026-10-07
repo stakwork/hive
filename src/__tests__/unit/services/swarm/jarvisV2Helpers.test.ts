@@ -109,6 +109,25 @@ describe("updateNodeV2", () => {
     expect(calledUrl).not.toContain("node:with:colons");
   });
 
+  it("appends an encoded ?namespace= when a namespace is given", async () => {
+    mockFetch.mockResolvedValue(makeResponse({ status: "success" }));
+
+    await updateNodeV2(config, "abc123", { name: "x" }, "my ns/1");
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("/v2/nodes/abc123?namespace=my%20ns%2F1");
+  });
+
+  it.each([undefined, "", "   "])("sends no namespace param for %j", async (namespace) => {
+    mockFetch.mockResolvedValue(makeResponse({ status: "success" }));
+
+    await updateNodeV2(config, "abc123", { name: "x" }, namespace);
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).not.toContain("namespace");
+    expect(calledUrl).not.toContain("?");
+  });
+
   it("rejects a path-traversal ref_id containing '/' before fetching", async () => {
     const result = await updateNodeV2(config, "../../etc/passwd", { name: "evil" });
 
