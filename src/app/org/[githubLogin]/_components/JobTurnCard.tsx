@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Ban, Briefcase, Check, ChevronDown, CircleDashed, HelpCircle, XCircle } from "lucide-react";
+import { Ban, Briefcase, Check, ChevronDown, CircleDashed, HelpCircle, Loader2, XCircle } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 
@@ -18,22 +18,32 @@ import type { CanvasChatMessage } from "../_state/canvasChatStore";
  * are the row's `artifacts` and render as cards under this one
  * (`SidebarChat`'s `MessageArtifacts`), not inside it.
  *
- * A pure projection of the message, like `StrutChatCard`: nothing is
- * fetched, and the expansion is this card's own state.
+ * A turn strut is still working on has no row yet. `PendingJobTurnCard`
+ * shows it from the launch alone — `getPendingJobTurnsFromMessages` pairs
+ * each `start_job` / `continue_job` call strut accepted with the job row
+ * that follows it, and a launch with no row yet is pending — under the
+ * message that made the call, until the row lands and takes its place.
+ *
+ * Pure projections of the conversation, like `StrutChatCard`: nothing is
+ * fetched, and the expansion is the settled card's own state.
  */
 
 export type JobTurnSource = Extract<NonNullable<CanvasChatMessage["source"]>, { kind: "job" }>;
 
-type Tone = "ok" | "attention" | "failed" | "muted";
+type Tone = "running" | "ok" | "attention" | "failed" | "muted";
 
 const TONE_PILL_CLASSES: Record<Tone, string> = {
+  running: "bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-500/20",
   ok: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
   attention: "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/20",
   failed: "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/20",
   muted: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
 };
 
-export type JobTurnLook = { label: string; tone: Tone; Icon: typeof Check };
+export type JobTurnLook = { label: string; tone: Tone; Icon: typeof Check; spin?: boolean };
+
+/** A turn strut has accepted and not yet reported. */
+export const RUNNING_LOOK: JobTurnLook = { label: "Running", tone: "running", Icon: Loader2, spin: true };
 
 /** How the turn ended, as the pill says it. */
 export function jobTurnLook(source: Pick<JobTurnSource, "status" | "ask">): JobTurnLook {
@@ -64,15 +74,97 @@ export function jobTurnBody(content: string): string {
   return newline === -1 ? "" : text.slice(newline + 1).trim();
 }
 
+// ─── Pending turns ──────────────────────────────────────────────────────
+
+/** `START_JOB_TOOL` / `CONTINUE_JOB_TOOL` — `@/lib/ai/strutTools` is server code, so the names are repeated here. */
+const START_JOB_TOOL = "start_job";
+const CONTINUE_JOB_TOOL = "continue_job";
+
+export interface PendingJobTurn {
+  jobId: string;
+  title: string;
+  /** The message whose tool call launched the turn — the card hangs under it. */
+  anchorMessageId: string;
+}
+
+const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
+
+/**
+ * The job turns strut is still working on: a `start_job` / `continue_job`
+ * call strut accepted (`status: "started" | "continued"`) with no job row
+ * for it yet.
+ *
+ * Walked in order. A job has one unsettled turn at a time (the tools'
+ * busy guard), so a job's row settles its latest launch; and the server
+ * persists the launching turn before a job turn can settle (the turn ends
+ * as soon as the tool returns; a job takes seconds to minutes), so the
+ * row never comes first. A refused launch (`busy`, `error`) or an
+ * interrupted call changed nothing on strut and draws nothing. A pending
+ * turn always ends: Stop cancels the run on strut, which reports back a
+ * Stopped row, and a run strut never reports is reconciled to a Lost row.
+ */
+export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): PendingJobTurn[] {
+  const pending = new Map<string, PendingJobTurn>();
+  /** The last title seen for each job, for a launch whose call carries none. */
+  const titles = new Map<string, string>();
+
+  for (const message of messages) {
+    if (message.source?.kind === "job") {
+      const { jobId, title } = message.source;
+      if (title) titles.set(jobId, title);
+      pending.delete(jobId);
+      continue;
+    }
+
+    for (const tc of message.toolCalls ?? []) {
+      if (tc.toolName !== START_JOB_TOOL && tc.toolName !== CONTINUE_JOB_TOOL) continue;
+      if (tc.errorText) continue;
+      const input = (tc.input ?? {}) as { title?: unknown; jobId?: unknown };
+      const output = (tc.output ?? {}) as { status?: unknown; jobId?: unknown; title?: unknown };
+      if (output.status !== "started" && output.status !== "continued") continue;
+      const jobId = str(output.jobId) ?? str(input.jobId);
+      if (!jobId) continue;
+      const title = str(output.title) ?? str(input.title) ?? titles.get(jobId) ?? "";
+      if (title) titles.set(jobId, title);
+      pending.set(jobId, { jobId, title, anchorMessageId: message.id });
+    }
+  }
+
+  return Array.from(pending.values());
+}
+
+// ─── Cards ──────────────────────────────────────────────────────────────
+
+function JobIcon() {
+  return <Briefcase className="h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />;
+}
+
 function StatusPill({ look }: { look: JobTurnLook }) {
-  const { label, tone, Icon } = look;
+  const { label, tone, Icon, spin } = look;
   return (
     <span
       className={`inline-flex flex-shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${TONE_PILL_CLASSES[tone]}`}
     >
-      <Icon className="h-3 w-3" aria-hidden="true" />
+      <Icon className={`h-3 w-3 ${spin ? "animate-spin" : ""}`} aria-hidden="true" />
       {label}
     </span>
+  );
+}
+
+/** A turn strut is working on: its title and a running pill, nothing to open yet. */
+export function PendingJobTurnCard({ turn }: { turn: PendingJobTurn }) {
+  return (
+    <div
+      data-testid="job-turn-pending-card"
+      data-job-id={turn.jobId}
+      className="rounded-lg border bg-card text-card-foreground"
+    >
+      <div className="flex items-center gap-2 px-3 py-2.5">
+        <JobIcon />
+        <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">{turn.title || "Job"}</span>
+        <StatusPill look={RUNNING_LOOK} />
+      </div>
+    </div>
   );
 }
 
@@ -93,7 +185,7 @@ export function JobTurnCard({
 
   const header = (
     <>
-      <Briefcase className="h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+      <JobIcon />
       <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">{title}</span>
       <StatusPill look={look} />
       {collapsible && (
