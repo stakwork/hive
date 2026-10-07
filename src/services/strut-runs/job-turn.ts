@@ -60,10 +60,12 @@ import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf, parseStrutArtifactKey } from "@/lib/strut-jobs";
 import { getBaseUrl } from "@/lib/utils";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
+import { ensureJobPrTask } from "@/services/strut-runs/job-pr-task";
 
 export { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf };
 
 const LOG_TAG = "JOB_TURN";
+const MAX_ID_CHARS = 200;
 const READ_TIMEOUT_MS = 10_000;
 /** Cap on the agent's reply text stored on the row. */
 const MAX_TEXT_CHARS = 20_000;
@@ -230,14 +232,23 @@ const basename = (key: string): string => key.split("?")[0].split("/").pop() ?? 
  * that became no ref — unresolved on strut's side, or a shape hive cannot
  * show — for the content to mention.
  */
-export function mapStrutArtifacts(
-  entries: StrutArtifact[],
-  swarmId: string,
-): { refs: ArtifactRef[]; dropped: Array<{ title: string; reason: string }> } {
+interface MapStrutArtifactsOptions {
+  entries: StrutArtifact[];
+  swarmId: string;
+  jobId?: string | null;
+}
+
+export function mapStrutArtifacts({ entries, swarmId, jobId }: MapStrutArtifactsOptions): {
+  refs: ArtifactRef[];
+  dropped: Array<{ title: string; reason: string }>;
+} {
   const refs: ArtifactRef[] = [];
   const dropped: Array<{ title: string; reason: string }> = [];
+  const idPrefix = jobId ? `${jobId}:` : null;
   for (const entry of entries) {
-    const base = { id: entry.id, title: entry.title, ...(entry.label ? { label: entry.label } : {}), ...(entry.summary ? { summary: entry.summary } : {}) };
+    const candidateId = idPrefix ? `${idPrefix}${entry.id}` : entry.id;
+    const id = candidateId.length > MAX_ID_CHARS ? candidateId.slice(0, MAX_ID_CHARS) : candidateId;
+    const base = { id, title: entry.title, ...(entry.label ? { label: entry.label } : {}), ...(entry.summary ? { summary: entry.summary } : {}) };
     if (entry.error) {
       dropped.push({ title: entry.title, reason: entry.error });
       continue;
@@ -505,7 +516,28 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
   if (reply.outcome === "success") {
     const read = await readRunArtifacts(row);
     if (read.ok) {
-      ({ refs, dropped } = mapStrutArtifacts(read.artifacts, row.swarmId));
+      ({ refs, dropped } = mapStrutArtifacts({ entries: read.artifacts, swarmId: row.swarmId, jobId }));
+      if (refs.length > 0) {
+        const prRefs = refs.filter((ref) => ref.kind === "pull_request" && ref.source.type === "inline" && typeof ref.source.content?.url === "string");
+        for (const ref of prRefs) {
+          const content = ref.source.content as Record<string, unknown>;
+          const url = typeof content?.url === "string" ? content.url : null;
+          const repo = typeof content?.repo === "string" ? content.repo : null;
+          const numberValue = content?.number;
+          const number = typeof numberValue === "number" ? numberValue : Number(numberValue);
+          if (!url || !repo || !Number.isFinite(number)) continue;
+          const result = await ensureJobPrTask(row, {
+            url,
+            repo,
+            number,
+            title: typeof ref.title === "string" ? ref.title : undefined,
+            headBranch: typeof content.headBranch === "string" ? content.headBranch : undefined,
+          });
+          if (result?.artifactId) {
+            ref.source = { type: "inline", content: { ...content, artifactId: result.artifactId } };
+          }
+        }
+      }
     } else if (read.permanent) {
       logger.warn("Job turn artifacts unavailable — delivering the text alone", LOG_TAG, { runId: row.id, reason: read.reason });
       dropped = [{ title: "the turn's artifacts", reason: read.reason }];

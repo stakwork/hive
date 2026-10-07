@@ -149,10 +149,11 @@ describe("parseStrutArtifacts", () => {
 
 describe("mapStrutArtifacts", () => {
   it("a strut-relative url → a graph ref the reader serves, kind as strut said", () => {
-    const { refs, dropped } = mapStrutArtifacts(
-      [entry({ id: "plan", title: "Plan", label: "Plan", summary: "Three steps.", url: `/jobs/${JOB}/files/plan.md` })],
-      "swarm-1",
-    );
+    const { refs, dropped } = mapStrutArtifacts({
+      entries: [entry({ id: "plan", title: "Plan", label: "Plan", summary: "Three steps.", url: `/jobs/${JOB}/files/plan.md` })],
+      swarmId: "swarm-1",
+      jobId: JOB,
+    });
     expect(dropped).toEqual([]);
     expect(refs).toEqual([
       { id: "plan", kind: "markdown", title: "Plan", label: "Plan", summary: "Three steps.", source: { type: "graph", swarmId: "swarm-1", key: `/jobs/${JOB}/files/plan.md` } },
@@ -160,20 +161,21 @@ describe("mapStrutArtifacts", () => {
   });
 
   it("a run's own artifact link is a graph ref too", () => {
-    const { refs } = mapStrutArtifacts([entry({ kind: "image", url: "/artifacts/1790000000000/shot.png" })], "swarm-1");
+    const { refs } = mapStrutArtifacts({ entries: [entry({ kind: "image", url: "/artifacts/1790000000000/shot.png" })], swarmId: "swarm-1", jobId: JOB });
     expect(refs[0]).toMatchObject({ kind: "image", source: { type: "graph", swarmId: "swarm-1", key: "/artifacts/1790000000000/shot.png" } });
   });
 
   it("a page strut wrote is shown as `url` (a static page through the reader); a diff file or a pull request as code", () => {
-    const { refs } = mapStrutArtifacts(
-      [
+    const { refs } = mapStrutArtifacts({
+      entries: [
         entry({ id: "page", kind: "html", url: `/jobs/${JOB}/files/index.html` }),
         entry({ id: "d", kind: "diff", url: `/jobs/${JOB}/files/change.diff` }),
         entry({ id: "pr", kind: "pull_request", url: `/jobs/${JOB}/files/pr.json` }),
         entry({ id: "odd", kind: "spreadsheet", url: `/jobs/${JOB}/files/x.xlsx` }),
       ],
-      "swarm-1",
-    );
+      swarmId: "swarm-1",
+      jobId: JOB,
+    });
     expect(refs.map((r) => [r.id, r.kind])).toEqual([
       ["page", "url"],
       ["d", "code"],
@@ -184,10 +186,11 @@ describe("mapStrutArtifacts", () => {
   });
 
   it("a strut-relative url outside the two link shapes, or with `..`, is dropped", () => {
-    const { refs, dropped } = mapStrutArtifacts(
-      [entry({ id: "a", title: "Secrets", url: "/secrets" }), entry({ id: "b", title: "Up", url: `/jobs/${JOB}/files/../../secrets.json` })],
-      "swarm-1",
-    );
+    const { refs, dropped } = mapStrutArtifacts({
+      entries: [entry({ id: "a", title: "Secrets", url: "/secrets" }), entry({ id: "b", title: "Up", url: `/jobs/${JOB}/files/../../secrets.json` })],
+      swarmId: "swarm-1",
+      jobId: JOB,
+    });
     expect(refs).toEqual([]);
     expect(dropped).toEqual([
       { title: "Secrets", reason: "bad url" },
@@ -196,16 +199,16 @@ describe("mapStrutArtifacts", () => {
   });
 
   it("an absolute url → inline { url }: the kind kept for media and pages, a GitHub pull request link as the pull request, `url` for anything else", () => {
-    const { refs } = mapStrutArtifacts(
-      [
+    const { refs } = mapStrutArtifacts({
+      entries: [
         entry({ id: "pod", kind: "url", url: "https://pod.example/" }),
         entry({ id: "shot", kind: "image", url: "https://cdn.example/shot.png" }),
         entry({ id: "doc", kind: "markdown", url: "https://docs.example/plan.md" }),
         entry({ id: "pr", kind: "pull_request", url: "https://github.com/acme/widgets/pull/7" }),
         entry({ id: "notpr", kind: "pull_request", url: "https://gitlab.example/acme/widgets/-/merge_requests/7" }),
       ],
-      "swarm-1",
-    );
+      swarmId: "swarm-1",
+    });
     expect(refs.map((r) => [r.id, r.kind, r.source])).toEqual([
       ["pod", "url", { type: "inline", content: { url: "https://pod.example/" } }],
       ["shot", "image", { type: "inline", content: { url: "https://cdn.example/shot.png" } }],
@@ -216,8 +219,8 @@ describe("mapStrutArtifacts", () => {
   });
 
   it("inline content per kind", () => {
-    const { refs, dropped } = mapStrutArtifacts(
-      [
+    const { refs, dropped } = mapStrutArtifacts({
+      entries: [
         entry({ id: "md", kind: "markdown", content: "# Notes" }),
         entry({ id: "log", kind: "log", content: "line 1\nline 2" }),
         entry({ id: "code", kind: "code", content: "const a = 1;" }),
@@ -234,8 +237,9 @@ describe("mapStrutArtifacts", () => {
         entry({ id: "img", kind: "image", content: "not an address" }),
         entry({ id: "big", kind: "markdown", content: "x".repeat(50_001) }),
       ],
-      "swarm-1",
-    );
+      swarmId: "swarm-1",
+      jobId: JOB,
+    });
     expect(refs.map((r) => [r.id, r.kind, r.source])).toEqual([
       ["md", "markdown", { type: "inline", content: { text: "# Notes" } }],
       ["log", "log", { type: "inline", content: { text: "line 1\nline 2" } }],
@@ -258,10 +262,10 @@ describe("mapStrutArtifacts", () => {
   });
 
   it("an entry strut could not resolve is dropped and named", () => {
-    const { refs, dropped } = mapStrutArtifacts(
-      [entry({ id: "missing", title: "Missing", error: "not found" }), entry({ id: "nothing", title: "Nothing" })],
-      "swarm-1",
-    );
+    const { refs, dropped } = mapStrutArtifacts({
+      entries: [entry({ id: "missing", title: "Missing", error: "not found" }), entry({ id: "nothing", title: "Nothing" })],
+      swarmId: "swarm-1",
+    });
     expect(refs).toEqual([]);
     expect(dropped).toEqual([
       { title: "Missing", reason: "not found" },
