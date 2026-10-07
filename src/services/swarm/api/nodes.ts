@@ -781,32 +781,44 @@ export async function deleteEdge(
  * Jarvis marks the node `is_deleted` and mutes its edges in one write, and
  * returns the node's `is_deleted` from that write. Success here means that
  * value came back true for this ref_id — never just a 200. A node that is
- * missing (404) or already deleted (409) is surfaced as `notFound`. Unlike
+ * missing (404) or already deleted (409) is surfaced as `notFound`. Jarvis
+ * looks the node up by namespace (default "default" when the query param is
+ * absent), so a node in another namespace needs `namespace`. Unlike
  * `deleteNode`, nothing else from the node's ingestion run is touched.
  * Never throws.
  */
 export async function deleteSingleNode(
   config: JarvisConnectionConfig,
   refId: string,
+  namespace?: string,
 ): Promise<{ success: boolean; notFound?: boolean; mutedEdgeCount?: number; error?: string }> {
   if (!isSafeRefId(refId)) {
     return { success: false, error: `Invalid ref_id: ${JSON.stringify(refId)}` };
   }
   const result = await jarvisRequest({
     config,
-    endpoint: `/v2/nodes/${encodeURIComponent(refId)}/single`,
+    endpoint: `/v2/nodes/${encodeURIComponent(refId)}/single${
+      namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""
+    }`,
     method: "DELETE",
     extraHeaders: { "X-Is-Admin": "true" },
   });
 
   if (!result.ok) {
-    const gone = result.status === 404 || result.status === 409;
+    if (result.status === 404) {
+      return {
+        success: false,
+        notFound: true,
+        error: `Node not found in namespace "${namespace || "default"}" — it may live in a different namespace or not exist.`,
+      };
+    }
+    if (result.status === 409) {
+      return { success: false, notFound: true, error: "Node was already deleted." };
+    }
     return {
       success: false,
-      notFound: gone,
-      error: gone
-        ? "Node not found — it may already have been deleted."
-        : result.error || `Request failed with status ${result.status}`,
+      notFound: false,
+      error: result.error || `Request failed with status ${result.status}`,
     };
   }
 
@@ -991,7 +1003,9 @@ export async function addEdgeV2(
 export async function readNodeByRef(
   config: JarvisConnectionConfig,
   ref_id: string,
-): Promise<JarvisV2Result & { properties?: Record<string, unknown>; node_type?: string }> {
+): Promise<
+  JarvisV2Result & { properties?: Record<string, unknown>; node_type?: string; namespace?: string }
+> {
   if (!isSafeRefId(ref_id)) {
     return {
       success: false,
@@ -1034,12 +1048,14 @@ export async function readNodeByRef(
     ? body!.nodes!.find((n) => n?.ref_id === ref_id) ?? body!.nodes![0]
     : body;
   const resolvedRefId = node?.ref_id ?? ref_id;
+  const namespace = node?.properties?.namespace;
 
   return {
     success: true,
     ref_id: resolvedRefId,
     node_type: node?.node_type,
     properties: node?.properties,
+    ...(typeof namespace === "string" && namespace ? { namespace } : {}),
     status: "success",
   };
 }

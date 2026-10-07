@@ -9,6 +9,29 @@ import {
   type StoredMessage,
 } from "@/services/canvas-turn-persistence";
 
+// Proposal kinds whose approval removes something — failures read "delete".
+const DELETE_PROPOSAL_KINDS = new Set(["graphNodeDelete", "graphEdgeDelete"]);
+
+/** True when the transcript's proposal with this id is a delete kind. */
+function isDeleteProposal(transcript: MessageLike[], proposalId: string): boolean {
+  for (const msg of transcript) {
+    if (msg.role !== "assistant" || !msg.toolCalls) continue;
+    for (const tc of msg.toolCalls) {
+      const out = tc.output as { proposalId?: unknown; kind?: unknown } | null | undefined;
+      if (
+        out &&
+        typeof out === "object" &&
+        out.proposalId === proposalId &&
+        typeof out.kind === "string" &&
+        DELETE_PROPOSAL_KINDS.has(out.kind)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // ─── Agent-proposal: synthetic SSE stream for Approve / Reject ─────
 //
 // We don't call the LLM for these clicks — the side effect is fully
@@ -95,7 +118,7 @@ export async function runProposalIntent(args: {
       // stays in pending-in-flight + shows the assistant text as the
       // failure reason. The HTTP status stays 200 so the SSE stream
       // still flushes cleanly.
-      summaryText = `I couldn't create that: ${outcome.error}`;
+      summaryText = `I couldn't ${isDeleteProposal(transcript, approvalIntent.proposalId) ? "delete" : "create"} that: ${outcome.error}`;
     } else {
       const r = outcome.result;
       alreadyApproved = outcome.alreadyApproved;

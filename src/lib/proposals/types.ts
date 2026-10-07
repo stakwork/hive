@@ -745,6 +745,8 @@ export interface GraphNodeDeleteProposalPayload {
   workspaceId: string;
   workspaceSlug: string;
   ref_id: string;
+  /** The node's Jarvis namespace; omitted for the default namespace. */
+  namespace?: string;
 }
 
 /** One edge a node delete will hide, as the card lists it. */
