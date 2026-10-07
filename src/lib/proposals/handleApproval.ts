@@ -3921,7 +3921,7 @@ async function approveGraphNodeDelete(args: {
     return { ok: false, error: meta.refusedReason, status: 400 };
   }
 
-  const result = await deleteSingleNode(config, payload.ref_id);
+  const result = await deleteSingleNode(config, payload.ref_id, payload.namespace);
 
   const outcome = result.success ? "deleted" : result.notFound ? "not-found" : "failed";
   logger.info(
