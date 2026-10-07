@@ -691,6 +691,33 @@ describe("propose_delete_node", () => {
     expect(str).not.toContain("jarvisUrl");
   });
 
+  it("puts the node's namespace on the payload when it has one", async () => {
+    mockReadNodeByRef.mockResolvedValue({
+      success: true,
+      ref_id: "node-123",
+      node_type: "Concept",
+      properties: { name: "Old Name", namespace: "other-ns" },
+      namespace: "other-ns",
+    });
+    const tools = getTools();
+    const result = await tools.propose_delete_node.execute(args, {} as never);
+    expect(result).toMatchObject({
+      payload: { workspaceId: WS_ID, workspaceSlug: WS_SLUG, ref_id: "node-123", namespace: "other-ns" },
+    });
+  });
+
+  it("omits namespace from the payload when the node has none", async () => {
+    mockReadNodeByRef.mockResolvedValue({
+      success: true,
+      ref_id: "node-123",
+      node_type: "Concept",
+      properties: { name: "Old Name", namespace: "" },
+    });
+    const tools = getTools();
+    const result = await tools.propose_delete_node.execute(args, {} as never);
+    expect((result as { payload: object }).payload).not.toHaveProperty("namespace");
+  });
+
   it("lists the first 20 edges and counts the rest", async () => {
     mockGetNodeEdges.mockResolvedValue({
       ok: true,

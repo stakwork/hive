@@ -4,6 +4,7 @@ import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
 import { shouldTrimConceptsToIds, MAX_SEEDED_CONCEPTS_PER_WORKSPACE, isConceptSeedingEnabled } from "@/lib/ai/concepts";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
 import { jamieName } from "@/lib/constants/jamie";
+import { GITHUB_ORG_RULE } from "@/lib/constants/prompt-rules";
 
 /**
  * Returns a current-date context snippet, computed fresh on every call (never cached).
@@ -372,6 +373,8 @@ ${memberRoster}
 **Honor the workspace the user mentions — for EVERY tool call.** Tools are not auto-scoped: each call picks its own \`{workspace}__\` prefix, so it is on you to choose the right one every time. When the user has named a workspace (explicitly in prose, OR implicitly via a URL), scope **all** your tool calls — \`search_logs\`, \`logs_agent\`, \`check_status\`, \`repo_agent\`, everything — to that workspace's slug. If the user asks about the knowledge graph, remember that EACH workspace actually has a knowledge graph backing it.
 
 The user might directly paste a hive URL too: The workspace slug is the path segment, NOT the host. In \`/w/<slug>/...\` and \`/api/workspaces/<slug>/...\` (e.g. \`https://hive.sphinx.chat/api/workspaces/stakwork/evals/...\`), the workspace is \`<slug>\` — \`stakwork\` in that example. The host (\`hive.sphinx.chat\`) is the **app's own domain**, NOT a workspace. A \`*.sphinx.chat\` host that **exactly matches one of the \`swarm:\` values listed in the Available Workspaces section above** IS that workspace's identifier — resolve it to that workspace and do not assume that workspace has no swarm. A \`*.sphinx.chat\` host that matches **no** listed \`swarm:\` value (including the app host \`hive.sphinx.chat\`) is NOT a workspace.
+
+${GITHUB_ORG_RULE}
 
 ## Tool Naming Convention
 Tools are prefixed with workspace slugs. For each workspace you have:
@@ -840,7 +843,7 @@ export function getGraphWalkDispatchSnippet(): string {
   - Something you want to happen off the critical path while you continue the current turn
   The sub-agent runs the full query independently and fans its synthesized answer back as an assistant bubble.
 
-- **Use the inline graph_walker tools directly** (after \`learn_capability("graph_walker")\`) when:
+- **Use the inline graph_walker tools directly** (already loaded) when:
   - A single \`graph_search\` or \`graph_get\` call suffices
   - You need the answer synchronously in this turn before continuing
   - The traversal is shallow (1–2 hops)`;
@@ -958,7 +961,7 @@ Realms: \`kg\` (the swarm knowledge-graph — HiveFeature/HiveTask/HiveChatMessa
   - Omit \`realm\` to search canvas + kg simultaneously (kg fans out across all your member workspaces).
   - \`realm: "pg"\` is disabled and returns nothing.
 
-- **\`graph_query({ workspace, query, limit? })\`** — Escape hatch for **aggregates and multi-hop patterns** that \`graph_search\` / \`graph_neighbors\` cannot express ("how many functions call X", "which files have the most endpoints"): runs your own READ-ONLY Cypher against the workspace's stakgraph code graph. Try \`graph_search\` / \`graph_neighbors\` first for simple lookups — they're cheaper. Caveats: **admin-only** (non-admin callers are denied terminally — do not retry); it queries the **stakgraph code-graph label set** (\`Function\`, \`File\`, \`Endpoint\`, \`Class\`, \`Datamodel\`) on the SAME Neo4j instance the kg tools read from, but that set is largely disjoint from the Jarvis content/entity labels (\`Person\`, \`Episode\`, \`Clip\`, \`Document\`) the kg tools surface, so its results are NOT interchangeable with theirs; the server strips submitted \`LIMIT\` clauses and applies its own — get top-N with \`ORDER BY\` plus the \`limit\` argument (max 200), never an inline LIMIT; queries are capped at 4096 characters. Returns \`{ columns, rows, rowCount, truncated, truncationReason?, notes? }\` — rows are positional arrays matched to \`columns\`.
+- **\`graph_query({ workspace, query, limit? })\`** — Escape hatch for **aggregates and multi-hop patterns** that \`graph_search\` / \`graph_neighbors\` cannot express ("how many functions call X", "which files have the most endpoints"): runs your own READ-ONLY Cypher against the workspace's stakgraph code graph. Try \`graph_search\` / \`graph_neighbors\` first for simple lookups — they're cheaper. Caveats: callable by any member of the named workspace (non-members are denied terminally — do not retry); it queries the **stakgraph code-graph label set** (\`Function\`, \`File\`, \`Endpoint\`, \`Class\`, \`Datamodel\`) on the SAME Neo4j instance the kg tools read from, but that set is largely disjoint from the Jarvis content/entity labels (\`Person\`, \`Episode\`, \`Clip\`, \`Document\`) the kg tools surface, so its results are NOT interchangeable with theirs; the server strips submitted \`LIMIT\` clauses and applies its own — get top-N with \`ORDER BY\` plus the \`limit\` argument (max 200), never an inline LIMIT; queries are capped at 4096 characters. Returns \`{ columns, rows, rowCount, truncated, truncationReason?, notes? }\` — rows are positional arrays matched to \`columns\`.
 
 ### kg realm workflow
 

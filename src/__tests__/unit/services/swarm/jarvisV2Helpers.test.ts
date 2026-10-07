@@ -334,6 +334,33 @@ describe("readNodeByRef", () => {
     expect(result.properties).toEqual({ name: "My Concept", description: "A thing" });
   });
 
+  it("surfaces a top-level namespace from the node properties", async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse({
+        status: "success",
+        nodes: [{ ref_id: "ns-ref", node_type: "Concept", properties: { name: "n", namespace: "other-ns" } }],
+      }),
+    );
+
+    const result = await readNodeByRef(config, "ns-ref");
+
+    expect(result.namespace).toBe("other-ns");
+    expect(result.properties).toEqual({ name: "n", namespace: "other-ns" });
+  });
+
+  it("omits namespace when the node properties have none", async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse({
+        status: "success",
+        nodes: [{ ref_id: "ns-ref", node_type: "Concept", properties: { name: "n", namespace: "" } }],
+      }),
+    );
+
+    const result = await readNodeByRef(config, "ns-ref");
+
+    expect(result).not.toHaveProperty("namespace");
+  });
+
   it("requests ?limit=1 to avoid materializing hub-node neighborhoods", async () => {
     mockFetch.mockResolvedValue(
       makeResponse({
