@@ -264,9 +264,13 @@ async function launchJobTurn(
       kind: JOB_TURN_KIND,
       workflow: JOB_WORKFLOW,
       purpose: "job",
-      // `title` rides on the input for the reply's header; strut's `job`
-      // workflow declares only `prompt` and drops the rest.
-      input: { prompt, title },
+      // `title` rides on the input for the reply's header (strut's `job`
+      // workflow strips what its input block does not declare); `workspace`
+      // is the hive workspace the job belongs to — the id a pod is claimed
+      // for (strut plans/jobs.md §5): the hub strut serves every workspace
+      // of the org, so the job says which. Every turn, since every launch
+      // is validated on its own.
+      input: { prompt, title, workspace: target.workspaceId },
       job: jobId,
       publicBaseUrl,
       conversationId,
