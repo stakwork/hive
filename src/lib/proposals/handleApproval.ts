@@ -3117,7 +3117,16 @@ async function approveConceptUpdate(args: {
   // node_type is inferred from the node's labels; jarvis rebuilds Data_Bank
   // and re-queues text_embeddings from the merged properties, so the new
   // body is searchable — not just stored.
-  const updated = await updateNodeV2(config, found.refId, { docs: documentation });
+  // Jarvis scopes the write to one namespace, so read the node's namespace
+  // first. Best-effort: a failed read writes without one (default namespace)
+  // rather than failing the approval.
+  const existing = await readNodeByRef(config, found.refId);
+  const updated = await updateNodeV2(
+    config,
+    found.refId,
+    { docs: documentation },
+    existing.success ? existing.namespace : undefined,
+  );
   if (!updated.success) {
     logger.error(
       "[handleApproval.approveConceptUpdate] jarvis node update failed",
@@ -3295,7 +3304,12 @@ async function approveGraphNodeEdit(args: {
     };
   }
 
-  const result = await updateNodeV2(config, payload.ref_id, payload.node_data);
+  const result = await updateNodeV2(
+    config,
+    payload.ref_id,
+    payload.node_data,
+    existing.namespace,
+  );
 
   const outcome = result.success ? "created" : "failed";
   logger.info(
@@ -3307,6 +3321,7 @@ async function approveGraphNodeEdit(args: {
       kind: "graphNodeEdit",
       node_type: nodeType,
       ref_id: payload.ref_id,
+      namespace: existing.namespace ?? "default",
       outcome,
       ...(result.success ? {} : { message: result.message }),
     },
@@ -3932,6 +3947,7 @@ async function approveGraphNodeDelete(args: {
       workspaceSlug,
       kind: "graphNodeDelete",
       ref_id: payload.ref_id,
+      namespace: payload.namespace ?? "default",
       outcome,
       ...(result.success
         ? { muted_edge_count: result.mutedEdgeCount }
