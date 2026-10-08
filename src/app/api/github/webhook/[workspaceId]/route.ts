@@ -16,6 +16,8 @@ import { createAndSendNotification } from "@/services/notifications";
 import { triggerLearningRun } from "@/services/learning-run";
 import { monitorSinglePR } from "@/lib/github/pr-monitor";
 import { dispatchIncrementalProtectReview } from "@/services/protect";
+import { getBaseUrl } from "@/lib/utils";
+import { forwardArtifactEvent } from "@/services/strut-jobs/artifact-events";
 
 function serializeWebhookError(error: unknown) {
   if (error instanceof Error) {
@@ -259,6 +261,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // Check if PR was closed (with or without merge)
       if (action === "closed" && prUrl) {
         const isMerged = merged === true;
+
+        // A strut JOB that reported this pull request hears of it (strut
+        // plans/job-artifact-events.md §3): one `[artifact-event]` turn per
+        // job, launched after the response as the job's owner — the same
+        // door for every kind of artifact, looked up within this workspace.
+        // The tasks below are hive's own; a job's pull request is in neither.
+        forwardArtifactEvent({
+          workspaceId: repository.workspaceId,
+          url: prUrl,
+          what: isMerged ? "merged" : "closed",
+          publicBaseUrl: getBaseUrl(request.headers.get("host")),
+        });
         console.log(`[GithubWebhook] PR ${isMerged ? 'merged' : 'closed'} - processing task updates`, {
           delivery,
           workspaceId: repository.workspaceId,

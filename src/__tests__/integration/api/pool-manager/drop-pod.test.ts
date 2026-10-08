@@ -339,6 +339,84 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     });
   });
 
+  // A strut JOB releasing its pod (strut plans/job-artifact-events.md §2):
+  // only a pod still marked `job:<id>` — or marked by nobody — is dropped;
+  // one hive handed to someone else answers 409 `reassigned` and keeps it.
+  describe("A strut job releasing its pod", () => {
+    async function usedPod(swarmId: string, markedBy: string | null) {
+      const pod = await createTestPod({ swarmId, usageStatus: "USED" });
+      await db.pod.update({
+        where: { id: pod.id },
+        data: { usageStatusMarkedBy: markedBy, usageStatusMarkedAt: new Date(), usageStatusReason: "1790000000000" },
+      });
+      return pod;
+    }
+
+    async function dropAsJob(workspaceId: string, owner: Parameters<typeof createAuthenticatedPostRequest>[1], podId: string, job: string) {
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspaceId}?podId=${podId}&job=${job}`,
+        owner,
+      );
+      return POST(request, { params: Promise.resolve({ workspaceId }) });
+    }
+
+    test("the job that holds the pod releases it", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario();
+      const swarm = await createTestSwarm({ workspaceId: workspace.id, name: "test-swarm", status: "ACTIVE", poolName: "test-pool", poolApiKey: "test-api-key" });
+      const pod = await usedPod(swarm.id, "job:6f1c-job");
+
+      const data = await expectSuccess(await dropAsJob(workspace.id, owner, pod.podId, "6f1c-job"), 200);
+      expect(data.success).toBe(true);
+
+      const after = await db.pod.findUnique({ where: { id: pod.id } });
+      expect(after?.usageStatus).toBe("UNUSED");
+      expect(after?.usageStatusMarkedBy).toBeNull();
+      expect(after?.usageStatusReason).toBeNull();
+    });
+
+    test("a pod hive gave to someone else since is kept: 409 reassigned", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario();
+      const swarm = await createTestSwarm({ workspaceId: workspace.id, name: "test-swarm", status: "ACTIVE", poolName: "test-pool", poolApiKey: "test-api-key" });
+      const pod = await usedPod(swarm.id, "task-of-someone-else");
+
+      const response = await dropAsJob(workspace.id, owner, pod.podId, "6f1c-job");
+      expect(response.status).toBe(409);
+      const body = await response.json();
+      expect(body).toEqual({ error: "Pod has been reassigned", reassigned: true });
+
+      const after = await db.pod.findUnique({ where: { id: pod.id } });
+      expect(after?.usageStatus).toBe("USED");
+      expect(after?.usageStatusMarkedBy).toBe("task-of-someone-else");
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    test("another job's pod is kept too", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario();
+      const swarm = await createTestSwarm({ workspaceId: workspace.id, name: "test-swarm", status: "ACTIVE", poolName: "test-pool", poolApiKey: "test-api-key" });
+      const pod = await usedPod(swarm.id, "job:other-job");
+
+      const response = await dropAsJob(workspace.id, owner, pod.podId, "6f1c-job");
+      expect(response.status).toBe(409);
+      expect((await db.pod.findUnique({ where: { id: pod.id } }))?.usageStatus).toBe("USED");
+    });
+
+    test("a pod nobody claimed (a strut claim from before the steps sent a job) is anybody's to release", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario();
+      const swarm = await createTestSwarm({ workspaceId: workspace.id, name: "test-swarm", status: "ACTIVE", poolName: "test-pool", poolApiKey: "test-api-key" });
+      const pod = await usedPod(swarm.id, null);
+
+      await expectSuccess(await dropAsJob(workspace.id, owner, pod.podId, "6f1c-job"), 200);
+      expect((await db.pod.findUnique({ where: { id: pod.id } }))?.usageStatus).toBe("UNUSED");
+    });
+
+    test("a pod hive no longer has is 404", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario();
+      await createTestSwarm({ workspaceId: workspace.id, name: "test-swarm", status: "ACTIVE", poolName: "test-pool", poolApiKey: "test-api-key" });
+
+      await expectNotFound(await dropAsJob(workspace.id, owner, "nonexistent-pod", "6f1c-job"), "Pod not found");
+    });
+  });
+
   describe("Optional Repository Reset", () => {
     test("resets repositories when latest=true and pod exists", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();

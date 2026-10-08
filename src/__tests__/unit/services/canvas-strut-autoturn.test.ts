@@ -294,4 +294,24 @@ describe("invokeCanvasAgentOnJobTurn", () => {
     await invokeCanvasAgentOnJobTurn(JOB_ARGS);
     expect(mockRunCanvasAgent).not.toHaveBeenCalled();
   });
+
+  test("a turn an event started: the wake names the event, offers one line or silence, and never continue_job", async () => {
+    await invokeCanvasAgentOnJobTurn({
+      ...JOB_ARGS,
+      artifacts: [{ title: "PR", kind: "pull_request" }],
+      event: { kind: "pull_request", url: "https://github.com/acme/app/pull/12", what: "merged" },
+    });
+    const text = mockRunCanvasAgent.mock.calls[0][0].messages.at(-1).content as string;
+    expect(text).toContain("job `6f1c0d3e-1111-4222-8333-444455556666`");
+    expect(text).toContain("finished its turn.");
+    expect(text).toContain("started by neither you nor the user");
+    expect(text).toContain("pull request acme/app#12 merged (https://github.com/acme/app/pull/12)");
+    expect(text).toContain("PR (pull_request)");
+    expect(text).toContain("**Tell the user** (the default)");
+    expect(text).toContain("**Stay silent:**");
+    expect(text).toContain("Never call `continue_job` from here");
+    expect(text).not.toContain("**Continue:**");
+    expect(text).not.toContain("**Summarize**");
+    expect(Object.keys(mockRunCanvasAgent.mock.calls[0][0].additionalTools)).toEqual(["stay_silent"]);
+  });
 });

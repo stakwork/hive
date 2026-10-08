@@ -210,7 +210,7 @@ describe("claimPodAndGetFrontend — Karpenter retry logic", () => {
 
     // Second claim call includes exclusion of pod A's podId
     expect(claimAvailablePod).toHaveBeenCalledTimes(2);
-    expect(claimAvailablePod).toHaveBeenNthCalledWith(2, "swarm-1", "task-1", [mockPodA.podId]);
+    expect(claimAvailablePod).toHaveBeenNthCalledWith(2, "swarm-1", "task-1", [mockPodA.podId], undefined);
 
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("mark-used failed"));
   });

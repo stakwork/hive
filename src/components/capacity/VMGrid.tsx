@@ -210,6 +210,18 @@ function VMCard({
               </span>
             )}
           </div>
+        ) : vm.usage_status === "used" && vm.assignedJob ? (
+          // A strut job's pod: the job's title and who started it. A job has no
+          // page of its own (it lives in a Jamie conversation), so no link.
+          <div className="flex items-center gap-1.5 min-w-0" title={`Job ${vm.assignedJob.id}`}>
+            <Avatar className="size-5 flex-shrink-0">
+              <AvatarImage src={vm.assignedJob.creator.image || undefined} />
+              <AvatarFallback className="text-xs">
+                <User className="w-3 h-3" />
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-xs text-muted-foreground truncate">Job · {vm.assignedJob.title}</span>
+          </div>
         ) : null}
 
         {/* Resources */}

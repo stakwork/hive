@@ -25,7 +25,7 @@ import { isTypingTarget } from "../control-panel/ControlPanelList";
 import { ICON_BUTTON_CLASS, MissingContentPanel, ToolbarButton, ViewerBoundary } from "./chrome";
 import { artifactHref, artifactKind } from "./registry";
 import { useArtifactContent } from "./useArtifactContent";
-import { useActiveArtifacts, useChatOrgLogin } from "./useArtifactPanel";
+import { useActiveArtifacts, useArtifactJobId, useChatOrgLogin } from "./useArtifactPanel";
 
 /**
  * The artifact panel: the artifact a chat card opened, at full size. The
@@ -62,9 +62,9 @@ export function ArtifactPanel() {
  * The kind's full view. Memoised: the bar above it re-renders as
  * artifacts land in the chat, and a viewer is not cheap to redraw.
  */
-const Viewer = React.memo(function Viewer({ artifact, content }: ArtifactViewerProps<ArtifactKind>) {
+const Viewer = React.memo(function Viewer({ artifact, content, jobId }: ArtifactViewerProps<ArtifactKind>) {
   const { Panel } = artifactKind(artifact.kind);
-  return <Panel artifact={artifact} content={content} />;
+  return <Panel artifact={artifact} content={content} jobId={jobId} />;
 });
 
 function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others: ArtifactRef[] }) {
@@ -72,6 +72,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
   const identity = artifactIdentity(artifact);
   const spec = artifactKind(artifact.kind);
   const githubLogin = useChatOrgLogin();
+  const jobId = useArtifactJobId(artifact);
   const state = useArtifactContent(artifact);
   const content = state.status === "ready" ? state.content : null;
   const href = content && artifactHref(artifact.kind, content, githubLogin);
@@ -171,7 +172,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
         {state.status === "ready" ? (
           // Keyed so a viewer's own state — zoom, a filter, where it has browsed to — starts over with each artifact.
           <ViewerBoundary key={`${identity}:${index}`}>
-            <Viewer artifact={artifact} content={state.content} />
+            <Viewer artifact={artifact} content={state.content} jobId={jobId} />
           </ViewerBoundary>
         ) : (
           <MissingContentPanel state={state} />

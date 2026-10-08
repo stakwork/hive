@@ -38,7 +38,7 @@ import { SubAgentRunCard, getSubAgentRunsFromMessages } from "./SubAgentRunCard"
 import { ResearchRunCard, getResearchRunsFromMessages } from "./ResearchRunCard";
 import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
-import { JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
+import { JobEventRow, JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
@@ -446,13 +446,27 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 );
               }
 
+              // A turn hive started for an event about an artifact the job
+              // reported: the event where a person's words would be, the
+              // working card under it until the job row lands.
+              if (message.source?.kind === "job_event") {
+                return (
+                  <div key={message.id} className="space-y-1.5">
+                    <JobEventRow message={message} source={message.source} />
+                    {pendingJobTurns?.map((turn) => (
+                      <PendingJobTurnCard key={turn.jobId} turn={turn} />
+                    ))}
+                  </div>
+                );
+              }
+
               // A job turn's reply: collapsed to its header line (the canvas
               // agent's own turn summarizes it), its artifacts as cards under it.
               if (message.source?.kind === "job") {
                 return (
                   <div key={message.id} className="space-y-1.5">
                     <JobTurnCard message={message} source={message.source} />
-                    <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
+                    <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} jobId={message.source.jobId} />
                   </div>
                 );
               }
@@ -872,9 +886,12 @@ const EMPTY_TOOL_CALLS: ToolCall[] = [];
 function MessageArtifacts({
   artifacts,
   cards,
+  jobId,
 }: {
   artifacts?: ArtifactRef[];
   cards: Map<ArtifactRef, ArtifactVersion>;
+  /** The strut job whose row these ride on — the card's viewer can act on it. */
+  jobId?: string;
 }) {
   const shown = artifacts?.filter((artifact) => cards.has(artifact));
   if (!shown?.length) return null;
@@ -882,7 +899,9 @@ function MessageArtifacts({
     <div className="space-y-1.5">
       {shown.map((artifact) => {
         const version = cards.get(artifact) ?? { index: 0, count: 1 };
-        return <ArtifactCard key={artifact.id} artifact={artifact} version={version.index} versionCount={version.count} />;
+        return (
+          <ArtifactCard key={artifact.id} artifact={artifact} version={version.index} versionCount={version.count} jobId={jobId} />
+        );
       })}
     </div>
   );

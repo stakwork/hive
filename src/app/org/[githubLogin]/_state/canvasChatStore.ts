@@ -203,6 +203,22 @@ export type CanvasMessageSource =
     }
   | {
       /**
+       * The origin of a job turn no person asked for — an event about an
+       * artifact the job reported (`services/strut-jobs/artifact-events.ts`,
+       * strut plans/job-artifact-events.md): the `[artifact-event]` text,
+       * written as the turn launches, where a person's words would be.
+       * Renders as a quiet line (`JobEventRow`) with the working card under
+       * it until the job row lands; replayed to the model as a notice from
+       * the user (`toModelMessages`).
+       */
+      kind: "job_event";
+      jobId: string;
+      title?: string;
+      /** The launch's `StrutRun` id — the job row that settles it is `job-<runId>`. */
+      runId: string;
+    }
+  | {
+      /**
        * The end of a turn the user stopped — after whatever it got
        * through. Renders as a muted "Stopped" line; replayed to the model
        * as a notice from the user (`toModelMessages`).
