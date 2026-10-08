@@ -511,7 +511,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               // the shared `<StreamingMessage>` — names, args, outputs, and
               // live status, in order with any interleaved text. Plain text
               // rows fall through to `SidebarChatMessage` so the bubble look
-              // and the `?r=`/`?c=` deep-link interceptor are preserved.
+              // and the `?r=` deep-link interceptor are preserved.
               const hasTimeline = !!filteredTimeline?.length;
 
               return (
