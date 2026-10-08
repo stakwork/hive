@@ -36,6 +36,7 @@ const {
   mockIndex,
   mockPending,
   mockRequeue,
+  mockCheckFailure,
   afterCallbacks,
 } = vi.hoisted(() => {
   const mockTx = {
@@ -55,6 +56,7 @@ const {
     mockIndex: vi.fn(),
     mockPending: vi.fn(),
     mockRequeue: vi.fn(),
+    mockCheckFailure: vi.fn(),
     afterCallbacks: [] as Array<() => Promise<void>>,
   };
 });
@@ -70,6 +72,7 @@ vi.mock("@/services/strut-jobs/artifact-events", () => ({
   launchPendingArtifactEvents: mockPending,
   requeueArtifactEvent: mockRequeue,
 }));
+vi.mock("@/services/strut-jobs/check-failures", () => ({ deliverCheckFailure: mockCheckFailure }));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: mockNotify }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
@@ -136,6 +139,7 @@ beforeEach(() => {
   mockIndex.mockResolvedValue(0);
   mockPending.mockResolvedValue("none");
   mockRequeue.mockResolvedValue(false);
+  mockCheckFailure.mockResolvedValue({ jobs: [] });
   afterCallbacks.length = 0;
 });
 
@@ -456,11 +460,12 @@ describe("handleJobTurnSettled — the wake", () => {
     mockFetch.mockResolvedValue(json(200, artifactsBody));
     await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });
 
-    // Scheduled, not run: the callback answers first. Two things wait on
-    // the response: the wake, and the artifact events that queued behind
-    // this turn (plans/job-artifact-events.md §3).
+    // Scheduled, not run: the callback answers first. Three things wait on
+    // the response: the wake, the artifact events that queued behind this
+    // turn (plans/job-artifact-events.md §3), and the checks of the pull
+    // request it reported (§5).
     expect(mockWake).not.toHaveBeenCalled();
-    expect(afterCallbacks).toHaveLength(2);
+    expect(afterCallbacks).toHaveLength(3);
     await flushAfter();
 
     expect(mockWorkspaceFindUnique).toHaveBeenCalledWith({ where: { id: "ws-1" }, select: { slug: true } });
@@ -586,6 +591,28 @@ describe("handleJobTurnSettled — artifact events (strut plans/job-artifact-eve
     await flushAfter();
     expect(mockPending).toHaveBeenCalledWith(JOB, "https://hive.example.com");
     expect(mockRequeue).not.toHaveBeenCalled();
+  });
+
+  it("the pull requests the turn reported have their checks read after the response, after the pending events — the first fix is hive's; a turn with none, or a replay, reads nothing", async () => {
+    mockFetch.mockImplementation(async () => json(200, artifactsBody));
+    await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });
+    expect(mockCheckFailure).not.toHaveBeenCalled();
+    await flushAfter();
+    expect(mockCheckFailure).toHaveBeenCalledTimes(1);
+    expect(mockCheckFailure).toHaveBeenCalledWith({ workspaceId: "ws-1", url: PR, publicBaseUrl: "https://hive.example.com" });
+    expect(mockCheckFailure.mock.invocationCallOrder[0]).toBeGreaterThan(mockPending.mock.invocationCallOrder[0]);
+
+    mockCheckFailure.mockClear();
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [artifactsBody.artifacts[0]] }));
+    await handleJobTurnSettled(row({ id: "row-2" }), { publicBaseUrl: "https://hive.example.com" });
+    await flushAfter();
+    expect(mockCheckFailure).not.toHaveBeenCalled();
+
+    mockFetch.mockImplementation(async () => json(200, artifactsBody));
+    mockTx.$queryRaw.mockResolvedValueOnce([{ messages: [{ id: jobRowId(row()) }] }]);
+    await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });
+    await flushAfter();
+    expect(mockCheckFailure).not.toHaveBeenCalled();
   });
 
   it("a failed or stopped turn launches what waited too; a replay, or a conversation that is gone, launches nothing", async () => {
