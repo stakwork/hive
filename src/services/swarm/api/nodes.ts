@@ -1003,12 +1003,22 @@ export async function addEdgeV2(
  *  - confirm the node exists in the workspace's graph
  *  - supply the current properties for the diff view (`meta.oldStr`)
  *
+ * `namespace` is optional and usually unnecessary (callers typically discover
+ * the node's namespace FROM this read, for a subsequent `updateNodeV2` /
+ * `deleteSingleNode` call). Pass it when the caller already knows it (e.g. the
+ * client read the node through a namespace-agnostic path, like a raw Cypher
+ * match on `ref_id`) — some Jarvis deployments scope even the plain
+ * single-node GET to one namespace (default "default" when absent), so a
+ * node living in another namespace can otherwise 404 here before its
+ * namespace is ever learned.
+ *
  * Returns `{ success: false }` for any failure (not found, transport error, etc.).
  * Never throws.
  */
 export async function readNodeByRef(
   config: JarvisConnectionConfig,
   ref_id: string,
+  namespace?: string,
 ): Promise<
   JarvisV2Result & { properties?: Record<string, unknown>; node_type?: string; namespace?: string }
 > {
@@ -1023,7 +1033,9 @@ export async function readNodeByRef(
   // which can OOM Neo4j on hub nodes — we only need the node itself here.
   const result = await jarvisRequest({
     config,
-    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}?limit=1`,
+    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}?limit=1${
+      namespace?.trim() ? `&namespace=${encodeURIComponent(namespace)}` : ""
+    }`,
     method: "GET",
   });
 
@@ -1058,14 +1070,14 @@ export async function readNodeByRef(
   const resolvedRefId = node?.ref_id ?? ref_id;
   // Jarvis removes `namespace` from `properties` through GENERIC_NODE_PROPERTIES
   // and returns it as a top-level field; fall back to `properties` for older shapes.
-  const namespace = node?.namespace ?? node?.properties?.namespace;
+  const resolvedNamespace = node?.namespace ?? node?.properties?.namespace;
 
   return {
     success: true,
     ref_id: resolvedRefId,
     node_type: node?.node_type,
     properties: node?.properties,
-    ...(typeof namespace === "string" && namespace ? { namespace } : {}),
+    ...(typeof resolvedNamespace === "string" && resolvedNamespace ? { namespace: resolvedNamespace } : {}),
     status: "success",
   };
 }

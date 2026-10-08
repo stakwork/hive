@@ -105,10 +105,18 @@ export async function GET(
 }
 
 /**
- * DELETE /api/workspaces/[slug]/graph/node/[ref_id]
+ * DELETE /api/workspaces/[slug]/graph/node/[ref_id]?namespace=<namespace>
  *
  * Soft-delete one Concept node directly (no proposal step). Developers and up
  * only. Only `Concept` nodes are accepted, which keeps mirror-owned types out.
+ *
+ * `namespace` is optional, but should be sent whenever the client already
+ * knows it (the workbench's node panel reads properties straight off a raw
+ * Cypher match on `ref_id`, so it sees a node's `namespace` property even
+ * when it's outside the default partition). Jarvis's single-node endpoints —
+ * both this read and the delete below — otherwise default the lookup to the
+ * "default" namespace, so a Concept living in another namespace 404s on both
+ * without it.
  */
 export async function DELETE(
   request: NextRequest,
@@ -116,6 +124,7 @@ export async function DELETE(
 ) {
   try {
     const { slug, ref_id } = await params;
+    const namespace = request.nextUrl.searchParams.get("namespace")?.trim() || undefined;
 
     const access = requireMemberAccess(await resolveWorkspaceAccess(request, { slug }));
     if (access instanceof NextResponse) return access;
@@ -129,7 +138,7 @@ export async function DELETE(
     }
     const config = { jarvisUrl: getJarvisUrl(swarm.data.swarmName), apiKey: swarm.data.swarmApiKey };
 
-    const node = await readNodeByRef(config, ref_id);
+    const node = await readNodeByRef(config, ref_id, namespace);
     if (!node.success && node.status !== "404") {
       return NextResponse.json({ error: node.message ?? "Couldn't read the node" }, { status: 502 });
     }
@@ -140,7 +149,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Only Concept nodes can be deleted" }, { status: 400 });
     }
 
-    const result = await deleteSingleNode(config, ref_id, node.namespace);
+    const result = await deleteSingleNode(config, ref_id, namespace ?? node.namespace);
     if (!result.success) {
       return NextResponse.json(
         { error: result.error ?? "Failed to delete the node" },

@@ -151,4 +151,42 @@ describe("NodeDetails concept delete", () => {
       ),
     );
   });
+
+  test("threads the node's namespace (read off its raw properties) through to the delete request", async () => {
+    // Regression test: a Concept outside the default namespace shows fine in
+    // the panel — `connections?ref_id=` reads it via a raw Cypher match on
+    // ref_id, not Jarvis's namespace-scoped REST API — but deleting it
+    // without the namespace 404s server-side. The panel must carry the
+    // namespace it already has along with the delete request.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          return Promise.resolve({ ok: true, json: async () => ({ success: true }) });
+        }
+        if (url.includes("/graph/connections")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              node: { id: "ref-1", type: "Concept", name: "Concept One", properties: { namespace: "other-ns" } },
+              groups: [],
+            }),
+          });
+        }
+        return new Promise(() => {});
+      }),
+    );
+
+    renderDetails(node(), "DEVELOPER");
+
+    fireEvent.click(await screen.findByTestId("graph-workbench-delete-concept"));
+    fireEvent.click(await screen.findByTestId("graph-workbench-confirm-delete"));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/workspaces/ws/graph/node/ref-1?namespace=other-ns",
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
+  });
 });

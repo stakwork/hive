@@ -159,7 +159,7 @@ describe("PUT /api/workspaces/[slug]/graph/node/[ref_id]/docs", () => {
 
     expect(res.status).toBe(200);
     expect(getSwarmAccessByWorkspaceId).toHaveBeenCalledWith("ws-1");
-    expect(readNodeByRef).toHaveBeenCalledWith(config, "ref-1");
+    expect(readNodeByRef).toHaveBeenCalledWith(config, "ref-1", undefined);
     expect(updateNodeV2).toHaveBeenCalledWith(config, "ref-1", { docs: "# New docs" }, undefined);
     expect(await res.json()).toEqual({ success: true, ref_id: "ref-1", docs: "# New docs" });
   });
@@ -175,5 +175,16 @@ describe("PUT /api/workspaces/[slug]/graph/node/[ref_id]/docs", () => {
 
     expect(res.status).toBe(200);
     expect(updateNodeV2).toHaveBeenCalledWith(config, "ref-1", { docs: "# New docs" }, "other-ns");
+  });
+
+  test("forwards a client-supplied namespace to both the read and the write", async () => {
+    // The client already knows the node's namespace (its own read of the node
+    // isn't namespace-scoped) — it should win over whatever (if anything)
+    // readNodeByRef's own, possibly namespace-scoped, lookup finds.
+    const res = await PUT(makeRequest({ docs: "# New docs", namespace: "client-ns" }), { params });
+
+    expect(res.status).toBe(200);
+    expect(readNodeByRef).toHaveBeenCalledWith(config, "ref-1", "client-ns");
+    expect(updateNodeV2).toHaveBeenCalledWith(config, "ref-1", { docs: "# New docs" }, "client-ns");
   });
 });

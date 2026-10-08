@@ -188,7 +188,20 @@ function ProposedEdit({ edit }: { edit: NodeEdit }) {
  * A concept's docs as markdown, saved back to the graph. ⌘↵ saves; Esc
  * leaves while nothing has changed.
  */
-function DocsEditor({ refId, type, docs, onDone }: { refId: string; type: string; docs: string; onDone: () => void }) {
+function DocsEditor({
+  refId,
+  type,
+  docs,
+  namespace,
+  onDone,
+}: {
+  refId: string;
+  type: string;
+  docs: string;
+  /** The node's Jarvis namespace, when known — see `NodeDetails`' `conceptNamespace`. */
+  namespace?: string;
+  onDone: () => void;
+}) {
   const { slug } = useWorkbench();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(docs);
@@ -196,7 +209,7 @@ function DocsEditor({ refId, type, docs, onDone }: { refId: string; type: string
   const diff = useMemo(() => computeUnifiedDiff(docs, settled), [docs, settled]);
   const changed = draft !== docs;
   const save = useMutation({
-    mutationFn: (text: string) => saveConceptDocs(slug, refId, text),
+    mutationFn: (text: string) => saveConceptDocs(slug, refId, text, namespace),
     onSuccess: (_, text) => {
       // The swarm holds the new docs now: show them without reading the whole graph again.
       queryClient.setQueryData(
@@ -273,11 +286,17 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
   // Developers and up edit a Concept's docs in place; a proposal's node can't be, until it's approved or rejected.
   const canEdit = !!role && hasRoleLevel(role, WorkspaceRole.DEVELOPER);
   const conceptRef = canEdit && node && !node.proposed && node.type === "Concept" ? node.id : null;
+  // `connectionsQuery` reads this node via a raw `ref_id` Cypher match, not
+  // Jarvis's namespace-scoped REST API, so it sees `namespace` even for a
+  // Concept outside the default partition — carry it along to the docs save
+  // and delete requests so THEIR namespace-scoped lookups don't miss it.
+  const conceptNamespace =
+    typeof data?.node.properties?.namespace === "string" ? data.node.properties.namespace : undefined;
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const queryClient = useQueryClient();
   const remove = useMutation({
-    mutationFn: (refId: string) => deleteConcept(slug, refId),
+    mutationFn: (refId: string) => deleteConcept(slug, refId, conceptNamespace),
     onSuccess: async () => {
       toast.success(`Deleted "${name}"`);
       setConfirmDelete(false);
@@ -352,7 +371,13 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
       )}
 
       {editing && node && conceptRef ? (
-        <DocsEditor refId={conceptRef} type={node.type} docs={node.docs ?? ""} onDone={() => setEditing(false)} />
+        <DocsEditor
+          refId={conceptRef}
+          type={node.type}
+          docs={node.docs ?? ""}
+          namespace={conceptNamespace}
+          onDone={() => setEditing(false)}
+        />
       ) : documented ? (
         <div className="space-y-1">
           <LabelRow label="Docs" action={editDocs} />
