@@ -376,4 +376,60 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       await expectError(response, "Task already has a pod assigned", 409);
     });
   });
+
+  // A strut JOB claiming for itself (strut plans/job-artifact-events.md §2):
+  // the claimant is `job:<id>` in the column a task's id goes in, the strut
+  // run id is the reason, and no task is touched.
+  describe("A strut job as the claimant", () => {
+    test("?job=&run= stamps the pod `job:<id>` with the run as the reason, and writes no task", async () => {
+      const { owner, workspace, pods } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        withPods: true,
+        podCount: 1,
+      });
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}?job=6f1c-job&run=1790000000000`,
+        owner,
+        {},
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+
+      const data = await expectSuccess(response, 200);
+      expect(data.podId).toBe(pods[0].podId);
+
+      const pod = await db.pod.findUnique({ where: { id: pods[0].id } });
+      expect(pod?.usageStatus).toBe("USED");
+      expect(pod?.usageStatusMarkedBy).toBe("job:6f1c-job");
+      expect(pod?.usageStatusReason).toBe("1790000000000");
+      expect(pod?.usageStatusMarkedAt).toBeInstanceOf(Date);
+      expect(await db.task.count({ where: { podId: pods[0].podId } })).toBe(0);
+    });
+
+    test("without a run the reason stays empty; a taskId wins over a job", async () => {
+      const { owner, workspace, pods } = await createTestWorkspaceScenario({
+        withSwarm: true,
+        withPods: true,
+        podCount: 1,
+      });
+      const task = await createTestTask({ workspaceId: workspace.id, createdById: owner.id });
+
+      const request = createAuthenticatedPostRequest(
+        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}?taskId=${task.id}&job=6f1c-job&run=1790000000000`,
+        owner,
+        {},
+      );
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+      await expectSuccess(response, 200);
+
+      const pod = await db.pod.findUnique({ where: { id: pods[0].id } });
+      expect(pod?.usageStatusMarkedBy).toBe(task.id);
+      expect(pod?.usageStatusReason).toBeNull();
+    });
+  });
 });

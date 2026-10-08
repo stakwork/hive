@@ -196,6 +196,15 @@ export interface VMData {
       image: string | null;
     };
   } | null;
+  /** The strut JOB holding the pod (`usage_status_marked_by` = `job:<id>`): its title and who started it. */
+  assignedJob?: {
+    id: string;
+    title: string;
+    creator: {
+      name: string | null;
+      image: string | null;
+    };
+  } | null;
 }
 
 export interface PoolWorkspacesResponse {
