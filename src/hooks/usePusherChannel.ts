@@ -13,8 +13,8 @@ import { getPusherClient } from "@/lib/pusher";
  * component is bound to. That makes it unsafe to pair subscribe and
  * unsubscribe inside a single component's effect when the same
  * channel is used by sibling components (which is exactly the case on
- * the org canvas page: `OrgCanvasBackground` and `ConnectionsListBody`
- * both bind to `org-{githubLogin}`).
+ * the org canvas page: `OrgCanvasBackground` and other
+ * siblings bind to `org-{githubLogin}`).
  *
  * This hook centralizes the lifecycle: every consumer asking for the
  * same channel name shares one subscription, and we only call

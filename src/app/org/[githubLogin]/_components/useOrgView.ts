@@ -17,8 +17,7 @@ export type OrgView =
 /**
  * Map the current pathname to a logical view id. Used by `OrgShell` to
  * decide what to render in the content slot and which icon in the
- * rail is active. The Connections doc list is no longer a route — it
- * lives as a tab inside the canvas's right panel.
+ * rail is active.
  */
 export function useOrgView(githubLogin: string): OrgView {
   const pathname = usePathname() ?? "";

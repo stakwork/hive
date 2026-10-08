@@ -323,8 +323,7 @@ export function OrgCanvasBackground({
   /**
    * Update the `?canvas=<ref>` query param without navigating away
    * from the page. Pass `""` to clear the param (root canvas).
-   * Other query params on the page (notably `?c=<connection-slug>`
-   * from the Connections sidebar) are preserved.
+   * Other query params on the page (e.g. `?r=<research-slug>`) are preserved.
    */
   const writeCanvasUrlParam = useCallback(
     (ref: string) => {
@@ -684,7 +683,7 @@ export function OrgCanvasBackground({
   //
   // Subscription lifecycle is owned by `usePusherChannel` (refcounted)
   // so this component coexists safely with other consumers of the same
-  // org channel — notably `ConnectionsListBody`, which used to call
+  // org channel — notably components that used to call
   // `pusher.unsubscribe` directly and orphan our handler on every
   // parent re-render.
   const channelName = getOrgChannelName(githubLogin);
