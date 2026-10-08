@@ -20,6 +20,8 @@ import { kgGetNode } from "@/lib/ai/kg-adapter";
 export const RESERVED_KEYS = new Set([
   "status",
   "is_deleted",
+  // Jarvis's soft-delete timestamp for nodes: only a delete may set it.
+  "deleted_at",
   // Jarvis's delete flag for edges (and merged nodes): reads skip anything
   // carrying it, so a caller could hide an edge by setting it.
   "is_muted",

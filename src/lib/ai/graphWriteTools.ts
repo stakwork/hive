@@ -23,6 +23,7 @@ import { resolveGraphJarvis } from "@/lib/ai/graphWriteAuth";
 import {
   findEdgeByEndpoints,
   getNodeEdges,
+  isDeletedNode,
   isMutedEdge,
   listIncomingEdges,
   readNodeByRef,
@@ -162,7 +163,7 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
         "Propose creating a new node in the workspace knowledge graph. " +
         "Emits an approvable card — no write happens until the user clicks Approve. " +
         "Requires a valid `node_type` from `graph_ontology`. " +
-        "Reserved attribute keys (status, is_deleted, is_muted, boost, ref_id, algo_*) are rejected. " +
+        "Reserved attribute keys (status, is_deleted, deleted_at, is_muted, boost, ref_id, algo_*) are rejected. " +
         "No `namespace` or `create_schema_if_missing` parameter.",
       inputSchema: z.object({
         workspaceSlug: z
@@ -178,7 +179,7 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
         node_data: z
           .record(z.string(), z.unknown())
           .describe(
-            "Node attributes. Reserved keys (status, is_deleted, is_muted, boost, ref_id, algo_*) are rejected.",
+            "Node attributes. Reserved keys (status, is_deleted, deleted_at, is_muted, boost, ref_id, algo_*) are rejected.",
           ),
         rationale: z
           .string()
@@ -564,7 +565,7 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
 
     [PROPOSE_DELETE_EDGE_TOOL]: tool({
       description:
-        "Propose removing one existing relationship (source)-[:edge_type]->(target) from the workspace KG. " +
+        "Propose permanently removing one existing relationship (source)-[:edge_type]->(target) from the workspace KG. " +
         "Both ends are ref_ids of existing nodes (from graph_get / graph_neighbors / graph_search). " +
         "The edge is looked up by its ends at propose time to confirm it exists, and again on approval. " +
         "Emits an approvable card — nothing is removed until the user clicks Approve. " +
@@ -814,9 +815,9 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
     [PROPOSE_DELETE_NODE_TOOL]: tool({
       description:
         "Propose deleting one stale, duplicate or wrong node from the workspace KG. " +
-        "The node is soft-deleted (it can be restored) and every edge touching it is hidden; " +
-        "nothing else is removed. The card lists the edges that will go. " +
-        "Refused for mirror-owned node types and Schema nodes. " +
+        "The node can be restored, but every link touching it is permanently removed; " +
+        "nothing else is removed. The card lists the links that will go. " +
+        "Refused for mirror-owned node types, Schema nodes and nodes that are already deleted. " +
         "If only a link is wrong, use propose_delete_edge or propose_move_node instead. " +
         "Emits an approvable card — nothing changes until the user clicks Approve.",
       inputSchema: z.object({
@@ -874,7 +875,9 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
           ? `"${node_type}" is a mirror-owned type — the next sync pass would bring it back.`
           : node_type === "Schema"
             ? "Schema nodes define a type and cannot be deleted here."
-            : undefined;
+            : isDeletedNode(node.properties)
+              ? `Node "${ref_id}" is already deleted.`
+              : undefined;
         if (refusedReason) {
           return {
             kind: "graphNodeDelete" as const,
