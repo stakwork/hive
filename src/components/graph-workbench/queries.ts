@@ -96,3 +96,7 @@ export const saveConceptDocs = (slug: string, refId: string, documentation: stri
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ docs: documentation }),
   });
+
+/** Delete a Concept straight from the graph, addressed by its `ref_id`. */
+export const deleteConcept = (slug: string, refId: string) =>
+  getJson(`${graphApi(slug)}/node/${encodeURIComponent(refId)}`, { method: "DELETE" });

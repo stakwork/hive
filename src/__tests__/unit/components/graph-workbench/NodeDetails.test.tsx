@@ -114,3 +114,41 @@ describe("NodeDetails docs editing", () => {
     );
   });
 });
+
+describe("NodeDetails concept delete", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) =>
+        init?.method === "DELETE"
+          ? Promise.resolve({ ok: true, json: async () => ({ success: true }) })
+          : new Promise(() => {}),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("hides delete below DEVELOPER", () => {
+    renderDetails(node(), "VIEWER");
+
+    expect(screen.queryByTestId("graph-workbench-delete-concept")).not.toBeInTheDocument();
+  });
+
+  test("deletes the concept after confirmation", async () => {
+    renderDetails(node(), "DEVELOPER");
+
+    fireEvent.click(screen.getByTestId("graph-workbench-delete-concept"));
+    fireEvent.click(await screen.findByTestId("graph-workbench-confirm-delete"));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/workspaces/ws/graph/node/ref-1",
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
+  });
+});

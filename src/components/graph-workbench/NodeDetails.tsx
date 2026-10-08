@@ -2,7 +2,18 @@
 
 import React, { useDeferredValue, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Pencil, X } from "lucide-react";
+import { ChevronRight, Pencil, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { UnifiedDiffView } from "@/components/diff/UnifiedDiffView";
 import { Button } from "@/components/ui/button";
@@ -18,8 +29,10 @@ import {
   CONNECTION_PAGE,
   connectionPageQuery,
   connectionsQuery,
+  deleteConcept,
   hierarchyQuery,
   saveConceptDocs,
+  workbenchKey,
   workspaceRoleQuery,
 } from "./queries";
 import { useWorkbench } from "./store";
@@ -261,6 +274,21 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
   const canEdit = !!role && hasRoleLevel(role, WorkspaceRole.DEVELOPER);
   const conceptRef = canEdit && node && !node.proposed && node.type === "Concept" ? node.id : null;
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const queryClient = useQueryClient();
+  const remove = useMutation({
+    mutationFn: (refId: string) => deleteConcept(slug, refId),
+    onSuccess: async () => {
+      toast.success(`Deleted "${name}"`);
+      setConfirmDelete(false);
+      onClose();
+      await queryClient.invalidateQueries({ queryKey: workbenchKey(slug) });
+    },
+    onError: (e: Error) => {
+      toast.error(e.message || "Failed to delete concept");
+      setConfirmDelete(false);
+    },
+  });
   const editDocs = conceptRef && (
     <button
       type="button"
@@ -376,6 +404,44 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
         <p className="text-xs text-muted-foreground">Loading connections…</p>
       ) : (
         data && <Connections refId={id} groups={groups} />
+      )}
+
+      {conceptRef && (
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-destructive hover:text-destructive"
+            onClick={() => setConfirmDelete(true)}
+            data-testid="graph-workbench-delete-concept"
+          >
+            <Trash2 className="mr-1 h-3 w-3" />
+            Delete
+          </Button>
+          <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete concept?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  &quot;{name}&quot; and its links will be removed from the graph.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => {
+                    e.preventDefault();
+                    remove.mutate(conceptRef);
+                  }}
+                  disabled={remove.isPending}
+                  data-testid="graph-workbench-confirm-delete"
+                >
+                  {remove.isPending ? "Deleting…" : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
       )}
 
       {node && !isNew && (
