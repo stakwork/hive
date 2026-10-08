@@ -22,18 +22,20 @@ interface ArtifactCardProps {
   /** This card's place among the versions of its artifact, zero-based — the last, since the card is the newest ref. */
   version: number;
   versionCount: number;
+  /** The strut job that reported it, when a Job row did — handed to the viewer (`ArtifactViewerProps.jobId`). */
+  jobId?: string;
 }
 
 /**
  * The kind's preview. Memoised: the card around it re-renders as the
  * panel opens and closes, and a preview is not cheap to redraw.
  */
-const Preview = React.memo(function Preview({ artifact, content }: ArtifactViewerProps<ArtifactKind>) {
+const Preview = React.memo(function Preview({ artifact, content, jobId }: ArtifactViewerProps<ArtifactKind>) {
   const { Inline } = artifactKind(artifact.kind);
   if (!Inline) return null;
   return (
     <ViewerBoundary>
-      <Inline artifact={artifact} content={content} />
+      <Inline artifact={artifact} content={content} jobId={jobId} />
     </ViewerBoundary>
   );
 });
@@ -43,10 +45,12 @@ function CardBody({
   artifact,
   state,
   onOpen,
+  jobId,
 }: {
   artifact: ArtifactRef;
   state: ArtifactContentState;
   onOpen: () => void;
+  jobId?: string;
 }) {
   const { Inline, inlineInteractive } = artifactKind(artifact.kind);
 
@@ -61,7 +65,7 @@ function CardBody({
   }
   if (!Inline) return null;
 
-  const preview = <Preview artifact={artifact} content={state.content} />;
+  const preview = <Preview artifact={artifact} content={state.content} jobId={jobId} />;
   if (inlineInteractive) return <div className="border-t">{preview}</div>;
   // A picture of the artifact, not the artifact: anywhere on it opens the real thing.
   return (
@@ -80,7 +84,7 @@ function CardBody({
  * it was last revised, and the panel steps back through its versions where
  * there are any.
  */
-export const ArtifactCard = React.memo(function ArtifactCard({ artifact, version, versionCount }: ArtifactCardProps) {
+export const ArtifactCard = React.memo(function ArtifactCard({ artifact, version, versionCount, jobId }: ArtifactCardProps) {
   const spec = artifactKind(artifact.kind);
   const githubLogin = useChatOrgLogin();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -151,7 +155,7 @@ export const ArtifactCard = React.memo(function ArtifactCard({ artifact, version
           </button>
         </ActionTip>
       </div>
-      <CardBody artifact={artifact} state={state} onOpen={open} />
+      <CardBody artifact={artifact} state={state} onOpen={open} jobId={jobId} />
     </div>
   );
 });

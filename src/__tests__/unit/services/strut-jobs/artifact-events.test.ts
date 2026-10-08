@@ -23,7 +23,7 @@ import type { ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtif
 
 const { mockDb, mockFirst, mockLive, mockLaunch, mockLogger, afterCallbacks } = vi.hoisted(() => ({
   mockDb: {
-    strutJobArtifact: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    strutJobArtifact: { findMany: vi.fn(), findFirst: vi.fn(), upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     $queryRaw: vi.fn(),
   },
   mockFirst: vi.fn(),
@@ -42,6 +42,7 @@ vi.mock("@/lib/logger", () => ({ logger: mockLogger }));
 vi.mock("@/services/strut-jobs", () => ({ firstJobTurn: mockFirst, jobHasLiveTurn: mockLive, launchJobTurn: mockLaunch }));
 
 import {
+  composeJobArtifactEvent,
   deliverArtifactEvent,
   forwardArtifactEvent,
   indexJobArtifacts,
@@ -212,5 +213,19 @@ describe("at settle", () => {
     expect(await requeueArtifactEvent(JOB, LINE)).toBe(false);
     expect(await requeueArtifactEvent(JOB, "Split step 2")).toBe(false);
     expect(mockDb.strutJobArtifact.updateMany).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("composeJobArtifactEvent — a card's action", () => {
+  it("the event as a source's, from the job's own ref: its kind and the URL as indexed; null when the job never reported it", async () => {
+    mockDb.strutJobArtifact.findFirst.mockResolvedValueOnce({ kind: "pull_request", url: PR });
+    expect(await composeJobArtifactEvent(JOB, "https://github.com/Acme/App/pull/12", "checks failed", ["head: abc", "- lint"])).toBe(
+      `[artifact-event] pull_request ${PR} checks failed\nhead: abc\n- lint`,
+    );
+    expect(mockDb.strutJobArtifact.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { jobId: JOB, url: { equals: "https://github.com/Acme/App/pull/12", mode: "insensitive" } } }),
+    );
+    mockDb.strutJobArtifact.findFirst.mockResolvedValueOnce(null);
+    expect(await composeJobArtifactEvent(JOB, PR, "merged")).toBeNull();
   });
 });
