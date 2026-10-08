@@ -3,12 +3,11 @@
 import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import type { CanvasEdge, CanvasNode, EdgeUpdate } from "system-canvas";
+import type { CanvasNode } from "system-canvas";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { OrgCanvasBackground, type SelectionWithLabels, type InternalEdge } from "../connections/OrgCanvasBackground";
 import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
-import type { ConnectionData } from "../connections/types";
 import { OrgRightPanel } from "./OrgRightPanel";
 import { useCanvasChatStore, type CanvasChatMessage, type GraphFocus } from "../_state/canvasChatStore";
 import { GraphView } from "./GraphView";
@@ -24,20 +23,10 @@ import { useControlPanel } from "./control-panel/useControlPanel";
 import { ArtifactPanel } from "./artifacts/ArtifactPanel";
 import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 
-/**
- * Sidebar layout sizes (percent of container width).
- *
- * Connection viewing happens *inside* the sidebar — when the user
- * opens a connection we imperatively grow the panel to
- * `EXPANDED_SIZE` so the viewer has room (diagram + scalar iframe
- * each want a few hundred pixels of breathing room), then restore to
- * the prior width when the user goes back. The user's own resize is
- * preserved through `autoSaveId` so manual sizing wins on next mount.
- */
+/** Sidebar layout sizes (percent of container width). */
 const SIDEBAR_DEFAULT_SIZE = 24;
 const SIDEBAR_MIN_SIZE = 16;
 const SIDEBAR_MAX_SIZE = 80;
-const SIDEBAR_EXPANDED_SIZE = 60;
 
 /**
  * The org page's other view: the control panel (Jamie chats on the
@@ -71,8 +60,8 @@ interface OrgCanvasViewProps {
  * Two layers:
  *   1. Full-bleed system-canvas (`OrgCanvasBackground`) on the left.
  *   2. Fixed-width tabbed right panel (`OrgRightPanel`) on the right
- *      with three tabs — **Chat** (`SidebarChat`, default landing
- *      tab), **Details**, **Connections**.
+ *      with two tabs — **Chat** (`SidebarChat`, default landing
+ *      tab) and **Details**.
  *
  * Or, with `?view=control-panel`, the control panel: the same panel
  * group, with the chat list in the left panel instead of the canvas and
@@ -101,13 +90,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
 
   const containerRef = useRef<HTMLDivElement>(null);
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
-  /**
-   * Width the sidebar had before we auto-expanded for a connection
-   * viewer. Restored on `handleBack`. `null` when not in an
-   * auto-expanded state. Stored as a percent of container width
-   * (matches the `react-resizable-panels` API surface).
-   */
-  const preExpandSizeRef = useRef<number | null>(null);
   /**
    * Sidebar width in pixels. Drives the canvas's `rightInset` so the
    * canvas + library FAB sit to the LEFT of the sidebar instead of
@@ -205,55 +187,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
   const [hiddenWorkspaceIds, setHiddenWorkspaceIds] = useState<Set<string>>(() => new Set());
   const [hiddenInitialized, setHiddenInitialized] = useState(false);
-  const [connections, setConnections] = useState<ConnectionData[]>([]);
-  const [loadingConnections, setLoadingConnections] = useState(true);
-  const [activeConnection, setActiveConnection] = useState<ConnectionData | null>(null);
   const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(null);
   const [selectedNodes, setSelectedNodes] = useState<CanvasNode[]>([]);
   const [selectedNodesInternalEdges, setSelectedNodesInternalEdges] = useState<InternalEdge[]>([]);
-  /**
-   * Set of connection ids referenced by at least one edge across the
-   * canvases the user has visited this session. Surfaced from
-   * `OrgCanvasBackground` (which owns the canvas blobs) so the
-   * sidebar can render a small "linked" dot on those rows.
-   */
-  const [linkedConnectionIds, setLinkedConnectionIds] = useState<Set<string>>(() => new Set());
-  /**
-   * The edge the user has currently selected on the canvas, paired
-   * with the canvas ref it lives on AND the resolved human labels
-   * for its endpoints. Mutually exclusive with `selectedNode` from
-   * the user's POV — clicking a node clears the edge, clicking an
-   * edge clears the node. The two pieces of state are tracked
-   * independently so the right-panel can render either detail body
-   * without coupling.
-   *
-   * `canvasRef` is `undefined` for root, matching `applyMutation`'s
-   * convention. We capture it at click-time so the link/unlink write
-   * lands on the correct canvas blob even if the user navigates.
-   *
-   * `fromLabel` / `toLabel` are resolved by `OrgCanvasBackground`
-   * from the canvas's own node list (where the live-node `text` is
-   * the entity's real name — e.g. workspace.name). Captured here
-   * rather than re-resolved on the consumer side because the canvas
-   * data lives in `OrgCanvasBackground`; surfacing them on the
-   * selection payload avoids prop-drilling the node map.
-   */
-  const [selectedEdge, setSelectedEdge] = useState<{
-    edge: CanvasEdge;
-    canvasRef: string | undefined;
-    fromLabel: string;
-    toLabel: string;
-  } | null>(null);
-  /**
-   * Imperative handle exposed by `OrgCanvasBackground` for patching
-   * an edge's data. Used by the link / unlink flows to write
-   * `customData.connectionId` without prop-drilling a callback
-   * through every list row. Set inside `OrgCanvasBackground` via
-   * an effect; null when the canvas is unmounted.
-   */
-  const edgePatchHandleRef = useRef<
-    ((edgeId: string, patch: EdgeUpdate, canvasRef: string | undefined) => void) | null
-  >(null);
   /**
    * Human-readable breadcrumb for the canvas the user is currently
    * looking at. Threaded into the chat so the agent can refer to the
@@ -271,39 +207,17 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [chatInitialTitle, setChatInitialTitle] = useState<string | null>(null);
   const [chatLoadComplete, setChatLoadComplete] = useState(false);
 
-  const setUrlSlug = useCallback(
-    (slug: string | null) => {
-      // `history.replaceState` (NOT `router.replace`) so updating this
-      // deep-link param never triggers a Next navigation / RSC fetch on
-      // this `protected` route. A router navigation re-runs middleware +
-      // the async `page.tsx` DB query, and any redirect/500 there
-      // degrades to a full hard reload. See CANVAS.md "Deep links".
-      const params = new URLSearchParams(window.location.search);
-      if (slug) params.set("c", slug);
-      else params.delete("c");
-      const qs = params.toString();
-      window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
-    },
-    [pathname],
-  );
-
   /**
-   * `?r=<research-slug>` writer — symmetric to `?c=` but for the
+   * `?r=<research-slug>` writer — for the
    * Research viewer. Setting the slug opens the research doc in the
    * Details tab (via a synthesized `selectedNode`); clearing it drops
    * the deep link without touching the rest of the URL.
    *
-   * Why a separate param from `?c=`: connections and research are
-   * different surfaces (right-panel Connections tab vs Details tab,
-   * different DB tables, different agent tool families), and having
-   * two distinct params lets a single URL deep-link into both
-   * simultaneously if we ever want to. Same shape as the canvas-doc
-   * deep links agreed on in CANVAS.md.
    */
   const setUrlResearchSlug = useCallback(
     (slug: string | null) => {
-      // `history.replaceState` (NOT `router.replace`) — see `setUrlSlug`
-      // above for why a router navigation can cause a full page reload.
+      // `history.replaceState` (NOT `router.replace`) — a router navigation
+      // can cause a full page reload. See CANVAS.md "Deep links".
       const params = new URLSearchParams(window.location.search);
       if (slug) params.set("r", slug);
       else params.delete("r");
@@ -388,71 +302,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     [workspaces, hiddenWorkspaceIds],
   );
 
-  const fetchConnections = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/orgs/${githubLogin}/connections`);
-      if (res.ok) {
-        const data = await res.json();
-        const list: ConnectionData[] = Array.isArray(data) ? data : [];
-        setConnections(list);
-        return list;
-      }
-    } catch (error) {
-      console.error("Failed to fetch connections:", error);
-    } finally {
-      setLoadingConnections(false);
-    }
-    return [];
-  }, [githubLogin]);
-
-  /**
-   * Open a connection inside the sidebar viewer. Both the user-click
-   * path and the `?c=<slug>` deep-link path funnel through here so
-   * the sidebar auto-grows consistently.
-   *
-   * The panel ref may be null on first paint when the deep-link
-   * fetch resolves before React commits the panel — that's fine;
-   * `setActiveConnection` will trigger the tab-flip effect and the
-   * user can manually drag if needed. We retry once on the next
-   * frame to catch the common case where the ref lands a tick later.
-   */
-  const openConnection = useCallback(
-    (connection: ConnectionData) => {
-      const expand = () => {
-        const panel = sidebarPanelRef.current;
-        if (!panel) return false;
-        const current = panel.getSize();
-        if (preExpandSizeRef.current === null) {
-          preExpandSizeRef.current = current;
-        }
-        if (current < SIDEBAR_EXPANDED_SIZE) {
-          panel.resize(SIDEBAR_EXPANDED_SIZE);
-        }
-        return true;
-      };
-      if (!expand()) {
-        // Panel not yet mounted (deep-link path) — try again next frame.
-        requestAnimationFrame(() => {
-          expand();
-        });
-      }
-      setActiveConnection(connection);
-      setUrlSlug(connection.slug);
-    },
-    [setUrlSlug],
-  );
-
-  useEffect(() => {
-    fetchConnections().then((list) => {
-      const slug = searchParams.get("c");
-      if (slug && list.length > 0) {
-        const match = list.find((c) => c.slug === slug);
-        if (match) openConnection(match);
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [githubLogin]);
-
   /**
    * `?r=<slug>` deep-link resolver. Reactive (not mount-only) so a
    * relative `?r=foo` link rendered in chat markdown — intercepted in
@@ -529,116 +378,25 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     };
     // `searchParams` identity changes on every URL update; we only
     // care about the `r` param value. Reading via `.get()` keeps the
-    // dep stable across unrelated URL changes (`?canvas=`, `?c=`,
+    // dep stable across unrelated URL changes (`?canvas=`,
     // `?chat=`).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [githubLogin, searchParams.get("r")]);
-
-  const handleConnectionClick = (connection: ConnectionData) => {
-    openConnection(connection);
-  };
-
-  /**
-   * Close the connection viewer without touching `selectedEdge`.
-   * Restores the sidebar's pre-expand width (unless the user has
-   * manually resized in the meantime), clears `activeConnection`,
-   * and drops the `?c=` URL slug.
-   *
-   * Used by both the explicit Back button (`handleBack`, which
-   * additionally clears the edge) and by `handleSelectionChange`
-   * when the user switches from a linked edge to an unlinked edge —
-   * we want the viewer gone but the new edge to stay selected so
-   * link-mode chrome appears for it.
-   */
-  const closeViewerKeepingEdge = useCallback(() => {
-    const panel = sidebarPanelRef.current;
-    const prior = preExpandSizeRef.current;
-    if (panel && prior !== null) {
-      const current = panel.getSize();
-      // Tolerate sub-pixel rounding from `onResize` round-trips.
-      if (Math.abs(current - SIDEBAR_EXPANDED_SIZE) < 0.5) {
-        panel.resize(prior);
-      }
-    }
-    preExpandSizeRef.current = null;
-    setActiveConnection(null);
-    setUrlSlug(null);
-  }, [setUrlSlug]);
-
-  const handleBack = () => {
-    closeViewerKeepingEdge();
-    // The explicit Back button (and selection-cleared / node-selected
-    // paths in `handleSelectionChange`) ends the edge interaction
-    // too. Without this clear, the user would be left in a state
-    // with `selectedEdge` set but no visible link-mode chrome
-    // (because the linked-edge link rule hides `+`/link icons),
-    // which reads as "selected but invisibly so." The list-driven
-    // open path leaves `selectedEdge` null already, so this is
-    // safely a no-op there.
-    setSelectedEdge(null);
-  };
-
-  const handleConnectionCreated = useCallback(() => {
-    fetchConnections();
-  }, [fetchConnections]);
-
-  const handleConnectionDeleted = useCallback(
-    (connectionId: string) => {
-      setConnections((prev) => prev.filter((c) => c.id !== connectionId));
-      if (activeConnection?.id === connectionId) {
-        setActiveConnection(null);
-        setUrlSlug(null);
-      }
-    },
-    [activeConnection?.id, setUrlSlug],
-  );
-
-  /**
-   * Read the connectionId off an edge's customData. The library type
-   * doesn't include `customData` on edges, but JS round-trips extra
-   * fields verbatim through the splitter (`io.ts`); the agent-side
-   * tool path strips unknown fields from `add_edge`/`update_edge`
-   * patches, but user-driven canvas writes flow through the lib's
-   * `updateEdge` which spreads `{...edge, ...patch}` and preserves
-   * `customData`. So the field exists on user-authored edges.
-   */
-  const readEdgeConnectionId = useCallback((edge: CanvasEdge): string | null => {
-    const cd = (edge as { customData?: { connectionId?: unknown } }).customData;
-    const id = cd?.connectionId;
-    return typeof id === "string" && id.length > 0 ? id : null;
-  }, []);
 
   /**
    * Single selection-change handler. The lib's `onSelectionChange`
    * fires atomically on every state transition: node click, edge
    * click, canvas-background click (deselect), Escape, Delete,
    * navigation, stale-selection collapse. We translate the unified
-   * payload into our two pieces of state (`selectedNode`,
-   * `selectedEdge`) and run the edge-specific connection-open logic
-   * inline.
-   *
-   * Edge cases:
-   *
-   *   - Edge with a linked connection → open the linked connection
-   *     viewer (sidebar auto-grows). The edge owns the viewer for
-   *     back / unlink semantics.
-   *   - Edge with no connection → set edge only; the Connections
-   *     tab renders link-mode chrome.
-   *   - Selection cleared (`null`) → if an edge was driving an open
-   *     viewer, close it. List-driven opens (no `selectedEdge`)
-   *     are left alone.
+   * payload into `selectedNode` / `selectedNodes`; edge selection
+   * just clears both (the Details tab is node-only).
    */
   const handleSelectionChange = useCallback(
     (selection: SelectionWithLabels) => {
-      // Selection cleared — every path that calls this with `null`
-      // (canvas-bg click, Escape, navigation, etc.) ends both kinds
-      // of selection. Close an edge-owned viewer along the way, and
-      // drop the `?r=` deep link if one was driving a synthesized
-      // research selection (so refresh doesn't snap the user back
-      // into the viewer they just navigated away from).
+      // Selection cleared — drop the `?r=` deep link if one was driving a
+      // synthesized research selection (so refresh doesn't snap the user
+      // back into the viewer they just navigated away from).
       if (!selection) {
-        if (selectedEdge && activeConnection) handleBack();
-        setSelectedEdge(null);
         setSelectedNode(null);
         setSelectedNodes([]);
         setSelectedNodesInternalEdges([]);
@@ -649,137 +407,28 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         setSelectedNode(selection.node);
         setSelectedNodes([]);
         setSelectedNodesInternalEdges([]);
-        // Node selection clears any edge selection — and any
-        // edge-owned open viewer.
-        if (selectedEdge && activeConnection) handleBack();
-        setSelectedEdge(null);
         // Real canvas-driven node click overrides any active
         // research deep-link unless the user clicked the same
         // research card the link pointed at.
         if (searchParams.get("r") && !selection.node.id.startsWith("research:")) {
-          // html: (and every other non-research live id) correctly
-          // fall through here: selecting an HTML card while a
-          // `?r=` deep-link is active should drop the research
-          // param, same as clicking a workspace or note.
           setUrlResearchSlug(null);
         }
         return;
       }
       if (selection.kind === "multi") {
         setSelectedNode(null);
-        setSelectedEdge(null);
         setSelectedNodes(selection.nodes);
         setSelectedNodesInternalEdges(selection.internalEdges);
-        // Close any edge-owned connection viewer.
-        if (selectedEdge && activeConnection) handleBack();
         return;
       }
       // Edge selection.
       setSelectedNodes([]);
       setSelectedNodesInternalEdges([]);
       setSelectedNode(null);
-      setSelectedEdge(selection);
-      const linkedId = readEdgeConnectionId(selection.edge);
-      if (linkedId) {
-        const match = connections.find((c) => c.id === linkedId);
-        if (match) {
-          openConnection(match);
-          return;
-        }
-        // Orphan id (connection deleted). Fall through to link-mode.
-      }
-      // Edge has no link (or orphaned link) — land in link-mode list.
-      // Close any prior open viewer so it's not still showing, BUT
-      // keep the edge we just selected (we set it on line above).
-      // Calling `handleBack()` here would clobber `selectedEdge` and
-      // the link-mode chrome wouldn't render for the new edge.
-      if (activeConnection) closeViewerKeepingEdge();
-    },
-    // `handleBack` and `openConnection` are stable; pulling them in
-    // as deps keeps the lint rule happy without re-creating every
-    // render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedEdge, activeConnection, connections, readEdgeConnectionId],
-  );
-
-  /**
-   * Link the currently-selected edge to a connection (called from
-   * the link-mode list row). Writes `customData.connectionId` to the
-   * edge via the imperative ref exposed by `OrgCanvasBackground`,
-   * then opens the connection in the viewer so the user immediately
-   * sees the result of the link. We do NOT clear `selectedEdge` —
-   * the user can hit Back to return to the list with the edge still
-   * in link mode (e.g. to swap the link to a different connection).
-   */
-  const handleLinkConnectionToEdge = useCallback(
-    (connection: ConnectionData) => {
-      if (!selectedEdge) return;
-      const patch: EdgeUpdate = {
-        ...({ customData: { connectionId: connection.id } } as EdgeUpdate),
-      };
-      edgePatchHandleRef.current?.(selectedEdge.edge.id, patch, selectedEdge.canvasRef);
-      // Update our local copy of the edge so future reads off
-      // `selectedEdge` see the link too — without this, an unlink
-      // immediately after a link would target the stale customData.
-      setSelectedEdge({
-        ...selectedEdge,
-        edge: {
-          ...selectedEdge.edge,
-          ...({ customData: { connectionId: connection.id } } as Partial<CanvasEdge>),
-        },
-      });
-      openConnection(connection);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedEdge],
+    [searchParams.get("r")],
   );
-
-  /**
-   * Unlink the connection from the currently-selected edge. Strips
-   * `customData.connectionId` (sets `customData` to an empty object
-   * so the splitter doesn't leave stale fields). Closes the viewer
-   * because what's currently shown is the connection that was just
-   * unlinked — the user should land back in link-mode list.
-   * `selectedEdge` stays set so they can pick a different connection.
-   */
-  const handleUnlinkConnectionFromEdge = useCallback(() => {
-    if (!selectedEdge) return;
-    const patch: EdgeUpdate = {
-      ...({ customData: {} } as EdgeUpdate),
-    };
-    edgePatchHandleRef.current?.(selectedEdge.edge.id, patch, selectedEdge.canvasRef);
-    setSelectedEdge({
-      ...selectedEdge,
-      edge: {
-        ...selectedEdge.edge,
-        ...({ customData: {} } as Partial<CanvasEdge>),
-      },
-    });
-    handleBack();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEdge]);
-
-  /**
-   * `+ Create connection` from the link-mode header. Switches the
-   * panel to the Chat tab (handled by `OrgRightPanel`) and writes a
-   * prefilled draft to the chat input via the store. The user can
-   * edit before sending.
-   *
-   * Reads labels off `selectedEdge` directly — they were resolved
-   * from the canvas's node text by `OrgCanvasBackground` at click
-   * time, so they're the human-readable names of whatever the
-   * endpoints are (workspace name for `ws:` nodes, the user's text
-   * for authored notes, etc.).
-   */
-  const handleCreateConnectionForEdge = useCallback(() => {
-    if (!selectedEdge) return;
-    const { edge, fromLabel, toLabel } = selectedEdge;
-    const edgeLabel = edge.label;
-    const draft = edgeLabel
-      ? `Make a connection document for "${edgeLabel}" between ${fromLabel} and ${toLabel}`
-      : `Make a connection document between ${fromLabel} and ${toLabel}`;
-    useCanvasChatStore.getState().setPendingInputDraft(draft);
-  }, [selectedEdge]);
 
   const handleCanvasBreadcrumbChange = useCallback((breadcrumb: string) => {
     setCurrentCanvasBreadcrumb(breadcrumb);
@@ -788,7 +437,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // ─── Canvas ⇄ control panel ─────────────────────────────────────────
   const writeViewParam = useCallback(
     (next: OrgPageMode) => {
-      // `history.replaceState` (NOT `router.replace`) — see `setUrlSlug`.
+      // `history.replaceState` (NOT `router.replace`). See CANVAS.md "Deep links".
       const params = new URLSearchParams(window.location.search);
       if (next === "control-panel") {
         params.set("view", "control-panel");
@@ -1008,9 +657,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                 orgName={orgName}
                 onHiddenChange={handleHiddenChange}
                 onSelectionChange={handleSelectionChange}
-                edgePatchHandleRef={edgePatchHandleRef}
                 onCanvasBreadcrumbChange={handleCanvasBreadcrumbChange}
-                onLinkedConnectionIdsChange={setLinkedConnectionIds}
               />
             </motion.div>
           )}
@@ -1129,18 +776,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                 selectedNodes={selectedNodes}
                 selectedNodesInternalEdges={selectedNodesInternalEdges}
                 chatReady={chatReady && conversationStarted}
-                connections={connections}
-                activeConnection={activeConnection}
-                onConnectionClick={handleConnectionClick}
-                onConnectionClose={handleBack}
-                onConnectionCreated={handleConnectionCreated}
-                onConnectionDeleted={handleConnectionDeleted}
-                isLoading={loadingConnections}
-                selectedEdge={selectedEdge}
-                onLinkConnectionToEdge={handleLinkConnectionToEdge}
-                onUnlinkConnectionFromEdge={handleUnlinkConnectionFromEdge}
-                onCreateConnectionForEdge={handleCreateConnectionForEdge}
-                linkedConnectionIds={linkedConnectionIds}
                 controlPanel={
                   mode === "control-panel" ? { ...controlPanel.stage, onExit: closeControlPanel } : undefined
                 }
