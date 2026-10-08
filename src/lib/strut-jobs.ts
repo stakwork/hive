@@ -116,3 +116,43 @@ export function describeArtifactEvent(event: ArtifactEvent): string {
   if (event.kind === "pull_request" && pr) return `pull request ${pr[1]}#${pr[2]} ${event.what}`;
   return `${event.kind.replace(/_/g, " ")} ${event.url} ${event.what}`;
 }
+
+/** The owner, name and number of a pull request on github.com; null for any other URL. */
+export function parseGithubPullRequestUrl(url: string): { owner: string; name: string; number: number } | null {
+  const m = GITHUB_PR.exec(url);
+  if (!m) return null;
+  const [owner, name] = m[1].split("/");
+  return { owner, name, number: parseInt(m[2], 10) };
+}
+
+// ─── Checks failed — the pull-request event the card's Fix and the automatic first fix both send ───
+
+/** A check as the live status reads it (`PullRequestCheck`, structurally): `pending` while it runs. */
+export interface CheckOutcome {
+  name: string;
+  status: "success" | "failure" | "pending" | "skipped";
+  /** The check's own page, when GitHub gives one. */
+  url?: string;
+}
+
+/** Whether a check is still running — the checks are not all in until none is. */
+export function checksRunning(checks: readonly CheckOutcome[] | undefined): boolean {
+  return (checks ?? []).some((check) => check.status === "pending");
+}
+
+/**
+ * The `checks failed` event (strut plans/job-artifact-events.md §5): the
+ * head commit and each failing check with its link, composed from the
+ * pull request's live state. The card's Fix sends it on a click; hive
+ * sends it once on its own, when every check has run
+ * (`services/strut-jobs/check-failures.ts`). Null while nothing has failed.
+ */
+export function checksFailedEvent(pr: { url: string; headSha?: string; checks?: readonly CheckOutcome[] }): { url: string; what: string; details: string[] } | null {
+  const failing = (pr.checks ?? []).filter((check) => check.status === "failure");
+  if (failing.length === 0) return null;
+  return {
+    url: pr.url,
+    what: "checks failed",
+    details: [...(pr.headSha ? [`head: ${pr.headSha}`] : []), ...failing.map((check) => `- ${check.name}${check.url ? ` — ${check.url}` : ""}`)],
+  };
+}
