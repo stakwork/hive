@@ -151,6 +151,19 @@ function prLiveUrl(
 const isTerminalPrState = (state: unknown): boolean =>
   state === "merged" || state === "closed";
 
+const PR_LIVE_POLL_MS = 30_000;
+
+/**
+ * How long until the live read goes again, or `false` for never: once the
+ * PR is merged or closed there is nothing left to learn, and once a read has
+ * failed — the job is older than the route, the PR was not this job's, no
+ * token reaches the repo — asking again every half minute would not change
+ * the answer. The inline state stands; a window focus or a reconnect still
+ * retries once, and a read that succeeds then resumes the interval.
+ */
+export const prLivePollInterval = (state: { status: string; data?: Record<string, unknown> }): number | false =>
+  state.status === "error" || isTerminalPrState(state.data?.state) ? false : PR_LIVE_POLL_MS;
+
 /**
  * An artifact's content. `enabled` holds the read back until someone is
  * looking — a card that has not scrolled into view yet.
@@ -171,7 +184,8 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
   // The inline content is the first paint; this query overlays the live
   // state once it arrives. The card and the panel share the same query key
   // so a single poll serves both. Polling stops once the PR is merged or
-  // closed, and does not run when the tab is hidden.
+  // closed, or once a read has failed (`prLivePollInterval`), and does not
+  // run when the tab is hidden.
   const prUrl = useMemo(
     () =>
       kind === "pull_request" && source.type === "inline"
@@ -188,10 +202,7 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
       return (await res.json()) as Record<string, unknown>;
     },
     enabled: enabled && prUrl !== null,
-    refetchInterval: (query) => {
-      const state = query.state.data?.state;
-      return isTerminalPrState(state) ? false : 30_000;
-    },
+    refetchInterval: (query) => prLivePollInterval(query.state),
     refetchIntervalInBackground: false,
     // On network errors keep the inline state — don't surface as "failed".
     retry: false,

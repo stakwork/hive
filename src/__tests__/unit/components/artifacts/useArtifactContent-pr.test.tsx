@@ -177,6 +177,34 @@ describe("useArtifactContent — pull_request live polling", () => {
     }
   });
 
+  it("polls every 30 s while open, and stops once merged/closed or once a read has failed", async () => {
+    const { prLivePollInterval } = await import(
+      "@/app/org/[githubLogin]/_components/artifacts/useArtifactContent"
+    );
+    expect(prLivePollInterval({ status: "pending" })).toBe(30_000);
+    expect(prLivePollInterval({ status: "success", data: { state: "open" } })).toBe(30_000);
+    expect(prLivePollInterval({ status: "success", data: { state: "draft" } })).toBe(30_000);
+    expect(prLivePollInterval({ status: "success", data: { state: "merged" } })).toBe(false);
+    expect(prLivePollInterval({ status: "success", data: { state: "closed" } })).toBe(false);
+    // A 404 (not this job's PR, a ref older than the route), a 502 (no token), a network error.
+    expect(prLivePollInterval({ status: "error" })).toBe(false);
+    expect(prLivePollInterval({ status: "error", data: { state: "open" } })).toBe(false);
+  });
+
+  it("a read that failed is not asked again on the interval", async () => {
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ error: "Not found" }), { status: 404 }));
+    const { Wrapper, qc } = wrapper();
+    const { useArtifactContent } = await import(
+      "@/app/org/[githubLogin]/_components/artifacts/useArtifactContent"
+    );
+    renderHook(() => useArtifactContent(prRef()), { wrapper: Wrapper });
+    await waitFor(() => expect(qc.getQueryCache().getAll()[0]?.state.status).toBe("error"));
+    const query = qc.getQueryCache().getAll()[0];
+    const observer = query.observers[0] as unknown as { options: { refetchInterval: (q: unknown) => number | false } };
+    expect(observer.options.refetchInterval(query)).toBe(false);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("does NOT poll when jobId or swarmId is absent from inline content", async () => {
     const { Wrapper } = wrapper();
     const { useArtifactContent } = await import(

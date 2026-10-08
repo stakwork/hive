@@ -127,6 +127,14 @@ describe("GET /api/orgs/[githubLogin]/strut/pull-request", () => {
     expect((await GET(request({ ...GOOD_QUERY, repo: "" }), params)).status).toBe(400);
   });
 
+  it("400 for a repo outside GitHub's name characters (never reaches the reported-PR check)", async () => {
+    for (const repo of ["acme/(app", "acme/app|x", "acme/.*", "acme/app+", "ac me/app", "acme/app?x=1"]) {
+      expect((await GET(request({ ...GOOD_QUERY, repo }), params)).status).toBe(400);
+    }
+    expect(mockJobReportedPullRequest).not.toHaveBeenCalled();
+    expect((await GET(request({ ...GOOD_QUERY, repo: "my-org_1/my.app-2" }), params)).status).toBe(200);
+  });
+
   it("400 for invalid number", async () => {
     expect((await GET(request({ ...GOOD_QUERY, number: "0" }), params)).status).toBe(400);
     expect((await GET(request({ ...GOOD_QUERY, number: "-1" }), params)).status).toBe(400);

@@ -34,6 +34,9 @@ const MAX_ROWS = 50;
 /** Maximum recursion depth for the output walk. */
 const MAX_DEPTH = 12;
 
+/** `value` as a pattern that matches it literally — a `.` in a repo name is a dot, not any character. */
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
  * Walk `value` recursively (depth-first, up to MAX_DEPTH) and return true
  * as soon as either match form is found.
@@ -92,6 +95,8 @@ export async function jobReportedPullRequest(
   repo: string,
   number: number,
 ): Promise<boolean> {
+  if (!Number.isInteger(number) || number <= 0) return false;
+
   const rows = await db.strutRun.findMany({
     where: { jobId, swarmId },
     select: { output: true },
@@ -101,11 +106,9 @@ export async function jobReportedPullRequest(
 
   const repoLower = repo.toLowerCase();
   // Match github.com/{repo}/pull/{number} followed by end-of-string or a
-  // non-digit — prevents /pull/7 matching /pull/70.
-  const urlPattern = new RegExp(
-    `github\\.com/${repoLower.replace("/", "\\/")}\/pull\/${number}(?:[^0-9]|$)`,
-    "i",
-  );
+  // non-digit — prevents /pull/7 matching /pull/70. `repo` is the caller's
+  // input: escaped, so it can neither break the pattern nor widen it.
+  const urlPattern = new RegExp(`github\\.com/${escapeRegExp(repoLower)}/pull/${number}(?:[^0-9]|$)`, "i");
 
   for (const row of rows) {
     if (!row.output) continue;

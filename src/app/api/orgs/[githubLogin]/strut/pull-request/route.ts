@@ -38,7 +38,8 @@ import { validateWorkspaceAccess } from "@/services/workspace";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const REPO_RE = /^[^/\s]+\/[^/\s]+$/;
+/** `owner/name` in the characters GitHub allows in each — nothing a pattern or a path could be built from. */
+const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ githubLogin: string }> }) {
   const context = getMiddlewareContext(request);

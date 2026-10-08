@@ -109,6 +109,29 @@ describe("jobReportedPullRequest", () => {
     expect(await jobReportedPullRequest(JOB, SWARM, REPO, NUM)).toBe(false);
   });
 
+  // ── The repo is the caller's input: literal, never a pattern ──────────────
+
+  it("a dot in the requested repo is a dot — acme/my-app#7 does not authorise acme/my.app#7", async () => {
+    mockFindMany.mockResolvedValue(rows([{ artifacts: [{ url: "https://github.com/acme/my-app/pull/7" }] }]));
+    expect(await jobReportedPullRequest(JOB, SWARM, "acme/my.app", NUM)).toBe(false);
+    expect(await jobReportedPullRequest(JOB, SWARM, "acme/my-app", NUM)).toBe(true);
+  });
+
+  it("regex metacharacters in the repo neither throw nor match", async () => {
+    mockFindMany.mockResolvedValue(rows([{ url: "https://github.com/acme/app/pull/7" }]));
+    for (const repo of ["acme/(app", "acme/app|acme/x", "acme/.*", "acme/app+", "acme/[a]pp"]) {
+      expect(await jobReportedPullRequest(JOB, SWARM, repo, NUM)).toBe(false);
+    }
+  });
+
+  it("a number that is not a positive integer is never reported", async () => {
+    mockFindMany.mockResolvedValue(rows([{ url: "https://github.com/acme/app/pull/7" }]));
+    expect(await jobReportedPullRequest(JOB, SWARM, REPO, 0)).toBe(false);
+    expect(await jobReportedPullRequest(JOB, SWARM, REPO, 7.5)).toBe(false);
+    expect(await jobReportedPullRequest(JOB, SWARM, REPO, Number.NaN)).toBe(false);
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
   // ── {repo, number} object form ────────────────────────────────────────────
 
   it("returns true when output is a {repo, number} object", async () => {
