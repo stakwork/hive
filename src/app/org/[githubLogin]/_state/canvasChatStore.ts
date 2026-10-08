@@ -569,8 +569,8 @@ interface CanvasChatState {
    * to the chat it came from.
    */
   artifactPanel: ArtifactPanelState | null;
-  /** Put an artifact on the panel. Omit `version` to follow its newest version. */
-  openArtifactPanel: (artifactId: string, version?: number | null) => void;
+  /** Put an artifact on the panel, by its `artifactIdentity`. Omit `version` to follow its newest version. */
+  openArtifactPanel: (identity: string, version?: number | null) => void;
   closeArtifactPanel: () => void;
 
   // ─── Conversation actions ────────────────────────────────────────────
@@ -735,8 +735,8 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       dismissedArtifactIds: {},
       artifactPanel: null,
 
-      openArtifactPanel: (artifactId, version = null) =>
-        set({ artifactPanel: { artifactId, version } }, false, "openArtifactPanel"),
+      openArtifactPanel: (identity, version = null) =>
+        set({ artifactPanel: { identity, version } }, false, "openArtifactPanel"),
 
       closeArtifactPanel: () => set({ artifactPanel: null }, false, "closeArtifactPanel"),
 

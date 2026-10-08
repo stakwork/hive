@@ -54,7 +54,7 @@ import {
   type ToolCall,
 } from "../_state/canvasChatStore";
 import {
-  indexArtifactVersions,
+  indexArtifactCards,
   listArtifacts,
   type ArtifactRef,
   type ArtifactVersion,
@@ -307,9 +307,10 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
     return byAnchor;
   }, [messages]);
 
-  // Where each artifact sits among the versions of it this conversation
-  // holds, so a card can say "v2" and open the panel at its own version.
-  const artifactVersions = useMemo(() => indexArtifactVersions(listArtifacts(messages)), [messages]);
+  // The card each artifact gets — on its newest ref, with its versions
+  // counted so the card can say "v2". An earlier report of the same
+  // artifact gets none, so a plan re-reported every turn shows once.
+  const artifactCards = useMemo(() => indexArtifactCards(listArtifacts(messages)), [messages]);
 
   // Render the SubAgentRunCard(s) anchored to a message. Extracted so it
   // can render under BOTH a normal message AND a suppressed fan-out
@@ -451,7 +452,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 return (
                   <div key={message.id} className="space-y-1.5">
                     <JobTurnCard message={message} source={message.source} />
-                    <MessageArtifacts artifacts={message.artifacts} versions={artifactVersions} />
+                    <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
                   </div>
                 );
               }
@@ -573,7 +574,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                   {pendingJobTurns?.map((turn) => (
                     <PendingJobTurnCard key={turn.jobId} turn={turn} />
                   ))}
-                  <MessageArtifacts artifacts={message.artifacts} versions={artifactVersions} />
+                  <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
                 </div>
               );
             })}
@@ -861,31 +862,27 @@ const EMPTY_MESSAGES: CanvasChatMessage[] = [];
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
 
 /**
- * The artifacts a message carries, one card each. How a kind looks is
- * the viewer registry's business (`artifacts/registry.ts`), and reading
- * its content the card's own; a card is memoised on its ref, so streaming
- * text never re-renders one.
+ * The cards under a message: one for each artifact the message is the
+ * latest report of (`indexArtifactCards`) — a ref a later message
+ * reported again gets none here. How a kind looks is the viewer
+ * registry's business (`artifacts/registry.ts`), and reading its content
+ * the card's own; a card is memoised on its ref, so streaming text never
+ * re-renders one.
  */
 function MessageArtifacts({
   artifacts,
-  versions,
+  cards,
 }: {
   artifacts?: ArtifactRef[];
-  versions: Map<ArtifactRef, ArtifactVersion>;
+  cards: Map<ArtifactRef, ArtifactVersion>;
 }) {
-  if (!artifacts?.length) return null;
+  const shown = artifacts?.filter((artifact) => cards.has(artifact));
+  if (!shown?.length) return null;
   return (
     <div className="space-y-1.5">
-      {artifacts.map((artifact) => {
-        const version = versions.get(artifact);
-        return (
-          <ArtifactCard
-            key={artifact.id}
-            artifact={artifact}
-            version={version?.index ?? 0}
-            versionCount={version?.count ?? 1}
-          />
-        );
+      {shown.map((artifact) => {
+        const version = cards.get(artifact) ?? { index: 0, count: 1 };
+        return <ArtifactCard key={artifact.id} artifact={artifact} version={version.index} versionCount={version.count} />;
       })}
     </div>
   );
