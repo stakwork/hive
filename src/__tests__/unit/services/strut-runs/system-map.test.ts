@@ -129,6 +129,34 @@ describe("launchSystemMapRun", () => {
     );
   });
 
+  it("dispatches the CWE check workflow under its own kind, with the same input", async () => {
+    mockWorkspace.findUnique.mockResolvedValue({
+      swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
+    });
+    mockDispatch.mockResolvedValue({ runId: "run-3", strutRunId: "3", swarmId: "swarm-1" });
+
+    await launchSystemMapRun({
+      workspaceId: "ws-1",
+      workspaceSlug: "acme-ws",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      key: "cwe_check",
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "system_map_cwe_check",
+        workflow: "swarm-systemmap-cwe-check-templates",
+        purpose: "system_map",
+        input: {
+          workspace: "acme-ws",
+          swarm_url: "https://acme.sphinx.chat:3355",
+          swarm_secret_alias: "{{SWARM_123_API_KEY}}",
+        },
+      }),
+    );
+  });
+
   it("refuses with no_target when the workspace swarm has no secret alias", async () => {
     mockWorkspace.findUnique.mockResolvedValue({
       swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: null },

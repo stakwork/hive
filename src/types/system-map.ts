@@ -16,7 +16,7 @@ export interface SystemMapRun {
   strutUrl: string | null;
 }
 
-export type SystemMapWorkflowKey = "schema" | "materialize";
+export type SystemMapWorkflowKey = "schema" | "materialize" | "cwe_check";
 
 export interface SystemMapRunsResponse {
   /** Which workflow these runs belong to. */

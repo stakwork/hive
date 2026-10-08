@@ -139,6 +139,7 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   code_change_land: async () => (await import("./strut-runs/code-change-land")).handleCodeChangeLandSettled,
   system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
+  system_map_cwe_check: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_climb: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
