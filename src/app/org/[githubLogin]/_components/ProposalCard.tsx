@@ -54,6 +54,7 @@ import {
   type CanvasChatMessage,
 } from "../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../_state/useSendCanvasChatMessage";
+import { artifactIdentity } from "../_state/canvasChatArtifacts";
 import { proposalGraphArtifact } from "../_state/proposalGraphArtifacts";
 import {
   Dialog,
@@ -803,7 +804,7 @@ export function ProposalCard({
                 // A graph change is looked at on the graph: open it on the left, centred on what changes.
                 <button
                   type="button"
-                  onClick={() => useCanvasChatStore.getState().openArtifactPanel(graphArtifact.id)}
+                  onClick={() => useCanvasChatStore.getState().openArtifactPanel(artifactIdentity(graphArtifact))}
                   title="Open in graph"
                   aria-label="Open in graph"
                   className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"

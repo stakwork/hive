@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import {
+  artifactIdentity,
   latestArtifacts,
   resolveArtifactPanel,
   type ArtifactKind,
@@ -68,6 +69,7 @@ const Viewer = React.memo(function Viewer({ artifact, content }: ArtifactViewerP
 
 function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others: ArtifactRef[] }) {
   const { artifact, versions, index } = shown;
+  const identity = artifactIdentity(artifact);
   const spec = artifactKind(artifact.kind);
   const githubLogin = useChatOrgLogin();
   const state = useArtifactContent(artifact);
@@ -76,7 +78,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
   const copyText = useMemo(() => content && spec.copyText?.(content), [spec, content]);
   const { openArtifactPanel, closeArtifactPanel } = useCanvasChatStore.getState();
   // The newest version is followed rather than pinned, so a later revision shows as it lands.
-  const showVersion = (next: number) => openArtifactPanel(artifact.id, next === versions.length - 1 ? null : next);
+  const showVersion = (next: number) => openArtifactPanel(identity, next === versions.length - 1 ? null : next);
 
   return (
     <section aria-label={artifact.title} className="flex h-full w-full flex-col bg-background">
@@ -96,11 +98,12 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
             <DropdownMenuContent align="start" className="w-80">
               {others.map((other) => {
                 const otherSpec = artifactKind(other.kind);
+                const otherIdentity = artifactIdentity(other);
                 return (
                   <DropdownMenuItem
-                    key={other.id}
-                    onSelect={() => openArtifactPanel(other.id)}
-                    className={cn(other.id === artifact.id && "bg-muted font-medium")}
+                    key={otherIdentity}
+                    onSelect={() => openArtifactPanel(otherIdentity)}
+                    className={cn(otherIdentity === identity && "bg-muted font-medium")}
                   >
                     <otherSpec.Icon aria-hidden />
                     <span className="min-w-0 flex-1 truncate">{other.title}</span>
@@ -167,7 +170,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
       <div className="min-h-0 flex-1">
         {state.status === "ready" ? (
           // Keyed so a viewer's own state — zoom, a filter, where it has browsed to — starts over with each artifact.
-          <ViewerBoundary key={`${artifact.id}:${index}`}>
+          <ViewerBoundary key={`${identity}:${index}`}>
             <Viewer artifact={artifact} content={state.content} />
           </ViewerBoundary>
         ) : (

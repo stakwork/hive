@@ -20,9 +20,13 @@
  * with its parser here, and an entry in the viewer registry
  * (`_components/artifacts/registry.ts`).
  *
- * The same `id` on a later message is a newer version of the same
- * artifact; whoever writes the ref decides what makes two outputs the same
- * one (a pull request's URL, the plan a revision replaces).
+ * A ref on a later message is the same artifact when it resolves to the
+ * same thing (`artifactIdentity`): a job's file by its swarm and key, a
+ * pull request by repo and number, a stored page by its slug, an address
+ * by its URL — whatever the agent named it that turn. Only content frozen
+ * on the message goes by `id`, and only there is a later copy a version
+ * with something new in it. The chat shows an artifact once, under the
+ * message that reported it last.
  *
  * Refs come out of stored JSON and content out of other systems, so both
  * are parsed here before anything renders them: what does not fit is
@@ -76,6 +80,13 @@ export interface ArtifactContents {
     checks?: PullRequestCheck[];
     /** The files changed, when the producer has them. */
     diffs?: ActionResult[];
+    /**
+     * The Strut job that opened this PR — carried so the live-read hook can
+     * call the pull-request status route without a separate lookup.
+     * Set by `job-turn.ts`; absent on refs that pre-date this field.
+     */
+    jobId?: string;
+    swarmId?: string;
   };
   code: {
     code: string;
@@ -110,7 +121,7 @@ export type ArtifactSource =
   | { type: "graph"; swarmId: string; key: string };
 
 export interface ArtifactRef {
-  /** Stable across versions: a later message carrying the same id replaces this one on the panel. */
+  /** The writer's name for it. Groups the snapshots of inline content into versions; what is read from elsewhere goes by where (`artifactIdentity`). */
   id: string;
   kind: ArtifactKind;
   title: string;
@@ -127,9 +138,9 @@ export interface ArtifactViewerProps<K extends ArtifactKind> {
   content: ArtifactContents[K];
 }
 
-/** The artifact on the panel. `version` is its place among that artifact's versions; null follows the newest. */
+/** The artifact on the panel, by `artifactIdentity`. `version` is its place among that artifact's versions; null follows the newest. */
 export interface ArtifactPanelState {
-  artifactId: string;
+  identity: string;
   version: number | null;
 }
 
@@ -270,6 +281,9 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
       body: optional(raw.body),
       checks,
       diffs,
+      // Live-read identifiers — optional, set by job-turn.ts.
+      jobId: bounded(raw.jobId, MAX_ID_LENGTH) ?? undefined,
+      swarmId: bounded(raw.swarmId, MAX_ID_LENGTH) ?? undefined,
     };
   },
   code: (raw) =>
@@ -319,31 +333,89 @@ export function listArtifacts(
   );
 }
 
+/** Kinds whose inline content is an address: what it names is the artifact, whichever turn names it. */
+const ADDRESS_KINDS: ReadonlySet<ArtifactKind> = new Set<ArtifactKind>(["image", "video", "audio", "pdf", "url"]);
+
+/**
+ * Where a ref's content is read from, when every ref that reads from there
+ * shows the same thing: a file on a swarm by its key (a job's `plan.md` is
+ * read fresh each time, so the turn that re-reports it adds nothing), a
+ * pull request by repo and number (its state is read live), a stored page
+ * by its slug, an address by its URL. Null for content frozen on the
+ * message, where each ref is its own snapshot.
+ */
+function liveSourceKey({ kind, source }: ArtifactRef): string | null {
+  if (source.type === "graph") return `graph:${source.swarmId}:${source.key}`;
+  const { content } = source;
+  switch (kind) {
+    case "pull_request": {
+      const { repo, number } = content;
+      return typeof repo === "string" && repo && typeof number === "number" && Number.isInteger(number)
+        ? `pull_request:${repo.toLowerCase()}#${number}`
+        : null;
+    }
+    case "html":
+      return typeof content.slug === "string" && content.slug ? `html:${content.slug}` : null;
+    default:
+      return ADDRESS_KINDS.has(kind) && typeof content.url === "string" && content.url ? `url:${content.url}` : null;
+  }
+}
+
+/**
+ * What makes two refs the same artifact: where their content is read from,
+ * when that is somewhere every ref shows the same thing from
+ * (`liveSourceKey`), else the writer's `id`. The panel is opened by this,
+ * and the chat shows one card per identity.
+ */
+export function artifactIdentity(artifact: ArtifactRef): string {
+  return liveSourceKey(artifact) ?? `id:${artifact.id}`;
+}
+
+/** Each artifact's refs, oldest first, in the order the artifacts first appeared. */
+function groupByIdentity(all: ArtifactRef[]): Map<string, ArtifactRef[]> {
+  const groups = new Map<string, ArtifactRef[]>();
+  for (const artifact of all) {
+    const identity = artifactIdentity(artifact);
+    const group = groups.get(identity);
+    if (group) group.push(artifact);
+    else groups.set(identity, [artifact]);
+  }
+  return groups;
+}
+
+/**
+ * An artifact's versions, oldest first: every snapshot of inline content,
+ * or only the newest ref of what is read live — its earlier refs show the
+ * same thing, so there is nothing to step back to.
+ */
+function versionsOf(group: ArtifactRef[]): ArtifactRef[] {
+  return liveSourceKey(group[0]) ? group.slice(-1) : group;
+}
+
 export interface ArtifactVersion {
   /** Zero-based place among the versions of this artifact. */
   index: number;
   count: number;
 }
 
-/** Where each artifact sits among the versions that share its id. */
-export function indexArtifactVersions(all: ArtifactRef[]): Map<ArtifactRef, ArtifactVersion> {
-  const counts = new Map<string, number>();
-  for (const artifact of all) counts.set(artifact.id, (counts.get(artifact.id) ?? 0) + 1);
-  const seen = new Map<string, number>();
-  const versions = new Map<ArtifactRef, ArtifactVersion>();
-  for (const artifact of all) {
-    const index = seen.get(artifact.id) ?? 0;
-    seen.set(artifact.id, index + 1);
-    versions.set(artifact, { index, count: counts.get(artifact.id) ?? 1 });
+/**
+ * The card each artifact gets: its newest ref, with where that sits among
+ * the artifact's versions, so the card can say "v2". A ref not in the map
+ * is an earlier report of an artifact with a newer one, and gets no card:
+ * the chat shows an artifact once, under the message that reported it last.
+ */
+export function indexArtifactCards(all: ArtifactRef[]): Map<ArtifactRef, ArtifactVersion> {
+  const cards = new Map<ArtifactRef, ArtifactVersion>();
+  for (const group of groupByIdentity(all).values()) {
+    const count = versionsOf(group).length;
+    cards.set(group[group.length - 1], { index: count - 1, count });
   }
-  return versions;
+  return cards;
 }
 
-/** The newest version of each artifact, in the order the artifacts first appeared. */
+/** The newest ref of each artifact, in the order the artifacts first appeared. */
 export function latestArtifacts(all: ArtifactRef[]): ArtifactRef[] {
-  const latest = new Map<string, ArtifactRef>();
-  for (const artifact of all) latest.set(artifact.id, artifact);
-  return Array.from(latest.values());
+  return Array.from(groupByIdentity(all).values(), (group) => group[group.length - 1]);
 }
 
 export interface ResolvedArtifactPanel {
@@ -359,8 +431,9 @@ export function resolveArtifactPanel(
   panel: ArtifactPanelState | null,
 ): ResolvedArtifactPanel | null {
   if (!panel) return null;
-  const versions = all.filter((artifact) => artifact.id === panel.artifactId);
-  if (versions.length === 0) return null;
+  const group = all.filter((artifact) => artifactIdentity(artifact) === panel.identity);
+  if (group.length === 0) return null;
+  const versions = versionsOf(group);
   const index = Math.min(panel.version ?? versions.length - 1, versions.length - 1);
   return { artifact: versions[index], versions, index };
 }
