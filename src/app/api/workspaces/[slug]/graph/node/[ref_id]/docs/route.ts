@@ -17,6 +17,10 @@ type RouteParams = { params: Promise<{ slug: string; ref_id: string }> };
  * `ref_id` (gitree's route is keyed by the concept's slug `id`, which not
  * every Concept has). Developers and up only. Only `Concept` nodes are
  * accepted, which also keeps the mirror-owned types out.
+ *
+ * Body may include `namespace`, sent whenever the client already knows it —
+ * see the sibling DELETE route's docstring for why (Jarvis's single-node
+ * lookups default to the "default" namespace when it's omitted).
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
@@ -33,6 +37,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "docs must be a string" }, { status: 400 });
     }
     const docs: string = body.docs;
+    const namespace = typeof body?.namespace === "string" ? body.namespace.trim() || undefined : undefined;
 
     const swarm = await getSwarmAccessByWorkspaceId(access.workspaceId);
     if (!swarm.success || !swarm.data.swarmName) {
@@ -40,7 +45,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
     const config = { jarvisUrl: getJarvisUrl(swarm.data.swarmName), apiKey: swarm.data.swarmApiKey };
 
-    const node = await readNodeByRef(config, ref_id);
+    const node = await readNodeByRef(config, ref_id, namespace);
     // Jarvis being down or slow isn't the node being missing.
     if (!node.success && node.status !== "404") {
       return NextResponse.json({ error: node.message ?? "Couldn't read the node" }, { status: 502 });
@@ -52,7 +57,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Only Concept nodes have editable docs" }, { status: 400 });
     }
 
-    const result = await updateNodeV2(config, ref_id, { docs }, node.namespace);
+    const result = await updateNodeV2(config, ref_id, { docs }, namespace ?? node.namespace);
     if (!result.success) {
       return NextResponse.json({ error: result.message ?? "Failed to update node docs" }, { status: 502 });
     }

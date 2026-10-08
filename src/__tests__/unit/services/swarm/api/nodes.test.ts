@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, deleteSingleNode, findEdgeByEndpoints, listIncomingEdges, isMutedEdge, getReferencedNodeCentrality, searchNodesByAttributes } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, deleteSingleNode, readNodeByRef, findEdgeByEndpoints, listIncomingEdges, isMutedEdge, getReferencedNodeCentrality, searchNodesByAttributes } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -1075,6 +1075,56 @@ describe("deleteSingleNode", () => {
   test("rejects an unsafe ref_id without calling Jarvis", async () => {
     expect((await deleteSingleNode(config, "bad id/../x")).success).toBe(false);
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("readNodeByRef", () => {
+  const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+
+  test("calls GET /v2/nodes/{refId}?limit=1 with no namespace param by default", async () => {
+    mockFetch.mockResolvedValueOnce(ok({ ref_id: "node-1", node_type: "Concept", properties: {} }));
+
+    await readNodeByRef(config, "node-1");
+
+    expect(mockFetch.mock.calls[0][0]).toBe("https://test-swarm.sphinx.chat:8444/v2/nodes/node-1?limit=1");
+  });
+
+  test("appends the namespace query param, URL-encoded, when given", async () => {
+    mockFetch.mockResolvedValueOnce(ok({ ref_id: "node-1", node_type: "Concept", properties: {} }));
+
+    await readNodeByRef(config, "node-1", "my ns/1");
+
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "https://test-swarm.sphinx.chat:8444/v2/nodes/node-1?limit=1&namespace=my%20ns%2F1",
+    );
+  });
+
+  test("sends no namespace param when namespace is blank", async () => {
+    mockFetch.mockResolvedValueOnce(ok({ ref_id: "node-1", node_type: "Concept", properties: {} }));
+
+    await readNodeByRef(config, "node-1", "  ");
+
+    expect(mockFetch.mock.calls[0][0]).toBe("https://test-swarm.sphinx.chat:8444/v2/nodes/node-1?limit=1");
+  });
+
+  test("resolves the node's namespace from a top-level field", async () => {
+    mockFetch.mockResolvedValueOnce(
+      ok({ ref_id: "node-1", node_type: "Concept", namespace: "other-ns", properties: {} }),
+    );
+
+    const result = await readNodeByRef(config, "node-1");
+
+    expect(result).toMatchObject({ success: true, node_type: "Concept", namespace: "other-ns" });
+  });
+
+  test("falls back to properties.namespace for older response shapes", async () => {
+    mockFetch.mockResolvedValueOnce(
+      ok({ ref_id: "node-1", node_type: "Concept", properties: { namespace: "legacy-ns" } }),
+    );
+
+    const result = await readNodeByRef(config, "node-1");
+
+    expect(result.namespace).toBe("legacy-ns");
   });
 });
 

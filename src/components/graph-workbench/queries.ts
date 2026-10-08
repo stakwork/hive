@@ -89,10 +89,29 @@ export const workspaceRoleQuery = (slug: string) =>
  * Save a Concept's docs straight to the graph, addressed by its `ref_id`. This
  * works for any Concept, including ones without a gitree `id` (the Learn
  * page's endpoint is keyed by that slug, and the swarm matches nothing by ref_id).
+ *
+ * `namespace` should be passed when known (read straight off the node's own
+ * properties — see `deleteConcept`) so a Concept outside the default
+ * namespace doesn't 404 on the server's own namespace-scoped lookup.
  */
-export const saveConceptDocs = (slug: string, refId: string, documentation: string) =>
+export const saveConceptDocs = (slug: string, refId: string, documentation: string, namespace?: string) =>
   getJson(`${graphApi(slug)}/node/${encodeURIComponent(refId)}/docs`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ docs: documentation }),
+    body: JSON.stringify({ docs: documentation, ...(namespace ? { namespace } : {}) }),
   });
+
+/**
+ * Delete a Concept straight from the graph, addressed by its `ref_id`.
+ *
+ * `namespace` should be passed when known. Jarvis's single-node read/delete
+ * endpoints scope to one namespace (default "default" when absent), while
+ * the workbench's own node read (a raw Cypher match on `ref_id`) isn't
+ * namespace-scoped — so a Concept outside "default" shows fine in the panel
+ * but 404s on delete unless its namespace rides along with the request.
+ */
+export const deleteConcept = (slug: string, refId: string, namespace?: string) =>
+  getJson(
+    `${graphApi(slug)}/node/${encodeURIComponent(refId)}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`,
+    { method: "DELETE" },
+  );

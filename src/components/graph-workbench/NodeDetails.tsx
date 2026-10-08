@@ -2,7 +2,18 @@
 
 import React, { useDeferredValue, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Pencil, X } from "lucide-react";
+import { ChevronRight, Pencil, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { UnifiedDiffView } from "@/components/diff/UnifiedDiffView";
 import { Button } from "@/components/ui/button";
@@ -18,8 +29,10 @@ import {
   CONNECTION_PAGE,
   connectionPageQuery,
   connectionsQuery,
+  deleteConcept,
   hierarchyQuery,
   saveConceptDocs,
+  workbenchKey,
   workspaceRoleQuery,
 } from "./queries";
 import { useWorkbench } from "./store";
@@ -175,7 +188,20 @@ function ProposedEdit({ edit }: { edit: NodeEdit }) {
  * A concept's docs as markdown, saved back to the graph. ⌘↵ saves; Esc
  * leaves while nothing has changed.
  */
-function DocsEditor({ refId, type, docs, onDone }: { refId: string; type: string; docs: string; onDone: () => void }) {
+function DocsEditor({
+  refId,
+  type,
+  docs,
+  namespace,
+  onDone,
+}: {
+  refId: string;
+  type: string;
+  docs: string;
+  /** The node's Jarvis namespace, when known — see `NodeDetails`' `conceptNamespace`. */
+  namespace?: string;
+  onDone: () => void;
+}) {
   const { slug } = useWorkbench();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(docs);
@@ -183,7 +209,7 @@ function DocsEditor({ refId, type, docs, onDone }: { refId: string; type: string
   const diff = useMemo(() => computeUnifiedDiff(docs, settled), [docs, settled]);
   const changed = draft !== docs;
   const save = useMutation({
-    mutationFn: (text: string) => saveConceptDocs(slug, refId, text),
+    mutationFn: (text: string) => saveConceptDocs(slug, refId, text, namespace),
     onSuccess: (_, text) => {
       // The swarm holds the new docs now: show them without reading the whole graph again.
       queryClient.setQueryData(
@@ -260,7 +286,28 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
   // Developers and up edit a Concept's docs in place; a proposal's node can't be, until it's approved or rejected.
   const canEdit = !!role && hasRoleLevel(role, WorkspaceRole.DEVELOPER);
   const conceptRef = canEdit && node && !node.proposed && node.type === "Concept" ? node.id : null;
+  // `connectionsQuery` reads this node via a raw `ref_id` Cypher match, not
+  // Jarvis's namespace-scoped REST API, so it sees `namespace` even for a
+  // Concept outside the default partition — carry it along to the docs save
+  // and delete requests so THEIR namespace-scoped lookups don't miss it.
+  const conceptNamespace =
+    typeof data?.node.properties?.namespace === "string" ? data.node.properties.namespace : undefined;
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const queryClient = useQueryClient();
+  const remove = useMutation({
+    mutationFn: (refId: string) => deleteConcept(slug, refId, conceptNamespace),
+    onSuccess: async () => {
+      toast.success(`Deleted "${name}"`);
+      setConfirmDelete(false);
+      onClose();
+      await queryClient.invalidateQueries({ queryKey: workbenchKey(slug) });
+    },
+    onError: (e: Error) => {
+      toast.error(e.message || "Failed to delete concept");
+      setConfirmDelete(false);
+    },
+  });
   const editDocs = conceptRef && (
     <button
       type="button"
@@ -324,7 +371,13 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
       )}
 
       {editing && node && conceptRef ? (
-        <DocsEditor refId={conceptRef} type={node.type} docs={node.docs ?? ""} onDone={() => setEditing(false)} />
+        <DocsEditor
+          refId={conceptRef}
+          type={node.type}
+          docs={node.docs ?? ""}
+          namespace={conceptNamespace}
+          onDone={() => setEditing(false)}
+        />
       ) : documented ? (
         <div className="space-y-1">
           <LabelRow label="Docs" action={editDocs} />
@@ -376,6 +429,44 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
         <p className="text-xs text-muted-foreground">Loading connections…</p>
       ) : (
         data && <Connections refId={id} groups={groups} />
+      )}
+
+      {conceptRef && (
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-destructive hover:text-destructive"
+            onClick={() => setConfirmDelete(true)}
+            data-testid="graph-workbench-delete-concept"
+          >
+            <Trash2 className="mr-1 h-3 w-3" />
+            Delete
+          </Button>
+          <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete concept?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  &quot;{name}&quot; and its links will be removed from the graph.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => {
+                    e.preventDefault();
+                    remove.mutate(conceptRef);
+                  }}
+                  disabled={remove.isPending}
+                  data-testid="graph-workbench-confirm-delete"
+                >
+                  {remove.isPending ? "Deleting…" : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
       )}
 
       {node && !isNew && (
