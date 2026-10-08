@@ -5,11 +5,11 @@
  *
  * Covers:
  *   - first paint: inline content shown immediately (no loading state)
- *   - poll started when jobId + swarmId present on inline pull_request ref
+ *   - poll started for any inline pull_request ref with a repo and number
  *   - live result overlaid on inline content (state, checks, branches, author)
  *   - polling stops (refetchInterval returns false) once state is merged/closed
  *   - on fetch error the inline content is kept (no "failed" status exposed)
- *   - no polling for pull_request refs without jobId/swarmId
+ *   - a ref stamped with a job's ids (stored while the route needed them) polls the same, with nothing of the job on the URL
  *   - no change for non-pull_request inline refs
  *   - card + panel share the query key (single fetch)
  */
@@ -54,8 +54,6 @@ function prRef(overContent: Record<string, unknown> = {}): ArtifactRef {
         repo: "acme/app",
         number: 7,
         state: "open",
-        jobId: "job-abc",
-        swarmId: "swarm-1",
         ...overContent,
       },
     },
@@ -127,8 +125,6 @@ describe("useArtifactContent — pull_request live polling", () => {
     // Verify the fetch URL includes the correct query params.
     const url = mockFetch.mock.calls[0]?.[0] as string;
     expect(url).toContain("/api/orgs/acme-org/strut/pull-request");
-    expect(url).toContain("swarmId=swarm-1");
-    expect(url).toContain("jobId=job-abc");
     expect(url).toContain("repo=acme%2Fapp");
     expect(url).toContain("number=7");
   });
@@ -186,7 +182,7 @@ describe("useArtifactContent — pull_request live polling", () => {
     expect(prLivePollInterval({ status: "success", data: { state: "draft" } })).toBe(30_000);
     expect(prLivePollInterval({ status: "success", data: { state: "merged" } })).toBe(false);
     expect(prLivePollInterval({ status: "success", data: { state: "closed" } })).toBe(false);
-    // A 404 (not this job's PR, a ref older than the route), a 502 (no token), a network error.
+    // A 403 (no GitHub token for the owner), a 404 (GitHub will not show the viewer the PR), a network error.
     expect(prLivePollInterval({ status: "error" })).toBe(false);
     expect(prLivePollInterval({ status: "error", data: { state: "open" } })).toBe(false);
   });
@@ -205,17 +201,24 @@ describe("useArtifactContent — pull_request live polling", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("does NOT poll when jobId or swarmId is absent from inline content", async () => {
+  it("a ref stamped with a job's ids polls like any other, and nothing of the job goes on the URL", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify(LIVE), { status: 200, headers: { "content-type": "application/json" } }),
+    );
     const { Wrapper } = wrapper();
     const { useArtifactContent } = await import(
       "@/app/org/[githubLogin]/_components/artifacts/useArtifactContent"
     );
-    // No jobId/swarmId
-    const ref = prRef({ jobId: undefined, swarmId: undefined });
+    // Stored while the route needed the job: the extra fields are ignored.
+    const ref = prRef({ jobId: "job-abc", swarmId: "swarm-1" });
     const { result } = renderHook(() => useArtifactContent(ref), { wrapper: Wrapper });
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
-    expect(result.current.status).toBe("ready");
-    expect(mockFetch).not.toHaveBeenCalled();
+    await waitFor(() => {
+      if (result.current.status !== "ready") return;
+      expect((result.current.content as { state: string }).state).toBe("merged");
+    });
+    const url = mockFetch.mock.calls[0]?.[0] as string;
+    expect(url).not.toContain("jobId");
+    expect(url).not.toContain("swarmId");
   });
 
   it("does NOT poll when kind is not pull_request", async () => {

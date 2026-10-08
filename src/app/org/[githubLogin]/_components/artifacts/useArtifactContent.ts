@@ -122,28 +122,15 @@ const failureOf = (error: unknown): ArtifactLoadFailure =>
   error instanceof ArtifactLoadError ? error.reason : "failed";
 
 /**
- * Build the URL for the live PR status endpoint.
- * Returns null when the inline content does not carry jobId + swarmId.
+ * Where a pull request's live state is read from: Hive's route, which asks
+ * GitHub with the viewer's own token
+ * (`api/orgs/[githubLogin]/strut/pull-request`). Null when the ref does not
+ * name a pull request by repo and number.
  */
-function prLiveUrl(
-  githubLogin: string,
-  inline: Record<string, unknown>,
-): string | null {
-  const { jobId, swarmId, repo, number } = inline;
-  if (
-    typeof jobId !== "string" || !jobId ||
-    typeof swarmId !== "string" || !swarmId ||
-    typeof repo !== "string" || !repo ||
-    typeof number !== "number"
-  ) {
-    return null;
-  }
-  const sp = new URLSearchParams({
-    swarmId,
-    jobId,
-    repo,
-    number: String(number),
-  });
+function prLiveUrl(githubLogin: string, inline: Record<string, unknown>): string | null {
+  const { repo, number } = inline;
+  if (typeof repo !== "string" || !repo || typeof number !== "number" || !Number.isInteger(number)) return null;
+  const sp = new URLSearchParams({ repo, number: String(number) });
   return `/api/orgs/${encodeURIComponent(githubLogin)}/strut/pull-request?${sp}`;
 }
 
@@ -156,10 +143,10 @@ const PR_LIVE_POLL_MS = 30_000;
 /**
  * How long until the live read goes again, or `false` for never: once the
  * PR is merged or closed there is nothing left to learn, and once a read has
- * failed — the job is older than the route, the PR was not this job's, no
- * token reaches the repo — asking again every half minute would not change
- * the answer. The inline state stands; a window focus or a reconnect still
- * retries once, and a read that succeeds then resumes the interval.
+ * failed — the viewer has no GitHub token for the repo's owner, or GitHub
+ * will not show them the PR — asking again every half minute would not
+ * change the answer. The inline state stands; a window focus or a reconnect
+ * still retries once, and a read that succeeds then resumes the interval.
  */
 export const prLivePollInterval = (state: { status: string; data?: Record<string, unknown> }): number | false =>
   state.status === "error" || isTerminalPrState(state.data?.state) ? false : PR_LIVE_POLL_MS;
@@ -179,13 +166,14 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
     [kind, source],
   );
 
-  // ── Live PR status polling (pull_request + inline + jobId/swarmId) ──────
+  // ── Live PR status polling (an inline pull_request, by repo and number) ──
   //
-  // The inline content is the first paint; this query overlays the live
-  // state once it arrives. The card and the panel share the same query key
-  // so a single poll serves both. Polling stops once the PR is merged or
-  // closed, or once a read has failed (`prLivePollInterval`), and does not
-  // run when the tab is hidden.
+  // The inline content is the first paint — the state the job reported —
+  // and this query overlays the live state once it arrives, read from
+  // GitHub with the viewer's own token. The card and the panel share the
+  // same query key so a single poll serves both. Polling stops once the PR
+  // is merged or closed, or once a read has failed (`prLivePollInterval`),
+  // and does not run when the tab is hidden.
   const prUrl = useMemo(
     () =>
       kind === "pull_request" && source.type === "inline"

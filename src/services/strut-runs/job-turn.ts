@@ -159,8 +159,8 @@ const PR_STATES: ReadonlySet<string> = new Set(["open", "draft", "merged", "clos
  * Lenient: the object, its JSON text, or the bare GitHub link; `repo` and
  * `number` read off the link when missing (and the link built from them);
  * a numeric string number; `state` defaults to `open` — a job reports the PR
- * it just opened; the live-read hook in useArtifactContent corrects it once
- * the ref has a jobId and swarmId, via api/orgs/[githubLogin]/strut/pull-request.
+ * it just opened, and the card's live read (`useArtifactContent`, through
+ * api/orgs/[githubLogin]/strut/pull-request) corrects it from GitHub.
  */
 export function pullRequestContent(raw: unknown): Record<string, unknown> | null {
   if (typeof raw === "string") {
@@ -230,15 +230,10 @@ const basename = (key: string): string => key.split("?")[0].split("/").pop() ?? 
  * Strut's resolved entries → hive's refs. Pure. `dropped` names the entries
  * that became no ref — unresolved on strut's side, or a shape hive cannot
  * show — for the content to mention.
- *
- * `jobId`, when supplied, is stored on every `pull_request` inline ref so the
- * live-read route (`api/orgs/[githubLogin]/strut/pull-request`) can look up
- * the job owner's GitHub token without a separate DB round-trip in the browser.
  */
 export function mapStrutArtifacts(
   entries: StrutArtifact[],
   swarmId: string,
-  jobId?: string,
 ): { refs: ArtifactRef[]; dropped: Array<{ title: string; reason: string }> } {
   const refs: ArtifactRef[] = [];
   const dropped: Array<{ title: string; reason: string }> = [];
@@ -266,10 +261,7 @@ export function mapStrutArtifacts(
       }
       const pr = entry.kind === "pull_request" ? pullRequestContent(entry.url) : null;
       if (pr) {
-        // Carry jobId and swarmId so the live-read hook can fetch current PR
-        // status from GitHub via api/orgs/[githubLogin]/strut/pull-request.
-        const prContent = jobId ? { ...pr, jobId, swarmId } : pr;
-        refs.push({ ...base, kind: "pull_request", source: { type: "inline", content: prContent } });
+        refs.push({ ...base, kind: "pull_request", source: { type: "inline", content: pr } });
         continue;
       }
       if (isAbsolute(entry.url)) {
@@ -283,11 +275,7 @@ export function mapStrutArtifacts(
     if (entry.content !== undefined) {
       const inline = inlineContent(entry.kind, entry.content);
       if (inline) {
-        let content = inline.kind === "code" && !("filename" in inline.content) && entry.url ? { ...inline.content, filename: basename(entry.url) } : inline.content;
-        // For pull_request inline content, carry jobId + swarmId for the live-read hook.
-        if (inline.kind === "pull_request" && jobId) {
-          content = { ...content, jobId, swarmId };
-        }
+        const content = inline.kind === "code" && !("filename" in inline.content) && entry.url ? { ...inline.content, filename: basename(entry.url) } : inline.content;
         refs.push({ ...base, kind: inline.kind, source: { type: "inline", content } });
       } else dropped.push({ title: entry.title, reason: "unsupported content" });
       continue;
@@ -518,7 +506,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
   if (reply.outcome === "success") {
     const read = await readRunArtifacts(row);
     if (read.ok) {
-      ({ refs, dropped } = mapStrutArtifacts(read.artifacts, row.swarmId, jobId));
+      ({ refs, dropped } = mapStrutArtifacts(read.artifacts, row.swarmId));
     } else if (read.permanent) {
       logger.warn("Job turn artifacts unavailable — delivering the text alone", LOG_TAG, { runId: row.id, reason: read.reason });
       dropped = [{ title: "the turn's artifacts", reason: read.reason }];
