@@ -10,6 +10,7 @@ import {
   buildPodUrl,
 } from "@/lib/pods";
 import { resolvePodCaller } from "@/lib/auth/pod-access";
+import { getPodUsageStatus, jobClaimant } from "@/lib/pods/queries";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -25,6 +26,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shouldResetRepositories = searchParams.get("latest") === "true";
     const podId = searchParams.get("podId");
     const taskId = searchParams.get("taskId");
+    // The strut job releasing its own pod (strut plans/job-artifact-events.md §2).
+    const job = taskId ? null : searchParams.get("job");
 
     // podId is required - we must know which specific pod to drop
     if (!podId) {
@@ -105,6 +108,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Check if workspace has a swarm
     if (!workspace.swarm) {
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
+    }
+
+    // A job releases only a pod it still holds — the task path's ownership
+    // rule, for jobs: a pod hive recycled and handed to a task (or another
+    // job) is not dropped from under it by a late release — strut's idle
+    // sweep days later, or an agent acting on a stale pod id. A pod nobody
+    // claimed (`usage_status_marked_by` null: claimed by a strut whose steps
+    // did not send a job yet) is anybody's to release, as before. 404 when
+    // hive has already let the pod go; the step treats both as released.
+    if (job) {
+      const usage = await getPodUsageStatus(podId);
+      if (!usage) {
+        return NextResponse.json({ error: "Pod not found" }, { status: 404 });
+      }
+      const claimant = usage.usageStatusMarkedBy;
+      if (claimant !== null && claimant !== jobClaimant(job)) {
+        console.log(`>>> Pod ${podId} is held by ${claimant}, not job ${job}; not dropping it`);
+        return NextResponse.json({ error: "Pod has been reassigned", reassigned: true }, { status: 409 });
+      }
     }
 
     console.log(">>> Dropping pod with ID:", podId);
