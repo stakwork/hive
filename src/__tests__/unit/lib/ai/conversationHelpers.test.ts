@@ -5,6 +5,7 @@ import {
   INTERRUPTED_TOOL_RESULT,
   STOPPED_TURN_NOTICE,
   STOPPED_TURN_TEXT,
+  jobEventNotice,
   toModelMessages,
 } from "@/lib/ai/conversationHelpers";
 import type { StoredMessage } from "@/services/canvas-turn-persistence";
@@ -180,6 +181,21 @@ describe("toModelMessages", () => {
       { role: "user", content: STOPPED_TURN_NOTICE },
       { role: "user", content: "Actually, explain billing" },
     ]);
+  });
+
+  it("replays a job event row as a notice from the user carrying the event, never as the assistant's words", () => {
+    const line = "[artifact-event] pull_request https://github.com/acme/app/pull/12 merged";
+    const stored = [
+      { id: "u", role: "user", content: "Make a PR" },
+      { id: "e", role: "assistant", content: line, source: { kind: "job_event", jobId: "6f1c", title: "Dark mode", runId: "row-2" } },
+    ] as StoredMessage[];
+
+    expect(toModelMessages(stored)).toEqual([
+      { role: "user", content: "Make a PR" },
+      { role: "user", content: jobEventNotice("6f1c", line) },
+    ]);
+    expect(jobEventNotice("6f1c", line)).toContain("not by you, not by the user");
+    expect(jobEventNotice("6f1c", line)).toContain(line);
   });
 
   it("filters out messages with empty content and no toolCalls", () => {

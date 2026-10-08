@@ -9,11 +9,13 @@ import React from "react";
 import { describe, test, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import {
+  JobEventRow,
   JobTurnCard,
   PendingJobTurnCard,
   getPendingJobTurnsFromMessages,
   jobTurnBody,
   jobTurnLook,
+  type JobEventSource,
   type JobTurnSource,
 } from "@/app/org/[githubLogin]/_components/JobTurnCard";
 import type { CanvasChatMessage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
@@ -166,6 +168,20 @@ function row(id: string, over: Partial<JobTurnSource> = {}): CanvasChatMessage {
   return { id, role: "assistant", content: content("Wrote the plan."), timestamp: new Date(), source: source(over) };
 }
 
+const EVENT_LINE = "[artifact-event] pull_request https://github.com/acme/app/pull/12 merged";
+
+/** The origin row of a turn hive started for an event (`source.kind: "job_event"`). */
+function eventRow(id: string, over: Partial<JobEventSource> & { content?: string } = {}): CanvasChatMessage {
+  const { content: text, ...src } = over;
+  return {
+    id,
+    role: "assistant",
+    content: text ?? EVENT_LINE,
+    timestamp: new Date(),
+    source: { kind: "job_event", jobId: JOB, title: "Dark mode plan", runId: "row-2", ...src },
+  };
+}
+
 describe("getPendingJobTurnsFromMessages", () => {
   test("a launch strut accepted is a pending turn, anchored on the launching message", () => {
     expect(getPendingJobTurnsFromMessages([launch("m1")])).toEqual([
@@ -258,5 +274,46 @@ describe("PendingJobTurnCard", () => {
   test("a title-less turn still has a name", () => {
     render(<PendingJobTurnCard turn={{ jobId: JOB, title: "", anchorMessageId: "m1" }} />);
     expect(screen.getByText("Job")).toBeInTheDocument();
+  });
+});
+
+describe("getPendingJobTurnsFromMessages — turns an event started", () => {
+  test("an event row is a launch anchored on itself, settled by the job row that follows", () => {
+    expect(getPendingJobTurnsFromMessages([launch("m1"), row("job-1"), eventRow("e1")])).toEqual([
+      { jobId: JOB, title: "Dark mode plan", anchorMessageId: "e1" },
+    ]);
+    expect(getPendingJobTurnsFromMessages([launch("m1"), row("job-1"), eventRow("e1"), row("job-2")])).toEqual([]);
+  });
+
+  test("a job row that landed before its origin was written settles it too — the row is named", () => {
+    // The job row's id is `job-<StrutRun.id>`; the event row names that run.
+    expect(getPendingJobTurnsFromMessages([row("job-row-2"), eventRow("e1", { runId: "row-2" })])).toEqual([]);
+    expect(getPendingJobTurnsFromMessages([row("job-row-9"), eventRow("e1", { runId: "row-2" })])).toEqual([
+      { jobId: JOB, title: "Dark mode plan", anchorMessageId: "e1" },
+    ]);
+  });
+
+  test("a title-less event row takes the job's last title", () => {
+    expect(getPendingJobTurnsFromMessages([launch("m1"), row("job-1"), eventRow("e1", { title: undefined })])).toEqual([
+      { jobId: JOB, title: "Dark mode plan", anchorMessageId: "e1" },
+    ]);
+  });
+});
+
+describe("JobEventRow", () => {
+  test("the job's title and the event, linked to the artifact", () => {
+    const m = eventRow("e1");
+    render(<JobEventRow message={m} source={m.source as JobEventSource} />);
+    const rowEl = screen.getByTestId("job-event-row");
+    expect(rowEl).toHaveAttribute("data-job-id", JOB);
+    expect(rowEl.textContent).toBe("Dark mode plan · pull request acme/app#12 merged");
+    expect(screen.getByRole("link")).toHaveAttribute("href", "https://github.com/acme/app/pull/12");
+  });
+
+  test("a message that is not an event line shows its first line, unlinked; a title-less row still has a name", () => {
+    const m = eventRow("e1", { content: "something else\nmore", title: undefined });
+    render(<JobEventRow message={m} source={m.source as JobEventSource} />);
+    expect(screen.getByTestId("job-event-row").textContent).toBe("Job · something else");
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });

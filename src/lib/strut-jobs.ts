@@ -64,3 +64,55 @@ export function jobTitleOf(row: { input: unknown }): string {
   const input = jobTurnInputSchema.safeParse(row.input);
   return (input.success && input.data.title?.trim()) || "Job";
 }
+
+// ─── Artifact events ──────────────────────────────────────────────────────
+
+/**
+ * An event about an artifact a job reported — a pull request merging,
+ * closing, failing its checks — reaches the job as a TURN whose message
+ * begins with this line (strut `plans/job-artifact-events.md` §3):
+ *
+ *   [artifact-event] <kind> <url> <what happened>
+ *
+ * the specifics on the lines below. The kind is the ref's, the URL the join
+ * key, the rest names the event; a source (the GitHub webhook) fills the
+ * three slots and a card's action composes the same line. Every reader —
+ * the `Pod` page the job's agent follows, the wake, the conversation row —
+ * parses the first line and nothing else, so a later source (a comment on
+ * a document, a failed deploy) adds nothing here.
+ */
+export const ARTIFACT_EVENT_PREFIX = "[artifact-event]";
+
+export interface ArtifactEvent {
+  /** The ref's kind (`pull_request`). */
+  kind: string;
+  url: string;
+  /** What happened, one line (`merged`, `closed`, `checks failed`). */
+  what: string;
+}
+
+/** The turn's message: the line, then the details, one per line. */
+export function formatArtifactEvent(event: ArtifactEvent, details: string[] = []): string {
+  const line = `${ARTIFACT_EVENT_PREFIX} ${event.kind} ${event.url} ${event.what.trim().replace(/\s+/g, " ")}`;
+  const rest = details.map((d) => d.trim()).filter(Boolean);
+  return rest.length > 0 ? `${line}\n${rest.join("\n")}` : line;
+}
+
+const EVENT_LINE = /^\[artifact-event\] (\S+) (\S+) (.+)$/;
+
+/** The event a turn's message carries, read off its first line; null for a turn a person asked for. */
+export function parseArtifactEvent(text: unknown): ArtifactEvent | null {
+  if (typeof text !== "string") return null;
+  const first = text.split("\n", 1)[0].trim();
+  const m = EVENT_LINE.exec(first);
+  return m ? { kind: m[1], url: m[2], what: m[3].trim() } : null;
+}
+
+const GITHUB_PR = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)(?:[/?#]|$)/i;
+
+/** The event for a person: `pull request acme/app#12 merged`, else the line's own words. */
+export function describeArtifactEvent(event: ArtifactEvent): string {
+  const pr = GITHUB_PR.exec(event.url);
+  if (event.kind === "pull_request" && pr) return `pull request ${pr[1]}#${pr[2]} ${event.what}`;
+  return `${event.kind.replace(/_/g, " ")} ${event.url} ${event.what}`;
+}
