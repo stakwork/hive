@@ -2702,6 +2702,11 @@ model StrutJobArtifact {
   /// a turn).
   pendingEvent String?   @map("pending_event") @db.Text
   pendingAt    DateTime? @map("pending_at")
+  /// When hive sent this ref's ONE automatic event — a pull request's
+  /// failing checks forwarded with no click, once every check had run
+  /// (`check-failures.ts`). The first fix is hive's; every later one is a
+  /// person's click on the card. Null until then.
+  autoEventAt  DateTime? @map("auto_event_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 

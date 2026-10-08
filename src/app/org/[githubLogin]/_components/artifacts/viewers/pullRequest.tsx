@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { checksFailedEvent } from "@/lib/strut-jobs";
 import { cn } from "@/lib/utils";
 import type {
   ArtifactContents,
@@ -105,18 +106,9 @@ function SectionHeading({ children }: { children: ReactNode }) {
   );
 }
 
-/** What the Fix sends (strut plans/job-artifact-events.md §5): the event the webhook would — the head commit and the failing checks, each with its link — composed from the card's live state. Null while nothing has failed. */
+/** What the Fix sends (strut plans/job-artifact-events.md §5): the `checks failed` event — the head commit and the failing checks, each with its link — composed from the card's live state, the same one hive sends on its own once (`check-failures.ts`). Null while nothing has failed. */
 export function fixEventOf(content: ArtifactContents["pull_request"]): { url: string; what: string; details: string[] } | null {
-  const failing = (content.checks ?? []).filter((check) => check.status === "failure");
-  if (failing.length === 0) return null;
-  return {
-    url: content.url,
-    what: "checks failed",
-    details: [
-      ...(content.headSha ? [`head: ${content.headSha}`] : []),
-      ...failing.map((check) => `- ${check.name}${check.url ? ` — ${check.url}` : ""}`),
-    ],
-  };
+  return checksFailedEvent(content);
 }
 
 type FixState =
@@ -132,7 +124,10 @@ type FixState =
  * the `Pod` page has it reproduce, fix in the pod and push to this same
  * pull request. A click where a `continue_job` would be; only the job's
  * owner may (the route's 403). A job mid-turn says so — try again in a
- * minute — rather than queueing from a button.
+ * minute — rather than queueing from a button. The FIRST fix on a pull
+ * request goes without a click, once every check has run
+ * (`services/strut-jobs/check-failures.ts`); this button is every one
+ * after it.
  */
 function FixButton({ jobId, event }: { jobId: string; event: NonNullable<ReturnType<typeof fixEventOf>> }) {
   const githubLogin = useChatOrgLogin();
@@ -196,7 +191,17 @@ export function PullRequestPanel({ artifact, content, jobId }: ArtifactViewerPro
     <ScrollFade className="mx-auto w-full max-w-4xl space-y-8 px-8 py-8">
       <header className="space-y-3">
         <h2 className="text-xl font-semibold leading-snug">
-          {artifact.title} <span className="font-normal text-muted-foreground">#{content.number}</span>
+          {artifact.title}{" "}
+          <a
+            href={content.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="pr-number"
+            title="Open on GitHub"
+            className="font-normal text-muted-foreground hover:text-foreground hover:underline"
+          >
+            #{content.number}
+          </a>
         </h2>
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm text-muted-foreground">
           <span

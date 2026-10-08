@@ -30,6 +30,11 @@ vi.mock("@/lib/github/pr-monitor", () => ({
   }),
 }));
 
+// A strut job's pull request has its first fix sent by hive once every
+// check has run (strut plans/job-artifact-events.md §5): the source is
+// its own module, mocked here — the route forwards, the module reads.
+vi.mock("@/services/strut-jobs/check-failures", () => ({ forwardCheckFailure: vi.fn() }));
+
 // Mock external services that are not under test
 vi.mock("@/services/swarm/stakgraph-actions", () => ({
   triggerAsyncSync: vi.fn().mockResolvedValue({ ok: true, status: 200, data: {} }),
@@ -61,6 +66,7 @@ vi.mock("@/lib/sphinx/direct-message", () => ({
 // Import route and mock AFTER mocks are registered
 import { POST } from "@/app/api/github/webhook/[workspaceId]/route";
 import { monitorSinglePR } from "@/lib/github/pr-monitor";
+import { forwardCheckFailure } from "@/services/strut-jobs/check-failures";
 
 const FULL_NAME = "test-owner/test-repo";
 const REPO_URL = "https://github.com/test-owner/test-repo";
@@ -192,6 +198,9 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).toHaveBeenCalledWith(expectedPrUrl);
+    // A job that reported the pull request may get its first fix from this.
+    expect(forwardCheckFailure).toHaveBeenCalledTimes(1);
+    expect(forwardCheckFailure).toHaveBeenCalledWith({ workspaceId: testSetup.workspace.id, url: expectedPrUrl, publicBaseUrl: expect.any(String) });
   });
 
   it("check_run in_progress → does NOT call monitorSinglePR and returns 202", async () => {
@@ -216,6 +225,7 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).not.toHaveBeenCalled();
+    expect(forwardCheckFailure).not.toHaveBeenCalled();
   });
 
   // ─── workflow_run events ─────────────────────────────────────────────────────
@@ -247,6 +257,8 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).toHaveBeenCalledWith(expectedPrUrl);
+    expect(forwardCheckFailure).toHaveBeenCalledTimes(1);
+    expect(forwardCheckFailure).toHaveBeenCalledWith({ workspaceId: testSetup.workspace.id, url: expectedPrUrl, publicBaseUrl: expect.any(String) });
   });
 
   it("workflow_run in_progress → does NOT call monitorSinglePR and returns 202", async () => {
@@ -272,5 +284,6 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).not.toHaveBeenCalled();
+    expect(forwardCheckFailure).not.toHaveBeenCalled();
   });
 });

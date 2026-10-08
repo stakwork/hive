@@ -620,6 +620,21 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       if (event && launched.success && reply.error?.startsWith("job_busy:")) await events.requeueArtifactEvent(jobId, launched.data.prompt);
       await events.launchPendingArtifactEvents(jobId, publicBaseUrl);
     });
+
+    // The pull requests this turn reported may have run their checks while
+    // it did: the first fix is hive's, once every check is in (strut
+    // plans/job-artifact-events.md §5; `check-failures.ts` sends it once
+    // per ref, as the job's owner) — after the row and the events above,
+    // which a busy job queues it behind.
+    const pullRequests = refs.flatMap((ref) =>
+      ref.kind === "pull_request" && ref.source.type === "inline" && typeof ref.source.content.url === "string" ? [ref.source.content.url] : [],
+    );
+    if (pullRequests.length > 0) {
+      afterResponse("Check failures", row, async () => {
+        const { deliverCheckFailure } = await import("@/services/strut-jobs/check-failures");
+        for (const url of pullRequests) await deliverCheckFailure({ workspaceId: row.workspaceId, url, publicBaseUrl });
+      });
+    }
   }
 
   // The Stop button: this run is no longer something to stop.
