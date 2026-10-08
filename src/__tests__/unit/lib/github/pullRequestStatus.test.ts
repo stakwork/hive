@@ -116,6 +116,18 @@ describe("getPullRequestStatus — check-run conclusions", () => {
     expect(result.checks[0]).toEqual({ name: "CI", status: expected });
   });
 
+  it("a check run's page rides along as `url`; one GitHub gives none has no `url` key", async () => {
+    const octokit = makeOctokit(BASE_PR, [
+      { name: "lint", status: "completed", conclusion: "failure", html_url: "https://github.com/acme/app/actions/runs/123" },
+      { name: "build", status: "completed", conclusion: "success", html_url: null },
+    ]);
+    const result = await getPullRequestStatus(octokit, { owner: "acme", repo: "app", number: 1 });
+    expect(result.checks).toStrictEqual([
+      { name: "lint", status: "failure", url: "https://github.com/acme/app/actions/runs/123" },
+      { name: "build", status: "success" },
+    ]);
+  });
+
   it("multiple check runs — all mapped", async () => {
     const octokit = makeOctokit(BASE_PR, [
       { name: "lint", status: "completed", conclusion: "success" },
@@ -134,6 +146,12 @@ describe("getPullRequestStatus — check-run conclusions", () => {
 // ─── Legacy commit statuses ──────────────────────────────────────────────────
 
 describe("getPullRequestStatus — legacy commit statuses", () => {
+  it("a commit status's target_url is the check's url", async () => {
+    const octokit = makeOctokit(BASE_PR, [], [{ context: "ci/circle", state: "failure", target_url: "https://ci.test/42" }]);
+    const result = await getPullRequestStatus(octokit, { owner: "acme", repo: "app", number: 1 });
+    expect(result.checks).toStrictEqual([{ name: "ci/circle", status: "failure", url: "https://ci.test/42" }]);
+  });
+
   it("success/pending/failure/error → mapped", async () => {
     const octokit = makeOctokit(BASE_PR, [], [
       { context: "ci/travis", state: "success" },
