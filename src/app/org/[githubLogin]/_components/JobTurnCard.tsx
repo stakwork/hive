@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Ban, Briefcase, Check, ChevronDown, CircleDashed, HelpCircle, Loader2, XCircle } from "lucide-react";
+import { Ban, Bot, Check, ChevronRight, CircleDashed, HelpCircle, Loader2, XCircle } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 
@@ -13,6 +13,9 @@ import type { CanvasChatMessage } from "../_state/canvasChatStore";
  * lists files, functions and line numbers — and the canvas agent is woken
  * to summarize it (`canvas-strut-autoturn.ts`). So the card is the header
  * line (title, how the turn ended) and opens on click to the full reply.
+ * The chevron leads the row, and what opens is indented under the title
+ * on a guide line, so the job's report reads apart from the chat's own
+ * text.
  * What stays visible collapsed is what asks something of the reader: the
  * job's question, or why a turn failed. The artifacts the turn produced
  * are the row's `artifacts` and render as cards under this one
@@ -136,8 +139,23 @@ export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): P
 // ─── Cards ──────────────────────────────────────────────────────────────
 
 function JobIcon() {
-  return <Briefcase className="h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />;
+  return <Bot className="h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />;
 }
+
+/** The disclosure chevron, or an empty slot of its width so titles line up down the column. */
+function Disclosure({ open }: { open?: boolean }) {
+  if (open === undefined) return <span className="h-4 w-4 flex-shrink-0" aria-hidden="true" />;
+  return (
+    <ChevronRight
+      className={`h-4 w-4 flex-shrink-0 text-foreground/70 transition-transform group-hover:text-foreground motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+const HEADER_CLASSES = "flex items-center gap-2 py-2.5 pl-2 pr-3";
+/** Under the title: the guide line hangs from the chevron's center, the text starts at the title's edge. */
+const INDENTED_CLASSES = "mb-2.5 ml-[15px] mr-3 border-l-2 pl-[37px]";
 
 function StatusPill({ look }: { look: JobTurnLook }) {
   const { label, tone, Icon, spin } = look;
@@ -159,7 +177,8 @@ export function PendingJobTurnCard({ turn }: { turn: PendingJobTurn }) {
       data-job-id={turn.jobId}
       className="rounded-lg border bg-card text-card-foreground"
     >
-      <div className="flex items-center gap-2 px-3 py-2.5">
+      <div className={HEADER_CLASSES}>
+        <Disclosure />
         <JobIcon />
         <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">{turn.title || "Job"}</span>
         <StatusPill look={RUNNING_LOOK} />
@@ -185,15 +204,10 @@ export function JobTurnCard({
 
   const header = (
     <>
+      <Disclosure open={collapsible ? open : undefined} />
       <JobIcon />
       <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">{title}</span>
       <StatusPill look={look} />
-      {collapsible && (
-        <ChevronDown
-          className={`h-3.5 w-3.5 flex-shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
-          aria-hidden="true"
-        />
-      )}
     </>
   );
 
@@ -202,7 +216,7 @@ export function JobTurnCard({
       data-testid="job-turn-card"
       data-job-id={source.jobId}
       data-expanded={expanded ? "true" : "false"}
-      className="rounded-lg border bg-card text-card-foreground"
+      className={`rounded-lg border bg-card text-card-foreground ${collapsible ? "transition-[border-color,box-shadow] hover:border-foreground/25 hover:shadow-sm motion-reduce:transition-none" : ""}`}
     >
       {collapsible ? (
         <button
@@ -210,22 +224,22 @@ export function JobTurnCard({
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           data-testid="job-turn-toggle"
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 hover:bg-muted/50"
+          className={`group w-full rounded-lg ${HEADER_CLASSES}`}
         >
           {header}
         </button>
       ) : (
-        <div className="flex items-center gap-2 px-3 py-2.5">{header}</div>
+        <div className={HEADER_CLASSES}>{header}</div>
       )}
 
       {!expanded && source.ask && (
-        <div data-testid="job-turn-ask" className="border-t px-3 py-2 text-xs text-foreground/90">
+        <div data-testid="job-turn-ask" className={`${INDENTED_CLASSES} text-xs text-foreground/90`}>
           <span className="font-medium">Question for you:</span> {source.ask}
         </div>
       )}
 
       {expanded && (
-        <div data-testid="job-turn-body" className="border-t px-3 py-2">
+        <div data-testid="job-turn-body" className={INDENTED_CLASSES}>
           <MarkdownRenderer className="text-sm [&>*]:!text-foreground/90 [&_*]:!text-foreground/90">
             {body}
           </MarkdownRenderer>
