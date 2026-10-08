@@ -28,7 +28,6 @@
  * slot untaken: there is nothing to fix yet, or ever.
  */
 
-import { Octokit } from "@octokit/rest";
 import { after } from "next/server";
 import { db } from "@/lib/db";
 import { getPullRequestStatus } from "@/lib/github/pullRequestStatus";
@@ -127,6 +126,10 @@ async function sendOnce(ref: IndexedRef, publicBaseUrl: string): Promise<CheckFa
   }
   let status: Awaited<ReturnType<typeof getPullRequestStatus>>;
   try {
+    // Loaded here, not at the top: the webhook route imports this module,
+    // and GitHub's client is for the one read, as `launchJobTurn` loads
+    // what it needs when it needs it.
+    const { Octokit } = await import("@octokit/rest");
     status = await getPullRequestStatus(new Octokit({ auth: tokens.accessToken }), { owner: pr.owner, repo: pr.name, number: pr.number });
   } catch (err) {
     logger.warn("Check failure not read — GitHub refused", LOG_TAG, { jobId: ref.jobId, url: ref.url, error: err instanceof Error ? err.message : String(err) });
