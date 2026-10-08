@@ -156,13 +156,16 @@ export async function findDeletedPods(swarmId: string): Promise<Pod[]> {
  * Uses SELECT FOR UPDATE SKIP LOCKED to prevent race conditions
  *
  * @param swarmId - The swarm ID to claim a pod from
- * @param userId - The user ID claiming the pod
+ * @param userInfo - Who is claiming: a task id, or `job:<id>` for a strut job
+ * @param excludePodIds - Pods not to hand out (a claim that failed downstream)
+ * @param reason - What the claim is for, as `usage_status_reason` — a strut run id
  * @returns The claimed pod or null if none available
  */
 export async function claimAvailablePod(
   swarmId: string,
   userInfo?: string,
   excludePodIds?: string[],
+  reason?: string,
 ): Promise<Pod | null> {
   // Use raw SQL for atomic SELECT FOR UPDATE SKIP LOCKED
   interface RawPodResult {
@@ -196,7 +199,8 @@ export async function claimAvailablePod(
     SET 
       usage_status = 'USED'::"PodUsageStatus",
       usage_status_marked_at = NOW(),
-      usage_status_marked_by = ${userInfo}
+      usage_status_marked_by = ${userInfo},
+      usage_status_reason = ${reason ?? null}
     WHERE id = (
       SELECT id FROM pods
       WHERE 
@@ -240,6 +244,16 @@ export async function claimAvailablePod(
     deletedAt: rawPod.deleted_at,
   } as Pod;
 }
+
+/**
+ * A strut job as a pod's claimant (`usage_status_marked_by`): `job:<id>`,
+ * beside a task's bare id — the one column, no second one (strut
+ * plans/job-artifact-events.md §2). `jobOfClaimant` reads it back.
+ */
+export const JOB_CLAIMANT_PREFIX = "job:";
+export const jobClaimant = (jobId: string): string => `${JOB_CLAIMANT_PREFIX}${jobId}`;
+export const jobOfClaimant = (claimant: string | null | undefined): string | null =>
+  claimant?.startsWith(JOB_CLAIMANT_PREFIX) ? claimant.slice(JOB_CLAIMANT_PREFIX.length) : null;
 
 /** Base domain for pod URLs */
 export const POD_BASE_DOMAIN = "workspaces.sphinx.chat";

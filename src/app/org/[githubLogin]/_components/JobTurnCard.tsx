@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
-import { Ban, Bot, Check, ChevronRight, CircleDashed, HelpCircle, Loader2, XCircle } from "lucide-react";
+import { Ban, Bot, Check, ChevronRight, CircleDashed, HelpCircle, Loader2, XCircle, Zap } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { describeArtifactEvent, parseArtifactEvent } from "@/lib/strut-jobs";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 
 /**
@@ -26,12 +27,17 @@ import type { CanvasChatMessage } from "../_state/canvasChatStore";
  * each `start_job` / `continue_job` call strut accepted with the job row
  * that follows it, and a launch with no row yet is pending — under the
  * message that made the call, until the row lands and takes its place.
+ * A turn hive started for an event about an artifact the job reported
+ * (`source.kind === "job_event"`, strut plans/job-artifact-events.md) has
+ * no call: its origin row is the launch marker, shown by `JobEventRow`
+ * with the card under it.
  *
  * Pure projections of the conversation, like `StrutChatCard`: nothing is
  * fetched, and the expansion is the settled card's own state.
  */
 
 export type JobTurnSource = Extract<NonNullable<CanvasChatMessage["source"]>, { kind: "job" }>;
+export type JobEventSource = Extract<NonNullable<CanvasChatMessage["source"]>, { kind: "job_event" }>;
 
 type Tone = "running" | "ok" | "attention" | "failed" | "muted";
 
@@ -105,17 +111,33 @@ const str = (v: unknown): string | undefined => (typeof v === "string" && v.leng
  * interrupted call changed nothing on strut and draws nothing. A pending
  * turn always ends: Stop cancels the run on strut, which reports back a
  * Stopped row, and a run strut never reports is reconciled to a Lost row.
+ *
+ * An event row is a launch too — written once strut has the turn, so a
+ * row never waits on a turn that did not start — and the job row that
+ * follows settles it. Its run is named (`runId`), so a job row that landed
+ * BEFORE the origin was written (the write is after the dispatch) is seen
+ * for what it is and the event draws nothing.
  */
 export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): PendingJobTurn[] {
   const pending = new Map<string, PendingJobTurn>();
   /** The last title seen for each job, for a launch whose call carries none. */
   const titles = new Map<string, string>();
+  /** Every job row's id (`job-<StrutRun.id>`), for an event row whose turn has already settled. */
+  const rows = new Set(messages.filter((m) => m.source?.kind === "job").map((m) => m.id));
 
   for (const message of messages) {
     if (message.source?.kind === "job") {
       const { jobId, title } = message.source;
       if (title) titles.set(jobId, title);
       pending.delete(jobId);
+      continue;
+    }
+    if (message.source?.kind === "job_event") {
+      const { jobId, title, runId } = message.source;
+      if (title) titles.set(jobId, title);
+      if (!rows.has(`job-${runId}`)) {
+        pending.set(jobId, { jobId, title: title ?? titles.get(jobId) ?? "", anchorMessageId: message.id });
+      }
       continue;
     }
 
@@ -166,6 +188,37 @@ function StatusPill({ look }: { look: JobTurnLook }) {
       <Icon className={`h-3 w-3 ${spin ? "animate-spin" : ""}`} aria-hidden="true" />
       {label}
     </span>
+  );
+}
+
+/**
+ * A turn hive started for an event about an artifact the job reported:
+ * the event, quietly, where a person's words would be — the job's title,
+ * then `pull request acme/app#12 merged` linked to the artifact. The
+ * working card hangs under it until the job row lands.
+ */
+export function JobEventRow({ message, source }: { message: Pick<CanvasChatMessage, "content">; source: JobEventSource }) {
+  const event = parseArtifactEvent(message.content);
+  const text = event ? describeArtifactEvent(event) : message.content.split("\n")[0];
+  return (
+    <div
+      data-testid="job-event-row"
+      data-job-id={source.jobId}
+      className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground"
+    >
+      <Zap className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+      <span className="min-w-0 truncate">
+        <span className="font-medium">{source.title || "Job"}</span>
+        {" · "}
+        {event ? (
+          <a href={event.url} target="_blank" rel="noreferrer" className="hover:underline">
+            {text}
+          </a>
+        ) : (
+          text
+        )}
+      </span>
+    </div>
   );
 }
 

@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
-import { POD_BASE_DOMAIN, releasePodById } from "@/lib/pods/queries";
+import { POD_BASE_DOMAIN, jobClaimant, releasePodById } from "@/lib/pods/queries";
 import { resolvePodCaller } from "@/lib/auth/pod-access";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
@@ -29,6 +29,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { searchParams } = new URL(request.url);
     const shouldUpdateToLatest = searchParams.get("latest") === "true";
     const taskId = searchParams.get("taskId");
+    // A strut JOB claiming for itself (strut plans/job-artifact-events.md §2):
+    // `job` is the claimant, stamped `job:<id>` in the column a task's id
+    // goes in; `run` the strut run that claimed, kept as the reason. No task
+    // is written. `drop-pod?job=` releases only a pod still marked by it.
+    const job = taskId ? null : searchParams.get("job");
+    const run = job ? searchParams.get("run") : null;
 
     const workspace = await db.workspace.findFirst({
       where: { id: workspaceId },
@@ -126,12 +132,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       | null
       | undefined;
 
-    const userInfo = taskId || undefined;
+    const userInfo = taskId || (job ? jobClaimant(job) : undefined);
 
     const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
       swarmId,
       userInfo,
       services || undefined,
+      run || undefined,
     );
     claimedPodId = podWorkspace.id;
 

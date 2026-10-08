@@ -57,7 +57,7 @@ import type { ArtifactKind, ArtifactRef } from "@/app/org/[githubLogin]/_state/c
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
-import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf, parseStrutArtifactKey } from "@/lib/strut-jobs";
+import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf, jobTurnInputSchema, parseArtifactEvent, parseStrutArtifactKey, type ArtifactEvent } from "@/lib/strut-jobs";
 import { getBaseUrl } from "@/lib/utils";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
 
@@ -351,20 +351,38 @@ export function renderJobContent(args: {
   return parts.join("\n\n");
 }
 
+/** The job's reply: one row per turn. */
+export type JobRowSource = {
+  kind: "job";
+  jobId: string;
+  strutRunId: string;
+  workflow: string;
+  status: JobTurnOutcome;
+  title?: string;
+  ask?: string;
+};
+
+/**
+ * The origin of a turn no person asked for — an event about an artifact
+ * the job reported (strut plans/job-artifact-events.md §3): written by the
+ * launch (`services/strut-jobs.ts`) where a person's words would be, with
+ * the `[artifact-event]` text as its content. `getPendingJobTurnsFromMessages`
+ * hangs the working card on it; the job row that follows settles it.
+ */
+export type JobEventRowSource = {
+  kind: "job_event";
+  jobId: string;
+  title?: string;
+  /** The launch's `StrutRun` id — the job row that settles it is `job-<runId>`. */
+  runId: string;
+};
+
 type JobMessageRow = {
   id: string;
   role: "assistant";
   content: string;
   timestamp: string;
-  source: {
-    kind: "job";
-    jobId: string;
-    strutRunId: string;
-    workflow: string;
-    status: JobTurnOutcome;
-    title?: string;
-    ask?: string;
-  };
+  source: JobRowSource | JobEventRowSource;
   artifacts?: ArtifactRef[];
 };
 
@@ -409,11 +427,29 @@ export type JobFanOutResult = "appended" | "duplicate" | "skipped";
  */
 export async function appendJobRow(
   row: Pick<StrutRunRow, "id" | "workspaceId" | "userId" | "conversationId">,
+  message: Omit<JobMessageRow, "id" | "role" | "timestamp"> & { source: JobRowSource },
+): Promise<JobFanOutResult> {
+  return appendConversationRow(row, jobRowId(row), message);
+}
+
+/** Row id of a turn's origin row — keyed on the launch's `StrutRun` id, like the job row. */
+export const jobEventRowId = (row: Pick<StrutRunRow, "id">): string => `job-event-${row.id}`;
+
+/** The origin row of an event turn (`JobEventRowSource`), with the job row's discipline. */
+export async function appendJobEventRow(
+  row: Pick<StrutRunRow, "id" | "workspaceId" | "userId" | "conversationId">,
+  message: { content: string; source: JobEventRowSource },
+): Promise<JobFanOutResult> {
+  return appendConversationRow(row, jobEventRowId(row), message);
+}
+
+async function appendConversationRow(
+  row: Pick<StrutRunRow, "workspaceId" | "userId" | "conversationId">,
+  id: string,
   message: Omit<JobMessageRow, "id" | "role" | "timestamp">,
 ): Promise<JobFanOutResult> {
   const { conversationId } = row;
   if (!conversationId) return "skipped";
-  const id = jobRowId(row);
   let result = "skipped" as JobFanOutResult;
 
   await db.$transaction(async (tx) => {
@@ -424,7 +460,7 @@ export async function appendJobRow(
     });
     if (!workspace?.sourceControlOrgId || !conversation) return;
     if (conversation.sourceControlOrgId !== workspace.sourceControlOrgId || (conversation.userId !== row.userId && !conversation.isShared)) {
-      logger.warn("Job turn: conversation ownership mismatch — bail", LOG_TAG, { runId: row.id, conversationId });
+      logger.warn("Job turn: conversation ownership mismatch — bail", LOG_TAG, { rowId: id, conversationId });
       return;
     }
 
@@ -462,6 +498,8 @@ export interface JobWake {
   ask?: string;
   artifacts: Array<{ title: string; kind: string; label?: string }>;
   publicBaseUrl: string;
+  /** The turn was started by an event about an artifact, not by a person: the wake says so and offers no Continue. */
+  event?: ArtifactEvent;
 }
 
 /**
@@ -471,17 +509,21 @@ export interface JobWake {
  * throws — the row is delivered either way.
  */
 function scheduleJobWake(row: Pick<StrutRunRow, "id" | "workspaceId">, wake: JobWake): void {
+  afterResponse("Job turn wake", row, async () => {
+    const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
+    if (!workspace) return;
+    const { invokeCanvasAgentOnJobTurn } = await import("@/services/canvas-strut-autoturn");
+    await invokeCanvasAgentOnJobTurn({ ...wake, workspaceSlug: workspace.slug });
+  });
+}
+
+/** Run after the response (`after`), or detached outside a request (the reconcile path). Never throws. */
+function afterResponse(what: string, row: Pick<StrutRunRow, "id">, fn: () => Promise<void>): void {
   const run = async () => {
     try {
-      const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
-      if (!workspace) return;
-      const { invokeCanvasAgentOnJobTurn } = await import("@/services/canvas-strut-autoturn");
-      await invokeCanvasAgentOnJobTurn({ ...wake, workspaceSlug: workspace.slug });
+      await fn();
     } catch (err) {
-      logger.warn("Job turn wake failed (non-fatal)", LOG_TAG, {
-        runId: row.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      logger.warn(`${what} failed (non-fatal)`, LOG_TAG, { runId: row.id, error: err instanceof Error ? err.message : String(err) });
     }
   };
   try {
@@ -515,6 +557,19 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       throw new Error(`job turn artifacts unavailable: ${read.reason}`);
     }
   }
+
+  // The index an event about one of these is looked up in: every ref with
+  // a URL, under the launch's workspace (strut plans/job-artifact-events.md
+  // §3). A failure throws like the read does: strut re-posts.
+  if (refs.length > 0) {
+    const { indexJobArtifacts } = await import("@/services/strut-jobs/artifact-events");
+    await indexJobArtifacts(row, jobId, refs);
+  }
+
+  // A turn an event started: its line rides on the wake, and one strut
+  // refused as `job_busy:` gives its event back to the queue below.
+  const launched = jobTurnInputSchema.safeParse(row.input);
+  const event = parseArtifactEvent(launched.success ? launched.data.prompt : undefined);
 
   const title = jobTitleOf(row);
   const result = await appendJobRow(row, {
@@ -550,6 +605,20 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       ...(reply.ask ? { ask: reply.ask } : {}),
       artifacts: refs.map((r) => ({ title: r.title, kind: r.kind, ...(r.label ? { label: r.label } : {}) })),
       publicBaseUrl: ctx?.publicBaseUrl ?? getBaseUrl(null),
+      ...(event ? { event } : {}),
+    });
+  }
+
+  // Events that arrived while this turn ran go now, as the next turn, one
+  // line each (strut plans/job-artifact-events.md §3) — after the row, so
+  // the conversation reads in order; after the response, like the wake. A
+  // turn strut refused as `job_busy:` first gives its own event back.
+  if (result === "appended" && row.conversationId) {
+    const publicBaseUrl = ctx?.publicBaseUrl ?? getBaseUrl(null);
+    afterResponse("Pending artifact events", row, async () => {
+      const events = await import("@/services/strut-jobs/artifact-events");
+      if (event && launched.success && reply.error?.startsWith("job_busy:")) await events.requeueArtifactEvent(jobId, launched.data.prompt);
+      await events.launchPendingArtifactEvents(jobId, publicBaseUrl);
     });
   }
 

@@ -2674,6 +2674,43 @@ model StrutRun {
   @@map("strut_runs")
 }
 
+/// A ref a strut JOB reported with a URL — a pull request, a page, a
+/// deploy — whatever the kind (strut plans/job-artifact-events.md §3): the
+/// index an event about an artifact is looked up in, *which jobs of this
+/// workspace reported URL X*, written when a turn settles. One row per
+/// (job, ref), which also holds the one event waiting on a job whose turn
+/// is in flight. Never a lifecycle, never a token: the ref and what is
+/// waiting on it.
+model StrutJobArtifact {
+  id           String    @id @default(cuid())
+  /// The launch's workspace (`StrutRun.workspaceId`) — the webhook that
+  /// forwards an event is per workspace, and a repository two workspaces
+  /// share must not fire one merge into both.
+  workspaceId  String    @map("workspace_id")
+  swarmId      String    @map("swarm_id")
+  jobId        String    @map("job_id")
+  /// The ref's id as the job reported it (`pr`): the same id on a later
+  /// turn is a newer version of the same thing.
+  artifactId   String    @map("artifact_id")
+  kind         String
+  /// The URL as hive settled it (`mapStrutArtifacts`): for a pull request
+  /// `https://github.com/<owner>/<name>/pull/<n>`, the webhook's `html_url`.
+  url          String
+  /// An event that found the job busy: the text of the turn it will start
+  /// when the live one settles, and when it arrived. One slot — a later
+  /// event on the same ref replaces it (the latest state is the one worth
+  /// a turn).
+  pendingEvent String?   @map("pending_event") @db.Text
+  pendingAt    DateTime? @map("pending_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@unique([jobId, artifactId])
+  @@index([workspaceId, url])
+  @@index([jobId, pendingAt])
+  @@map("strut_job_artifacts")
+}
+
 /// Status of a strut launch. LOST = strut answered 404 for the run on
 /// reconcile (a restart before the run was recorded), or the dispatch
 /// never got a run id.

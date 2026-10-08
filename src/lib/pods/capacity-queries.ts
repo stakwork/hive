@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { VMData } from "@/types/pool-manager";
-import { POD_BASE_DOMAIN } from "./queries";
+import { JOB_TURN_KIND, jobTitleOf } from "@/lib/strut-jobs";
+import { POD_BASE_DOMAIN, jobOfClaimant } from "./queries";
 
 /**
  * Fast database-only query for basic VM data
@@ -20,6 +21,7 @@ export async function getBasicVMDataFromPods(
       status: true,
       usageStatus: true,
       usageStatusMarkedBy: true,
+      usageStatusMarkedAt: true,
       password: true,
       createdAt: true,
     },
@@ -28,10 +30,15 @@ export async function getBasicVMDataFromPods(
     },
   });
 
-  // Batch-fetch tasks for all USED pods in a single query
-  const usedTaskIds = pods
+  // Batch-fetch the claimants of all USED pods: a task by its id, a strut
+  // job (`job:<id>`, strut plans/job-artifact-events.md §2) by the first
+  // row of its turns — the title rides on every turn's input, the user is
+  // who started it.
+  const claimants = pods
     .filter((pod) => pod.usageStatus === "USED" && pod.usageStatusMarkedBy)
     .map((pod) => pod.usageStatusMarkedBy as string);
+  const usedTaskIds = claimants.filter((c) => jobOfClaimant(c) === null);
+  const usedJobIds = claimants.map(jobOfClaimant).filter((j): j is string => j !== null);
 
   const taskMap = new Map<string, { id: string; title: string; createdBy: { name: string | null; image: string | null } }>();
 
@@ -46,6 +53,31 @@ export async function getBasicVMDataFromPods(
     });
     for (const task of tasks) {
       taskMap.set(task.id, task);
+    }
+  }
+
+  const jobMap = new Map<string, { id: string; title: string; creator: { name: string | null; image: string | null } }>();
+
+  if (usedJobIds.length > 0) {
+    const turns = await db.strutRun.findMany({
+      where: { jobId: { in: usedJobIds }, kind: JOB_TURN_KIND },
+      orderBy: { createdAt: "asc" },
+      select: { jobId: true, userId: true, input: true },
+    });
+    const firstTurn = new Map<string, { userId: string; input: unknown }>();
+    for (const turn of turns) {
+      if (turn.jobId && !firstTurn.has(turn.jobId)) firstTurn.set(turn.jobId, turn);
+    }
+    const users = firstTurn.size
+      ? await db.user.findMany({
+          where: { id: { in: Array.from(new Set(Array.from(firstTurn.values()).map((t) => t.userId))) } },
+          select: { id: true, name: true, image: true },
+        })
+      : [];
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    for (const [jobId, turn] of firstTurn) {
+      const user = userMap.get(turn.userId);
+      jobMap.set(jobId, { id: jobId, title: jobTitleOf(turn), creator: { name: user?.name ?? null, image: user?.image ?? null } });
     }
   }
 
@@ -80,11 +112,13 @@ export async function getBasicVMDataFromPods(
     const user_info =
       usage_status === "used" ? pod.usageStatusMarkedBy ?? undefined : undefined;
 
-    // Attach task info for used pods
+    // Attach the claimant for used pods: the task, or the strut job
     const assignedTask =
       usage_status === "used" && pod.usageStatusMarkedBy
         ? (taskMap.get(pod.usageStatusMarkedBy) ?? null)
         : null;
+    const jobId = usage_status === "used" ? jobOfClaimant(pod.usageStatusMarkedBy) : null;
+    const assignedJob = jobId ? (jobMap.get(jobId) ?? { id: jobId, title: "Job", creator: { name: null, image: null } }) : null;
 
     return {
       id: pod.podId,
@@ -93,7 +127,7 @@ export async function getBasicVMDataFromPods(
       internal_state: state, // Use same value as state for basic query
       usage_status,
       user_info: user_info ?? null,
-      marked_at: pod.usageStatusMarkedBy ? pod.createdAt.toISOString() : null,
+      marked_at: pod.usageStatusMarkedAt?.toISOString() ?? null,
       password: pod.password || undefined,
       url,
       repository: undefined, // Not available in basic query
@@ -107,6 +141,7 @@ export async function getBasicVMDataFromPods(
             },
           }
         : null,
+      assignedJob,
       resource_usage: {
         available: false, // Mark as unavailable - will be fetched from pool-manager
         requests: {
