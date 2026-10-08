@@ -38,7 +38,9 @@ const LOG_TAG = "JOB_ARTIFACT_EVENT";
 /** Cap on an event's text, stored and sent. */
 const MAX_EVENT_CHARS = 8_000;
 
-const cap = (s: string): string => (s.length > MAX_EVENT_CHARS ? `${s.slice(0, MAX_EVENT_CHARS)}…` : s);
+/** An event's text within the cap — every source caps what it stores or sends. */
+export const capEventText = (s: string): string => (s.length > MAX_EVENT_CHARS ? `${s.slice(0, MAX_EVENT_CHARS)}…` : s);
+const cap = capEventText;
 const isAbsolute = (url: unknown): url is string => typeof url === "string" && /^https?:\/\//i.test(url);
 
 // ─── The index ────────────────────────────────────────────────────────────
@@ -156,8 +158,13 @@ export function forwardArtifactEvent(source: ArtifactEventSource): void {
   }
 }
 
-/** Launch the event as the job's next turn — or store it on the ref's row when the job is busy. */
-async function startEventTurn(jobId: string, text: string, slotId: string, publicBaseUrl: string): Promise<ArtifactEventOutcome> {
+/**
+ * Launch the event as the job's next turn — or store it on the ref's row
+ * when the job is busy. The door's one step every source ends on: the
+ * webhook through `deliverArtifactEvent`, a check failure hive forwards
+ * on its own (`check-failures.ts`) with its own event text.
+ */
+export async function startEventTurn(jobId: string, text: string, slotId: string, publicBaseUrl: string): Promise<ArtifactEventOutcome> {
   const first = await firstJobTurn(jobId);
   if (!first?.conversationId) {
     logger.warn("Artifact event for a job with no conversation — dropped", LOG_TAG, { jobId });
