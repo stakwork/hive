@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, ExternalLink, Loader2, Play } from "lucide-react";
 import { toast } from "sonner";
@@ -29,6 +29,12 @@ const COPY: Record<SystemMapWorkflowKey, { description: string; button: string; 
     button: "Run graph materialize",
     empty: "No runs yet. Start one to materialize this workspace's system graph.",
     started: "Graph materialize started",
+  },
+  cwe_check: {
+    description: "Writes this workspace's security graph into the knowledge graph's infosec namespace.",
+    button: "Run CWE check",
+    empty: "No runs yet. Start one to build this workspace's security graph.",
+    started: "CWE check started",
   },
 };
 
@@ -191,7 +197,14 @@ function RunCard({
   );
 }
 
-export function SystemMapRuns({ workflowKey = "schema" }: { workflowKey?: SystemMapWorkflowKey }) {
+export function SystemMapRuns({
+  workflowKey = "schema",
+  onRunSettled,
+}: {
+  workflowKey?: SystemMapWorkflowKey;
+  /** Called when a run that was in flight finishes (any outcome). */
+  onRunSettled?: () => void;
+}) {
   const copy = COPY[workflowKey];
   const { workspace } = useWorkspace();
   const { canWrite } = useWorkspaceAccess();
@@ -230,6 +243,12 @@ export function SystemMapRuns({ workflowKey = "schema" }: { workflowKey?: System
     const timer = setInterval(() => void load(slug), POLL_MS);
     return () => clearInterval(timer);
   }, [slug, inFlight, load]);
+
+  const wasInFlight = useRef(false);
+  useEffect(() => {
+    if (wasInFlight.current && !inFlight) onRunSettled?.();
+    wasInFlight.current = inFlight;
+  }, [inFlight, onRunSettled]);
 
   const start = useCallback(async () => {
     if (!slug) return;
