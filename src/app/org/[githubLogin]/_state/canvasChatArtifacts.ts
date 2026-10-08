@@ -80,13 +80,6 @@ export interface ArtifactContents {
     checks?: PullRequestCheck[];
     /** The files changed, when the producer has them. */
     diffs?: ActionResult[];
-    /**
-     * The Strut job that opened this PR — carried so the live-read hook can
-     * call the pull-request status route without a separate lookup.
-     * Set by `job-turn.ts`; absent on refs that pre-date this field.
-     */
-    jobId?: string;
-    swarmId?: string;
   };
   code: {
     code: string;
@@ -281,9 +274,6 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
       body: optional(raw.body),
       checks,
       diffs,
-      // Live-read identifiers — optional, set by job-turn.ts.
-      jobId: bounded(raw.jobId, MAX_ID_LENGTH) ?? undefined,
-      swarmId: bounded(raw.swarmId, MAX_ID_LENGTH) ?? undefined,
     };
   },
   code: (raw) =>
