@@ -820,7 +820,7 @@ describe("approveGraphEdgeDelete", () => {
 // ── approveGraphNodeMove ──────────────────────────────────────────────────
 
 describe("approveGraphNodeMove", () => {
-  it("links the node under its new parent first, then mutes the old link", async () => {
+  it("links the node under its new parent first, then removes the old link", async () => {
     const order: string[] = [];
     mockAddEdgeV2.mockImplementation(async () => {
       order.push("link");
@@ -871,6 +871,39 @@ describe("approveGraphNodeMove", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.result.alreadyExisted).toBe(true);
     expect(mockDeleteEdge).toHaveBeenCalledOnce();
+  });
+
+  it("aborts without removing the old link when the new one is a muted existing edge", async () => {
+    // Jarvis reports the muted legacy edge as a duplicate, but no read shows it.
+    mockAddEdgeV2.mockResolvedValue({ success: true, ref_id: "edge-muted", status: "Warning", alreadyExists: true });
+    mockFindEdgeByEndpoints
+      .mockResolvedValueOnce({ success: true, status: "success", ref_id: "edge-live-001", edge: { ref_id: "edge-live-001", properties: {} } })
+      .mockResolvedValueOnce({ success: true, status: "success" });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 409, error: expect.stringContaining("old link") });
+    expect(mockFindEdgeByEndpoints).toHaveBeenLastCalledWith(ACCESS_OK.access.config, {
+      source_ref_id: "parent-2",
+      edge_type: "PARENT_OF",
+      target_ref_id: "node-ref-123",
+    });
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
+  });
+
+  it("aborts without removing the old link when the new link can't be confirmed", async () => {
+    mockFindEdgeByEndpoints
+      .mockResolvedValueOnce({ success: true, status: "success", ref_id: "edge-live-001", edge: { ref_id: "edge-live-001", properties: {} } })
+      .mockResolvedValueOnce({ success: false, message: "Request failed with status 500" });
+
+    const result = await handleApproval({
+      orgId: ORG_ID, userId: USER_ID, messages: [makeMoveMsg()], intent: baseIntent,
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 502 });
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
   });
 
   it("leaves the node under both parents and reports an error when the old link can't be removed", async () => {
@@ -989,7 +1022,31 @@ function makeNodeDeleteMsg(
 
 describe("approveGraphNodeDelete", () => {
   beforeEach(() => {
-    mockDeleteSingleNode.mockResolvedValue({ success: true, mutedEdgeCount: 2 });
+    mockDeleteSingleNode.mockResolvedValue({ success: true, deletedEdgeCount: 2 });
+  });
+
+  it("logs how many links Jarvis removed", async () => {
+    await handleApproval({ orgId: ORG_ID, userId: USER_ID, messages: [makeNodeDeleteMsg()], intent: baseIntent });
+
+    expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+      "[handleApproval.approveGraphNodeDelete] deleted",
+      "handleApproval",
+      expect.objectContaining({ deleted_edge_count: 2 }),
+    );
+    const fields = vi.mocked(logger.info).mock.calls.at(-1)?.[2] as Record<string, unknown>;
+    expect(fields).not.toHaveProperty("deleted_edge_count_unknown");
+  });
+
+  it("logs a null count, flagged unknown, when Jarvis sent none", async () => {
+    mockDeleteSingleNode.mockResolvedValue({ success: true, deletedEdgeCount: null });
+
+    await handleApproval({ orgId: ORG_ID, userId: USER_ID, messages: [makeNodeDeleteMsg()], intent: baseIntent });
+
+    expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+      "[handleApproval.approveGraphNodeDelete] deleted",
+      "handleApproval",
+      expect.objectContaining({ deleted_edge_count: null, deleted_edge_count_unknown: true }),
+    );
   });
 
   it("deletes the node by its ref_id", async () => {

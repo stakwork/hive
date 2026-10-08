@@ -737,9 +737,9 @@ export interface GraphNodeMoveProposalPayload {
 }
 
 /**
- * Payload for soft-deleting one node. Jarvis marks the node deleted and
- * mutes its edges in one write (`DELETE /v2/nodes/<ref_id>/single`), so it
- * can be restored; nothing else from the node's ingestion run is touched.
+ * Payload for deleting one node (`DELETE /v2/nodes/<ref_id>/single`). The
+ * node can be restored, but every link touching it is permanently removed;
+ * nothing else from the node's ingestion run is touched.
  */
 export interface GraphNodeDeleteProposalPayload {
   workspaceId: string;
