@@ -47,13 +47,13 @@ vi.mock("@/app/w/[slug]/lingo/components/LingoCard", () => ({
 }));
 
 vi.mock("@/app/w/[slug]/lingo/components/NeighborView", () => ({
-  NeighborView: ({ node, edges, onDeleteEdge, onDeleteNode, onNavigate, onAddEdge }: any) => (
+  NeighborView: ({ node, edges, deletedEdgeIds, onDeleteEdge, onDeleteNode, onNavigate, onAddEdge }: any) => (
     <div data-testid="neighbor-view">
       <span data-testid="detail-node-name">{node.name}</span>
       <button data-testid="delete-node-button" onClick={() => onDeleteNode(node.ref_id)}>
         Delete node
       </button>
-      {edges.map((e: any) => (
+      {edges.filter((e: any) => !deletedEdgeIds?.has(e.edge_ref_id)).map((e: any) => (
         <div key={e.edge_ref_id}>
           <button
             data-testid={`delete-edge-${e.edge_ref_id}`}
@@ -460,12 +460,8 @@ describe("LingoExplorer", () => {
       );
     });
 
-    it("calls PATCH on confirmed delete (onAutoClose)", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: true }),
-      });
-
+    async function deleteAndConfirm(response: { ok: boolean; status: number }) {
+      vi.mocked(toast.error).mockClear();
       await setupDetailView();
 
       let capturedToastOptions: any;
@@ -473,19 +469,46 @@ describe("LingoExplorer", () => {
         capturedToastOptions = opts;
         return "toast-id";
       });
+      mockFetch.mockResolvedValueOnce({
+        ...response,
+        json: () => Promise.resolve({ success: response.ok }),
+      });
 
       fireEvent.click(screen.getByTestId("delete-edge-edge-1"));
+      expect(screen.queryByTestId("delete-edge-edge-1")).not.toBeInTheDocument();
 
       await act(async () => {
         capturedToastOptions?.onAutoClose?.();
       });
+    }
+
+    it("sends DELETE with no body on confirmed delete (onAutoClose)", async () => {
+      await deleteAndConfirm({ ok: true, status: 200 });
 
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith(
           `/api/workspaces/${SLUG}/lingo/edges/edge-1`,
-          expect.objectContaining({ method: "PATCH" }),
+          { method: "DELETE" },
         );
       });
+      expect(screen.queryByTestId("delete-edge-edge-1")).not.toBeInTheDocument();
+    });
+
+    it("keeps the edge removed when the delete returns 404", async () => {
+      await deleteAndConfirm({ ok: false, status: 404 });
+
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
+      expect(screen.queryByTestId("delete-edge-edge-1")).not.toBeInTheDocument();
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it("puts the edge back when the delete returns 500", async () => {
+      await deleteAndConfirm({ ok: false, status: 500 });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("delete-edge-edge-1")).toBeInTheDocument();
+      });
+      expect(toast.error).toHaveBeenCalledWith("Failed to delete connection");
     });
 
     it("reverts optimistic delete when undo is clicked", async () => {
@@ -507,11 +530,11 @@ describe("LingoExplorer", () => {
         capturedToastOptions?.onAutoClose?.();
       });
 
-      // PATCH was never called because undone=true
-      const patchCalls = mockFetch.mock.calls.filter(
+      // DELETE was never called because undone=true
+      const deleteCalls = mockFetch.mock.calls.filter(
         (c: any[]) => typeof c[0] === "string" && c[0].includes("/edges/edge-1"),
       );
-      expect(patchCalls).toHaveLength(0);
+      expect(deleteCalls).toHaveLength(0);
     });
   });
 
