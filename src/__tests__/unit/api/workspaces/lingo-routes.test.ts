@@ -15,8 +15,12 @@ vi.mock("@/lib/utils/swarm", () => ({
 vi.mock("@/services/swarm/api/nodes", () => ({
   addNode: vi.fn(),
   addEdge: vi.fn(),
-  patchEdge: vi.fn(),
+  deleteEdge: vi.fn(),
   deleteNode: vi.fn(),
+}));
+
+vi.mock("@/services/workspace", () => ({
+  validateWorkspaceAccess: vi.fn(),
 }));
 
 const mockFetch = vi.fn();
@@ -25,13 +29,15 @@ vi.stubGlobal("fetch", mockFetch);
 // ─── Imports after mocks ──────────────────────────────────────────────────────
 
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
-import { addNode, addEdge, patchEdge, deleteNode } from "@/services/swarm/api/nodes";
+import { addNode, addEdge, deleteEdge, deleteNode } from "@/services/swarm/api/nodes";
+import { validateWorkspaceAccess } from "@/services/workspace";
 
 const mockGetWorkspaceSwarmAccess = vi.mocked(getWorkspaceSwarmAccess);
 const mockAddNode = vi.mocked(addNode);
 const mockAddEdge = vi.mocked(addEdge);
-const mockPatchEdge = vi.mocked(patchEdge);
+const mockDeleteEdge = vi.mocked(deleteEdge);
 const mockDeleteNode = vi.mocked(deleteNode);
+const mockValidateWorkspaceAccess = vi.mocked(validateWorkspaceAccess);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -796,15 +802,29 @@ describe("POST /api/workspaces/[slug]/lingo/edges", () => {
   });
 });
 
-// ─── PATCH /lingo/edges/[ref_id] ──────────────────────────────────────────────
+// ─── DELETE /lingo/edges/[ref_id] ─────────────────────────────────────────────
 
-describe("PATCH /api/workspaces/[slug]/lingo/edges/[ref_id]", () => {
-  let PATCH: typeof import("@/app/api/workspaces/[slug]/lingo/edges/[ref_id]/route").PATCH;
+describe("DELETE /api/workspaces/[slug]/lingo/edges/[ref_id]", () => {
+  let DELETE: typeof import("@/app/api/workspaces/[slug]/lingo/edges/[ref_id]/route").DELETE;
+
+  const WRITE_ACCESS = { hasAccess: true, canRead: true, canWrite: true, canAdmin: false };
+
+  function deleteRequest(slug = SLUG, refId = "edge-001") {
+    return makeAuthenticatedRequest(
+      `http://localhost/api/workspaces/${slug}/lingo/edges/${refId}`,
+      { method: "DELETE" },
+    );
+  }
+
+  function callDelete(req: NextRequest, slug = SLUG, refId = "edge-001") {
+    return DELETE(req, { params: Promise.resolve({ slug, ref_id: refId }) });
+  }
 
   beforeEach(async () => {
     vi.resetAllMocks();
     delete process.env.USE_MOCKS;
-    ({ PATCH } = await import(
+    mockValidateWorkspaceAccess.mockResolvedValue(WRITE_ACCESS);
+    ({ DELETE } = await import(
       "@/app/api/workspaces/[slug]/lingo/edges/[ref_id]/route"
     ));
   });
@@ -817,10 +837,46 @@ describe("PATCH /api/workspaces/[slug]/lingo/edges/[ref_id]", () => {
     const req = unauthenticatedRequest(
       `http://localhost/api/workspaces/${SLUG}/lingo/edges/edge-001`,
     );
-    const res = await PATCH(req, {
-      params: Promise.resolve({ slug: SLUG, ref_id: "edge-001" }),
-    });
+    const res = await callDelete(req);
     expect(res.status).toBe(401);
+    expect(mockValidateWorkspaceAccess).not.toHaveBeenCalled();
+  });
+
+  test("returns 403 for a viewer (no write access)", async () => {
+    mockValidateWorkspaceAccess.mockResolvedValueOnce({
+      hasAccess: true,
+      canRead: true,
+      canWrite: false,
+      canAdmin: false,
+    });
+    const res = await callDelete(deleteRequest());
+    expect(res.status).toBe(403);
+    expect(mockGetWorkspaceSwarmAccess).not.toHaveBeenCalled();
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
+  });
+
+  test("returns 403 for a non-member", async () => {
+    mockValidateWorkspaceAccess.mockResolvedValueOnce({
+      hasAccess: false,
+      canRead: false,
+      canWrite: false,
+      canAdmin: false,
+    });
+    const res = await callDelete(deleteRequest());
+    expect(res.status).toBe(403);
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
+  });
+
+  test("checks write access before the USE_MOCKS shortcut", async () => {
+    process.env.USE_MOCKS = "true";
+    mockValidateWorkspaceAccess.mockResolvedValueOnce({
+      hasAccess: true,
+      canRead: true,
+      canWrite: false,
+      canAdmin: false,
+    });
+    const res = await callDelete(deleteRequest());
+    expect(res.status).toBe(403);
   });
 
   test("returns 403 on ACCESS_DENIED (IDOR guard)", async () => {
@@ -828,83 +884,57 @@ describe("PATCH /api/workspaces/[slug]/lingo/edges/[ref_id]", () => {
       success: false,
       error: { type: "ACCESS_DENIED" },
     });
-    const req = makeAuthenticatedRequest(
-      `http://localhost/api/workspaces/${SLUG}/lingo/edges/edge-001`,
-      { method: "PATCH" },
-    );
-    const res = await PATCH(req, {
-      params: Promise.resolve({ slug: SLUG, ref_id: "edge-001" }),
-    });
+    const res = await callDelete(deleteRequest());
     expect(res.status).toBe(403);
-    expect(mockPatchEdge).not.toHaveBeenCalled();
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
   });
 
-  test("returns mock success when USE_MOCKS=true without calling patchEdge", async () => {
+  test("returns mock success when USE_MOCKS=true without calling deleteEdge", async () => {
     process.env.USE_MOCKS = "true";
-    const req = makeAuthenticatedRequest(
-      `http://localhost/api/workspaces/${SLUG}/lingo/edges/edge-001`,
-      { method: "PATCH" },
-    );
-    const res = await PATCH(req, {
-      params: Promise.resolve({ slug: SLUG, ref_id: "edge-001" }),
-    });
+    const res = await callDelete(deleteRequest());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(mockPatchEdge).not.toHaveBeenCalled();
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
   });
 
-  test("always sends { is_deleted: true } to patchEdge", async () => {
+  test("calls deleteEdge with the swarm config and ref_id", async () => {
     mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
       success: true,
       data: SWARM_DATA,
     });
-    mockPatchEdge.mockResolvedValueOnce({ success: true });
-    const req = makeAuthenticatedRequest(
-      `http://localhost/api/workspaces/${SLUG}/lingo/edges/edge-abc`,
-      { method: "PATCH" },
-    );
-    await PATCH(req, {
-      params: Promise.resolve({ slug: SLUG, ref_id: "edge-abc" }),
-    });
-    expect(mockPatchEdge).toHaveBeenCalledWith(
-      expect.anything(),
+    mockDeleteEdge.mockResolvedValueOnce({ success: true });
+    const res = await callDelete(deleteRequest(SLUG, "edge-abc"), SLUG, "edge-abc");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true });
+    expect(mockValidateWorkspaceAccess).toHaveBeenCalledWith(SLUG, USER.id);
+    expect(mockDeleteEdge).toHaveBeenCalledWith(
+      { jarvisUrl: "https://testswarm.sphinx.chat:8444", apiKey: "api-key-123" },
       "edge-abc",
-      { is_deleted: true },
     );
   });
 
-  test("returns { success: true } on successful soft-delete", async () => {
+  test("returns 404 when the edge is not found", async () => {
     mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
       success: true,
       data: SWARM_DATA,
     });
-    mockPatchEdge.mockResolvedValueOnce({ success: true });
-    const req = makeAuthenticatedRequest(
-      `http://localhost/api/workspaces/${SLUG}/lingo/edges/edge-abc`,
-      { method: "PATCH" },
-    );
-    const res = await PATCH(req, {
-      params: Promise.resolve({ slug: SLUG, ref_id: "edge-abc" }),
+    mockDeleteEdge.mockResolvedValueOnce({
+      success: false,
+      notFound: true,
+      error: "Edge not found",
     });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.success).toBe(true);
+    const res = await callDelete(deleteRequest(SLUG, "edge-gone"), SLUG, "edge-gone");
+    expect(res.status).toBe(404);
   });
 
-  test("returns 500 when patchEdge fails", async () => {
+  test("returns 500 when deleteEdge fails", async () => {
     mockGetWorkspaceSwarmAccess.mockResolvedValueOnce({
       success: true,
       data: SWARM_DATA,
     });
-    mockPatchEdge.mockResolvedValueOnce({ success: false, error: "Jarvis error" });
-    const req = makeAuthenticatedRequest(
-      `http://localhost/api/workspaces/${SLUG}/lingo/edges/edge-fail`,
-      { method: "PATCH" },
-    );
-    const res = await PATCH(req, {
-      params: Promise.resolve({ slug: SLUG, ref_id: "edge-fail" }),
-    });
+    mockDeleteEdge.mockResolvedValueOnce({ success: false, error: "Jarvis error" });
+    const res = await callDelete(deleteRequest(SLUG, "edge-fail"), SLUG, "edge-fail");
     expect(res.status).toBe(500);
   });
 
@@ -913,15 +943,9 @@ describe("PATCH /api/workspaces/[slug]/lingo/edges/[ref_id]", () => {
       success: false,
       error: { type: "WORKSPACE_NOT_FOUND" },
     });
-    const req = makeAuthenticatedRequest(
-      `http://localhost/api/workspaces/bad-slug/lingo/edges/edge-001`,
-      { method: "PATCH" },
-    );
-    const res = await PATCH(req, {
-      params: Promise.resolve({ slug: "bad-slug", ref_id: "edge-001" }),
-    });
+    const res = await callDelete(deleteRequest("bad-slug"), "bad-slug");
     expect(res.status).toBe(404);
-    expect(mockPatchEdge).not.toHaveBeenCalled();
+    expect(mockDeleteEdge).not.toHaveBeenCalled();
   });
 });
 
