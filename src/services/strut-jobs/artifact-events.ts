@@ -119,6 +119,21 @@ export async function deliverArtifactEvent(source: ArtifactEventSource): Promise
 }
 
 /**
+ * A card's action on an artifact the job reported (strut
+ * plans/job-artifact-events.md §5 — the pull-request panel's Fix): the
+ * event, composed as a source's would be, with the ref's kind and the URL
+ * as indexed. Null when the job never reported that URL — a viewer sends
+ * to the job on its own row only.
+ */
+export async function composeJobArtifactEvent(jobId: string, url: string, what: string, details?: string[]): Promise<string | null> {
+  const ref = await db.strutJobArtifact.findFirst({
+    where: { jobId, url: { equals: url, mode: "insensitive" } },
+    select: { kind: true, url: true },
+  });
+  return ref ? cap(formatArtifactEvent({ kind: ref.kind, url: ref.url, what }, details)) : null;
+}
+
+/**
  * `deliverArtifactEvent` after the response, never throwing — for a
  * webhook that must answer GitHub now and has nowhere to retry from. A
  * delivery that fails is logged; the idle sweep on strut is the backstop.

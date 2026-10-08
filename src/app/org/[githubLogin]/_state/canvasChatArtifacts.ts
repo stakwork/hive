@@ -46,6 +46,8 @@ const CHECK_STATUSES = ["success", "failure", "pending", "skipped"] as const;
 export interface PullRequestCheck {
   name: string;
   status: (typeof CHECK_STATUSES)[number];
+  /** The check's own page — a check run's `html_url`, a commit status's `target_url` — so an event about a failure can point at it. */
+  url?: string;
 }
 
 /** What a viewer draws, for each kind. */
@@ -75,6 +77,8 @@ export interface ArtifactContents {
     author?: string;
     headBranch?: string;
     baseBranch?: string;
+    /** The head commit the checks are for. */
+    headSha?: string;
     /** The description, as markdown. */
     body?: string;
     checks?: PullRequestCheck[];
@@ -129,6 +133,12 @@ export interface ArtifactRef {
 export interface ArtifactViewerProps<K extends ArtifactKind> {
   artifact: ArtifactRef;
   content: ArtifactContents[K];
+  /**
+   * The strut job that reported the artifact, when a Job row did
+   * (`jobIdOfArtifact`): what a viewer's action — the pull-request panel's
+   * Fix — sends an event to (strut plans/job-artifact-events.md §5).
+   */
+  jobId?: string;
 }
 
 /** The artifact on the panel, by `artifactIdentity`. `version` is its place among that artifact's versions; null follows the newest. */
@@ -221,7 +231,8 @@ function parseDiffFile(raw: unknown): ActionResult | null {
 function parseCheck(raw: unknown): PullRequestCheck | null {
   if (!isRecord(raw) || typeof raw.name !== "string") return null;
   const status = oneOf(CHECK_STATUSES, raw.status);
-  return status && { name: raw.name, status };
+  const url = optional(raw.url);
+  return status && { name: raw.name, status, ...(url ? { url } : {}) };
 }
 
 /** Content whose only required part is an address. */
@@ -271,6 +282,7 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
       author: optional(raw.author),
       headBranch: optional(raw.headBranch),
       baseBranch: optional(raw.baseBranch),
+      headSha: optional(raw.headSha),
       body: optional(raw.body),
       checks,
       diffs,
@@ -401,6 +413,22 @@ export function indexArtifactCards(all: ArtifactRef[]): Map<ArtifactRef, Artifac
     cards.set(group[group.length - 1], { index: count - 1, count });
   }
   return cards;
+}
+
+/**
+ * The strut job that reported an artifact, when a Job row did
+ * (`source.kind === "job"`, `services/strut-runs/job-turn.ts`) — read off
+ * the row the ref rides on, so a viewer's action knows which job to send
+ * to. Undefined for an artifact nothing but a job's row could carry.
+ */
+export function jobIdOfArtifact(
+  messages: ReadonlyArray<{ artifacts?: ArtifactRef[]; source?: { kind: string; jobId?: string } }> | undefined,
+  artifact: ArtifactRef,
+): string | undefined {
+  for (const message of messages ?? []) {
+    if (message.source?.kind === "job" && message.artifacts?.includes(artifact)) return message.source.jobId;
+  }
+  return undefined;
 }
 
 /** The newest ref of each artifact, in the order the artifacts first appeared. */

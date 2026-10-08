@@ -21,7 +21,9 @@
  *   1. Check runs (GitHub Actions)  — status mapped via `conclusionToStatus`
  *   2. Commit statuses (legacy CI) — state mapped via `legacyStateToStatus`
  * Only completed runs / terminal statuses are reported; in-flight ones are
- * `"pending"`. Skipped / neutral conclusions become `"skipped"`.
+ * `"pending"`. Skipped / neutral conclusions become `"skipped"`. Each check
+ * carries its own page (`url`: a run's `html_url`, a status's `target_url`)
+ * when GitHub gives one, so an event about a failure can point at it.
  *
  * On any GitHub API error the call throws; callers decide whether to fall
  * back to the inline state or surface the error.
@@ -132,6 +134,7 @@ export async function getPullRequestStatus(
       checks.push({
         name: run.name,
         status: conclusionToStatus(run.status, run.conclusion),
+        ...(run.html_url ? { url: run.html_url } : {}),
       });
     }
   }
@@ -141,6 +144,7 @@ export async function getPullRequestStatus(
       checks.push({
         name: s.context,
         status: legacyStateToStatus(s.state),
+        ...(s.target_url ? { url: s.target_url } : {}),
       });
     }
   }
