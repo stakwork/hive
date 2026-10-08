@@ -18,6 +18,7 @@ import { monitorSinglePR } from "@/lib/github/pr-monitor";
 import { dispatchIncrementalProtectReview } from "@/services/protect";
 import { getBaseUrl } from "@/lib/utils";
 import { forwardArtifactEvent } from "@/services/strut-jobs/artifact-events";
+import { forwardCheckFailure } from "@/services/strut-jobs/check-failures";
 
 function serializeWebhookError(error: unknown) {
   if (error instanceof Error) {
@@ -1422,6 +1423,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         });
         for (const pr of pullRequests) {
           const prUrl = `https://github.com/${fullName}/pull/${pr.number}`;
+          // A strut JOB's pull request: its first fix is hive's, once every
+          // check has run (strut plans/job-artifact-events.md §5) — read and
+          // sent after the response, as the job's owner, once per pull request.
+          forwardCheckFailure({ workspaceId: repository.workspaceId, url: prUrl, publicBaseUrl: getBaseUrl(request.headers.get("host")) });
           void monitorSinglePR(prUrl).catch((err) =>
             console.error("[GithubWebhook] monitorSinglePR (check_run) failed", { delivery, prUrl, error: err })
           );
@@ -1442,6 +1447,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         });
         for (const pr of pullRequests) {
           const prUrl = `https://github.com/${headRepoFullName}/pull/${pr.number}`;
+          forwardCheckFailure({ workspaceId: repository.workspaceId, url: prUrl, publicBaseUrl: getBaseUrl(request.headers.get("host")) });
           void monitorSinglePR(prUrl).catch((err) =>
             console.error("[GithubWebhook] monitorSinglePR (workflow_run) failed", { delivery, prUrl, error: err })
           );

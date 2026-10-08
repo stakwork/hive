@@ -62,8 +62,11 @@ describe("PullRequestPanel — Fix", () => {
   test("only on a job's pull request with a failing check, while it is open", () => {
     const { rerender } = render(<PullRequestPanel artifact={artifact} content={content()} jobId={JOB} />);
     expect(screen.getByTestId("pr-fix")).toHaveTextContent("Fix");
-    // A check's own page is linked.
+    // A check's own page is linked, and the number opens the pull request on GitHub.
     expect(screen.getByRole("link", { name: "lint" })).toHaveAttribute("href", "https://github.com/acme/app/actions/runs/1");
+    expect(screen.getByTestId("pr-number")).toHaveTextContent("#12");
+    expect(screen.getByTestId("pr-number")).toHaveAttribute("href", "https://github.com/acme/app/pull/12");
+    expect(screen.getByTestId("pr-number")).toHaveAttribute("target", "_blank");
 
     rerender(<PullRequestPanel artifact={artifact} content={content()} />);
     expect(screen.queryByTestId("pr-fix")).toBeNull();
