@@ -75,10 +75,10 @@ import { z } from "zod";
 import crypto from "crypto";
 import { StrutRunStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf } from "@/lib/strut-jobs";
+import { JOB_TURN_KIND, jobTitleOf } from "@/lib/strut-jobs";
 import { resolveOrgConversationRowId } from "@/services/org-canvas-conversation";
 import { STRUT_ACTOR_HEADER, ensureStrutDelegation } from "@/services/bifrost/strut-delegation";
-import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
+import { BUSY_NOTE, launchJobTurn } from "@/services/strut-jobs";
 import { resolveStrutTarget, type StrutPurpose, type StrutTarget } from "@/services/strut-target";
 import type { CapabilityContext } from "./capabilities";
 
@@ -229,106 +229,6 @@ async function jobDelivery(ctx: CapabilityContext): Promise<{ conversationId: st
   });
   if (!conversationId) return { status: "error", error: "This conversation is not one a job can reply into." };
   return { conversationId, publicBaseUrl: ctx.publicBaseUrl };
-}
-
-const BUSY_NOTE = "A turn of this job is still running. Its reply will be posted here when it ends — continue the job after that.";
-
-/**
- * One turn of a job: launch the `job` workflow with the job id on the
- * launch (`services/strut-runs.ts` `dispatchStrutRun`; the row records
- * `jobId`), register it for the Stop button, and return at once — the
- * reply lands through the `job_turn` handler.
- */
-async function launchJobTurn(
-  ctx: CapabilityContext,
-  target: StrutTarget,
-  turn: { jobId: string; title: string; prompt: string; conversationId: string; publicBaseUrl: string; started: boolean },
-): Promise<Record<string, unknown>> {
-  const { jobId, title, prompt, conversationId, publicBaseUrl, started } = turn;
-
-  // The user's GitHub token, pushed to strut as THIS actor's secret before
-  // the launch (`dispatchStrutRun` → `ensureStrutActorSecrets`: idempotent,
-  // never in `input`, never logged) — the same push `propose_code_change`
-  // makes. Every turn, whatever it does: a turn that runs the code-change
-  // workflow then clones, pushes and opens the pull request as the user,
-  // and push-before-dispatch is what handles rotation. No token → nothing
-  // pushed; a private clone fails inside the run, honestly.
-  let pat: string | null = null;
-  try {
-    const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
-    pat = (await getGithubUsernameAndPAT(ctx.userId, target.workspaceSlug))?.token ?? null;
-  } catch (err) {
-    console.warn("[job] github token lookup failed; launching without it", { jobId, error: err instanceof Error ? err.message : String(err) });
-  }
-
-  let dispatched: Awaited<ReturnType<typeof dispatchStrutRun>>;
-  try {
-    dispatched = await dispatchStrutRun({
-      workspaceId: target.workspaceId,
-      userId: ctx.userId,
-      kind: JOB_TURN_KIND,
-      workflow: JOB_WORKFLOW,
-      purpose: "job",
-      // `title` rides on the input for the reply's header (strut's `job`
-      // workflow strips what its input block does not declare); `workspace`
-      // is the hive workspace the job belongs to — the id a pod is claimed
-      // for (strut plans/jobs.md §5): the hub strut serves every workspace
-      // of the org, so the job says which. Every turn, since every launch
-      // is validated on its own.
-      input: { prompt, title, workspace: target.workspaceId },
-      job: jobId,
-      publicBaseUrl,
-      conversationId,
-      actorSecrets: { GITHUB_TOKEN: pat },
-    });
-  } catch (err) {
-    if (err instanceof StrutDispatchError) {
-      // Strut refusing the launch because the job's previous turn still
-      // holds its directory is "not yet", not a failure.
-      if (/\bjob_busy:/.test(err.message)) return { status: "busy", jobId, note: BUSY_NOTE };
-      console.warn("[job] dispatch refused", { jobId, code: err.code });
-      return {
-        status: "error",
-        error:
-          err.code === "workflow_missing"
-            ? "This swarm's strut has no `job` workflow yet (its lab is not on a build that seeds it). Tell the user; a workspace admin updates the swarm."
-            : err.message,
-      };
-    }
-    console.error("[job] dispatch failed", { jobId, error: err instanceof Error ? err.message : String(err) });
-    return { status: "error", error: "The job turn could not be started." };
-  }
-
-  // The Stop button: register the run (keyed by the StrutRun id) so Stop
-  // cancels it on strut. A Stop that landed before this registration
-  // (pending-abort intent for this turn) cancels it right away.
-  try {
-    const { setActiveRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
-    const { abortSelf } = await setActiveRun(
-      conversationId,
-      { requestId: dispatched.runId, workspaceId: target.workspaceId, startedAt: new Date().toISOString() },
-      dispatched.runId, // turnId fallback
-    );
-    if (abortSelf) {
-      await cancelStrutRun({ id: dispatched.runId, swarmId: dispatched.swarmId, workflow: JOB_WORKFLOW, strutRunId: dispatched.strutRunId });
-    }
-    await notifyRunActive(conversationId, true);
-  } catch (err) {
-    console.warn("[job] active-run registration failed (non-fatal)", {
-      runId: dispatched.runId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  console.log("[job] turn dispatched", { jobId, runId: dispatched.runId, strutRunId: dispatched.strutRunId, started });
-  return {
-    status: started ? "started" : "continued",
-    jobId,
-    title,
-    note:
-      "Strut is working on it in the background. The reply — and what it produced, as artifact cards — lands in this conversation as a **Job** entry; " +
-      "tell the user it's underway and stop. Do not call this tool again for the same request.",
-  };
 }
 
 export function buildStrutTools(ctx: CapabilityContext): ToolSet {
@@ -584,7 +484,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         const delivery = await jobDelivery(ctx);
         if ("error" in delivery) return delivery;
         const jobId = crypto.randomUUID();
-        return launchJobTurn(ctx, target, { jobId, title, prompt, ...delivery, started: true });
+        return launchJobTurn({ userId: ctx.userId, workspaceId: target.workspaceId, ...delivery }, { jobId, title, prompt, started: true });
       },
     }),
 
@@ -630,7 +530,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         });
         if (live) return { status: "busy", jobId, note: BUSY_NOTE };
 
-        return launchJobTurn(ctx, target, { jobId, title: jobTitleOf(first), prompt, ...delivery, started: false });
+        return launchJobTurn({ userId: ctx.userId, workspaceId: target.workspaceId, ...delivery }, { jobId, title: jobTitleOf(first), prompt, started: false });
       },
     }),
   };

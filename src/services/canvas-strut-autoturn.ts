@@ -39,6 +39,7 @@ import { db } from "@/lib/db";
 import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
 import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import { CONTINUE_JOB_TOOL, DISPATCH_STRUT_TOOL, START_JOB_TOOL } from "@/lib/ai/strutTools";
+import { describeArtifactEvent, type ArtifactEvent } from "@/lib/strut-jobs";
 import {
   STAY_SILENT_TOOL,
   claimAutoTurn,
@@ -84,6 +85,13 @@ export interface JobAutoTurnArgs {
   artifacts: Array<{ title: string; kind: string; label?: string }>;
   /** As `StrutAutoTurnArgs.publicBaseUrl`: a `continue_job` on the wake turn builds its callback URL from it. */
   publicBaseUrl: string;
+  /**
+   * The turn was started by hive for an event about an artifact the job
+   * reported (strut plans/job-artifact-events.md §3) — not by the agent,
+   * not by the user. The wake says so and offers one line or silence,
+   * never Continue.
+   */
+  event?: ArtifactEvent;
 }
 
 /** See the file header. A build → test → fix loop needs 2–3. */
@@ -199,6 +207,7 @@ function buildJobWakeMessage(args: JobAutoTurnArgs): ModelMessage {
         args.artifacts.map((a) => `${a.title} (${a.label ?? a.kind})`).join(", ") +
         "."
       : "Nothing is attached to it.";
+  if (args.event) return { role: "user", content: buildJobEventWakeText(args, args.event, cards) };
   return {
     role: "user",
     content:
@@ -216,6 +225,33 @@ function buildJobWakeMessage(args: JobAutoTurnArgs): ModelMessage {
       `- **Stay silent:** call \`${STAY_SILENT_TOOL}\` when there is nothing to add — the user stopped the turn themselves, or the entry is one line that says it all.\n\n` +
       "Default toward a summary. A job runs real code on the swarm; never widen the task on your own.",
   };
+}
+
+/**
+ * The wake for a turn an EVENT started (strut plans/job-artifact-events.md
+ * §3): hive launched it for something that happened to an artifact the job
+ * reported — a pull request merging, failing its checks. The job's reply
+ * is the thing to react to; the user is told in one line, or not at all.
+ * Never Continue: the event asked nothing of the job, and "merged, pod
+ * released" is not an unmet request. (An event turn is not a tool call,
+ * so the loop breaker never counts it; this is what keeps the wake from
+ * launching the next turn itself.)
+ */
+function buildJobEventWakeText(args: JobAutoTurnArgs, event: ArtifactEvent, cards: string): string {
+  return (
+    `You were invoked because job \`${args.jobId}\` ("${args.title}") on workspace \`${args.workspaceSlug}\` has ${describeJobOutcome(args)}. ` +
+    "This turn was started by neither you nor the user: hive started it for an event about an artifact the job had reported — " +
+    `${describeArtifactEvent(event)} (${event.url}) — and the job's reply to that event is the most recent assistant entry above this one, ` +
+    "headed **Job · …**; read it as the thing you're reacting to now. " +
+    `${cards}\n\n` +
+    "That entry is the record, and the chat shows it COLLAPSED; your reply is what the user reads. " +
+    "Follow the user's standing instructions in this conversation. Decide one of:\n" +
+    "- **Tell the user** (the default): ONE line in your own words — what happened to the artifact and what the job did about it " +
+    "(released its pod, pushed a fix, kept the pod and why). Do not restate the entry.\n" +
+    `- **Stay silent:** call \`${STAY_SILENT_TOOL}\` when there is nothing to add.\n\n` +
+    `Never call \`${CONTINUE_JOB_TOOL}\` from here: the event asked nothing of the job, and a reply like "merged, pod released" is not an unmet request. ` +
+    "A job runs real code on the swarm; never widen the task on your own."
+  );
 }
 
 // ─── Entry points ─────────────────────────────────────────────────────────

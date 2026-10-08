@@ -38,7 +38,7 @@ import { SubAgentRunCard, getSubAgentRunsFromMessages } from "./SubAgentRunCard"
 import { ResearchRunCard, getResearchRunsFromMessages } from "./ResearchRunCard";
 import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
-import { JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
+import { JobEventRow, JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
 import { PlannerFormSlot } from "./PlannerFormSlot";
 import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
@@ -442,6 +442,20 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                   >
                     <Square className="h-2.5 w-2.5 fill-current" />
                     Stopped
+                  </div>
+                );
+              }
+
+              // A turn hive started for an event about an artifact the job
+              // reported: the event where a person's words would be, the
+              // working card under it until the job row lands.
+              if (message.source?.kind === "job_event") {
+                return (
+                  <div key={message.id} className="space-y-1.5">
+                    <JobEventRow message={message} source={message.source} />
+                    {pendingJobTurns?.map((turn) => (
+                      <PendingJobTurnCard key={turn.jobId} turn={turn} />
+                    ))}
                   </div>
                 );
               }

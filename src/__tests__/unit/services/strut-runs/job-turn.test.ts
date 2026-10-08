@@ -33,6 +33,9 @@ const {
   mockNotifyRunActive,
   mockWorkspaceFindUnique,
   mockWake,
+  mockIndex,
+  mockPending,
+  mockRequeue,
   afterCallbacks,
 } = vi.hoisted(() => {
   const mockTx = {
@@ -49,6 +52,9 @@ const {
     mockNotifyRunActive: vi.fn(),
     mockWorkspaceFindUnique: vi.fn(),
     mockWake: vi.fn(),
+    mockIndex: vi.fn(),
+    mockPending: vi.fn(),
+    mockRequeue: vi.fn(),
     afterCallbacks: [] as Array<() => Promise<void>>,
   };
 });
@@ -59,6 +65,11 @@ vi.mock("next/server", async (orig) => ({
 }));
 vi.mock("@/lib/db", () => ({ db: { $transaction: mockTransaction, workspace: { findUnique: mockWorkspaceFindUnique } } }));
 vi.mock("@/services/canvas-strut-autoturn", () => ({ invokeCanvasAgentOnJobTurn: mockWake }));
+vi.mock("@/services/strut-jobs/artifact-events", () => ({
+  indexJobArtifacts: mockIndex,
+  launchPendingArtifactEvents: mockPending,
+  requeueArtifactEvent: mockRequeue,
+}));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: mockNotify }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
@@ -122,6 +133,9 @@ beforeEach(() => {
   mockNotifyRunActive.mockResolvedValue(undefined);
   mockWorkspaceFindUnique.mockResolvedValue({ slug: "acme" });
   mockWake.mockResolvedValue(undefined);
+  mockIndex.mockResolvedValue(0);
+  mockPending.mockResolvedValue("none");
+  mockRequeue.mockResolvedValue(false);
   afterCallbacks.length = 0;
 });
 
@@ -442,9 +456,11 @@ describe("handleJobTurnSettled — the wake", () => {
     mockFetch.mockResolvedValue(json(200, artifactsBody));
     await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });
 
-    // Scheduled, not run: the callback answers first.
+    // Scheduled, not run: the callback answers first. Two things wait on
+    // the response: the wake, and the artifact events that queued behind
+    // this turn (plans/job-artifact-events.md §3).
     expect(mockWake).not.toHaveBeenCalled();
-    expect(afterCallbacks).toHaveLength(1);
+    expect(afterCallbacks).toHaveLength(2);
     await flushAfter();
 
     expect(mockWorkspaceFindUnique).toHaveBeenCalledWith({ where: { id: "ws-1" }, select: { slug: true } });
@@ -517,5 +533,95 @@ describe("handleJobTurnSettled — the wake", () => {
     await handleJobTurnSettled(row({ id: "row-3" }));
     await flushAfter();
     expect(mockWake).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleJobTurnSettled — artifact events (strut plans/job-artifact-events.md §3)", () => {
+  const PR = "https://github.com/acme/app/pull/12";
+  const LINE = `[artifact-event] pull_request ${PR} merged`;
+  const artifactsBody = {
+    artifacts: [
+      { id: "plan", kind: "markdown", title: "Plan", url: `/jobs/${JOB}/files/plan.md` },
+      { id: "pr", kind: "pull_request", title: "PR", url: PR },
+    ],
+  };
+
+  it("indexes the turn's refs under the launch's workspace before the row lands; a failure throws (strut re-posts)", async () => {
+    mockFetch.mockImplementation(async () => json(200, artifactsBody));
+    await handleJobTurnSettled(row());
+    expect(mockIndex).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: "ws-1", swarmId: "swarm-1" }),
+      JOB,
+      expect.arrayContaining([expect.objectContaining({ id: "pr", kind: "pull_request" }), expect.objectContaining({ id: "plan" })]),
+    );
+    expect(mockIndex.mock.invocationCallOrder[0]).toBeLessThan(mockTx.sharedConversation.update.mock.invocationCallOrder[0]);
+
+    mockIndex.mockRejectedValueOnce(new Error("db down"));
+    await expect(handleJobTurnSettled(row())).rejects.toThrow("db down");
+  });
+
+  it("a turn with nothing to index, or one that failed, touches the index not at all", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row());
+    await handleJobTurnSettled(row({ status: StrutRunStatus.ERROR, error: "boom", output: null }));
+    expect(mockIndex).not.toHaveBeenCalled();
+  });
+
+  it("a turn an event started: the wake carries the event; a person's turn carries none", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row({ input: { prompt: `${LINE}\nhead: abc`, title: "Dark mode plan" } }), { publicBaseUrl: "https://hive.example.com" });
+    await flushAfter();
+    expect(mockWake).toHaveBeenCalledWith(expect.objectContaining({ event: { kind: "pull_request", url: PR, what: "merged" } }));
+
+    mockWake.mockClear();
+    await handleJobTurnSettled(row({ id: "row-2" }), { publicBaseUrl: "https://hive.example.com" });
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0]).not.toHaveProperty("event");
+  });
+
+  it("once the row has landed, the events that waited on the job go as the next turn — after the response", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });
+    expect(mockPending).not.toHaveBeenCalled();
+    await flushAfter();
+    expect(mockPending).toHaveBeenCalledWith(JOB, "https://hive.example.com");
+    expect(mockRequeue).not.toHaveBeenCalled();
+  });
+
+  it("a failed or stopped turn launches what waited too; a replay, or a conversation that is gone, launches nothing", async () => {
+    await handleJobTurnSettled(row({ status: StrutRunStatus.CANCELLED, output: null }));
+    await flushAfter();
+    expect(mockPending).toHaveBeenCalledTimes(1);
+
+    mockTx.$queryRaw.mockResolvedValueOnce([{ messages: [{ id: jobRowId(row()) }] }]);
+    await handleJobTurnSettled(row({ status: StrutRunStatus.CANCELLED, output: null }));
+    await flushAfter();
+    expect(mockPending).toHaveBeenCalledTimes(1);
+
+    await handleJobTurnSettled(row({ status: StrutRunStatus.CANCELLED, output: null, conversationId: null }));
+    await flushAfter();
+    expect(mockPending).toHaveBeenCalledTimes(1);
+  });
+
+  it("a turn strut refused as job_busy gives its event back before the pending ones go", async () => {
+    await handleJobTurnSettled(
+      row({ status: StrutRunStatus.ERROR, error: "job_busy: another run holds the job", output: null, input: { prompt: LINE, title: "Dark mode plan" } }),
+      { publicBaseUrl: "https://hive.example.com" },
+    );
+    await flushAfter();
+    expect(mockRequeue).toHaveBeenCalledWith(JOB, LINE);
+    expect(mockRequeue.mock.invocationCallOrder[0]).toBeLessThan(mockPending.mock.invocationCallOrder[0]);
+
+    // A person's turn that hit job_busy has no event to give back.
+    mockRequeue.mockClear();
+    await handleJobTurnSettled(row({ id: "row-2", status: StrutRunStatus.ERROR, error: "job_busy: x", output: null }));
+    await flushAfter();
+    expect(mockRequeue).not.toHaveBeenCalled();
+  });
+
+  it("the pending launch failing never fails the delivery", async () => {
+    mockPending.mockRejectedValueOnce(new Error("strut down"));
+    await handleJobTurnSettled(row({ status: StrutRunStatus.CANCELLED, output: null }));
+    await expect(flushAfter()).resolves.toBeUndefined();
   });
 });

@@ -55,7 +55,17 @@ export interface ReplayMessage {
   content: string;
   toolCalls?: Array<{ id: string; toolName: string; input?: unknown; output?: unknown; errorText?: string }>;
   attachments?: AttachmentLike[];
-  source?: { kind: string };
+  source?: { kind: string; jobId?: string };
+}
+
+/**
+ * Replayed in place of a job event row (`source.kind: "job_event"`): the
+ * event that started a job turn, as a notice from the user — the model
+ * reads what happened and that it was not asked, and never sees a row it
+ * could learn to write.
+ */
+export function jobEventNotice(jobId: string | undefined, content: string): string {
+  return `(Job ${jobId ?? "?"} was continued by hive for an event about an artifact it reported — not by you, not by the user:\n${content})`;
 }
 
 /**
@@ -79,6 +89,9 @@ export function toModelMessages(messages: ReplayMessage[]): ModelMessage[] {
     .flatMap((m): ModelMessage[] => {
       if (m.source?.kind === "stopped") {
         return [{ role: "user", content: STOPPED_TURN_NOTICE }];
+      }
+      if (m.source?.kind === "job_event") {
+        return [{ role: "user", content: jobEventNotice(m.source.jobId, m.content) }];
       }
       if (m.role === "user" && m.attachments?.length) {
         return [
