@@ -466,7 +466,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 return (
                   <div key={message.id} className="space-y-1.5">
                     <JobTurnCard message={message} source={message.source} />
-                    <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
+                    <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} jobId={message.source.jobId} />
                   </div>
                 );
               }
@@ -886,9 +886,12 @@ const EMPTY_TOOL_CALLS: ToolCall[] = [];
 function MessageArtifacts({
   artifacts,
   cards,
+  jobId,
 }: {
   artifacts?: ArtifactRef[];
   cards: Map<ArtifactRef, ArtifactVersion>;
+  /** The strut job whose row these ride on — the card's viewer can act on it. */
+  jobId?: string;
 }) {
   const shown = artifacts?.filter((artifact) => cards.has(artifact));
   if (!shown?.length) return null;
@@ -896,7 +899,9 @@ function MessageArtifacts({
     <div className="space-y-1.5">
       {shown.map((artifact) => {
         const version = cards.get(artifact) ?? { index: 0, count: 1 };
-        return <ArtifactCard key={artifact.id} artifact={artifact} version={version.index} versionCount={version.count} />;
+        return (
+          <ArtifactCard key={artifact.id} artifact={artifact} version={version.index} versionCount={version.count} jobId={jobId} />
+        );
       })}
     </div>
   );

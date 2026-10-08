@@ -2,7 +2,7 @@
 
 import { useShallow } from "zustand/react/shallow";
 import { selectActiveMessages, useCanvasChatStore } from "../../_state/canvasChatStore";
-import { artifactIdentity, listArtifacts, type ArtifactRef } from "../../_state/canvasChatArtifacts";
+import { artifactIdentity, jobIdOfArtifact, listArtifacts, type ArtifactRef } from "../../_state/canvasChatArtifacts";
 
 /**
  * The active conversation's artifacts, oldest first. Selected through
@@ -21,6 +21,11 @@ export function useArtifactPanelOpen(): boolean {
     // Proposal-derived graph artifacts count too: their card is the proposal card.
     return listArtifacts(selectActiveMessages(s)).some((a) => artifactIdentity(a) === panel.identity);
   });
+}
+
+/** The strut job that reported an artifact, when a Job row did — what a viewer's action (the pull-request panel's Fix) sends to. */
+export function useArtifactJobId(artifact: ArtifactRef): string | undefined {
+  return useCanvasChatStore((s) => jobIdOfArtifact(selectActiveMessages(s), artifact));
 }
 
 /** The org the active conversation belongs to — where a stored page an artifact points at lives. */
