@@ -21,7 +21,8 @@
  * 17. propose_move_node: finds the single parent, needs from_ref_id for several, refuses no parent,
  *     mirror-owned, missing nodes, a destination under the node (cycle), never writes
  * 18. propose_delete_node: lists the live edges on the card, caps the list, refuses missing,
- *     mirror-owned and Schema nodes, never writes
+ *     mirror-owned, Schema and already-deleted nodes, never writes
+ * 19. Delete tool copy says links are permanently removed
  */
 
 // @vitest-environment node
@@ -58,6 +59,7 @@ vi.mock("@/services/swarm/api/nodes", () => ({
   listIncomingEdges: mockListIncomingEdges,
   getNodeEdges: mockGetNodeEdges,
   isMutedEdge: (p?: Record<string, unknown>) => p?.is_muted === true || p?.is_deleted === true,
+  isDeletedNode: (p?: Record<string, unknown>) => (p?.deleted_at ?? null) !== null || p?.is_deleted === true,
   deleteSingleNode: vi.fn(),
   addNode: vi.fn(),
   updateNodeV2: vi.fn(),
@@ -772,6 +774,19 @@ describe("propose_delete_node", () => {
     expect(mockGetNodeEdges).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["deleted_at only", { name: "Old Name", deleted_at: 1760000000000 }],
+    ["is_deleted only", { name: "Old Name", is_deleted: true }],
+  ])("refuses a node that is already deleted (%s)", async (_label, properties) => {
+    mockReadNodeByRef.mockResolvedValue({ success: true, ref_id: "node-123", node_type: "Concept", properties });
+    const tools = getTools();
+    expect(await tools.propose_delete_node.execute(args, {} as never)).toMatchObject({
+      kind: "graphNodeDelete",
+      meta: { refusedReason: 'Node "node-123" is already deleted.' },
+    });
+    expect(mockGetNodeEdges).not.toHaveBeenCalled();
+  });
+
   it("reports a failed edge read as a tool error", async () => {
     mockGetNodeEdges.mockResolvedValue({ ok: false, edges: [], nodes: [], error: "Request failed with status 503" });
     const tools = getTools();
@@ -785,5 +800,23 @@ describe("propose_delete_node", () => {
     const result = await tools.propose_delete_node.execute(args, {} as never);
     expect(result).toMatchObject({ error: expect.stringContaining("access denied") });
     expect(mockReadNodeByRef).not.toHaveBeenCalled();
+  });
+});
+
+// ── Delete tool copy ──────────────────────────────────────────────────────
+
+describe("delete tool copy", () => {
+  it("says a node delete can be restored but its links are permanently removed", () => {
+    const { description } = getTools().propose_delete_node;
+    expect(description).toContain("The node can be restored, but every link touching it is permanently removed");
+    expect(description).not.toContain("hidden");
+  });
+
+  it("says an edge delete is permanent", () => {
+    expect(getTools().propose_delete_edge.description).toContain("permanently removing");
+  });
+
+  it("lists deleted_at among the reserved keys", () => {
+    expect(getTools().propose_create_node.description).toContain("deleted_at");
   });
 });

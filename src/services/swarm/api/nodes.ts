@@ -690,13 +690,11 @@ export async function deleteNode(
 }
 
 /**
- * Remove an edge via `DELETE /v2/edges/{ref_id}`.
- *
- * Jarvis does not delete the relationship: it sets `is_muted = true` on it
- * and leaves it in Neo4j, so every read that lists edges must skip muted
- * ones (see `isMutedEdge`). A ref_id that matches nothing comes back as
- * 200 + `{ status: "Warning", status_messages: ["Warning: No edge found…"] }`,
- * surfaced here as `notFound`. Never throws.
+ * Permanently remove an edge via `DELETE /v2/edges/{ref_id}`: Jarvis deletes
+ * the relationship from Neo4j. An edge that is missing, in another namespace
+ * or not the caller's comes back as 200 + `{ status: "Warning",
+ * status_messages: ["Warning: No edge found…"] }` — Jarvis's permanent miss
+ * signal (it never sends a 404 here), surfaced as `notFound`. Never throws.
  */
 export async function deleteEdge(
   config: JarvisConnectionConfig,
@@ -743,9 +741,9 @@ export async function deleteEdge(
 /**
  * Soft-delete exactly one node via `DELETE /v2/nodes/{ref_id}/single`.
  *
- * Jarvis marks the node `is_deleted` and mutes its edges in one write, and
- * returns the node's `is_deleted` from that write. Success here means that
- * value came back true for this ref_id — never just a 200. A node that is
+ * Jarvis stamps the node `deleted_at` and permanently removes its edges in
+ * one write, and returns the node's delete fields from that write. Success
+ * here means they came back set for this ref_id — never just a 200. A node that is
  * missing (404) or already deleted (409) is surfaced as `notFound`. Jarvis
  * looks the node up by namespace (default "default" when the query param is
  * absent), so a node in another namespace needs `namespace`. Unlike
@@ -756,7 +754,7 @@ export async function deleteSingleNode(
   config: JarvisConnectionConfig,
   refId: string,
   namespace?: string,
-): Promise<{ success: boolean; notFound?: boolean; mutedEdgeCount?: number; error?: string }> {
+): Promise<{ success: boolean; notFound?: boolean; deletedEdgeCount?: number | null; error?: string }> {
   if (!isSafeRefId(refId)) {
     return { success: false, error: `Invalid ref_id: ${JSON.stringify(refId)}` };
   }
@@ -788,21 +786,32 @@ export async function deleteSingleNode(
   }
 
   const body = result.body as
-    | { ref_id?: string; is_deleted?: boolean; muted_edge_count?: number }
+    | { ref_id?: string; deleted_edge_count?: number; muted_edge_count?: number } & Record<string, unknown>
     | undefined;
-  if (body?.ref_id !== refId || body?.is_deleted !== true) {
+  if (body?.ref_id !== refId || !isDeletedNode(body)) {
     return {
       success: false,
       error: "Jarvis did not confirm the node was deleted.",
     };
   }
 
-  return { success: true, mutedEdgeCount: body.muted_edge_count ?? 0 };
+  // `muted_edge_count` is the pre-contract name for the same count.
+  const count = body.deleted_edge_count ?? body.muted_edge_count;
+  return { success: true, deletedEdgeCount: typeof count === "number" ? count : null };
 }
 
 /**
- * True for an edge Jarvis has muted (`DELETE /v2/edges/{ref_id}`) or marked
- * deleted: it is still stored, but no read should show it.
+ * True for a soft-deleted node: Jarvis stamps `deleted_at` (epoch ms).
+ * `is_deleted` is the legacy flag, still written until the contract step.
+ */
+export function isDeletedNode(properties: Record<string, unknown> | undefined): boolean {
+  return (properties?.deleted_at !== undefined && properties?.deleted_at !== null) || properties?.is_deleted === true;
+}
+
+/**
+ * True for an edge no read should show. Jarvis now deletes edges outright;
+ * `is_muted` / `is_deleted` (legacy) mark edges muted before that, still
+ * stored until the purge.
  */
 export function isMutedEdge(properties: Record<string, unknown> | undefined): boolean {
   return properties?.is_muted === true || properties?.is_deleted === true;

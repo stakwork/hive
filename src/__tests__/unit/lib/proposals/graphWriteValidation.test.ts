@@ -26,6 +26,10 @@ beforeEach(() => {
 describe("reserved keys", () => {
   it("reserves Jarvis's delete flags, since reads skip whatever carries them", () => {
     expect(findReservedKeys({ is_muted: true, is_deleted: true, name: "x" })).toEqual(["is_muted", "is_deleted"]);
+    expect(findReservedKeys({ deleted_at: 1760000000000, name: "x" })).toEqual(["deleted_at"]);
+    expect(findReservedKeyViolation([["node_data", { deleted_at: null }]])).toBe(
+      "node_data contains reserved key(s): deleted_at.",
+    );
     expect(findReservedKeyViolation([["edge_data", { is_muted: true }]])).toBe(
       "edge_data contains reserved key(s): is_muted.",
     );

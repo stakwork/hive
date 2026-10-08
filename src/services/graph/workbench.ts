@@ -17,8 +17,11 @@ const IDENT = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 /** A readable name for a node of any type. */
 const nameOf = (v: string) => `coalesce(${v}.name, ${v}.title, ${v}.tool_name, ${v}.file, ${v}.path, ${v}.ref_id)`;
 
-/** An edge still in force: Jarvis mutes an edge instead of deleting it (an approved delete or move), and keeps it stored. */
-const live = (r: string) => `coalesce(${r}.is_muted, false) = false AND coalesce(${r}.is_deleted, false) = false`;
+/** An edge still in force. Jarvis deletes edges outright now; `is_muted` / `is_deleted` (legacy) mark edges muted before that. */
+const edgeLive = (r: string) => `coalesce(${r}.is_muted, false) = false AND coalesce(${r}.is_deleted, false) = false`;
+
+/** A node not soft-deleted: Jarvis stamps `deleted_at`; `is_deleted` is the legacy flag, written until the contract step. */
+const nodeLive = (v: string) => `${v}.deleted_at IS NULL AND coalesce(${v}.is_deleted, false) = false`;
 
 /** Upstream returns at most this many rows whatever limit is asked for. */
 export const GRAPH_ROW_CAP = 1000;
@@ -104,14 +107,14 @@ export async function getHierarchy(caller: Caller, label: string): Promise<Workb
   const [nodes, edges] = await Promise.all([
     rows(
       caller,
-      `MATCH (n:${L}) RETURN n.ref_id AS id, n.id AS key, n.name AS name, ` +
+      `MATCH (n:${L}) WHERE ${nodeLive("n")} RETURN n.ref_id AS id, n.id AS key, n.name AS name, ` +
         `n.description AS description, n.docs AS docs, n.repo AS repo, ` +
         `size([(n)<-[:ACCESSED|READ_CONCEPT]-() | 1]) AS reads, [(n)<-[:APPROVED]-(m) | m.name] AS approvers`,
       GRAPH_ROW_CAP,
     ),
     rows(
       caller,
-      `MATCH (a:${L})-[r]->(b:${L}) WHERE ${live("r")} ` +
+      `MATCH (a:${L})-[r]->(b:${L}) WHERE ${edgeLive("r")} AND ${nodeLive("a")} AND ${nodeLive("b")} ` +
         `RETURN type(r) AS type, a.ref_id AS source, b.ref_id AS target`,
       GRAPH_ROW_CAP,
     ),
@@ -186,13 +189,13 @@ export async function getNodeConnections(caller: Caller, refId: string): Promise
     rows(
       caller,
       // `Data_Bank` is on every node and carries the `ref_id` index.
-      `MATCH (o:Data_Bank {ref_id: '${refId}'}) ` +
+      `MATCH (o:Data_Bank {ref_id: '${refId}'}) WHERE ${nodeLive("o")} ` +
         `RETURN ${propertyPairs("o", HIDDEN_PROPERTIES)} AS props, labels(o) AS labels, ${nameOf("o")} AS name`,
       1,
     ),
     rows(
       caller,
-      `MATCH (c:Data_Bank {ref_id: '${refId}'})-[r]-(o) WHERE ${live("r")} ` +
+      `MATCH (c:Data_Bank {ref_id: '${refId}'})-[r]-(o) WHERE ${edgeLive("r")} AND ${nodeLive("c")} AND ${nodeLive("o")} ` +
         `WITH type(r) AS edge, startNode(r) = c AS outgoing, labels(o) AS labels, o ` +
         `WITH edge, outgoing, labels, count(o) AS count, ` +
         `collect({id: o.ref_id, name: ${nameOf("o")}})[0..${CONNECTION_SAMPLE}] AS items ` +
@@ -258,7 +261,7 @@ export async function getConnectionPage(
     : `(c:Data_Bank {ref_id: '${refId}'})<-[r:\`${edge}\`]-${target}`;
   const result = await rows(
     caller,
-    `MATCH ${pattern} WHERE ${live("r")} RETURN o.ref_id AS id, ${nameOf("o")} AS name, labels(o) AS labels`,
+    `MATCH ${pattern} WHERE ${edgeLive("r")} AND ${nodeLive("c")} AND ${nodeLive("o")} RETURN o.ref_id AS id, ${nameOf("o")} AS name, labels(o) AS labels`,
     Math.min(Math.max(1, Math.floor(limit)), GRAPH_ROW_CAP),
   );
   if (!result.ok) return result;

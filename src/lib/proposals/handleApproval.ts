@@ -3743,11 +3743,13 @@ async function approveGraphEdgeDelete(args: {
 // ── Approve: graph node move ─────────────────────────────────────────
 
 /**
- * Move = create the new parent link, then remove the old one, in that order:
- * a failure between the two leaves the node under both parents rather than
- * under none. A failed removal is reported as an error (no approvalResult is
- * stamped), so approving again retries: the create is a benign duplicate
- * ("Warning") and the removal runs again.
+ * Move = create the new parent link, confirm it is live, then remove the old
+ * one, in that order: a failure between them leaves the node under both
+ * parents rather than under none. The confirm matters because Jarvis reports
+ * a muted legacy edge as an existing duplicate, which would leave the node
+ * with no visible parent. A failed removal is reported as an error (no
+ * approvalResult is stamped), so approving again retries: the create is a
+ * benign duplicate ("Warning") and the removal runs again.
  */
 async function approveGraphNodeMove(args: {
   orgId: string;
@@ -3861,7 +3863,34 @@ async function approveGraphNodeMove(args: {
     };
   }
 
-  // 2. Then the old one goes.
+  // 2. Confirm the new link is live before the old one goes.
+  const linked = await findEdgeByEndpoints(config, {
+    source_ref_id: payload.to_ref_id,
+    edge_type: payload.edge_type,
+    target_ref_id: payload.ref_id,
+  });
+  if (!linked.success || !linked.edge) {
+    logger.info(`[handleApproval.approveGraphNodeMove] link not live`, "handleApproval", {
+      workspaceId,
+      workspaceSlug,
+      kind: "graphNodeMove",
+      edge_type: payload.edge_type,
+      ref_id: payload.ref_id,
+      to_ref_id: payload.to_ref_id,
+      alreadyLinked: created.alreadyExists,
+      outcome: "link-not-live",
+      ...(linked.success ? {} : { message: linked.message }),
+    });
+    return {
+      ok: false,
+      error: linked.success
+        ? `Could not confirm a live ${payload.edge_type} link from "${payload.to_ref_id}" — the old link from "${payload.from_ref_id}" was kept, so the node still has a parent.`
+        : linked.message ?? "Failed to confirm the node's new link in the knowledge graph.",
+      status: linked.success ? 409 : 502,
+    };
+  }
+
+  // 3. Then the old one goes.
   const removed = await deleteEdge(config, old.edge.ref_id);
   const outcome = removed.success ? "moved" : "unlink-failed";
   logger.info(`[handleApproval.approveGraphNodeMove] ${outcome}`, "handleApproval", {
@@ -3905,9 +3934,10 @@ async function approveGraphNodeMove(args: {
 // ── Approve: graph node delete ───────────────────────────────────────
 
 /**
- * Soft-delete one node. Jarvis marks it deleted and mutes its edges in one
- * write and returns `is_deleted` from that write, so `deleteSingleNode`
- * succeeding IS the check that the node is gone — no second read.
+ * Soft-delete one node. Jarvis stamps it deleted and permanently removes its
+ * edges in one write and returns the delete fields from that write, so
+ * `deleteSingleNode` succeeding IS the check that the node is gone — no
+ * second read.
  */
 async function approveGraphNodeDelete(args: {
   orgId: string;
@@ -3950,7 +3980,10 @@ async function approveGraphNodeDelete(args: {
       namespace: payload.namespace ?? "default",
       outcome,
       ...(result.success
-        ? { muted_edge_count: result.mutedEdgeCount }
+        ? {
+            deleted_edge_count: result.deletedEdgeCount ?? null,
+            ...(result.deletedEdgeCount == null ? { deleted_edge_count_unknown: true } : {}),
+          }
         : { message: result.error }),
     },
   );
