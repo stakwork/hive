@@ -32,7 +32,7 @@ vi.mock("@/hooks/useWorkspaceAccess", () => ({
 vi.mock(
   "@/app/w/[slug]/lingo/components/LingoCard",
   () => ({
-    LingoCard: () => <div data-testid="lingo-card" />,
+    LingoCard: ({ onClick }: any) => <div data-testid="lingo-card" onClick={onClick} />,
     LingoCardSkeleton: () => <div data-testid="lingo-card-skeleton" />,
   }),
 );
@@ -40,7 +40,19 @@ vi.mock(
 vi.mock(
   "@/app/w/[slug]/lingo/components/NeighborView",
   () => ({
-    NeighborView: () => <div data-testid="neighbor-view" />,
+    NeighborView: ({ edges, deletedEdgeIds, onDeleteEdge }: any) => (
+      <div data-testid="neighbor-view">
+        {edges
+          .filter((e: any) => !deletedEdgeIds.has(e.edge_ref_id))
+          .map((e: any) => (
+            <button
+              key={e.edge_ref_id}
+              data-testid={`delete-edge-${e.edge_ref_id}`}
+              onClick={() => onDeleteEdge(e.edge_ref_id)}
+            />
+          ))}
+      </div>
+    ),
   }),
 );
 
@@ -312,5 +324,91 @@ describe("LingoExplorer (/w/[slug]/lingo) — Run Extraction button", () => {
     await waitFor(() => {
       expect(button).not.toBeDisabled();
     });
+  });
+});
+
+describe("LingoExplorer (/w/[slug]/lingo) — edge delete", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupWorkspace();
+    setupWriteAccess(true);
+  });
+
+  async function deleteEdgeWithStatus(status: number) {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            nodes: [{ ref_id: "node-1", name: "Alpha", node_type: "Lingo", date_added_to_graph: 0 }],
+            hasMore: false,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: {
+            node: { ref_id: "node-1", name: "Alpha", node_type: "Lingo", date_added_to_graph: 0 },
+            edges: [
+              {
+                edge_ref_id: "edge-1",
+                edge_type: "RELATED_TO",
+                neighbor_node: { ref_id: "node-2", name: "Beta", node_type: "Lingo" },
+              },
+            ],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => ({}),
+      });
+
+    let toastOptions: any;
+    mockToast.mockImplementationOnce((_msg: string, opts: any) => {
+      toastOptions = opts;
+    });
+
+    renderExplorer();
+    const card = await screen.findByTestId("lingo-card");
+    await act(async () => {
+      fireEvent.click(card);
+    });
+    fireEvent.click(await screen.findByTestId("delete-edge-edge-1"));
+    expect(screen.queryByTestId("delete-edge-edge-1")).not.toBeInTheDocument();
+
+    await act(async () => {
+      toastOptions.onAutoClose();
+    });
+  }
+
+  it("sends DELETE with no body", async () => {
+    await deleteEdgeWithStatus(200);
+
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      `/api/workspaces/${SLUG}/lingo/edges/edge-1`,
+      { method: "DELETE" },
+    );
+    expect(screen.queryByTestId("delete-edge-edge-1")).not.toBeInTheDocument();
+  });
+
+  it("keeps the edge removed on 404", async () => {
+    await deleteEdgeWithStatus(404);
+
+    expect(screen.queryByTestId("delete-edge-edge-1")).not.toBeInTheDocument();
+    expect(mockToastError).not.toHaveBeenCalled();
+  });
+
+  it("puts the edge back on 500", async () => {
+    await deleteEdgeWithStatus(500);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("delete-edge-edge-1")).toBeInTheDocument();
+    });
+    expect(mockToastError).toHaveBeenCalledWith("Failed to delete connection");
   });
 });
