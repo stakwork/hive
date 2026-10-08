@@ -122,6 +122,36 @@ const failureOf = (error: unknown): ArtifactLoadFailure =>
   error instanceof ArtifactLoadError ? error.reason : "failed";
 
 /**
+ * Build the URL for the live PR status endpoint.
+ * Returns null when the inline content does not carry jobId + swarmId.
+ */
+function prLiveUrl(
+  githubLogin: string,
+  inline: Record<string, unknown>,
+): string | null {
+  const { jobId, swarmId, repo, number } = inline;
+  if (
+    typeof jobId !== "string" || !jobId ||
+    typeof swarmId !== "string" || !swarmId ||
+    typeof repo !== "string" || !repo ||
+    typeof number !== "number"
+  ) {
+    return null;
+  }
+  const sp = new URLSearchParams({
+    swarmId,
+    jobId,
+    repo,
+    number: String(number),
+  });
+  return `/api/orgs/${encodeURIComponent(githubLogin)}/strut/pull-request?${sp}`;
+}
+
+/** Whether a PR state is terminal — no more polling needed. */
+const isTerminalPrState = (state: unknown): boolean =>
+  state === "merged" || state === "closed";
+
+/**
  * An artifact's content. `enabled` holds the read back until someone is
  * looking — a card that has not scrolled into view yet.
  */
@@ -136,6 +166,48 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
     [kind, source],
   );
 
+  // ── Live PR status polling (pull_request + inline + jobId/swarmId) ──────
+  //
+  // The inline content is the first paint; this query overlays the live
+  // state once it arrives. The card and the panel share the same query key
+  // so a single poll serves both. Polling stops once the PR is merged or
+  // closed, and does not run when the tab is hidden.
+  const prUrl = useMemo(
+    () =>
+      kind === "pull_request" && source.type === "inline"
+        ? prLiveUrl(githubLogin, source.content)
+        : null,
+    [kind, source, githubLogin],
+  );
+
+  const prLiveQuery = useQuery({
+    queryKey: ["canvas-pr-live", prUrl],
+    queryFn: async () => {
+      const res = await fetch(prUrl!, { credentials: "same-origin" });
+      if (!res.ok) throw new Error(`pr-live ${res.status}`);
+      return (await res.json()) as Record<string, unknown>;
+    },
+    enabled: enabled && prUrl !== null,
+    refetchInterval: (query) => {
+      const state = query.state.data?.state;
+      return isTerminalPrState(state) ? false : 30_000;
+    },
+    refetchIntervalInBackground: false,
+    // On network errors keep the inline state — don't surface as "failed".
+    retry: false,
+  });
+
+  // Overlay the live result on the inline content for pull_request refs.
+  const liveOverlaidContent = useMemo(() => {
+    if (kind !== "pull_request" || !inline) return null;
+    const live = prLiveQuery.data;
+    if (!live) return inline;
+    // Merge live fields onto the inline content and re-parse so the type
+    // checker validates the merged object.
+    return parseArtifactContent(kind, { ...(source.type === "inline" ? source.content : {}), ...live });
+  }, [kind, inline, prLiveQuery.data, source]);
+
+  // ── Regular graph-source query ────────────────────────────────────────
   const query = useQuery({
     queryKey: ["canvas-artifact", kind, sourceKey(source), githubLogin],
     queryFn: async () => {
@@ -149,7 +221,15 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
     retryOnMount: false,
   });
 
-  if (source.type === "inline") return inline ? { status: "ready", content: inline } : { status: "unavailable" };
+  // ── Result ────────────────────────────────────────────────────────────
+  if (source.type === "inline") {
+    // pull_request with live overlay (or inline fallback when overlay is loading/errored).
+    if (kind === "pull_request") {
+      const content = liveOverlaidContent ?? inline;
+      return content ? { status: "ready", content } : { status: "unavailable" };
+    }
+    return inline ? { status: "ready", content: inline } : { status: "unavailable" };
+  }
   if (query.data) return { status: "ready", content: query.data };
   if (query.error) {
     const reason = failureOf(query.error);
