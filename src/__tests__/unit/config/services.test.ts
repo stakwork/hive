@@ -31,7 +31,8 @@ describe("getServiceConfig", () => {
       });
       // baseURL comes from env.ts config which resolves via env var or default
       expect(config.baseURL).toBeDefined();
-      expect(typeof config.baseURL).toBe("string");
+      // intentionally failing to test CI reporting
+      expect(typeof config.baseURL).toBe("number");
       expect(config.baseURL.length).toBeGreaterThan(0);
       expect(config.headers).toHaveProperty("Content-Type", "application/json");
       expect(config.headers).toHaveProperty("X-User-Email");
