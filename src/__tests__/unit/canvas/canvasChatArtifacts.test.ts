@@ -142,6 +142,20 @@ describe("parseArtifactContent", () => {
     expect(parseArtifactContent("pull_request", { ...pullRequest, number: 1.5 })).toBeNull();
   });
 
+  test("a pull request keeps a check's page and its head commit", () => {
+    const full = {
+      ...pullRequest,
+      headSha: "a1b2c3d",
+      checks: [{ name: "lint", status: "failure", url: "https://github.com/acme/app/actions/runs/1" }, { name: "build", status: "success" }],
+    };
+    expect(parseArtifactContent("pull_request", full)).toEqual(full);
+    // An empty or non-string url is no url.
+    expect(parseArtifactContent("pull_request", { ...pullRequest, checks: [{ name: "lint", status: "failure", url: "" }] })).toEqual({
+      ...pullRequest,
+      checks: [{ name: "lint", status: "failure" }],
+    });
+  });
+
   test("a pull request keeps its checks and files whole", () => {
     const full = {
       ...pullRequest,
