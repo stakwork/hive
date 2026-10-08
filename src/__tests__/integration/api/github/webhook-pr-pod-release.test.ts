@@ -15,6 +15,7 @@ import { triggerAsyncSync } from '@/services/swarm/stakgraph-actions';
 import { getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
 import { pusherServer, PUSHER_EVENTS } from '@/lib/pusher';
 import { releaseTaskPod } from '@/lib/pods/utils';
+import { forwardArtifactEvent } from '@/services/strut-jobs/artifact-events';
 import { generateUniqueId } from '@/__tests__/support/helpers';
 import { EncryptionService } from '@/lib/encryption';
 
@@ -32,6 +33,9 @@ vi.mock('@/lib/pusher', () => ({
     PR_STATUS_CHANGE: 'pr-status-change',
   },
 }));
+// A strut JOB that reported the pull request hears of it (strut
+// plans/job-artifact-events.md §3): the door is its own module, mocked here.
+vi.mock('@/services/strut-jobs/artifact-events', () => ({ forwardArtifactEvent: vi.fn() }));
 vi.mock('@/services/roadmap/feature-status-sync', () => ({
   updateFeatureStatusFromTasks: vi.fn().mockResolvedValue(undefined),
 }));
@@ -163,6 +167,15 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.success).toBe(true);
+
+      // A job that reported this pull request is told, within this workspace.
+      expect(forwardArtifactEvent).toHaveBeenCalledTimes(1);
+      expect(forwardArtifactEvent).toHaveBeenCalledWith({
+        workspaceId: testSetup.workspace.id,
+        url: prUrl,
+        what: 'merged',
+        publicBaseUrl: expect.stringMatching(/^https?:\/\//),
+      });
 
       // Verify task status was updated to DONE
       const updatedTask = await db.task.findUnique({
