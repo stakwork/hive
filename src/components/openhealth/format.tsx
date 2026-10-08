@@ -1,3 +1,4 @@
+import React from "react";
 import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { isAtTarget, OPENHEALTH_CLIMB_DEFAULT_TARGET } from "@/lib/openhealth-benchmarks/climb";
