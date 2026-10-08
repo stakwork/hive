@@ -498,9 +498,9 @@ export function ProposalCard({
           ? `Edge already existed in ${where} — no duplicate created ✓`
           : `Relationship created in ${where} ✓`;
       } else if (r.kind === "graphEdgeDelete") {
-        text = `Relationship removed from ${where} ✓`;
+        text = `Relationship permanently removed from ${where} ✓`;
       } else if (r.kind === "graphNodeDelete") {
-        text = `Node deleted from ${where} ✓`;
+        text = `Node deleted from ${where} — its links are permanently removed ✓`;
       } else if (r.kind === "graphNodeMove") {
         text = r.alreadyExisted
           ? `Node moved in ${where} — it was already linked to the new parent, so only the old link was removed ✓`
@@ -2094,7 +2094,7 @@ function GraphEdgeDeleteMeta({
   return (
     <div className="mt-0.5 space-y-0.5">
       <div className="text-[11px] text-muted-foreground">
-        {meta.workspaceName ?? meta.workspaceSlug ?? payload.workspaceSlug} · removes a link
+        {meta.workspaceName ?? meta.workspaceSlug ?? payload.workspaceSlug} · permanently removes a link
       </div>
       <div className="mt-1 flex items-center gap-1 font-mono text-[11px] break-all">
         <GraphNodeLabel name={meta.source_name} refId={payload.source_ref_id} />
@@ -2139,7 +2139,7 @@ function GraphNodeMoveMeta({
   );
 }
 
-/** Compact body for a node-delete proposal: the node, then each edge that will be hidden with it. */
+/** Compact body for a node-delete proposal: the node, then each edge that is removed with it. */
 function GraphNodeDeleteMeta({
   proposal,
 }: {
@@ -2158,7 +2158,7 @@ function GraphNodeDeleteMeta({
         <div className="text-[11px] text-muted-foreground">
           {edges.length === 0
             ? "deletes the node · it has no links"
-            : `deletes the node · hides ${edges.length + (meta.more_edge_count ?? 0)} link${
+            : `deletes the node · permanently removes ${edges.length + (meta.more_edge_count ?? 0)} link${
                 edges.length + (meta.more_edge_count ?? 0) === 1 ? "" : "s"
               }`}
         </div>

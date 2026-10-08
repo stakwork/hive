@@ -9,7 +9,7 @@ beforeEach(() => {
   global.fetch = mockFetch;
 });
 
-const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, deleteSingleNode, findEdgeByEndpoints, listIncomingEdges, isMutedEdge, getReferencedNodeCentrality, searchNodesByAttributes } = await import("@/services/swarm/api/nodes");
+const { addNode, addEdge, addEdgeBulk, addEdgeByRefBulk, addNodeBulk, updateNode, deleteNode, deleteEdge, deleteSingleNode, findEdgeByEndpoints, listIncomingEdges, isDeletedNode, isMutedEdge, getReferencedNodeCentrality, searchNodesByAttributes } = await import("@/services/swarm/api/nodes");
 
 const config = {
   jarvisUrl: "https://test-swarm.sphinx.chat:8444",
@@ -991,11 +991,20 @@ describe("deleteSingleNode", () => {
   const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
 
   test("calls DELETE /v2/nodes/{refId}/single as admin and succeeds when Jarvis confirms", async () => {
-    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "node-1", is_deleted: true, muted_edge_count: 3 }));
+    mockFetch.mockResolvedValueOnce(
+      ok({
+        status: "success",
+        ref_id: "node-1",
+        deleted_at: 1760000000000,
+        is_deleted: true,
+        deleted_edge_count: 3,
+        muted_edge_count: 3,
+      }),
+    );
 
     const result = await deleteSingleNode(config, "node-1");
 
-    expect(result).toEqual({ success: true, mutedEdgeCount: 3 });
+    expect(result).toEqual({ success: true, deletedEdgeCount: 3 });
     expect(mockFetch).toHaveBeenCalledWith(
       "https://test-swarm.sphinx.chat:8444/v2/nodes/node-1/single",
       expect.objectContaining({
@@ -1005,11 +1014,31 @@ describe("deleteSingleNode", () => {
     );
   });
 
-  test("does not count a 200 without is_deleted: true as success", async () => {
+  test("prefers deleted_edge_count over muted_edge_count", async () => {
+    mockFetch.mockResolvedValueOnce(
+      ok({ ref_id: "node-1", deleted_at: 1, deleted_edge_count: 0, muted_edge_count: 5 }),
+    );
+    expect(await deleteSingleNode(config, "node-1")).toEqual({ success: true, deletedEdgeCount: 0 });
+  });
+
+  test("falls back to muted_edge_count when deleted_edge_count is absent", async () => {
+    mockFetch.mockResolvedValueOnce(ok({ ref_id: "node-1", is_deleted: true, muted_edge_count: 4 }));
+    expect(await deleteSingleNode(config, "node-1")).toEqual({ success: true, deletedEdgeCount: 4 });
+  });
+
+  test("reports a null count, not 0, when Jarvis sends neither", async () => {
+    mockFetch.mockResolvedValueOnce(ok({ ref_id: "node-1", deleted_at: 1760000000000 }));
+    expect(await deleteSingleNode(config, "node-1")).toEqual({ success: true, deletedEdgeCount: null });
+  });
+
+  test("does not count a 200 that doesn't confirm the delete as success", async () => {
     mockFetch.mockResolvedValueOnce(ok({ status: "success" }));
     expect(await deleteSingleNode(config, "node-1")).toMatchObject({ success: false, error: expect.stringContaining("did not confirm") });
 
-    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "other", is_deleted: true }));
+    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "other", deleted_at: 1, is_deleted: true }));
+    expect((await deleteSingleNode(config, "node-1")).success).toBe(false);
+
+    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "node-1", deleted_at: null, is_deleted: false }));
     expect((await deleteSingleNode(config, "node-1")).success).toBe(false);
   });
 
@@ -1019,7 +1048,7 @@ describe("deleteSingleNode", () => {
   });
 
   test("appends the namespace query param, URL-encoded", async () => {
-    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "node-1", is_deleted: true }));
+    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "node-1", deleted_at: 1, is_deleted: true }));
 
     await deleteSingleNode(config, "node-1", "my ns/1");
 
@@ -1029,7 +1058,7 @@ describe("deleteSingleNode", () => {
   });
 
   test.each([undefined, ""])("sends no namespace param when namespace is %j", async (namespace) => {
-    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "node-1", is_deleted: true }));
+    mockFetch.mockResolvedValueOnce(ok({ status: "success", ref_id: "node-1", deleted_at: 1, is_deleted: true }));
 
     await deleteSingleNode(config, "node-1", namespace);
 
@@ -1150,6 +1179,16 @@ describe("deleteEdge", () => {
       expect(result.error).toContain("No edge found");
     });
 
+    test("reads a 200 without a Warning as success", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "Success", status_messages: [] }),
+      });
+
+      expect(await deleteEdge(config, "edge-1")).toEqual({ success: true });
+    });
+
     test("reads a 200 + Error body as a failure", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -1193,6 +1232,18 @@ describe("deleteEdge", () => {
 // ---------------------------------------------------------------------------
 // isMutedEdge / findEdgeByEndpoints / listIncomingEdges
 // ---------------------------------------------------------------------------
+
+describe("isDeletedNode", () => {
+  test("is true for deleted_at or the legacy is_deleted, and false otherwise", () => {
+    expect(isDeletedNode({ deleted_at: 1760000000000 })).toBe(true);
+    expect(isDeletedNode({ is_deleted: true })).toBe(true);
+    expect(isDeletedNode({ deleted_at: 1760000000000, is_deleted: true })).toBe(true);
+    expect(isDeletedNode({ deleted_at: null, is_deleted: false })).toBe(false);
+    expect(isDeletedNode({ is_muted: true })).toBe(false);
+    expect(isDeletedNode({})).toBe(false);
+    expect(isDeletedNode(undefined)).toBe(false);
+  });
+});
 
 describe("isMutedEdge", () => {
   test("is true for a muted or soft-deleted edge and false otherwise", () => {

@@ -219,13 +219,13 @@ export async function runProposalIntent(args: {
                                 return `Created ${ok} of ${items.length} relationship${items.length === 1 ? "" : "s"} in ${graphWhere} (${fail} failed — see details).`;
                               })()
                             : r.kind === "graphEdgeDelete"
-                              ? `Removed the relationship from ${graphWhere}.`
+                              ? `Permanently removed the relationship from ${graphWhere}.`
                               : r.kind === "graphNodeMove"
                                 ? r.alreadyExisted
                                   ? `Moved the node in ${graphWhere} — it was already linked to its new parent, so only the old link was removed.`
                                   : `Moved the node in ${graphWhere}.`
                               : r.kind === "graphNodeDelete"
-                                ? `Deleted the node from ${graphWhere}. Its links are hidden, and it can be restored.`
+                                ? `Deleted the node from ${graphWhere}. The node can be restored, but every link touching it is permanently removed.`
                             : r.kind === "codeChange"
                               ? (() => {
                                   const cc = r.codeChange;
