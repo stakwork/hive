@@ -3,71 +3,37 @@
  *
  * Covers:
  *   - 401 without a session
- *   - 400 for bad swarmId/jobId/repo/number
+ *   - 400 for a bad repo or number
  *   - 404 when caller is not in the org
- *   - 403 when swarm is outside org, workspace deleted, or no read access
- *   - 404 when no StrutRun with that jobId+swarmId exists
- *   - 404 when PR was not reported by this job (security check)
- *   - 502 when no GitHub token available
- *   - 200 success with Cache-Control: private, max-age=15
+ *   - 403 when the viewer has no GitHub token for the repo's owner
+ *   - 200 success with Cache-Control: private, max-age=15, read with the viewer's token
  *   - 502 on GitHub API error; 404 on GitHub 404
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
-const {
-  mockResolveAuthorizedOrgId,
-  mockSwarmFindUnique,
-  mockStrutRunFindFirst,
-  mockValidateWorkspaceAccess,
-  mockResolveJobOwnerOctokit,
-  mockGetPullRequestStatus,
-  mockJobReportedPullRequest,
-} = vi.hoisted(() => ({
+const { mockResolveAuthorizedOrgId, mockGetUserAppTokens, mockGetPullRequestStatus } = vi.hoisted(() => ({
   mockResolveAuthorizedOrgId: vi.fn(),
-  mockSwarmFindUnique: vi.fn(),
-  mockStrutRunFindFirst: vi.fn(),
-  mockValidateWorkspaceAccess: vi.fn(),
-  mockResolveJobOwnerOctokit: vi.fn(),
+  mockGetUserAppTokens: vi.fn(),
   mockGetPullRequestStatus: vi.fn(),
-  mockJobReportedPullRequest: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({
-  db: {
-    swarm: { findUnique: mockSwarmFindUnique },
-    strutRun: { findFirst: mockStrutRunFindFirst },
-  },
-}));
+/** Stands in for Octokit: keeps the auth it was built with, so the test can see whose token was used. */
+class FakeOctokit {
+  constructor(readonly options: { auth: string }) {}
+}
+
+vi.mock("@octokit/rest", () => ({ Octokit: FakeOctokit }));
 vi.mock("@/lib/auth/org-access", () => ({ resolveAuthorizedOrgId: mockResolveAuthorizedOrgId }));
-vi.mock("@/services/workspace", () => ({ validateWorkspaceAccess: mockValidateWorkspaceAccess }));
-vi.mock("@/lib/github/resolveJobOwnerOctokit", () => ({
-  resolveJobOwnerOctokit: mockResolveJobOwnerOctokit,
-}));
-vi.mock("@/lib/github/pullRequestStatus", () => ({
-  getPullRequestStatus: mockGetPullRequestStatus,
-}));
-vi.mock("@/lib/github/jobReportedPullRequest", () => ({
-  jobReportedPullRequest: mockJobReportedPullRequest,
-}));
+vi.mock("@/lib/githubApp", () => ({ getUserAppTokens: mockGetUserAppTokens }));
+vi.mock("@/lib/github/pullRequestStatus", () => ({ getPullRequestStatus: mockGetPullRequestStatus }));
 
 const { GET } = await import("@/app/api/orgs/[githubLogin]/strut/pull-request/route");
 
-const JOB_ID = "job-abc-123";
-const SWARM_ID = "swarm-1";
 const GITHUB_LOGIN = "acme-org";
 const params = { params: Promise.resolve({ githubLogin: GITHUB_LOGIN }) };
-
-const SWARM = {
-  workspace: {
-    id: "ws-1",
-    slug: "acme",
-    sourceControlOrgId: "org-1",
-    deleted: false,
-  },
-};
 
 const LIVE_STATUS = {
   state: "open",
@@ -78,8 +44,6 @@ const LIVE_STATUS = {
   author: "alice",
   checks: [{ name: "CI", status: "success" }],
 };
-
-const fakeOctokit = { name: "octokit" } as unknown as import("@octokit/rest").Octokit;
 
 function request(query: Record<string, string>, authed = true): NextRequest {
   const url = `http://localhost/api/orgs/${GITHUB_LOGIN}/strut/pull-request?${new URLSearchParams(query)}`;
@@ -93,16 +57,12 @@ function request(query: Record<string, string>, authed = true): NextRequest {
   return req;
 }
 
-const GOOD_QUERY = { swarmId: SWARM_ID, jobId: JOB_ID, repo: "acme/app", number: "7" };
+const GOOD_QUERY = { repo: "acme/app", number: "7" };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockResolveAuthorizedOrgId.mockResolvedValue("org-1");
-  mockSwarmFindUnique.mockResolvedValue(SWARM);
-  mockValidateWorkspaceAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: false, canAdmin: false });
-  mockStrutRunFindFirst.mockResolvedValue({ id: "run-1" });
-  mockJobReportedPullRequest.mockResolvedValue(true);   // PR reported by the job — allow through
-  mockResolveJobOwnerOctokit.mockResolvedValue({ ok: true, octokit: fakeOctokit, source: "job_owner" });
+  mockGetUserAppTokens.mockResolvedValue({ accessToken: "tok-viewer" });
   mockGetPullRequestStatus.mockResolvedValue(LIVE_STATUS);
 });
 
@@ -110,109 +70,62 @@ describe("GET /api/orgs/[githubLogin]/strut/pull-request", () => {
   it("401 without a session", async () => {
     const res = await GET(request(GOOD_QUERY, false), params);
     expect(res.status).toBe(401);
-    expect(mockSwarmFindUnique).not.toHaveBeenCalled();
+    expect(mockResolveAuthorizedOrgId).not.toHaveBeenCalled();
   });
 
-  it("400 for missing or invalid swarmId / jobId", async () => {
-    expect((await GET(request({ jobId: JOB_ID, repo: "acme/app", number: "7" }), params)).status).toBe(400);
-    expect((await GET(request({ swarmId: SWARM_ID, repo: "acme/app", number: "7" }), params)).status).toBe(400);
-    // Too long swarmId
-    expect((await GET(request({ ...GOOD_QUERY, swarmId: "x".repeat(201) }), params)).status).toBe(400);
-    expect(mockSwarmFindUnique).not.toHaveBeenCalled();
-  });
-
-  it("400 for invalid repo format", async () => {
-    expect((await GET(request({ ...GOOD_QUERY, repo: "no-slash" }), params)).status).toBe(400);
-    expect((await GET(request({ ...GOOD_QUERY, repo: "owner/name/extra" }), params)).status).toBe(400);
-    expect((await GET(request({ ...GOOD_QUERY, repo: "" }), params)).status).toBe(400);
-  });
-
-  it("400 for a repo outside GitHub's name characters (never reaches the reported-PR check)", async () => {
-    for (const repo of ["acme/(app", "acme/app|x", "acme/.*", "acme/app+", "ac me/app", "acme/app?x=1"]) {
-      expect((await GET(request({ ...GOOD_QUERY, repo }), params)).status).toBe(400);
+  it("400 for a missing or malformed repo", async () => {
+    expect((await GET(request({ number: "7" }), params)).status).toBe(400);
+    for (const repo of ["", "no-slash", "owner/name/extra", "acme/(app", "acme/app|x", "acme/.*", "ac me/app", "acme/app?x=1"]) {
+      expect((await GET(request({ repo, number: "7" }), params)).status).toBe(400);
     }
-    expect(mockJobReportedPullRequest).not.toHaveBeenCalled();
-    expect((await GET(request({ ...GOOD_QUERY, repo: "my-org_1/my.app-2" }), params)).status).toBe(200);
+    expect(mockResolveAuthorizedOrgId).not.toHaveBeenCalled();
+    expect((await GET(request({ repo: "my-org_1/my.app-2", number: "7" }), params)).status).toBe(200);
   });
 
-  it("400 for invalid number", async () => {
-    expect((await GET(request({ ...GOOD_QUERY, number: "0" }), params)).status).toBe(400);
-    expect((await GET(request({ ...GOOD_QUERY, number: "-1" }), params)).status).toBe(400);
-    expect((await GET(request({ ...GOOD_QUERY, number: "1.5" }), params)).status).toBe(400);
-    expect((await GET(request({ ...GOOD_QUERY, number: "abc" }), params)).status).toBe(400);
-    expect((await GET(request({ ...GOOD_QUERY, number: "" }), params)).status).toBe(400);
+  it("400 for a missing or invalid number", async () => {
+    expect((await GET(request({ repo: "acme/app" }), params)).status).toBe(400);
+    for (const number of ["0", "-1", "1.5", "abc", "", "07"]) {
+      expect((await GET(request({ ...GOOD_QUERY, number }), params)).status).toBe(400);
+    }
+    expect(mockResolveAuthorizedOrgId).not.toHaveBeenCalled();
   });
 
   it("404 when caller is not in the org", async () => {
     mockResolveAuthorizedOrgId.mockResolvedValue(null);
     expect((await GET(request(GOOD_QUERY), params)).status).toBe(404);
-    expect(mockSwarmFindUnique).not.toHaveBeenCalled();
-  });
-
-  it("403 when swarm is outside the org, workspace deleted, or swarm not found", async () => {
-    mockSwarmFindUnique.mockResolvedValue({ workspace: { ...SWARM.workspace, sourceControlOrgId: "org-2" } });
-    expect((await GET(request(GOOD_QUERY), params)).status).toBe(403);
-
-    mockSwarmFindUnique.mockResolvedValue({ workspace: { ...SWARM.workspace, deleted: true } });
-    expect((await GET(request(GOOD_QUERY), params)).status).toBe(403);
-
-    mockSwarmFindUnique.mockResolvedValue(null);
-    expect((await GET(request(GOOD_QUERY), params)).status).toBe(403);
-  });
-
-  it("403 when caller cannot read the workspace", async () => {
-    mockValidateWorkspaceAccess.mockResolvedValue({ hasAccess: false, canRead: false, canWrite: false, canAdmin: false });
-    expect((await GET(request(GOOD_QUERY), params)).status).toBe(403);
-    expect(mockStrutRunFindFirst).not.toHaveBeenCalled();
-  });
-
-  it("404 when no StrutRun with that jobId+swarmId exists", async () => {
-    mockStrutRunFindFirst.mockResolvedValue(null);
-    expect((await GET(request(GOOD_QUERY), params)).status).toBe(404);
-    expect(mockJobReportedPullRequest).not.toHaveBeenCalled();
-    expect(mockResolveJobOwnerOctokit).not.toHaveBeenCalled();
-  });
-
-  // ── Security check ────────────────────────────────────────────────────────
-
-  it("404 when the PR was not reported by this job (security: prevents token misuse)", async () => {
-    mockJobReportedPullRequest.mockResolvedValue(false);
-    const res = await GET(request(GOOD_QUERY), params);
-    expect(res.status).toBe(404);
-    // Must not reach the GitHub API with the owner's token.
-    expect(mockResolveJobOwnerOctokit).not.toHaveBeenCalled();
+    expect(mockGetUserAppTokens).not.toHaveBeenCalled();
     expect(mockGetPullRequestStatus).not.toHaveBeenCalled();
   });
 
-  it("security check called with correct args", async () => {
-    await GET(request(GOOD_QUERY), params);
-    expect(mockJobReportedPullRequest).toHaveBeenCalledWith(JOB_ID, SWARM_ID, "acme/app", 7);
-  });
-
-  // ── Token / GitHub ────────────────────────────────────────────────────────
-
-  it("502 when no GitHub token available", async () => {
-    mockResolveJobOwnerOctokit.mockResolvedValue({ ok: false, reason: "no_token" });
-    expect((await GET(request(GOOD_QUERY), params)).status).toBe(502);
+  it("403 when the viewer has no GitHub token for the repo's owner", async () => {
+    mockGetUserAppTokens.mockResolvedValue(null);
+    expect((await GET(request(GOOD_QUERY), params)).status).toBe(403);
+    mockGetUserAppTokens.mockResolvedValue({ refreshToken: "r" });
+    expect((await GET(request(GOOD_QUERY), params)).status).toBe(403);
     expect(mockGetPullRequestStatus).not.toHaveBeenCalled();
   });
 
-  it("200 success — returns live status with correct Cache-Control", async () => {
+  it("200 — reads GitHub with the viewer's own token for the repo's owner, with a short private cache", async () => {
     const res = await GET(request(GOOD_QUERY), params);
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual(LIVE_STATUS);
+    expect(await res.json()).toEqual(LIVE_STATUS);
     expect(res.headers.get("cache-control")).toBe("private, max-age=15");
 
-    // Verify calls were made with correct args.
-    expect(mockGetPullRequestStatus).toHaveBeenCalledWith(fakeOctokit, {
-      owner: "acme",
-      repo: "app",
-      number: 7,
-    });
-    expect(mockStrutRunFindFirst).toHaveBeenCalledWith({
-      where: { jobId: JOB_ID, swarmId: SWARM_ID },
-      select: { id: true },
+    expect(mockGetUserAppTokens).toHaveBeenCalledWith("user-1", "acme");
+    expect(mockGetPullRequestStatus).toHaveBeenCalledTimes(1);
+    const [octokit, target] = mockGetPullRequestStatus.mock.calls[0];
+    expect(octokit).toBeInstanceOf(FakeOctokit);
+    expect((octokit as FakeOctokit).options).toEqual({ auth: "tok-viewer" });
+    expect(target).toEqual({ owner: "acme", repo: "app", number: 7 });
+  });
+
+  it("the token is the viewer's for the PR's owner, not for the org the canvas is on", async () => {
+    await GET(request({ repo: "other-org/thing", number: "3" }), params);
+    expect(mockGetUserAppTokens).toHaveBeenCalledWith("user-1", "other-org");
+    expect(mockGetPullRequestStatus).toHaveBeenCalledWith(expect.any(FakeOctokit), {
+      owner: "other-org",
+      repo: "thing",
+      number: 3,
     });
   });
 

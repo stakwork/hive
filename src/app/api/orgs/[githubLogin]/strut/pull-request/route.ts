@@ -1,44 +1,34 @@
 /**
- * GET /api/orgs/[githubLogin]/strut/pull-request
- *   ?swarmId=<Swarm.id>&jobId=<StrutRun.jobId>&repo=owner/name&number=N
+ * GET /api/orgs/[githubLogin]/strut/pull-request?repo=owner/name&number=N
  *
- * Returns live GitHub PR status (state, checks, branches, author) for a PR
- * that was opened by a Strut job turn. The org-canvas PR artifact card polls
- * this every 30 s to keep state current after merge/close/CI changes.
+ * The live state of a pull request a job reported — state, checks, branches,
+ * author — read from GitHub. The org-canvas PR card polls this while it is
+ * on screen (`useArtifactContent`), so a card stored as "open" follows the
+ * PR to merged or closed.
  *
- * Auth chain (mirrors sibling strut/artifacts/route.ts):
- *   1. Session auth (middleware default), then the org: caller must belong
- *      to `githubLogin` (`resolveAuthorizedOrgId`) — 404 otherwise.
- *   2. The swarm must belong to a workspace in THAT org the caller can
- *      read (`validateWorkspaceAccess canRead`). 403 otherwise.
- *   3. A `StrutRun` with that `jobId` on that `swarmId` must exist. 404 otherwise.
- *   4. `repo` must be `owner/name`; `number` must be a positive integer. 400 otherwise.
- *   5. SECURITY: the requested PR must have actually been reported by this
- *      job — `jobReportedPullRequest` scans the job's StrutRun outputs (capped
- *      at 50 rows). Returns 404 (not 403) if not found, to avoid leaking
- *      information. This prevents an org member from using the job owner's
- *      elevated GitHub token to read arbitrary private PRs.
+ * Auth: a session (middleware), membership of `githubLogin`
+ * (`resolveAuthorizedOrgId`, 404 otherwise), and then GitHub's own answer.
+ * The read is made with the VIEWER's GitHub App token for the repo's owner,
+ * so they see exactly what github.com would show them: nothing of anyone
+ * else's is borrowed, and so nothing here has to prove which job the PR
+ * belongs to — which is what lets a PR ref stored before this route exist
+ * be read like any other. No token for that owner is a 403; a PR GitHub
+ * will not show them is a 404, as GitHub answers.
  *
- * Token strategy: the job owner's GitHub token is preferred (see
- * `resolveJobOwnerOctokit`); the viewing user's token is the fallback;
- * if neither is available a 502 is returned.
- *
- * Cache: `private, max-age=15` — short-lived, user-specific.
+ * Cache: `private, max-age=15`.
  */
 
+import { Octokit } from "@octokit/rest";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
-import { db } from "@/lib/db";
-import { jobReportedPullRequest } from "@/lib/github/jobReportedPullRequest";
 import { getPullRequestStatus } from "@/lib/github/pullRequestStatus";
-import { resolveJobOwnerOctokit } from "@/lib/github/resolveJobOwnerOctokit";
+import { getUserAppTokens } from "@/lib/githubApp";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { validateWorkspaceAccess } from "@/services/workspace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** `owner/name` in the characters GitHub allows in each — nothing a pattern or a path could be built from. */
+/** `owner/name` in the characters GitHub allows in each. */
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ githubLogin: string }> }) {
@@ -49,15 +39,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { githubLogin } = await params;
   const sp = request.nextUrl.searchParams;
-  const swarmId = sp.get("swarmId") ?? "";
-  const jobId = sp.get("jobId") ?? "";
   const repo = sp.get("repo") ?? "";
   const numberStr = sp.get("number") ?? "";
 
-  // ── Input validation ────────────────────────────────────────────────────
-  if (!swarmId || swarmId.length > 200 || !jobId || jobId.length > 200) {
-    return NextResponse.json({ error: "swarmId and jobId are required" }, { status: 400 });
-  }
   if (!REPO_RE.test(repo)) {
     return NextResponse.json({ error: "repo must be owner/name" }, { status: 400 });
   }
@@ -66,48 +50,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "number must be a positive integer" }, { status: 400 });
   }
 
-  // ── Org membership ──────────────────────────────────────────────────────
   const orgId = await resolveAuthorizedOrgId(githubLogin, userId, false);
   if (!orgId) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // ── Swarm → workspace membership ────────────────────────────────────────
-  const swarm = await db.swarm.findUnique({
-    where: { id: swarmId },
-    select: {
-      workspace: { select: { id: true, slug: true, sourceControlOrgId: true, deleted: true } },
-    },
-  });
-  if (!swarm || swarm.workspace.deleted || swarm.workspace.sourceControlOrgId !== orgId) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // The viewer's own token for the repo's owner: GitHub decides what they may see.
+  const [owner, name] = repo.split("/");
+  const tokens = await getUserAppTokens(userId, owner);
+  if (!tokens?.accessToken) {
+    return NextResponse.json({ error: `GitHub is not connected for ${owner}` }, { status: 403 });
   }
-  const access = await validateWorkspaceAccess(swarm.workspace.slug, userId);
-  if (!access.canRead) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const octokit = new Octokit({ auth: tokens.accessToken });
 
-  // ── Job existence: a StrutRun with that jobId on that swarm ────────────
-  const run = await db.strutRun.findFirst({
-    where: { jobId, swarmId },
-    select: { id: true },
-  });
-  if (!run) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  // ── SECURITY: PR must have been reported by this job ───────────────────
-  // Prevents an org member from using the job owner's elevated GitHub token
-  // to read arbitrary PRs. Returns 404 — not 403 — to avoid leaking info.
-  const reported = await jobReportedPullRequest(jobId, swarmId, repo, number);
-  if (!reported) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  // ── GitHub token for the job owner (or viewer fallback) ────────────────
-  const [owner] = repo.split("/");
-  const octokitResult = await resolveJobOwnerOctokit(jobId, swarmId, owner, userId);
-  if (!octokitResult.ok) {
-    return NextResponse.json({ error: "GitHub token unavailable" }, { status: 502 });
-  }
-
-  // ── Fetch live PR status ────────────────────────────────────────────────
-  const [repoOwner, repoName] = repo.split("/");
   let status;
   try {
-    status = await getPullRequestStatus(octokitResult.octokit, { owner: repoOwner, repo: repoName, number });
+    status = await getPullRequestStatus(octokit, { owner, repo: name, number });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (/404|not found/i.test(msg)) {
@@ -117,7 +73,5 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "GitHub API error" }, { status: 502 });
   }
 
-  return NextResponse.json(status, {
-    headers: { "Cache-Control": "private, max-age=15" },
-  });
+  return NextResponse.json(status, { headers: { "Cache-Control": "private, max-age=15" } });
 }
