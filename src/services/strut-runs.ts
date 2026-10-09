@@ -140,6 +140,8 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_cwe_check: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
+  system_map_cloud_links: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
+  system_map_security_review: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_climb: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
