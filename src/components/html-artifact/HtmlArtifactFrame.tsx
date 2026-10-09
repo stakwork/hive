@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * The single renderer for stored HTML pages.
+ * The single renderer for HTML pages: Hive's stored pages, and a page a
+ * strut job wrote on a swarm (`HtmlArtifactSource`, `html-body-proxy.ts`).
  *
  * Untrusted markup is never injected into Hive's DOM. Instead the bytes are
  * fetched from an authenticated body proxy, wrapped in a blob URL, and shown

@@ -53,12 +53,20 @@ export interface PullRequestCheck {
 /** What a viewer draws, for each kind. */
 export interface ArtifactContents {
   markdown: { text: string };
-  /** A stored HTML page, by its slug in the conversation's org — never the markup itself. */
-  html: {
-    slug: string;
-    /** Changes when the page is rewritten, so an open frame refetches it. */
-    updatedAt?: string;
-  };
+  /**
+   * A page, never the markup itself: a stored HTML page by its slug in the
+   * conversation's org, or a page a strut job wrote by where it is on the
+   * swarm — `swarmId` and strut's own link, what the ref's `graph` source
+   * says. `HtmlArtifactFrame` reads either through its proxy and renders
+   * the bytes in a sandboxed frame, scripts on.
+   */
+  html:
+    | {
+        slug: string;
+        /** Changes when the page is rewritten, so an open frame refetches it. */
+        updatedAt?: string;
+      }
+    | { swarmId: string; key: string };
   image: { url: string; alt?: string };
   video: { url: string; poster?: string };
   audio: { url: string };
@@ -250,7 +258,10 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
   url: address,
   html: (raw) => {
     const slug = bounded(raw.slug, MAX_ID_LENGTH);
-    return slug ? { slug, updatedAt: optional(raw.updatedAt) } : null;
+    if (slug) return { slug, updatedAt: optional(raw.updatedAt) };
+    const swarmId = bounded(raw.swarmId, MAX_ID_LENGTH);
+    const key = bounded(raw.key, MAX_ID_LENGTH);
+    return swarmId && key ? { swarmId, key } : null;
   },
   image: (raw) => {
     const base = address(raw);

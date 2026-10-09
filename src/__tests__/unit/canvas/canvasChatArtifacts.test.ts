@@ -120,12 +120,18 @@ describe("parseArtifactContent", () => {
     });
   });
 
-  test("an html page is named by its slug", () => {
+  test("an html page is a stored page by its slug, or a page on a swarm by where it is", () => {
     expect(parseArtifactContent("html", { slug: "roadmap", updatedAt: "2026-09-30" })).toEqual({
       slug: "roadmap",
       updatedAt: "2026-09-30",
     });
     expect(parseArtifactContent("html", { slug: "" })).toBeNull();
+    expect(parseArtifactContent("html", { swarmId: "swarm-1", key: "/jobs/j/files/plan.html" })).toEqual({
+      swarmId: "swarm-1",
+      key: "/jobs/j/files/plan.html",
+    });
+    expect(parseArtifactContent("html", { swarmId: "swarm-1" })).toBeNull();
+    expect(parseArtifactContent("html", { key: "/jobs/j/files/plan.html" })).toBeNull();
   });
 
   test("a diff is every file or nothing", () => {
