@@ -64,7 +64,7 @@
  * assistant's words from the user's. The one thing hive hands over
  * besides the prompt is the USER's standing credential: every turn pushes
  * their GitHub token to strut as that actor's `GITHUB_TOKEN` before the
- * launch (`ensureStrutActorSecrets`, as `propose_code_change` does), so a
+ * launch (`ensureStrutActorSecrets`), so a
  * turn that runs the swarm's code-change workflow checks out, pushes and
  * opens the pull request as them — strut binds every nested run's secrets
  * to the job's principal. Which turns need it is the job's business.
@@ -538,8 +538,8 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
 
 /**
  * The `strut` capability's prompt snippet. Lives here rather than in
- * `@/lib/constants/prompt` (as `code_change`'s does in `capabilities.ts`):
- * that module is hand-mocked export-by-export across the canvas-agent tests.
+ * `@/lib/constants/prompt`: that module is hand-mocked export-by-export
+ * across the canvas-agent tests.
  */
 export function getStrutCapabilitySnippet(): string {
   return `
@@ -581,7 +581,7 @@ For something the user will ITERATE on — a plan, a document, a page, a code ch
 - **A Job entry is the record; your words are the reply.** The entry is written in detail (a code change lists files, functions and line numbers) and the chat shows it collapsed — the user expands it only to check. When one lands (you may be woken for it) or the user asks about it, answer with ONE short paragraph in your own words: what the job produced, the question it asked if any, and the next step. Never restate the entry, never list files, functions or line numbers, never describe the cards — the user sees them.
 - A Job entry that carries a **Question for you** is the agent stopping for a decision; the user's answer goes back as the next \`continue_job\` prompt.
 - \`status: "busy"\` means the job's previous turn is still running — wait for its reply, then continue.
-- **A code change as a job.** Name the repository URL in the prompt — pick it the way you would for \`propose_code_change\`, and if you are guessing between repositories, ask the user first. The job's agent runs the swarm's code-change workflow with the user's own GitHub token; the pull request lands here as a card, and "also rename the helper" is a \`continue_job\` that revises the same pull request. Use a job when the user asks for one, when the change belongs to a job that already exists (a plan the job wrote), or when they want the pull request directly; \`propose_code_change\` stays for a small change they want to approve as a diff before anything is pushed.
+- **A code change is a job.** Name the repository URL in the prompt — the repo the code you are changing lives in (you found it with \`repo_agent\`, or the user named it); if you are guessing between repositories, ask the user first. The job's agent runs the swarm's code-change workflow with the user's own GitHub token; the pull request lands here as a card, and "also rename the helper" is a \`continue_job\` that revises the same pull request. Work across several repositories, or a schema migration, goes through \`propose_feature\` instead.
 - \`dispatch_strut\` stays for building and running strut WORKFLOWS; \`start_job\` is for producing something.
 
 ### Caveats

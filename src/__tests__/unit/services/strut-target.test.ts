@@ -3,7 +3,7 @@
  * ONE place "which strut" lives.
  *
  * Coverage:
- *   - `code_change` / `embed` / `chat` run on the ORG's default workspace
+ *   - `job` / `embed` / `chat` run on the ORG's default workspace
  *     swarm (`resolveOrgSwarmWorkspaceForUser`): by workspace (its org is
  *     looked up) or by org login; NO_ORG_SWARM when nothing is reachable.
  *     `chat` is the row that moved (one strut per org, 2026-09-24).
@@ -63,12 +63,12 @@ beforeEach(() => {
   mockDecrypt.mockImplementation((_f: string, v: string) => `dec(${v})`);
 });
 
-describe("resolveStrutTarget — org-default policy (code_change, embed, chat)", () => {
-  it("code_change: looks up the workspace's org and returns the org default swarm", async () => {
+describe("resolveStrutTarget — org-default policy (job, embed, chat)", () => {
+  it("job: looks up the workspace's org and returns the org default swarm", async () => {
     mockWorkspaceFindFirst.mockResolvedValue({ sourceControlOrg: { githubLogin: "acme-gh" } });
     mockOrgSwarmWorkspace.mockResolvedValue(orgWorkspace());
 
-    const out = await resolveStrutTarget({ purpose: "code_change", workspaceId: "ws-1", userId: USER });
+    const out = await resolveStrutTarget({ purpose: "job", workspaceId: "ws-1", userId: USER });
 
     expect(out.ok).toBe(true);
     if (!out.ok) return;
@@ -116,18 +116,18 @@ describe("resolveStrutTarget — org-default policy (code_change, embed, chat)",
 
   it("NO_ORG_SWARM when the workspace has no source-control org", async () => {
     mockWorkspaceFindFirst.mockResolvedValue({ sourceControlOrg: null });
-    const out = await resolveStrutTarget({ purpose: "code_change", workspaceSlug: "acme", userId: USER });
+    const out = await resolveStrutTarget({ purpose: "job", workspaceSlug: "acme", userId: USER });
     expect(out).toEqual({ ok: false, error: { type: "NO_ORG_SWARM" } });
     expect(mockOrgSwarmWorkspace).not.toHaveBeenCalled();
   });
 
   it("WORKSPACE_NOT_FOUND for an unknown workspace, and with nothing to resolve by", async () => {
     mockWorkspaceFindFirst.mockResolvedValue(null);
-    expect(await resolveStrutTarget({ purpose: "code_change", workspaceId: "nope", userId: USER })).toEqual({
+    expect(await resolveStrutTarget({ purpose: "job", workspaceId: "nope", userId: USER })).toEqual({
       ok: false,
       error: { type: "WORKSPACE_NOT_FOUND" },
     });
-    expect(await resolveStrutTarget({ purpose: "code_change", userId: USER })).toEqual({
+    expect(await resolveStrutTarget({ purpose: "job", userId: USER })).toEqual({
       ok: false,
       error: { type: "WORKSPACE_NOT_FOUND" },
     });

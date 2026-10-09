@@ -865,53 +865,38 @@ describe("ProposalCard — approve button blocked by pending blocker", () => {
   });
 });
 
-// ── ProposalCard — code change, preview pending ──────────────────────────────
+// ── ProposalCard — retired code change ───────────────────────────────────────
 //
-// While the strut run generates the diff, the card offers "View run". The link
-// is whatever Hive path the tool stored at dispatch (the org strut view on the
-// run, `strutViewPath`) — rendered as-is, in a new tab like every cross-view
-// link from the canvas, and never rewritten into strut's own URL.
+// `propose_code_change` is gone (a code change runs as a job). Its cards still
+// render from stored conversations, read-only: the diff stays viewable, a
+// pending card says to ask for a job instead, and there is no Approve / Reject.
 
-describe("ProposalCard — code change, preview pending", () => {
-  function makePendingCodeChange(
-    pending: Partial<{ runUrl: string }> = {},
-  ): Extract<ProposalOutput, { kind: "codeChange" }> {
+describe("ProposalCard — retired code change", () => {
+  function makeCodeChange(): Extract<ProposalOutput, { kind: "codeChange" }> {
     return {
       kind: "codeChange",
       proposalId: "prop-cc-1",
       payload: {
-        workspaceId: "ws-123",
         workspaceSlug: "hive",
         repositoryUrl: "https://github.com/stakwork/hive",
         title: "Use blue for the sign-in button",
         body: "",
-        diff: "",
-        diffSha256: "",
-        filesChanged: 0,
-        preview: "pending",
-        pending: { runId: "row-1", strutRunId: "1790000000000", swarmId: "swarm-1", ...pending },
+        diff: "--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-red\n+blue\n",
+        filesChanged: 1,
       },
       meta: { repoName: "stakwork/hive", workspaceSlug: "hive" },
     };
   }
 
-  it("'View run' opens the Hive strut view the payload names, in a new tab", () => {
-    const runUrl = "/org/myorg/strut?strut=wf%3Dcode-change-propose%26run%3D1790000000000";
-    render(
-      <ProposalCard proposal={makePendingCodeChange({ runUrl })} messageId="msg-cc-1" githubLogin="myorg" />,
-    );
-    const link = screen.getByText("View run").closest("a");
-    expect(link).not.toBeNull();
-    expect(link!.getAttribute("href")).toBe(runUrl);
-    expect(link!.getAttribute("target")).toBe("_blank");
-    expect(link!.getAttribute("rel")).toBe("noopener noreferrer");
+  it("a pending card says to ask for a job and offers no Approve or Reject", () => {
+    render(<ProposalCard proposal={makeCodeChange()} messageId="msg-cc-1" githubLogin="myorg" />);
+    expect(screen.getByTestId("code-change-retired")).toBeTruthy();
+    expect(screen.queryByTitle("Approve")).toBeNull();
+    expect(screen.queryByTitle("Reject")).toBeNull();
   });
 
-  it("offers no run link when the payload carries none", () => {
-    render(
-      <ProposalCard proposal={makePendingCodeChange()} messageId="msg-cc-2" githubLogin="myorg" />,
-    );
-    expect(screen.getByText(/Generating diff/)).toBeTruthy();
-    expect(screen.queryByText("View run")).toBeNull();
+  it("keeps the diff viewable", () => {
+    render(<ProposalCard proposal={makeCodeChange()} messageId="msg-cc-2" githubLogin="myorg" />);
+    expect(screen.getByText("Preview diff")).toBeTruthy();
   });
 });

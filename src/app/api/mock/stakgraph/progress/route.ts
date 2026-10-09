@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/config/env";
-import { mockPrResultStore } from "@/app/api/mock/stakgraph/repo/agent/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +16,7 @@ export const dynamic = "force-dynamic";
  * Returns 404 when `USE_MOCKS` is off OR when `NODE_ENV === "production"`.
  * The /api/mock subtree is publicly accessible at the middleware layer, so
  * this guard is required — not optional — now that these routes can
- * synthesize PR/approval state.
+ * synthesize approval state.
  *
  * ## Test harness (POST)
  *
@@ -29,13 +28,6 @@ export const dynamic = "force-dynamic";
  * "completed_after_abort" → { status: "completed", result: { content: "real result" } }
  * "running"              → { status: "running" } (grace-window test: never terminal)
  * "completed"            → default completed
- *
- * ## create_pr result delivery
- *
- * When the request_id matches an entry in `mockPrResultStore` (written by
- * the repo/agent POST handler when `toolsConfig.create_pr === true`), the
- * terminal payload nests the LandChangeResult under `result.pr` as a sibling
- * of `final_answer`, mirroring the real swarm's behavior.
  */
 
 // In-memory scenario registry for test harness
@@ -105,27 +97,6 @@ export async function GET(request: NextRequest) {
     }
     if (scenario === "running") {
       return NextResponse.json({ status: "running" });
-    }
-
-    // ── create_pr result delivery ────────────────────────────────────
-    // When this request_id corresponds to a create_pr run, serve the
-    // LandChangeResult nested under `result.pr` as a sibling of
-    // `final_answer` — mirroring the real swarm's terminal payload shape.
-    const prResult = mockPrResultStore.get(requestId);
-    if (prResult) {
-      mockPrResultStore.delete(requestId);
-      // The store holds the FLAT LandChangeResult — serve it verbatim.
-      const prData = prResult;
-      return NextResponse.json({
-        status: "completed",
-        result: {
-          success: true,
-          final_answer: "PR creation complete.",
-          content: "PR creation complete.",
-          // LandChangeResult nested under `result.pr`
-          pr: prData,
-        },
-      });
     }
 
     // Default: completed (mermaid diagram for diagram agent tests)

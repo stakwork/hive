@@ -75,7 +75,7 @@ vi.mock("@/lib/protect/findings", async () => {
 });
 
 vi.mock("@/lib/ai/capabilityGates", () => ({
-  isCodeChangeCapabilityEnabledForOrg: vi.fn().mockResolvedValue(false),
+  isStrutCapabilityEnabledForOrg: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock("@/lib/helpers/jarvis-config", () => ({
