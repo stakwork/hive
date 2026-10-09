@@ -11,19 +11,22 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   let claimedPodId: string | null = null;
   try {
-    const { workspaceId } = await params;
+    const { workspaceId: workspaceRef } = await params;
 
     // Validate required fields
-    if (!workspaceId) {
+    if (!workspaceRef) {
       return NextResponse.json({ success: false, error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
     // Auth + workspace access (system API_TOKEN, org API key, or session member).
     // Must run before any DB write, secret access, or third-party call.
-    const caller = await resolvePodCaller(request, { id: workspaceId });
+    // The segment is an id or a slug (a strut job claims by slug); from
+    // here on `workspaceId` is the resolved id.
+    const caller = await resolvePodCaller(request, { idOrSlug: workspaceRef });
     if (caller instanceof NextResponse) {
       return caller;
     }
+    const workspaceId = caller.workspaceId;
 
     // Check for "latest" and "taskId" query parameters
     const { searchParams } = new URL(request.url);

@@ -118,11 +118,14 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
       // §1): strut names the job by it — its index and its graph node —
       // never the run; the `job` workflow's input block strips what it
       // does not declare, so it still rides on the input too, for the
-      // reply's header. `workspace` is the hive workspace the job belongs
-      // to — the id a pod is claimed for (strut plans/jobs.md §5): the hub
-      // strut serves every workspace of the org, so the job says which.
-      // Every turn, since every launch is validated on its own.
-      input: { prompt, title, workspace: strut.workspaceId },
+      // reply's header. `workspace` is the SLUG of the workspace whose
+      // swarm runs this strut (the org default): the job's home. Every
+      // other workspace of the org is a peer of it, registered by slug
+      // (`strut-peers.ts`), so `@<slug>` names one the same way; a pod is
+      // claimed for whichever workspace's code is changing, by slug (the
+      // pod routes take a slug or an id). Every turn, since every launch
+      // is validated on its own.
+      input: { prompt, title, workspace: strut.workspaceSlug },
       job: jobId,
       title,
       publicBaseUrl,
