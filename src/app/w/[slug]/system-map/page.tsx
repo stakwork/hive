@@ -12,7 +12,7 @@ import { DomainNodesTab } from "@/components/system-map/DomainNodesTab";
 import { EndpointsTab } from "@/components/system-map/EndpointsTab";
 import { SystemMapRuns } from "@/components/system-map/SystemMapRuns";
 
-const TABS = ["overview", "materialize", "cwe-check", "nodes", "endpoints"] as const;
+const TABS = ["overview", "materialize", "cwe-check", "cloud-links", "security-review", "nodes", "endpoints"] as const;
 type SystemMapTab = (typeof TABS)[number];
 
 function parseTab(value: string | null): SystemMapTab {
@@ -50,6 +50,12 @@ function SystemMapTabs() {
         <TabsTrigger value="cwe-check" data-testid="system-map-tab-cwe-check">
           CWE check workflow
         </TabsTrigger>
+        <TabsTrigger value="cloud-links" data-testid="system-map-tab-cloud-links">
+          Cloud links workflow
+        </TabsTrigger>
+        <TabsTrigger value="security-review" data-testid="system-map-tab-security-review">
+          Security review workflow
+        </TabsTrigger>
         <TabsTrigger value="nodes" data-testid="system-map-tab-nodes">
           Domain nodes
         </TabsTrigger>
@@ -65,6 +71,12 @@ function SystemMapTabs() {
       </TabsContent>
       <TabsContent value="cwe-check" className="mt-4">
         <CweCheckTab />
+      </TabsContent>
+      <TabsContent value="cloud-links" className="mt-4">
+        <SystemMapRuns workflowKey="cloud_links" />
+      </TabsContent>
+      <TabsContent value="security-review" className="mt-4">
+        <SystemMapRuns workflowKey="security_review" />
       </TabsContent>
       <TabsContent value="nodes" className="mt-4">
         <DomainNodesTab />

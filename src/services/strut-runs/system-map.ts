@@ -8,6 +8,8 @@
  *                writes the real system nodes and edges into the graph
  *   cwe_check    `swarm-systemmap-cwe-check-templates` kind `system_map_cwe_check`
  *                writes the `infosec` namespace's security graph
+ *   cloud_links  `systemmap-cloud-links`               kind `system_map_cloud_links`
+ *   security_review `swarm-cwe-security-review`        kind `system_map_security_review`
  *
  * All are authored in the org strut view (`/org/<login>/strut`), so the
  * launch targets that strut (`purpose: "system_map"` → the org default
@@ -52,6 +54,8 @@ export const SYSTEM_MAP_WORKFLOWS = {
   schema: { kind: "system_map", workflow: "swarm-systemmap-schema-sync", label: "Schema sync" },
   materialize: { kind: "system_map_materialize", workflow: "swarm-systemmap-graph-materialize", label: "Graph materialize" },
   cwe_check: { kind: "system_map_cwe_check", workflow: "swarm-systemmap-cwe-check-templates", label: "CWE check" },
+  cloud_links: { kind: "system_map_cloud_links", workflow: "systemmap-cloud-links", label: "Cloud links" },
+  security_review: { kind: "system_map_security_review", workflow: "swarm-cwe-security-review", label: "CWE security review" },
 } as const;
 export type SystemMapWorkflowKey = keyof typeof SYSTEM_MAP_WORKFLOWS;
 
