@@ -1,9 +1,9 @@
 /**
- * GET  /api/workspaces/:slug/system-map/runs?workflow=schema|materialize|cwe_check
+ * GET  /api/workspaces/:slug/system-map/runs?workflow=schema|materialize|cwe_check|cloud_links|security_review
  *      — the workspace's runs of that System Map workflow, newest first
  *      (PENDING ones settled from strut when the run is over there and the
  *      callback never arrived). Default `schema`.
- * POST /api/workspaces/:slug/system-map/runs  { workflow?: "schema" | "materialize" | "cwe_check" }
+ * POST /api/workspaces/:slug/system-map/runs  { workflow?: SystemMapWorkflowKey }
  *      — launch that workflow on the org strut. One run in flight per
  *      workspace per workflow; DEVELOPER and up.
  */

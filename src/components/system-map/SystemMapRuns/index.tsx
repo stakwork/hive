@@ -36,6 +36,18 @@ const COPY: Record<SystemMapWorkflowKey, { description: string; button: string; 
     empty: "No runs yet. Start one to build this workspace's security graph.",
     started: "CWE check started",
   },
+  cloud_links: {
+    description: "Runs the cloud links workflow against this workspace's knowledge graph.",
+    button: "Run cloud links",
+    empty: "No runs yet. Start one to run cloud links on this workspace.",
+    started: "Cloud links started",
+  },
+  security_review: {
+    description: "Runs the CWE security review workflow against this workspace's knowledge graph.",
+    button: "Run security review",
+    empty: "No runs yet. Start one to run a security review on this workspace.",
+    started: "Security review started",
+  },
 };
 
 /** Poll cadence while a run is in flight. */

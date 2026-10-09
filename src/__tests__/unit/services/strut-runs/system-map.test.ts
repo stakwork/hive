@@ -157,6 +157,26 @@ describe("launchSystemMapRun", () => {
     );
   });
 
+  it.each([
+    ["cloud_links", "system_map_cloud_links", "systemmap-cloud-links"],
+    ["security_review", "system_map_security_review", "swarm-cwe-security-review"],
+  ] as const)("dispatches %s under its own kind and workflow", async (key, kind, workflow) => {
+    mockWorkspace.findUnique.mockResolvedValue({
+      swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
+    });
+    mockDispatch.mockResolvedValue({ runId: "run-4", strutRunId: "4", swarmId: "swarm-1" });
+
+    await launchSystemMapRun({
+      workspaceId: "ws-1",
+      workspaceSlug: "acme-ws",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      key,
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ kind, workflow, purpose: "system_map" }));
+  });
+
   it("refuses with no_target when the workspace swarm has no secret alias", async () => {
     mockWorkspace.findUnique.mockResolvedValue({
       swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: null },
