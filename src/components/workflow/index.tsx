@@ -1229,6 +1229,7 @@ function WorkflowApp(workflowApp: WorkflowAppProps) {
       if (dragEndTimeoutRef.current) {
         clearTimeout(dragEndTimeoutRef.current);
       }
+      NodeArray.clearTimers();
     };
   }, []);
 

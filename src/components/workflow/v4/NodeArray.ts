@@ -39,6 +39,8 @@ interface JobDetails {
   parsed_completion_time?: string;
 }
 
+let stepTimerIds: ReturnType<typeof setInterval>[] = [];
+
 class NodeArray {
   nodes: any[] = [];
   edges: any[] = [];
@@ -102,7 +104,13 @@ class NodeArray {
     return directConnections.map((edge) => edge.source);
   }
 
+  static clearTimers(): void {
+    stepTimerIds.forEach((id) => clearInterval(id));
+    stepTimerIds = [];
+  }
+
   setTimer(): void {
+    NodeArray.clearTimers();
     const timeElements = document.querySelectorAll(".step-time[data-start-time]");
 
     if (timeElements.length === 0) {
@@ -114,7 +122,7 @@ class NodeArray {
       const startTime = htmlElement.dataset.startTime;
       if (!startTime) return;
 
-      setInterval(() => {
+      const id = setInterval(() => {
         const date = new Date(startTime);
         const now = new Date();
         const diff = now.getTime() - date.getTime();
@@ -123,6 +131,7 @@ class NodeArray {
         const seconds = Math.floor((diff / 1000) % 60);
         htmlElement.innerHTML = `${hours}:${minutes < 10 ? "0" : ""}${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
       }, 1000);
+      stepTimerIds.push(id);
     });
   }
 
