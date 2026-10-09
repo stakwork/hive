@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Network,
   ScrollText,
+  Waypoints,
   type LucideIcon,
 } from "lucide-react";
 import { toJsonText } from "@/components/streaming/toolCallValue";
@@ -30,6 +31,7 @@ import { MarkdownInline, MarkdownPanel } from "./viewers/markdown";
 import { AudioInline, AudioPanel, ImageInline, ImagePanel, VideoInline, VideoPanel } from "./viewers/media";
 import { PdfPanel } from "./viewers/pdf";
 import { PullRequestInline, PullRequestPanel } from "./viewers/pullRequest";
+import { RunGraphInline, RunGraphPanel, runGraphFact } from "./viewers/runGraph";
 import { UrlInline, UrlPanel } from "./viewers/url";
 
 /**
@@ -158,6 +160,13 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
       if (content.focus) params.set("gnode", content.focus);
       return `/org/${githubLogin}?${params.toString()}`;
     },
+  },
+  run_graph: {
+    label: "Graph trace",
+    Icon: Waypoints,
+    Inline: RunGraphInline,
+    Panel: RunGraphPanel,
+    fact: runGraphFact,
   },
 };
 
