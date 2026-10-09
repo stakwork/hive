@@ -1,7 +1,7 @@
-import { isCodeChangeCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
+import { isStrutCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import type { ProtectFinding } from "@/types/protect";
 
-export type ProtectJamieTool = "propose_feature" | "propose_code_change";
+export type ProtectJamieTool = "propose_feature" | "start_job";
 
 function looksMechanicalSingleFile(finding: ProtectFinding): boolean {
   if (!finding.file || finding.file.includes(",") || finding.file.includes(" ")) {
@@ -25,11 +25,9 @@ export async function chooseProtectJamieTool(
   finding: ProtectFinding,
   sourceControlOrgId: string | null | undefined,
 ): Promise<ProtectJamieTool> {
-  const codeChangeEnabled = await isCodeChangeCapabilityEnabledForOrg(
-    sourceControlOrgId ?? undefined,
-  );
-  if (!codeChangeEnabled) return "propose_feature";
-  return looksMechanicalSingleFile(finding) ? "propose_code_change" : "propose_feature";
+  const jobsEnabled = await isStrutCapabilityEnabledForOrg(sourceControlOrgId ?? undefined);
+  if (!jobsEnabled) return "propose_feature";
+  return looksMechanicalSingleFile(finding) ? "start_job" : "propose_feature";
 }
 
 export function buildProtectJamieSeed(
@@ -43,8 +41,8 @@ export function buildProtectJamieSeed(
       : finding.evidence || "(none)";
 
   const toolInstruction =
-    tool === "propose_code_change"
-      ? `This looks like a small single-file, single-repo mechanical fix. Use the propose_code_change tool and pass workspaceSlug "${workspaceSlug}" and repositoryUrl "${finding.repositoryUrl}".`
+    tool === "start_job"
+      ? `This looks like a small single-file, single-repo mechanical fix. Make it as a job: use the start_job tool with workspace "${workspaceSlug}", and name the repository ${finding.repositoryUrl} in the job's prompt.`
       : `This looks multi-file or ambiguous. Use the propose_feature tool and pass workspaceSlug "${workspaceSlug}" and repositoryUrl "${finding.repositoryUrl}".`;
 
   return [

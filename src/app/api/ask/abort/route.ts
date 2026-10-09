@@ -11,8 +11,8 @@
  *   2. Rate-limit (generous, idempotent)
  *   3. Validate org membership (403/404 before any resource access)
  *   4. Resolve conversation + IDOR check
- *   5. Cancel the conversation's PENDING strut runs (code-change
- *      previews) on THEIR swarm — from the `StrutRun` row, never the policy
+ *   5. Cancel the conversation's PENDING strut runs (job turns) on
+ *      THEIR swarm — from the `StrutRun` row, never the policy
  *   6. Mark abortRequested on all active runs (atomic)
  *   7. Re-resolve swarm creds per run + proxy abort to stakgraph (strut
  *      runs, keyed by their `StrutRun.id`, are skipped — step 5 did them)
@@ -98,8 +98,8 @@ export async function POST(request: NextRequest) {
   // polls it and aborts the reply stream, the tool loop (repo_agent runs
   // tell stakgraph to stop themselves — they hold the swarm creds and
   // request_id) and any sub-agents not yet started. The only thing that
-  // outlives the turn's own instance is a PENDING strut run (a code-change
-  // preview or job) the turn dispatched, so that is cancelled here.
+  // outlives the turn's own instance is a PENDING strut run (a job turn)
+  // the turn dispatched, so that is cancelled here.
   // ════════════════════════════════════════════════════════════════════
   if (typeof turnId === "string" && turnId.length > 0) {
     let requested: Awaited<ReturnType<typeof requestTurnAbort>>;
@@ -152,10 +152,10 @@ export async function POST(request: NextRequest) {
 
   console.log(`[abort] conversationId: ${rowId} userId: ${userId}`);
 
-  // ── 5. Pending strut runs (code-change previews) → strut cancel ──────
-  // A preview runs on strut, not on the swarm's /repo/agent. Its row knows
+  // ── 5. Pending strut runs (job turns) → strut cancel ─────────────────
+  // A job turn runs on strut, not on the swarm's /repo/agent. Its row knows
   // its swarm, so the cancel goes there; the callback then settles the row
-  // as `cancelled` and the card flips. Idempotent: a settled row is no
+  // as `cancelled`. Idempotent: a settled row is no
   // longer PENDING, so a repeat Stop finds nothing. Never blocks the rest.
   let strutCancelled = 0;
   const strutRunIds = new Set<string>();

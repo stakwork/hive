@@ -14,12 +14,10 @@ const REPLAY_DIFF_CHAR_CAP = 4_000;
 /**
  * Shrink a stored tool output before it is replayed into model context.
  *
- * `propose_code_change` stores the full approved diff on `payload.diff` —
- * up to the 200 KB `diffHygiene` cap. Those exact bytes have to survive in
- * the stored row (the approval handler re-hashes them against
- * `diffSha256`), but re-feeding them to the model on every subsequent turn
- * of the conversation is pure context burn. Truncate on the way out; the
- * stored message is never mutated.
+ * Retired `propose_code_change` cards in stored conversations carry their
+ * full diff on `payload.diff` (up to 200 KB). Re-feeding it to the model on
+ * every turn is pure context burn. Truncate on the way out; the stored
+ * message is never mutated.
  */
 function shrinkToolOutputForReplay(toolName: string, output: unknown): unknown {
   if (toolName !== PROPOSE_CODE_CHANGE_TOOL) return output;

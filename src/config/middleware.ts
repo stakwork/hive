@@ -178,7 +178,6 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/workspaces/*/members", strategy: "pattern", access: "webhook" },
   { path: "/api/workspaces/*/members/*", strategy: "pattern", access: "webhook" },
   { path: "/api/agent/webhook", strategy: "prefix", access: "webhook" }, // has its own auth check
-  { path: "/api/code-change/webhook", strategy: "prefix", access: "webhook" }, // per-claim JWT auth in the handler
   { path: "/api/agent-runs/webhook", strategy: "prefix", access: "webhook" }, // session-less swarm callback; has its own token auth
   { path: "/api/strut-runs/webhook", strategy: "prefix", access: "webhook" }, // strut run.end callback; token in the query string, checked in the handler
   { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },

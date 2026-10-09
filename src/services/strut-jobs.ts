@@ -94,9 +94,9 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
 
   // The user's GitHub token, pushed to strut as THIS actor's secret before
   // the launch (`dispatchStrutRun` → `ensureStrutActorSecrets`: idempotent,
-  // never in `input`, never logged) — the same push `propose_code_change`
-  // makes. Every turn, whatever it does: a turn that pushes from a pod
-  // pushes as the user, and push-before-dispatch is what handles rotation.
+  // never in `input`, never logged). Every turn, whatever it does: a turn
+  // that pushes from a pod pushes as the user, and push-before-dispatch is
+  // what handles rotation.
   // No token → nothing pushed; a push fails inside the run, honestly.
   let pat: string | null = null;
   try {

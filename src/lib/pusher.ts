@@ -158,17 +158,7 @@ export type CanvasConversationUpdateReason =
   | "strut"
   // A strut JOB turn settled and its reply (text + artifact refs) was
   // appended to the conversation (`services/strut-runs/job-turn.ts`).
-  | "job"
-  // A code-change claim reached a terminal PR outcome (webhook delivery
-  // or reconcile cron) and the stored approvalResult row was patched in
-  // place — clients reconcile existing rows so the proposal card flips
-  // from "PR in progress" to the PR link (or an honest failure).
-  | "code-change-pr-update"
-  // A code-change PREVIEW settled: strut's `run.end` callback (or the
-  // reconcile cron) patched the stored `propose_code_change` tool output in
-  // place — the diff, or an honest failure — so clients reconcile the card
-  // off "Generating diff…" (`reconcileProposalPreviews`).
-  | "code-change-preview";
+  | "job";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON
