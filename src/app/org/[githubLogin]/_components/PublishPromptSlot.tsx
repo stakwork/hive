@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -206,7 +206,12 @@ export function PublishPromptSlot({
   })();
 
   // ── Derive publish state ─────────────────────────────────────────────────
-  const publishState: PublishState = derivePublishState(resolvedVersionId, data);
+  // Memoised: the effect below reports it to ProposalCard's state, so a new
+  // object every render would re-render the card, then this slot, forever.
+  const publishState: PublishState = useMemo(
+    () => derivePublishState(resolvedVersionId, data),
+    [resolvedVersionId, data],
+  );
 
   // Report state changes up to ProposalCard
   const onStateChangeRef = useRef(onStateChange);
