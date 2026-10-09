@@ -7,7 +7,7 @@ import { estimateTokens } from "@/lib/utils/token-estimate";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Flag, Waypoints, AlertTriangle, Share2, Square } from "lucide-react";
+import { Loader2, User, Bot, Wrench, Code2, ChevronDown, ChevronRight, Flag, Waypoints, Network, AlertTriangle, Share2, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { cn } from "@/lib/utils";
@@ -778,7 +778,7 @@ function ConceptChip({
         className="text-muted-foreground hover:text-foreground shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <Share2 className="w-3 h-3" />
+        <Network className="w-3 h-3" />
       </a>
     </span>
   ) : (
