@@ -303,6 +303,10 @@ export async function pushStrutDelegation(opts: {
   userId: string;
   swarmUrl: string;
   target: StrutLabTarget;
+  /** Record the push on the member row — the cron's desired state for this
+   *  workspace's OWN strut. `false` for a push to another workspace's strut
+   *  (`strut-peers.ts`: the org strut's gateway, billed on a peer). */
+  record?: boolean;
 }): Promise<StrutDelegationSummary> {
   const { workspaceId, userId, swarmUrl, target } = opts;
 
@@ -341,11 +345,12 @@ export async function pushStrutDelegation(opts: {
     apiKey: vk.vkValue,
     baseUrl: gatewayRoot,
   });
-  await recordDelegation(workspaceId, userId, pushed);
+  if (opts.record !== false) await recordDelegation(workspaceId, userId, pushed);
 
   logger.info("Pushed strut delegation", STRUT_DELEGATION_LOG_TAG, {
     workspaceId,
     userId,
+    labBase: target.labBase,
     actor: pushed.actor,
     delegationId: pushed.delegationId,
     exp: pushed.exp,
