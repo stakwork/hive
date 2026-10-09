@@ -9,6 +9,29 @@ import {
   type StoredMessage,
 } from "@/services/canvas-turn-persistence";
 
+// Proposal kinds whose approval removes something — failures read "delete".
+const DELETE_PROPOSAL_KINDS = new Set(["graphNodeDelete", "graphEdgeDelete"]);
+
+/** True when the transcript's proposal with this id is a delete kind. */
+function isDeleteProposal(transcript: MessageLike[], proposalId: string): boolean {
+  for (const msg of transcript) {
+    if (msg.role !== "assistant" || !msg.toolCalls) continue;
+    for (const tc of msg.toolCalls) {
+      const out = tc.output as { proposalId?: unknown; kind?: unknown } | null | undefined;
+      if (
+        out &&
+        typeof out === "object" &&
+        out.proposalId === proposalId &&
+        typeof out.kind === "string" &&
+        DELETE_PROPOSAL_KINDS.has(out.kind)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // ─── Agent-proposal: synthetic SSE stream for Approve / Reject ─────
 //
 // We don't call the LLM for these clicks — the side effect is fully
@@ -95,7 +118,7 @@ export async function runProposalIntent(args: {
       // stays in pending-in-flight + shows the assistant text as the
       // failure reason. The HTTP status stays 200 so the SSE stream
       // still flushes cleanly.
-      summaryText = `I couldn't create that: ${outcome.error}`;
+      summaryText = `I couldn't ${isDeleteProposal(transcript, approvalIntent.proposalId) ? "delete" : "create"} that: ${outcome.error}`;
     } else {
       const r = outcome.result;
       alreadyApproved = outcome.alreadyApproved;
@@ -143,9 +166,15 @@ export async function runProposalIntent(args: {
                           ? "graph triplet"
                           : r.kind === "graphBatchTripletCreate"
                             ? "graph batch triplet"
-                            : r.kind === "codeChange"
-                              ? "code change"
-                              : "feature";
+                            : r.kind === "graphEdgeDelete"
+                              ? "graph link removal"
+                              : r.kind === "graphNodeMove"
+                                ? "graph node move"
+                                : r.kind === "graphNodeDelete"
+                                  ? "graph node delete"
+                                  : r.kind === "codeChange"
+                                  ? "code change"
+                                  : "feature";
 
       // For graph writes, `landedOn` is `workspace:<id>` — map it to a
       // sensible display label rather than falling through to "the canvas".
@@ -189,6 +218,14 @@ export async function runProposalIntent(args: {
                                 }
                                 return `Created ${ok} of ${items.length} relationship${items.length === 1 ? "" : "s"} in ${graphWhere} (${fail} failed — see details).`;
                               })()
+                            : r.kind === "graphEdgeDelete"
+                              ? `Permanently removed the relationship from ${graphWhere}.`
+                              : r.kind === "graphNodeMove"
+                                ? r.alreadyExisted
+                                  ? `Moved the node in ${graphWhere} — it was already linked to its new parent, so only the old link was removed.`
+                                  : `Moved the node in ${graphWhere}.`
+                              : r.kind === "graphNodeDelete"
+                                ? `Deleted the node from ${graphWhere}. The node can be restored, but every link touching it is permanently removed.`
                             : r.kind === "codeChange"
                               ? (() => {
                                   const cc = r.codeChange;

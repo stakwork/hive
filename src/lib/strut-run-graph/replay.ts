@@ -3,11 +3,15 @@
  * graph looked like at each step of a replay. Pure.
  */
 
-import type { RunGraphCall, RunGraphTrace } from "./types";
+import { isLineageEdge } from "./lineage";
+import type { RunGraphCall, RunGraphEdge, RunGraphTrace } from "./types";
+
+const edgeKey = (edge: RunGraphEdge): string => `${edge.source}|${edge.edge_type}|${edge.target}`;
 
 /**
  * A refresh of the trace the graph did not answer keeps what an earlier one
- * read of it: the nodes it had resolved, and its edges.
+ * read of it: the nodes it had resolved, its edges, and the lineage above
+ * its nodes.
  */
 export function keepGraphRead(prev: RunGraphTrace | null, next: RunGraphTrace): RunGraphTrace {
   if (!prev) return next;
@@ -17,6 +21,15 @@ export function keepGraphRead(prev: RunGraphTrace | null, next: RunGraphTrace): 
     kept = { ...kept, nodes: next.nodes.map((n) => resolved.get(n.ref_id) ?? n) };
   }
   if (next.edgesRead === false && prev.edgesRead) kept = { ...kept, edges: prev.edges };
+  if (next.lineageRead === false && prev.lineageRead) {
+    const has = new Set(kept.nodes.map((n) => n.ref_id));
+    const known = new Set(kept.edges.map(edgeKey));
+    kept = {
+      ...kept,
+      nodes: [...kept.nodes, ...prev.nodes.filter((n) => n.ancestor && !has.has(n.ref_id))],
+      edges: [...kept.edges, ...prev.edges.filter((e) => isLineageEdge(e) && !known.has(edgeKey(e)))],
+    };
+  }
   return kept;
 }
 

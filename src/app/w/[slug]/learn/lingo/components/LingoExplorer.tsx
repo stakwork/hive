@@ -216,13 +216,10 @@ export function LingoExplorer({ workspaceSlug }: LingoExplorerProps) {
     try {
       const res = await fetch(
         `/api/workspaces/${workspaceSlug}/lingo/edges/${encodeURIComponent(edgeRefId)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ is_deleted: true }),
-        },
+        { method: "DELETE" },
       );
-      if (!res.ok) throw new Error("Delete failed");
+      // 404: the edge is already gone, which is what the user asked for.
+      if (!res.ok && res.status !== 404) throw new Error("Delete failed");
     } catch {
       // Revert optimistic removal
       setDeletedEdgeIds((prev) => {

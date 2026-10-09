@@ -201,7 +201,8 @@ describe("projectOpenHealthClimbEvents", () => {
 });
 
 describe("toOpenHealthClimb", () => {
-  const difficultyFor = (gtId: number) => (gtId === 7013 ? ("medium" as const) : null);
+  const difficultyFor = (gtId: number) =>
+    gtId === 7013 ? { difficulty: "medium" as const, task: "patient_diagnosis" as const, variant: null, specialty: null } : null;
 
   it("reads a climb that reached its target from the loop's output", () => {
     const climb = toOpenHealthClimb(
@@ -224,6 +225,9 @@ describe("toOpenHealthClimb", () => {
       strutRunId: "1790830428092",
       gtId: 7013,
       difficulty: "medium",
+      task: "patient_diagnosis",
+      variant: null,
+      specialty: null,
       status: "reached",
       stopReason: "Run 2 scored 1.00.",
       targetF1: 1,
@@ -449,7 +453,146 @@ describe("toOpenHealthClimb", () => {
     expect(toOpenHealthClimb(row({ input: {}, output: { history: [] } }), difficultyFor)).toMatchObject({
       gtId: null,
       difficulty: null,
+      task: "patient_diagnosis",
     });
+  });
+
+  it("reads a summary climb: the benchmark from the launch, each run's score by its headline", () => {
+    const summaryRun = {
+      gtId: 8290,
+      task: "context_summarization",
+      variant: "specialty_conditioned",
+      specialty: "Dermatology",
+      metric: "conditioned_f1",
+      score: 0.4,
+      found: ["Psoriasis"],
+      missed: ["Nail pitting"],
+      extra: ["Hypertension"],
+      metrics: { conditioned_f1: 0.4, primary_recall_critical: 0.5, leakage_rate: 0.3 },
+      weighted_problem_list_f1_neutral: null,
+      produceCost: 0.5,
+    };
+    const history = [{ iteration: 0, score: 0.4, metric: "conditioned_f1", missed: ["Nail pitting"], extra: ["Hypertension"], improved: false }];
+    const events = projectOpenHealthClimbEvents([
+      ev("step.start", `${ROOT}/loop#0`, { ts: "2026-10-02T00:00:00.000Z" }),
+      ev("step.start", `${ROOT}/loop#0/run`),
+      ev("step.end", `${ROOT}/loop#0/run`, { output: summaryRun }),
+      ev("step.skipped", `${ROOT}/loop#0/improve`),
+      ev("step.end", `${ROOT}/loop#0`, { output: { iteration: 0, score: 0.4, history } }),
+    ]);
+    const climb = toOpenHealthClimb(
+      row({ input: { gtId: 8290, task: "context_summarization", target: 1, maxRuns: 1 }, output: { stopReason: "max_runs", history } }),
+      (gtId) =>
+        gtId === 8290 ? { difficulty: "easy", task: "context_summarization", variant: "specialty_conditioned", specialty: "Dermatology" } : null,
+      events,
+    );
+    expect(climb).toMatchObject({
+      task: "context_summarization",
+      variant: "specialty_conditioned",
+      specialty: "Dermatology",
+      difficulty: "easy",
+      status: "exhausted",
+      bestF1: 0.4,
+      bestRecall: 0.5,
+    });
+    expect(climb.bestPrecision).toBeCloseTo(0.7);
+    expect(climb.steps[0]).toMatchObject({ f1: 0.4, metric: "conditioned_f1", missed: ["Nail pitting"], extra: ["Hypertension"], costUsd: 0.5 });
+    expect(events.iterations[0]).toMatchObject({ f1: 0.4, metric: "conditioned_f1", recall: 0.5 });
+  });
+});
+
+describe("contested gold", () => {
+  /** One contested answer-key item, as the benchmark subflow's output names it. */
+  const CONTEST = {
+    id: "oh-context-summarization-public-8274-contested-must-include-findings-primigravida",
+    ref_id: "89aa4209-4e75-4715-959a-72ba20fbfe54",
+    list: "must_include_findings",
+    name: "Primigravida",
+    reason: "The chart documents a prior pregnancy.",
+    evidence: ['chart.md: "Cesarean section (low transverse, 2 years prior)"'],
+  };
+  const REFUSED = {
+    error_id: "1790972203341/iter-0:missed_finding:proteinuria",
+    why: "The quote is not in the chart.",
+  };
+
+  it("reads each run's official score and contested items, and each improve's contests, off the history", () => {
+    const history = [
+      entry(0, 0.92, true, {
+        scoreOfficial: 0.92,
+        contested: [],
+        contestsAccepted: ["Primigravida"],
+        contestsRejected: [REFUSED],
+      }),
+      entry(1, 1, false, { scoreOfficial: 0.92, contested: ["Primigravida"] }),
+    ];
+    const climb = toOpenHealthClimb(
+      row({
+        output: {
+          stopReason: "target_reached",
+          firstScore: 0.92,
+          finalScore: 1,
+          firstScoreOfficial: 0.92,
+          finalScoreOfficial: 0.92,
+          contested: ["Primigravida"],
+          history,
+        },
+      }),
+    );
+    expect(climb.steps[0]).toMatchObject({ kind: "benchmark", f1: 0.92, f1Official: 0.92, contested: [] });
+    expect(climb.steps[1]).toMatchObject({
+      kind: "improve",
+      contestsAccepted: ["Primigravida"],
+      contestsRejected: [{ error: REFUSED.error_id, reason: REFUSED.why }],
+    });
+    expect(climb.steps[2]).toMatchObject({ kind: "benchmark", f1: 1, f1Official: 0.92, contested: ["Primigravida"] });
+    expect(climb).toMatchObject({ status: "reached", bestF1: 1, bestF1Official: 0.92, contested: ["Primigravida"] });
+  });
+
+  it("reads them off the event log while the loop runs, and names the contested items from its steps", () => {
+    const at = `${ROOT}/loop#0`;
+    const events = projectOpenHealthClimbEvents([
+      ev("run.start", ROOT),
+      ev("step.start", `${ROOT}/loop`),
+      ev("step.start", at, { ts: "2026-10-02T22:15:00.000Z", iteration: 0 }),
+      ev("step.start", `${at}/run`),
+      ev("step.end", `${at}/run`, { output: runOutput(1, { scoreOfficial: 0.92, contested: [CONTEST] }) }),
+      ev("step.start", `${at}/improve`),
+      ev("step.end", `${at}/improve`, {
+        output: {
+          applied: true,
+          contests_accepted: [{ ...CONTEST, name: "Proteinuria" }],
+          contests_rejected: [REFUSED],
+        },
+      }),
+    ]);
+    expect(events.iterations[0]).toMatchObject({
+      f1: 1,
+      f1Official: 0.92,
+      contested: ["Primigravida"],
+      contestsAccepted: ["Proteinuria"],
+      contestsRejected: [{ error: REFUSED.error_id, reason: REFUSED.why }],
+    });
+
+    const climb = toOpenHealthClimb(row({ status: StrutRunStatus.PENDING, settledAt: null }), undefined, events);
+    expect(climb.steps[0]).toMatchObject({
+      kind: "benchmark",
+      outcome: "succeeded",
+      f1Official: 0.92,
+      contested: ["Primigravida"],
+    });
+    expect(climb.steps[1]).toMatchObject({ kind: "improve", outcome: "succeeded", contestsAccepted: ["Proteinuria"] });
+    expect(climb).toMatchObject({
+      status: "running",
+      bestF1Official: 0.92,
+      contested: ["Primigravida", "Proteinuria"],
+    });
+  });
+
+  it("has no official score and nothing contested for a climb before the loop reported them", () => {
+    const climb = toOpenHealthClimb(row({ output: { stopReason: "target_reached", history: [entry(0, 1, false)] } }));
+    expect(climb.steps[0]).toMatchObject({ f1Official: null, contested: [] });
+    expect(climb).toMatchObject({ bestF1Official: null, contested: [] });
   });
 });
 

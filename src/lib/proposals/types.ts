@@ -465,6 +465,71 @@ export type ProposalOutput =
       meta?: { workspaceName?: string; workspaceSlug?: string };
     }
   | {
+      kind: "graphEdgeDelete";
+      proposalId: string;
+      payload: GraphEdgeDeleteProposalPayload;
+      rationale?: string;
+      /**
+       * Render-only: the edge as it was found at propose time. The approval
+       * handler finds the edge again by its ends and does NOT trust this.
+       */
+      meta: {
+        workspaceName?: string;
+        workspaceSlug?: string;
+        edge_ref_id?: string;
+        source_name?: string;
+        target_name?: string;
+        /** Set when the propose tool refused (edge not found). The card
+         *  renders as disabled-with-reason. */
+        refusedReason?: string;
+      };
+    }
+  | {
+      kind: "graphNodeMove";
+      proposalId: string;
+      payload: GraphNodeMoveProposalPayload;
+      rationale?: string;
+      /**
+       * Render-only names for the card, read at propose time. The approval
+       * handler re-reads every node and the edge and does NOT trust this.
+       */
+      meta: {
+        workspaceName?: string;
+        workspaceSlug?: string;
+        node_name?: string;
+        node_type?: string;
+        from_name?: string;
+        to_name?: string;
+        edge_ref_id?: string;
+        /** Set when the propose tool refused (node missing, mirror-owned,
+         *  no current parent, or an ambiguous one). */
+        refusedReason?: string;
+      };
+    }
+  | {
+      kind: "graphNodeDelete";
+      proposalId: string;
+      payload: GraphNodeDeleteProposalPayload;
+      rationale?: string;
+      /**
+       * Render-only: the node and its edges as read at propose time. The
+       * approval handler deletes by ref_id and does NOT trust this; Jarvis
+       * mutes whatever edges the node has when the delete runs.
+       */
+      meta: {
+        workspaceName?: string;
+        workspaceSlug?: string;
+        node_name?: string;
+        node_type?: string;
+        edges?: GraphNodeDeleteEdge[];
+        /** Edges beyond `edges` that the card does not list. */
+        more_edge_count?: number;
+        /** Set when the propose tool refused (node missing, mirror-owned
+         *  or a Schema node). */
+        refusedReason?: string;
+      };
+    }
+  | {
       kind: "codeChange";
       proposalId: string;
       payload: CodeChangeProposalPayload;
@@ -643,6 +708,57 @@ export interface GraphBatchTripletCreateProposalPayload {
 }
 
 /**
+ * Payload for removing one existing edge, `(source)-[:edge_type]->(target)`.
+ * Both ends are existing nodes' ref_ids: Jarvis keys edges by an opaque
+ * ref_id the model never sees, so the approval handler finds the edge by its
+ * ends at approval time and mutes it (Jarvis has no hard edge delete).
+ */
+export interface GraphEdgeDeleteProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  edge_type: string;
+  source_ref_id: string;
+  target_ref_id: string;
+}
+
+/**
+ * Payload for moving a node from under one parent to under another along
+ * `edge_type` (PARENT_OF by default): the node is the target of the edge,
+ * the parents are its sources. On approval the new edge is created first and
+ * the old one removed second, so a failure never leaves the node orphaned.
+ */
+export interface GraphNodeMoveProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  ref_id: string;
+  edge_type: string;
+  from_ref_id: string;
+  to_ref_id: string;
+}
+
+/**
+ * Payload for deleting one node (`DELETE /v2/nodes/<ref_id>/single`). The
+ * node can be restored, but every link touching it is permanently removed;
+ * nothing else from the node's ingestion run is touched.
+ */
+export interface GraphNodeDeleteProposalPayload {
+  workspaceId: string;
+  workspaceSlug: string;
+  ref_id: string;
+  /** The node's Jarvis namespace; omitted for the default namespace. */
+  namespace?: string;
+}
+
+/** One edge a node delete will hide, as the card lists it. */
+export interface GraphNodeDeleteEdge {
+  edge_type: string;
+  /** `out` = the deleted node is the source. */
+  direction: "in" | "out";
+  other_ref_id: string;
+  other_name?: string;
+}
+
+/**
  * Tool name constants — referenced by the chat UI to find proposal
  * tool calls inside `message.toolCalls[]`, by the route's scanner, and
  * by the agent tool factory. Single source so a rename is one edit.
@@ -656,7 +772,7 @@ export const PROPOSE_NEW_CONCEPT_TOOL = "propose_new_concept" as const;
 export const PROPOSE_CONCEPT_UPDATE_TOOL = "propose_concept_update" as const;
 
 // ─── Graph write tool name constants ──────────────────────────────────────
-// These four tools emit approvable proposal cards; the actual Jarvis write
+// These seven tools emit approvable proposal cards; the actual Jarvis write
 // happens only after the user clicks Approve. Named distinctly from the
 // read-only graph_walker tools so the card scanner and route handler have
 // a single enum-like source to key off.
@@ -666,6 +782,9 @@ export const PROPOSE_NODE_EDIT_TOOL = "propose_node_edit" as const;
 export const PROPOSE_CREATE_TRIPLET_TOOL = "propose_create_triplet" as const;
 export const PROPOSE_CREATE_BATCH_TRIPLET_TOOL =
   "propose_create_batch_triplet" as const;
+export const PROPOSE_DELETE_EDGE_TOOL = "propose_delete_edge" as const;
+export const PROPOSE_MOVE_NODE_TOOL = "propose_move_node" as const;
+export const PROPOSE_DELETE_NODE_TOOL = "propose_delete_node" as const;
 export const PROPOSE_CODE_CHANGE_TOOL = "propose_code_change" as const;
 
 /**
@@ -698,6 +817,9 @@ export type ProposeToolName =
   | typeof PROPOSE_NODE_EDIT_TOOL
   | typeof PROPOSE_CREATE_TRIPLET_TOOL
   | typeof PROPOSE_CREATE_BATCH_TRIPLET_TOOL
+  | typeof PROPOSE_DELETE_EDGE_TOOL
+  | typeof PROPOSE_MOVE_NODE_TOOL
+  | typeof PROPOSE_DELETE_NODE_TOOL
   | typeof PROPOSE_CODE_CHANGE_TOOL;
 
 /**
@@ -795,6 +917,9 @@ export interface ApprovalResult {
     | "graphNodeEdit"
     | "graphTripletCreate"
     | "graphBatchTripletCreate"
+    | "graphEdgeDelete"
+    | "graphNodeMove"
+    | "graphNodeDelete"
     | "codeChange";
   createdEntityId: string;
   /** Canvas ref the new node landed on. Empty string = root. */
@@ -810,7 +935,8 @@ export interface ApprovalResult {
    * Slug of the workspace the entity belongs to.
    * Present for `feature`, `promptUpdate` and the graph approvals
    * (`conceptCreate`, `conceptUpdate`, `graphNodeCreate`, `graphNodeEdit`,
-   * `graphTripletCreate`, `graphBatchTripletCreate`).
+   * `graphTripletCreate`, `graphBatchTripletCreate`, `graphEdgeDelete`,
+   * `graphNodeMove`, `graphNodeDelete`).
    * Absent on older results that pre-date this field — client must
    * degrade gracefully (text-only, no link) when missing.
    */

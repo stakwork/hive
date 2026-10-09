@@ -5,7 +5,7 @@
 
 import React from "react";
 import { describe, test, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import {
   getResearchRunsFromMessages,
   ResearchRunCard,
@@ -217,6 +217,19 @@ describe("ResearchRunCard status pill", () => {
       />,
     );
     expect(screen.getByText("Failed")).toBeTruthy();
+  });
+
+  test("cancelled status renders a 'Cancelled' pill and no link to the deleted research", () => {
+    const { container } = render(
+      <ResearchRunCard
+        run={{ ...baseRun, status: "cancelled" }}
+        githubLogin="my-org"
+      />,
+    );
+    expect(screen.getByText("Cancelled")).toBeTruthy();
+    expect(screen.queryByText("Failed")).toBeNull();
+    fireEvent.click(screen.getByRole("button"));
+    expect(container.querySelector("a[title='Open research']")).toBeNull();
   });
 
   test("renders topic in collapsed header", () => {

@@ -50,11 +50,28 @@ describe("applyChanges", () => {
 
     const id = childrenOf(graph, "security")[0];
     expect(graph.nodes[id]).toMatchObject({ name: "SSRF Check", proposed: "new", docs: "# SSRF" });
-    expect(pending).toMatchObject({ created: 1, edited: 0, focus: "security" });
+    expect(pending).toMatchObject({ created: 1, edited: 0, focus: id });
     expect(pending.newEdges).toEqual(new Set([`security>${id}`]));
     expect(pending.touched).toEqual(new Set(["security", id]));
     expect(childrenOf(g, "security")).toEqual([]);
     expect(g.nodes[id]).toBeUndefined();
+  });
+
+  test("focuses a new node rather than its parent, and keeps the parent pinned beside it", () => {
+    const { graph, pending } = applyChanges(base(), [{ kind: "node", name: "SSRF Check", parent: "Security" }]);
+
+    expect(pending.focus).toBe("pending:0");
+    expect(graph.nodes[pending.focus!].proposed).toBe("new");
+    expect(pending.touched).toEqual(new Set(["pending:0", "security"]));
+  });
+
+  test("still focuses the existing concept for a docs change", () => {
+    const { graph, pending } = applyChanges(base(), [
+      { kind: "docs", node: "coding", before: "# old", after: "# new" },
+    ]);
+
+    expect(pending.focus).toBe("coding");
+    expect(graph.nodes.coding.proposed).toBe("changed");
   });
 
   test("marks a docs change on the node it addresses", () => {
@@ -87,5 +104,52 @@ describe("applyChanges", () => {
     expect(parentsOf(graph, "glimmer")).toEqual(["loose"]);
     expect(graph.nodes.glimmer.root).toBe(false);
     expect(graph.nodes.loose.root).toBe(true);
+  });
+
+  test("marks a tree edge to remove as going, and leaves it in the graph so the node still has its place", () => {
+    const { graph, pending } = applyChanges(base(), [
+      { kind: "unlink", edge: "PARENT_OF", source: "Coding", target: "stakwork/hive/glimmer" },
+    ]);
+
+    // Ends resolve by name and by own id, like every other change.
+    expect(pending.removedEdges).toEqual(new Set(["coding>glimmer"]));
+    expect(pending.unlinks).toEqual([]);
+    expect(pending.touched).toEqual(new Set(["coding", "glimmer"]));
+    expect(pending).toMatchObject({ created: 0, edited: 0, focus: "coding" });
+    expect(parentsOf(graph, "coding")).toEqual(["glimmer"]);
+    expect(graph.nodes.glimmer.root).toBe(true);
+  });
+
+  test("lists an edge of another type to remove as an unlink", () => {
+    const { pending } = applyChanges(base(), [
+      { kind: "unlink", edge: "DEPENDS_ON", source: "coding", target: "security" },
+    ]);
+
+    expect(pending.unlinks).toEqual([{ edge: "DEPENDS_ON", source: "coding", target: "security" }]);
+    expect(pending.removedEdges.size).toBe(0);
+  });
+
+  test("draws nothing for an edge to remove with an end it can't find, but keeps the end it can in view", () => {
+    const { graph, pending } = applyChanges(base(), [
+      { kind: "unlink", edge: "PARENT_OF", source: "coding", target: "Nowhere" },
+    ]);
+
+    expect(pending.removedEdges.size).toBe(0);
+    expect(pending.unlinks).toEqual([]);
+    expect(pending.created).toBe(0);
+    expect(Object.keys(graph.nodes)).toEqual(Object.keys(base().nodes));
+    expect(pending.touched).toEqual(new Set(["coding"]));
+  });
+
+  test("draws a move as the old tree edge going and the new one coming", () => {
+    const { graph, pending } = applyChanges(base(), [
+      { kind: "unlink", edge: "PARENT_OF", source: "coding", target: "security" },
+      { kind: "edge", edge: "PARENT_OF", source: "glimmer", target: "security" },
+    ]);
+
+    expect(pending.removedEdges).toEqual(new Set(["coding>security"]));
+    expect(pending.newEdges).toEqual(new Set(["glimmer>security"]));
+    expect(parentsOf(graph, "security")).toEqual(["coding", "glimmer"]);
+    expect(childrenOf(graph, "glimmer")).toEqual(["coding", "security"]);
   });
 });

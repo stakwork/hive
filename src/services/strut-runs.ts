@@ -113,8 +113,22 @@ const ROW_SELECT = {
   settledAt: true,
 } satisfies Prisma.StrutRunSelect;
 
+/**
+ * What the delivery that settled a row knows beyond the row. Nothing a
+ * handler needs; something one may use.
+ */
+export interface StrutRunHandlerContext {
+  /**
+   * This deployment's swarm-reachable base URL, from the callback request's
+   * `host` header: strut reached us there, so a canvas-agent turn a handler
+   * wakes builds its own launches' callback URLs from it. Absent on the
+   * reconcile path (no request).
+   */
+  publicBaseUrl?: string;
+}
+
 /** A kind's completion handler: idempotent, throws to ask for a retry. */
-export type StrutRunHandler = (row: StrutRunRow) => Promise<void>;
+export type StrutRunHandler = (row: StrutRunRow, ctx?: StrutRunHandlerContext) => Promise<void>;
 
 /**
  * Kind → handler. Lazy so this module stays light (a handler pulls in the
@@ -125,6 +139,7 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   code_change_land: async () => (await import("./strut-runs/code-change-land")).handleCodeChangeLandSettled,
   system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
+  system_map_cwe_check: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_climb: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
@@ -455,12 +470,22 @@ export async function cancelStrutRun(row: Pick<StrutRunRow, "id" | "swarmId" | "
  * The Stop button: cancel every PENDING strut run a conversation is
  * waiting on. Returns the rows it addressed (so the caller can skip them
  * in the swarm `/repo/agent` abort loop) and how many strut acknowledged.
+ *
+ * `turn` narrows it to the runs one turn launched (the composer's Stop).
+ * `StrutRun` has no `turnId` column, so the scope is the turn's user +
+ * `createdAt >= since` (the turn's start) — precise because the client
+ * blocks a new send while a turn is running.
  */
 export async function cancelPendingStrutRunsForConversation(
   conversationId: string,
+  turn?: { userId: string; since: Date },
 ): Promise<{ rows: Array<{ id: string; kind: string }>; cancelled: number }> {
   const rows = await db.strutRun.findMany({
-    where: { conversationId, status: StrutRunStatus.PENDING },
+    where: {
+      conversationId,
+      status: StrutRunStatus.PENDING,
+      ...(turn ? { userId: turn.userId, createdAt: { gte: turn.since } } : {}),
+    },
     select: { id: true, kind: true, swarmId: true, workflow: true, strutRunId: true },
   });
   let cancelled = 0;
@@ -490,6 +515,7 @@ export type CompleteStrutRunOutcome =
 export async function completeStrutRun(
   row: { id: string; tokenHash: string },
   completion: StrutRunCompletion,
+  ctx?: StrutRunHandlerContext,
 ): Promise<CompleteStrutRunOutcome> {
   const { count } = await db.strutRun.updateMany({
     where: { id: row.id, tokenHash: row.tokenHash, status: StrutRunStatus.PENDING },
@@ -512,11 +538,11 @@ export async function completeStrutRun(
     status: settled.status,
     outcome,
   });
-  return (await runHandler(settled)) ? outcome : "retry";
+  return (await runHandler(settled, ctx)) ? outcome : "retry";
 }
 
 /** Run a settled row's kind handler. `false` = it threw (retry). */
-export async function runHandler(row: StrutRunRow): Promise<boolean> {
+export async function runHandler(row: StrutRunRow, ctx?: StrutRunHandlerContext): Promise<boolean> {
   const load = HANDLERS[row.kind];
   if (!load) {
     logger.error("No handler for a settled strut run", STRUT_RUN_LOG_TAG, { runId: row.id, kind: row.kind });
@@ -524,7 +550,7 @@ export async function runHandler(row: StrutRunRow): Promise<boolean> {
   }
   try {
     const handler = await load();
-    await handler(row);
+    await handler(row, ctx);
     return true;
   } catch (err) {
     logger.error("Strut run handler failed", STRUT_RUN_LOG_TAG, {

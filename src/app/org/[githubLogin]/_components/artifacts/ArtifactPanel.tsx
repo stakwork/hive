@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import {
+  artifactIdentity,
   latestArtifacts,
   resolveArtifactPanel,
   type ArtifactKind,
@@ -24,7 +25,7 @@ import { isTypingTarget } from "../control-panel/ControlPanelList";
 import { ICON_BUTTON_CLASS, MissingContentPanel, ToolbarButton, ViewerBoundary } from "./chrome";
 import { artifactHref, artifactKind } from "./registry";
 import { useArtifactContent } from "./useArtifactContent";
-import { useActiveArtifacts, useChatOrgLogin } from "./useArtifactPanel";
+import { useActiveArtifacts, useArtifactJobId, useChatOrgLogin } from "./useArtifactPanel";
 
 /**
  * The artifact panel: the artifact a chat card opened, at full size. The
@@ -61,22 +62,24 @@ export function ArtifactPanel() {
  * The kind's full view. Memoised: the bar above it re-renders as
  * artifacts land in the chat, and a viewer is not cheap to redraw.
  */
-const Viewer = React.memo(function Viewer({ artifact, content }: ArtifactViewerProps<ArtifactKind>) {
+const Viewer = React.memo(function Viewer({ artifact, content, jobId }: ArtifactViewerProps<ArtifactKind>) {
   const { Panel } = artifactKind(artifact.kind);
-  return <Panel artifact={artifact} content={content} />;
+  return <Panel artifact={artifact} content={content} jobId={jobId} />;
 });
 
 function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others: ArtifactRef[] }) {
   const { artifact, versions, index } = shown;
+  const identity = artifactIdentity(artifact);
   const spec = artifactKind(artifact.kind);
   const githubLogin = useChatOrgLogin();
+  const jobId = useArtifactJobId(artifact);
   const state = useArtifactContent(artifact);
   const content = state.status === "ready" ? state.content : null;
   const href = content && artifactHref(artifact.kind, content, githubLogin);
   const copyText = useMemo(() => content && spec.copyText?.(content), [spec, content]);
   const { openArtifactPanel, closeArtifactPanel } = useCanvasChatStore.getState();
   // The newest version is followed rather than pinned, so a later revision shows as it lands.
-  const showVersion = (next: number) => openArtifactPanel(artifact.id, next === versions.length - 1 ? null : next);
+  const showVersion = (next: number) => openArtifactPanel(identity, next === versions.length - 1 ? null : next);
 
   return (
     <section aria-label={artifact.title} className="flex h-full w-full flex-col bg-background">
@@ -96,11 +99,12 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
             <DropdownMenuContent align="start" className="w-80">
               {others.map((other) => {
                 const otherSpec = artifactKind(other.kind);
+                const otherIdentity = artifactIdentity(other);
                 return (
                   <DropdownMenuItem
-                    key={other.id}
-                    onSelect={() => openArtifactPanel(other.id)}
-                    className={cn(other.id === artifact.id && "bg-muted font-medium")}
+                    key={otherIdentity}
+                    onSelect={() => openArtifactPanel(otherIdentity)}
+                    className={cn(otherIdentity === identity && "bg-muted font-medium")}
                   >
                     <otherSpec.Icon aria-hidden />
                     <span className="min-w-0 flex-1 truncate">{other.title}</span>
@@ -167,8 +171,8 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
       <div className="min-h-0 flex-1">
         {state.status === "ready" ? (
           // Keyed so a viewer's own state — zoom, a filter, where it has browsed to — starts over with each artifact.
-          <ViewerBoundary key={`${artifact.id}:${index}`}>
-            <Viewer artifact={artifact} content={state.content} />
+          <ViewerBoundary key={`${identity}:${index}`}>
+            <Viewer artifact={artifact} content={state.content} jobId={jobId} />
           </ViewerBoundary>
         ) : (
           <MissingContentPanel state={state} />

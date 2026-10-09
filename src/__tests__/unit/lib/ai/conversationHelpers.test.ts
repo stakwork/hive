@@ -1,10 +1,45 @@
 // @vitest-environment node
 
 import { describe, it, expect } from "vitest";
-import { toModelMessages } from "@/lib/ai/conversationHelpers";
+import {
+  INTERRUPTED_TOOL_RESULT,
+  STOPPED_TURN_NOTICE,
+  STOPPED_TURN_TEXT,
+  jobEventNotice,
+  toModelMessages,
+} from "@/lib/ai/conversationHelpers";
 import type { StoredMessage } from "@/services/canvas-turn-persistence";
 
 describe("toModelMessages", () => {
+  it("replays user attachments as content parts", () => {
+    const stored: StoredMessage[] = [
+      {
+        role: "user",
+        content: "see attached",
+        attachments: [
+          { path: "orgs/acme/canvas/a.png", filename: "a.png", mimeType: "image/png", size: 1 },
+          { path: "orgs/acme/canvas/b.md", filename: "b.md", mimeType: "text/markdown", size: 1 },
+        ],
+      } as StoredMessage,
+      { role: "user", content: "", attachments: [
+        { path: "orgs/acme/canvas/c.md", filename: "c.md", mimeType: "", size: 1 },
+      ] } as StoredMessage,
+    ];
+    const result = toModelMessages(stored);
+    expect(result).toHaveLength(2);
+    expect(result[0].content).toEqual([
+      { type: "text", text: "see attached" },
+      { type: "image", image: "/api/upload/presigned-url?s3Key=orgs%2Facme%2Fcanvas%2Fa.png" },
+      {
+        type: "file",
+        data: "/api/upload/presigned-url?s3Key=orgs%2Facme%2Fcanvas%2Fb.md",
+        mediaType: "text/markdown",
+        filename: "b.md",
+      },
+    ]);
+    expect((result[1].content as Array<{ type: string }>)[0].type).toBe("file");
+  });
+
   it("converts plain text user and assistant messages", () => {
     const stored: StoredMessage[] = [
       { role: "user", content: "Hello" } as StoredMessage,
@@ -70,7 +105,7 @@ describe("toModelMessages", () => {
     });
   });
 
-  it("omits tool-result message when tool call has no output or errorText", () => {
+  it("replays a tool call with no output as interrupted — every call gets a result", () => {
     const stored: StoredMessage[] = [
       {
         role: "assistant",
@@ -80,6 +115,7 @@ describe("toModelMessages", () => {
             id: "tc2",
             toolName: "no_result_tool",
             input: {},
+            status: "interrupted",
             // output and errorText intentionally absent
           },
         ],
@@ -88,19 +124,78 @@ describe("toModelMessages", () => {
 
     const result = toModelMessages(stored);
 
-    // Only the tool-call entry; no tool-result, no trailing text
-    expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
-      role: "assistant",
+    expect(result).toEqual([
+      {
+        role: "assistant",
+        content: [{ type: "tool-call", toolCallId: "tc2", toolName: "no_result_tool", input: {} }],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "tc2",
+            toolName: "no_result_tool",
+            output: { type: "error-text", value: INTERRUPTED_TOOL_RESULT },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("replays a failed call's errorText when it has no output", () => {
+    const stored = [
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "tc3", toolName: "flaky", input: {}, status: "output-error", errorText: "Tool call failed" }],
+      },
+    ] as StoredMessage[];
+
+    const [, toolMsg] = toModelMessages(stored);
+
+    expect(toolMsg).toEqual({
+      role: "tool",
       content: [
         {
-          type: "tool-call",
-          toolCallId: "tc2",
-          toolName: "no_result_tool",
-          input: {},
+          type: "tool-result",
+          toolCallId: "tc3",
+          toolName: "flaky",
+          output: { type: "error-text", value: "Tool call failed" },
         },
       ],
     });
+  });
+
+  it("replays a stopped turn's marker as a notice from the user, never its stored text", () => {
+    const stored = [
+      { id: "t-u", role: "user", content: "Explain the auth flow" },
+      { id: "t-a0", role: "assistant", content: "The auth flow starts" },
+      { id: "t-astopped", role: "assistant", content: STOPPED_TURN_TEXT, source: { kind: "stopped" } },
+      { id: "t2-u", role: "user", content: "Actually, explain billing" },
+    ] as StoredMessage[];
+
+    expect(toModelMessages(stored)).toEqual([
+      { role: "user", content: "Explain the auth flow" },
+      { role: "assistant", content: "The auth flow starts" },
+      { role: "user", content: STOPPED_TURN_NOTICE },
+      { role: "user", content: "Actually, explain billing" },
+    ]);
+  });
+
+  it("replays a job event row as a notice from the user carrying the event, never as the assistant's words", () => {
+    const line = "[artifact-event] pull_request https://github.com/acme/app/pull/12 merged";
+    const stored = [
+      { id: "u", role: "user", content: "Make a PR" },
+      { id: "e", role: "assistant", content: line, source: { kind: "job_event", jobId: "6f1c", title: "Dark mode", runId: "row-2" } },
+    ] as StoredMessage[];
+
+    expect(toModelMessages(stored)).toEqual([
+      { role: "user", content: "Make a PR" },
+      { role: "user", content: jobEventNotice("6f1c", line) },
+    ]);
+    expect(jobEventNotice("6f1c", line)).toContain("not by you, not by the user");
+    expect(jobEventNotice("6f1c", line)).toContain(line);
   });
 
   it("filters out messages with empty content and no toolCalls", () => {

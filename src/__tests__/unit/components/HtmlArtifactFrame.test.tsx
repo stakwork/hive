@@ -1,5 +1,5 @@
 /**
- * Unit tests for HtmlArtifactFrame — the single renderer for stored HTML.
+ * Unit tests for HtmlArtifactFrame — the single renderer for HTML pages (stored, and a strut job's on a swarm).
  *
  * Asserts the security posture, not the styling:
  *   - sandbox grants only allow-scripts (never allow-same-origin / …)
@@ -13,13 +13,22 @@ import React from "react";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, act } from "@testing-library/react";
 
 import {
   HtmlArtifactFrame,
   HTML_FRAME_SANDBOX,
 } from "@/components/html-artifact/HtmlArtifactFrame";
 import { injectHtmlArtifactCsp } from "@/lib/utils/html-artifact-csp";
+import {
+  HTML_ARTIFACT_NAV_MESSAGE_TYPE,
+  injectHtmlArtifactNavBridge,
+} from "@/lib/utils/html-artifact-nav";
+
+const mockPush = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush }),
+}));
 
 // JSX compiles to React.createElement (tsconfig jsx: preserve) — the
 // component under test relies on a global React, as other component
@@ -34,6 +43,7 @@ const revokeObjectURL = vi.fn();
 
 const ORG_SOURCE = { githubLogin: "acme-org", slug: "my-page" };
 const TASK_SOURCE = { taskId: "task-1", artifactId: "artifact-1" };
+const SWARM_SOURCE = { githubLogin: "acme-org", swarmId: "swarm-1", key: "/jobs/6f1c/files/plan.html" };
 
 const PAGE_HTML = "<!DOCTYPE html><html><body>hi</body></html>";
 
@@ -110,7 +120,10 @@ describe("HtmlArtifactFrame", () => {
     expect(blob.type).toBe("text/html; charset=utf-8");
     // Same bytes the CSP helper produces for this page — i.e. the meta
     // tag was prepended rather than the raw body being framed as-is.
-    const expected = new Blob([injectHtmlArtifactCsp(PAGE_HTML)]);
+    // The nav bridge script is added on top of the CSP-injected page.
+    const expected = new Blob([
+      injectHtmlArtifactNavBridge(injectHtmlArtifactCsp(PAGE_HTML)),
+    ]);
     expect(blob.size).toBe(expected.size);
     expect(blob.size).toBeGreaterThan(new Blob([PAGE_HTML]).size);
   });
@@ -142,6 +155,15 @@ describe("HtmlArtifactFrame", () => {
     await findIframe();
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/tasks/task-1/artifacts/artifact-1/html",
+      { credentials: "include", cache: "no-store" },
+    );
+  });
+
+  test("fetches the strut artifact reader for a page a job wrote on a swarm", async () => {
+    render(<HtmlArtifactFrame source={SWARM_SOURCE} />);
+    await findIframe();
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/orgs/acme-org/strut/artifacts?swarmId=swarm-1&key=%2Fjobs%2F6f1c%2Ffiles%2Fplan.html",
       { credentials: "include", cache: "no-store" },
     );
   });
@@ -233,5 +255,47 @@ describe("HtmlArtifactFrame", () => {
 
     expect(await screen.findByText("Failed to load this page.")).toBeDefined();
     expect(document.querySelector("iframe")).toBeNull();
+  });
+
+  describe("navigation bridge", () => {
+    function post(source: unknown, data: unknown) {
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", { data, source: source as MessageEventSource }),
+        );
+      });
+    }
+
+    test("routes allowed paths posted by the iframe's contentWindow only", async () => {
+      render(<HtmlArtifactFrame source={ORG_SOURCE} />);
+      const iframe = await findIframe();
+      const frameWindow = iframe.contentWindow;
+      expect(frameWindow).not.toBeNull();
+
+      post(frameWindow, {
+        type: HTML_ARTIFACT_NAV_MESSAGE_TYPE,
+        href: "/org/stakwork/h/x",
+      });
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      expect(mockPush).toHaveBeenCalledWith("/org/stakwork/h/x");
+
+      // Another source is ignored.
+      post(window, { type: HTML_ARTIFACT_NAV_MESSAGE_TYPE, href: "/org/stakwork/h/y" });
+      // Disallowed paths and wrong message types are ignored.
+      for (const href of ["//evil.com", "https://evil.com", "/api/x"]) {
+        post(frameWindow, { type: HTML_ARTIFACT_NAV_MESSAGE_TYPE, href });
+      }
+      post(frameWindow, { type: "other", href: "/org/stakwork/h/z" });
+      expect(mockPush).toHaveBeenCalledTimes(1);
+    });
+
+    test("removes the message listener on unmount", async () => {
+      const { unmount } = render(<HtmlArtifactFrame source={ORG_SOURCE} />);
+      const iframe = await findIframe();
+      const frameWindow = iframe.contentWindow;
+      unmount();
+      post(frameWindow, { type: HTML_ARTIFACT_NAV_MESSAGE_TYPE, href: "/org/a/b" });
+      expect(mockPush).not.toHaveBeenCalled();
+    });
   });
 });

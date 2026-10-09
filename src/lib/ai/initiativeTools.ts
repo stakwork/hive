@@ -26,6 +26,7 @@ import {
   SEND_TO_FEATURE_PLANNER_TOOL,
 } from "@/lib/proposals/types";
 import { jamieName } from "@/lib/constants/jamie";
+import { PLANNER_FORM_RULE } from "@/lib/constants/prompt-rules";
 
 /**
  * Shared zod schema for the `placement` field on every propose tool.
@@ -60,22 +61,32 @@ const placementSchema = z
  * and matches the prompt suffix in `src/lib/constants/prompt.ts`.
  */
 const PLACEMENT_DESCRIPTION =
-  "Where to place the new card on the canvas. **Required:** pick " +
+  "Where to place the new card on the canvas. Always provide: pick " +
   "deliberately based on `read_canvas` output for the canvas this " +
-  "card will land on. " +
+  "card will land on — don't omit it; pick `auto` explicitly if you " +
+  "have no opinion. " +
   "Vocabulary: `auto` (let auto-layout pick), " +
   "`near:<liveId>` / `right-of:<liveId>` (same row, to the right of " +
   "anchor), `left-of:<liveId>` (same row, to the left), " +
   "`below:<liveId>` (start a new row beneath anchor), " +
   "`above:<liveId>` (start a new row above anchor). " +
   "`<liveId>` is the full prefixed id from `read_canvas` (e.g. " +
-  "`feature:cmoti7…`, `initiative:cmnxk2…`, `ws:cmoz9c…`). " +
+  "`feature:cmoti7…`, `initiative:cmnxk2…`, `ws:cmoz9c…`, " +
+  "`milestone:cmpqv1…`). " +
   "Anchor MUST live on the canvas the new card lands on " +
   "(initiative → root canvas; milestone → its parent initiative " +
   "canvas; feature → its initiative canvas if anchored, else its " +
   "workspace canvas). Unresolvable placements (anchor missing, " +
   "wrong canvas, slot collides) silently fall back to `auto` — so " +
-  "if you're unsure, use `auto` explicitly.";
+  "if you're unsure, use `auto` explicitly. " +
+  "Milestones read as a timeline: for a new milestone, prefer " +
+  "`right-of:milestone:<latest-existing-id>` to extend the row to " +
+  "the right. For a loose feature (no `initiativeId`), its target " +
+  "canvas is its workspace's (`ws:<id>`), not the initiative's — " +
+  "`below:initiative:<id>` only works when the anchor is actually on " +
+  "that same target canvas; otherwise it silently falls back to " +
+  "`auto` (see `dependsOnProposalIds` for the layering-above " +
+  "reference these anchors support).";
 
 /**
  * Tools for the org canvas chat agent's roadmap surface.
@@ -135,6 +146,12 @@ export function buildInitiativeTools(
    * unchanged.
    */
   chatAgentModel?: string,
+  /**
+   * Slim-prompt mode (the per-browser settings switch). In that mode the
+   * `send_to_feature_planner` description carries the FORM rule; the
+   * full prompt keeps its own FORM guidance in the planner snippet.
+   */
+  slimPrompt?: boolean,
 ): ToolSet {
   return {
     read_initiative: tool({
@@ -607,13 +624,15 @@ export function buildInitiativeTools(
         "typically take 30–120 seconds; don't loop polling. Tell the " +
         "user *'I've sent a message to the X planner; I'll check back " +
         "in a moment'* and move on. " +
-        "**Fails if the planner is currently running** " +
-        "(`workflowStatus === 'IN_PROGRESS'`). Wait for the run to " +
-        "finish (use `<slug>__read_feature` to check) before sending. " +
+        "If the planner is `IN_PROGRESS`, the tool re-checks every " +
+        "2.5s for up to ~20s and sends as soon as it clears. If it is " +
+        "still running, it returns an `IN_PROGRESS` error: re-read " +
+        "the feature later and retry. " +
         "Prefix your message with a one-line reason for context — the " +
         "planner sees this as the chat history's next user message " +
         "and a short framing helps it understand cross-feature " +
-        "coordination.",
+        "coordination." +
+        (slimPrompt ? ` ${PLANNER_FORM_RULE}` : ""),
       inputSchema: z.object({
         featureId: z
           .string()
@@ -1276,7 +1295,10 @@ export function buildInitiativeTools(
               "this validation. At approval time, this array is " +
               "unioned with the cuids resolved from " +
               "`dependsOnProposalIds` and written to " +
-              "`Feature.dependsOnFeatureIds`.",
+              "`Feature.dependsOnFeatureIds`. Cycles, including two " +
+              "proposals that depend on each other, are rejected " +
+              "when approved, not when proposed. Never create mutual " +
+              "dependencies.",
           ),
         dependsOnProposalIds: z
           .array(z.string().min(1))
@@ -1288,7 +1310,10 @@ export function buildInitiativeTools(
               "chat transcript. At approval time the handler scans " +
               "the conversation for each id's " +
               "`approvalResult.createdEntityId` and unions the " +
-              "results with `dependsOnFeatureIds`. If a referenced " +
+              "results with `dependsOnFeatureIds`. Cycles, including " +
+              "two proposals that depend on each other, are rejected " +
+              "when approved, not when proposed. Never create mutual " +
+              "dependencies. If a referenced " +
               "proposal hasn't been approved yet, approval of THIS " +
               "proposal fails with *'Approve the blocker first.'* " +
               "**NEVER pass a cuid here.** Existing-DB features go " +

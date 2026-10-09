@@ -11,15 +11,32 @@
  *   - the share page's Download link, a same-origin `<a download>` pointing
  *     at the proxy. Because the response is `attachment` + `octet-stream`
  *     + `nosniff`, following that link saves a file and never renders.
+ *
+ * The one exception is a page a strut job wrote, read through the strut
+ * artifact reader (`api/orgs/[githubLogin]/strut/artifacts`): that route
+ * also serves images and PDFs, so it answers with the file's own type —
+ * under strut's `Content-Security-Policy: sandbox`, so a navigation to it
+ * renders a static page in an opaque origin, never script on Hive's
+ * origin. The frame never navigates to it either way: it fetches the bytes
+ * and renders them from a blob.
  */
 
-/** Two address shapes — never a raw `s3Key`. */
+import { strutArtifactReaderUrl } from "@/lib/strut-jobs";
+
+/**
+ * Three address shapes — never a raw `s3Key`, never a URL. The third is a
+ * page a strut job wrote on a swarm: `key` is strut's own link to the file
+ * (`/jobs/<job>/files/<path>`), which the reader checks against Hive's rows
+ * before asking the swarm.
+ */
 export type HtmlArtifactSource =
   | { githubLogin: string; slug: string }
-  | { taskId: string; artifactId: string };
+  | { taskId: string; artifactId: string }
+  | { githubLogin: string; swarmId: string; key: string };
 
-/** Same-origin path of the authenticated body proxy for a stored page. */
+/** Same-origin path of the authenticated body proxy for a page. */
 export function htmlArtifactProxyUrl(source: HtmlArtifactSource): string {
+  if ("swarmId" in source) return strutArtifactReaderUrl(source.githubLogin, source.swarmId, source.key);
   if ("githubLogin" in source) {
     return `/api/orgs/${encodeURIComponent(source.githubLogin)}/html-pages/${encodeURIComponent(source.slug)}`;
   }

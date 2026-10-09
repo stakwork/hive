@@ -27,6 +27,15 @@ describe("readStrutArtifact", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  test("a page is where it is on the swarm — the frame reads it through the reader itself, so no fetch here", async () => {
+    const fetchImpl = vi.fn();
+    expect(await readStrutArtifact(ref("html", "/jobs/6f1c/files/plan.html"), ctx, fetchImpl)).toEqual({
+      swarmId: "swarm-1",
+      key: "/jobs/6f1c/files/plan.html",
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   test("text kinds are fetched through the reader and shaped for their viewer", async () => {
     const fetchImpl = text("# Plan");
     expect(await readStrutArtifact(ref("markdown"), ctx, fetchImpl)).toEqual({ text: "# Plan" });
@@ -40,8 +49,8 @@ describe("readStrutArtifact", () => {
   });
 
   test("what bytes on a swarm cannot be, and what the reader refuses", async () => {
-    await expect(readStrutArtifact(ref("html"), ctx, text("<h1/>"))).rejects.toMatchObject({ reason: "unavailable" });
     await expect(readStrutArtifact(ref("diff"), ctx, text(""))).rejects.toMatchObject({ reason: "unavailable" });
+    await expect(readStrutArtifact(ref("pull_request"), ctx, text(""))).rejects.toMatchObject({ reason: "unavailable" });
     await expect(readStrutArtifact(ref("json"), ctx, text("not json"))).rejects.toMatchObject({ reason: "unavailable" });
     await expect(readStrutArtifact(ref("markdown"), ctx, text("", 404))).rejects.toMatchObject({ reason: "unavailable" });
     await expect(readStrutArtifact(ref("markdown"), ctx, text("", 403))).rejects.toMatchObject({ reason: "denied" });

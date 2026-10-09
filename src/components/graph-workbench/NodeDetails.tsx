@@ -2,19 +2,27 @@
 
 import React, { useDeferredValue, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Link, Pencil, X } from "lucide-react";
+import { ChevronRight, Pencil, Share2, X } from "lucide-react";
+import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { UnifiedDiffView } from "@/components/diff/UnifiedDiffView";
 import { Button } from "@/components/ui/button";
-import { CopyButton } from "@/components/ui/copy-button";
 import { Textarea } from "@/components/ui/textarea";
+import { hasRoleLevel, WorkspaceRole } from "@/lib/auth/roles";
 import { computeUnifiedDiff } from "@/lib/diff/unifiedLineDiff";
 import { nodeText } from "@/lib/strut-run-graph/node-text";
 import { cn } from "@/lib/utils";
 import type { ConnectionGroup } from "@/services/graph/workbench";
 import type { NodeEdit } from "./changes";
 import { childrenOf, hasDocs, parentsOf, type WorkbenchGraph } from "./model";
-import { CONNECTION_PAGE, connectionPageQuery, connectionsQuery, hierarchyQuery, saveConceptDocs } from "./queries";
+import {
+  CONNECTION_PAGE,
+  connectionPageQuery,
+  connectionsQuery,
+  hierarchyQuery,
+  saveConceptDocs,
+  workspaceRoleQuery,
+} from "./queries";
 import { useWorkbench } from "./store";
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
@@ -168,20 +176,7 @@ function ProposedEdit({ edit }: { edit: NodeEdit }) {
  * A concept's docs as markdown, saved back to the graph. ⌘↵ saves; Esc
  * leaves while nothing has changed.
  */
-function DocsEditor({
-  refId,
-  conceptKey,
-  type,
-  docs,
-  onDone,
-}: {
-  refId: string;
-  /** The concept's own `id`, which the save addresses it by. */
-  conceptKey: string;
-  type: string;
-  docs: string;
-  onDone: () => void;
-}) {
+function DocsEditor({ refId, type, docs, onDone }: { refId: string; type: string; docs: string; onDone: () => void }) {
   const { slug } = useWorkbench();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(docs);
@@ -189,7 +184,7 @@ function DocsEditor({
   const diff = useMemo(() => computeUnifiedDiff(docs, settled), [docs, settled]);
   const changed = draft !== docs;
   const save = useMutation({
-    mutationFn: (text: string) => saveConceptDocs(slug, conceptKey, text),
+    mutationFn: (text: string) => saveConceptDocs(slug, refId, text),
     onSuccess: (_, text) => {
       // The swarm holds the new docs now: show them without reading the whole graph again.
       queryClient.setQueryData(
@@ -247,7 +242,10 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
   const node = graph?.nodes[id];
   const isNew = node?.proposed === "new";
   const edit = node?.edit;
-  const links = pending.links.filter((l) => l.source === id || l.target === id);
+  const links = [
+    ...pending.links.map((l) => ({ ...l, going: false })),
+    ...pending.unlinks.map((l) => ({ ...l, going: true })),
+  ].filter((l) => l.source === id || l.target === id);
   // A proposed node isn't in the graph yet: nothing to read.
   const { data, error, isLoading: loading } = useQuery({ ...connectionsQuery(slug, id), enabled: !isNew });
   const name = node?.name ?? data?.node.name ?? (loading ? "Loading…" : id);
@@ -259,10 +257,12 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
   const fields = documented ? [] : [...prose.slice(1), ...rest];
   // The tree's own edge already has its sections (parents and children).
   const groups = (data?.groups ?? []).filter((g) => !(node && graph && g.edge === graph.lens.edge && g.other === type));
-  // Concepts' docs can be edited in place; a proposal's node can't, until it's approved or rejected.
-  const conceptKey = node && !node.proposed && node.type === "Concept" ? node.key : null;
+  const { data: role } = useQuery(workspaceRoleQuery(slug));
+  // Developers and up edit a Concept's docs in place; a proposal's node can't be, until it's approved or rejected.
+  const canEdit = !!role && hasRoleLevel(role, WorkspaceRole.DEVELOPER);
+  const conceptRef = canEdit && node && !node.proposed && node.type === "Concept" ? node.id : null;
   const [editing, setEditing] = useState(false);
-  const editDocs = conceptKey && (
+  const editDocs = conceptRef && (
     <button
       type="button"
       onClick={() => setEditing(true)}
@@ -274,19 +274,43 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
     </button>
   );
 
+  // A link to this node from the host (the org graph view's, wherever the panel is), shared through the
+  // system share sheet where there is one, else copied. A node a proposal would create has nowhere to link to yet.
+  const shareLink = nodeLink && !isNew && (node || data) ? nodeLink({ id, type }) : null;
+  const share = async () => {
+    if (!shareLink) return;
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: name, url: shareLink });
+        return;
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      toast.success("Link copied to clipboard");
+    } catch {
+      toast.error("Couldn't copy the link");
+    }
+  };
+
   return (
     <div className="space-y-5" data-testid="graph-workbench-details">
       <div className="flex items-center gap-2">
         <TypeBadge type={type} />
         <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{name}</h2>
-        {/* A node a proposal would create has nowhere to link to yet. */}
-        {nodeLink && !isNew && (node || data) && (
-          <CopyButton
-            value={nodeLink({ id, type })}
-            label="Copy link to this node"
-            icon={Link}
-            className="rounded p-1 hover:bg-accent [&_svg]:h-4 [&_svg]:w-4"
-          />
+        {shareLink && (
+          <button
+            type="button"
+            onClick={share}
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Share"
+            title="Share link"
+            data-testid="graph-workbench-share"
+          >
+            <Share2 className="h-4 w-4" />
+          </button>
         )}
         <button
           type="button"
@@ -315,10 +339,14 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
             const other = l.source === id ? l.target : l.source;
             return (
               <button
-                key={`${l.edge}:${l.source}>${l.target}`}
+                key={`${l.going ? "going" : "proposed"}:${l.edge}:${l.source}>${l.target}`}
                 type="button"
                 onClick={() => select(other)}
-                className="flex w-full items-center gap-2 rounded-md border border-dashed border-emerald-500 px-2 py-1 text-left text-xs hover:bg-accent/50"
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md border border-dashed px-2 py-1 text-left text-xs hover:bg-accent/50",
+                  l.going ? "border-rose-500" : "border-emerald-500",
+                )}
+                title={l.going ? "This link would be removed" : "This link would be added"}
               >
                 <span className="text-muted-foreground">{l.source === id ? "→" : "←"}</span>
                 <span className="font-mono text-[11px]">{l.edge}</span>
@@ -329,14 +357,8 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
         </div>
       )}
 
-      {editing && node && conceptKey ? (
-        <DocsEditor
-          refId={id}
-          conceptKey={conceptKey}
-          type={node.type}
-          docs={node.docs ?? ""}
-          onDone={() => setEditing(false)}
-        />
+      {editing && node && conceptRef ? (
+        <DocsEditor refId={conceptRef} type={node.type} docs={node.docs ?? ""} onDone={() => setEditing(false)} />
       ) : documented ? (
         <div className="space-y-1">
           <LabelRow label="Docs" action={editDocs} />

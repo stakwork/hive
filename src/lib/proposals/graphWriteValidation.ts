@@ -1,7 +1,8 @@
 /**
- * Reserved-key validation shared by the graph-write propose tools
+ * Validation shared by the graph-write propose tools
  * (`src/lib/ai/graphWriteTools.ts`) and the approval handlers
- * (`src/lib/proposals/handleApproval.ts`).
+ * (`src/lib/proposals/handleApproval.ts`): reserved attribute keys, and the
+ * cycle check a node move makes.
  *
  * The propose-time check keeps the model honest; the approval-time check
  * is the one that actually holds, because the proposal payload reaches
@@ -10,6 +11,8 @@
  * Both call sites use this module so the two lists can't drift.
  */
 
+import { kgGetNode } from "@/lib/ai/kg-adapter";
+
 /**
  * Reserved / system attribute keys that callers must not set in `node_data`
  * or `edge_data`. Overwriting these would corrupt Jarvis / Neo4j metadata.
@@ -17,6 +20,11 @@
 export const RESERVED_KEYS = new Set([
   "status",
   "is_deleted",
+  // Jarvis's soft-delete timestamp for nodes: only a delete may set it.
+  "deleted_at",
+  // Jarvis's delete flag for edges (and merged nodes): reads skip anything
+  // carrying it, so a caller could hide an edge by setting it.
+  "is_muted",
   "boost",
   "ref_id",
 ]);
@@ -48,4 +56,22 @@ export function findReservedKeyViolation(
     }
   }
   return null;
+}
+
+/** The edge a node move follows when the caller names none: the concept tree's. */
+export const DEFAULT_MOVE_EDGE = "PARENT_OF";
+
+/**
+ * Whether putting `ref_id` under `to_ref_id` along PARENT_OF would close a
+ * cycle: true when `ref_id` is already an ancestor of the destination.
+ * Only PARENT_OF has an ancestors read; other edge types are not checked.
+ * Best-effort — an unreadable destination is not treated as a cycle.
+ */
+export async function wouldCycle(
+  config: { jarvisUrl: string; apiKey: string },
+  args: { ref_id: string; to_ref_id: string; edge_type: string },
+): Promise<boolean> {
+  if (args.edge_type !== DEFAULT_MOVE_EDGE) return false;
+  const to = await kgGetNode(config.jarvisUrl, config.apiKey, args.to_ref_id, { includeAncestors: true });
+  return (to?.ancestors ?? []).some((a) => a.ref_id === args.ref_id);
 }

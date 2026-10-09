@@ -51,7 +51,7 @@ interface NodeDetailProps {
  * node name) + body (live entity fetch or authored markdown).
  *
  * No close button — the tab strip in `OrgRightPanel` is the way out:
- * switching to the Connections tab leaves the node selected (the
+ * switching to the Chat tab leaves the node selected (the
  * canvas keeps showing it as selected) but routes the panel away.
  */
 export function NodeDetail({ node, githubLogin, onSwitchToChat }: NodeDetailProps) {

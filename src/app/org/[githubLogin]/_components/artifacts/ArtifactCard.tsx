@@ -5,7 +5,12 @@ import { useInView } from "framer-motion";
 import { ArrowUpRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
-import type { ArtifactKind, ArtifactRef, ArtifactViewerProps } from "../../_state/canvasChatArtifacts";
+import {
+  artifactIdentity,
+  type ArtifactKind,
+  type ArtifactRef,
+  type ArtifactViewerProps,
+} from "../../_state/canvasChatArtifacts";
 import { ActionTip } from "../ActionTip";
 import { ICON_BUTTON_CLASS, MissingPreview, ViewerBoundary } from "./chrome";
 import { artifactHref, artifactKind } from "./registry";
@@ -14,21 +19,23 @@ import { useChatOrgLogin } from "./useArtifactPanel";
 
 interface ArtifactCardProps {
   artifact: ArtifactRef;
-  /** This card's place among the versions of its artifact, zero-based. */
+  /** This card's place among the versions of its artifact, zero-based — the last, since the card is the newest ref. */
   version: number;
   versionCount: number;
+  /** The strut job that reported it, when a Job row did — handed to the viewer (`ArtifactViewerProps.jobId`). */
+  jobId?: string;
 }
 
 /**
  * The kind's preview. Memoised: the card around it re-renders as the
  * panel opens and closes, and a preview is not cheap to redraw.
  */
-const Preview = React.memo(function Preview({ artifact, content }: ArtifactViewerProps<ArtifactKind>) {
+const Preview = React.memo(function Preview({ artifact, content, jobId }: ArtifactViewerProps<ArtifactKind>) {
   const { Inline } = artifactKind(artifact.kind);
   if (!Inline) return null;
   return (
     <ViewerBoundary>
-      <Inline artifact={artifact} content={content} />
+      <Inline artifact={artifact} content={content} jobId={jobId} />
     </ViewerBoundary>
   );
 });
@@ -38,10 +45,12 @@ function CardBody({
   artifact,
   state,
   onOpen,
+  jobId,
 }: {
   artifact: ArtifactRef;
   state: ArtifactContentState;
   onOpen: () => void;
+  jobId?: string;
 }) {
   const { Inline, inlineInteractive } = artifactKind(artifact.kind);
 
@@ -56,7 +65,7 @@ function CardBody({
   }
   if (!Inline) return null;
 
-  const preview = <Preview artifact={artifact} content={state.content} />;
+  const preview = <Preview artifact={artifact} content={state.content} jobId={jobId} />;
   if (inlineInteractive) return <div className="border-t">{preview}</div>;
   // A picture of the artifact, not the artifact: anywhere on it opens the real thing.
   return (
@@ -70,24 +79,22 @@ function CardBody({
  * An artifact in the chat: what it is, a preview of it, and the way onto
  * the artifact panel. The ref alone is enough to name it; its content is
  * read once the card has been on screen, and the preview follows. One card
- * per artifact per message, so a plan that gets revised shows again, as
- * its next version, under the message that revised it.
+ * per artifact, under the message that reported it last
+ * (`indexArtifactCards`): a plan revised turn after turn shows once, where
+ * it was last revised, and the panel steps back through its versions where
+ * there are any.
  */
-export const ArtifactCard = React.memo(function ArtifactCard({ artifact, version, versionCount }: ArtifactCardProps) {
+export const ArtifactCard = React.memo(function ArtifactCard({ artifact, version, versionCount, jobId }: ArtifactCardProps) {
   const spec = artifactKind(artifact.kind);
   const githubLogin = useChatOrgLogin();
   const cardRef = useRef<HTMLDivElement>(null);
   const seen = useInView(cardRef, { once: true });
   const state = useArtifactContent(artifact, seen);
-  const isLatest = version === versionCount - 1;
-  // A panel following the newest version is showing the last card's.
-  const onPanel = useCanvasChatStore((s) => {
-    const panel = s.artifactPanel;
-    if (!panel || panel.artifactId !== artifact.id) return false;
-    return panel.version === null ? isLatest : panel.version === version;
-  });
+  const identity = artifactIdentity(artifact);
+  const onPanel = useCanvasChatStore((s) => s.artifactPanel?.identity === identity);
 
-  const open = () => useCanvasChatStore.getState().openArtifactPanel(artifact.id, isLatest ? null : version);
+  // The card is the artifact's newest ref, so the panel opens following the newest version.
+  const open = () => useCanvasChatStore.getState().openArtifactPanel(identity);
   const close = () => useCanvasChatStore.getState().closeArtifactPanel();
 
   const content = state.status === "ready" ? state.content : null;
@@ -148,7 +155,7 @@ export const ArtifactCard = React.memo(function ArtifactCard({ artifact, version
           </button>
         </ActionTip>
       </div>
-      <CardBody artifact={artifact} state={state} onOpen={open} />
+      <CardBody artifact={artifact} state={state} onOpen={open} jobId={jobId} />
     </div>
   );
 });

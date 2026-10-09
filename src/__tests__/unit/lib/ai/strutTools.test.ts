@@ -57,7 +57,7 @@ const TARGET = {
   actor: "alice-user-1",
 };
 
-import { buildStrutTools, lastAssistantText } from "@/lib/ai/strutTools";
+import { buildStrutTools, getStrutCapabilitySnippet, lastAssistantText } from "@/lib/ai/strutTools";
 import type { CapabilityContext } from "@/lib/ai/capabilities";
 
 const mockFetch = vi.fn();
@@ -282,5 +282,27 @@ describe("buildStrutTools", () => {
     ).toBe("answer");
     expect(lastAssistantText([{ role: "user", content: "hi" }])).toBeNull();
     expect(lastAssistantText(null)).toBeNull();
+  });
+});
+
+describe("a bare 'workflow' means strut", () => {
+  test("dispatch_strut's description claims the default workflow request", () => {
+    const t = buildStrutTools(makeCtx())["dispatch_strut"] as unknown as { description: string };
+    expect(t.description).toContain("This is where a 'workflow' request goes by default");
+    expect(t.description).toContain("unless the user explicitly names Stakwork");
+  });
+
+  test("the strut capability snippet states the default and the Stakwork surfaces it displaces", () => {
+    const snippet = getStrutCapabilitySnippet();
+    expect(snippet).toContain('**"Workflow" means strut by default.**');
+    expect(snippet).toContain("not the Stakwork workflow library (`workflow_explorer_agent`)");
+    expect(snippet).toContain("not the stakwork workspace's `stakwork__*` tools");
+    expect(snippet).toContain("not a feature in the stakwork workspace");
+  });
+
+  test("the strut capability snippet tells the agent a job entry is the record and its reply is a summary", () => {
+    const snippet = getStrutCapabilitySnippet();
+    expect(snippet).toContain("**A Job entry is the record; your words are the reply.**");
+    expect(snippet).toContain("never list files, functions or line numbers");
   });
 });

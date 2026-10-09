@@ -33,22 +33,33 @@
  * by row id `job-<StrutRun.id>` — and never throws for a missing target.
  * `error` / `cancelled` / LOST rows append a row saying so.
  *
- * No canvas-agent wake in V1: the row IS the reply, and stored rows reach
+ * The row is the record, not the reply the user reads: the chat shows it
+ * collapsed (`JobTurnCard`), since a job's text is written in detail (a
+ * code change lists files, functions and line numbers). Once the row has
+ * landed — exactly once, on `appended` — the handler wakes the canvas
+ * agent (`invokeCanvasAgentOnJobTurn`, `canvas-strut-autoturn.ts`) to
+ * summarize it, relay the job's question, or continue the job; the wake
+ * runs in `after()` so the callback answers at once, and is gated there
+ * (owner opt-in, master kill switch, loop breaker). Stored rows also reach
  * the model as text on the next human message.
  *
  * Retry contract (`completeStrutRun`): a transient failure reading the
  * artifacts list throws, so the webhook answers 5xx and strut re-posts;
  * a 404 (the run is gone from strut) delivers the text without artifacts.
+ * The wake is never a reason to retry: it is scheduled after the append
+ * and its failures are its own.
  */
 
+import { after } from "next/server";
 import { z } from "zod";
 import { StrutRunStatus } from "@prisma/client";
 import type { ArtifactKind, ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
-import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf, parseStrutArtifactKey } from "@/lib/strut-jobs";
-import { labForRow, type StrutRunRow } from "@/services/strut-runs";
+import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf, jobTurnInputSchema, parseArtifactEvent, parseStrutArtifactKey, type ArtifactEvent } from "@/lib/strut-jobs";
+import { getBaseUrl } from "@/lib/utils";
+import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
 
 export { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf };
 
@@ -131,8 +142,50 @@ const isAbsolute = (url: string): boolean => /^https?:\/\//i.test(url);
 /** A strut-relative link: what the reader route accepts (`/jobs/<job>/files/…`, `/artifacts/<runId>/…`). */
 const isStrutKey = (url: string): boolean => parseStrutArtifactKey(url) !== null;
 
+const parseJsonObject = (text: string): Record<string, unknown> | null => {
+  try {
+    const value: unknown = JSON.parse(text);
+    return isRecord(value) ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+const PR_URL = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)(?:[/?#]|$)/i;
+const PR_STATES: ReadonlySet<string> = new Set(["open", "draft", "merged", "closed"]);
+
+/**
+ * A pull request as a model reports it → the `pull_request` content, or null.
+ * Lenient: the object, its JSON text, or the bare GitHub link; `repo` and
+ * `number` read off the link when missing (and the link built from them);
+ * a numeric string number; `state` defaults to `open` — a job reports the PR
+ * it just opened, and the card's live read (`useArtifactContent`, through
+ * api/orgs/[githubLogin]/strut/pull-request) corrects it from GitHub.
+ */
+export function pullRequestContent(raw: unknown): Record<string, unknown> | null {
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    raw = text.startsWith("{") ? parseJsonObject(text) : { url: text };
+  }
+  if (!isRecord(raw)) return null;
+  const given = typeof raw.url === "string" ? raw.url.trim() : "";
+  const match = PR_URL.exec(given);
+  const repo = typeof raw.repo === "string" && raw.repo.includes("/") ? raw.repo : match?.[1];
+  const n = typeof raw.number === "string" ? Number(raw.number) : raw.number;
+  const number = typeof n === "number" && Number.isInteger(n) && n > 0 ? n : match ? Number(match[2]) : undefined;
+  if (!repo || !number) return null;
+  const url = /^https?:\/\//i.test(given) ? given : `https://github.com/${repo}/pull/${number}`;
+  const state = typeof raw.state === "string" && PR_STATES.has(raw.state.toLowerCase()) ? raw.state.toLowerCase() : "open";
+  return { ...raw, url, repo, number, state };
+}
+
 /** The content an inline `content` value becomes, per kind — null when it is not something that kind can show. */
 function inlineContent(kind: string, content: unknown): { kind: ArtifactKind; content: Record<string, unknown> } | null {
+  if (kind === "pull_request") {
+    if (typeof content === "string" && content.length > MAX_INLINE_CHARS) return null;
+    const pr = pullRequestContent(content);
+    return pr && { kind: "pull_request", content: pr };
+  }
   if (isRecord(content)) {
     // Already the kind's shape (a pull request, a diff's files): the ref's
     // parser at hydration keeps it or drops it.
@@ -193,17 +246,21 @@ export function mapStrutArtifacts(
     if (typeof entry.url === "string" && entry.url.length > 0) {
       if (isStrutKey(entry.url)) {
         // Served through the reader route from the swarm. A page strut
-        // wrote is a static page there (the reader keeps strut's
-        // `Content-Security-Policy: sandbox`), so it is shown as `url`; a
-        // diff file or a pull request cannot be read off bytes, so as code.
+        // wrote stays `html`: its viewer reads the bytes through the reader
+        // and renders them in `HtmlArtifactFrame` — a sandboxed frame,
+        // scripts on, never a navigation to the reader. A diff file or a
+        // pull request cannot be read off bytes, so as code.
         const kind: ArtifactKind = !KINDS.has(entry.kind)
           ? "url"
-          : entry.kind === "html"
-            ? "url"
-            : entry.kind === "diff" || entry.kind === "pull_request"
-              ? "code"
-              : (entry.kind as ArtifactKind);
+          : entry.kind === "diff" || entry.kind === "pull_request"
+            ? "code"
+            : (entry.kind as ArtifactKind);
         refs.push({ ...base, kind, source: { type: "graph", swarmId, key: entry.url } });
+        continue;
+      }
+      const pr = entry.kind === "pull_request" ? pullRequestContent(entry.url) : null;
+      if (pr) {
+        refs.push({ ...base, kind: "pull_request", source: { type: "inline", content: pr } });
         continue;
       }
       if (isAbsolute(entry.url)) {
@@ -293,20 +350,38 @@ export function renderJobContent(args: {
   return parts.join("\n\n");
 }
 
+/** The job's reply: one row per turn. */
+export type JobRowSource = {
+  kind: "job";
+  jobId: string;
+  strutRunId: string;
+  workflow: string;
+  status: JobTurnOutcome;
+  title?: string;
+  ask?: string;
+};
+
+/**
+ * The origin of a turn no person asked for — an event about an artifact
+ * the job reported (strut plans/job-artifact-events.md §3): written by the
+ * launch (`services/strut-jobs.ts`) where a person's words would be, with
+ * the `[artifact-event]` text as its content. `getPendingJobTurnsFromMessages`
+ * hangs the working card on it; the job row that follows settles it.
+ */
+export type JobEventRowSource = {
+  kind: "job_event";
+  jobId: string;
+  title?: string;
+  /** The launch's `StrutRun` id — the job row that settles it is `job-<runId>`. */
+  runId: string;
+};
+
 type JobMessageRow = {
   id: string;
   role: "assistant";
   content: string;
   timestamp: string;
-  source: {
-    kind: "job";
-    jobId: string;
-    strutRunId: string;
-    workflow: string;
-    status: JobTurnOutcome;
-    title?: string;
-    ask?: string;
-  };
+  source: JobRowSource | JobEventRowSource;
   artifacts?: ArtifactRef[];
 };
 
@@ -351,11 +426,29 @@ export type JobFanOutResult = "appended" | "duplicate" | "skipped";
  */
 export async function appendJobRow(
   row: Pick<StrutRunRow, "id" | "workspaceId" | "userId" | "conversationId">,
+  message: Omit<JobMessageRow, "id" | "role" | "timestamp"> & { source: JobRowSource },
+): Promise<JobFanOutResult> {
+  return appendConversationRow(row, jobRowId(row), message);
+}
+
+/** Row id of a turn's origin row — keyed on the launch's `StrutRun` id, like the job row. */
+export const jobEventRowId = (row: Pick<StrutRunRow, "id">): string => `job-event-${row.id}`;
+
+/** The origin row of an event turn (`JobEventRowSource`), with the job row's discipline. */
+export async function appendJobEventRow(
+  row: Pick<StrutRunRow, "id" | "workspaceId" | "userId" | "conversationId">,
+  message: { content: string; source: JobEventRowSource },
+): Promise<JobFanOutResult> {
+  return appendConversationRow(row, jobEventRowId(row), message);
+}
+
+async function appendConversationRow(
+  row: Pick<StrutRunRow, "workspaceId" | "userId" | "conversationId">,
+  id: string,
   message: Omit<JobMessageRow, "id" | "role" | "timestamp">,
 ): Promise<JobFanOutResult> {
   const { conversationId } = row;
   if (!conversationId) return "skipped";
-  const id = jobRowId(row);
   let result = "skipped" as JobFanOutResult;
 
   await db.$transaction(async (tx) => {
@@ -366,7 +459,7 @@ export async function appendJobRow(
     });
     if (!workspace?.sourceControlOrgId || !conversation) return;
     if (conversation.sourceControlOrgId !== workspace.sourceControlOrgId || (conversation.userId !== row.userId && !conversation.isShared)) {
-      logger.warn("Job turn: conversation ownership mismatch — bail", LOG_TAG, { runId: row.id, conversationId });
+      logger.warn("Job turn: conversation ownership mismatch — bail", LOG_TAG, { rowId: id, conversationId });
       return;
     }
 
@@ -392,8 +485,55 @@ export async function appendJobRow(
   return result;
 }
 
+// ─── The wake ─────────────────────────────────────────────────────────────
+
+/** What the wake needs from the delivered row — built here so the test can see it whole. */
+export interface JobWake {
+  conversationId: string;
+  wakeId: string;
+  jobId: string;
+  title: string;
+  outcome: JobTurnOutcome;
+  ask?: string;
+  artifacts: Array<{ title: string; kind: string; label?: string }>;
+  publicBaseUrl: string;
+  /** The turn was started by an event about an artifact, not by a person: the wake says so and offers no Continue. */
+  event?: ArtifactEvent;
+}
+
+/**
+ * Wake the canvas agent on the row that just landed, after the response:
+ * the turn is a full LLM turn and must not hold strut's callback (or make
+ * it retry). Outside a request (no `after`), it runs detached. Never
+ * throws — the row is delivered either way.
+ */
+function scheduleJobWake(row: Pick<StrutRunRow, "id" | "workspaceId">, wake: JobWake): void {
+  afterResponse("Job turn wake", row, async () => {
+    const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
+    if (!workspace) return;
+    const { invokeCanvasAgentOnJobTurn } = await import("@/services/canvas-strut-autoturn");
+    await invokeCanvasAgentOnJobTurn({ ...wake, workspaceSlug: workspace.slug });
+  });
+}
+
+/** Run after the response (`after`), or detached outside a request (the reconcile path). Never throws. */
+function afterResponse(what: string, row: Pick<StrutRunRow, "id">, fn: () => Promise<void>): void {
+  const run = async () => {
+    try {
+      await fn();
+    } catch (err) {
+      logger.warn(`${what} failed (non-fatal)`, LOG_TAG, { runId: row.id, error: err instanceof Error ? err.message : String(err) });
+    }
+  };
+  try {
+    after(run);
+  } catch {
+    void run();
+  }
+}
+
 /** The `StrutRunHandler` for `job_turn`. Throws to be retried. */
-export async function handleJobTurnSettled(row: StrutRunRow): Promise<void> {
+export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandlerContext): Promise<void> {
   const jobId = row.jobId;
   if (!jobId) {
     logger.error("Settled job turn has no job id", LOG_TAG, { runId: row.id });
@@ -417,6 +557,19 @@ export async function handleJobTurnSettled(row: StrutRunRow): Promise<void> {
     }
   }
 
+  // The index an event about one of these is looked up in: every ref with
+  // a URL, under the launch's workspace (strut plans/job-artifact-events.md
+  // §3). A failure throws like the read does: strut re-posts.
+  if (refs.length > 0) {
+    const { indexJobArtifacts } = await import("@/services/strut-jobs/artifact-events");
+    await indexJobArtifacts(row, jobId, refs);
+  }
+
+  // A turn an event started: its line rides on the wake, and one strut
+  // refused as `job_busy:` gives its event back to the queue below.
+  const launched = jobTurnInputSchema.safeParse(row.input);
+  const event = parseArtifactEvent(launched.success ? launched.data.prompt : undefined);
+
   const title = jobTitleOf(row);
   const result = await appendJobRow(row, {
     content: renderJobContent({ jobId, title, reply, dropped }),
@@ -439,6 +592,49 @@ export async function handleJobTurnSettled(row: StrutRunRow): Promise<void> {
     dropped: dropped.length,
     result,
   });
+
+  // The row landed (once): the agent's turn is the reply the user reads.
+  if (result === "appended" && row.conversationId) {
+    scheduleJobWake(row, {
+      conversationId: row.conversationId,
+      wakeId: jobRowId(row),
+      jobId,
+      title,
+      outcome: reply.outcome,
+      ...(reply.ask ? { ask: reply.ask } : {}),
+      artifacts: refs.map((r) => ({ title: r.title, kind: r.kind, ...(r.label ? { label: r.label } : {}) })),
+      publicBaseUrl: ctx?.publicBaseUrl ?? getBaseUrl(null),
+      ...(event ? { event } : {}),
+    });
+  }
+
+  // Events that arrived while this turn ran go now, as the next turn, one
+  // line each (strut plans/job-artifact-events.md §3) — after the row, so
+  // the conversation reads in order; after the response, like the wake. A
+  // turn strut refused as `job_busy:` first gives its own event back.
+  if (result === "appended" && row.conversationId) {
+    const publicBaseUrl = ctx?.publicBaseUrl ?? getBaseUrl(null);
+    afterResponse("Pending artifact events", row, async () => {
+      const events = await import("@/services/strut-jobs/artifact-events");
+      if (event && launched.success && reply.error?.startsWith("job_busy:")) await events.requeueArtifactEvent(jobId, launched.data.prompt);
+      await events.launchPendingArtifactEvents(jobId, publicBaseUrl);
+    });
+
+    // The pull requests this turn reported may have run their checks while
+    // it did: the first fix is hive's, once every check is in (strut
+    // plans/job-artifact-events.md §5; `check-failures.ts` sends it once
+    // per ref, as the job's owner) — after the row and the events above,
+    // which a busy job queues it behind.
+    const pullRequests = refs.flatMap((ref) =>
+      ref.kind === "pull_request" && ref.source.type === "inline" && typeof ref.source.content.url === "string" ? [ref.source.content.url] : [],
+    );
+    if (pullRequests.length > 0) {
+      afterResponse("Check failures", row, async () => {
+        const { deliverCheckFailure } = await import("@/services/strut-jobs/check-failures");
+        for (const url of pullRequests) await deliverCheckFailure({ workspaceId: row.workspaceId, url, publicBaseUrl });
+      });
+    }
+  }
 
   // The Stop button: this run is no longer something to stop.
   if (row.conversationId) {

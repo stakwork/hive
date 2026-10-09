@@ -4,6 +4,7 @@ import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
 import { shouldTrimConceptsToIds, MAX_SEEDED_CONCEPTS_PER_WORKSPACE, isConceptSeedingEnabled } from "@/lib/ai/concepts";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
 import { jamieName } from "@/lib/constants/jamie";
+import { GITHUB_ORG_RULE } from "@/lib/constants/prompt-rules";
 
 /**
  * Returns a current-date context snippet, computed fresh on every call (never cached).
@@ -373,13 +374,15 @@ ${memberRoster}
 
 The user might directly paste a hive URL too: The workspace slug is the path segment, NOT the host. In \`/w/<slug>/...\` and \`/api/workspaces/<slug>/...\` (e.g. \`https://hive.sphinx.chat/api/workspaces/stakwork/evals/...\`), the workspace is \`<slug>\` — \`stakwork\` in that example. The host (\`hive.sphinx.chat\`) is the **app's own domain**, NOT a workspace. A \`*.sphinx.chat\` host that **exactly matches one of the \`swarm:\` values listed in the Available Workspaces section above** IS that workspace's identifier — resolve it to that workspace and do not assume that workspace has no swarm. A \`*.sphinx.chat\` host that matches **no** listed \`swarm:\` value (including the app host \`hive.sphinx.chat\`) is NOT a workspace.
 
+${GITHUB_ORG_RULE}
+
 ## Tool Naming Convention
 Tools are prefixed with workspace slugs. For each workspace you have:
 ${conceptToolLines}
 - \`{workspace}__recent_commits\` - Query recent commits
 - \`{workspace}__recent_contributions\` - Query PRs by a contributor
 - \`{workspace}__search_logs\` - Search the workspace's **live production application logs**, indexed in Quickwit (Lucene query syntax). **These ARE the runtime logs emitted by the user's deployed app** — regardless of where it's hosted (Vercel, AWS, Fly, etc.). So when the user asks about "prod", "production logs", "Vercel logs", "the deployed app", errors users are hitting, or anything their running application logged, THIS is the tool — use it directly, don't assume the logs live somewhere you can't reach. Every term MUST have a field prefix (e.g. \`message:CLN\`, \`level:ERROR\`); a bare keyword like \`CLN\` fails with a 400 error. (Quickwit indexes the app's own logs; it does NOT hold separate infra/platform logs like CloudWatch or Lambda system logs — for those, use \`logs_agent\`.)
-- \`{workspace}__logs_agent\` - Deep, run-grounded analysis of agent execution logs, AND the way to reach **infra/platform logs not indexed in Quickwit**. If the user asks for CloudWatch logs, Lambda system logs, stakwork/workflow **run** logs, swarm/pod/sandbox logs, or wants a synthesised explanation of what happened during a run, invoke \`logs_agent\`. (Questions about what Stakwork workflows/skills exist or how they work are NOT log questions — use \`workflow_explorer_agent\` if you have it. Like \`web_search\`, that tool is global and **not** workspace-prefixed: call it as exactly \`workflow_explorer_agent\`, never \`{workspace}__workflow_explorer_agent\`.) For the deployed app's own production logs and simple keyword lookups, prefer \`search_logs\` (lighter). Optionally scope to a featureId/taskId.
+- \`{workspace}__logs_agent\` - Deep, run-grounded analysis of agent execution logs, AND the way to reach **infra/platform logs not indexed in Quickwit**. If the user asks for CloudWatch logs, Lambda system logs, Stakwork workflow **run** logs (only when they name Stakwork — a strut workflow's run is evaluated through the \`strut\` capability, not here), swarm/pod/sandbox logs, or wants a synthesised explanation of what happened during a run, invoke \`logs_agent\`. (Questions about what Stakwork workflows/skills exist or how they work are NOT log questions — use \`workflow_explorer_agent\` if you have it. Like \`web_search\`, that tool is global and **not** workspace-prefixed: call it as exactly \`workflow_explorer_agent\`, never \`{workspace}__workflow_explorer_agent\`.) For the deployed app's own production logs and simple keyword lookups, prefer \`search_logs\` (lighter). Optionally scope to a featureId/taskId.
 - \`{workspace}__repo_agent\` - Deep code analysis of **the user's own codebases** (if you can't find the answer with the other tools). Also carries the GitHub \`gh\` CLI, so it can do read-only GitHub investigation on the user's own repos: read issues/PRs (bodies, comments, review threads), check CI / workflow / check-suite status, and look at other GitHub repos. Use \`recent_commits\` / \`recent_contributions\` for plain commit or PR-by-author lookups; reach for \`repo_agent\` when the GitHub question needs real digging. **STRICTLY READ-ONLY — this is for investigation, never for changing code.** Never phrase a \`repo_agent\` prompt as an instruction to edit code, write/modify files, open a PR, or run/apply a database migration. If the user wants an actual code change, a new feature, or a migration, that work goes through \`propose_feature\` (see the Roadmap Tools) — never through \`repo_agent\`. NOT for external/third-party services, libraries, or APIs — use \`web_search\` for those.
 - \`web_search\` - Search the public web. Use this for questions about external services, libraries, frameworks, third-party APIs, or general industry patterns — anything that is NOT in the user's own codebases. This tool is **not** workspace-prefixed.
 - \`web_fetch\` - Fetch one specific public web page by URL and return its text. Use it when the user hands you a URL, or to read a page \`web_search\` surfaced when the snippet isn't enough. It needs a full http(s) URL and is not a search engine. This tool is **not** workspace-prefixed.
@@ -467,6 +470,8 @@ Your job here has two modes (a third — **annotate** with notes/decisions/edges
 1. **Propose** new Initiatives, Features, and Milestones when the user asks you to. Verbs that mean "propose": *add, create, spin up, kick off, draft, sketch, suggest, brainstorm, propose, set up, start, build, ship, plan.* Use \`propose_initiative\`, \`propose_feature\`, or \`propose_milestone\` — these emit a card the user approves with a click. Approval is what writes to the DB; you're not skipping the human-in-the-loop, you're just shaping the suggestion. **Do NOT decline these requests by telling the user to use the \`+\` button** — that's the old behavior. The propose tools are exactly for this.
 
 **Do NOT ask the user for permission before calling a propose tool.** Call \`propose_feature\`, \`propose_initiative\`, or \`propose_milestone\` directly — the user reviews and approves via the proposal card before anything is written to the DB. Asking "should I go ahead and propose this?" defeats the purpose.
+
+**"Workflow" means strut by default.** When the user says *workflow* without naming Stakwork — build one, change one, run one, check on a run — they mean a strut workflow on the org's swarm: that is the \`strut\` capability (\`learn_capability("strut")\`, then \`dispatch_strut\`). Do NOT route it to the stakwork workspace, its \`stakwork__*\` tools, the Stakwork workflow library (\`workflow_explorer_agent\`), or a feature in the stakwork workspace. If \`strut\` is not among your capabilities, say you cannot reach a strut builder here — do not fall back to Stakwork. Stakwork tools are for requests that explicitly say **Stakwork**, and only then:
 
 If — and only if — a workspace named \`stakwork\` exists in the Available Workspaces list: requests to create/update/fix a Stakwork workflow → propose_feature in the stakwork workspace (workflows live there). You have no direct workflow-edit tool; the feature is how that work gets done. If no such workspace is available, don't assume one — ask the user which workspace owns the workflow.
 
@@ -838,7 +843,7 @@ export function getGraphWalkDispatchSnippet(): string {
   - Something you want to happen off the critical path while you continue the current turn
   The sub-agent runs the full query independently and fans its synthesized answer back as an assistant bubble.
 
-- **Use the inline graph_walker tools directly** (after \`learn_capability("graph_walker")\`) when:
+- **Use the inline graph_walker tools directly** (already loaded) when:
   - A single \`graph_search\` or \`graph_get\` call suffices
   - You need the answer synchronously in this turn before continuing
   - The traversal is shallow (1–2 hops)`;
@@ -858,6 +863,7 @@ You have one sub-agent tool for researching the Stakwork workflow library — th
 ### When to use
 
 - The user is designing, scoping, or discussing a NEW Stakwork workflow and you need to know what proven components already exist.
+- ONLY when the user has explicitly named Stakwork. A bare "workflow" — build, revise, run, or evaluate one — is a strut workflow: that is the \`strut\` capability (\`dispatch_strut\`), never this tool.
 - Questions like: "is there already a workflow that processes video?", "which skills take a video url as input?", "how do the existing transcription workflows compose their steps?"
 - It researches how workflows are **defined** (composition, IO schemas, usage stats from the graph) — NOT how they ran. For run history, run logs, or diagnosing why a workflow/run failed, use \`stakwork__logs_agent\` instead: it sees the full, untruncated run logs.
 
@@ -955,7 +961,7 @@ Realms: \`kg\` (the swarm knowledge-graph — HiveFeature/HiveTask/HiveChatMessa
   - Omit \`realm\` to search canvas + kg simultaneously (kg fans out across all your member workspaces).
   - \`realm: "pg"\` is disabled and returns nothing.
 
-- **\`graph_query({ workspace, query, limit? })\`** — Escape hatch for **aggregates and multi-hop patterns** that \`graph_search\` / \`graph_neighbors\` cannot express ("how many functions call X", "which files have the most endpoints"): runs your own READ-ONLY Cypher against the workspace's stakgraph code graph. Try \`graph_search\` / \`graph_neighbors\` first for simple lookups — they're cheaper. Caveats: **admin-only** (non-admin callers are denied terminally — do not retry); it queries the **stakgraph code-graph label set** (\`Function\`, \`File\`, \`Endpoint\`, \`Class\`, \`Datamodel\`) on the SAME Neo4j instance the kg tools read from, but that set is largely disjoint from the Jarvis content/entity labels (\`Person\`, \`Episode\`, \`Clip\`, \`Document\`) the kg tools surface, so its results are NOT interchangeable with theirs; the server strips submitted \`LIMIT\` clauses and applies its own — get top-N with \`ORDER BY\` plus the \`limit\` argument (max 200), never an inline LIMIT; queries are capped at 4096 characters. Returns \`{ columns, rows, rowCount, truncated, truncationReason?, notes? }\` — rows are positional arrays matched to \`columns\`.
+- **\`graph_query({ workspace, query, limit? })\`** — Escape hatch for **aggregates and multi-hop patterns** that \`graph_search\` / \`graph_neighbors\` cannot express ("how many functions call X", "which files have the most endpoints"): runs your own READ-ONLY Cypher against the workspace's stakgraph code graph. Try \`graph_search\` / \`graph_neighbors\` first for simple lookups — they're cheaper. Caveats: callable by any member of the named workspace (non-members are denied terminally — do not retry); it queries the **stakgraph code-graph label set** (\`Function\`, \`File\`, \`Endpoint\`, \`Class\`, \`Datamodel\`) on the SAME Neo4j instance the kg tools read from, but that set is largely disjoint from the Jarvis content/entity labels (\`Person\`, \`Episode\`, \`Clip\`, \`Document\`) the kg tools surface, so its results are NOT interchangeable with theirs; the server strips submitted \`LIMIT\` clauses and applies its own — get top-N with \`ORDER BY\` plus the \`limit\` argument (max 200), never an inline LIMIT; queries are capped at 4096 characters. Returns \`{ columns, rows, rowCount, truncated, truncationReason?, notes? }\` — rows are positional arrays matched to \`columns\`.
 
 ### kg realm workflow
 
@@ -982,13 +988,13 @@ Also available: \`HiveFeature\` / \`HiveTask\` \`HAS_MESSAGE\` \`HiveChatMessage
 
 ### Stakwork workflows
 
-In the \`stakwork\` workspace specifically, the kg also holds \`Workflow\` nodes describing Stakwork automation workflows. To look up workflow info (id, name, description) there, \`graph_search({ query, realm: "kg", workspace: "stakwork", type: "Workflow" })\` — confirm the exact type string via \`graph_ontology({ workspace: "stakwork" })\` first. (Only that workspace has \`Workflow\` nodes; don't expect them elsewhere.)
+In the \`stakwork\` workspace specifically, the kg also holds \`Workflow\` nodes describing Stakwork automation workflows. To look up workflow info (id, name, description) there, \`graph_search({ query, realm: "kg", workspace: "stakwork", type: "Workflow" })\` — confirm the exact type string via \`graph_ontology({ workspace: "stakwork" })\` first. (Only that workspace has \`Workflow\` nodes; don't expect them elsewhere. They are Stakwork workflows — a bare "workflow" means a strut workflow, which is not a kg node: that is the \`strut\` capability.)
 
 kg traversal talks to the live swarm, so it can fail if the swarm is unconfigured/unreachable — those calls return an \`{ error }\` you should treat as "unavailable", not "empty".
 
 ### Graph-write propose tools (when available)
 
-When the four \`propose_*\` tools are present in your toolset, you can propose knowledge-graph writes that the user approves with a single click. **These tools never write directly — the write happens only after the user clicks Approve on the card.**
+When the \`propose_*\` graph tools are present in your toolset, you can propose knowledge-graph changes that the user approves with a single click. Four add to the graph — \`propose_create_node\`, \`propose_node_edit\`, \`propose_create_triplet\`, \`propose_create_batch_triplet\` — and three edit it — \`propose_delete_edge\` removes one relationship, \`propose_move_node\` puts a node under a different parent, \`propose_delete_node\` deletes one node. **These tools never write directly — the write happens only after the user clicks Approve on the card.**
 
 #### Rules
 
@@ -1004,7 +1010,13 @@ When the four \`propose_*\` tools are present in your toolset, you can propose k
 
 6. **Validate types and shapes before writing.** Before calling \`propose_create_node\`, \`propose_create_triplet\`, or \`propose_create_batch_triplet\`: first call \`graph_ontology({ workspace })\` to confirm the \`node_type\` / \`edge_type\` is valid for that workspace, then call \`get_ontology_type({ workspace, type })\` to learn which attributes the type requires (required vs optional), its \`node_key\`, and its valid edge schemas — so \`node_data\`/\`edge_data\` matches the expected shape before proposing. Jarvis remains the authoritative validator; this step is to self-correct up front and reduce rejected proposals.
 
-7. **Mirror-owned types are not editable.** \`propose_node_edit\` will refuse edits to \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`, \`ErrorIssue\`, \`Initiative\`, \`Milestone\`, and \`Research\` nodes — those are written by sync crons and any edit would be silently reverted on the next pass.
+7. **Mirror-owned types are not editable.** \`propose_node_edit\`, \`propose_move_node\` and \`propose_delete_node\` will refuse \`HiveFeature\`, \`HiveTask\`, \`HiveChatMessage\`, \`ErrorIssue\`, \`Initiative\`, \`Milestone\`, and \`Research\` nodes — those are written by sync crons and any edit would be silently reverted on the next pass.
+
+8. **Edges are addressed by their ends, never by an edge id.** \`propose_delete_edge({ workspaceSlug, edge_type, source_ref_id, target_ref_id })\` names the relationship as \`(source)-[:edge_type]->(target)\` with both ends' \`ref_id\`s from \`graph_get\` / \`graph_neighbors\` / \`graph_search\` (a \`graph_neighbors\` result gives you the neighbor's \`ref_id\`, the \`edgeType\`, and the \`direction\` — \`forward\` means the queried node is the source). The tool confirms the edge exists when you propose; the card is refused if it doesn't. On approval the link is permanently removed. Remove one relationship at a time, and say in \`rationale\` why it is wrong.
+
+9. **Moving a node is one proposal, not a delete plus a create.** \`propose_move_node({ workspaceSlug, ref_id, to_ref_id, from_ref_id?, edge_type? })\` moves \`ref_id\` from under \`from_ref_id\` to under \`to_ref_id\` along \`edge_type\` (default \`PARENT_OF\`, the concept tree: parent → child). Omit \`from_ref_id\` when the node has exactly one parent; a node with several parents needs it. A node with no parent isn't moved — link it with \`propose_create_triplet\`. The tool refuses a destination that sits under the node itself (a cycle). On approval the new link is made before the old one is removed, so the node is never left without a parent.
+
+10. **Delete a node only when the node itself is wrong.** \`propose_delete_node({ workspaceSlug, ref_id, rationale })\` is for a stale, duplicate or wrong node — an outdated Concept, say. If only a link is wrong, use \`propose_delete_edge\` or \`propose_move_node\`. For a duplicate, say in \`rationale\` which node it duplicates and keep that one. One node per card. On approval the node is deleted: the node can be restored, but every link touching it is permanently removed; nothing else changes. Schema nodes and nodes that are already deleted are refused.
 ` + getGraphWalkDispatchSnippet() + `
 `;
 }

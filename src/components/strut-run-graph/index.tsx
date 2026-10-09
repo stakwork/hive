@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { layoutRunGraph } from "@/lib/strut-run-graph/layout";
+import { ancestorsOf, lineageParents } from "@/lib/strut-run-graph/lineage";
 import {
   buildRunGraphTree,
   callLabel,
@@ -293,7 +294,12 @@ function NodeDetail({
           <p className="break-words text-sm font-semibold">{node.name}</p>
           <p className="text-muted-foreground">{node.node_type}</p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="text-muted-foreground hover:text-foreground"
+        >
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -346,24 +352,34 @@ function NodeDetail({
           </ul>
         </div>
       )}
-      <div>
-        <p className="mb-1 font-medium">Touched by {touchedBy.length === 1 ? "1 call" : `${touchedBy.length} calls`}</p>
-        <ul className="space-y-0.5">
-          {touchedBy.map(({ call, index }) => (
-            <li key={call.path}>
-              <button
-                type="button"
-                onClick={() => onPick(index)}
-                className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-muted/60"
-              >
-                <AccessIcon access={call.access} className="h-3 w-3 shrink-0" />
-                <span className="tabular-nums text-muted-foreground">{index + 1}</span>
-                <span className="min-w-0 flex-1 truncate font-mono">{callLabel(call.path.split("/").pop() ?? "")}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {touchedBy.length === 0 ? (
+        <p className="text-muted-foreground" data-testid="run-graph-node-ancestor">
+          No call touched this node. It is drawn as the lineage of nodes the run read.
+        </p>
+      ) : (
+        <div>
+          <p className="mb-1 font-medium">
+            Touched by {touchedBy.length === 1 ? "1 call" : `${touchedBy.length} calls`}
+          </p>
+          <ul className="space-y-0.5">
+            {touchedBy.map(({ call, index }) => (
+              <li key={call.path}>
+                <button
+                  type="button"
+                  onClick={() => onPick(index)}
+                  className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-muted/60"
+                >
+                  <AccessIcon access={call.access} className="h-3 w-3 shrink-0" />
+                  <span className="tabular-nums text-muted-foreground">{index + 1}</span>
+                  <span className="min-w-0 flex-1 truncate font-mono">
+                    {callLabel(call.path.split("/").pop() ?? "")}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {body?.state === "read" && (
         <RunGraphNodeReader node={node} body={body.body} color={color} open={reading} onOpenChange={setReading} />
       )}
@@ -388,7 +404,8 @@ function CurrentCall({ call, index, total }: { call: RunGraphCall; index: number
       )}
       {query.map(([key, value]) => (
         <span key={key} className="max-w-xs truncate text-muted-foreground">
-          {key} <span className="font-mono text-foreground">{Array.isArray(value) ? value.join(", ") : String(value)}</span>
+          {key}{" "}
+          <span className="font-mono text-foreground">{Array.isArray(value) ? value.join(", ") : String(value)}</span>
         </span>
       ))}
     </div>
@@ -397,9 +414,9 @@ function CurrentCall({ call, index, total }: { call: RunGraphCall; index: number
 
 /**
  * The graph trace of a strut run: every call that touched the knowledge
- * graph as a tree under the run, the touched nodes laid out by the stage of
- * the run that first touched them, and a replay that steps through the
- * calls in the order the run made them.
+ * graph as a tree under the run, the touched nodes laid out by the stages
+ * of the run that touched them — each under the lineage it descends from —
+ * and a replay that steps through the calls in the order the run made them.
  *
  * Generic over workflows: `endpoint` answers a `RunGraphTrace`.
  *
@@ -483,30 +500,35 @@ export function StrutRunGraph({
     void readNode(selectedId);
   }, [selectedId, bodies, nodeById, readNode]);
 
-  // Everything the shown calls touched, whatever its type — the legend counts these.
+  // Everything the shown calls touched, whatever its type, and the lineage above it — the legend counts these.
   const touched = useMemo(() => {
     const ids = new Set(calls.flatMap((call) => call.nodes.map((n) => n.ref_id)));
     return (trace?.nodes ?? []).filter((n) => ids.has(n.ref_id));
   }, [calls, trace?.nodes]);
+  const parents = useMemo(() => lineageParents(trace?.edges ?? []), [trace?.edges]);
+  const lineage = useMemo(() => {
+    const above = new Set(
+      ancestorsOf(
+        touched.map((n) => n.ref_id),
+        parents,
+      ),
+    );
+    return (trace?.nodes ?? []).filter((n) => above.has(n.ref_id));
+  }, [touched, parents, trace?.nodes]);
+  const drawn = useMemo(() => [...touched, ...lineage], [touched, lineage]);
 
   const typeCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const node of touched) counts.set(node.node_type, (counts.get(node.node_type) ?? 0) + 1);
+    for (const node of drawn) counts.set(node.node_type, (counts.get(node.node_type) ?? 0) + 1);
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [touched]);
+  }, [drawn]);
 
   const colorMap = useMemo(() => runGraphColorMap(typeCounts.map(([type]) => type)), [typeCounts]);
-  const typeVisible = useCallback(
-    (type: string) => typeOverrides[type] ?? !isProvenanceType(type),
-    [typeOverrides],
-  );
+  const typeVisible = useCallback((type: string) => typeOverrides[type] ?? !isProvenanceType(type), [typeOverrides]);
 
   const graphNodes = useMemo<RunGraphCanvasNode[]>(
-    () =>
-      touched
-        .filter((n) => typeVisible(n.node_type))
-        .map((n) => ({ id: n.ref_id, name: n.name, type: n.node_type })),
-    [touched, typeVisible],
+    () => drawn.filter((n) => typeVisible(n.node_type)).map((n) => ({ id: n.ref_id, name: n.name, type: n.node_type })),
+    [drawn, typeVisible],
   );
   const links = useMemo(() => {
     const ids = new Set(graphNodes.map((n) => n.id));
@@ -519,16 +541,12 @@ export function StrutRunGraph({
         calls,
         graphNodes.map((n) => n.id),
         links,
+        parents,
       ),
-    [calls, graphNodes, links],
+    [calls, graphNodes, links, parents],
   );
 
   const frame = useMemo(() => replayFrame(calls, current ?? calls.length), [calls, current]);
-  const activeIds = useMemo(() => {
-    const ids = new Set(frame.active);
-    if (selectedId) ids.add(selectedId);
-    return ids;
-  }, [frame.active, selectedId]);
 
   // The current call's branch is always open.
   useEffect(() => {
@@ -593,6 +611,13 @@ export function StrutRunGraph({
     setScope(next);
   }, []);
   const focusBranch = useCallback((path: string) => focus(scopeOfBranch(scope, path)), [focus, scope]);
+  /** A lane or cell of the canvas names its branch by its segment under the root of the tree. */
+  const focusLane = useCallback(
+    (segment: string) => {
+      if (tree) focusBranch(`${tree.path}/${segment}`);
+    },
+    [tree, focusBranch],
+  );
   useEffect(() => {
     focus(scopeProp);
   }, [scopeProp, focus]);
@@ -707,19 +732,21 @@ export function StrutRunGraph({
         ) : (
           <p className="text-xs text-muted-foreground" data-testid="run-graph-summary">
             {calls.length} calls{scope !== null ? ` under ${scopeLabel}` : ""} read or wrote {touched.length} nodes
-            {live ? " so far" : ""}, along {hopCount === 1 ? "1 hop" : `${hopCount} hops`}. Step through them, or pick
-            one in the tree.
+            {live ? " so far" : ""}
+            {lineage.length > 0
+              ? `, under the ${lineage.length === 1 ? "1 node" : `${lineage.length} nodes`} they descend from`
+              : ""}
+            , along {hopCount === 1 ? "1 hop" : `${hopCount} hops`}. Step through them, or pick one in the tree.
             {trace.truncated ? " The run touched more than are shown." : ""}
           </p>
         )}
-        {(trace.nodesRead === false || trace.edgesRead === false) && (
-          <p
-            className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-            data-testid="run-graph-unread"
-          >
+        {(trace.nodesRead === false || trace.edgesRead === false || trace.lineageRead === false) && (
+          <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-testid="run-graph-unread">
             {trace.nodesRead === false
               ? `The graph did not answer${unreadReason}, so the nodes are as the run's log named them and only the hops the run took are drawn.`
-              : `The graph did not answer for the edges among these nodes${unreadReason}, so only the hops the run took are drawn.`}
+              : trace.edgesRead === false
+                ? `The graph did not answer for the edges among these nodes${unreadReason}, so only the hops the run took are drawn.`
+                : `The graph did not answer for the lineage of these nodes${unreadReason}, so they are drawn without the nodes they descend from.`}
             <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => void load()}>
               Ask again
             </Button>
@@ -727,7 +754,7 @@ export function StrutRunGraph({
         )}
       </div>
 
-      <div className="grid h-[640px] grid-cols-[minmax(240px,340px)_1fr]">
+      <div className="grid h-[640px] grid-cols-[minmax(220px,260px)_1fr]">
         <div className="overflow-y-auto border-r py-1" data-testid="run-graph-tree">
           {scope !== null && (
             <nav
@@ -776,11 +803,12 @@ export function StrutRunGraph({
               nodes={graphNodes}
               links={links}
               colorMap={colorMap}
-              hiddenIds={frame.hidden}
-              activeIds={activeIds}
+              activeIds={frame.active}
+              selectedId={selectedId}
               step={current}
               insetRight={LEGEND_INSET}
               onNodeClick={setSelectedId}
+              onFocus={focusLane}
             />
           )}
           {selected && (

@@ -23,8 +23,11 @@ export interface ResearchFanOutPayload {
   topic: string;
   title: string;
   summary: string;
-  /** "ready" when the markdown writeup landed; "failed" otherwise. */
-  status: "ready" | "failed";
+  /**
+   * "ready" when the markdown writeup landed; "failed" on an error;
+   * "cancelled" when the user stopped the turn before it ran.
+   */
+  status: "ready" | "failed" | "cancelled";
   initiativeId?: string;
   /**
    * Optional sub-agent messages from the research loop's steps.
@@ -121,7 +124,9 @@ export async function fanOutResearchToCanvas(
         content:
           status === "ready"
             ? `Research ready: **${title}** — ${summary} (slug: \`${slug}\`)`
-            : `Research failed for topic: ${topic}`,
+            : status === "cancelled"
+              ? `Research cancelled for topic: ${topic}`
+              : `Research failed for topic: ${topic}`,
         timestamp: new Date().toISOString(),
         source: {
           kind: "research",

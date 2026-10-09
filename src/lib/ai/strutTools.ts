@@ -56,7 +56,18 @@
  * Hive's side is a CLOSED contract — start / continue, one handler, one
  * artifact reader — on purpose: what a job can do grows on the swarm, as
  * new versions of the `job` workflow (its `params.tools` / `system`),
- * never as capability-specific fields here.
+ * never as capability-specific fields here. The prompt is the user's
+ * request as they said it: HOW each kind of work is done (a plan, a page, a
+ * code change) is the swarm's business — the job's agent has its own pages
+ * for it — so hive adds no format, outline or rules of its own; a spec
+ * written here would override those pages, and the agent cannot tell the
+ * assistant's words from the user's. The one thing hive hands over
+ * besides the prompt is the USER's standing credential: every turn pushes
+ * their GitHub token to strut as that actor's `GITHUB_TOKEN` before the
+ * launch (`ensureStrutActorSecrets`, as `propose_code_change` does), so a
+ * turn that runs the swarm's code-change workflow checks out, pushes and
+ * opens the pull request as them — strut binds every nested run's secrets
+ * to the job's principal. Which turns need it is the job's business.
  */
 
 import { tool, type ToolSet } from "ai";
@@ -64,10 +75,10 @@ import { z } from "zod";
 import crypto from "crypto";
 import { StrutRunStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf } from "@/lib/strut-jobs";
+import { JOB_TURN_KIND, jobTitleOf } from "@/lib/strut-jobs";
 import { resolveOrgConversationRowId } from "@/services/org-canvas-conversation";
 import { STRUT_ACTOR_HEADER, ensureStrutDelegation } from "@/services/bifrost/strut-delegation";
-import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
+import { BUSY_NOTE, launchJobTurn } from "@/services/strut-jobs";
 import { resolveStrutTarget, type StrutPurpose, type StrutTarget } from "@/services/strut-target";
 import type { CapabilityContext } from "./capabilities";
 
@@ -220,91 +231,13 @@ async function jobDelivery(ctx: CapabilityContext): Promise<{ conversationId: st
   return { conversationId, publicBaseUrl: ctx.publicBaseUrl };
 }
 
-const BUSY_NOTE = "A turn of this job is still running. Its reply will be posted here when it ends — continue the job after that.";
-
-/**
- * One turn of a job: launch the `job` workflow with the job id on the
- * launch (`services/strut-runs.ts` `dispatchStrutRun`; the row records
- * `jobId`), register it for the Stop button, and return at once — the
- * reply lands through the `job_turn` handler.
- */
-async function launchJobTurn(
-  ctx: CapabilityContext,
-  target: StrutTarget,
-  turn: { jobId: string; title: string; prompt: string; conversationId: string; publicBaseUrl: string; started: boolean },
-): Promise<Record<string, unknown>> {
-  const { jobId, title, prompt, conversationId, publicBaseUrl, started } = turn;
-  let dispatched: Awaited<ReturnType<typeof dispatchStrutRun>>;
-  try {
-    dispatched = await dispatchStrutRun({
-      workspaceId: target.workspaceId,
-      userId: ctx.userId,
-      kind: JOB_TURN_KIND,
-      workflow: JOB_WORKFLOW,
-      purpose: "job",
-      // `title` rides on the input for the reply's header; strut's `job`
-      // workflow declares only `prompt` and drops the rest.
-      input: { prompt, title },
-      job: jobId,
-      publicBaseUrl,
-      conversationId,
-    });
-  } catch (err) {
-    if (err instanceof StrutDispatchError) {
-      // Strut refusing the launch because the job's previous turn still
-      // holds its directory is "not yet", not a failure.
-      if (/\bjob_busy:/.test(err.message)) return { status: "busy", jobId, note: BUSY_NOTE };
-      console.warn("[job] dispatch refused", { jobId, code: err.code });
-      return {
-        status: "error",
-        error:
-          err.code === "workflow_missing"
-            ? "This swarm's strut has no `job` workflow yet (its lab is not on a build that seeds it). Tell the user; a workspace admin updates the swarm."
-            : err.message,
-      };
-    }
-    console.error("[job] dispatch failed", { jobId, error: err instanceof Error ? err.message : String(err) });
-    return { status: "error", error: "The job turn could not be started." };
-  }
-
-  // The Stop button: register the run (keyed by the StrutRun id) so Stop
-  // cancels it on strut. A Stop that landed before this registration
-  // (pending-abort intent for this turn) cancels it right away.
-  try {
-    const { setActiveRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
-    const { abortSelf } = await setActiveRun(
-      conversationId,
-      { requestId: dispatched.runId, workspaceId: target.workspaceId, startedAt: new Date().toISOString() },
-      dispatched.runId, // turnId fallback
-    );
-    if (abortSelf) {
-      await cancelStrutRun({ id: dispatched.runId, swarmId: dispatched.swarmId, workflow: JOB_WORKFLOW, strutRunId: dispatched.strutRunId });
-    }
-    await notifyRunActive(conversationId, true);
-  } catch (err) {
-    console.warn("[job] active-run registration failed (non-fatal)", {
-      runId: dispatched.runId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  console.log("[job] turn dispatched", { jobId, runId: dispatched.runId, strutRunId: dispatched.strutRunId, started });
-  return {
-    status: started ? "started" : "continued",
-    jobId,
-    title,
-    note:
-      "Strut is working on it in the background. The reply — and what it produced, as artifact cards — lands in this conversation as a **Job** entry; " +
-      "tell the user it's underway and stop. Do not call this tool again for the same request.",
-  };
-}
-
 export function buildStrutTools(ctx: CapabilityContext): ToolSet {
   return {
     [DISPATCH_STRUT_TOOL]: tool({
       description:
         "Dispatch the org's strut AI builder — the workflow-authoring agent on the org's default swarm (one strut per org). " +
         "It builds and revises strut workflows and custom steps, runs them, and evaluates their runs (run logs, outputs, claims/evidence). " +
+        "This is where a 'workflow' request goes by default: unless the user explicitly names Stakwork, a workflow to build, change, run, or evaluate is a strut workflow — not a Stakwork one. " +
         "Omit `chatId` to start a NEW strut conversation; pass a `chatId` to CONTINUE one — strut keeps the whole transcript, so a follow-up can be short. " +
         "Runs in the BACKGROUND: this returns at once with the `chatId`, and strut's replies are posted into this conversation as they land — seconds to hours later, and possibly several (a long workflow run ends one reply with 'I'll report back' and the verdict arrives as a later one). " +
         "Tell the user it's underway; do NOT re-dispatch to fetch results and do NOT invent findings. " +
@@ -526,8 +459,9 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
 
     [START_JOB_TOOL]: tool({
       description:
-        "Start a JOB on the org's strut: an agent that works on something the user will ITERATE on — a plan, a document, a page — over many turns, " +
+        "Start a JOB on the org's strut: an agent that works on something the user will ITERATE on — a plan, a document, a page, or a CODE CHANGE delivered as a pull request — over many turns, " +
         "in one directory it keeps for the job, with a thread that remembers every earlier turn. It writes its deliverables as files and they land in this conversation as artifact cards. " +
+        "For a code change, name the repository URL (https://github.com/owner/repo) in the prompt: the job's agent runs the swarm's code-change workflow as the user and the pull request lands here as a card; a follow-up revises that same pull request. " +
         "Runs in the BACKGROUND: this returns at once with the `jobId`; the reply is posted into this conversation as a **Job** entry — seconds to minutes later. " +
         "Tell the user it's underway and stop; do NOT call this again for the same request and do NOT invent results. " +
         "To revise what a job produced, use `continue_job` with its `jobId` (in the reply's header line) — not a new job. " +
@@ -539,7 +473,9 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
           .string()
           .min(1)
           .describe(
-            "The first turn's message. Self-contained — the job's agent cannot see this conversation: state what to produce, for whom, and what it must cover.",
+            "The user's request, in their own words — forward it as they said it. " +
+              "Add only what the job's agent cannot see (it cannot see this conversation or the workspace's repository list): for a code change, the repository URL; a thing the user pointed at. " +
+              "Never add a format, a file type, an outline, sections or rules of your own: how each kind of work is done — a plan, a page, a code change — is the swarm's business, and the job's agent has its own pages for it. A spec from you overrides them.",
           ),
       }),
       execute: async ({ workspace, title, prompt }) => {
@@ -548,20 +484,20 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         const delivery = await jobDelivery(ctx);
         if ("error" in delivery) return delivery;
         const jobId = crypto.randomUUID();
-        return launchJobTurn(ctx, target, { jobId, title, prompt, ...delivery, started: true });
+        return launchJobTurn({ userId: ctx.userId, workspaceId: target.workspaceId, ...delivery }, { jobId, title, prompt, started: true });
       },
     }),
 
     [CONTINUE_JOB_TOOL]: tool({
       description:
-        "The next turn of a JOB started with `start_job`: the same agent, in the same directory, with the whole thread in memory — so 'revise step 2' is enough. " +
+        "The next turn of a JOB started with `start_job`: the same agent, in the same directory, with the whole thread in memory — so 'revise step 2' or 'also rename the helper' is enough (a code-change job revises its pull request). " +
         "The reply (and the revised artifacts, under the same ids) lands in this conversation as a **Job** entry; tell the user it's underway and stop. " +
         "`status: 'busy'` means the job's previous turn is still running — not a failure; wait for its reply, then continue. " +
         "Only the person who started a job can continue it.",
       inputSchema: z.object({
         workspace: z.string().describe("Slug of a workspace in the active org (it selects the org's strut)."),
         jobId: z.string().min(1).max(120).describe("The job id from the reply's header line (**Job · <jobId> · …**)."),
-        prompt: z.string().min(1).describe("This turn's message. The agent remembers the earlier turns, so it can be short."),
+        prompt: z.string().min(1).describe("This turn's message, in the user's own words. The agent remembers the earlier turns, so it can be short."),
       }),
       execute: async ({ workspace, jobId, prompt }) => {
         const target = await resolveStrut(ctx, workspace, "job");
@@ -594,7 +530,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         });
         if (live) return { status: "busy", jobId, note: BUSY_NOTE };
 
-        return launchJobTurn(ctx, target, { jobId, title: jobTitleOf(first), prompt, ...delivery, started: false });
+        return launchJobTurn({ userId: ctx.userId, workspaceId: target.workspaceId, ...delivery }, { jobId, title: jobTitleOf(first), prompt, started: false });
       },
     }),
   };
@@ -611,6 +547,8 @@ export function getStrutCapabilitySnippet(): string {
 ## Strut (workflow builder sub-agent)
 
 Each org's default swarm hosts **strut**, a workflow engine with its own AI builder — an agent that authors strut workflows (YAML) and custom steps, runs them, and evaluates their runs (run logs, outputs, claims and evidence). You dispatch that builder; you do not write strut workflows yourself.
+
+**"Workflow" means strut by default.** Unless the user explicitly names Stakwork, a workflow to build, revise, run, or evaluate — and a workflow run to check on — is a strut workflow and goes through these tools: not the Stakwork workflow library (\`workflow_explorer_agent\`), not the stakwork workspace's \`stakwork__*\` tools, and not a feature in the stakwork workspace.
 
 ### Tools
 
@@ -636,11 +574,14 @@ Prefer continuing an existing chat (\`chatId\` from its header line) over starti
 
 ### Jobs
 
-For something the user will ITERATE on — a plan, a document, a page — start a **job** instead of a builder chat: **\`start_job({ workspace, title, prompt })\`**. A job is one agent with one directory and one memory for as long as the job lives: it writes its deliverables as files there and they land in this conversation as artifact cards on a **Job · \`<jobId>\` · <title>** entry. To revise them — "split step 2 in two", "make the page darker" — call **\`continue_job({ workspace, jobId, prompt })\`** with the id from that header line: the same files come back under the same ids, a version newer. Never start a second job for a revision.
+For something the user will ITERATE on — a plan, a document, a page, a code change the user wants as a pull request — start a **job** instead of a builder chat: **\`start_job({ workspace, title, prompt })\`**. A job is one agent with one directory and one memory for as long as the job lives: it writes its deliverables as files there and they land in this conversation as artifact cards on a **Job · \`<jobId>\` · <title>** entry. To revise them — "split step 2 in two", "make the page darker" — call **\`continue_job({ workspace, jobId, prompt })\`** with the id from that header line: the same files come back under the same ids, a version newer. Never start a second job for a revision.
 
+- **The prompt is the user's words.** Forward their request as they said it. Add only what the job's agent cannot see: the repository URL for a code change, the thing they pointed at. Do not add a format, a file type, an outline or rules of your own — how each kind of work is done (a plan, a page, a code change) is the swarm's business, the job's agent has its own pages for it, and a spec from you overrides them; it cannot tell your words from the user's.
 - Replies land in this conversation on their own, seconds to minutes later: tell the user it's underway and stop. Do not poll, do not re-dispatch, do not invent results.
+- **A Job entry is the record; your words are the reply.** The entry is written in detail (a code change lists files, functions and line numbers) and the chat shows it collapsed — the user expands it only to check. When one lands (you may be woken for it) or the user asks about it, answer with ONE short paragraph in your own words: what the job produced, the question it asked if any, and the next step. Never restate the entry, never list files, functions or line numbers, never describe the cards — the user sees them.
 - A Job entry that carries a **Question for you** is the agent stopping for a decision; the user's answer goes back as the next \`continue_job\` prompt.
 - \`status: "busy"\` means the job's previous turn is still running — wait for its reply, then continue.
+- **A code change as a job.** Name the repository URL in the prompt — pick it the way you would for \`propose_code_change\`, and if you are guessing between repositories, ask the user first. The job's agent runs the swarm's code-change workflow with the user's own GitHub token; the pull request lands here as a card, and "also rename the helper" is a \`continue_job\` that revises the same pull request. Use a job when the user asks for one, when the change belongs to a job that already exists (a plan the job wrote), or when they want the pull request directly; \`propose_code_change\` stays for a small change they want to approve as a diff before anything is pushed.
 - \`dispatch_strut\` stays for building and running strut WORKFLOWS; \`start_job\` is for producing something.
 
 ### Caveats

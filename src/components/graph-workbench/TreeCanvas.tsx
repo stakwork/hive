@@ -303,33 +303,39 @@ function TreeCanvasInner({ graph }: { graph: WorkbenchGraph }) {
     const muted = "color-mix(in oklch, var(--muted-foreground) 60%, transparent)";
     const strong = "color-mix(in oklch, var(--foreground) 70%, transparent)";
     const added = "rgb(16 185 129)";
+    const removed = "rgb(244 63 94)";
+    const dashed = (stroke: string) => ({ stroke, strokeWidth: 1.5, strokeDasharray: "5 4" });
     const edges: Edge[] = structure.map((e) => {
-      const lit = onPath.edges.has(`${e.source}>${e.target}`);
-      const proposed = pending.newEdges.has(`${e.source}>${e.target}`);
+      const key = `${e.source}>${e.target}`;
+      const lit = onPath.edges.has(key);
       return {
-        id: `${graph.lens.edge}:${e.source}>${e.target}`,
+        id: `${graph.lens.edge}:${key}`,
         ...e,
         type: "smoothstep",
         selectable: false,
-        style: proposed
-          ? { stroke: added, strokeWidth: 1.5, strokeDasharray: "5 4" }
-          : { stroke: lit ? strong : muted, strokeWidth: lit ? 2 : 1.25 },
+        style: pending.newEdges.has(key)
+          ? dashed(added)
+          : pending.removedEdges.has(key)
+            ? dashed(removed)
+            : { stroke: lit ? strong : muted, strokeWidth: lit ? 2 : 1.25 },
       };
     });
-    // Proposed links of other edge types: dashed, labelled, outside the tree's own structure.
+    // Proposed links of other edge types: dashed, labelled, outside the tree's own structure — green to add, red to remove.
+    const proposedLink = (l: { edge: string; source: string; target: string }, stroke: string, id: string): Edge => ({
+      id: `${id}:${l.edge}:${l.source}>${l.target}`,
+      source: l.source,
+      target: l.target,
+      type: "straight",
+      selectable: false,
+      label: l.edge,
+      labelStyle: { fontSize: 10, fill: stroke },
+      labelBgStyle: { fill: "var(--background)" },
+      style: dashed(stroke),
+    });
     for (const l of pending.links)
-      if (shown.has(l.source) && shown.has(l.target))
-        edges.push({
-          id: `proposed:${l.edge}:${l.source}>${l.target}`,
-          source: l.source,
-          target: l.target,
-          type: "straight",
-          selectable: false,
-          label: l.edge,
-          labelStyle: { fontSize: 10, fill: added },
-          labelBgStyle: { fill: "var(--background)" },
-          style: { stroke: added, strokeWidth: 1.5, strokeDasharray: "5 4" },
-        });
+      if (shown.has(l.source) && shown.has(l.target)) edges.push(proposedLink(l, added, "proposed"));
+    for (const l of pending.unlinks)
+      if (shown.has(l.source) && shown.has(l.target)) edges.push(proposedLink(l, removed, "going"));
     return { nodes, edges };
   }, [graph, placed, shown, selectedId, focusId, onPath, toggle, pending]);
 

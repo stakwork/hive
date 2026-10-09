@@ -115,6 +115,9 @@ import {
   PROPOSE_NODE_EDIT_TOOL,
   PROPOSE_CREATE_TRIPLET_TOOL,
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+  PROPOSE_DELETE_EDGE_TOOL,
+  PROPOSE_MOVE_NODE_TOOL,
+  PROPOSE_DELETE_NODE_TOOL,
   PROPOSE_CODE_CHANGE_TOOL,
 } from "@/lib/proposals/types";
 import {
@@ -130,6 +133,12 @@ import {
   getWhiteboardCapabilitySnippet,
   getWorkflowsCapabilitySnippet,
 } from "@/lib/constants/prompt";
+import {
+  getSlimConceptsCapabilitySnippet,
+  getSlimGraphWalkerCapabilitySnippet,
+  getSlimPlannerCapabilitySnippet,
+  getSlimRoadmapCapabilitySnippet,
+} from "@/lib/constants/prompt-slim";
 
 export type OrgCapability =
   | "roadmap"
@@ -142,7 +151,7 @@ export type OrgCapability =
   | "infra"
   | "prompts"
   | "concepts"
-  | "workflows"
+  | "stakwork_workflows"
   | "code_change"
   | "strut";
 
@@ -173,6 +182,13 @@ export interface CapabilityContext {
    */
   chatAgentModel?: string;
   /**
+   * Slim-prompt mode (the per-browser settings switch). Forwarded to
+   * `buildInitiativeTools` so `send_to_feature_planner` carries the FORM
+   * rule only in slim-prompt mode (the full prompt keeps its own FORM
+   * guidance).
+   */
+  slimPrompt?: boolean;
+  /**
    * The run's `web_search` handle (from `createWebSearch`). Carries the
    * ordered result list `update_research` cites into and the citation
    * treatment for written-up text — which differs by backend, so tools
@@ -197,6 +213,12 @@ export type { DispatchedGraphWalkIntent };
 interface CapabilityDefinition {
   buildTools(ctx: CapabilityContext): ToolSet;
   promptSnippet(): string;
+  /**
+   * Slim-prompt variant (concept-tree mode), used instead of
+   * `promptSnippet` when slim-prompt mode is on. Core
+   * capabilities only; absent → `promptSnippet` in both modes.
+   */
+  slimPromptSnippet?(): string;
   /**
    * Core capabilities are taught up-front in the system prompt every
    * turn; loadable ones (`core: false`) are taught only when the agent
@@ -286,7 +308,7 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "infra",
   "prompts",
   "concepts",
-  "workflows",
+  "stakwork_workflows",
   "code_change",
   "strut",
 ];
@@ -308,11 +330,13 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
             ctx.userId,
             ctx.currentCanvasConversationId,
             ctx.chatAgentModel,
+            ctx.slimPrompt,
           ),
           ROADMAP_INITIATIVE_TOOL_NAMES,
         ),
       }),
       promptSnippet: getRoadmapCapabilitySnippet,
+      slimPromptSnippet: getSlimRoadmapCapabilitySnippet,
       core: true,
       writeToolNames: [
         "assign_feature_to_initiative",
@@ -340,10 +364,12 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
             ctx.userId,
             ctx.currentCanvasConversationId,
             ctx.chatAgentModel,
+            ctx.slimPrompt,
           ),
           PLANNER_TOOL_NAMES,
         ),
       promptSnippet: getPlannerCapabilitySnippet,
+      slimPromptSnippet: getSlimPlannerCapabilitySnippet,
       core: true,
       // send_to_feature_planner survives readonly mode — it messages an
       // agent rather than mutating org state directly. cancel_feature_planner
@@ -425,6 +451,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
           : {}),
       }),
       promptSnippet: getGraphWalkerCapabilitySnippet,
+      slimPromptSnippet: getSlimGraphWalkerCapabilitySnippet,
       // CORE: graph traversal is a hot path (walking roadmap→code, URN
       // dereference from other tools), so its snippet rides in the
       // up-front prompt every turn rather than behind `learn_capability`.
@@ -432,7 +459,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // No menuBlurb: core capabilities are inlined, not menu-listed.
       core: true,
       // dispatch_graph_walk and finalize_graph_walk are stripped in readonly mode
-      // to prevent sub-agents from re-dispatching themselves. The four graph-write
+      // to prevent sub-agents from re-dispatching themselves. The graph-write
       // propose tools are also stripped in readonly mode.
       writeToolNames: [
         "dispatch_graph_walk",
@@ -441,6 +468,9 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         PROPOSE_NODE_EDIT_TOOL,
         PROPOSE_CREATE_TRIPLET_TOOL,
         PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+        PROPOSE_DELETE_EDGE_TOOL,
+        PROPOSE_MOVE_NODE_TOOL,
+        PROPOSE_DELETE_NODE_TOOL,
       ],
     },
     infra: {
@@ -479,6 +509,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // runCanvasAgent composes.
       buildTools: (ctx) => buildConceptTools(ctx.orgId, ctx.userId),
       promptSnippet: getConceptsCapabilitySnippet,
+      slimPromptSnippet: getSlimConceptsCapabilitySnippet,
       // CORE: "remember this" / "note this down" is a common, low-ceremony
       // ask, and behind `learn_capability` the agent rarely recognized it as
       // a concept write at all — the menu blurb was the only thing steering
@@ -489,7 +520,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // and every workspace already exposes concept read tools to the agent.
       writeToolNames: [PROPOSE_NEW_CONCEPT_TOOL, PROPOSE_CONCEPT_UPDATE_TOOL],
     },
-    workflows: {
+    stakwork_workflows: {
       // Not per-workspace: the tool always targets the hardcoded `stakwork`
       // workspace's swarm, whose Jarvis graph holds the canonical Stakwork
       // Workflow/Skill/Script library (see workflowExplorerTools.ts).
@@ -499,12 +530,13 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       promptSnippet: getWorkflowsCapabilitySnippet,
       core: false,
       menuBlurb:
-        "**workflows** — research the Stakwork workflow library via " +
+        "**stakwork_workflows** — research the Stakwork workflow library via " +
         "`workflow_explorer_agent`: find existing Workflows/Skills/Scripts " +
         "by what they take as input and produce as output, read proven step " +
         "orderings, and spot gaps; on explicit user request it can also " +
-        "test-run a single workflow step. Load when designing or discussing " +
-        "a new Stakwork workflow.",
+        "test-run a single workflow step. Load ONLY when the user explicitly " +
+        "names Stakwork. A bare \"workflow\" is a strut workflow — that is " +
+        "`strut`, never this.",
       // Research tool, read-only by default. Its `run_step` param can launch
       // a single (billable) step execution, but only on explicit user
       // request per the prompt policy — not listed in writeToolNames because
@@ -614,7 +646,7 @@ automatically.
       writeToolNames: [PROPOSE_CODE_CHANGE_TOOL],
       // Org-gated: exposure control only. Real write authorization is
       // enforced at approval time by the createPr adapter.
-      // Like `prompts` and `workflows`, must never appear in `includes`.
+      // Like `prompts` and `stakwork_workflows`, must never appear in `includes`.
       orgGate: isCodeChangeCapabilityEnabledForOrg,
     },
     strut: {
@@ -634,8 +666,10 @@ automatically.
         "or start a job (`start_job` / `continue_job`) for something the " +
         "user will iterate on — a plan, a document, a page — delivered as " +
         "artifact cards. Runs in the background; replies are posted into " +
-        "this conversation. Load when the user asks for a strut workflow, " +
-        "about a strut run, or for a plan / document / page to iterate on.",
+        "this conversation. Load whenever the user asks about a workflow " +
+        "(building, revising, running, or evaluating one) or a workflow " +
+        "run, or for a plan / document / page to iterate on. \"Workflow\" " +
+        "means strut unless the user explicitly names Stakwork.",
       // Strut has a shell and publishes + runs code on the swarm — a write
       // tool in every sense; a job launches a run there. The two read tools
       // survive readonly mode.
@@ -702,6 +736,30 @@ function loadableCapabilities(
 }
 
 /**
+ * The workflow clause of `learn_capability`'s description. "Workflow"
+ * means strut by default: a bare "workflow" loads `strut`, and the
+ * Stakwork library (`stakwork_workflows`) only when the user names Stakwork.
+ * Each sentence appears only when its capability is actually loadable
+ * here, so the description never advertises one this org lacks.
+ */
+function learnCapabilityWorkflowHint(
+  loadable: readonly OrgCapability[],
+): string {
+  let hint = "";
+  if (loadable.includes("strut")) {
+    hint +=
+      "A bare \"workflow\" — build, revise, run, or evaluate one, or check " +
+      "on a run — ALWAYS means strut: load `strut`. ";
+  }
+  if (loadable.includes("stakwork_workflows")) {
+    hint +=
+      "Load `stakwork_workflows` (the Stakwork workflow library) ONLY when the user " +
+      "explicitly names Stakwork. ";
+  }
+  return hint;
+}
+
+/**
  * The `learn_capability` tool. Returns a loadable capability's full
  * prompt snippet on demand, so the heavy whiteboard / research /
  * connection instructions stay out of the always-on system prompt
@@ -726,6 +784,7 @@ function buildLearnCapabilityTool(resolved: readonly OrgCapability[]): ToolSet {
         "annotate / re-lay-out the canvas (`whiteboard`), create a saved " +
         "research writeup (`research`), document a system integration " +
         "(`connections`), or save a shareable HTML page (`html_pages`). " +
+        learnCapabilityWorkflowHint(loadable) +
         "You MUST load a capability before calling any of its tools; if you " +
         "find yourself about to call one of those tools without having loaded " +
         "its capability this turn, call `learn_capability` first. Returns the " +
@@ -782,11 +841,17 @@ export function composeCapabilityTools(
  */
 export function composeCapabilityPromptSuffix(
   selected: readonly OrgCapability[],
+  { slimPrompt = false }: { slimPrompt?: boolean } = {},
 ): string {
   const resolved = resolveCapabilities(selected);
   const core = resolved
     .filter((cap) => CAPABILITY_REGISTRY[cap].core)
-    .map((cap) => CAPABILITY_REGISTRY[cap].promptSnippet())
+    .map((cap) => {
+      const def = CAPABILITY_REGISTRY[cap];
+      return slimPrompt && def.slimPromptSnippet
+        ? def.slimPromptSnippet()
+        : def.promptSnippet();
+    })
     .join("");
 
   const loadable = loadableCapabilities(resolved);

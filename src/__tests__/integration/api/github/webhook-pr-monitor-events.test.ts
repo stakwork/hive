@@ -30,6 +30,15 @@ vi.mock("@/lib/github/pr-monitor", () => ({
   }),
 }));
 
+// A strut job's pull request has its first fix sent by hive once every
+// check has run (strut plans/job-artifact-events.md §5): the source is
+// its own module, mocked here — the route forwards, the module reads.
+vi.mock("@/services/strut-jobs/check-failures", () => ({ forwardCheckFailure: vi.fn() }));
+
+// Any pull request the org canvas can show must refetch live — the
+// route forwards a bare `{ repo, number }` nudge through this module.
+vi.mock("@/services/pr-live-notify", () => ({ forwardPrUpdate: vi.fn() }));
+
 // Mock external services that are not under test
 vi.mock("@/services/swarm/stakgraph-actions", () => ({
   triggerAsyncSync: vi.fn().mockResolvedValue({ ok: true, status: 200, data: {} }),
@@ -61,6 +70,8 @@ vi.mock("@/lib/sphinx/direct-message", () => ({
 // Import route and mock AFTER mocks are registered
 import { POST } from "@/app/api/github/webhook/[workspaceId]/route";
 import { monitorSinglePR } from "@/lib/github/pr-monitor";
+import { forwardCheckFailure } from "@/services/strut-jobs/check-failures";
+import { forwardPrUpdate } from "@/services/pr-live-notify";
 
 const FULL_NAME = "test-owner/test-repo";
 const REPO_URL = "https://github.com/test-owner/test-repo";
@@ -108,6 +119,7 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     const prUrl = `https://github.com/${FULL_NAME}/pull/1`;
     const payload = createGitHubPullRequestPayload("opened", false, prUrl, REPO_URL, FULL_NAME);
     (payload as any).pull_request.html_url = prUrl;
+    (payload as any).pull_request.number = 1;
 
     const req = makeRequest(testSetup.workspace.id, testSetup.webhookSecret, "pull_request", payload, testSetup.repository.githubWebhookId!);
     const res = await POST(req as any, {
@@ -118,12 +130,15 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     // Allow fire-and-forget to be called
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).toHaveBeenCalledWith(prUrl);
+    // Any pull request the canvas can show must get a live nudge, too.
+    expect(forwardPrUpdate).toHaveBeenCalledWith({ workspaceId: testSetup.workspace.id, repoFullName: FULL_NAME, number: 1 });
   });
 
   it("pull_request ready_for_review → calls monitorSinglePR and returns 202", async () => {
     const prUrl = `https://github.com/${FULL_NAME}/pull/2`;
     const payload = createGitHubPullRequestPayload("ready_for_review", false, prUrl, REPO_URL, FULL_NAME);
     (payload as any).pull_request.html_url = prUrl;
+    (payload as any).pull_request.number = 2;
 
     const req = makeRequest(testSetup.workspace.id, testSetup.webhookSecret, "pull_request", payload, testSetup.repository.githubWebhookId!);
     const res = await POST(req as any, {
@@ -133,12 +148,14 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).toHaveBeenCalledWith(prUrl);
+    expect(forwardPrUpdate).toHaveBeenCalledWith({ workspaceId: testSetup.workspace.id, repoFullName: FULL_NAME, number: 2 });
   });
 
   it("pull_request synchronize → calls monitorSinglePR and returns 202", async () => {
     const prUrl = `https://github.com/${FULL_NAME}/pull/3`;
     const payload = createGitHubPullRequestPayload("synchronize", false, prUrl, REPO_URL, FULL_NAME);
     (payload as any).pull_request.html_url = prUrl;
+    (payload as any).pull_request.number = 3;
 
     const req = makeRequest(testSetup.workspace.id, testSetup.webhookSecret, "pull_request", payload, testSetup.repository.githubWebhookId!);
     const res = await POST(req as any, {
@@ -148,6 +165,7 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).toHaveBeenCalledWith(prUrl);
+    expect(forwardPrUpdate).toHaveBeenCalledWith({ workspaceId: testSetup.workspace.id, repoFullName: FULL_NAME, number: 3 });
   });
 
   it("pull_request labeled → does NOT call monitorSinglePR and returns 202", async () => {
@@ -163,6 +181,8 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).not.toHaveBeenCalled();
+    // "labeled" doesn't change anything the canvas card shows.
+    expect(forwardPrUpdate).not.toHaveBeenCalled();
   });
 
   // ─── check_run events ───────────────────────────────────────────────────────
@@ -192,6 +212,11 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).toHaveBeenCalledWith(expectedPrUrl);
+    // A job that reported the pull request may get its first fix from this.
+    expect(forwardCheckFailure).toHaveBeenCalledTimes(1);
+    expect(forwardCheckFailure).toHaveBeenCalledWith({ workspaceId: testSetup.workspace.id, url: expectedPrUrl, publicBaseUrl: expect.any(String) });
+    // Checks completing can flip the canvas card's pass/fail pill.
+    expect(forwardPrUpdate).toHaveBeenCalledWith({ workspaceId: testSetup.workspace.id, repoFullName: FULL_NAME, number: prNumber });
   });
 
   it("check_run in_progress → does NOT call monitorSinglePR and returns 202", async () => {
@@ -216,6 +241,8 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).not.toHaveBeenCalled();
+    expect(forwardCheckFailure).not.toHaveBeenCalled();
+    expect(forwardPrUpdate).not.toHaveBeenCalled();
   });
 
   // ─── workflow_run events ─────────────────────────────────────────────────────
@@ -247,6 +274,9 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).toHaveBeenCalledWith(expectedPrUrl);
+    expect(forwardCheckFailure).toHaveBeenCalledTimes(1);
+    expect(forwardCheckFailure).toHaveBeenCalledWith({ workspaceId: testSetup.workspace.id, url: expectedPrUrl, publicBaseUrl: expect.any(String) });
+    expect(forwardPrUpdate).toHaveBeenCalledWith({ workspaceId: testSetup.workspace.id, repoFullName: headRepo, number: prNumber });
   });
 
   it("workflow_run in_progress → does NOT call monitorSinglePR and returns 202", async () => {
@@ -272,5 +302,7 @@ describe("GitHub Webhook — Event-driven PR monitor triggers", () => {
     expect(res.status).toBe(202);
     await new Promise((r) => setTimeout(r, 50));
     expect(monitorSinglePR).not.toHaveBeenCalled();
+    expect(forwardCheckFailure).not.toHaveBeenCalled();
+    expect(forwardPrUpdate).not.toHaveBeenCalled();
   });
 });

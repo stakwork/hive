@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, type ReactNode } from "react";
+import React, { useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   GitMerge,
@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { checksFailedEvent } from "@/lib/strut-jobs";
 import { cn } from "@/lib/utils";
 import type {
   ArtifactContents,
@@ -21,6 +22,7 @@ import type {
 import { ScrollFade } from "../chrome";
 import { MultiFileDiffView, parseDiffs } from "../diff";
 import { plural } from "../lines";
+import { useChatOrgLogin } from "../useArtifactPanel";
 import { LineCounts } from "./diff";
 
 /** GitHub's colours for a pull request's state — the ones the task page's pull request card wears. */
@@ -104,7 +106,77 @@ function SectionHeading({ children }: { children: ReactNode }) {
   );
 }
 
-export function PullRequestPanel({ artifact, content }: ArtifactViewerProps<"pull_request">) {
+/** What the Fix sends (strut plans/job-artifact-events.md §5): the `checks failed` event — the head commit and the failing checks, each with its link — composed from the card's live state, the same one hive sends on its own once (`check-failures.ts`). Null while nothing has failed. */
+export function fixEventOf(content: ArtifactContents["pull_request"]): { url: string; what: string; details: string[] } | null {
+  return checksFailedEvent(content);
+}
+
+type FixState =
+  | { status: "idle" }
+  | { status: "sending" }
+  | { status: "sent" }
+  | { status: "busy"; note: string }
+  | { status: "failed"; error: string };
+
+/**
+ * Fix — send the failing checks to the job that opened the pull request,
+ * as its next turn (`api/orgs/[githubLogin]/strut/jobs/[jobId]/events`):
+ * the `Pod` page has it reproduce, fix in the pod and push to this same
+ * pull request. A click where a `continue_job` would be; only the job's
+ * owner may (the route's 403). A job mid-turn says so — try again in a
+ * minute — rather than queueing from a button. The FIRST fix on a pull
+ * request goes without a click, once every check has run
+ * (`services/strut-jobs/check-failures.ts`); this button is every one
+ * after it.
+ */
+function FixButton({ jobId, event }: { jobId: string; event: NonNullable<ReturnType<typeof fixEventOf>> }) {
+  const githubLogin = useChatOrgLogin();
+  const [state, setState] = useState<FixState>({ status: "idle" });
+
+  const send = async () => {
+    setState({ status: "sending" });
+    try {
+      const res = await fetch(`/api/orgs/${encodeURIComponent(githubLogin)}/strut/jobs/${encodeURIComponent(jobId)}/events`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(event),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; busy?: boolean };
+      if (res.status === 202) setState({ status: "sent" });
+      else if (res.status === 409 && body.busy) setState({ status: "busy", note: "A turn of the job is running — try again in a minute." });
+      else setState({ status: "failed", error: body.error ?? `HTTP ${res.status}` });
+    } catch (err) {
+      setState({ status: "failed", error: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  if (state.status === "sent") {
+    return (
+      <span data-testid="pr-fix-sent" className="ml-auto text-xs normal-case tracking-normal">
+        Sent to the job
+      </span>
+    );
+  }
+  return (
+    <span className="ml-auto flex items-baseline gap-2 normal-case tracking-normal">
+      {state.status === "busy" && <span className="text-xs">{state.note}</span>}
+      {state.status === "failed" && <span className="text-xs text-amber-600 [.dark_&]:text-amber-400">Could not send: {state.error}</span>}
+      <button
+        type="button"
+        data-testid="pr-fix"
+        onClick={send}
+        disabled={state.status === "sending"}
+        title="Send the failing checks to the job: it reproduces, fixes, and pushes to this pull request"
+        className="rounded-md border bg-background px-2 py-0.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+      >
+        {state.status === "sending" ? "Sending…" : "Fix"}
+      </button>
+    </span>
+  );
+}
+
+export function PullRequestPanel({ artifact, content, jobId }: ArtifactViewerProps<"pull_request">) {
   const state = STATE[content.state];
   const fromTo = branches(content);
   const checks = useMemo(
@@ -112,12 +184,24 @@ export function PullRequestPanel({ artifact, content }: ArtifactViewerProps<"pul
     [content.checks],
   );
   const passed = passedOfRan(checks);
+  // The job that opened it can be sent the failures — while the pull request is still open to a fix.
+  const fix = jobId && content.state !== "merged" && content.state !== "closed" ? fixEventOf(content) : null;
 
   return (
     <ScrollFade className="mx-auto w-full max-w-4xl space-y-8 px-8 py-8">
       <header className="space-y-3">
         <h2 className="text-xl font-semibold leading-snug">
-          {artifact.title} <span className="font-normal text-muted-foreground">#{content.number}</span>
+          {artifact.title}{" "}
+          <a
+            href={content.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="pr-number"
+            title="Open on GitHub"
+            className="font-normal text-muted-foreground hover:text-foreground hover:underline"
+          >
+            #{content.number}
+          </a>
         </h2>
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm text-muted-foreground">
           <span
@@ -138,15 +222,25 @@ export function PullRequestPanel({ artifact, content }: ArtifactViewerProps<"pul
           <SectionHeading>
             Checks
             {passed && <span className="normal-case tracking-normal">{passed} passed</span>}
+            {fix && jobId && <FixButton jobId={jobId} event={fix} />}
           </SectionHeading>
           {/* As wide as its longest name, so each check's outcome sits beside it, in a column. */}
           <div className="grid w-fit max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-2 text-sm">
             {checks.map((check) => (
               <React.Fragment key={check.name}>
                 <CheckMark status={check.status} />
-                <span className={cn("truncate", check.status === "skipped" && "text-muted-foreground")}>
-                  {check.name}
-                </span>
+                {check.url ? (
+                  <a
+                    href={check.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn("truncate hover:underline", check.status === "skipped" && "text-muted-foreground")}
+                  >
+                    {check.name}
+                  </a>
+                ) : (
+                  <span className={cn("truncate", check.status === "skipped" && "text-muted-foreground")}>{check.name}</span>
+                )}
                 <span
                   className={cn(
                     "pl-6 text-xs",

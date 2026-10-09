@@ -5,9 +5,14 @@
  * Like `runs.ts`, this reads the workflow's `output` field by field, so an
  * output of another shape degrades to nulls and empty lists. The run's
  * files (`digest.md` holds the answer key) are not named in what it returns.
+ *
+ * Besides Concepts, an improve run may CONTEST answer-key items the chart
+ * contradicts (`contests.ts`): the ones the graph recorded are excluded from
+ * the score from the next run on.
  */
 
 import type { StrutRunStatus } from "@prisma/client";
+import { contestsOf, rejectedContestsOf } from "./contests";
 import type {
   OpenHealthConceptProposal,
   OpenHealthConceptWrite,
@@ -37,17 +42,24 @@ const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v !== "") : [];
 
 const ERROR_KINDS: Record<string, string> = {
+  // Diagnosis: the code is an ICD-10-CM code.
   missed: "missed",
   extra: "extra",
   code: "wrong code",
   acuity: "wrong acuity",
+  // Summary: the code is a finding's name as a slug (`uterine-artery-doppler…`), or the specialty's.
+  missed_finding: "missed finding",
+  leaked: "leaked",
+  abstain: "did not abstain for",
 };
 
-/** `<run id>:<kind>:<code>` → "missed P011". An id of another form is shown as it is. */
+const SLUG_KINDS = new Set(["missed_finding", "leaked", "abstain"]);
+
+/** `<run id>:<kind>:<code>` → "missed P011", "missed finding severe headache". An id of another form is shown as it is. */
 export function describeScoringError(id: string): string {
   const [, kind, code, ...rest] = id.split(":");
   if (!kind || !code || rest.length > 0 || !ERROR_KINDS[kind]) return id;
-  return `${ERROR_KINDS[kind]} ${code}`;
+  return `${ERROR_KINDS[kind]} ${SLUG_KINDS.has(kind) ? code.replace(/-/g, " ") : code}`;
 }
 
 /**
@@ -115,6 +127,8 @@ export function toOpenHealthImprovement(row: OpenHealthImproveSource): OpenHealt
       const id = str(e.error_id);
       return id ? [{ error: describeScoringError(id), reason: str(e.reason) ?? "" }] : [];
     }),
+    contestsAccepted: contestsOf(output.contests_accepted),
+    contestsRejected: rejectedContestsOf(output.contests_rejected),
     durationMs: row.durationMs,
     error: outcome === "failed" ? (row.error ?? "The run did not finish.") : null,
     createdAt: row.createdAt.toISOString(),

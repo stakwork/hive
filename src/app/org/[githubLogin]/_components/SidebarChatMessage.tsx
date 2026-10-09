@@ -26,8 +26,7 @@ import { CanvasDeeplinkChip } from "./CanvasDeeplinkChip";
 /**
  * Query params we treat as in-page deep links (no full navigation).
  * The agent is taught to emit these as relative markdown links —
- * e.g. `[read the writeup](?r=stripe-connect)` for research,
- * `[the integration doc](?c=sphinx-hive)` for connections — and
+ * e.g. `[read the writeup](?r=stripe-connect)` for research — and
  * `OrgCanvasView` watches the URL to open the matching viewer.
  *
  * Plain `<a href="?r=foo">` would trigger a full document load,
@@ -40,7 +39,7 @@ import { CanvasDeeplinkChip } from "./CanvasDeeplinkChip";
  * the agent's link surface (e.g. future `?canvas=`, `?n=` for
  * generic node selection).
  */
-const IN_PAGE_PARAMS = new Set(["r", "c", "canvas", "node"]);
+const IN_PAGE_PARAMS = new Set(["r", "canvas", "node"]);
 
 interface SidebarChatMessageProps {
   message: {
@@ -70,7 +69,7 @@ export function SidebarChatMessage({
 
   /**
    * Markdown link interceptor. Recognizes hrefs that are pure
-   * query-string patches (e.g. `?r=foo`, `?c=foo&extra=1`) and
+   * query-string patches (e.g. `?r=foo`, `?r=foo&extra=1`) and
    * applies them via `router.replace` so the page doesn't reload.
    * Anything else (absolute URLs, fragment links, plain paths) falls
    * back to default `<a>` behavior with `target="_blank"` so external

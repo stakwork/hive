@@ -52,13 +52,19 @@ const TOOL_ICONS: Record<ToolIconKey, LucideIcon> = {
   generic: SquareFunction,
 };
 
-/** State first — a spinner while the call runs, amber when it failed — else the resting glyph. */
+/**
+ * State first — a spinner while the call runs, amber when it failed, the
+ * glyph faded when a Stop cut it off — else the resting glyph.
+ */
 export function ToolCallMarker({ phase, glyph: Glyph }: { phase: ToolCallPhase; glyph: LucideIcon }) {
   if (phase === "running") {
     return <Loader2 aria-label="Running" className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />;
   }
   if (phase === "error") {
     return <AlertTriangle aria-label="Failed" className="h-3.5 w-3.5 shrink-0 text-amber-500" />;
+  }
+  if (phase === "interrupted") {
+    return <Glyph aria-label="Interrupted" className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />;
   }
   return <Glyph aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
 }
@@ -278,8 +284,13 @@ export const StreamToolCall = React.memo(function StreamToolCall({
         className={cn(TOOL_ROW_CLASS, hasDetail ? "hover:bg-muted/60" : "cursor-default")}
       >
         <ToolCallMarker phase={phase} glyph={TOOL_ICONS[toolIconKey(toolCall.toolName)]} />
-        <span className="min-w-0 truncate text-foreground/90">{name}</span>
+        <span
+          className={cn("min-w-0 truncate", phase === "interrupted" ? "text-muted-foreground" : "text-foreground/90")}
+        >
+          {name}
+        </span>
         {scope && <span className="shrink-0 text-muted-foreground">· {scope}</span>}
+        {phase === "interrupted" && <span className="shrink-0 text-muted-foreground">· interrupted</span>}
         {hasDetail && <ToolCallChevron open={open} />}
       </button>
       {open && <ToolCallDetail toolCall={toolCall} />}

@@ -108,6 +108,9 @@ vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_NODE_EDIT_TOOL: "propose_node_edit",
   PROPOSE_CREATE_TRIPLET_TOOL: "propose_create_triplet",
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL: "propose_create_batch_triplet",
+  PROPOSE_DELETE_EDGE_TOOL: "propose_delete_edge",
+  PROPOSE_MOVE_NODE_TOOL: "propose_move_node",
+  PROPOSE_DELETE_NODE_TOOL: "propose_delete_node",
   PROPOSE_CODE_CHANGE_TOOL: "propose_code_change",
 }));
 vi.mock("@/lib/ai/capabilityGates", () => ({

@@ -10,7 +10,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
-import { jamieName } from "@/lib/constants/jamie";
 
 // jsdom does not implement scrollIntoView — install a no-op globally so
 // the SidebarChat scroll effect never throws. Scroll behaviour tests
@@ -63,8 +62,11 @@ vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
   },
 }));
 
+const mockStopTurn = vi.fn();
+const mockSend = vi.fn();
 vi.mock("@/app/org/[githubLogin]/_state/useSendCanvasChatMessage", () => ({
-  useSendCanvasChatMessage: () => vi.fn(),
+  useSendCanvasChatMessage: () => mockSend,
+  stopCanvasChatTurn: (...args: unknown[]) => mockStopTurn(...args),
 }));
 
 // The graph focus chip reads a conversation's context, which these fixtures leave out.
@@ -880,11 +882,25 @@ describe("SidebarChat — DailyRecapCard placement", () => {
     const { container } = render(<SidebarChat githubLogin="test-org" />);
 
     const card = container.querySelector("[data-testid='daily-recap-card']");
-    const placeholder = screen.getByText(`Message ${jamieName}`);
+    const placeholder = screen.getByText("What should we work on?");
 
     expect(card).not.toBeNull();
     // card should come before placeholder in the DOM
     expect(card!.compareDocumentPosition(placeholder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("empty-state wrapper fills remaining space (flex-1, no h-full) inside a flex-col scroll container", async () => {
+    const { SidebarChat } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
+    const { container } = render(<SidebarChat githubLogin="test-org" />);
+
+    const wrapper = screen.getByText("What should we work on?").parentElement!;
+    expect(wrapper).toHaveClass("flex-1");
+    expect(wrapper).not.toHaveClass("h-full");
+
+    const scrollContainer = wrapper.parentElement!;
+    expect(scrollContainer).toHaveClass("flex-col");
+    expect(scrollContainer).toHaveClass("overflow-y-auto");
+    expect(container.contains(scrollContainer)).toBe(true);
   });
 
   it("renders exactly one DailyRecapCard when messages are present", async () => {
@@ -1270,5 +1286,205 @@ describe("SidebarChat — thinking dots (agentTurnsInProgress gate)", () => {
       rerender(<SidebarChat githubLogin="test-org" />);
     });
     expect(container.querySelector("[data-testid='thinking-dots']")).toBeNull();
+  });
+});
+
+function buildRunningTurnState(
+  activeTurn: { turnId: string; stopping: boolean; canStop?: boolean } | null,
+  messages: unknown[] = [SAMPLE_MESSAGE],
+) {
+  return {
+    activeConversationId: "conv-1",
+    conversations: {
+      "conv-1": {
+        messages,
+        isLoading: false,
+        isStreaming: !!activeTurn,
+        agentTurnsInProgress: activeTurn ? 1 : 0,
+        activeToolCalls: [],
+        serverConversationId: null,
+        activeTurn: activeTurn && { canStop: true, ...activeTurn, controller: new AbortController() },
+      },
+    },
+    artifacts: {},
+    dismissedArtifactIds: {},
+    pendingInputDraft: null,
+  } as typeof mockStoreState;
+}
+
+describe("SidebarChat — Stop", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockIsActive = false;
+    mockStopTurn.mockReset();
+  });
+
+  afterEach(() => {
+    mockStoreState = {
+      activeConversationId: null,
+      conversations: {},
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    };
+  });
+
+  it("shows Send when no turn is running", async () => {
+    mockStoreState = buildRunningTurnState(null);
+    await renderSidebarChat();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+  });
+
+  it("turns Send into Stop while this tab's turn runs, and keeps the composer editable", async () => {
+    mockStopTurn.mockResolvedValue(true);
+    mockStoreState = buildRunningTurnState({ turnId: "t-1", stopping: false });
+    await renderSidebarChat();
+
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+    const textarea = screen.getByPlaceholderText(/Message/) as HTMLTextAreaElement;
+    expect(textarea.disabled).toBe(false);
+
+    // Enter doesn't send while the turn runs; the draft stays.
+    fireEvent.change(textarea, { target: { value: "next question" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(textarea.value).toBe("next question");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    });
+    expect(mockStopTurn).toHaveBeenCalledWith("conv-1");
+  });
+
+  it("disables Stop while the Stop request is in flight", async () => {
+    mockStoreState = buildRunningTurnState({ turnId: "t-1", stopping: true });
+    await renderSidebarChat();
+    expect((screen.getByRole("button", { name: "Stop" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("says so when the Stop fails — the turn is still running", async () => {
+    mockStopTurn.mockResolvedValue(false);
+    mockStoreState = buildRunningTurnState({ turnId: "t-1", stopping: false });
+    await renderSidebarChat();
+    const { toast } = await import("sonner");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    });
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("still running"));
+  });
+
+  it("keeps Send, disabled, while an Approve / Reject turn runs — there is nothing to stop", async () => {
+    mockStoreState = buildRunningTurnState({ turnId: "t-1", stopping: false, canStop: false });
+    await renderSidebarChat();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText(/Message/), { target: { value: "next" } });
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("renders a stopped turn's marker row as a quiet Stopped line", async () => {
+    mockStoreState = buildRunningTurnState(null, [
+      SAMPLE_MESSAGE,
+      {
+        id: "t-astopped",
+        role: "assistant",
+        content: "Stopped by user.",
+        timestamp: new Date(),
+        source: { kind: "stopped" },
+      },
+    ]);
+    const { container } = await renderSidebarChat();
+    const marker = container.querySelector("[data-testid='stopped-turn-marker']");
+    expect(marker?.textContent).toBe("Stopped");
+  });
+});
+
+const mockSetEditingTurn = vi.fn();
+
+function buildStoppedTurnState(editing: boolean) {
+  return {
+    activeConversationId: "conv-1",
+    conversations: {
+      "conv-1": {
+        messages: [
+          { id: "t1-u", role: "user", content: "Explain auth", timestamp: new Date() },
+          {
+            id: "t1-astopped",
+            role: "assistant",
+            content: "Stopped by user.",
+            timestamp: new Date(),
+            source: { kind: "stopped" },
+          },
+        ],
+        isLoading: false,
+        isStreaming: false,
+        agentTurnsInProgress: 0,
+        activeToolCalls: [],
+        serverConversationId: "row-1",
+        activeTurn: null,
+        stoppedTurnId: "t1",
+        editingTurnId: editing ? "t1" : null,
+      },
+    },
+    artifacts: {},
+    dismissedArtifactIds: {},
+    pendingInputDraft: null,
+    setEditingTurn: mockSetEditingTurn,
+  } as typeof mockStoreState;
+}
+
+describe("SidebarChat — edit a stopped turn and send it again", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockIsActive = false;
+    mockSend.mockReset();
+    mockSetEditingTurn.mockReset();
+  });
+
+  afterEach(() => {
+    mockStoreState = {
+      activeConversationId: null,
+      conversations: {},
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+    };
+  });
+
+  it("offers Edit on the message of the turn this tab stopped", async () => {
+    mockStoreState = buildStoppedTurnState(false);
+    await renderSidebarChat();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(mockSetEditingTurn).toHaveBeenCalledWith("conv-1", "t1");
+    expect(screen.queryByTestId("editing-turn")).toBeNull();
+  });
+
+  it("while editing, sending replaces the stopped turn", async () => {
+    mockStoreState = buildStoppedTurnState(true);
+    await renderSidebarChat();
+
+    expect(screen.getByTestId("editing-turn")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+
+    fireEvent.change(screen.getByPlaceholderText(/Message/), { target: { value: "Explain auth briefly" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    });
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: "conv-1", content: "Explain auth briefly", replacesTurnId: "t1" }),
+    );
+  });
+
+  it("cancelling the edit clears the composer and ends the edit", async () => {
+    mockStoreState = buildStoppedTurnState(true);
+    await renderSidebarChat();
+    const textarea = screen.getByPlaceholderText(/Message/) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "Explain auth briefly" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel edit" }));
+
+    expect(mockSetEditingTurn).toHaveBeenCalledWith("conv-1", null);
+    expect(textarea.value).toBe("");
   });
 });

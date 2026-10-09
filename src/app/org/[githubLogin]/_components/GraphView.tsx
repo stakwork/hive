@@ -89,7 +89,8 @@ export function GraphView({ githubLogin, workspaces, loading, chatOpen, onToggle
       // A new workspace is a new graph: remount rather than carry state across.
       key={current.slug}
       workspaceSlug={current.slug}
-      initialFocusId={searchParams.get("ref_id")}
+      // `?gnode=` is what links shared before `?ref_id=` carry.
+      initialFocusId={searchParams.get("ref_id") ?? searchParams.get("gnode")}
       initialType={searchParams.get("type")}
       onSelectionChange={onSelectionChange}
       nodeLink={nodeLink}

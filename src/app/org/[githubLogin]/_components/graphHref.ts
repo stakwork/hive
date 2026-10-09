@@ -21,6 +21,7 @@ export function graphParams(location: GraphLocation, base?: URLSearchParams): UR
   put("workspace", location.workspace);
   put("type", location.type === DEFAULT_TREE.type ? null : location.type);
   put("ref_id", location.refId);
+  params.delete("gnode"); // ref_id's old name
   return params;
 }
 

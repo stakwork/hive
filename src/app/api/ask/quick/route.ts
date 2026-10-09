@@ -14,7 +14,8 @@ import {
 } from "@/lib/ai/publicChatBudget";
 import { db } from "@/lib/db";
 import { healUserChatAgentModel, loadUserChatAgentModel } from "@/lib/ai/resolve-model";
-import { resolveMessageImageUrls } from "@/lib/ai/resolveMessageImages";
+import { resolveMessageAttachments } from "@/lib/ai/resolveMessageAttachments";
+import { buildUserContent } from "@/lib/ai/attachmentParts";
 import type { MessageLike } from "@/lib/proposals/handleApproval";
 import { runProposalIntent } from "@/lib/proposals/runProposalIntent";
 import {
@@ -23,10 +24,11 @@ import {
 } from "@/lib/ai/runCanvasAgent";
 import type { DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import type { DispatchedGraphWalkIntent } from "@/lib/ai/graphWalkDispatchTools";
-import { toModelMessages } from "@/lib/ai/conversationHelpers";
+import { STOPPED_TURN_TEXT, toModelMessages } from "@/lib/ai/conversationHelpers";
 import {
   messagesFromSteps,
   appendTurnMessages,
+  removeStoppedTurn,
   fetchStoredConversationMessages,
   normalizeStoredAttachments,
   type StoredMessage,
@@ -47,6 +49,11 @@ import {
   emitProvenance,
   maybeGenerateAndPersistTitle,
 } from "@/services/canvas-turn-enrichments";
+import { isOwnStoppedTurn, isValidTurnId, registerTurn, watchTurnAbort } from "@/services/canvas-turn-abort";
+import { notifyCanvasUpdated } from "@/lib/canvas/pusher";
+import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
+import { fanOutGraphWalkToCanvas } from "@/services/canvas-graph-walk-fanout";
+import type { PartialStep } from "@/lib/ai/runCanvasAgent";
 
 // Tier-1 backend-driven canvas turns (docs/plans/backend-driven-canvas-turns.md):
 // the org-canvas turn is persisted server-side in `after()` so it survives the
@@ -94,6 +101,9 @@ export async function POST(request: NextRequest) {
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
       // and avoid an unnecessary stakgraph round-trip.
       skipEnrichments,
+      // Per-browser opt-in to the slim prompt (concept-tree mode), sent by
+      // the canvas SidebarChat when its settings switch is on.
+      slimPrompt,
       // Agent-proposal flow (see `src/lib/proposals/`). Set on the
       // user's send when they click Approve / Reject in a
       // `<ProposalCard>`. The route runs the side effect synchronously
@@ -126,6 +136,9 @@ export async function POST(request: NextRequest) {
       // The model sees them as image parts embedded in `messages`; this
       // top-level copy is what we persist so they survive reload.
       attachments,
+      // The edited resend of a turn the user stopped: that turn leaves
+      // the conversation and this one takes its place.
+      replacesTurnId,
     } = body;
 
     // Server-history mode: mobile clients send { message, conversationId, workspaceSlugs[] }
@@ -327,7 +340,10 @@ export async function POST(request: NextRequest) {
       console.log("[quick-ask] timing", { stage: "loadConversationHistory", ms: Date.now() - tHistory, messages: stored.length, workspaces: slugs, orgId: orgId ?? null });
       convertedMessages = [
         ...toModelMessages(stored),
-        { role: "user", content: body.message.trim() } as ModelMessage,
+        {
+          role: "user",
+          content: buildUserContent(body.message.trim(), normalizeStoredAttachments(attachments)),
+        } as ModelMessage,
       ];
     } else {
       // Normalize incoming messages to ModelMessage[] format
@@ -347,11 +363,11 @@ export async function POST(request: NextRequest) {
         .filter((msg: ModelMessage | null): msg is ModelMessage => msg !== null);
     }
 
-    // Rewrite relative image-attachment URLs to absolute signed S3 URLs
-    // the AI SDK can actually download (see `resolveMessageImageUrls`).
+    // Rewrite relative attachment URLs into absolute signed S3 URLs (images)
+    // and inlined contents (text files) — see `resolveMessageAttachments`.
     const tImages = Date.now();
-    await resolveMessageImageUrls(convertedMessages);
-    console.log("[quick-ask] timing", { stage: "resolveMessageImageUrls", ms: Date.now() - tImages, workspaces: slugs, orgId: orgId ?? null });
+    await resolveMessageAttachments(convertedMessages, { userId });
+    console.log("[quick-ask] timing", { stage: "resolveMessageAttachments", ms: Date.now() - tImages, workspaces: slugs, orgId: orgId ?? null });
 
     // Org-membership gating for any request that carries an orgId
     // (canvas chat, single- or multi-workspace). Validated here so
@@ -481,6 +497,15 @@ export async function POST(request: NextRequest) {
     // Persist when there's text OR an attachment — an image-only turn has
     // no text but still must be saved.
     const tPersist = Date.now();
+    // An edited resend replaces the stopped turn it came from — only the
+    // caller's own stopped turn, and only while it is still the last one.
+    if (orgId && userId && promptCache?.rowId && isValidTurnId(replacesTurnId)) {
+      const rowId = promptCache.rowId;
+      const replaced =
+        (await isOwnStoppedTurn({ turnId: replacesTurnId, userId, orgId, rowId })) &&
+        (await removeStoppedTurn({ conversationId: rowId, turnId: replacesTurnId }));
+      if (!replaced) console.warn("[quick-ask] edit-replace-refused", { turnId: turnIdStr, replacesTurnId });
+    }
     if (
       orgId &&
       userId &&
@@ -501,6 +526,47 @@ export async function POST(request: NextRequest) {
       });
     }
     console.log("[quick-ask] timing", { stage: "persistCanvasUserMessage", ms: Date.now() - tPersist, workspaces: slugs, orgId: orgId ?? null });
+
+    // ============================================================
+    // Per-turn Stop control (the composer's Stop button). Only for a
+    // persisted org-canvas turn with a valid client-minted turnId —
+    // public-viewer, non-UUID and dashboard-chat turns run as before.
+    //
+    // Registered BEFORE awaiting `runCanvasAgent`'s setup so a Stop
+    // pressed the instant the turn appears is caught by the watcher's
+    // first check. The watcher runs until the turn's reply is persisted:
+    // Stop covers the reply and its tool calls, and sub-agents the turn
+    // dispatched but hadn't started. Sub-agents that start after the
+    // reply ends run to completion.
+    // ============================================================
+    const abortController = new AbortController();
+    let turnAbortWatch: { stop: () => void } | null = null;
+    if (userId && orgId && canvasConversationRowId && isValidTurnId(turnIdStr)) {
+      try {
+        const reg = await registerTurn({
+          turnId: turnIdStr,
+          userId,
+          orgId,
+          rowId: canvasConversationRowId,
+        });
+        if (reg === "conflict") {
+          return NextResponse.json({ error: "Turn already in progress" }, { status: 409 });
+        }
+        turnAbortWatch = watchTurnAbort({
+          turnId: turnIdStr,
+          userId,
+          controller: abortController,
+        });
+      } catch {
+        // Redis unavailable or slow — continue WITHOUT Stop. The turn
+        // must never fail because the abort pipeline is down.
+        console.warn("[quick-ask] turn-abort-unavailable", { turnId: turnIdStr, op: "register" });
+      }
+    }
+    // NOTE: deliberately NOT wiring `request.signal` anywhere — closing
+    // the tab must never stop a backend-driven turn (it keeps running
+    // and saving, same as today). Only a Stop press advances the
+    // abortController above.
 
     try {
       // Mutable holder that lets the onStepFinish hook (constructed before
@@ -538,6 +604,11 @@ export async function POST(request: NextRequest) {
       // at persist time.
       let abnormalFinish: { finishReason: string; visibleChars: number } | null =
         null;
+      // Set by the `onAbort` hook when a Stop press ends the SDK call:
+      // `result.steps` rejects on an abort before any step finished, and
+      // never includes the interrupted step, so the persist after() block
+      // reads this instead.
+      let stoppedTurn: { steps: unknown[]; partialStep: PartialStep } | null = null;
 
       const tAgent = Date.now();
       // Everything the route did before handing off to the agent: auth,
@@ -570,6 +641,7 @@ export async function POST(request: NextRequest) {
           orgId: orgId || undefined,
           workspaceSlugs: slugs,
           modelName: chatAgentModel,
+          slimPrompt: slimPrompt === true,
           // Reuse cached concepts (skips the swarm `listConcepts` call)
           // when we have them for this org-canvas conversation. The prefix
           // is still rebuilt fresh each turn for an accurate scope hint.
@@ -613,6 +685,8 @@ export async function POST(request: NextRequest) {
           // Thread the client-supplied turnId so repo_agent executes can
           // register their runs for the Stop control.
           ...(turnIdStr ? { turnId: turnIdStr } : {}),
+          // Thread the turn's Stop signal through to streamText + tools.
+          abortSignal: abortController.signal,
           // The HTTP chat is a live UI surface; emit HIGHLIGHT_NODES so
           // open clients animate the researched node.
           silentPusher: false,
@@ -719,6 +793,14 @@ export async function POST(request: NextRequest) {
               });
               midStreamError = CLIENT_FACING_STREAM_ERROR;
             },
+            onAbort: async ({ steps, partialStep, usage }) => {
+              stoppedTurn = { steps, partialStep };
+              // Record the finished steps' tokens like onFinish does, so a
+              // Stop can't dodge the token budget.
+              const attributionRowId = canvasConversationRowId ?? tokenAttributionRowId;
+              if (!attributionRowId) return;
+              await recordTurnTokens({ conversationId: attributionRowId, ...usage });
+            },
           },
         });
 
@@ -787,15 +869,26 @@ export async function POST(request: NextRequest) {
         after(async () => {
           try {
             // `consumeStream()` drives generation to completion even if
-            // the client disconnected (no abort signal is wired, so the
-            // run isn't cancelled by a closed socket). Then `steps`
-            // resolves with the full tool-call trace.
+            // the client disconnected (no abort signal is wired to
+            // `request.signal`, so a closed tab never cancels generation
+            // — only a Stop press does). Then `steps` resolves with the
+            // full tool-call trace.
             await result.consumeStream();
-            const steps = await result.steps;
-            const rows = messagesFromSteps(
-              steps as Parameters<typeof messagesFromSteps>[0],
-              assistantPrefix,
-            );
+            // A Stop: `onAbort` captured the finished steps plus the
+            // interrupted one (`result.steps` rejects when no step had
+            // finished, and never includes the interrupted step).
+            const stopped = stoppedTurn;
+            const rows = stopped
+              ? messagesFromSteps(
+                  stopped.steps as Parameters<typeof messagesFromSteps>[0],
+                  assistantPrefix,
+                  undefined,
+                  stopped.partialStep,
+                )
+              : messagesFromSteps(
+                  (await result.steps) as Parameters<typeof messagesFromSteps>[0],
+                  assistantPrefix,
+                );
             // A mid-stream error resolves (not rejects) the awaits above,
             // leaving a truncated transcript. Persist a trailing error row
             // — in the SAME append, since `appendTurnMessages` is
@@ -805,7 +898,23 @@ export async function POST(request: NextRequest) {
             // producing any step: `rows` is empty, and without the error
             // row the turn would persist nothing at all.
             const errMsg: string | null = midStreamError;
-            if (errMsg !== null) {
+            if (stopped) {
+              // A stopped turn is not an error: whatever it got through,
+              // then a neutral marker (alone when nothing streamed).
+              rows.push({
+                id: `${assistantPrefix}stopped`,
+                role: "assistant",
+                content: STOPPED_TURN_TEXT,
+                timestamp: new Date().toISOString(),
+                source: { kind: "stopped" },
+              });
+              console.log("[quick-ask] turn-aborted", {
+                turnId: turnIdStr,
+                completedSteps: stopped.steps.length,
+                partialChars: stopped.partialStep.text.length,
+                interruptedToolCalls: stopped.partialStep.toolCalls.length,
+              });
+            } else if (errMsg !== null) {
               rows.push({
                 id: `${assistantPrefix}error`,
                 role: "assistant",
@@ -845,12 +954,14 @@ export async function POST(request: NextRequest) {
               rows,
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              requireRowId: `${turnIdStr}-u`,
             });
             // Nested try: an LLM throw must never fall into the persist
             // catch (that catch writes a fake assistant error row).
             // Not gated on isFirstTurn — the helper no-ops once
             // settings.titleSource === "llm", and retries if a prior
-            // after() died before the title write.
+            // after() died before the title write. A stopped first turn
+            // still gets a title.
             try {
               const assistantIsError =
                 errMsg !== null ||
@@ -858,10 +969,7 @@ export async function POST(request: NextRequest) {
                 rows.length === 0 ||
                 rows.some((r) => r.source?.kind === "error");
               const assistantText = rows
-                .filter(
-                  (r) =>
-                    r.role === "assistant" && r.source?.kind !== "error",
-                )
+                .filter((r) => r.role === "assistant" && !r.source)
                 .map((r) => (typeof r.content === "string" ? r.content : ""))
                 .join("\n");
               await maybeGenerateAndPersistTitle({
@@ -894,7 +1002,10 @@ export async function POST(request: NextRequest) {
               rows: [errorRow],
               idPrefix: assistantPrefix,
               reason: "user-turn",
+              requireRowId: `${turnIdStr}-u`,
             }).catch(() => {});
+          } finally {
+            turnAbortWatch?.stop();
           }
         });
       }
@@ -902,8 +1013,10 @@ export async function POST(request: NextRequest) {
       after(async () => {
         // Surfaces that don't render follow-ups or provenance opt out
         // of computing them. Saves a `generateObject` round-trip and
-        // a `${swarmUrl}/gitree/provenance` POST per turn.
-        if (skipEnrichments) return;
+        // a `${swarmUrl}/gitree/provenance` POST per turn. A stopped
+        // turn skips both the same way — there's no complete turn to
+        // follow up on, and provenance for a cut-off reply is noise.
+        if (skipEnrichments || abortController.signal.aborted) return;
         await emitFollowUpQuestions({
           messages,
           primarySlug,
@@ -941,25 +1054,36 @@ export async function POST(request: NextRequest) {
           // schedule whatever intents were collected before the failure.
         }
         // Positive terminal marker: every turn that ran to completion —
-        // healthy, errored, or abnormal — emits exactly one of these. A
-        // `setup-to-stream` line with NO matching `turn-complete` line
-        // means the function died mid-stream (maxDuration kill, OOM,
+        // healthy, errored, abnormal, or stopped — emits exactly one of
+        // these. A `setup-to-stream` line with NO matching `turn-complete`
+        // line means the function died mid-stream (maxDuration kill, OOM,
         // crash) — the one failure shape no callback can log, detectable
         // only by this marker's absence. `status` pre-buckets the grep:
-        // "mid-stream-error" (onError fired), "abnormal-finish" (dead /
-        // truncated / stopped-mid-action shapes), or "ok".
+        // "stopped" (the user pressed Stop), "mid-stream-error" (onError
+        // fired), "abnormal-finish" (dead / truncated / stopped-mid-action
+        // shapes), or "ok".
         console.log("[quick-ask] turn-complete", {
           ms: Date.now() - t0,
-          status: midStreamError !== null
-            ? "mid-stream-error"
-            : abnormalFinish !== null
-              ? "abnormal-finish"
-              : "ok",
+          status: stoppedTurn
+            ? "stopped"
+            : midStreamError !== null
+              ? "mid-stream-error"
+              : abnormalFinish !== null
+                ? "abnormal-finish"
+                : "ok",
           finishReason: abnormalFinish?.finishReason ?? null,
           turnId: turnIdStr,
           workspaces: slugs,
           orgId: orgId ?? null,
         });
+        // A turn stopped mid-reply never starts the sub-agents it
+        // dispatched. The SDK waits for a running tool before it ends a
+        // stopped stream, so every dispatch is in the collectors by now
+        // (pinned by the ai@7 abort-contract test).
+        if (stoppedTurn) {
+          await cancelDispatchedSubAgents(dispatchedResearch, dispatchedGraphWalks);
+          return;
+        }
         if (dispatchedResearch.length > 0) {
           const { runResearchSubAgent } = await import(
             "@/services/canvas-research-worker"
@@ -1038,6 +1162,7 @@ export async function POST(request: NextRequest) {
         headers: extraHeaders,
       });
     } catch (streamError) {
+      turnAbortWatch?.stop();
       // Preserve typed ApiError statuses (forbidden, notFound,
       // validation, etc.) from the inner pipeline. The original code
       // had `buildWorkspaceConfigs` and friends outside this inner
@@ -1102,6 +1227,51 @@ async function resolveTokenAttributionRowId(args: {
     select: { id: true },
   });
   return row?.id ?? null;
+}
+
+/**
+ * Settle the sub-agents a stopped turn dispatched but never started. Each
+ * card gets a "cancelled" row through the same fan-out a finished or
+ * failed run uses, and the still-empty Research row is deleted so its
+ * canvas node doesn't sit on "researching". Ids come from the server-side
+ * collectors only, never from the client.
+ */
+async function cancelDispatchedSubAgents(
+  research: DispatchedResearchIntent[],
+  graphWalks: DispatchedGraphWalkIntent[],
+): Promise<void> {
+  for (const intent of research) {
+    await fanOutResearchToCanvas(intent.conversationId, {
+      researchId: intent.researchId,
+      slug: intent.slug,
+      topic: intent.topic,
+      title: intent.title,
+      summary: intent.summary,
+      status: "cancelled",
+      initiativeId: intent.initiativeId,
+    });
+    try {
+      await db.research.deleteMany({
+        where: { id: intent.researchId, orgId: intent.orgId, content: null },
+      });
+      await notifyCanvasUpdated(
+        intent.orgId,
+        intent.initiativeId ? `initiative:${intent.initiativeId}` : "",
+        "research-deleted",
+        { slug: intent.slug, researchId: intent.researchId },
+      );
+    } catch (err) {
+      console.error("[quick-ask] cancelled research cleanup failed (non-fatal):", err);
+    }
+  }
+  for (const intent of graphWalks) {
+    await fanOutGraphWalkToCanvas(intent.conversationId, {
+      graphWalkId: intent.graphWalkId,
+      title: intent.title,
+      answer: "",
+      status: "cancelled",
+    });
+  }
 }
 
 

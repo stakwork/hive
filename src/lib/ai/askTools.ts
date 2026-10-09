@@ -111,6 +111,34 @@ async function initiateRun(
   return requestId;
 }
 
+/** Wait `ms`, or less if `signal` fires first. */
+function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
+/** Ask stakgraph to stop a run. Best-effort: logs a failure, never throws. */
+async function abortRepoAgentRun(swarmUrl: string, swarmApiKey: string, requestId: string): Promise<void> {
+  try {
+    const res = await fetch(`${swarmUrl}/repo/agent/abort`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-token": swarmApiKey },
+      body: JSON.stringify({ request_id: requestId }),
+    });
+    console.log(`[repoAgent] stakgraph abort HTTP status: ${res.status} requestId: ${requestId}`);
+  } catch (err) {
+    console.warn(`[repoAgent] stakgraph abort failed requestId: ${requestId}:`, String(err));
+  }
+}
+
 /**
  * Dispatch-only variant of `repoAgent`: initiate the run on the swarm and
  * return its request_id WITHOUT polling for the result.
@@ -225,8 +253,18 @@ export async function repoAgent(
      * DB-free: callers supply this via a closure.
      */
     isAbortRequested?: () => Promise<boolean>;
+    /**
+     * The turn's Stop signal (the composer's Stop button). When it fires,
+     * the run is told to stop on stakgraph and the cancelled marker is
+     * returned straight away — no grace window: the SDK discards an
+     * aborted step's tool results, so there is nothing to wait for.
+     */
+    abortSignal?: AbortSignal;
   },
 ): Promise<Record<string, string> | RepoCancelledMarker> {
+  const abortSignal = hooks?.abortSignal;
+  if (abortSignal?.aborted) return REPO_AGENT_CANCELLED_MARKER;
+
   const body: Record<string, unknown> = { ...params };
   if (bifrost) {
     body.apiKey = bifrost.apiKey;
@@ -249,7 +287,11 @@ export async function repoAgent(
   let abortGraceCyclesRemaining = -1; // -1 = not yet in grace window
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    await sleepUnlessAborted(pollInterval, abortSignal);
+    if (abortSignal?.aborted) {
+      await abortRepoAgentRun(swarmUrl, swarmApiKey, requestId);
+      return REPO_AGENT_CANCELLED_MARKER;
+    }
 
     // Check for user-requested cancellation (lock-free read supplied by caller).
     const abortRequested = hooks?.isAbortRequested ? await hooks.isAbortRequested() : false;
@@ -351,6 +393,11 @@ export interface AskToolsContext {
    * the model treating the cancellation as a tool failure and retrying.
    */
   cancellation?: { requested: boolean };
+  /**
+   * The turn's Stop signal (see `RunCanvasAgentOptions.abortSignal`). When
+   * it fires, a running repo_agent tells stakgraph to stop and returns.
+   */
+  abortSignal?: AbortSignal;
 }
 
 // `apiKey` is retained for call-signature compatibility; it was only used to
@@ -509,9 +556,12 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
                   },
                   isAbortRequested: async () =>
                     isAbortRequestedForRun(convId, activeRequestId ?? ""),
+                  abortSignal: context?.abortSignal,
                 };
               })()
-            : undefined;
+            : context?.abortSignal
+              ? { abortSignal: context.abortSignal }
+              : undefined;
 
           // Pass comma-separated repo URLs for multi-repo support
           const rr = await repoAgent(
@@ -617,7 +667,7 @@ Example queries:
     const swarmHost = new URL(swarmUrl).hostname;
     const jarvisBase = `https://${swarmHost}:8444`;
     stakworkSearchWorkflowsTool = tool({
-      description: "Search Stakwork for workflows by keyword. Returns [{ id, workflow_id, name, description, published_version_id }].",
+      description: "Search Stakwork for workflows by keyword — ONLY when the user explicitly asks about Stakwork workflows; a bare 'workflow' means a strut workflow (dispatch_strut), not this. Returns [{ id, workflow_id, name, description, published_version_id }].",
       inputSchema: z.object({
         query: z.string().describe("Workflow search term"),
       }),

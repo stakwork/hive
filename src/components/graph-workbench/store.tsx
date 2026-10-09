@@ -110,8 +110,10 @@ export function WorkbenchProvider({
     if (!graph || !kind) return;
     const [preferred, ...others] = deepLinks.current;
     const found = preferred ? findNode(graph, preferred) : null;
+    // A node a proposal would create is always in the graph, and is where the canvas lands rather than on its parent.
+    const pendingNew = pending.focus && graph.nodes[pending.focus]?.proposed === "new" ? pending.focus : null;
     // The node a deep link prefers may only be in the read still in flight (a concept an approval just made): wait for it.
-    if (preferred && !found && isFetching) return;
+    if (preferred && !found && isFetching && !pendingNew) return;
     const linked = found ?? others.map((ref) => findNode(graph, ref)).find(Boolean) ?? null;
     land.current = null;
     const biggest = roots[0]?.node.id ?? null;
@@ -120,8 +122,8 @@ export function WorkbenchProvider({
       if (biggest) focusNode(biggest);
       return;
     }
-    // Land on the deep-linked node (by ref_id, own id or name), else what a proposal changes, else the biggest tree.
-    const start = linked ?? pending.focus ?? biggest ?? Object.keys(graph.nodes)[0] ?? null;
+    // Land on the node a proposal would create, else the deep-linked node (by ref_id, own id or name), else what a proposal changes, else the biggest tree.
+    const start = pendingNew ?? linked ?? pending.focus ?? biggest ?? Object.keys(graph.nodes)[0] ?? null;
     deepLinks.current = [];
     setCanvasMode("tree");
     if (start) focusNode(start);

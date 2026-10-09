@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useSearchParams } from "next/navigation";
-import { Share2 } from "lucide-react";
+import { Network } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { PageHeader } from "@/components/ui/page-header";
@@ -24,7 +24,7 @@ export default function GraphExplorerPage() {
   if (!canRead) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8">
-        <Share2 className="h-12 w-12 text-muted-foreground mb-4" />
+        <Network className="h-12 w-12 text-muted-foreground mb-4" />
         <h2 className="text-xl font-semibold text-foreground mb-2">Access Denied</h2>
         <p className="text-muted-foreground max-w-sm">
           The Graph Explorer is only available to members of this workspace.
@@ -38,7 +38,7 @@ export default function GraphExplorerPage() {
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        icon={Share2}
+        icon={Network}
         title="Graph Explorer"
         description="Run read-only Cypher queries against the workspace graph database."
       />

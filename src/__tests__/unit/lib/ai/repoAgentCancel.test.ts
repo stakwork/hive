@@ -77,6 +77,35 @@ describe("repoAgent — cancellation logic", () => {
     }
   }
 
+  // ─── The turn's Stop signal (the composer's Stop button) ──────────────────
+
+  it("on Stop, tells stakgraph to abort the run and returns at once, without polling", async () => {
+    mockInitiate("req-9");
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200 }); // the abort
+    const controller = new AbortController();
+
+    const p = repoAgent(SWARM_URL, API_KEY, PARAMS, undefined, { abortSignal: controller.signal });
+    await vi.advanceTimersByTimeAsync(1000);
+    controller.abort();
+    const result = await p;
+
+    expect(result).toBe(REPO_AGENT_CANCELLED_MARKER);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [abortUrl, abortInit] = fetchMock.mock.calls[1];
+    expect(abortUrl).toBe(`${SWARM_URL}/repo/agent/abort`);
+    expect(JSON.parse(abortInit.body)).toEqual({ request_id: "req-9" });
+  });
+
+  it("starts no run when the turn was already stopped", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    expect(await repoAgent(SWARM_URL, API_KEY, PARAMS, undefined, { abortSignal: controller.signal })).toBe(
+      REPO_AGENT_CANCELLED_MARKER,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   // ─── Non-aborted paths (must be identical to pre-feature behavior) ────────
 
   it("returns result on completed (non-aborted path)", async () => {

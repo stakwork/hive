@@ -87,6 +87,7 @@ import {
 import { getProviderOptions, hasApiKeyForProvider, PROVIDERS } from "aieo";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
+import { isBifrostEnabledForAgent, isBifrostEnabledForWorkspace } from "@/config/env";
 import {
   startCanvasSessionIngest,
   type CanvasSessionIngest,
@@ -273,6 +274,27 @@ export interface CanvasAgentHooks {
    * truncated transcript). Must not throw; exceptions are swallowed.
    */
   onError?: (args: { error: unknown; message: string }) => void;
+  /**
+   * Called when the user's Stop press aborts the SDK's `streamText` call
+   * (via `opts.abortSignal`), INSTEAD of `onFinish`/`onError`. Receives
+   * the steps that completed before the abort, the interrupted step as
+   * far as it got (`partialStep` — the SDK leaves it out of `steps`; its
+   * tool calls carry a result only if one streamed before the abort), and
+   * the completed steps' summed usage (the SDK reports none for the
+   * interrupted step). Must not throw; exceptions are swallowed.
+   */
+  onAbort?: (args: {
+    steps: unknown[];
+    partialStep: PartialStep;
+    usage: { inputTokens: number; outputTokens: number };
+  }) => void | Promise<void>;
+}
+
+/** The step a Stop interrupted, rebuilt from its streamed chunks. */
+export interface PartialStep {
+  text: string;
+  toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>;
+  toolResults: Array<{ toolCallId: string; output: unknown }>;
 }
 
 /**
@@ -335,6 +357,13 @@ export interface RunCanvasAgentOptions {
    * does omitting this entirely.
    */
   modelName?: string;
+  /**
+   * Opt in to the slim prompt (concept-tree mode): slim core snippets and
+   * the FORM rule on `send_to_feature_planner`. Sent by the canvas
+   * SidebarChat when its settings switch is on; omitted → full prompt
+   * (including every server-side caller, e.g. planner wake turns).
+   */
+  slimPrompt?: boolean;
   /**
    * Cached concepts from a previous turn of the SAME conversation. When
    * provided, we SKIP the slow per-workspace `listConcepts` swarm
@@ -480,6 +509,14 @@ export interface RunCanvasAgentOptions {
    * (which falls back to `localhost:3000` with no request context).
    */
   publicBaseUrl?: string;
+  /**
+   * The user's Stop signal for this turn. Forwarded to `streamText`, and
+   * into `AskToolsContext` so a running repo_agent tells stakgraph to stop
+   * and returns at once. Other tools read it off the SDK's own
+   * `options.abortSignal` on `execute`. Absent → the turn has no Stop
+   * control (auto-turns, sub-agent workers).
+   */
+  abortSignal?: AbortSignal;
 }
 
 export interface RunCanvasAgentResult {
@@ -720,8 +757,10 @@ export async function runCanvasAgent(
     prepareStep,
     extraStopConditions,
     modelName,
+    slimPrompt = false,
     userTimezone,
     publicBaseUrl,
+    abortSignal,
   } = opts;
 
   // When cached concepts are supplied we skip the slow per-workspace
@@ -813,6 +852,48 @@ export async function runCanvasAgent(
     string,
     { prompt_id: string; prompt_version_id: string | null }
   > = {};
+  // `agentName` splits on `orgId` so operators can attribute Bifrost
+  // spend to the user-facing surface:
+  //   - `"canvas-agent"` — org canvas SidebarChat (orgId present;
+  //     canvas / initiative / research / connection tools merged in;
+  //     proposal flows; typically deeper agentic loops).
+  //   - `"chat-agent"` — workspace dashboard chat (no orgId; per-
+  //     workspace ask tools only; typically read-only Q&A).
+  // Same loop, same prompt assembly, but different cost profiles —
+  // mirrors the `repo-agent` vs `diagram-agent` convention of naming
+  // by user-facing purpose, not by underlying function. Derived here,
+  // ahead of the `getBifrostForLLM` call further down, because the
+  // web-tool handles below need the same rollout gates.
+  const agentName = orgId ? "canvas-agent" : "chat-agent";
+
+  // Anthropic's native `web_search` / `web_fetch` are *server tools*,
+  // and the Bifrost gateway is not a passthrough for them: it normalizes
+  // the request into its own Responses schema (which carries no tool
+  // version) and re-derives the version from the model name on the way
+  // out — `web_search_20250305` leaves as `web_search_20260209`, and
+  // `web_fetch_20250910` as a 2026 variant, on 4.6+ / Sonnet 5 / Opus
+  // 5.5. Those versions run on a code-execution container, so the model
+  // is handed a `code_execution` sandbox we never declared: the AI SDK
+  // rejects the call, Bifrost re-encodes the failed result with
+  // mismatched block types, and Anthropic 400s the next step — the turn
+  // dies with no visible text. So when this call will ride Bifrost,
+  // pin both tools to aieo's shims (Exa for search, guarded HTTP for
+  // fetch) instead of the native ones. Same gates the orchestrator
+  // applies, evaluated here because the handles must exist before the
+  // tool branches; if the VK mint later fails and the call goes direct,
+  // the shims still work. Off-Anthropic providers already get the
+  // shims, so `backend` is left to aieo's per-provider default there.
+  const ridesBifrost =
+    !isPublicViewer &&
+    isBifrostEnabledForWorkspace(primarySlug) &&
+    isBifrostEnabledForAgent(agentName);
+  const shimWebTools = provider === "anthropic" && ridesBifrost;
+  if (shimWebTools) {
+    console.log(
+      "[runCanvasAgent] bifrost-routed run: web_search -> exa shim, web_fetch -> http shim (the gateway re-versions Anthropic server tools)",
+      { workspaces: workspaceSlugs, orgId: orgId ?? null },
+    );
+  }
   // Per-run web_search handle. Owns the tool itself (native on
   // Anthropic, Exa-backed shim elsewhere), the ordered result list
   // `update_research` cites into, and the citation treatment applied to
@@ -822,11 +903,16 @@ export async function runCanvasAgent(
     provider,
     apiKey,
     citations: !!opts.webSearchCitations,
+    ...(shimWebTools ? { backend: "exa" as const } : {}),
   });
   // Per-run web_fetch handle, same two-flow shape as the search handle:
   // native on Anthropic, guarded HTTP shim elsewhere. `results` lists
   // every page fetched during the run, in order.
-  const webFetch = createWebFetch({ provider, apiKey });
+  const webFetch = createWebFetch({
+    provider,
+    apiKey,
+    ...(shimWebTools ? { backend: "http" as const } : {}),
+  });
 
   // Turn-level cancellation flag, shared with the repo_agent tool
   // executes (via AskToolsContext). When the user stops a run, the
@@ -842,7 +928,7 @@ export async function runCanvasAgent(
   // The prompt suffix is the matching snippet concatenation.
   const orgCapabilities = await resolveOrgCapabilities(capabilities, orgId);
   const orgPromptSuffix = orgId
-    ? composeCapabilityPromptSuffix(orgCapabilities)
+    ? composeCapabilityPromptSuffix(orgCapabilities, { slimPrompt })
     : undefined;
   // `graph_walker` is core (read tools always composed), so its four
   // graph-write propose tools cannot ride an `orgGate` on the capability
@@ -906,6 +992,7 @@ export async function runCanvasAgent(
       conversationId: currentCanvasConversationId,
       turnId,
       cancellation,
+      abortSignal,
     });
 
     if (orgId) {
@@ -920,6 +1007,7 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
+          slimPrompt,
           webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
@@ -1028,6 +1116,7 @@ export async function runCanvasAgent(
       conversationId: currentCanvasConversationId,
       turnId: opts.turnId,
       cancellation,
+      abortSignal,
     });
 
     // Best-effort: a swarm timeout/outage here must NOT kill the whole
@@ -1081,6 +1170,7 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
+          slimPrompt,
           webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
@@ -1268,17 +1358,9 @@ export async function runCanvasAgent(
   // orchestrator returns `undefined` and `getModel` falls back to the
   // default key path (behavior unchanged from pre-Bifrost).
   //
-  // `agentName` splits on `orgId` so operators can attribute spend to
-  // the user-facing surface:
-  //   - `"canvas-agent"` — org canvas SidebarChat (orgId present;
-  //     canvas / initiative / research / connection tools merged in;
-  //     proposal flows; typically deeper agentic loops).
-  //   - `"chat-agent"` — workspace dashboard chat (no orgId; per-
-  //     workspace ask tools only; typically read-only Q&A).
-  // Same loop, same prompt assembly, but different cost profiles —
-  // mirrors the `repo-agent` vs `diagram-agent` convention of naming
-  // by user-facing purpose, not by underlying function.
-  const agentName = orgId ? "canvas-agent" : "chat-agent";
+  // `agentName` is derived above, next to the web-tool handles (which
+  // consult the same rollout gates to decide between Anthropic's native
+  // server tools and aieo's shims).
 
   // Honor the caller's model preference when it targets the resolved
   // provider (which was itself derived from the same prefix, so any
@@ -1390,6 +1472,12 @@ export async function runCanvasAgent(
     console.warn("[runCanvasAgent] session ingest setup failed", err);
   }
 
+  // The in-progress step, rebuilt from its chunks and reset whenever a
+  // step finishes. The SDK leaves an aborted step out of `onAbort`'s
+  // `steps`, so this is the only record of what it streamed — its text,
+  // and tool calls that may already have taken effect.
+  let partialStep: PartialStep = { text: "", toolCalls: [], toolResults: [] };
+
   // ------------------------------------------------------------------
   // Kick off the agentic loop
   // ------------------------------------------------------------------
@@ -1405,6 +1493,7 @@ export async function runCanvasAgent(
     // `demoteCallerSystemMessages`, so this does not widen injection
     // surface.
     allowSystemInMessages: true,
+    ...(abortSignal ? { abortSignal } : {}),
     providerOptions,
     // The SDK default (2 retries, quick backoff) is easily exhausted by a
     // transient network flake (e.g. ECONNRESET to the provider) or a
@@ -1449,6 +1538,7 @@ export async function runCanvasAgent(
     },
     onStepFinish: async (sf) => {
       logStep(sf.content);
+      partialStep = { text: "", toolCalls: [], toolResults: [] };
       // Internal bookkeeping is SYNCHRONOUS and non-awaiting on
       // Pusher — matches pre-extraction behavior where the original
       // route's `onStepFinish` was a sync arrow function. We do NOT
@@ -1495,6 +1585,13 @@ export async function runCanvasAgent(
           console.log("[runCanvasAgent] timing", { stage: "tool-round-trip", tool: chunk.toolName, ms: Date.now() - callTs, workspaces: workspaceSlugs, orgId: orgId ?? null });
         }
       }
+      if (chunk.type === "text-delta") {
+        partialStep.text += chunk.text;
+      } else if (chunk.type === "tool-call") {
+        partialStep.toolCalls.push({ toolCallId: chunk.toolCallId, toolName: chunk.toolName, input: chunk.input });
+      } else if (chunk.type === "tool-result") {
+        partialStep.toolResults.push({ toolCallId: chunk.toolCallId, output: chunk.output });
+      }
       // TTFT: fire once on first text-delta only (not tool-call/reasoning chunks).
       if (!firstTokenLogged && chunk.type === "text-delta") {
         firstTokenLogged = true;
@@ -1502,6 +1599,9 @@ export async function runCanvasAgent(
       }
     },
     onFinish: async ({ usage, finishReason, text, steps }) => {
+      // On a Stop after at least one finished step the SDK fires onFinish
+      // too, after onAbort — which has already closed out the turn.
+      if (abortSignal?.aborted) return;
       console.log("[runCanvasAgent] timing", { stage: "streaming-duration-total", ms: Date.now() - streamStart, model: resolvedModelId, workspaces: workspaceSlugs, orgId: orgId ?? null });
       // Abnormal-finish detection. A turn can end "successfully" (no
       // onError) while the user sees nothing: text across every step is
@@ -1603,6 +1703,28 @@ export async function runCanvasAgent(
         hooks?.onError?.({ error: err, message });
       } catch {
         // swallowed by contract (see CanvasAgentHooks.onError)
+      }
+    },
+    // Fires when `abortSignal` aborts (the user pressed Stop), after any
+    // tool still executing has returned. `steps` holds only the steps
+    // that finished; the interrupted one is `partialStep`. The SDK
+    // reports no usage for the interrupted step, so it isn't counted.
+    onAbort: async ({ steps }) => {
+      const usage = { inputTokens: 0, outputTokens: 0 };
+      for (const s of steps) {
+        usage.inputTokens += s.usage.inputTokens ?? 0;
+        usage.outputTokens += s.usage.outputTokens ?? 0;
+      }
+      sessionIngest?.end({
+        status: "aborted",
+        ...(resolvedModelId && resolvedModelId !== "unknown" ? { model: resolvedModelId } : {}),
+        usage,
+      });
+      void externalMcpCleanup?.();
+      try {
+        await hooks?.onAbort?.({ steps, partialStep, usage });
+      } catch {
+        // swallowed by contract, mirrors onError
       }
     },
   });

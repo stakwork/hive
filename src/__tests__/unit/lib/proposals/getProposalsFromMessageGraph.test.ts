@@ -1,7 +1,8 @@
 /**
- * Unit tests for `getProposalsFromMessage` — specifically the four new
- * graph-write proposal kinds (propose_create_node, propose_node_edit,
- * propose_create_triplet, propose_create_batch_triplet).
+ * Unit tests for `getProposalsFromMessage` — specifically the graph-write
+ * proposal kinds (propose_create_node, propose_node_edit,
+ * propose_create_triplet, propose_create_batch_triplet, propose_delete_edge,
+ * propose_move_node, propose_delete_node).
  *
  * Prior to this ticket these tool names were absent from the allowlist,
  * so every graph-write tool call was silently dropped; these tests lock
@@ -226,6 +227,51 @@ describe("getProposalsFromMessage — graph-write tool names", () => {
     expect(kinds).toContain("graphNodeEdit");
     expect(kinds).toContain("graphTripletCreate");
     expect(kinds).toContain("graphBatchTripletCreate");
+  });
+
+  it("returns a propose_delete_edge output", () => {
+    const output = {
+      kind: "graphEdgeDelete",
+      proposalId: "p5",
+      payload: { ...BASE_PAYLOAD, edge_type: "PARENT_OF", source_ref_id: "s", target_ref_id: "t" },
+      meta: { workspaceSlug: "my-ws", edge_ref_id: "e-1" },
+    };
+    const proposals = getProposalsFromMessage(
+      makeMessage([{ id: "tc-5", toolName: "propose_delete_edge", output }]),
+    );
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].kind).toBe("graphEdgeDelete");
+    expect(proposals[0].proposalId).toBe("p5");
+  });
+
+  it("returns a propose_move_node output", () => {
+    const output = {
+      kind: "graphNodeMove",
+      proposalId: "p6",
+      payload: { ...BASE_PAYLOAD, ref_id: "n", edge_type: "PARENT_OF", from_ref_id: "a", to_ref_id: "b" },
+      meta: { workspaceSlug: "my-ws", node_name: "Node" },
+    };
+    const proposals = getProposalsFromMessage(
+      makeMessage([{ id: "tc-6", toolName: "propose_move_node", output }]),
+    );
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].kind).toBe("graphNodeMove");
+    expect(proposals[0].proposalId).toBe("p6");
+  });
+
+  it("returns a propose_delete_node output", () => {
+    const output = {
+      kind: "graphNodeDelete",
+      proposalId: "p7",
+      payload: { ...BASE_PAYLOAD, ref_id: "n" },
+      meta: { workspaceSlug: "my-ws", node_name: "Node", edges: [] },
+    };
+    const proposals = getProposalsFromMessage(
+      makeMessage([{ id: "tc-7", toolName: "propose_delete_node", output }]),
+    );
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].kind).toBe("graphNodeDelete");
+    expect(proposals[0].proposalId).toBe("p7");
   });
 
   it("skips tool calls with error outputs", () => {

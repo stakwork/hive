@@ -9,8 +9,7 @@ import { usePusherChannel } from "@/hooks/usePusherChannel";
 /**
  * Right-panel viewer for a Research node.
  *
- * Mirrors `ConnectionViewer` in spirit (header + scrollable body) but
- * is intentionally simpler: a Research doc is a single markdown
+ * Header + scrollable body, intentionally simple: a Research doc is a single markdown
  * blob, not a structured set of sections. The on-canvas card label
  * (the user's `topic`) is shown as a small kicker above the polished
  * `title`; the `summary` sits between title and the markdown body.
@@ -129,8 +128,7 @@ export function ResearchViewer({
       )}
 
       {/* Body: markdown when ready, spinner placeholder while
-          researching. Same visual language as ConnectionViewer's
-          per-section pending spinners. */}
+          researching. Same visual language as other pending spinners. */}
       <div className="border-t pt-4">
         {isResearching ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

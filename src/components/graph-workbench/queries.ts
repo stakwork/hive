@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import type { WorkspaceRole } from "@/lib/auth/roles";
 import type { ConnectionItem, ConnectionPageArgs, Hierarchy, NodeConnections } from "@/services/graph/workbench";
 import type { GraphNodeTypesResponse, GraphSearchHit, GraphSearchResponse } from "@/types/graph-node";
 
@@ -73,14 +74,25 @@ export const nodeSearchQuery = (slug: string, type: string, q: string, limit: nu
     },
   });
 
+/** The caller's role in the workspace: only developers and up may edit its graph. */
+export const workspaceRoleQuery = (slug: string) =>
+  queryOptions({
+    queryKey: ["workspace-role", slug],
+    queryFn: async () =>
+      (await getJson<{ workspace: { userRole: WorkspaceRole } }>(`/api/workspaces/${encodeURIComponent(slug)}`))
+        .workspace.userRole,
+    // Roles change rarely; don't re-read it for every node opened.
+    staleTime: Infinity,
+  });
+
 /**
- * Save a concept's docs through the Learn page's endpoint. `key` is the
- * concept's own `id`, not its ref_id: the swarm writes `docs` on the Concept
- * matching that `id`, and matches nothing by ref_id.
+ * Save a Concept's docs straight to the graph, addressed by its `ref_id`. This
+ * works for any Concept, including ones without a gitree `id` (the Learn
+ * page's endpoint is keyed by that slug, and the swarm matches nothing by ref_id).
  */
-export const saveConceptDocs = (slug: string, key: string, documentation: string) =>
-  getJson(`/api/learnings/concepts/${encodeURIComponent(key)}/documentation`, {
+export const saveConceptDocs = (slug: string, refId: string, documentation: string) =>
+  getJson(`${graphApi(slug)}/node/${encodeURIComponent(refId)}/docs`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ documentation, workspace: slug }),
+    body: JSON.stringify({ docs: documentation }),
   });

@@ -4,12 +4,24 @@
  *
  * The row stores the workflow's `output` verbatim. Everything here reads it
  * field by field, so an output of another shape (an older workflow version)
- * degrades to nulls instead of throwing.
+ * degrades to nulls instead of throwing. The headline is read two ways: the
+ * task-neutral `metric` + `score` the workflow reports since it took on the
+ * summarization task, else the diagnosis-only `weighted_problem_list_f1_neutral`
+ * every run before that reported.
  */
 
 import type { StrutRunStatus } from "@prisma/client";
-import { isOpenHealthDifficulty, OPENHEALTH_DIFFICULTIES } from "./constants";
+import {
+  defaultOpenHealthVariant,
+  isOpenHealthDifficulty,
+  isOpenHealthTask,
+  isOpenHealthVariant,
+  OPENHEALTH_DEFAULT_TASK,
+  OPENHEALTH_DIFFICULTIES,
+} from "./constants";
+import { contestsOf, rejectedContestsOf } from "./contests";
 import type {
+  OpenHealthBenchmarkTask,
   OpenHealthClimb,
   OpenHealthDifficulty,
   OpenHealthIngestedSection,
@@ -17,6 +29,8 @@ import type {
   OpenHealthRun,
   OpenHealthRunDetail,
   OpenHealthScores,
+  OpenHealthTask,
+  OpenHealthVariant,
 } from "@/types/openhealth";
 
 export interface OpenHealthRunSource {
@@ -31,8 +45,11 @@ export interface OpenHealthRunSource {
   settledAt: Date | null;
 }
 
-/** Difficulty of a task the run's output does not name (a failed run has no output). */
-export type DifficultyLookup = (gtId: number) => OpenHealthDifficulty | null;
+/** What the catalogue knows of a task that a run's output may not say: its difficulty, benchmark and specialty. */
+export type OpenHealthCatalogueEntry = Pick<OpenHealthTask, "difficulty" | "task" | "variant" | "specialty">;
+
+/** A task's catalogue entry by `gtId`; null for a task the catalogue has not been read for. */
+export type OpenHealthCatalogueLookup = (gtId: number) => OpenHealthCatalogueEntry | null;
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -42,18 +59,95 @@ const num = (value: unknown): number | null => (typeof value === "number" && Num
 const str = (value: unknown): string | null => (typeof value === "string" && value ? value : null);
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+/** An object's finite numbers, by key; anything else dropped. */
+const numbers = (value: unknown): Record<string, number> =>
+  Object.fromEntries(Object.entries(record(value)).filter((e): e is [string, number] => num(e[1]) !== null));
+
+// ─── The headline ────────────────────────────────────────────────────────
+
+/** The score a run is judged by, and what it is. */
+export interface OpenHealthHeadline {
+  metric: string;
+  score: number;
+  recall: number | null;
+  precision: number | null;
+}
+
+/**
+ * The headline of a run's output (or of the benchmark subflow's, inside a
+ * climb): `metric` + `score` when the workflow reports them, else the
+ * diagnosis key alone. Recall and precision are the diagnosis numbers, or
+ * for a specialty summary the critical-finding recall and 1 − leakage its
+ * conditioned F1 is made of; a whole-patient summary, scored by recall
+ * alone, has neither beside its score.
+ */
+export function headlineOf(output: Record<string, unknown>): OpenHealthHeadline | null {
+  const score = num(output.score) ?? num(output.weighted_problem_list_f1_neutral);
+  if (score === null) return null;
+  const metric = str(output.metric) ?? "weighted_problem_list_f1_neutral";
+  const metrics = numbers(output.metrics);
+  return {
+    metric,
+    score,
+    recall:
+      num(output.problem_list_recall) ??
+      (metric === "conditioned_f1" ? (metrics.primary_recall_critical ?? null) : null),
+    precision:
+      num(output.problem_list_precision_neutral) ??
+      (metric === "conditioned_f1" && metrics.leakage_rate !== undefined ? 1 - metrics.leakage_rate : null),
+  };
+}
 
 function scoresOf(output: Record<string, unknown>): OpenHealthScores | null {
-  const f1 = num(output.weighted_problem_list_f1_neutral);
-  if (f1 === null) return null;
+  const headline = headlineOf(output);
+  if (!headline) return null;
+  const found = Array.isArray(output.found) ? strings(output.found) : null;
+  const missed = strings(output.missed);
   return {
-    f1,
-    recall: num(output.problem_list_recall),
-    precision: num(output.problem_list_precision_neutral),
+    f1: headline.score,
+    metric: headline.metric,
+    official: num(output.scoreOfficial),
+    contested: contestsOf(output.contested).length,
+    recall: headline.recall,
+    precision: headline.precision,
     tier: str(output.tier),
-    nMatched: num(output.n_matched),
-    nGt: num(output.n_gt),
+    nMatched: num(output.n_matched) ?? (found ? found.length : null),
+    nGt: num(output.n_gt) ?? (found ? found.length + missed.length : null),
     nPred: num(output.n_pred),
+  };
+}
+
+// ─── The benchmark ───────────────────────────────────────────────────────
+
+export interface OpenHealthRowBenchmark {
+  task: OpenHealthBenchmarkTask;
+  variant: OpenHealthVariant | null;
+  specialty: string | null;
+}
+
+/**
+ * Which benchmark a row is: what its output says, else what it was launched
+ * with, else what the catalogue knows of its task; a row that says nothing
+ * (one from before the page had a second benchmark) is a diagnosis.
+ */
+export function benchmarkOfRow(
+  input: Record<string, unknown>,
+  output: Record<string, unknown>,
+  entry: OpenHealthCatalogueEntry | null,
+): OpenHealthRowBenchmark {
+  const task = isOpenHealthTask(output.task)
+    ? output.task
+    : isOpenHealthTask(input.task)
+      ? input.task
+      : (entry?.task ?? OPENHEALTH_DEFAULT_TASK);
+  if (task !== "context_summarization") return { task, variant: null, specialty: null };
+  const variant = isOpenHealthVariant(output.variant)
+    ? output.variant
+    : (entry?.variant ?? defaultOpenHealthVariant(task));
+  return {
+    task,
+    variant,
+    specialty: variant === "specialty_conditioned" ? (str(output.specialty) ?? entry?.specialty ?? null) : null,
   };
 }
 
@@ -98,11 +192,12 @@ export function outcomeOf(status: StrutRunStatus, output: unknown): OpenHealthOu
   return gradeErrorOf(status, record(output)) ? "failed" : "succeeded";
 }
 
-export function toOpenHealthRun(row: OpenHealthRunSource, difficultyFor?: DifficultyLookup): OpenHealthRun {
+export function toOpenHealthRun(row: OpenHealthRunSource, catalogue?: OpenHealthCatalogueLookup): OpenHealthRun {
   const input = record(row.input);
   const output = record(row.output);
   const outcome = outcomeOf(row.status, output);
   const gtId = num(input.gtId) ?? num(output.gtId);
+  const entry = gtId !== null ? (catalogue?.(gtId) ?? null) : null;
   return {
     id: row.id,
     strutRunId: row.strutRunId,
@@ -110,11 +205,8 @@ export function toOpenHealthRun(row: OpenHealthRunSource, difficultyFor?: Diffic
     outcome,
     gtId,
     patientId: num(output.patientId),
-    difficulty: isOpenHealthDifficulty(output.difficulty)
-      ? output.difficulty
-      : gtId !== null
-        ? (difficultyFor?.(gtId) ?? null)
-        : null,
+    difficulty: isOpenHealthDifficulty(output.difficulty) ? output.difficulty : (entry?.difficulty ?? null),
+    ...benchmarkOfRow(input, output, entry),
     scores: outcome === "succeeded" ? scoresOf(output) : null,
     costUsd: openHealthRunCost(output),
     durationMs: row.durationMs,
@@ -124,13 +216,17 @@ export function toOpenHealthRun(row: OpenHealthRunSource, difficultyFor?: Diffic
   };
 }
 
-export function toOpenHealthRunDetail(row: OpenHealthRunSource, difficultyFor?: DifficultyLookup): OpenHealthRunDetail {
+export function toOpenHealthRunDetail(
+  row: OpenHealthRunSource,
+  catalogue?: OpenHealthCatalogueLookup,
+): OpenHealthRunDetail {
   const output = record(row.output);
   const hasOutput = Object.keys(output).length > 0;
   return {
-    ...toOpenHealthRun(row, difficultyFor),
+    ...toOpenHealthRun(row, catalogue),
     title: str(output.title),
     namespace: str(output.namespace),
+    clinicalQuestion: str(output.clinicalQuestion),
     matched: Array.isArray(output.matched)
       ? output.matched.map(record).flatMap((m) => {
           const pred = str(m.pred);
@@ -140,6 +236,10 @@ export function toOpenHealthRunDetail(row: OpenHealthRunSource, difficultyFor?: 
       : [],
     missed: strings(output.missed),
     extra: strings(output.extra),
+    found: strings(output.found),
+    summaryWords: num(output.summaryWords),
+    criticalCount: num(output.criticalCount),
+    metrics: numbers(output.metrics),
     chart: hasOutput
       ? {
           chartChars: num(output.chartChars),
@@ -151,6 +251,8 @@ export function toOpenHealthRunDetail(row: OpenHealthRunSource, difficultyFor?: 
         }
       : null,
     ingested: ingestedOf(output),
+    contested: contestsOf(output.contested),
+    contestsRejected: rejectedContestsOf(output.contestsNotAccepted),
     produceCost: num(output.produceCost),
     produceSteps: num(output.produceSteps),
     spreadsheetUrl: /^https:\/\//.test(str(output.spreadsheetUrl) ?? "") ? str(output.spreadsheetUrl) : null,
@@ -161,7 +263,11 @@ export function toOpenHealthRunDetail(row: OpenHealthRunSource, difficultyFor?: 
 //
 // Every metric is over ATTEMPTS at a task: the runs of their own, and the
 // benchmark runs inside climbs (a climb's improve runs are not attempts).
+// The summaries count a climb ONCE, by its final run (`finalAttemptsOf`);
+// the per-task stats, the task list and the hill climb see every run.
 // `climbs` is optional everywhere, so a caller with runs alone still works.
+// The caller filters to one benchmark first when a mean across them would
+// mean nothing (the Runs tab does).
 
 /** One attempt at a task: a run of its own, or one benchmark run inside a climb. */
 interface Attempt {
@@ -171,8 +277,13 @@ interface Attempt {
   climb: { id: string; iteration: number } | null;
   gtId: number | null;
   difficulty: OpenHealthDifficulty | null;
+  benchmark: OpenHealthRowBenchmark;
   outcome: OpenHealthOutcome;
   f1: number | null;
+  /** The untouched score, when known; `f1` has the contested items excluded. */
+  f1Official: number | null;
+  /** How many answer-key items were excluded from `f1` as contested. */
+  contested: number;
   recall: number | null;
   precision: number | null;
   createdAt: string;
@@ -188,8 +299,11 @@ function attemptsOf(runs: OpenHealthRun[], climbs: OpenHealthClimb[]): Attempt[]
       climb: null,
       gtId: run.gtId,
       difficulty: run.difficulty,
+      benchmark: { task: run.task, variant: run.variant, specialty: run.specialty },
       outcome: run.outcome,
       f1: run.scores?.f1 ?? null,
+      f1Official: run.scores?.official ?? null,
+      contested: run.scores?.contested ?? 0,
       recall: run.scores?.recall ?? null,
       precision: run.scores?.precision ?? null,
       createdAt: run.createdAt,
@@ -206,8 +320,11 @@ function attemptsOf(runs: OpenHealthRun[], climbs: OpenHealthClimb[]): Attempt[]
           climb: { id: climb.id, iteration: step.iteration },
           gtId: climb.gtId,
           difficulty: climb.difficulty,
+          benchmark: { task: climb.task, variant: climb.variant, specialty: climb.specialty },
           outcome: step.outcome,
           f1: step.outcome === "succeeded" ? step.f1 : null,
+          f1Official: step.outcome === "succeeded" ? step.f1Official : null,
+          contested: step.contested.length,
           recall: null,
           precision: null,
           createdAt: step.startedAt ?? climb.createdAt,
@@ -218,12 +335,35 @@ function attemptsOf(runs: OpenHealthRun[], climbs: OpenHealthClimb[]): Attempt[]
   return [...own, ...inside];
 }
 
+/**
+ * A climb's one attempt for the summaries: its final benchmark run — the last
+ * that finished (succeeded or failed), so a run in flight or cut short by a
+ * stop does not hide the result the climb reached; the last run of any kind
+ * when none has finished. Null for a climb that has not run yet.
+ */
+function finalAttemptOf(climb: OpenHealthClimb): Attempt | null {
+  const attempts = attemptsOf([], [climb]);
+  const finished = attempts.filter((a) => a.outcome === "succeeded" || a.outcome === "failed");
+  return (finished.length > 0 ? finished : attempts).reduce<Attempt | null>(
+    (last, a) => (last === null || a.seq > last.seq ? a : last),
+    null,
+  );
+}
+
+/** The runs of their own, and each climb once: what the summaries are over. */
+function finalAttemptsOf(runs: OpenHealthRun[], climbs: OpenHealthClimb[]): Attempt[] {
+  return [...attemptsOf(runs, []), ...climbs.flatMap((climb) => finalAttemptOf(climb) ?? [])];
+}
+
 const byAge = (a: Attempt, b: Attempt) => a.createdAt.localeCompare(b.createdAt) || a.seq - b.seq;
 /** Newest first, as the lists come. */
 const newestFirst = (attempts: Attempt[]) => [...attempts].sort((a, b) => byAge(b, a));
 
 export interface OpenHealthSummary {
-  /** Finished attempts: succeeded + failed. Running and cancelled runs are left out. */
+  /**
+   * Finished attempts: succeeded + failed. Running and cancelled runs are left
+   * out, and a climb counts once, by its final run.
+   */
   attempts: number;
   succeeded: number;
   /** succeeded / attempts; null with no attempts. */
@@ -231,6 +371,8 @@ export interface OpenHealthSummary {
   meanF1: number | null;
   meanRecall: number | null;
   meanPrecision: number | null;
+  /** Scored attempts whose F1 excludes contested answer-key items — `meanF1` is over adjusted scores. */
+  contested: number;
 }
 
 function mean(values: Array<number | null | undefined>): number | null {
@@ -248,18 +390,21 @@ function summarize(attempts: Attempt[]): OpenHealthSummary {
     meanF1: mean(succeeded.map((a) => a.f1)),
     meanRecall: mean(succeeded.map((a) => a.recall)),
     meanPrecision: mean(succeeded.map((a) => a.precision)),
+    contested: succeeded.filter((a) => a.contested > 0).length,
   };
 }
 
+/** The summary over runs of their own and each climb's final run. */
 export function summarizeOpenHealthRuns(runs: OpenHealthRun[], climbs: OpenHealthClimb[] = []): OpenHealthSummary {
-  return summarize(attemptsOf(runs, climbs));
+  return summarize(finalAttemptsOf(runs, climbs));
 }
 
+/** Per difficulty, the summary over runs of their own and each climb's final run. */
 export function summarizeByDifficulty(
   runs: OpenHealthRun[],
   climbs: OpenHealthClimb[] = [],
 ): Record<OpenHealthDifficulty, OpenHealthSummary> {
-  const attempts = attemptsOf(runs, climbs);
+  const attempts = finalAttemptsOf(runs, climbs);
   return Object.fromEntries(
     OPENHEALTH_DIFFICULTIES.map((d) => [d, summarize(attempts.filter((a) => a.difficulty === d))]),
   ) as Record<OpenHealthDifficulty, OpenHealthSummary>;
@@ -270,6 +415,8 @@ export interface OpenHealthTaskStats {
   attempts: number;
   succeeded: number;
   bestF1: number | null;
+  /** The best attempt's F1 excludes contested answer-key items. */
+  bestContested: boolean;
   /** The newest scored attempt's F1. */
   latestF1: number | null;
   /** A run or a climb of the task is in flight. */
@@ -283,7 +430,14 @@ export function openHealthTaskStats(
 ): Map<number, OpenHealthTaskStats> {
   const stats = new Map<number, OpenHealthTaskStats>();
   const statsFor = (gtId: number) => {
-    const s = stats.get(gtId) ?? { attempts: 0, succeeded: 0, bestF1: null, latestF1: null, running: false };
+    const s = stats.get(gtId) ?? {
+      attempts: 0,
+      succeeded: 0,
+      bestF1: null,
+      bestContested: false,
+      latestF1: null,
+      running: false,
+    };
     stats.set(gtId, s);
     return s;
   };
@@ -294,7 +448,10 @@ export function openHealthTaskStats(
     if (attempt.outcome === "succeeded" || attempt.outcome === "failed") s.attempts++;
     if (attempt.outcome === "succeeded" && attempt.f1 !== null) {
       s.succeeded++;
-      s.bestF1 = s.bestF1 === null ? attempt.f1 : Math.max(s.bestF1, attempt.f1);
+      if (s.bestF1 === null || attempt.f1 > s.bestF1) {
+        s.bestF1 = attempt.f1;
+        s.bestContested = attempt.contested > 0;
+      }
       if (s.latestF1 === null) s.latestF1 = attempt.f1;
     }
   }
@@ -305,68 +462,86 @@ export function openHealthTaskStats(
   return stats;
 }
 
-// ─── Hill climb ──────────────────────────────────────────────────────────
-
+/** One point of the hill climb: a scored attempt, and the best so far up to it. */
 export interface OpenHealthClimbPoint {
-  /** Unique across runs and climbs. */
+  /** The attempt's key: the run's id, or `<climb id>#<iteration>`. */
   key: string;
-  /** A run of its own. */
+  /** The run of its own, or null for an iteration of a climb. */
   runId: string | null;
-  /** One benchmark run inside a climb. */
   climb: { id: string; iteration: number } | null;
-  createdAt: string;
   gtId: number | null;
   f1: number;
-  /** The best F1 so far, as of this attempt — the line's level. */
+  /** The untouched score, when known. */
+  f1Official: number | null;
+  /** How many answer-key items were excluded from `f1` as contested. */
+  contested: number;
   best: number;
-  /** Did this attempt raise the best so far? */
   newBest: boolean;
+  createdAt: string;
 }
 
-/**
- * One task's scored attempts oldest first, with the best F1 so far — the
- * hill climb. Across tasks a best-so-far would only track the easiest one,
- * so the page draws this for a single task.
- */
+/** Scored attempts oldest first, each with the best score so far — for one task's chart. */
 export function openHealthClimbSeries(runs: OpenHealthRun[], climbs: OpenHealthClimb[] = []): OpenHealthClimbPoint[] {
   const scored = attemptsOf(runs, climbs)
     .filter((a): a is Attempt & { f1: number } => a.outcome === "succeeded" && a.f1 !== null)
     .sort(byAge);
   let best = -Infinity;
-  return scored.map((attempt) => {
-    const newBest = attempt.f1 > best;
-    best = Math.max(best, attempt.f1);
+  return scored.map((a) => {
+    const newBest = a.f1 > best;
+    if (newBest) best = a.f1;
     return {
-      key: attempt.key,
-      runId: attempt.runId,
-      climb: attempt.climb,
-      createdAt: attempt.createdAt,
-      gtId: attempt.gtId,
-      f1: attempt.f1,
+      key: a.key,
+      runId: a.runId,
+      climb: a.climb,
+      gtId: a.gtId,
+      f1: a.f1,
+      f1Official: a.f1Official,
+      contested: a.contested,
       best,
       newBest,
+      createdAt: a.createdAt,
     };
   });
 }
 
-/** The tasks the runs and climbs cover, most recently tried first, with how many attempts each has. */
-export function openHealthRunTasks(
-  runs: OpenHealthRun[],
-  climbs: OpenHealthClimb[] = [],
-): Array<{ gtId: number; difficulty: OpenHealthDifficulty | null; runs: number }> {
-  const tasks = new Map<number, { gtId: number; difficulty: OpenHealthDifficulty | null; runs: number }>();
-  const taskFor = (gtId: number, difficulty: OpenHealthDifficulty | null) => {
-    const task = tasks.get(gtId) ?? { gtId, difficulty, runs: 0 };
-    task.difficulty ??= difficulty;
-    tasks.set(gtId, task);
-    return task;
-  };
+export interface OpenHealthRunTask extends OpenHealthRowBenchmark {
+  gtId: number;
+  difficulty: OpenHealthDifficulty | null;
+  /** Attempts at it: runs of its own and a climb's runs. */
+  runs: number;
+}
+
+/** The tasks that have been attempted, most recently attempted first, with their attempt counts. */
+export function openHealthRunTasks(runs: OpenHealthRun[], climbs: OpenHealthClimb[] = []): OpenHealthRunTask[] {
+  const tasks = new Map<number, OpenHealthRunTask>();
   for (const attempt of newestFirst(attemptsOf(runs, climbs))) {
-    if (attempt.gtId !== null) taskFor(attempt.gtId, attempt.difficulty).runs++;
+    if (attempt.gtId === null) continue;
+    const t = tasks.get(attempt.gtId) ?? {
+      gtId: attempt.gtId,
+      difficulty: null,
+      ...attempt.benchmark,
+      runs: 0,
+    };
+    t.difficulty ??= attempt.difficulty;
+    t.specialty ??= attempt.benchmark.specialty;
+    t.runs++;
+    tasks.set(attempt.gtId, t);
   }
   // A climb with no run yet still names its task.
   for (const climb of climbs) {
-    if (climb.gtId !== null) taskFor(climb.gtId, climb.difficulty);
+    if (climb.gtId === null) continue;
+    const t = tasks.get(climb.gtId);
+    if (t) t.difficulty ??= climb.difficulty;
+    else {
+      tasks.set(climb.gtId, {
+        gtId: climb.gtId,
+        difficulty: climb.difficulty,
+        task: climb.task,
+        variant: climb.variant,
+        specialty: climb.specialty,
+        runs: 0,
+      });
+    }
   }
   return [...tasks.values()];
 }

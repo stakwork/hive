@@ -5,7 +5,7 @@
  * Themes:
  *   - the mapping from strut's RESOLVED artifact list to hive's refs is
  *     pure and covers every branch: a strut-relative url → a `graph` ref
- *     the reader serves (html shown as `url`, a diff file as `code`); an
+ *     the reader serves (html kept as `html`, a diff file as `code`); an
  *     absolute url → inline `{ url }` (kind kept for media, `url` for the
  *     rest); inline content per kind (markdown / log / code / json / a
  *     diff string as code); an entry with `error` dropped and named;
@@ -15,13 +15,30 @@
  *     model reads the job id from, `source.kind: "job"`, `artifacts` on
  *     the row; idempotent on replay; read from the ROW's swarm; a 404
  *     from strut delivers the text alone; a 5xx throws (strut retries);
- *     an error row appends without reading strut.
+ *     an error row appends without reading strut;
+ *   - the wake: once the row is appended (not on a replay, not without a
+ *     conversation) the canvas agent is woken after the response with the
+ *     outcome, the question, the cards and the callback's host.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { StrutRunStatus } from "@prisma/client";
 
-const { mockTx, mockTransaction, mockNotify, mockLab, mockClearActiveRun, mockNotifyRunActive } = vi.hoisted(() => {
+const {
+  mockTx,
+  mockTransaction,
+  mockNotify,
+  mockLab,
+  mockClearActiveRun,
+  mockNotifyRunActive,
+  mockWorkspaceFindUnique,
+  mockWake,
+  mockIndex,
+  mockPending,
+  mockRequeue,
+  mockCheckFailure,
+  afterCallbacks,
+} = vi.hoisted(() => {
   const mockTx = {
     workspace: { findUnique: vi.fn() },
     sharedConversation: { findUnique: vi.fn(), update: vi.fn() },
@@ -34,10 +51,28 @@ const { mockTx, mockTransaction, mockNotify, mockLab, mockClearActiveRun, mockNo
     mockLab: vi.fn(),
     mockClearActiveRun: vi.fn(),
     mockNotifyRunActive: vi.fn(),
+    mockWorkspaceFindUnique: vi.fn(),
+    mockWake: vi.fn(),
+    mockIndex: vi.fn(),
+    mockPending: vi.fn(),
+    mockRequeue: vi.fn(),
+    mockCheckFailure: vi.fn(),
+    afterCallbacks: [] as Array<() => Promise<void>>,
   };
 });
 
-vi.mock("@/lib/db", () => ({ db: { $transaction: mockTransaction } }));
+vi.mock("next/server", async (orig) => ({
+  ...(await orig<typeof import("next/server")>()),
+  after: (fn: () => Promise<void>) => void afterCallbacks.push(fn),
+}));
+vi.mock("@/lib/db", () => ({ db: { $transaction: mockTransaction, workspace: { findUnique: mockWorkspaceFindUnique } } }));
+vi.mock("@/services/canvas-strut-autoturn", () => ({ invokeCanvasAgentOnJobTurn: mockWake }));
+vi.mock("@/services/strut-jobs/artifact-events", () => ({
+  indexJobArtifacts: mockIndex,
+  launchPendingArtifactEvents: mockPending,
+  requeueArtifactEvent: mockRequeue,
+}));
+vi.mock("@/services/strut-jobs/check-failures", () => ({ deliverCheckFailure: mockCheckFailure }));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: mockNotify }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
@@ -51,6 +86,7 @@ import {
   jobRowId,
   mapStrutArtifacts,
   parseStrutArtifacts,
+  pullRequestContent,
   renderJobContent,
   replyForRow,
   type StrutArtifact,
@@ -98,7 +134,19 @@ beforeEach(() => {
   mockTx.sharedConversation.update.mockResolvedValue({});
   mockClearActiveRun.mockResolvedValue({ wasLast: true });
   mockNotifyRunActive.mockResolvedValue(undefined);
+  mockWorkspaceFindUnique.mockResolvedValue({ slug: "acme" });
+  mockWake.mockResolvedValue(undefined);
+  mockIndex.mockResolvedValue(0);
+  mockPending.mockResolvedValue("none");
+  mockRequeue.mockResolvedValue(false);
+  mockCheckFailure.mockResolvedValue({ jobs: [] });
+  afterCallbacks.length = 0;
 });
+
+/** Run what the handler scheduled for after the response. */
+async function flushAfter(): Promise<void> {
+  for (const fn of afterCallbacks.splice(0)) await fn();
+}
 
 describe("parseStrutArtifacts", () => {
   it("keeps whole entries in order and drops the rest", () => {
@@ -134,7 +182,7 @@ describe("mapStrutArtifacts", () => {
     expect(refs[0]).toMatchObject({ kind: "image", source: { type: "graph", swarmId: "swarm-1", key: "/artifacts/1790000000000/shot.png" } });
   });
 
-  it("a page strut wrote is shown as `url` (a static page through the reader); a diff file or a pull request as code", () => {
+  it("a page strut wrote stays html (the frame reads it through the reader); a diff file or a pull request as code", () => {
     const { refs } = mapStrutArtifacts(
       [
         entry({ id: "page", kind: "html", url: `/jobs/${JOB}/files/index.html` }),
@@ -145,7 +193,7 @@ describe("mapStrutArtifacts", () => {
       "swarm-1",
     );
     expect(refs.map((r) => [r.id, r.kind])).toEqual([
-      ["page", "url"],
+      ["page", "html"],
       ["d", "code"],
       ["pr", "code"],
       ["odd", "url"],
@@ -165,13 +213,14 @@ describe("mapStrutArtifacts", () => {
     ]);
   });
 
-  it("an absolute url → inline { url }: the kind kept for media and pages, `url` for anything else", () => {
+  it("an absolute url → inline { url }: the kind kept for media and pages, a GitHub pull request link as the pull request, `url` for anything else", () => {
     const { refs } = mapStrutArtifacts(
       [
         entry({ id: "pod", kind: "url", url: "https://pod.example/" }),
         entry({ id: "shot", kind: "image", url: "https://cdn.example/shot.png" }),
         entry({ id: "doc", kind: "markdown", url: "https://docs.example/plan.md" }),
         entry({ id: "pr", kind: "pull_request", url: "https://github.com/acme/widgets/pull/7" }),
+        entry({ id: "notpr", kind: "pull_request", url: "https://gitlab.example/acme/widgets/-/merge_requests/7" }),
       ],
       "swarm-1",
     );
@@ -179,7 +228,8 @@ describe("mapStrutArtifacts", () => {
       ["pod", "url", { type: "inline", content: { url: "https://pod.example/" } }],
       ["shot", "image", { type: "inline", content: { url: "https://cdn.example/shot.png" } }],
       ["doc", "url", { type: "inline", content: { url: "https://docs.example/plan.md" } }],
-      ["pr", "url", { type: "inline", content: { url: "https://github.com/acme/widgets/pull/7" } }],
+      ["pr", "pull_request", { type: "inline", content: { url: "https://github.com/acme/widgets/pull/7", repo: "acme/widgets", number: 7, state: "open" } }],
+      ["notpr", "url", { type: "inline", content: { url: "https://gitlab.example/acme/widgets/-/merge_requests/7" } }],
     ]);
   });
 
@@ -196,6 +246,9 @@ describe("mapStrutArtifacts", () => {
         entry({ id: "html", kind: "html", content: "<h1>hi</h1>" }),
         entry({ id: "link", kind: "url", content: "https://example.test/" }),
         entry({ id: "pr", kind: "pull_request", content: { url: "https://github.com/a/b/pull/1", repo: "a/b", number: 1, state: "open" } }),
+        entry({ id: "pr2", kind: "pull_request", content: '{"url":"https://github.com/a/b/pull/2","repo":"a/b","number":2,"state":"open"}' }),
+        entry({ id: "pr3", kind: "pull_request", content: "https://github.com/a/b/pull/3" }),
+        entry({ id: "pr4", kind: "pull_request", content: "opened it" }),
         entry({ id: "img", kind: "image", content: "not an address" }),
         entry({ id: "big", kind: "markdown", content: "x".repeat(50_001) }),
       ],
@@ -212,8 +265,11 @@ describe("mapStrutArtifacts", () => {
       ["html", "code", { type: "inline", content: { code: "<h1>hi</h1>", language: "html" } }],
       ["link", "url", { type: "inline", content: { url: "https://example.test/" } }],
       ["pr", "pull_request", { type: "inline", content: { url: "https://github.com/a/b/pull/1", repo: "a/b", number: 1, state: "open" } }],
+      ["pr2", "pull_request", { type: "inline", content: { url: "https://github.com/a/b/pull/2", repo: "a/b", number: 2, state: "open" } }],
+      ["pr3", "pull_request", { type: "inline", content: { url: "https://github.com/a/b/pull/3", repo: "a/b", number: 3, state: "open" } }],
     ]);
     expect(dropped).toEqual([
+      { title: "A", reason: "unsupported content" },
       { title: "A", reason: "unsupported content" },
       { title: "A", reason: "unsupported content" },
     ]);
@@ -229,6 +285,31 @@ describe("mapStrutArtifacts", () => {
       { title: "Missing", reason: "not found" },
       { title: "Nothing", reason: "nothing to show" },
     ]);
+  });
+});
+
+describe("pullRequestContent", () => {
+  const PR = { url: "https://github.com/a/b/pull/5", repo: "a/b", number: 5, state: "open" };
+  it("fills what the link implies: repo, number, and the link from repo + number", () => {
+    expect(pullRequestContent({ url: PR.url })).toEqual(PR);
+    expect(pullRequestContent({ repo: "a/b", number: 5 })).toEqual(PR);
+    expect(pullRequestContent(PR.url)).toEqual(PR);
+    expect(pullRequestContent(JSON.stringify({ url: PR.url }))).toEqual(PR);
+  });
+  it("state defaults to open, is lowercased, and anything else is open", () => {
+    expect(pullRequestContent({ ...PR, state: "MERGED" })?.state).toBe("merged");
+    expect(pullRequestContent({ ...PR, state: "shipped" })?.state).toBe("open");
+  });
+  it("a numeric string number is read; the given fields win over the link's", () => {
+    expect(pullRequestContent({ ...PR, number: "5" })).toEqual(PR);
+    expect(pullRequestContent({ url: PR.url, repo: "c/d", number: 9, body: "x" })).toEqual({ url: PR.url, repo: "c/d", number: 9, state: "open", body: "x" });
+  });
+  it("null when neither the fields nor the link say which pull request", () => {
+    expect(pullRequestContent({ state: "open" })).toBeNull();
+    expect(pullRequestContent({ repo: "a/b" })).toBeNull();
+    expect(pullRequestContent("opened it")).toBeNull();
+    expect(pullRequestContent("{not json")).toBeNull();
+    expect(pullRequestContent(42)).toBeNull();
   });
 });
 
@@ -364,5 +445,210 @@ describe("handleJobTurnSettled", () => {
     await handleJobTurnSettled(row({ jobId: null }));
     expect(mockFetch).not.toHaveBeenCalled();
     expect(mockTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleJobTurnSettled — the wake", () => {
+  const artifactsBody = {
+    artifacts: [
+      { id: "plan", kind: "markdown", title: "Plan", label: "plan", url: `/jobs/${JOB}/files/plan.md` },
+      { id: "pr", kind: "pull_request", title: "PR", url: "https://github.com/acme/app/pull/7" },
+    ],
+  };
+
+  it("once the row is appended: after the response, with the outcome, the cards and the callback's host", async () => {
+    mockFetch.mockResolvedValue(json(200, artifactsBody));
+    await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });
+
+    // Scheduled, not run: the callback answers first. Three things wait on
+    // the response: the wake, the artifact events that queued behind this
+    // turn (plans/job-artifact-events.md §3), and the checks of the pull
+    // request it reported (§5).
+    expect(mockWake).not.toHaveBeenCalled();
+    expect(afterCallbacks).toHaveLength(3);
+    await flushAfter();
+
+    expect(mockWorkspaceFindUnique).toHaveBeenCalledWith({ where: { id: "ws-1" }, select: { slug: true } });
+    expect(mockWake).toHaveBeenCalledTimes(1);
+    expect(mockWake).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      wakeId: "job-row-1",
+      workspaceSlug: "acme",
+      jobId: JOB,
+      title: "Dark mode plan",
+      outcome: "success",
+      artifacts: [
+        { title: "Plan", kind: "markdown", label: "plan" },
+        { title: "PR", kind: "pull_request" },
+      ],
+      publicBaseUrl: "https://hive.example.com",
+    });
+  });
+
+  it("carries the job's question, and a failed turn's outcome", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row({ output: { text: "Two candidates.", ask: { message: "Which repo?" } } }), {
+      publicBaseUrl: "https://hive.example.com",
+    });
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0]).toMatchObject({ outcome: "success", ask: "Which repo?", artifacts: [] });
+
+    mockWake.mockClear();
+    await handleJobTurnSettled(row({ id: "row-2", status: StrutRunStatus.ERROR, output: null, error: "boom" }));
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0]).toMatchObject({ wakeId: "job-row-2", outcome: "error" });
+    expect(mockWake.mock.calls[0][0].ask).toBeUndefined();
+  });
+
+  it("without a callback host (the reconcile path) the deployment's own URL is used", async () => {
+    vi.stubEnv("NEXTAUTH_URL", "https://hive.internal");
+    mockFetch.mockResolvedValue(json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row());
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0].publicBaseUrl).toBe("https://hive.internal");
+    vi.unstubAllEnvs();
+  });
+
+  it("not on a replay, not without a conversation, not when the conversation is someone else's", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    mockTx.$queryRaw.mockResolvedValue([{ messages: [{ id: "job-row-1", role: "assistant", content: "earlier" }] }]);
+    await handleJobTurnSettled(row());
+    await flushAfter();
+    expect(mockWake).not.toHaveBeenCalled();
+
+    mockTx.$queryRaw.mockResolvedValue([{ messages: [] }]);
+    await handleJobTurnSettled(row({ conversationId: null }));
+    await flushAfter();
+    expect(mockWake).not.toHaveBeenCalled();
+
+    mockTx.sharedConversation.findUnique.mockResolvedValue({ userId: "someone-else", sourceControlOrgId: "org-1", isShared: false });
+    await handleJobTurnSettled(row());
+    await flushAfter();
+    expect(mockWake).not.toHaveBeenCalled();
+  });
+
+  it("a wake that fails never fails the delivery, and a workspace that is gone wakes nothing", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    mockWake.mockRejectedValue(new Error("llm down"));
+    await handleJobTurnSettled(row());
+    await expect(flushAfter()).resolves.toBeUndefined();
+
+    mockWake.mockClear();
+    mockWorkspaceFindUnique.mockResolvedValue(null);
+    await handleJobTurnSettled(row({ id: "row-3" }));
+    await flushAfter();
+    expect(mockWake).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleJobTurnSettled — artifact events (strut plans/job-artifact-events.md §3)", () => {
+  const PR = "https://github.com/acme/app/pull/12";
+  const LINE = `[artifact-event] pull_request ${PR} merged`;
+  const artifactsBody = {
+    artifacts: [
+      { id: "plan", kind: "markdown", title: "Plan", url: `/jobs/${JOB}/files/plan.md` },
+      { id: "pr", kind: "pull_request", title: "PR", url: PR },
+    ],
+  };
+
+  it("indexes the turn's refs under the launch's workspace before the row lands; a failure throws (strut re-posts)", async () => {
+    mockFetch.mockImplementation(async () => json(200, artifactsBody));
+    await handleJobTurnSettled(row());
+    expect(mockIndex).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: "ws-1", swarmId: "swarm-1" }),
+      JOB,
+      expect.arrayContaining([expect.objectContaining({ id: "pr", kind: "pull_request" }), expect.objectContaining({ id: "plan" })]),
+    );
+    expect(mockIndex.mock.invocationCallOrder[0]).toBeLessThan(mockTx.sharedConversation.update.mock.invocationCallOrder[0]);
+
+    mockIndex.mockRejectedValueOnce(new Error("db down"));
+    await expect(handleJobTurnSettled(row())).rejects.toThrow("db down");
+  });
+
+  it("a turn with nothing to index, or one that failed, touches the index not at all", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row());
+    await handleJobTurnSettled(row({ status: StrutRunStatus.ERROR, error: "boom", output: null }));
+    expect(mockIndex).not.toHaveBeenCalled();
+  });
+
+  it("a turn an event started: the wake carries the event; a person's turn carries none", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row({ input: { prompt: `${LINE}\nhead: abc`, title: "Dark mode plan" } }), { publicBaseUrl: "https://hive.example.com" });
+    await flushAfter();
+    expect(mockWake).toHaveBeenCalledWith(expect.objectContaining({ event: { kind: "pull_request", url: PR, what: "merged" } }));
+
+    mockWake.mockClear();
+    await handleJobTurnSettled(row({ id: "row-2" }), { publicBaseUrl: "https://hive.example.com" });
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0]).not.toHaveProperty("event");
+  });
+
+  it("once the row has landed, the events that waited on the job go as the next turn — after the response", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });
+    expect(mockPending).not.toHaveBeenCalled();
+    await flushAfter();
+    expect(mockPending).toHaveBeenCalledWith(JOB, "https://hive.example.com");
+    expect(mockRequeue).not.toHaveBeenCalled();
+  });
+
+  it("the pull requests the turn reported have their checks read after the response, after the pending events — the first fix is hive's; a turn with none, or a replay, reads nothing", async () => {
+    mockFetch.mockImplementation(async () => json(200, artifactsBody));
+    await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });
+    expect(mockCheckFailure).not.toHaveBeenCalled();
+    await flushAfter();
+    expect(mockCheckFailure).toHaveBeenCalledTimes(1);
+    expect(mockCheckFailure).toHaveBeenCalledWith({ workspaceId: "ws-1", url: PR, publicBaseUrl: "https://hive.example.com" });
+    expect(mockCheckFailure.mock.invocationCallOrder[0]).toBeGreaterThan(mockPending.mock.invocationCallOrder[0]);
+
+    mockCheckFailure.mockClear();
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [artifactsBody.artifacts[0]] }));
+    await handleJobTurnSettled(row({ id: "row-2" }), { publicBaseUrl: "https://hive.example.com" });
+    await flushAfter();
+    expect(mockCheckFailure).not.toHaveBeenCalled();
+
+    mockFetch.mockImplementation(async () => json(200, artifactsBody));
+    mockTx.$queryRaw.mockResolvedValueOnce([{ messages: [{ id: jobRowId(row()) }] }]);
+    await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });
+    await flushAfter();
+    expect(mockCheckFailure).not.toHaveBeenCalled();
+  });
+
+  it("a failed or stopped turn launches what waited too; a replay, or a conversation that is gone, launches nothing", async () => {
+    await handleJobTurnSettled(row({ status: StrutRunStatus.CANCELLED, output: null }));
+    await flushAfter();
+    expect(mockPending).toHaveBeenCalledTimes(1);
+
+    mockTx.$queryRaw.mockResolvedValueOnce([{ messages: [{ id: jobRowId(row()) }] }]);
+    await handleJobTurnSettled(row({ status: StrutRunStatus.CANCELLED, output: null }));
+    await flushAfter();
+    expect(mockPending).toHaveBeenCalledTimes(1);
+
+    await handleJobTurnSettled(row({ status: StrutRunStatus.CANCELLED, output: null, conversationId: null }));
+    await flushAfter();
+    expect(mockPending).toHaveBeenCalledTimes(1);
+  });
+
+  it("a turn strut refused as job_busy gives its event back before the pending ones go", async () => {
+    await handleJobTurnSettled(
+      row({ status: StrutRunStatus.ERROR, error: "job_busy: another run holds the job", output: null, input: { prompt: LINE, title: "Dark mode plan" } }),
+      { publicBaseUrl: "https://hive.example.com" },
+    );
+    await flushAfter();
+    expect(mockRequeue).toHaveBeenCalledWith(JOB, LINE);
+    expect(mockRequeue.mock.invocationCallOrder[0]).toBeLessThan(mockPending.mock.invocationCallOrder[0]);
+
+    // A person's turn that hit job_busy has no event to give back.
+    mockRequeue.mockClear();
+    await handleJobTurnSettled(row({ id: "row-2", status: StrutRunStatus.ERROR, error: "job_busy: x", output: null }));
+    await flushAfter();
+    expect(mockRequeue).not.toHaveBeenCalled();
+  });
+
+  it("the pending launch failing never fails the delivery", async () => {
+    mockPending.mockRejectedValueOnce(new Error("strut down"));
+    await handleJobTurnSettled(row({ status: StrutRunStatus.CANCELLED, output: null }));
+    await expect(flushAfter()).resolves.toBeUndefined();
   });
 });

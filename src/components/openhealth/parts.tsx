@@ -3,6 +3,7 @@
 import React from "react";
 import { Check, Circle, Loader2, X } from "lucide-react";
 import type { OpenHealthStage, OpenHealthStageStatus } from "@/types/openhealth";
+import { formatScore } from "./format";
 
 /** Pieces the run viewer and the climb viewer share. */
 
@@ -40,13 +41,91 @@ export function describeStage(stages: OpenHealthStage[]): string | null {
     : active.label.toLowerCase();
 }
 
-export function Stat({ label, value, emphasis }: { label: string; value: React.ReactNode; emphasis?: boolean }) {
+export function Stat({
+  label,
+  value,
+  sub,
+  emphasis,
+}: {
+  label: string;
+  value: React.ReactNode;
+  /** A line under the value: what qualifies it. */
+  sub?: React.ReactNode;
+  emphasis?: boolean;
+}) {
   return (
     <div className="rounded-lg border bg-card px-4 py-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`tabular-nums ${emphasis ? "text-2xl font-semibold" : "text-lg font-medium"}`}>{value}</p>
+      {sub && <p className="text-xs">{sub}</p>}
     </div>
   );
+}
+
+/** The one tone for contested gold across the page, the same violet the rubric surfaces use. */
+export const CONTESTED_TEXT = "text-violet-600 dark:text-violet-400";
+export const CONTESTED_BADGE = "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-400";
+
+/** The plural-safe count of contested answer-key items. */
+export function contestedLabel(count: number): string {
+  return `${count} contested`;
+}
+
+/** What a contested score means, for a title. */
+export function contestedTitle(count: number, official: number | null): string {
+  const base =
+    count === 1
+      ? "1 answer-key item is contested: the chart contradicts it, so it is excluded from the score."
+      : `${count} answer-key items are contested: the chart contradicts them, so they are excluded from the score.`;
+  return official === null ? base : `${base} The untouched benchmark score is ${formatScore(official)}.`;
+}
+
+/**
+ * The note beside a score that excludes contested answer-key items: how many
+ * were excluded, with the untouched score in the title. Nothing when none were.
+ */
+export function ContestedNote({
+  official,
+  contested,
+  className = "",
+}: {
+  official: number | null;
+  contested: number;
+  className?: string;
+}) {
+  if (contested <= 0) return null;
+  return (
+    <span
+      className={`whitespace-nowrap text-xs font-normal tabular-nums ${CONTESTED_TEXT} ${className}`}
+      title={contestedTitle(contested, official)}
+      data-testid="openhealth-contested-note"
+    >
+      {contestedLabel(contested)}
+    </span>
+  );
+}
+
+/** A score with its contested note under it, for a table cell. */
+export function ScoreCell({
+  value,
+  official,
+  contested,
+}: {
+  value: string;
+  official: number | null;
+  contested: number;
+}) {
+  return (
+    <span className="inline-flex flex-col items-end">
+      <span>{value}</span>
+      <ContestedNote official={official} contested={contested} />
+    </span>
+  );
+}
+
+/** `must_include_findings` → "must include findings", for a gold list's name. */
+export function describeGoldList(list: string): string {
+  return list.replace(/_/g, " ");
 }
 
 export function DiagnosisList({

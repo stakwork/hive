@@ -21,16 +21,19 @@ interface StreamToolCallGroupProps {
 function summarize(toolCalls: StreamToolCallType[], expectsOutput: boolean) {
   let running = 0;
   let failed = 0;
+  let interrupted = 0;
   const names: string[] = [];
   for (const tc of toolCalls) {
     const phase = toolCallPhase(tc, expectsOutput);
     if (phase === "running") running += 1;
     else if (phase === "error") failed += 1;
+    else if (phase === "interrupted") interrupted += 1;
     const { name } = toolLabel(tc.toolName);
     if (!names.includes(name)) names.push(name);
   }
-  const phase: ToolCallPhase = running > 0 ? "running" : failed > 0 ? "error" : "complete";
-  return { running, failed, phase, names: names.join(", ") };
+  const phase: ToolCallPhase =
+    running > 0 ? "running" : failed > 0 ? "error" : interrupted > 0 ? "interrupted" : "complete";
+  return { running, failed, interrupted, phase, names: names.join(", ") };
 }
 
 /**
@@ -43,7 +46,7 @@ export const StreamToolCallGroup = React.memo(function StreamToolCallGroup({
   expectsOutput = true,
 }: StreamToolCallGroupProps) {
   const [open, setOpen] = useState(false);
-  const { running, failed, phase, names } = useMemo(
+  const { running, failed, interrupted, phase, names } = useMemo(
     () => summarize(toolCalls, expectsOutput),
     [toolCalls, expectsOutput],
   );
@@ -62,6 +65,7 @@ export const StreamToolCallGroup = React.memo(function StreamToolCallGroup({
         <span className="min-w-0 truncate text-muted-foreground">{names}</span>
         {running > 0 && <span className="shrink-0 text-muted-foreground">· {running} running</span>}
         {failed > 0 && <span className="shrink-0 text-amber-600 dark:text-amber-400">· {failed} failed</span>}
+        {interrupted > 0 && <span className="shrink-0 text-muted-foreground">· {interrupted} interrupted</span>}
         <ToolCallChevron open={open} />
       </button>
       {open && (

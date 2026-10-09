@@ -64,6 +64,9 @@ import {
   PROPOSE_NODE_EDIT_TOOL,
   PROPOSE_CREATE_TRIPLET_TOOL,
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL,
+  PROPOSE_DELETE_EDGE_TOOL,
+  PROPOSE_MOVE_NODE_TOOL,
+  PROPOSE_DELETE_NODE_TOOL,
   PROPOSE_CODE_CHANGE_TOOL,
   CODE_CHANGE_PROPOSE_KIND,
   CODE_CHANGE_LAND_KIND,
@@ -79,6 +82,9 @@ import {
   type GraphNodeEditProposalPayload,
   type GraphTripletCreateProposalPayload,
   type GraphBatchTripletCreateProposalPayload,
+  type GraphEdgeDeleteProposalPayload,
+  type GraphNodeMoveProposalPayload,
+  type GraphNodeDeleteProposalPayload,
   type CodeChangeProposalPayload,
 } from "./types";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -126,10 +132,13 @@ import {
   addEdgeV2,
   readNodeByRef,
   deleteNode,
+  deleteEdge,
+  deleteSingleNode,
+  findEdgeByEndpoints,
   searchNodesByAttributes,
   type JarvisEdgeEndpoint,
 } from "@/services/swarm/api/nodes";
-import { findReservedKeyViolation } from "@/lib/proposals/graphWriteValidation";
+import { findReservedKeyViolation, wouldCycle } from "@/lib/proposals/graphWriteValidation";
 import {
   HIVE_WORKSPACE,
   HIVE_WORKSPACE_MEMBER,
@@ -190,6 +199,9 @@ function findProposal(
         tc.toolName !== PROPOSE_NODE_EDIT_TOOL &&
         tc.toolName !== PROPOSE_CREATE_TRIPLET_TOOL &&
         tc.toolName !== PROPOSE_CREATE_BATCH_TRIPLET_TOOL &&
+        tc.toolName !== PROPOSE_DELETE_EDGE_TOOL &&
+        tc.toolName !== PROPOSE_MOVE_NODE_TOOL &&
+        tc.toolName !== PROPOSE_DELETE_NODE_TOOL &&
         tc.toolName !== PROPOSE_CODE_CHANGE_TOOL
       )
         continue;
@@ -406,6 +418,15 @@ export async function handleApproval(
   }
   if (proposal.kind === "graphBatchTripletCreate") {
     return approveGraphBatchTripletCreate({ orgId, userId, proposal });
+  }
+  if (proposal.kind === "graphEdgeDelete") {
+    return approveGraphEdgeDelete({ orgId, userId, proposal });
+  }
+  if (proposal.kind === "graphNodeMove") {
+    return approveGraphNodeMove({ orgId, userId, proposal });
+  }
+  if (proposal.kind === "graphNodeDelete") {
+    return approveGraphNodeDelete({ orgId, userId, proposal });
   }
   if (proposal.kind === "codeChange") {
     return approveCodeChange({
@@ -3096,7 +3117,16 @@ async function approveConceptUpdate(args: {
   // node_type is inferred from the node's labels; jarvis rebuilds Data_Bank
   // and re-queues text_embeddings from the merged properties, so the new
   // body is searchable — not just stored.
-  const updated = await updateNodeV2(config, found.refId, { docs: documentation });
+  // Jarvis scopes the write to one namespace, so read the node's namespace
+  // first. Best-effort: a failed read writes without one (default namespace)
+  // rather than failing the approval.
+  const existing = await readNodeByRef(config, found.refId);
+  const updated = await updateNodeV2(
+    config,
+    found.refId,
+    { docs: documentation },
+    existing.success ? existing.namespace : undefined,
+  );
   if (!updated.success) {
     logger.error(
       "[handleApproval.approveConceptUpdate] jarvis node update failed",
@@ -3274,7 +3304,12 @@ async function approveGraphNodeEdit(args: {
     };
   }
 
-  const result = await updateNodeV2(config, payload.ref_id, payload.node_data);
+  const result = await updateNodeV2(
+    config,
+    payload.ref_id,
+    payload.node_data,
+    existing.namespace,
+  );
 
   const outcome = result.success ? "created" : "failed";
   logger.info(
@@ -3286,6 +3321,7 @@ async function approveGraphNodeEdit(args: {
       kind: "graphNodeEdit",
       node_type: nodeType,
       ref_id: payload.ref_id,
+      namespace: existing.namespace ?? "default",
       outcome,
       ...(result.success ? {} : { message: result.message }),
     },
@@ -3604,6 +3640,371 @@ async function approveGraphBatchTripletCreate(args: {
       landedOn: `workspace:${workspaceId}`,
       workspaceSlug,
       items,
+    },
+  };
+}
+
+
+// ── Approve: graph edge delete ───────────────────────────────────────
+
+async function approveGraphEdgeDelete(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "graphEdgeDelete" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal } = args;
+  // Ignore intent.payload — always use the server-persisted proposal payload.
+  const payload = proposal.payload as GraphEdgeDeleteProposalPayload;
+
+  if (
+    !payload.workspaceId ||
+    !payload.edge_type ||
+    !payload.source_ref_id ||
+    !payload.target_ref_id ||
+    payload.source_ref_id === payload.target_ref_id
+  ) {
+    return { ok: false, error: "Invalid graph edge delete proposal payload.", status: 400 };
+  }
+
+  // Authorization runs before reading meta or any external call.
+  const resolved = await resolveGraphJarvis(orgId, userId, {
+    workspaceId: payload.workspaceId,
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { workspaceId, workspaceSlug, config } = resolved.access;
+
+  const meta = proposal.meta as { refusedReason?: string } | undefined;
+  if (meta?.refusedReason) {
+    return { ok: false, error: meta.refusedReason, status: 400 };
+  }
+
+  // Find the edge again by its ends: the ref_id in meta came through the
+  // client-supplied transcript, and the edge may have gone since.
+  const found = await findEdgeByEndpoints(config, {
+    source_ref_id: payload.source_ref_id,
+    edge_type: payload.edge_type,
+    target_ref_id: payload.target_ref_id,
+  });
+  if (!found.success) {
+    return {
+      ok: false,
+      error: found.message ?? "Failed to read the edge from the knowledge graph.",
+      status: 502,
+    };
+  }
+  if (!found.edge) {
+    return {
+      ok: false,
+      error: `No ${payload.edge_type} edge from "${payload.source_ref_id}" to "${payload.target_ref_id}" exists in this workspace's graph — it may already have been removed.`,
+      status: 404,
+    };
+  }
+
+  const result = await deleteEdge(config, found.edge.ref_id);
+
+  const outcome = result.success ? "removed" : result.notFound ? "not-found" : "failed";
+  logger.info(
+    `[handleApproval.approveGraphEdgeDelete] ${outcome}`,
+    "handleApproval",
+    {
+      workspaceId,
+      workspaceSlug,
+      kind: "graphEdgeDelete",
+      edge_type: payload.edge_type,
+      ref_id: found.edge.ref_id,
+      outcome,
+      ...(result.success ? {} : { message: result.error }),
+    },
+  );
+
+  if (!result.success) {
+    return {
+      ok: false,
+      error: result.error ?? "Failed to remove the edge from the knowledge graph.",
+      status: result.notFound ? 404 : 502,
+    };
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "graphEdgeDelete",
+      createdEntityId: found.edge.ref_id,
+      landedOn: `workspace:${workspaceId}`,
+      workspaceSlug,
+    },
+  };
+}
+
+// ── Approve: graph node move ─────────────────────────────────────────
+
+/**
+ * Move = create the new parent link, confirm it is live, then remove the old
+ * one, in that order: a failure between them leaves the node under both
+ * parents rather than under none. The confirm matters because Jarvis reports
+ * a muted legacy edge as an existing duplicate, which would leave the node
+ * with no visible parent. A failed removal is reported as an error (no
+ * approvalResult is stamped), so approving again retries: the create is a
+ * benign duplicate ("Warning") and the removal runs again.
+ */
+async function approveGraphNodeMove(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "graphNodeMove" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal } = args;
+  // Ignore intent.payload — always use the server-persisted proposal payload.
+  const payload = proposal.payload as GraphNodeMoveProposalPayload;
+
+  if (
+    !payload.workspaceId ||
+    !payload.ref_id ||
+    !payload.edge_type ||
+    !payload.from_ref_id ||
+    !payload.to_ref_id ||
+    payload.to_ref_id === payload.ref_id ||
+    payload.from_ref_id === payload.to_ref_id
+  ) {
+    return { ok: false, error: "Invalid graph node move proposal payload.", status: 400 };
+  }
+
+  // Authorization runs before reading meta or any external call.
+  const resolved = await resolveGraphJarvis(orgId, userId, {
+    workspaceId: payload.workspaceId,
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { workspaceId, workspaceSlug, config } = resolved.access;
+
+  const meta = proposal.meta as { refusedReason?: string } | undefined;
+  if (meta?.refusedReason) {
+    return { ok: false, error: meta.refusedReason, status: 400 };
+  }
+
+  // Re-read everything the propose tool checked: the transcript is
+  // client-supplied, and the graph may have changed since.
+  const node = await readNodeByRef(config, payload.ref_id);
+  if (!node.success) {
+    return {
+      ok: false,
+      error: `Node "${payload.ref_id}" not found in this workspace's graph.`,
+      status: 404,
+    };
+  }
+  const nodeType = node.node_type ?? "";
+  if (GRAPH_MIRROR_OWNED_TYPES.has(nodeType)) {
+    return {
+      ok: false,
+      error: `"${nodeType}" is a mirror-owned type and cannot be moved — its links would be restored on the next mirror pass.`,
+      status: 400,
+    };
+  }
+  const destination = await readNodeByRef(config, payload.to_ref_id);
+  if (!destination.success) {
+    return {
+      ok: false,
+      error: `Destination "${payload.to_ref_id}" not found in this workspace's graph.`,
+      status: 404,
+    };
+  }
+  if (await wouldCycle(config, payload)) {
+    return {
+      ok: false,
+      error: `"${payload.to_ref_id}" sits under "${payload.ref_id}" — moving the node there would make a cycle.`,
+      status: 400,
+    };
+  }
+  const old = await findEdgeByEndpoints(config, {
+    source_ref_id: payload.from_ref_id,
+    edge_type: payload.edge_type,
+    target_ref_id: payload.ref_id,
+  });
+  if (!old.success) {
+    return {
+      ok: false,
+      error: old.message ?? "Failed to read the node's current link from the knowledge graph.",
+      status: 502,
+    };
+  }
+  if (!old.edge) {
+    return {
+      ok: false,
+      error: `"${payload.ref_id}" is no longer under "${payload.from_ref_id}" along ${payload.edge_type} — nothing to move.`,
+      status: 404,
+    };
+  }
+
+  // 1. The new link first.
+  const created = await addEdgeV2(config, {
+    edge: { edge_type: payload.edge_type },
+    source: { ref_id: payload.to_ref_id },
+    target: { ref_id: payload.ref_id },
+  });
+  if (!created.success) {
+    logger.info(`[handleApproval.approveGraphNodeMove] link failed`, "handleApproval", {
+      workspaceId,
+      workspaceSlug,
+      kind: "graphNodeMove",
+      edge_type: payload.edge_type,
+      ref_id: payload.ref_id,
+      to_ref_id: payload.to_ref_id,
+      outcome: "failed",
+      message: created.message,
+    });
+    return {
+      ok: false,
+      error: created.message ?? "Failed to link the node under its new parent.",
+      status: 502,
+    };
+  }
+
+  // 2. Confirm the new link is live before the old one goes.
+  const linked = await findEdgeByEndpoints(config, {
+    source_ref_id: payload.to_ref_id,
+    edge_type: payload.edge_type,
+    target_ref_id: payload.ref_id,
+  });
+  if (!linked.success || !linked.edge) {
+    logger.info(`[handleApproval.approveGraphNodeMove] link not live`, "handleApproval", {
+      workspaceId,
+      workspaceSlug,
+      kind: "graphNodeMove",
+      edge_type: payload.edge_type,
+      ref_id: payload.ref_id,
+      to_ref_id: payload.to_ref_id,
+      alreadyLinked: created.alreadyExists,
+      outcome: "link-not-live",
+      ...(linked.success ? {} : { message: linked.message }),
+    });
+    return {
+      ok: false,
+      error: linked.success
+        ? `Could not confirm a live ${payload.edge_type} link from "${payload.to_ref_id}" — the old link from "${payload.from_ref_id}" was kept, so the node still has a parent.`
+        : linked.message ?? "Failed to confirm the node's new link in the knowledge graph.",
+      status: linked.success ? 409 : 502,
+    };
+  }
+
+  // 3. Then the old one goes.
+  const removed = await deleteEdge(config, old.edge.ref_id);
+  const outcome = removed.success ? "moved" : "unlink-failed";
+  logger.info(`[handleApproval.approveGraphNodeMove] ${outcome}`, "handleApproval", {
+    workspaceId,
+    workspaceSlug,
+    kind: "graphNodeMove",
+    edge_type: payload.edge_type,
+    ref_id: payload.ref_id,
+    from_ref_id: payload.from_ref_id,
+    to_ref_id: payload.to_ref_id,
+    old_edge_ref_id: old.edge.ref_id,
+    new_edge_ref_id: created.ref_id,
+    alreadyLinked: created.alreadyExists,
+    outcome,
+    ...(removed.success ? {} : { message: removed.error }),
+  });
+  if (!removed.success) {
+    return {
+      ok: false,
+      error: `The node is now linked under "${payload.to_ref_id}", but its old link from "${payload.from_ref_id}" could not be removed${
+        removed.error ? ` (${removed.error})` : ""
+      }. Approve again to retry the removal.`,
+      status: 502,
+    };
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "graphNodeMove",
+      createdEntityId: payload.ref_id,
+      landedOn: `workspace:${workspaceId}`,
+      workspaceSlug,
+      alreadyExisted: created.alreadyExists,
+    },
+  };
+}
+
+// ── Approve: graph node delete ───────────────────────────────────────
+
+/**
+ * Soft-delete one node. Jarvis stamps it deleted and permanently removes its
+ * edges in one write and returns the delete fields from that write, so
+ * `deleteSingleNode` succeeding IS the check that the node is gone — no
+ * second read.
+ */
+async function approveGraphNodeDelete(args: {
+  orgId: string;
+  userId: string;
+  proposal: Extract<ProposalOutput, { kind: "graphNodeDelete" }>;
+}): Promise<HandleApprovalReturn> {
+  const { orgId, userId, proposal } = args;
+  // Ignore intent.payload — always use the server-persisted proposal payload.
+  const payload = proposal.payload as GraphNodeDeleteProposalPayload;
+
+  if (!payload.workspaceId || !payload.ref_id) {
+    return { ok: false, error: "Invalid graph node delete proposal payload.", status: 400 };
+  }
+
+  // Authorization runs before reading meta or any external call.
+  const resolved = await resolveGraphJarvis(orgId, userId, {
+    workspaceId: payload.workspaceId,
+  });
+  if (!resolved.ok) {
+    return { ok: false, error: "Workspace not found or access denied.", status: 403 };
+  }
+  const { workspaceId, workspaceSlug, config } = resolved.access;
+
+  const meta = proposal.meta as { refusedReason?: string } | undefined;
+  if (meta?.refusedReason) {
+    return { ok: false, error: meta.refusedReason, status: 400 };
+  }
+
+  const result = await deleteSingleNode(config, payload.ref_id, payload.namespace);
+
+  const outcome = result.success ? "deleted" : result.notFound ? "not-found" : "failed";
+  logger.info(
+    `[handleApproval.approveGraphNodeDelete] ${outcome}`,
+    "handleApproval",
+    {
+      workspaceId,
+      workspaceSlug,
+      kind: "graphNodeDelete",
+      ref_id: payload.ref_id,
+      namespace: payload.namespace ?? "default",
+      outcome,
+      ...(result.success
+        ? {
+            deleted_edge_count: result.deletedEdgeCount ?? null,
+            ...(result.deletedEdgeCount == null ? { deleted_edge_count_unknown: true } : {}),
+          }
+        : { message: result.error }),
+    },
+  );
+
+  if (!result.success) {
+    return {
+      ok: false,
+      error: result.error ?? "Failed to delete the node from the knowledge graph.",
+      status: result.notFound ? 404 : 502,
+    };
+  }
+
+  return {
+    ok: true,
+    alreadyApproved: false,
+    result: {
+      proposalId: proposal.proposalId,
+      kind: "graphNodeDelete",
+      createdEntityId: payload.ref_id,
+      landedOn: `workspace:${workspaceId}`,
+      workspaceSlug,
     },
   };
 }

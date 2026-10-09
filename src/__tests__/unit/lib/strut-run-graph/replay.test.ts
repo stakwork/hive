@@ -120,6 +120,7 @@ describe("keepGraphRead", () => {
     edges: [{ source: "a", target: "b", edge_type: "CONTAINS" }],
     nodesRead: true,
     edgesRead: true,
+    lineageRead: true,
     truncated: false,
   };
 
@@ -136,6 +137,7 @@ describe("keepGraphRead", () => {
       edges: [],
       nodesRead: false,
       edgesRead: false,
+      lineageRead: false,
       truncated: false,
     };
 
@@ -144,6 +146,27 @@ describe("keepGraphRead", () => {
       nodes: [read("a"), read("b"), unread("c")],
       edges: EARLIER.edges,
     });
+  });
+
+  it("keeps the lineage an earlier refresh read when the graph does not answer for it", () => {
+    const root: RunGraphNode = { ...read("root"), node_type: "Concept", ancestor: true };
+    const lineage = { source: "root", target: "a", edge_type: "PARENT_OF" };
+    const earlier: RunGraphTrace = { ...EARLIER, nodes: [read("a"), root], edges: [...EARLIER.edges, lineage] };
+    const next: RunGraphTrace = {
+      ...EARLIER,
+      nodes: [read("a"), read("c")],
+      edges: [{ source: "a", target: "c", edge_type: "CONTAINS" }],
+      lineageRead: false,
+    };
+
+    expect(keepGraphRead(earlier, next)).toEqual({
+      ...next,
+      nodes: [read("a"), read("c"), root],
+      edges: [...next.edges, lineage],
+    });
+    // The lineage the refresh did read is its own.
+    const answered: RunGraphTrace = { ...next, lineageRead: true };
+    expect(keepGraphRead(earlier, answered)).toBe(answered);
   });
 
   it("has nothing to keep from a refresh the graph did not answer either", () => {

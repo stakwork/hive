@@ -143,7 +143,8 @@ describe("DailyRecapCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
 
-    expect(screen.queryByTestId("daily-recap-card")).toBeNull();
+    // The card exits via AnimatePresence, so it is removed asynchronously.
+    await waitFor(() => expect(screen.queryByTestId("daily-recap-card")).toBeNull());
     expect(sessionStorageMock.setItem).toHaveBeenCalledWith("hive:daily-recap-dismissed", "1");
   });
 
@@ -173,6 +174,14 @@ describe("DailyRecapCard", () => {
     render(<DailyRecapCard />);
     await waitFor(() => expect(screen.getByTestId("daily-recap-card")).toBeInTheDocument());
     expect(screen.queryByRole("link", { name: /My Activity/i })).toBeNull();
+  });
+
+  it("merges a custom className onto the root element", async () => {
+    mockFetch({ recap: RECAP_TEXT, generatedAt: GENERATED_AT });
+    render(<DailyRecapCard className="mb-3" />);
+    const card = await screen.findByTestId("daily-recap-card");
+    expect(card).toHaveClass("mb-3");
+    expect(card).toHaveClass("rounded");
   });
 
   // ── Error / network ──────────────────────────────────────────────────────

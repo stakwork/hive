@@ -1,9 +1,10 @@
 import type { StreamToolCall } from "@/types/streaming";
 
-export type ToolCallPhase = "running" | "complete" | "error";
+export type ToolCallPhase = "running" | "complete" | "error" | "interrupted";
 
 /** Where a tool call is. Without an expected output, a call is done once its input has landed. */
 export function toolCallPhase(toolCall: StreamToolCall, expectsOutput: boolean): ToolCallPhase {
+  if (toolCall.status === "interrupted") return "interrupted";
   if (toolCall.status === "input-error" || toolCall.status === "output-error") return "error";
   if (toolCall.status === "output-available") return "complete";
   if (!expectsOutput && toolCall.status === "input-available") return "complete";

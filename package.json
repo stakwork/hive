@@ -49,7 +49,7 @@
     "generate:workflow-benchmark-tasks": "tsx scripts/generate-workflow-benchmark-tasks.ts"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "4.0.56",
+    "@ai-sdk/anthropic": "4.0.71",
     "@ai-sdk/mcp": "2.0.52",
     "@anycable/web": "^1.1.0",
     "@auth/prisma-adapter": "^2.10.0",
@@ -105,7 +105,7 @@
     "@vercel/functions": "^3.1.4",
     "@xyflow/react": "^12.8.6",
     "ai": "7.0.105",
-    "aieo": "^0.2.0",
+    "aieo": "^0.2.4",
     "autoprefixer": "^10.4.21",
     "axios": "1.10.0",
     "bcryptjs": "^3.0.2",

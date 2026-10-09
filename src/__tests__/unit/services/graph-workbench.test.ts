@@ -27,6 +27,12 @@ function answer(byFragment: Record<string, { columns: string[]; rows: unknown[][
 
 const queries = () => mockedQuery.mock.calls.map(([args]) => String(args.query));
 
+/** Legacy muted edges stay stored until the purge: every edge read must leave them out. */
+const LIVE_EDGE = "coalesce(r.is_muted, false) = false AND coalesce(r.is_deleted, false) = false";
+
+/** A soft-deleted node carries `deleted_at`, or the legacy `is_deleted`: every read must leave it out. */
+const liveNode = (v: string) => `${v}.deleted_at IS NULL AND coalesce(${v}.is_deleted, false) = false`;
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -70,6 +76,7 @@ describe("getHierarchy", () => {
       },
     });
     expect(queries().every((q) => q.includes("`Concept`"))).toBe(true);
+    expect(queries().find((q) => q.includes(HIERARCHY_EDGES))).toContain(`WHERE ${LIVE_EDGE}`);
   });
 
   test("flags a result that hit upstream's row cap", async () => {
@@ -151,6 +158,7 @@ describe("getNodeConnections", () => {
     });
     // The vectors are left on the swarm, not dropped after the read.
     expect(queries().find((q) => q.includes(NODE))).toContain("NOT k IN ['embeddings','text_embeddings'");
+    expect(queries().find((q) => q.includes(CONNECTIONS))).toContain(`-[r]-(o) WHERE ${LIVE_EDGE}`);
     expect(result.data.groups).toEqual([
       {
         edge: "MODIFIES",
@@ -204,7 +212,39 @@ describe("getConnectionPage", () => {
     });
 
     expect(result).toEqual({ ok: true, data: [{ id: "t-1", name: "graph_get", type: "StrutToolCall" }] });
-    expect(queries()[0]).toContain("<-[:`ACCESSED`]-(o:`StrutToolCall`)");
+    expect(queries()[0]).toContain(`<-[r:\`ACCESSED\`]-(o:\`StrutToolCall\`) WHERE ${LIVE_EDGE}`);
     expect(mockedQuery.mock.calls[0][0].limit).toBe(GRAPH_ROW_CAP);
+  });
+});
+
+describe("deleted nodes", () => {
+  test("all five statements leave deleted nodes and legacy muted edges out", async () => {
+    answer({});
+
+    await getHierarchy(caller, "Concept");
+    await getNodeConnections(caller, "c-1");
+    await getConnectionPage(caller, { refId: "c-1", edge: "ACCESSED", outgoing: true, other: "File", limit: 10 });
+
+    const [hierarchyNodes, hierarchyEdges, node, connections, page] = [
+      HIERARCHY_NODES,
+      HIERARCHY_EDGES,
+      NODE,
+      CONNECTIONS,
+      CONNECTION_PAGE,
+    ].map((fragment) => queries().find((q) => q.includes(fragment)) ?? "");
+
+    expect(hierarchyNodes).toContain(`WHERE ${liveNode("n")}`);
+    expect(hierarchyEdges).toContain(`WHERE ${LIVE_EDGE} AND ${liveNode("a")} AND ${liveNode("b")}`);
+    expect(node).toContain(`WHERE ${liveNode("o")}`);
+    expect(connections).toContain(`WHERE ${LIVE_EDGE} AND ${liveNode("c")} AND ${liveNode("o")}`);
+    expect(page).toContain(`WHERE ${LIVE_EDGE} AND ${liveNode("c")} AND ${liveNode("o")}`);
+  });
+
+  test("a deleted root reads as not found", async () => {
+    // The node statement filters the deleted root out, so upstream returns no row.
+    answer({ [NODE]: { columns: ["props", "labels", "name"], rows: [] } });
+
+    expect(await getNodeConnections(caller, "deleted-1")).toMatchObject({ ok: false, status: 404 });
+    expect(queries().find((q) => q.includes(NODE))).toContain(liveNode("o"));
   });
 });

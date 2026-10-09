@@ -29,18 +29,21 @@ async function jarvisRequest({
   method = "GET",
   data,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  extraHeaders,
 }: {
   config: JarvisConnectionConfig;
   endpoint: string;
   method?: "GET" | "POST" | "PUT" | "DELETE";
   data?: unknown;
   timeoutMs?: number;
+  extraHeaders?: Record<string, string>;
 }): Promise<JarvisApiResponse> {
   const url = `${config.jarvisUrl.replace(/\/$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
   try {
     const headers: Record<string, string> = {
       "x-api-token": config.apiKey,
       "Content-Type": "application/json",
+      ...extraHeaders,
     };
 
     const response = await fetch(url, {
@@ -509,7 +512,8 @@ export async function searchNodesByAttributes(
  *
  * `startingAfter` is jarvis' cursor (the last `ref_id` of the previous page);
  * `fields` restricts `properties` to the named keys so large bodies stay
- * server-side.
+ * server-side. An empty `nodeType` omits the type filter; `namespace` adds
+ * jarvis' `n.namespace = $namespace` partition filter.
  *
  * Never throws. Returns `{ ok }` so callers can distinguish a failed Jarvis
  * read from a legitimately empty result — `kgGetNodesByType` cannot.
@@ -518,12 +522,11 @@ export async function listNodesByType(
   config: JarvisConnectionConfig,
   nodeType: string,
   limit = 500,
-  options: { startingAfter?: string; fields?: string[] } = {},
+  options: { startingAfter?: string; fields?: string[]; namespace?: string } = {},
 ): Promise<SearchLatestResult> {
-  const params = new URLSearchParams({
-    type: nodeType,
-    limit: String(limit),
-  });
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (nodeType) params.set("type", nodeType);
+  if (options.namespace) params.set("namespace", options.namespace);
   if (options.startingAfter) params.set("starting_after", options.startingAfter);
   if (options.fields?.length) params.set("fields", options.fields.join(","));
 
@@ -686,41 +689,13 @@ export async function deleteNode(
   }
 }
 
-export async function patchEdge(
-  config: JarvisConnectionConfig,
-  edgeRefId: string,
-  data: Record<string, unknown>,
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const url = `${config.jarvisUrl.replace(/\/$/, "")}/v2/edges/${encodeURIComponent(edgeRefId)}`;
-    const response = await fetch(url, {
-      method: "PATCH",
-      headers: {
-        "x-api-token": config.apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      const responseText = await response.text();
-      console.error("[Jarvis Nodes] patchEdge failed:", response.status, responseText);
-      return {
-        success: false,
-        error: `Request failed with status ${response.status}`,
-      };
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error("[Jarvis Nodes] patchEdge error:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Request failed",
-    };
-  }
-}
-
+/**
+ * Permanently remove an edge via `DELETE /v2/edges/{ref_id}`: Jarvis deletes
+ * the relationship from Neo4j. An edge that is missing, in another namespace
+ * or not the caller's comes back as 200 + `{ status: "Warning",
+ * status_messages: ["Warning: No edge found…"] }` — Jarvis's permanent miss
+ * signal (it never sends a 404 here), surfaced as `notFound`. Never throws.
+ */
 export async function deleteEdge(
   config: JarvisConnectionConfig,
   edgeRefId: string,
@@ -739,7 +714,107 @@ export async function deleteEdge(
     };
   }
 
+  const body = result.body as
+    | { status?: string; status_messages?: string[] }
+    | undefined;
+  const status = (body?.status ?? "").toLowerCase();
+  if (
+    status === "warning" &&
+    (body?.status_messages ?? []).some((m) => /no edge found/i.test(m))
+  ) {
+    return {
+      success: false,
+      notFound: true,
+      error: describeJarvisFailure("Edge not found", body),
+    };
+  }
+  if (status === "error") {
+    return {
+      success: false,
+      error: describeJarvisFailure("Edge delete returned status Error", body),
+    };
+  }
+
   return { success: true };
+}
+
+/**
+ * Soft-delete exactly one node via `DELETE /v2/nodes/{ref_id}/single`.
+ *
+ * Jarvis stamps the node `deleted_at` and permanently removes its edges in
+ * one write, and returns the node's delete fields from that write. Success
+ * here means they came back set for this ref_id — never just a 200. A node that is
+ * missing (404) or already deleted (409) is surfaced as `notFound`. Jarvis
+ * looks the node up by namespace (default "default" when the query param is
+ * absent), so a node in another namespace needs `namespace`. Unlike
+ * `deleteNode`, nothing else from the node's ingestion run is touched.
+ * Never throws.
+ */
+export async function deleteSingleNode(
+  config: JarvisConnectionConfig,
+  refId: string,
+  namespace?: string,
+): Promise<{ success: boolean; notFound?: boolean; deletedEdgeCount?: number | null; error?: string }> {
+  if (!isSafeRefId(refId)) {
+    return { success: false, error: `Invalid ref_id: ${JSON.stringify(refId)}` };
+  }
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/${encodeURIComponent(refId)}/single${
+      namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""
+    }`,
+    method: "DELETE",
+    extraHeaders: { "X-Is-Admin": "true" },
+  });
+
+  if (!result.ok) {
+    if (result.status === 404) {
+      return {
+        success: false,
+        notFound: true,
+        error: `Node not found in namespace "${namespace || "default"}" — it may live in a different namespace or not exist.`,
+      };
+    }
+    if (result.status === 409) {
+      return { success: false, notFound: true, error: "Node was already deleted." };
+    }
+    return {
+      success: false,
+      notFound: false,
+      error: result.error || `Request failed with status ${result.status}`,
+    };
+  }
+
+  const body = result.body as
+    | { ref_id?: string; deleted_edge_count?: number; muted_edge_count?: number } & Record<string, unknown>
+    | undefined;
+  if (body?.ref_id !== refId || !isDeletedNode(body)) {
+    return {
+      success: false,
+      error: "Jarvis did not confirm the node was deleted.",
+    };
+  }
+
+  // `muted_edge_count` is the pre-contract name for the same count.
+  const count = body.deleted_edge_count ?? body.muted_edge_count;
+  return { success: true, deletedEdgeCount: typeof count === "number" ? count : null };
+}
+
+/**
+ * True for a soft-deleted node: Jarvis stamps `deleted_at` (epoch ms).
+ * `is_deleted` is the legacy flag, still written until the contract step.
+ */
+export function isDeletedNode(properties: Record<string, unknown> | undefined): boolean {
+  return (properties?.deleted_at !== undefined && properties?.deleted_at !== null) || properties?.is_deleted === true;
+}
+
+/**
+ * True for an edge no read should show. Jarvis now deletes edges outright;
+ * `is_muted` / `is_deleted` (legacy) mark edges muted before that, still
+ * stored until the purge.
+ */
+export function isMutedEdge(properties: Record<string, unknown> | undefined): boolean {
+  return properties?.is_muted === true || properties?.is_deleted === true;
 }
 
 // ── Jarvis v2 write helpers (user-approved graph writes) ─────────────────────
@@ -779,12 +854,16 @@ function isSafeRefId(ref_id: string): boolean {
  * Does NOT send `X-Is-Admin` — user-approved writes must not execute with
  * admin authority on Jarvis.
  *
+ * Jarvis looks the node up by namespace (default "default" when the query
+ * param is absent), so a node in another namespace needs `namespace`.
+ *
  * Never throws.
  */
 export async function updateNodeV2(
   config: JarvisConnectionConfig,
   ref_id: string,
   node_data: Record<string, unknown>,
+  namespace?: string,
 ): Promise<JarvisV2Result> {
   if (!isSafeRefId(ref_id)) {
     return {
@@ -795,7 +874,9 @@ export async function updateNodeV2(
 
   const result = await jarvisRequest({
     config,
-    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}`,
+    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}${
+      namespace?.trim() ? `?namespace=${encodeURIComponent(namespace)}` : ""
+    }`,
     method: "POST",
     data: { node_data },
   });
@@ -902,7 +983,9 @@ export async function addEdgeV2(
 export async function readNodeByRef(
   config: JarvisConnectionConfig,
   ref_id: string,
-): Promise<JarvisV2Result & { properties?: Record<string, unknown>; node_type?: string }> {
+): Promise<
+  JarvisV2Result & { properties?: Record<string, unknown>; node_type?: string; namespace?: string }
+> {
   if (!isSafeRefId(ref_id)) {
     return {
       success: false,
@@ -931,10 +1014,12 @@ export async function readNodeByRef(
         nodes?: Array<{
           ref_id?: string;
           node_type?: string;
+          namespace?: string;
           properties?: Record<string, unknown>;
         }>;
         ref_id?: string;
         node_type?: string;
+        namespace?: string;
         properties?: Record<string, unknown>;
       }
     | undefined;
@@ -945,13 +1030,231 @@ export async function readNodeByRef(
     ? body!.nodes!.find((n) => n?.ref_id === ref_id) ?? body!.nodes![0]
     : body;
   const resolvedRefId = node?.ref_id ?? ref_id;
+  // Jarvis removes `namespace` from `properties` through GENERIC_NODE_PROPERTIES
+  // and returns it as a top-level field; fall back to `properties` for older shapes.
+  const namespace = node?.namespace ?? node?.properties?.namespace;
 
   return {
     success: true,
     ref_id: resolvedRefId,
     node_type: node?.node_type,
     properties: node?.properties,
+    ...(typeof namespace === "string" && namespace ? { namespace } : {}),
     status: "success",
+  };
+}
+
+/** A Neo4j relationship type as Jarvis's `edge_type` filter accepts it. */
+const EDGE_TYPE_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+
+/**
+ * Edges of one type read from a node when an edge is looked up by its ends.
+ * Higher than the walker's neighbor cap: one type is bounded, and a parent
+ * with a few hundred children must still find the one child asked about.
+ */
+const EDGE_LOOKUP_LIMIT = 500;
+
+interface ExpandedEdge {
+  ref_id: string;
+  source: string;
+  target: string;
+  edge_type: string;
+  properties: Record<string, unknown>;
+}
+
+/** A node's edges of one type, both directions, with a name for every node in the answer. */
+async function readEdgesOfType(
+  config: JarvisConnectionConfig,
+  ref_id: string,
+  edge_type: string,
+): Promise<{ ok: true; edges: ExpandedEdge[]; names: Map<string, string> } | { ok: false; status?: string; message: string }> {
+  if (!isSafeRefId(ref_id)) {
+    return { ok: false, message: `Invalid ref_id: must match [A-Za-z0-9_\\-.:@]+ (got ${JSON.stringify(ref_id)})` };
+  }
+  if (!EDGE_TYPE_PATTERN.test(edge_type)) {
+    return {
+      ok: false,
+      message: `Invalid edge_type: must match [A-Za-z_][A-Za-z0-9_]* (got ${JSON.stringify(edge_type)})`,
+    };
+  }
+  const params = new URLSearchParams({
+    expand: "edges",
+    edge_type: `["${edge_type}"]`,
+    limit: String(EDGE_LOOKUP_LIMIT),
+    include_properties: "true",
+    canonicalize: "false",
+  });
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/${encodeURIComponent(ref_id)}?${params.toString()}`,
+    method: "GET",
+  });
+  if (!result.ok) {
+    return {
+      ok: false,
+      status: String(result.status),
+      message: result.error ?? `Request failed with status ${result.status}`,
+    };
+  }
+  const body = result.body as
+    | {
+        nodes?: Array<{ ref_id?: unknown; name?: unknown; properties?: Record<string, unknown> }>;
+        edges?: Array<{
+          ref_id?: unknown;
+          source?: unknown;
+          target?: unknown;
+          edge_type?: unknown;
+          properties?: Record<string, unknown>;
+        }>;
+      }
+    | undefined;
+  const names = new Map<string, string>();
+  for (const n of body?.nodes ?? []) {
+    const name = n?.properties?.name ?? n?.properties?.title ?? n?.name;
+    if (typeof n?.ref_id === "string" && typeof name === "string" && name) names.set(n.ref_id, name);
+  }
+  const edges: ExpandedEdge[] = [];
+  for (const e of body?.edges ?? []) {
+    if (typeof e?.ref_id !== "string" || !e.ref_id) continue;
+    if (typeof e.source !== "string" || typeof e.target !== "string" || e.edge_type !== edge_type) continue;
+    edges.push({ ref_id: e.ref_id, source: e.source, target: e.target, edge_type, properties: e.properties ?? {} });
+  }
+  return { ok: true, edges, names };
+}
+
+export interface JarvisEdgeMatch {
+  ref_id: string;
+  properties: Record<string, unknown>;
+  source_name?: string;
+  target_name?: string;
+}
+
+/**
+ * Find one edge by its ends and type: `(source)-[:edge_type]->(target)`.
+ *
+ * Jarvis addresses edges by an opaque `ref_id` that no read tool surfaces to
+ * the model, so an approved edge delete or node move resolves the edge here
+ * through `GET /v2/nodes/{ref_id}?expand=edges`. The source side is read
+ * first; when a hub source cuts the list short, the target side is read too.
+ * Muted or soft-deleted edges count as absent.
+ *
+ * `success: true` without `edge` means the edge is not there. Never throws.
+ */
+export async function findEdgeByEndpoints(
+  config: JarvisConnectionConfig,
+  edge: { source_ref_id: string; edge_type: string; target_ref_id: string },
+): Promise<JarvisV2Result & { edge?: JarvisEdgeMatch }> {
+  const { source_ref_id, edge_type, target_ref_id } = edge;
+  for (const side of [source_ref_id, target_ref_id]) {
+    const read = await readEdgesOfType(config, side, edge_type);
+    if (!read.ok) return { success: false, status: read.status, message: read.message };
+    const match = read.edges.find(
+      (e) => e.source === source_ref_id && e.target === target_ref_id && !isMutedEdge(e.properties),
+    );
+    if (match) {
+      const source_name = read.names.get(source_ref_id);
+      const target_name = read.names.get(target_ref_id);
+      return {
+        success: true,
+        status: "success",
+        ref_id: match.ref_id,
+        edge: {
+          ref_id: match.ref_id,
+          properties: match.properties,
+          ...(source_name ? { source_name } : {}),
+          ...(target_name ? { target_name } : {}),
+        },
+      };
+    }
+  }
+  return { success: true, status: "success" };
+}
+
+export interface JarvisIncomingEdge {
+  ref_id: string;
+  source_ref_id: string;
+  source_name?: string;
+  properties: Record<string, unknown>;
+}
+
+/**
+ * The live edges of one type that point AT a node — its parents along
+ * PARENT_OF, say. What a node move reads to learn where the node sits now.
+ * Never throws.
+ */
+export async function listIncomingEdges(
+  config: JarvisConnectionConfig,
+  args: { ref_id: string; edge_type: string },
+): Promise<JarvisV2Result & { edges: JarvisIncomingEdge[] }> {
+  const read = await readEdgesOfType(config, args.ref_id, args.edge_type);
+  if (!read.ok) return { success: false, status: read.status, message: read.message, edges: [] };
+  const edges = read.edges
+    .filter((e) => e.target === args.ref_id && e.source !== args.ref_id && !isMutedEdge(e.properties))
+    .map((e) => {
+      const source_name = read.names.get(e.source);
+      return {
+        ref_id: e.ref_id,
+        source_ref_id: e.source,
+        ...(source_name ? { source_name } : {}),
+        properties: e.properties,
+      };
+    });
+  return { success: true, status: "success", edges };
+}
+
+export interface JarvisGraphEdge {
+  source: string;
+  target: string;
+  edge_type: string;
+  properties?: Record<string, unknown>;
+}
+
+export interface NodeEdgesResult {
+  ok: boolean;
+  edges: JarvisGraphEdge[];
+  /** The neighbours the edges point at (and the node itself), with properties. */
+  nodes: JarvisGraphNode[];
+  status?: number;
+  error?: string;
+}
+
+/** jarvis reads list filters as Python list literals: `["A","B"]`. */
+function toListLiteral(values: string[]): string {
+  return `[${values.map((v) => JSON.stringify(v)).join(",")}]`;
+}
+
+/**
+ * A node's edges via `GET /v2/nodes/:ref_id?expand=edges`, raw — no neighbor
+ * dedup, so parallel edges of different types all come back. `limit` bounds
+ * jarvis' traversal (a hub node can OOM Neo4j without one) and applies AFTER
+ * the `nodeTypes` / `edgeTypes` filters, so filter to keep a hub's many
+ * irrelevant edges from crowding out the ones wanted.
+ *
+ * Never throws. Returns `{ ok: false }` on any transport/HTTP failure.
+ */
+export async function getNodeEdges(
+  config: JarvisConnectionConfig,
+  refId: string,
+  options: { limit?: number; nodeTypes?: string[]; edgeTypes?: string[] } = {},
+): Promise<NodeEdgesResult> {
+  if (!isSafeRefId(refId)) {
+    return { ok: false, edges: [], nodes: [], error: `Invalid ref_id: ${JSON.stringify(refId)}` };
+  }
+  const params = new URLSearchParams({ expand: "edges", limit: String(options.limit ?? 200) });
+  if (options.nodeTypes?.length) params.set("node_type", toListLiteral(options.nodeTypes));
+  if (options.edgeTypes?.length) params.set("edge_type", toListLiteral(options.edgeTypes));
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/${encodeURIComponent(refId)}?${params.toString()}`,
+    method: "GET",
+  });
+  if (!result.ok) return { ok: false, edges: [], nodes: [], status: result.status, error: result.error };
+  const body = result.body as { edges?: JarvisGraphEdge[]; nodes?: JarvisGraphNode[] } | undefined;
+  return {
+    ok: true,
+    edges: Array.isArray(body?.edges) ? body!.edges : [],
+    nodes: Array.isArray(body?.nodes) ? body!.nodes : [],
+    status: result.status,
   };
 }
 

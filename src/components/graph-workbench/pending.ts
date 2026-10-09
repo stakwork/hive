@@ -9,8 +9,12 @@ import { isRoot, type WorkbenchGraph, type WorkbenchNode } from "./model";
 export interface Pending {
   /** Tree edges that would be added, as "source>target". */
   newEdges: Set<string>;
+  /** Tree edges that would be removed, as "source>target". They stay in the graph, drawn as going. */
+  removedEdges: Set<string>;
   /** Links of any other edge type that would be added. */
   links: Array<{ edge: string; source: string; target: string }>;
+  /** Links of any other edge type that would be removed. */
+  unlinks: Array<{ edge: string; source: string; target: string }>;
   /** Every node a change touches — the canvas keeps them all in view. */
   touched: Set<string>;
   /** Where the canvas should centre: what the first change is about. */
@@ -22,7 +26,9 @@ export interface Pending {
 
 const emptyPending = (): Pending => ({
   newEdges: new Set(),
+  removedEdges: new Set(),
   links: [],
+  unlinks: [],
   touched: new Set(),
   focus: null,
   created: 0,
@@ -43,8 +49,9 @@ export function findNode(g: WorkbenchGraph, ref: string): string | null {
 
 /**
  * The graph with a proposal's changes laid over it: new nodes and edges added
- * (an endpoint that resolves to nothing becomes a new node), edits recorded.
- * The loaded graph is left as it was.
+ * (an endpoint that resolves to nothing becomes a new node), edges to remove
+ * marked (they stay in the graph, so the tree still shows where the node
+ * is), edits recorded. The loaded graph is left as it was.
  */
 export function applyChanges(
   base: WorkbenchGraph,
@@ -97,7 +104,8 @@ export function applyChanges(
         });
         // A new node's parent link is PARENT_OF; it only shapes a tree drawn along that edge.
         if (parent && base.lens.edge === "PARENT_OF") link(parent, id);
-        if (parent) touch(parent, id);
+        // The new node comes first so the canvas lands on it; the parent is touched too, so it stays pinned beside it.
+        if (parent) touch(id, parent);
         else touch(id);
         break;
       }
@@ -117,6 +125,18 @@ export function applyChanges(
         if (change.edge === base.lens.edge) link(source, target);
         else pending.links.push({ edge: change.edge, source, target });
         touch(source, target);
+        break;
+      }
+      case "unlink": {
+        const source = findNode(graph, change.source);
+        const target = findNode(graph, change.target);
+        // An edge to remove is drawn between two loaded nodes; an end that isn't loaded leaves only the other in view.
+        if (source && target) {
+          if (change.edge === base.lens.edge) pending.removedEdges.add(`${source}>${target}`);
+          else pending.unlinks.push({ edge: change.edge, source, target });
+        }
+        const known = [source, target].filter((id): id is string => !!id);
+        if (known.length) touch(...known);
         break;
       }
     }

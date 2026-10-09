@@ -39,12 +39,15 @@ vi.mock("@/lib/ai/graphWalkDispatchTools", () => ({
   })),
 }));
 
-// The four write tools — return named stubs so we can detect presence.
+// The seven write tools — return named stubs so we can detect presence.
 const WRITE_TOOL_STUBS = {
   propose_create_node: "stub_create_node",
   propose_node_edit: "stub_node_edit",
   propose_create_triplet: "stub_create_triplet",
   propose_create_batch_triplet: "stub_batch_triplet",
+  propose_delete_edge: "stub_delete_edge",
+  propose_move_node: "stub_move_node",
+  propose_delete_node: "stub_delete_node",
 };
 const mockBuildGraphWriteTools = vi.fn(() => WRITE_TOOL_STUBS);
 vi.mock("@/lib/ai/graphWriteTools", () => ({
@@ -85,6 +88,9 @@ vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_NODE_EDIT_TOOL: "propose_node_edit",
   PROPOSE_CREATE_TRIPLET_TOOL: "propose_create_triplet",
   PROPOSE_CREATE_BATCH_TRIPLET_TOOL: "propose_create_batch_triplet",
+  PROPOSE_DELETE_EDGE_TOOL: "propose_delete_edge",
+  PROPOSE_MOVE_NODE_TOOL: "propose_move_node",
+  PROPOSE_DELETE_NODE_TOOL: "propose_delete_node",
   PROPOSE_CODE_CHANGE_TOOL: "propose_code_change",
 }));
 
@@ -141,6 +147,9 @@ describe("graph_writer tool gate (ctx.graphWriteEnabled)", () => {
     expect(tools).toHaveProperty("propose_node_edit");
     expect(tools).toHaveProperty("propose_create_triplet");
     expect(tools).toHaveProperty("propose_create_batch_triplet");
+    expect(tools).toHaveProperty("propose_delete_edge");
+    expect(tools).toHaveProperty("propose_move_node");
+    expect(tools).toHaveProperty("propose_delete_node");
     expect(mockBuildGraphWriteTools).toHaveBeenCalledWith("org-1", "user-1");
   });
 
@@ -152,6 +161,9 @@ describe("graph_writer tool gate (ctx.graphWriteEnabled)", () => {
     expect(tools).not.toHaveProperty("propose_node_edit");
     expect(tools).not.toHaveProperty("propose_create_triplet");
     expect(tools).not.toHaveProperty("propose_create_batch_triplet");
+    expect(tools).not.toHaveProperty("propose_delete_edge");
+    expect(tools).not.toHaveProperty("propose_move_node");
+    expect(tools).not.toHaveProperty("propose_delete_node");
     expect(mockBuildGraphWriteTools).not.toHaveBeenCalled();
   });
 
@@ -184,26 +196,32 @@ describe("graph_walker writeToolNames", () => {
     expect(writeToolNames).toContain("finalize_graph_walk");
   });
 
-  it("includes all four graph-write propose tool names", () => {
+  it("includes all seven graph-write propose tool names", () => {
     expect(writeToolNames).toContain("propose_create_node");
     expect(writeToolNames).toContain("propose_node_edit");
     expect(writeToolNames).toContain("propose_create_triplet");
     expect(writeToolNames).toContain("propose_create_batch_triplet");
+    expect(writeToolNames).toContain("propose_delete_edge");
+    expect(writeToolNames).toContain("propose_move_node");
+    expect(writeToolNames).toContain("propose_delete_node");
   });
 });
 
 describe("composeWriteToolNames with graph_walker", () => {
-  it("includes all six graph_walker write names when graph_walker is resolved", () => {
+  it("includes all nine graph_walker write names when graph_walker is resolved", () => {
     const resolved = resolveCapabilities(["graph_walker"]);
     const names = composeWriteToolNames(resolved);
     // dispatch/finalize
     expect(names).toContain("dispatch_graph_walk");
     expect(names).toContain("finalize_graph_walk");
-    // four propose tools
+    // seven propose tools
     expect(names).toContain("propose_create_node");
     expect(names).toContain("propose_node_edit");
     expect(names).toContain("propose_create_triplet");
     expect(names).toContain("propose_create_batch_triplet");
+    expect(names).toContain("propose_delete_edge");
+    expect(names).toContain("propose_move_node");
+    expect(names).toContain("propose_delete_node");
   });
 });
 
