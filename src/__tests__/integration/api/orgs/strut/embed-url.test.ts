@@ -30,6 +30,11 @@ vi.mock("@/lib/locks/redis-lock", () => ({
   withLock: (_key: string, fn: () => Promise<unknown>) => fn(),
 }));
 
+// The org strut's peers have their own unit tests (strut-peers.test.ts);
+// here only that the route asks for them, for the org strut and the user.
+const { mockEnsureOrgStrutPeers } = vi.hoisted(() => ({ mockEnsureOrgStrutPeers: vi.fn() }));
+vi.mock("@/services/strut-peers", () => ({ ensureOrgStrutPeers: mockEnsureOrgStrutPeers }));
+
 async function expectJson<T = unknown>(res: NextResponse | Response, status = 200): Promise<T> {
   const r = res as Response;
   expect(r.status).toBe(status);
@@ -80,6 +85,7 @@ beforeEach(() => {
     text: async () => "",
   });
   vi.stubGlobal("fetch", fetchMock);
+  mockEnsureOrgStrutPeers.mockReset().mockResolvedValue({ peers: {}, delegations: {} });
 });
 
 afterEach(async () => {
@@ -174,6 +180,11 @@ describe("POST /api/orgs/[githubLogin]/strut/embed-url", () => {
     expect(mintCalls()).toHaveLength(1);
     const [mintUrl, init] = mintCalls()[0];
     expect(mintUrl).toBe("https://default.swarm.test:3355/mint-token");
+    // And the org strut's peers, for this user.
+    expect(mockEnsureOrgStrutPeers).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceSlug: defaultWs.slug, swarmUrl: "https://default.swarm.test/api" }),
+      owner.id,
+    );
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>)["x-api-token"]).toBe("mock-swarm-api-key");
     // `sub` is the user's actor string — `buildBifrostName(userId, login)`,

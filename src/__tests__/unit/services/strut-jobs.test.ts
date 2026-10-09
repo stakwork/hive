@@ -38,7 +38,7 @@ vi.mock("@/services/strut-target", () => ({
   describeStrutTargetError: (e: { type: string }) => `target: ${e.type}`,
 }));
 vi.mock("@/services/strut-runs", () => ({ dispatchStrutRun: mockDispatch, cancelStrutRun: mockCancel, StrutDispatchError: FakeDispatchError }));
-vi.mock("@/services/strut-peers", () => ({ ensureJobPeers: mockEnsurePeers }));
+vi.mock("@/services/strut-peers", () => ({ ensureOrgStrutPeers: mockEnsurePeers }));
 vi.mock("@/services/canvas-active-runs-hooks", () => ({ setActiveRun: mockSetActiveRun, notifyRunActive: mockNotifyRunActive }));
 vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: mockGetPat }));
 vi.mock("@/services/strut-runs/job-turn", () => ({ appendJobEventRow: mockAppendEvent }));

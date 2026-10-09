@@ -79,6 +79,7 @@ import { JOB_TURN_KIND, jobTitleOf } from "@/lib/strut-jobs";
 import { resolveOrgConversationRowId } from "@/services/org-canvas-conversation";
 import { STRUT_ACTOR_HEADER, ensureStrutDelegation } from "@/services/bifrost/strut-delegation";
 import { BUSY_NOTE, launchJobTurn } from "@/services/strut-jobs";
+import { ensureOrgStrutPeers } from "@/services/strut-peers";
 import { resolveStrutTarget, type StrutPurpose, type StrutTarget } from "@/services/strut-target";
 import type { CapabilityContext } from "./capabilities";
 
@@ -268,11 +269,18 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         // Bifrost gates; never throws, never blocks the dispatch. Also runs
         // with no live session (automations, the strut auto-turn) — the
         // user is attributed, not present; the custodial key signs.
-        await ensureStrutDelegation(
-          { workspaceId: target.workspaceId, workspaceSlug: target.workspaceSlug, userId: ctx.userId },
-          { swarmUrl: target.swarmUrl, swarmApiKey: target.swarmApiKey },
-          { actor: target.actor },
-        );
+        // Beside it, the org strut's peers and this user's delegation on
+        // each, so the builder's `list_peers` / `run_workflow { peer }`
+        // reach every other workspace's strut (`strut-peers.ts`). Neither
+        // throws.
+        await Promise.all([
+          ensureStrutDelegation(
+            { workspaceId: target.workspaceId, workspaceSlug: target.workspaceSlug, userId: ctx.userId },
+            { swarmUrl: target.swarmUrl, swarmApiKey: target.swarmApiKey },
+            { actor: target.actor },
+          ),
+          ensureOrgStrutPeers(target, ctx.userId),
+        ]);
 
         const callback = await setupCallback(ctx, {
           title,
