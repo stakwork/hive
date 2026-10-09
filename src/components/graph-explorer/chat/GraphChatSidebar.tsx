@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Loader2, MessageSquare, Plus, Send, Share2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquare, Network, Plus, Send, Sparkles, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -284,7 +284,7 @@ export function GraphChatSidebar({
             title="Show this chat's concept reads on the graph"
             data-testid="graph-chat-show-on-graph-button"
           >
-            <Share2 className="h-4 w-4" />
+            <Network className="h-4 w-4" />
           </Button>
         )}
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} data-testid="graph-chat-close-button">

@@ -11,8 +11,8 @@ import {
   GitPullRequest,
   Globe,
   Image as ImageIcon,
+  Network,
   ScrollText,
-  Share2,
   type LucideIcon,
 } from "lucide-react";
 import { toJsonText } from "@/components/streaming/toolCallValue";
@@ -148,7 +148,7 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
   },
   graph: {
     label: "Graph",
-    Icon: Share2,
+    Icon: Network,
     Inline: GraphInline,
     Panel: GraphPanel,
     fact: (content) => content.workspace,

@@ -11,7 +11,7 @@ import {
   Info,
   FileDiff,
   Code2,
-  Share2,
+  Network,
 } from "lucide-react";
 import { computeUnifiedDiff, type UnifiedDiff } from "@/lib/diff/unifiedLineDiff";
 import {
@@ -810,7 +810,7 @@ export function ProposalCard({
                   className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                   data-testid="proposal-open-in-graph"
                 >
-                  <Share2 className="h-3.5 w-3.5" />
+                  <Network className="h-3.5 w-3.5" />
                 </button>
               ) : hasDetails && (
                 <button
