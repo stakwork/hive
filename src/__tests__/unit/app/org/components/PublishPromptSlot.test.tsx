@@ -409,4 +409,44 @@ describe("PublishPromptSlot renders", () => {
     // No new calls within dedup window
     expect(fetchSpy.mock.calls.length).toBe(callsAfterMount);
   });
+
+  it("does not call onStateChange again on re-render with unchanged props (no render-loop regression)", async () => {
+    const versions = makeVersions([
+      { id: "v1", version_number: 1, published: true },
+      { id: "v2", version_number: 2, published: false },
+    ]);
+    mockFetchResponse = { ok: true, status: 200, body: makeSuccessResponse(versions, "v1") };
+    const onStateChange = vi.fn();
+
+    const { rerender } = await renderSlot({ promptVersionId: "v2", onStateChange });
+    await waitFor(() => expect(screen.getByText("Publish")).toBeTruthy());
+
+    // Two real state changes so far: initial "hidden" (no data yet) then
+    // "publishable" once the fetch resolves. Capture the settled count
+    // before asserting no-op re-renders don't add any more calls.
+    const callsAfterSettle = onStateChange.mock.calls.length;
+    expect(onStateChange).toHaveBeenLastCalledWith({ kind: "publishable" });
+
+    // Re-render with the exact same props (new object/function identities on
+    // some props, but equal primitives) several times — if `publishState`
+    // were rebuilt as a fresh object literal each render, this would fire
+    // `onStateChange` again every time.
+    for (let i = 0; i < 5; i++) {
+      rerender(
+        <PublishPromptSlot
+          promptId="prompt-1"
+          promptVersionId="v2"
+          workspaceSlug="stakwork"
+          approvalTimestamp={BASE_TIMESTAMP}
+          onStateChange={onStateChange}
+        />,
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+
+    // No repeated calls for the unchanged state across re-renders.
+    expect(onStateChange).toHaveBeenCalledTimes(callsAfterSettle);
+  });
 });
