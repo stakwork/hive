@@ -304,8 +304,11 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   }, [depthConnections])
 
   // Update positions and animation
-  useFrame(({ clock }) => {
+  useFrame(({ clock, invalidate }) => {
     if (!simulation || !groupRef.current || chunkNodes.length === 0) return
+
+    // Pulse and edge growth run continuously while the chunk is shown
+    invalidate()
 
     const { nodePositionsNormalized } = getStoreBundle(storeId).simulation.getState()
 
