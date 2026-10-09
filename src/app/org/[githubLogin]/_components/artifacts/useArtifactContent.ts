@@ -1,8 +1,10 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { createContext, useContext, useEffect, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { strutArtifactReaderUrl } from "@/lib/strut-jobs";
+import { getOrgChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { usePusherChannel } from "@/hooks/usePusherChannel";
 import {
   parseArtifactContent,
   type ArtifactContents,
@@ -121,18 +123,29 @@ const sourceKey = (source: ArtifactSource): string =>
 const failureOf = (error: unknown): ArtifactLoadFailure =>
   error instanceof ArtifactLoadError ? error.reason : "failed";
 
+/** Repo and number named by an inline pull_request ref, used for both the fetch URL and the live-nudge match. */
+interface PrLiveTarget {
+  url: string;
+  repo: string;
+  number: number;
+}
+
 /**
  * Where a pull request's live state is read from: Hive's route, which asks
  * GitHub with the viewer's own token
  * (`api/orgs/[githubLogin]/strut/pull-request`). Null when the ref does not
  * name a pull request by repo and number.
  */
-function prLiveUrl(githubLogin: string, inline: Record<string, unknown>): string | null {
+function prLiveTarget(githubLogin: string, inline: Record<string, unknown>): PrLiveTarget | null {
   const { repo, number } = inline;
   if (typeof repo !== "string" || !repo || typeof number !== "number" || !Number.isInteger(number)) return null;
   const sp = new URLSearchParams({ repo, number: String(number) });
-  return `/api/orgs/${encodeURIComponent(githubLogin)}/strut/pull-request?${sp}`;
+  return { url: `/api/orgs/${encodeURIComponent(githubLogin)}/strut/pull-request?${sp}`, repo, number };
 }
+
+/** Query key the card and the panel share — one poll, one live-nudge target, serves both. */
+const prLiveQueryKey = (githubLogin: string, repo: string, number: number) =>
+  ["canvas-pr-live", githubLogin, repo, number] as const;
 
 /** Whether a PR state is terminal — no more polling needed. */
 const isTerminalPrState = (state: unknown): boolean =>
@@ -158,6 +171,7 @@ export const prLivePollInterval = (state: { status: string; data?: Record<string
 export function useArtifactContent(artifact: ArtifactRef, enabled = true): ArtifactContentState {
   const load = useContext(ArtifactLoaderContext);
   const githubLogin = useChatOrgLogin();
+  const queryClient = useQueryClient();
   const { kind, source } = artifact;
 
   // Content on the ref needs no round trip, and so no loading state.
@@ -174,27 +188,52 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
   // same query key so a single poll serves both. Polling stops once the PR
   // is merged or closed, or once a read has failed (`prLivePollInterval`),
   // and does not run when the tab is hidden.
-  const prUrl = useMemo(
+  const prTarget = useMemo(
     () =>
       kind === "pull_request" && source.type === "inline"
-        ? prLiveUrl(githubLogin, source.content)
+        ? prLiveTarget(githubLogin, source.content)
         : null,
     [kind, source, githubLogin],
   );
 
   const prLiveQuery = useQuery({
-    queryKey: ["canvas-pr-live", prUrl],
+    queryKey: prTarget
+      ? prLiveQueryKey(githubLogin, prTarget.repo, prTarget.number)
+      : (["canvas-pr-live", githubLogin, null, null] as const),
     queryFn: async () => {
-      const res = await fetch(prUrl!, { credentials: "same-origin" });
+      const res = await fetch(prTarget!.url, { credentials: "same-origin" });
       if (!res.ok) throw new Error(`pr-live ${res.status}`);
       return (await res.json()) as Record<string, unknown>;
     },
-    enabled: enabled && prUrl !== null,
+    enabled: enabled && prTarget !== null,
     refetchInterval: (query) => prLivePollInterval(query.state),
     refetchIntervalInBackground: false,
     // On network errors keep the inline state — don't surface as "failed".
     retry: false,
   });
+
+  // ── Live PR nudge (webhook-driven) ──────────────────────────────────────
+  //
+  // The 30s poll above is the backup; this is what makes a merge/close/
+  // reopen/check update show up immediately. The webhook carries NO pull
+  // request data — just `{ repo, number }` — so every open viewer refetches
+  // through its own route/token (same request the poll already makes). The
+  // org channel is already subscribed to elsewhere on the canvas page
+  // (`usePusherChannel` is refcounted), so this adds no extra connection.
+  const prChannel = usePusherChannel(prTarget ? getOrgChannelName(githubLogin) : null);
+  useEffect(() => {
+    if (!prChannel || !prTarget) return;
+    const handler = (payload: { repo?: string; number?: number }) => {
+      // GitHub's `full_name` casing (the webhook's `repo`) may not match
+      // the ref's own casing — compare case-insensitively.
+      if (payload.repo?.toLowerCase() !== prTarget.repo.toLowerCase() || payload.number !== prTarget.number) return;
+      void queryClient.invalidateQueries({ queryKey: prLiveQueryKey(githubLogin, prTarget.repo, prTarget.number) });
+    };
+    prChannel.bind(PUSHER_EVENTS.CANVAS_PR_UPDATED, handler);
+    return () => {
+      prChannel.unbind(PUSHER_EVENTS.CANVAS_PR_UPDATED, handler);
+    };
+  }, [prChannel, prTarget, githubLogin, queryClient]);
 
   // Overlay the live result on the inline content for pull_request refs.
   const liveOverlaidContent = useMemo(() => {
