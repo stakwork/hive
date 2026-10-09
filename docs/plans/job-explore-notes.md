@@ -72,32 +72,39 @@ Stakgraph (`mcp/src/lab`, seeded, no Hive release needed):
    seeing. Keep the thread to the conversation and its conclusions. It names
    no kind, as before.
 5. **`Code Change` sizes against notes.** Only a small change in a file you
-   already know goes straight to the coder. Anything else explores first and
-   passes the note.
-6. **`code-change-pr` takes `notes`.** Paths in the job directory. The
-   workflow reads each with `job/read` and adds it to the coder's prompt, so
-   the job agent never retypes a note.
-7. **`Pod` claims by slug.** Claim for the workspace whose repository is
+   already know goes straight to the coder. Anything else explores first,
+   and the brief carries what the note found.
+6. **`Pod` claims by slug.** Claim for the workspace whose repository is
    changing, and put the note's relevant part in the pod agent's task.
 
 Hive:
 
-8. **Send the home slug.** `launchJobTurn` puts the org strut's workspace
+7. **Send the home slug.** `launchJobTurn` puts the org strut's workspace
    slug on the input instead of its id.
-9. **Pod routes take a slug or an id.** `claim-pod` and `drop-pod` resolve
+8. **Pod routes take a slug or an id.** `claim-pod` and `drop-pod` resolve
    the path segment as either, through `resolvePodCaller`, which already
    checks an org key against the workspace's org.
-10. **Jamie names workspaces and lets the job explore.** In the strut
-    snippet and both system prompts: write `@slug` in the job prompt, start
-    the job with the question when it is heading toward a change, and keep
-    `repo_agent` for quick answers the user will not build on.
+9. **Jamie names workspaces and lets the job explore.** In the strut
+   snippet and both system prompts: write `@slug` in the job prompt, start
+   the job with the question when it is heading toward a change, and keep
+   `repo_agent` for quick answers the user will not build on.
 
 ## Deploy order
 
-Hive first (steps 8 to 10). The pod routes then accept a slug before any
+Hive first (steps 7 to 9). The pod routes then accept a slug before any
 job sends one. Stakgraph second. Strut drops input a workflow does not
 declare, and `workspace` was already declared, so either order is safe for
 the launch itself.
+
+## Notes travel in the brief, not by path
+
+A job hands work to a child run on its own strut, to a peer's strut, or to
+the agent in a pod. Only the prompt reaches all three: a peer and a pod
+cannot read the job's directory. So no workflow takes note paths. The job
+agent puts what a note found into the brief, quoted, and only what that
+change needs. If retyping ever costs too much, the generic fix is in
+strut's agent step: a tool argument that references a job file, expanded
+before the tool runs, which works for all three.
 
 ## Not in this
 
