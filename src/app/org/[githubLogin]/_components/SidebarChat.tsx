@@ -387,16 +387,12 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
             <DailyRecapCard dismissible showActivityLink className="mb-3" />
           </div>
           {!hasMessages && activeToolCalls.length === 0 && (
-            <motion.div
-              layout
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center"
-            >
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/10 text-sky-500">
                 <MessageCircle className="h-4 w-4" />
               </span>
               <p className="text-sm font-medium">What should we work on?</p>
-            </motion.div>
+            </div>
           )}
           <div className="space-y-2 shrink-0">
             {messages.map((message, index) => {
