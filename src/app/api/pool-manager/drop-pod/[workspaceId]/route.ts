@@ -14,10 +14,10 @@ import { getPodUsageStatus, jobClaimant } from "@/lib/pods/queries";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
-    const { workspaceId } = await params;
+    const { workspaceId: workspaceRef } = await params;
 
     // Validate required fields
-    if (!workspaceId) {
+    if (!workspaceRef) {
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
@@ -34,11 +34,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Missing required field: podId" }, { status: 400 });
     }
 
-    // Auth + workspace access (system API_TOKEN, org API key, or session member)
-    const caller = await resolvePodCaller(request, { id: workspaceId });
+    // Auth + workspace access (system API_TOKEN, org API key, or session member).
+    // The segment is an id or a slug (a strut job releases by the slug it
+    // claimed with); from here on `workspaceId` is the resolved id.
+    const caller = await resolvePodCaller(request, { idOrSlug: workspaceRef });
     if (caller instanceof NextResponse) {
       return caller;
     }
+    const workspaceId = caller.workspaceId;
 
     // Org keys are scoped to their org's workspaces: the pod must belong to
     // this workspace's swarm, otherwise a key could release any org's pod.
