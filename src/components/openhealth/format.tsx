@@ -1,5 +1,7 @@
+import React from "react";
 import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { isAtTarget, OPENHEALTH_CLIMB_DEFAULT_TARGET } from "@/lib/openhealth-benchmarks/climb";
 import { openHealthBenchmarkLabel, openHealthMetricLabel } from "@/lib/openhealth-benchmarks/constants";
 import type {
   OpenHealthBenchmark,
@@ -47,11 +49,20 @@ const OUTCOME_VARIANT: Record<OpenHealthOutcome, "default" | "secondary" | "dest
   cancelled: "outline",
 };
 
-export function OutcomeBadge({ outcome }: { outcome: OpenHealthOutcome }) {
+export function OutcomeBadge({
+  outcome,
+  score,
+  target = OPENHEALTH_CLIMB_DEFAULT_TARGET,
+}: {
+  outcome: OpenHealthOutcome;
+  score?: number | null;
+  target?: number;
+}) {
+  const reached = outcome === "succeeded" && typeof score === "number" && isAtTarget(score, target);
   return (
     <Badge variant={OUTCOME_VARIANT[outcome]} className="gap-1" data-testid="openhealth-outcome">
       {outcome === "running" && <Loader2 className="h-3 w-3 animate-spin" />}
-      {OUTCOME_LABEL[outcome]}
+      {reached ? "Reached" : OUTCOME_LABEL[outcome]}
     </Badge>
   );
 }
