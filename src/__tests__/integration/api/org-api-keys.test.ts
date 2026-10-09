@@ -187,6 +187,37 @@ describe("org API keys", () => {
       expect(pod.usageStatus).not.toBe("USED");
     });
 
+    test("a strut job claims by the workspace's SLUG: the pod comes from that workspace", async () => {
+      const org = await createOrg();
+      const home = await createOrgWorkspace(org.id);
+      const peer = await createOrgWorkspace(org.id);
+      const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: home.owner.id });
+
+      const slug = peer.workspace.slug;
+      const res = await CLAIM(orgKeyRequest(`${claimUrl(slug)}?job=6f1c-job`, key), claimParams(slug));
+
+      const data = await expectSuccess(res, 200);
+      expect(data.podId).toBe(peer.pods[0].podId);
+      const claimed = await db.pod.findFirstOrThrow({ where: { podId: peer.pods[0].podId } });
+      expect(claimed.usageStatusMarkedBy).toBe("job:6f1c-job");
+      const untouched = await db.pod.findFirstOrThrow({ where: { podId: home.pods[0].podId } });
+      expect(untouched.usageStatus).not.toBe("USED");
+    });
+
+    test("a slug in another org is refused like its id", async () => {
+      const orgA = await createOrg();
+      const orgB = await createOrg();
+      const a = await createOrgWorkspace(orgA.id);
+      const b = await createOrgWorkspace(orgB.id);
+      const { key } = await createOrgApiKey({ orgId: orgA.id, name: "strut", createdById: a.owner.id });
+
+      const res = await CLAIM(orgKeyRequest(claimUrl(b.workspace.slug), key), claimParams(b.workspace.slug));
+
+      await expectForbidden(res);
+      const pod = await db.pod.findFirstOrThrow({ where: { podId: b.pods[0].podId } });
+      expect(pod.usageStatus).not.toBe("USED");
+    });
+
     test("revoked, expired, and unknown org keys are 401", async () => {
       const org = await createOrg();
       const { owner, workspace } = await createOrgWorkspace(org.id);
@@ -216,6 +247,22 @@ describe("org API keys", () => {
       const res = await DROP(
         orgKeyRequest(`http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=${pod.podId}`, key),
         claimParams(workspace.id),
+      );
+      const data = await expectSuccess(res, 200);
+      expect(data.success).toBe(true);
+    });
+
+    test("org key drops by the workspace's slug, as a strut job releases what it claimed by slug", async () => {
+      const org = await createOrg();
+      const { owner, workspace } = await createTestWorkspaceScenario();
+      await db.workspace.update({ where: { id: workspace.id }, data: { sourceControlOrgId: org.id } });
+      const swarm = await createTestSwarm({ workspaceId: workspace.id, status: "ACTIVE", poolName: "p" });
+      const pod = await createTestPod({ podId: `pod-${generateUniqueId()}`, swarmId: swarm.id });
+      const { key } = await createOrgApiKey({ orgId: org.id, name: "strut", createdById: owner.id });
+
+      const res = await DROP(
+        orgKeyRequest(`http://localhost:3000/api/pool-manager/drop-pod/${workspace.slug}?podId=${pod.podId}`, key),
+        claimParams(workspace.slug),
       );
       const data = await expectSuccess(res, 200);
       expect(data.success).toBe(true);
