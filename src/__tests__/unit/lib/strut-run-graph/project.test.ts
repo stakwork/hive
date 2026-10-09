@@ -9,7 +9,8 @@
  *   - reads and writes are told apart by the step's name;
  *   - a search keeps its place among the calls and the count of what it
  *     matched, and none of its hits as nodes;
- *   - node refs are deduplicated and malformed ones dropped.
+ *   - node refs are deduplicated and malformed ones dropped;
+ *   - a ref tagged with a peer (another strut's graph) is skipped.
  */
 
 import { describe, it, expect } from "vitest";
@@ -168,6 +169,21 @@ describe("projectRunGraphCalls", () => {
     ]);
     expect(calls[0].nodes).toEqual([{ ref_id: "a", node_type: "Concept" }]);
     expect(calls[0].startedAt).toBeNull();
+  });
+
+  it("skips a node another strut's run touched (tagged with its peer)", () => {
+    const calls = projectRunGraphCalls([
+      end("wf/ask", "strut/run-workflow", {
+        nodes: [
+          { ref_id: "a", node_type: "Concept", peer: "cloud" },
+          { ref_id: "b", node_type: "Concept", peer: "" },
+          { ref_id: "c" },
+        ],
+      }),
+      end("wf/remote-only", "strut/run-workflow", { nodes: [{ ref_id: "d", peer: "cloud" }] }),
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].nodes).toEqual([{ ref_id: "b", node_type: "Concept" }, { ref_id: "c" }]);
   });
 
   it("answers an empty list for anything that is not an event log", () => {
