@@ -30,6 +30,26 @@ export async function readStrutRunGraph(row: GraphRow): Promise<RunGraphTrace | 
   return { calls, ...graph };
 }
 
+/** What a run did in the graph, as a card counts it. */
+export interface StrutRunGraphCounts {
+  /** Its calls that touched the graph, searches included. */
+  calls: number;
+  /** The distinct nodes those calls read or wrote — never a search's hits. */
+  nodes: number;
+}
+
+/**
+ * The counts of a settled run's trace, from its log alone — nothing is read
+ * from the graph. Null when the run touched the graph not at all, or its log
+ * could not be read within `timeoutMs`.
+ */
+export async function countStrutRunGraph(row: GraphRow, timeoutMs?: number): Promise<StrutRunGraphCounts | null> {
+  const events = await fetchStrutRunEvents(row, timeoutMs);
+  if (!events) return null;
+  const calls = projectRunGraphCalls(events);
+  return calls.length > 0 ? { calls: calls.length, nodes: distinctNodeRefs(calls).length } : null;
+}
+
 /** One node of the graph the run used, whole; null when the swarm could not be read. */
 export async function readStrutRunGraphNode(
   row: Pick<StrutRunRow, "swarmId">,

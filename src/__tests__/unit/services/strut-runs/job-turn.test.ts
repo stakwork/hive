@@ -18,7 +18,11 @@
  *     an error row appends without reading strut;
  *   - the wake: once the row is appended (not on a replay, not without a
  *     conversation) the canvas agent is woken after the response with the
- *     outcome, the question, the cards and the callback's host.
+ *     outcome, the question, the cards and the callback's host;
+ *   - the trace card: a successful turn that touched the graph carries a
+ *     `run_graph` ref after the job's own, one id per job, counted from the
+ *     run's log within a bounded read — never indexed, never named to the
+ *     wake, and never a reason to fail or retry the delivery.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -37,6 +41,7 @@ const {
   mockPending,
   mockRequeue,
   mockCheckFailure,
+  mockCount,
   afterCallbacks,
 } = vi.hoisted(() => {
   const mockTx = {
@@ -57,6 +62,7 @@ const {
     mockPending: vi.fn(),
     mockRequeue: vi.fn(),
     mockCheckFailure: vi.fn(),
+    mockCount: vi.fn(),
     afterCallbacks: [] as Array<() => Promise<void>>,
   };
 });
@@ -76,6 +82,7 @@ vi.mock("@/services/strut-jobs/check-failures", () => ({ deliverCheckFailure: mo
 vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: mockNotify }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
+vi.mock("@/services/strut-runs/run-graph", () => ({ countStrutRunGraph: mockCount }));
 vi.mock("@/services/canvas-active-runs-hooks", () => ({
   clearActiveRun: mockClearActiveRun,
   notifyRunActive: mockNotifyRunActive,
@@ -89,6 +96,8 @@ import {
   pullRequestContent,
   renderJobContent,
   replyForRow,
+  runGraphArtifact,
+  runGraphArtifactId,
   type StrutArtifact,
 } from "@/services/strut-runs/job-turn";
 import type { StrutRunRow } from "@/services/strut-runs";
@@ -140,6 +149,7 @@ beforeEach(() => {
   mockPending.mockResolvedValue("none");
   mockRequeue.mockResolvedValue(false);
   mockCheckFailure.mockResolvedValue({ jobs: [] });
+  mockCount.mockResolvedValue(null);
   afterCallbacks.length = 0;
 });
 
@@ -650,5 +660,76 @@ describe("handleJobTurnSettled — artifact events (strut plans/job-artifact-eve
     mockPending.mockRejectedValueOnce(new Error("strut down"));
     await handleJobTurnSettled(row({ status: StrutRunStatus.CANCELLED, output: null }));
     await expect(flushAfter()).resolves.toBeUndefined();
+  });
+});
+
+describe("handleJobTurnSettled — the trace card", () => {
+  const plan = { id: "plan", kind: "markdown", title: "Plan", url: `/jobs/${JOB}/files/plan.md` };
+  const body = (artifacts: unknown[]) => ({ workflow: "job", runId: "1790000000000", job: JOB, artifacts });
+  const planRef = { id: "plan", kind: "markdown", title: "Plan", source: { type: "graph", swarmId: "swarm-1", key: `/jobs/${JOB}/files/plan.md` } };
+  const traceRef = {
+    id: `run-graph-${JOB}`,
+    kind: "run_graph",
+    title: "Dark mode plan",
+    source: { type: "inline", content: { workspace: "acme", run: "row-1", calls: 14, nodes: 37 } },
+  };
+  const delivered = () => mockTx.sharedConversation.update.mock.calls[0][0].data.messages[0];
+
+  it("is a pure ref, one id per job", () => {
+    expect(runGraphArtifactId(JOB)).toBe(`run-graph-${JOB}`);
+    expect(runGraphArtifact({ jobId: JOB, title: "Dark mode plan", workspace: "acme", run: "row-1", calls: 14, nodes: 37 })).toEqual(traceRef);
+  });
+
+  it("a turn that touched the graph: the card rides on the row after the job's refs, counted from the run's log within its budget", async () => {
+    mockFetch.mockResolvedValue(json(200, body([plan])));
+    mockCount.mockResolvedValue({ calls: 14, nodes: 37 });
+    await handleJobTurnSettled(row());
+
+    expect(mockCount).toHaveBeenCalledWith(expect.objectContaining({ id: "row-1", swarmId: "swarm-1", strutRunId: "1790000000000" }), 8_000);
+    expect(mockWorkspaceFindUnique).toHaveBeenCalledWith({ where: { id: "ws-1" }, select: { slug: true } });
+    expect(delivered().artifacts).toEqual([planRef, traceRef]);
+  });
+
+  it("is hive's card, not the job's: never indexed for events, never named to the wake", async () => {
+    mockFetch.mockResolvedValue(json(200, body([plan])));
+    mockCount.mockResolvedValue({ calls: 14, nodes: 37 });
+    await handleJobTurnSettled(row());
+
+    expect(mockIndex).toHaveBeenCalledWith(expect.anything(), JOB, [planRef]);
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0].artifacts).toEqual([{ title: "Plan", kind: "markdown" }]);
+  });
+
+  it("a turn that reported nothing of its own still carries its card", async () => {
+    mockFetch.mockResolvedValue(json(200, body([])));
+    mockCount.mockResolvedValue({ calls: 14, nodes: 37 });
+    await handleJobTurnSettled(row());
+
+    expect(delivered().artifacts).toEqual([traceRef]);
+    expect(mockIndex).not.toHaveBeenCalled();
+  });
+
+  it("no card when the turn touched no node, its log was not read, its workspace is gone, or the read throws — the row lands either way", async () => {
+    mockFetch.mockImplementation(async () => json(200, body([plan])));
+
+    await handleJobTurnSettled(row());
+    expect(delivered().artifacts).toEqual([planRef]);
+
+    vi.clearAllMocks();
+    mockCount.mockRejectedValue(new Error("boom"));
+    await handleJobTurnSettled(row());
+    expect(delivered().artifacts).toEqual([planRef]);
+
+    vi.clearAllMocks();
+    mockCount.mockResolvedValue({ calls: 2, nodes: 1 });
+    mockWorkspaceFindUnique.mockResolvedValue(null);
+    await handleJobTurnSettled(row());
+    expect(delivered().artifacts).toEqual([planRef]);
+  });
+
+  it("a turn that did not succeed reads no log", async () => {
+    await handleJobTurnSettled(row({ status: StrutRunStatus.ERROR, output: null, error: "agent failed: boom" }));
+    await handleJobTurnSettled(row({ status: StrutRunStatus.CANCELLED, output: null }));
+    expect(mockCount).not.toHaveBeenCalled();
   });
 });

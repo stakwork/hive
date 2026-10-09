@@ -20,7 +20,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { useWorkspace } from "@/hooks/useWorkspace";
+import { cn } from "@/lib/utils";
 import { layoutRunGraph } from "@/lib/strut-run-graph/layout";
 import { ancestorsOf, lineageParents } from "@/lib/strut-run-graph/lineage";
 import {
@@ -239,6 +239,7 @@ function NodeTextSection({
 function NodeDetail({
   node,
   color,
+  workspaceSlug,
   calls,
   links,
   nodeById,
@@ -252,6 +253,8 @@ function NodeDetail({
 }: {
   node: RunGraphNode;
   color: string;
+  /** The workspace whose graph the run used, for the Graph Explorer link; no link without it. */
+  workspaceSlug?: string;
   /** False when the graph did not answer for the nodes, which is not a node it no longer holds. */
   graphAnswered: boolean;
   /** Why it did not, in parentheses, or empty. */
@@ -267,7 +270,6 @@ function NodeDetail({
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
-  const { workspace } = useWorkspace();
   const [reading, setReading] = useState(false);
   const touchedBy = useMemo(
     () => calls.flatMap((call, index) => (call.nodes.some((n) => n.ref_id === node.ref_id) ? [{ call, index }] : [])),
@@ -316,9 +318,9 @@ function NodeDetail({
             : `The graph did not answer${unreadReason}, so this is only what the run's log says of the node.`}
         </p>
       )}
-      {node.found && workspace?.slug && (
+      {node.found && workspaceSlug && (
         <Link
-          href={`/w/${workspace.slug}/context/graph?ref_id=${encodeURIComponent(node.ref_id)}`}
+          href={`/w/${workspaceSlug}/context/graph?ref_id=${encodeURIComponent(node.ref_id)}`}
           target="_blank"
           className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
         >
@@ -423,14 +425,23 @@ function CurrentCall({ call, index, total }: { call: RunGraphCall; index: number
  * A branch of the tree can be shown on its own — the crosshair on its row,
  * or `scope` — one iteration of a loop, or one subflow of it: its calls
  * alone, its own steps as the lanes, and a breadcrumb back out.
+ *
+ * Needs no workspace context: it is drawn on a workspace's pages and in the
+ * org chat's artifact panel alike.
  */
 export function StrutRunGraph({
   endpoint,
+  workspaceSlug,
   live = false,
+  fill = false,
   scope: scopeProp = null,
 }: {
   endpoint: string;
+  /** The workspace whose graph the run used: a node it still holds links to the Graph Explorer there. */
+  workspaceSlug?: string;
   live?: boolean;
+  /** Take the height of the container (the artifact panel) instead of a fixed one. */
+  fill?: boolean;
   /**
    * The branch to open on: its path under the run (`loop#1/run`). The
    * reader can climb out of it and into another; a change to it is followed.
@@ -658,7 +669,7 @@ export function StrutRunGraph({
         ];
 
   return (
-    <div className="flex flex-col" data-testid="run-graph">
+    <div className={cn("flex flex-col", fill && "h-full min-h-0")} data-testid="run-graph">
       <div className="flex flex-col gap-2 border-b px-4 py-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">
@@ -754,7 +765,7 @@ export function StrutRunGraph({
         )}
       </div>
 
-      <div className="grid h-[640px] grid-cols-[minmax(220px,260px)_1fr]">
+      <div className={cn("grid grid-cols-[minmax(220px,260px)_1fr]", fill ? "min-h-0 flex-1" : "h-[640px]")}>
         <div className="overflow-y-auto border-r py-1" data-testid="run-graph-tree">
           {scope !== null && (
             <nav
@@ -815,6 +826,7 @@ export function StrutRunGraph({
             <NodeDetail
               node={selected}
               color={colorMap[selected.node_type] ?? "#6b7280"}
+              workspaceSlug={workspaceSlug}
               calls={calls}
               links={links}
               nodeById={nodeById}
