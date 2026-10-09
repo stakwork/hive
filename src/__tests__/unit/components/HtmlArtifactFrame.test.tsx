@@ -1,5 +1,5 @@
 /**
- * Unit tests for HtmlArtifactFrame — the single renderer for stored HTML.
+ * Unit tests for HtmlArtifactFrame — the single renderer for HTML pages (stored, and a strut job's on a swarm).
  *
  * Asserts the security posture, not the styling:
  *   - sandbox grants only allow-scripts (never allow-same-origin / …)
@@ -43,6 +43,7 @@ const revokeObjectURL = vi.fn();
 
 const ORG_SOURCE = { githubLogin: "acme-org", slug: "my-page" };
 const TASK_SOURCE = { taskId: "task-1", artifactId: "artifact-1" };
+const SWARM_SOURCE = { githubLogin: "acme-org", swarmId: "swarm-1", key: "/jobs/6f1c/files/plan.html" };
 
 const PAGE_HTML = "<!DOCTYPE html><html><body>hi</body></html>";
 
@@ -154,6 +155,15 @@ describe("HtmlArtifactFrame", () => {
     await findIframe();
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/tasks/task-1/artifacts/artifact-1/html",
+      { credentials: "include", cache: "no-store" },
+    );
+  });
+
+  test("fetches the strut artifact reader for a page a job wrote on a swarm", async () => {
+    render(<HtmlArtifactFrame source={SWARM_SOURCE} />);
+    await findIframe();
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/orgs/acme-org/strut/artifacts?swarmId=swarm-1&key=%2Fjobs%2F6f1c%2Ffiles%2Fplan.html",
       { credentials: "include", cache: "no-store" },
     );
   });

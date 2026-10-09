@@ -50,8 +50,10 @@ const basename = (key: string): string => key.split("/").pop() ?? key;
  * through Hive's reader route, which checks the ref against Hive's rows
  * before asking the swarm and serves the bytes from Hive's own origin
  * (`api/orgs/[githubLogin]/strut/artifacts`). What comes back depends on
- * the kind: text kinds are fetched and shaped here; media, a PDF and a
- * page are handed to their viewers as an address on this origin.
+ * the kind: text kinds are fetched and shaped here; media and a PDF are
+ * handed to their viewers as an address on this origin; a page as where it
+ * is on the swarm, which `HtmlArtifactFrame` reads through the same reader
+ * and renders from a blob in a sandboxed frame — never by navigating to it.
  */
 export async function readStrutArtifact(
   artifact: ArtifactRef,
@@ -68,13 +70,15 @@ export async function readStrutArtifact(
     case "pdf":
     case "url":
       return { url };
+    case "html":
+      return { swarmId: source.swarmId, key: source.key };
     case "markdown":
     case "log":
     case "code":
     case "json":
       break;
     default:
-      // A stored page, a diff's files, a pull request: not something bytes on a swarm are.
+      // A diff's files, a pull request, a graph: not something bytes on a swarm are.
       throw new ArtifactLoadError("unavailable");
   }
   let res: Response;

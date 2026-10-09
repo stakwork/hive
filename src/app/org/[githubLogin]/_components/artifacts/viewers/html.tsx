@@ -1,13 +1,20 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { HtmlArtifactFrame } from "@/components/html-artifact/HtmlArtifactFrame";
-import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
+import { HtmlArtifactFrame, type HtmlArtifactSource } from "@/components/html-artifact/HtmlArtifactFrame";
+import type { ArtifactContents, ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { useChatOrgLogin } from "../useArtifactPanel";
 
 /** The size a page is drawn at before it is scaled down into the card. */
 const THUMBNAIL_WIDTH = 1280;
 const THUMBNAIL_HEIGHT = 800;
+
+/** Where the frame reads the page from: a stored page by its slug, or a page a strut job wrote by where it is on the swarm. */
+const frameSource = (content: ArtifactContents["html"], githubLogin: string): HtmlArtifactSource =>
+  "slug" in content ? { githubLogin, slug: content.slug } : { githubLogin, swarmId: content.swarmId, key: content.key };
+
+/** A stored page re-fetches when it was patched; a page on a swarm is read fresh each time the frame mounts. */
+const updatedAtOf = (content: ArtifactContents["html"]): string | undefined => ("slug" in content ? content.updatedAt : undefined);
 
 /** The page drawn at desktop width and scaled to fit the card: something to recognise, not to click around in. */
 export function HtmlInline({ artifact, content }: ArtifactViewerProps<"html">) {
@@ -34,9 +41,9 @@ export function HtmlInline({ artifact, content }: ArtifactViewerProps<"html">) {
     >
       {scale > 0 && (
         <HtmlArtifactFrame
-          source={{ githubLogin, slug: content.slug }}
+          source={frameSource(content, githubLogin)}
           title={artifact.title}
-          updatedAt={content.updatedAt}
+          updatedAt={updatedAtOf(content)}
           className="absolute inset-0"
           frameStyle={{
             width: THUMBNAIL_WIDTH,
@@ -54,9 +61,9 @@ export function HtmlPanel({ artifact, content }: ArtifactViewerProps<"html">) {
   const githubLogin = useChatOrgLogin();
   return (
     <HtmlArtifactFrame
-      source={{ githubLogin, slug: content.slug }}
+      source={frameSource(content, githubLogin)}
       title={artifact.title}
-      updatedAt={content.updatedAt}
+      updatedAt={updatedAtOf(content)}
     />
   );
 }
