@@ -44,6 +44,9 @@ import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
 import { ArtifactCard } from "./artifacts/ArtifactCard";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
+import { Command, CommandItem, CommandList } from "@/components/ui/command";
+import { detectSlashTrigger, insertSlashConcept } from "../_state/slashConceptTrigger";
+import { useOrgConcepts } from "../_state/useOrgConcepts";
 
 import {
   useCanvasChatStore,
@@ -466,7 +469,11 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 return (
                   <div key={message.id} className="space-y-1.5">
                     <JobTurnCard message={message} source={message.source} />
-                    <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} jobId={message.source.jobId} />
+                    <MessageArtifacts
+                      artifacts={message.artifacts}
+                      cards={artifactCards}
+                      jobId={message.source.jobId}
+                    />
                   </div>
                 );
               }
@@ -662,9 +669,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
               onStop: activeTurn.canStop ? () => void handleStop() : null,
             }
           }
-          onCancelEdit={
-            activeId && editingTurnId ? () => setEditingTurn(activeId, null) : null
-          }
+          onCancelEdit={activeId && editingTurnId ? () => setEditingTurn(activeId, null) : null}
           workspaceId={workspaceId}
           orgId={githubLogin}
         />
@@ -900,7 +905,13 @@ function MessageArtifacts({
       {shown.map((artifact) => {
         const version = cards.get(artifact) ?? { index: 0, count: 1 };
         return (
-          <ArtifactCard key={artifact.id} artifact={artifact} version={version.index} versionCount={version.count} jobId={jobId} />
+          <ArtifactCard
+            key={artifact.id}
+            artifact={artifact}
+            version={version.index}
+            versionCount={version.count}
+            jobId={jobId}
+          />
         );
       })}
     </div>
@@ -969,6 +980,50 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ─── "/" concept-mention menu ───────────────────────────────────────
+  // Typing "/" at the start of a word opens a popover of the org's
+  // default-swarm concepts; picking one inserts plain text "/Concept Name".
+  // The hook re-queries the server per keystroke (debounced) rather than
+  // filtering a single cached page client-side, so concepts beyond the
+  // server's first ~20 are still reachable by typing their name.
+  const [slashTrigger, setSlashTrigger] = useState<{ start: number; query: string } | null>(null);
+  const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  const {
+    concepts: slashMatches,
+    noDefaultSwarm,
+    isLoading: conceptsLoading,
+  } = useOrgConcepts(orgId, slashTrigger?.query ?? null);
+  const slashMenuOpen = slashTrigger !== null;
+
+  // New results (debounced server response for the latest query) can be
+  // shorter than the previously-highlighted index — reset to the top match
+  // whenever the result set changes so arrow-key navigation / Enter never
+  // reads past the end of the array.
+  useEffect(() => {
+    setSlashActiveIndex(0);
+  }, [slashMatches]);
+
+  const closeSlashMenu = useCallback(() => {
+    setSlashTrigger(null);
+    setSlashActiveIndex(0);
+  }, []);
+
+  const pickSlashConcept = useCallback(
+    (conceptName: string) => {
+      if (!slashTrigger) return;
+      const { text, caret } = insertSlashConcept(input, slashTrigger, conceptName);
+      setInput(text);
+      closeSlashMenu();
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(caret, caret);
+      });
+    },
+    [input, slashTrigger, closeSlashMenu],
+  );
 
   // Grow with the content; the class list's `max-h` caps it and it
   // scrolls from there. `field-sizing: content` covers Chromium; this
@@ -1156,7 +1211,41 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
     });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // The "/" concept menu takes priority over send-on-Enter so picking a
+    // concept doesn't accidentally submit the message.
+    if (slashMenuOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (slashMatches.length > 0) setSlashActiveIndex((i) => (i + 1) % slashMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (slashMatches.length > 0) {
+          setSlashActiveIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length);
+        }
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        if (slashMatches.length > 0) {
+          e.preventDefault();
+          // Clamp defensively — a debounced response can shrink the list
+          // between the last arrow-key press and this keystroke.
+          const idx = Math.min(slashActiveIndex, slashMatches.length - 1);
+          pickSlashConcept(slashMatches[idx].name);
+        } else {
+          closeSlashMenu();
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeSlashMenu();
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSubmit(e as unknown as React.FormEvent);
@@ -1164,7 +1253,12 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
+    const newValue = e.target.value;
+    setInput(newValue);
+    const cursor = e.target.selectionStart ?? newValue.length;
+    const trigger = detectSlashTrigger(newValue, cursor);
+    setSlashTrigger(trigger);
+    setSlashActiveIndex(0);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1250,105 +1344,138 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
       )}
 
       {/* ── Composer ──────────────────────────────────────────────────── */}
-      <form
-        onSubmit={handleSubmit}
-        className={cn(
-          "flex items-end gap-1 rounded-2xl border bg-background px-1.5 py-1.5 transition-[border-color,box-shadow,opacity]",
-          "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10",
+      <div className="relative">
+        {/* "/" concept-mention menu */}
+        {slashMenuOpen && (
+          <div className="absolute bottom-full left-0 right-0 mb-1 z-20" data-testid="slash-concept-menu">
+            <Command className="rounded-lg border shadow-md bg-popover" shouldFilter={false}>
+              <CommandList>
+                {noDefaultSwarm ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No default swarm configured</div>
+                ) : conceptsLoading ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">Loading concepts…</div>
+                ) : slashMatches.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No matching concepts</div>
+                ) : (
+                  slashMatches.map((c, idx) => (
+                    <CommandItem
+                      key={c.id}
+                      value={c.id}
+                      onSelect={() => pickSlashConcept(c.name)}
+                      className={cn(
+                        "cursor-pointer px-3 py-2 text-sm",
+                        idx === slashActiveIndex && "bg-accent text-accent-foreground",
+                      )}
+                      data-testid={`slash-concept-item-${c.id}`}
+                    >
+                      {c.name}
+                    </CommandItem>
+                  ))
+                )}
+              </CommandList>
+            </Command>
+          </div>
         )}
-      >
-        <div className="min-w-0 flex-1">
-          <Textarea
-            ref={inputRef}
-            placeholder={isListening ? "Listening…" : `Message ${jamieName}`}
-            value={input}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            isUploading={isUploading}
-            rows={1}
-            className="field-sizing-content max-h-[200px] min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-1.5 text-sm shadow-none placeholder:text-muted-foreground/60 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed md:text-sm dark:bg-transparent"
-          />
-        </div>
+        <form
+          onSubmit={handleSubmit}
+          className={cn(
+            "flex items-end gap-1 rounded-2xl border bg-background px-1.5 py-1.5 transition-[border-color,box-shadow,opacity]",
+            "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10",
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <Textarea
+              ref={inputRef}
+              placeholder={isListening ? "Listening…" : `Message ${jamieName}`}
+              value={input}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              isUploading={isUploading}
+              rows={1}
+              className="field-sizing-content max-h-[200px] min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-1.5 text-sm shadow-none placeholder:text-muted-foreground/60 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed md:text-sm dark:bg-transparent"
+            />
+          </div>
 
-        <div className="flex shrink-0 items-center gap-0.5">
-          <ActionTip label="Attach file" side="top">
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach file"
-              data-testid="paperclip-button"
-              className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
-            >
-              <Paperclip className="h-3.5 w-3.5" />
-            </Button>
-          </ActionTip>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="*/*"
-            multiple
-            className="hidden"
-            data-testid="file-input"
-            onChange={(e) => {
-              if (e.target.files?.length) handleFiles(e.target.files);
-              e.target.value = "";
-            }}
-          />
-          {isSupported && (
-            <ActionTip label={isListening ? "Stop recording" : "Voice input (or hold Ctrl)"} side="top">
+          <div className="flex shrink-0 items-center gap-0.5">
+            <ActionTip label="Attach file" side="top">
               <Button
                 type="button"
                 size="icon"
                 variant="ghost"
-                onClick={toggleListening}
-                aria-label={isListening ? "Stop recording" : "Voice input"}
-                data-testid="mic-button"
-                className={cn(
-                  "h-7 w-7 rounded-full",
-                  isListening
-                    ? "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach file"
+                data-testid="paperclip-button"
+                className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
               >
-                {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                <Paperclip className="h-3.5 w-3.5" />
               </Button>
             </ActionTip>
-          )}
-          {runningTurn?.onStop ? (
-            <ActionTip label={runningTurn.stopping ? "Stopping…" : "Stop"} side="top">
-              <Button
-                type="button"
-                size="icon"
-                aria-label="Stop"
-                onClick={runningTurn.onStop}
-                disabled={runningTurn.stopping}
-                className={SEND_BUTTON_CLASS}
-              >
-                {runningTurn.stopping ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Square className="h-3 w-3 fill-current" />
-                )}
-              </Button>
-            </ActionTip>
-          ) : (
-            <ActionTip label="Send" side="top">
-              <Button
-                type="submit"
-                size="icon"
-                aria-label="Send"
-                disabled={!input.trim() || isUploading || !!runningTurn}
-                className={SEND_BUTTON_CLASS}
-              >
-                <ArrowUp className="h-4 w-4" />
-              </Button>
-            </ActionTip>
-          )}
-        </div>
-      </form>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="*/*"
+              multiple
+              className="hidden"
+              data-testid="file-input"
+              onChange={(e) => {
+                if (e.target.files?.length) handleFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            {isSupported && (
+              <ActionTip label={isListening ? "Stop recording" : "Voice input (or hold Ctrl)"} side="top">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={toggleListening}
+                  aria-label={isListening ? "Stop recording" : "Voice input"}
+                  data-testid="mic-button"
+                  className={cn(
+                    "h-7 w-7 rounded-full",
+                    isListening
+                      ? "bg-rose-500/10 text-rose-500 hover:bg-rose-500/20"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                </Button>
+              </ActionTip>
+            )}
+            {runningTurn?.onStop ? (
+              <ActionTip label={runningTurn.stopping ? "Stopping…" : "Stop"} side="top">
+                <Button
+                  type="button"
+                  size="icon"
+                  aria-label="Stop"
+                  onClick={runningTurn.onStop}
+                  disabled={runningTurn.stopping}
+                  className={SEND_BUTTON_CLASS}
+                >
+                  {runningTurn.stopping ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Square className="h-3 w-3 fill-current" />
+                  )}
+                </Button>
+              </ActionTip>
+            ) : (
+              <ActionTip label="Send" side="top">
+                <Button
+                  type="submit"
+                  size="icon"
+                  aria-label="Send"
+                  disabled={!input.trim() || isUploading || !!runningTurn}
+                  className={SEND_BUTTON_CLASS}
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </Button>
+              </ActionTip>
+            )}
+          </div>
+        </form>
+      </div>
     </div>
   );
 });
