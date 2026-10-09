@@ -431,24 +431,6 @@ export function buildCategoryDescription(): string {
   return `One of: ${parts.join(", ")}.`;
 }
 
-/**
- * Multi-line bulleted section for the prompt suffix. Includes the
- * `promptGuidance` sentence per category (when set) and a nested
- * sub-bullet per `customData` key.
- */
-export function buildPromptCategorySection(): string {
-  return CATEGORY_REGISTRY.map((c) => {
-    const headline = c.promptGuidance
-      ? `- \`${c.id}\` — ${c.agentDescription}. ${c.promptGuidance}`
-      : `- \`${c.id}\` — ${c.agentDescription}.`;
-    if (!c.customDataKeys?.length) return headline;
-    const sub = c.customDataKeys
-      .map((k) => `  - \`customData.${k.key}\` — ${k.description}`)
-      .join("\n");
-    return `${headline}\n${sub}`;
-  }).join("\n");
-}
-
 // ---------------------------------------------------------------------------
 // Scope-aware category rules
 // ---------------------------------------------------------------------------

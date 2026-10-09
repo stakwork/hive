@@ -95,18 +95,6 @@ vi.mock('@/lib/constants/prompt', () => ({
   buildCanvasScopeMessage: vi.fn(() => null),
   // Per-capability snippets consumed by the capability registry
   // (@/lib/ai/capabilities), reached transitively via runCanvasAgent.
-  getRoadmapCapabilitySnippet: vi.fn(() => ''),
-  getWhiteboardCapabilitySnippet: vi.fn(() => ''),
-  getPlannerCapabilitySnippet: vi.fn(() => ''),
-  getResearchCapabilitySnippet: vi.fn(() => ''),
-  getConnectionsCapabilitySnippet: vi.fn(() => ''),
-  getHtmlPagesCapabilitySnippet: vi.fn(() => ''),
-  getGraphWalkerCapabilitySnippet: vi.fn(() => ''),
-  getInfraCapabilitySnippet: vi.fn(() => ''),
-  getWorkflowsCapabilitySnippet: vi.fn(() => ''),
-  getPromptsCapabilitySnippet: vi.fn(() => ''),
-  getConceptsCapabilitySnippet: vi.fn(() => ''),
-  getCanvasPromptSuffix: vi.fn(() => ''),
 }));
 
 // Mock Pusher
@@ -1652,7 +1640,6 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       expect(toolNames).toContain('propose_initiative');
       expect(toolNames).toContain('read_canvas');
       expect(toolNames).toContain('send_to_feature_planner');
-      expect(toolNames).toContain('learn_capability');
     });
 
     it('names the bound workspace in the single-workspace org prompt overlay', async () => {

@@ -84,17 +84,6 @@ vi.mock("@/lib/ai/workflowExplorerTools", () => ({
 }));
 vi.mock("@/lib/ai/codeChangeTools", () => ({ buildCodeChangeTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/constants/prompt", () => ({
-  getRoadmapCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
-  getWhiteboardCapabilitySnippet: vi.fn(() => ""),
-  getResearchCapabilitySnippet: vi.fn(() => ""),
-  getConnectionsCapabilitySnippet: vi.fn(() => ""),
-  getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
-  getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
-  getInfraCapabilitySnippet: vi.fn(() => ""),
-  getWorkflowsCapabilitySnippet: vi.fn(() => ""),
-  getPromptsCapabilitySnippet: vi.fn(() => ""),
-  getConceptsCapabilitySnippet: vi.fn(() => ""),
 }));
 vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_FEATURE_TOOL: "propose_feature",

@@ -7,13 +7,11 @@ import {
 /**
  * Single-workspace org overlay for the quick-ask (per-workspace) prompt.
  *
- * The roadmap capability snippet tells the agent to take `workspaceSlug`
- * "from the Available Workspaces list at the top of the system prompt".
- * The multi-workspace prompt always carries that list; the single-
- * workspace prompt historically did not name the workspace at all, so an
- * org with exactly one workspace had `propose_feature` (once the org
- * toolset merges) but no stated slug to pass it. `orgContext.workspace`
- * closes that gap.
+ * Jamie gets ONE system prompt, but still needs to know which workspace
+ * slug to pass to org-level tools (`propose_feature`, …) when the org
+ * has exactly one workspace — the multi-workspace prompt always carries
+ * an "Available Workspaces" list; the single-workspace prompt historically
+ * did not name the workspace at all. `orgContext.workspace` closes that gap.
  */
 
 const REPO = "https://github.com/acme/senza";
@@ -35,7 +33,6 @@ describe("getQuickAskPrefixMessages — single-workspace org overlay", () => {
   it("names the bound workspace in an Available Workspaces section", () => {
     const content = systemPromptFor({
       orgId: "org-1",
-      promptSuffix: "<<CAPABILITY SUFFIX>>",
       workspace: {
         name: "Senza",
         slug: "senza",
@@ -54,25 +51,9 @@ describe("getQuickAskPrefixMessages — single-workspace org overlay", () => {
     expect(content).toContain("`propose_feature`");
   });
 
-  it("places the workspace list BEFORE the capability suffix", () => {
-    const content = systemPromptFor({
-      orgId: "org-1",
-      promptSuffix: "<<CAPABILITY SUFFIX>>",
-      workspace: { name: "Senza", slug: "senza" },
-    });
-    const listAt = content.indexOf("## Available Workspaces & Repositories");
-    const suffixAt = content.indexOf("<<CAPABILITY SUFFIX>>");
-    expect(listAt).toBeGreaterThan(-1);
-    expect(suffixAt).toBeGreaterThan(-1);
-    // The roadmap snippet refers back to "the Available Workspaces list
-    // at the top of the system prompt", so the list must precede it.
-    expect(listAt).toBeLessThan(suffixAt);
-  });
-
   it("omits the swarm segment when swarmDomain is absent", () => {
     const content = systemPromptFor({
       orgId: "org-1",
-      promptSuffix: "",
       workspace: { name: "Senza", slug: "senza" },
     });
     expect(content).toContain("- **Senza** (slug: `senza`) — Rails monolith: ");
@@ -80,7 +61,7 @@ describe("getQuickAskPrefixMessages — single-workspace org overlay", () => {
   });
 
   it("omits the section when orgContext carries no workspace (back-compat)", () => {
-    const content = systemPromptFor({ orgId: "org-1", promptSuffix: "" });
+    const content = systemPromptFor({ orgId: "org-1" });
     expect(content).not.toContain("## Available Workspaces & Repositories");
   });
 

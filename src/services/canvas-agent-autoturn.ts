@@ -18,8 +18,8 @@
  *
  * There is deliberately NO policy extractor / classifier here — the
  * agent is the classifier. The synthetic wake message below only
- * supplies *context* (which feature, which wake reason); the prompt
- * paragraph in `getPlannerCapabilitySnippet` teaches the agent how to
+ * supplies *context* (which feature, which wake reason); the
+ * `send_to_feature_planner` tool description teaches the agent how to
  * behave when the wakeup is machine-driven.
  *
  * **Gating.** Two layers, both default to a no-op:

@@ -55,17 +55,6 @@ vi.mock("@/lib/ai/graphWalkDispatchTools", () => ({
   buildGraphWalkDispatchTools: vi.fn(() => ({})),
 }));
 vi.mock("@/lib/constants/prompt", () => ({
-  getRoadmapCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
-  getWhiteboardCapabilitySnippet: vi.fn(() => ""),
-  getResearchCapabilitySnippet: vi.fn(() => ""),
-  getConnectionsCapabilitySnippet: vi.fn(() => ""),
-  getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
-  getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
-  getInfraCapabilitySnippet: vi.fn(() => "infra-snippet"),
-  getWorkflowsCapabilitySnippet: vi.fn(() => "workflows-snippet"),
-  getPromptsCapabilitySnippet: vi.fn(() => ""),
-  getConceptsCapabilitySnippet: vi.fn(() => ""),
 }));
 vi.mock("@/lib/proposals/types", () => ({
   PROPOSE_FEATURE_TOOL: "propose_feature",
@@ -369,14 +358,12 @@ describe("buildInfraTools / read_pod_infra", () => {
 // ─── Capability registry ──────────────────────────────────────────────────────
 
 describe("infra capability in CAPABILITY_REGISTRY", () => {
-  it("infra is non-core with no writeToolNames and has a menuBlurb", async () => {
+  it("infra is non-core with no writeToolNames", async () => {
     const { CAPABILITY_REGISTRY } = await import("@/lib/ai/capabilities");
     const infra = CAPABILITY_REGISTRY["infra"];
     expect(infra).toBeDefined();
     expect(infra.core).toBe(false);
     expect(infra.writeToolNames).toEqual([]);
-    expect(typeof infra.menuBlurb).toBe("string");
-    expect(infra.menuBlurb).toContain("infra");
   });
 
   it("resolveCapabilities(['roadmap']) includes 'infra'", async () => {
