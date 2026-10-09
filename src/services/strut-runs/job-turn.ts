@@ -246,16 +246,15 @@ export function mapStrutArtifacts(
     if (typeof entry.url === "string" && entry.url.length > 0) {
       if (isStrutKey(entry.url)) {
         // Served through the reader route from the swarm. A page strut
-        // wrote is a static page there (the reader keeps strut's
-        // `Content-Security-Policy: sandbox`), so it is shown as `url`; a
-        // diff file or a pull request cannot be read off bytes, so as code.
+        // wrote stays `html`: its viewer reads the bytes through the reader
+        // and renders them in `HtmlArtifactFrame` — a sandboxed frame,
+        // scripts on, never a navigation to the reader. A diff file or a
+        // pull request cannot be read off bytes, so as code.
         const kind: ArtifactKind = !KINDS.has(entry.kind)
           ? "url"
-          : entry.kind === "html"
-            ? "url"
-            : entry.kind === "diff" || entry.kind === "pull_request"
-              ? "code"
-              : (entry.kind as ArtifactKind);
+          : entry.kind === "diff" || entry.kind === "pull_request"
+            ? "code"
+            : (entry.kind as ArtifactKind);
         refs.push({ ...base, kind, source: { type: "graph", swarmId, key: entry.url } });
         continue;
       }

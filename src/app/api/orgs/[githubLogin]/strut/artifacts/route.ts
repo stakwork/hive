@@ -23,7 +23,11 @@
  *     never sent to the browser), streamed back with strut's
  *     `content-type`, `content-security-policy` (`sandbox`: a page an
  *     agent wrote is a static page here too) and `x-content-type-options`
- *     kept, and `cache-control: private, no-store`.
+ *     kept, and `cache-control: private, no-store`. The `html` viewer never
+ *     navigates to this URL: `HtmlArtifactFrame` fetches the bytes and
+ *     renders them from a blob in its own sandboxed frame, scripts on
+ *     (`html-body-proxy.ts`); the header above is for anyone who opens the
+ *     URL itself.
  */
 
 import { NextRequest, NextResponse } from "next/server";
