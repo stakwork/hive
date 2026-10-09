@@ -114,14 +114,17 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
       kind: JOB_TURN_KIND,
       workflow: JOB_WORKFLOW,
       purpose: "job",
-      // `title` rides on the input for the reply's header (strut's `job`
-      // workflow strips what its input block does not declare); `workspace`
-      // is the hive workspace the job belongs to — the id a pod is claimed
-      // for (strut plans/jobs.md §5): the hub strut serves every workspace
-      // of the org, so the job says which. Every turn, since every launch
-      // is validated on its own.
+      // `title` goes on the LAUNCH beside `job` (strut plans/job-index.md
+      // §1): strut names the job by it — its index and its graph node —
+      // never the run; the `job` workflow's input block strips what it
+      // does not declare, so it still rides on the input too, for the
+      // reply's header. `workspace` is the hive workspace the job belongs
+      // to — the id a pod is claimed for (strut plans/jobs.md §5): the hub
+      // strut serves every workspace of the org, so the job says which.
+      // Every turn, since every launch is validated on its own.
       input: { prompt, title, workspace: strut.workspaceId },
       job: jobId,
+      title,
       publicBaseUrl,
       conversationId,
       actorSecrets: { GITHUB_TOKEN: pat },
