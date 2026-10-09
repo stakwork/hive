@@ -22,7 +22,6 @@ const {
   mockAgentRunUpdate,
   mockAgentRunUpdateMany,
   mockEnsureStrutDelegation,
-  mockEnsureOrgStrutPeers,
 } = vi.hoisted(() => ({
   mockResolveStrutTarget: vi.fn(),
   mockResolveConversation: vi.fn(),
@@ -30,7 +29,6 @@ const {
   mockAgentRunUpdate: vi.fn(),
   mockAgentRunUpdateMany: vi.fn(),
   mockEnsureStrutDelegation: vi.fn(),
-  mockEnsureOrgStrutPeers: vi.fn(),
 }));
 
 // Which strut a workspace's chat runs on is the resolver's policy
@@ -41,7 +39,6 @@ vi.mock("@/services/bifrost/strut-delegation", () => ({
   STRUT_ACTOR_HEADER: "x-strut-actor",
   ensureStrutDelegation: mockEnsureStrutDelegation,
 }));
-vi.mock("@/services/strut-peers", () => ({ ensureOrgStrutPeers: mockEnsureOrgStrutPeers }));
 vi.mock("@/lib/db", () => ({
   db: {
     agentRun: { create: mockAgentRunCreate, update: mockAgentRunUpdate, updateMany: mockAgentRunUpdateMany },
@@ -93,7 +90,6 @@ describe("buildStrutTools", () => {
     mockAgentRunUpdate.mockResolvedValue({});
     mockAgentRunUpdateMany.mockResolvedValue({ count: 0 });
     mockEnsureStrutDelegation.mockResolvedValue({ status: "skipped-gate" });
-    mockEnsureOrgStrutPeers.mockResolvedValue({ peers: {}, delegations: {} });
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -107,14 +103,6 @@ describe("buildStrutTools", () => {
     expect(mockResolveStrutTarget).toHaveBeenCalledWith({ purpose: "chat", workspaceSlug: "acme", userId: "user-1" });
     expect(mockFetch).not.toHaveBeenCalled();
     expect(mockAgentRunCreate).not.toHaveBeenCalled();
-    expect(mockEnsureOrgStrutPeers).not.toHaveBeenCalled();
-  });
-
-  test("dispatch: the org strut's peers and the user's delegation on each, before the chat", async () => {
-    mockFetch.mockResolvedValue(json(202, { chatId: "chat-9", turn: 0, callback: true }));
-    await dispatch();
-    expect(mockEnsureOrgStrutPeers).toHaveBeenCalledWith(TARGET, "user-1");
-    expect(mockEnsureOrgStrutPeers.mock.invocationCallOrder[0]).toBeLessThan(mockFetch.mock.invocationCallOrder[0]);
   });
 
   test("a workspace with no active swarm has no strut", async () => {
