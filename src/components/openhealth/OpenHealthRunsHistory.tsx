@@ -460,7 +460,7 @@ function RunRows({
           <DifficultyBadge difficulty={run.difficulty} />
         </TableCell>
         <TableCell>
-          <OutcomeBadge outcome={run.outcome} />
+          <OutcomeBadge outcome={run.outcome} score={run.scores?.f1} />
         </TableCell>
         <TableCell className="text-right font-medium tabular-nums">
           <ScoreCell
