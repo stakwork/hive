@@ -15,7 +15,7 @@ import type { CanvasChatMessage } from "../_state/canvasChatStore";
  * StrutChatCard — one card per dispatched strut chat: whether the chat is
  * still running, the workflows it created or edited, and the runs it
  * launched. The chat, each workflow and each run link into the org strut
- * view (`strutViewPath`, the same link a code-change card's "View run" is).
+ * view (`strutViewPath`).
  *
  * A pure projection of the conversation, like `ResearchRunCard`:
  *   - a `dispatch_strut` tool call starts (or continues) the chat — running;

@@ -19,24 +19,7 @@ export const dynamic = "force-dynamic";
  * Returns 404 when `USE_MOCKS` is off OR when `NODE_ENV === "production"`.
  * The /api/mock subtree is publicly accessible at the middleware layer, so
  * this guard is required — not optional — now that these routes can
- * synthesize PR/approval state.
- *
- * ## create_pr recognition
- *
- * When the request body contains `toolsConfig.create_pr: true`, this handler
- * simulates a landed PR (LandChangeResult success) and stores the result in
- * the shared mock progress store so `GET /progress?request_id=...` returns it
- * under `result.pr` in a terminal payload.
- *
- * Admission-failure scenarios are reproduced as real HTTP statuses (not
- * in-band results) to match the real swarm's pre-flight behavior:
- *   - `mockCreatePrScenario: "unauth"`        → 401
- *   - `mockCreatePrScenario: "multi_repo"`    → 400 (LAND_CHANGE_ERR_MULTI_REPO)
- *   - `mockCreatePrScenario: "empty_pat"`     → 400 (LAND_CHANGE_ERR_EMPTY_PAT)
- *   - `mockCreatePrScenario: "identity"`      → 400 (failure: "identity_mismatch")
- *   - `mockCreatePrScenario: "no_push"`       → 403 (failure: "no_push_permission")
- *   - `mockCreatePrScenario: "rate_limited"`  → 429 (failure: "rate_limited")
- *   - Any other value / absent              → success (LandChangeSuccess)
+ * synthesize approval state.
  *
  * ## Webhook fan-back simulation
  *
@@ -53,18 +36,6 @@ export const dynamic = "force-dynamic";
  * pending `MockProposal` tagged with that `sessionId` is inserted into the
  * stateful gitree proposal fixtures BEFORE the callback fires.
  */
-
-// ─── Shared mock progress store ───────────────────────────────────────────
-// Keyed by request_id.  Consumed by GET /progress?request_id=...
-// (The progress route imports this map if it needs persistent state, but
-//  for now we use a module-level map that's in-process for the server run.)
-
-// Holds the FLAT LandChangeResult exactly as production serves it under
-// `result.pr` — success (`{ ok: true, url, … }`), failure
-// (`{ ok: false, failure, diff, error }`), or the `create_pr_not_called`
-// sentinel. Never wrap it again: `result.pr.pr` was a real mock/prod
-// divergence that green-lit payloads production rejects.
-export const mockPrResultStore = new Map<string, Record<string, unknown>>();
 
 // ─── Handler ──────────────────────────────────────────────────────────────
 
@@ -97,10 +68,6 @@ export async function POST(request: NextRequest) {
       typeof body.sessionId === "string" ? body.sessionId : undefined;
     const toolsConfig = (body.toolsConfig ?? {}) as Record<string, unknown>;
     const proposalsEnabled = toolsConfig.propose_concept_change === true;
-    const isCreatePrRun = toolsConfig.create_pr === true;
-    const mockCreatePrScenario = body.mockCreatePrScenario as
-      | string
-      | undefined;
 
     console.log(
       "[StakgraphMock] POST /repo/agent - returning mock request_id",
@@ -109,120 +76,10 @@ export async function POST(request: NextRequest) {
         webhookMode,
         isGraphMode,
         proposalsEnabled,
-        isCreatePrRun,
-        mockCreatePrScenario,
       },
     );
 
-    // ── Admission failures for create_pr runs ──────────────────────────
-    // Reproduced as real HTTP statuses, not in-band results, mirroring the
-    // real swarm's pre-flight behavior.
-    if (isCreatePrRun && mockCreatePrScenario) {
-      switch (mockCreatePrScenario) {
-        case "unauth":
-          return NextResponse.json(
-            {
-              error:
-                "create_pr requires API_TOKEN to be configured",
-            },
-            { status: 401 },
-          );
-        case "multi_repo":
-          return NextResponse.json(
-            {
-              error:
-                "create_pr requires exactly one explicit repo_url " +
-                "(no comma-separated list, no omission)",
-            },
-            { status: 400 },
-          );
-        case "empty_pat":
-          return NextResponse.json(
-            { error: "create_pr requires a non-empty pat" },
-            { status: 400 },
-          );
-        case "identity":
-          return NextResponse.json(
-            { failure: "identity_mismatch", error: "Token login 'x' does not match supplied username 'y'" },
-            { status: 400 },
-          );
-        case "no_push":
-          return NextResponse.json(
-            {
-              failure: "no_push_permission",
-              error: "no_push_permission: PAT does not have push access to this repo",
-            },
-            { status: 403 },
-          );
-        case "rate_limited":
-          return NextResponse.json(
-            {
-              failure: "rate_limited",
-              error: "rate_limited: too many PRs landed in this hour",
-            },
-            { status: 429 },
-          );
-        default:
-          break;
-      }
-    }
-
-    // ── Stable request_id ──────────────────────────────────────────────
-    const requestId = isCreatePrRun
-      ? `mock-create-pr-req-${crypto.randomUUID().slice(0, 8)}`
-      : "mock-diagram-req-001";
-
-    // The swarm derives the branch from its own runId — a fresh UUID
-    // INDEPENDENT of request_id — and exposes it only via the dispatch
-    // response's `pr_branch`. Mirror that: no transformation of requestId
-    // can produce this value. (`slice(0, 8)`: first 8 chars, matching
-    // `git_pr.ts`.)
-    const mockRunId = crypto.randomUUID();
-    const prBranch = `swarm/swarm-change-${mockRunId.slice(0, 8)}`;
-
-    // ── Prepare create_pr result for the progress store ────────────────
-    if (isCreatePrRun) {
-      const repoUrl =
-        (body.repo_url as string | undefined) ??
-        "https://github.com/stakwork/hive";
-      // Mirrors the labelled-block prompt format `createPr` dispatches.
-      const prTitle =
-        typeof body.prompt === "string"
-          ? body.prompt.match(/^TITLE:\n(.+)$/m)?.[1]?.trim() ??
-            "[Jamie] Mock change"
-          : "[Jamie] Mock change";
-
-      // `webhookMode: "not_called"` reproduces the sentinel stakgraph
-      // emits when a create_pr run ends without the tool ever running.
-      const prResult: Record<string, unknown> =
-        webhookMode === "not_called"
-          ? {
-              ok: false,
-              failure: "create_pr_not_called",
-              diff: "",
-              error: `create_pr was enabled but never called; unpushed branch ${prBranch}`,
-            }
-          : {
-              ok: true,
-              url: `${repoUrl}/pull/42`,
-              number: 42,
-              branch: prBranch,
-              base: "main",
-              headSha: "abc123def456abc123def456abc123def456abc1",
-              diff:
-                "--- a/src/example.ts\n" +
-                "+++ b/src/example.ts\n" +
-                "@@ -1,3 +1,4 @@\n" +
-                " const x = 1;\n" +
-                "+const y = 2;\n" +
-                " export { x };\n",
-              filesChanged: 1,
-              title: prTitle,
-            };
-
-      // Store FLAT for the progress route and webhook to serve verbatim.
-      mockPrResultStore.set(requestId, prResult);
-    }
+    const requestId = "mock-diagram-req-001";
 
     // ── Graph chat with proposals on ────────────────────────────────────
     if (isGraphMode && proposalsEnabled && sessionId && webhookMode === "success") {
@@ -261,17 +118,13 @@ export async function POST(request: NextRequest) {
 
     // ── Webhook fan-back simulation ────────────────────────────────────
     if (webhookUrl && webhookMode !== "inline") {
-      // "not_called" is a COMPLETED run whose result carries the sentinel —
-      // only "fail" exercises the failed-status channel.
       const isSuccess = webhookMode !== "fail";
 
       setTimeout(() => {
         const callbackStatus = isSuccess ? "completed" : "failed";
         let successContent: string;
 
-        if (isCreatePrRun) {
-          successContent = "PR creation complete.";
-        } else if (isGraphMode) {
+        if (isGraphMode) {
           successContent = graphContent;
         } else {
           successContent =
@@ -311,10 +164,6 @@ export async function POST(request: NextRequest) {
                 final_answer: successContent,
                 content: successContent,
                 sessionId,
-                // For create_pr runs, nest the PR result under `result.pr`
-                ...(isCreatePrRun
-                  ? { pr: mockPrResultStore.get(requestId) }
-                  : {}),
                 ...(reflection ? { reflection } : {}),
               },
             }
@@ -342,10 +191,7 @@ export async function POST(request: NextRequest) {
       }, 500);
     }
 
-    return NextResponse.json({
-      request_id: requestId,
-      ...(isCreatePrRun ? { pr_branch: prBranch } : {}),
-    });
+    return NextResponse.json({ request_id: requestId });
   } catch (error) {
     console.error("[StakgraphMock] POST /repo/agent error:", error);
     return NextResponse.json(
