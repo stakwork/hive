@@ -113,6 +113,12 @@ export const PUSHER_EVENTS = {
   // Fired on the workspace channel; payload is a nudge only
   // `{ runId, sessionId, status, at }` — the client refetches the thread.
   GRAPH_AGENT_RUN_UPDATED: "graph-agent-run-updated",
+  // A pull request shown on the org canvas (inline card or panel) may have
+  // changed on GitHub — merged/closed/reopened, or its checks/status
+  // moved. Fired on the org channel; payload is a nudge only
+  // `{ repo, number, at }`, NO pr data: the client refetches through the
+  // existing per-viewer-token route (`/api/orgs/[githubLogin]/strut/pull-request`).
+  CANVAS_PR_UPDATED: "canvas-pr-updated",
 } as const;
 
 /**
@@ -236,6 +242,34 @@ export function notifyGraphAgentRunUpdated(
       });
   } catch (err) {
     console.error("[pusher] notifyGraphAgentRunUpdated threw (non-fatal):", err);
+  }
+}
+
+/**
+ * Fire-and-forget nudge that a pull request shown on the org canvas (the
+ * inline card in chat, or the side panel) may have changed on GitHub —
+ * merged, closed, reopened, or a status/check update. Carries NO pull
+ * request data: every viewer re-reads through the existing route with
+ * their own GitHub token (`api/orgs/[githubLogin]/strut/pull-request`),
+ * same as the 30s poll already in place — this just makes it immediate.
+ * Not tied to strut jobs: any PR the canvas can show must update live.
+ * Never throws — a Pusher outage must not break the webhook handler.
+ */
+export function notifyCanvasPrUpdated(
+  githubLogin: string,
+  payload: { repo: string; number: number },
+): void {
+  try {
+    void pusherServer
+      .trigger(getOrgChannelName(githubLogin), PUSHER_EVENTS.CANVAS_PR_UPDATED, {
+        ...payload,
+        at: Date.now(),
+      })
+      .catch((err) => {
+        console.error("[pusher] notifyCanvasPrUpdated failed (non-fatal):", err);
+      });
+  } catch (err) {
+    console.error("[pusher] notifyCanvasPrUpdated threw (non-fatal):", err);
   }
 }
 

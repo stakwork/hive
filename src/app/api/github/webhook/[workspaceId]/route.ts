@@ -19,6 +19,7 @@ import { dispatchIncrementalProtectReview } from "@/services/protect";
 import { getBaseUrl } from "@/lib/utils";
 import { forwardArtifactEvent } from "@/services/strut-jobs/artifact-events";
 import { forwardCheckFailure } from "@/services/strut-jobs/check-failures";
+import { forwardPrUpdate } from "@/services/pr-live-notify";
 
 function serializeWebhookError(error: unknown) {
   if (error instanceof Error) {
@@ -241,6 +242,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const prUrl = payload?.pull_request?.html_url;
       const prNumber = payload?.pull_request?.number;
       const mergedAt = payload?.pull_request?.merged_at;
+
+      // Any pull request the org canvas can show (inline card or panel)
+      // must update live, independent of strut jobs — nudge the org's
+      // Pusher channel so an open viewer refetches through its own
+      // GitHub token. Covers every action that can change what the card
+      // shows (state, draft/ready, checks about to re-run). Called before
+      // the opened/ready_for_review/synchronize branch below returns early.
+      const PR_LIVE_NOTIFY_ACTIONS = new Set([
+        "closed",
+        "reopened",
+        "ready_for_review",
+        "converted_to_draft",
+        "synchronize",
+        "opened",
+        "edited",
+      ]);
+      if (fullName && typeof prNumber === "number" && PR_LIVE_NOTIFY_ACTIONS.has(action)) {
+        forwardPrUpdate({ workspaceId: repository.workspaceId, repoFullName: fullName, number: prNumber });
+      }
 
       // Trigger immediate PR monitor for opened/updated PRs
       if (action === "opened" || action === "ready_for_review" || action === "synchronize") {
@@ -1427,6 +1447,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           // check has run (strut plans/job-artifact-events.md §5) — read and
           // sent after the response, as the job's owner, once per pull request.
           forwardCheckFailure({ workspaceId: repository.workspaceId, url: prUrl, publicBaseUrl: getBaseUrl(request.headers.get("host")) });
+          // A checks run can change what the canvas card shows (pass/fail
+          // pill) whether or not any job reported this pull request.
+          if (fullName) forwardPrUpdate({ workspaceId: repository.workspaceId, repoFullName: fullName, number: pr.number });
           void monitorSinglePR(prUrl).catch((err) =>
             console.error("[GithubWebhook] monitorSinglePR (check_run) failed", { delivery, prUrl, error: err })
           );
@@ -1448,6 +1471,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         for (const pr of pullRequests) {
           const prUrl = `https://github.com/${headRepoFullName}/pull/${pr.number}`;
           forwardCheckFailure({ workspaceId: repository.workspaceId, url: prUrl, publicBaseUrl: getBaseUrl(request.headers.get("host")) });
+          // A checks run can change what the canvas card shows (pass/fail
+          // pill) whether or not any job reported this pull request.
+          if (headRepoFullName) forwardPrUpdate({ workspaceId: repository.workspaceId, repoFullName: headRepoFullName, number: pr.number });
           void monitorSinglePR(prUrl).catch((err) =>
             console.error("[GithubWebhook] monitorSinglePR (workflow_run) failed", { delivery, prUrl, error: err })
           );
