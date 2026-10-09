@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Share2 } from "lucide-react";
+import { Network } from "lucide-react";
 import { isRecord } from "@/lib/run-report/derive";
 import { NODE_TEXT_KEYS } from "@/lib/strut-run-graph/node-text";
 import { renderValue } from "./chrome";
@@ -79,7 +79,7 @@ export function ViewInGraphLink({
       data-testid="node-peek-view-in-graph"
       className="inline-flex w-fit items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.1em] text-primary transition-colors hover:border-primary/50 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <Share2 className="h-3 w-3" />
+      <Network className="h-3 w-3" />
       View in graph
     </a>
   );

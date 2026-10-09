@@ -2,7 +2,8 @@
 
 import React, { useDeferredValue, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Pencil, X } from "lucide-react";
+import { ChevronRight, Pencil, Share2, X } from "lucide-react";
+import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { UnifiedDiffView } from "@/components/diff/UnifiedDiffView";
 import { Button } from "@/components/ui/button";
@@ -273,11 +274,45 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
     </button>
   );
 
+  // Deep link: the current org graph page URL with this node as `gnode`, which the page reads on load.
+  const share = async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", "graph");
+    url.searchParams.set("gnode", id);
+    const link = url.toString();
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: name, url: link });
+        return;
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Link copied to clipboard");
+    } catch {
+      toast.error("Couldn't copy the link");
+    }
+  };
+
   return (
     <div className="space-y-5" data-testid="graph-workbench-details">
       <div className="flex items-center gap-2">
         <TypeBadge type={type} />
         <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{name}</h2>
+        {!isNew && (
+          <button
+            type="button"
+            onClick={share}
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Share"
+            title="Share link"
+            data-testid="graph-workbench-share"
+          >
+            <Share2 className="h-4 w-4" />
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
