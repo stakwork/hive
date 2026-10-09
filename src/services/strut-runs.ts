@@ -7,7 +7,7 @@
  *   dispatchStrutRun   resolve the target (ONE policy — `strut-target.ts`)
  *                      → PENDING row with the target's `swarmId`
  *                      → push the user's delegation + actor secrets to it
- *                      → POST {lab}/workflows/<name>/run { input, callback, job? }
+ *                      → POST {lab}/workflows/<name>/run { input, callback, job?, title? }
  *                      → refuse a 202 without `callback: true`
  *                      → store `strutRunId`.
  *   completeStrutRun   the token-gated, idempotent claim PENDING → terminal
@@ -221,6 +221,14 @@ export interface DispatchStrutRunArgs {
    */
   job?: string;
   /**
+   * The job's NAME (strut plans/job-index.md §1): `POST …/run { job,
+   * title }`, a launch-level field like `job` — strut records it on the
+   * job, never on the run, and a workflow's `input:` block would strip it
+   * from `input`. Sent only with `job`; the latest launch carrying one
+   * names the job.
+   */
+  title?: string;
+  /**
    * Per-actor secrets pushed to the target before the launch
    * (`PUT /actors/:actor/secrets/:name`) — the user's `GITHUB_TOKEN` for a
    * clone. Never logged, never in `input`, never on the row.
@@ -263,7 +271,7 @@ async function failRow(id: string, error: string): Promise<void> {
  * if created, is marked ERROR with the reason).
  */
 export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<DispatchStrutRunResult> {
-  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job } = args;
+  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title } = args;
   if (!HANDLERS[kind]) throw new Error(`No strut-run handler for kind "${kind}"`);
 
   const resolved = await resolveStrutTarget({ purpose, userId, workspaceId });
@@ -325,7 +333,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
         "x-api-token": target.swarmApiKey,
         [STRUT_ACTOR_HEADER]: target.actor,
       },
-      body: JSON.stringify({ input, callback: { url: callbackUrl }, ...(job ? { job } : {}) }),
+      body: JSON.stringify({ input, callback: { url: callbackUrl }, ...(job ? { job, ...(title ? { title } : {}) } : {}) }),
       cache: "no-store",
       signal: AbortSignal.timeout(LAUNCH_TIMEOUT_MS),
     });
