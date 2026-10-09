@@ -230,7 +230,7 @@ describe("dispatchStrutRun", () => {
     expect(mockStrutRun.updateMany.mock.calls[0][0].data).toMatchObject({ status: "ERROR", error: "strut_http_404: no such workflow" });
   });
 
-  it("a job goes on the LAUNCH beside input (never inside it) and on the row as jobId", async () => {
+  it("a job and its title go on the LAUNCH beside input (never inside it); the job on the row as jobId", async () => {
     mockFetch.mockResolvedValue(json(202, { runId: "1790000000000", callback: true }));
     const job = "6f1c0d3e-1111-4222-8333-444455556666";
     await dispatchStrutRun({
@@ -242,6 +242,7 @@ describe("dispatchStrutRun", () => {
       proposalId: undefined,
       actorSecrets: undefined,
       job,
+      title: "Dark mode plan",
     });
     expect(mockResolveStrutTarget).toHaveBeenCalledWith({ purpose: "job", userId: "user-1", workspaceId: "ws-1" });
     const created = mockStrutRun.create.mock.calls[0][0].data;
@@ -250,14 +251,18 @@ describe("dispatchStrutRun", () => {
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://acme.sphinx.chat:3355/lab/workflows/job/run");
     const body = JSON.parse(init.body as string);
-    expect(body).toEqual({ input: { prompt: "Plan dark mode", title: "Dark mode plan" }, callback: { url: expect.any(String) }, job });
+    // `title` names the JOB on strut (its index, its graph node): a launch
+    // field like `job`, never inside `input`, which the workflow's input
+    // block would strip.
+    expect(body).toEqual({ input: { prompt: "Plan dark mode", title: "Dark mode plan" }, callback: { url: expect.any(String) }, job, title: "Dark mode plan" });
   });
 
-  it("without a job the launch body and the row carry none", async () => {
+  it("without a job the launch body and the row carry none — and no title, which names a job", async () => {
     mockFetch.mockResolvedValue(json(202, { runId: "1790000000000", callback: true }));
-    await dispatchStrutRun(dispatchArgs);
+    await dispatchStrutRun({ ...dispatchArgs, title: "Stray" });
     const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
     expect(body.job).toBeUndefined();
+    expect(body.title).toBeUndefined();
     expect(mockStrutRun.create.mock.calls[0][0].data.jobId).toBeUndefined();
   });
 
