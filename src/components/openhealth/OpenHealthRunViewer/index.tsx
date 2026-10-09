@@ -364,7 +364,7 @@ export function OpenHealthRunViewer({ runId, onSettled }: { runId: string; onSet
             onOpenChange={toggle("graph")}
             testId="openhealth-run-graph"
           >
-            <StrutRunGraph endpoint={`/api/workspaces/${slug}/strut/runs/${runId}/graph`} live={running} />
+            <StrutRunGraph endpoint={`/api/workspaces/${slug}/strut/runs/${runId}/graph`} workspaceSlug={slug} live={running} />
           </PillSection>
           {hasFiles && (
             <>

@@ -15,8 +15,8 @@ const ARTIFACT_TIMEOUT_MS = 15_000;
 
 type LabRow = Pick<StrutRunRow, "id" | "swarmId" | "workflow" | "strutRunId">;
 
-/** Every event of the run, in log order; null when the lab could not answer. */
-export async function fetchStrutRunEvents(row: LabRow): Promise<unknown[] | null> {
+/** Every event of the run, in log order; null when the lab could not answer (within `timeoutMs`). */
+export async function fetchStrutRunEvents(row: LabRow, timeoutMs = EVENTS_TIMEOUT_MS): Promise<unknown[] | null> {
   if (!row.strutRunId) return null;
   const lab = await labForRow(row);
   if (!lab) return null;
@@ -26,7 +26,7 @@ export async function fetchStrutRunEvents(row: LabRow): Promise<unknown[] | null
       {
         headers: { "x-api-token": lab.swarmApiKey },
         cache: "no-store",
-        signal: AbortSignal.timeout(EVENTS_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
     if (!res.ok) return null;

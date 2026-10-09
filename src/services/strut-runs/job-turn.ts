@@ -33,6 +33,16 @@
  * by row id `job-<StrutRun.id>` — and never throws for a missing target.
  * `error` / `cancelled` / LOST rows append a row saying so.
  *
+ * Beside the job's own refs, the row of a successful turn that touched the
+ * knowledge graph carries hive's own card for it: a `run_graph` ref — what
+ * the turn read and wrote there, call by call, read live from the run's
+ * workspace (`/api/workspaces/<slug>/strut/runs/<id>/graph`). One per job
+ * (`runGraphArtifactId`), so each turn's trace is a version of the same
+ * card. Counting it reads the run's log beside the artifact list, best
+ * effort and bounded: no trace is ever a reason to retry, and the job's
+ * refs alone are indexed for events and named to the wake — the trace is
+ * not something the job reported.
+ *
  * The row is the record, not the reply the user reads: the chat shows it
  * collapsed (`JobTurnCard`), since a job's text is written in detail (a
  * code change lists files, functions and line numbers). Once the row has
@@ -60,6 +70,7 @@ import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf, jobTurnInputSchema, parseArtifactEvent, parseStrutArtifactKey, type ArtifactEvent } from "@/lib/strut-jobs";
 import { getBaseUrl } from "@/lib/utils";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
+import { countStrutRunGraph } from "@/services/strut-runs/run-graph";
 
 export { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf };
 
@@ -74,6 +85,11 @@ const MAX_INLINE_CHARS = 50_000;
 /** What `parseArtifactRefs` will keep — the rest is dropped here, not repaired later. */
 const MAX_ID_CHARS = 200;
 const MAX_TITLE_CHARS = 300;
+/**
+ * How long a turn's delivery waits on its log for the trace card. Read beside
+ * the artifact list, inside the 10 s strut gives a callback.
+ */
+const TRACE_READ_TIMEOUT_MS = 8_000;
 
 /** The workflow's `output` (its `pack` step). Extra keys are tolerated. */
 export const jobTurnOutputSchema = z
@@ -413,6 +429,51 @@ export async function readRunArtifacts(row: StrutRunRow): Promise<ArtifactsRead>
   }
 }
 
+// ─── The trace card ───────────────────────────────────────────────────────
+
+/** The trace card's id: one per job, so each turn's trace is a version of it (`artifactIdentity`). */
+export const runGraphArtifactId = (jobId: string): string => `run-graph-${jobId}`;
+
+/** A turn's trace as a ref — hive's card, not one the job reported. Pure. */
+export function runGraphArtifact(args: {
+  jobId: string;
+  title: string;
+  /** The run's workspace, by slug. */
+  workspace: string;
+  /** The turn's `StrutRun` id. */
+  run: string;
+  calls: number;
+  nodes: number;
+}): ArtifactRef {
+  const { jobId, title, workspace, run, calls, nodes } = args;
+  return {
+    id: runGraphArtifactId(jobId),
+    kind: "run_graph",
+    title,
+    source: { type: "inline", content: { workspace, run, calls, nodes } },
+  };
+}
+
+/**
+ * The turn's trace card, or null: a turn that touched no node, a log not
+ * read in time, a workspace that is gone. Never throws.
+ */
+async function readTurnTrace(row: StrutRunRow, jobId: string): Promise<ArtifactRef | null> {
+  try {
+    const counts = await countStrutRunGraph(row, TRACE_READ_TIMEOUT_MS);
+    if (!counts) return null;
+    const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
+    if (!workspace) return null;
+    return runGraphArtifact({ jobId, title: jobTitleOf(row), workspace: workspace.slug, run: row.id, ...counts });
+  } catch (err) {
+    logger.warn("Job turn trace unavailable — delivering without it", LOG_TAG, {
+      runId: row.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
 // ─── Delivery ─────────────────────────────────────────────────────────────
 
 export type JobFanOutResult = "appended" | "duplicate" | "skipped";
@@ -544,8 +605,10 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
 
   let refs: ArtifactRef[] = [];
   let dropped: Array<{ title: string; reason: string }> = [];
+  let trace: ArtifactRef | null = null;
   if (reply.outcome === "success") {
-    const read = await readRunArtifacts(row);
+    const [read, turnTrace] = await Promise.all([readRunArtifacts(row), readTurnTrace(row, jobId)]);
+    trace = turnTrace;
     if (read.ok) {
       ({ refs, dropped } = mapStrutArtifacts(read.artifacts, row.swarmId));
     } else if (read.permanent) {
@@ -571,6 +634,8 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
   const event = parseArtifactEvent(launched.success ? launched.data.prompt : undefined);
 
   const title = jobTitleOf(row);
+  // The job's own refs, then hive's trace card.
+  const cards = trace ? [...refs, trace] : refs;
   const result = await appendJobRow(row, {
     content: renderJobContent({ jobId, title, reply, dropped }),
     source: {
@@ -582,13 +647,14 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       title,
       ...(reply.ask ? { ask: reply.ask } : {}),
     },
-    ...(refs.length > 0 ? { artifacts: refs } : {}),
+    ...(cards.length > 0 ? { artifacts: cards } : {}),
   });
   logger.info("Job turn delivered", LOG_TAG, {
     runId: row.id,
     jobId,
     status: reply.outcome,
     artifacts: refs.length,
+    trace: trace !== null,
     dropped: dropped.length,
     result,
   });
