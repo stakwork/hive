@@ -104,6 +104,10 @@
       "schedule": "35 3 * * *"
     },
     {
+      "path": "/api/cron/strut-peers",
+      "schedule": "50 3 * * *"
+    },
+    {
       "path": "/api/cron/strut-runs-reconcile",
       "schedule": "*/10 * * * *"
     }
