@@ -10,6 +10,8 @@ import { useAutoNavigate } from './useAutoNavigate'
 
 
 const autoRotateSpeed = 1
+// Auto-rotation stops after this long so an untouched dashboard stops rendering
+const autoRotateDurationMs = 30000
 
 let cameraAnimation: gsap.core.Tween | null = null
 
@@ -28,6 +30,8 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
 
   // Track if we've already attempted restoration this session
   const hasAttemptedRestoration = useRef(false)
+
+  const rotatingSince = useRef<number | null>(null)
 
   // Get simulation sleeping state
   const { isSleeping } = getStoreBundle(storeId).simulation.getState()
@@ -151,7 +155,7 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
   }, [])
 
   // Camera rotation using useFrame
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (cameraControlsRef) {
       // Get current state
       const { disableCameraRotation } = getStoreBundle(storeId).graph.getState()
@@ -159,7 +163,16 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
 
       // Do camera rotation if enabled and no user interaction
       if (enableRotation && !disableCameraRotation && !isUserDragging && !selectedNode) {
-        cameraControlsRef.azimuthAngle += autoRotateSpeed * delta * MathUtils.DEG2RAD
+        const now = performance.now()
+        rotatingSince.current ??= now
+
+        if (now - rotatingSince.current < autoRotateDurationMs) {
+          // delta spans the whole idle gap on the first frame after the demand loop sleeps
+          cameraControlsRef.azimuthAngle += autoRotateSpeed * Math.min(delta, 0.1) * MathUtils.DEG2RAD
+          state.invalidate()
+        }
+      } else {
+        rotatingSince.current = null
       }
 
       cameraControlsRef.update(delta)
