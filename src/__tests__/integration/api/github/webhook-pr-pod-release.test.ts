@@ -16,6 +16,7 @@ import { getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
 import { pusherServer, PUSHER_EVENTS } from '@/lib/pusher';
 import { releaseTaskPod } from '@/lib/pods/utils';
 import { forwardArtifactEvent } from '@/services/strut-jobs/artifact-events';
+import { forwardPrUpdate } from '@/services/pr-live-notify';
 import { generateUniqueId } from '@/__tests__/support/helpers';
 import { EncryptionService } from '@/lib/encryption';
 
@@ -36,6 +37,8 @@ vi.mock('@/lib/pusher', () => ({
 // A strut JOB that reported the pull request hears of it (strut
 // plans/job-artifact-events.md §3): the door is its own module, mocked here.
 vi.mock('@/services/strut-jobs/artifact-events', () => ({ forwardArtifactEvent: vi.fn() }));
+// Any pull request the org canvas can show must refetch live on merge/close.
+vi.mock('@/services/pr-live-notify', () => ({ forwardPrUpdate: vi.fn() }));
 vi.mock('@/services/roadmap/feature-status-sync', () => ({
   updateFeatureStatusFromTasks: vi.fn().mockResolvedValue(undefined),
 }));
@@ -175,6 +178,13 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         url: prUrl,
         what: 'merged',
         publicBaseUrl: expect.stringMatching(/^https?:\/\//),
+      });
+
+      // The org canvas is nudged too, with no PR data on the wire.
+      expect(forwardPrUpdate).toHaveBeenCalledWith({
+        workspaceId: testSetup.workspace.id,
+        repoFullName: 'test-owner/test-repo',
+        number: 123,
       });
 
       // Verify task status was updated to DONE

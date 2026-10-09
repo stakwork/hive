@@ -28,7 +28,9 @@ import {
   getPusherClient,
   getTaskChannelName,
   getWorkspaceChannelName,
+  getOrgChannelName,
   PUSHER_EVENTS,
+  notifyCanvasPrUpdated,
 } from "@/lib/pusher";
 
 describe("pusher.ts", () => {
@@ -303,6 +305,7 @@ describe("pusher.ts", () => {
         PROMPT_EVAL_RESULT: "prompt-eval-result",
         AGENT_TRACE_READY: "agent-trace-ready",
         ERROR_ISSUE_UPDATED: "error-issue-updated",
+        CANVAS_PR_UPDATED: "canvas-pr-updated",
 
       });
     });
@@ -373,6 +376,36 @@ describe("pusher.ts", () => {
       expect(PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE).toBe("workspace-task-title-update");
     });
 
+  });
+
+  describe("notifyCanvasPrUpdated", () => {
+    it("triggers CANVAS_PR_UPDATED on the org channel with repo/number but no PR data", () => {
+      notifyCanvasPrUpdated("acme-org", { repo: "acme/app", number: 7 });
+
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        getOrgChannelName("acme-org"),
+        PUSHER_EVENTS.CANVAS_PR_UPDATED,
+        expect.objectContaining({ repo: "acme/app", number: 7, at: expect.any(Number) }),
+      );
+      const payload = (pusherServer.trigger as ReturnType<typeof vi.fn>).mock.calls[0][2];
+      expect(Object.keys(payload).sort()).toEqual(["at", "number", "repo"]);
+    });
+
+    it("does not throw when pusherServer.trigger throws synchronously", () => {
+      (pusherServer.trigger as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+        throw new Error("sign failure");
+      });
+      expect(() => notifyCanvasPrUpdated("acme-org", { repo: "acme/app", number: 7 })).not.toThrow();
+    });
+
+    it("does not throw when pusherServer.trigger rejects", async () => {
+      (pusherServer.trigger as ReturnType<typeof vi.fn>).mockReturnValueOnce(Promise.reject(new Error("network")));
+      expect(() => notifyCanvasPrUpdated("acme-org", { repo: "acme/app", number: 7 })).not.toThrow();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  });
+
+  describe("integration tests", () => {
     it("should have all exports available", () => {
       expect(pusherServer).toBeDefined();
       expect(getPusherClient).toBeDefined();
