@@ -292,13 +292,14 @@ const GraphScene = ({
 
   // Auto-rotate animation
   useEffect(() => {
+    let animationId: number;
     const animate = () => {
       if (groupRef.current) {
         groupRef.current.rotation.y += 0.0001; // Slow horizontal rotation
       }
-      requestAnimationFrame(animate);
+      animationId = requestAnimationFrame(animate);
     };
-    const animationId = requestAnimationFrame(animate);
+    animationId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animationId);
   }, []);
 
