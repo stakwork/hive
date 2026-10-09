@@ -73,4 +73,10 @@ describe("htmlArtifactProxyUrl", () => {
       "/api/tasks/t%201/artifacts/a%2F1/html",
     );
   });
+
+  test("builds the strut artifact reader path for a page a job wrote on a swarm", () => {
+    expect(htmlArtifactProxyUrl({ githubLogin: "acme org", swarmId: "swarm-1", key: "/jobs/j/files/plan.html" })).toBe(
+      "/api/orgs/acme%20org/strut/artifacts?swarmId=swarm-1&key=%2Fjobs%2Fj%2Ffiles%2Fplan.html",
+    );
+  });
 });
