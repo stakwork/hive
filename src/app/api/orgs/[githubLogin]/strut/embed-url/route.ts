@@ -4,6 +4,7 @@ import { resolveOrgSwarmWorkspaceForUser } from "@/lib/helpers/org-workspace";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getBaseUrl } from "@/lib/utils";
 import { mintStrutEmbedUrl, strutTargetErrorResponse } from "@/services/strut-embed";
+import { ensureOrgStrutPeers } from "@/services/strut-peers";
 import { resolveStrutTarget } from "@/services/strut-target";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
@@ -32,7 +33,9 @@ const TOKEN_TTL_SECONDS = 8 * 60 * 60;
  *     `mintStrutEmbedUrl`, which decrypts `swarmApiKey`, mints an mcp
  *     token, pushes the standing Bifrost delegation + Hive callback key,
  *     and returns `{mcp}/lab/?key=<jwt>`. The raw key never leaves the
- *     server.
+ *     server. Beside it, `ensureOrgStrutPeers`: the org strut's peers and
+ *     this user's delegation on each, so the builder the user opens can
+ *     call every other workspace's strut.
  *
  * The JWT's `sub` is the user's actor string (the macaroon `user_id`), so
  * strut bills what the user does in the embed to them.
@@ -78,11 +81,15 @@ export async function POST(
   }
   const { target } = resolved;
 
-  const minted = await mintStrutEmbedUrl(target, {
-    userId: userOrResponse.id,
-    host: getBaseUrl(request.headers.get("host")),
-    ttlSeconds: TOKEN_TTL_SECONDS,
-  });
+  // Neither throws.
+  const [minted] = await Promise.all([
+    mintStrutEmbedUrl(target, {
+      userId: userOrResponse.id,
+      host: getBaseUrl(request.headers.get("host")),
+      ttlSeconds: TOKEN_TTL_SECONDS,
+    }),
+    ensureOrgStrutPeers(target, userOrResponse.id),
+  ]);
   if (!minted.ok) {
     return NextResponse.json({ error: minted.error }, { status: minted.status });
   }

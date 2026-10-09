@@ -1,11 +1,13 @@
 /**
- * The org strut's PEERS — what lets a job's agent call a workflow (`explore`)
- * on another workspace's strut (strut `plans/federation.md` §2.2, §3), and
- * what lets that strut bill the person the job runs as (strut
- * `plans/org-gateway.md` §2–§3, narrowed to the calls a job makes).
+ * The org strut's PEERS — what lets a job's agent or the strut builder call a
+ * workflow (`explore`) on another workspace's strut (strut
+ * `plans/federation.md` §2.2, §3), and what lets that strut bill the person
+ * the call is for (strut `plans/org-gateway.md` §2–§3, narrowed to the calls
+ * the org strut makes).
  *
- * Before every job turn, for every other ACTIVE workspace swarm in the job's
- * org, in parallel:
+ * Wherever hive hands the org strut a person — a job turn (`strut-jobs.ts`),
+ * a builder dispatch (`dispatch_strut`), the strut UI's embed URL — for every
+ * other ACTIVE workspace swarm in the org, in parallel:
  *
  *  1. **A peer record on the org strut**, named by the workspace's slug —
  *     what a person types as `@slug`. Hive mints a `lab:peer` token ON THAT
@@ -19,7 +21,9 @@
  *     a token it holds and one lives 60 days — re-minting per turn keeps it
  *     alive with no store and no cron. A swarm whose mcp answers without
  *     `scope: "lab:peer"` (older than stakgraph#1754) gets no record: never
- *     an `api` token, which is that lab's admin.
+ *     an `api` token, which is that lab's admin. The records are the org
+ *     strut's, not the person's: once pushed, every builder chat there lists
+ *     them (`list_peers`).
  *  2. **The user's delegation on that swarm's strut, through the ORG strut's
  *     gateway**: the target bills the job owner's virtual key on the org
  *     strut's Bifrost, so nothing per workspace is needed there — no
@@ -68,7 +72,7 @@ export type PeerRecordStatus =
 
 export type PeerDelegationStatus = "skipped-gate" | "fresh" | "pushed" | "unsupported" | "failed";
 
-export interface JobPeersResult {
+export interface OrgStrutPeersResult {
   /** By workspace slug. */
   peers: Record<string, PeerRecordStatus>;
   delegations: Record<string, PeerDelegationStatus>;
@@ -78,8 +82,8 @@ export interface JobPeersResult {
  * Peer records on the org strut for every other workspace swarm in its org,
  * and the user's delegation on each. Never throws.
  */
-export async function ensureJobPeers(org: StrutTarget, userId: string): Promise<JobPeersResult> {
-  const out: JobPeersResult = { peers: {}, delegations: {} };
+export async function ensureOrgStrutPeers(org: StrutTarget, userId: string): Promise<OrgStrutPeersResult> {
+  const out: OrgStrutPeersResult = { peers: {}, delegations: {} };
   try {
     const swarms = await orgPeerSwarms(org);
     // The org strut's Bifrost bills these calls, so the org workspace's gate
