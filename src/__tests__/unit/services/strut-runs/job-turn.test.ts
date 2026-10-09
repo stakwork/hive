@@ -5,7 +5,7 @@
  * Themes:
  *   - the mapping from strut's RESOLVED artifact list to hive's refs is
  *     pure and covers every branch: a strut-relative url → a `graph` ref
- *     the reader serves (html shown as `url`, a diff file as `code`); an
+ *     the reader serves (html kept as `html`, a diff file as `code`); an
  *     absolute url → inline `{ url }` (kind kept for media, `url` for the
  *     rest); inline content per kind (markdown / log / code / json / a
  *     diff string as code); an entry with `error` dropped and named;
@@ -182,7 +182,7 @@ describe("mapStrutArtifacts", () => {
     expect(refs[0]).toMatchObject({ kind: "image", source: { type: "graph", swarmId: "swarm-1", key: "/artifacts/1790000000000/shot.png" } });
   });
 
-  it("a page strut wrote is shown as `url` (a static page through the reader); a diff file or a pull request as code", () => {
+  it("a page strut wrote stays html (the frame reads it through the reader); a diff file or a pull request as code", () => {
     const { refs } = mapStrutArtifacts(
       [
         entry({ id: "page", kind: "html", url: `/jobs/${JOB}/files/index.html` }),
@@ -193,7 +193,7 @@ describe("mapStrutArtifacts", () => {
       "swarm-1",
     );
     expect(refs.map((r) => [r.id, r.kind])).toEqual([
-      ["page", "url"],
+      ["page", "html"],
       ["d", "code"],
       ["pr", "code"],
       ["odd", "url"],

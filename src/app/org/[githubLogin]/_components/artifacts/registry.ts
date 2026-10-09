@@ -52,8 +52,8 @@ export interface ArtifactKindSpec<K extends ArtifactKind> {
   fact?: (content: ArtifactContents[K]) => string | null;
   /** The content as text, for the panel's copy button. */
   copyText?: (content: ArtifactContents[K]) => string;
-  /** Where the artifact itself lives, as its content gives it. A link gets it only through `artifactHref`. */
-  address?: (content: ArtifactContents[K], githubLogin: string) => string;
+  /** Where the artifact itself lives, as its content gives it; null when this one has nowhere of its own. A link gets it only through `artifactHref`. */
+  address?: (content: ArtifactContents[K], githubLogin: string) => string | null;
 }
 
 export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
@@ -69,7 +69,8 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Icon: FileCode2,
     Inline: HtmlInline,
     Panel: HtmlPanel,
-    address: (content, githubLogin) => buildSharePath(githubLogin, encodeURIComponent(content.slug)),
+    // A page a strut job wrote has no page of its own on Hive: the reader serves it, and serves it static.
+    address: (content, githubLogin) => ("slug" in content ? buildSharePath(githubLogin, encodeURIComponent(content.slug)) : null),
   },
   image: {
     label: "Image",
