@@ -31,7 +31,7 @@ vi.mock("@/services/bifrost/strut-delegation", async (importOriginal) => ({
   pushStrutDelegation: mockPush,
 }));
 
-import { ensureJobPeers } from "@/services/strut-peers";
+import { ensureOrgStrutPeers } from "@/services/strut-peers";
 import { StrutDelegationsUnsupportedError } from "@/services/bifrost/strut-delegation";
 
 const ORG = {
@@ -92,9 +92,9 @@ afterEach(() => {
   }
 });
 
-describe("ensureJobPeers — peer records", () => {
+describe("ensureOrgStrutPeers — peer records", () => {
   it("puts a lab:peer token from every other active workspace swarm on the org strut, named by slug", async () => {
-    const out = await ensureJobPeers(ORG, "u1");
+    const out = await ensureOrgStrutPeers(ORG, "u1");
     expect(out.peers).toEqual({ "acme-web": "pushed", "acme-api": "pushed" });
 
     expect(mockFindMany).toHaveBeenCalledWith({
@@ -129,7 +129,7 @@ describe("ensureJobPeers — peer records", () => {
       // An mcp older than stakgraph#1754 ignores `scope` and mints an `api` token.
       "https://b.sphinx.chat:3355/mint-token": () => json(200, { token: "admin-jwt", expires_in: "1h" }),
     });
-    const out = await ensureJobPeers(ORG, "u1");
+    const out = await ensureOrgStrutPeers(ORG, "u1");
     expect(out.peers).toEqual({ "acme-web": "unsupported", "acme-api": "pushed" });
     expect(mockFetch.mock.calls.some(([url]) => url === `${ORG.labBase}/peers/acme-web`)).toBe(false);
     expect(JSON.stringify(mockFetch.mock.calls)).not.toContain("admin-jwt");
@@ -142,7 +142,7 @@ describe("ensureJobPeers — peer records", () => {
       },
       [`${ORG.labBase}/peers/acme-api`]: () => json(404, { error: "Not Found" }),
     });
-    const out = await ensureJobPeers(ORG, "u1");
+    const out = await ensureOrgStrutPeers(ORG, "u1");
     expect(out.peers).toEqual({ "acme-web": "failed", "acme-api": "unsupported" });
   });
 
@@ -151,25 +151,25 @@ describe("ensureJobPeers — peer records", () => {
       ...WORKSPACES,
       { slug: "broken", name: "Broken", swarm: { id: "swarm-x", swarmUrl: "https://x.sphinx.chat/api", swarmApiKey: "garbage" } },
     ]);
-    expect(Object.keys((await ensureJobPeers(ORG, "u1")).peers).sort()).toEqual(["acme-api", "acme-web"]);
+    expect(Object.keys((await ensureOrgStrutPeers(ORG, "u1")).peers).sort()).toEqual(["acme-api", "acme-web"]);
 
     vi.clearAllMocks();
-    expect(await ensureJobPeers({ ...ORG, orgId: null }, "u1")).toEqual({ peers: {}, delegations: {} });
+    expect(await ensureOrgStrutPeers({ ...ORG, orgId: null }, "u1")).toEqual({ peers: {}, delegations: {} });
     expect(mockFindMany).not.toHaveBeenCalled();
   });
 
   it("never throws, even when the org's workspaces cannot be read", async () => {
     mockFindMany.mockRejectedValue(new Error("db down"));
-    await expect(ensureJobPeers(ORG, "u1")).resolves.toEqual({ peers: {}, delegations: {} });
+    await expect(ensureOrgStrutPeers(ORG, "u1")).resolves.toEqual({ peers: {}, delegations: {} });
   });
 });
 
-describe("ensureJobPeers — the user's delegation on each peer", () => {
+describe("ensureOrgStrutPeers — the user's delegation on each peer", () => {
   it("is pushed through the ORG strut's gateway when the peer has none, and not recorded", async () => {
     mockList.mockImplementation(async (lab: { labBase: string }) =>
       lab.labBase === "https://c.sphinx.chat:3355/lab" ? [{ actor: ORG.actor, exp: inDays(50), delegationId: "d-c" }] : [],
     );
-    const out = await ensureJobPeers(ORG, "u1");
+    const out = await ensureOrgStrutPeers(ORG, "u1");
     expect(out.delegations).toEqual({ "acme-web": "pushed", "acme-api": "fresh" });
 
     // Listed on the PEER's lab with the peer's key...
@@ -191,13 +191,13 @@ describe("ensureJobPeers — the user's delegation on each peer", () => {
         ? [{ actor: "bob-u2", exp: inDays(50), delegationId: "d-bob" }]
         : [{ actor: ORG.actor, exp: inDays(10), delegationId: "d-old" }],
     );
-    const out = await ensureJobPeers(ORG, "u1");
+    const out = await ensureOrgStrutPeers(ORG, "u1");
     expect(out.delegations).toEqual({ "acme-web": "pushed", "acme-api": "pushed" });
   });
 
   it("follows the ORG workspace's gate, not the peer's: closed → nothing pushed, peers still recorded", async () => {
     process.env.BIFROST_ENABLED = "acme-web,acme-api";
-    const out = await ensureJobPeers(ORG, "u1");
+    const out = await ensureOrgStrutPeers(ORG, "u1");
     expect(out.delegations).toEqual({ "acme-web": "skipped-gate", "acme-api": "skipped-gate" });
     expect(out.peers).toEqual({ "acme-web": "pushed", "acme-api": "pushed" });
     expect(mockList).not.toHaveBeenCalled();
@@ -210,7 +210,7 @@ describe("ensureJobPeers — the user's delegation on each peer", () => {
       return [];
     });
     mockPush.mockRejectedValue(new Error("no WorkspaceMember row"));
-    const out = await ensureJobPeers(ORG, "u1");
+    const out = await ensureOrgStrutPeers(ORG, "u1");
     expect(out.delegations).toEqual({ "acme-web": "unsupported", "acme-api": "failed" });
   });
 });
