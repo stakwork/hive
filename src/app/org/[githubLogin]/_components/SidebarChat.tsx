@@ -51,7 +51,6 @@ import { useOrgConcepts } from "../_state/useOrgConcepts";
 import {
   useCanvasChatStore,
   timelineFromToolCalls,
-  sumConversationTokenUsage,
   type CanvasAttachment,
   type CanvasChatMessage,
   type ToolCall,
@@ -67,6 +66,7 @@ import { forkCanvasConversation } from "../_state/forkCanvasConversation";
 import { startNewOrgConversation } from "../_state/openOrgConversation";
 import { ActionTip } from "./ActionTip";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { getContextWindowTokens } from "@/lib/ai/models";
 import { jamieName } from "@/lib/constants/jamie";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
@@ -674,49 +674,62 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   );
 }
 
-/** `12.4K`, `350K`, `1.2M` — compact, no denominator (see `TokenCounter`). */
+/** `12.4K`, `350K`, `1.2M` — compact (see `TokenCounter`). */
 function formatCompactTokenCount(n: number): string {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
 /**
- * The active conversation's summed token usage, as a tight selector.
+ * Current context size of the active conversation, as a tight selector
+ * (primitives only, so `useShallow` keeps `TokenCounter` from re-rendering
+ * on every streaming text-delta unless the numbers change).
  *
- * Recomputes `sumConversationTokenUsage` on every store update (cheap —
- * a single reduce over the message list), but selects through
- * `useShallow` so `TokenCounter` only re-renders when one of the five
- * summed numbers actually changes, not on every streaming text-delta
- * that touches the messages array.
+ * Uses the latest message carrying `usage` — input + output tokens of that
+ * turn — NOT a sum across turns (each turn's input already includes the
+ * history). Without usage (reload, text-only turns, public viewers) falls
+ * back to ~chars/4 of the message text and flags `approximate`.
  */
-function useConversationTokenTotals() {
+function useContextTokens() {
   const activeId = useCanvasChatStore((s) => s.activeConversationId);
   return useCanvasChatStore(
     useShallow((s) => {
-      const messages = activeId ? s.conversations[activeId]?.messages : undefined;
-      return messages ? sumConversationTokenUsage(messages) : null;
+      const messages = (activeId ? s.conversations[activeId]?.messages : undefined) ?? [];
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const u = messages[i].usage;
+        if (u) {
+          const inputTokens = u.inputTokens ?? 0;
+          const outputTokens = u.outputTokens ?? 0;
+          if (inputTokens + outputTokens > 0) {
+            return {
+              used: inputTokens + outputTokens,
+              approximate: false,
+              inputTokens,
+              outputTokens,
+            };
+          }
+        }
+      }
+      const chars = messages.reduce((n, m) => n + (m.content?.length ?? 0), 0);
+      return { used: Math.ceil(chars / 4), approximate: true, inputTokens: 0, outputTokens: 0 };
     }),
   );
 }
 
 /**
- * Header token counter — sits beside `SidebarChatActions` in the org
- * page's one bar. Sums `CanvasChatMessage.usage` across the active
- * conversation (input + output tokens; see `sumConversationTokenUsage`)
- * and renders it compact with no denominator, because there is no
- * model context-window constant in this repo to divide by. Hidden
- * whenever there's no usage yet (fresh page load) or the total is 0.
+ * Header context-window counter — `used / available` (e.g. `12.3K / 200K`),
+ * always visible. `~` prefix marks an estimate from message text.
  */
 export function TokenCounter() {
-  const totals = useConversationTokenTotals();
-  if (!totals || totals.used <= 0) return null;
-  const title =
-    `Tokens used in this chat — input: ${totals.inputTokens.toLocaleString()}, ` +
-    `output: ${totals.outputTokens.toLocaleString()}, ` +
-    `cache read: ${totals.cacheReadTokens.toLocaleString()}, ` +
-    `cache write: ${totals.cacheWriteTokens.toLocaleString()}`;
+  const { used, approximate, inputTokens, outputTokens } = useContextTokens();
+  const total = getContextWindowTokens();
+  const title = approximate
+    ? "Approximate context window used (estimated from message text) / available"
+    : `Context window used (latest turn — input: ${inputTokens.toLocaleString()}, ` +
+      `output: ${outputTokens.toLocaleString()}) / available`;
   return (
     <span className="px-1.5 text-xs text-muted-foreground tabular-nums select-none" title={title}>
-      {formatCompactTokenCount(totals.used)}
+      {approximate && used > 0 ? "~" : ""}
+      {formatCompactTokenCount(used)} / {formatCompactTokenCount(total)}
     </span>
   );
 }

@@ -288,47 +288,36 @@ describe("SidebarChat header — TokenCounter", () => {
     };
   });
 
-  it("renders nothing when there is no active conversation", async () => {
+  it("shows 0 / 200K when there is no active conversation", async () => {
     const { container } = await renderTokenCounter();
-    expect(container.firstChild).toBeNull();
+    expect(container.textContent).toBe("0 / 200K");
   });
 
-  it("renders nothing when no message carries usage", async () => {
+  it("falls back to a ~chars/4 estimate when no message carries usage", async () => {
     mockStoreState = buildTokenUsageStoreState([{ id: "m1" }]) as typeof mockStoreState;
+    (mockStoreState.conversations["conv-1"].messages[0] as { content: string }).content = "a".repeat(4000);
     const { container } = await renderTokenCounter();
-    expect(container.firstChild).toBeNull();
+    expect(container.textContent).toBe("~1K / 200K");
   });
 
-  it("renders nothing when usage sums to 0", async () => {
+  it("uses the latest message with usage, not a sum", async () => {
     mockStoreState = buildTokenUsageStoreState([
-      { id: "m1", usage: { inputTokens: 0, outputTokens: 0 } },
+      { id: "m1", usage: { inputTokens: 5000, outputTokens: 100 } },
+      { id: "m2", usage: { inputTokens: 12000, outputTokens: 400 } },
+      { id: "m3" },
     ]) as typeof mockStoreState;
     const { container } = await renderTokenCounter();
-    expect(container.firstChild).toBeNull();
+    expect(container.textContent).toBe("12.4K / 200K");
   });
 
-  it("renders the compact sum of input+output across messages", async () => {
+  it("puts input/output breakdown in the title attribute", async () => {
     mockStoreState = buildTokenUsageStoreState([
-      { id: "m1", usage: { inputTokens: 12000, outputTokens: 400 } },
-      { id: "m2", usage: { inputTokens: 5, outputTokens: 0 } },
+      { id: "m1", usage: { inputTokens: 100, outputTokens: 50 } },
     ]) as typeof mockStoreState;
-    const { getByText } = await renderTokenCounter();
-    // 12000 + 400 + 5 + 0 = 12405 → "12.4K"
-    expect(getByText("12.4K")).toBeDefined();
-  });
-
-  it("puts input/output/cache breakdown in the title attribute, not a model limit", async () => {
-    mockStoreState = buildTokenUsageStoreState([
-      { id: "m1", usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheWriteTokens: 2 } },
-    ]) as typeof mockStoreState;
-    const { getByText } = await renderTokenCounter();
-    const el = getByText("150");
-    const title = el.getAttribute("title") ?? "";
+    const { container } = await renderTokenCounter();
+    const title = (container.firstChild as HTMLElement).getAttribute("title") ?? "";
     expect(title).toContain("input: 100");
     expect(title).toContain("output: 50");
-    expect(title).toContain("cache read: 10");
-    expect(title).toContain("cache write: 2");
-    expect(title.toLowerCase()).not.toMatch(/context window|limit|max tokens/);
   });
 });
 

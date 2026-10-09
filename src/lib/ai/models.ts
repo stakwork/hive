@@ -23,6 +23,24 @@ export const DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-4-6";
 export const DEFAULT_STANDARD_MODEL = "anthropic/claude-sonnet-5";
 export const DEFAULT_REASONING_MODEL = "anthropic/claude-opus-5";
 
+/** Context window (tokens) assumed when a model has no entry below. */
+export const DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000;
+
+/**
+ * Context-window sizes by model id substring (first match wins). Jamie
+ * (canvas chat) runs aieo's default Anthropic sonnet unless the user picked
+ * another model, so the default covers it.
+ */
+const CONTEXT_WINDOW_TOKENS: Array<[string, number]> = [
+  ["gemini", 1_000_000],
+  ["gpt", 400_000],
+];
+
+export function getContextWindowTokens(model?: string | null): number {
+  const id = model?.toLowerCase() ?? "";
+  return CONTEXT_WINDOW_TOKENS.find(([key]) => id.includes(key))?.[1] ?? DEFAULT_CONTEXT_WINDOW_TOKENS;
+}
+
 /** Human-readable labels for LlmProvider enum values, for provider pickers. */
 export const PROVIDER_DISPLAY_LABELS: Record<string, string> = {
   ANTHROPIC: "Anthropic",
