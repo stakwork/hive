@@ -20,7 +20,9 @@ jobs:
 
     services:
       postgres:
-        image: postgres:latest
+        # Pulled from the ECR Public Gallery mirror (not Docker Hub) to avoid
+        # GitHub Actions' shared-runner Docker Hub unauthenticated pull rate limit.
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: hive_user
           POSTGRES_PASSWORD: hive_password
