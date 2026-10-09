@@ -115,13 +115,19 @@ export function WorkbenchProvider({
       if (biggest) focusNode(biggest);
       return;
     }
+    deepLinks.current = [];
+    // A deep link to a node outside the loaded trees (a Claim, say, when the lens is Concepts) still exists —
+    // select it by ref_id rather than stranding the link on the biggest tree.
+    if (preferred && !linked && !pendingNew) {
+      select(preferred);
+      return;
+    }
     // Land on the node a proposal would create, else the deep-linked node (by ref_id, own id or name), else what a proposal changes, else the biggest tree.
     const start = pendingNew ?? linked ?? pending.focus ?? biggest ?? Object.keys(graph.nodes)[0] ?? null;
-    deepLinks.current = [];
     setCanvasMode("tree");
     if (start) focusNode(start);
     else setSelectedId(null);
-  }, [graph, roots, pending, focusNode, isFetching]);
+  }, [graph, roots, pending, focusNode, isFetching, select]);
 
   const setLens = useCallback(
     (next: Partial<TreeLens>) => {
