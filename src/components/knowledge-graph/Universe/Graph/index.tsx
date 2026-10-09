@@ -141,10 +141,12 @@ export const Graph = () => {
   }, [graphStyle, setForces, simulation, isSleeping])
 
   // Onboarding: smoothly lerp node positions from current to simulation targets each frame
-  useFrame(() => {
+  useFrame(({ invalidate }) => {
 
     const { nodePositionsNormalized } = getStoreBundle(storeId).simulation.getState()
     if (!isOnboarding || !simulation || !groupRef.current) return
+
+    invalidate()
 
     const gr = groupRef.current.getObjectByName('simulation-3d-group__nodes') as Group
     const grPoints = groupRef.current.getObjectByName('simulation-3d-group__node-points') as Group
