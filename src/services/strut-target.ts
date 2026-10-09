@@ -4,7 +4,7 @@
  *
  * Every hive → strut interaction resolves its target here, once, at
  * dispatch: the org strut embed, `dispatch_strut`, a workflow-benchmark
- * run, a code-change preview. Nothing downstream re-runs the policy — a
+ * run, a job. Nothing downstream re-runs the policy — a
  * `StrutRun` row records the resolved `swarmId`, and reconcile / cancel /
  * the "open in strut" link build their URLs from the row — so this can
  * move to per-swarm struts (or struts and gateways rolled up into each
@@ -14,8 +14,8 @@
  *
  * | purpose       | target                                                  |
  * | ------------- | ------------------------------------------------------- |
- * | `code_change`    | the ORG's default workspace swarm (the one the org strut |
- * | `embed`          | view embeds — `resolveOrgSwarmWorkspaceForUser`)        |
+ * | `embed`          | the ORG's default workspace swarm (the one the org strut |
+ * |                  | view embeds — `resolveOrgSwarmWorkspaceForUser`)        |
  * | `chat`           | the org default too — see below                         |
  * | `system_map`     | the org default (the workflow is authored in that embed) |
  * | `job`            | the org default (a job's files + thread live on one strut) |
@@ -50,7 +50,6 @@ import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { resolveStrutActor } from "@/services/bifrost/strut-delegation";
 
 export type StrutPurpose =
-  | "code_change"
   | "benchmark"
   | "chat"
   | "embed"
@@ -60,7 +59,6 @@ export type StrutPurpose =
 
 /** Where each purpose runs. `org-default` = the org's default workspace swarm. */
 const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
-  code_change: "org-default",
   embed: "org-default",
   // Jamie's strut tools: one strut per org for now (header comment). The
   // switch back to a strut per workspace is `"workspace"` here.

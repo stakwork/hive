@@ -50,8 +50,6 @@ import {
 import { parseArtifactRefs } from "./canvasChatArtifacts";
 import {
   mergeServerMessages,
-  reconcileApprovalResults,
-  reconcileProposalPreviews,
   reconcilePlannerSources,
 } from "./canvasChatPersistence";
 import {
@@ -201,27 +199,6 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
         // rows, so the no-message-loss invariant holds.
         const reconciled = reconcilePlannerSources(merged.messages, mapped);
 
-        // Same gap for code-change approval outcomes: the terminal webhook
-        // patches the stored `approvalResult` row in place (same id — or, on
-        // the authoring tab, a `${turnId}-` row the merge filters out
-        // entirely), so an id-append merge never flips the proposal card off
-        // "PR in progress". Matches by `approvalResult.proposalId` and swaps
-        // in the server copy.
-        const reconciledAr = reconcileApprovalResults(
-          reconciled.messages,
-          mapped,
-        );
-
-        // And for code-change PREVIEWS: the strut run's completion patches
-        // the stored `propose_code_change` tool OUTPUT in place (diff, or
-        // an honest failure), so the card leaves "Generating diff…" only
-        // if the local copy is swapped for the server's — matched by the
-        // output's `proposalId`.
-        const reconciledPv = reconcileProposalPreviews(
-          reconciledAr.messages,
-          mapped,
-        );
-
         const store = useCanvasChatStore.getState();
 
         // Title can land independently of messages (LLM title after the
@@ -240,12 +217,10 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
 
         if (
           merged.added.length === 0 &&
-          !reconciled.changed &&
-          !reconciledAr.changed &&
-          !reconciledPv.changed
+          !reconciled.changed
         )
           return; // in sync
-        store.setConversationMessages(conversationId, reconciledPv.messages);
+        store.setConversationMessages(conversationId, reconciled.messages);
 
         // The user is looking at this chat (only the active conv is
         // subscribed/synced live), and we just merged new server content

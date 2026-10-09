@@ -93,7 +93,7 @@ beforeEach(() => {
 
 describe("POST /api/ask/abort — conversation-wide strut runs (no turnId)", () => {
   it("cancels pending strut runs after the IDOR check and skips their active-run entries", async () => {
-    mockCancelPending.mockResolvedValue({ rows: [{ id: "strut-row-1", kind: "code_change_propose" }], cancelled: 1 });
+    mockCancelPending.mockResolvedValue({ rows: [{ id: "strut-row-1", kind: "job_turn" }], cancelled: 1 });
     mockRequestAbort.mockResolvedValue([
       { requestId: "strut-row-1", workspaceId: "ws-1", startedAt: new Date().toISOString() },
       { requestId: "req-swarm", workspaceId: "ws-1", startedAt: new Date().toISOString() },
@@ -112,7 +112,7 @@ describe("POST /api/ask/abort — conversation-wide strut runs (no turnId)", () 
   });
 
   it("with only a strut run pending, reports it and never touches the swarm abort", async () => {
-    mockCancelPending.mockResolvedValue({ rows: [{ id: "strut-row-1", kind: "code_change_propose" }], cancelled: 1 });
+    mockCancelPending.mockResolvedValue({ rows: [{ id: "strut-row-1", kind: "job_turn" }], cancelled: 1 });
     mockRequestAbort.mockResolvedValue([]);
     const res = await post();
     expect(await res.json()).toEqual({ ok: true, aborted: 1 });
@@ -139,7 +139,7 @@ describe("POST /api/ask/abort — conversation-wide strut runs (no turnId)", () 
 
 describe("POST /api/ask/abort — one turn (turnId)", () => {
   it("signals the turn and cancels only its own pending strut runs", async () => {
-    mockCancelPending.mockResolvedValue({ rows: [{ id: "strut-row-1", kind: "code_change_propose" }], cancelled: 1 });
+    mockCancelPending.mockResolvedValue({ rows: [{ id: "strut-row-1", kind: "job_turn" }], cancelled: 1 });
 
     const res = await post({ orgId: "org-1", turnId: TURN_ID });
 

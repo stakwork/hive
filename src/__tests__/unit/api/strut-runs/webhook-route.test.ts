@@ -43,18 +43,18 @@ const row = (over: Record<string, unknown> = {}) => ({
   id: "row-1",
   tokenHash: HASH,
   status: "PENDING",
-  workflow: "code-change-propose",
+  workflow: "swarm-systemmap-schema-sync",
   strutRunId: "1790000000000",
-  kind: "code_change_propose",
+  kind: "system_map",
   ...over,
 });
 
 const body = (over: Record<string, unknown> = {}) => ({
   event: "run.end",
-  workflow: "code-change-propose",
+  workflow: "swarm-systemmap-schema-sync",
   runId: "1790000000000",
   status: "success",
-  output: { diff: "d", filesChanged: 1 },
+  output: { ok: true },
   durationMs: 4200,
   ...over,
 });
@@ -113,7 +113,7 @@ describe("POST /api/strut-runs/webhook", () => {
       row(),
       {
         status: "success",
-        output: { diff: "d", filesChanged: 1 },
+        output: { ok: true },
         error: null,
         durationMs: 4200,
       },

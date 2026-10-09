@@ -132,11 +132,9 @@ export type StrutRunHandler = (row: StrutRunRow, ctx?: StrutRunHandlerContext) =
 
 /**
  * Kind → handler. Lazy so this module stays light (a handler pulls in the
- * conversation writer, Pusher, diff hygiene, …). One entry per `kind`.
+ * conversation writer, Pusher, …). One entry per `kind`.
  */
 const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
-  code_change_propose: async () => (await import("./strut-runs/code-change-propose")).handleCodeChangeProposeSettled,
-  code_change_land: async () => (await import("./strut-runs/code-change-land")).handleCodeChangeLandSettled,
   system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_cwe_check: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
