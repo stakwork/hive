@@ -97,8 +97,8 @@ export default function SystemMapPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="System Map"
-        description="How this workspace's systems fit together: a strut-generated map and the endpoints they call."
+        title="Infosec"
+        description="Security and system-map workflows for this workspace, the graphs they write, and the endpoints its systems call."
         icon={Waypoints}
       />
       <Suspense fallback={null}>
