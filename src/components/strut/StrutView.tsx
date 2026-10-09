@@ -26,10 +26,9 @@ interface StrutViewProps {
  * Hive only carries what strut reported and hands it back, and never has
  * to learn a key. The frame is untrusted content, so each pair is still
  * bounded and the embed's own `key` / `embed_origin` are dropped
- * unconditionally. Hive mints such links itself too — a code-change
- * card's "View run" is `strutViewPath(login, strutRunDeepLink(wf, run))` —
- * so the param name lives in `lib/utils/strut-links`, shared with the
- * server.
+ * unconditionally. Hive mints such links itself too
+ * (`strutViewPath(login, strutRunDeepLink(wf, run))`), so the param name
+ * lives in `lib/utils/strut-links`, shared with the server.
  */
 const KEY_RE = /^[a-z][a-z0-9_]{0,31}$/;
 const MAX_VALUE_LENGTH = 512;

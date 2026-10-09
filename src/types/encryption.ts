@@ -30,7 +30,6 @@ export type EncryptableField =
   | "source_control_refresh_token"
   | "agentPassword"
   | "agentWebhookSecret"
-  | "codeChangeWebhookSecret"
   | "vercelApiToken"
   | "vercelWebhookSecret"
   | "sphinxBotSecret"
