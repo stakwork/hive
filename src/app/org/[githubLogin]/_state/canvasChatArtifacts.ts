@@ -107,6 +107,13 @@ export interface ArtifactContents {
    * the proposal those changes are, so the view can follow its decision.
    */
   graph: { workspace: string; focus?: string; changes?: GraphChange[]; proposal?: string };
+  /**
+   * What a strut run did in a workspace's knowledge graph, call by call —
+   * the run graph (`components/strut-run-graph`), read live from the run's
+   * workspace. `run` is the run's `StrutRun` id; `calls` and `nodes` count
+   * what it had touched when the ref was written, for the card.
+   */
+  run_graph: { workspace: string; run: string; calls?: number; nodes?: number };
 }
 
 export type ArtifactKind = keyof ArtifactContents;
@@ -250,6 +257,10 @@ const address = (raw: Record<string, unknown>): { url: string } | null =>
 const text = (raw: Record<string, unknown>): { text: string } | null =>
   typeof raw.text === "string" ? { text: raw.text } : null;
 
+/** A count, or left out. */
+const count = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+
 const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => ArtifactContents[K] | null } = {
   markdown: text,
   log: text,
@@ -314,6 +325,11 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
           proposal: bounded(raw.proposal, MAX_ID_LENGTH) ?? undefined,
         }
       : null;
+  },
+  run_graph: (raw) => {
+    const workspace = bounded(raw.workspace, MAX_ID_LENGTH);
+    const run = bounded(raw.run, MAX_ID_LENGTH);
+    return workspace && run ? { workspace, run, calls: count(raw.calls), nodes: count(raw.nodes) } : null;
   },
 };
 

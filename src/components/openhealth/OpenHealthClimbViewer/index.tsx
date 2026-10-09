@@ -335,6 +335,7 @@ export function OpenHealthClimbViewer({
           >
             <StrutRunGraph
               endpoint={`/api/workspaces/${slug}/strut/runs/${climbId}/graph`}
+              workspaceSlug={slug}
               live={running}
               scope={step ? openHealthClimbStepPath(step) : null}
             />

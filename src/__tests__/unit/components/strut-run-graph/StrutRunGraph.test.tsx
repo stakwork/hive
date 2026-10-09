@@ -9,14 +9,15 @@
  *   along the breadcrumb;
  * - the lineage above the touched nodes: drawn and counted with them, an
  *   ancestor the run never touched said to be one, and a lineage the graph
- *   did not answer for said so.
+ *   did not answer for said so;
+ * - no workspace context needed (the org chat's artifact panel has none):
+ *   the Graph Explorer link comes from the slug it is given.
  */
 
 import React from "react";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-vi.mock("@/hooks/useWorkspace", () => ({ useWorkspace: () => ({ workspace: { slug: "hive" } }) }));
 // Radix measures the slider with ResizeObserver, which jsdom does not have.
 vi.mock("@/components/ui/slider", () => ({ Slider: () => <div data-testid="slider" /> }));
 
@@ -333,5 +334,23 @@ describe("StrutRunGraph lineage", () => {
     expect(screen.getByTestId("run-graph-unread").textContent).toContain(
       "The graph did not answer for the lineage of these nodes (no answer in 20 s)",
     );
+  });
+});
+
+describe("StrutRunGraph without a workspace context", () => {
+  it("links a node the graph holds to the Graph Explorer of the workspace it is given, and none without one", async () => {
+    stubFetch(() => answer(200, BODY));
+    const view = render(<StrutRunGraph endpoint={ENDPOINT} workspaceSlug="acme" fill />);
+    fireEvent.click(await screen.findByText("Problem List"));
+    await screen.findByTestId("run-graph-node-read");
+    const link = screen.getByText("Open in Graph Explorer").closest("a");
+    expect(link?.getAttribute("href")).toBe("/w/acme/context/graph?ref_id=concept");
+    expect(screen.getByTestId("run-graph").className).toContain("h-full");
+    view.unmount();
+
+    render(<StrutRunGraph endpoint={ENDPOINT} />);
+    fireEvent.click(await screen.findByText("Problem List"));
+    await screen.findByTestId("run-graph-node-read");
+    expect(screen.queryByText("Open in Graph Explorer")).toBeNull();
   });
 });
