@@ -86,12 +86,21 @@ function queryOf(input: unknown): Record<string, RunGraphQueryValue> {
   return query;
 }
 
+/**
+ * A ref tagged `peer` names a node in ANOTHER strut's graph — a
+ * `strut/run-workflow` step folds the peer run's nodes onto its own
+ * `step.end` (strut plans/federation.md §2.2). It means nothing against this
+ * workspace's graph, so it is not a node of this run.
+ */
+const isPeerRef = (item: Record<string, unknown>) => typeof item.peer === "string" && item.peer.trim() !== "";
+
 function nodesOf(value: unknown): RunGraphNodeRef[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const nodes: RunGraphNodeRef[] = [];
   for (const item of value) {
     if (!isRecord(item) || typeof item.ref_id !== "string" || !item.ref_id || seen.has(item.ref_id)) continue;
+    if (isPeerRef(item)) continue;
     seen.add(item.ref_id);
     nodes.push(
       typeof item.node_type === "string" && item.node_type
