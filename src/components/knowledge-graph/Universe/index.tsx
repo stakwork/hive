@@ -9,6 +9,7 @@ import { Suspense, memo, useCallback } from 'react'
 import { Controls } from './Controls'
 import { initialCameraPosition } from './Controls/CameraAnimations/constants'
 import { CursorTooltip } from './CursorTooltip'
+import { FrameloopGate } from './FrameloopGate'
 import { Graph } from './Graph'
 import { Overlay } from './Overlay'
 import { colors } from './utils/colors'
@@ -24,6 +25,8 @@ const Content = ({ enableRotation }: { enableRotation: boolean }) => {
   return (
     <>
       <color args={[colors.BLUE_PRESS_STATE]} attach="transparent" />
+
+      <FrameloopGate />
 
       <Controls enableRotation={enableRotation} />
 
@@ -92,7 +95,7 @@ const UniverseComponent = ({ enableRotation = false }: { enableRotation?: boolea
 
         <Canvas
           camera={cameraProps}
-          frameloop={'always'}
+          frameloop="demand"
           id="universe-canvas"
           style={{ width: '100%', height: '100%' }}
           onCreated={() => console.log('onCreated')}
