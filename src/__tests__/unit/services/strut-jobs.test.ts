@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockResolve, mockDispatch, mockCancel, mockSetActiveRun, mockNotifyRunActive, mockGetPat, mockAppendEvent, mockStrutRunFindFirst, FakeDispatchError } =
+const { mockResolve, mockDispatch, mockCancel, mockSetActiveRun, mockNotifyRunActive, mockGetPat, mockAppendEvent, mockStrutRunFindFirst, mockEnsurePeers, FakeDispatchError } =
   vi.hoisted(() => {
     class FakeDispatchError extends Error {
       constructor(
@@ -28,6 +28,7 @@ const { mockResolve, mockDispatch, mockCancel, mockSetActiveRun, mockNotifyRunAc
       mockGetPat: vi.fn(),
       mockAppendEvent: vi.fn(),
       mockStrutRunFindFirst: vi.fn(),
+      mockEnsurePeers: vi.fn(),
       FakeDispatchError,
     };
   });
@@ -37,6 +38,7 @@ vi.mock("@/services/strut-target", () => ({
   describeStrutTargetError: (e: { type: string }) => `target: ${e.type}`,
 }));
 vi.mock("@/services/strut-runs", () => ({ dispatchStrutRun: mockDispatch, cancelStrutRun: mockCancel, StrutDispatchError: FakeDispatchError }));
+vi.mock("@/services/strut-peers", () => ({ ensureOrgStrutPeers: mockEnsurePeers }));
 vi.mock("@/services/canvas-active-runs-hooks", () => ({ setActiveRun: mockSetActiveRun, notifyRunActive: mockNotifyRunActive }));
 vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: mockGetPat }));
 vi.mock("@/services/strut-runs/job-turn", () => ({ appendJobEventRow: mockAppendEvent }));
@@ -58,9 +60,16 @@ beforeEach(() => {
   mockNotifyRunActive.mockResolvedValue(undefined);
   mockGetPat.mockResolvedValue({ username: "alice", token: "ghp_test" });
   mockAppendEvent.mockResolvedValue("appended");
+  mockEnsurePeers.mockResolvedValue({ peers: {}, delegations: {} });
 });
 
 describe("launchJobTurn", () => {
+  it("ensures the org strut's peers for the owner before every launch", async () => {
+    await launchJobTurn(target, { jobId: JOB, title: "Dark mode plan", prompt: "Ask @acme-web", started: true });
+    expect(mockEnsurePeers).toHaveBeenCalledWith(TARGET, "user-1");
+    expect(mockEnsurePeers.mock.invocationCallOrder[0]).toBeLessThan(mockDispatch.mock.invocationCallOrder[0]);
+  });
+
   it("resolves the strut for the OWNER by the launch's workspace, and launches as them with their token", async () => {
     const out = await launchJobTurn(target, { jobId: JOB, title: "Dark mode plan", prompt: "Split step 2", started: false });
     expect(out).toEqual({ status: "continued", jobId: JOB, title: "Dark mode plan", runId: "row-2", note: expect.stringContaining("Job") });

@@ -26,6 +26,7 @@ import { StrutRunStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { JOB_TURN_KIND, JOB_WORKFLOW } from "@/lib/strut-jobs";
+import { ensureOrgStrutPeers } from "@/services/strut-peers";
 import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
 import { describeStrutTargetError, resolveStrutTarget } from "@/services/strut-target";
 
@@ -91,6 +92,12 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
   const resolved = await resolveStrutTarget({ purpose: "job", userId, workspaceId });
   if (!resolved.ok) return { status: "error", error: describeStrutTargetError(resolved.error) };
   const strut = resolved.target;
+
+  // The org strut's peers — every other workspace swarm in the org, by
+  // slug — and the user's delegation on each through the org strut's
+  // gateway: what lets this turn's agent call `explore` on another
+  // workspace's strut (`strut-peers.ts`). Every turn; never throws.
+  await ensureOrgStrutPeers(strut, userId);
 
   // The user's GitHub token, pushed to strut as THIS actor's secret before
   // the launch (`dispatchStrutRun` → `ensureStrutActorSecrets`: idempotent,
