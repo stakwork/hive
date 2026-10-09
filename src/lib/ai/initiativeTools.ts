@@ -146,12 +146,6 @@ export function buildInitiativeTools(
    * unchanged.
    */
   chatAgentModel?: string,
-  /**
-   * Slim-prompt mode (the per-browser settings switch). In that mode the
-   * `send_to_feature_planner` description carries the FORM rule; the
-   * full prompt keeps its own FORM guidance in the planner snippet.
-   */
-  slimPrompt?: boolean,
 ): ToolSet {
   return {
     read_initiative: tool({
@@ -631,8 +625,8 @@ export function buildInitiativeTools(
         "Prefix your message with a one-line reason for context — the " +
         "planner sees this as the chat history's next user message " +
         "and a short framing helps it understand cross-feature " +
-        "coordination." +
-        (slimPrompt ? ` ${PLANNER_FORM_RULE}` : ""),
+        "coordination. " +
+        PLANNER_FORM_RULE,
       inputSchema: z.object({
         featureId: z
           .string()

@@ -66,18 +66,6 @@ vi.mock('@/lib/constants/prompt', () => ({
   // Trailing `<canvas-scope>` message builder. `null` = no scope block,
   // which keeps the assembled message array equal to the history.
   buildCanvasScopeMessage: vi.fn(() => null),
-  getRoadmapCapabilitySnippet: vi.fn(() => ''),
-  getWhiteboardCapabilitySnippet: vi.fn(() => ''),
-  getPlannerCapabilitySnippet: vi.fn(() => ''),
-  getResearchCapabilitySnippet: vi.fn(() => ''),
-  getConnectionsCapabilitySnippet: vi.fn(() => ''),
-  getHtmlPagesCapabilitySnippet: vi.fn(() => ''),
-  getGraphWalkerCapabilitySnippet: vi.fn(() => ''),
-  getInfraCapabilitySnippet: vi.fn(() => ''),
-  getWorkflowsCapabilitySnippet: vi.fn(() => ''),
-  getPromptsCapabilitySnippet: vi.fn(() => ''),
-  getConceptsCapabilitySnippet: vi.fn(() => ''),
-  getCanvasPromptSuffix: vi.fn(() => ''),
 }));
 
 vi.mock('@/lib/pusher', async (importOriginal) => {

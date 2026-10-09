@@ -112,18 +112,6 @@ vi.mock("@/lib/constants/prompt", () => ({
   getMultiWorkspacePrefixMessages: vi.fn(() => []),
   getQuickAskPrefixMessages: vi.fn(() => []),
   buildCanvasScopeMessage: vi.fn(() => null),
-  getRoadmapCapabilitySnippet: vi.fn(() => ""),
-  getWhiteboardCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
-  getResearchCapabilitySnippet: vi.fn(() => ""),
-  getConnectionsCapabilitySnippet: vi.fn(() => ""),
-  getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
-  getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
-  getInfraCapabilitySnippet: vi.fn(() => ""),
-  getWorkflowsCapabilitySnippet: vi.fn(() => ""),
-  getPromptsCapabilitySnippet: vi.fn(() => ""),
-  getConceptsCapabilitySnippet: vi.fn(() => ""),
-  getCanvasPromptSuffix: vi.fn(() => ""),
 }));
 
 const mockStreamText = vi.fn(() => ({

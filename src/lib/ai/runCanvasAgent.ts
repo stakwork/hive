@@ -65,7 +65,6 @@ import type { DispatchedResearchIntent } from "@/lib/ai/researchTools";
 import type { DispatchedGraphWalkIntent } from "@/lib/ai/graphWalkDispatchTools";
 import {
   ALL_CAPABILITIES,
-  composeCapabilityPromptSuffix,
   composeCapabilityTools,
   composeWriteToolNames,
   resolveOrgCapabilities,
@@ -317,16 +316,15 @@ export interface RunCanvasAgentOptions {
   orgId?: string;
   /**
    * Org capability families to compose into the agent when `orgId` is
-   * set — each contributes its tools, its prompt snippet (core ones
-   * inline, loadable ones behind `learn_capability`), and its
-   * readonly-strip names (see `src/lib/ai/capabilities.ts`). Defaults
-   * to the full set, i.e. the historical canvas-agent behavior. Pass a
-   * subset to run the same agent on surfaces that have no canvas —
-   * e.g. `["planner"]` for the per-feature Plan page, giving the agent
-   * `send_to_feature_planner` plus the per-workspace tools so it can
-   * help execute an existing plan without any roadmap/propose tools.
-   * Note `"roadmap"` implies `"whiteboard"`, `"research"`, and
-   * `"connections"` (registry `includes`). Ignored when `orgId` is absent.
+   * set — each contributes its tools and its readonly-strip names (see
+   * `src/lib/ai/capabilities.ts`). Defaults to the full set, i.e. the
+   * historical canvas-agent behavior. Pass a subset to run the same
+   * agent on surfaces that have no canvas — e.g. `["planner"]` for the
+   * per-feature Plan page, giving the agent `send_to_feature_planner`
+   * plus the per-workspace tools so it can help execute an existing
+   * plan without any roadmap/propose tools. Note `"roadmap"` implies
+   * `"whiteboard"`, `"research"`, and `"connections"` (registry
+   * `includes`). Ignored when `orgId` is absent.
    */
   capabilities?: readonly OrgCapability[];
   /** Workspace slugs to expose to the agent. 1..20. */
@@ -357,13 +355,6 @@ export interface RunCanvasAgentOptions {
    * does omitting this entirely.
    */
   modelName?: string;
-  /**
-   * Opt in to the slim prompt (concept-tree mode): slim core snippets and
-   * the FORM rule on `send_to_feature_planner`. Sent by the canvas
-   * SidebarChat when its settings switch is on; omitted → full prompt
-   * (including every server-side caller, e.g. planner wake turns).
-   */
-  slimPrompt?: boolean;
   /**
    * Cached concepts from a previous turn of the SAME conversation. When
    * provided, we SKIP the slow per-workspace `listConcepts` swarm
@@ -757,7 +748,6 @@ export async function runCanvasAgent(
     prepareStep,
     extraStopConditions,
     modelName,
-    slimPrompt = false,
     userTimezone,
     publicBaseUrl,
     abortSignal,
@@ -925,11 +915,7 @@ export async function runCanvasAgent(
   // `orgCapabilities` is the `includes`-expanded selection in canonical
   // order, with org-gated capabilities (e.g. `prompts`, restricted to the
   // Stakwork source-control org) filtered out for orgs that fail the gate.
-  // The prompt suffix is the matching snippet concatenation.
   const orgCapabilities = await resolveOrgCapabilities(capabilities, orgId);
-  const orgPromptSuffix = orgId
-    ? composeCapabilityPromptSuffix(orgCapabilities, { slimPrompt })
-    : undefined;
   // `graph_walker` is core (read tools always composed), so its four
   // graph-write propose tools cannot ride an `orgGate` on the capability
   // itself — the gate is resolved here and threaded into the capability
@@ -1007,7 +993,6 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
-          slimPrompt,
           webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
@@ -1083,7 +1068,6 @@ export async function runCanvasAgent(
       conceptsByWorkspace,
       [],
       orgId,
-      orgPromptSuffix,
       canvasSystemPrompt.value,
       userTimezone,
     );
@@ -1170,7 +1154,6 @@ export async function runCanvasAgent(
           userId,
           currentCanvasConversationId,
           chatAgentModel: modelName,
-          slimPrompt,
           webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
@@ -1208,7 +1191,6 @@ export async function runCanvasAgent(
       orgId
         ? {
             orgId,
-            promptSuffix: orgPromptSuffix,
             // Name the one workspace so the roadmap tools' `workspaceSlug`
             // has a stated source (the multi-workspace prompt lists every
             // workspace up-front; this is the single-workspace equivalent).

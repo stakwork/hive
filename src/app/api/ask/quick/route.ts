@@ -101,9 +101,6 @@ export async function POST(request: NextRequest) {
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
       // and avoid an unnecessary stakgraph round-trip.
       skipEnrichments,
-      // Per-browser opt-in to the slim prompt (concept-tree mode), sent by
-      // the canvas SidebarChat when its settings switch is on.
-      slimPrompt,
       // Agent-proposal flow (see `src/lib/proposals/`). Set on the
       // user's send when they click Approve / Reject in a
       // `<ProposalCard>`. The route runs the side effect synchronously
@@ -641,7 +638,6 @@ export async function POST(request: NextRequest) {
           orgId: orgId || undefined,
           workspaceSlugs: slugs,
           modelName: chatAgentModel,
-          slimPrompt: slimPrompt === true,
           // Reuse cached concepts (skips the swarm `listConcepts` call)
           // when we have them for this org-canvas conversation. The prefix
           // is still rebuilt fresh each turn for an accurate scope hint.
