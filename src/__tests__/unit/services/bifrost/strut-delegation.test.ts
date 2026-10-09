@@ -56,6 +56,7 @@ vi.mock("@/lib/db", () => ({
 
 import {
   ensureStrutDelegation,
+  pushStrutDelegation,
   isPastHalfLife,
   isWithinRenewWindow,
   resolveStrutActor,
@@ -243,6 +244,20 @@ describe("ensureStrutDelegation", () => {
       data: { strutDelegationExp: new Date(expAfterDays(60)), strutDelegationId: "deleg-uuid" },
     });
     expect(JSON.stringify(mockMemberUpdateMany.mock.calls)).not.toContain("macaroon-b64");
+  });
+
+  it("a push to ANOTHER workspace's strut (record: false) leaves the member row alone", async () => {
+    mockFetch.mockResolvedValueOnce(json(200, { actor: ACTOR, exp: expAfterDays(60), delegationId: "deleg-uuid" }));
+    const peerLab = { labBase: "https://swarm2.sphinx.chat:3355/lab", swarmApiKey: "peer-key" };
+    await pushStrutDelegation({ workspaceId: auth.workspaceId, userId: auth.userId, swarmUrl: swarm.swarmUrl, target: peerLab, record: false });
+
+    // Minted for THIS workspace, through THIS swarm's gateway, PUT on the other strut.
+    expect(mockReconcileBifrostVK).toHaveBeenCalledWith("ws-1", "u_alice");
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(`https://swarm2.sphinx.chat:3355/lab/llm/delegations/${ACTOR}`);
+    expect(init.headers["x-api-token"]).toBe("peer-key");
+    expect(JSON.parse(init.body).baseUrl).toBe("https://swarm1.sphinx.chat:8181");
+    expect(mockMemberUpdateMany).not.toHaveBeenCalled();
   });
 
   it("re-mints when the stored delegation is past half its life", async () => {
