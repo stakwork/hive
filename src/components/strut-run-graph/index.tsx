@@ -9,6 +9,7 @@ import {
   Crosshair,
   ExternalLink,
   Eye,
+  ListTree,
   Loader2,
   Pause,
   PenLine,
@@ -25,11 +26,13 @@ import { layoutRunGraph } from "@/lib/strut-run-graph/layout";
 import { ancestorsOf, lineageParents } from "@/lib/strut-run-graph/lineage";
 import {
   buildRunGraphTree,
+  childToLoad,
   callLabel,
   keepGraphRead,
   replayFrame,
   scopeCalls,
   scopeOfBranch,
+  withChildCalls,
   type RunGraphTreeNode,
 } from "@/lib/strut-run-graph/replay";
 import { nodeText } from "@/lib/strut-run-graph/node-text";
@@ -96,6 +99,8 @@ function TreeBranch({
   onToggle,
   onPick,
   onFocus,
+  childState,
+  onOpenChild,
 }: {
   node: RunGraphTreeNode;
   depth: number;
@@ -106,6 +111,10 @@ function TreeBranch({
   onPick: (index: number) => void;
   /** Show only this branch. */
   onFocus: (path: string) => void;
+  /** Where loading the run a launching call started stands, by the call's path in the tree. */
+  childState: (path: string) => ChildState | undefined;
+  /** Load the run a launching call started, by the call's path in the tree. */
+  onOpenChild: (path: string) => void | Promise<void>;
 }) {
   const indent = { paddingLeft: `${depth * 14 + 8}px` };
 
@@ -113,14 +122,14 @@ function TreeBranch({
     const call = calls[node.callIndex];
     const current = step === node.callIndex;
     const past = step === null || node.callIndex < step;
-    return (
+    const pickButton = (
       <button
         type="button"
         onClick={() => onPick(node.callIndex as number)}
         style={indent}
         data-testid="run-graph-call"
         data-current={current}
-        className={`flex w-full items-center gap-2 py-1 pr-2 text-left text-xs transition-colors hover:bg-muted/60 ${
+        className={`flex min-w-0 flex-1 items-center gap-2 py-1 pr-2 text-left text-xs transition-colors hover:bg-muted/60 ${
           current ? "bg-muted font-medium" : past ? "" : "text-muted-foreground/60"
         }`}
       >
@@ -129,6 +138,28 @@ function TreeBranch({
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{querySummary(call)}</span>
         <span className="shrink-0 tabular-nums text-muted-foreground">{answerSummary(call)}</span>
       </button>
+    );
+    if (!call.child) return pickButton;
+    // A call that ran a workflow as its own run: its calls are loaded when opened, and take its place.
+    const state = childState(node.path);
+    const where = call.child.peer ? ` on @${call.child.peer}` : "";
+    return (
+      <div className="flex w-full items-center">
+        {pickButton}
+        <button
+          type="button"
+          onClick={() => void onOpenChild(node.path)}
+          disabled={state?.state === "loading"}
+          aria-label={`Open the ${call.child.workflow} run${where}`}
+          title={state?.state === "failed" ? state.error : `Open the ${call.child.workflow} run${where}`}
+          data-testid="run-graph-open-child"
+          className={`mr-1 shrink-0 rounded p-0.5 hover:text-foreground ${
+            state?.state === "failed" ? "text-destructive" : "text-muted-foreground"
+          }`}
+        >
+          {state?.state === "loading" ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListTree className="h-3 w-3" />}
+        </button>
+      </div>
     );
   }
 
@@ -173,11 +204,19 @@ function TreeBranch({
             onToggle={onToggle}
             onPick={onPick}
             onFocus={onFocus}
+            childState={childState}
+            onOpenChild={onOpenChild}
           />
         ))}
     </div>
   );
 }
+
+/** Where loading a launching call's run stands. */
+type ChildState =
+  | { state: "loading" }
+  | { state: "loaded"; calls: RunGraphCall[] }
+  | { state: "failed"; error: string };
 
 /** A node's body, as the graph has answered for it so far. */
 type NodeBodyState =
@@ -499,7 +538,17 @@ export function StrutRunGraph({
     return () => clearInterval(timer);
   }, [live, load]);
 
-  const inScope = useMemo(() => scopeCalls(trace?.calls ?? [], scope), [trace?.calls, scope]);
+  /** The runs launching calls started, by the launching call's full path: loaded when opened, never before. */
+  const [children, setChildren] = useState<Record<string, ChildState>>({});
+  const loadedChildren = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(children).flatMap(([path, c]) => (c.state === "loaded" ? [[path, c.calls]] : [])),
+      ) as Record<string, RunGraphCall[]>,
+    [children],
+  );
+  const allCalls = useMemo(() => withChildCalls(trace?.calls ?? [], loadedChildren), [trace?.calls, loadedChildren]);
+  const inScope = useMemo(() => scopeCalls(allCalls, scope), [allCalls, scope]);
   const calls = useMemo(() => inScope.filter((call) => shown[call.access]), [inScope, shown]);
   const current = step !== null && step < calls.length ? step : null;
 
@@ -626,6 +675,58 @@ export function StrutRunGraph({
     if (current === null) setStep(0);
     setPlaying(true);
   }, [playing, current]);
+  /** Load the run the launching call at `full` (its path in the whole run) started, once; its calls, when this call loaded them. */
+  const openChild = useCallback(
+    async (full: string): Promise<RunGraphCall[] | null> => {
+      if (children[full] && children[full].state !== "failed") return null;
+      setChildren((prev) => ({ ...prev, [full]: { state: "loading" } }));
+      try {
+        const response = await fetch(`${endpoint}/calls?under=${encodeURIComponent(full)}`, { cache: "no-store" });
+        const body = (await response.json().catch(() => ({}))) as { calls?: RunGraphCall[]; error?: string };
+        if (!response.ok || !Array.isArray(body.calls)) throw new Error(body.error || "Could not load the run");
+        const loaded = body.calls;
+        // The indices of the replay move, so it starts over; the launch opens as a branch in the tree.
+        setPlaying(false);
+        setStep(null);
+        setChildren((prev) => ({ ...prev, [full]: { state: "loaded", calls: loaded } }));
+        return loaded;
+      } catch (e) {
+        const error = e instanceof Error ? e.message : "Could not load the run";
+        setChildren((prev) => ({ ...prev, [full]: { state: "failed", error } }));
+        return null;
+      }
+    },
+    [children, endpoint],
+  );
+  /** A path in the tree as drawn (re-rooted at the branch shown) → its path in the whole run. */
+  const fullPath = useCallback(
+    (treePath: string) => `${allCalls[0]?.path.split("/")[0] ?? ""}/${scopeOfBranch(scope, treePath)}`,
+    [allCalls, scope],
+  );
+  const childState = useCallback((treePath: string) => children[fullPath(treePath)], [children, fullPath]);
+  const openChildAt = useCallback(
+    async (treePath: string) => {
+      const full = fullPath(treePath);
+      const loaded = await openChild(full);
+      if (!loaded) return;
+      // Opened from its row, the run opens down to its calls: every branch between the launch and each call.
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        for (const call of loaded) {
+          const segments = call.path.slice(full.length).split("/").filter(Boolean);
+          for (let i = 0; i < segments.length; i++) next.add([treePath, ...segments.slice(0, i)].join("/"));
+        }
+        return next;
+      });
+    },
+    [fullPath, openChild],
+  );
+  // A branch shown inside a run not loaded yet (a link to it, or a lane of one) loads that run.
+  useEffect(() => {
+    const path = childToLoad(allCalls, scope);
+    if (path && !children[path]) void openChild(path);
+  }, [allCalls, scope, children, openChild]);
+
   const toggleBranch = useCallback((path: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -816,6 +917,8 @@ export function StrutRunGraph({
           )}
           {tree && (
             <TreeBranch
+              childState={childState}
+              onOpenChild={openChildAt}
               node={tree}
               depth={0}
               calls={calls}
