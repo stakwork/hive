@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 import { GraphWorkbench, Picker, type SelectedNode } from "@/components/graph-workbench";

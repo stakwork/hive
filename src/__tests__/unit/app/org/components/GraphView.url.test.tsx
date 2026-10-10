@@ -4,6 +4,7 @@ import React from "react";
 
 let selectionChange: ((n: { id: string; name: string; type: string } | null) => void) | undefined;
 vi.mock("@/components/graph-workbench", () => ({
+  Picker: () => null,
   GraphWorkbench: (props: { onSelectionChange: typeof selectionChange }) => {
     selectionChange = props.onSelectionChange;
     return null;
