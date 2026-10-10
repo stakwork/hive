@@ -11,11 +11,20 @@
  *     matched, and none of its hits as nodes;
  *   - node refs are deduplicated and malformed ones dropped;
  *   - a ref tagged with a peer (another workspace's graph) is kept under a
- *     qualified id, and a tag that is not a slug drops the ref.
+ *     qualified id, and a tag that is not a slug drops the ref;
+ *   - a call that launched a run of its own carries its workflow (and peer),
+ *     the run id only server-side, read from whole or truncated JSON; a
+ *     child's calls go under a prefix, its untagged refs in its peer's graph.
  */
 
 import { describe, it, expect } from "vitest";
-import { accessOf, distinctNodeRefs, isSearch, projectRunGraphCalls } from "@/lib/strut-run-graph/project";
+import {
+  accessOf,
+  distinctNodeRefs,
+  isSearch,
+  projectRunGraphCalls,
+  projectWithLaunches,
+} from "@/lib/strut-run-graph/project";
 
 const start = (path: string, stepType: string, input: unknown, ts = "2026-09-28T16:56:45.000Z") => ({
   ts,
@@ -251,6 +260,68 @@ describe("distinctNodeRefs", () => {
       { ref_id: "a" },
       { ref_id: "b", node_type: "ClinicalFinding" },
       { ref_id: "c", node_type: "Concept" },
+    ]);
+  });
+});
+
+describe("launching calls", () => {
+  it("marks a local launch with its workflow, and keeps the run id server-side — from a truncated output too", () => {
+    const { calls, launches } = projectWithLaunches([
+      start("job/work/002-meta_run_workflow", "tool:meta_run_workflow", { name: "explore", input: { prompt: "how?" } }),
+      end("job/work/002-meta_run_workflow", "tool:meta_run_workflow", {
+        nodes: [{ ref_id: "a" }],
+        output: '{"runId":"1791647782933","status":"success","output":{"answer":"**Caveat:** no repo is chec',
+      }),
+    ]);
+    expect(calls[0].child).toEqual({ workflow: "explore" });
+    expect(JSON.stringify(calls)).not.toContain("1791647782933");
+    expect(launches.get("job/work/002-meta_run_workflow")).toEqual({ workflow: "explore", runId: "1791647782933" });
+  });
+
+  it("marks a peer launch with its workflow and peer, as a workflow step or a tool", () => {
+    const { calls, launches } = projectWithLaunches([
+      start("wf/ask", "strut/run-workflow", { peer: "apps", workflow: "explore" }),
+      end("wf/ask", "strut/run-workflow", {
+        nodes: [{ ref_id: "x", peer: "apps" }],
+        output: { peer: "apps", workflow: "explore", runId: "1791647731999", status: "success" },
+      }),
+    ]);
+    expect(calls[0].child).toEqual({ workflow: "explore", peer: "apps" });
+    expect(launches.get("wf/ask")).toEqual({ workflow: "explore", runId: "1791647731999", peer: "apps" });
+  });
+
+  it("is no launch without a usable run id, workflow or peer, or for any other step", () => {
+    const { calls, launches } = projectWithLaunches([
+      end("wf/a", "tool:meta_run_workflow", { nodes: [{ ref_id: "a" }], output: { runId: "1" } }),
+      start("wf/b", "tool:meta_run_workflow", { name: "../etc" }),
+      end("wf/b", "tool:meta_run_workflow", { nodes: [{ ref_id: "a" }], output: { runId: "2" } }),
+      start("wf/c", "tool:strut_run_workflow", { workflow: "explore", peer: "not a slug" }),
+      end("wf/c", "tool:strut_run_workflow", { nodes: [{ ref_id: "a" }], output: { runId: "3" } }),
+      start("wf/d", "tool:meta_run_workflow", { name: "explore" }),
+      end("wf/d", "tool:meta_run_workflow", { nodes: [{ ref_id: "a" }], output: { runId: "x/../y" } }),
+      start("wf/e", "tool:graph_graph_get", { name: "explore" }),
+      end("wf/e", "tool:graph_graph_get", { nodes: [{ ref_id: "a" }], output: { runId: "4" } }),
+    ]);
+    expect(calls.filter((c) => c.child)).toEqual([]);
+    expect(launches.size).toBe(0);
+  });
+
+  it("puts a child's calls under a prefix, and its untagged refs in the peer's graph it ran on", () => {
+    const calls = projectRunGraphCalls(
+      [
+        end("explore/explore/001-graph_graph_get", "tool:graph_graph_get", {
+          nodes: [
+            { ref_id: "fn", node_type: "Function" },
+            { ref_id: "far", peer: "elsewhere" },
+          ],
+        }),
+      ],
+      { prefix: "job/work/004-strut_run_workflow", peer: "apps" },
+    );
+    expect(calls[0].path).toBe("job/work/004-strut_run_workflow/explore/explore/001-graph_graph_get");
+    expect(calls[0].nodes).toEqual([
+      { ref_id: "@apps:fn", node_type: "Function", peer: "apps" },
+      { ref_id: "@elsewhere:far", peer: "elsewhere" },
     ]);
   });
 });

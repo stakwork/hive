@@ -14,7 +14,10 @@
  *   the Graph Explorer link comes from the slug it is given;
  * - a node of a peer workspace's graph: badged with the workspace, read by
  *   its qualified id, linked to THAT workspace's Graph Explorer, and said
- *   to be unread when the viewer may not read that graph.
+ *   to be unread when the viewer may not read that graph;
+ * - a call that launched a run of its own: nothing of that run is read until
+ *   it is opened (its row's button, or a branch shown inside it); then its
+ *   calls take the launching call's place, as a branch, opened in the tree.
  */
 
 import React from "react";
@@ -423,5 +426,91 @@ describe("nodes of a peer workspace's graph", () => {
     expect(unresolved.textContent).toContain("In @secret's graph, not read here (you are not a member of @secret)");
     expect(screen.queryByText("Open in Graph Explorer")).toBeNull();
     expect(nodeCalls(fetchMock)).toEqual([]);
+  });
+});
+
+describe("child runs, loaded when opened", () => {
+  const LAUNCH = "job/work/002-meta_run_workflow";
+  const jobCall = (path: string, refs: string[], extra: Record<string, unknown> = {}) => ({
+    path,
+    tool: path.split("-").slice(1).join("-"),
+    by: "agent",
+    access: "read",
+    startedAt: null,
+    endedAt: null,
+    durationMs: null,
+    query: {},
+    nodes: refs.map((ref_id) => ({ ref_id })),
+    ...extra,
+  });
+  const JOB_TRACE = {
+    calls: [
+      jobCall("job/work/001-graph_graph_get", ["j"]),
+      jobCall(LAUNCH, ["a", "b"], { child: { workflow: "explore" } }),
+    ],
+    nodes: [node("j", "Concept", "Job"), node("a", "Function", "verifySphinxToken"), node("b", "File", "auth.ts")],
+    edges: [],
+    nodesRead: true,
+    edgesRead: true,
+    truncated: false,
+  };
+  const CHILD_CALLS = [
+    jobCall(`${LAUNCH}/explore/explore/001-graph_graph_search`, ["a"]),
+    jobCall(`${LAUNCH}/explore/explore/002-graph_graph_get`, ["b"]),
+  ];
+
+  function stubJob(child: () => Answer) {
+    const fetchMock = vi.fn(async (url: string) => {
+      const got =
+        url === ENDPOINT ? answer(200, JOB_TRACE) : url.startsWith(`${ENDPOINT}/calls?`) ? child() : answer(404, {});
+      return { ok: got.status < 400, status: got.status, json: async () => got.body };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+  const childCalls = (fetchMock: ReturnType<typeof stubJob>) =>
+    fetchMock.mock.calls.filter(([url]) => url.startsWith(`${ENDPOINT}/calls?`)).map(([url]) => url);
+
+  it("reads nothing of a child until its row opens it; then its calls take the launch's place, opened", async () => {
+    const fetchMock = stubJob(() => answer(200, { calls: CHILD_CALLS }));
+    render(<StrutRunGraph endpoint={ENDPOINT} />);
+    await screen.findByTestId("run-graph-summary");
+    expect(summary()).toContain("2 calls read or wrote 3 nodes");
+    expect(childCalls(fetchMock)).toEqual([]);
+
+    fireEvent.click(await screen.findByLabelText("Open the explore run"));
+
+    await waitFor(() => expect(summary()).toContain("3 calls read or wrote 3 nodes"));
+    expect(childCalls(fetchMock)).toEqual([`${ENDPOINT}/calls?under=${encodeURIComponent(LAUNCH)}`]);
+    expect(screen.queryByTestId("run-graph-open-child")).toBeNull();
+    // The launch is a branch now, open down to the child's calls.
+    expect(screen.getAllByTestId("run-graph-call").map((el) => el.textContent)).toEqual([
+      expect.stringContaining("graph_graph_get"),
+      expect.stringContaining("graph_graph_search"),
+      expect.stringContaining("graph_graph_get"),
+    ]);
+  });
+
+  it("loads the child a branch shown lies in, once", async () => {
+    const fetchMock = stubJob(() => answer(200, { calls: CHILD_CALLS }));
+    render(<StrutRunGraph endpoint={ENDPOINT} scope="work/002-meta_run_workflow/explore" />);
+    await waitFor(() => expect(drawn().sort()).toEqual(["auth.ts", "verifySphinxToken"]));
+    expect(summary()).toContain("2 calls under work / 002-meta_run_workflow / explore");
+    expect(childCalls(fetchMock)).toHaveLength(1);
+  });
+
+  it("says why a child could not be read, and asks again on another click", async () => {
+    const fetchMock = stubJob(() => answer(403, { error: "Not readable here: you are not a member of @apps" }));
+    render(<StrutRunGraph endpoint={ENDPOINT} />);
+    fireEvent.click(await screen.findByLabelText("Open the explore run"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("run-graph-open-child").getAttribute("title")).toBe(
+        "Not readable here: you are not a member of @apps",
+      ),
+    );
+    expect(summary()).toContain("2 calls read or wrote 3 nodes");
+    fireEvent.click(screen.getByTestId("run-graph-open-child"));
+    await waitFor(() => expect(childCalls(fetchMock)).toHaveLength(2));
   });
 });

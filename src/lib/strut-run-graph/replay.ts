@@ -104,6 +104,37 @@ export function scopeOfBranch(scope: string | null, branchPath: string): string 
   return scope ? [...scope.split("/").slice(0, -1), ...segments].join("/") : segments.slice(1).join("/");
 }
 
+/**
+ * The calls with each loaded child run's calls IN PLACE of the call that
+ * launched it — at its place in the order, under its path — recursively, so
+ * the launch reads as a branch of the run and its folded nodes are not
+ * counted twice. A child with no calls leaves its launching call as it was.
+ */
+export function withChildCalls(
+  calls: RunGraphCall[],
+  loaded: Readonly<Record<string, RunGraphCall[]>>,
+): RunGraphCall[] {
+  const out: RunGraphCall[] = [];
+  for (const call of calls) {
+    const own = call.child ? loaded[call.path] : undefined;
+    if (own && own.length > 0) out.push(...withChildCalls(own, loaded));
+    else out.push(call);
+  }
+  return out;
+}
+
+/**
+ * The launching call whose child run a branch lies in — or is — and that is
+ * not loaded yet (a loaded one is no longer among the calls): `scope` is the
+ * branch's path under the run. Null when the branch needs nothing loaded.
+ */
+export function childToLoad(calls: RunGraphCall[], scope: string | null): string | null {
+  if (!scope || calls.length === 0) return null;
+  const full = `${calls[0].path.split("/")[0]}/${scope}`;
+  const call = calls.find((c) => c.child && (full === c.path || full.startsWith(`${c.path}/`)));
+  return call ? call.path : null;
+}
+
 export interface ReplayFrame {
   /** Nodes no call has touched yet at this step. */
   hidden: Set<string>;
