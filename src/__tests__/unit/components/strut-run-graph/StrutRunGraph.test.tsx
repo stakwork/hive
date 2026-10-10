@@ -11,7 +11,10 @@
  *   ancestor the run never touched said to be one, and a lineage the graph
  *   did not answer for said so;
  * - no workspace context needed (the org chat's artifact panel has none):
- *   the Graph Explorer link comes from the slug it is given.
+ *   the Graph Explorer link comes from the slug it is given;
+ * - a node of a peer workspace's graph: badged with the workspace, read by
+ *   its qualified id, linked to THAT workspace's Graph Explorer, and said
+ *   to be unread when the viewer may not read that graph.
  */
 
 import React from "react";
@@ -352,5 +355,73 @@ describe("StrutRunGraph without a workspace context", () => {
     fireEvent.click(await screen.findByText("Problem List"));
     await screen.findByTestId("run-graph-node-read");
     expect(screen.queryByText("Open in Graph Explorer")).toBeNull();
+  });
+});
+
+describe("nodes of a peer workspace's graph", () => {
+  const PEER_TRACE = {
+    calls: [
+      {
+        path: "job/work/004-strut_run_workflow",
+        tool: "strut_run_workflow",
+        by: "agent",
+        access: "read",
+        startedAt: null,
+        endedAt: null,
+        durationMs: null,
+        query: {},
+        nodes: [
+          { ref_id: "@apps:fn-1", node_type: "Function", peer: "apps" },
+          { ref_id: "@secret:fn-2", node_type: "Function", peer: "secret" },
+        ],
+      },
+    ],
+    nodes: [
+      {
+        ref_id: "@apps:fn-1",
+        node_type: "Function",
+        name: "verifySphinxToken",
+        namespace: null,
+        found: true,
+        peer: "apps",
+      },
+      { ref_id: "@secret:fn-2", node_type: "Function", name: "fn-2", namespace: null, found: false, peer: "secret" },
+    ],
+    edges: [],
+    nodesRead: true,
+    edgesRead: true,
+    truncated: false,
+    peers: [
+      { slug: "apps", read: true },
+      { slug: "secret", read: false, reason: "you are not a member of @secret" },
+    ],
+  };
+
+  it("badges one with its workspace, reads it by its qualified id, and links that workspace's Graph Explorer", async () => {
+    const fetchMock = stubFetch(() => answer(200, { ...BODY, ref_id: "fn-1", node_type: "Function" }), PEER_TRACE);
+    render(<StrutRunGraph endpoint={ENDPOINT} workspaceSlug="org" />);
+    fireEvent.click(await screen.findByText("verifySphinxToken"));
+    expect(screen.getAllByTestId("run-graph-canvas-peer").map((t) => t.textContent)).toEqual(["@apps", "@secret"]);
+
+    await screen.findByTestId("run-graph-node-read");
+    expect(nodeCalls(fetchMock)).toEqual([`${ENDPOINT}/nodes/${encodeURIComponent("@apps:fn-1")}`]);
+    const detail = screen.getByTestId("run-graph-node-detail");
+    expect(within(detail).getByTestId("run-graph-node-peer").textContent).toBe("@apps");
+    expect(detail.textContent).toContain("fn-1");
+    expect(detail.textContent).not.toContain("@apps:fn-1");
+    expect(screen.getByText("Open in Graph Explorer").closest("a")?.getAttribute("href")).toBe(
+      "/w/apps/context/graph?ref_id=fn-1",
+    );
+  });
+
+  it("says a node of a graph the viewer may not read was not read here, and why, and asks nothing", async () => {
+    const fetchMock = stubFetch(() => answer(200, BODY), PEER_TRACE);
+    render(<StrutRunGraph endpoint={ENDPOINT} workspaceSlug="org" />);
+    fireEvent.click(await screen.findByText("fn-2"));
+
+    const unresolved = await screen.findByTestId("run-graph-node-unresolved");
+    expect(unresolved.textContent).toContain("In @secret's graph, not read here (you are not a member of @secret)");
+    expect(screen.queryByText("Open in Graph Explorer")).toBeNull();
+    expect(nodeCalls(fetchMock)).toEqual([]);
   });
 });

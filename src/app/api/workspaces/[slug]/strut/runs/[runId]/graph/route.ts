@@ -8,7 +8,8 @@
  * answer key. Only the projection (`lib/strut-run-graph`) is returned.
  *
  * Access: any member of the run's workspace, as for the Graph Explorer's
- * read-only queries of the same graph.
+ * read-only queries of the same graph. Nodes the run reached in ANOTHER
+ * workspace's graph (a peer strut's run) are read for its members only.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,6 +17,7 @@ import { requireMemberAccess, resolveWorkspaceAccess } from "@/lib/auth/workspac
 import { logger } from "@/lib/logger";
 import { findStrutRunRow } from "@/services/strut-runs";
 import { readStrutRunGraph } from "@/services/strut-runs/run-graph";
+import { peerAccessFor } from "@/services/strut-runs/run-graph-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const row = await findStrutRunRow(member.workspaceId, runId);
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const trace = await readStrutRunGraph(row);
+    const trace = await readStrutRunGraph(row, peerAccessFor(request));
     if (!trace) return NextResponse.json({ error: "Could not read the run from strut" }, { status: 502 });
     return NextResponse.json(trace);
   } catch (error) {
