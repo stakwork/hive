@@ -146,12 +146,6 @@ export function buildInitiativeTools(
    * unchanged.
    */
   chatAgentModel?: string,
-  /**
-   * Slim-prompt mode (the per-browser settings switch). In that mode the
-   * `send_to_feature_planner` description carries the FORM rule; the
-   * full prompt keeps its own FORM guidance in the planner snippet.
-   */
-  slimPrompt?: boolean,
 ): ToolSet {
   return {
     read_initiative: tool({
@@ -167,7 +161,11 @@ export function buildInitiativeTools(
         "Growth initiative cover?' or 'extend that initiative's brief' " +
         "needs `read_initiative` to see the full description. Returns " +
         "`{ error }` if the id doesn't exist or doesn't belong to this " +
-        "org (the org guard is identical to the right-panel REST route).",
+        "org (the org guard is identical to the right-panel REST route). " +
+        "You have no tool that changes an initiative's status, dates, or " +
+        "progress: for 'mark X done' or 'set the target date', tell the " +
+        "user to edit it in the Initiatives table — the canvas updates " +
+        "when they save.",
       inputSchema: z.object({
         initiativeId: z
           .string()
@@ -205,7 +203,9 @@ export function buildInitiativeTools(
         "milestone's scope/timeline — `read_canvas` of the parent " +
         "initiative shows the milestone card but not its `description` " +
         "or `assignee`. Returns `{ error }` if the id doesn't exist or " +
-        "doesn't belong to this org.",
+        "doesn't belong to this org. You have no tool that changes a " +
+        "milestone's status or dates: send the user to the Initiatives " +
+        "table for that.",
       inputSchema: z.object({
         milestoneId: z
           .string()
@@ -608,17 +608,45 @@ export function buildInitiativeTools(
     [SEND_TO_FEATURE_PLANNER_TOOL]: tool({
       description:
         "Send a message to a feature's per-feature planning agent. " +
-        "Use this when you need a sibling feature's planner to know " +
-        "something or take a decision into account — e.g. *'the " +
-        "backend feature picked userId as the canonical name, please " +
-        "align the web plan to match'*, *'we decided session timeout " +
-        "is 30 minutes — please incorporate'*, or to ask the planner " +
-        "a question. **This is delegation, not editing.** You're " +
-        "sending a chat message; the planner replies asynchronously " +
-        "and updates its own plan. To see the reply and the resulting " +
-        "plan, call `<slug>__read_feature` afterward — its response " +
-        "includes the current `brief` / `requirements` / " +
+        "Use this to drive a plan forward (answer the planner's " +
+        "question, ask for the next stage) and when you need a sibling " +
+        "feature's planner to know something or take a decision into " +
+        "account — e.g. *'the backend feature picked userId as the " +
+        "canonical name, please align the web plan to match'*, *'we " +
+        "decided session timeout is 30 minutes — please incorporate'*. " +
+        "**This is delegation, not editing.** The planner owns the plan " +
+        "text (`brief` / `requirements` / `architecture`); you send a " +
+        "chat message and it replies asynchronously by updating its own " +
+        "plan. A user's own edits to one plan belong in that feature's " +
+        "plan chat, not here — this tool is for the view that planner " +
+        "lacks (sibling features, the wider org). To see the reply and " +
+        "the resulting plan, call `<slug>__read_feature` afterward — its " +
+        "response includes the current `brief` / `requirements` / " +
         "`architecture` PLUS the full chat history. " +
+        "**React to the planner's last message.** Before you send, read " +
+        "the feature: when its last ASSISTANT message asks something the " +
+        "brief, the chat, or plain procedure already answers, answer it; " +
+        "when the user's own preference is needed (naming, scope, " +
+        "priorities), ask the user one concrete question instead. " +
+        `${PLANNER_FORM_RULE} ` +
+        "**One stage per message.** The planner runs one stage per turn " +
+        "— brief → requirements → architecture → tasks — and silently " +
+        "drops a second request in the same message, so ask only for the " +
+        "next missing stage (*'please write the architecture now'*). " +
+        "When all three sections are present and the architecture looks " +
+        "sound, ask it to generate the tasks without waiting for " +
+        "permission, unless you found a real blocker or the user wants " +
+        "to review first. Starting the tasks is the user's action (the " +
+        "**Start Tasks** button on the feature's card), never yours. " +
+        "**Contracts owned by another workspace:** before architecture " +
+        "or tasks, an endpoint, field, or type that another workspace " +
+        "owns must be confirmed there — put `@that-workspace` in your " +
+        "message (it attaches that workspace's swarm) AND tell the " +
+        "planner to verify the exact contract there before it goes on. " +
+        "If the plan still cites a guessed contract, confirm it yourself " +
+        "with `<slug>__repo_agent` and send the verified shape. For a " +
+        "decision that spans several features, send one message per " +
+        "affected feature, then re-read each one on a later turn. " +
         "**The tool returns once the message is delivered, NOT once " +
         "the planner replies.** The reply is async. Plan workflows " +
         "typically take 30–120 seconds; don't loop polling. Tell the " +
@@ -631,8 +659,7 @@ export function buildInitiativeTools(
         "Prefix your message with a one-line reason for context — the " +
         "planner sees this as the chat history's next user message " +
         "and a short framing helps it understand cross-feature " +
-        "coordination." +
-        (slimPrompt ? ` ${PLANNER_FORM_RULE}` : ""),
+        "coordination.",
       inputSchema: z.object({
         featureId: z
           .string()
@@ -937,7 +964,9 @@ export function buildInitiativeTools(
         "or when a planner is stuck and needs interrupting. Halts the " +
         "active plan_mode run and marks the feature HALTED (the chat " +
         "twin of the canvas card's **Stop Planner** action). Fails " +
-        "cleanly with `no_active_run` when no planner is running.",
+        "cleanly with `no_active_run` when no planner is running — if " +
+        "the user called the planner stuck, that means the run already " +
+        "ended and the problem is elsewhere: say so, do not retry.",
       inputSchema: z.object({
         featureId: z
           .string()
@@ -1050,12 +1079,18 @@ export function buildInitiativeTools(
         "growth', 'suggest some initiatives.' This tool does NOT " +
         "write to the DB; it emits a proposal card in chat that the " +
         "user explicitly approves with a click — approval is what " +
-        "creates the row. Do NOT decline initiative-creation requests " +
-        "by telling the user to use the '+' button; that advice is " +
-        "for Workspaces / Repositories / Milestones, not initiatives. " +
+        "creates the row, so call it directly; don't ask permission " +
+        "first. Do NOT decline initiative-creation requests by telling " +
+        "the user to use the '+' button; that advice is for Workspaces " +
+        "/ Repositories, not initiatives. " +
         "To propose features grouped under the same not-yet-approved " +
         "initiative, set `parentProposalId` on each feature proposal " +
-        "to this proposal's `proposalId`.",
+        "to this proposal's `proposalId`. Work that spans systems " +
+        "(*'add auth across infra, backend, and web'*) is one initiative " +
+        "plus one `propose_feature` per workspace involved — see " +
+        "`propose_feature`. **When NOT to propose:** if the initiative " +
+        "already exists and the user wants existing features filed " +
+        "under it, use `assign_feature_to_initiative` instead.",
       inputSchema: z.object({
         proposalId: z
           .string()
@@ -1142,9 +1177,31 @@ export function buildInitiativeTools(
         "'create me a setup wizard', 'propose 3 features for billing " +
         "v2.' This tool does NOT write to the DB; it emits a " +
         "proposal card in chat that the user explicitly approves " +
-        "with a click — approval is what creates the row. Do NOT " +
-        "decline feature-creation requests by telling the user to " +
-        "use the '+' button. " +
+        "with a click — approval is what creates the row, so call it " +
+        "directly; don't ask permission first. Do NOT decline " +
+        "feature-creation requests by telling the user to use the '+' " +
+        "button. **When NOT to propose:** to file EXISTING features " +
+        "under an initiative or milestone, use " +
+        "`assign_feature_to_initiative`. " +
+        "**Code changes:** a focused change in ONE repository goes " +
+        "through a job (`start_job`) when that tool is available. Use " +
+        "this tool for everything else — work across several " +
+        "repositories, any schema change or data migration, large or " +
+        "unclear scope, work that needs a plan, or when `start_job` is " +
+        "not available. A change to a Stakwork workflow (only when the " +
+        "user names Stakwork) is a feature in the `stakwork` workspace " +
+        "if that workspace is listed; otherwise ask which workspace " +
+        "owns the workflow. " +
+        "**Work that spans systems** (*'add auth across infra, backend, " +
+        "and web'*, *'ship X to web and mobile'*): propose ONE " +
+        "initiative, then one feature PER WORKSPACE involved, each with " +
+        "its own `workspaceSlug` and `parentProposalId` set to the " +
+        "initiative proposal — don't collapse it into one workspace's " +
+        "feature. Where order matters " +
+        "(schema/migrations → backend endpoints → frontend), set " +
+        "`dependsOnProposalIds` on the blocked feature — e.g. " +
+        "`f-backend` depends on `f-infra`, `f-web` depends on " +
+        "`f-backend`. " +
         "**BEFORE calling this tool without an `initiativeId`**, you " +
         "MUST call `read_canvas` (no `ref`, the org root) to see the " +
         "existing initiatives. If any initiative is a reasonable " +
@@ -1568,7 +1625,8 @@ export function buildInitiativeTools(
         "rest of this initiative.' This tool does NOT write to the " +
         "DB; it emits a proposal card in chat that the user " +
         "explicitly approves with a click — approval is what creates " +
-        "the milestone (and attaches the listed features). Do NOT " +
+        "the milestone (and attaches the listed features), so call it " +
+        "directly; don't ask permission first. Do NOT " +
         "decline milestone-creation requests by telling the user to " +
         "use the '+' button. " +
         "**BEFORE calling this tool**, you MUST call `read_canvas` " +
@@ -1752,8 +1810,10 @@ export function buildInitiativeTools(
         "Query the current user's recent activity feed (tasks, plans, chats, milestones) " +
         "across all orgs and workspaces. Use this to understand what the user has been " +
         "working on before making cross-feature suggestions, or when the user asks " +
-        "'what have I been up to?'. Returns an array of ActivityItem objects sorted " +
-        "newest-first.",
+        "'what have I been up to?'. Prefer it whenever the user asks about THEIR next " +
+        "steps, pending features or tasks, or what to work on next — it spans every " +
+        "workspace, while `<slug>__check_status` sees only one. Returns an array of " +
+        "ActivityItem objects sorted newest-first.",
       inputSchema: z.object({
         category: z
           .enum(["task", "plan", "chat", "milestone"])

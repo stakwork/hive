@@ -1097,7 +1097,9 @@ export function buildGraphWalkerTools(
         urn: z.string().describe(
           "Canonical URN of the node to resolve. " +
             "Format: urn:{org}:{realm}:{type}:{id} for pg/canvas; " +
-            "urn:{org}:kg:{workspace}:{type}:{id} for kg.",
+            "urn:{org}:kg:{workspace}:{type}:{id} for kg. Use a URN a " +
+            "graph tool returned; build one only from a returned " +
+            "`ref_id` (e.g. an ancestor's), in exactly this format.",
         ),
       }),
       execute: async ({ urn }: { urn: string }) => {
@@ -1140,6 +1142,12 @@ export function buildGraphWalkerTools(
         "For `kg` URNs, calls Jarvis v2 with optional edge_type / node_type filters (kg-specific, ignored by other realms); " +
         "each kg neighbor also carries an `edges` map ({EDGE_TYPE: count}) of its OWN relationships, " +
         "showing how connected it is and which edge types you can hop along next. " +
+        "Neighbors carry a best-effort `title` (kg ones also `node_type` and `ref_id`): use it to pick " +
+        "which neighbor to follow instead of a graph_get on each. " +
+        "To find where a feature lives in the code — e.g. before starting a similar new feature — walk " +
+        "HiveFeature -HAS_TASK-> HiveTask -RESULTED_IN-> PullRequest -> File, filtering `node_type` at " +
+        "each hop (a PullRequest node also has a `files` property); HAS_MESSAGE reaches the HiveChatMessage " +
+        "history of a feature or task. " +
         "The `pg` realm is DISABLED (its entities now live in the kg). " +
         "Note: URNs obtained from a namespaced graph_search are expanded here WITHOUT that namespace filter " +
         "(this tool does not yet accept namespace), so a neighbor can fall outside the originally-requested partition.",
@@ -1356,7 +1364,9 @@ export function buildGraphWalkerTools(
         "Note that each kg hit's `edges` connectivity map is aggregated across namespaces, so it can advertise hops outside the requested partition. " +
         "`input_q` / `output_q` add semantic retrievers scoped to node input/output " +
         "schemas (e.g. find Workflows by what they consume or produce), fused with " +
-        "`query` into one ranked result set.",
+        "`query` into one ranked result set. `Workflow` nodes are Stakwork workflows and exist " +
+        "only in the `stakwork` workspace's kg; a bare \"workflow\" means a strut workflow, which " +
+        "is not in the kg.",
       inputSchema: z.object({
         query: z.string().min(1).describe("Keyword(s) to search for."),
         realm: z

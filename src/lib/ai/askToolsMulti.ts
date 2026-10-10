@@ -276,7 +276,7 @@ export function askToolsMulti(
 
     // repo_agent (deep code analysis)
     allTools[`${prefix}__repo_agent`] = tool({
-      description: `[${ws.slug}] Execute AI agent for deep code analysis in ${ws.slug}. Also has the GitHub \`gh\` CLI for read-only GitHub inspection: reading issues/PRs (bodies, comments, review threads), checking CI / workflow / check-suite status, and looking at other repos. Prefer the lighter ${prefix}__recent_commits / ${prefix}__recent_contributions tools for plain commit or PR-by-author lookups; use repo_agent when a GitHub question needs real investigation. STRICTLY READ-ONLY: investigation only — NEVER instruct it to edit code, write/modify files, open a PR, or run/apply a database migration. Actual code changes go through a job (\`start_job\`, single-repo, well-scoped) or \`propose_feature\` (everything else) — never through this tool. Heavy/slow — use as LAST RESORT.`,
+      description: `[${ws.slug}] Execute AI agent for deep code analysis in ${ws.slug}. Also has the GitHub \`gh\` CLI for read-only GitHub inspection: reading issues/PRs (bodies, comments, review threads), checking CI / workflow / check-suite status, and looking at other repos. Prefer the lighter ${prefix}__recent_commits / ${prefix}__recent_contributions tools for plain commit or PR-by-author lookups; use repo_agent when a GitHub question needs real investigation. STRICTLY READ-ONLY: investigation only — NEVER instruct it to edit code, write/modify files, open a PR, or run/apply a database migration. Actual code changes go through a job (\`start_job\`, single-repo, well-scoped) or \`propose_feature\` (everything else) — never through this tool. NOT for external services, libraries, or APIs — use \`web_search\` for those, and never fan it across workspaces for a question that isn't about the user's code. Heavy/slow — use as LAST RESORT.`,
       inputSchema: z.object({
         prompt: z.string().describe("The question for the repo agent"),
       }),
@@ -431,7 +431,7 @@ export function askToolsMulti(
 
     // list_features
     allTools[`${prefix}__list_features`] = tool({
-      description: `[${ws.slug}] List roadmap features for the ${ws.slug} workspace (up to 40, most recently updated first).`,
+      description: `[${ws.slug}] List roadmap features for the ${ws.slug} workspace (up to 40, most recently updated first). Use for questions about features, plans, the roadmap, or what's being worked on.`,
       inputSchema: z.object({}),
       execute: async () => {
         try {
@@ -461,7 +461,7 @@ export function askToolsMulti(
 
     // list_tasks
     allTools[`${prefix}__list_tasks`] = tool({
-      description: `[${ws.slug}] List tasks for the ${ws.slug} workspace (up to 40, most recently updated first).`,
+      description: `[${ws.slug}] List tasks for the ${ws.slug} workspace (up to 40, most recently updated first). Use for questions about tasks or tickets.`,
       inputSchema: z.object({}),
       execute: async () => {
         try {
@@ -491,7 +491,7 @@ export function askToolsMulti(
 
     // check_status
     allTools[`${prefix}__check_status`] = tool({
-      description: `[${ws.slug}] Check the status of active features and tasks in ${ws.slug} (updated in the last 7 days, items needing attention first).`,
+      description: `[${ws.slug}] Check the status of active features and tasks in ${ws.slug} (updated in the last 7 days, items needing attention first). This workspace only — for the user's own next steps across workspaces, prefer \`read_user_activity\` when you have it.`,
       inputSchema: z.object({
         user: z
           .string()
@@ -611,6 +611,7 @@ export function askToolsMulti(
         `Use when the user asks what happened during a run, on a swarm, on a pod/sandbox, to debug agent failures, ANY question about a Lambda/CloudWatch/AWS log group, or wants a synthesised explanation backed by real log data. ` +
         `If the user mentions a Lambda function or CloudWatch, invoke this immediately — do NOT ask for permission first, and do NOT use ${prefix}__search_logs (which only covers Quickwit-indexed app logs, not CloudWatch/Lambda system logs). ` +
         `Heavier than ${prefix}__search_logs — prefer that only for simple keyword lookups against the indexed app logs. ` +
+        `It also reads Stakwork workflow run logs, but only when the user names Stakwork — a strut workflow's run is evaluated through strut (\`dispatch_strut\`), not here; and which Stakwork workflows or skills exist, or how one works, is not a log question. ` +
         `Optionally narrow to a specific feature or task via featureId/taskId.`,
       inputSchema: z.object({
         prompt: z.string().describe("The question or debugging query to send to the Logs Agent"),

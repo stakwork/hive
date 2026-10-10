@@ -1,9 +1,10 @@
 /**
  * "Workflow" means strut by default.
  *
- * A user who says "workflow" without naming Stakwork means a strut workflow,
- * so the loadable-capability menu and the `learn_capability` tool must send
- * a bare "workflow" to `strut` and reserve `stakwork_workflows` (the Stakwork workflow
+ * A user who says "workflow" without naming Stakwork means a strut workflow.
+ * `strut` is a core capability, so its snippet — which says so — rides
+ * inline in the prompt; the loadable-capability menu and the
+ * `learn_capability` tool reserve `stakwork_workflows` (the Stakwork workflow
  * library) for requests that explicitly say Stakwork. These tests lock that
  * wording — it is what the agent routes on.
  */
@@ -30,13 +31,10 @@ vi.mock("@/lib/ai/workflowExplorerTools", () => ({
   buildWorkflowExplorerTools: vi.fn(() => ({})),
 }));
 vi.mock("@/lib/constants/prompt", () => ({
-  getRoadmapCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
   getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
-  getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
   getWorkflowsCapabilitySnippet: vi.fn(() => ""),
   getPromptsCapabilitySnippet: vi.fn(() => ""),
@@ -80,7 +78,7 @@ import type { CapabilityContext, OrgCapability } from "@/lib/ai/capabilities";
 
 const ctx = { orgId: "org-1", userId: "user-1" } as unknown as CapabilityContext;
 
-const STRUT_HINT = "ALWAYS means strut: load `strut`";
+const STRUT_DEFAULT = '**"Workflow" means strut by default.**';
 const WORKFLOWS_HINT =
   "Load `stakwork_workflows` (the Stakwork workflow library) ONLY when the user explicitly names Stakwork";
 
@@ -96,38 +94,40 @@ describe("loadable-capability menu blurbs", () => {
     expect(blurb).toContain('A bare "workflow" is a strut workflow — that is `strut`, never this');
   });
 
-  it("strut loads for any workflow request unless the user names Stakwork", () => {
-    const blurb = CAPABILITY_REGISTRY.strut.menuBlurb ?? "";
-    expect(blurb).toContain("Load whenever the user asks about a workflow");
-    expect(blurb).toContain('"Workflow" means strut unless the user explicitly names Stakwork');
+  it("strut is core: its snippet rides inline, ahead of the load-on-demand menu", () => {
+    expect(CAPABILITY_REGISTRY.strut.core).toBe(true);
+    expect(CAPABILITY_REGISTRY.strut.menuBlurb).toBeUndefined();
+    const suffix = composeCapabilityPromptSuffix(["roadmap", "strut", "stakwork_workflows"]);
+    const strutAt = suffix.indexOf(STRUT_DEFAULT);
+    const menuAt = suffix.indexOf("## More capabilities (load on demand)");
+    expect(strutAt).toBeGreaterThan(-1);
+    expect(menuAt).toBeGreaterThan(strutAt);
+    expect(suffix).not.toContain("- **strut**");
   });
 
-  it("the composed menu carries both rules when both capabilities are selected", () => {
+  it("the composed suffix carries both rules when both capabilities are selected", () => {
     const suffix = composeCapabilityPromptSuffix(["roadmap", "strut", "stakwork_workflows"]);
     expect(suffix).toContain("Load ONLY when the user explicitly names Stakwork");
-    expect(suffix).toContain('"Workflow" means strut unless the user explicitly names Stakwork');
+    expect(suffix).toContain(STRUT_DEFAULT);
   });
 });
 
 describe("learn_capability description — workflow routing", () => {
-  it("with strut loadable: a bare 'workflow' ALWAYS loads strut", () => {
-    const description = learnCapabilityDescription(["strut"]);
-    expect(description).toContain(STRUT_HINT);
-    expect(description).not.toContain(WORKFLOWS_HINT);
+  it("never offers strut — it is core, not loadable", () => {
+    const description = learnCapabilityDescription(["roadmap", "strut", "stakwork_workflows"]);
+    expect(description).not.toContain("load `strut`");
+    expect(description).toContain(WORKFLOWS_HINT);
+  });
+
+  it("with only core capabilities selected there is no learn_capability tool", () => {
+    const tools = composeCapabilityTools(["strut", "concepts"], ctx);
+    expect(tools.learn_capability).toBeUndefined();
   });
 
   it("with workflows loadable: the Stakwork library is explicit-Stakwork only", () => {
     const description = learnCapabilityDescription(["stakwork_workflows"]);
     expect(description).toContain(WORKFLOWS_HINT);
-    expect(description).not.toContain(STRUT_HINT);
-  });
-
-  it("with both loadable: the strut default comes before the Stakwork exception", () => {
-    const description = learnCapabilityDescription(["strut", "stakwork_workflows"]);
-    const strutAt = description.indexOf(STRUT_HINT);
-    const workflowsAt = description.indexOf(WORKFLOWS_HINT);
-    expect(strutAt).toBeGreaterThan(-1);
-    expect(workflowsAt).toBeGreaterThan(strutAt);
+    expect(description).not.toContain("strut");
   });
 
   it("with neither loadable: no workflow routing is advertised", () => {
