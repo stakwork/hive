@@ -2,7 +2,7 @@
 
 import React, { useDeferredValue, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Pencil, Share2, X } from "lucide-react";
+import { ChevronRight, Link, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { UnifiedDiffView } from "@/components/diff/UnifiedDiffView";
@@ -275,21 +275,12 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
   );
 
   // Deep link: the current org graph page URL with this node as `gnode`, which the page reads on load.
-  const share = async () => {
+  const copyLink = async () => {
     const url = new URL(window.location.href);
     url.searchParams.set("view", "graph");
     url.searchParams.set("gnode", id);
-    const link = url.toString();
-    if (typeof navigator.share === "function") {
-      try {
-        await navigator.share({ title: name, url: link });
-        return;
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") return;
-      }
-    }
     try {
-      await navigator.clipboard.writeText(link);
+      await navigator.clipboard.writeText(url.toString());
       toast.success("Link copied to clipboard");
     } catch {
       toast.error("Couldn't copy the link");
@@ -304,13 +295,13 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
         {!isNew && (
           <button
             type="button"
-            onClick={share}
+            onClick={copyLink}
             className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            aria-label="Share"
-            title="Share link"
-            data-testid="graph-workbench-share"
+            aria-label="Copy link"
+            title="Copy link"
+            data-testid="graph-workbench-copy-link"
           >
-            <Share2 className="h-4 w-4" />
+            <Link className="h-4 w-4" />
           </button>
         )}
         <button
