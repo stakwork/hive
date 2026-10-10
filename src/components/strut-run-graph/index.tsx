@@ -33,11 +33,13 @@ import {
   type RunGraphTreeNode,
 } from "@/lib/strut-run-graph/replay";
 import { nodeText } from "@/lib/strut-run-graph/node-text";
+import { parseQualifiedRef } from "@/lib/strut-run-graph/peer-ref";
 import type {
   RunGraphAccess,
   RunGraphCall,
   RunGraphNode,
   RunGraphNodeBody,
+  RunGraphPeer,
   RunGraphTrace,
 } from "@/lib/strut-run-graph/types";
 import { runGraphHops, runGraphLinks, type RunGraphLink } from "@/lib/strut-run-graph/walk";
@@ -240,6 +242,7 @@ function NodeDetail({
   node,
   color,
   workspaceSlug,
+  peer,
   calls,
   links,
   nodeById,
@@ -255,6 +258,8 @@ function NodeDetail({
   color: string;
   /** The workspace whose graph the run used, for the Graph Explorer link; no link without it. */
   workspaceSlug?: string;
+  /** For a node in a peer workspace's graph: that workspace, and whether its graph was read for this viewer. */
+  peer?: RunGraphPeer;
   /** False when the graph did not answer for the nodes, which is not a node it no longer holds. */
   graphAnswered: boolean;
   /** Why it did not, in parentheses, or empty. */
@@ -271,6 +276,9 @@ function NodeDetail({
   onClose: () => void;
 }) {
   const [reading, setReading] = useState(false);
+  /** The node's id in its own graph, and the workspace that graph is: a peer's, else the run's. */
+  const refId = parseQualifiedRef(node.ref_id).refId;
+  const explorerSlug = node.peer ?? workspaceSlug;
   const touchedBy = useMemo(
     () => calls.flatMap((call, index) => (call.nodes.some((n) => n.ref_id === node.ref_id) ? [{ call, index }] : [])),
     [calls, node.ref_id],
@@ -295,6 +303,11 @@ function NodeDetail({
         <div className="min-w-0 flex-1">
           <p className="break-words text-sm font-semibold">{node.name}</p>
           <p className="text-muted-foreground">{node.node_type}</p>
+          {node.peer && (
+            <Badge variant="outline" className="mt-1 font-normal" data-testid="run-graph-node-peer">
+              @{node.peer}
+            </Badge>
+          )}
         </div>
         <button
           type="button"
@@ -310,17 +323,21 @@ function NodeDetail({
           Namespace <span className="font-mono text-foreground">{node.namespace}</span>
         </p>
       )}
-      <p className="break-all font-mono text-muted-foreground">{node.ref_id}</p>
+      <p className="break-all font-mono text-muted-foreground">{refId}</p>
       {!node.found && (
         <p className="text-muted-foreground" data-testid="run-graph-node-unresolved">
-          {graphAnswered
-            ? "The graph no longer holds this node."
-            : `The graph did not answer${unreadReason}, so this is only what the run's log says of the node.`}
+          {node.peer
+            ? peer?.read
+              ? `@${node.peer}'s graph no longer holds this node.`
+              : `In @${node.peer}'s graph, not read here${peer?.reason ? ` (${peer.reason})` : ""}, so this is only what the run's log says of the node.`
+            : graphAnswered
+              ? "The graph no longer holds this node."
+              : `The graph did not answer${unreadReason}, so this is only what the run's log says of the node.`}
         </p>
       )}
-      {node.found && workspaceSlug && (
+      {node.found && explorerSlug && (
         <Link
-          href={`/w/${workspaceSlug}/context/graph?ref_id=${encodeURIComponent(node.ref_id)}`}
+          href={`/w/${explorerSlug}/context/graph?ref_id=${encodeURIComponent(refId)}`}
           target="_blank"
           className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
         >
@@ -538,7 +555,10 @@ export function StrutRunGraph({
   const typeVisible = useCallback((type: string) => typeOverrides[type] ?? !isProvenanceType(type), [typeOverrides]);
 
   const graphNodes = useMemo<RunGraphCanvasNode[]>(
-    () => drawn.filter((n) => typeVisible(n.node_type)).map((n) => ({ id: n.ref_id, name: n.name, type: n.node_type })),
+    () =>
+      drawn
+        .filter((n) => typeVisible(n.node_type))
+        .map((n) => ({ id: n.ref_id, name: n.name, type: n.node_type, ...(n.peer ? { peer: n.peer } : {}) })),
     [drawn, typeVisible],
   );
   const links = useMemo(() => {
@@ -827,6 +847,11 @@ export function StrutRunGraph({
               node={selected}
               color={colorMap[selected.node_type] ?? "#6b7280"}
               workspaceSlug={workspaceSlug}
+              peer={
+                selected.peer
+                  ? (trace.peers?.find((p) => p.slug === selected.peer) ?? { slug: selected.peer, read: false })
+                  : undefined
+              }
               calls={calls}
               links={links}
               nodeById={nodeById}
