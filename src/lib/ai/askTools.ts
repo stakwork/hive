@@ -504,7 +504,8 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrls: string
         "Execute an AI agent to analyze the repository and answer the user's question about the codebase. Use this for deep code analysis, ONLY IF THE ANSWER IS NOT AVAILABLE FROM THE learn_concept TOOL. " +
         "It also has the GitHub `gh` CLI, so it can do read-only GitHub inspection that goes beyond the source itself: read issues and PRs (titles, bodies, comments, review threads), check CI / workflow run / check-suite status, and look at other GitHub repos beyond this one. " +
         "Prefer the lighter `recent_commits` / `recent_contributions` tools for plain 'recent commits' or 'PRs by <author>' lookups; reach for `repo_agent` when the GitHub question needs investigation (why is CI failing, what's in this issue/PR thread, compare against another repo). " +
-        "STRICTLY READ-ONLY: this is for investigation only. NEVER instruct it to edit code, write/modify files, open a PR, or run/apply a database migration. If the user wants an actual code change, a new feature, or a schema migration, do NOT do it here — if `propose_feature` is in your tool list, propose a feature with it and let the plan/coding pipeline execute it; if it is NOT in your tool list, say so and point the user to the org chat, never claim you can propose one. " +
+        "STRICTLY READ-ONLY: this is for investigation only. NEVER instruct it to edit code, write/modify files, open a PR, or run/apply a database migration. If the user wants an actual code change, a new feature, or a schema migration, do NOT do it here — if `propose_feature` is in your tool list, propose a feature with it and let the plan/coding pipeline execute it; if it is NOT in your tool list, say so and point the user to the org chat, never claim you can propose one. A focused change in one repository can instead be a job (`start_job`) when that tool is in your tool list. " +
+        "NOT for external services, libraries, or APIs — use `web_search` for those. " +
         "This tool is heavy/slow — treat it as a LAST RESORT.",
       inputSchema: z.object({
         prompt: z.string().describe("The question or prompt for the repo agent to analyze"),
@@ -765,7 +766,7 @@ function buildWorkspaceTools(
   if (!auth) return {};
   return {
     list_features: tool({
-      description: "List roadmap features for this workspace (up to 40, most recently updated first).",
+      description: "List roadmap features for this workspace (up to 40, most recently updated first). Use for questions about features, plans, the roadmap, or what's being worked on.",
       inputSchema: z.object({}),
       execute: async () => {
         try {
@@ -791,7 +792,7 @@ function buildWorkspaceTools(
       },
     }),
     list_tasks: tool({
-      description: "List tasks for this workspace (up to 40, most recently updated first).",
+      description: "List tasks for this workspace (up to 40, most recently updated first). Use for questions about tasks or tickets.",
       inputSchema: z.object({}),
       execute: async () => {
         try {
@@ -817,7 +818,7 @@ function buildWorkspaceTools(
       },
     }),
     check_status: tool({
-      description: "Check the status of active features and tasks (updated in the last 7 days, items needing attention first).",
+      description: "Check the status of active features and tasks (updated in the last 7 days, items needing attention first). This workspace only — for the user's own next steps across workspaces, prefer `read_user_activity` when you have it.",
       inputSchema: z.object({
         user: z
           .string()
@@ -844,6 +845,7 @@ function buildWorkspaceTools(
         "Use this when the user asks about what happened during a run, on a swarm, on a pod/sandbox, debugging agent failures, ANY question about a Lambda/CloudWatch/AWS log group, or wants a synthesised explanation backed by real log data. " +
         "If the user mentions a Lambda function or CloudWatch, invoke this immediately — do NOT ask for permission first, and do NOT use `search_logs` (which only covers Quickwit-indexed app logs, not CloudWatch/Lambda system logs). " +
         "Heavier than `search_logs` — prefer `search_logs` only for simple Lucene keyword lookups against the indexed app logs. " +
+        "It also reads Stakwork workflow run logs, but only when the user names Stakwork — a strut workflow's run is evaluated through strut (`dispatch_strut`), not here; and which Stakwork workflows or skills exist, or how one works, is not a log question. " +
         "Optionally narrow the analysis to a specific feature or task by supplying featureId/taskId.",
       inputSchema: z.object({
         prompt: z.string().describe("The question or debugging query to send to the Logs Agent"),
