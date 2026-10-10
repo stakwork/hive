@@ -114,3 +114,28 @@ describe("NodeDetails docs editing", () => {
     );
   });
 });
+
+describe("NodeDetails copy link", () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  const share = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("navigator", { clipboard: { writeText }, share });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("always copies a gnode link to the clipboard, never navigator.share", async () => {
+    renderDetails(node());
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(new URL(writeText.mock.calls[0][0]).searchParams.get("gnode")).toBe("ref-1");
+    expect(share).not.toHaveBeenCalled();
+  });
+});

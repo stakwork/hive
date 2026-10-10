@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 import { GraphWorkbench, Picker, type SelectedNode } from "@/components/graph-workbench";
@@ -40,10 +40,22 @@ export function GraphView({ workspaces, loading, chatOpen, onToggleChat, onFocus
   const current = ordered.find((ws) => ws.slug === requested) ?? ordered[0];
   const slug = current?.slug;
 
+  // Until a node has been focused, a null selection is just the graph still loading: leave a deep link's `gnode` be.
+  const hasFocused = useRef(false);
   const onSelectionChange = useCallback(
-    (node: SelectedNode | null) =>
-      onFocusChange(slug && node ? { workspaceSlug: slug, refId: node.id, name: node.name, type: node.type } : null),
-    [slug, onFocusChange],
+    (node: SelectedNode | null) => {
+      onFocusChange(slug && node ? { workspaceSlug: slug, refId: node.id, name: node.name, type: node.type } : null);
+      if (node) hasFocused.current = true;
+      else if (!hasFocused.current) return;
+      // Mirror focus into the URL (replace, not push, so Back isn't flooded).
+      const params = new URLSearchParams(window.location.search);
+      if (node) params.set("gnode", node.id);
+      else params.delete("gnode");
+      if (params.get("gnode") === new URLSearchParams(window.location.search).get("gnode")) return;
+      const qs = params.toString();
+      window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
+    },
+    [slug, onFocusChange, pathname],
   );
 
   if (loading) {
