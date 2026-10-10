@@ -10,7 +10,8 @@
  *   - a search keeps its place among the calls and the count of what it
  *     matched, and none of its hits as nodes;
  *   - node refs are deduplicated and malformed ones dropped;
- *   - a ref tagged with a peer (another strut's graph) is skipped.
+ *   - a ref tagged with a peer (another workspace's graph) is kept under a
+ *     qualified id, and a tag that is not a slug drops the ref.
  */
 
 import { describe, it, expect } from "vitest";
@@ -171,19 +172,27 @@ describe("projectRunGraphCalls", () => {
     expect(calls[0].startedAt).toBeNull();
   });
 
-  it("skips a node another strut's run touched (tagged with its peer)", () => {
+  it("keeps a node another workspace's run touched under a qualified id, apart from this graph's", () => {
     const calls = projectRunGraphCalls([
       end("wf/ask", "strut/run-workflow", {
         nodes: [
           { ref_id: "a", node_type: "Concept", peer: "cloud" },
+          { ref_id: "a", node_type: "Concept" },
           { ref_id: "b", node_type: "Concept", peer: "" },
-          { ref_id: "c" },
+          { ref_id: "c", peer: "not a slug!" },
+          { ref_id: "a", peer: "cloud" },
         ],
       }),
-      end("wf/remote-only", "strut/run-workflow", { nodes: [{ ref_id: "d", peer: "cloud" }] }),
+      end("wf/remote-only", "strut/run-workflow", { nodes: [{ ref_id: "d", peer: "other-ws" }] }),
     ]);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].nodes).toEqual([{ ref_id: "b", node_type: "Concept" }, { ref_id: "c" }]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].nodes).toEqual([
+      { ref_id: "@cloud:a", node_type: "Concept", peer: "cloud" },
+      { ref_id: "a", node_type: "Concept" },
+      { ref_id: "b", node_type: "Concept" },
+    ]);
+    expect(calls[1].nodes).toEqual([{ ref_id: "@other-ws:d", peer: "other-ws" }]);
+    expect(distinctNodeRefs(calls).map((n) => n.ref_id)).toEqual(["@cloud:a", "a", "b", "@other-ws:d"]);
   });
 
   it("answers an empty list for anything that is not an event log", () => {
@@ -232,7 +241,10 @@ describe("distinctNodeRefs", () => {
         nodes: [{ ref_id: "a" }, { ref_id: "b" }],
       }),
       end("wf/a/002-graph_graph_get", "tool:graph_graph_get", {
-        nodes: [{ ref_id: "b", node_type: "ClinicalFinding" }, { ref_id: "c", node_type: "Concept" }],
+        nodes: [
+          { ref_id: "b", node_type: "ClinicalFinding" },
+          { ref_id: "c", node_type: "Concept" },
+        ],
       }),
     ]);
     expect(distinctNodeRefs(calls)).toEqual([

@@ -16,7 +16,15 @@ import { getSwarmVanityAddress } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
 import { LINEAGE_EDGE_TYPE } from "./lineage";
-import type { RunGraphEdge, RunGraphNode, RunGraphNodeBody, RunGraphNodeRef, RunGraphTrace } from "./types";
+import { parseQualifiedRef, qualifyRef } from "./peer-ref";
+import type {
+  RunGraphEdge,
+  RunGraphNode,
+  RunGraphNodeBody,
+  RunGraphNodeRef,
+  RunGraphPeer,
+  RunGraphTrace,
+} from "./types";
 
 /**
  * Nodes resolved per trace; a run that touched more is reported `truncated`.
@@ -222,6 +230,75 @@ export async function hydrateRunGraph(
   };
 }
 
+/** Where a peer workspace's graph is read from — or why it is not, for this viewer. */
+export type PeerGraph = { run: CypherRunner } | { reason: string };
+
+/**
+ * `hydrateRunGraph` over every graph the run reached: this workspace's own,
+ * and each peer workspace's whose nodes a `strut/run-workflow` step folded
+ * in (refs carrying `peer`). A peer's nodes are read from ITS graph with the
+ * same three queries, then named by their qualified id (`peer-ref.ts`) —
+ * their edges and lineage too, and a graph never links into another. A peer
+ * `peerGraph` will not read for (the viewer is not a member of it, …) keeps
+ * its nodes as the log named them. The flags are the run's own graph's;
+ * `peers` says, per peer, whether it was read and why not.
+ */
+export async function hydrateRunGraphAcross(
+  refs: RunGraphNodeRef[],
+  local: CypherRunner,
+  peerGraph: (slug: string) => Promise<PeerGraph>,
+): Promise<Omit<RunGraphTrace, "calls">> {
+  const own: RunGraphNodeRef[] = [];
+  const byPeer = new Map<string, RunGraphNodeRef[]>();
+  for (const ref of refs) {
+    if (!ref.peer) {
+      own.push(ref);
+      continue;
+    }
+    const raw = { ...ref, ref_id: parseQualifiedRef(ref.ref_id).refId };
+    byPeer.set(ref.peer, [...(byPeer.get(ref.peer) ?? []), raw]);
+  }
+
+  const [home, ...remote] = await Promise.all([
+    hydrateRunGraph(own, local),
+    ...[...byPeer].map(async ([slug, peerRefs]) => {
+      const graph = await peerGraph(slug);
+      if ("reason" in graph) {
+        return {
+          slug,
+          peer: { slug, read: false, reason: graph.reason } as RunGraphPeer,
+          nodes: peerRefs.map((ref) => ({ ...unresolved(ref), ref_id: qualifyRef(ref.ref_id, slug), peer: slug })),
+          edges: [] as RunGraphEdge[],
+          truncated: false,
+        };
+      }
+      const read = await hydrateRunGraph(peerRefs, graph.run);
+      return {
+        slug,
+        peer: (read.nodesRead
+          ? { slug, read: true }
+          : { slug, read: false, reason: read.unreadReason ?? "its graph did not answer" }) as RunGraphPeer,
+        nodes: read.nodes.map((n) => ({ ...n, ref_id: qualifyRef(n.ref_id, slug), peer: slug })),
+        edges: read.edges.map((e) => ({
+          ...e,
+          source: qualifyRef(e.source, slug),
+          target: qualifyRef(e.target, slug),
+        })),
+        truncated: read.truncated,
+      };
+    }),
+  ]);
+
+  if (remote.length === 0) return home;
+  return {
+    ...home,
+    nodes: [...home.nodes, ...remote.flatMap((r) => r.nodes)],
+    edges: [...home.edges, ...remote.flatMap((r) => r.edges)],
+    truncated: home.truncated || remote.some((r) => r.truncated),
+    peers: remote.map((r) => r.peer),
+  };
+}
+
 /** Is this a ref id the graph will ever be asked about? */
 export function isRunGraphRefId(refId: string): boolean {
   return REF_ID_RE.test(refId);
@@ -253,8 +330,8 @@ export function fromPropertyPairs(pairs: unknown): Record<string, unknown> {
 export type RunGraphNodeRead =
   /** The node, whole. */
   | { found: true; node: RunGraphNodeBody }
-  /** The graph no longer holds the node — or, with `unread`, could not answer for it. */
-  | { found: false; unread?: string };
+  /** The graph no longer holds the node — or, with `unread`, could not answer for it; with `denied`, may not be read by this viewer. */
+  | { found: false; unread?: string; denied?: string };
 
 /**
  * One node, whole: its labels and every property but the vectors, for reading
