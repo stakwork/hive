@@ -119,6 +119,11 @@ export function chatMessagesToParsedMessages(
     ) {
       parsed.isError = true;
     }
+    // The end of a turn the user stopped: a quiet neutral marker, not an
+    // error — mirrors the live canvas chat's "Stopped" row.
+    if (m.role === "assistant" && m.source?.kind === "stopped") {
+      parsed.isStopped = true;
+    }
     // Graph-walk result rows carry a link down into their standalone
     // tool-call trace conversation — surface it so the detail view can
     // render a "view trace" drill-in.

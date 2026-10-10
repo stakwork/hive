@@ -51,6 +51,10 @@ vi.mock("lucide-react", () => ({
   Copy: () => <span data-testid="icon-copy" />,
   Check: () => <span data-testid="icon-check" />,
   Flag: () => <span data-testid="icon-flag" />,
+  Waypoints: () => <span data-testid="icon-waypoints" />,
+  AlertTriangle: () => <span data-testid="icon-alert-triangle" />,
+  Share2: () => <span data-testid="icon-share2" />,
+  Square: () => <span data-testid="icon-square" />,
 }));
 
 vi.mock("@/components/ui/button", () => ({
@@ -373,6 +377,27 @@ describe("MessageBubble — assistant long text truncation", () => {
     const shortMsg: ParsedMessage = { role: "assistant", content: "Short." };
     render(<MessageBubble message={shortMsg} />);
     expect(screen.queryByText("Show more")).toBeNull();
+  });
+});
+
+describe("MessageBubble — stopped turn marker", () => {
+  test("renders a quiet 'Stopped' marker, not an error bubble, for isStopped rows", () => {
+    const msg: ParsedMessage = {
+      role: "assistant",
+      content: "Stopped by user.",
+      isStopped: true,
+    };
+    render(<MessageBubble message={msg} />);
+    expect(screen.getByTestId("stopped-turn-marker")).toBeTruthy();
+    expect(screen.getByText("Stopped")).toBeTruthy();
+    expect(screen.queryByText("Turn error")).toBeNull();
+    expect(screen.queryByText("Stopped by user.")).toBeNull();
+  });
+
+  test("does not render the stopped marker for a normal assistant row", () => {
+    const msg: ParsedMessage = { role: "assistant", content: "Hello user" };
+    render(<MessageBubble message={msg} />);
+    expect(screen.queryByTestId("stopped-turn-marker")).toBeNull();
   });
 });
 
