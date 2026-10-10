@@ -33,6 +33,7 @@ import { PdfPanel } from "./viewers/pdf";
 import { PullRequestInline, PullRequestPanel } from "./viewers/pullRequest";
 import { RunGraphInline, RunGraphPanel, runGraphFact } from "./viewers/runGraph";
 import { UrlInline, UrlPanel } from "./viewers/url";
+import { orgGraphHref } from "../graphHref";
 
 /**
  * How Hive shows each kind of artifact: its preview on the chat card and
@@ -155,11 +156,8 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Panel: GraphPanel,
     fact: (content) => content.workspace,
     // The org page's graph view, on the same workspace and node.
-    address: (content, githubLogin) => {
-      const params = new URLSearchParams({ view: "graph", workspace: content.workspace });
-      if (content.focus) params.set("gnode", content.focus);
-      return `/org/${githubLogin}?${params.toString()}`;
-    },
+    address: (content, githubLogin) =>
+      orgGraphHref(githubLogin, { workspace: content.workspace, refId: content.focus }),
   },
   run_graph: {
     label: "Graph trace",

@@ -36,8 +36,8 @@ const fetchMock = vi.fn((url: string) =>
   url.endsWith("/docs") ? Promise.resolve({ ok: true, json: async () => ({ success: true }) }) : new Promise(() => {}),
 );
 
-/** `role` seeds the caller's workspace role; leave it out to keep it loading. */
-function renderDetails(n: WorkbenchNode, role?: WorkspaceRole) {
+/** `role` seeds the caller's workspace role; leave it out to keep it loading. `host` adds what a host supplies. */
+function renderDetails(n: WorkbenchNode, role?: WorkspaceRole, host: Record<string, unknown> = {}) {
   mockUseWorkbench.mockReturnValue({
     slug: "ws",
     graph: {
@@ -49,6 +49,7 @@ function renderDetails(n: WorkbenchNode, role?: WorkspaceRole) {
     },
     pending: { links: [], unlinks: [] },
     select: vi.fn(),
+    ...host,
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (role) client.setQueryData(workspaceRoleQuery("ws").queryKey, role);
@@ -118,6 +119,9 @@ describe("NodeDetails docs editing", () => {
 describe("NodeDetails copy link", () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   const share = vi.fn();
+  const nodeLink = vi.fn(
+    ({ id, type }: { id: string; type: string }) => `https://hive.test/org/o?view=graph&type=${type}&ref_id=${id}`,
+  );
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -129,13 +133,24 @@ describe("NodeDetails copy link", () => {
     vi.unstubAllGlobals();
   });
 
-  test("always copies a gnode link to the clipboard, never navigator.share", async () => {
-    renderDetails(node());
+  test("copies the host's link to the node, never through navigator.share", async () => {
+    renderDetails(node(), "DEVELOPER", { nodeLink });
 
     fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(new URL(writeText.mock.calls[0][0]).searchParams.get("gnode")).toBe("ref-1");
+    expect(nodeLink).toHaveBeenCalledWith({ id: "ref-1", type: "Concept" });
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("https://hive.test/org/o?view=graph&type=Concept&ref_id=ref-1"),
+    );
     expect(share).not.toHaveBeenCalled();
+  });
+
+  test("has no link to copy without one from the host, or for a node a proposal would create", () => {
+    const { unmount } = renderDetails(node(), "DEVELOPER");
+    expect(screen.queryByTestId("graph-workbench-copy-link")).toBeNull();
+    unmount();
+
+    renderDetails(node({ proposed: "new" }), "DEVELOPER", { nodeLink });
+    expect(screen.queryByTestId("graph-workbench-copy-link")).toBeNull();
   });
 });
