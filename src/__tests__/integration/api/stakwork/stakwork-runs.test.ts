@@ -48,12 +48,10 @@ vi.mock("@/lib/service-factory", () => ({
 vi.mock("@/lib/pusher", () => ({
   pusherServer: { trigger: vi.fn().mockResolvedValue(undefined) },
   getWorkspaceChannelName: (slug: string) => `workspace-${slug}`,
-  getWhiteboardChannelName: (id: string) => `whiteboard-${id}`,
   getFeatureChannelName: (id: string) => `feature-${id}`,
   PUSHER_EVENTS: {
     STAKWORK_RUN_UPDATE: "stakwork-run-update",
     STAKWORK_RUN_DECISION: "stakwork-run-decision",
-    WHITEBOARD_CHAT_MESSAGE: "whiteboard-chat-message",
     FEATURE_UPDATED: "feature-updated",
   },
 }));

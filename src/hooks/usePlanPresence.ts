@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { getPusherClient, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher";
-import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
+import type { CollaboratorInfo } from "@/types/collaboration";
 
 function generateUserColor(userId: string): string {
   const colors = [

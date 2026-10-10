@@ -29,7 +29,6 @@ export * from "./graphFactory";
 export * from "./benchmark-run-list-row.factory";
 
 // Whiteboard factories
-export * from "./whiteboard-message.factory";
 
 // Platform config factory
 export * from "./platform-config.factory";

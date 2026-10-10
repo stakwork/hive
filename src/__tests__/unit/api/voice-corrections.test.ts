@@ -160,7 +160,7 @@ describe("POST /api/voice-corrections", () => {
     expect(mockCreate).toHaveBeenCalled();
   });
 
-  test.each(["task_chat", "plan_chat", "plan_start", "task_start", "whiteboard", "sidebar"] as const)(
+  test.each(["task_chat", "plan_chat", "plan_start", "task_start", "sidebar"] as const)(
     "accepts valid surface %s",
     async (surface) => {
       const req = makeRequest({ ...validBody, surface });

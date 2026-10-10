@@ -293,7 +293,6 @@ describe("CompactTasksList", () => {
     requirements: null,
     architecture: null,
     userStories: [],
-    whiteboardId: null,
   });
 
   describe("getTaskRoute helper - Status-based routing", () => {
@@ -2279,7 +2278,6 @@ describe("CompactTasksList", () => {
       requirements: null,
       architecture: null,
       userStories: [],
-      whiteboardId: null,
     });
 
     const setupFetchMock = (overrides: Record<string, any> = {}) => {

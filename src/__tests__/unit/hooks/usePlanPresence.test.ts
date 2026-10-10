@@ -2,7 +2,7 @@
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { usePlanPresence } from "@/hooks/usePlanPresence";
-import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
+import type { CollaboratorInfo } from "@/types/collaboration";
 
 const mockChannel = {
   bind: vi.fn(),
