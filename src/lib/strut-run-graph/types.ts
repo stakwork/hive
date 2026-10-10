@@ -19,8 +19,11 @@
 
 /** A node as strut's event log names it. */
 export interface RunGraphNodeRef {
+  /** The trace's id: the graph's ref id, or `@<slug>:<ref_id>` for a node in a peer's graph (`peer-ref.ts`). */
   ref_id: string;
   node_type?: string;
+  /** Set for a node in ANOTHER workspace's graph: that workspace's slug (strut's peer id). */
+  peer?: string;
 }
 
 export type RunGraphAccess = "read" | "write";
@@ -56,6 +59,17 @@ export interface RunGraphNode {
   found: boolean;
   /** True for a node no call touched: it is here as an ancestor, along `PARENT_OF`, of one that was. */
   ancestor?: true;
+  /** Set for a node in ANOTHER workspace's graph — a peer's run touched it: that workspace's slug. */
+  peer?: string;
+}
+
+/** A peer workspace whose graph a run reached through another strut, and whether it was read for this viewer. */
+export interface RunGraphPeer {
+  slug: string;
+  /** True when its graph answered for its nodes. */
+  read: boolean;
+  /** Why not: not a member, not in this org, its swarm unreachable, the graph's own answer. */
+  reason?: string;
 }
 
 /** One node read whole, for reading what the run read: its labels, and every property but the vectors. */
@@ -86,4 +100,9 @@ export interface RunGraphTrace {
   unreadReason?: string;
   /** True when the run touched more nodes than were resolved. */
   truncated: boolean;
+  /**
+   * The peer workspaces whose graphs the run reached, each read only for a
+   * viewer who is a member of it. The flags above are about the run's own graph.
+   */
+  peers?: RunGraphPeer[];
 }
