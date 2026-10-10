@@ -21,8 +21,8 @@ import {
   type RunGraphNodeRead,
 } from "@/lib/strut-run-graph/hydrate";
 import { parseQualifiedRef } from "@/lib/strut-run-graph/peer-ref";
-import { distinctNodeRefs, projectRunGraphCalls } from "@/lib/strut-run-graph/project";
-import type { RunGraphTrace } from "@/lib/strut-run-graph/types";
+import { distinctNodeRefs, projectRunGraphCalls, projectWithLaunches } from "@/lib/strut-run-graph/project";
+import type { RunGraphCall, RunGraphTrace } from "@/lib/strut-run-graph/types";
 import { labForRow, type StrutRunRow } from "@/services/strut-runs";
 import { fetchStrutRunEvents } from "@/services/strut-runs/lab";
 
@@ -37,8 +37,12 @@ export type PeerAccess = (slug: string) => Promise<{ workspaceId: string } | { r
 /** No viewer to check: no peer's graph is read. */
 const NO_PEERS: PeerAccess = async (slug) => ({ reason: `not read for @${slug}` });
 
-/** Peer workspace `slug`'s graph, when the viewer may read it and it is in the run's org; else why not. */
-async function peerGraphFor(row: Pick<GraphRow, "workspaceId">, slug: string, access: PeerAccess): Promise<PeerGraph> {
+/** Peer workspace `slug`'s swarm, when the viewer may read it and it is in the run's org; else why not. */
+async function peerSwarmFor(
+  row: Pick<GraphRow, "workspaceId">,
+  slug: string,
+  access: PeerAccess,
+): Promise<{ swarmId: string } | { reason: string }> {
   const allowed = await access(slug);
   if ("reason" in allowed) return allowed;
   const workspaces = await db.workspace.findMany({
@@ -51,7 +55,14 @@ async function peerGraphFor(row: Pick<GraphRow, "workspaceId">, slug: string, ac
     return { reason: `@${slug} is not a workspace of this org` };
   }
   if (!peer.swarm) return { reason: `@${slug} has no swarm` };
-  const lab = await labForRow({ swarmId: peer.swarm.id });
+  return { swarmId: peer.swarm.id };
+}
+
+/** Peer workspace `slug`'s graph, by the same rule; else why not. */
+async function peerGraphFor(row: Pick<GraphRow, "workspaceId">, slug: string, access: PeerAccess): Promise<PeerGraph> {
+  const swarm = await peerSwarmFor(row, slug, access);
+  if ("reason" in swarm) return swarm;
+  const lab = await labForRow(swarm);
   if (!lab) return { reason: `@${slug}'s swarm could not be reached` };
   return { run: swarmCypherRunner({ name: lab.swarmName, apiKey: lab.swarmApiKey }) };
 }
@@ -111,4 +122,56 @@ export async function readStrutRunGraphNode(
   const lab = await labForRow(row);
   if (!lab) return null;
   return readRunGraphNode(refId, swarmCypherRunner({ name: lab.swarmName, apiKey: lab.swarmApiKey }));
+}
+
+/** How many launches deep a child is followed: a run's child's child's … */
+const MAX_CHILD_DEPTH = 8;
+
+export type RunGraphChildRead =
+  /** The child run's calls, under the launching call's path. */
+  | { calls: RunGraphCall[] }
+  /** No call at that path launched a run — or not one the trace can follow. */
+  | { notFound: true }
+  /** The viewer may not read the workspace the child ran on. */
+  | { denied: string }
+  /** A log could not be read. */
+  | { unread: true };
+
+/**
+ * The calls of the run a launching call started (`meta/run-workflow` here,
+ * `strut/run-workflow` on a peer), loaded when the viewer opens that call —
+ * `under` is its path in the trace. The run is found from the logs alone,
+ * walking down from the row's own run through each launch on the way: a run
+ * id is never taken from the request. A child that ran on a peer is read
+ * from that workspace's swarm, by the trace's rule (a member, the same org);
+ * a peer's own launch on a peer of ITS is not followed (that slug is not one
+ * of this org's).
+ */
+export async function readStrutRunGraphChild(
+  row: GraphRow,
+  under: string,
+  access: PeerAccess = NO_PEERS,
+): Promise<RunGraphChildRead> {
+  let events = await fetchStrutRunEvents(row);
+  let swarmId = row.swarmId;
+  let peer: string | undefined;
+  let prefix: string | undefined;
+  for (let depth = 0; depth < MAX_CHILD_DEPTH; depth++) {
+    if (!events) return { unread: true };
+    const { launches } = projectWithLaunches(events, { prefix, peer });
+    const at = [...launches].find(([path]) => under === path || under.startsWith(`${path}/`));
+    if (!at) return { notFound: true };
+    const [path, launch] = at;
+    if (launch.peer) {
+      if (peer) return { notFound: true };
+      const swarm = await peerSwarmFor(row, launch.peer, access);
+      if ("reason" in swarm) return { denied: swarm.reason };
+      swarmId = swarm.swarmId;
+      peer = launch.peer;
+    }
+    events = await fetchStrutRunEvents({ id: row.id, swarmId, workflow: launch.workflow, strutRunId: launch.runId });
+    prefix = path;
+    if (under === path) return events ? { calls: projectRunGraphCalls(events, { prefix, peer }) } : { unread: true };
+  }
+  return { notFound: true };
 }

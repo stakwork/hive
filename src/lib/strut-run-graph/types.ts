@@ -47,6 +47,19 @@ export interface RunGraphCall {
   nodes: RunGraphNodeRef[];
   /** On a search: how many nodes it matched. */
   hits?: number;
+  /**
+   * Set on a call that ran a workflow as a run of its own — `meta/run-workflow`
+   * on this strut, `strut/run-workflow` on a peer's — whose nodes it carries
+   * folded. Its own calls are loaded on demand, under this call's path
+   * (`GET …/graph/calls?under=<path>`); the run id stays on the server.
+   */
+  child?: RunGraphChild;
+}
+
+/** The run a call launched: its workflow, and the peer workspace it ran on, if not this one's strut. */
+export interface RunGraphChild {
+  workflow: string;
+  peer?: string;
 }
 
 /** A touched node, resolved against the graph the run used. */

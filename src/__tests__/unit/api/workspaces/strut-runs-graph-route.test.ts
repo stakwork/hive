@@ -2,6 +2,7 @@
  * Unit tests for the strut run graph routes:
  *   /api/workspaces/[slug]/strut/runs/[runId]/graph
  *   /api/workspaces/[slug]/strut/runs/[runId]/graph/nodes/[refId]
+ *   /api/workspaces/[slug]/strut/runs/[runId]/graph/calls?under=
  *
  * Coverage:
  *   - both are for the workspace's members, and scoped to its runs of any
@@ -11,17 +12,20 @@
  *     lookup, and a node the graph no longer holds is told from a graph that
  *     did not answer;
  *   - a peer workspace's graph is checked against the viewer's own access to
- *     that workspace, and a node of it they may not read is a 403.
+ *     that workspace, and a node of it they may not read is a 403;
+ *   - a launching call's child calls are read by the call's path, with the
+ *     reader's answers said as 404 / 403 / 502.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { mockAccess, mockFindRow, mockGraph, mockNode } = vi.hoisted(() => ({
+const { mockAccess, mockFindRow, mockGraph, mockNode, mockChild } = vi.hoisted(() => ({
   mockAccess: vi.fn(),
   mockFindRow: vi.fn(),
   mockGraph: vi.fn(),
   mockNode: vi.fn(),
+  mockChild: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ db: {} }));
@@ -30,13 +34,18 @@ vi.mock("@/lib/auth/workspace-access", async (importOriginal) => ({
   resolveWorkspaceAccess: mockAccess,
 }));
 vi.mock("@/services/strut-runs", () => ({ findStrutRunRow: mockFindRow }));
-vi.mock("@/services/strut-runs/run-graph", () => ({ readStrutRunGraph: mockGraph, readStrutRunGraphNode: mockNode }));
+vi.mock("@/services/strut-runs/run-graph", () => ({
+  readStrutRunGraph: mockGraph,
+  readStrutRunGraphNode: mockNode,
+  readStrutRunGraphChild: mockChild,
+}));
 vi.mock("@/lib/constants", () => ({ getSwarmVanityAddress: (name: string) => `${name}.sphinx.chat` }));
 vi.mock("@/lib/utils/stakgraph-url", () => ({ getStakgraphUrl: (host: string) => `https://${host}:7799` }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
 
 import { GET as getGraph } from "@/app/api/workspaces/[slug]/strut/runs/[runId]/graph/route";
 import { GET as getNode } from "@/app/api/workspaces/[slug]/strut/runs/[runId]/graph/nodes/[refId]/route";
+import { GET as getCalls } from "@/app/api/workspaces/[slug]/strut/runs/[runId]/graph/calls/route";
 
 const BASE = "http://hive.example/api/workspaces/hive/strut/runs/run-1/graph";
 const ROW = {
@@ -184,5 +193,43 @@ describe("GET graph node", () => {
     mockAccess.mockResolvedValue({ kind: "forbidden" });
     expect((await node("c-1")).status).toBe(403);
     expect(mockFindRow).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET graph calls", () => {
+  const under = "job/work/002-meta_run_workflow";
+  const calls = (query: string) =>
+    getCalls(new NextRequest(`${BASE}/calls${query}`), { params: Promise.resolve({ slug: "hive", runId: "run-1" }) });
+
+  it("answers the child run's calls, read by the launching call's path", async () => {
+    mockChild.mockResolvedValue({ calls: [{ path: `${under}/explore/explore/001-graph_graph_get` }] });
+    const res = await calls(`?under=${encodeURIComponent(under)}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ calls: [{ path: `${under}/explore/explore/001-graph_graph_get` }] });
+    expect(mockChild).toHaveBeenCalledWith(ROW, under, expect.any(Function));
+  });
+
+  it("refuses a request that names no call, before looking anything up", async () => {
+    expect((await calls("")).status).toBe(400);
+    expect((await calls(`?under=${"a".repeat(2001)}`)).status).toBe(400);
+    expect(mockFindRow).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ notFound: true }, 404],
+    [{ denied: "you are not a member of @apps" }, 403],
+    [{ unread: true }, 502],
+  ])("says %o as a %i", async (read, status) => {
+    mockChild.mockResolvedValue(read);
+    expect((await calls(`?under=${encodeURIComponent(under)}`)).status).toBe(status);
+  });
+
+  it("is for members of the run's workspace, and its runs only", async () => {
+    mockAccess.mockResolvedValue({ kind: "forbidden" });
+    expect((await calls(`?under=${encodeURIComponent(under)}`)).status).toBe(403);
+    mockAccess.mockResolvedValue(MEMBER);
+    mockFindRow.mockResolvedValue(null);
+    expect((await calls(`?under=${encodeURIComponent(under)}`)).status).toBe(404);
+    expect(mockChild).not.toHaveBeenCalled();
   });
 });

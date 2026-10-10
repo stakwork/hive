@@ -95,14 +95,15 @@ function queryOf(input: unknown): Record<string, RunGraphQueryValue> {
  * resolved against that workspace's graph, never this one. A tag that is not
  * a slug is not a ref this trace can place, so it is dropped.
  */
-function nodesOf(value: unknown): RunGraphNodeRef[] {
+function nodesOf(value: unknown, home?: string): RunGraphNodeRef[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const nodes: RunGraphNodeRef[] = [];
   for (const item of value) {
     if (!isRecord(item) || typeof item.ref_id !== "string" || !item.ref_id) continue;
     const tagged = typeof item.peer === "string" && item.peer.trim() !== "";
-    const peer = tagged ? (item.peer as string).trim() : undefined;
+    // An untagged ref in a peer's own run is in that peer's graph.
+    const peer = tagged ? (item.peer as string).trim() : home;
     if (tagged && !isPeerSlug(peer)) continue;
     const id = qualifyRef(item.ref_id, peer);
     if (seen.has(id)) continue;
@@ -116,9 +117,69 @@ function nodesOf(value: unknown): RunGraphNodeRef[] {
   return nodes;
 }
 
+/** The steps that launch a workflow as a run of its own, by their names as a step or as an agent's tool. */
+const LAUNCHERS: Record<string, "local" | "peer"> = { meta_run_workflow: "local", strut_run_workflow: "peer" };
+
+/** Strut's run ids are millisecond timestamps; a workflow name is a path-safe name. Nothing else is ever sent upstream. */
+const RUN_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const WORKFLOW_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+
+/** A field of a step's input or output: an object, or JSON text — whole, or cut short by strut's log truncation. */
+function fieldOf(value: unknown, key: string): string | undefined {
+  let record: unknown = value;
+  if (typeof value === "string") {
+    try {
+      record = JSON.parse(value);
+    } catch {
+      const m = new RegExp(`"${key}"\\s*:\\s*"([^"\\\\]*)"`).exec(value);
+      return m ? m[1] : undefined;
+    }
+  }
+  const field = isRecord(record) ? record[key] : undefined;
+  return typeof field === "string" && field ? field : undefined;
+}
+
+/** The run a launching call started — from its input (`name`, or `workflow` + `peer`) and its output (`runId`). */
+export interface RunGraphLaunch {
+  workflow: string;
+  runId: string;
+  peer?: string;
+}
+
+function launchOf(tool: string, input: unknown, output: unknown): RunGraphLaunch | null {
+  const kind = LAUNCHERS[tool.replace(/[/-]/g, "_")];
+  if (!kind) return null;
+  const runId = fieldOf(output, "runId");
+  const workflow =
+    kind === "local" ? fieldOf(input, "name") : (fieldOf(output, "workflow") ?? fieldOf(input, "workflow"));
+  const peer = kind === "peer" ? (fieldOf(output, "peer") ?? fieldOf(input, "peer")) : undefined;
+  if (!runId || !RUN_ID_RE.test(runId) || !workflow || !WORKFLOW_RE.test(workflow)) return null;
+  if (kind === "peer" && !isPeerSlug(peer)) return null;
+  return { workflow, runId, ...(peer ? { peer } : {}) };
+}
+
+export interface ProjectOptions {
+  /** Put every path under this one: the launching call's, for a child run's calls. */
+  prefix?: string;
+  /** The peer workspace whose strut ran these events: an untagged ref is in its graph. */
+  peer?: string;
+}
+
 /** Every call that touched the graph, in the order the run finished them. */
-export function projectRunGraphCalls(events: unknown): RunGraphCall[] {
-  if (!Array.isArray(events)) return [];
+export function projectRunGraphCalls(events: unknown, options: ProjectOptions = {}): RunGraphCall[] {
+  return projectWithLaunches(events, options).calls;
+}
+
+/**
+ * The calls, and for each launching call (by its path, as returned) the run
+ * it started — server-side only: a run id never reaches the browser.
+ */
+export function projectWithLaunches(
+  events: unknown,
+  options: ProjectOptions = {},
+): { calls: RunGraphCall[]; launches: Map<string, RunGraphLaunch> } {
+  const launches = new Map<string, RunGraphLaunch>();
+  if (!Array.isArray(events)) return { calls: [], launches };
   const starts = new Map<string, { ts: string | null; input: unknown }>();
   const calls: RunGraphCall[] = [];
   for (const event of events) {
@@ -128,15 +189,18 @@ export function projectRunGraphCalls(events: unknown): RunGraphCall[] {
       continue;
     }
     if (event.type !== "step.end") continue;
-    const nodes = nodesOf(event.nodes);
+    const nodes = nodesOf(event.nodes, options.peer);
     if (nodes.length === 0) continue;
     const stepType = typeof event.stepType === "string" ? event.stepType : "";
     const byAgent = stepType.startsWith(TOOL_PREFIX);
     const tool = byAgent ? stepType.slice(TOOL_PREFIX.length) : stepType;
     const start = starts.get(event.path);
     const search = isSearch(tool);
+    const path = options.prefix ? `${options.prefix}/${event.path}` : event.path;
+    const launch = launchOf(tool, start?.input, event.output);
+    if (launch) launches.set(path, launch);
     calls.push({
-      path: event.path,
+      path,
       tool,
       by: byAgent ? "agent" : "workflow",
       access: accessOf(tool),
@@ -146,9 +210,10 @@ export function projectRunGraphCalls(events: unknown): RunGraphCall[] {
       query: queryOf(start?.input),
       nodes: search ? [] : nodes,
       ...(search ? { hits: nodes.length } : {}),
+      ...(launch ? { child: { workflow: launch.workflow, ...(launch.peer ? { peer: launch.peer } : {}) } } : {}),
     });
   }
-  return calls;
+  return { calls, launches };
 }
 
 /** The distinct nodes a list of calls read or wrote, first touch first. A later ref's type fills an earlier untyped one. */
