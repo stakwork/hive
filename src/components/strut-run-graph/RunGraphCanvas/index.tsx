@@ -16,6 +16,8 @@ export interface RunGraphCanvasNode {
   id: string;
   name: string;
   type: string;
+  /** The peer workspace whose graph holds it, drawn under the node; absent for the run's own graph. */
+  peer?: string;
 }
 
 interface RunGraphCanvasProps {
@@ -429,6 +431,22 @@ export function RunGraphCanvas({
                     >
                       {clipName(node.name)}
                     </text>
+                    {node.peer && (
+                      <text
+                        y={RUN_GRAPH_NODE_RADIUS + 4}
+                        dominantBaseline="hanging"
+                        textAnchor="middle"
+                        className="pointer-events-none fill-muted-foreground stroke-card"
+                        strokeWidth={3}
+                        strokeLinejoin="round"
+                        paintOrder="stroke"
+                        vectorEffect="non-scaling-stroke"
+                        style={{ fontSize: NAME_FONT }}
+                        data-testid="run-graph-canvas-peer"
+                      >
+                        @{clipName(node.peer)}
+                      </text>
+                    )}
                   </g>
                 );
               }),

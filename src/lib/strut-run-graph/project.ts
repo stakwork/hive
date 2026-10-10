@@ -9,6 +9,7 @@
  * A search touched nothing: what it matched is counted (`hits`), not kept.
  */
 
+import { isPeerSlug, qualifyRef } from "./peer-ref";
 import type { RunGraphAccess, RunGraphCall, RunGraphNodeRef, RunGraphQueryValue } from "./types";
 
 const TOOL_PREFIX = "tool:";
@@ -87,26 +88,30 @@ function queryOf(input: unknown): Record<string, RunGraphQueryValue> {
 }
 
 /**
- * A ref tagged `peer` names a node in ANOTHER strut's graph — a
+ * A ref tagged `peer` names a node in ANOTHER workspace's graph — a
  * `strut/run-workflow` step folds the peer run's nodes onto its own
- * `step.end` (strut plans/federation.md §2.2). It means nothing against this
- * workspace's graph, so it is not a node of this run.
+ * `step.end` (strut plans/federation.md §2.2), tagged with the peer's id,
+ * the workspace's slug. It is kept under a qualified id (`peer-ref.ts`) and
+ * resolved against that workspace's graph, never this one. A tag that is not
+ * a slug is not a ref this trace can place, so it is dropped.
  */
-const isPeerRef = (item: Record<string, unknown>) => typeof item.peer === "string" && item.peer.trim() !== "";
-
 function nodesOf(value: unknown): RunGraphNodeRef[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const nodes: RunGraphNodeRef[] = [];
   for (const item of value) {
-    if (!isRecord(item) || typeof item.ref_id !== "string" || !item.ref_id || seen.has(item.ref_id)) continue;
-    if (isPeerRef(item)) continue;
-    seen.add(item.ref_id);
-    nodes.push(
-      typeof item.node_type === "string" && item.node_type
-        ? { ref_id: item.ref_id, node_type: item.node_type }
-        : { ref_id: item.ref_id },
-    );
+    if (!isRecord(item) || typeof item.ref_id !== "string" || !item.ref_id) continue;
+    const tagged = typeof item.peer === "string" && item.peer.trim() !== "";
+    const peer = tagged ? (item.peer as string).trim() : undefined;
+    if (tagged && !isPeerSlug(peer)) continue;
+    const id = qualifyRef(item.ref_id, peer);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    nodes.push({
+      ref_id: id,
+      ...(typeof item.node_type === "string" && item.node_type ? { node_type: item.node_type } : {}),
+      ...(peer ? { peer } : {}),
+    });
   }
   return nodes;
 }

@@ -9,7 +9,9 @@
  *   - the trace is the projection, and strut not answering is said as such;
  *   - a node is read whole, a ref id that is not one never reaches the row
  *     lookup, and a node the graph no longer holds is told from a graph that
- *     did not answer.
+ *     did not answer;
+ *   - a peer workspace's graph is checked against the viewer's own access to
+ *     that workspace, and a node of it they may not read is a 403.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -73,7 +75,27 @@ describe("GET graph", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ calls: [], nodes: [] });
     expect(mockFindRow).toHaveBeenCalledWith("ws-1", "run-1");
-    expect(mockGraph).toHaveBeenCalledWith(ROW);
+    expect(mockGraph).toHaveBeenCalledWith(ROW, expect.any(Function));
+  });
+
+  it("hands the reader a peer workspace's graph only when the viewer is a member of it", async () => {
+    mockGraph.mockResolvedValue({
+      calls: [],
+      nodes: [],
+      edges: [],
+      nodesRead: true,
+      edgesRead: true,
+      truncated: false,
+    });
+    await graph();
+    const access = mockGraph.mock.calls[0][1] as (slug: string) => Promise<unknown>;
+    mockAccess.mockResolvedValueOnce({ ...MEMBER, workspaceId: "ws-apps", slug: "apps" });
+    expect(await access("apps")).toEqual({ workspaceId: "ws-apps" });
+    expect(mockAccess).toHaveBeenLastCalledWith(expect.anything(), { slug: "apps" });
+    mockAccess.mockResolvedValueOnce({ kind: "forbidden" });
+    expect(await access("secret")).toEqual({ reason: "you are not a member of @secret" });
+    mockAccess.mockResolvedValueOnce({ kind: "public-viewer", userId: null, workspaceId: "ws-x", slug: "open" });
+    expect(await access("open")).toEqual({ reason: "you are not a member of @open" });
   });
 
   it("answers 404 for a run of another workspace", async () => {
@@ -113,7 +135,7 @@ describe("GET graph node", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(BODY);
     expect(mockFindRow).toHaveBeenCalledWith("ws-1", "run-1");
-    expect(mockNode).toHaveBeenCalledWith(ROW, "c-1");
+    expect(mockNode).toHaveBeenCalledWith(ROW, "c-1", expect.any(Function));
   });
 
   it("refuses a ref id that is not one before looking anything up", async () => {
@@ -132,6 +154,19 @@ describe("GET graph node", () => {
     const unread = await node("c-1");
     expect(unread.status).toBe(502);
     expect((await unread.json()).error).toBe("The graph did not answer (no answer in 20 s)");
+  });
+
+  it("reads a node of a peer's graph by its qualified id, and refuses one the viewer may not read", async () => {
+    mockNode.mockResolvedValue({ found: true, node: BODY });
+    expect((await node("@apps:fn-1")).status).toBe(200);
+    expect(mockNode).toHaveBeenCalledWith(ROW, "@apps:fn-1", expect.any(Function));
+
+    mockNode.mockResolvedValue({ found: false, denied: "you are not a member of @secret" });
+    const denied = await node("@secret:fn-1");
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error).toBe("Not readable here: you are not a member of @secret");
+
+    expect((await node("@apps:'}) DETACH DELETE n //")).status).toBe(400);
   });
 
   it("answers 502 when the run's swarm cannot be read", async () => {
