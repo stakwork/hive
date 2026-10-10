@@ -106,8 +106,6 @@ vi.mock("@/lib/ai/capabilityGates", () => ({
     isPromptsCapabilityEnabledForOrg(orgId),
   isGraphWriteCapabilityEnabledForOrg: (orgId: string | undefined) =>
     isGraphWriteCapabilityEnabledForOrg(orgId),
-  // code_change gate — always false in these tests (not under test here)
-  isCodeChangeCapabilityEnabledForOrg: vi.fn(async () => false),
   isStrutCapabilityEnabledForOrg: vi.fn(async () => false),
 }));
 

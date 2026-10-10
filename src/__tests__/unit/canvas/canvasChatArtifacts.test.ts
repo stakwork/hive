@@ -188,6 +188,24 @@ describe("parseArtifactContent", () => {
     expect(parseArtifactContent("json", { value: { a: 1 } })).toEqual({ value: { a: 1 } });
     expect(parseArtifactContent("json", {})).toBeNull();
   });
+
+  test("a run graph needs its workspace and its run; a count that is not one is left out", () => {
+    expect(parseArtifactContent("run_graph", { workspace: "acme", run: "row-1", calls: 14, nodes: 37 })).toEqual({
+      workspace: "acme",
+      run: "row-1",
+      calls: 14,
+      nodes: 37,
+    });
+    expect(parseArtifactContent("run_graph", { workspace: "acme", run: "row-1", calls: -1, nodes: 2.5 })).toEqual({
+      workspace: "acme",
+      run: "row-1",
+      calls: undefined,
+      nodes: undefined,
+    });
+    expect(parseArtifactContent("run_graph", { workspace: "acme" })).toBeNull();
+    expect(parseArtifactContent("run_graph", { run: "row-1" })).toBeNull();
+    expect(parseArtifactContent("run_graph", { workspace: "", run: "row-1" })).toBeNull();
+  });
 });
 
 describe("identity and versions", () => {
@@ -318,6 +336,22 @@ describe("identity and versions", () => {
 
   test("a version past the end shows the newest", () => {
     expect(resolveArtifactPanel(all, { identity: artifactIdentity(noteT2), version: 9 })?.index).toBe(1);
+  });
+
+  test("a job's traces are one card: each turn's is a version of it, the panel stepping back through the turns", () => {
+    const trace = (run: string): ArtifactRef => ({
+      id: "run-graph-job-1",
+      kind: "run_graph",
+      title: "Dark mode plan",
+      source: { type: "inline", content: { workspace: "acme", run, calls: 3, nodes: 5 } },
+    });
+    const [t1, t3] = [trace("row-1"), trace("row-3")];
+    const turns = listArtifacts([{ artifacts: [planT1, t1] }, { artifacts: [planT4] }, { artifacts: [t3] }]);
+    const cards = indexArtifactCards(turns);
+    expect(cards.get(t3)).toEqual({ index: 1, count: 2 });
+    expect(cards.has(t1)).toBe(false);
+    expect(resolveArtifactPanel(turns, { identity: artifactIdentity(t1), version: 0 })?.artifact).toBe(t1);
+    expect(parseArtifactRefs([t3])).toEqual([t3]);
   });
 
   test("nothing is on the panel when it is closed or the artifact is not in the conversation", () => {

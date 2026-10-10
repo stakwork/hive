@@ -2,7 +2,7 @@
 
 import React, { useDeferredValue, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Pencil, Share2, X } from "lucide-react";
+import { ChevronRight, Link, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { UnifiedDiffView } from "@/components/diff/UnifiedDiffView";
@@ -274,19 +274,11 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
     </button>
   );
 
-  // A link to this node from the host (the org graph view's, wherever the panel is), shared through the
-  // system share sheet where there is one, else copied. A node a proposal would create has nowhere to link to yet.
+  // A link to this node from the host (the org graph view's, wherever the panel is). A node a proposal
+  // would create has nowhere to link to yet.
   const shareLink = nodeLink && !isNew && (node || data) ? nodeLink({ id, type }) : null;
-  const share = async () => {
+  const copyLink = async () => {
     if (!shareLink) return;
-    if (typeof navigator.share === "function") {
-      try {
-        await navigator.share({ title: name, url: shareLink });
-        return;
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") return;
-      }
-    }
     try {
       await navigator.clipboard.writeText(shareLink);
       toast.success("Link copied to clipboard");
@@ -303,13 +295,13 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
         {shareLink && (
           <button
             type="button"
-            onClick={share}
+            onClick={copyLink}
             className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-            aria-label="Share"
-            title="Share link"
-            data-testid="graph-workbench-share"
+            aria-label="Copy link"
+            title="Copy link"
+            data-testid="graph-workbench-copy-link"
           >
-            <Share2 className="h-4 w-4" />
+            <Link className="h-4 w-4" />
           </button>
         )}
         <button

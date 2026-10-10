@@ -116,8 +116,9 @@ describe("NodeDetails docs editing", () => {
   });
 });
 
-describe("NodeDetails share", () => {
-  const writeText = vi.fn(async () => {});
+describe("NodeDetails copy link", () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  const share = vi.fn();
   const nodeLink = vi.fn(
     ({ id, type }: { id: string; type: string }) => `https://hive.test/org/o?view=graph&type=${type}&ref_id=${id}`,
   );
@@ -125,30 +126,31 @@ describe("NodeDetails share", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("fetch", fetchMock);
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    vi.stubGlobal("navigator", { clipboard: { writeText }, share });
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  test("copies the host's link to the node where there's no share sheet", async () => {
+  test("copies the host's link to the node, never through navigator.share", async () => {
     renderDetails(node(), "DEVELOPER", { nodeLink });
 
-    fireEvent.click(screen.getByTestId("graph-workbench-share"));
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
 
     expect(nodeLink).toHaveBeenCalledWith({ id: "ref-1", type: "Concept" });
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith("https://hive.test/org/o?view=graph&type=Concept&ref_id=ref-1"),
     );
+    expect(share).not.toHaveBeenCalled();
   });
 
-  test("has nothing to share without a link from the host, or for a node a proposal would create", () => {
+  test("has no link to copy without one from the host, or for a node a proposal would create", () => {
     const { unmount } = renderDetails(node(), "DEVELOPER");
-    expect(screen.queryByTestId("graph-workbench-share")).toBeNull();
+    expect(screen.queryByTestId("graph-workbench-copy-link")).toBeNull();
     unmount();
 
     renderDetails(node({ proposed: "new" }), "DEVELOPER", { nodeLink });
-    expect(screen.queryByTestId("graph-workbench-share")).toBeNull();
+    expect(screen.queryByTestId("graph-workbench-copy-link")).toBeNull();
   });
 });

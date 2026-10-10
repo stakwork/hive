@@ -15,7 +15,16 @@ export type PodCaller =
   | { kind: "org"; workspaceId: string; orgId: string; apiKeyId: string; actingUserId: string }
   | { kind: "user"; workspaceId: string; userId: string };
 
-type WorkspaceRef = { id: string } | { slug: string };
+/**
+ * Which workspace: by id, by slug, or by either — `idOrSlug` is a path
+ * segment a caller may fill with a slug (a strut job names workspaces by
+ * slug, as its peers are named) or an id (everyone else). Slugs are unique.
+ */
+type WorkspaceRef = { id: string } | { slug: string } | { idOrSlug: string };
+
+function whereOf(ref: WorkspaceRef): { id: string } | { slug: string } | { OR: [{ id: string }, { slug: string }] } {
+  return "idOrSlug" in ref ? { OR: [{ id: ref.idOrSlug }, { slug: ref.idOrSlug }] } : ref;
+}
 
 const accessDenied = () => NextResponse.json({ error: "Access denied" }, { status: 403 });
 const notFound = () => NextResponse.json({ error: "Workspace not found" }, { status: 404 });
@@ -33,7 +42,7 @@ export async function resolvePodCaller(
   if (classified?.kind === "org") {
     const { validated } = classified;
     const workspace = await db.workspace.findFirst({
-      where: { ...ref, deleted: false },
+      where: { ...whereOf(ref), deleted: false },
       select: { id: true, sourceControlOrgId: true },
     });
     if (!workspace) return notFound();
@@ -48,7 +57,7 @@ export async function resolvePodCaller(
   }
 
   if (classified?.kind === "system") {
-    const workspace = await db.workspace.findFirst({ where: ref, select: { id: true } });
+    const workspace = await db.workspace.findFirst({ where: whereOf(ref), select: { id: true } });
     if (!workspace) return notFound();
     return { kind: "system", workspaceId: workspace.id };
   }
@@ -65,7 +74,7 @@ export async function resolvePodCaller(
   const userId = userOrResponse.id;
 
   const workspace = await db.workspace.findFirst({
-    where: { ...ref, deleted: false },
+    where: { ...whereOf(ref), deleted: false },
     select: {
       id: true,
       ownerId: true,

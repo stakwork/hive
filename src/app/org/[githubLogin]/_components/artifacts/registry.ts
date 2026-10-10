@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Network,
   ScrollText,
+  Waypoints,
   type LucideIcon,
 } from "lucide-react";
 import { toJsonText } from "@/components/streaming/toolCallValue";
@@ -30,6 +31,7 @@ import { MarkdownInline, MarkdownPanel } from "./viewers/markdown";
 import { AudioInline, AudioPanel, ImageInline, ImagePanel, VideoInline, VideoPanel } from "./viewers/media";
 import { PdfPanel } from "./viewers/pdf";
 import { PullRequestInline, PullRequestPanel } from "./viewers/pullRequest";
+import { RunGraphInline, RunGraphPanel, runGraphFact } from "./viewers/runGraph";
 import { UrlInline, UrlPanel } from "./viewers/url";
 import { orgGraphHref } from "../graphHref";
 
@@ -156,6 +158,13 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     // The org page's graph view, on the same workspace and node.
     address: (content, githubLogin) =>
       orgGraphHref(githubLogin, { workspace: content.workspace, refId: content.focus }),
+  },
+  run_graph: {
+    label: "Graph trace",
+    Icon: Waypoints,
+    Inline: RunGraphInline,
+    Panel: RunGraphPanel,
+    fact: runGraphFact,
   },
 };
 

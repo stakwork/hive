@@ -33,7 +33,7 @@ const {
   mockEnsureStrutDelegation,
   mockEnsureStrutActorSecrets,
   mockHandler,
-  mockLandHandler,
+  mockSystemMapHandler,
   mockDecrypt,
 } = vi.hoisted(() => ({
   mockStrutRun: {
@@ -48,7 +48,7 @@ const {
   mockEnsureStrutDelegation: vi.fn(),
   mockEnsureStrutActorSecrets: vi.fn(),
   mockHandler: vi.fn(),
-  mockLandHandler: vi.fn(),
+  mockSystemMapHandler: vi.fn(),
   mockDecrypt: vi.fn((_f: string, v: string) => `dec(${v})`),
 }));
 
@@ -63,8 +63,8 @@ vi.mock("@/services/bifrost/strut-delegation", () => ({
   strutLabBaseUrl: (u: string) => `${u.replace("/api", ":3355")}/lab`,
 }));
 vi.mock("@/services/strut-actor-secret", () => ({ ensureStrutActorSecrets: mockEnsureStrutActorSecrets }));
-vi.mock("@/services/strut-runs/code-change-propose", () => ({ handleCodeChangeProposeSettled: mockHandler }));
-vi.mock("@/services/strut-runs/code-change-land", () => ({ handleCodeChangeLandSettled: mockLandHandler }));
+vi.mock("@/services/strut-runs/job-turn", () => ({ handleJobTurnSettled: mockHandler }));
+vi.mock("@/services/strut-runs/system-map", () => ({ handleSystemMapSettled: mockSystemMapHandler }));
 vi.mock("@/lib/encryption", () => ({ EncryptionService: { getInstance: () => ({ decryptField: mockDecrypt }) } }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
@@ -105,8 +105,8 @@ function row(over: Record<string, unknown> = {}) {
     workspaceId: "ws-1",
     swarmId: "swarm-1",
     userId: "user-1",
-    kind: "code_change_propose",
-    workflow: "code-change-propose",
+    kind: "job_turn",
+    workflow: "job",
     strutRunId: "1790000000000",
     status: "PENDING",
     input: { repo: "https://github.com/acme/widgets", prompt: "p" },
@@ -124,10 +124,10 @@ function row(over: Record<string, unknown> = {}) {
 const dispatchArgs = {
   workspaceId: "ws-1",
   userId: "user-1",
-  kind: "code_change_propose",
-  workflow: "code-change-propose",
+  kind: "job_turn",
+  workflow: "job",
   input: { repo: "https://github.com/acme/widgets", prompt: "fix it" },
-  purpose: "code_change" as const,
+  purpose: "job" as const,
   publicBaseUrl: "https://hive.example.com",
   conversationId: "conv-1",
   proposalId: "prop-1",
@@ -154,15 +154,15 @@ describe("dispatchStrutRun", () => {
 
     const out = await dispatchStrutRun(dispatchArgs);
 
-    expect(mockResolveStrutTarget).toHaveBeenCalledWith({ purpose: "code_change", userId: "user-1", workspaceId: "ws-1" });
+    expect(mockResolveStrutTarget).toHaveBeenCalledWith({ purpose: "job", userId: "user-1", workspaceId: "ws-1" });
 
     const created = mockStrutRun.create.mock.calls[0][0].data;
     expect(created).toMatchObject({
       workspaceId: "ws-1",
       swarmId: "swarm-1",
       userId: "user-1",
-      kind: "code_change_propose",
-      workflow: "code-change-propose",
+      kind: "job_turn",
+      workflow: "job",
       input: dispatchArgs.input,
       conversationId: "conv-1",
       proposalId: "prop-1",
@@ -184,7 +184,7 @@ describe("dispatchStrutRun", () => {
     expect(mockEnsureStrutActorSecrets.mock.invocationCallOrder[0]).toBeLessThan(mockFetch.mock.invocationCallOrder[0]);
 
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://acme.sphinx.chat:3355/lab/workflows/code-change-propose/run");
+    expect(url).toBe("https://acme.sphinx.chat:3355/lab/workflows/job/run");
     expect(init.method).toBe("POST");
     const headers = init.headers as Record<string, string>;
     expect(headers["x-api-token"]).toBe("swarm-key");
@@ -230,7 +230,7 @@ describe("dispatchStrutRun", () => {
     expect(mockStrutRun.updateMany.mock.calls[0][0].data).toMatchObject({ status: "ERROR", error: "strut_http_404: no such workflow" });
   });
 
-  it("a job goes on the LAUNCH beside input (never inside it) and on the row as jobId", async () => {
+  it("a job and its title go on the LAUNCH beside input (never inside it); the job on the row as jobId", async () => {
     mockFetch.mockResolvedValue(json(202, { runId: "1790000000000", callback: true }));
     const job = "6f1c0d3e-1111-4222-8333-444455556666";
     await dispatchStrutRun({
@@ -242,6 +242,7 @@ describe("dispatchStrutRun", () => {
       proposalId: undefined,
       actorSecrets: undefined,
       job,
+      title: "Dark mode plan",
     });
     expect(mockResolveStrutTarget).toHaveBeenCalledWith({ purpose: "job", userId: "user-1", workspaceId: "ws-1" });
     const created = mockStrutRun.create.mock.calls[0][0].data;
@@ -250,14 +251,18 @@ describe("dispatchStrutRun", () => {
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://acme.sphinx.chat:3355/lab/workflows/job/run");
     const body = JSON.parse(init.body as string);
-    expect(body).toEqual({ input: { prompt: "Plan dark mode", title: "Dark mode plan" }, callback: { url: expect.any(String) }, job });
+    // `title` names the JOB on strut (its index, its graph node): a launch
+    // field like `job`, never inside `input`, which the workflow's input
+    // block would strip.
+    expect(body).toEqual({ input: { prompt: "Plan dark mode", title: "Dark mode plan" }, callback: { url: expect.any(String) }, job, title: "Dark mode plan" });
   });
 
-  it("without a job the launch body and the row carry none", async () => {
+  it("without a job the launch body and the row carry none — and no title, which names a job", async () => {
     mockFetch.mockResolvedValue(json(202, { runId: "1790000000000", callback: true }));
-    await dispatchStrutRun(dispatchArgs);
+    await dispatchStrutRun({ ...dispatchArgs, title: "Stray" });
     const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
     expect(body.job).toBeUndefined();
+    expect(body.title).toBeUndefined();
     expect(mockStrutRun.create.mock.calls[0][0].data.jobId).toBeUndefined();
   });
 
@@ -281,7 +286,7 @@ describe("dispatchStrutRun", () => {
     // Let the fire-and-forget cancel land.
     await new Promise((r) => setTimeout(r, 0));
     expect(mockFetch.mock.calls[1][0]).toBe(
-      "https://acme.sphinx.chat:3355/lab/workflows/code-change-propose/runs/1790000000000/cancel",
+      "https://acme.sphinx.chat:3355/lab/workflows/job/runs/1790000000000/cancel",
     );
     expect(mockStrutRun.update).not.toHaveBeenCalled();
   });
@@ -301,7 +306,7 @@ describe("dispatchStrutRun", () => {
     mockFetch.mockResolvedValue(json(202, { runId: "1790000000000", callback: true }));
     const input = vi.fn((runId: string) => ({ repo: "https://github.com/acme/widgets", branch: `jamie/abc-${runId.slice(-6)}` }));
 
-    await dispatchStrutRun({ ...dispatchArgs, kind: "code_change_land", workflow: "code-change-land", input });
+    await dispatchStrutRun({ ...dispatchArgs, kind: "system_map", workflow: "swarm-systemmap-schema-sync", input });
 
     expect(input).toHaveBeenCalledWith("row-1");
     expect(mockStrutRun.create.mock.calls[0][0].data.input).toBe(Prisma.DbNull);
@@ -366,11 +371,11 @@ describe("completeStrutRun", () => {
     expect(await completeStrutRun({ id: "row-1", tokenHash: HASH }, { status: "success" })).toBe("retry");
   });
 
-  it("code_change_land is a registered kind: its own handler runs on the settled row", async () => {
-    const settled = row({ kind: "code_change_land", workflow: "code-change-land", status: "SUCCESS", output: { url: "u" } });
+  it("each kind runs its own handler: a system_map row never reaches the job handler", async () => {
+    const settled = row({ kind: "system_map", workflow: "swarm-systemmap-schema-sync", status: "SUCCESS", output: { url: "u" } });
     mockStrutRun.findUnique.mockResolvedValue(settled);
     expect(await completeStrutRun({ id: "row-1", tokenHash: HASH }, { status: "success", output: { url: "u" } })).toBe("claimed");
-    expect(mockLandHandler).toHaveBeenCalledWith(settled, undefined);
+    expect(mockSystemMapHandler).toHaveBeenCalledWith(settled, undefined);
     expect(mockHandler).not.toHaveBeenCalled();
   });
 
@@ -392,7 +397,7 @@ describe("cancelStrutRun / cancelPendingStrutRunsForConversation", () => {
     });
     expect(mockResolveStrutTarget).not.toHaveBeenCalled();
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://acme.sphinx.chat:3355/lab/workflows/code-change-propose/runs/1790000000000/cancel");
+    expect(url).toBe("https://acme.sphinx.chat:3355/lab/workflows/job/runs/1790000000000/cancel");
     expect((init.headers as Record<string, string>)["x-api-token"]).toBe("dec(enc)");
   });
 
@@ -406,13 +411,13 @@ describe("cancelStrutRun / cancelPendingStrutRunsForConversation", () => {
 
   it("cancels every PENDING run of a conversation and reports the rows", async () => {
     mockStrutRun.findMany.mockResolvedValue([
-      { id: "row-1", kind: "code_change_propose", swarmId: "swarm-1", workflow: "code-change-propose", strutRunId: "1" },
-      { id: "row-2", kind: "code_change_propose", swarmId: "swarm-1", workflow: "code-change-propose", strutRunId: null },
+      { id: "row-1", kind: "job_turn", swarmId: "swarm-1", workflow: "job", strutRunId: "1" },
+      { id: "row-2", kind: "job_turn", swarmId: "swarm-1", workflow: "job", strutRunId: null },
     ]);
     mockFetch.mockResolvedValue(json(200, { ok: true }));
     const out = await cancelPendingStrutRunsForConversation("conv-1");
     expect(mockStrutRun.findMany.mock.calls[0][0].where).toEqual({ conversationId: "conv-1", status: "PENDING" });
-    expect(out).toEqual({ rows: [{ id: "row-1", kind: "code_change_propose" }, { id: "row-2", kind: "code_change_propose" }], cancelled: 1 });
+    expect(out).toEqual({ rows: [{ id: "row-1", kind: "job_turn" }, { id: "row-2", kind: "job_turn" }], cancelled: 1 });
   });
 });
 
@@ -433,7 +438,7 @@ describe("probeStrutRun / reconcileStrutRuns", () => {
       completion: { status: "error", output: undefined, error: "boom", durationMs: 12 },
     });
     expect(mockFetch.mock.calls[0][0]).toBe(
-      "https://acme.sphinx.chat:3355/lab/workflows/code-change-propose/runs/1790000000000",
+      "https://acme.sphinx.chat:3355/lab/workflows/job/runs/1790000000000",
     );
   });
 

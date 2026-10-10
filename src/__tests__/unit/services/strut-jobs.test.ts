@@ -72,8 +72,11 @@ describe("launchJobTurn", () => {
       kind: "job_turn",
       workflow: "job",
       purpose: "job",
-      input: { prompt: "Split step 2", title: "Dark mode plan", workspace: "ws-id" },
+      input: { prompt: "Split step 2", title: "Dark mode plan", workspace: "acme" },
       job: JOB,
+      // The job's name on the launch (strut plans/job-index.md §1), beside
+      // the copy on `input` the reply header reads.
+      title: "Dark mode plan",
       publicBaseUrl: "https://hive.example.com",
       conversationId: "conv-1",
       actorSecrets: { GITHUB_TOKEN: "ghp_test" },

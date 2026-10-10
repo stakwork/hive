@@ -3,10 +3,10 @@ import { buildProtectJamieSeed, chooseProtectJamieTool } from "@/lib/protect/jam
 import type { ProtectFinding } from "@/types/protect";
 
 vi.mock("@/lib/ai/capabilityGates", () => ({
-  isCodeChangeCapabilityEnabledForOrg: vi.fn(),
+  isStrutCapabilityEnabledForOrg: vi.fn(),
 }));
 
-import { isCodeChangeCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
+import { isStrutCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 
 function finding(overrides: Partial<ProtectFinding> = {}): ProtectFinding {
   return {
@@ -30,18 +30,18 @@ function finding(overrides: Partial<ProtectFinding> = {}): ProtectFinding {
 }
 
 describe("chooseProtectJamieTool", () => {
-  it("seeds propose_feature when the org code-change gate is off", async () => {
-    vi.mocked(isCodeChangeCapabilityEnabledForOrg).mockResolvedValue(false);
+  it("seeds propose_feature when the org strut gate is off", async () => {
+    vi.mocked(isStrutCapabilityEnabledForOrg).mockResolvedValue(false);
     await expect(chooseProtectJamieTool(finding(), "org-1")).resolves.toBe("propose_feature");
   });
 
-  it("seeds propose_code_change for a small single-file fix when the gate is on", async () => {
-    vi.mocked(isCodeChangeCapabilityEnabledForOrg).mockResolvedValue(true);
-    await expect(chooseProtectJamieTool(finding(), "org-1")).resolves.toBe("propose_code_change");
+  it("seeds start_job for a small single-file fix when the gate is on", async () => {
+    vi.mocked(isStrutCapabilityEnabledForOrg).mockResolvedValue(true);
+    await expect(chooseProtectJamieTool(finding(), "org-1")).resolves.toBe("start_job");
   });
 
   it("seeds propose_feature for multi-file or ambiguous findings", async () => {
-    vi.mocked(isCodeChangeCapabilityEnabledForOrg).mockResolvedValue(true);
+    vi.mocked(isStrutCapabilityEnabledForOrg).mockResolvedValue(true);
     await expect(
       chooseProtectJamieTool(
         finding({
@@ -66,12 +66,12 @@ describe("buildProtectJamieSeed", () => {
     expect(seed).toContain("propose_feature");
   });
 
-  it("includes workspace slug and repository URL and tells the tool to pass both", () => {
-    const seed = buildProtectJamieSeed(finding(), "propose_code_change", "acme-hive");
+  it("tells a job to take the workspace and name the repository in its prompt", () => {
+    const seed = buildProtectJamieSeed(finding(), "start_job", "acme-hive");
     expect(seed).toContain("Workspace: acme-hive");
     expect(seed).toContain("Repository: https://github.com/acme/hive");
-    expect(seed).toContain("propose_code_change");
-    expect(seed).toContain('workspaceSlug "acme-hive"');
-    expect(seed).toContain('repositoryUrl "https://github.com/acme/hive"');
+    expect(seed).toContain("start_job");
+    expect(seed).toContain('workspace "acme-hive"');
+    expect(seed).toContain("name the repository https://github.com/acme/hive");
   });
 });

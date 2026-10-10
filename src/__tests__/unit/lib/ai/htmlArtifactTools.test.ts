@@ -82,7 +82,6 @@ vi.mock("@/lib/ai/conceptTools", () => ({ buildConceptTools: vi.fn(() => ({})) }
 vi.mock("@/lib/ai/workflowExplorerTools", () => ({
   buildWorkflowExplorerTools: vi.fn(() => ({})),
 }));
-vi.mock("@/lib/ai/codeChangeTools", () => ({ buildCodeChangeTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/constants/prompt", () => ({
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
   getPlannerCapabilitySnippet: vi.fn(() => ""),
@@ -116,7 +115,6 @@ vi.mock("@/lib/proposals/types", () => ({
 vi.mock("@/lib/ai/capabilityGates", () => ({
   isPromptsCapabilityEnabledForOrg: vi.fn(async () => false),
   isGraphWriteCapabilityEnabledForOrg: vi.fn(async () => false),
-  isCodeChangeCapabilityEnabledForOrg: vi.fn(async () => false),
   isStrutCapabilityEnabledForOrg: vi.fn(async () => false),
 }));
 

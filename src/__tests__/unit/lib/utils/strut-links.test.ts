@@ -27,7 +27,7 @@ function readAsStrutView(path: string): Record<string, string> | null {
 
 describe("strutRunDeepLink", () => {
   it("is strut's own query for a run: wf + run", () => {
-    expect(strutRunDeepLink("code-change-propose", "1790000000000")).toBe("wf=code-change-propose&run=1790000000000");
+    expect(strutRunDeepLink("swarm-systemmap-schema-sync", "1790000000000")).toBe("wf=swarm-systemmap-schema-sync&run=1790000000000");
   });
 
   it("escapes a run id that would otherwise break the query", () => {
@@ -52,8 +52,8 @@ describe("strutChatDeepLink / strutWorkflowDeepLink", () => {
 
 describe("strutViewPath", () => {
   it("packs the deep link as the single ?strut= param on the org strut view", () => {
-    expect(strutViewPath("acme", "wf=code-change-propose&run=1790000000000")).toBe(
-      "/org/acme/strut?strut=wf%3Dcode-change-propose%26run%3D1790000000000",
+    expect(strutViewPath("acme", "wf=swarm-systemmap-schema-sync&run=1790000000000")).toBe(
+      "/org/acme/strut?strut=wf%3Dswarm-systemmap-schema-sync%26run%3D1790000000000",
     );
   });
 
@@ -74,7 +74,7 @@ describe("strutViewPath", () => {
   });
 
   it("round-trips through the view's reader, hostile run id included", () => {
-    const wf = "code-change-propose";
+    const wf = "swarm-systemmap-schema-sync";
     const run = "17&run=evil=1 #x+y";
     const path = strutViewPath("acme", strutRunDeepLink(wf, run));
 

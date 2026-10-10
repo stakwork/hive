@@ -94,9 +94,9 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
 
   // The user's GitHub token, pushed to strut as THIS actor's secret before
   // the launch (`dispatchStrutRun` → `ensureStrutActorSecrets`: idempotent,
-  // never in `input`, never logged) — the same push `propose_code_change`
-  // makes. Every turn, whatever it does: a turn that pushes from a pod
-  // pushes as the user, and push-before-dispatch is what handles rotation.
+  // never in `input`, never logged). Every turn, whatever it does: a turn
+  // that pushes from a pod pushes as the user, and push-before-dispatch is
+  // what handles rotation.
   // No token → nothing pushed; a push fails inside the run, honestly.
   let pat: string | null = null;
   try {
@@ -114,14 +114,20 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
       kind: JOB_TURN_KIND,
       workflow: JOB_WORKFLOW,
       purpose: "job",
-      // `title` rides on the input for the reply's header (strut's `job`
-      // workflow strips what its input block does not declare); `workspace`
-      // is the hive workspace the job belongs to — the id a pod is claimed
-      // for (strut plans/jobs.md §5): the hub strut serves every workspace
-      // of the org, so the job says which. Every turn, since every launch
+      // `title` goes on the LAUNCH beside `job` (strut plans/job-index.md
+      // §1): strut names the job by it — its index and its graph node —
+      // never the run; the `job` workflow's input block strips what it
+      // does not declare, so it still rides on the input too, for the
+      // reply's header. `workspace` is the SLUG of the workspace whose
+      // swarm runs this strut (the org default): the job's home. Every
+      // other workspace of the org is a peer of it, registered by slug
+      // (`strut-peers.ts`), so `@<slug>` names one the same way; a pod is
+      // claimed for whichever workspace's code is changing, by slug (the
+      // pod routes take a slug or an id). Every turn, since every launch
       // is validated on its own.
-      input: { prompt, title, workspace: strut.workspaceId },
+      input: { prompt, title, workspace: strut.workspaceSlug },
       job: jobId,
+      title,
       publicBaseUrl,
       conversationId,
       actorSecrets: { GITHUB_TOKEN: pat },
