@@ -4,7 +4,10 @@
  *     card counts it — from the run's log alone, never the graph;
  *   - a peer workspace's graph (nodes a `strut/run-workflow` step folded in)
  *     is read only for a member of that workspace, in the run's org, from
- *     its own swarm.
+ *     its own swarm;
+ *   - a launching call's child run is found from the logs alone, walking
+ *     down from the row's run, read from the swarm it ran on, and its calls
+ *     put under the launching call's path.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -28,7 +31,12 @@ vi.mock("@/lib/strut-run-graph/hydrate", async (importOriginal) => ({
   swarmCypherRunner: ({ name }: { name: string }) => runners[name],
 }));
 
-import { countStrutRunGraph, readStrutRunGraph, readStrutRunGraphNode } from "@/services/strut-runs/run-graph";
+import {
+  countStrutRunGraph,
+  readStrutRunGraph,
+  readStrutRunGraphChild,
+  readStrutRunGraphNode,
+} from "@/services/strut-runs/run-graph";
 
 const ROW = { id: "row-1", swarmId: "swarm-1", workflow: "job", strutRunId: "1790000000000" };
 
@@ -136,5 +144,125 @@ describe("a peer workspace's graph", () => {
       { slug: "apps", read: true },
       { slug: "secret", read: false, reason: "you are not a member of @secret" },
     ]);
+  });
+});
+
+describe("a launching call's child run", () => {
+  const RUN = { id: "row-1", workspaceId: "ws-org", swarmId: "swarm-org", workflow: "job", strutRunId: "100" };
+  const start = (path: string, stepType: string, input: unknown) => ({ type: "step.start", path, stepType, input });
+  const endWith = (path: string, stepType: string, nodes: unknown[], output: unknown) => ({
+    type: "step.end",
+    path,
+    stepType,
+    nodes,
+    output,
+  });
+  /** Each run's log, by swarm / workflow / run id. */
+  const LOGS: Record<string, unknown[]> = {
+    "swarm-org/job/100": [
+      start("job/work/002-meta_run_workflow", "tool:meta_run_workflow", { name: "explore" }),
+      endWith("job/work/002-meta_run_workflow", "tool:meta_run_workflow", [{ ref_id: "a" }], { runId: "200" }),
+      start("job/work/004-strut_run_workflow", "tool:strut_run_workflow", { peer: "apps", workflow: "explore" }),
+      endWith("job/work/004-strut_run_workflow", "tool:strut_run_workflow", [{ ref_id: "x", peer: "apps" }], {
+        peer: "apps",
+        workflow: "explore",
+        runId: "300",
+      }),
+    ],
+    "swarm-org/explore/200": [
+      end("explore/explore/001-graph_graph_get", "tool:graph_graph_get", [{ ref_id: "a" }]),
+      start("explore/explore/002-meta_run_workflow", "tool:meta_run_workflow", { name: "deep" }),
+      endWith(
+        "explore/explore/002-meta_run_workflow",
+        "tool:meta_run_workflow",
+        [{ ref_id: "d" }],
+        '{"runId":"201","sta',
+      ),
+    ],
+    "swarm-org/deep/201": [end("deep/deep/001-graph_graph_get", "tool:graph_graph_get", [{ ref_id: "d" }])],
+    "swarm-apps/explore/300": [
+      end("explore/explore/001-graph_graph_search", "tool:graph_graph_get", [{ ref_id: "x" }]),
+    ],
+  };
+  const member = vi.fn(async (slug: string) =>
+    slug === "apps" ? { workspaceId: "ws-apps" } : { reason: `you are not a member of @${slug}` },
+  );
+
+  beforeEach(() => {
+    mockEvents.mockImplementation(
+      async (row: { swarmId: string; workflow: string; strutRunId: string }) =>
+        LOGS[`${row.swarmId}/${row.workflow}/${row.strutRunId}`] ?? null,
+    );
+    mockWorkspaces.mockResolvedValue([
+      { id: "ws-org", sourceControlOrgId: "org-1", swarm: { id: "swarm-org" } },
+      { id: "ws-apps", sourceControlOrgId: "org-1", swarm: { id: "swarm-apps" } },
+    ]);
+  });
+
+  it("reads a local child from the run's own swarm, its calls under the launching call", async () => {
+    const read = await readStrutRunGraphChild(RUN, "job/work/002-meta_run_workflow", member);
+    expect(read).toEqual({
+      calls: [
+        expect.objectContaining({ path: "job/work/002-meta_run_workflow/explore/explore/001-graph_graph_get" }),
+        expect.objectContaining({
+          path: "job/work/002-meta_run_workflow/explore/explore/002-meta_run_workflow",
+          child: { workflow: "deep" },
+        }),
+      ],
+    });
+    expect(mockEvents).toHaveBeenLastCalledWith({
+      id: "row-1",
+      swarmId: "swarm-org",
+      workflow: "explore",
+      strutRunId: "200",
+    });
+  });
+
+  it("walks down to a grandchild through the child's own log", async () => {
+    const read = await readStrutRunGraphChild(
+      RUN,
+      "job/work/002-meta_run_workflow/explore/explore/002-meta_run_workflow",
+      member,
+    );
+    expect(read).toEqual({
+      calls: [
+        expect.objectContaining({
+          path: "job/work/002-meta_run_workflow/explore/explore/002-meta_run_workflow/deep/deep/001-graph_graph_get",
+          nodes: [{ ref_id: "d" }],
+        }),
+      ],
+    });
+  });
+
+  it("reads a peer's child from the peer's swarm for a member, its refs in the peer's graph", async () => {
+    const read = await readStrutRunGraphChild(RUN, "job/work/004-strut_run_workflow", member);
+    expect(read).toEqual({
+      calls: [
+        expect.objectContaining({
+          path: "job/work/004-strut_run_workflow/explore/explore/001-graph_graph_search",
+          nodes: [{ ref_id: "@apps:x", peer: "apps" }],
+        }),
+      ],
+    });
+    expect(mockEvents).toHaveBeenLastCalledWith({
+      id: "row-1",
+      swarmId: "swarm-apps",
+      workflow: "explore",
+      strutRunId: "300",
+    });
+  });
+
+  it("is denied a peer's child for a non-member, and finds nothing where no run was launched", async () => {
+    const outsider = vi.fn(async (slug: string) => ({ reason: `you are not a member of @${slug}` }));
+    expect(await readStrutRunGraphChild(RUN, "job/work/004-strut_run_workflow", outsider)).toEqual({
+      denied: "you are not a member of @apps",
+    });
+    expect(await readStrutRunGraphChild(RUN, "job/work/003-graph_graph_get", member)).toEqual({ notFound: true });
+    expect(await readStrutRunGraphChild(RUN, "job/work/002-meta_run_workflowX", member)).toEqual({ notFound: true });
+  });
+
+  it("says so when a log cannot be read", async () => {
+    LOGS["swarm-org/explore/200"] = undefined as unknown as unknown[];
+    expect(await readStrutRunGraphChild(RUN, "job/work/002-meta_run_workflow", member)).toEqual({ unread: true });
   });
 });
