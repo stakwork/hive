@@ -192,6 +192,15 @@ function RunCard({
           {run.durationMs !== null && (
             <span className="text-muted-foreground">· {formatDuration(run.durationMs)}</span>
           )}
+          {run.cweIds && (
+            <span
+              className="max-w-md truncate font-mono text-xs text-muted-foreground"
+              title={run.cweIds.join(", ")}
+              data-testid="system-map-run-cwes"
+            >
+              · {run.cweIds.length > 3 ? `${run.cweIds.slice(0, 3).join(", ")} +${run.cweIds.length - 3}` : run.cweIds.join(", ")}
+            </span>
+          )}
           {run.strutUrl && (
             <Link
               href={run.strutUrl}
