@@ -75,11 +75,11 @@ async function peerGraphFor(row: Pick<GraphRow, "workspaceId">, slug: string, ac
 }
 
 /**
- * The run's calls, each file an agent viewed in a repository the run checked
- * out among them as a read of the graph's `File` node for it — resolved
- * against `run`, the graph the events' strut uses. A file the graph does not
- * hold is no node, so its view is no call; a graph that does not answer
- * leaves the file views out (best effort, like the rest of the trace).
+ * The run's calls, each file an agent viewed or summarized in a repository
+ * the run checked out among them as a read of the graph's `File` node for it
+ * — resolved against `run`, the graph the events' strut uses. A file the
+ * graph does not hold is no node, so its read is no call; a graph that does
+ * not answer leaves the file reads out (best effort, like the rest of the trace).
  */
 async function callsWithFileReads(
   events: unknown[],
