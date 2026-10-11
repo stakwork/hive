@@ -39,7 +39,7 @@ const eslintConfig = [
       "@next/next/no-assign-module-variable": "off",
       "@typescript-eslint/ban-ts-comment": "off",
       "@typescript-eslint/no-unused-expressions": "off",
-      "react-hooks/rules-of-hooks": "off",
+      "react-hooks/rules-of-hooks": "error",
       "react/no-unescaped-entities": "off",
       "prefer-const": "off",
       "@typescript-eslint/no-empty-object-type": "off",
