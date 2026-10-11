@@ -59,6 +59,50 @@ export const SYSTEM_MAP_WORKFLOWS = {
 } as const;
 export type SystemMapWorkflowKey = keyof typeof SYSTEM_MAP_WORKFLOWS;
 
+/**
+ * The workflows a run can be scoped to some CWEs, and how each takes them
+ * (both optional — absent means every CWE):
+ *   cwe_check        `cwe_ids: ["CWE-79", "CWE-89"]`, up to 50
+ *   security_review  `cwe_id: "CWE-79"`, exactly one
+ */
+export const CWE_SCOPED_WORKFLOWS: Partial<Record<SystemMapWorkflowKey, { max: number }>> = {
+  cwe_check: { max: 50 },
+  security_review: { max: 1 },
+};
+const CWE_ID_RE = /^CWE-\d{1,5}$/;
+
+/**
+ * A request's `cweIds` for workflow `key`: undefined when absent, the
+ * deduplicated ids when valid, or an error message when the workflow takes
+ * no CWEs, an id is not `CWE-<n>`, or there are too many.
+ */
+export function parseCweIds(key: SystemMapWorkflowKey, value: unknown): string[] | undefined | { error: string } {
+  if (value === undefined) return undefined;
+  const scope = CWE_SCOPED_WORKFLOWS[key];
+  if (!scope) return { error: "This workflow does not take cweIds" };
+  if (!Array.isArray(value) || !value.every((id): id is string => typeof id === "string" && CWE_ID_RE.test(id))) {
+    return { error: 'cweIds must be ids like "CWE-79"' };
+  }
+  const ids = [...new Set(value)];
+  if (ids.length === 0 || ids.length > scope.max) {
+    return { error: scope.max === 1 ? "This workflow takes exactly one CWE" : `cweIds must hold 1–${scope.max} ids` };
+  }
+  return ids;
+}
+
+/** The workflow input fields for `cweIds`: `cwe_id` for a one-CWE workflow, `cwe_ids` otherwise. */
+function cweInput(key: SystemMapWorkflowKey, cweIds: string[] | undefined): Record<string, unknown> {
+  if (!cweIds?.length) return {};
+  return CWE_SCOPED_WORKFLOWS[key]?.max === 1 ? { cwe_id: cweIds[0] } : { cwe_ids: cweIds };
+}
+
+function cweIdsFromInput(input: unknown): string[] | null {
+  if (!input || typeof input !== "object") return null;
+  const { cwe_ids: ids, cwe_id: id } = input as { cwe_ids?: unknown; cwe_id?: unknown };
+  if (Array.isArray(ids) && ids.length > 0 && ids.every((x) => typeof x === "string")) return ids as string[];
+  return typeof id === "string" && id ? [id] : null;
+}
+
 export function isSystemMapWorkflowKey(value: unknown): value is SystemMapWorkflowKey {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(SYSTEM_MAP_WORKFLOWS, value);
 }
@@ -118,6 +162,7 @@ export function serializeSystemMapRun(row: StrutRunRow, orgGithubLogin: string |
       orgGithubLogin && row.strutRunId
         ? strutViewPath(orgGithubLogin, strutRunDeepLink(row.workflow, row.strutRunId))
         : null,
+    cweIds: cweIdsFromInput(row.input),
   };
 }
 
@@ -193,6 +238,8 @@ export interface LaunchSystemMapRunArgs {
   publicBaseUrl: string;
   /** Which workflow; defaults to the schema sync. */
   key?: SystemMapWorkflowKey;
+  /** Scope a CWE workflow (`CWE_SCOPED_WORKFLOWS`) to these CWEs; validate with `parseCweIds`. */
+  cweIds?: string[];
 }
 
 /**
@@ -220,6 +267,7 @@ export async function launchSystemMapRun(args: LaunchSystemMapRunArgs): Promise<
       workspace: args.workspaceSlug,
       swarm_url: transformSwarmUrlToRepo2Graph(swarm.swarmUrl),
       swarm_secret_alias: swarm.swarmSecretAlias,
+      ...cweInput(args.key ?? "schema", args.cweIds),
     },
     publicBaseUrl: args.publicBaseUrl,
   });

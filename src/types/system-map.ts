@@ -14,6 +14,8 @@ export interface SystemMapRun {
   settledAt: string | null;
   /** Hive link to the run in the org strut view; null until the launch returned. */
   strutUrl: string | null;
+  /** The CWEs the run was scoped to (`input.cwe_ids`); null when it covered everything. */
+  cweIds: string[] | null;
 }
 
 export type SystemMapWorkflowKey = "schema" | "materialize" | "cwe_check" | "cloud_links" | "security_review";
@@ -93,3 +95,63 @@ export type SystemMapEndpointLinksResponse =
       truncated: boolean;
     }
   | { status: "error"; links: []; endpoints: []; truncated: false; error: string };
+
+export type CweMappingUsage = "Allowed" | "Allowed-with-Review" | "Discouraged" | "Prohibited" | "Unknown";
+
+/** A CWE node from the graph's `infosec` catalogue. */
+export interface CweEntry {
+  refId: string;
+  /** `CWE-862` */
+  id: string;
+  number: number;
+  name: string;
+  description: string;
+  /** `weakness`, `category` or `view`. */
+  kind: string;
+  /** Pillar, Class, Base, Variant or Compound. */
+  abstraction: string | null;
+  status: string | null;
+  usage: CweMappingUsage;
+  usageRationale: string | null;
+  likelihood: string | null;
+  url: string | null;
+}
+
+/** A usable descendant of a list member MITRE says not to map to directly. */
+export interface CweUsableChild extends CweEntry {
+  /** Ids of the unusable CWEs between the list member and this child (exclusive of both). */
+  via: string[];
+}
+
+export interface CweListMember extends CweEntry {
+  /** The OWASP category the weakness was reached through; null for a direct member. */
+  category: { id: string; name: string } | null;
+  /** Usable PARENT_OF descendants (three levels), for a member that is not usable itself. */
+  usableChildren: CweUsableChild[];
+  /** Why the children walk failed for this member, if it did. */
+  childrenError: string | null;
+}
+
+export type CweListResponse =
+  | { status: "ready"; view: { id: string; name: string }; members: CweListMember[] }
+  | { status: "error"; error: string };
+
+/** A catalogue node linked from a CWE (template, mitigation, detection method, platform). */
+export interface CweRelatedNode {
+  refId: string;
+  nodeType: string;
+  name: string;
+  description: string | null;
+  /** Short facts from the node and its edge: phases, effectiveness, prevalence, lifecycle… */
+  details: string[];
+}
+
+export type CweRelatedResponse =
+  | {
+      status: "ready";
+      templates: CweRelatedNode[];
+      mitigations: CweRelatedNode[];
+      detection: CweRelatedNode[];
+      platforms: CweRelatedNode[];
+    }
+  | { status: "error"; error: string };
