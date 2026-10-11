@@ -16,8 +16,9 @@
  *     and is a call even with no nodes of its own (its child may have some),
  *     the run id only server-side, read from whole or truncated JSON; a
  *     child's calls go under a prefix, its untagged refs in its peer's graph;
- *   - with `fileReads`, a file an agent viewed in a repository the run
- *     checked out is a read call whose file is `owner/repo/<path>`.
+ *   - with `fileReads`, a file an agent viewed (or summarized with
+ *     `file_summary`) in a repository the run checked out is a read call
+ *     whose file is `owner/repo/<path>`.
  */
 
 import { describe, it, expect } from "vitest";
@@ -377,6 +378,25 @@ describe("file reads", () => {
         nodes: [],
       }),
       expect.objectContaining({ query: { file: "stakwork/hive/src/app/api/auth/sphinx/token/route.ts" } }),
+    ]);
+  });
+
+  it("reads a summarized file too, by the path file_summary was given", () => {
+    const { calls, fileReads } = projectWithLaunches(
+      [
+        checkout("explore/checkouts#0", `${DIR}/hive`, "stakwork/hive"),
+        start("explore/explore/001-file_summary", "tool:file_summary", { file_path: "hive/src/lib/githubApp.ts" }),
+        end("explore/explore/001-file_summary", "tool:file_summary", { output: "…" }),
+        start("explore/explore/002-file_summary", "tool:file_summary", { file_path: "elsewhere/x.ts" }),
+        end("explore/explore/002-file_summary", "tool:file_summary", { output: "…" }),
+        start("wf/summary", "file_summary", { file_path: "hive/src/y.ts" }),
+        end("wf/summary", "file_summary", { output: "…" }),
+      ],
+      { fileReads: true },
+    );
+    expect([...fileReads]).toEqual([["explore/explore/001-file_summary", "stakwork/hive/src/lib/githubApp.ts"]]);
+    expect(calls).toEqual([
+      expect.objectContaining({ tool: "file_summary", by: "agent", access: "read", query: { file: "stakwork/hive/src/lib/githubApp.ts" } }),
     ]);
   });
 

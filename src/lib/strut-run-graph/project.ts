@@ -164,15 +164,24 @@ export interface ProjectOptions {
   /** The peer workspace whose strut ran these events: an untagged ref is in its graph. */
   peer?: string;
   /**
-   * Also keep each file an agent VIEWED in a repository the run checked out,
+   * Also keep each file an agent READ in a repository the run checked out,
    * as a read call with no nodes yet and its `owner/repo/<path>` in
    * `fileReads` — for the server to resolve to the graph's `File` node.
    */
   fileReads?: boolean;
 }
 
-/** The agent's file tool (strut's `str_replace_based_edit_tool`): a `view` is a read of that file. */
-const FILE_TOOL = "str_replace_based_edit_tool";
+/**
+ * The file an agent's tool call read, as the tool was given it: a `view` by
+ * strut's file tool (`str_replace_based_edit_tool`), or a `file_summary` (its
+ * structural summary of one file). Anything else reads no one file.
+ */
+function fileReadOf(tool: string, input: unknown): string | undefined {
+  if (tool === "str_replace_based_edit_tool") {
+    return fieldOf(input, "command") === "view" ? fieldOf(input, "path") : undefined;
+  }
+  return tool === "file_summary" ? fieldOf(input, "file_path") : undefined;
+}
 /** `owner/name`, as `git/checkout` reports a repository. */
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 /** A repository file as the graph names it (`File.file`): interpolated into Cypher, so only this shape is ever sent. */
@@ -191,13 +200,13 @@ function checkoutOf(output: unknown): Checkout | null {
 }
 
 /**
- * A path the file tool was given → the file as the graph names it,
+ * A path a file tool was given → the file as the graph names it,
  * `owner/repo/<path in the repository>`: absolute under a checkout's
  * directory, or relative to the agent's working directory (where a
  * checkout is one subdirectory, by its name). Null for anything else.
  */
-function repoFileOf(viewed: string, checkouts: Checkout[]): string | null {
-  const path = viewed.replace(/^\.\//, "");
+function repoFileOf(read: string, checkouts: Checkout[]): string | null {
+  const path = read.replace(/^\.\//, "");
   for (const { dir, repo } of checkouts) {
     const base = dir.slice(dir.lastIndexOf("/") + 1);
     const rest = path.startsWith(`${dir}/`)
@@ -220,7 +229,7 @@ export function projectRunGraphCalls(events: unknown, options: ProjectOptions = 
 /**
  * The calls, and for each launching call (by its path, as returned) the run
  * it started — server-side only: a run id never reaches the browser. With
- * `fileReads`, also each file-view call's file, by the call's path.
+ * `fileReads`, also each file-read call's file, by the call's path.
  */
 export function projectWithLaunches(
   events: unknown,
@@ -249,9 +258,9 @@ export function projectWithLaunches(
       if (checkout) checkouts.push(checkout);
       continue;
     }
-    if (options.fileReads && byAgent && tool === FILE_TOOL && fieldOf(start?.input, "command") === "view") {
-      const viewed = fieldOf(start?.input, "path");
-      const file = viewed ? repoFileOf(viewed, checkouts) : null;
+    const read = options.fileReads && byAgent ? fileReadOf(tool, start?.input) : undefined;
+    if (read !== undefined) {
+      const file = repoFileOf(read, checkouts);
       if (file) {
         fileReads.set(path, file);
         calls.push({
@@ -271,7 +280,7 @@ export function projectWithLaunches(
     const nodes = nodesOf(event.nodes, options.peer);
     const launch = launchOf(tool, start?.input, event.output);
     // A launch is kept with no nodes of its own: the child it opens can still
-    // have read the graph — the files its agent viewed are resolved only then.
+    // have read the graph — the files its agent read are resolved only then.
     if (nodes.length === 0 && !launch) continue;
     const search = isSearch(tool);
     if (launch) launches.set(path, launch);

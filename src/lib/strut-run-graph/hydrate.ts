@@ -301,7 +301,7 @@ export async function hydrateRunGraphAcross(
 }
 
 /**
- * The graph's `File` node for each repository file a run's agent viewed
+ * The graph's `File` node for each repository file a run's agent read
  * (`owner/repo/<path>`, as `File.file` names it): file → ref id, for those
  * the graph holds; or why the graph did not answer. A path not of the safe
  * shape is never sent.
