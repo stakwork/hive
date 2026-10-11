@@ -8,11 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { CweCheckTab } from "@/components/system-map/CweCheckTab";
+import { CweListsTab } from "@/components/system-map/CweListsTab";
 import { DomainNodesTab } from "@/components/system-map/DomainNodesTab";
 import { EndpointsTab } from "@/components/system-map/EndpointsTab";
 import { SystemMapRuns } from "@/components/system-map/SystemMapRuns";
 
-const TABS = ["overview", "materialize", "cwe-check", "cloud-links", "security-review", "nodes", "endpoints"] as const;
+const TABS = ["overview", "materialize", "cwe-check", "cloud-links", "security-review", "cwe-lists", "nodes", "endpoints"] as const;
 type SystemMapTab = (typeof TABS)[number];
 
 function parseTab(value: string | null): SystemMapTab {
@@ -56,6 +57,9 @@ function SystemMapTabs() {
         <TabsTrigger value="security-review" data-testid="system-map-tab-security-review">
           Security review workflow
         </TabsTrigger>
+        <TabsTrigger value="cwe-lists" data-testid="system-map-tab-cwe-lists">
+          CWE lists
+        </TabsTrigger>
         <TabsTrigger value="nodes" data-testid="system-map-tab-nodes">
           Domain nodes
         </TabsTrigger>
@@ -77,6 +81,11 @@ function SystemMapTabs() {
       </TabsContent>
       <TabsContent value="security-review" className="mt-4">
         <SystemMapRuns workflowKey="security_review" />
+      </TabsContent>
+      <TabsContent value="cwe-lists" className="mt-4">
+        <CweListsTab
+          onShowRuns={(workflow) => onTabChange(workflow === "cwe_check" ? "cwe-check" : "security-review")}
+        />
       </TabsContent>
       <TabsContent value="nodes" className="mt-4">
         <DomainNodesTab />
