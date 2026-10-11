@@ -15,7 +15,7 @@ import { getSystemAssigneeUser } from "@/lib/system-assignees";
 import { updateFeatureStatusFromTasks } from "./feature-status-sync";
 import { createAndSendNotification } from "@/services/notifications";
 import { saveWorkflowArtifact } from "@/services/workflow-editor";
-import { parsePRUrl, getOctokitForWorkspace, checkRepoAllowsAutoMerge } from "@/lib/github";
+import { parsePRUrl, getOctokitForWorkspace, checkRepoAllowsAutoMerge, resolveAutoMergeDefault } from "@/lib/github";
 import { AutoMergeNotAllowedError, AutoMergeCheckFailedError } from "@/lib/github/errors";
 import { logger } from "@/lib/logger";
 import { releaseTaskPod } from "@/lib/pods/utils";
@@ -244,7 +244,11 @@ export async function createTicket(
       dependsOnTaskIds: data.dependsOnTaskIds || [],
       runBuild: data.runBuild ?? true,
       runTestSuite: data.runTestSuite ?? true,
-      autoMerge: data.autoMerge ?? (data.workflowTaskType === "SKILL" ? true : false),
+      autoMerge: data.autoMerge !== undefined
+        ? data.autoMerge
+        : isWorkflowTask && data.workflowTaskType === "SKILL"
+          ? true
+          : await resolveAutoMergeDefault(userId, isWorkflowTask ? null : (data.repositoryId ?? null)),
       createdById: userId,
       updatedById: userId,
     },

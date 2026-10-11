@@ -7,6 +7,8 @@
 
 import { Octokit } from "@octokit/rest";
 import { logger } from "@/lib/logger";
+import { db } from "@/lib/db";
+import { parsePRUrl, getOctokitForWorkspace } from "@/lib/github/pr-monitor";
 
 const LOG_PREFIX = "[RepoAutoMerge]";
 
@@ -56,5 +58,80 @@ export async function checkRepoAllowsAutoMerge(
 
     logger.error(`${LOG_PREFIX} Unknown error fetching repo`, `${owner}/${repo}`, { err });
     return { allowed: false, error: "unknown" };
+  }
+}
+
+const RESOLVE_PREFIX = "[resolveAutoMergeDefault]";
+
+/**
+ * Determines whether a newly-created task should default to autoMerge: true.
+ *
+ * Returns true only when:
+ *  - The user has canvasAutonomousTurns enabled
+ *  - A repositoryId is provided
+ *  - The linked GitHub repository permits auto-merge
+ *
+ * Always fails safe — any error returns false so task creation is never blocked.
+ */
+export async function resolveAutoMergeDefault(
+  userId: string,
+  repositoryId: string | null
+): Promise<boolean> {
+  try {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { canvasAutonomousTurns: true },
+    });
+
+    if (!user?.canvasAutonomousTurns) {
+      return false;
+    }
+
+    if (!repositoryId) {
+      return false;
+    }
+
+    const repo = await db.repository.findUnique({
+      where: { id: repositoryId },
+      select: { repositoryUrl: true, allowAutoMerge: true },
+    });
+
+    if (!repo) {
+      return false;
+    }
+
+    // Cache hit — skip GitHub API call
+    if (repo.allowAutoMerge === true) {
+      return true;
+    }
+
+    const parsed = parsePRUrl(`${repo.repositoryUrl}/pull/1`);
+    if (!parsed) {
+      logger.warn(`${RESOLVE_PREFIX} Could not parse repositoryUrl`, undefined, {
+        repositoryUrl: repo.repositoryUrl,
+      });
+      return false;
+    }
+
+    const { owner, repo: repoName } = parsed;
+    const octokit = await getOctokitForWorkspace(userId, owner);
+    if (!octokit) {
+      return false;
+    }
+
+    const result = await checkRepoAllowsAutoMerge(octokit, owner, repoName);
+
+    if (result.allowed) {
+      await db.repository.update({
+        where: { id: repositoryId },
+        data: { allowAutoMerge: true },
+      });
+      return true;
+    }
+
+    return false;
+  } catch (err) {
+    logger.error(`${RESOLVE_PREFIX} Unexpected error — failing safe`, undefined, { err });
+    return false;
   }
 }
