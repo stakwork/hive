@@ -37,7 +37,7 @@ const ERROR_CONFIGS: Record<string, ErrorDisplayConfig> = {
   [WORKSPACE_ERRORS.SLUG_INVALID_LENGTH]: {
     type: 'error',
     title: 'Invalid Name Length',
-    description: 'Workspace name must be between 2 and 50 characters.',
+    description: 'Workspace name must be between 3 and 50 characters.',
   },
   [WORKSPACE_ERRORS.SLUG_RESERVED]: {
     type: 'error',
