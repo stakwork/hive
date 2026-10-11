@@ -17,6 +17,7 @@ import { logger } from "@/lib/logger";
 import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
 import { LINEAGE_EDGE_TYPE } from "./lineage";
 import { parseQualifiedRef, qualifyRef } from "./peer-ref";
+import { REPO_FILE_RE } from "./project";
 import type {
   RunGraphEdge,
   RunGraphNode,
@@ -297,6 +298,38 @@ export async function hydrateRunGraphAcross(
     truncated: home.truncated || remote.some((r) => r.truncated),
     peers: remote.map((r) => r.peer),
   };
+}
+
+/**
+ * The graph's `File` node for each repository file a run's agent viewed
+ * (`owner/repo/<path>`, as `File.file` names it): file → ref id, for those
+ * the graph holds; or why the graph did not answer. A path not of the safe
+ * shape is never sent.
+ */
+export async function resolveFileReads(
+  files: string[],
+  run: CypherRunner,
+): Promise<Map<string, string> | CypherUnread> {
+  const asked = [...new Set(files)].filter((f) => REPO_FILE_RE.test(f)).slice(0, RUN_GRAPH_MAX_NODES);
+  const found = new Map<string, string>();
+  if (asked.length === 0) return found;
+  const result = await run(
+    `WITH [${asked.map((f) => `'${f}'`).join(",")}] AS files ` +
+      `MATCH (f:File) WHERE f.file IN files RETURN f.file AS file, f.ref_id AS ref_id`,
+    ROW_LIMIT,
+  );
+  if (isUnread(result)) return result;
+  for (const row of records(result)) {
+    if (
+      typeof row.file === "string" &&
+      typeof row.ref_id === "string" &&
+      REF_ID_RE.test(row.ref_id) &&
+      !found.has(row.file)
+    ) {
+      found.set(row.file, row.ref_id);
+    }
+  }
+  return found;
 }
 
 /** Is this a ref id the graph will ever be asked about? */

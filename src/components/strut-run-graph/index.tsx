@@ -33,6 +33,7 @@ import {
   scopeCalls,
   scopeOfBranch,
   withChildCalls,
+  withChildGraph,
   type RunGraphTreeNode,
 } from "@/lib/strut-run-graph/replay";
 import { nodeText } from "@/lib/strut-run-graph/node-text";
@@ -40,6 +41,7 @@ import { parseQualifiedRef } from "@/lib/strut-run-graph/peer-ref";
 import type {
   RunGraphAccess,
   RunGraphCall,
+  RunGraphEdge,
   RunGraphNode,
   RunGraphNodeBody,
   RunGraphPeer,
@@ -68,7 +70,8 @@ function AccessIcon({ access, className }: { access: RunGraphAccess; className?:
 /** The one thing a call asked for, for its row in the tree. */
 function querySummary(call: RunGraphCall): string {
   const { query } = call;
-  const value = query.q ?? query.query ?? query.name ?? query.ref_id ?? query.source_ref_id ?? query.ref_ids;
+  const value =
+    query.q ?? query.query ?? query.name ?? query.file ?? query.ref_id ?? query.source_ref_id ?? query.ref_ids;
   if (value === undefined) return "";
   return Array.isArray(value) ? `${value.length} refs` : String(value);
 }
@@ -215,7 +218,7 @@ function TreeBranch({
 /** Where loading a launching call's run stands. */
 type ChildState =
   | { state: "loading" }
-  | { state: "loaded"; calls: RunGraphCall[] }
+  | { state: "loaded"; calls: RunGraphCall[]; nodes: RunGraphNode[]; edges: RunGraphEdge[] }
   | { state: "failed"; error: string };
 
 /** A node's body, as the graph has answered for it so far. */
@@ -548,12 +551,22 @@ export function StrutRunGraph({
     [children],
   );
   const allCalls = useMemo(() => withChildCalls(trace?.calls ?? [], loadedChildren), [trace?.calls, loadedChildren]);
+  /** The trace's nodes and edges with what the opened child runs brought: the files they read. */
+  const graph = useMemo(
+    () =>
+      withChildGraph(
+        trace?.nodes ?? [],
+        trace?.edges ?? [],
+        Object.values(children).flatMap((c) => (c.state === "loaded" ? [c] : [])),
+      ),
+    [trace?.nodes, trace?.edges, children],
+  );
   const inScope = useMemo(() => scopeCalls(allCalls, scope), [allCalls, scope]);
   const calls = useMemo(() => inScope.filter((call) => shown[call.access]), [inScope, shown]);
   const current = step !== null && step < calls.length ? step : null;
 
   const tree = useMemo(() => buildRunGraphTree(calls), [calls]);
-  const nodeById = useMemo(() => new Map((trace?.nodes ?? []).map((n) => [n.ref_id, n])), [trace?.nodes]);
+  const nodeById = useMemo(() => new Map(graph.nodes.map((n) => [n.ref_id, n])), [graph.nodes]);
 
   // A node's body is read when it is first selected and kept, so coming back to it asks nothing.
   const [bodies, setBodies] = useState<Record<string, NodeBodyState>>({});
@@ -580,9 +593,9 @@ export function StrutRunGraph({
   // Everything the shown calls touched, whatever its type, and the lineage above it — the legend counts these.
   const touched = useMemo(() => {
     const ids = new Set(calls.flatMap((call) => call.nodes.map((n) => n.ref_id)));
-    return (trace?.nodes ?? []).filter((n) => ids.has(n.ref_id));
-  }, [calls, trace?.nodes]);
-  const parents = useMemo(() => lineageParents(trace?.edges ?? []), [trace?.edges]);
+    return graph.nodes.filter((n) => ids.has(n.ref_id));
+  }, [calls, graph.nodes]);
+  const parents = useMemo(() => lineageParents(graph.edges), [graph.edges]);
   const lineage = useMemo(() => {
     const above = new Set(
       ancestorsOf(
@@ -590,8 +603,8 @@ export function StrutRunGraph({
         parents,
       ),
     );
-    return (trace?.nodes ?? []).filter((n) => above.has(n.ref_id));
-  }, [touched, parents, trace?.nodes]);
+    return graph.nodes.filter((n) => above.has(n.ref_id));
+  }, [touched, parents, graph.nodes]);
   const drawn = useMemo(() => [...touched, ...lineage], [touched, lineage]);
 
   const typeCounts = useMemo(() => {
@@ -612,8 +625,8 @@ export function StrutRunGraph({
   );
   const links = useMemo(() => {
     const ids = new Set(graphNodes.map((n) => n.id));
-    return runGraphLinks(trace?.edges ?? [], runGraphHops(calls)).filter((l) => ids.has(l.source) && ids.has(l.target));
-  }, [graphNodes, trace?.edges, calls]);
+    return runGraphLinks(graph.edges, runGraphHops(calls)).filter((l) => ids.has(l.source) && ids.has(l.target));
+  }, [graphNodes, graph.edges, calls]);
   const hopCount = useMemo(() => links.filter((l) => l.hops.length > 0).length, [links]);
   const layout = useMemo(
     () =>
@@ -682,13 +695,20 @@ export function StrutRunGraph({
       setChildren((prev) => ({ ...prev, [full]: { state: "loading" } }));
       try {
         const response = await fetch(`${endpoint}/calls?under=${encodeURIComponent(full)}`, { cache: "no-store" });
-        const body = (await response.json().catch(() => ({}))) as { calls?: RunGraphCall[]; error?: string };
+        const body = (await response.json().catch(() => ({}))) as {
+          calls?: RunGraphCall[];
+          nodes?: RunGraphNode[];
+          edges?: RunGraphEdge[];
+          error?: string;
+        };
         if (!response.ok || !Array.isArray(body.calls)) throw new Error(body.error || "Could not load the run");
         const loaded = body.calls;
         // The indices of the replay move, so it starts over; the launch opens as a branch in the tree.
         setPlaying(false);
         setStep(null);
-        setChildren((prev) => ({ ...prev, [full]: { state: "loaded", calls: loaded } }));
+        const nodes = Array.isArray(body.nodes) ? body.nodes : [];
+        const edges = Array.isArray(body.edges) ? body.edges : [];
+        setChildren((prev) => ({ ...prev, [full]: { state: "loaded", calls: loaded, nodes, edges } }));
         return loaded;
       } catch (e) {
         const error = e instanceof Error ? e.message : "Could not load the run";

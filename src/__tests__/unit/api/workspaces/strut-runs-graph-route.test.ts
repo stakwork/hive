@@ -202,10 +202,15 @@ describe("GET graph calls", () => {
     getCalls(new NextRequest(`${BASE}/calls${query}`), { params: Promise.resolve({ slug: "hive", runId: "run-1" }) });
 
   it("answers the child run's calls, read by the launching call's path", async () => {
-    mockChild.mockResolvedValue({ calls: [{ path: `${under}/explore/explore/001-graph_graph_get` }] });
+    const answer = {
+      calls: [{ path: `${under}/explore/explore/001-str_replace_based_edit_tool` }],
+      nodes: [{ ref_id: "f-1", node_type: "File", name: "route.ts", namespace: null, found: true }],
+      edges: [],
+    };
+    mockChild.mockResolvedValue(answer);
     const res = await calls(`?under=${encodeURIComponent(under)}`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ calls: [{ path: `${under}/explore/explore/001-graph_graph_get` }] });
+    expect(await res.json()).toEqual(answer);
     expect(mockChild).toHaveBeenCalledWith(ROW, under, expect.any(Function));
   });
 
