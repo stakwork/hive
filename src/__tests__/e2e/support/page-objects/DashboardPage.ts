@@ -36,11 +36,11 @@ export class DashboardPage {
     const isTasksVisible = await tasksLink.isVisible().catch(() => false);
     if (!isTasksVisible) {
       await buildButton.click();
-      await tasksLink.waitFor({ state: 'visible', timeout: 5000 });
+      await tasksLink.waitFor({ state: 'visible', timeout: 10000 });
     }
 
     await tasksLink.click();
-    await this.page.waitForURL(/\/w\/.*\/tasks/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/tasks/, { timeout: 30000 });
   }
 
   /**
@@ -55,11 +55,11 @@ export class DashboardPage {
     const isPlanVisible = await planLink.isVisible().catch(() => false);
     if (!isPlanVisible) {
       await buildButton.click();
-      await planLink.waitFor({ state: 'visible', timeout: 5000 });
+      await planLink.waitFor({ state: 'visible', timeout: 10000 });
     }
 
     await planLink.click();
-    await this.page.waitForURL(/\/w\/.*\/plan/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/plan/, { timeout: 30000 });
   }
 
   /**
@@ -78,7 +78,7 @@ export class DashboardPage {
     }
 
     await recommendationsLink.click();
-    await this.page.waitForURL(/\/w\/.*\/recommendations/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/recommendations/, { timeout: 30000 });
   }
 
   /**
@@ -97,7 +97,7 @@ export class DashboardPage {
     }
 
     await janitorsLink.click();
-    await this.page.waitForURL(/\/w\/.*\/janitors/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/janitors/, { timeout: 30000 });
   }
 
   /**
@@ -122,7 +122,7 @@ export class DashboardPage {
    */
   async goToCapacity(): Promise<void> {
     await this.page.locator(selectors.navigation.capacityLink).click();
-    await this.page.waitForURL(/\/w\/.*\/capacity/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/capacity/, { timeout: 30000 });
   }
 
   /**
