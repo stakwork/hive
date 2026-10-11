@@ -13,10 +13,12 @@
  *   - a ref tagged with a peer (another workspace's graph) is kept under a
  *     qualified id, and a tag that is not a slug drops the ref;
  *   - a call that launched a run of its own carries its workflow (and peer),
+ *     and is a call even with no nodes of its own (its child may have some),
  *     the run id only server-side, read from whole or truncated JSON; a
  *     child's calls go under a prefix, its untagged refs in its peer's graph;
- *   - with `fileReads`, a file an agent viewed in a repository the run
- *     checked out is a read call whose file is `owner/repo/<path>`.
+ *   - with `fileReads`, a file an agent viewed (or summarized with
+ *     `file_summary`) in a repository the run checked out is a read call
+ *     whose file is `owner/repo/<path>`.
  */
 
 import { describe, it, expect } from "vitest";
@@ -280,6 +282,20 @@ describe("launching calls", () => {
     expect(launches.get("job/work/002-meta_run_workflow")).toEqual({ workflow: "explore", runId: "1791647782933" });
   });
 
+  it("keeps a launch whose child touched no graph node — the child's file views are found only when it is opened", () => {
+    const { calls, launches } = projectWithLaunches([
+      start("job/work/004-meta_run_workflow", "tool:meta_run_workflow", { name: "explore", input: "{}" }),
+      end("job/work/004-meta_run_workflow", "tool:meta_run_workflow", {
+        output: '{"runId":"1791735843683","status":"success","output":{"answer":"All paths are under',
+      }),
+      start("job/work/005-bash", "tool:bash", { command: "ls" }),
+      end("job/work/005-bash", "tool:bash"),
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ path: "job/work/004-meta_run_workflow", nodes: [], child: { workflow: "explore" } });
+    expect(launches.get("job/work/004-meta_run_workflow")).toEqual({ workflow: "explore", runId: "1791735843683" });
+  });
+
   it("marks a peer launch with its workflow and peer, as a workflow step or a tool", () => {
     const { calls, launches } = projectWithLaunches([
       start("wf/ask", "strut/run-workflow", { peer: "apps", workflow: "explore" }),
@@ -362,6 +378,25 @@ describe("file reads", () => {
         nodes: [],
       }),
       expect.objectContaining({ query: { file: "stakwork/hive/src/app/api/auth/sphinx/token/route.ts" } }),
+    ]);
+  });
+
+  it("reads a summarized file too, by the path file_summary was given", () => {
+    const { calls, fileReads } = projectWithLaunches(
+      [
+        checkout("explore/checkouts#0", `${DIR}/hive`, "stakwork/hive"),
+        start("explore/explore/001-file_summary", "tool:file_summary", { file_path: "hive/src/lib/githubApp.ts" }),
+        end("explore/explore/001-file_summary", "tool:file_summary", { output: "…" }),
+        start("explore/explore/002-file_summary", "tool:file_summary", { file_path: "elsewhere/x.ts" }),
+        end("explore/explore/002-file_summary", "tool:file_summary", { output: "…" }),
+        start("wf/summary", "file_summary", { file_path: "hive/src/y.ts" }),
+        end("wf/summary", "file_summary", { output: "…" }),
+      ],
+      { fileReads: true },
+    );
+    expect([...fileReads]).toEqual([["explore/explore/001-file_summary", "stakwork/hive/src/lib/githubApp.ts"]]);
+    expect(calls).toEqual([
+      expect.objectContaining({ tool: "file_summary", by: "agent", access: "read", query: { file: "stakwork/hive/src/lib/githubApp.ts" } }),
     ]);
   });
 
