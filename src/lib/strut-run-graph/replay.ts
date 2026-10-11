@@ -4,7 +4,7 @@
  */
 
 import { isLineageEdge } from "./lineage";
-import type { RunGraphCall, RunGraphEdge, RunGraphTrace } from "./types";
+import type { RunGraphCall, RunGraphEdge, RunGraphNode, RunGraphTrace } from "./types";
 
 const edgeKey = (edge: RunGraphEdge): string => `${edge.source}|${edge.edge_type}|${edge.target}`;
 
@@ -133,6 +133,37 @@ export function childToLoad(calls: RunGraphCall[], scope: string | null): string
   const full = `${calls[0].path.split("/")[0]}/${scope}`;
   const call = calls.find((c) => c.child && (full === c.path || full.startsWith(`${c.path}/`)));
   return call ? call.path : null;
+}
+
+/**
+ * The trace's nodes and edges with those of each loaded child run added —
+ * a child brings what the trace cannot have folded onto its launch (the
+ * files it read). A node the trace already has keeps the trace's reading;
+ * an edge is added once.
+ */
+export function withChildGraph(
+  nodes: RunGraphNode[],
+  edges: RunGraphEdge[],
+  children: ReadonlyArray<{ nodes?: RunGraphNode[]; edges?: RunGraphEdge[] }>,
+): { nodes: RunGraphNode[]; edges: RunGraphEdge[] } {
+  if (children.length === 0) return { nodes, edges };
+  const has = new Set(nodes.map((n) => n.ref_id));
+  const known = new Set(edges.map(edgeKey));
+  const allNodes = [...nodes];
+  const allEdges = [...edges];
+  for (const child of children) {
+    for (const n of child.nodes ?? []) {
+      if (has.has(n.ref_id)) continue;
+      has.add(n.ref_id);
+      allNodes.push(n);
+    }
+    for (const e of child.edges ?? []) {
+      if (known.has(edgeKey(e))) continue;
+      known.add(edgeKey(e));
+      allEdges.push(e);
+    }
+  }
+  return { nodes: allNodes, edges: allEdges };
 }
 
 export interface ReplayFrame {

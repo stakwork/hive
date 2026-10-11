@@ -16,13 +16,20 @@ import { db } from "@/lib/db";
 import {
   hydrateRunGraphAcross,
   readRunGraphNode,
+  resolveFileReads,
   swarmCypherRunner,
+  type CypherRunner,
   type PeerGraph,
   type RunGraphNodeRead,
 } from "@/lib/strut-run-graph/hydrate";
-import { parseQualifiedRef } from "@/lib/strut-run-graph/peer-ref";
-import { distinctNodeRefs, projectRunGraphCalls, projectWithLaunches } from "@/lib/strut-run-graph/project";
-import type { RunGraphCall, RunGraphTrace } from "@/lib/strut-run-graph/types";
+import { parseQualifiedRef, qualifyRef } from "@/lib/strut-run-graph/peer-ref";
+import {
+  distinctNodeRefs,
+  projectRunGraphCalls,
+  projectWithLaunches,
+  type ProjectOptions,
+} from "@/lib/strut-run-graph/project";
+import type { RunGraphCall, RunGraphEdge, RunGraphNode, RunGraphTrace } from "@/lib/strut-run-graph/types";
 import { labForRow, type StrutRunRow } from "@/services/strut-runs";
 import { fetchStrutRunEvents } from "@/services/strut-runs/lab";
 
@@ -67,16 +74,41 @@ async function peerGraphFor(row: Pick<GraphRow, "workspaceId">, slug: string, ac
   return { run: swarmCypherRunner({ name: lab.swarmName, apiKey: lab.swarmApiKey }) };
 }
 
+/**
+ * The run's calls, each file an agent viewed in a repository the run checked
+ * out among them as a read of the graph's `File` node for it — resolved
+ * against `run`, the graph the events' strut uses. A file the graph does not
+ * hold is no node, so its view is no call; a graph that does not answer
+ * leaves the file views out (best effort, like the rest of the trace).
+ */
+async function callsWithFileReads(
+  events: unknown[],
+  options: ProjectOptions,
+  run: CypherRunner,
+): Promise<RunGraphCall[]> {
+  const { calls, fileReads } = projectWithLaunches(events, { ...options, fileReads: true });
+  if (fileReads.size === 0) return calls;
+  const found = await resolveFileReads([...fileReads.values()], run);
+  return calls.flatMap((call) => {
+    const file = fileReads.get(call.path);
+    if (file === undefined) return [call];
+    const refId = found instanceof Map ? found.get(file) : undefined;
+    if (!refId) return [];
+    const ref = qualifyRef(refId, options.peer);
+    return [{ ...call, nodes: [{ ref_id: ref, node_type: "File", ...(options.peer ? { peer: options.peer } : {}) }] }];
+  });
+}
+
+const runnerOf = (lab: { swarmName: string; swarmApiKey: string }): CypherRunner =>
+  swarmCypherRunner({ name: lab.swarmName, apiKey: lab.swarmApiKey });
+
 /** The run's trace; null when the lab or the swarm could not be read. */
 export async function readStrutRunGraph(row: GraphRow, access: PeerAccess = NO_PEERS): Promise<RunGraphTrace | null> {
   const [events, lab] = await Promise.all([fetchStrutRunEvents(row), labForRow(row)]);
   if (!events || !lab) return null;
-  const calls = projectRunGraphCalls(events);
-  const graph = await hydrateRunGraphAcross(
-    distinctNodeRefs(calls),
-    swarmCypherRunner({ name: lab.swarmName, apiKey: lab.swarmApiKey }),
-    (slug) => peerGraphFor(row, slug, access),
-  );
+  const run = runnerOf(lab);
+  const calls = await callsWithFileReads(events, {}, run);
+  const graph = await hydrateRunGraphAcross(distinctNodeRefs(calls), run, (slug) => peerGraphFor(row, slug, access));
   return { calls, ...graph };
 }
 
@@ -128,8 +160,12 @@ export async function readStrutRunGraphNode(
 const MAX_CHILD_DEPTH = 8;
 
 export type RunGraphChildRead =
-  /** The child run's calls, under the launching call's path. */
-  | { calls: RunGraphCall[] }
+  /**
+   * The child run's calls, under the launching call's path, and the nodes
+   * they touched resolved — the ones the trace has already (folded onto the
+   * launch) and those it cannot have: the files the child read.
+   */
+  | { calls: RunGraphCall[]; nodes: RunGraphNode[]; edges: RunGraphEdge[] }
   /** No call at that path launched a run — or not one the trace can follow. */
   | { notFound: true }
   /** The viewer may not read the workspace the child ran on. */
@@ -171,7 +207,15 @@ export async function readStrutRunGraphChild(
     }
     events = await fetchStrutRunEvents({ id: row.id, swarmId, workflow: launch.workflow, strutRunId: launch.runId });
     prefix = path;
-    if (under === path) return events ? { calls: projectRunGraphCalls(events, { prefix, peer }) } : { unread: true };
+    if (under === path) {
+      const [home, there] = await Promise.all([labForRow(row), labForRow({ swarmId })]);
+      if (!events || !home || !there) return { unread: true };
+      const calls = await callsWithFileReads(events, { prefix, peer }, runnerOf(there));
+      const graph = await hydrateRunGraphAcross(distinctNodeRefs(calls), runnerOf(home), (slug) =>
+        peerGraphFor(row, slug, access),
+      );
+      return { calls, nodes: graph.nodes, edges: graph.edges };
+    }
   }
   return { notFound: true };
 }
