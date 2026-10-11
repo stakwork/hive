@@ -269,9 +269,11 @@ export function projectWithLaunches(
       continue;
     }
     const nodes = nodesOf(event.nodes, options.peer);
-    if (nodes.length === 0) continue;
-    const search = isSearch(tool);
     const launch = launchOf(tool, start?.input, event.output);
+    // A launch is kept with no nodes of its own: the child it opens can still
+    // have read the graph — the files its agent viewed are resolved only then.
+    if (nodes.length === 0 && !launch) continue;
+    const search = isSearch(tool);
     if (launch) launches.set(path, launch);
     calls.push({
       path,
