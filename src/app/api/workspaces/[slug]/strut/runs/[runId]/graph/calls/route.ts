@@ -2,7 +2,8 @@
  * GET /api/workspaces/:slug/strut/runs/:runId/graph/calls?under=<call path>
  *     — the calls of a run the trace's run launched (`meta/run-workflow`, or
  *     `strut/run-workflow` on a peer workspace), loaded when the viewer opens
- *     the call that launched it. `under` is that call's path in the trace;
+ *     the call that launched it, with the nodes they touched resolved (the
+ *     files the child read among them). `under` is that call's path in the trace;
  *     the run is found from the logs, never named by the request.
  *
  * Access: as for the trace, any member of the run's workspace; a child that
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const read = await readStrutRunGraphChild(row, under, peerAccessFor(request));
-    if ("calls" in read) return NextResponse.json({ calls: read.calls });
+    if ("calls" in read) return NextResponse.json({ calls: read.calls, nodes: read.nodes, edges: read.edges });
     if ("denied" in read) return NextResponse.json({ error: `Not readable here: ${read.denied}` }, { status: 403 });
     if ("notFound" in read) return NextResponse.json({ error: "No run was launched there" }, { status: 404 });
     return NextResponse.json({ error: "Could not read the run from strut" }, { status: 502 });

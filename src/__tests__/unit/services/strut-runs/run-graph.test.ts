@@ -7,7 +7,11 @@
  *     its own swarm;
  *   - a launching call's child run is found from the logs alone, walking
  *     down from the row's run, read from the swarm it ran on, and its calls
- *     put under the launching call's path.
+ *     put under the launching call's path;
+ *   - a file an agent viewed in a checked-out repository is a read of the
+ *     graph's File node for it — in the run's own trace and in a child's,
+ *     from the graph that run's strut uses; a file the graph does not hold
+ *     is no call.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -201,7 +205,7 @@ describe("a launching call's child run", () => {
 
   it("reads a local child from the run's own swarm, its calls under the launching call", async () => {
     const read = await readStrutRunGraphChild(RUN, "job/work/002-meta_run_workflow", member);
-    expect(read).toEqual({
+    expect(read).toMatchObject({
       calls: [
         expect.objectContaining({ path: "job/work/002-meta_run_workflow/explore/explore/001-graph_graph_get" }),
         expect.objectContaining({
@@ -224,7 +228,7 @@ describe("a launching call's child run", () => {
       "job/work/002-meta_run_workflow/explore/explore/002-meta_run_workflow",
       member,
     );
-    expect(read).toEqual({
+    expect(read).toMatchObject({
       calls: [
         expect.objectContaining({
           path: "job/work/002-meta_run_workflow/explore/explore/002-meta_run_workflow/deep/deep/001-graph_graph_get",
@@ -236,7 +240,7 @@ describe("a launching call's child run", () => {
 
   it("reads a peer's child from the peer's swarm for a member, its refs in the peer's graph", async () => {
     const read = await readStrutRunGraphChild(RUN, "job/work/004-strut_run_workflow", member);
-    expect(read).toEqual({
+    expect(read).toMatchObject({
       calls: [
         expect.objectContaining({
           path: "job/work/004-strut_run_workflow/explore/explore/001-graph_graph_search",
@@ -264,5 +268,98 @@ describe("a launching call's child run", () => {
   it("says so when a log cannot be read", async () => {
     LOGS["swarm-org/explore/200"] = undefined as unknown as unknown[];
     expect(await readStrutRunGraphChild(RUN, "job/work/002-meta_run_workflow", member)).toEqual({ unread: true });
+  });
+});
+
+describe("file reads", () => {
+  const RUN = { id: "row-1", workspaceId: "ws-org", swarmId: "swarm-org", workflow: "job", strutRunId: "100" };
+  const start = (path: string, stepType: string, input: unknown) => ({ type: "step.start", path, stepType, input });
+  const step = (path: string, stepType: string, output: unknown) => ({ type: "step.end", path, stepType, output });
+  /** A file view by an agent of the run with root `root`, whose checkout of stakwork/hive is at /d/<root>/hive. */
+  const reads = (root: string, ...files: string[]) => [
+    step(`${root}/checkouts#0`, "git/checkout", { path: `/d/${root}/hive`, repo: "stakwork/hive" }),
+    ...files.flatMap((file, i) => [
+      start(`${root}/agent/00${i + 1}-str_replace_based_edit_tool`, "tool:str_replace_based_edit_tool", {
+        command: "view",
+        path: `/d/${root}/hive/${file}`,
+      }),
+      step(`${root}/agent/00${i + 1}-str_replace_based_edit_tool`, "tool:str_replace_based_edit_tool", "…"),
+    ]),
+  ];
+  /** A graph holding `files` (path → ref id) as File nodes, answering the node queries for them too. */
+  const fileGraph = (files: Record<string, string>) => async (query: string) => {
+    if (query.includes("MATCH (f:File)")) {
+      const asked = [...query.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+      return { columns: ["file", "ref_id"], rows: asked.filter((f) => f in files).map((f) => [f, files[f]]) };
+    }
+    if (query.includes("-[r]->") || query.includes("PARENT_OF*")) return { columns: [], rows: [] };
+    const ids = [...query.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    return {
+      columns: ["ref_id", "labels", "name", "namespace"],
+      rows: ids.map((id) => [id, ["Data_Bank", "File"], `file ${id}`, null]),
+    };
+  };
+  const member = vi.fn(async (slug: string) => (slug === "apps" ? { workspaceId: "ws-apps" } : { reason: "no" }));
+
+  beforeEach(() => {
+    mockLab.mockImplementation(async ({ swarmId }: { swarmId: string }) => ({
+      labBase: "x",
+      swarmApiKey: "k",
+      swarmName: `${swarmId}-name`,
+    }));
+    mockWorkspaces.mockResolvedValue([
+      { id: "ws-org", sourceControlOrgId: "org-1", swarm: { id: "swarm-org" } },
+      { id: "ws-apps", sourceControlOrgId: "org-1", swarm: { id: "swarm-apps" } },
+    ]);
+    runners["swarm-org-name"] = fileGraph({ "stakwork/hive/src/lib/auth/sphinx-verify.ts": "f-org" });
+    runners["swarm-apps-name"] = fileGraph({ "stakwork/hive/src/app/route.ts": "f-apps" });
+  });
+
+  it("the trace reads a file the job's agent viewed as the graph's File node, and drops one the graph does not hold", async () => {
+    mockEvents.mockResolvedValue(reads("job", "src/lib/auth/sphinx-verify.ts", "README.md"));
+    const trace = await readStrutRunGraph(RUN, member);
+    expect(trace?.calls).toEqual([
+      expect.objectContaining({
+        path: "job/agent/001-str_replace_based_edit_tool",
+        access: "read",
+        query: { file: "stakwork/hive/src/lib/auth/sphinx-verify.ts" },
+        nodes: [{ ref_id: "f-org", node_type: "File" }],
+      }),
+    ]);
+    expect(trace?.nodes).toEqual([expect.objectContaining({ ref_id: "f-org", found: true })]);
+  });
+
+  it("a child's file reads come back with the child's calls, resolved in the graph it ran on — a peer's, qualified", async () => {
+    mockEvents.mockImplementation(async (row: { swarmId: string; workflow: string; strutRunId: string }) => {
+      if (row.strutRunId === "100") {
+        return [
+          start("job/work/004-strut_run_workflow", "tool:strut_run_workflow", { peer: "apps", workflow: "explore" }),
+          {
+            ...step("job/work/004-strut_run_workflow", "tool:strut_run_workflow", {
+              peer: "apps",
+              workflow: "explore",
+              runId: "300",
+            }),
+            nodes: [{ ref_id: "x", peer: "apps" }],
+          },
+        ];
+      }
+      return row.swarmId === "swarm-apps" ? reads("explore", "src/app/route.ts") : null;
+    });
+    const read = await readStrutRunGraphChild(RUN, "job/work/004-strut_run_workflow", member);
+    expect(read).toMatchObject({
+      calls: [
+        {
+          path: "job/work/004-strut_run_workflow/explore/agent/001-str_replace_based_edit_tool",
+          nodes: [{ ref_id: "@apps:f-apps", node_type: "File", peer: "apps" }],
+        },
+      ],
+      nodes: [{ ref_id: "@apps:f-apps", found: true, peer: "apps" }],
+    });
+  });
+
+  it("is not counted on the card: the count is of graph steps alone", async () => {
+    mockEvents.mockResolvedValue(reads("job", "src/lib/auth/sphinx-verify.ts"));
+    expect(await countStrutRunGraph(RUN)).toBeNull();
   });
 });

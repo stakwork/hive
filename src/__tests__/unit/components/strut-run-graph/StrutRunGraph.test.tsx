@@ -17,7 +17,8 @@
  *   to be unread when the viewer may not read that graph;
  * - a call that launched a run of its own: nothing of that run is read until
  *   it is opened (its row's button, or a branch shown inside it); then its
- *   calls take the launching call's place, as a branch, opened in the tree.
+ *   calls take the launching call's place, as a branch, opened in the tree,
+ *   and the nodes it brings (the files it read) are drawn with the rest.
  */
 
 import React from "react";
@@ -489,6 +490,31 @@ describe("child runs, loaded when opened", () => {
       expect.stringContaining("graph_graph_search"),
       expect.stringContaining("graph_graph_get"),
     ]);
+  });
+
+  it("draws the files a child read, which it brings with its calls", async () => {
+    const fileRead = jobCall(`${LAUNCH}/explore/explore/003-str_replace_based_edit_tool`, ["f-1"], {
+      tool: "str_replace_based_edit_tool",
+      query: { file: "stakwork/hive/src/lib/auth/sphinx-verify.ts" },
+    });
+    stubJob(() =>
+      answer(200, {
+        calls: [...CHILD_CALLS, fileRead],
+        nodes: [node("f-1", "File", "sphinx-verify.ts")],
+        edges: [],
+      }),
+    );
+    render(<StrutRunGraph endpoint={ENDPOINT} />);
+    await screen.findByTestId("run-graph-summary");
+    expect(drawn()).not.toContain("sphinx-verify.ts");
+
+    fireEvent.click(await screen.findByLabelText("Open the explore run"));
+
+    await waitFor(() => expect(drawn()).toContain("sphinx-verify.ts"));
+    expect(summary()).toContain("4 calls read or wrote 4 nodes");
+    expect(screen.getAllByTestId("run-graph-call").map((el) => el.textContent)).toContainEqual(
+      expect.stringContaining("stakwork/hive/src/lib/auth/sphinx-verify.ts"),
+    );
   });
 
   it("loads the child a branch shown lies in, once", async () => {

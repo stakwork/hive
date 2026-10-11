@@ -13,6 +13,7 @@ import {
   scopeCalls,
   scopeOfBranch,
   withChildCalls,
+  withChildGraph,
 } from "@/lib/strut-run-graph/replay";
 import type { RunGraphCall, RunGraphNode, RunGraphTrace } from "@/lib/strut-run-graph/types";
 
@@ -280,5 +281,28 @@ describe("child runs", () => {
     expect(childToLoad(loaded, "work/002-meta_run_workflow/explore/explore/002-meta_run_workflow/deep")).toBe(
       "job/work/002-meta_run_workflow/explore/explore/002-meta_run_workflow",
     );
+  });
+});
+
+describe("withChildGraph", () => {
+  const n = (ref_id: string, name = ref_id): RunGraphNode => ({
+    ref_id,
+    node_type: "File",
+    name,
+    namespace: null,
+    found: true,
+  });
+  it("adds what a loaded child brings, keeping the trace's own reading of a node and each edge once", () => {
+    const edge = { source: "dir", target: "f", edge_type: "PARENT_OF" };
+    const merged = withChildGraph(
+      [n("a", "trace's a")],
+      [],
+      [
+        { nodes: [n("a", "child's a"), n("f"), n("dir")], edges: [edge] },
+        { nodes: [n("f")], edges: [edge] },
+      ],
+    );
+    expect(merged.nodes.map((x) => x.name)).toEqual(["trace's a", "f", "dir"]);
+    expect(merged.edges).toEqual([edge]);
   });
 });
