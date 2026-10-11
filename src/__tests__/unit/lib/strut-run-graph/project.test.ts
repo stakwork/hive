@@ -14,7 +14,9 @@
  *     qualified id, and a tag that is not a slug drops the ref;
  *   - a call that launched a run of its own carries its workflow (and peer),
  *     the run id only server-side, read from whole or truncated JSON; a
- *     child's calls go under a prefix, its untagged refs in its peer's graph.
+ *     child's calls go under a prefix, its untagged refs in its peer's graph;
+ *   - with `fileReads`, a file an agent viewed in a repository the run
+ *     checked out is a read call whose file is `owner/repo/<path>`.
  */
 
 import { describe, it, expect } from "vitest";
@@ -323,5 +325,51 @@ describe("launching calls", () => {
       { ref_id: "@apps:fn", node_type: "Function", peer: "apps" },
       { ref_id: "@elsewhere:far", peer: "elsewhere" },
     ]);
+  });
+});
+
+describe("file reads", () => {
+  const DIR = "/data/artifacts/1791665463791";
+  const checkout = (path: string, dir: string, repo: string) =>
+    end(path, "git/checkout", { output: { path: dir, repo, sha: "abc", ref: "master" } });
+  const view = (n: number, input: Record<string, unknown>) => [
+    start(`explore/explore/00${n}-str_replace_based_edit_tool`, "tool:str_replace_based_edit_tool", input),
+    end(`explore/explore/00${n}-str_replace_based_edit_tool`, "tool:str_replace_based_edit_tool", { output: "1\t…" }),
+  ];
+  const EVENTS = [
+    checkout("explore/checkouts#0", `${DIR}/hive`, "stakwork/hive"),
+    ...view(1, { command: "view", path: `${DIR}/hive/src/lib/auth/sphinx-verify.ts`, view_range: [76, 173] }),
+    ...view(2, { command: "view", path: "hive/src/app/api/auth/sphinx/token/route.ts" }),
+    ...view(3, { command: "view", path: `${DIR}/plan.md` }),
+    ...view(4, { command: "str_replace", path: `${DIR}/hive/src/x.ts`, old_str: "a", new_str: "b" }),
+    ...view(5, { command: "view", path: `${DIR}/hive/../hive/secret.ts` }),
+    ...view(6, { command: "view", path: `${DIR}/hive/src/it's.ts` }),
+  ];
+
+  it("reads a viewed file in a checked-out repository as owner/repo/<path> — absolute or relative to the agent's directory", () => {
+    const { calls, fileReads } = projectWithLaunches(EVENTS, { fileReads: true });
+    expect([...fileReads]).toEqual([
+      ["explore/explore/001-str_replace_based_edit_tool", "stakwork/hive/src/lib/auth/sphinx-verify.ts"],
+      ["explore/explore/002-str_replace_based_edit_tool", "stakwork/hive/src/app/api/auth/sphinx/token/route.ts"],
+    ]);
+    expect(calls).toEqual([
+      expect.objectContaining({
+        path: "explore/explore/001-str_replace_based_edit_tool",
+        tool: "str_replace_based_edit_tool",
+        by: "agent",
+        access: "read",
+        query: { file: "stakwork/hive/src/lib/auth/sphinx-verify.ts" },
+        nodes: [],
+      }),
+      expect.objectContaining({ query: { file: "stakwork/hive/src/app/api/auth/sphinx/token/route.ts" } }),
+    ]);
+  });
+
+  it("keeps file views out unless asked, and puts them under a child's prefix", () => {
+    expect(projectRunGraphCalls(EVENTS)).toEqual([]);
+    const { fileReads } = projectWithLaunches(EVENTS, { fileReads: true, prefix: "job/work/002-meta_run_workflow" });
+    expect([...fileReads.keys()][0]).toBe(
+      "job/work/002-meta_run_workflow/explore/explore/001-str_replace_based_edit_tool",
+    );
   });
 });

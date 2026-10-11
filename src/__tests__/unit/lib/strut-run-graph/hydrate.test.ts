@@ -28,6 +28,7 @@ import {
   hydrateRunGraphAcross,
   isRunGraphRefId,
   readRunGraphNode,
+  resolveFileReads,
   RUN_GRAPH_MAX_NODES,
   swarmCypherRunner,
   typeFromLabels,
@@ -507,5 +508,38 @@ describe("hydrateRunGraphAcross", () => {
     const trace = await hydrateRunGraphAcross([{ ref_id: "a" }], local, async () => ({ reason: "unused" }));
     expect(trace.peers).toBeUndefined();
     expect(trace.nodes).toEqual([expect.objectContaining({ ref_id: "a", found: true })]);
+  });
+});
+
+describe("resolveFileReads", () => {
+  it("asks for the File nodes by path in one query, and answers file → ref id for those the graph holds", async () => {
+    const run = vi.fn<CypherRunner>(async () => ({
+      columns: ["file", "ref_id"],
+      rows: [["stakwork/hive/src/lib/auth/sphinx-verify.ts", "f-1"]],
+    }));
+    const found = await resolveFileReads(
+      [
+        "stakwork/hive/src/lib/auth/sphinx-verify.ts",
+        "stakwork/hive/src/lib/auth/sphinx-verify.ts",
+        "stakwork/hive/gone.ts",
+      ],
+      run,
+    );
+    expect(found).toEqual(new Map([["stakwork/hive/src/lib/auth/sphinx-verify.ts", "f-1"]]));
+    expect(run).toHaveBeenCalledTimes(1);
+    const [query] = run.mock.calls[0];
+    expect(query).toContain("MATCH (f:File) WHERE f.file IN files");
+    expect(query).toContain("'stakwork/hive/gone.ts'");
+  });
+
+  it("never sends a path that is not one, and asks nothing for none", async () => {
+    const run = vi.fn<CypherRunner>(async () => ({ columns: ["file", "ref_id"], rows: [] }));
+    expect(await resolveFileReads(["a/b/x' OR 1=1 //", "no-repo.ts"], run)).toEqual(new Map());
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("says why when the graph does not answer", async () => {
+    const run = vi.fn<CypherRunner>(async () => ({ unread: "no answer in 20 s" }));
+    expect(await resolveFileReads(["stakwork/hive/a.ts"], run)).toEqual({ unread: "no answer in 20 s" });
   });
 });

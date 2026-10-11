@@ -163,6 +163,53 @@ export interface ProjectOptions {
   prefix?: string;
   /** The peer workspace whose strut ran these events: an untagged ref is in its graph. */
   peer?: string;
+  /**
+   * Also keep each file an agent VIEWED in a repository the run checked out,
+   * as a read call with no nodes yet and its `owner/repo/<path>` in
+   * `fileReads` — for the server to resolve to the graph's `File` node.
+   */
+  fileReads?: boolean;
+}
+
+/** The agent's file tool (strut's `str_replace_based_edit_tool`): a `view` is a read of that file. */
+const FILE_TOOL = "str_replace_based_edit_tool";
+/** `owner/name`, as `git/checkout` reports a repository. */
+const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+/** A repository file as the graph names it (`File.file`): interpolated into Cypher, so only this shape is ever sent. */
+export const REPO_FILE_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.@+\-/ ]{1,400}$/;
+
+/** A checkout the run made: the directory it put the repository in, and the repository. */
+interface Checkout {
+  dir: string;
+  repo: string;
+}
+
+function checkoutOf(output: unknown): Checkout | null {
+  const dir = fieldOf(output, "path");
+  const repo = fieldOf(output, "repo");
+  return dir && repo && REPO_RE.test(repo) ? { dir: dir.replace(/\/+$/, ""), repo } : null;
+}
+
+/**
+ * A path the file tool was given → the file as the graph names it,
+ * `owner/repo/<path in the repository>`: absolute under a checkout's
+ * directory, or relative to the agent's working directory (where a
+ * checkout is one subdirectory, by its name). Null for anything else.
+ */
+function repoFileOf(viewed: string, checkouts: Checkout[]): string | null {
+  const path = viewed.replace(/^\.\//, "");
+  for (const { dir, repo } of checkouts) {
+    const base = dir.slice(dir.lastIndexOf("/") + 1);
+    const rest = path.startsWith(`${dir}/`)
+      ? path.slice(dir.length + 1)
+      : !path.startsWith("/") && path.startsWith(`${base}/`)
+        ? path.slice(base.length + 1)
+        : null;
+    if (rest === null || rest.split("/").includes("..")) continue;
+    const file = `${repo}/${rest.replace(/\/+$/, "")}`;
+    return REPO_FILE_RE.test(file) ? file : null;
+  }
+  return null;
 }
 
 /** Every call that touched the graph, in the order the run finished them. */
@@ -172,15 +219,18 @@ export function projectRunGraphCalls(events: unknown, options: ProjectOptions = 
 
 /**
  * The calls, and for each launching call (by its path, as returned) the run
- * it started — server-side only: a run id never reaches the browser.
+ * it started — server-side only: a run id never reaches the browser. With
+ * `fileReads`, also each file-view call's file, by the call's path.
  */
 export function projectWithLaunches(
   events: unknown,
   options: ProjectOptions = {},
-): { calls: RunGraphCall[]; launches: Map<string, RunGraphLaunch> } {
+): { calls: RunGraphCall[]; launches: Map<string, RunGraphLaunch>; fileReads: Map<string, string> } {
   const launches = new Map<string, RunGraphLaunch>();
-  if (!Array.isArray(events)) return { calls: [], launches };
+  const fileReads = new Map<string, string>();
+  if (!Array.isArray(events)) return { calls: [], launches, fileReads };
   const starts = new Map<string, { ts: string | null; input: unknown }>();
+  const checkouts: Checkout[] = [];
   const calls: RunGraphCall[] = [];
   for (const event of events) {
     if (!isRecord(event) || typeof event.path !== "string") continue;
@@ -189,14 +239,38 @@ export function projectWithLaunches(
       continue;
     }
     if (event.type !== "step.end") continue;
-    const nodes = nodesOf(event.nodes, options.peer);
-    if (nodes.length === 0) continue;
     const stepType = typeof event.stepType === "string" ? event.stepType : "";
     const byAgent = stepType.startsWith(TOOL_PREFIX);
     const tool = byAgent ? stepType.slice(TOOL_PREFIX.length) : stepType;
     const start = starts.get(event.path);
-    const search = isSearch(tool);
     const path = options.prefix ? `${options.prefix}/${event.path}` : event.path;
+    if (stepType === "git/checkout") {
+      const checkout = checkoutOf(event.output);
+      if (checkout) checkouts.push(checkout);
+      continue;
+    }
+    if (options.fileReads && byAgent && tool === FILE_TOOL && fieldOf(start?.input, "command") === "view") {
+      const viewed = fieldOf(start?.input, "path");
+      const file = viewed ? repoFileOf(viewed, checkouts) : null;
+      if (file) {
+        fileReads.set(path, file);
+        calls.push({
+          path,
+          tool,
+          by: "agent",
+          access: "read",
+          startedAt: start?.ts ?? null,
+          endedAt: typeof event.ts === "string" ? event.ts : null,
+          durationMs: typeof event.durationMs === "number" ? Math.round(event.durationMs) : null,
+          query: { file },
+          nodes: [],
+        });
+      }
+      continue;
+    }
+    const nodes = nodesOf(event.nodes, options.peer);
+    if (nodes.length === 0) continue;
+    const search = isSearch(tool);
     const launch = launchOf(tool, start?.input, event.output);
     if (launch) launches.set(path, launch);
     calls.push({
@@ -213,7 +287,7 @@ export function projectWithLaunches(
       ...(launch ? { child: { workflow: launch.workflow, ...(launch.peer ? { peer: launch.peer } : {}) } } : {}),
     });
   }
-  return { calls, launches };
+  return { calls, launches, fileReads };
 }
 
 /** The distinct nodes a list of calls read or wrote, first touch first. A later ref's type fills an earlier untyped one. */
