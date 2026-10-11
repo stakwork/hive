@@ -6,9 +6,9 @@ import { NextRequest } from "next/server";
  *
  * Tests verify:
  * - Authentication via CRON_SECRET (401 when missing/invalid)
- * - Config guard (STAKWORK_DAILY_RECAP_WORKFLOW_ID presence)
- * - Response shape when workflow ID is absent
- * - Response shape when cron is enabled and runs successfully
+ * - Workflow ID gating (STAKWORK_DAILY_RECAP_WORKFLOW_ID)
+ * - Response shape when workflow ID is missing
+ * - Response shape when cron runs successfully
  */
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -71,9 +71,9 @@ describe("GET /api/cron/daily-recap", () => {
     expect(body.error).toBe("Unauthorized");
   });
 
-  // ── Config guard ──────────────────────────────────────────────────────────
+  // ── Workflow ID gate ──────────────────────────────────────────────────────
 
-  it("returns 200 with not-configured message when STAKWORK_DAILY_RECAP_WORKFLOW_ID is unset", async () => {
+  it("returns 200 with skip message when STAKWORK_DAILY_RECAP_WORKFLOW_ID is unset", async () => {
     delete process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID;
 
     const res = await GET(createAuthenticatedRequest());
@@ -81,14 +81,16 @@ describe("GET /api/cron/daily-recap", () => {
 
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.message).toMatch(/not configured/i);
+    expect(body.message).toMatch(/STAKWORK_DAILY_RECAP_WORKFLOW_ID not configured/i);
+    expect(body.usersProcessed).toBe(0);
+    expect(body.dispatched).toBe(0);
     expect(mockExecuteScheduledDailyRecapRuns).not.toHaveBeenCalled();
   });
 
   // ── Enabled ───────────────────────────────────────────────────────────────
 
   it("calls executeScheduledDailyRecapRuns and returns summary JSON when workflow ID is set", async () => {
-    process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "12345";
+    process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "42";
     mockExecuteScheduledDailyRecapRuns.mockResolvedValue({
       usersProcessed: 5,
       dispatched: 4,
@@ -113,7 +115,7 @@ describe("GET /api/cron/daily-recap", () => {
   });
 
   it("returns success=false when errors are present", async () => {
-    process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "12345";
+    process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "42";
     mockExecuteScheduledDailyRecapRuns.mockResolvedValue({
       usersProcessed: 3,
       dispatched: 2,
@@ -131,7 +133,7 @@ describe("GET /api/cron/daily-recap", () => {
   });
 
   it("returns 500 when executeScheduledDailyRecapRuns throws", async () => {
-    process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "12345";
+    process.env.STAKWORK_DAILY_RECAP_WORKFLOW_ID = "42";
     mockExecuteScheduledDailyRecapRuns.mockRejectedValue(new Error("unexpected crash"));
 
     const res = await GET(createAuthenticatedRequest());
