@@ -19,33 +19,16 @@
  * anchors before proposing); `update_canvas` / `patch_canvas` are
  * `whiteboard` tools.
  *
- * ## Core vs loadable (progressive disclosure)
+ * ## Prompt composition
  *
- * Each capability is tagged `core: true | false`.
- *   - **Core** capabilities' prompt snippets are emitted up-front in
- *     the agent's system prompt every turn. These are the hot path:
- *     `roadmap` (propose a feature / organize the roadmap), `planner`
- *     (drive it with `send_to_feature_planner`), `graph_walker`
- *     (walk the knowledge graph / dereference URNs), and `concepts`
- *     ("remember this" / "note this down") — all common enough that
- *     their snippets ride up-front rather than behind `learn_capability`;
- *     ephemeral prompt caching makes the marginal cost a cached read.
- *   - **Loadable** capabilities (`whiteboard`, `research`,
- *     `connections`, `infra`) are NOT in the up-front prompt. Instead the core
- *     suffix carries a one-line menu, and the agent calls the
- *     `learn_capability` tool to pull a loadable snippet on demand. The
- *     tools themselves are always registered (the AI SDK fixes the
- *     toolset at call start), so the gate is the prompt: the agent is
- *     told to `learn_capability(...)` before using a loadable tool.
- *
- * This keeps the always-on prompt small (~roadmap + planner) while the
- * heavy canvas-drawing / connection / research-doc instructions only
- * cost tokens on the rarer turns that actually need them.
+ * Every resolved capability's tools are registered and its prompt snippet
+ * is emitted inline in the system prompt, in canonical order. Capabilities
+ * with a `slimPromptSnippet` use it in slim-prompt mode.
  *
  * ## Org-gated capabilities
  *
  * A capability may carry an async `orgGate`. Gated capabilities are
- * composed (tools + prompt snippet + menu) ONLY for orgs the gate
+ * composed (tools + prompt snippet) ONLY for orgs the gate
  * approves; every other org's agent never sees the tools or even learns
  * they exist. Today only `prompts` is gated — the shared prompt library is
  * globally scoped (the `Prompt` model has no org FK), so its read/propose
@@ -55,11 +38,11 @@
  * `includes` list (the sync resolver can't run the gate).
  *
  * The five capabilities:
- *   - `roadmap` (CORE) — propose/organize roadmap structure
+ *   - `roadmap` — propose/organize roadmap structure
  *     (initiatives/milestones/features) + `read_canvas`. Folds the rest
- *     of the canvas set in via `includes` so their tools (plus the
- *     loadable menu) are present whenever roadmap is selected.
- *   - `planner` (CORE) — driving an EXISTING feature's per-feature
+ *     of the canvas set in via `includes` so their tools (plus
+ *     their snippets) are present whenever roadmap is selected.
+ *   - `planner` — driving an EXISTING feature's per-feature
  *     planning agent via `send_to_feature_planner`. Usable without
  *     `roadmap`: the motivating surface is the per-feature Plan page.
  *   - `whiteboard` (LOADABLE) — free-form canvas drawing/annotation:
@@ -69,8 +52,7 @@
  *     writeups).
  */
 
-import { tool, type ToolSet } from "ai";
-import { z } from "zod";
+import type { ToolSet } from "ai";
 import { buildCanvasTools } from "@/lib/ai/canvasTools";
 import { buildConnectionTools } from "@/lib/ai/connectionTools";
 import {
@@ -211,22 +193,9 @@ interface CapabilityDefinition {
   promptSnippet(): string;
   /**
    * Slim-prompt variant (concept-tree mode), used instead of
-   * `promptSnippet` when slim-prompt mode is on. Core
-   * capabilities only; absent → `promptSnippet` in both modes.
+   * `promptSnippet` when slim-prompt mode is on. Absent → `promptSnippet` in both modes.
    */
   slimPromptSnippet?(): string;
-  /**
-   * Core capabilities are taught up-front in the system prompt every
-   * turn; loadable ones (`core: false`) are taught only when the agent
-   * calls `learn_capability`. See the module doc.
-   */
-  core: boolean;
-  /**
-   * One-line "what this lets you do / when to load it" blurb, shown in
-   * the loadable-capability menu appended to the core prompt suffix.
-   * Only consumed for loadable capabilities.
-   */
-  menuBlurb?: string;
   /**
    * Bare tool names (no `{slug}__` namespace) that mutate state and
    * are stripped in readonly mode. Proposal tools count: they emit
@@ -249,7 +218,7 @@ interface CapabilityDefinition {
   includes?: readonly OrgCapability[];
   /**
    * Optional async org-level access gate. When present, the capability is
-   * composed (tools + prompt snippet + menu) ONLY for orgs where this
+   * composed (tools + prompt snippet) ONLY for orgs where this
    * resolves `true`; every other org never sees it. Absent → available to
    * every org (the default). Applied by `resolveOrgCapabilities`; the sync
    * `resolveCapabilities` ignores it (see the `includes` caveat above).
@@ -332,7 +301,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       }),
       promptSnippet: getRoadmapCapabilitySnippet,
       slimPromptSnippet: getSlimRoadmapCapabilitySnippet,
-      core: true,
       writeToolNames: [
         "assign_feature_to_initiative",
         "assign_feature_to_workspace",
@@ -343,9 +311,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       ],
       // Pull the rest of the canvas set in so their tools are registered
       // whenever roadmap is selected (the org canvas surface always
-      // carried all of these) — the loadable ones also get listed in the
-      // learn_capability menu, while `concepts` (core) contributes its
-      // snippet to the up-front suffix. `prompts` is
+      // carried all of these). `prompts` is
       // deliberately NOT included: it's org-gated (see its `orgGate`), and
       // `includes` is expanded by the sync resolver which can't run the
       // gate — so it must stay explicitly-selected-only.
@@ -365,7 +331,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         ),
       promptSnippet: getPlannerCapabilitySnippet,
       slimPromptSnippet: getSlimPlannerCapabilitySnippet,
-      core: true,
       // send_to_feature_planner survives readonly mode — it messages an
       // agent rather than mutating org state directly. cancel_feature_planner
       // does mutate run + feature status, so it is stripped in readonly.
@@ -375,12 +340,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       buildTools: (ctx) =>
         pickTools(buildCanvasTools(ctx.orgId), WHITEBOARD_CANVAS_TOOL_NAMES),
       promptSnippet: getWhiteboardCapabilitySnippet,
-      core: false,
-      menuBlurb:
-        "**whiteboard** — draw/diagram on the canvas: notes, decisions, " +
-        "service cards, edges, and full re-layouts (`update_canvas` / " +
-        "`patch_canvas`). Load before drawing/annotating or laying out " +
-        "the canvas freehand.",
       writeToolNames: ["update_canvas", "patch_canvas"],
     },
     research: {
@@ -393,13 +352,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
           ctx.currentCanvasConversationId,
         ),
       promptSnippet: getResearchCapabilitySnippet,
-      core: false,
-      menuBlurb:
-        "**research** — create saved Research documents (markdown " +
-        "writeups from web search, projected as canvas cards): " +
-        "`dispatch_research` / `save_research` / `update_research`. Load " +
-        "when the user asks you to research a topic and save the writeup. " +
-        "(Plain `web_search` to inform an answer does NOT need this.)",
       // dispatch_research creates a Research row, so it's a write tool and
       // MUST be stripped in readonly mode. Critically, the research
       // sub-agent (`canvas-research-worker.ts`) runs readonly with only
@@ -411,24 +363,11 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
     connections: {
       buildTools: (ctx) => buildConnectionTools(ctx.orgId, ctx.userId),
       promptSnippet: getConnectionsCapabilitySnippet,
-      core: false,
-      menuBlurb:
-        "**connections** — author Connection documents describing how two " +
-        "or more systems integrate (with mermaid diagrams): " +
-        "`save_connection` / `update_connection`. Load when documenting an " +
-        "integration between systems/workspaces.",
       writeToolNames: ["save_connection", "update_connection"],
     },
     html_pages: {
       buildTools: (ctx) => buildHtmlArtifactTools(ctx.orgId, ctx.userId),
       promptSnippet: getHtmlPagesCapabilitySnippet,
-      core: false,
-      menuBlurb:
-        "**html_pages** — save, patch, and read a shareable HTML page " +
-        "artifact for this org (`save_html` / `update_html` / `get_html`). " +
-        "Load when the user asks you to create an artifact they can share " +
-        "with the team. Research first, then synthesize ONE HTML story — " +
-        "do not save one page per repo.",
       // "Write" here really means "strip in readonly mode" (see the
       // `writeToolNames` field comment above) — `get_html` returns the
       // full page body, so a readonly sub-agent must not keep it: without
@@ -447,12 +386,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       }),
       promptSnippet: getGraphWalkerCapabilitySnippet,
       slimPromptSnippet: getSlimGraphWalkerCapabilitySnippet,
-      // CORE: graph traversal is a hot path (walking roadmap→code, URN
-      // dereference from other tools), so its snippet rides in the
-      // up-front prompt every turn rather than behind `learn_capability`.
-      // With ephemeral prompt caching the marginal cost is a cached read.
-      // No menuBlurb: core capabilities are inlined, not menu-listed.
-      core: true,
       // dispatch_graph_walk and finalize_graph_walk are stripped in readonly mode
       // to prevent sub-agents from re-dispatching themselves. The graph-write
       // propose tools are also stripped in readonly mode.
@@ -471,28 +404,16 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
     infra: {
       buildTools: (ctx) => buildInfraTools(ctx.orgId, ctx.userId),
       promptSnippet: getInfraCapabilitySnippet,
-      core: false,
-      menuBlurb:
-        "**infra** — read a workspace's stored pod config files " +
-        "(Dockerfile, pm2.config.js, docker-compose.yml, devcontainer.json) via " +
-        "`read_pod_infra`; env values masked. Load when the user asks about a " +
-        "workspace's pod/Docker/build setup.",
       writeToolNames: [],
     },
     prompts: {
       buildTools: (ctx) => buildPromptTools(ctx.userId),
       promptSnippet: getPromptsCapabilitySnippet,
-      core: false,
-      menuBlurb:
-        "**prompts** — read and propose changes to shared prompts in the Hive prompt library: " +
-        "`get_prompt` / `list_prompts` (read, no approval) and `propose_new_prompt` / " +
-        "`propose_prompt_update` (write via human approval). Load when the user asks about " +
-        "prompts, wants to view or update a prompt, or needs to create a new one.",
       writeToolNames: [PROPOSE_NEW_PROMPT_TOOL, PROPOSE_PROMPT_UPDATE_TOOL],
       // Org-gated: the shared prompt library is globally scoped (no org FK),
       // so its read + propose tools are composed ONLY for allow-listed orgs
       // (default: Stakwork). Every other org's agent never sees the tools,
-      // the menu entry, or the prompt content. See `capabilityGates.ts`.
+      // or the prompt content. See `capabilityGates.ts`.
       orgGate: isPromptsCapabilityEnabledForOrg,
     },
     concepts: {
@@ -505,12 +426,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       buildTools: (ctx) => buildConceptTools(ctx.orgId, ctx.userId),
       promptSnippet: getConceptsCapabilitySnippet,
       slimPromptSnippet: getSlimConceptsCapabilitySnippet,
-      // CORE: "remember this" / "note this down" is a common, low-ceremony
-      // ask, and behind `learn_capability` the agent rarely recognized it as
-      // a concept write at all — the menu blurb was the only thing steering
-      // it. The snippet rides up-front so the trigger phrasing is always in
-      // the prompt (ephemeral caching makes the marginal cost a cached read).
-      core: true,
       // Not gated: unlike the global prompt library, concepts are per-workspace
       // and every workspace already exposes concept read tools to the agent.
       writeToolNames: [PROPOSE_NEW_CONCEPT_TOOL, PROPOSE_CONCEPT_UPDATE_TOOL],
@@ -523,15 +438,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // webhook fan-back safety net when a canvas conversation is active.
       buildTools: (ctx) => buildWorkflowExplorerTools(ctx),
       promptSnippet: getWorkflowsCapabilitySnippet,
-      core: false,
-      menuBlurb:
-        "**stakwork_workflows** — research the Stakwork workflow library via " +
-        "`workflow_explorer_agent`: find existing Workflows/Skills/Scripts " +
-        "by what they take as input and produce as output, read proven step " +
-        "orderings, and spot gaps; on explicit user request it can also " +
-        "test-run a single workflow step. Load ONLY when the user explicitly " +
-        "names Stakwork. A bare \"workflow\" is a strut workflow — that is " +
-        "`strut`, never this.",
       // Research tool, read-only by default. Its `run_step` param can launch
       // a single (billable) step execution, but only on explicit user
       // request per the prompt policy — not listed in writeToolNames because
@@ -552,18 +458,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // land via the `job_turn` StrutRun handler, with artifact cards).
       buildTools: (ctx) => buildStrutTools(ctx),
       promptSnippet: getStrutCapabilitySnippet,
-      core: false,
-      menuBlurb:
-        "**strut** — dispatch the org's strut AI builder " +
-        "(`dispatch_strut`) to build, revise, run, or evaluate strut " +
-        "workflows on the org's default swarm, and continue those chats; " +
-        "or start a job (`start_job` / `continue_job`) for something the " +
-        "user will iterate on — a plan, a document, a page — delivered as " +
-        "artifact cards. Runs in the background; replies are posted into " +
-        "this conversation. Load whenever the user asks about a workflow " +
-        "(building, revising, running, or evaluating one) or a workflow " +
-        "run, or for a plan / document / page to iterate on. \"Workflow\" " +
-        "means strut unless the user explicitly names Stakwork.",
       // Strut has a shell and publishes + runs code on the swarm — a write
       // tool in every sense; a job launches a run there. The two read tools
       // survive readonly mode.
@@ -622,93 +516,10 @@ export async function resolveOrgCapabilities(
   return resolved.filter((_cap, i) => allowed[i]);
 }
 
-/** Loadable (non-core) capabilities within a resolved selection. */
-function loadableCapabilities(
-  resolved: readonly OrgCapability[],
-): OrgCapability[] {
-  return resolved.filter((cap) => !CAPABILITY_REGISTRY[cap].core);
-}
-
-/**
- * The workflow clause of `learn_capability`'s description. "Workflow"
- * means strut by default: a bare "workflow" loads `strut`, and the
- * Stakwork library (`stakwork_workflows`) only when the user names Stakwork.
- * Each sentence appears only when its capability is actually loadable
- * here, so the description never advertises one this org lacks.
- */
-function learnCapabilityWorkflowHint(
-  loadable: readonly OrgCapability[],
-): string {
-  let hint = "";
-  if (loadable.includes("strut")) {
-    hint +=
-      "A bare \"workflow\" — build, revise, run, or evaluate one, or check " +
-      "on a run — ALWAYS means strut: load `strut`. ";
-  }
-  if (loadable.includes("stakwork_workflows")) {
-    hint +=
-      "Load `stakwork_workflows` (the Stakwork workflow library) ONLY when the user " +
-      "explicitly names Stakwork. ";
-  }
-  return hint;
-}
-
-/**
- * The `learn_capability` tool. Returns a loadable capability's full
- * prompt snippet on demand, so the heavy whiteboard / research /
- * connection instructions stay out of the always-on system prompt
- * (progressive disclosure — see module doc). Only the loadable
- * capabilities present in `resolved` are accepted; passing a core or
- * unavailable name returns guidance rather than throwing.
- *
- * The capability's tools are already registered (the AI SDK fixes the
- * toolset at call start); this tool only injects the instructions the
- * agent needs to use them correctly.
- */
-function buildLearnCapabilityTool(resolved: readonly OrgCapability[]): ToolSet {
-  const loadable = loadableCapabilities(resolved);
-  if (loadable.length === 0) return {};
-  return {
-    learn_capability: tool({
-      description:
-        "Load the detailed instructions for an advanced capability " +
-        "before you use its tools. Available capabilities: " +
-        loadable.join(", ") +
-        ". Call this FIRST whenever the user wants to: draw / diagram / " +
-        "annotate / re-lay-out the canvas (`whiteboard`), create a saved " +
-        "research writeup (`research`), document a system integration " +
-        "(`connections`), or save a shareable HTML page (`html_pages`). " +
-        learnCapabilityWorkflowHint(loadable) +
-        "You MUST load a capability before calling any of its tools; if you " +
-        "find yourself about to call one of those tools without having loaded " +
-        "its capability this turn, call `learn_capability` first. Returns the " +
-        "full rules for that capability.",
-      inputSchema: z.object({
-        capability: z
-          .enum(loadable as [OrgCapability, ...OrgCapability[]])
-          .describe("Which capability's instructions to load."),
-      }),
-      execute: async ({ capability }: { capability: OrgCapability }) => {
-        const def = CAPABILITY_REGISTRY[capability];
-        if (!def || def.core || !loadable.includes(capability)) {
-          return {
-            error:
-              "Unknown or unavailable capability. Available: " +
-              loadable.join(", "),
-          };
-        }
-        return { capability, instructions: def.promptSnippet() };
-      },
-    }),
-  };
-}
-
 /**
  * Merge the selected capabilities' toolsets. Tool names are disjoint
  * across capabilities, so spread order doesn't matter; we still
- * compose in canonical order for determinism. When any loadable
- * capability is present, a `learn_capability` tool is added so the
- * agent can pull its instructions on demand.
+ * compose in canonical order for determinism.
  */
 export function composeCapabilityTools(
   selected: readonly OrgCapability[],
@@ -719,27 +530,18 @@ export function composeCapabilityTools(
   for (const cap of resolved) {
     tools = { ...tools, ...CAPABILITY_REGISTRY[cap].buildTools(ctx) };
   }
-  tools = { ...tools, ...buildLearnCapabilityTool(resolved) };
   return tools;
 }
 
 /**
- * Build the system-prompt suffix for the selected capabilities.
- *
- * Core capabilities' snippets are emitted inline, in canonical order.
- * Loadable capabilities are NOT inlined; instead a short menu lists
- * them and tells the agent to call `learn_capability` before using
- * their tools (progressive disclosure — keeps the always-on prompt
- * small). With the full set this is roadmap + planner inline + a
- * three-item menu, NOT the full `getCanvasPromptSuffix()`.
+ * Build the system-prompt suffix for the selected capabilities: every
+ * resolved capability's snippet is emitted inline, in canonical order.
  */
 export function composeCapabilityPromptSuffix(
   selected: readonly OrgCapability[],
   { slimPrompt = false }: { slimPrompt?: boolean } = {},
 ): string {
-  const resolved = resolveCapabilities(selected);
-  const core = resolved
-    .filter((cap) => CAPABILITY_REGISTRY[cap].core)
+  return resolveCapabilities(selected)
     .map((cap) => {
       const def = CAPABILITY_REGISTRY[cap];
       return slimPrompt && def.slimPromptSnippet
@@ -747,26 +549,6 @@ export function composeCapabilityPromptSuffix(
         : def.promptSnippet();
     })
     .join("");
-
-  const loadable = loadableCapabilities(resolved);
-  if (loadable.length === 0) return core;
-
-  const menu = loadable
-    .map((cap) => `- ${CAPABILITY_REGISTRY[cap].menuBlurb}`)
-    .join("\n");
-
-  return (
-    core +
-    `
-
-## More capabilities (load on demand)
-
-These advanced capabilities are available but their detailed rules are NOT loaded yet. Before using ANY of their tools, you MUST call \`learn_capability(<name>)\` first to load the instructions — do not call a capability's tools until you have loaded it this session. Capability tool names are exact and bare — NEVER \`{workspace}__\`-prefixed (e.g. call \`update_canvas\`, not \`{workspace}__update_canvas\`):
-
-${menu}
-
-Only load a capability when the user's request actually calls for it; for the common "propose a feature, then send it to its planner" flow you don't need any of these.`
-  );
 }
 
 /**
