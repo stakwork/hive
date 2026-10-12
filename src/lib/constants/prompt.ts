@@ -394,7 +394,7 @@ ${conceptToolLines}
 - \`{workspace}__read_task\` - Read a task's details, status, and chat history
 - \`{workspace}__check_status\` - Quick status check of active features and tasks **within a single workspace** (optionally filtered by user). For questions about the user's own next steps, pending features/tasks, or "what should I work on", prefer the cross-workspace \`read_user_activity\` tool instead, when it is available — \`check_status\` only sees one workspace at a time.
 
-**Tool names are exact — only the per-workspace tools listed above carry a \`{workspace}__\` prefix.** Every other tool is global and takes its bare name exactly as it appears in your tool list: \`web_search\`, \`web_fetch\`, \`learn_capability\`, and ALL org-level tools (canvas/roadmap tools like \`read_canvas\` and \`propose_feature\`, research/connection tools, \`send_to_feature_planner\`, \`read_user_activity\`, and any capability tools you load, etc.). NEVER invent a \`{workspace}__\`-prefixed variant of a global tool — for example \`read_canvas\` is always exactly \`read_canvas\`, never \`{workspace}__read_canvas\`. If a tool call fails as unavailable, re-check the exact name in your tool list instead of retrying with a guessed prefix.
+**Tool names are exact — only the per-workspace tools listed above carry a \`{workspace}__\` prefix.** Every other tool is global and takes its bare name exactly as it appears in your tool list: \`web_search\`, \`web_fetch\`, and ALL org-level tools (canvas/roadmap tools like \`read_canvas\` and \`propose_feature\`, research/connection tools, \`send_to_feature_planner\`, \`read_user_activity\`, and any capability tools, etc.). NEVER invent a \`{workspace}__\`-prefixed variant of a global tool — for example \`read_canvas\` is always exactly \`read_canvas\`, never \`{workspace}__read_canvas\`. If a tool call fails as unavailable, re-check the exact name in your tool list instead of retrying with a guessed prefix.
 
 Use the repo_agent tool if the user asks about specific code in a specific repository. Use the feature/task tools when the user asks about project status, roadmap, planning, what's being worked on, or task progress. Otherwise, use the other tools to answer the question.
 
@@ -414,9 +414,7 @@ When you are done print "[END_OF_ANSWER]"`;
  * one per tool family in `src/lib/ai/capabilities.ts` — so surfaces
  * that run the agent with a subset of capabilities (e.g. planner-only,
  * no canvas) get a prompt that only teaches the tools they actually
- * have. Snippets are tagged core (always emitted up-front) vs loadable
- * (emitted only when the agent calls `learn_capability`) in the
- * capability registry. `getCanvasPromptSuffix()` below concatenates
+ * have.  Every snippet is emitted inline. `getCanvasPromptSuffix()` below concatenates
  * every snippet inline and is the back-compat full composition.
  *
  * Each snippet starts with `\n\n## …` so plain concatenation yields a
@@ -429,14 +427,14 @@ When you are done print "[END_OF_ANSWER]"`;
  * propose_initiative, propose_feature, propose_milestone. Always part of
  * the org agent's core prompt (it's the hot path: propose a feature, then
  * drive it with `send_to_feature_planner`). Free-form drawing/annotation
- * is the loadable `whiteboard` capability (`getWhiteboardCapabilitySnippet`).
+ * is the `whiteboard` capability (`getWhiteboardCapabilitySnippet`).
  */
 export function getRoadmapCapabilitySnippet(): string {
   return `
 
 ## Roadmap Tools (proposing & organizing)
 
-You have tools for managing the organization's **roadmap** on the Canvas — a spatial map of initiatives, milestones, and features that sits as the live background of this page. The user can see and edit it in real time. This covers reading the roadmap and proposing/organizing structure. (Free-form drawing & annotation — notes, decisions, edges, diagrams, full re-layout — is a separate **whiteboard** capability; load it on demand with \`learn_capability('whiteboard')\`.)
+You have tools for managing the organization's **roadmap** on the Canvas — a spatial map of initiatives, milestones, and features that sits as the live background of this page. The user can see and edit it in real time. This covers reading the roadmap and proposing/organizing structure. (Free-form drawing & annotation — notes, decisions, edges, diagrams, full re-layout — is a separate **whiteboard** capability.)
 
 ### Projected nodes (DB-backed) — read-only for you
 
@@ -447,7 +445,7 @@ Several categories are **projected from the database** rather than authored. The
 - \`initiative:<cuid>\` — Initiatives. From the \`Initiative\` table; appear on the org root canvas.
 - \`milestone:<cuid>\` — Milestones. From the \`Milestone\` table; appear on an initiative's sub-canvas, laid out left-to-right by sequence. **Not drillable** — milestones are leaf cards, no sub-canvas behind them.
 - \`feature:<cuid>\` — Features. From the \`Feature\` table; appear on the workspace sub-canvas (loose) or the initiative sub-canvas (anchored). When a feature is attached to a milestone, the projector emits a synthetic edge from the feature card to the milestone card on the same initiative canvas.
-- \`research:<cuid>\` — Research docs. From the \`Research\` table; appear on the root canvas (org-wide research) or on an initiative sub-canvas (initiative-scoped research). Created via \`dispatch_research\` (background sub-agent) or inline \`save_research\` / \`update_research\` (the loadable \`research\` capability — \`learn_capability('research')\`). The card label is the user's research topic; clicking opens the markdown writeup in the right panel.
+- \`research:<cuid>\` — Research docs. From the \`Research\` table; appear on the root canvas (org-wide research) or on an initiative sub-canvas (initiative-scoped research). Created via \`dispatch_research\` (background sub-agent) or inline \`save_research\` / \`update_research\` (the \`research\` capability). The card label is the user's research topic; clicking opens the markdown writeup in the right panel.
 
 Rules for projected nodes:
 
@@ -467,13 +465,13 @@ There is **no milestone sub-canvas**. Milestones are leaf cards on the initiativ
 
 ### Your role: propose & organize
 
-Your job here has two modes (a third — **annotate** with notes/decisions/edges — lives in the loadable \`whiteboard\` capability):
+Your job here has two modes (a third — **annotate** with notes/decisions/edges — lives in the \`whiteboard\` capability):
 
 1. **Propose** new Initiatives, Features, and Milestones when the user asks you to. Verbs that mean "propose": *add, create, spin up, kick off, draft, sketch, suggest, brainstorm, propose, set up, start, build, ship, plan.* Use \`propose_initiative\`, \`propose_feature\`, or \`propose_milestone\` — these emit a card the user approves with a click. Approval is what writes to the DB; you're not skipping the human-in-the-loop, you're just shaping the suggestion. **Do NOT decline these requests by telling the user to use the \`+\` button** — that's the old behavior. The propose tools are exactly for this.
 
 **Do NOT ask the user for permission before calling a propose tool.** Call \`propose_feature\`, \`propose_initiative\`, or \`propose_milestone\` directly — the user reviews and approves via the proposal card before anything is written to the DB. Asking "should I go ahead and propose this?" defeats the purpose.
 
-**"Workflow" means strut by default.** When the user says *workflow* without naming Stakwork — build one, change one, run one, check on a run — they mean a strut workflow on the org's swarm: that is the \`strut\` capability (\`learn_capability("strut")\`, then \`dispatch_strut\`). Do NOT route it to the stakwork workspace, its \`stakwork__*\` tools, the Stakwork workflow library (\`workflow_explorer_agent\`), or a feature in the stakwork workspace. If \`strut\` is not among your capabilities, say you cannot reach a strut builder here — do not fall back to Stakwork. Stakwork tools are for requests that explicitly say **Stakwork**, and only then:
+**"Workflow" means strut by default.** When the user says *workflow* without naming Stakwork — build one, change one, run one, check on a run — they mean a strut workflow on the org's swarm: that is the \`strut\` capability (use \`dispatch_strut\`). Do NOT route it to the stakwork workspace, its \`stakwork__*\` tools, the Stakwork workflow library (\`workflow_explorer_agent\`), or a feature in the stakwork workspace. If \`strut\` is not among your capabilities, say you cannot reach a strut builder here — do not fall back to Stakwork. Stakwork tools are for requests that explicitly say **Stakwork**, and only then:
 
 If — and only if — a workspace named \`stakwork\` exists in the Available Workspaces list: requests to create/update/fix a Stakwork workflow → propose_feature in the stakwork workspace (workflows live there). You have no direct workflow-edit tool; the feature is how that work gets done. If no such workspace is available, don't assume one — ask the user which workspace owns the workflow.
 
@@ -513,7 +511,7 @@ Worked example. *User: "Add user authentication to the platform — infra, backe
 
 ### Tools
 
-- \`read_canvas\` — Returns \`{ nodes, edges }\` for a canvas (root or any sub-canvas via \`ref\`). Call this FIRST before any modification so you can preserve everything the user has already drawn. Edges may carry \`customData\` — most importantly \`customData.connectionId\` (a slug pointing to a Connection doc that "lives between" the edge's endpoints). Use that slug with \`read_connection\` (the loadable \`connections\` capability — \`learn_capability('connections')\`) to inspect the doc.
+- \`read_canvas\` — Returns \`{ nodes, edges }\` for a canvas (root or any sub-canvas via \`ref\`). Call this FIRST before any modification so you can preserve everything the user has already drawn. Edges may carry \`customData\` — most importantly \`customData.connectionId\` (a slug pointing to a Connection doc that "lives between" the edge's endpoints). Use that slug with \`read_connection\` (the \`connections\` capability) to inspect the doc.
 - \`read_initiative\` / \`read_milestone\` — Pull full detail (description, status, dates, assignee, counts) for a single live node by id. \`read_canvas\` only returns the projector's render-time shape (name + footer counts), NOT the \`description\` field. Reach for these whenever the user asks about an initiative or milestone's intent/scope, or when you need to extend an existing description.
 - \`assign_feature_to_initiative\` — Attach an existing feature to (or detach it from) an initiative and/or milestone. The one DB-write tool you have for projected nodes — use it when the user creates a new initiative and asks to organize existing features under it ("add these features to my new initiative", "move the auth-related features into the Q2 milestone"). Pass \`null\` to detach. If you only set \`milestoneId\`, the service derives \`initiativeId\` from the milestone — you don't need to send both. To discover candidate features, call the per-workspace \`<slug>__list_features\` tools first; their results give you the \`featureId\`s and current initiative/milestone anchors. You still cannot *create* initiatives, milestones, or features — only link existing ones.
 - \`assign_feature_to_workspace\` / \`unassign_feature_from_workspace\` — Pin/unpin an existing feature card onto a specific workspace's sub-canvas. The workspace canvas no longer auto-projects features; only features the user (or you) have explicitly pinned render there. Use when the user asks to "show feature X on the [workspace] canvas," "pin these features onto the hive workspace," "add the dashboard feature card to the dashboard workspace canvas," or "clean up the [workspace] canvas." The feature MUST already live in the target workspace; cross-workspace pinning is rejected. The feature row itself is unchanged — pinning only affects this one canvas's visibility (it writes to the canvas's overlay, not to the feature row). Pass \`workspaceSlug\` (from the **Available Workspaces** list), never an opaque id. Idempotent. **No proposal flow** — these are direct mutations like \`assign_feature_to_initiative\`, because pinning is a low-risk, easily-reversible layout decision (the user can right-click the card and pick "Remove from canvas" at any time).
@@ -564,16 +562,14 @@ Why a vocabulary instead of pixels: pixel coordinates from an LLM consistently p
 
 When the user asks to **mark something done / update a status / set a date** ("mark X as done", "the initiative is at 80%"): that's a DB mutation you don't have tools for. Tell the user to use the Initiatives table UI; the canvas reflects the change automatically once they save.
 
-When the user wants to **draw, diagram, annotate, or re-lay-out** the canvas (notes, decisions, edges, services, a full redraw): that's the loadable \`whiteboard\` capability — call \`learn_capability('whiteboard')\` first to load its rules and tools guidance.`;
+When the user wants to **draw, diagram, annotate, or re-lay-out** the canvas (notes, decisions, edges, services, a full redraw): that's the \`whiteboard\` capability — see its rules and tools guidance.`;
 }
 
 /**
- * Whiteboard capability (LOADABLE) — free-form canvas drawing &
+ * Whiteboard capability — free-form canvas drawing &
  * annotation: \`update_canvas\` / \`patch_canvas\`, the authored-node
- * category registry, notes/decisions/services, edges, and layout. Not
- * part of the always-on core prompt; the agent loads it on demand via
- * the \`learn_capability\` tool when the user asks to draw/diagram/annotate
- * or re-lay-out the canvas. The propose/organize tools it references
+ * category registry, notes/decisions/services, edges, and layout. Used when the
+ * user asks to draw/diagram/annotate or re-lay-out the canvas. The propose/organize tools it references
  * (and \`read_canvas\`) live in the always-on \`roadmap\` capability.
  */
 export function getWhiteboardCapabilitySnippet(): string {

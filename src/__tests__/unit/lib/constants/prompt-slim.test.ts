@@ -5,7 +5,6 @@ import {
   getPlannerCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
   getConceptsCapabilitySnippet,
-  getGraphWalkDispatchSnippet,
 } from "@/lib/constants/prompt";
 import {
   getSlimRoadmapCapabilitySnippet,
@@ -200,19 +199,6 @@ describe("Jamie slim prompt — removed vocabulary", () => {
     expect(text).not.toMatch(/`near:<liveId>`/);
     expect(text).not.toMatch(/`right-of:<liveId>`/);
     expect(text).not.toMatch(/`left-of:<liveId>`/);
-  });
-
-  it("no learn_capability(<core capability>) call in any quote style", () => {
-    const text =
-      ALL_CAPABILITY_TEXT() + getGraphWalkDispatchSnippet();
-    for (const cap of CORE_CAPABILITIES) {
-      expect(text).not.toMatch(
-        new RegExp(`learn_capability\\(['"\`]${cap}['"\`]\\)`),
-      );
-    }
-    // graph_walker specifically used to be gated behind learn_capability
-    expect(text).not.toContain('learn_capability("graph_walker")');
-    expect(text).not.toContain("learn_capability('graph_walker')");
   });
 });
 
