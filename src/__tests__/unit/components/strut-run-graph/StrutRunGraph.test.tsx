@@ -15,10 +15,12 @@
  * - a node of a peer workspace's graph: badged with the workspace, read by
  *   its qualified id, linked to THAT workspace's Graph Explorer, and said
  *   to be unread when the viewer may not read that graph;
- * - a call that launched a run of its own: nothing of that run is read until
- *   it is opened (its row's button, or a branch shown inside it); then its
- *   calls take the launching call's place, as a branch, opened in the tree,
- *   and the nodes it brings (the files it read) are drawn with the rest.
+ * - a call that launched a run of its own: in a run that touched many nodes,
+ *   nothing of it is read until it is opened (its row's button, or a branch
+ *   shown inside it); in one that touched few, it opens on its own. Opened,
+ *   its calls take the launching call's place, as a branch, and the nodes it
+ *   brings (the files it read) are drawn with the rest — in a lane of its
+ *   own, named for its workflow.
  */
 
 import React from "react";
@@ -431,6 +433,8 @@ describe("nodes of a peer workspace's graph", () => {
 });
 
 describe("child runs, loaded when opened", () => {
+  /** Enough nodes that the job's turn opens nothing on its own. */
+  const PADDING = Array.from({ length: 9 }, (_, i) => `p${i}`);
   const LAUNCH = "job/work/002-meta_run_workflow";
   const jobCall = (path: string, refs: string[], extra: Record<string, unknown> = {}) => ({
     path,
@@ -444,7 +448,7 @@ describe("child runs, loaded when opened", () => {
     nodes: refs.map((ref_id) => ({ ref_id })),
     ...extra,
   });
-  const JOB_TRACE = {
+  const SMALL_TRACE = {
     calls: [
       jobCall("job/work/001-graph_graph_get", ["j"]),
       jobCall(LAUNCH, ["a", "b"], { child: { workflow: "explore" } }),
@@ -455,15 +459,20 @@ describe("child runs, loaded when opened", () => {
     edgesRead: true,
     truncated: false,
   };
+  const JOB_TRACE = {
+    ...SMALL_TRACE,
+    calls: [jobCall("job/work/001-graph_graph_get", ["j", ...PADDING]), SMALL_TRACE.calls[1]],
+    nodes: [...SMALL_TRACE.nodes, ...PADDING.map((id) => node(id, "Concept", id))],
+  };
   const CHILD_CALLS = [
     jobCall(`${LAUNCH}/explore/explore/001-graph_graph_search`, ["a"]),
     jobCall(`${LAUNCH}/explore/explore/002-graph_graph_get`, ["b"]),
   ];
 
-  function stubJob(child: () => Answer) {
+  function stubJob(child: () => Answer, trace: unknown = JOB_TRACE) {
     const fetchMock = vi.fn(async (url: string) => {
       const got =
-        url === ENDPOINT ? answer(200, JOB_TRACE) : url.startsWith(`${ENDPOINT}/calls?`) ? child() : answer(404, {});
+        url === ENDPOINT ? answer(200, trace) : url.startsWith(`${ENDPOINT}/calls?`) ? child() : answer(404, {});
       return { ok: got.status < 400, status: got.status, json: async () => got.body };
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -476,12 +485,12 @@ describe("child runs, loaded when opened", () => {
     const fetchMock = stubJob(() => answer(200, { calls: CHILD_CALLS }));
     render(<StrutRunGraph endpoint={ENDPOINT} />);
     await screen.findByTestId("run-graph-summary");
-    expect(summary()).toContain("2 calls read or wrote 3 nodes");
+    expect(summary()).toContain("2 calls read or wrote 12 nodes");
     expect(childCalls(fetchMock)).toEqual([]);
 
     fireEvent.click(await screen.findByLabelText("Open the explore run"));
 
-    await waitFor(() => expect(summary()).toContain("3 calls read or wrote 3 nodes"));
+    await waitFor(() => expect(summary()).toContain("3 calls read or wrote 12 nodes"));
     expect(childCalls(fetchMock)).toEqual([`${ENDPOINT}/calls?under=${encodeURIComponent(LAUNCH)}`]);
     expect(screen.queryByTestId("run-graph-open-child")).toBeNull();
     // The launch is a branch now, open down to the child's calls.
@@ -511,7 +520,7 @@ describe("child runs, loaded when opened", () => {
     fireEvent.click(await screen.findByLabelText("Open the explore run"));
 
     await waitFor(() => expect(drawn()).toContain("sphinx-verify.ts"));
-    expect(summary()).toContain("4 calls read or wrote 4 nodes");
+    expect(summary()).toContain("4 calls read or wrote 13 nodes");
     expect(screen.getAllByTestId("run-graph-call").map((el) => el.textContent)).toContainEqual(
       expect.stringContaining("stakwork/hive/src/lib/auth/sphinx-verify.ts"),
     );
@@ -535,8 +544,28 @@ describe("child runs, loaded when opened", () => {
         "Not readable here: you are not a member of @apps",
       ),
     );
-    expect(summary()).toContain("2 calls read or wrote 3 nodes");
+    expect(summary()).toContain("2 calls read or wrote 12 nodes");
     fireEvent.click(screen.getByTestId("run-graph-open-child"));
     await waitFor(() => expect(childCalls(fetchMock)).toHaveLength(2));
+  });
+
+  it("opens a child on its own when the run touched few nodes, and draws it in a lane named for its workflow", async () => {
+    const fetchMock = stubJob(() => answer(200, { calls: CHILD_CALLS }), SMALL_TRACE);
+    render(<StrutRunGraph endpoint={ENDPOINT} />);
+
+    await waitFor(() => expect(summary()).toContain("3 calls read or wrote 3 nodes"));
+    expect(childCalls(fetchMock)).toEqual([`${ENDPOINT}/calls?under=${encodeURIComponent(LAUNCH)}`]);
+    expect(lanes()).toEqual(["work", "explore"]);
+
+    // Inside the job's turn, its own steps are lanes and the launch keeps its own.
+    fireEvent.click(screen.getAllByTestId("run-graph-lane-name")[0]);
+    await waitFor(() => expect(lanes()).toEqual(["graph_graph_get", "explore"]));
+  });
+
+  it("names a launch's lane for its workflow before it is opened", async () => {
+    stubJob(() => answer(200, { calls: CHILD_CALLS }));
+    render(<StrutRunGraph endpoint={ENDPOINT} />);
+    await screen.findByTestId("run-graph-summary");
+    expect(lanes()).toEqual(["work", "explore"]);
   });
 });
