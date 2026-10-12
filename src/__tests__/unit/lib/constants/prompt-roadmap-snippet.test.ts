@@ -42,7 +42,7 @@ describe("getRoadmapCapabilitySnippet — a bare 'workflow' means strut", () => 
   it("states the strut default and the tools it resolves to", () => {
     expect(snippet).toContain('**"Workflow" means strut by default.**');
     expect(snippet).toContain(
-      'that is the `strut` capability (`learn_capability("strut")`, then `dispatch_strut`)'
+      'that is the `strut` capability (use `dispatch_strut`)'
     );
   });
 
