@@ -17,10 +17,10 @@
  *   - **Stay silent:** call the `stay_silent` tool (terminal no-op).
  *
  * There is deliberately NO policy extractor / classifier here — the
- * agent is the classifier. The synthetic wake message below only
- * supplies *context* (which feature, which wake reason); the prompt
- * paragraph in `getPlannerCapabilitySnippet` teaches the agent how to
- * behave when the wakeup is machine-driven.
+ * agent is the classifier. The synthetic wake message below supplies
+ * the context (which feature, which wake reason) and the three
+ * responses it may pick; `send_to_feature_planner`'s description
+ * teaches how to drive the planner.
  *
  * **Gating.** Two layers, both default to a no-op:
  *   1. A per-user opt-in (`User.canvasAutonomousTurns`, default off),

@@ -1,25 +1,21 @@
 import { describe, it, expect } from "vitest";
 import {
   getMultiWorkspaceSystemPrompt,
-  getRoadmapCapabilitySnippet,
-  getPlannerCapabilitySnippet,
-  getGraphWalkerCapabilitySnippet,
   getConceptsCapabilitySnippet,
-  getGraphWalkDispatchSnippet,
 } from "@/lib/constants/prompt";
-import {
-  getSlimRoadmapCapabilitySnippet,
-  getSlimPlannerCapabilitySnippet,
-  getSlimGraphWalkerCapabilitySnippet,
-  getSlimConceptsCapabilitySnippet,
-} from "@/lib/constants/prompt-slim";
+import { getSlimConceptsCapabilitySnippet } from "@/lib/constants/prompt-slim";
 import {
   PLANNER_FORM_RULE,
   PLANNER_FORM_WAKE_RULE,
   GITHUB_ORG_RULE,
 } from "@/lib/constants/prompt-rules";
-import { composeCapabilityPromptSuffix } from "@/lib/ai/capabilities";
+import {
+  ALL_CAPABILITIES,
+  CAPABILITY_REGISTRY,
+  composeCapabilityPromptSuffix,
+} from "@/lib/ai/capabilities";
 import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
+import { getStrutCapabilitySnippet } from "@/lib/ai/strutTools";
 import type { WorkspaceConfig } from "@/lib/ai/types";
 
 // `buildInitiativeTools` only constructs `ToolSet` objects (descriptions
@@ -27,17 +23,17 @@ import type { WorkspaceConfig } from "@/lib/ai/types";
 // `@/lib/db` mock is needed here; only `execute()` calls would need one.
 
 /**
- * Jamie slim prompt (concept-tree mode, opt-in via the per-browser settings switch)
- * — asserts the toggle selects the right text, the slim prompt carries a
- * no concept-tree entry of its own (that lives in the Prompt Manager
- * prompt `CANVAS_AGENT_SYSTEM_PROMPT`) and no hardcoded concept names, every
- * seed-list safety rule still has a string that keeps it alive, and no
- * removed vocabulary (admin-only, placement verbs, a core-capability
- * `learn_capability` call) survives in the slim prompt.
+ * Jamie's code-built prompt. Only two capabilities are core — `concepts`
+ * and `strut` — so the capability suffix is their two snippets plus the
+ * load-on-demand menu. `roadmap`, `planner` and `graph_walker` are tools
+ * only: their rules ride in the tool descriptions (pinned by
+ * `src/__tests__/unit/lib/ai/toolDescriptionRules.test.ts`, which also
+ * carries the seed-list safety audit from
+ * `docs/jamie-prompt-slim/concepts.md` §2).
  *
- * `KEPT_SAFETY_STRINGS` below is the audit table from
- * `docs/jamie-prompt-slim/concepts.md` §2 — one string per seed-list
- * rule, plus graph-write rules and "never construct URNs by hand".
+ * The slim-prompt toggle (concept-tree mode, opt-in via the per-browser
+ * settings switch) now only swaps the `concepts` snippet for its slim
+ * variant.
  */
 
 function makeWs(slug: string): WorkspaceConfig {
@@ -54,59 +50,77 @@ function makeWs(slug: string): WorkspaceConfig {
   } as unknown as WorkspaceConfig;
 }
 
-const CORE_CAPABILITIES = ["roadmap", "planner", "graph_walker", "concepts"] as const;
+const CORE_CAPABILITIES = ["concepts", "strut"] as const;
+const TOOLS_ONLY_CAPABILITIES = ["roadmap", "planner", "graph_walker"] as const;
 
-const ALL_CAPABILITY_TEXT = () =>
-  getSlimRoadmapCapabilitySnippet() +
-  getSlimPlannerCapabilitySnippet() +
-  getSlimGraphWalkerCapabilitySnippet() +
-  getSlimConceptsCapabilitySnippet();
+const suffixFor = (slimPrompt: boolean) =>
+  composeCapabilityPromptSuffix(ALL_CAPABILITIES, { slimPrompt });
 
-describe("Jamie slim prompt — toggle", () => {
-  it("off: the suffix uses the full core snippets", () => {
-    const suffix = composeCapabilityPromptSuffix([...CORE_CAPABILITIES]);
-    expect(suffix).toContain(getRoadmapCapabilitySnippet());
-    expect(suffix).toContain(getPlannerCapabilitySnippet());
-    expect(suffix).toContain(getGraphWalkerCapabilitySnippet());
-    expect(suffix).toContain(getConceptsCapabilitySnippet());
+describe("Jamie prompt — core capabilities", () => {
+  it("only concepts and strut are core", () => {
+    const core = ALL_CAPABILITIES.filter((cap) => CAPABILITY_REGISTRY[cap].core);
+    expect(core).toEqual([...CORE_CAPABILITIES]);
   });
 
-  it("on: the suffix uses the slim core snippets", () => {
-    const suffix = composeCapabilityPromptSuffix([...CORE_CAPABILITIES], {
-      slimPrompt: true,
-    });
-    expect(suffix).toContain(getSlimRoadmapCapabilitySnippet());
-    expect(suffix).toContain(getSlimPlannerCapabilitySnippet());
-    expect(suffix).toContain(getSlimGraphWalkerCapabilitySnippet());
+  it("roadmap, planner and graph_walker carry no prompt text — their tools do", () => {
+    for (const cap of TOOLS_ONLY_CAPABILITIES) {
+      expect(CAPABILITY_REGISTRY[cap].promptSnippet).toBeUndefined();
+      expect(CAPABILITY_REGISTRY[cap].menuBlurb).toBeUndefined();
+    }
+    for (const slimPrompt of [false, true]) {
+      const suffix = suffixFor(slimPrompt);
+      expect(suffix).not.toContain("## Roadmap Tools");
+      expect(suffix).not.toContain("## Feature Planning");
+      expect(suffix).not.toContain("## Graph Walker Tools");
+    }
+  });
+
+  it("inlines the concepts and strut snippets", () => {
+    const suffix = suffixFor(false);
+    expect(suffix).toContain(getConceptsCapabilitySnippet());
+    expect(suffix).toContain(getStrutCapabilitySnippet());
+  });
+
+  it("never tells the agent to learn_capability a core or tools-only capability", () => {
+    const text =
+      getMultiWorkspaceSystemPrompt([makeWs("alpha")]) +
+      suffixFor(false) +
+      suffixFor(true);
+    for (const cap of [...CORE_CAPABILITIES, ...TOOLS_ONLY_CAPABILITIES]) {
+      expect(text).not.toMatch(
+        new RegExp(`learn_capability\\(['"\`]${cap}['"\`]\\)`),
+      );
+    }
+  });
+});
+
+describe("Jamie prompt — slim toggle", () => {
+  it("on: swaps in the slim concepts snippet; strut is the same in both modes", () => {
+    const suffix = suffixFor(true);
     expect(suffix).toContain(getSlimConceptsCapabilitySnippet());
-    expect(suffix).not.toContain(getRoadmapCapabilitySnippet());
+    expect(suffix).not.toContain(getConceptsCapabilitySnippet());
+    expect(suffix).toContain(getStrutCapabilitySnippet());
   });
 
   it("neither mode adds its own concept-tree entry (the system prompt owns it)", () => {
     for (const slimPrompt of [false, true]) {
-      const suffix = composeCapabilityPromptSuffix([...CORE_CAPABILITIES], {
-        slimPrompt,
-      });
+      const suffix = suffixFor(slimPrompt);
       expect(suffix).not.toContain("walk your concept tree");
       expect(suffix).not.toContain("Glimmer");
     }
   });
 
-  it("send_to_feature_planner carries PLANNER_FORM_RULE only when on", () => {
-    const off = buildInitiativeTools("org-1", "user-1")[
+  it("send_to_feature_planner carries PLANNER_FORM_RULE in both modes", () => {
+    const send = buildInitiativeTools("org-1", "user-1")[
       "send_to_feature_planner"
     ] as { description: string };
-    const on = buildInitiativeTools("org-1", "user-1", undefined, undefined, true)[
-      "send_to_feature_planner"
-    ] as { description: string };
-    expect(off.description).not.toContain(PLANNER_FORM_RULE);
-    expect(on.description).toContain(PLANNER_FORM_RULE);
+    expect(send.description).toContain(PLANNER_FORM_RULE);
   });
 });
 
-describe("Jamie slim prompt — no hardcoded concepts", () => {
+describe("Jamie prompt — no hardcoded concepts", () => {
   it("names no concept from the tree — the rest is walked", () => {
-    const text = ALL_CAPABILITY_TEXT();
+    const text = suffixFor(false) + suffixFor(true);
     for (const name of [
       "Hive Roadmap and Canvas",
       "Jamie Roadmap Proposals",
@@ -119,63 +133,10 @@ describe("Jamie slim prompt — no hardcoded concepts", () => {
   });
 });
 
-describe("Jamie slim prompt — kept safety strings (seed-list audit)", () => {
-  // Strings that live in the code-built prompt (prompt.ts) itself.
-  const KEPT_SAFETY_STRINGS_PROMPT: string[] = [
-    // 1. Propose, don't write.
-    "You are not a coding agent.",
-    "**Propose, don't write.**",
-    // 2. repo_agent is read-only.
-    "STRICTLY READ-ONLY investigation",
-    // 3. FORM rule → PLANNER_FORM_RULE (deliberate change)
-    PLANNER_FORM_RULE,
-    // 4. graph_query is member-scoped, not admin-only
-    "any member of the named workspace",
-    // 5. Never invent a contract
-    "Never invent a contract",
-    // 6. Never construct URNs by hand
-    "Never construct URN strings by hand",
-    // 7. Mirror-owned types are not editable
-    "Mirror-owned types are not editable.",
-    // 9. GitHub org is not a workspace
-    GITHUB_ORG_RULE,
-  ];
-
-  it("every kept safety string is present somewhere in the prompt + tool text", () => {
-    const promptText =
-      getMultiWorkspaceSystemPrompt([makeWs("alpha")]) + ALL_CAPABILITY_TEXT();
-    for (const needle of KEPT_SAFETY_STRINGS_PROMPT) {
-      expect(promptText, `expected to find: ${needle}`).toContain(needle);
-    }
-  });
-
-  it("rule 8 (cycles rejected) is kept in the propose_feature tool's dependsOn* describe() text", () => {
-    const tools = buildInitiativeTools("org-1", "user-1");
-    const proposeFeature = tools["propose_feature"] as {
-      inputSchema: { shape: Record<string, { description?: string }> };
-    };
-    expect(proposeFeature).toBeDefined();
-    const shape = proposeFeature.inputSchema.shape;
-    const depA = String(shape.dependsOnFeatureIds?.description ?? "");
-    const depB = String(shape.dependsOnProposalIds?.description ?? "");
-    const combined = depA + depB;
-    expect(combined).toContain(
-      "Cycles, including two proposals that depend on each other, are rejected",
-    );
-    expect(combined).toContain("Never create mutual dependencies.");
-  });
-});
-
-describe("Jamie slim prompt — must-stay lines", () => {
+describe("Jamie prompt — must-stay lines", () => {
   it("keeps the don't-know reply line verbatim", () => {
     expect(getMultiWorkspaceSystemPrompt([makeWs("alpha")])).toContain(
       'If you really can\'t find anything useful, or you truly do not know the answer, simply reply something like: "Sorry, I don\'t know the answer to that question, I\'ll look into it."',
-    );
-  });
-
-  it("keeps the roadmap→code chain line", () => {
-    expect(getGraphWalkerCapabilitySnippet()).toContain(
-      "HiveFeature  --HAS_TASK-->  HiveTask  --RESULTED_IN-->  PullRequest  -->  File",
     );
   });
 
@@ -184,39 +145,28 @@ describe("Jamie slim prompt — must-stay lines", () => {
       GITHUB_ORG_RULE,
     );
   });
-});
 
-describe("Jamie slim prompt — removed vocabulary", () => {
-  it("no 'admin-only' claim anywhere in the prompt or capability text", () => {
-    expect(ALL_CAPABILITY_TEXT()).not.toContain("admin-only");
-    expect(getGraphWalkerCapabilitySnippet()).not.toContain("admin-only");
+  it("the Tool Naming Convention keeps only the prefix rule — tools describe themselves", () => {
+    const prompt = getMultiWorkspaceSystemPrompt([makeWs("alpha")]);
+    expect(prompt).toContain("## Tool Naming Convention");
+    expect(prompt).toContain(
+      "**Tool names are exact — only those per-workspace tools carry a `{workspace}__` prefix.**",
+    );
+    expect(prompt).not.toContain("**Routing external questions:**");
+    expect(prompt).not.toContain("`{workspace}__search_logs` - Search");
+    expect(prompt).not.toContain("`{workspace}__repo_agent` - Deep code analysis");
+  });
+
+  it("no 'admin-only' claim anywhere in the prompt", () => {
     expect(getMultiWorkspaceSystemPrompt([makeWs("alpha")])).not.toContain(
       "admin-only",
     );
-  });
-
-  it("no placement vocabulary left in the prompt (moved to initiativeTools.ts)", () => {
-    const text = getSlimRoadmapCapabilitySnippet();
-    expect(text).not.toMatch(/`near:<liveId>`/);
-    expect(text).not.toMatch(/`right-of:<liveId>`/);
-    expect(text).not.toMatch(/`left-of:<liveId>`/);
-  });
-
-  it("no learn_capability(<core capability>) call in any quote style", () => {
-    const text =
-      ALL_CAPABILITY_TEXT() + getGraphWalkDispatchSnippet();
-    for (const cap of CORE_CAPABILITIES) {
-      expect(text).not.toMatch(
-        new RegExp(`learn_capability\\(['"\`]${cap}['"\`]\\)`),
-      );
-    }
-    // graph_walker specifically used to be gated behind learn_capability
-    expect(text).not.toContain('learn_capability("graph_walker")');
-    expect(text).not.toContain("learn_capability('graph_walker')");
+    expect(suffixFor(false)).not.toContain("admin-only");
+    expect(suffixFor(true)).not.toContain("admin-only");
   });
 });
 
-describe("Jamie slim prompt — tool text carries moved rules", () => {
+describe("Jamie prompt — tool text carries moved rules", () => {
   it("send_to_feature_planner description has the IN_PROGRESS re-check wording", () => {
     const tools = buildInitiativeTools("org-1", "user-1");
     const send = tools["send_to_feature_planner"] as { description: string };
@@ -254,7 +204,7 @@ describe("Jamie slim prompt — tool text carries moved rules", () => {
   });
 });
 
-describe("Jamie slim prompt — autoturn wake message", () => {
+describe("Jamie prompt — autoturn wake message", () => {
   it("the form wake branch contains both FORM rules", async () => {
     const fs = await import("fs/promises");
     const path = await import("path");
@@ -274,18 +224,18 @@ describe("Jamie slim prompt — autoturn wake message", () => {
   });
 });
 
-describe("Jamie slim prompt — size cap", () => {
-  it("the slim code-built prompt (system + core capability suffix) is within the measured cap", () => {
+describe("Jamie prompt — size cap", () => {
+  it("the code-built prompt (system + full capability suffix) is within the measured cap", () => {
     const workspaces = [makeWs("alpha"), makeWs("beta"), makeWs("gamma")];
     const sys = getMultiWorkspaceSystemPrompt(workspaces, "alice", "");
-    const suffix = composeCapabilityPromptSuffix([...CORE_CAPABILITIES], {
-      slimPrompt: true,
-    });
-    const total = sys.length + suffix.length;
-    // Measured post-slim total was ~35,606 chars (see
-    // docs/jamie-prompt-slim/concepts.md §4); cap set with ~10% headroom.
-    expect(total).toBeLessThan(39_200);
-    // Guards against silent re-bloat back toward the pre-slim ~65k size.
-    expect(total).toBeLessThan(50_000);
+    for (const slimPrompt of [false, true]) {
+      const total = sys.length + suffixFor(slimPrompt).length;
+      // Measured ~15.8k chars with concepts + strut as the only core
+      // snippets and the Tool Naming Convention cut to the prefix rule
+      // (was ~65k before the capability split, ~35.6k in slim mode — see
+      // docs/jamie-prompt-slim/concepts.md §4); cap set with ~10%
+      // headroom so re-bloat fails here.
+      expect(total).toBeLessThan(17_400);
+    }
   });
 });

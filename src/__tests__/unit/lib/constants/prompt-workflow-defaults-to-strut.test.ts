@@ -1,16 +1,14 @@
 import { describe, it, expect } from "vitest";
-import {
-  getMultiWorkspaceSystemPrompt,
-  getWorkflowsCapabilitySnippet,
-  getGraphWalkerCapabilitySnippet,
-} from "@/lib/constants/prompt";
+import { getWorkflowsCapabilitySnippet } from "@/lib/constants/prompt";
+import { askToolsMulti } from "@/lib/ai/askToolsMulti";
+import { buildGraphWalkerTools } from "@/lib/ai/graphWalkerTools";
 import type { WorkspaceConfig } from "@/lib/ai/types";
 
 /**
- * "Workflow" means strut by default. Every place the prompt mentions a
- * Stakwork workflow surface must say it is for requests that explicitly
- * name Stakwork, and send a bare "workflow" to the `strut` capability.
- * (The core rule itself is covered in prompt-roadmap-snippet.test.ts.)
+ * "Workflow" means strut by default. Every place the prompt or a tool
+ * mentions a Stakwork workflow surface must say it is for requests that
+ * explicitly name Stakwork, and send a bare "workflow" to strut. (The
+ * core rule itself is the core `strut` snippet — see strutTools.test.ts.)
  */
 
 function makeWs(slug: string): WorkspaceConfig {
@@ -37,21 +35,31 @@ describe("getWorkflowsCapabilitySnippet — Stakwork-only", () => {
   });
 });
 
-describe("getGraphWalkerCapabilitySnippet — Stakwork Workflow nodes", () => {
-  it("marks the kg Workflow nodes as Stakwork's and sends a bare workflow to strut", () => {
-    const snippet = getGraphWalkerCapabilitySnippet();
-    expect(snippet).toContain(
-      'They are Stakwork workflows — a bare "workflow" means a strut workflow, which is not a kg node: that is the `strut` capability.'
+describe("graph_search — Stakwork Workflow nodes", () => {
+  it("marks the kg Workflow nodes as Stakwork's and says a bare workflow is strut", () => {
+    const tools = buildGraphWalkerTools("org-1", "user-1") as unknown as Record<
+      string,
+      { description: string }
+    >;
+    expect(tools.graph_search.description).toContain(
+      "`Workflow` nodes are Stakwork workflows and exist only in the `stakwork` workspace's kg; " +
+        'a bare "workflow" means a strut workflow, which is not in the kg.'
     );
   });
 });
 
-describe("getMultiWorkspaceSystemPrompt — logs_agent and workflow run logs", () => {
-  it("scopes workflow run logs to Stakwork and points strut runs at the strut capability", () => {
-    const prompt = getMultiWorkspaceSystemPrompt([makeWs("alpha")]);
-    expect(prompt).toContain(
-      "Stakwork workflow **run** logs (only when they name Stakwork — a strut workflow's run is evaluated through the `strut` capability, not here)"
+describe("logs_agent — workflow run logs", () => {
+  it("scopes workflow run logs to Stakwork and points strut runs at strut", () => {
+    const tools = askToolsMulti([makeWs("alpha")], "api-key") as unknown as Record<
+      string,
+      { description: string }
+    >;
+    const description = tools.alpha__logs_agent.description;
+    expect(description).toContain(
+      "Stakwork workflow run logs, but only when the user names Stakwork"
     );
-    expect(prompt).not.toContain("stakwork/workflow **run** logs");
+    expect(description).toContain(
+      "a strut workflow's run is evaluated through strut (`dispatch_strut`), not here"
+    );
   });
 });

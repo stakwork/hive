@@ -374,7 +374,10 @@ export function buildCanvasTools(orgId: string): ToolSet {
         "NOT drillable), `feature:<cuid>` (Feature — loose on a " +
         "workspace sub-canvas, or anchored on an initiative sub-canvas), " +
         "and `research:<cuid>` (Research doc). These are DB-backed — " +
-        "never create or edit a `<kind>:` node via a canvas tool.",
+        "never create or edit a `<kind>:` node via a canvas tool. An " +
+        "edge may carry `customData.connectionId`: the slug of a " +
+        "Connection doc about how the edge's two ends integrate — read " +
+        "it with `read_connection` (the `connections` capability).",
       inputSchema: z.object({
         ref: z.string().describe(REF_DESCRIPTION).optional(),
       }),

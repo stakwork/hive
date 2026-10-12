@@ -243,8 +243,11 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
         "run. Emits an approvable card in chat; the concept is NOT created " +
         "until the user approves. Use this when the user asks you to " +
         "remember, note, capture, or document something for a workspace — " +
-        "e.g. 'Jamie, remember this', 'save this as a concept', 'write this " +
-        "down for later'. First check `list_concepts` (or the workspace's " +
+        "e.g. 'Jamie, remember this', 'note this down', 'save this as a " +
+        "concept', 'document this', 'add this to the knowledge base', " +
+        "'write this down for later' — each of these is a request to write " +
+        "a concept, so act on it. " +
+        "First check `list_concepts` (or the workspace's " +
         "`{slug}__list_concepts`) to see whether a relevant concept already " +
         "exists — if so, prefer `propose_concept_update` to extend it " +
         "instead of creating a duplicate. For knowledge that applies to the " +
@@ -272,7 +275,8 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
           .min(1)
           .describe(
             "The full documentation body to store (markdown). This is the " +
-              "knowledge you are capturing.",
+              "knowledge you are capturing. Make it self-contained and " +
+              "useful later: lead with what it is and why it matters.",
           ),
         description: z
           .string()
@@ -434,10 +438,11 @@ export function buildConceptTools(orgId: string, userId: string): ToolSet {
         "until the user approves. Use this when the user asks you to " +
         "update, extend, correct, or add to something already captured in a " +
         "concept (including 'Jamie, remember this' when a relevant concept " +
-        "already exists). Call `list_concepts` / `learn_concept` (or the " +
-        "workspace-prefixed variants) FIRST to obtain the concept id and " +
-        "its current documentation — supply the FULL new documentation body " +
-        "(the update replaces the whole documentation field).",
+        "already exists). Call `list_concepts` (or the workspace-prefixed " +
+        "variant) FIRST to obtain the concept id, then " +
+        "`read_concept_documentation` for its current body — supply the " +
+        "FULL new documentation body, merged (the update replaces the whole " +
+        "documentation field).",
       inputSchema: z.object({
         workspaceSlug: z
           .string()

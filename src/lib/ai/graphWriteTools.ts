@@ -152,6 +152,14 @@ type TripletItem = {
   target: EndpointInput;
 };
 
+// Every propose tool's `workspaceSlug`: a ref_id only resolves in the
+// graph it was read from, and the write goes through this slug's swarm.
+const WORKSPACE_SLUG_DESCRIPTION =
+  "Slug of the workspace whose graph to write to. Any `ref_id` must come from " +
+  "this workspace's graph — one sent through another workspace fails silently. " +
+  "If your search spanned several workspaces, confirm the workspace with the " +
+  "user first.";
+
 // ─── Tool factory ─────────────────────────────────────────────────────────
 
 export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
@@ -162,16 +170,14 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
       description:
         "Propose creating a new node in the workspace knowledge graph. " +
         "Emits an approvable card — no write happens until the user clicks Approve. " +
-        "Requires a valid `node_type` from `graph_ontology`. " +
+        "Requires a valid `node_type` from `graph_ontology`; check its required attributes with " +
+        "`get_ontology_type` first. " +
         "Reserved attribute keys (status, is_deleted, deleted_at, is_muted, boost, ref_id, algo_*) are rejected. " +
-        "No `namespace` or `create_schema_if_missing` parameter.",
+        "No `namespace` or `create_schema_if_missing` parameter. " +
+        "An approval result with `alreadyExisted: true` means the node was already there and no " +
+        "duplicate was made — report it as a success, not a failure.",
       inputSchema: z.object({
-        workspaceSlug: z
-          .string()
-          .min(1)
-          .describe(
-            "Slug of the workspace whose KG the node will be created in.",
-          ),
+        workspaceSlug: z.string().min(1).describe(WORKSPACE_SLUG_DESCRIPTION),
         node_type: z
           .string()
           .min(1)
@@ -244,10 +250,7 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
         "Initiative, Milestone, Research) are not editable — edits would be silently " +
         "reverted by the next mirror pass. No `namespace` parameter.",
       inputSchema: z.object({
-        workspaceSlug: z
-          .string()
-          .min(1)
-          .describe("Slug of the workspace the node belongs to."),
+        workspaceSlug: z.string().min(1).describe(WORKSPACE_SLUG_DESCRIPTION),
         ref_id: z
           .string()
           .min(1)
@@ -367,9 +370,15 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
         "Propose creating a single source→edge→target triplet in the workspace KG. " +
         "Each endpoint is either a ref_id (existing node) OR an inline node spec " +
         "(node_type + node_data for create-or-merge) — not both. " +
-        "No `namespace` or `create_schema_if_missing`.",
+        "Prefer a ref_id when the node is already known: it targets that exact node, while an " +
+        "inline spec creates-or-merges. Take ref_ids from graph_get / graph_neighbors / " +
+        "graph_search — never from a finalize_graph_walk answer, which is prose only. " +
+        "Check node and edge types with graph_ontology / get_ontology_type first. " +
+        "No `namespace` or `create_schema_if_missing`. " +
+        "An approval result with `alreadyExisted: true` means it was already there and no " +
+        "duplicate was made — report it as a success, not a failure.",
       inputSchema: z.object({
-        workspaceSlug: z.string().min(1).describe("Workspace slug."),
+        workspaceSlug: z.string().min(1).describe(WORKSPACE_SLUG_DESCRIPTION),
         edge_type: z.string().min(1).describe("Relationship/edge type."),
         edge_data: z
           .record(z.string(), z.unknown())
@@ -475,7 +484,7 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
         "On approval, triplets are processed sequentially; partial failures return " +
         "per-item results. No `namespace` or `create_schema_if_missing`.",
       inputSchema: z.object({
-        workspaceSlug: z.string().min(1).describe("Workspace slug."),
+        workspaceSlug: z.string().min(1).describe(WORKSPACE_SLUG_DESCRIPTION),
         triplets: z
           .array(TripletItemSchema)
           .min(1)
@@ -566,15 +575,15 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
     [PROPOSE_DELETE_EDGE_TOOL]: tool({
       description:
         "Propose permanently removing one existing relationship (source)-[:edge_type]->(target) from the workspace KG. " +
-        "Both ends are ref_ids of existing nodes (from graph_get / graph_neighbors / graph_search). " +
+        "Both ends are ref_ids of existing nodes (from graph_get / graph_neighbors / graph_search); " +
+        "a graph_neighbors result gives the neighbor's ref_id, its edgeType and the direction " +
+        "(`forward` means the queried node is the source). " +
         "The edge is looked up by its ends at propose time to confirm it exists, and again on approval. " +
+        "One relationship per card; say in `rationale` why it is wrong. " +
         "Emits an approvable card — nothing is removed until the user clicks Approve. " +
         "To put a node under a different parent, use propose_move_node instead of a delete plus a create.",
       inputSchema: z.object({
-        workspaceSlug: z
-          .string()
-          .min(1)
-          .describe("Slug of the workspace the edge belongs to."),
+        workspaceSlug: z.string().min(1).describe(WORKSPACE_SLUG_DESCRIPTION),
         edge_type: z
           .string()
           .min(1)
@@ -660,10 +669,7 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
         "Refused for mirror-owned node types and, along PARENT_OF, for a destination under the node itself (a cycle). " +
         "Emits an approvable card — nothing changes until the user clicks Approve.",
       inputSchema: z.object({
-        workspaceSlug: z
-          .string()
-          .min(1)
-          .describe("Slug of the workspace the node belongs to."),
+        workspaceSlug: z.string().min(1).describe(WORKSPACE_SLUG_DESCRIPTION),
         ref_id: z.string().min(1).describe("ref_id of the node to move."),
         to_ref_id: z
           .string()
@@ -819,12 +825,10 @@ export function buildGraphWriteTools(orgId: string, userId: string): ToolSet {
         "nothing else is removed. The card lists the links that will go. " +
         "Refused for mirror-owned node types, Schema nodes and nodes that are already deleted. " +
         "If only a link is wrong, use propose_delete_edge or propose_move_node instead. " +
+        "For a duplicate, name in `rationale` the node it duplicates — that one stays. " +
         "Emits an approvable card — nothing changes until the user clicks Approve.",
       inputSchema: z.object({
-        workspaceSlug: z
-          .string()
-          .min(1)
-          .describe("Slug of the workspace the node belongs to."),
+        workspaceSlug: z.string().min(1).describe(WORKSPACE_SLUG_DESCRIPTION),
         ref_id: z.string().min(1).describe("ref_id of the node to delete."),
         rationale: z
           .string()

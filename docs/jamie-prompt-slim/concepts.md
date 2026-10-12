@@ -1,5 +1,13 @@
 # Jamie prompt slim-down — concept handoff & audit
 
+> **Update, 2026-10-10.** The `roadmap`, `planner` and `graph_walker`
+> snippets are gone in both modes: those capabilities are now "tools only",
+> and their rules — including the §2 safety strings — ride in the tool
+> descriptions, pinned by `src/__tests__/unit/lib/ai/toolDescriptionRules.test.ts`.
+> Only `concepts` and `strut` are core. The slim toggle now only swaps the
+> `concepts` snippet. The rest of this file is the record of the original
+> slim-prompt PR.
+
 Companion record for the PR that adds the slim canvas-agent prompt
 (concept-tree mode). The slim prompt is opt-in per browser via the
 "Concept-tree prompt" switch in the agent settings cog (stored in

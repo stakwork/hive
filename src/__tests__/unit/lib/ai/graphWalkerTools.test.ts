@@ -98,13 +98,10 @@ vi.mock("@/lib/ai/researchTools", () => ({ buildResearchTools: vi.fn(() => ({}))
 vi.mock("@/lib/ai/htmlArtifactTools", () => ({ buildHtmlArtifactTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/ai/infraTools", () => ({ buildInfraTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/constants/prompt", () => ({
-  getRoadmapCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
   getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
-  getGraphWalkerCapabilitySnippet: vi.fn(() => ""),
   getInfraCapabilitySnippet: vi.fn(() => ""),
   getWorkflowsCapabilitySnippet: vi.fn(() => ""),
   getPromptsCapabilitySnippet: vi.fn(() => ""),
