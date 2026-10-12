@@ -1652,7 +1652,6 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       expect(toolNames).toContain('propose_initiative');
       expect(toolNames).toContain('read_canvas');
       expect(toolNames).toContain('send_to_feature_planner');
-      expect(toolNames).toContain('learn_capability');
     });
 
     it('names the bound workspace in the single-workspace org prompt overlay', async () => {

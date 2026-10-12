@@ -23,7 +23,7 @@ export function getSlimRoadmapCapabilitySnippet(): string {
 
 ## Roadmap Tools (proposing & organizing)
 
-You have tools for managing the organization's **roadmap** on the Canvas — a spatial map of initiatives, milestones, and features that sits as the live background of this page. The user can see and edit it in real time. This covers reading the roadmap and proposing/organizing structure. (Free-form drawing & annotation — notes, decisions, edges, diagrams, full re-layout — is a separate **whiteboard** capability; load it on demand with \`learn_capability('whiteboard')\`.)
+You have tools for managing the organization's **roadmap** on the Canvas — a spatial map of initiatives, milestones, and features that sits as the live background of this page. The user can see and edit it in real time. This covers reading the roadmap and proposing/organizing structure. (Free-form drawing & annotation — notes, decisions, edges, diagrams, full re-layout — is a separate **whiteboard** capability.)
 
 ### Projected nodes (DB-backed) — read-only for you
 
@@ -33,13 +33,13 @@ Several categories (workspaces, repos, initiatives, milestones, features, resear
 
 ### Your role: propose & organize
 
-Your job here has two modes (a third — **annotate** with notes/decisions/edges — lives in the loadable \`whiteboard\` capability):
+Your job here has two modes (a third — **annotate** with notes/decisions/edges — lives in the \`whiteboard\` capability):
 
 1. **Propose** new Initiatives, Features, and Milestones when the user asks you to. Verbs that mean "propose": *add, create, spin up, kick off, draft, sketch, suggest, brainstorm, propose, set up, start, build, ship, plan.* Use \`propose_initiative\`, \`propose_feature\`, or \`propose_milestone\` — these emit a card the user approves with a click. Approval is what writes to the DB; you're not skipping the human-in-the-loop, you're just shaping the suggestion. **Do NOT decline these requests by telling the user to use the \`+\` button** — that's the old behavior. The propose tools are exactly for this.
 
 **Do NOT ask the user for permission before calling a propose tool.** Call \`propose_feature\`, \`propose_initiative\`, or \`propose_milestone\` directly — the user reviews and approves via the proposal card before anything is written to the DB. Asking "should I go ahead and propose this?" defeats the purpose.
 
-**"Workflow" means strut by default.** When the user says *workflow* without naming Stakwork — build one, change one, run one, check on a run — they mean a strut workflow on the org's swarm: that is the \`strut\` capability (\`learn_capability("strut")\`, then \`dispatch_strut\`). Do NOT route it to the stakwork workspace, its \`stakwork__*\` tools, the Stakwork workflow library (\`workflow_explorer_agent\`), or a feature in the stakwork workspace. If \`strut\` is not among your capabilities, say you cannot reach a strut builder here — do not fall back to Stakwork. Stakwork tools are for requests that explicitly say **Stakwork**, and only then:
+**"Workflow" means strut by default.** When the user says *workflow* without naming Stakwork — build one, change one, run one, check on a run — they mean a strut workflow on the org's swarm: that is the \`strut\` capability (use \`dispatch_strut\`). Do NOT route it to the stakwork workspace, its \`stakwork__*\` tools, the Stakwork workflow library (\`workflow_explorer_agent\`), or a feature in the stakwork workspace. If \`strut\` is not among your capabilities, say you cannot reach a strut builder here — do not fall back to Stakwork. Stakwork tools are for requests that explicitly say **Stakwork**, and only then:
 
 If — and only if — a workspace named \`stakwork\` exists in the Available Workspaces list: requests to create/update/fix a Stakwork workflow → propose_feature in the stakwork workspace (workflows live there). You have no direct workflow-edit tool; the feature is how that work gets done. If no such workspace is available, don't assume one — ask the user which workspace owns the workflow.
 
@@ -76,7 +76,7 @@ When the user describes work that spans systems (*"add auth across infra, backen
 
 When the user asks to **mark something done / update a status / set a date**: that's a DB mutation you don't have tools for — direct them to the Initiatives table UI.
 
-When the user wants to **draw, diagram, annotate, or re-lay-out** the canvas: that's the loadable \`whiteboard\` capability — \`learn_capability('whiteboard')\` first.`;
+When the user wants to **draw, diagram, annotate, or re-lay-out** the canvas: that's the \`whiteboard\` capability.`;
 }
 
 export function getSlimPlannerCapabilitySnippet(): string {

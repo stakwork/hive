@@ -317,8 +317,8 @@ export interface RunCanvasAgentOptions {
   orgId?: string;
   /**
    * Org capability families to compose into the agent when `orgId` is
-   * set — each contributes its tools, its prompt snippet (core ones
-   * inline, loadable ones behind `learn_capability`), and its
+   * set — each contributes its tools, its prompt snippet
+   * (inline), and its
    * readonly-strip names (see `src/lib/ai/capabilities.ts`). Defaults
    * to the full set, i.e. the historical canvas-agent behavior. Pass a
    * subset to run the same agent on surfaces that have no canvas —
