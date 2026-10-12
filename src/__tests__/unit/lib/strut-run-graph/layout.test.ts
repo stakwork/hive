@@ -256,3 +256,49 @@ describe("layoutRunGraph with a lineage", () => {
     }
   });
 });
+
+describe("layoutRunGraph with a launched run", () => {
+  const LAUNCH = "job/work/004-meta_run_workflow";
+  const JOB = [
+    call("job/work/001-graph_graph_get", ["job"]),
+    call(`${LAUNCH}/explore/explore/001-graph_graph_get`, ["e1", "job"]),
+    call(`${LAUNCH}/explore/explore/002-graph_graph_get`, ["e2"]),
+  ];
+  const layout = layoutRunGraph(JOB, ["job", "e1", "e2"], [], new Map(), new Map([[LAUNCH, "explore"]]));
+
+  it("draws the launched run in a lane of its own, named for its workflow, apart from the stage it ran in", () => {
+    expect(layout.lanes.map((l) => [l.key, l.stage, l.path])).toEqual([
+      ["work", "work", "work"],
+      [LAUNCH, "explore", "work/004-meta_run_workflow"],
+    ]);
+    expect(layout.callCells).toEqual(["work#", `${LAUNCH}#`, `${LAUNCH}#`]);
+    expect(idsIn(layout, "work#")).toEqual(["job"]);
+    expect(idsIn(layout, `${LAUNCH}#`).sort()).toEqual(["e1", "e2", "job"]);
+  });
+
+  it("gives the launch itself, not yet opened, the same lane", () => {
+    const unopened = layoutRunGraph(
+      [JOB[0], call(LAUNCH, ["e1"])],
+      ["job", "e1"],
+      [],
+      new Map(),
+      new Map([[LAUNCH, "explore"]]),
+    );
+    expect(unopened.lanes.map((l) => l.stage)).toEqual(["work", "explore"]);
+  });
+
+  it("puts a call in the deepest launch it lies in", () => {
+    const inner = `${LAUNCH}/explore/explore/003-meta_run_workflow`;
+    const nested = layoutRunGraph(
+      [...JOB, call(`${inner}/deep/001-graph_graph_get`, ["d"])],
+      ["job", "e1", "e2", "d"],
+      [],
+      new Map(),
+      new Map([
+        [LAUNCH, "explore"],
+        [inner, "deep"],
+      ]),
+    );
+    expect(nested.lanes.map((l) => l.stage)).toEqual(["work", "explore", "deep"]);
+  });
+});

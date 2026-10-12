@@ -296,7 +296,7 @@ export function RunGraphCanvas({
         <g ref={viewRef}>
           <g data-testid="run-graph-lanes">
             {layout.lanes.map((lane) => (
-              <g key={lane.stage} data-testid="run-graph-lane" data-stage={lane.stage}>
+              <g key={lane.key} data-testid="run-graph-lane" data-stage={lane.stage}>
                 <title>
                   {lane.stage}: {lane.calls} calls, {lane.nodes} nodes
                 </title>
