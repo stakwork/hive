@@ -136,6 +136,29 @@ export function childToLoad(calls: RunGraphCall[], scope: string | null): string
 }
 
 /**
+ * The lanes of the runs launching calls started, for the branch shown: each
+ * launch's path as `scopeCalls` re-roots it, with its workflow (and the peer
+ * it ran on) to name the lane. `launches` are the launching calls by their
+ * paths in the whole run, loaded or not. A launch the branch does not hold —
+ * or is — has no lane: inside it, its own steps are the lanes.
+ */
+export function launchSections(launches: RunGraphCall[], scope: string | null): Map<string, string> {
+  const sections = new Map<string, string>();
+  for (const call of launches) {
+    if (!call.child) continue;
+    const name = call.child.peer ? `${call.child.workflow} on @${call.child.peer}` : call.child.workflow;
+    if (!scope) {
+      sections.set(call.path, name);
+      continue;
+    }
+    const prefix = `${call.path.split("/")[0]}/${scope}/`;
+    if (!call.path.startsWith(prefix)) continue;
+    sections.set(`${scope.split("/").pop()}/${call.path.slice(prefix.length)}`, name);
+  }
+  return sections;
+}
+
+/**
  * The trace's nodes and edges with those of each loaded child run added —
  * a child brings what the trace cannot have folded onto its launch (the
  * files it read). A node the trace already has keeps the trace's reading;
