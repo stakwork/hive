@@ -18,26 +18,21 @@ jobs:
       matrix:
         shard: [1, 2, 3]
 
-    services:
-      postgres:
-        # Pulled from the ECR Public Gallery mirror (not Docker Hub) to avoid
-        # GitHub Actions' shared-runner Docker Hub unauthenticated pull rate limit.
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: hive_user
-          POSTGRES_PASSWORD: hive_password
-          POSTGRES_DB: hive_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Start PostgreSQL (native, avoids Docker registry rate limits)
+        # Uses the PostgreSQL server preinstalled on the GitHub-hosted runner
+        # image instead of pulling a container, since both Docker Hub and the
+        # ECR Public Gallery mirror have hit unauthenticated pull rate limits
+        # from shared runner IPs.
+        run: |
+          sudo systemctl start postgresql.service
+          until pg_isready -h localhost -p 5432; do sleep 1; done
+          sudo -u postgres psql -c "CREATE USER hive_user WITH SUPERUSER PASSWORD 'hive_password';"
+          sudo -u postgres createdb hive_db -O hive_user
+          pg_isready -h localhost -p 5432
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
