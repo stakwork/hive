@@ -9,6 +9,7 @@ import {
   callLabel,
   childToLoad,
   keepGraphRead,
+  launchSections,
   replayFrame,
   scopeCalls,
   scopeOfBranch,
@@ -304,5 +305,30 @@ describe("withChildGraph", () => {
     );
     expect(merged.nodes.map((x) => x.name)).toEqual(["trace's a", "f", "dir"]);
     expect(merged.edges).toEqual([edge]);
+  });
+});
+
+describe("launchSections", () => {
+  const launch = (path: string, child: RunGraphCall["child"]) => ({ ...call(path, []), child });
+  const LAUNCHES = [
+    launch("job/work/004-meta_run_workflow", { workflow: "explore" }),
+    launch("job/work/005-strut_run_workflow", { workflow: "explore", peer: "apps" }),
+    call("job/work/001-graph_graph_get", ["a"]),
+  ];
+
+  it("names each launch's lane for its workflow, and the peer it ran on", () => {
+    expect([...launchSections(LAUNCHES, null)]).toEqual([
+      ["job/work/004-meta_run_workflow", "explore"],
+      ["job/work/005-strut_run_workflow", "explore on @apps"],
+    ]);
+  });
+
+  it("re-roots a launch the branch shown holds, and drops one it does not, or is", () => {
+    expect([...launchSections(LAUNCHES, "work")]).toEqual([
+      ["work/004-meta_run_workflow", "explore"],
+      ["work/005-strut_run_workflow", "explore on @apps"],
+    ]);
+    expect([...launchSections(LAUNCHES, "work/004-meta_run_workflow")]).toEqual([]);
+    expect([...launchSections(LAUNCHES, "other")]).toEqual([]);
   });
 });
