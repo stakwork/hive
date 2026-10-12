@@ -21,9 +21,14 @@
  *
  * ## Prompt composition
  *
- * Every resolved capability's tools are registered and its prompt snippet
- * is emitted inline in the system prompt, in canonical order. Capabilities
- * with a `slimPromptSnippet` use it in slim-prompt mode.
+ * Every resolved capability's tools are registered. Only the formerly-core
+ * capabilities (`roadmap`, `planner`, `graph_walker`, `concepts`) emit their
+ * prompt snippet in the system prompt, in canonical order; capabilities with
+ * a `slimPromptSnippet` use it in slim-prompt mode. The other capabilities
+ * (whiteboard, research, connections, html_pages, infra, strut,
+ * stakwork_workflows, prompts) keep their tools registered but add NO prompt
+ * text — their instructions live in the graph's "Jamie Capabilities" concept
+ * tree.
  *
  * ## Org-gated capabilities
  *
@@ -45,10 +50,10 @@
  *   - `planner` — driving an EXISTING feature's per-feature
  *     planning agent via `send_to_feature_planner`. Usable without
  *     `roadmap`: the motivating surface is the per-feature Plan page.
- *   - `whiteboard` (LOADABLE) — free-form canvas drawing/annotation:
+ *   - `whiteboard` (tools only) — free-form canvas drawing/annotation:
  *     `update_canvas` / `patch_canvas`, notes/decisions, edges, layout.
- *   - `research` (LOADABLE) — Research documents (web-search writeups).
- *   - `connections` (LOADABLE) — Connection documents (integration
+ *   - `research` (tools only) — Research documents (web-search writeups).
+ *   - `connections` (tools only) — Connection documents (integration
  *     writeups).
  */
 
@@ -516,6 +521,14 @@ export async function resolveOrgCapabilities(
   return resolved.filter((_cap, i) => allowed[i]);
 }
 
+/** Capabilities whose snippets are still emitted in the system prompt. */
+const PROMPT_SNIPPET_CAPABILITIES: ReadonlySet<OrgCapability> = new Set([
+  "roadmap",
+  "planner",
+  "graph_walker",
+  "concepts",
+]);
+
 /**
  * Merge the selected capabilities' toolsets. Tool names are disjoint
  * across capabilities, so spread order doesn't matter; we still
@@ -534,14 +547,17 @@ export function composeCapabilityTools(
 }
 
 /**
- * Build the system-prompt suffix for the selected capabilities: every
- * resolved capability's snippet is emitted inline, in canonical order.
+ * Build the system-prompt suffix for the selected capabilities: the
+ * roadmap / planner / graph_walker / concepts snippets are emitted inline,
+ * in canonical order. Other capabilities contribute tools only (their
+ * instructions live in the "Jamie Capabilities" concept tree).
  */
 export function composeCapabilityPromptSuffix(
   selected: readonly OrgCapability[],
   { slimPrompt = false }: { slimPrompt?: boolean } = {},
 ): string {
   return resolveCapabilities(selected)
+    .filter((cap) => PROMPT_SNIPPET_CAPABILITIES.has(cap))
     .map((cap) => {
       const def = CAPABILITY_REGISTRY[cap];
       return slimPrompt && def.slimPromptSnippet

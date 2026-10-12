@@ -268,11 +268,10 @@ describe("Jamie slim prompt — size cap", () => {
       slimPrompt: true,
     });
     const total = sys.length + suffix.length;
-    // Every capability snippet is now emitted inline (no lazy
-    // `learn_capability` loading), so the roadmap composition pulls in
-    // whiteboard/research/connections/html_pages/graph_walker/infra/
-    // concepts too. Measured slim total is ~60,272 chars; cap set with
-    // ~10% headroom.
-    expect(total).toBeLessThan(66_300);
+    // Measured post-slim total was ~35,606 chars (see
+    // docs/jamie-prompt-slim/concepts.md §4); cap set with ~10% headroom.
+    expect(total).toBeLessThan(39_200);
+    // Guards against silent re-bloat back toward the pre-slim ~65k size.
+    expect(total).toBeLessThan(50_000);
   });
 });
