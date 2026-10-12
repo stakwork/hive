@@ -7,7 +7,9 @@
  * iteration. A cell draws every node its own calls touched — a node two
  * stages read is drawn in both — and, above each of them, its lineage: the
  * nodes it descends from along `PARENT_OF`, up to the root of its tree,
- * whether or not the run touched those. A tree is drawn as rings around its
+ * whether or not the run touched those. A run a call launched (an
+ * `explore` from a job's turn) is a lane of its own, wherever in the run the
+ * launch was, named for its workflow. A tree is drawn as rings around its
  * root, one ring per level; anything else in the cell settles by the links
  * among it. A cell depends on nothing outside itself, so a finished cell
  * stays as it was while the run goes on.
@@ -35,6 +37,9 @@ export interface RunGraphCell extends RunGraphBox {
 }
 
 export interface RunGraphLane extends RunGraphBox {
+  /** The lane's key: its stage, or the launch's path for a launched run's lane. */
+  key: string;
+  /** What the lane is called: the stage, or the launched run's workflow. */
   stage: string;
   /** The stage's segment of the run's paths (`003-produce`): the branch of the run it is. Null when it loops: its cells are the branches. */
   path: string | null;
@@ -297,6 +302,7 @@ interface Group {
 }
 
 interface Stage {
+  key: string;
   stage: string;
   /** The segment of the first call that reached the stage. */
   segment: string;
@@ -307,28 +313,44 @@ interface Stage {
 /** The segment of a call's path directly under the run. */
 const segmentOf = (path: string): string => path.split("/")[1] ?? path;
 
+/** The launch whose run a call is in, or is — the deepest, for a run launched inside another. */
+function sectionOf(path: string, sections: ReadonlyMap<string, string>): string | null {
+  let found: string | null = null;
+  for (const launch of sections.keys()) {
+    if (path !== launch && !path.startsWith(`${launch}/`)) continue;
+    if (found === null || launch.length > found.length) found = launch;
+  }
+  return found;
+}
+
 /**
  * Place `nodeIds` for a canvas about `aspect` times as wide as it is tall:
  * in each cell, what its calls touched and the lineage above that, by
  * `parents` (each node's parents along `PARENT_OF`). A node not among
- * `nodeIds` is left out, lineage or not.
+ * `nodeIds` is left out, lineage or not. `sections` names the calls that
+ * launched a run of their own, by path, with what to call its lane: the
+ * launch and every call under it are drawn there, apart from the rest.
  */
 export function layoutRunGraph(
   calls: RunGraphCall[],
   nodeIds: string[],
   links: Link[],
   parents: ReadonlyMap<string, string[]> = new Map(),
+  sections: ReadonlyMap<string, string> = new Map(),
   aspect = 1.6,
 ): RunGraphLayout {
   const wanted = new Set(nodeIds);
   const stages = new Map<string, Stage>();
   const callCells: string[] = [];
   calls.forEach((call, index) => {
-    const { stage, iteration } = stageOf(call.path);
+    const launch = sectionOf(call.path, sections);
+    const { stage, iteration } = launch === null ? stageOf(call.path) : { stage: launch, iteration: null };
     callCells.push(cellKey(stage, iteration));
     let entry = stages.get(stage);
     if (!entry) {
-      entry = { stage, segment: segmentOf(call.path), calls: 0, groups: new Map() };
+      const name = launch === null ? stage : (sections.get(launch) as string);
+      const segment = launch === null ? segmentOf(call.path) : launch.split("/").slice(1).join("/");
+      entry = { key: stage, stage: name, segment, calls: 0, groups: new Map() };
       stages.set(stage, entry);
     }
     entry.calls++;
@@ -337,7 +359,12 @@ export function layoutRunGraph(
       if (!wanted.has(id)) continue;
       let group = entry.groups.get(iteration);
       if (!group) {
-        group = { iteration, segment: segmentOf(call.path), ids: [], since: new Map() };
+        group = {
+          iteration,
+          segment: launch === null ? segmentOf(call.path) : entry.segment,
+          ids: [],
+          since: new Map(),
+        };
         entry.groups.set(iteration, group);
       }
       if (group.since.has(id)) continue;
@@ -388,7 +415,7 @@ export function layoutRunGraph(
         width: cell.width,
         height,
       });
-      const key = cellKey(s.stage, cell.group.iteration);
+      const key = cellKey(s.key, cell.group.iteration);
       for (const [id, point] of cell.points) {
         places.set(placeKey(key, id), {
           id,
@@ -404,6 +431,7 @@ export function layoutRunGraph(
     }
     const width = Math.max(LANE_MIN_WIDTH, right + 2 * LANE_PAD);
     lanes.push({
+      key: s.key,
       stage: s.stage,
       path: s.cells.some((c) => c.group.iteration !== null) ? null : s.segment,
       calls: s.calls,

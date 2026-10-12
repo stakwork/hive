@@ -29,6 +29,7 @@ import {
   childToLoad,
   callLabel,
   keepGraphRead,
+  launchSections,
   replayFrame,
   scopeCalls,
   scopeOfBranch,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/strut-run-graph/replay";
 import { nodeText } from "@/lib/strut-run-graph/node-text";
 import { parseQualifiedRef } from "@/lib/strut-run-graph/peer-ref";
+import { distinctNodeRefs } from "@/lib/strut-run-graph/project";
 import type {
   RunGraphAccess,
   RunGraphCall,
@@ -54,6 +56,8 @@ import { RunGraphCanvas, type RunGraphCanvasNode } from "./RunGraphCanvas";
 
 /** Refresh cadence while the run is still going. */
 const LIVE_POLL_MS = 10_000;
+/** A run that touched fewer nodes than this opens the runs it launched on its own. */
+const AUTO_OPEN_BELOW = 10;
 /** One call per tick when playing. */
 const PLAY_INTERVAL_MS = 800;
 
@@ -561,6 +565,12 @@ export function StrutRunGraph({
       ),
     [trace?.nodes, trace?.edges, children],
   );
+  /** Every launching call, loaded or not, by its path in the whole run: each draws its run in a lane of its own. */
+  const launches = useMemo(
+    () => [...(trace?.calls ?? []), ...Object.values(loadedChildren).flat()].filter((call) => call.child !== undefined),
+    [trace?.calls, loadedChildren],
+  );
+  const sections = useMemo(() => launchSections(launches, scope), [launches, scope]);
   const inScope = useMemo(() => scopeCalls(allCalls, scope), [allCalls, scope]);
   const calls = useMemo(() => inScope.filter((call) => shown[call.access]), [inScope, shown]);
   const current = step !== null && step < calls.length ? step : null;
@@ -635,8 +645,9 @@ export function StrutRunGraph({
         graphNodes.map((n) => n.id),
         links,
         parents,
+        sections,
       ),
-    [calls, graphNodes, links, parents],
+    [calls, graphNodes, links, parents, sections],
   );
 
   const frame = useMemo(() => replayFrame(calls, current ?? calls.length), [calls, current]);
@@ -746,6 +757,12 @@ export function StrutRunGraph({
     const path = childToLoad(allCalls, scope);
     if (path && !children[path]) void openChild(path);
   }, [allCalls, scope, children, openChild]);
+
+  // A run that touched little opens what it launched: the launches are where its work went.
+  useEffect(() => {
+    if (distinctNodeRefs(allCalls).length >= AUTO_OPEN_BELOW) return;
+    for (const call of allCalls) if (call.child && !children[call.path]) void openChild(call.path);
+  }, [allCalls, children, openChild]);
 
   const toggleBranch = useCallback((path: string) => {
     setExpanded((prev) => {
