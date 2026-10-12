@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 export type OrgView =
   | "canvas"
   | "strut"
+  | "advisor"
   | "gateway"
   | "canvas-demo"
   | "initiatives"
@@ -26,6 +27,7 @@ export function useOrgView(githubLogin: string): OrgView {
   // The graph is a view of the org page itself (`?view=graph`), like the control panel.
   if (pathname === base || pathname === `${base}/`) return searchParams?.get("view") === "graph" ? "graph" : "canvas";
   if (pathname.startsWith(`${base}/strut`)) return "strut";
+  if (pathname.startsWith(`${base}/advisor`)) return "advisor";
   if (pathname.startsWith(`${base}/gateway`)) return "gateway";
   if (pathname.startsWith(`${base}/canvas-demo`)) return "canvas-demo";
   if (pathname.startsWith(`${base}/initiatives`)) return "initiatives";
@@ -42,6 +44,7 @@ export function viewIsFullBleed(view: OrgView): boolean {
   return (
     view === "canvas" ||
     view === "strut" ||
+    view === "advisor" ||
     view === "gateway" ||
     view === "canvas-demo" ||
     view === "schematic" ||

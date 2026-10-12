@@ -29,6 +29,49 @@ export function transformSwarmUrlToRepo2Graph(
     : swarmUrl + ":3355";
 }
 
+/** Wildcard cert only covers `advisor-<label>.sphinx.chat` — one label deep. */
+export const ADVISOR_SWARM_DOMAIN = "sphinx.chat";
+
+/**
+ * Derives the AWS Advisor origin for a swarm, e.g.
+ * `https://swarm38.sphinx.chat/api` -> `https://advisor-swarm38.sphinx.chat`.
+ *
+ * Parses with `new URL()` and keeps only the hostname (mirrors
+ * `deriveBifrostBaseUrl` in `src/services/bifrost/resolve.ts`) — port, path
+ * (including `/api`), query and hash are all dropped.
+ *
+ * Returns `""` for empty/unparseable input, non-`https` URLs, `localhost`/IP
+ * hosts, and any host that isn't exactly one label under `sphinx.chat` (the
+ * wildcard certificate only covers a single level).
+ */
+export function transformSwarmUrlToAdvisor(
+  swarmUrl: string | null | undefined,
+): string {
+  if (!swarmUrl) return "";
+
+  let parsed: URL;
+  try {
+    parsed = new URL(swarmUrl);
+  } catch {
+    return "";
+  }
+
+  if (parsed.protocol !== "https:") return "";
+
+  const hostname = parsed.hostname;
+  if (!hostname || hostname === "localhost") return "";
+  // Reject bare IPv4/IPv6 hosts.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(":")) return "";
+
+  const suffix = `.${ADVISOR_SWARM_DOMAIN}`;
+  if (!hostname.endsWith(suffix)) return "";
+  const label = hostname.slice(0, -suffix.length);
+  // Must be exactly one label under sphinx.chat (no dots left in the label).
+  if (!label || label.includes(".")) return "";
+
+  return `https://advisor-${label}.${ADVISOR_SWARM_DOMAIN}`;
+}
+
 // Mock mode — resolved at module load, mirroring src/config/env.ts. In local
 // dev with USE_MOCKS=true every Jarvis call would otherwise dead-end against
 // a nonexistent `<swarm>.sphinx.chat` host; routing to the local mock Jarvis

@@ -3,6 +3,7 @@
 import {
   Network,
   Blocks,
+  ShieldCheck,
   Gauge,
   Target,
   LayoutGrid,
@@ -33,6 +34,7 @@ interface RailItem {
 const ITEMS: RailItem[] = [
   { view: "canvas", label: "Canvas", icon: Network, path: "" },
   { view: "strut", label: "Strut", icon: Blocks, path: "/strut" },
+  { view: "advisor", label: "Advisor", icon: ShieldCheck, path: "/advisor" },
   { view: "gateway", label: "Gateway", icon: Gauge, path: "/gateway" },
   { view: "initiatives", label: "Initiatives", icon: Target, path: "/initiatives" },
   { view: "workspaces", label: "Workspaces", icon: LayoutGrid, path: "/workspaces" },
