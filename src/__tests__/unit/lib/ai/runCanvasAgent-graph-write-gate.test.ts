@@ -124,7 +124,6 @@ vi.mock("@/lib/ai/capabilityGates", () => ({
   isPromptsCapabilityEnabledForOrg: vi.fn(async () => false),
   isGraphWriteCapabilityEnabledForOrg: (orgId: string | undefined) =>
     isGraphWriteCapabilityEnabledForOrg(orgId),
-  isStrutCapabilityEnabledForOrg: vi.fn(async () => false),
 }));
 vi.mock("@/lib/constants/prompt", () => ({
   getMultiWorkspacePrefixMessages: vi.fn(() => []),

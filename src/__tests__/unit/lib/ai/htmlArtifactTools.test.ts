@@ -115,7 +115,6 @@ vi.mock("@/lib/proposals/types", () => ({
 vi.mock("@/lib/ai/capabilityGates", () => ({
   isPromptsCapabilityEnabledForOrg: vi.fn(async () => false),
   isGraphWriteCapabilityEnabledForOrg: vi.fn(async () => false),
-  isStrutCapabilityEnabledForOrg: vi.fn(async () => false),
 }));
 
 import { db } from "@/lib/db";
