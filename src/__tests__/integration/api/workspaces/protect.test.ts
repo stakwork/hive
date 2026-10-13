@@ -74,10 +74,6 @@ vi.mock("@/lib/protect/findings", async () => {
   };
 });
 
-vi.mock("@/lib/ai/capabilityGates", () => ({
-  isStrutCapabilityEnabledForOrg: vi.fn().mockResolvedValue(false),
-}));
-
 vi.mock("@/lib/helpers/jarvis-config", () => ({
   getJarvisConfigForWorkspace: vi.fn().mockResolvedValue({
     jarvisUrl: "https://jarvis.test",
