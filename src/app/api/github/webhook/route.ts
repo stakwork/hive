@@ -281,15 +281,17 @@ export async function POST(request: NextRequest) {
         )
       : undefined;
 
-    const apiResult: AsyncSyncResult = await triggerAsyncSync(
+    const syncArgs = [
       swarmHost,
       decryptedSwarmApiKey,
       repository.repositoryUrl,
       username && githubPat ? { username, pat: githubPat } : undefined,
       callbackUrl,
-      // Only with an actor: without one the call is exactly what it was.
-      ...(strutActor ? ([false, { strutActor }] as const) : ([] as const)),
-    );
+    ] as const;
+    // Only with an actor: without one the call is exactly what it was.
+    const apiResult: AsyncSyncResult = strutActor
+      ? await triggerAsyncSync(...syncArgs, false, { strutActor })
+      : await triggerAsyncSync(...syncArgs);
 
     console.log("[GithubWebhook] Async sync response", {
       delivery,
