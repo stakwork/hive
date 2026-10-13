@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolvePodCaller } from "@/lib/auth/pod-access";
 import { db } from "@/lib/db";
-import { POD_BASE_DOMAIN, buildPodUrl } from "@/lib/pods/queries";
+import { buildPodUrl } from "@/lib/pods/queries";
+import { fetchJlist } from "@/lib/pods/staklink";
 import { POD_PORTS, PROCESS_NAMES } from "@/lib/pods/constants";
-import { JlistResponseSchema, type JlistProcess } from "@/types/pod-repair";
 
 export const runtime = "nodejs";
 
@@ -101,42 +101,4 @@ async function resolveFrontendUrl(
   if (!frontendProcess?.port) return fallbackUrl;
 
   return buildPodUrl(podId, frontendProcess.port);
-}
-
-async function fetchJlist(
-  podId: string,
-  password: string | null,
-): Promise<JlistProcess[] | null> {
-  const jlistUrl = `https://${podId}-${POD_PORTS.CONTROL}.${POD_BASE_DOMAIN}/jlist`;
-
-  try {
-    const response = await fetch(jlistUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(password ? { Authorization: `Bearer ${password}` } : {}),
-      },
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!response.ok) {
-      console.warn(
-        `[frontend-url] jlist ${response.status} for ${podId}`,
-      );
-      return null;
-    }
-
-    const data = await response.json();
-    const parsed = JlistResponseSchema.safeParse(data);
-    if (!parsed.success) {
-      console.warn(
-        `[frontend-url] invalid jlist payload for ${podId}: ${parsed.error.message}`,
-      );
-      return null;
-    }
-    return parsed.data as JlistProcess[];
-  } catch (error) {
-    console.warn(`[frontend-url] jlist fetch error for ${podId}:`, error);
-    return null;
-  }
 }

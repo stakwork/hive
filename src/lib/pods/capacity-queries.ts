@@ -3,37 +3,15 @@ import { VMData } from "@/types/pool-manager";
 import { JOB_TURN_KIND, jobTitleOf } from "@/lib/strut-jobs";
 import { POD_BASE_DOMAIN, jobOfClaimant } from "./queries";
 
-/**
- * Fast database-only query for basic VM data
- * Returns VM data without real-time resource metrics for immediate rendering
- */
-export async function getBasicVMDataFromPods(
-  swarmId: string
-): Promise<VMData[]> {
-  const pods = await db.pod.findMany({
-    where: {
-      swarmId,
-      deletedAt: null, // Filter out soft-deleted pods
-      podId: { not: { startsWith: "ws-pool-" } }, // exclude infrastructure pods
-    },
-    select: {
-      podId: true,
-      status: true,
-      usageStatus: true,
-      usageStatusMarkedBy: true,
-      usageStatusMarkedAt: true,
-      password: true,
-      createdAt: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+type ClaimantPod = { usageStatus: string; usageStatusMarkedBy: string | null };
 
-  // Batch-fetch the claimants of all USED pods: a task by its id, a strut
-  // job (`job:<id>`, strut plans/job-artifact-events.md §2) by the first
-  // row of its turns — the title rides on every turn's input, the user is
-  // who started it.
+/**
+ * Batch-fetch the claimants of all USED pods: a task by its id, a strut
+ * job (`job:<id>`, strut plans/job-artifact-events.md §2) by the first
+ * row of its turns — the title rides on every turn's input, the user is
+ * who started it.
+ */
+export async function resolvePodClaimants(pods: ClaimantPod[]) {
   const claimants = pods
     .filter((pod) => pod.usageStatus === "USED" && pod.usageStatusMarkedBy)
     .map((pod) => pod.usageStatusMarkedBy as string);
@@ -80,6 +58,37 @@ export async function getBasicVMDataFromPods(
       jobMap.set(jobId, { id: jobId, title: jobTitleOf(turn), creator: { name: user?.name ?? null, image: user?.image ?? null } });
     }
   }
+  return { taskMap, jobMap };
+}
+
+/**
+ * Fast database-only query for basic VM data
+ * Returns VM data without real-time resource metrics for immediate rendering
+ */
+export async function getBasicVMDataFromPods(
+  swarmId: string
+): Promise<VMData[]> {
+  const pods = await db.pod.findMany({
+    where: {
+      swarmId,
+      deletedAt: null, // Filter out soft-deleted pods
+      podId: { not: { startsWith: "ws-pool-" } }, // exclude infrastructure pods
+    },
+    select: {
+      podId: true,
+      status: true,
+      usageStatus: true,
+      usageStatusMarkedBy: true,
+      usageStatusMarkedAt: true,
+      password: true,
+      createdAt: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  const { taskMap, jobMap } = await resolvePodClaimants(pods);
 
   return pods.map((pod) => {
     // IDE URL is the bare pod hostname (proxied to code-server). No port suffix.
