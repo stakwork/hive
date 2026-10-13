@@ -275,43 +275,48 @@ export async function getConnectionPage(
 
 export interface ChoiceTreeNode {
   ref_id: string;
+  /** `Question` when the node's labels include it, else `Choice`. */
+  type: "Question" | "Choice";
   properties: Record<string, unknown>;
 }
 
 export interface ChoiceTreeData {
   nodes: ChoiceTreeNode[];
-  /** Every edge is `PARENT_OF`, parent to child. */
+  /** Every edge is `PARENT_OF`, parent to child (a question's options, an option's questions). */
   edges: Array<{ source: string; target: string }>;
   /** True when upstream's row cap may have cut the node or edge list short. */
   truncated: boolean;
 }
 
+export const CHOICE_TREE_LABELS = ["Choice", "Question"];
+
 /**
- * The `focus` node and its `PARENT_OF` descendants of one label, read by
- * Cypher (the REST node listing only knows a fixed set of labels and reports
- * `node_type` from the wrong label). Selection is by label, never `node_type`.
+ * The `focus` node and its `PARENT_OF` descendants carrying any of `labels`
+ * (default `Choice` and `Question`), read by Cypher (the REST node listing
+ * only knows a fixed set of labels and reports `node_type` from the wrong
+ * label). Selection is by label, never `node_type`.
  */
 export async function getChoiceTree(
   caller: Caller,
   focusRefId: string,
-  label: string,
+  labels: string[] = CHOICE_TREE_LABELS,
 ): Promise<WorkbenchResult<ChoiceTreeData>> {
-  if (!IDENT.test(label)) return invalid("Invalid label");
+  if (labels.length === 0 || !labels.every((l) => IDENT.test(l))) return invalid("Invalid label");
   if (!isRunGraphRefId(focusRefId)) return invalid("Invalid ref_id");
-  if (useMocks()) return { ok: true, data: mockChoiceTree(focusRefId, label) };
-  const L = `\`${label}\``;
+  if (useMocks()) return { ok: true, data: mockChoiceTree(focusRefId, labels) };
+  const any = (v: string) => `(${labels.map((l) => `${v}:\`${l}\``).join(" OR ")})`;
   const root = `MATCH (r:Data_Bank {ref_id: '${focusRefId}'})`;
   const [nodes, edges] = await Promise.all([
     rows(
       caller,
-      `${root} MATCH (r)-[:PARENT_OF*0..20]->(n:${L}) WHERE ${nodeLive("n")} ` +
-        `RETURN DISTINCT n.ref_id AS id, ${propertyPairs("n")} AS props`,
+      `${root} MATCH (r)-[:PARENT_OF*0..20]->(n) WHERE ${any("n")} AND ${nodeLive("n")} ` +
+        `RETURN DISTINCT n.ref_id AS id, labels(n) AS labels, ${propertyPairs("n")} AS props`,
       GRAPH_ROW_CAP,
     ),
     rows(
       caller,
-      `${root} MATCH (r)-[:PARENT_OF*0..20]->(a:${L})-[e:PARENT_OF]->(b:${L}) ` +
-        `WHERE ${edgeLive("e")} AND ${nodeLive("a")} AND ${nodeLive("b")} ` +
+      `${root} MATCH (r)-[:PARENT_OF*0..20]->(a)-[e:PARENT_OF]->(b) ` +
+        `WHERE ${any("a")} AND ${any("b")} AND ${edgeLive("e")} AND ${nodeLive("a")} AND ${nodeLive("b")} ` +
         `RETURN DISTINCT a.ref_id AS source, b.ref_id AS target`,
       GRAPH_ROW_CAP,
     ),
@@ -323,7 +328,8 @@ export async function getChoiceTree(
     data: {
       nodes: nodes.data.flatMap((r) => {
         const id = str(r.id);
-        return id ? [{ ref_id: id, properties: fromPropertyPairs(r.props) }] : [];
+        const type: ChoiceTreeNode["type"] = Array.isArray(r.labels) && r.labels.includes("Question") ? "Question" : "Choice";
+        return id ? [{ ref_id: id, type, properties: fromPropertyPairs(r.props) }] : [];
       }),
       edges: edges.data.flatMap((r) => {
         const source = str(r.source);
