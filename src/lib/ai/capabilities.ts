@@ -127,7 +127,6 @@ import {
   getWhiteboardCapabilitySnippet,
   getWorkflowsCapabilitySnippet,
 } from "@/lib/constants/prompt";
-import { getSlimConceptsCapabilitySnippet } from "@/lib/constants/prompt-slim";
 
 export type OrgCapability =
   | "roadmap"
@@ -201,12 +200,6 @@ interface CapabilityDefinition {
    */
   promptSnippet?(): string;
   /**
-   * Slim-prompt variant (concept-tree mode), used instead of
-   * `promptSnippet` when slim-prompt mode is on. Core
-   * capabilities only; absent → `promptSnippet` in both modes.
-   */
-  slimPromptSnippet?(): string;
-  /**
    * Core capabilities are taught up-front in the system prompt every
    * turn; loadable ones (`core: false` with a snippet) are taught only
    * when the agent calls `learn_capability`. See the module doc.
@@ -249,7 +242,7 @@ interface CapabilityDefinition {
   orgGate?: (orgId: string | undefined) => Promise<boolean>;
 }
 
-function pickTools(tools: ToolSet, names: readonly string[]): ToolSet {
+export function pickTools(tools: ToolSet, names: readonly string[]): ToolSet {
   const out: ToolSet = {};
   for (const name of names) {
     if (tools[name]) out[name] = tools[name];
@@ -489,7 +482,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // runCanvasAgent composes.
       buildTools: (ctx) => buildConceptTools(ctx.orgId, ctx.userId),
       promptSnippet: getConceptsCapabilitySnippet,
-      slimPromptSnippet: getSlimConceptsCapabilitySnippet,
       // CORE: "remember this" / "note this down" is a common, low-ceremony
       // ask, and behind `learn_capability` the agent rarely recognized it as
       // a concept write at all — the menu blurb was the only thing steering
@@ -711,17 +703,11 @@ export function composeCapabilityTools(
  */
 export function composeCapabilityPromptSuffix(
   selected: readonly OrgCapability[],
-  { slimPrompt = false }: { slimPrompt?: boolean } = {},
 ): string {
   const resolved = resolveCapabilities(selected);
   const core = resolved
     .filter((cap) => CAPABILITY_REGISTRY[cap].core)
-    .map((cap) => {
-      const def = CAPABILITY_REGISTRY[cap];
-      return slimPrompt && def.slimPromptSnippet
-        ? def.slimPromptSnippet()
-        : (def.promptSnippet?.() ?? "");
-    })
+    .map((cap) => CAPABILITY_REGISTRY[cap].promptSnippet?.() ?? "")
     .join("");
 
   const loadable = loadableCapabilities(resolved);

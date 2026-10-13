@@ -269,6 +269,47 @@ describe("useSendCanvasChatMessage — attachments forwarding", () => {
   });
 });
 
+describe("useSendCanvasChatMessage — concept mode (A/B arm)", () => {
+  beforeEach(() => {
+    mockState = makeTrackedState();
+    mockTimeline = [];
+    mockFinalUsage = undefined;
+    resetStreamPromise();
+    vi.clearAllMocks();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    window.localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  async function sentBody() {
+    const fakeFetch = buildOkFetch();
+    global.fetch = fakeFetch;
+    resolveStream();
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "hello" });
+    });
+    const [, init] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    return JSON.parse(init.body);
+  }
+
+  it('sends `mode: "concept"` when the settings switch is on (the key carries over from the slim-prompt switch)', async () => {
+    window.localStorage.setItem("hive.jamieSlimPrompt", "true");
+    const body = await sentBody();
+    expect(body.mode).toBe("concept");
+    expect(body).not.toHaveProperty("slimPrompt");
+  });
+
+  it("sends no mode when the switch is off (the server defaults to full)", async () => {
+    const body = await sentBody();
+    expect(body).not.toHaveProperty("mode");
+    expect(body).not.toHaveProperty("slimPrompt");
+  });
+});
+
 describe("useSendCanvasChatMessage — timeline ordering: interleaved text and tool calls", () => {
   beforeEach(() => {
     mockState = makeTrackedState();

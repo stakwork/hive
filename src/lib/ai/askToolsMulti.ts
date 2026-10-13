@@ -1,13 +1,20 @@
 import { tool, ToolSet, Tool } from "ai";
 import { z } from "zod";
-import { createMCPClient } from "@ai-sdk/mcp";
-import { withMcpTimeout, isMcpTimeout } from './mcpTimeout';
 import { WorkspaceConfig } from "./types";
-import { listConcepts, repoAgent, REPO_AGENT_CANCELLED_MARKER, type AskToolsContext } from "./askTools";
+import { listConcepts, type AskToolsContext } from "./askTools";
+import {
+  repoAgentDescription,
+  repoAgentInputSchema,
+  repoAgentExecute,
+  searchLogsDescription,
+  searchLogsInputSchema,
+  searchLogsExecute,
+  logsAgentDescription,
+  logsAgentInputSchema,
+  logsAgentExecute,
+} from "./workspaceTools";
 import { buildCourtlistenerTools } from "@/lib/ai/courtlistenerTools";
 import { LEGAL_SLUGS } from "@/lib/eval-capture-slugs";
-// Deep import — see comment in services/task-workflow.ts.
-import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { shouldTrimConceptsToIds } from "./concepts";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
@@ -21,7 +28,7 @@ import {
   type WorkspaceAuth,
 } from "@/lib/mcp/mcpTools";
 
-import { mcpText, capMcpResult } from "./mcpResult";
+import { mcpText } from "./mcpResult";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any>;
@@ -129,20 +136,9 @@ export function askToolsMulti(
             .positive()
             .optional()
             .default(20)
-            .describe(
-              "Max concepts to return. Concepts come back most-recent-first; " +
-                "default 20.",
-            ),
+            .describe("Max concepts to return. Concepts come back most-recent-first; " + "default 20."),
         }),
-        execute: async ({
-          repo,
-          query,
-          limit = 20,
-        }: {
-          repo: string;
-          query?: string;
-          limit?: number;
-        }) => {
+        execute: async ({ repo, query, limit = 20 }: { repo: string; query?: string; limit?: number }) => {
           const target = repo.toLowerCase().replace(/^\/+|\/+$/g, "");
 
           // Query present: live repo-scoped relevance search via swarm.
@@ -169,9 +165,7 @@ export function askToolsMulti(
             // that pre-date the explicit `repo` field.
             const id = typeof c.id === "string" ? c.id.toLowerCase() : "";
             const parts = id.split("/");
-            return (
-              parts.length >= 3 && `${parts[0]}/${parts[1]}` === target
-            );
+            return parts.length >= 3 && `${parts[0]}/${parts[1]}` === target;
           });
           // Server returns recent-first; we preserve that order.
           return matches.slice(0, limit).map((c) => ({
@@ -191,16 +185,13 @@ export function askToolsMulti(
       }),
       execute: async ({ conceptId }: { conceptId: string }) => {
         try {
-          const res = await fetch(
-            `${ws.swarmUrl}/gitree/concepts/${encodeURIComponent(conceptId)}`,
-            {
-              method: "GET",
-              headers: {
-                "Content-Type": "application/json",
-                "x-api-token": ws.swarmApiKey,
-              },
-            }
-          );
+          const res = await fetch(`${ws.swarmUrl}/gitree/concepts/${encodeURIComponent(conceptId)}`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-token": ws.swarmApiKey,
+            },
+          });
           if (!res.ok) return { error: "Feature not found" };
           return await res.json();
         } catch (e) {
@@ -250,25 +241,13 @@ export function askToolsMulti(
             user: z.string(),
             limit: z.number().optional().default(5),
           }),
-      execute: async (params: {
-        user: string;
-        repo?: string;
-        limit?: number;
-      }) => {
+      execute: async (params: { user: string; repo?: string; limit?: number }) => {
         try {
           const { owner, repo } = resolveRepo(repoMap, params.repo);
           const analyzer = new RepoAnalyzer({ githubToken: ws.pat });
-          return await analyzer.getContributorPRs(
-            owner,
-            repo,
-            params.user,
-            params.limit || 5
-          );
+          return await analyzer.getContributorPRs(owner, repo, params.user, params.limit || 5);
         } catch (e) {
-          console.error(
-            `Error retrieving contributions from ${ws.slug}:`,
-            e
-          );
+          console.error(`Error retrieving contributions from ${ws.slug}:`, e);
           return `Could not retrieve contributions from ${ws.slug}`;
         }
       },
@@ -276,148 +255,16 @@ export function askToolsMulti(
 
     // repo_agent (deep code analysis)
     allTools[`${prefix}__repo_agent`] = tool({
-      description: `[${ws.slug}] Execute AI agent for deep code analysis in ${ws.slug}. Also has the GitHub \`gh\` CLI for read-only GitHub inspection: reading issues/PRs (bodies, comments, review threads), checking CI / workflow / check-suite status, and looking at other repos. Prefer the lighter ${prefix}__recent_commits / ${prefix}__recent_contributions tools for plain commit or PR-by-author lookups; use repo_agent when a GitHub question needs real investigation. STRICTLY READ-ONLY: investigation only — NEVER instruct it to edit code, write/modify files, open a PR, or run/apply a database migration. Actual code changes go through a job (\`start_job\`, single-repo, well-scoped) or \`propose_feature\` (everything else) — never through this tool. NOT for external services, libraries, or APIs — use \`web_search\` for those, and never fan it across workspaces for a question that isn't about the user's code. Heavy/slow — use as LAST RESORT.`,
-      inputSchema: z.object({
-        prompt: z.string().describe("The question for the repo agent"),
-      }),
-      execute: async ({ prompt }: { prompt: string }) => {
-        const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE!`;
-        const convId = context?.conversationId;
-        const turnId = context?.turnId;
-        let activeRequestId: string | undefined;
-        try {
-          // Per-workspace Bifrost VK so each workspace's spend gets
-          // attributed to its own Customer/VK on its own Bifrost.
-          // `agentName: "repo-agent"` matches the single-workspace
-          // call site so cost-per-agent rollups aggregate across
-          // both flows.
-          const bifrost = await getBifrostForLLM(
-            {
-              workspaceId: ws.workspaceId,
-              workspaceSlug: ws.slug,
-              userId: ws.userId,
-            },
-            { agentName: "repo-agent" },
-          );
-
-          // Build abort hooks when we have a canvas conversation to track.
-          const hooks = convId && turnId
-            ? await (async () => {
-                const { setActiveRun, isAbortRequestedForRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
-                return {
-                  onRequestId: async (requestId: string) => {
-                    activeRequestId = requestId;
-                    console.log(`[repoAgent] Run registered: ${requestId} ws: ${ws.slug} conversationId: ${convId}`);
-                    await setActiveRun(convId, {
-                      requestId,
-                      workspaceId: ws.workspaceId,
-                      startedAt: new Date().toISOString(),
-                    }, turnId);
-                    await notifyRunActive(convId, true);
-                  },
-                  isAbortRequested: async () =>
-                    isAbortRequestedForRun(convId, activeRequestId ?? ""),
-                  abortSignal: context?.abortSignal,
-                };
-              })()
-            : context?.abortSignal
-              ? { abortSignal: context.abortSignal }
-              : undefined;
-
-          const rr = await repoAgent(
-            ws.swarmUrl,
-            ws.swarmApiKey,
-            {
-              repo_url: ws.repoUrls.join(","),
-              prompt: prompt2,
-              pat: ws.pat,
-            },
-            bifrost,
-            hooks,
-          );
-          if (rr === REPO_AGENT_CANCELLED_MARKER) {
-            // Flag the whole turn so runCanvasAgent's stopWhen ends the
-            // agent loop — the model must not treat this as a transient
-            // failure and start another run.
-            if (context?.cancellation) context.cancellation.requested = true;
-            return `The user cancelled the ${ws.slug} investigation. Stop working on it now — do not retry and do not start another repo agent run.`;
-          }
-          const out = rr as Record<string, unknown>;
-          if (typeof out.content === "string" && out.content.trim()) {
-            return out.content;
-          }
-          // Unexpected result shape (no `content` key) — surface whatever
-          // came back rather than returning `undefined` (which the model
-          // reads as "no output" and treats as a failure to retry).
-          const fallback = JSON.stringify(out);
-          return fallback && fallback !== "{}"
-            ? fallback
-            : `The repo agent for ${ws.slug} finished without returning any content.`;
-        } catch (e) {
-          console.error(`Error executing repo agent for ${ws.slug}:`, e);
-          return `Could not execute repo agent for ${ws.slug}`;
-        } finally {
-          if (convId && activeRequestId) {
-            const { clearActiveRun, notifyRunActive } = await import("@/services/canvas-active-runs-hooks");
-            const { wasLast } = await clearActiveRun(convId, activeRequestId).catch(() => ({ wasLast: true }));
-            if (wasLast) await notifyRunActive(convId, false).catch(() => {});
-          }
-        }
-      },
+      description: `[${ws.slug}] ${repoAgentDescription({ subject: ws.slug, ref: (t) => `${prefix}__${t}` })}`,
+      inputSchema: repoAgentInputSchema,
+      execute: repoAgentExecute(ws, context),
     });
 
     // search_logs (via MCP)
     allTools[`${prefix}__search_logs`] = tool({
-      description: `[${ws.slug}] Search ${ws.slug}'s live production application logs (indexed in Quickwit). These ARE the runtime logs emitted by the deployed app — use this for "prod"/"production"/"Vercel"/"deployed app" questions and errors users are hitting. NOTE: this only covers the Quickwit-indexed app logs; it does NOT cover AWS Lambda / CloudWatch system logs — for those (or any question mentioning a Lambda function or CloudWatch) use ${prefix}__logs_agent instead. Supports Lucene query syntax. Does not support wildcards. IMPORTANT: every term MUST include a field prefix (e.g. "message:", "level:", "path:") — there is no default search field, so a bare query like "CLN" fails with a 400 error. To search a keyword use "message:CLN".`,
-      inputSchema: z.object({
-        query: z.string().describe("Lucene query string"),
-        max_hits: z
-          .number()
-          .optional()
-          .default(10)
-          .describe("Maximum number of log entries to return"),
-      }),
-      execute: async ({
-        query,
-        max_hits = 10,
-      }: {
-        query: string;
-        max_hits?: number;
-      }) => {
-        let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | undefined;
-        const mcpSetup = async () => {
-          mcpClient = await createMCPClient({
-            transport: {
-              type: "http",
-              url: `${ws.swarmUrl}/mcp`,
-              headers: { Authorization: `Bearer ${ws.swarmApiKey}` },
-            },
-          });
-          const tools = await mcpClient.tools();
-          const searchLogsTool = tools["search_logs"];
-          if (!searchLogsTool?.execute) return "search_logs tool not found";
-          return capMcpResult(
-            await searchLogsTool.execute(
-              { query, max_hits },
-              // v7 ToolExecutionOptions also requires `context`; MCP tools
-              // declare no context schema, so pass undefined.
-              { toolCallId: "1", messages: [], context: undefined },
-            ),
-          );
-        };
-        try {
-          return await withMcpTimeout(mcpSetup);
-        } catch (e) {
-          if (isMcpTimeout(e)) {
-            console.warn(`search_logs: MCP client timed out for ${ws.slug}`, e);
-            return `MCP tools unavailable for ${ws.slug} — the log search timed out. Proceeding without them.`;
-          }
-          console.error(`Error searching logs for ${ws.slug}:`, e);
-          return `Could not search logs for ${ws.slug}`;
-        } finally {
-          if (mcpClient) await mcpClient.close().catch(() => {});
-        }
-      },
+      description: `[${ws.slug}] ${searchLogsDescription({ subject: ws.slug, ref: (t) => `${prefix}__${t}` })}`,
+      inputSchema: searchLogsInputSchema,
+      execute: searchLogsExecute(ws),
     });
 
     // ------------------------------------------------------------------
@@ -605,92 +452,9 @@ export function askToolsMulti(
     // Heavier than `${prefix}__search_logs` (a quick Lucene keyword
     // search); prefer search_logs for simple lookups.
     allTools[`${prefix}__logs_agent`] = tool({
-      description:
-        `[${ws.slug}] Invoke the Logs Agent for deep, run-grounded analysis of infra, sandbox, agent execution, AND AWS CloudWatch logs in ${ws.slug}. ` +
-        `It has direct access to CloudWatch and all of ${ws.slug}'s log groups (including AWS Lambda functions), and can do complex investigations — e.g. downloading thousands of log lines into local files and grepping through them. ` +
-        `Use when the user asks what happened during a run, on a swarm, on a pod/sandbox, to debug agent failures, ANY question about a Lambda/CloudWatch/AWS log group, or wants a synthesised explanation backed by real log data. ` +
-        `If the user mentions a Lambda function or CloudWatch, invoke this immediately — do NOT ask for permission first, and do NOT use ${prefix}__search_logs (which only covers Quickwit-indexed app logs, not CloudWatch/Lambda system logs). ` +
-        `Heavier than ${prefix}__search_logs — prefer that only for simple keyword lookups against the indexed app logs. ` +
-        `It also reads Stakwork workflow run logs, but only when the user names Stakwork — a strut workflow's run is evaluated through strut (\`dispatch_strut\`), not here; and which Stakwork workflows or skills exist, or how one works, is not a log question. ` +
-        `Optionally narrow to a specific feature or task via featureId/taskId.`,
-      inputSchema: z.object({
-        prompt: z.string().describe("The question or debugging query to send to the Logs Agent"),
-        featureId: z
-          .string()
-          .optional()
-          .describe("Optional feature ID to scope the analysis to runs attached to this feature"),
-        taskId: z
-          .string()
-          .optional()
-          .describe("Optional task ID to scope the analysis to runs attached to this task"),
-      }),
-      execute: async ({
-        prompt,
-        featureId,
-        taskId,
-      }: {
-        prompt: string;
-        featureId?: string;
-        taskId?: string;
-      }) => {
-        const scope = {
-          featureIds: featureId ? [featureId] : undefined,
-          taskIds: taskId ? [taskId] : undefined,
-        };
-
-        try {
-          // Lazy imports — these modules pull in heavy deps (Prisma,
-          // EncryptionService, swarm-access). Dynamic import keeps them
-          // out of every test worker that touches askToolsMulti.
-          const [{ runLogsAgent }, { logger }] = await Promise.all([
-            import("@/services/logs-agent"),
-            import("@/lib/logger"),
-          ]);
-
-          logger.info("[LogsAgent] logs_agent tool invoked from dashboard chat", "LogsAgent", {
-            workspace: ws.slug,
-            workspaceId: ws.workspaceId,
-            userId: ws.userId,
-            hasFeatureScope: !!featureId,
-            hasTaskScope: !!taskId,
-          });
-
-          const result = await runLogsAgent({
-            slug: ws.slug,
-            userId: ws.userId,
-            prompt,
-            scope,
-          });
-
-          if (result.success) {
-            return result.data.answer;
-          }
-
-          const { error } = result;
-          if (error.type === "SCOPE_WRONG_WORKSPACE") {
-            return error.message;
-          }
-          if (error.type === "TIMEOUT") {
-            return `The Logs Agent timed out before returning a result for ${ws.slug}. Please try again or narrow your query to a specific feature or task.`;
-          }
-          if (error.type === "AGENT_FAILED") {
-            return `The Logs Agent encountered an error for ${ws.slug}: ${error.message}`;
-          }
-          if (error.type === "ACCESS_DENIED") {
-            return `Access denied to the Logs Agent for ${ws.slug}.`;
-          }
-          if (error.type === "WORKSPACE_NOT_FOUND") {
-            return `Workspace ${ws.slug} not found — the Logs Agent could not be invoked.`;
-          }
-          if (error.type === "SWARM_NOT_ACTIVE" || error.type === "SWARM_NOT_CONFIGURED") {
-            return `The ${ws.slug} swarm is not active. The Logs Agent is unavailable.`;
-          }
-          return `The Logs Agent encountered an unexpected error for ${ws.slug}. Please try again.`;
-        } catch (e) {
-          console.error(`[LogsAgent] logs_agent tool unexpected error for ${ws.slug}`, String(e));
-          return `Could not invoke the Logs Agent for ${ws.slug}. Please try again.`;
-        }
-      },
+      description: `[${ws.slug}] ${logsAgentDescription({ subject: ws.slug, ref: (t) => `${prefix}__${t}` })}`,
+      inputSchema: logsAgentInputSchema,
+      execute: logsAgentExecute(ws),
     });
 
     // CourtListener tools — OpenLaw workspace only
@@ -704,7 +468,7 @@ export function askToolsMulti(
 
 function resolveRepo(
   repoMap: { url: string; owner: string; repo: string }[],
-  repoParam?: string
+  repoParam?: string,
 ): { owner: string; repo: string } {
   if (repoParam) {
     const [owner, repo] = repoParam.split("/");

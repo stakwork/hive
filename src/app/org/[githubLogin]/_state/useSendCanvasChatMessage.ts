@@ -41,7 +41,7 @@ import {
   type CanvasChatMessage,
   type ToolCall,
 } from "./canvasChatStore";
-import { readSlimPromptPreference } from "./slimPromptPreference";
+import { readConceptModePreference } from "./slimPromptPreference";
 
 /**
  * Scan a rebuilt assistant-side timeline for a completed `schedule_check`
@@ -279,7 +279,10 @@ export function useSendCanvasChatMessage() {
             ...(ctx.selectedNodeId ? { selectedNodeId: ctx.selectedNodeId } : {}),
             ...(ctx.selectedNodeIds?.length ? { selectedNodeIds: ctx.selectedNodeIds } : {}),
             ...(ctx.graphFocus ? { graphFocus: { ...ctx.graphFocus, org: ctx.githubLogin } } : {}),
-            ...(readSlimPromptPreference() ? { slimPrompt: true } : {}),
+            // Jamie's A/B arm. Only the FIRST send of a chat matters: the
+            // server stores it on the new conversation row and reads it
+            // from there on every later turn.
+            ...(readConceptModePreference() ? { mode: "concept" } : {}),
             // Sidebar chat doesn't render follow-ups or provenance;
             // skip the server-side enrichment block to save tokens
             // and a stakgraph round-trip per turn.

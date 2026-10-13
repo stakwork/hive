@@ -301,6 +301,25 @@ Examples:
 If you have the node's canvas coordinates (x, y), append &nx=<x>&ny=<y> for faster navigation.
 Use an empty canvasRef when the target node lives on the root canvas: [Node on root](?canvas=&node=<nodeId>)`
 
+/**
+ * The "Available Workspaces & Repositories" lines, one per workspace:
+ * name, slug, swarm host, org-default marker, description, repos. Shared by
+ * the full and concept-mode prompts so the two list workspaces identically.
+ */
+function formatWorkspaceList(workspaces: WorkspaceConfig[]): string {
+  return workspaces
+    .map((ws) => {
+      const repos = ws.repoUrls.join(", ");
+      const desc = ws.description ? ` — ${ws.description}` : "";
+      const swarmSegment = ws.swarmDomain ? `, swarm: \`${ws.swarmDomain}\`` : "";
+      // The org's home workspace: org-wide knowledge (concepts that span
+      // workspaces) files here — see the propose_new_concept guidance.
+      const defaultSegment = ws.isOrgDefault ? ", **org default**" : "";
+      return `- **${ws.name}** (slug: \`${ws.slug}\`${swarmSegment}${defaultSegment})${desc}: ${repos}`;
+    })
+    .join("\n");
+}
+
 // Multi-workspace system prompt
 //
 // `canvasSystemPrompt` is the agent's persona/reply-style preamble. It
@@ -325,17 +344,7 @@ export function getMultiWorkspaceSystemPrompt(
   // implementation detail; surfacing them encourages the agent to
   // echo opaque ids back to the user ("the workspace id is
   // cmh4vrcj7..."). Tools resolve slug → id internally.
-  const workspaceList = workspaces
-    .map((ws) => {
-      const repos = ws.repoUrls.join(", ");
-      const desc = ws.description ? ` — ${ws.description}` : "";
-      const swarmSegment = ws.swarmDomain ? `, swarm: \`${ws.swarmDomain}\`` : "";
-      // The org's home workspace: org-wide knowledge (concepts that span
-      // workspaces) files here — see the propose_new_concept guidance.
-      const defaultSegment = ws.isOrgDefault ? ", **org default**" : "";
-      return `- **${ws.name}** (slug: \`${ws.slug}\`${swarmSegment}${defaultSegment})${desc}: ${repos}`;
-    })
-    .join("\n");
+  const workspaceList = formatWorkspaceList(workspaces);
 
   const memberRoster = buildMemberRoster(workspaces);
 
@@ -366,6 +375,60 @@ Per-workspace tools are prefixed with the workspace slug — \`{workspace}__repo
 If you really can't find anything useful, or you truly do not know the answer, simply reply something like: "Sorry, I don't know the answer to that question, I'll look into it."
 ${currentUserLine}
 When you are done print "[END_OF_ANSWER]"`;
+}
+
+/**
+ * Concept mode's system prompt (`mode: "concept"`, the A/B arm against
+ * `getMultiWorkspaceSystemPrompt`): the date, the Prompt-Manager persona
+ * (`canvasSystemPrompt` — persona, reply style, hard rules, proposals), the
+ * workspace list, and one paragraph on how the global tools take a
+ * `workspace`. No member roster, no workspace-honoring essays, no tool
+ * naming convention, no capability snippets or menu: the toolset is short
+ * and global, so the tools' own descriptions carry their rules.
+ */
+export function getConceptSystemPrompt(
+  workspaces: WorkspaceConfig[],
+  currentUserGithubUsername?: string,
+  canvasSystemPrompt: string = DEFAULT_CANVAS_SYSTEM_PROMPT,
+  userTimezone?: string,
+): string {
+  const currentUserLine = currentUserGithubUsername
+    ? `\nYou are currently speaking with **@${currentUserGithubUsername}**. When the user says "me", "my", or "I", they are referring to this GitHub user.\n`
+    : "";
+
+  return `
+${getCurrentDateSnippet(userTimezone)}
+
+${canvasSystemPrompt}
+
+## Available Workspaces & Repositories
+${formatWorkspaceList(workspaces)}
+
+Workspace-scoped tools (\`repo_agent\`, \`logs_agent\`, \`search_logs\`) take a \`workspace\` argument, which must be one of the slugs listed above. Every other tool is global. Tool names are exact — use them exactly as they appear in your tool list. The list above is the complete set of workspaces you can access; if the user names one that is not listed, say so and ask which they mean.
+${currentUserLine}
+When you are done print "[END_OF_ANSWER]"`;
+}
+
+/**
+ * Concept mode's prefix: the system message and the caller's history. Never
+ * seeds `list_concepts` pairs — concept mode has no `list_concepts` tool, and
+ * a seeded call to an unregistered tool would be rejected by the provider.
+ * Org-scoped by definition, so the canvas scope pointer is always appended.
+ */
+export function getConceptPrefixMessages(
+  workspaces: WorkspaceConfig[],
+  clueMsgs: ModelMessage[] | null,
+  canvasSystemPrompt: string = DEFAULT_CANVAS_SYSTEM_PROMPT,
+  userTimezone?: string,
+): ModelMessage[] {
+  const systemPrompt =
+    getConceptSystemPrompt(
+      workspaces,
+      workspaces[0]?.currentUserGithubUsername,
+      canvasSystemPrompt,
+      userTimezone,
+    ) + CANVAS_SCOPE_POINTER;
+  return [{ role: "system", content: systemPrompt }, ...(clueMsgs || [])];
 }
 
 /**

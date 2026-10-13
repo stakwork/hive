@@ -17,6 +17,7 @@
 import { ModelMessage } from "ai";
 import { db } from "@/lib/db";
 import type { CachedConcepts } from "@/lib/ai/runCanvasAgent";
+import { parseCanvasAgentMode, type CanvasAgentMode } from "@/lib/ai/canvasMode";
 import { generateTitle } from "@/lib/ai/conversationHelpers";
 import {
   appendTurnMessages,
@@ -93,6 +94,11 @@ export async function persistCanvasUserMessage(args: {
   attachments?: StoredAttachment[];
   workspaceSlugs: string[];
   isShared?: boolean;
+  /**
+   * The A/B arm a NEWLY-created row is stamped with (`SharedConversation
+   * .mode`). Ignored for an existing row — a chat keeps its mode.
+   */
+  mode?: CanvasAgentMode;
 }): Promise<string> {
   const {
     orgId,
@@ -103,6 +109,7 @@ export async function persistCanvasUserMessage(args: {
     attachments,
     workspaceSlugs,
     isShared = true,
+    mode = "full",
   } = args;
 
   const userRow: StoredMessage = {
@@ -135,6 +142,7 @@ export async function persistCanvasUserMessage(args: {
       settings: { extraWorkspaceSlugs: workspaceSlugs } as unknown as never,
       followUpQuestions: [],
       isShared,
+      mode: parseCanvasAgentMode(mode),
     },
     select: { id: true },
   });
@@ -195,7 +203,12 @@ export async function loadOrgCanvasPromptCache(args: {
   conversationId: unknown;
   userId: string;
   orgId: string;
-}): Promise<{ rowId: string; cachedConcepts: CachedConcepts | null } | null> {
+}): Promise<{
+  rowId: string;
+  cachedConcepts: CachedConcepts | null;
+  /** The chat's stored A/B arm (`SharedConversation.mode`). */
+  mode: CanvasAgentMode;
+} | null> {
   const { conversationId, userId, orgId } = args;
   if (typeof conversationId !== "string" || conversationId.length === 0) {
     return null;
@@ -206,14 +219,14 @@ export async function loadOrgCanvasPromptCache(args: {
       sourceControlOrgId: orgId,
       OR: [{ userId }, { isShared: true }],
     },
-    select: { id: true, settings: true },
+    select: { id: true, settings: true, mode: true },
   });
   if (!row) return null;
   const settings = (row.settings ?? {}) as Record<string, unknown>;
   const pc = settings.promptConcepts;
   const cachedConcepts =
     pc && typeof pc === "object" ? (pc as CachedConcepts) : null;
-  return { rowId: row.id, cachedConcepts };
+  return { rowId: row.id, cachedConcepts, mode: parseCanvasAgentMode(row.mode) };
 }
 
 /** True when a cache holds at least one concept (defensive: never cache

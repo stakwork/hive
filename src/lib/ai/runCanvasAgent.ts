@@ -47,6 +47,7 @@ import type {
 } from "ai";
 import {
   buildCanvasScopeMessage,
+  getConceptPrefixMessages,
   getMultiWorkspacePrefixMessages,
   getQuickAskPrefixMessages,
 } from "@/lib/constants/prompt";
@@ -55,6 +56,8 @@ import { getCanvasSystemPrompt } from "@/lib/ai/canvas-system-prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
 import { isConceptSeedingEnabled } from "@/lib/ai/concepts";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
+import { buildConceptModeTools, sortToolsByName } from "@/lib/ai/conceptModeTools";
+import type { CanvasAgentMode } from "@/lib/ai/canvasMode";
 import {
   buildWorkspaceConfigs,
   buildPublicWorkspaceConfig,
@@ -264,6 +267,8 @@ export interface CanvasAgentHooks {
     finishReason?: string;
     visibleChars?: number;
     cancellationRequested?: boolean;
+    /** Resolved model id, for per-turn usage recording. */
+    modelId?: string;
   }) => void | Promise<void>;
   /**
    * Called when the stream errors mid-generation, after the internal
@@ -286,7 +291,14 @@ export interface CanvasAgentHooks {
   onAbort?: (args: {
     steps: unknown[];
     partialStep: PartialStep;
-    usage: { inputTokens: number; outputTokens: number };
+    /** Resolved model id, for per-turn usage recording. */
+    modelId?: string;
+    usage: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
+    };
   }) => void | Promise<void>;
 }
 
@@ -358,12 +370,12 @@ export interface RunCanvasAgentOptions {
    */
   modelName?: string;
   /**
-   * Opt in to the slim prompt (concept-tree mode): slim core snippets and
-   * the FORM rule on `send_to_feature_planner`. Sent by the canvas
-   * SidebarChat when its settings switch is on; omitted → full prompt
-   * (including every server-side caller, e.g. planner wake turns).
+   * Jamie's A/B arm (see `canvasMode.ts`). `"full"` (default) is the
+   * complete prompt + per-workspace toolset; `"concept"` is the tiny prompt
+   * + short global toolset. Callers pass the conversation row's stored mode.
+   * Only meaningful with `orgId` — a request without one runs as full.
    */
-  slimPrompt?: boolean;
+  mode?: CanvasAgentMode;
   /**
    * Cached concepts from a previous turn of the SAME conversation. When
    * provided, we SKIP the slow per-workspace `listConcepts` swarm
@@ -556,6 +568,10 @@ export interface RunCanvasAgentResult {
    * `readonly` was passed; useful for logging / metrics.
    */
   readonly: boolean;
+  /** The mode this run actually used — `"concept"` needs an `orgId`. */
+  mode: CanvasAgentMode;
+  /** Resolved model id (`"unknown"` when the provider doesn't expose one). */
+  modelId: string;
   /**
    * The non-history context used this turn: the prefix messages (system
    * prompt + seeded concepts) plus the trailing `<canvas-scope>` block
@@ -757,7 +773,7 @@ export async function runCanvasAgent(
     prepareStep,
     extraStopConditions,
     modelName,
-    slimPrompt = false,
+    mode = "full",
     userTimezone,
     publicBaseUrl,
     abortSignal,
@@ -927,9 +943,11 @@ export async function runCanvasAgent(
   // Stakwork source-control org) filtered out for orgs that fail the gate.
   // The prompt suffix is the matching snippet concatenation.
   const orgCapabilities = await resolveOrgCapabilities(capabilities, orgId);
-  const orgPromptSuffix = orgId
-    ? composeCapabilityPromptSuffix(orgCapabilities, { slimPrompt })
-    : undefined;
+  // Concept mode applies only to org-scope member turns, and shows no
+  // capability text at all (the tools carry their own rules).
+  const conceptMode = mode === "concept" && !!orgId && !!userId && !isPublicViewer;
+  const orgPromptSuffix =
+    orgId && !conceptMode ? composeCapabilityPromptSuffix(orgCapabilities) : undefined;
   // `graph_walker` is core (read tools always composed), so its four
   // graph-write propose tools cannot ride an `orgGate` on the capability
   // itself — the gate is resolved here and threaded into the capability
@@ -950,7 +968,87 @@ export async function runCanvasAgent(
   // so callers never persist a concept cache.
   const conceptSeedingEnabled = isConceptSeedingEnabled();
 
-  if (isMultiWorkspace) {
+  // Initiative scope → look up visually-linked workspaces on root canvas.
+  // Only fires when the user is on `initiative:*`. Runs every turn (even on
+  // a concept-cache hit) because it feeds the fresh scope hint — it's a
+  // cheap DB lookup, not a swarm call.
+  const resolveLinkedWorkspaces = async (): Promise<
+    Array<{ id: string; slug: string; name: string }>
+  > => {
+    if (
+      orgId &&
+      typeof scope?.currentCanvasRef === "string" &&
+      scope.currentCanvasRef.startsWith("initiative:")
+    ) {
+      const initiativeId = scope.currentCanvasRef.slice("initiative:".length);
+      if (initiativeId) {
+        const tLinked = Date.now();
+        const linked = await getLinkedWorkspacesForInitiative(orgId, initiativeId);
+        console.log("[runCanvasAgent] timing", { stage: "getLinkedWorkspacesForInitiative", ms: Date.now() - tLinked, linked: linked.length, workspaces: workspaceSlugs, orgId });
+        return linked;
+      }
+    }
+    return [];
+  };
+
+  if (conceptMode) {
+    // Concept mode (org-scope member turns only; see `canvasMode.ts`): one
+    // short global toolset and the tiny prompt, for single- and
+    // multi-workspace orgs alike. No per-workspace tools, no capability
+    // snippets, no Sphinx, no external MCP, no concept seeding.
+    const tBuildConfigsConcept = Date.now();
+    const workspaceConfigs = await buildWorkspaceConfigs(workspaceSlugs, userId!);
+    await markOrgDefaultWorkspace(workspaceConfigs, orgId!);
+    console.log("[runCanvasAgent] timing", { stage: "buildWorkspaceConfigs (concept)", ms: Date.now() - tBuildConfigsConcept, workspaces: workspaceSlugs, orgId: orgId ?? null });
+
+    tools = buildConceptModeTools({
+      workspaceConfigs,
+      orgCapabilities,
+      capabilityContext: {
+        orgId: orgId!,
+        userId: userId!,
+        currentCanvasConversationId,
+        chatAgentModel: modelName,
+        webSearch,
+        dispatchedResearch,
+        dispatchedGraphWalks,
+        graphWalkAnswerSink,
+        publicBaseUrl,
+        graphWriteEnabled,
+      },
+      askContext: {
+        conversationId: currentCanvasConversationId,
+        turnId,
+        cancellation,
+        abortSignal,
+      },
+    });
+    features = [];
+
+    const linkedWorkspaces = await resolveLinkedWorkspaces();
+    const canvasSystemPrompt = await getCanvasSystemPrompt();
+    if (canvasSystemPrompt.promptId != null) {
+      promptResolutions[canvasSystemPrompt.name] = {
+        prompt_id: canvasSystemPrompt.promptId,
+        prompt_version_id: canvasSystemPrompt.promptVersionId,
+      };
+    }
+    canvasScope = buildScopeHint(scope, linkedWorkspaces);
+    prefixMessages = getConceptPrefixMessages(
+      workspaceConfigs,
+      [],
+      canvasSystemPrompt.value,
+      userTimezone,
+    );
+    // No concept seeding, so nothing to cache or hit.
+    cacheHit = false;
+    cacheableConcepts = {};
+    primarySwarmUrl = workspaceConfigs[0].swarmUrl;
+    primarySwarmApiKey = workspaceConfigs[0].swarmApiKey;
+    primaryWorkspaceId = workspaceConfigs[0].workspaceId;
+    primaryUserId = workspaceConfigs[0].userId;
+    primaryRepoUrls = workspaceConfigs[0].repoUrls ?? [];
+  } else if (isMultiWorkspace) {
     // Multi-workspace mode is auth-only — public-viewer requests are
     // rejected by the caller before reaching here. The non-null
     // assertion on `userId` is safe under that contract.
@@ -1033,26 +1131,7 @@ export async function runCanvasAgent(
       features.push(...(conceptsByWorkspace[ws.slug] || []));
     }
 
-    // Initiative scope → look up visually-linked workspaces on root
-    // canvas. Only fires when the user is on `initiative:*`. Runs every
-    // turn (even on a concept-cache hit) because it feeds the fresh scope
-    // hint — it's a cheap DB lookup, not a swarm call.
-    let linkedWorkspaces: Array<{ id: string; slug: string; name: string }> = [];
-    if (
-      orgId &&
-      typeof scope?.currentCanvasRef === "string" &&
-      scope.currentCanvasRef.startsWith("initiative:")
-    ) {
-      const initiativeId = scope.currentCanvasRef.slice("initiative:".length);
-      if (initiativeId) {
-        const tLinked = Date.now();
-        linkedWorkspaces = await getLinkedWorkspacesForInitiative(
-          orgId,
-          initiativeId,
-        );
-        console.log("[runCanvasAgent] timing", { stage: "getLinkedWorkspacesForInitiative", ms: Date.now() - tLinked, linked: linkedWorkspaces.length, workspaces: workspaceSlugs, orgId });
-      }
-    }
+    const linkedWorkspaces = await resolveLinkedWorkspaces();
 
     // Persona/reply-style preamble, pulled from the Stakwork Prompt
     // Manager (published CANVAS_AGENT_SYSTEM_PROMPT). Bounded by a 10s
@@ -1240,7 +1319,7 @@ export async function runCanvasAgent(
   // Clients stay open for the whole stream; closed in onFinish/onError.
   // ------------------------------------------------------------------
   let externalMcpCleanup: (() => Promise<void>) | undefined;
-  if (orgId && !readonly) {
+  if (orgId && !readonly && !conceptMode) {
     const tExternalMcp = Date.now();
     const externalMcp = await connectExternalMcpTools(orgId);
     externalMcpCleanup = externalMcp.closeAll;
@@ -1275,6 +1354,12 @@ export async function runCanvasAgent(
   // name collision.
   if (additionalTools) {
     tools = { ...tools, ...additionalTools };
+  }
+
+  // Concept mode registers its tools in name order so the tools block is
+  // byte-stable turn to turn. The web tools below still go last.
+  if (conceptMode) {
+    tools = sortToolsByName(tools);
   }
 
   // `web_search` is registered LAST so it survives the readonly strip
@@ -1664,6 +1749,7 @@ export async function runCanvasAgent(
           finishReason,
           visibleChars,
           cancellationRequested: cancellation.requested,
+          modelId: resolvedModelId,
         });
       }
     },
@@ -1708,10 +1794,12 @@ export async function runCanvasAgent(
     // that finished; the interrupted one is `partialStep`. The SDK
     // reports no usage for the interrupted step, so it isn't counted.
     onAbort: async ({ steps }) => {
-      const usage = { inputTokens: 0, outputTokens: 0 };
+      const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
       for (const s of steps) {
         usage.inputTokens += s.usage.inputTokens ?? 0;
         usage.outputTokens += s.usage.outputTokens ?? 0;
+        usage.cacheReadTokens += s.usage.inputTokenDetails?.cacheReadTokens ?? 0;
+        usage.cacheWriteTokens += s.usage.inputTokenDetails?.cacheWriteTokens ?? 0;
       }
       sessionIngest?.end({
         status: "aborted",
@@ -1720,7 +1808,7 @@ export async function runCanvasAgent(
       });
       void externalMcpCleanup?.();
       try {
-        await hooks?.onAbort?.({ steps, partialStep, usage });
+        await hooks?.onAbort?.({ steps, partialStep, usage, modelId: resolvedModelId });
       } catch {
         // swallowed by contract, mirrors onError
       }
@@ -1747,6 +1835,10 @@ export async function runCanvasAgent(
     cacheableConcepts,
     cacheHit,
     promptResolutions,
+    // The mode this run actually used (concept mode needs an orgId) and the
+    // resolved model id, for per-turn usage recording.
+    mode: (conceptMode ? "concept" : "full") as CanvasAgentMode,
+    modelId: resolvedModelId,
   };
 }
 

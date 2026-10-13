@@ -7,6 +7,10 @@ import { buildGraphWriteTools } from "@/lib/ai/graphWriteTools";
 import { buildConceptTools } from "@/lib/ai/conceptTools";
 import { buildStrutTools } from "@/lib/ai/strutTools";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
+import { buildResearchTools } from "@/lib/ai/researchTools";
+import { buildHtmlArtifactTools } from "@/lib/ai/htmlArtifactTools";
+import { buildPromptTools } from "@/lib/ai/promptTools";
+import { buildConceptModeTools } from "@/lib/ai/conceptModeTools";
 import type { CapabilityContext } from "@/lib/ai/capabilities";
 import type { WorkspaceConfig } from "@/lib/ai/types";
 import { PLANNER_FORM_RULE } from "@/lib/constants/prompt-rules";
@@ -22,7 +26,9 @@ import {
   PROPOSE_MILESTONE_TOOL,
   PROPOSE_MOVE_NODE_TOOL,
   PROPOSE_NEW_CONCEPT_TOOL,
+  PROPOSE_NEW_PROMPT_TOOL,
   PROPOSE_NODE_EDIT_TOOL,
+  PROPOSE_PROMPT_UPDATE_TOOL,
 } from "@/lib/proposals/types";
 
 /**
@@ -152,6 +158,89 @@ describe("tool descriptions carry the rules the capability snippets taught", () 
     expectRules(tools, PROPOSE_CONCEPT_UPDATE_TOOL, [
       "`read_concept_documentation`",
     ]);
+  });
+
+  // The `whiteboard`, `research`, `html_pages` and `prompts` capabilities are
+  // loadable: full mode teaches them through `learn_capability`, concept mode
+  // has no snippets at all. Their rules therefore ride on the tools too.
+  it("whiteboard tools", () => {
+    const tools = buildCanvasTools("org-1");
+    for (const name of ["update_canvas", "patch_canvas"]) {
+      expectRules(tools, name, [
+        "you must NOT author projected categories",
+        "short verb-phrase label",
+        "Always call `read_canvas` first",
+        "Never ask the user for coordinates",
+      ]);
+    }
+    expectRules(tools, "patch_canvas", ["`update_node` shallow-merges `customData`"]);
+  });
+
+  it("research tools", () => {
+    const tools = buildResearchTools("org-1", "user-1", { tool: undefined, results: [] } as never);
+    for (const name of ["save_research", "dispatch_research"]) {
+      expectRules(tools, name, [
+        "3+ web searches",
+        "do NOT use `repo_agent` to fill a research doc",
+        "\"Research: <topic>\"",
+        "`[anchor text](?r=<slug>)`",
+        "those routes don't exist",
+      ]);
+    }
+    expectRules(tools, "update_research", [
+      "Never call `update_research` before `save_research`",
+      "call `read_research` first",
+      "`[anchor text](?r=<slug>)`",
+    ]);
+  });
+
+  it("html page tools", () => {
+    const tools = buildHtmlArtifactTools("org-1", "user-1");
+    for (const name of ["save_html", "update_html", "get_html"]) {
+      expectRules(tools, name, [
+        "a sub-agent (repo_agent, research) never saves HTML",
+        "ONE HTML story",
+        "never one page per repo",
+        "Do NOT dump raw HTML into chat",
+        "then `update_html` with `edits` built from that exact text",
+      ]);
+    }
+  });
+
+  it("prompt tools", () => {
+    const tools = buildPromptTools("user-1");
+    for (const name of [PROPOSE_NEW_PROMPT_TOOL, PROPOSE_PROMPT_UPDATE_TOOL]) {
+      expectRules(tools, name, [
+        "BEFORE proposing",
+        "never fabricate a prompt id",
+        "nothing is saved until the user clicks Approve",
+        "a DRAFT the user must publish",
+        "Build `edits` from `get_prompt({ raw: true })`",
+        "do not fall back to sending the whole `value`",
+        "send the full current `value` unchanged",
+      ]);
+    }
+    expectRules(tools, PROPOSE_PROMPT_UPDATE_TOOL, ["exactly (whitespace and line breaks included)"]);
+    for (const name of ["get_prompt", "list_prompts"]) {
+      expectRules(tools, name, ["Prompts are global", "never fabricate an id"]);
+    }
+  });
+
+  it("concept-mode workspace tools say how to address a workspace and keep the repo_agent rules", () => {
+    const tools = buildConceptModeTools({
+      workspaceConfigs: [{ slug: "alpha" } as unknown as WorkspaceConfig],
+      orgCapabilities: [],
+      capabilityContext: {} as CapabilityContext,
+    });
+    for (const name of ["repo_agent", "logs_agent", "search_logs"]) {
+      expectRules(tools, name, ["Requires `workspace`: a slug from Available Workspaces."]);
+    }
+    expectRules(tools, "repo_agent", [
+      "STRICTLY READ-ONLY",
+      "use `web_search` for those",
+    ]);
+    expectRules(tools, "search_logs", ["use `logs_agent` instead"]);
+    expectRules(tools, "logs_agent", ["do NOT use `search_logs`"]);
   });
 
   it("start_job keeps a code change to one repository", () => {

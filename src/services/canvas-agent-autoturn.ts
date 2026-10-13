@@ -42,6 +42,8 @@ import { tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
+import { parseCanvasAgentMode } from "@/lib/ai/canvasMode";
+import { recordTurnUsage } from "@/lib/ai/publicChatBudget";
 import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import { SEND_TO_FEATURE_PLANNER_TOOL } from "@/lib/proposals/types";
 import { PLANNER_FORM_RULE, PLANNER_FORM_WAKE_RULE } from "@/lib/constants/prompt-rules";
@@ -515,6 +517,9 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
       workspaceId: true,
       messages: true,
       settings: true,
+      // The chat's A/B arm — a wake turn runs in the arm the chat was
+      // created in, not the default.
+      mode: true,
       workspace: { select: { slug: true } },
       // The owner's per-user opt-in. The auto-turn acts AS this user, so
       // their preference is the one that governs. Loaded here (one query)
@@ -718,10 +723,17 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
       ? (settings.promptConcepts as CachedConcepts)
       : null;
 
-  const { result, cacheableConcepts, cacheHit } = await runCanvasAgent({
+  const {
+    result,
+    cacheableConcepts,
+    cacheHit,
+    mode: turnMode,
+    modelId,
+  } = await runCanvasAgent({
     userId: conversation.userId,
     orgId: conversation.sourceControlOrgId,
     workspaceSlugs,
+    mode: parseCanvasAgentMode(conversation.mode),
     messages: modelMessages,
     cachedConcepts,
     // Machine-driven, no live UI subscriber on this turn — suppress the
@@ -754,6 +766,15 @@ async function runAutoTurn(args: AutoTurnArgs): Promise<void> {
   // then resolves with the full tool-call trace.
   await result.text;
   const steps = await result.steps;
+
+  await recordTurnUsage({
+    conversationId,
+    turnId: idPrefix,
+    mode: turnMode,
+    source: "planner_wake",
+    model: modelId,
+    usage: await result.usage,
+  });
 
   const rows = messagesFromSteps(
     steps as Parameters<typeof messagesFromSteps>[0],

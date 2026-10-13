@@ -37,6 +37,19 @@ import {
   PROPOSE_PROMPT_UPDATE_TOOL,
 } from "@/lib/proposals/types";
 
+/**
+ * Prompt-library rules that used to live only in the loadable `prompts`
+ * capability snippet; they ride on the tools so concept mode keeps them.
+ */
+const PROMPT_WRITE_RULES =
+  "\n\nRules: always read the prompt (`list_prompts` / `get_prompt`) BEFORE proposing so you know its current content and id; never fabricate a prompt id. " +
+  "Prompt writes go through approval — nothing is saved until the user clicks Approve, and the approved version is a DRAFT the user must publish from the Prompts page. " +
+  "Build `edits` from `get_prompt({ raw: true })`, never from resolved text (variables substituted, nested prompts inlined) — those edits won't match. " +
+  "If an edit is rejected as \"not found\", the prompt changed since you read it: re-read it raw and rebuild the edit; do not fall back to sending the whole `value`. " +
+  "For a description-only change, send the full current `value` unchanged (`edits` cannot express a no-op).";
+const PROMPT_READ_RULE =
+  "\n\nPrompts are global (the library is shared by every workspace). Use raw: true and the prompt's id from `list_prompts` before any `propose_prompt_update`; never fabricate an id.";
+
 export function buildPromptTools(userId: string): ToolSet {
   void userId; // userId is carried by propose tools for attribution at approval time
 
@@ -47,7 +60,8 @@ export function buildPromptTools(userId: string): ToolSet {
         "By default returns the published version's fully resolved text (nested references expanded, variables substituted). " +
         "Pass raw: true to get the verbatim stored value instead, with {{VARIABLE}} tokens and nested prompt references intact — " +
         "do that whenever you intend to propose an update, since `edits` are matched against the raw value, not the resolved one. " +
-        "No approval required — this is a read-only operation.",
+        "No approval required — this is a read-only operation." +
+        PROMPT_READ_RULE,
       inputSchema: z.object({
         id_or_name: z
           .string()
@@ -117,7 +131,8 @@ export function buildPromptTools(userId: string): ToolSet {
       description:
         "List all prompts in the shared library — id, name, description, updatedAt, and the " +
         "latest/published version number. Use this to discover a prompt's id or name before " +
-        "calling get_prompt or propose_prompt_update. No approval required — this is read-only.",
+        "calling get_prompt or propose_prompt_update. No approval required — this is read-only." +
+        PROMPT_READ_RULE,
       inputSchema: z.object({
         search: z
           .string()
@@ -191,7 +206,8 @@ export function buildPromptTools(userId: string): ToolSet {
         "Propose creating a new prompt in the shared library. " +
         "Emits an approvable card in the canvas chat — the prompt is NOT created until the user approves. " +
         "Name must be UPPERCASE_UNDERSCORE format (e.g. 'MY_PROMPT_NAME'). " +
-        "Use `list_prompts` first to verify the name doesn't already exist.",
+        "Use `list_prompts` first to verify the name doesn't already exist." +
+        PROMPT_WRITE_RULES,
       inputSchema: z.object({
         name: z
           .string()
@@ -248,7 +264,9 @@ export function buildPromptTools(userId: string): ToolSet {
         "The approved update creates a new DRAFT version; it does NOT auto-publish. " +
         "Use `get_prompt` or `list_prompts` first to obtain the prompt's id. " +
         "Supply EITHER `edits` (targeted find/replace — prefer this for anything short of a rewrite) " +
-        "OR `value` (the complete new text), never both.",
+        "OR `value` (the complete new text), never both. " +
+        "Each `edits[].oldStr` must match the raw stored value exactly (whitespace and line breaks included) and be unique unless `replaceAll: true`." +
+        PROMPT_WRITE_RULES,
       inputSchema: z.object({
         prompt_id: z
           .string()
