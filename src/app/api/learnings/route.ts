@@ -4,6 +4,7 @@ import { getPrimaryRepository, getRepositoryById } from "@/lib/helpers/repositor
 import { parseOwnerRepo } from "@/lib/ai/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { resolveWorkspaceAccess, requireMemberAccess } from "@/lib/auth/workspace-access";
+import { STRUT_ACTOR_HEADER, strutActorForLaunch } from "@/services/bifrost/strut-delegation";
 
 export async function GET(request: NextRequest) {
   try {
@@ -101,6 +102,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "GitHub PAT not found for this user" }, { status: 404 });
     }
 
+    // Who the run is for: the user pressing the button, where hive can bill
+    // them. mcp then runs it as a lab workflow under that actor, their PAT
+    // stored as their secret; without the header its old handler runs.
+    const strutActor = await strutActorForLaunch(
+      { workspaceId: ok.workspaceId, workspaceSlug, userId: ok.userId },
+      { swarmUrl: swarmConfig.swarmUrl, swarmApiKey: decryptedSwarmApiKey },
+    );
+
     // Call gitree/process endpoint with token parameter
     const swarmUrl = `${baseSwarmUrl}/gitree/process?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&token=${encodeURIComponent(token)}&summarize=true&link=true`;
 
@@ -109,6 +118,7 @@ export async function POST(request: NextRequest) {
       headers: {
         "Content-Type": "application/json",
         "x-api-token": decryptedSwarmApiKey,
+        ...(strutActor ? { [STRUT_ACTOR_HEADER]: strutActor } : {}),
       },
     })
       .then((response) => {
