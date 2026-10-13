@@ -102,9 +102,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "GitHub PAT not found for this user" }, { status: 404 });
     }
 
-    // Who the run is for: the user pressing the button, where hive can bill
-    // them. mcp then runs it as a lab workflow under that actor, their PAT
-    // stored as their secret; without the header its old handler runs.
+    // Who the run is for: the user pressing the button. mcp then runs it as a
+    // lab workflow under that actor, their PAT stored as their secret; without
+    // the header its old handler runs.
     const strutActor = await strutActorForLaunch(
       { workspaceId: ok.workspaceId, workspaceSlug, userId: ok.userId },
       { swarmUrl: swarmConfig.swarmUrl, swarmApiKey: decryptedSwarmApiKey },

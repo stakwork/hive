@@ -24,9 +24,9 @@ import { stakgraphToRepositoryStatus } from "@/utils/conversions";
  *   fire immediately and re-point the marker at the new sync.
  *
  * The run is attributed to the workspace owner — `x-strut-actor`, the person whose PAT it
- * carries — where hive can bill them (`strutActorForLaunch`): mcp then runs it as a lab
- * workflow under that actor, with the PAT stored as their secret rather than in a run log.
- * Without the header, mcp's old gitree handler runs as before.
+ * carries (`strutActorForLaunch`): mcp then runs it as a lab workflow under that actor, with
+ * the PAT stored as their secret rather than in a run log, billed to them where the workspace
+ * has Bifrost. Without the header, mcp's old gitree handler runs as before.
  */
 
 /** A pending marker older than this is treated as orphaned: the stakgraph webhook never came. */
@@ -51,7 +51,7 @@ export interface TriggerAutoLearnParams {
   /** Decrypted swarm API key, sent as `x-api-token`. */
   swarmApiKey: string;
   githubPat: string | undefined;
-  /** Who the run is for (`x-strut-actor`), when hive can bill them — `strutActorForLaunch`. */
+  /** Who the run is for (`x-strut-actor`) — `strutActorForLaunch`. */
   strutActor?: string;
   reason: AutoLearnReason;
   /** Correlation ids for logs only (GitHub delivery, stakgraph request id). */
@@ -134,7 +134,7 @@ export interface PushAutoLearnInput {
   /** Decrypted swarm API key. */
   swarmApiKey: string;
   githubPat: string | undefined;
-  /** Who the run is for (`x-strut-actor`), when hive can bill them — `strutActorForLaunch`. */
+  /** Who the run is for (`x-strut-actor`) — `strutActorForLaunch`. */
   strutActor?: string;
   /** `request_id` from `/sync_async`; undefined when stakgraph rejected the sync or the call failed. */
   syncRequestId: string | undefined;
@@ -313,7 +313,7 @@ export async function runPendingAutoLearn({
   if (workspace?.ownerId) {
     const creds = await getGithubUsernameAndPAT(workspace.ownerId, workspace.slug);
     githubPat = creds?.token;
-    // The owner's run, where hive can bill them.
+    // The owner's run: the PAT is theirs.
     strutActor = await strutActorForLaunch(
       { workspaceId: swarm.workspaceId, workspaceSlug: workspace.slug, userId: workspace.ownerId },
       { swarmUrl: swarmRow.swarmUrl, swarmApiKey },
