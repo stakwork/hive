@@ -7,7 +7,7 @@
  * interpolated into Cypher is checked against a strict pattern first.
  */
 
-import { mockConnectionPage, mockHierarchy, mockNodeConnections } from "@/app/api/mock/graph/workbench-fixture";
+import { mockChoiceTree, mockConnectionPage, mockHierarchy, mockNodeConnections } from "@/app/api/mock/graph/workbench-fixture";
 import { fromPropertyPairs, isRunGraphRefId, propertyPairs, typeFromLabels } from "@/lib/strut-run-graph/hydrate";
 import { runWorkspaceGraphQuery, type WorkspaceGraphQueryFailure } from "./query";
 
@@ -268,5 +268,69 @@ export async function getConnectionPage(
   return {
     ok: true,
     data: result.data.flatMap((r) => toItem(r, typeFromLabels(r.labels))),
+  };
+}
+
+// ── Brainstorm tree ─────────────────────────────────────────────────────────
+
+export interface ChoiceTreeNode {
+  ref_id: string;
+  properties: Record<string, unknown>;
+}
+
+export interface ChoiceTreeData {
+  nodes: ChoiceTreeNode[];
+  /** Every edge is `PARENT_OF`, parent to child. */
+  edges: Array<{ source: string; target: string }>;
+  /** True when upstream's row cap may have cut the node or edge list short. */
+  truncated: boolean;
+}
+
+/**
+ * The `focus` node and its `PARENT_OF` descendants of one label, read by
+ * Cypher (the REST node listing only knows a fixed set of labels and reports
+ * `node_type` from the wrong label). Selection is by label, never `node_type`.
+ */
+export async function getChoiceTree(
+  caller: Caller,
+  focusRefId: string,
+  label: string,
+): Promise<WorkbenchResult<ChoiceTreeData>> {
+  if (!IDENT.test(label)) return invalid("Invalid label");
+  if (!isRunGraphRefId(focusRefId)) return invalid("Invalid ref_id");
+  if (useMocks()) return { ok: true, data: mockChoiceTree(focusRefId, label) };
+  const L = `\`${label}\``;
+  const root = `MATCH (r:Data_Bank {ref_id: '${focusRefId}'})`;
+  const [nodes, edges] = await Promise.all([
+    rows(
+      caller,
+      `${root} MATCH (r)-[:PARENT_OF*0..20]->(n:${L}) WHERE ${nodeLive("n")} ` +
+        `RETURN DISTINCT n.ref_id AS id, ${propertyPairs("n")} AS props`,
+      GRAPH_ROW_CAP,
+    ),
+    rows(
+      caller,
+      `${root} MATCH (r)-[:PARENT_OF*0..20]->(a:${L})-[e:PARENT_OF]->(b:${L}) ` +
+        `WHERE ${edgeLive("e")} AND ${nodeLive("a")} AND ${nodeLive("b")} ` +
+        `RETURN DISTINCT a.ref_id AS source, b.ref_id AS target`,
+      GRAPH_ROW_CAP,
+    ),
+  ]);
+  if (!nodes.ok) return nodes;
+  if (!edges.ok) return edges;
+  return {
+    ok: true,
+    data: {
+      nodes: nodes.data.flatMap((r) => {
+        const id = str(r.id);
+        return id ? [{ ref_id: id, properties: fromPropertyPairs(r.props) }] : [];
+      }),
+      edges: edges.data.flatMap((r) => {
+        const source = str(r.source);
+        const target = str(r.target);
+        return source && target ? [{ source, target }] : [];
+      }),
+      truncated: nodes.data.length >= GRAPH_ROW_CAP || edges.data.length >= GRAPH_ROW_CAP,
+    },
   };
 }
