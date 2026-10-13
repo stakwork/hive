@@ -176,6 +176,24 @@ describe("parseStrutArtifacts", () => {
 });
 
 describe("mapStrutArtifacts", () => {
+  it("a graph card maps to an inline graph ref — record content, or JSON text; bad text is dropped", () => {
+    const content = { workspace: "hive", focus: "c1" };
+    const { refs, dropped } = mapStrutArtifacts(
+      [
+        entry({ id: "brainstorm-tree", kind: "graph", title: "Tree", content }),
+        entry({ id: "t2", kind: "graph", title: "Tree 2", content: JSON.stringify(content) }),
+        entry({ id: "bad", kind: "graph", title: "Bad", content: "not json" }),
+        entry({ id: "arr", kind: "graph", title: "Arr", content: "[1]" }),
+      ],
+      "swarm-1",
+    );
+    expect(refs.map((r) => [r.id, r.kind, r.source])).toEqual([
+      ["brainstorm-tree", "graph", { type: "inline", content }],
+      ["t2", "graph", { type: "inline", content }],
+    ]);
+    expect(dropped.map((d) => d.reason)).toEqual(["unsupported content", "unsupported content"]);
+  });
+
   it("a strut-relative url → a graph ref the reader serves, kind as strut said", () => {
     const { refs, dropped } = mapStrutArtifacts(
       [entry({ id: "plan", title: "Plan", label: "Plan", summary: "Three steps.", url: `/jobs/${JOB}/files/plan.md` })],
