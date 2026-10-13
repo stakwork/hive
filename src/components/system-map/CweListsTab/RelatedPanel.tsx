@@ -76,7 +76,7 @@ export function RelatedPanel({ cwe }: { cwe: CweEntry }) {
       <RelatedList
         title="Test templates"
         items={data.templates}
-        empty="No SecurityTestTemplate yet. The security review generates one on first use."
+        empty="No SecurityTestTemplate yet. The CWE check generates one on first use."
       />
       <RelatedList title="Mitigations" items={data.mitigations} empty="No MITIGATED_BY edges." />
       <RelatedList title="Detection methods" items={data.detection} empty="No DETECTABLE_BY edges." />
