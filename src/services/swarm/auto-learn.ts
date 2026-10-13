@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { parseOwnerRepo } from "@/lib/ai/utils";
+import { STRUT_ACTOR_HEADER, strutActorForLaunch } from "@/services/bifrost/strut-delegation";
 import { stakgraphToRepositoryStatus } from "@/utils/conversions";
 
 /**
@@ -21,6 +22,11 @@ import { stakgraphToRepositoryStatus } from "@/utils/conversions";
  *   repository already waits on an in-flight sync whose webhook will run it;
  * - a push finds a marker older than {@link AUTO_LEARN_STALE_MS} (the webhook never came):
  *   fire immediately and re-point the marker at the new sync.
+ *
+ * The run is attributed to the workspace owner — `x-strut-actor`, the person whose PAT it
+ * carries — where hive can bill them (`strutActorForLaunch`): mcp then runs it as a lab
+ * workflow under that actor, with the PAT stored as their secret rather than in a run log.
+ * Without the header, mcp's old gitree handler runs as before.
  */
 
 /** A pending marker older than this is treated as orphaned: the stakgraph webhook never came. */
@@ -45,6 +51,8 @@ export interface TriggerAutoLearnParams {
   /** Decrypted swarm API key, sent as `x-api-token`. */
   swarmApiKey: string;
   githubPat: string | undefined;
+  /** Who the run is for (`x-strut-actor`), when hive can bill them — `strutActorForLaunch`. */
+  strutActor?: string;
   reason: AutoLearnReason;
   /** Correlation ids for logs only (GitHub delivery, stakgraph request id). */
   context?: Record<string, string | null | undefined>;
@@ -55,7 +63,7 @@ export interface TriggerAutoLearnParams {
  * dispatched. The GitHub token travels only in the request itself and is never logged.
  */
 export function triggerAutoLearn(params: TriggerAutoLearnParams): boolean {
-  const { workspaceId, repositoryUrl, swarmUrl, swarmApiKey, githubPat, reason, context = {} } = params;
+  const { workspaceId, repositoryUrl, swarmUrl, swarmApiKey, githubPat, strutActor, reason, context = {} } = params;
   const logContext = { ...context, workspaceId, reason };
 
   if (!swarmUrl) {
@@ -90,13 +98,14 @@ export function triggerAutoLearn(params: TriggerAutoLearnParams): boolean {
     `?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}` +
     `&token=${encodeURIComponent(githubPat)}&summarize=true&link=true`;
 
-  console.log(`${LOG} Triggering auto-learn gitree/process`, { ...logContext, owner, repo });
+  console.log(`${LOG} Triggering auto-learn gitree/process`, { ...logContext, owner, repo, strutActor: strutActor ?? null });
 
   fetch(gitreeUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-api-token": swarmApiKey,
+      ...(strutActor ? { [STRUT_ACTOR_HEADER]: strutActor } : {}),
     },
   })
     .then((response) => {
@@ -125,6 +134,8 @@ export interface PushAutoLearnInput {
   /** Decrypted swarm API key. */
   swarmApiKey: string;
   githubPat: string | undefined;
+  /** Who the run is for (`x-strut-actor`), when hive can bill them — `strutActorForLaunch`. */
+  strutActor?: string;
   /** `request_id` from `/sync_async`; undefined when stakgraph rejected the sync or the call failed. */
   syncRequestId: string | undefined;
   delivery: string | null;
@@ -138,7 +149,7 @@ export type PushAutoLearnOutcome = "disabled" | "deferred" | "fired-stale-then-d
  * started, or fire right away when there is no sync to wait for.
  */
 export async function scheduleAutoLearnForPush(input: PushAutoLearnInput): Promise<PushAutoLearnOutcome> {
-  const { repository, workspaceId, swarm, swarmApiKey, githubPat, syncRequestId, delivery } = input;
+  const { repository, workspaceId, swarm, swarmApiKey, githubPat, strutActor, syncRequestId, delivery } = input;
   const now = input.now ?? new Date();
   const context = { delivery, workspaceId, repositoryUrl: repository.repositoryUrl };
 
@@ -162,6 +173,7 @@ export async function scheduleAutoLearnForPush(input: PushAutoLearnInput): Promi
       swarmUrl: swarm.swarmUrl,
       swarmApiKey,
       githubPat,
+      strutActor,
       reason,
       context: { delivery, pendingRequestId },
     });
@@ -297,9 +309,15 @@ export async function runPendingAutoLearn({
     select: { ownerId: true, slug: true },
   });
   let githubPat: string | undefined;
+  let strutActor: string | undefined;
   if (workspace?.ownerId) {
     const creds = await getGithubUsernameAndPAT(workspace.ownerId, workspace.slug);
     githubPat = creds?.token;
+    // The owner's run, where hive can bill them.
+    strutActor = await strutActorForLaunch(
+      { workspaceId: swarm.workspaceId, workspaceSlug: workspace.slug, userId: workspace.ownerId },
+      { swarmUrl: swarmRow.swarmUrl, swarmApiKey },
+    );
   }
 
   const reason: AutoLearnReason = repositoryStatus === RepositoryStatus.FAILED ? "sync-failed" : "sync-complete";
@@ -319,6 +337,7 @@ export async function runPendingAutoLearn({
       swarmUrl: swarmRow.swarmUrl,
       swarmApiKey,
       githubPat,
+      strutActor,
       reason,
       context: { requestId },
     });
