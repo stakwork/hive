@@ -201,6 +201,15 @@ describe("start_job", () => {
   });
 });
 
+describe("start_job model", () => {
+  test("the selected chat agent model rides on the launch as params.model; unset sends none", async () => {
+    await start({}, makeCtx({ chatAgentModel: "claude-opus-4-1" } as Partial<CapabilityContext>));
+    expect(mockDispatch.mock.calls[0][0].params).toEqual({ model: "claude-opus-4-1" });
+    await start();
+    expect(mockDispatch.mock.calls[1][0].params).toBeUndefined();
+  });
+});
+
 describe("continue_job", () => {
   const firstTurn = { id: "row-0", workspaceId: "ws-id", swarmId: "swarm-1", input: { prompt: "Write a plan", title: "Dark mode plan" } };
 
@@ -225,6 +234,15 @@ describe("continue_job", () => {
       input: { prompt: "Split step 2", title: "Dark mode plan", workspace: "acme" },
       conversationId: "conv-1",
     });
+  });
+
+  test("the selected chat agent model rides on the launch as params.model; unset sends none", async () => {
+    mockStrutRunFindFirst.mockResolvedValueOnce(firstTurn).mockResolvedValueOnce(null);
+    await cont({}, makeCtx({ chatAgentModel: "claude-opus-4-1" } as Partial<CapabilityContext>));
+    expect(mockDispatch.mock.calls[0][0].params).toEqual({ model: "claude-opus-4-1" });
+    mockStrutRunFindFirst.mockResolvedValueOnce(firstTurn).mockResolvedValueOnce(null);
+    await cont();
+    expect(mockDispatch.mock.calls[1][0].params).toBeUndefined();
   });
 
   test("refuses another user's job (no row of theirs) and a job of another org", async () => {
