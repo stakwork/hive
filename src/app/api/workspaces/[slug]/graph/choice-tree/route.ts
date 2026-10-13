@@ -1,0 +1,24 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireMemberAccess, resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
+import { getChoiceTree } from "@/services/graph/workbench";
+
+export const runtime = "nodejs";
+
+/**
+ * GET /api/workspaces/[slug]/graph/choice-tree?focus=<ref_id>&label=Choice
+ *
+ * The brainstorm tree under `focus`: its `PARENT_OF` descendants of one label
+ * (default `Choice`) with the edges among them. Any member may read.
+ */
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const access = requireMemberAccess(await resolveWorkspaceAccess(request, { slug }));
+  if (access instanceof NextResponse) return access;
+
+  const focus = request.nextUrl.searchParams.get("focus");
+  if (!focus) return NextResponse.json({ error: "focus is required" }, { status: 400 });
+  const label = request.nextUrl.searchParams.get("label") ?? "Choice";
+  const result = await getChoiceTree({ slug, userId: access.userId }, focus, label);
+  if (!result.ok) return NextResponse.json({ error: result.message }, { status: result.status });
+  return NextResponse.json(result.data);
+}
