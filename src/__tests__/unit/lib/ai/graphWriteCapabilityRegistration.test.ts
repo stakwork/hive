@@ -106,7 +106,6 @@ vi.mock("@/lib/ai/capabilityGates", () => ({
     isPromptsCapabilityEnabledForOrg(orgId),
   isGraphWriteCapabilityEnabledForOrg: (orgId: string | undefined) =>
     isGraphWriteCapabilityEnabledForOrg(orgId),
-  isStrutCapabilityEnabledForOrg: vi.fn(async () => false),
 }));
 
 import {
