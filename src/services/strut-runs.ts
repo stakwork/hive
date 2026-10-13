@@ -136,7 +136,7 @@ export type StrutRunHandler = (row: StrutRunRow, ctx?: StrutRunHandlerContext) =
  */
 const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
-  // Kinds of the workflows `swarm-systemmap` replaced, kept so their old rows still settle.
+  // Kinds of retired workflows (folded into `swarm-systemmap` / the CWE check), kept so their old rows still settle.
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_cwe_check: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_cloud_links: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
