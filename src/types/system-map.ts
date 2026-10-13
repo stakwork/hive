@@ -155,3 +155,39 @@ export type CweRelatedResponse =
       platforms: CweRelatedNode[];
     }
   | { status: "error"; error: string };
+
+/** A `Finding` node from the workspace graph (Infosec page → Findings). */
+export interface SystemMapFinding {
+  refId: string;
+  title: string;
+  /** Lower-cased: critical / high / medium / low / info, or whatever the node says. */
+  severity: string | null;
+  status: string | null;
+  cweId: string | null;
+  file: string | null;
+  line: number | null;
+  description: string | null;
+  /** Unix seconds. */
+  dateAdded: number | null;
+  properties: Record<string, unknown>;
+}
+
+export type SystemMapFindingsResponse =
+  | { status: "ready"; findings: SystemMapFinding[]; truncated: boolean }
+  | { status: "error"; error: string };
+
+/** A node one edge away from a finding, from any namespace (jarvis does not say which). */
+export interface SystemMapFindingRelated {
+  refId: string;
+  nodeType: string;
+  edgeType: string;
+  /** `out`: finding → node; `in`: node → finding. */
+  direction: "in" | "out";
+  name: string;
+  file: string | null;
+  properties: Record<string, unknown>;
+}
+
+export type SystemMapFindingRelatedResponse =
+  | { status: "ready"; related: SystemMapFindingRelated[]; truncated: boolean }
+  | { status: "error"; error: string };
