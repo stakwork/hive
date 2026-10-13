@@ -9,6 +9,7 @@
 import type {
   ConnectionGroup,
   ConnectionItem,
+  ChoiceTreeData,
   ConnectionPageArgs,
   Hierarchy,
   NodeConnections,
@@ -219,4 +220,23 @@ export function mockConnectionPage({ refId, edge, outgoing, limit }: ConnectionP
     .map((e) => (outgoing ? e.target : e.source))
     .map((o) => ({ id: o.id, name: o.name, type: typeFromLabels(o.labels) }))
     .slice(0, limit);
+}
+
+/** A small brainstorm tree under `focus`: a question with two options, one expanded. */
+export function mockChoiceTree(focus: string, label: string): ChoiceTreeData {
+  const kid = (n: number) => `${focus}-${n}`;
+  return {
+    nodes: [
+      { ref_id: focus, properties: { choice_id: 1, text: `Mock ${label}?`, kind: "question", made_by: "user", state: "open" } },
+      { ref_id: kid(1), properties: { choice_id: 2, text: "Option one", kind: "option", made_by: "model", state: "open" } },
+      { ref_id: kid(2), properties: { choice_id: 3, text: "Option two", kind: "option", made_by: "model", state: "rejected" } },
+      { ref_id: kid(3), properties: { choice_id: 4, text: "Follow-up?", kind: "question", made_by: "model", state: "open" } },
+    ],
+    edges: [
+      { source: focus, target: kid(1) },
+      { source: focus, target: kid(2) },
+      { source: kid(1), target: kid(3) },
+    ],
+    truncated: false,
+  };
 }

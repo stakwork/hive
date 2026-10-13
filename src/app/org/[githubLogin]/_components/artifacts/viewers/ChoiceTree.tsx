@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useMemo } from "react";
+import React, { memo, useCallback, useMemo, useState } from "react";
 import dagre from "@dagrejs/dagre";
 import { Background, Handle, Position, ReactFlow, ReactFlowProvider, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -11,14 +11,19 @@ import { useCanvasChatStore } from "../../../_state/canvasChatStore";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 
 /**
- * A brainstorm tree: nodes of one label (ordered by `choice_id`, options lettered A, B, C…) (default `Choice`) linked by
+ * A brainstorm tree: nodes of one label (ordered by `choice_id`, options lettered by path: A, B, AA, AB…) (default `Choice`) linked by
  * `PARENT_OF`, drawn left to right from the artifact's `focus`. Clicking a
  * node's button only drafts a message in the chat input; the user sends it.
  */
 
-const NODE_W = 220;
-const NODE_H = 64;
-const EDGE = "PARENT_OF";
+const NODE_W = 260;
+const CHARS_PER_LINE = 34;
+const LINE_H = 16;
+const PAD_H = 28;
+const CLAMP_LINES = 3;
+// Selected node's extra rows: state/made_by line and the action buttons.
+const DETAILS_H = 20;
+const ACTIONS_H = 30;
 const DEFAULT_LABEL = "Choice";
 const REFETCH_MS = 15_000;
 
@@ -38,19 +43,18 @@ export interface ChoiceItem {
   name: string;
   madeBy?: string;
   state: ChoiceState;
-  /** A, B, C… among its parent's `option` children, in `choice_id` order. */
+  /** Path label: the nearest lettered ancestor's label + its letter among its parent's `option` children (A, B, AA, AB…). */
   letter?: string;
   quote?: string;
+  kind?: string;
 }
 interface RawNode {
   ref_id: string;
-  node_type?: string;
   properties?: Record<string, unknown>;
 }
 interface RawEdge {
   source: string;
   target: string;
-  edge_type?: string;
 }
 
 /** `choice_id` order: numeric when both are numbers, else string with numeric collation. */
@@ -64,48 +68,64 @@ export function compareChoiceIds(a: unknown, b: unknown): number {
 }
 
 const optionLetter = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : String(i + 1));
+const prefix_ = (prefix: string, letter: string) => prefix + letter;
 const text = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 
 const STATES: readonly string[] = ["open", "chosen", "rejected", "simulated"];
 
 /** The root and its descendants along `PARENT_OF` (cycle-safe), with the edges among them. */
-export function buildChoiceTree(nodes: RawNode[], edges: RawEdge[], focus: string, label = DEFAULT_LABEL) {
-  const byId = new Map(nodes.filter((n) => n.node_type === label).map((n) => [n.ref_id, n]));
+export function buildChoiceTree(nodes: RawNode[], edges: RawEdge[], focus: string) {
+  // Every node is of the label already: the read selects by label.
+  const byId = new Map(nodes.map((n) => [n.ref_id, n]));
   const kids = new Map<string, string[]>();
   for (const e of edges) {
-    if (e.edge_type !== EDGE || !byId.has(e.source) || !byId.has(e.target)) continue;
+    if (!byId.has(e.source) || !byId.has(e.target)) continue;
     kids.set(e.source, [...(kids.get(e.source) ?? []), e.target]);
   }
   const items: ChoiceItem[] = [];
   const links: Array<{ source: string; target: string }> = [];
   const seen = new Set<string>();
   const props = (id: string) => byId.get(id)!.properties ?? {};
-  const walk = (id: string, letter?: string) => {
+  const walk = (id: string, letter: string | undefined, prefix: string) => {
     seen.add(id);
     const p = props(id);
     const state = typeof p.state === "string" && STATES.includes(p.state) ? (p.state as ChoiceState) : "open";
-    items.push({ id, name: text(p.text) ?? text(p.name) ?? id, madeBy: text(p.made_by), state, letter, quote: text(p.quote) });
+    items.push({ id, name: text(p.text) ?? text(p.name) ?? id, madeBy: text(p.made_by), state, letter, quote: text(p.quote), kind: text(p.kind) });
+    const childPrefix = letter ?? prefix;
     const ordered = (kids.get(id) ?? []).filter((c) => !seen.has(c)).sort((a, b) => compareChoiceIds(props(a).choice_id, props(b).choice_id));
     let options = 0;
     for (const child of ordered) {
       if (seen.has(child)) continue;
       links.push({ source: id, target: child });
-      walk(child, props(child).kind === "option" ? optionLetter(options++) : undefined);
+      const isOption = props(child).kind === "option";
+      walk(child, isOption ? prefix_(childPrefix, optionLetter(options++)) : undefined, childPrefix);
     }
   };
-  if (byId.has(focus)) walk(focus);
+  if (byId.has(focus)) walk(focus, undefined, "");
   return { items, links };
 }
 
-/** Left-to-right positions, as the graph workbench's tree lays out. */
-export function layoutTree(ids: string[], links: Array<{ source: string; target: string }>): Record<string, { x: number; y: number }> {
+/** Rendered height of a node, from its text length (see the constants above). */
+export function estimateNodeHeight(c: Pick<ChoiceItem, "name" | "quote">, selected: boolean): number {
+  const lines = (t: string) => Math.max(1, Math.ceil(t.length / CHARS_PER_LINE));
+  if (!selected) return Math.min(CLAMP_LINES, lines(c.name)) * LINE_H + PAD_H;
+  return (lines(c.name) + (c.quote ? lines(c.quote) : 0)) * LINE_H + PAD_H + DETAILS_H + ACTIONS_H;
+}
+
+/** Left-to-right positions, as the graph workbench's tree lays out; `heights` per node id (default 64). */
+export function layoutTree(
+  ids: string[],
+  links: Array<{ source: string; target: string }>,
+  heights: Record<string, number> = {},
+): Record<string, { x: number; y: number }> {
+  const h = (id: string) => heights[id] ?? 64;
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "LR", ranksep: 64, nodesep: 12 });
-  ids.forEach((id) => g.setNode(id, { width: NODE_W, height: NODE_H }));
+  ids.forEach((id) => g.setNode(id, { width: NODE_W, height: h(id) }));
   links.forEach((l) => g.setEdge(l.source, l.target));
   dagre.layout(g);
-  return Object.fromEntries(ids.map((id) => [id, { x: g.node(id).x - NODE_W / 2, y: g.node(id).y - NODE_H / 2 }]));
+  return Object.fromEntries(ids.map((id) => [id, { x: g.node(id).x - NODE_W / 2, y: g.node(id).y - h(id) / 2 }]));
 }
 
 /** The drafts a node's two buttons leave in the chat input: `Verb B: "<text>" (<ref_id>)`, no letter for a question. */
@@ -126,34 +146,77 @@ const BADGE: Record<ChoiceState, string> = {
   simulated: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
 };
 
-const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<{ choice: ChoiceItem }>>) {
-  const c = data.choice;
+const DOT: Record<ChoiceState, string> = {
+  open: "bg-muted-foreground/40",
+  chosen: "bg-green-500",
+  rejected: "bg-muted-foreground/60",
+  simulated: "bg-sky-500",
+};
+
+interface ChoiceNodeData extends Record<string, unknown> {
+  choice: ChoiceItem;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}
+
+const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<ChoiceNodeData>>) {
+  const { choice: c, selected, onSelect } = data;
   const setDraft = useCanvasChatStore((s) => s.setPendingInputDraft);
+  const isQuestion = c.kind === "question";
   const button = "nodrag rounded border px-1.5 py-0.5 text-[10px] hover:bg-accent";
+  const act = (e: React.MouseEvent, message: string) => {
+    e.stopPropagation();
+    setDraft(message);
+  };
+  const MadeBy = c.madeBy === "user" ? User : Bot;
   return (
-    <div className={cn("flex h-full w-full flex-col justify-between rounded-md border px-2 py-1 text-xs", STATE_STYLE[c.state])} data-state={c.state}>
+    <div
+      className={cn(
+        "group flex h-full w-full cursor-pointer flex-col gap-1 rounded-md border px-2 py-1.5 text-xs hover:ring-1 hover:ring-ring/40",
+        STATE_STYLE[c.state],
+        selected && "ring-2 ring-ring",
+      )}
+      data-state={c.state}
+      data-selected={selected}
+      onClick={() => onSelect(c.id)}
+    >
       <Handle type="target" position={Position.Left} className="!opacity-0" />
-      <div className={cn("truncate font-medium", c.state === "rejected" && "line-through")} title={c.quote ?? c.name}>
-        {c.letter && <span className="mr-1 rounded bg-muted px-1 text-[10px] font-semibold">{c.letter}</span>}
-        {c.name}
-      </div>
-      <div className="flex items-center gap-1">
-        <span className={cn("rounded px-1 text-[10px]", BADGE[c.state])}>{c.state}</span>
-        {c.madeBy && (
-          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" data-made-by={c.madeBy}>
-            {c.madeBy === "user" ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
-            {c.madeBy}
+      <div className={cn("flex items-start gap-1 font-medium leading-4", c.state === "rejected" && "line-through")} title={c.quote ? `${c.name}\n\n“${c.quote}”` : c.name}>
+        {!selected && <span className={cn("mt-1 h-1.5 w-1.5 shrink-0 rounded-full", DOT[c.state])} data-state-dot={c.state} />}
+        <span className={cn("min-w-0 flex-1 break-words", !selected && "line-clamp-3")}>
+          {c.letter && <span className="mr-1 rounded bg-muted px-1 text-[10px] font-semibold">{c.letter}</span>}
+          {c.name}
+        </span>
+        {!selected && c.madeBy && (
+          <span className="mt-0.5 shrink-0 text-muted-foreground" title={`made by ${c.madeBy}`}>
+            <MadeBy className="h-3 w-3" />
           </span>
         )}
-        <span className="ml-auto flex gap-1">
-          <button type="button" className={button} onClick={() => setDraft(expandDraft(c))}>
-            {c.state === "rejected" ? "Revisit" : "Expand"}
-          </button>
-          <button type="button" className={button} onClick={() => setDraft(goWithDraft(c))}>
-            Go with
-          </button>
-        </span>
       </div>
+      {selected && (
+        <>
+          {c.quote && <p className="text-[11px] italic leading-4 text-muted-foreground">“{c.quote}”</p>}
+          <div className="flex items-center gap-1">
+            {c.state !== "open" && <span className={cn("rounded px-1 text-[10px]", BADGE[c.state])}>{c.state}</span>}
+            {c.madeBy && (
+              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" data-made-by={c.madeBy}>
+                <MadeBy className="h-3 w-3" />
+                {c.madeBy}
+              </span>
+            )}
+          </div>
+          <div className="mt-auto flex gap-1">
+            <button type="button" className={button} onClick={(e) => act(e, expandDraft(c))}>
+              {c.state === "rejected" ? "Revisit" : "Expand"}
+            </button>
+            {!isQuestion && (
+              <button type="button" className={button} onClick={(e) => act(e, goWithDraft(c))}>
+                Go with
+              </button>
+            )}
+          </div>
+        </>
+      )}
       <Handle type="source" position={Position.Right} className="!opacity-0" />
     </div>
   );
@@ -161,18 +224,19 @@ const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<{ choice: C
 
 const nodeTypes = { choice: ChoiceNode };
 
-interface GraphResponse {
-  data?: { nodes?: RawNode[]; edges?: RawEdge[] };
+interface TreeResponse {
+  nodes?: RawNode[];
+  edges?: RawEdge[];
 }
 
 /** Polled while open and on window focus, so children Jamie adds appear. */
-function useChoices(workspace: string, label: string) {
+function useChoices(workspace: string, focus: string, label: string) {
   return useQuery({
-    queryKey: ["choice-tree", workspace, label],
+    queryKey: ["choice-tree", workspace, focus, label],
     queryFn: async () => {
-      const res = await fetch(`/api/workspaces/${encodeURIComponent(workspace)}/graph/nodes?node_type=${encodeURIComponent(label)}&limit=1000&limit_mode=total`);
+      const res = await fetch(`/api/workspaces/${encodeURIComponent(workspace)}/graph/choice-tree?focus=${encodeURIComponent(focus)}&label=${encodeURIComponent(label)}`);
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
-      return ((await res.json()) as GraphResponse).data ?? {};
+      return (await res.json()) as TreeResponse;
     },
     refetchInterval: REFETCH_MS,
     refetchOnWindowFocus: true,
@@ -180,23 +244,33 @@ function useChoices(workspace: string, label: string) {
 }
 
 function Tree({ items, links }: ReturnType<typeof buildChoiceTree>) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const onSelect = useCallback((id: string) => setSelectedId((cur) => (cur === id ? null : id)), []);
   const { nodes, edges } = useMemo(() => {
-    const pos = layoutTree(items.map((i) => i.id), links);
+    const heights = Object.fromEntries(items.map((i) => [i.id, estimateNodeHeight(i, i.id === selectedId)]));
+    const pos = layoutTree(items.map((i) => i.id), links, heights);
     return {
-      nodes: items.map<Node>((choice) => ({ id: choice.id, type: "choice", position: pos[choice.id], data: { choice }, width: NODE_W, height: NODE_H })),
+      nodes: items.map<Node>((choice) => ({
+        id: choice.id,
+        type: "choice",
+        position: pos[choice.id],
+        data: { choice, selected: choice.id === selectedId, onSelect } satisfies ChoiceNodeData,
+        width: NODE_W,
+        height: heights[choice.id],
+      })),
       edges: links.map<Edge>((l) => ({ id: `${l.source}>${l.target}`, ...l })),
     };
-  }, [items, links]);
+  }, [items, links, selectedId, onSelect]);
   return (
-    <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.15, maxZoom: 1.1 }} nodesDraggable={false} nodesConnectable={false} minZoom={0.3} proOptions={{ hideAttribution: true }}>
+    <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.15, maxZoom: 1.1 }} nodesDraggable={false} nodesConnectable={false} minZoom={0.3} onPaneClick={() => setSelectedId(null)} proOptions={{ hideAttribution: true }}>
       <Background />
     </ReactFlow>
   );
 }
 
 export function ChoiceTree({ workspace, focus, label = DEFAULT_LABEL }: { workspace: string; focus: string; label?: string }) {
-  const { data, isLoading, error } = useChoices(workspace, label);
-  const tree = useMemo(() => buildChoiceTree(data?.nodes ?? [], data?.edges ?? [], focus, label), [data, focus, label]);
+  const { data, isLoading, error } = useChoices(workspace, focus, label);
+  const tree = useMemo(() => buildChoiceTree(data?.nodes ?? [], data?.edges ?? [], focus), [data, focus]);
   if (isLoading) return <p className="p-4 text-xs text-muted-foreground">Loading tree…</p>;
   if (error) return <p className="p-4 text-xs text-destructive">Could not load the tree.</p>;
   if (!tree.items.length) return <p className="p-4 text-xs text-muted-foreground">Nothing to show for this choice yet.</p>;
