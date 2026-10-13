@@ -20,10 +20,11 @@ beforeEach(() => {
         ok: true,
         meta,
         data: {
-          columns: ["props", "id"],
+          columns: ["props", "labels", "id"],
           rows: [
-            [[["text", "Root?"], ["choice_id", 1], ["kind", "question"], ["made_by", "user"], ["state", "chosen"]], FOCUS],
-            [[["text", "Opt"], ["choice_id", 2], ["kind", "option"], ["made_by", "model"], ["state", "open"]], "child-1"],
+            [[["text", "Root?"], ["question_id", 1], ["made_by", "user"], ["state", "decided"]], ["Data_Bank", "Question"], FOCUS],
+            [[["text", "Opt"], ["choice_id", 2], ["kind", "option"], ["made_by", "model"], ["state", "open"]], ["Choice"], "child-1"],
+            [[["text", "Old"], ["choice_id", 3], ["kind", "question"]], ["Choice"], "child-2"],
           ],
         },
       };
@@ -34,13 +35,14 @@ beforeEach(() => {
 
 describe("getChoiceTree", () => {
   test("parses nodes and edges from upstream's shape, whatever the column order", async () => {
-    const res = await getChoiceTree(caller, FOCUS, "Choice");
+    const res = await getChoiceTree(caller, FOCUS);
     expect(res).toEqual({
       ok: true,
       data: {
         nodes: [
-          { ref_id: FOCUS, properties: { text: "Root?", choice_id: 1, kind: "question", made_by: "user", state: "chosen" } },
-          { ref_id: "child-1", properties: { text: "Opt", choice_id: 2, kind: "option", made_by: "model", state: "open" } },
+          { ref_id: FOCUS, type: "Question", properties: { text: "Root?", question_id: 1, made_by: "user", state: "decided" } },
+          { ref_id: "child-1", type: "Choice", properties: { text: "Opt", choice_id: 2, kind: "option", made_by: "model", state: "open" } },
+          { ref_id: "child-2", type: "Choice", properties: { text: "Old", choice_id: 3, kind: "question" } },
         ],
         edges: [{ source: FOCUS, target: "child-1" }],
         truncated: false,
@@ -48,16 +50,33 @@ describe("getChoiceTree", () => {
     });
   });
 
-  test("queries by label, focus and PARENT_OF, never node_type", async () => {
-    await getChoiceTree(caller, FOCUS, "Choice");
+  test("queries both labels by default, with the focus and PARENT_OF, never node_type", async () => {
+    await getChoiceTree(caller, FOCUS);
     const qs = mockedQuery.mock.calls.map(([a]) => String(a.query));
     expect(qs).toHaveLength(2);
+    expect(qs.find((q) => q.includes("AS props"))).toContain("labels(n) AS labels");
     for (const q of qs) {
       expect(q).toContain("`Choice`");
+      expect(q).toContain("`Question`");
       expect(q).toContain(`ref_id: '${FOCUS}'`);
       expect(q).toContain("PARENT_OF");
       expect(q).not.toContain("node_type");
     }
+  });
+
+  test("a label list restricts the query", async () => {
+    await getChoiceTree(caller, FOCUS, ["Question"]);
+    for (const [a] of mockedQuery.mock.calls) {
+      expect(String(a.query)).toContain("`Question`");
+      expect(String(a.query)).not.toContain("`Choice`");
+    }
+  });
+
+  test("mock mode returns a question in the middle, typed", async () => {
+    vi.stubEnv("USE_MOCKS", "true");
+    const res = await getChoiceTree(caller, FOCUS);
+    expect(res.ok && res.data.nodes.map((n) => n.type)).toEqual(["Question", "Choice", "Choice", "Question", "Choice", "Choice"]);
+    expect(mockedQuery).not.toHaveBeenCalled();
   });
 
   test("flags truncation at the row cap", async () => {
@@ -66,13 +85,13 @@ describe("getChoiceTree", () => {
       meta,
       data: { columns: ["id", "props"], rows: Array.from({ length: 1000 }, (_, i) => [`n${i}`, []]) },
     });
-    const res = await getChoiceTree(caller, FOCUS, "Choice");
+    const res = await getChoiceTree(caller, FOCUS);
     expect(res.ok && res.data.truncated).toBe(true);
   });
 
   test("rejects a bad label or ref_id without querying", async () => {
-    for (const [focus, label] of [[FOCUS, "Choice`) DETACH DELETE n //"], [FOCUS, ""], ["x'}) RETURN 1 //", "Choice"]]) {
-      const res = await getChoiceTree(caller, focus, label);
+    for (const [focus, labels] of [[FOCUS, ["Choice`) DETACH DELETE n //"]], [FOCUS, ["Choice", ""]], [FOCUS, []], ["x'}) RETURN 1 //", ["Choice"]]] as const) {
+      const res = await getChoiceTree(caller, focus, [...labels]);
       expect(res).toMatchObject({ ok: false, status: 400 });
     }
     expect(mockedQuery).not.toHaveBeenCalled();
@@ -80,6 +99,6 @@ describe("getChoiceTree", () => {
 
   test("passes a query failure through", async () => {
     mockedQuery.mockResolvedValue({ ok: false, status: 503, message: "down" });
-    expect(await getChoiceTree(caller, FOCUS, "Choice")).toMatchObject({ ok: false, status: 503 });
+    expect(await getChoiceTree(caller, FOCUS)).toMatchObject({ ok: false, status: 503 });
   });
 });

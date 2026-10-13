@@ -111,12 +111,96 @@ describe("buildChoiceTree / layoutTree", () => {
 });
 
 describe("isTreeArtifact", () => {
-  it("needs a focus and no proposal/changes, plus layout tree or the brainstorm-tree id", () => {
-    expect(isTreeArtifact({ id: "brainstorm-tree" }, { workspace: "hive", focus: "r" })).toBe(true);
-    expect(isTreeArtifact({ id: "x" }, { workspace: "hive", focus: "r", layout: "tree" })).toBe(true);
-    expect(isTreeArtifact({ id: "x" }, { workspace: "hive", focus: "r" })).toBe(false);
-    expect(isTreeArtifact({ id: "brainstorm-tree" }, { workspace: "hive" })).toBe(false);
-    expect(isTreeArtifact({ id: "brainstorm-tree" }, { workspace: "hive", focus: "r", proposal: "p1" })).toBe(false);
+  const ws = { workspace: "hive" };
+  it("layout tree, a brainstorm id (any case, any prefix) or a Choice/Question label — focus or not", () => {
+    expect(isTreeArtifact({ id: "x" }, { ...ws, focus: "r", layout: "tree" })).toBe(true);
+    expect(isTreeArtifact({ id: "brainstorm-tree" }, { ...ws, focus: "r" })).toBe(true);
+    expect(isTreeArtifact({ id: "job-x:brainstorm-tree" }, ws)).toBe(true);
+    expect(isTreeArtifact({ id: "My-BrainStorm" }, ws)).toBe(true);
+    expect(isTreeArtifact({ id: "x" }, { ...ws, label: "Choice" })).toBe(true);
+    expect(isTreeArtifact({ id: "x" }, { ...ws, label: "Question" })).toBe(true);
+  });
+
+  it("ignores a stray proposal or changes on a tree", () => {
+    expect(isTreeArtifact({ id: "brainstorm-tree" }, { ...ws, focus: "r", proposal: "p1" })).toBe(true);
+    expect(isTreeArtifact({ id: "x" }, { ...ws, focus: "r", layout: "tree", proposal: "p1", changes: [{ kind: "node", name: "n" } as never] })).toBe(true);
+  });
+
+  it("leaves proposal artifacts and plain graph cards to the workbench", () => {
+    expect(isTreeArtifact({ id: "x" }, { ...ws, focus: "r" })).toBe(false);
+    expect(isTreeArtifact({ id: "proposal-1" }, { ...ws, focus: "r", proposal: "p1", changes: [{ kind: "node", name: "n" } as never] })).toBe(false);
+    expect(isTreeArtifact({ id: "x" }, { ...ws, label: "Other" })).toBe(false);
+  });
+});
+
+describe("questions and options (IBIS)", () => {
+  const tn = (ref_id: string, type: string, props: Record<string, unknown>) => ({ ref_id, type, properties: props });
+  const ns = [
+    tn("r", "Question", { question_id: 1, text: "Root?", state: "decided", made_by: "user" }),
+    tn("b", "Choice", { choice_id: 2, text: "B", kind: "option" }),
+    tn("a", "Choice", { choice_id: 1, text: "A", kind: "option" }),
+    tn("q", "Question", { question_id: 1, text: "Sub?" }),
+    tn("aa", "Choice", { choice_id: 1, text: "AA" }),
+    tn("old", "Choice", { choice_id: 2, text: "Old q", kind: "question" }),
+    tn("ab", "Choice", { choice_id: 3, text: "AB", kind: "option" }),
+  ];
+  const es = [["r", "a"], ["r", "b"], ["a", "q"], ["a", "old"], ["q", "aa"], ["q", "ab"]].map(([source, target]) => ({ source, target }));
+
+  it("a Question label or a legacy kind question is a question; the rest are options lettered through questions", () => {
+    const items = buildChoiceTree(ns, es, "r").items;
+    const by = Object.fromEntries(items.map((i) => [i.id, i]));
+    expect(by.r.isQuestion && by.q.isQuestion && by.old.isQuestion).toBe(true);
+    expect(by.a.isQuestion || by.aa.isQuestion).toBe(false);
+    expect(Object.fromEntries(items.map((i) => [i.id, i.letter]))).toEqual({ r: undefined, a: "A", q: undefined, old: undefined, aa: "AA", ab: "AB", b: "B" });
+  });
+
+  it("orders by choice_id, falling back to question_id", () => {
+    const items = buildChoiceTree(
+      [tn("r", "Question", { question_id: 1 }), tn("x", "Question", { question_id: 5, text: "x" }), tn("y", "Question", { question_id: 2, text: "y" }), tn("z", "Choice", { choice_id: 3, text: "z" })],
+      [{ source: "r", target: "x" }, { source: "r", target: "z" }, { source: "r", target: "y" }],
+      "r",
+    ).items;
+    expect(items.map((i) => i.id)).toEqual(["r", "y", "z", "x"]);
+  });
+
+  describe("rendered", () => {
+    const mountWith = async (data: unknown, focus = "r") => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => data }));
+      const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <ChoiceTree workspace="hive" focus={focus} />
+        </QueryClientProvider>,
+      );
+    };
+
+    it("a question shows 'decided' even unselected, no letter, and only Expand (More options) when selected, with criteria and reversibility", async () => {
+      const withExtras = ns.map((x) => (x.ref_id === "r" ? { ...x, properties: { ...x.properties, criteria: "cheap to run", reversibility: "two-way door", speaker: "Dana", quote: "ask" } } : x));
+      await mountWith({ nodes: withExtras, edges: es });
+      await screen.findByText("Root?");
+      expect(screen.getByText("decided")).toBeTruthy();
+      expect(screen.queryByText("Expand")).toBeNull();
+      fireEvent.click(screen.getByText("Root?"));
+      expect(screen.getByText(/cheap to run/)).toBeTruthy();
+      expect(screen.getByText(/two-way door/)).toBeTruthy();
+      expect(screen.queryByText("Go with")).toBeNull();
+      expect(screen.queryByText("Revisit")).toBeNull();
+      const expand = screen.getByText("Expand");
+      expect(expand.getAttribute("title")).toBe("More options");
+      fireEvent.click(expand);
+      expect(setDraft).toHaveBeenLastCalledWith('Expand "Root?" (r)');
+    });
+
+    it("a speaker replaces made_by as text and in the icon title", async () => {
+      const sp = ns.map((x) => (x.ref_id === "r" ? { ...x, properties: { ...x.properties, speaker: "Dana" } } : x));
+      await mountWith({ nodes: sp, edges: es });
+      await screen.findByText("Root?");
+      expect(screen.getByTitle("made by Dana")).toBeTruthy();
+      expect(screen.queryByTitle("made by user")).toBeNull();
+      fireEvent.click(screen.getByText("Root?"));
+      expect(screen.getByText("Dana")).toBeTruthy();
+      expect(screen.queryByText("user")).toBeNull();
+    });
   });
 });
 
@@ -184,6 +268,17 @@ describe("ChoiceTree", () => {
 
   it("fetches the choice-tree route", async () => {
     await renderTree();
+    await screen.findByText("Root?");
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/workspaces/hive/graph/choice-tree?focus=r");
+  });
+
+  it("restricts to one label only when given", async () => {
+    const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChoiceTree workspace="hive" focus="r" label="Choice" />
+      </QueryClientProvider>,
+    );
     await screen.findByText("Root?");
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/workspaces/hive/graph/choice-tree?focus=r&label=Choice");
   });
