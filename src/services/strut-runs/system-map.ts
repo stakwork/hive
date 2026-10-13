@@ -8,7 +8,8 @@
  *                `system_map_cloud_links` kinds survive only on old rows)
  *   cwe_check    `swarm-systemmap-cwe-check-templates` kind `system_map_cwe_check`
  *                writes the `infosec` namespace's security graph
- *   security_review `swarm-cwe-security-review`        kind `system_map_security_review`
+ *                (it also does the security review, once `swarm-cwe-security-review`;
+ *                its `system_map_security_review` kind survives only on old rows)
  *
  * All are authored in the org strut view (`/org/<login>/strut`), so the
  * launch targets that strut (`purpose: "system_map"` → the org default
@@ -53,19 +54,16 @@ import type { SystemMapRun } from "@/types/system-map";
 export const SYSTEM_MAP_WORKFLOWS = {
   system_map: { kind: "system_map", workflow: "swarm-systemmap", label: "System map" },
   cwe_check: { kind: "system_map_cwe_check", workflow: "swarm-systemmap-cwe-check-templates", label: "CWE check" },
-  security_review: { kind: "system_map_security_review", workflow: "swarm-cwe-security-review", label: "CWE security review" },
 } as const;
 export type SystemMapWorkflowKey = keyof typeof SYSTEM_MAP_WORKFLOWS;
 
 /**
- * The workflows a run can be scoped to some CWEs, and how each takes them
- * (both optional — absent means every CWE):
- *   cwe_check        `cwe_ids: ["CWE-79", "CWE-89"]`, up to 50
- *   security_review  `cwe_id: "CWE-79"`, exactly one
+ * The workflows a run can be scoped to some CWEs (optional — absent means
+ * every CWE):
+ *   cwe_check  `cwe_ids: ["CWE-79", "CWE-89"]`, up to 50
  */
 export const CWE_SCOPED_WORKFLOWS: Partial<Record<SystemMapWorkflowKey, { max: number }>> = {
   cwe_check: { max: 50 },
-  security_review: { max: 1 },
 };
 const CWE_ID_RE = /^CWE-\d{1,5}$/;
 
@@ -83,22 +81,20 @@ export function parseCweIds(key: SystemMapWorkflowKey, value: unknown): string[]
   }
   const ids = [...new Set(value)];
   if (ids.length === 0 || ids.length > scope.max) {
-    return { error: scope.max === 1 ? "This workflow takes exactly one CWE" : `cweIds must hold 1–${scope.max} ids` };
+    return { error: `cweIds must hold 1–${scope.max} ids` };
   }
   return ids;
 }
 
-/** The workflow input fields for `cweIds`: `cwe_id` for a one-CWE workflow, `cwe_ids` otherwise. */
-function cweInput(key: SystemMapWorkflowKey, cweIds: string[] | undefined): Record<string, unknown> {
-  if (!cweIds?.length) return {};
-  return CWE_SCOPED_WORKFLOWS[key]?.max === 1 ? { cwe_id: cweIds[0] } : { cwe_ids: cweIds };
+/** The workflow input field for `cweIds`. */
+function cweInput(cweIds: string[] | undefined): Record<string, unknown> {
+  return cweIds?.length ? { cwe_ids: cweIds } : {};
 }
 
 function cweIdsFromInput(input: unknown): string[] | null {
   if (!input || typeof input !== "object") return null;
-  const { cwe_ids: ids, cwe_id: id } = input as { cwe_ids?: unknown; cwe_id?: unknown };
-  if (Array.isArray(ids) && ids.length > 0 && ids.every((x) => typeof x === "string")) return ids as string[];
-  return typeof id === "string" && id ? [id] : null;
+  const ids = (input as { cwe_ids?: unknown }).cwe_ids;
+  return Array.isArray(ids) && ids.length > 0 && ids.every((x) => typeof x === "string") ? (ids as string[]) : null;
 }
 
 export function isSystemMapWorkflowKey(value: unknown): value is SystemMapWorkflowKey {
@@ -272,7 +268,7 @@ export async function launchSystemMapRun(
       ...(key === "system_map" ? {} : { workspace: args.workspaceSlug }),
       swarm_url: transformSwarmUrlToRepo2Graph(swarm.swarmUrl),
       swarm_secret_alias: swarm.swarmSecretAlias,
-      ...cweInput(key, args.cweIds),
+      ...cweInput(args.cweIds),
     },
     publicBaseUrl: args.publicBaseUrl,
   });
