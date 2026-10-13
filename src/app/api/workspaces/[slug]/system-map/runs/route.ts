@@ -1,5 +1,5 @@
 /**
- * GET  /api/workspaces/:slug/system-map/runs?workflow=schema|materialize|cwe_check|cloud_links|security_review
+ * GET  /api/workspaces/:slug/system-map/runs?workflow=system_map|cwe_check|security_review
  *      — the workspace's runs of that System Map workflow, newest first
  *      (PENDING ones settled from strut when the run is over there and the
  *      callback never arrived). Default `schema`.
@@ -38,7 +38,7 @@ const RUN_WINDOW_SECS = 60 * 60;
 
 /** `schema` when absent; null when present but unknown. */
 function parseKey(raw: unknown): SystemMapWorkflowKey | null {
-  if (raw === null || raw === undefined || raw === "") return "schema";
+  if (raw === null || raw === undefined || raw === "") return "system_map";
   return isSystemMapWorkflowKey(raw) ? raw : null;
 }
 
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       cweIds,
     });
     return NextResponse.json(
-      { success: true, key, runId: dispatched.runId, strutRunId: dispatched.strutRunId },
+      { success: true, key, runId: dispatched.runId, strutRunId: dispatched.strutRunId, strutUrl: dispatched.strutUrl },
       { status: 202 },
     );
   } catch (error) {

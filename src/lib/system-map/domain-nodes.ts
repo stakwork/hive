@@ -13,8 +13,6 @@ import type {
 
 /** Every node the System Map workflows write carries `namespace: "systemmap"`. */
 export const SYSTEM_MAP_NAMESPACE = "systemmap";
-/** The CWE check workflow's namespace — a separate namespace in the same graph. */
-export const INFOSEC_NAMESPACE = "infosec";
 export const MAX_DOMAIN_NODES = 5000;
 const PAGE_SIZE = 500;
 const MAX_PAGES = MAX_DOMAIN_NODES / PAGE_SIZE;
