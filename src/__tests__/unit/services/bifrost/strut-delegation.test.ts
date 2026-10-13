@@ -386,17 +386,29 @@ describe("strutActorForLaunch", () => {
     restoreEnv();
   });
 
-  it("names nobody where the Bifrost gate is off — mcp's old handlers run", async () => {
+  it("names the actor where the Bifrost gate is off, and pushes no delegation", async () => {
     delete process.env.BIFROST_ENABLED;
-    expect(await strutActorForLaunch(auth, swarm)).toBeUndefined();
+    expect(await strutActorForLaunch(auth, swarm)).toBe(ACTOR);
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(mockUserFindUnique).not.toHaveBeenCalled();
+    expect(mockMintInvocationMacaroon).not.toHaveBeenCalled();
   });
 
-  it("names nobody without a swarm to bill on", async () => {
-    expect(await strutActorForLaunch(auth, { swarmUrl: null, swarmApiKey: "k" })).toBeUndefined();
-    expect(await strutActorForLaunch(auth, { swarmUrl: swarm.swarmUrl, swarmApiKey: undefined })).toBeUndefined();
+  it("names the actor where the agent gate excludes strut-agent, and pushes no delegation", async () => {
+    process.env.BIFROST_ENABLED_AGENTS = "repo-agent";
+    expect(await strutActorForLaunch(auth, swarm)).toBe(ACTOR);
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("names the actor without a swarm key to push to, and pushes nothing", async () => {
+    expect(await strutActorForLaunch(auth, { swarmUrl: null, swarmApiKey: "k" })).toBe(ACTOR);
+    expect(await strutActorForLaunch(auth, { swarmUrl: swarm.swarmUrl, swarmApiKey: undefined })).toBe(ACTOR);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("never names the public viewer", async () => {
+    expect(await strutActorForLaunch({ ...auth, userId: "__public_viewer__" }, swarm)).toBeUndefined();
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockUserFindUnique).not.toHaveBeenCalled();
   });
 
   it("is the actor of the user's live delegation", async () => {

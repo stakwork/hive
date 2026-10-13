@@ -28,6 +28,7 @@ vi.mock("@/lib/auth/nextauth", async () => {
 
 import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { resolveStrutActor } from "@/services/bifrost/strut-delegation";
 
 const mockTriggerAsyncSync = triggerAsyncSync as unknown as ReturnType<typeof vi.fn>;
 const mockGetGithubUsernameAndPAT = getGithubUsernameAndPAT as unknown as ReturnType<typeof vi.fn>;
@@ -300,7 +301,9 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         { username: "testuser", pat: "github-pat-token" },
         expect.stringContaining("/api/swarm/stakgraph/webhook"),
         false,
-        undefined,
+        // The requesting user is the sync's strut actor (forwarded by
+        // standalone to mcp's /repo/describe), whatever the Bifrost gates say.
+        { strutActor: await resolveStrutActor(testUser.id) },
       );
     });
 
@@ -329,7 +332,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         undefined,
         expect.stringContaining("/api/swarm/stakgraph/webhook"),
         false,
-        undefined,
+        { strutActor: expect.any(String) },
       );
     });
 
@@ -677,7 +680,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         expect.any(Object),
         expect.stringMatching(/\/api\/swarm\/stakgraph\/webhook$/),
         false,
-        undefined,
+        { strutActor: expect.any(String) },
       );
     });
 
@@ -884,7 +887,7 @@ describe("POST /api/swarm/stakgraph/sync - Integration Tests", () => {
         { username: "e2e-testuser", pat: "e2e-github-token" },
         expect.stringContaining("/api/swarm/stakgraph/webhook"),
         false,
-        undefined,
+        { strutActor: expect.any(String) },
       );
 
       // Verify API key still encrypted in database
@@ -984,7 +987,7 @@ describe("POST /api/swarm/stakgraph/sync — blobSizeLimit filter plumbing", () 
       expect.any(Object),
       expect.any(String),
       false,
-      { filter: "blob:limit=2m" },
+      { filter: "blob:limit=2m", strutActor: expect.any(String) },
     );
 
     // Must never send depth (sync ignores it per the stakgraph contract)
@@ -1010,7 +1013,8 @@ describe("POST /api/swarm/stakgraph/sync — blobSizeLimit filter plumbing", () 
 
     const options = mockTriggerAsyncSync.mock.calls[0][6];
     // No filter when blobSizeLimit is unset
-    expect(options).toBeUndefined();
+    // No filter: the only option sent is the sync's strut actor.
+    expect(options).toEqual({ strutActor: expect.any(String) });
   });
 
   it("silently skips invalid blobSizeLimit on sync (boundary re-validation)", async () => {
@@ -1030,6 +1034,7 @@ describe("POST /api/swarm/stakgraph/sync — blobSizeLimit filter plumbing", () 
     expect(response.status).toBe(200);
 
     const options = mockTriggerAsyncSync.mock.calls[0][6];
-    expect(options).toBeUndefined();
+    // No filter: the only option sent is the sync's strut actor.
+    expect(options).toEqual({ strutActor: expect.any(String) });
   });
 });

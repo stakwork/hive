@@ -1561,7 +1561,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (repository.embeddingsEnabled) syncOptions.embeddings = true;
 
     // Who the sync — and the describe + auto-learn runs it leads to — is for:
-    // the workspace owner, whose PAT it carries, where hive can bill them.
+    // the workspace owner, whose PAT it carries.
     const strutActor = workspace?.ownerId
       ? await strutActorForLaunch(
           { workspaceId: repository.workspaceId, workspaceSlug: workspace.slug, userId: workspace.ownerId },

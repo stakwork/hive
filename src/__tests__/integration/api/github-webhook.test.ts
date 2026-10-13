@@ -14,6 +14,7 @@ import {
   mockGitHubEvents,
 } from "@/__tests__/support/factories/github-webhook.factory";
 import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { resolveStrutActor } from "@/services/bifrost/strut-delegation";
 
 // Mock external services
 vi.mock("@/services/swarm/stakgraph-actions", () => ({
@@ -81,12 +82,20 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       expect(updatedRepo?.status).toBe(RepositoryStatus.PENDING);
 
       // Verify triggerAsyncSync was called with correct parameters
+      // The sync names the workspace owner as its strut actor (standalone
+      // forwards it to mcp's /repo/describe), whatever the Bifrost gates say.
+      const owner = await db.workspace.findUnique({
+        where: { id: repository.workspaceId },
+        select: { ownerId: true },
+      });
       expect(triggerAsyncSync).toHaveBeenCalledWith(
         expect.stringContaining("test-swarm"),
         expect.any(String), // Decrypted API key
         repository.repositoryUrl,
         { username: "testuser", pat: "github_pat_integration_test" },
-        expect.stringContaining("/api/swarm/stakgraph/webhook")
+        expect.stringContaining("/api/swarm/stakgraph/webhook"),
+        false,
+        { strutActor: await resolveStrutActor(owner!.ownerId) },
       );
 
       // Verify swarm ingestRefId was updated
@@ -535,7 +544,9 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         expect.any(String),
         expect.any(String),
         { username: "webhook-test-user", pat: "github_pat_real_user" },
-        expect.any(String)
+        expect.any(String),
+        false,
+        { strutActor: expect.any(String) },
       );
     });
 
@@ -574,7 +585,9 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         expect.any(String),
         expect.any(String),
         undefined, // No credentials
-        expect.any(String)
+        expect.any(String),
+        false,
+        { strutActor: expect.any(String) },
       );
     });
   });
