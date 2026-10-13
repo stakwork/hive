@@ -17,7 +17,17 @@ import { hasInfrastructureChange } from "@/utils/swarmInfraChanges";
 import { SwarmStatus, PodState } from "@prisma/client";
 import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { randomUUID } from "crypto";
+import { resolvePodCaller } from "@/lib/auth/pod-access";
+import {
+  maskEnvMap,
+  maskEnvVarList,
+  unmaskEnvVarList,
+  unmaskServiceEnvs,
+  type EnvVar,
+} from "@/lib/env-mask";
+import { loadPoolRollout, type RolloutSwarmInput } from "@/lib/pods/rollout";
 
 /** Fields that must never appear as values in audit logs. */
 const AUDIT_SECRET_FIELDS = new Set(["environmentVariables", "swarmApiKey", "poolApiKey"]);
@@ -27,6 +37,8 @@ import type { ServiceDataConfig } from "@/components/stakgraph/types";
 import { z } from "zod";
 
 export const runtime = "nodejs";
+// Bounds the background pool-manager push scheduled with after(); the PUT response is not delayed by it.
+export const maxDuration = 300;
 
 /**
  * Decrypts environment variables from their stored format.
@@ -56,6 +68,62 @@ function decryptStoredEnvVars(environmentVariables: unknown): unknown {
   }
 
   return environmentVariables;
+}
+
+/** Decrypts one EnvironmentVariable table row value (stored as an encrypted JSON string). */
+function decryptTableEnvValue(row: { name: string; value: string }): string {
+  try {
+    const decrypted = decryptEnvVars([{ name: row.name, value: JSON.parse(row.value) }]);
+    return decrypted[0]?.value || "";
+  } catch (error) {
+    console.warn(`[Stakgraph] Failed to decrypt env var ${row.name}:`, error);
+    // Fallback: try to use raw value if it's a string
+    return typeof row.value === "string" ? row.value : "";
+  }
+}
+
+/** Service-specific env vars (serviceName != "") grouped by service, decrypted. */
+async function loadServiceEnvMap(swarmId: string): Promise<Record<string, Record<string, string>>> {
+  const rows = await db.environmentVariable.findMany({
+    where: { swarmId, serviceName: { not: "" } },
+    select: { serviceName: true, name: true, value: true },
+  });
+  const map: Record<string, Record<string, string>> = {};
+  for (const row of rows) {
+    if (!row.serviceName) continue;
+    (map[row.serviceName] ??= {})[row.name] = decryptTableEnvValue(row);
+  }
+  return map;
+}
+
+/** Global env vars from the table (serviceName == ""), decrypted, as name -> value. */
+async function loadGlobalTableEnv(swarmId: string): Promise<Record<string, string>> {
+  const rows = await db.environmentVariable.findMany({
+    where: { swarmId, serviceName: "" },
+    select: { name: true, value: true },
+  });
+  return Object.fromEntries(rows.map((r) => [r.name, decryptTableEnvValue(r)]));
+}
+
+/** Stored global env values by name: the swarm JSON field wins, table rows fill the gaps. */
+function storedGlobalEnv(jsonField: unknown, tableEnv: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = { ...tableEnv };
+  const decrypted = decryptStoredEnvVars(jsonField);
+  if (Array.isArray(decrypted)) {
+    for (const v of decrypted as Array<{ name?: string; value?: unknown }>) {
+      if (v?.name && typeof v.value === "string") out[v.name] = v.value;
+    }
+  }
+  return out;
+}
+
+/** Run `fn` after the response is sent; falls back to a detached promise outside a request scope. */
+function runInBackground(fn: () => Promise<void>): void {
+  try {
+    after(fn);
+  } catch {
+    void fn();
+  }
 }
 
 /**
@@ -150,64 +218,77 @@ const stakgraphSettingsSchema = z.object({
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
     const { slug } = await params;
 
-    if (!session?.user) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Authentication required",
-          error: "UNAUTHORIZED",
-        },
-        { status: 401 },
-      );
-    }
+    let workspaceId: string;
+    // Token callers (org key / global API token) get env values masked; sessions get full values.
+    let isTokenCaller = false;
 
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid user session",
-          error: "INVALID_SESSION",
-        },
-        { status: 401 },
-      );
-    }
+    if (request.headers.get("x-api-token")) {
+      const caller = await resolvePodCaller(request, { slug });
+      if (caller instanceof NextResponse) return caller;
+      workspaceId = caller.workspaceId;
+      isTokenCaller = caller.kind !== "user";
+    } else {
+      const session = await getServerSession(authOptions);
 
-    const isSuperAdmin = await checkIsSuperAdmin(userId);
-    const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
-    if (!workspace) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Workspace not found",
-          error: "WORKSPACE_NOT_FOUND",
-        },
-        { status: 404 },
-      );
-    }
-
-    // Audit log when access was granted via super-admin bypass (non-member super admin)
-    if (isSuperAdmin && workspace.userRole === "OWNER") {
-      const isMemberOwner = workspace.owner?.id === userId;
-      if (!isMemberOwner) {
-        console.log(
-          JSON.stringify({
-            event: "superadmin_bypass_read",
-            endpoint: "GET /api/workspaces/[slug]/stakgraph",
-            userId,
-            workspaceSlug: slug,
-          }),
+      if (!session?.user) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Authentication required",
+            error: "UNAUTHORIZED",
+          },
+          { status: 401 },
         );
+      }
+
+      const userId = (session.user as { id?: string })?.id;
+      if (!userId) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Invalid user session",
+            error: "INVALID_SESSION",
+          },
+          { status: 401 },
+        );
+      }
+
+      const isSuperAdmin = await checkIsSuperAdmin(userId);
+      const workspace = await getWorkspaceBySlug(slug, userId, { isSuperAdmin });
+      if (!workspace) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Workspace not found",
+            error: "WORKSPACE_NOT_FOUND",
+          },
+          { status: 404 },
+        );
+      }
+      workspaceId = workspace.id;
+
+      // Audit log when access was granted via super-admin bypass (non-member super admin)
+      if (isSuperAdmin && workspace.userRole === "OWNER") {
+        const isMemberOwner = workspace.owner?.id === userId;
+        if (!isMemberOwner) {
+          console.log(
+            JSON.stringify({
+              event: "superadmin_bypass_read",
+              endpoint: "GET /api/workspaces/[slug]/stakgraph",
+              userId,
+              workspaceSlug: slug,
+            }),
+          );
+        }
       }
     }
 
     const swarm = (await db.swarm.findUnique({
-      where: { workspaceId: workspace.id },
+      where: { workspaceId },
       select: swarmSelect,
-    })) as SwarmSelectResult | null;
+    })) as (SwarmSelectResult & RolloutSwarmInput) | null;
 
     if (!swarm) {
       return NextResponse.json(
@@ -222,42 +303,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const environmentVariables = swarm?.environmentVariables;
 
-    // Fetch service-specific env vars from the table
-    const serviceEnvVarsFromTable = await db.environmentVariable.findMany({
-      where: {
-        swarmId: swarm.id,
-        serviceName: { not: "" }, // Only service-specific vars (not global)
-      },
-      select: {
-        serviceName: true,
-        name: true,
-        value: true,
-      },
-    });
-
-    // Group service env vars by service name and decrypt
-    const serviceEnvMap: Record<string, Record<string, string>> = {};
-    for (const envVar of serviceEnvVarsFromTable) {
-      if (!envVar.serviceName) continue;
-      
-      if (!serviceEnvMap[envVar.serviceName]) {
-        serviceEnvMap[envVar.serviceName] = {};
-      }
-
-      try {
-        // Decrypt the value (it's stored as encrypted JSON string)
-        const encryptedData = JSON.parse(envVar.value);
-        const decrypted = decryptEnvVars([{ name: envVar.name, value: encryptedData }]);
-        serviceEnvMap[envVar.serviceName][envVar.name] = decrypted[0]?.value || '';
-      } catch (error) {
-        console.warn(`[Stakgraph GET] Failed to decrypt env var ${envVar.name} for service ${envVar.serviceName}:`, error);
-        // Fallback: try to use raw value if it's a string
-        serviceEnvMap[envVar.serviceName][envVar.name] = typeof envVar.value === 'string' ? envVar.value : '';
-      }
-    }
+    const serviceEnvMap = await loadServiceEnvMap(swarm.id);
 
     const repositories = await db.repository.findMany({
-      where: { workspaceId: workspace.id },
+      where: { workspaceId },
       select: {
         id: true,
         repositoryUrl: true,
@@ -272,6 +321,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       orderBy: { createdAt: "asc" },
     });
 
+    const rollout = await loadPoolRollout(db, swarm);
+
+    const decryptedEnv = decryptStoredEnvVars(environmentVariables);
+    const services = parseSwarmServices(swarm.services, serviceEnvMap);
+
     return NextResponse.json({
       success: true,
       message: "Pool settings retrieved successfully",
@@ -284,13 +338,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         poolName: swarm.id || "",
         poolCpu: swarm.poolCpu || "2",
         poolMemory: swarm.poolMemory || "8Gi",
-        environmentVariables: decryptStoredEnvVars(environmentVariables),
-        services: parseSwarmServices(swarm.services, serviceEnvMap),
+        environmentVariables:
+          isTokenCaller && Array.isArray(decryptedEnv)
+            ? maskEnvVarList(decryptedEnv as EnvVar[])
+            : decryptedEnv,
+        services: isTokenCaller ? services.map((sv) => ({ ...sv, env: maskEnvMap(sv.env) })) : services,
         status: swarm.status,
         lastUpdated: swarm.updatedAt,
-        containerFiles: swarm.containerFiles || [],
+        containerFiles: swarm.containerFiles || {},
         webhookEnsured: repositories.length > 0
           && Boolean(repositories[0].githubWebhookId && repositories[0].githubWebhookSecret),
+        rollout,
       },
     });
   } catch (error) {
@@ -398,9 +456,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { slug } = await params;
 
-    // Check for API token auth (for external services like Stakwork repair agent)
-    const apiToken = request.headers.get("x-api-token");
-    const isApiTokenAuth = apiToken && apiToken === process.env.API_TOKEN;
+    // Token auth (global API_TOKEN or `hiveorg_` org key) — no user session needed.
+    // Anything without an x-api-token header goes through the session path unchanged.
+    let tokenCaller: Awaited<ReturnType<typeof resolvePodCaller>> | null = null;
+    if (request.headers.get("x-api-token")) {
+      tokenCaller = await resolvePodCaller(request, { slug });
+      if (tokenCaller instanceof NextResponse) return tokenCaller;
+    }
+    const isApiTokenAuth = tokenCaller !== null && tokenCaller.kind !== "user";
 
     let workspace: { id: string; userRole?: string } | null = null;
     let userId: string | null = null;
@@ -410,12 +473,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       userRole: null,
     };
 
-    if (isApiTokenAuth) {
-      // API token auth - get workspace by slug directly (no user session needed)
-      workspace = await db.workspace.findFirst({
-        where: { slug, deleted: false },
-        select: { id: true },
-      });
+    if (tokenCaller) {
+      workspace = { id: tokenCaller.workspaceId };
     } else {
       // Session auth path
       const session = await getServerSession(authOptions);
@@ -651,6 +710,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const existingSwarm = await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
       select: {
+        id: true,
         name: true,
         swarmUrl: true,
         swarmSecretAlias: true,
@@ -662,6 +722,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         environmentVariables: true,
       },
     });
+
+    // Token callers read env values masked. Restore stored values for any entry sent back
+    // unchanged, before anything else (infra diff, pm2 regeneration, DB writes) sees it.
+    if (isApiTokenAuth && existingSwarm) {
+      if (settings.environmentVariables) {
+        const stored = storedGlobalEnv(existingSwarm.environmentVariables, await loadGlobalTableEnv(existingSwarm.id));
+        settings.environmentVariables = unmaskEnvVarList(settings.environmentVariables, stored);
+      }
+      if (settings.services) {
+        settings.services = unmaskServiceEnvs(settings.services, await loadServiceEnvMap(existingSwarm.id));
+      }
+    }
 
     // Get all repo names for pm2 generation (needed for multi-repo cwd resolution)
     const allRepos = await db.repository.findMany({
@@ -842,7 +914,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         JSON.stringify({
           event: "api_token_write",
           endpoint: "PUT /api/workspaces/[slug]/stakgraph",
-          actor: "api-token",
+          actor: tokenCaller?.kind === "org" ? "org-key" : "api-token",
+          ...(tokenCaller?.kind === "org" ? { apiKeyId: tokenCaller.apiKeyId } : {}),
           workspaceSlug: slug,
           changedFields,
           secretFieldsChangedNames: secretFieldsChanged,
@@ -859,19 +932,46 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // After updating/creating the swarm, sync settings to Pool Manager
     // Only trigger sync if infrastructure fields actually changed (not just metadata like description)
     console.log(`[Stakgraph PUT] infraChanged=${infraChanged} for ${slug}`);
+    let changeId: string | null = null;
+    const requestedAt = new Date();
     if (mergedPoolName && swarmPoolApiKey && swarm && infraChanged) {
-      const syncResult2 = await syncPoolManagerSettings({
+      const id = randomUUID();
+      changeId = id;
+      await db.swarm.update({
+        where: { id: swarm.id },
+        data: { poolChangeId: id, poolChangeRequestedAt: requestedAt, poolPushedAt: null, poolPushError: null },
+      });
+
+      const pushParams = {
         workspaceId: workspace.id,
         workspaceSlug: slug,
         swarmId: swarm.id,
         poolApiKey: swarmPoolApiKey,
         poolCpu: mergedPoolCpu,
         poolMemory: mergedPoolMemory,
+      };
+      const swarmId = swarm.id;
+      runInBackground(async () => {
+        let update: { poolPushedAt: Date } | { poolPushError: string };
+        try {
+          const result = await syncPoolManagerSettings(pushParams);
+          if (result.success) {
+            update = { poolPushedAt: new Date() };
+          } else {
+            console.error("Failed to sync settings to Pool Manager:", result.error);
+            update = { poolPushError: result.error || "Pool manager sync failed" };
+          }
+        } catch (error) {
+          console.error("Failed to sync settings to Pool Manager:", error);
+          update = { poolPushError: error instanceof Error ? error.message : String(error) };
+        }
+        try {
+          // Only touch the row if no newer PUT has replaced this change
+          await db.swarm.updateMany({ where: { id: swarmId, poolChangeId: id }, data: update });
+        } catch (error) {
+          console.error("Failed to record pool push result:", error);
+        }
       });
-
-      if (!syncResult2.success) {
-        console.error("Failed to sync settings to Pool Manager:", syncResult2.error);
-      }
     }
 
     // Set pending repair trigger only for new repositories that explicitly opt in
@@ -928,6 +1028,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         status: typedSwarm.status,
         updatedAt: typedSwarm.updatedAt,
       },
+      changeId,
+      requestedAt: requestedAt.toISOString(),
+      infraChanged,
+      rollout: { state: changeId ? "pushing" : "idle" },
     });
   } catch (error) {
     console.error("Error saving stakgraph settings:", error);

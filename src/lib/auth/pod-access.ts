@@ -57,7 +57,7 @@ export async function resolvePodCaller(
   }
 
   if (classified?.kind === "system") {
-    const workspace = await db.workspace.findFirst({ where: whereOf(ref), select: { id: true } });
+    const workspace = await db.workspace.findFirst({ where: { ...whereOf(ref), deleted: false }, select: { id: true } });
     if (!workspace) return notFound();
     return { kind: "system", workspaceId: workspace.id };
   }
