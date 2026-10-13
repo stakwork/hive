@@ -17,7 +17,7 @@ import { hasInfrastructureChange } from "@/utils/swarmInfraChanges";
 import { SwarmStatus, PodState } from "@prisma/client";
 import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { resolvePodCaller } from "@/lib/auth/pod-access";
 import {
@@ -37,8 +37,6 @@ import type { ServiceDataConfig } from "@/components/stakgraph/types";
 import { z } from "zod";
 
 export const runtime = "nodejs";
-// Bounds the background pool-manager push scheduled with after(); the PUT response is not delayed by it.
-export const maxDuration = 300;
 
 /**
  * Decrypts environment variables from their stored format.
@@ -115,15 +113,6 @@ function storedGlobalEnv(jsonField: unknown, tableEnv: Record<string, string>): 
     }
   }
   return out;
-}
-
-/** Run `fn` after the response is sent; falls back to a detached promise outside a request scope. */
-function runInBackground(fn: () => Promise<void>): void {
-  try {
-    after(fn);
-  } catch {
-    void fn();
-  }
 }
 
 /**
@@ -731,7 +720,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         settings.environmentVariables = unmaskEnvVarList(settings.environmentVariables, stored);
       }
       if (settings.services) {
-        settings.services = unmaskServiceEnvs(settings.services, await loadServiceEnvMap(existingSwarm.id));
+        // Resolve stored service env exactly as GET serves it (table rows, else env embedded in the
+        // services JSON) so a value read masked always maps back to the value it masked.
+        const storedServices = parseSwarmServices(existingSwarm.services, await loadServiceEnvMap(existingSwarm.id));
+        const storedByService = Object.fromEntries(storedServices.map((s) => [s.name, s.env ?? {}]));
+        settings.services = unmaskServiceEnvs(settings.services, storedByService);
       }
     }
 
@@ -933,45 +926,42 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Only trigger sync if infrastructure fields actually changed (not just metadata like description)
     console.log(`[Stakgraph PUT] infraChanged=${infraChanged} for ${slug}`);
     let changeId: string | null = null;
+    let pushError: string | null = null;
     const requestedAt = new Date();
     if (mergedPoolName && swarmPoolApiKey && swarm && infraChanged) {
-      const id = randomUUID();
-      changeId = id;
+      changeId = randomUUID();
       await db.swarm.update({
         where: { id: swarm.id },
-        data: { poolChangeId: id, poolChangeRequestedAt: requestedAt, poolPushedAt: null, poolPushError: null },
+        data: { poolChangeId: changeId, poolChangeRequestedAt: requestedAt, poolPushedAt: null, poolPushError: null },
       });
 
-      const pushParams = {
-        workspaceId: workspace.id,
-        workspaceSlug: slug,
-        swarmId: swarm.id,
-        poolApiKey: swarmPoolApiKey,
-        poolCpu: mergedPoolCpu,
-        poolMemory: mergedPoolMemory,
-      };
-      const swarmId = swarm.id;
-      runInBackground(async () => {
-        let update: { poolPushedAt: Date } | { poolPushError: string };
-        try {
-          const result = await syncPoolManagerSettings(pushParams);
-          if (result.success) {
-            update = { poolPushedAt: new Date() };
-          } else {
-            console.error("Failed to sync settings to Pool Manager:", result.error);
-            update = { poolPushError: result.error || "Pool manager sync failed" };
-          }
-        } catch (error) {
-          console.error("Failed to sync settings to Pool Manager:", error);
-          update = { poolPushError: error instanceof Error ? error.message : String(error) };
+      try {
+        const syncResult2 = await syncPoolManagerSettings({
+          workspaceId: workspace.id,
+          workspaceSlug: slug,
+          swarmId: swarm.id,
+          poolApiKey: swarmPoolApiKey,
+          poolCpu: mergedPoolCpu,
+          poolMemory: mergedPoolMemory,
+        });
+        if (!syncResult2.success) {
+          console.error("Failed to sync settings to Pool Manager:", syncResult2.error);
+          pushError = syncResult2.error || "Pool manager sync failed";
         }
-        try {
-          // Only touch the row if no newer PUT has replaced this change
-          await db.swarm.updateMany({ where: { id: swarmId, poolChangeId: id }, data: update });
-        } catch (error) {
-          console.error("Failed to record pool push result:", error);
-        }
-      });
+      } catch (error) {
+        console.error("Failed to sync settings to Pool Manager:", error);
+        pushError = error instanceof Error ? error.message : String(error);
+      }
+
+      try {
+        // Only touch the row if no newer PUT has replaced this change
+        await db.swarm.updateMany({
+          where: { id: swarm.id, poolChangeId: changeId },
+          data: pushError ? { poolPushError: pushError } : { poolPushedAt: new Date() },
+        });
+      } catch (error) {
+        console.error("Failed to record pool push result:", error);
+      }
     }
 
     // Set pending repair trigger only for new repositories that explicitly opt in
@@ -1031,7 +1021,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       changeId,
       requestedAt: requestedAt.toISOString(),
       infraChanged,
-      rollout: { state: changeId ? "pushing" : "idle" },
+      rollout: { state: !changeId ? "idle" : pushError ? "failed" : "rolling", error: pushError },
     });
   } catch (error) {
     console.error("Error saving stakgraph settings:", error);

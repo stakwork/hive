@@ -38,18 +38,21 @@ export function unmaskEnvVarList<T extends EnvVar>(incoming: T[], stored: Record
   return incoming.map((v) => ({ ...v, value: unmaskValue(v.value, stored[v.name]) }));
 }
 
+/**
+ * Restore each service's env against what is stored under that service name:
+ * masked values sent back unchanged map to the stored value, and a service
+ * sent without `env` keeps its stored env (send `env: {}` to clear it).
+ */
 export function unmaskServiceEnvs<T extends { name: string; env?: Record<string, string> }>(
   services: T[],
   storedByService: Record<string, Record<string, string>>,
 ): T[] {
-  return services.map((s) =>
-    s.env
-      ? {
-          ...s,
-          env: Object.fromEntries(
-            Object.entries(s.env).map(([k, v]) => [k, unmaskValue(v, storedByService[s.name]?.[k])]),
-          ),
-        }
-      : s,
-  );
+  return services.map((s) => {
+    const stored = storedByService[s.name];
+    if (!s.env) return stored ? { ...s, env: { ...stored } } : s;
+    return {
+      ...s,
+      env: Object.fromEntries(Object.entries(s.env).map(([k, v]) => [k, unmaskValue(v, stored?.[k])])),
+    };
+  });
 }

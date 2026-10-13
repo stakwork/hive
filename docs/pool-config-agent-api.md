@@ -31,10 +31,12 @@ Partial update — send only what changes:
 }
 ```
 
-It saves, then returns at once; the push to the pool manager happens in the background. Response adds:
-`changeId` (null if nothing infra-related changed), `requestedAt`, `infraChanged`, `rollout: { state: "pushing" | "idle" }`.
+It saves, pushes the config to the pool manager, and responds once the push has been accepted or has failed, so a `GET` right after returns the regenerated `pm2.config.js`. Response adds:
+`changeId` (null if nothing infra-related changed), `requestedAt`, `infraChanged`, `rollout: { state: "rolling" | "failed" | "idle", error }`. On `failed`, `error` holds the reason; retry the PUT (safe: the push always sends Hive's full stored state).
 
-**Env vars REPLACE the global list**: read with GET, edit, write the whole list back. Entries whose value is exactly the masked value you read are kept as stored; any other value replaces it; names you omit are removed. The same applies to `services[].env` (matched by service name + var name).
+**Env vars REPLACE the global list**: read with GET, edit, write the whole list back. Entries whose value is exactly the masked value you read are kept as stored; any other value replaces it; names you omit are removed.
+
+**`services` REPLACES the list the same way**: read with GET, edit, write the whole list back; a service you omit is removed. Within a service, omit `env` to keep its stored env vars as they are; send `env` to replace them (masked values kept as stored, names you omit removed, matched by service name + var name); send `env: {}` to clear them.
 
 ## Polling
 
@@ -46,10 +48,10 @@ Poll `GET` every 5–10 s and read `data.rollout`:
 ```
 
 - Make sure `rollout.changeId` equals the `changeId` from your PUT (a newer PUT supersedes it).
-- `pushing` — saved, being sent to the pool manager.
+- `pushing` — a PUT for this change is still in flight (you only see this for someone else's PUT, since yours returns after the push).
 - `rolling` — pushed; pods are being recreated (`pods.new` counts pods created after the push).
 - `ready` — at least one new RUNNING, unused pod exists. Stop polling.
-- `failed` — `error` holds the reason (`push_timeout` if no result after 5 min). **Retry the PUT** (safe: the push always sends Hive's full stored state).
+- `failed` — `error` holds the reason (`push_timeout` if a push never reported back within 5 min). **Retry the PUT** (safe: the push always sends Hive's full stored state).
 - `idle` — no change ever recorded.
 
 ## Testing the new pods

@@ -47,4 +47,12 @@ describe("unmask", () => {
     expect(out[1].env).toEqual({ TOKEN: maskEnvValue("webtoken1") });
     expect(out[2]).toEqual({ name: "noenv" });
   });
+  it("a service sent without env keeps its stored env; env: {} clears it", () => {
+    const out = unmaskServiceEnvs(
+      [{ name: "web" }, { name: "api", env: {} }] as Array<{ name: string; env?: Record<string, string> }>,
+      { web: { TOKEN: "webtoken1" }, api: { TOKEN: "apitoken1" } },
+    );
+    expect(out[0].env).toEqual({ TOKEN: "webtoken1" });
+    expect(out[1].env).toEqual({});
+  });
 });

@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
-  afterQueue: [] as Array<() => Promise<void> | void>,
   classify: vi.fn(),
   session: vi.fn(),
   superAdmin: vi.fn(),
@@ -19,10 +18,6 @@ const h = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("next/server", async (orig) => ({
-  ...(await orig<typeof import("next/server")>()),
-  after: (fn: () => Promise<void>) => void h.afterQueue.push(fn),
-}));
 vi.mock("@/lib/db", () => ({ db: h.db }));
 vi.mock("@/lib/auth/caller-token", () => ({ classifyCallerToken: h.classify }));
 vi.mock("@/lib/auth/nextauth", () => ({ authOptions: {} }));
@@ -98,7 +93,6 @@ const orgClassified = { kind: "org", orgId: "org1", apiKeyId: "key1", validated:
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.afterQueue.length = 0;
   h.classify.mockResolvedValue(null);
   h.session.mockResolvedValue(null);
   h.superAdmin.mockResolvedValue(false);
@@ -165,47 +159,44 @@ describe("GET stakgraph", () => {
 describe("PUT stakgraph", () => {
   const body = { poolCpu: "4" };
 
-  it("org key in-org returns before the push finishes and includes changeId", async () => {
+  it("org key in-org pushes before responding, records the push and returns changeId", async () => {
     h.classify.mockResolvedValue(orgClassified);
-    let release!: () => void;
-    h.sync.mockReturnValue(new Promise((r) => (release = () => r({ success: true }))));
 
     const res = await PUT(req("PUT", orgKey, body), params);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.changeId).toEqual(expect.any(String));
     expect(json.infraChanged).toBe(true);
-    expect(json.rollout).toEqual({ state: "pushing" });
-    expect(h.sync).not.toHaveBeenCalled();
+    expect(json.rollout).toEqual({ state: "rolling", error: null });
+    expect(h.sync).toHaveBeenCalledTimes(1);
     expect(h.db.swarm.update).toHaveBeenCalledWith({
       where: { id: "sw1" },
       data: expect.objectContaining({ poolChangeId: json.changeId, poolPushedAt: null, poolPushError: null }),
     });
-
-    const run = h.afterQueue[0]();
-    release();
-    await run;
-    expect(h.sync).toHaveBeenCalledTimes(1);
     expect(h.db.swarm.updateMany).toHaveBeenCalledWith({
       where: { id: "sw1", poolChangeId: json.changeId },
       data: { poolPushedAt: expect.any(Date) },
     });
+    // The change is recorded, then pushed, then the push result is recorded.
+    expect(h.db.swarm.update.mock.invocationCallOrder[0]).toBeLessThan(h.sync.mock.invocationCallOrder[0]);
+    expect(h.sync.mock.invocationCallOrder[0]).toBeLessThan(h.db.swarm.updateMany.mock.invocationCallOrder[0]);
   });
 
-  it("stores poolPushError when the push fails (result or throw)", async () => {
+  it("reports and stores the push error when the push fails (result or throw)", async () => {
     h.classify.mockResolvedValue({ kind: "system" });
     h.sync.mockResolvedValueOnce({ success: false, error: "pm down" });
-    const json = await (await PUT(req("PUT", { "x-api-token": "sys" }, body), params)).json();
-    await h.afterQueue[0]();
+    const res = await PUT(req("PUT", { "x-api-token": "sys" }, body), params);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.rollout).toEqual({ state: "failed", error: "pm down" });
     expect(h.db.swarm.updateMany).toHaveBeenLastCalledWith({
       where: { id: "sw1", poolChangeId: json.changeId },
       data: { poolPushError: "pm down" },
     });
 
-    h.afterQueue.length = 0;
     h.sync.mockRejectedValueOnce(new Error("kaboom"));
-    await PUT(req("PUT", { "x-api-token": "sys" }, body), params);
-    await expect(h.afterQueue[0]()).resolves.toBeUndefined();
+    const json2 = await (await PUT(req("PUT", { "x-api-token": "sys" }, body), params)).json();
+    expect(json2.rollout).toEqual({ state: "failed", error: "kaboom" });
     expect(h.db.swarm.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({ data: { poolPushError: "kaboom" } }),
     );
@@ -216,7 +207,7 @@ describe("PUT stakgraph", () => {
     h.hasInfra.mockReturnValue(false);
     const json = await (await PUT(req("PUT", { "x-api-token": "sys" }, { description: "d" }), params)).json();
     expect(json).toMatchObject({ changeId: null, infraChanged: false, rollout: { state: "idle" } });
-    expect(h.afterQueue).toHaveLength(0);
+    expect(h.sync).not.toHaveBeenCalled();
   });
 
   it("org key for another org -> 403; invalid key -> 401", async () => {
@@ -260,6 +251,32 @@ describe("PUT stakgraph", () => {
       { name: "NEW", value: "brandnew" },
     ]);
     expect(saved.services[0].env).toEqual({ TOKEN: "webtoken1" });
+    expect(h.db.environmentVariable.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([expect.objectContaining({ name: "TOKEN", serviceName: "web" })]),
+    });
+  });
+
+  it("token caller: service env stored only in the services JSON (no table rows) is restored too", async () => {
+    h.classify.mockResolvedValue(orgClassified);
+    h.db.swarm.findUnique.mockResolvedValue(
+      swarmRow({ services: [{ name: "web", port: 3000, scripts: { start: "x" }, env: { TOKEN: "jsontoken1" } }] }),
+    );
+    await PUT(
+      req("PUT", orgKey, {
+        services: [{ name: "web", port: 3000, scripts: { start: "x" }, env: { TOKEN: maskEnvValue("jsontoken1") } }],
+      }),
+      params,
+    );
+    expect(h.saveSwarm.mock.calls[0][0].services[0].env).toEqual({ TOKEN: "jsontoken1" });
+  });
+
+  it("token caller: a service sent without env keeps its stored env", async () => {
+    h.classify.mockResolvedValue(orgClassified);
+    h.db.environmentVariable.findMany.mockImplementation(async ({ where }: { where: { serviceName: unknown } }) =>
+      where.serviceName === "" ? [] : [{ serviceName: "web", name: "TOKEN", value: JSON.stringify("webtoken1") }],
+    );
+    await PUT(req("PUT", orgKey, { services: [{ name: "web", port: 3001, scripts: { start: "x" } }] }), params);
+    expect(h.saveSwarm.mock.calls[0][0].services[0]).toMatchObject({ port: 3001, env: { TOKEN: "webtoken1" } });
     expect(h.db.environmentVariable.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([expect.objectContaining({ name: "TOKEN", serviceName: "web" })]),
     });
