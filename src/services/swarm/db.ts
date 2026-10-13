@@ -101,6 +101,10 @@ export const select = {
   bifrostAgentsSeedAt: true,
   gatewayHiveKeyId: true,
   strutHiveKeyId: true,
+  poolChangeId: true,
+  poolChangeRequestedAt: true,
+  poolPushedAt: true,
+  poolPushError: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
