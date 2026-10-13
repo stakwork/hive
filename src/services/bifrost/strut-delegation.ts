@@ -458,6 +458,36 @@ export async function ensureStrutDelegation(
 }
 
 /**
+ * The actor for a launch hive makes on a user's behalf — `x-strut-actor` on
+ * a `/gitree/process` call, or `strut_actor` on a sync body that standalone
+ * forwards to mcp's `/repo/describe` — with that user's delegation ensured
+ * first. Nobody is named where the Bifrost gate is off
+ * (`ensureStrutDelegation` → `skipped-gate`): there is no delegation to
+ * bill, and mcp's old handlers run as before. A push that could not be
+ * verified still names the actor (the delegation may well be there).
+ * Never throws: a failure means no actor, and the launch goes ahead
+ * unattributed.
+ */
+export async function strutActorForLaunch(
+  auth: WorkspaceAuth,
+  swarm: { swarmUrl: string | null | undefined; swarmApiKey: string | null | undefined },
+): Promise<string | undefined> {
+  try {
+    if (!swarm.swarmUrl || !swarm.swarmApiKey) return undefined;
+    const ensured = await ensureStrutDelegation(auth, { swarmUrl: swarm.swarmUrl, swarmApiKey: swarm.swarmApiKey });
+    if (ensured.status === "skipped-gate") return undefined;
+    return ensured.actor ?? (await resolveStrutActor(auth.userId));
+  } catch (err) {
+    logger.warn("Could not resolve the strut actor for a launch; launching unattributed", STRUT_DELEGATION_LOG_TAG, {
+      workspaceId: auth.workspaceId,
+      userId: auth.userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return undefined;
+  }
+}
+
+/**
  * A delegation is worth renewing on a visit once it is past half its
  * (60-day) life. Strut only reports `exp`, so "life left" is measured
  * against the fixed TTL. An unparseable `exp` counts as expired.
