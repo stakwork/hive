@@ -18,19 +18,13 @@ import type {
   CweListMember,
   CweListResponse,
   CweMappingUsage,
-  SystemMapWorkflowKey,
 } from "@/types/system-map";
 import { RelatedPanel } from "./RelatedPanel";
 
 /** Most CWEs one CWE check run takes (`CWE_SCOPED_WORKFLOWS.cwe_check.max`). */
 const MAX_CHECK_CWES = 50;
 
-type CweWorkflow = Extract<SystemMapWorkflowKey, "cwe_check" | "security_review">;
-
-const WORKFLOW_LABEL: Record<CweWorkflow, string> = {
-  cwe_check: "CWE check",
-  security_review: "Security review",
-};
+const LABEL = "CWE check";
 
 const USAGE_STYLE: Record<CweMappingUsage, string> = {
   Allowed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
@@ -76,7 +70,7 @@ interface RowActions {
   selected: Set<string>;
   onToggle: (id: string) => void;
   launching: string | null;
-  onLaunch: (workflow: CweWorkflow, cweIds: string[]) => void;
+  onLaunch: (cweIds: string[]) => void;
 }
 
 /** The open half of a CWE row: its description and related catalogue nodes. */
@@ -90,12 +84,12 @@ function CweDetails({ cwe }: { cwe: CweEntry }) {
 }
 
 /**
- * A CWE a workflow may target: opens on click to its related nodes, with a
- * checkbox for the batch and a button per workflow.
+ * A CWE the CWE check may target: opens on click to its related nodes, with
+ * a checkbox for the batch and a button to check it alone.
  */
 function UsableRow({ cwe, note, actions }: { cwe: CweEntry; note?: string; actions: RowActions }) {
   const [open, setOpen] = useState(false);
-  const busy = (workflow: CweWorkflow) => actions.launching === `${workflow}:${cwe.id}`;
+  const busy = actions.launching === cwe.id;
   return (
     <div className="rounded-md hover:bg-muted/30" data-testid="cwe-usable-row">
       <div className="flex items-start gap-2 px-2 py-1.5">
@@ -122,22 +116,17 @@ function UsableRow({ cwe, note, actions }: { cwe: CweEntry; note?: string; actio
           {note && <p className="mt-0.5 text-[11px] text-muted-foreground">{note}</p>}
         </button>
         {actions.canWrite && (
-          <div className="flex shrink-0 gap-1">
-            {(Object.keys(WORKFLOW_LABEL) as CweWorkflow[]).map((workflow) => (
-              <Button
-                key={workflow}
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                disabled={actions.launching !== null}
-                onClick={() => actions.onLaunch(workflow, [cwe.id])}
-                data-testid={`cwe-run-${workflow}`}
-              >
-                {busy(workflow) ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Play className="mr-1 h-3 w-3" />}
-                {WORKFLOW_LABEL[workflow]}
-              </Button>
-            ))}
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 px-2 text-xs"
+            disabled={actions.launching !== null}
+            onClick={() => actions.onLaunch([cwe.id])}
+            data-testid="cwe-run-cwe_check"
+          >
+            {busy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Play className="mr-1 h-3 w-3" />}
+            {LABEL}
+          </Button>
         )}
       </div>
       {open && (
@@ -220,9 +209,8 @@ function matches(cwe: CweEntry, query: string): boolean {
 
 /**
  * The Infosec page's CWE lists tab: a curated CWE view from the shared
- * infosec graph's CWE catalogue, and buttons to run the CWE workflows on the
- * usable entries — CWE check takes one or many (`cwe_ids`), security review
- * one at a time (`cwe_id`). A started run links to its page in the org strut view.
+ * infosec graph's CWE catalogue, and the CWE check (`cwe_ids`) on one or
+ * many usable entries. A started run links to its page in the org strut view.
  */
 export function CweListsTab() {
   const { workspace } = useWorkspace();
@@ -287,15 +275,15 @@ export function CweListsTab() {
   }, []);
 
   const launch = useCallback(
-    async (workflow: CweWorkflow, cweIds: string[]) => {
+    async (cweIds: string[]) => {
       if (!slug || launching) return;
-      setLaunching(cweIds.length === 1 ? `${workflow}:${cweIds[0]}` : `${workflow}:selection`);
-      const label = WORKFLOW_LABEL[workflow];
+      setLaunching(cweIds.length === 1 ? cweIds[0] : "selection");
+      const label = LABEL;
       try {
         const response = await fetch(`/api/workspaces/${slug}/system-map/runs`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workflow, cweIds }),
+          body: JSON.stringify({ workflow: "cwe_check", cweIds }),
         });
         const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string; strutUrl?: string | null };
         if (!response.ok) {
@@ -331,7 +319,7 @@ export function CweListsTab() {
       <p className="text-sm text-muted-foreground">
         A curated list from the shared infosec graph&apos;s CWE catalogue. Entries MITRE marks Discouraged or Prohibited
         are too abstract to review directly, so their usable children are listed under them. Run the CWE check on one or
-        many CWEs, or a security review on one.
+        many CWEs.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -379,10 +367,10 @@ export function CweListsTab() {
           <Button
             size="sm"
             disabled={launching !== null || selectedIds.length > MAX_CHECK_CWES}
-            onClick={() => void launch("cwe_check", selectedIds)}
+            onClick={() => void launch(selectedIds)}
             data-testid="cwe-run-selection"
           >
-            {launching === "cwe_check:selection" ? (
+            {launching === "selection" ? (
               <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
             ) : (
               <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
@@ -395,7 +383,6 @@ export function CweListsTab() {
           {selectedIds.length > MAX_CHECK_CWES && (
             <span className="text-xs text-muted-foreground">One run takes at most {MAX_CHECK_CWES} CWEs.</span>
           )}
-          <span className="ml-auto text-xs text-muted-foreground">Security review runs one CWE at a time.</span>
         </div>
       )}
 

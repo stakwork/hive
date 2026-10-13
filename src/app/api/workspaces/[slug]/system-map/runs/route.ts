@@ -1,5 +1,5 @@
 /**
- * GET  /api/workspaces/:slug/system-map/runs?workflow=system_map|cwe_check|security_review
+ * GET  /api/workspaces/:slug/system-map/runs?workflow=system_map|cwe_check
  *      — the workspace's runs of that System Map workflow, newest first
  *      (PENDING ones settled from strut when the run is over there and the
  *      callback never arrived). Default `schema`.
