@@ -222,9 +222,9 @@ function matches(cwe: CweEntry, query: string): boolean {
  * The Infosec page's CWE lists tab: a curated CWE view from the shared
  * infosec graph's CWE catalogue, and buttons to run the CWE workflows on the
  * usable entries — CWE check takes one or many (`cwe_ids`), security review
- * one at a time (`cwe_id`). Runs show on their own workflow tabs.
+ * one at a time (`cwe_id`). A started run links to its page in the org strut view.
  */
-export function CweListsTab({ onShowRuns }: { onShowRuns?: (workflow: CweWorkflow) => void }) {
+export function CweListsTab() {
   const { workspace } = useWorkspace();
   const { canWrite } = useWorkspaceAccess();
   const slug = workspace?.slug;
@@ -297,7 +297,7 @@ export function CweListsTab({ onShowRuns }: { onShowRuns?: (workflow: CweWorkflo
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workflow, cweIds }),
         });
-        const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+        const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string; strutUrl?: string | null };
         if (!response.ok) {
           const title =
             response.status === 409
@@ -309,7 +309,7 @@ export function CweListsTab({ onShowRuns }: { onShowRuns?: (workflow: CweWorkflo
           return;
         }
         toast.success(`${label} started on ${cweIds.length === 1 ? cweIds[0] : `${cweIds.length} CWEs`}`, {
-          action: onShowRuns ? { label: "View run", onClick: () => onShowRuns(workflow) } : undefined,
+          action: body.strutUrl ? { label: "View run", onClick: () => window.open(body.strutUrl!, "_blank") } : undefined,
         });
         if (cweIds.length > 1) setSelected(new Set());
       } catch (error) {
@@ -320,7 +320,7 @@ export function CweListsTab({ onShowRuns }: { onShowRuns?: (workflow: CweWorkflo
         setLaunching(null);
       }
     },
-    [slug, launching, onShowRuns],
+    [slug, launching],
   );
 
   const actions: RowActions = { canWrite, selected, onToggle: toggle, launching, onLaunch: launch };

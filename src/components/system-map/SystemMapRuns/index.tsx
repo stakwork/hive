@@ -18,29 +18,18 @@ import type { SystemMapRun, SystemMapRunsResponse, SystemMapWorkflowKey } from "
 
 /** Per-tab copy. The workflow names come from the API response. */
 const COPY: Record<SystemMapWorkflowKey, { description: string; button: string; empty: string; started: string }> = {
-  schema: {
-    description: "Verifies the Sys* ontology against this workspace's knowledge graph and reports what matched.",
-    button: "Run schema sync",
-    empty: "No runs yet. Start one to check the ontology against this workspace's graph.",
-    started: "Schema sync started",
-  },
-  materialize: {
-    description: "Writes the real system nodes and edges for this workspace into the knowledge graph.",
-    button: "Run graph materialize",
-    empty: "No runs yet. Start one to materialize this workspace's system graph.",
-    started: "Graph materialize started",
+  system_map: {
+    description:
+      "Syncs the Sys* ontology, materializes the real system nodes and edges, and links cloud resources in this workspace's knowledge graph, in one run.",
+    button: "Run system map",
+    empty: "No runs yet. Start one to map this workspace's system graph.",
+    started: "System map started",
   },
   cwe_check: {
     description: "Writes this workspace's security graph into the knowledge graph's infosec namespace.",
     button: "Run CWE check",
     empty: "No runs yet. Start one to build this workspace's security graph.",
     started: "CWE check started",
-  },
-  cloud_links: {
-    description: "Runs the cloud links workflow against this workspace's knowledge graph.",
-    button: "Run cloud links",
-    empty: "No runs yet. Start one to run cloud links on this workspace.",
-    started: "Cloud links started",
   },
   security_review: {
     description: "Runs the CWE security review workflow against this workspace's knowledge graph.",
@@ -116,7 +105,7 @@ function RunOutput({ run, workflowKey }: { run: SystemMapRun; workflowKey: Syste
       const g = parseMaterializedGraph(run.output);
       return g ? (<MaterializedGraph graph={g} />) : null;
     };
-    return workflowKey === "materialize" ? asGraph() ?? asReport() : asReport() ?? asGraph();
+    return workflowKey === "system_map" ? asGraph() ?? asReport() : asReport() ?? asGraph();
   }, [run.output, run.status, workflowKey]);
   const { report, data } = useMemo(() => splitOutput(run.output), [run.output]);
 
@@ -219,7 +208,7 @@ function RunCard({
 }
 
 export function SystemMapRuns({
-  workflowKey = "schema",
+  workflowKey = "system_map",
   onRunSettled,
 }: {
   workflowKey?: SystemMapWorkflowKey;
