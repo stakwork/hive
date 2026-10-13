@@ -222,21 +222,28 @@ export function mockConnectionPage({ refId, edge, outgoing, limit }: ConnectionP
     .slice(0, limit);
 }
 
-/** A small brainstorm tree under `focus`: a question with two options, one expanded. */
-export function mockChoiceTree(focus: string, label: string): ChoiceTreeData {
-  const kid = (n: number) => `${focus}-${n}`;
-  return {
-    nodes: [
-      { ref_id: focus, properties: { choice_id: 1, text: `Mock ${label}?`, kind: "question", made_by: "user", state: "open" } },
-      { ref_id: kid(1), properties: { choice_id: 2, text: "Option one", kind: "option", made_by: "model", state: "open" } },
-      { ref_id: kid(2), properties: { choice_id: 3, text: "Option two", kind: "option", made_by: "model", state: "rejected" } },
-      { ref_id: kid(3), properties: { choice_id: 4, text: "Follow-up?", kind: "question", made_by: "model", state: "open" } },
-    ],
-    edges: [
-      { source: focus, target: kid(1) },
-      { source: focus, target: kid(2) },
-      { source: kid(1), target: kid(3) },
-    ],
-    truncated: false,
-  };
+/** A small brainstorm tree under `focus`: a root question, options A and B, and under A a question with options AA and AB. */
+export function mockChoiceTree(focus: string, labels: string[] = ["Choice", "Question"]): ChoiceTreeData {
+  const kid = (n: string) => `${focus}-${n}`;
+  const q = (id: string, n: number, text: string, state = "open") =>
+    ({ ref_id: id, type: "Question" as const, properties: { question_id: n, text, made_by: "user", state } });
+  const o = (id: string, n: number, text: string, state = "open") =>
+    ({ ref_id: id, type: "Choice" as const, properties: { choice_id: n, text, kind: "option", made_by: "model", state } });
+  const nodes = [
+    q(focus, 1, "Mock question?"),
+    o(kid("a"), 2, "Option A"),
+    o(kid("b"), 3, "Option B", "rejected"),
+    q(kid("q"), 4, "Follow-up?"),
+    o(kid("aa"), 5, "Option AA"),
+    o(kid("ab"), 6, "Option AB"),
+  ].filter((n) => labels.includes(n.type));
+  const ids = new Set(nodes.map((n) => n.ref_id));
+  const edges = [
+    { source: focus, target: kid("a") },
+    { source: focus, target: kid("b") },
+    { source: kid("a"), target: kid("q") },
+    { source: kid("q"), target: kid("aa") },
+    { source: kid("q"), target: kid("ab") },
+  ].filter((e) => ids.has(e.source) && ids.has(e.target));
+  return { nodes, edges, truncated: false };
 }

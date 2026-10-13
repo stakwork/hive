@@ -12,9 +12,11 @@ const NOTICE = {
   rejected: "Rejected — nothing was changed.",
 } as const;
 
+const NoRoot = () => <p className="px-3 py-2.5 text-xs text-muted-foreground">This brainstorm card has no root to open.</p>;
+
 export function GraphInline({ artifact, content }: ArtifactViewerProps<"graph">) {
   if (isTreeArtifact(artifact, content))
-    return <p className="px-3 py-2.5 text-xs text-muted-foreground">{artifact.title} — Open tree</p>;
+    return content.focus ? <p className="px-3 py-2.5 text-xs text-muted-foreground">{artifact.title} — Open tree</p> : <NoRoot />;
   if (content.changes?.length)
     return (
       <p className="px-3 py-2.5 text-xs text-muted-foreground">
@@ -44,7 +46,7 @@ export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) 
   const created = content.changes?.find((c) => c.kind === "node")?.name;
   // An approval lands on what it created, else where the proposal was centred.
   const approvedFocus = [created, content.focus].filter((ref): ref is string => !!ref);
-  if (tree) return <ChoiceTree workspace={content.workspace} focus={content.focus!} label={content.label} />;
+  if (tree) return content.focus ? <ChoiceTree workspace={content.workspace} focus={content.focus} label={content.label} /> : <NoRoot />;
   return (
     <div className="h-full">
       <GraphWorkbench
