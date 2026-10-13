@@ -282,7 +282,7 @@ describe("runPendingAutoLearn", () => {
     expect(getGithubUsernameAndPAT).toHaveBeenCalledWith("owner-1", "hive");
     expect(gitreeCalls()).toHaveLength(1);
     expectGitreeCall(gitreeCalls()[0], "ghp_owner_secret", "decrypted-swarm-key");
-    // Where hive cannot bill the owner, nobody is named: mcp's old handler runs.
+    // When no actor is resolved, nobody is named: mcp's old handler runs.
     expect(mockStrutActorForLaunch).toHaveBeenCalledWith(
       { workspaceId: "ws-1", workspaceSlug: "hive", userId: "owner-1" },
       { swarmUrl: SWARM_URL, swarmApiKey: "decrypted-swarm-key" },
@@ -290,7 +290,7 @@ describe("runPendingAutoLearn", () => {
     expect(actorHeaderOf(gitreeCalls()[0])).toBeUndefined();
   });
 
-  test("runs gitree as the workspace owner where hive can bill them", async () => {
+  test("runs gitree as the workspace owner", async () => {
     armPendingRepository();
     mockStrutActorForLaunch.mockResolvedValue("owner-owner-1");
 

@@ -273,7 +273,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Who the sync (and the describe run it leads to) is for: the workspace
-    // owner, whose PAT it carries, where hive can bill them.
+    // owner, whose PAT it carries.
     const strutActor = workspace?.ownerId
       ? await strutActorForLaunch(
           { workspaceId: repository.workspaceId, workspaceSlug: workspace.slug, userId: workspace.ownerId },
