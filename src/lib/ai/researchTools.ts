@@ -96,6 +96,19 @@ export interface DispatchedResearchIntent {
  * sent only the URLs it cited from, which broke the alignment).
  * Capturing on the server side is deterministic.
  */
+/**
+ * Research rules that used to live only in the loadable `research` capability
+ * snippet; each rides on the tool it governs (see `toolDescriptionRules.test.ts`).
+ */
+const RESEARCH_FLOW_RULE =
+  "\n\nWhich path: `dispatch_research` (background) for competitive analysis, technical deep-dives, multi-source synthesis, anything needing 3+ web searches; " +
+  "inline `save_research` → `web_search` (`web_fetch` a page in full when its snippet isn't enough) → `update_research` for a quick factual lookup, a single-topic check, " +
+  "or when the user is waiting for an immediate answer. Don't ask permission between the inline steps. " +
+  "Research is gathered from the public web with `web_search` — do NOT use `repo_agent` to fill a research doc unless the user is asking about their own codebase. " +
+  "A synthetic user message of the form \"Research: <topic>\" means the user created an empty Research node from the `+ Research` menu: pass their wording as `topic`.";
+const RESEARCH_LINK_RULE =
+  "\n\nTo link a research doc in chat use the relative form `[anchor text](?r=<slug>)` — never invent a path URL like `/org/<login>/<slug>` or `/research/<slug>`; those routes don't exist. Link only to a prior doc the user may not have in view.";
+
 export function buildResearchTools(
   orgId: string,
   userId: string,
@@ -113,7 +126,9 @@ export function buildResearchTools(
         "  - title: a polished, slightly more formal title (e.g. 'Stripe Connect: multi-party payout flows'). Used as the right-panel viewer header.\n" +
         "  - summary: one sentence describing what this research will cover. Shown above the markdown body in the viewer while content is still being written.\n\n" +
         "Optional:\n" +
-        "  - initiativeId: cuid of the initiative this research belongs to. Pass it when the user is currently looking at an initiative sub-canvas (the canvas-scope hint will tell you `currentCanvasRef: \"initiative:<id>\"`). Omit for org-wide research that should land on the root canvas.",
+        "  - initiativeId: cuid of the initiative this research belongs to. Pass it when the user is currently looking at an initiative sub-canvas (the canvas-scope hint will tell you `currentCanvasRef: \"initiative:<id>\"`). Omit for org-wide research that should land on the root canvas." +
+        RESEARCH_FLOW_RULE +
+        RESEARCH_LINK_RULE,
       inputSchema: z.object({
         slug: z
           .string()
@@ -234,7 +249,9 @@ export function buildResearchTools(
         "  - summary: one sentence describing what this research will cover.\n" +
         "  - prompt: detailed instructions for the sub-agent (what to search for, what to synthesize, how to structure the doc).\n\n" +
         "Optional:\n" +
-        "  - initiativeId: pass when on an initiative sub-canvas so the research lands in the right place.",
+        "  - initiativeId: pass when on an initiative sub-canvas so the research lands in the right place." +
+        RESEARCH_FLOW_RULE +
+        RESEARCH_LINK_RULE,
       inputSchema: z.object({
         slug: z
           .string()
@@ -475,7 +492,9 @@ export function buildResearchTools(
     update_research: tool({
       description:
         "Update an existing Research document with the markdown writeup. Call this ONCE after web_search has gathered enough information to write the doc. The `content` field replaces the previous content (no streaming/append semantics today \u2014 write the full markdown in one call).\n\n" +
-        "Cite sources inline as you naturally would (e.g. `<cite index=\"N-M\">...</cite>` for Anthropic web_search citations); the tool will convert them into clickable markdown links automatically using the search results from the current conversation turn. You don't need to pass URLs separately.",
+        "Cite sources inline as you naturally would (e.g. `<cite index=\"N-M\">...</cite>` for Anthropic web_search citations); the tool will convert them into clickable markdown links automatically using the search results from the current conversation turn. You don't need to pass URLs separately.\n\n" +
+        "Never call `update_research` before `save_research` — the row won't exist. It is a full replace, not an append: to extend an existing doc, call `read_research` first and send back the combined markdown." +
+        RESEARCH_LINK_RULE,
       inputSchema: z.object({
         slug: z.string().describe("The slug returned from save_research."),
         content: z

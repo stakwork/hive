@@ -283,6 +283,8 @@ describe("runCanvasAgent — abnormal-finish detection", () => {
       // route can tell a cancellation "tool-calls" finish (legit) from
       // a tool call that ended the turn without an output (flagged).
       cancellationRequested: false,
+      // Resolved model id, for per-turn usage recording.
+      modelId: expect.any(String),
     });
   });
 });

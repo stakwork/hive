@@ -11,6 +11,7 @@ import {
   checkPublicChatBudget,
   deriveAnonymousId,
   recordTurnTokens,
+  recordTurnUsage,
 } from "@/lib/ai/publicChatBudget";
 import { db } from "@/lib/db";
 import { healUserChatAgentModel, loadUserChatAgentModel } from "@/lib/ai/resolve-model";
@@ -34,6 +35,7 @@ import {
   type StoredMessage,
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
+import { parseCanvasAgentMode, type CanvasAgentMode } from "@/lib/ai/canvasMode";
 import { buildDeferredCheckTools } from "@/lib/ai/deferredCheckTools";
 import {
   resolveOrgConversationRowId,
@@ -101,9 +103,11 @@ export async function POST(request: NextRequest) {
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
       // and avoid an unnecessary stakgraph round-trip.
       skipEnrichments,
-      // Per-browser opt-in to the slim prompt (concept-tree mode), sent by
-      // the canvas SidebarChat when its settings switch is on.
-      slimPrompt,
+      // Jamie's A/B arm for a NEW org-canvas chat ("full" | "concept"), sent
+      // by the canvas SidebarChat from its settings switch. Only used when
+      // this request creates the conversation row; an existing chat keeps
+      // the mode stored on its row and this field is ignored.
+      mode: requestedMode,
       // Agent-proposal flow (see `src/lib/proposals/`). Set on the
       // user's send when they click Approve / Reject in a
       // `<ProposalCard>`. The route runs the side effect synchronously
@@ -426,6 +430,14 @@ export async function POST(request: NextRequest) {
       orgId: orgId ?? null,
     });
 
+    // The chat's A/B arm: the stored mode of an existing row, else the
+    // request's (what a new row is created with). Concept mode is org-only.
+    const turnMode: CanvasAgentMode = orgId
+      ? promptCache
+        ? promptCache.mode
+        : parseCanvasAgentMode(requestedMode)
+      : "full";
+
     // Per-user canvas-chat model preference (set from the Agent settings
     // gear). Threaded into `runCanvasAgent`, which only honors Anthropic
     // selections today. Null/absent → aieo default. Public viewers have
@@ -518,6 +530,7 @@ export async function POST(request: NextRequest) {
         content: newUserContent,
         attachments: userAttachments,
         workspaceSlugs: slugs,
+        mode: turnMode,
       });
     }
     console.log("[quick-ask] timing", { stage: "persistCanvasUserMessage", ms: Date.now() - tPersist, workspaces: slugs, orgId: orgId ?? null });
@@ -636,7 +649,7 @@ export async function POST(request: NextRequest) {
           orgId: orgId || undefined,
           workspaceSlugs: slugs,
           modelName: chatAgentModel,
-          slimPrompt: slimPrompt === true,
+          mode: turnMode,
           // Reuse cached concepts (skips the swarm `listConcepts` call)
           // when we have them for this org-canvas conversation. The prefix
           // is still rebuilt fresh each turn for an accurate scope hint.
@@ -729,6 +742,7 @@ export async function POST(request: NextRequest) {
               finishReason,
               visibleChars,
               cancellationRequested,
+              modelId,
             }) => {
               // Dead-turn / truncation capture — must run BEFORE the
               // token-attribution early return below.
@@ -777,6 +791,17 @@ export async function POST(request: NextRequest) {
                 inputTokens,
                 outputTokens,
               });
+              // Per-turn usage for the full / concept A/B (org-canvas rows).
+              if (canvasConversationRowId) {
+                await recordTurnUsage({
+                  conversationId: canvasConversationRowId,
+                  turnId: turnIdStr,
+                  mode: turnMode,
+                  source: "user",
+                  model: modelId,
+                  usage,
+                });
+              }
             },
             onError: ({ message }) => {
               // Full provider/SDK text is server-side only (it can carry
@@ -788,13 +813,23 @@ export async function POST(request: NextRequest) {
               });
               midStreamError = CLIENT_FACING_STREAM_ERROR;
             },
-            onAbort: async ({ steps, partialStep, usage }) => {
+            onAbort: async ({ steps, partialStep, usage, modelId }) => {
               stoppedTurn = { steps, partialStep };
               // Record the finished steps' tokens like onFinish does, so a
               // Stop can't dodge the token budget.
               const attributionRowId = canvasConversationRowId ?? tokenAttributionRowId;
               if (!attributionRowId) return;
               await recordTurnTokens({ conversationId: attributionRowId, ...usage });
+              if (canvasConversationRowId) {
+                await recordTurnUsage({
+                  conversationId: canvasConversationRowId,
+                  turnId: turnIdStr,
+                  mode: turnMode,
+                  source: "user",
+                  model: modelId,
+                  usage,
+                });
+              }
             },
           },
         });

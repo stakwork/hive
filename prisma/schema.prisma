@@ -805,9 +805,14 @@ model SharedConversation {
   // Each entry: { requestId, workspaceId, startedAt, abortRequested? }
   // Used to support the Stop control in canvas chat. No secrets stored here.
   activeRuns         Json?             @map("active_runs")
+  // Jamie's A/B arm for this chat: "full" (the complete prompt + per-workspace
+  // toolset) or "concept" (tiny prompt + short global toolset). Set once, when
+  // the chat is created, and never changed; existing chats are "full".
+  mode               String            @default("full")
   user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
+  turnUsage          CanvasTurnUsage[]
 
   @@index([workspaceId])
   @@index([sourceControlOrgId])
@@ -824,6 +829,31 @@ model SharedConversation {
   // share this composite.
   @@index([sourceControlOrgId, userId, source, archivedAt, lastMessageAt])
   @@map("shared_conversations")
+}
+
+// Per-turn token usage for a canvas chat turn, so the full / concept A/B can
+// compare cost per turn (the running totals on `SharedConversation` can't).
+// Written best-effort by `recordTurnUsage`; one row per user turn and per
+// planner / strut wake turn.
+model CanvasTurnUsage {
+  id               String             @id @default(cuid())
+  conversationId   String             @map("conversation_id")
+  turnId           String?            @map("turn_id")
+  // The conversation's mode at the time of the turn: "full" | "concept".
+  mode             String
+  // What started the turn: "user" | "planner_wake" | "strut_wake".
+  source           String
+  model            String?
+  inputTokens      Int                @map("input_tokens")
+  outputTokens     Int                @map("output_tokens")
+  cacheReadTokens  Int                @default(0) @map("cache_read_tokens")
+  cacheWriteTokens Int                @default(0) @map("cache_write_tokens")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  conversation     SharedConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([mode, createdAt])
+  @@map("canvas_turn_usage")
 }
 
 model ChatMessage {

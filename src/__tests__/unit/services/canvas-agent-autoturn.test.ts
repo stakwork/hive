@@ -37,8 +37,13 @@ vi.mock("@/lib/ai/runCanvasAgent", () => ({
   runCanvasAgent: vi.fn(),
 }));
 
+vi.mock("@/lib/ai/publicChatBudget", () => ({
+  recordTurnUsage: vi.fn(),
+}));
+
 import { db } from "@/lib/db";
 import { runCanvasAgent } from "@/lib/ai/runCanvasAgent";
+import { recordTurnUsage } from "@/lib/ai/publicChatBudget";
 import {
   invokeCanvasAgentOnPlannerMessage,
   countTrailingPlannerAsks,
@@ -663,5 +668,93 @@ describe("invokeCanvasAgentOnPlannerMessage — three-way autoRespond gate", () 
 
     // null → falls back to global (false) → agent NOT called.
     expect(runCanvasAgent).not.toHaveBeenCalled();
+  });
+});
+
+describe("invokeCanvasAgentOnPlannerMessage — A/B mode", () => {
+  const args = {
+    conversationId: "conv-1",
+    featureId: "feat-1",
+    plannerMessageId: "msg-1",
+    wakeReason: "completed" as const,
+  };
+  const usage = { inputTokens: 100, outputTokens: 10 };
+
+  const setup = (mode: unknown, runMode: "full" | "concept" = "full") => {
+    (db.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: unknown) => unknown) =>
+        fn({
+          $queryRaw: vi.fn().mockResolvedValue([{ messages: [], settings: {} }]),
+          sharedConversation: { update: vi.fn().mockResolvedValue({}) },
+        }),
+    );
+    (db.task.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    (db.sharedConversation.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "conv-1",
+      userId: "user-1",
+      sourceControlOrgId: "org-1",
+      workspaceId: "ws-1",
+      messages: [],
+      settings: {},
+      mode,
+      workspace: { slug: "ws" },
+      user: { canvasAutonomousTurns: true },
+    });
+    (db.feature.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      title: "F",
+      brief: null,
+      requirements: null,
+      architecture: null,
+      workflowStatus: null,
+      autoRespond: null,
+      workspace: { slug: "ws" },
+    });
+    (runCanvasAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      result: {
+        text: Promise.resolve(""),
+        steps: Promise.resolve([]),
+        usage: Promise.resolve(usage),
+      },
+      cacheableConcepts: {},
+      cacheHit: true,
+      mode: runMode,
+      modelId: "claude-x",
+    });
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env[ENV_KEY];
+  });
+
+  test("selects `mode` from the conversation row and passes it to runCanvasAgent", async () => {
+    setup("concept", "concept");
+    await invokeCanvasAgentOnPlannerMessage(args);
+
+    const select = (db.sharedConversation.findUnique as ReturnType<typeof vi.fn>).mock.calls[0][0].select;
+    expect(select.mode).toBe(true);
+    expect((runCanvasAgent as ReturnType<typeof vi.fn>).mock.calls[0][0].mode).toBe("concept");
+  });
+
+  test("a full (or unrecognised) row runs full mode", async () => {
+    for (const stored of ["full", undefined, "nonsense"]) {
+      vi.clearAllMocks();
+      setup(stored);
+      await invokeCanvasAgentOnPlannerMessage({ ...args, plannerMessageId: `msg-${String(stored)}` });
+      expect((runCanvasAgent as ReturnType<typeof vi.fn>).mock.calls[0][0].mode).toBe("full");
+    }
+  });
+
+  test("records the wake turn's usage under the chat's mode", async () => {
+    setup("concept", "concept");
+    await invokeCanvasAgentOnPlannerMessage(args);
+    expect(recordTurnUsage).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      turnId: "autoturn-msg-1-",
+      mode: "concept",
+      source: "planner_wake",
+      model: "claude-x",
+      usage,
+    });
   });
 });

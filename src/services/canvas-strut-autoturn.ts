@@ -37,6 +37,8 @@ import { tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
+import { parseCanvasAgentMode } from "@/lib/ai/canvasMode";
+import { recordTurnUsage } from "@/lib/ai/publicChatBudget";
 import { toModelMessages } from "@/lib/ai/conversationHelpers";
 import { CONTINUE_JOB_TOOL, DISPATCH_STRUT_TOOL, START_JOB_TOOL } from "@/lib/ai/strutTools";
 import { describeArtifactEvent, type ArtifactEvent } from "@/lib/strut-jobs";
@@ -328,6 +330,9 @@ async function runWake(wake: Wake): Promise<void> {
       sourceControlOrgId: true,
       messages: true,
       settings: true,
+      // The chat's A/B arm — a wake turn runs in the arm the chat was
+      // created in, not the default.
+      mode: true,
       workspace: { select: { slug: true } },
       user: { select: { canvasAutonomousTurns: true } },
     },
@@ -373,10 +378,17 @@ async function runWake(wake: Wake): Promise<void> {
       ? (settings.promptConcepts as CachedConcepts)
       : null;
 
-  const { result, cacheableConcepts, cacheHit } = await runCanvasAgent({
+  const {
+    result,
+    cacheableConcepts,
+    cacheHit,
+    mode: turnMode,
+    modelId,
+  } = await runCanvasAgent({
     userId: conversation.userId,
     orgId: conversation.sourceControlOrgId,
     workspaceSlugs,
+    mode: parseCanvasAgentMode(conversation.mode),
     messages: [...toModelMessages(storedMessages), wake.message],
     cachedConcepts,
     silentPusher: true,
@@ -393,6 +405,14 @@ async function runWake(wake: Wake): Promise<void> {
 
   await result.text;
   const steps = await result.steps;
+  await recordTurnUsage({
+    conversationId,
+    turnId: idPrefix,
+    mode: turnMode,
+    source: "strut_wake",
+    model: modelId,
+    usage: await result.usage,
+  });
   const rows = messagesFromSteps(
     steps as Parameters<typeof messagesFromSteps>[0],
     idPrefix,

@@ -357,6 +357,19 @@ const REF_DESCRIPTION =
   "milestone when one is set). Milestones have NO sub-canvas — they " +
   "are leaf cards on their parent initiative's canvas.";
 
+/**
+ * The whiteboard rules that used to live only in the loadable `whiteboard`
+ * capability snippet. They ride on `update_canvas` / `patch_canvas` so a
+ * turn that never loads that snippet (concept mode) still draws correctly.
+ */
+const CANVAS_DRAWING_RULES =
+  "\n\nDrawing rules: you author `note`, `decision` and `service` nodes and `edge`s; you must NOT author projected categories " +
+  "(`workspace`, `repository`, `initiative`, `milestone`, `feature`) — those come from the DB (use the propose_* / assign_* tools). " +
+  "You CAN move projected nodes, draw edges to/from them, and hide them (by omission from `update_canvas`). " +
+  "Edges are `{ fromNode, toNode, label? }` with a short verb-phrase label (\"blocks\", \"depends on\", \"owned by\"). " +
+  "Always call `read_canvas` first (with the sub-canvas `ref` when applicable) to get the real node ids, including the prefixed projected ones (`ws:`, `initiative:`, `feature:`). " +
+  "Never ask the user for coordinates — supply `x` / `y` in pixels yourself, spreading cards evenly across a row: workspaces on the top row, initiatives below, your notes/decisions beside the node they annotate.";
+
 export function buildCanvasTools(orgId: string): ToolSet {
   return {
     read_canvas: tool({
@@ -403,7 +416,8 @@ export function buildCanvasTools(orgId: string): ToolSet {
         "every node the user has already edited (recognizable by ids " +
         "you didn't just invent) AND every projected live node " +
         "(prefixed `ws:`, `feature:`, …) so you don't clobber their " +
-        "work. For small updates, prefer `patch_canvas`.",
+        "work. For small updates, prefer `patch_canvas`." +
+        CANVAS_DRAWING_RULES,
       inputSchema: z.object({
         ref: z.string().describe(REF_DESCRIPTION).optional(),
         nodes: z.array(nodeInputSchema),
@@ -438,7 +452,9 @@ export function buildCanvasTools(orgId: string): ToolSet {
         "Apply one or more small ops (add/update/remove node/edge) to a " +
         "canvas. Use this for targeted changes like 'add a note explaining " +
         "milestone M' or 'edge initiative A to workspace W'. Each op is " +
-        "applied in order; if one fails, later ops in the same call still run.",
+        "applied in order; if one fails, later ops in the same call still run. " +
+        "`update_node` shallow-merges `customData`, so pass only the keys you are changing." +
+        CANVAS_DRAWING_RULES,
       inputSchema: z.object({
         ref: z.string().describe(REF_DESCRIPTION).optional(),
         ops: z.array(patchOpSchema).min(1),

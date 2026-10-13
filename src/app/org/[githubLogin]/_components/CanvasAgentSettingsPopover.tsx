@@ -9,7 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getModelValue, type LlmModelOption } from "@/lib/ai/models";
 import { AutomationsSection } from "./AutomationsSection";
-import { readSlimPromptPreference, writeSlimPromptPreference } from "../_state/slimPromptPreference";
+import { readConceptModePreference, writeConceptModePreference } from "../_state/slimPromptPreference";
+import { startNewOrgConversation } from "../_state/openOrgConversation";
 
 /**
  * Gear menu on the canvas Agent chat panel. Hosts per-user preferences
@@ -28,10 +29,11 @@ import { readSlimPromptPreference, writeSlimPromptPreference } from "../_state/s
  *     canvas agent chats with, stored in `getModelValue()` "provider/name"
  *     form. Empty = inherit the admin-configured default.
  *
- *   - **Concept-tree prompt** — experimental, per-browser (localStorage,
- *     see `slimPromptPreference.ts`): the canvas agent gets the shorter
- *     capability sections and relies on the concept tree for how-to
- *     detail. Off = the full sections.
+ *   - **Concept mode (A/B test)** — experimental, per-browser (localStorage,
+ *     see `slimPromptPreference.ts`): new chats run Jamie with a tiny
+ *     system prompt and a short global toolset instead of full mode. The
+ *     mode is stored on the chat when it is created, so flipping the switch
+ *     starts a new chat rather than changing the open one.
  *
  * The first two are user-level preferences (not per-conversation), persisted
  * via `/api/user/preferences`. Fetched once on mount; changes are saved
@@ -41,7 +43,7 @@ export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: strin
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
-  const [slimPrompt, setSlimPrompt] = useState(false);
+  const [conceptMode, setConceptMode] = useState(false);
   const [models, setModels] = useState<LlmModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [savingModel, setSavingModel] = useState(false);
@@ -67,7 +69,7 @@ export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: strin
   }, []);
 
   useEffect(() => {
-    setSlimPrompt(readSlimPromptPreference());
+    setConceptMode(readConceptModePreference());
   }, []);
 
   // Load the available models for the picker. /api/llm-models already
@@ -108,9 +110,12 @@ export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: strin
     }
   };
 
-  const handleSlimToggle = (next: boolean) => {
-    setSlimPrompt(next);
-    writeSlimPromptPreference(next);
+  const handleConceptModeToggle = (next: boolean) => {
+    setConceptMode(next);
+    writeConceptModePreference(next);
+    // A chat keeps the mode it was created with, so the new setting needs a
+    // new chat (an untouched open chat is reused, not duplicated).
+    startNewOrgConversation(githubLogin);
   };
 
   const handleModelChange = async (next: string) => {
@@ -169,15 +174,16 @@ export function CanvasAgentSettingsPopover({ githubLogin }: { githubLogin: strin
 
           <div className="flex items-start justify-between gap-3 border-t pt-3">
             <div className="space-y-0.5">
-              <p className="text-sm font-medium leading-none">Concept-tree prompt</p>
+              <p className="text-sm font-medium leading-none">Concept mode (A/B test)</p>
               <p className="text-xs text-muted-foreground">
-                Experimental, this browser only. Use shorter capability sections and rely on the concept tree for detail.
+                Experimental, this browser only. New chats use a tiny prompt and a short global toolset. Changing it
+                starts a new chat.
               </p>
             </div>
             <Switch
-              checked={slimPrompt}
-              onCheckedChange={handleSlimToggle}
-              aria-label="Concept-tree prompt"
+              checked={conceptMode}
+              onCheckedChange={handleConceptModeToggle}
+              aria-label="Concept mode (A/B test)"
             />
           </div>
 

@@ -21,6 +21,8 @@ const { mockConversationFindUnique, mockRunCanvasAgent, mockClaim, mockRelease, 
 
 vi.mock("@/lib/db", () => ({ db: { sharedConversation: { findUnique: mockConversationFindUnique } } }));
 vi.mock("@/lib/ai/runCanvasAgent", () => ({ runCanvasAgent: mockRunCanvasAgent }));
+const { mockRecordTurnUsage } = vi.hoisted(() => ({ mockRecordTurnUsage: vi.fn() }));
+vi.mock("@/lib/ai/publicChatBudget", () => ({ recordTurnUsage: mockRecordTurnUsage }));
 vi.mock("@/lib/ai/conversationHelpers", () => ({
   toModelMessages: (rows: Array<{ role: string; content: string }>) =>
     rows.map((r) => ({ role: r.role, content: r.content })),
@@ -192,6 +194,68 @@ describe("invokeCanvasAgentOnStrutSettled", () => {
       expect.objectContaining({ conversationId: "conv-1", idPrefix: `autoturn-${ARGS.wakeId}-`, reason: "autoturn" }),
     );
     expect(mockRelease).toHaveBeenCalledWith("conv-1", ARGS.wakeId);
+  });
+});
+
+describe("strut wake — A/B mode", () => {
+  const usage = { inputTokens: 50, outputTokens: 5 };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClaim.mockResolvedValue(true);
+    mockRelease.mockResolvedValue(undefined);
+    mockMessagesFromSteps.mockReturnValue([]);
+    mockRunCanvasAgent.mockResolvedValue({
+      result: { text: Promise.resolve(""), steps: Promise.resolve([]), usage: Promise.resolve(usage) },
+      cacheableConcepts: {},
+      cacheHit: true,
+      mode: "concept",
+      modelId: "claude-x",
+    });
+  });
+
+  test("selects `mode` from the row and passes it to runCanvasAgent", async () => {
+    mockConversationFindUnique.mockResolvedValue(conversation({ mode: "concept" }));
+    await invokeCanvasAgentOnStrutSettled(ARGS);
+
+    expect(mockConversationFindUnique.mock.calls[0][0].select.mode).toBe(true);
+    expect(mockRunCanvasAgent.mock.calls[0][0].mode).toBe("concept");
+  });
+
+  test("a job-turn wake reads the row's mode too", async () => {
+    mockConversationFindUnique.mockResolvedValue(conversation({ mode: "concept" }));
+    await invokeCanvasAgentOnJobTurn(JOB_ARGS);
+    expect(mockRunCanvasAgent.mock.calls[0][0].mode).toBe("concept");
+  });
+
+  test("a full or missing mode runs full", async () => {
+    for (const mode of ["full", undefined]) {
+      vi.clearAllMocks();
+      mockClaim.mockResolvedValue(true);
+      mockMessagesFromSteps.mockReturnValue([]);
+      mockRunCanvasAgent.mockResolvedValue({
+        result: { text: Promise.resolve(""), steps: Promise.resolve([]), usage: Promise.resolve(usage) },
+        cacheableConcepts: {},
+        cacheHit: true,
+        mode: "full",
+        modelId: "m",
+      });
+      mockConversationFindUnique.mockResolvedValue(conversation({ mode }));
+      await invokeCanvasAgentOnStrutSettled(ARGS);
+      expect(mockRunCanvasAgent.mock.calls[0][0].mode).toBe("full");
+    }
+  });
+
+  test("records the wake turn's usage as strut_wake under the chat's mode", async () => {
+    mockConversationFindUnique.mockResolvedValue(conversation({ mode: "concept" }));
+    await invokeCanvasAgentOnStrutSettled(ARGS);
+    expect(mockRecordTurnUsage).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      turnId: `autoturn-${ARGS.wakeId}-`,
+      mode: "concept",
+      source: "strut_wake",
+      model: "claude-x",
+      usage,
+    });
   });
 });
 

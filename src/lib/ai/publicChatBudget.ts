@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { getClientIp } from "@/lib/rate-limit";
+import {
+  normalizeTokenUsage,
+  type AnthropicProviderMeta,
+  type RawUsage,
+} from "@/lib/utils/token-usage";
 
 /**
  * Public dashboard chat — token-budget rate limiting.
@@ -133,6 +138,79 @@ export async function recordTurnTokens(args: {
   } catch (error) {
     console.error("[recordTurnTokens] failed to persist token usage", {
       conversationId: args.conversationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/** What started a canvas turn — the `source` column of `canvas_turn_usage`. */
+export type TurnUsageSource = "user" | "planner_wake" | "strut_wake";
+
+export interface TurnUsageCounts {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+/**
+ * Pull the four token counts for a turn out of the AI SDK's usage.
+ *
+ * In ai@7 the `usage` on `onFinish` / `result.usage` is already summed
+ * across every step, and carries the cache split in
+ * `inputTokenDetails.{cacheReadTokens,cacheWriteTokens}` (`inputTokens` is
+ * the total, cached tokens included). `providerMetadata.anthropic
+ * .cacheCreationInputTokens` is a fallback for a provider that reports the
+ * cache write only there. Anything absent reads as 0.
+ */
+export function extractTurnUsage(
+  usage: unknown,
+  providerMetadata?: { anthropic?: unknown } | null,
+): TurnUsageCounts {
+  const meta = providerMetadata?.anthropic as AnthropicProviderMeta | undefined;
+  const n = normalizeTokenUsage((usage ?? undefined) as RawUsage | undefined, meta);
+  const count = (v: number | undefined) =>
+    typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0;
+  return {
+    inputTokens: count(n.inputTokens),
+    outputTokens: count(n.outputTokens),
+    cacheReadTokens: count(n.cacheReadTokens),
+    cacheWriteTokens: count(n.cacheWriteTokens),
+  };
+}
+
+/**
+ * Record one canvas turn's usage in `canvas_turn_usage`, so the full /
+ * concept A/B can compare cost per turn. Best-effort like
+ * `recordTurnTokens`: a failure is logged and never reaches the user.
+ * Writes nothing for a turn that reported no tokens at all.
+ */
+export async function recordTurnUsage(args: {
+  conversationId: string;
+  turnId?: string | null;
+  mode: string;
+  source: TurnUsageSource;
+  model?: string | null;
+  usage: unknown;
+  providerMetadata?: { anthropic?: unknown } | null;
+}): Promise<void> {
+  const counts = extractTurnUsage(args.usage, args.providerMetadata);
+  if (!counts.inputTokens && !counts.outputTokens) return;
+  try {
+    await db.canvasTurnUsage.create({
+      data: {
+        conversationId: args.conversationId,
+        turnId: args.turnId ?? null,
+        mode: args.mode,
+        source: args.source,
+        model: args.model ?? null,
+        ...counts,
+      },
+    });
+  } catch (error) {
+    console.error("[recordTurnUsage] failed to persist turn usage", {
+      conversationId: args.conversationId,
+      source: args.source,
       error: error instanceof Error ? error.message : String(error),
     });
   }

@@ -85,6 +85,16 @@ const HTML_RUNTIME_GUIDANCE =
   " (e.g. Chart.js, D3, Mermaid via <script src> or ESM import). The page CANNOT fetch other hosts or Hive APIs, submit forms, open popups, " +
   "navigate the parent, or embed <iframe>s — inline any data it needs. Images may load from any https URL.";
 
+/**
+ * HTML-page rules that used to live only in the loadable `html_pages`
+ * capability snippet; they ride on the tools so concept mode keeps them.
+ */
+const HTML_FLOW_RULE =
+  "\n\nThese tools are yours alone — a sub-agent (repo_agent, research) never saves HTML. " +
+  "Canonical flow: research each system first, then synthesize ONE HTML story and call `save_html` once — never one page per repo. " +
+  "Do NOT dump raw HTML into chat: save it, then give the user the share path as a relative link. " +
+  "For a small change (typo, number, link) call `get_html`, then `update_html` with `edits` built from that exact text; reserve `html` for genuine rewrites.";
+
 function sharePath(githubLogin: string, slug: string): string {
   return `/org/${githubLogin}/h/${slug}`;
 }
@@ -170,7 +180,8 @@ export function buildHtmlArtifactTools(orgId: string, userId: string): ToolSet {
         "  - slug: short kebab-case identifier unique within the org (e.g. 'hive-vs-workspaces-story').\n" +
         "  - title: polished title shown on the preview card and share page.\n" +
         "  - html: complete HTML document (include <!DOCTYPE html> and a full document). Do not pass s3Key, orgId, or url.\n\n" +
-        HTML_RUNTIME_GUIDANCE,
+        HTML_RUNTIME_GUIDANCE +
+        HTML_FLOW_RULE,
       inputSchema: z.object({
         slug: slugSchema,
         title: z
@@ -301,7 +312,8 @@ export function buildHtmlArtifactTools(orgId: string, userId: string): ToolSet {
         "Supply EITHER `edits` (targeted find/replace — prefer this for anything short of a full rewrite) OR `html` (the complete replacement document), never both. " +
         "Use `get_html` first if you don't already have the current text to build exact `edits` from. " +
         "Returns `{ slug, status: \"updated\", updatedAt }`. Do not pass s3Key, orgId, or url.\n\n" +
-        HTML_RUNTIME_GUIDANCE,
+        HTML_RUNTIME_GUIDANCE +
+        HTML_FLOW_RULE,
       inputSchema: z
         .object({
           slug: slugSchema.describe("The slug of the HTML page to update."),
@@ -552,7 +564,8 @@ export function buildHtmlArtifactTools(orgId: string, userId: string): ToolSet {
     get_html: tool({
       description:
         "Read the current HTML of an existing page in this org, by slug. Use this before building `edits` for `update_html` so oldStr matches the real, current text. " +
-        `Returns { slug, html, size } — capped at ${GET_HTML_MAX_BYTES} bytes; a page over that limit returns an actionable error instead of truncated HTML (apply edits without a full read, or replace wholesale).`,
+        `Returns { slug, html, size } — capped at ${GET_HTML_MAX_BYTES} bytes; a page over that limit returns an actionable error instead of truncated HTML (apply edits without a full read, or replace wholesale).` +
+        HTML_FLOW_RULE,
       inputSchema: z.object({
         slug: slugSchema.describe("The slug of the HTML page to read."),
       }),
