@@ -6,6 +6,7 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 import { RepositoryStatus } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
+import { strutActorForLaunch } from "@/services/bifrost/strut-delegation";
 
 //
 export async function POST(request: NextRequest) {
@@ -271,12 +272,23 @@ export async function POST(request: NextRequest) {
       hasGithubAuth: !!(username && githubPat),
     });
 
+    // Who the sync (and the describe run it leads to) is for: the workspace
+    // owner, whose PAT it carries, where hive can bill them.
+    const strutActor = workspace?.ownerId
+      ? await strutActorForLaunch(
+          { workspaceId: repository.workspaceId, workspaceSlug: workspace.slug, userId: workspace.ownerId },
+          { swarmUrl: swarm.swarmUrl, swarmApiKey: decryptedSwarmApiKey },
+        )
+      : undefined;
+
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
       swarmHost,
       decryptedSwarmApiKey,
       repository.repositoryUrl,
       username && githubPat ? { username, pat: githubPat } : undefined,
-      callbackUrl
+      callbackUrl,
+      // Only with an actor: without one the call is exactly what it was.
+      ...(strutActor ? ([false, { strutActor }] as const) : ([] as const)),
     );
 
     console.log("[GithubWebhook] Async sync response", {

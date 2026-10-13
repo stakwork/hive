@@ -34,7 +34,7 @@ export async function getSwarmConfig(workspaceId: string) {
     baseSwarmUrl = `http://localhost:3355`;
   }
 
-  return { baseSwarmUrl, decryptedSwarmApiKey } as const;
+  return { baseSwarmUrl, decryptedSwarmApiKey, swarmUrl: swarm.swarmUrl } as const;
 }
 
 export type ProposalDecisionAction = "accept" | "reject";
