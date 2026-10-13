@@ -12,6 +12,10 @@ export interface SyncOptions {
   embeddings?: boolean | string; // true = all repos, string = comma-separated repo names
   depth?: number;                // shallow clone depth (>= 1); omit for full clone
   filter?: string;               // git filter spec, e.g. "blob:limit=1m"; omit for no filtering
+  /** The strut actor the sync is for (`strutActorForLaunch`). Sent as `strut_actor`;
+   *  standalone forwards it to mcp's `/repo/describe` as `x-strut-actor`, so the
+   *  descriptions run as a lab workflow billed to that person. */
+  strutActor?: string;
 }
 
 export interface AsyncSyncResult {
@@ -85,6 +89,7 @@ export async function triggerAsyncSync(
   // depth/filter: only set when present (omit = no shallow clone / no size filter)
   if (options?.depth !== undefined) data.depth = Math.trunc(options.depth);
   if (options?.filter !== undefined) data.filter = options.filter;
+  if (options?.strutActor) data.strut_actor = options.strutActor;
   const result = await swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/sync_async",
@@ -126,6 +131,7 @@ export async function triggerIngestAsync(
   // depth/filter: only set when present (omit = no shallow clone / no size filter)
   if (options?.depth !== undefined) data.depth = Math.trunc(options.depth);
   if (options?.filter !== undefined) data.filter = options.filter;
+  if (options?.strutActor) data.strut_actor = options.strutActor;
   return swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/ingest_async",

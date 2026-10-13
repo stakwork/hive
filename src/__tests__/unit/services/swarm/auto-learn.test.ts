@@ -20,6 +20,12 @@ vi.mock("@/lib/encryption", () => ({
   },
 }));
 
+const { mockStrutActorForLaunch } = vi.hoisted(() => ({ mockStrutActorForLaunch: vi.fn() }));
+vi.mock("@/services/bifrost/strut-delegation", () => ({
+  STRUT_ACTOR_HEADER: "x-strut-actor",
+  strutActorForLaunch: mockStrutActorForLaunch,
+}));
+
 const fetchMock = vi.fn();
 const originalFetch = global.fetch;
 
@@ -44,7 +50,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   global.fetch = fetchMock as unknown as typeof fetch;
   fetchMock.mockResolvedValue({ ok: true, status: 200 } as Response);
+  mockStrutActorForLaunch.mockResolvedValue(undefined);
 });
+
+function actorHeaderOf(call: unknown[]): string | undefined {
+  const [, init] = call as [string, RequestInit];
+  return (init.headers as Record<string, string>)["x-strut-actor"];
+}
 
 afterEach(() => {
   global.fetch = originalFetch;
@@ -64,6 +76,13 @@ describe("triggerAutoLearn", () => {
     expect(triggerAutoLearn(base)).toBe(true);
     expect(gitreeCalls()).toHaveLength(1);
     expectGitreeCall(gitreeCalls()[0], GITHUB_PAT, "swarm-key");
+    expect(actorHeaderOf(gitreeCalls()[0])).toBeUndefined();
+  });
+
+  test("names the actor the run is for when given one", () => {
+    expect(triggerAutoLearn({ ...base, strutActor: "owner-u1" })).toBe(true);
+    expectGitreeCall(gitreeCalls()[0], GITHUB_PAT, "swarm-key");
+    expect(actorHeaderOf(gitreeCalls()[0])).toBe("owner-u1");
   });
 
   test("targets localhost over http for a local swarm", () => {
@@ -220,6 +239,14 @@ describe("scheduleAutoLearnForPush", () => {
       data: { pendingAutoLearnRequestId: null, pendingAutoLearnAt: null },
     });
   });
+
+  test("a run fired right away carries the actor it was given", async () => {
+    const outcome = await scheduleAutoLearnForPush({ ...base, syncRequestId: undefined, strutActor: "owner-u1" });
+
+    expect(outcome).toBe("fired");
+    expect(gitreeCalls()).toHaveLength(1);
+    expect(actorHeaderOf(gitreeCalls()[0])).toBe("owner-u1");
+  });
 });
 
 describe("runPendingAutoLearn", () => {
@@ -255,6 +282,23 @@ describe("runPendingAutoLearn", () => {
     expect(getGithubUsernameAndPAT).toHaveBeenCalledWith("owner-1", "hive");
     expect(gitreeCalls()).toHaveLength(1);
     expectGitreeCall(gitreeCalls()[0], "ghp_owner_secret", "decrypted-swarm-key");
+    // Where hive cannot bill the owner, nobody is named: mcp's old handler runs.
+    expect(mockStrutActorForLaunch).toHaveBeenCalledWith(
+      { workspaceId: "ws-1", workspaceSlug: "hive", userId: "owner-1" },
+      { swarmUrl: SWARM_URL, swarmApiKey: "decrypted-swarm-key" },
+    );
+    expect(actorHeaderOf(gitreeCalls()[0])).toBeUndefined();
+  });
+
+  test("runs gitree as the workspace owner where hive can bill them", async () => {
+    armPendingRepository();
+    mockStrutActorForLaunch.mockResolvedValue("owner-owner-1");
+
+    const result = await runPendingAutoLearn({ swarm: verifiedSwarm, requestId: "req-A", status: "Complete" });
+
+    expect(result).toEqual({ terminal: true, matched: 1, fired: 1 });
+    expectGitreeCall(gitreeCalls()[0], "ghp_owner_secret", "decrypted-swarm-key");
+    expect(actorHeaderOf(gitreeCalls()[0])).toBe("owner-owner-1");
   });
 
   test("a Failed webhook also fires gitree so a failed sync does not starve auto-learn", async () => {
