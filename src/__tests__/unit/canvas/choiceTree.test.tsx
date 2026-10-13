@@ -23,7 +23,8 @@ vi.mock("@xyflow/react", () => ({
 
 import { buildChoiceTree, compareChoiceIds, layoutTree, isTreeArtifact, ChoiceTree } from "@/app/org/[githubLogin]/_components/artifacts/viewers/ChoiceTree";
 
-const n = (ref_id: string, props: Record<string, unknown>, node_type = "Choice") => ({ ref_id, node_type, properties: props });
+// The choice-tree route returns label-filtered nodes with no node_type.
+const n = (ref_id: string, props: Record<string, unknown>) => ({ ref_id, properties: props });
 // Children are deliberately out of choice_id order (and ref_ids are not sortable to it).
 const nodes = [
   n("r", { choice_id: 1, text: "Root?", kind: "question", made_by: "user", state: "chosen", quote: "the original ask" }),
@@ -34,22 +35,19 @@ const nodes = [
   n("g", { choice_id: 4, name: "Legacy name", kind: "option", state: "open" }),
   n("x", { choice_id: 5, text: "Elsewhere" }),
   n("p", { choice_id: 0, text: "Parent" }),
-  n("o", { text: "Other" }, "Concept"),
 ];
 const edges = [
-  { source: "r", target: "z3", edge_type: "PARENT_OF" },
-  { source: "r", target: "a9", edge_type: "PARENT_OF" },
-  { source: "r", target: "b", edge_type: "PARENT_OF" },
-  { source: "b", target: "q", edge_type: "PARENT_OF" },
-  { source: "q", target: "g", edge_type: "PARENT_OF" },
-  { source: "p", target: "r", edge_type: "PARENT_OF" },
-  { source: "r", target: "o", edge_type: "PARENT_OF" },
-  { source: "g", target: "r", edge_type: "PARENT_OF" },
-  { source: "x", target: "b", edge_type: "RELATED" },
+  { source: "r", target: "z3" },
+  { source: "r", target: "a9" },
+  { source: "r", target: "b" },
+  { source: "b", target: "q" },
+  { source: "q", target: "g" },
+  { source: "p", target: "r" },
+  { source: "g", target: "r" },
 ];
 
 describe("buildChoiceTree / layoutTree", () => {
-  it("keeps the focus and its Choice descendants only, via PARENT_OF (cycle-safe)", () => {
+  it("keeps the focus and its descendants only (x, p are not under it), via PARENT_OF (cycle-safe)", () => {
     const { items, links } = buildChoiceTree(nodes, edges, "r");
     expect(items.map((i) => i.id).sort()).toEqual(["a9", "b", "g", "q", "r", "z3"]);
     expect(links).toHaveLength(5);
@@ -82,8 +80,8 @@ describe("buildChoiceTree / layoutTree", () => {
     expect(pos.a9.y).toBeLessThan(pos.z3.y);
   });
 
-  it("is empty when the focus is not a Choice", () => {
-    expect(buildChoiceTree(nodes, edges, "o").items).toEqual([]);
+  it("is empty when the focus is not among the nodes", () => {
+    expect(buildChoiceTree(nodes, edges, "missing").items).toEqual([]);
   });
 });
 
@@ -100,7 +98,7 @@ describe("isTreeArtifact", () => {
 describe("ChoiceTree", () => {
   beforeEach(() => {
     setDraft.mockClear();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { nodes, edges } }) }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ nodes, edges, truncated: false }) }));
   });
 
   it("shows badges and drafts messages from the buttons", async () => {
@@ -122,5 +120,33 @@ describe("ChoiceTree", () => {
     expect(setDraft).toHaveBeenLastCalledWith('Go with A: "A" (b)');
     fireEvent.click(screen.getByText("Revisit"));
     expect(setDraft).toHaveBeenLastCalledWith('Revisit B: "B" (a9)');
+  });
+
+  const renderTree = async () => {
+    const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ChoiceTree workspace="hive" focus="r" />
+      </QueryClientProvider>,
+    );
+  };
+
+  it("fetches the choice-tree route", async () => {
+    await renderTree();
+    await screen.findByText("Root?");
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/workspaces/hive/graph/choice-tree?focus=r&label=Choice");
+  });
+
+  it("shows the empty message only for a truly empty result", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ nodes: [], edges: [] }) }));
+    await renderTree();
+    expect(await screen.findByText("Nothing to show for this choice yet.")).toBeTruthy();
+  });
+
+  it("shows an error, not the empty message, when the request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }));
+    await renderTree();
+    expect(await screen.findByText("Could not load the tree.")).toBeTruthy();
+    expect(screen.queryByText("Nothing to show for this choice yet.")).toBeNull();
   });
 });
