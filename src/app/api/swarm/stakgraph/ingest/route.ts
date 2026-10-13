@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
     const stakgraphCallbackUrl = getStakgraphWebhookCallbackUrl(request);
 
     // Who the ingest (and the describe run it leads to) is for: the requesting
-    // user, whose PAT it carries, where hive can bill them.
+    // user, whose PAT it carries.
     const strutActor = await strutActorForLaunch(
       { workspaceId: repoWorkspaceId, workspaceSlug: workspace.slug, userId: session.user.id },
       { swarmUrl: swarm.swarmUrl, swarmApiKey: decryptedApiKey },

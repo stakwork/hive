@@ -14,7 +14,8 @@ export interface SyncOptions {
   filter?: string;               // git filter spec, e.g. "blob:limit=1m"; omit for no filtering
   /** The strut actor the sync is for (`strutActorForLaunch`). Sent as `strut_actor`;
    *  standalone forwards it to mcp's `/repo/describe` as `x-strut-actor`, so the
-   *  descriptions run as a lab workflow billed to that person. */
+   *  descriptions run as a lab workflow attributed to that person (billed to them
+   *  where the workspace has Bifrost). */
   strutActor?: string;
 }
 
