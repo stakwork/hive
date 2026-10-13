@@ -18,7 +18,7 @@ export interface SystemMapRun {
   cweIds: string[] | null;
 }
 
-export type SystemMapWorkflowKey = "schema" | "materialize" | "cwe_check" | "cloud_links" | "security_review";
+export type SystemMapWorkflowKey = "system_map" | "cwe_check" | "security_review";
 
 export interface SystemMapRunsResponse {
   /** Which workflow these runs belong to. */
