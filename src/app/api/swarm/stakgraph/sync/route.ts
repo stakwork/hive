@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
       : undefined;
 
     // Who the sync (and the describe run it leads to) is for: the requesting
-    // user, whose PAT it carries, where hive can bill them.
+    // user, whose PAT it carries.
     const strutActor = await strutActorForLaunch(
       { workspaceId: swarm.workspaceId, workspaceSlug: workspace.slug, userId },
       { swarmUrl: swarm.swarmUrl, swarmApiKey: swarm.swarmApiKey },
