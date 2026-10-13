@@ -722,6 +722,13 @@ interface CanvasChatState {
   registerArtifact: (artifact: CanvasArtifact) => void;
   /** Mark an artifact as dismissed for the lifetime of the store. */
   dismissArtifact: (artifactId: string) => void;
+  /**
+   * Add one ref to a stored message's `artifacts` — used by
+   * `useTraceSelection` once the trace route hands back the ref the
+   * server just appended to the SAME message server-side, so the local
+   * conversation matches without a refetch.
+   */
+  addArtifactToMessage: (conversationId: string, messageId: string, artifact: ArtifactRef) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -932,6 +939,25 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           },
           false,
           "setConversationMessages",
+        ),
+
+      addArtifactToMessage: (conversationId, messageId, artifact) =>
+        set(
+          (s) => {
+            const conv = s.conversations[conversationId];
+            if (!conv) return s;
+            let changed = false;
+            const messages = conv.messages.map((message) => {
+              if (message.id !== messageId) return message;
+              if (message.artifacts?.some((a) => a.id === artifact.id)) return message;
+              changed = true;
+              return { ...message, artifacts: [...(message.artifacts ?? []), artifact] };
+            });
+            if (!changed) return s;
+            return { conversations: { ...s.conversations, [conversationId]: { ...conv, messages } } };
+          },
+          false,
+          "addArtifactToMessage",
         ),
 
       replaceAssistantStream: (conversationId, prefix, next) =>

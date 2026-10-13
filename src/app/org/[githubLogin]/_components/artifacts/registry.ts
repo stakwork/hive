@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Network,
   ScrollText,
+  Search,
   Waypoints,
   type LucideIcon,
 } from "lucide-react";
@@ -32,6 +33,7 @@ import { AudioInline, AudioPanel, ImageInline, ImagePanel, VideoInline, VideoPan
 import { PdfPanel } from "./viewers/pdf";
 import { PullRequestInline, PullRequestPanel } from "./viewers/pullRequest";
 import { RunGraphInline, RunGraphPanel, runGraphFact } from "./viewers/runGraph";
+import { TraceInline, TracePanel, traceFact } from "./viewers/trace";
 import { UrlInline, UrlPanel } from "./viewers/url";
 
 /**
@@ -167,6 +169,15 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Inline: RunGraphInline,
     Panel: RunGraphPanel,
     fact: runGraphFact,
+  },
+  // Labelled "Lineage", not "trace" — `run_graph` already uses that word.
+  trace: {
+    label: "Lineage",
+    Icon: Search,
+    Inline: TraceInline,
+    Panel: TracePanel,
+    fact: traceFact,
+    copyText: (content) => content.selection,
   },
 };
 
