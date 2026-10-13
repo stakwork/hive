@@ -71,10 +71,7 @@ import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import { buildPromptTools } from "@/lib/ai/promptTools";
 import { buildConceptTools } from "@/lib/ai/conceptTools";
 import { buildWorkflowExplorerTools } from "@/lib/ai/workflowExplorerTools";
-import {
-  isPromptsCapabilityEnabledForOrg,
-  isStrutCapabilityEnabledForOrg,
-} from "@/lib/ai/capabilityGates";
+import { isPromptsCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import {
   buildStrutTools,
   getStrutCapabilitySnippet,
@@ -467,9 +464,8 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // tool in every sense; a job launches a run there. The two read tools
       // survive readonly mode.
       writeToolNames: [DISPATCH_STRUT_TOOL, START_JOB_TOOL, CONTINUE_JOB_TOOL],
-      // Org-gated, opt-in. Like the other gated capabilities, must never
-      // appear in an `includes` list.
-      orgGate: isStrutCapabilityEnabledForOrg,
+      // Not gated: every org gets it. Per-workspace authorization
+      // (membership, org ownership) is enforced inside the tools.
     },
   };
 

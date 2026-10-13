@@ -3,6 +3,7 @@ import {
   getRoadmapCapabilitySnippet,
   getCanvasPromptSuffix,
 } from "@/lib/constants/prompt";
+import { getSlimRoadmapCapabilitySnippet } from "@/lib/constants/prompt-slim";
 
 describe("getRoadmapCapabilitySnippet — Stakwork workflow routing rule", () => {
   it("contains the stakwork-gating phrase 'only if'", () => {
@@ -52,8 +53,19 @@ describe("getRoadmapCapabilitySnippet — a bare 'workflow' means strut", () => 
     );
   });
 
-  it("does not fall back to Stakwork when strut is unavailable", () => {
-    expect(snippet).toContain("do not fall back to Stakwork");
+  // `strut` is composed for every org, and nothing in the system prompt
+  // lists it as a capability. Wording that makes jobs conditional on it
+  // being available let Jamie claim `start_job` was missing while it was
+  // in its tool list, and route a single-repo change to propose_feature.
+  it.each([
+    ["full", getRoadmapCapabilitySnippet],
+    ["slim", getSlimRoadmapCapabilitySnippet],
+  ])("does not make strut or jobs conditional on availability (%s)", (_name, get) => {
+    const text = get();
+    expect(text).not.toContain("not among your capabilities");
+    expect(text).not.toContain("is in your tool list");
+    expect(text).not.toContain("`start_job` is not available");
+    expect(text).toContain("- **A job (`start_job`)** — use for a **focused change in one repository** that the user wants as a pull request. Name");
   });
 
   it("puts the strut default BEFORE the stakwork-workspace rule and gates that rule on the user saying Stakwork", () => {

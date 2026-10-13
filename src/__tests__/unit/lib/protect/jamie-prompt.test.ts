@@ -1,12 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { buildProtectJamieSeed, chooseProtectJamieTool } from "@/lib/protect/jamie-prompt";
 import type { ProtectFinding } from "@/types/protect";
-
-vi.mock("@/lib/ai/capabilityGates", () => ({
-  isStrutCapabilityEnabledForOrg: vi.fn(),
-}));
-
-import { isStrutCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 
 function finding(overrides: Partial<ProtectFinding> = {}): ProtectFinding {
   return {
@@ -30,27 +24,23 @@ function finding(overrides: Partial<ProtectFinding> = {}): ProtectFinding {
 }
 
 describe("chooseProtectJamieTool", () => {
-  it("seeds propose_feature when the org strut gate is off", async () => {
-    vi.mocked(isStrutCapabilityEnabledForOrg).mockResolvedValue(false);
-    await expect(chooseProtectJamieTool(finding(), "org-1")).resolves.toBe("propose_feature");
+  it("seeds start_job for a small single-file fix", () => {
+    expect(chooseProtectJamieTool(finding())).toBe("start_job");
   });
 
-  it("seeds start_job for a small single-file fix when the gate is on", async () => {
-    vi.mocked(isStrutCapabilityEnabledForOrg).mockResolvedValue(true);
-    await expect(chooseProtectJamieTool(finding(), "org-1")).resolves.toBe("start_job");
-  });
-
-  it("seeds propose_feature for multi-file or ambiguous findings", async () => {
-    vi.mocked(isStrutCapabilityEnabledForOrg).mockResolvedValue(true);
-    await expect(
+  it("seeds propose_feature for multi-file or ambiguous findings", () => {
+    expect(
       chooseProtectJamieTool(
         finding({
           description: "Needs an architecture change across files",
           recommendation: "Redesign the auth module",
         }),
-        "org-1",
       ),
-    ).resolves.toBe("propose_feature");
+    ).toBe("propose_feature");
+  });
+
+  it("seeds propose_feature when the finding names no repository", () => {
+    expect(chooseProtectJamieTool(finding({ repositoryUrl: "" }))).toBe("propose_feature");
   });
 });
 
