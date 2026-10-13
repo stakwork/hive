@@ -18,7 +18,6 @@ import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 
 const NODE_W = 220;
 const NODE_H = 64;
-const EDGE = "PARENT_OF";
 const DEFAULT_LABEL = "Choice";
 const REFETCH_MS = 15_000;
 
@@ -44,13 +43,11 @@ export interface ChoiceItem {
 }
 interface RawNode {
   ref_id: string;
-  node_type?: string;
   properties?: Record<string, unknown>;
 }
 interface RawEdge {
   source: string;
   target: string;
-  edge_type?: string;
 }
 
 /** `choice_id` order: numeric when both are numbers, else string with numeric collation. */
@@ -69,11 +66,12 @@ const text = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 const STATES: readonly string[] = ["open", "chosen", "rejected", "simulated"];
 
 /** The root and its descendants along `PARENT_OF` (cycle-safe), with the edges among them. */
-export function buildChoiceTree(nodes: RawNode[], edges: RawEdge[], focus: string, label = DEFAULT_LABEL) {
-  const byId = new Map(nodes.filter((n) => n.node_type === label).map((n) => [n.ref_id, n]));
+export function buildChoiceTree(nodes: RawNode[], edges: RawEdge[], focus: string) {
+  // Every node is of the label already: the read selects by label.
+  const byId = new Map(nodes.map((n) => [n.ref_id, n]));
   const kids = new Map<string, string[]>();
   for (const e of edges) {
-    if (e.edge_type !== EDGE || !byId.has(e.source) || !byId.has(e.target)) continue;
+    if (!byId.has(e.source) || !byId.has(e.target)) continue;
     kids.set(e.source, [...(kids.get(e.source) ?? []), e.target]);
   }
   const items: ChoiceItem[] = [];
@@ -161,18 +159,19 @@ const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<{ choice: C
 
 const nodeTypes = { choice: ChoiceNode };
 
-interface GraphResponse {
-  data?: { nodes?: RawNode[]; edges?: RawEdge[] };
+interface TreeResponse {
+  nodes?: RawNode[];
+  edges?: RawEdge[];
 }
 
 /** Polled while open and on window focus, so children Jamie adds appear. */
-function useChoices(workspace: string, label: string) {
+function useChoices(workspace: string, focus: string, label: string) {
   return useQuery({
-    queryKey: ["choice-tree", workspace, label],
+    queryKey: ["choice-tree", workspace, focus, label],
     queryFn: async () => {
-      const res = await fetch(`/api/workspaces/${encodeURIComponent(workspace)}/graph/nodes?node_type=${encodeURIComponent(label)}&limit=1000&limit_mode=total`);
+      const res = await fetch(`/api/workspaces/${encodeURIComponent(workspace)}/graph/choice-tree?focus=${encodeURIComponent(focus)}&label=${encodeURIComponent(label)}`);
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
-      return ((await res.json()) as GraphResponse).data ?? {};
+      return (await res.json()) as TreeResponse;
     },
     refetchInterval: REFETCH_MS,
     refetchOnWindowFocus: true,
@@ -195,8 +194,8 @@ function Tree({ items, links }: ReturnType<typeof buildChoiceTree>) {
 }
 
 export function ChoiceTree({ workspace, focus, label = DEFAULT_LABEL }: { workspace: string; focus: string; label?: string }) {
-  const { data, isLoading, error } = useChoices(workspace, label);
-  const tree = useMemo(() => buildChoiceTree(data?.nodes ?? [], data?.edges ?? [], focus, label), [data, focus, label]);
+  const { data, isLoading, error } = useChoices(workspace, focus, label);
+  const tree = useMemo(() => buildChoiceTree(data?.nodes ?? [], data?.edges ?? [], focus), [data, focus]);
   if (isLoading) return <p className="p-4 text-xs text-muted-foreground">Loading tree…</p>;
   if (error) return <p className="p-4 text-xs text-destructive">Could not load the tree.</p>;
   if (!tree.items.length) return <p className="p-4 text-xs text-muted-foreground">Nothing to show for this choice yet.</p>;
