@@ -8,7 +8,7 @@
  * Priority:
  *   1. Explicit replyId match (form-submit path — preserves Q&A pairs)
  *   2. First USER-role message that appears after the question in the array
- *      (canvas-agent answer via send_to_feature_planner, or free-form text)
+ *      (free-form text)
  */
 export function findClarifyingReply<T extends { id: string; role: string; replyId?: string | null }>(
   messages: T[],

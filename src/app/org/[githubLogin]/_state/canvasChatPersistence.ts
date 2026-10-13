@@ -60,10 +60,8 @@ export interface MergeResult<T> {
  * Merge server messages into the local list by id. Keeps ALL local
  * messages (ephemeral seeds + any unsaved local rows survive) and
  * appends server rows we don't already have. Server-appended rows
- * (planner fan-out, auto-turn, planner-form answers) are always the
- * newest, so appending them in server order is chronological — and the
- * `<SubAgentRunCard>`'s `source.kind === "planner"` rows land in the
- * conversation this way.
+ * (auto-turn rows) are always the
+ * newest, so appending them in server order is chronological.
  *
  * `skipServerIdPrefixes` filters out server rows whose id starts with any
  * of the given prefixes — the backend-driven-turn dedup. The authoring
@@ -91,110 +89,4 @@ export function mergeServerMessages<T extends PersistableMessage>(
     added,
     serverIds: server.map((m) => m.id),
   };
-}
-
-/** Minimal planner-row `source` shape this reconcile compares/refreshes. */
-interface PlannerSourceLike {
-  kind?: string;
-  featureId?: string;
-  workflowStatus?: string;
-  hasTasks?: boolean;
-  hasForm?: boolean;
-  hasLogs?: boolean;
-}
-
-interface ReconcilableMessage {
-  id: string;
-  source?: PlannerSourceLike | { kind?: string } | null;
-  content?: string;
-}
-
-/**
- * Server-authoritative refresh of planner-row metadata.
- *
- * Planner rows (`source.kind === "planner"`) originate server-side and
- * are never edited locally, so the server copy is authoritative. The
- * append-only `mergeServerMessages` can't refresh an already-present
- * row (it only adds NEW ids), which leaves a planner row's frozen
- * `source.workflowStatus` snapshot stale when the feature workflow
- * reaches a terminal state AFTER the message fanned out — the stakwork
- * webhook updates the row in place (same id) and nudges, but the merge
- * skips it. This step closes that gap: for each local planner row, if
- * the server has a row with the SAME id whose tracked `source` fields
- * differ, swap in the server `source`.
- *
- * It never drops, reorders, or adds rows — it only refreshes `source`
- * on rows already present locally, so the "never lose a local message"
- * invariant `mergeServerMessages` guarantees is untouched. Returns
- * `changed: false` (and the original array by reference) when nothing
- * moved, so callers can skip a no-op store write.
- */
-export function reconcilePlannerSources<T extends ReconcilableMessage>(
-  local: T[],
-  server: T[],
-): { messages: T[]; changed: boolean } {
-  const serverById = new Map(server.map((m) => [m.id, m]));
-  let changed = false;
-  const messages = local.map((m) => {
-    const localSource = m.source as PlannerSourceLike | null | undefined;
-    if (localSource?.kind !== "planner") return m;
-    const s = serverById.get(m.id);
-    const serverSource = s?.source as PlannerSourceLike | null | undefined;
-    if (serverSource?.kind !== "planner") return m;
-    if (
-      localSource.workflowStatus === serverSource.workflowStatus &&
-      localSource.hasTasks === serverSource.hasTasks &&
-      localSource.hasForm === serverSource.hasForm
-    ) {
-      return m;
-    }
-    changed = true;
-    return { ...m, source: s!.source } as T;
-  });
-  return changed ? { messages, changed: true } : { messages: local, changed: false };
-}
-
-/**
- * Apply a lightweight status patch to planner rows in-place.
- *
- * Used by `useSubAgentStatusRefresh` to update `workflowStatus` and
- * `hasLogs` on planner rows after fetching `/api/features/[id]/plan-status`,
- * without discarding conversation history or triggering a full re-render.
- *
- * Returns the original array reference (and `changed: false`) when
- * nothing actually changed — callers can skip the no-op store write.
- */
-export function applyFeatureStatusPatch<T extends ReconcilableMessage>(
-  messages: T[],
-  patchByFeatureId: Map<string, { workflowStatus?: string; hasLogs?: boolean }>,
-): { messages: T[]; changed: boolean } {
-  if (patchByFeatureId.size === 0) return { messages, changed: false };
-
-  let changed = false;
-  const updated = messages.map((m) => {
-    const src = m.source as PlannerSourceLike | null | undefined;
-    if (src?.kind !== "planner" || !src.featureId) return m;
-    const patch = patchByFeatureId.get(src.featureId);
-    if (!patch) return m;
-
-    const workflowStatusChanged =
-      patch.workflowStatus !== undefined &&
-      src.workflowStatus !== patch.workflowStatus;
-    const hasLogsChanged =
-      patch.hasLogs !== undefined && src.hasLogs !== patch.hasLogs;
-
-    if (!workflowStatusChanged && !hasLogsChanged) return m;
-
-    changed = true;
-    return {
-      ...m,
-      source: {
-        ...src,
-        ...(workflowStatusChanged ? { workflowStatus: patch.workflowStatus } : {}),
-        ...(hasLogsChanged ? { hasLogs: patch.hasLogs } : {}),
-      },
-    } as T;
-  });
-
-  return changed ? { messages: updated, changed: true } : { messages, changed: false };
 }

@@ -744,15 +744,6 @@ export type ProposeToolName =
   | typeof PROPOSE_MOVE_NODE_TOOL
   | typeof PROPOSE_DELETE_NODE_TOOL;
 
-/**
- * Sub-agent delegation tool name. Not a proposal (no approve/reject
- * flow), but lives next to the propose constants so every place the
- * chat UI looks up a known tool name by string finds the canonical
- * source here. Used by `SubAgentRunCard`'s extractor to filter
- * `message.toolCalls[]` down to planner-dispatch calls.
- */
-export const SEND_TO_FEATURE_PLANNER_TOOL = "send_to_feature_planner" as const;
-
 // ─── Approval / rejection intent (rides on user messages) ──────────────
 
 /**

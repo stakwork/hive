@@ -322,9 +322,8 @@ export interface RunCanvasAgentOptions {
    * readonly-strip names (see `src/lib/ai/capabilities.ts`). Defaults
    * to the full set, i.e. the historical canvas-agent behavior. Pass a
    * subset to run the same agent on surfaces that have no canvas —
-   * e.g. `["planner"]` for the per-feature Plan page, giving the agent
-   * `send_to_feature_planner` plus the per-workspace tools so it can
-   * help execute an existing plan without any roadmap/propose tools.
+   * e.g. `["strut"]`, giving the agent only that capability's tools
+   * plus the per-workspace tools.
    * Note `"roadmap"` implies `"whiteboard"`, `"research"`, and
    * `"connections"` (registry `includes`). Ignored when `orgId` is absent.
    */
@@ -358,10 +357,9 @@ export interface RunCanvasAgentOptions {
    */
   modelName?: string;
   /**
-   * Opt in to the slim prompt (concept-tree mode): slim core snippets and
-   * the FORM rule on `send_to_feature_planner`. Sent by the canvas
+   * Opt in to the slim prompt (concept-tree mode): slim core snippets. Sent by the canvas
    * SidebarChat when its settings switch is on; omitted → full prompt
-   * (including every server-side caller, e.g. planner wake turns).
+   * (including every server-side caller, e.g. strut wake turns).
    */
   slimPrompt?: boolean;
   /**
@@ -387,12 +385,8 @@ export interface RunCanvasAgentOptions {
   cachedConcepts?: CachedConcepts | null;
   /**
    * Pre-validated `SharedConversation.id` for the active canvas
-   * conversation. Forwarded to `buildInitiativeTools` so
-   * `send_to_feature_planner` can lazy-claim ownership
-   * (`Feature.parentCanvasConversationId`) for features messaged from
-   * this conversation. Optional — when absent, the lazy-claim
-   * short-circuits and the feature stays unowned for fan-out
-   * purposes. The caller MUST validate the id; see
+   * conversation. Forwarded to the capability tools that
+   * need it (strut, research, graph walk, …). Optional. The caller MUST validate the id; see
    * `resolveTokenAttributionRowId` in `/api/ask/quick/route.ts` for
    * the precedent.
    */
@@ -1006,8 +1000,6 @@ export async function runCanvasAgent(
           orgId,
           userId,
           currentCanvasConversationId,
-          chatAgentModel: modelName,
-          slimPrompt,
           webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,
@@ -1169,8 +1161,6 @@ export async function runCanvasAgent(
           orgId,
           userId,
           currentCanvasConversationId,
-          chatAgentModel: modelName,
-          slimPrompt,
           webSearch,
           dispatchedResearch,
           dispatchedGraphWalks,

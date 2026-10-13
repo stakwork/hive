@@ -132,7 +132,7 @@ describe("SidebarChat filteredTimeline logic", () => {
 
   it("never filters non-proposal tool calls", () => {
     const toolCalls: ToolCall[] = [
-      { id: "tc-other", toolName: "send_to_feature_planner", output: { ok: true } },
+      { id: "tc-other", toolName: "read_canvas", output: { ok: true } },
     ];
     const timeline: TimelineItem[] = [makeToolCallItem("tc-other")];
     const proposals = [{ proposalId: "p1" }]; // proposals present

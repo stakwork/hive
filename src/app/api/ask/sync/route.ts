@@ -339,8 +339,7 @@ export async function POST(request: NextRequest) {
       // dryRun composes a side-effect-free toolset: the org canvas agent
       // with write tools stripped, EXCEPT the pure-output `propose_*` tools
       // (kept so evals can read the proposed feature/initiative), and with
-      // the `planner` capability dropped so `send_to_feature_planner` (a
-      // real Stakwork dispatch) is absent. A live turn runs the full agent.
+      // only the `roadmap` capability. A live turn runs the full agent.
       //
       // Both branches pass `orgId` unconditionally: this endpoint is
       // org-scoped by construction (an orgId is required above), and the
@@ -348,13 +347,12 @@ export async function POST(request: NextRequest) {
       // many orgs have exactly one. The live branch used to gate on
       // `slugs.length > 1` (mirroring an old `/api/ask/quick` gate), which
       // silently ran single-workspace orgs as the plain per-workspace
-      // agent with no `propose_feature`.
+      // agent with no `propose_initiative`.
       const agentOptions = dryRun
         ? {
             // `roadmap` pulls in the loadable trio (whiteboard/research/
             // connections) via the registry `includes` but deliberately
-            // NOT `planner`, so `send_to_feature_planner` (a real Stakwork
-            // dispatch) is absent.
+            // nothing else.
             orgId,
             capabilities: ["roadmap"] as readonly OrgCapability[],
             readonly: true,
@@ -395,7 +393,6 @@ export async function POST(request: NextRequest) {
           // stop condition (ANY condition stopping ends the loop).
           ...(maxTurns ? { extraStopConditions: stepCountIs(maxTurns) } : {}),
           // The server-owned org-canvas row (live turns only) — what
-          // `send_to_feature_planner` lazy-claims for fan-out and what
           // `schedule_check` keys off. Undefined in dryRun (no row).
           ...(rowId ? { currentCanvasConversationId: rowId } : {}),
           dispatchedResearch,

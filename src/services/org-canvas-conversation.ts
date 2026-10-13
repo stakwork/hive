@@ -29,10 +29,7 @@ import {
  * conversations are NOT workspace-scoped (`workspaceId: null`,
  * `sourceControlOrgId` set), so the workspace-keyed validator never
  * matches them and would silently drop the id. The approval flow
- * needs a validated id to stamp `Feature.parentCanvasConversationId`,
- * which is what lets `fanOutPlannerMessageToCanvas` post the planner's
- * `source.kind === "planner"` message back into this conversation (and
- * render the `<SubAgentRunCard>`).
+ * needs a validated id to stamp `Feature.parentCanvasConversationId`.
  *
  * Validates the row belongs to this org and either to this caller or
  * is an explicitly shared room (mirrors the GET/PUT ownership rule in
