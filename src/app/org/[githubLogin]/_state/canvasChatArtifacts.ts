@@ -105,8 +105,17 @@ export interface ArtifactContents {
    * A workspace's knowledge graph, opened on the graph workbench — centred on
    * `focus` when given, with `changes` drawn on it. `proposal` is the id of
    * the proposal those changes are, so the view can follow its decision.
+   * `layout: "tree"` opens a left-to-right tree of `label` nodes (default
+   * `Choice`) below `focus` instead — the brainstorm tree (`ChoiceTree`).
    */
-  graph: { workspace: string; focus?: string; changes?: GraphChange[]; proposal?: string };
+  graph: {
+    workspace: string;
+    focus?: string;
+    changes?: GraphChange[];
+    proposal?: string;
+    layout?: "tree";
+    label?: string;
+  };
   /**
    * What a strut run did in a workspace's knowledge graph, call by call —
    * the run graph (`components/strut-run-graph`), read live from the run's
@@ -418,6 +427,8 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
           focus: bounded(raw.focus, MAX_ID_LENGTH) ?? undefined,
           changes: parseGraphChanges(raw.changes),
           proposal: bounded(raw.proposal, MAX_ID_LENGTH) ?? undefined,
+          layout: raw.layout === "tree" ? ("tree" as const) : undefined,
+          label: bounded(raw.label, MAX_ID_LENGTH) ?? undefined,
         }
       : null;
   },

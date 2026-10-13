@@ -4,6 +4,7 @@ import React from "react";
 import { GraphWorkbench } from "@/components/graph-workbench";
 import { getProposalStatus } from "@/lib/proposals/types";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
+import { ChoiceTree, isTreeArtifact } from "./ChoiceTree";
 import { selectActiveMessages, useCanvasChatStore } from "../../../_state/canvasChatStore";
 
 const NOTICE = {
@@ -12,6 +13,8 @@ const NOTICE = {
 } as const;
 
 export function GraphInline({ artifact, content }: ArtifactViewerProps<"graph">) {
+  if (isTreeArtifact(artifact, content))
+    return <p className="px-3 py-2.5 text-xs text-muted-foreground">{artifact.title} — Open tree</p>;
   if (content.changes?.length)
     return (
       <p className="px-3 py-2.5 text-xs text-muted-foreground">
@@ -27,11 +30,12 @@ export function GraphInline({ artifact, content }: ArtifactViewerProps<"graph">)
 }
 
 /**
- * The graph workbench itself, centred on the artifact's node. A proposal's
+ * A brainstorm tree (see `isTreeArtifact`), else the graph workbench itself, centred on the artifact's node. A proposal's
  * change is drawn on it until the proposal is decided; after that it shows
  * the graph as it is — centred on what an approval created.
  */
 export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) {
+  const tree = isTreeArtifact(artifact, content);
   const status = useCanvasChatStore((s) => {
     const messages = selectActiveMessages(s);
     return content.proposal && messages ? getProposalStatus(messages, content.proposal).status : null;
@@ -40,6 +44,7 @@ export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) 
   const created = content.changes?.find((c) => c.kind === "node")?.name;
   // An approval lands on what it created, else where the proposal was centred.
   const approvedFocus = [created, content.focus].filter((ref): ref is string => !!ref);
+  if (tree) return <ChoiceTree workspace={content.workspace} focus={content.focus!} label={content.label} />;
   return (
     <div className="h-full">
       <GraphWorkbench

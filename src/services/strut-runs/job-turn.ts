@@ -124,6 +124,7 @@ const KINDS: ReadonlySet<string> = new Set<ArtifactKind>([
   "code",
   "log",
   "json",
+  "graph",
 ]);
 /** Kinds whose content is an address, so an absolute `url` shows as given. */
 const ADDRESS_KINDS: ReadonlySet<string> = new Set<ArtifactKind>(["image", "video", "audio", "pdf", "url"]);
@@ -202,6 +203,12 @@ function inlineContent(kind: string, content: unknown): { kind: ArtifactKind; co
     const pr = pullRequestContent(content);
     return pr && { kind: "pull_request", content: pr };
   }
+  if (kind === "graph" && typeof content === "string") {
+    // A graph card's content (`{ workspace, focus, … }`) may arrive as JSON text.
+    if (content.length > MAX_INLINE_CHARS) return null;
+    const parsed = parseJsonObject(content);
+    return parsed && { kind: "graph", content: parsed };
+  }
   if (isRecord(content)) {
     // Already the kind's shape (a pull request, a diff's files): the ref's
     // parser at hydration keeps it or drops it.
@@ -266,7 +273,7 @@ export function mapStrutArtifacts(
         // and renders them in `HtmlArtifactFrame` — a sandboxed frame,
         // scripts on, never a navigation to the reader. A diff file or a
         // pull request cannot be read off bytes, so as code.
-        const kind: ArtifactKind = !KINDS.has(entry.kind)
+        const kind: ArtifactKind = !KINDS.has(entry.kind) || entry.kind === "graph"
           ? "url"
           : entry.kind === "diff" || entry.kind === "pull_request"
             ? "code"
