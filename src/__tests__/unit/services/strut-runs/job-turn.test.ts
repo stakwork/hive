@@ -751,3 +751,105 @@ describe("handleJobTurnSettled — the trace card", () => {
     expect(mockCount).not.toHaveBeenCalled();
   });
 });
+
+describe("handleJobTurnSettled — the brainstorm run's card", () => {
+  const plan = { id: "plan", kind: "markdown", title: "Plan", url: `/jobs/${JOB}/files/plan.md` };
+  const tree = { id: "brainstorm-tree", kind: "graph", title: "Brainstorm: dark mode", content: '{"workspace":"hive","focus":"ref-1"}' };
+  const treeRef = { id: "brainstorm-tree", kind: "graph", title: "Brainstorm: dark mode", source: { type: "inline", content: { workspace: "hive", focus: "ref-1" } } };
+  const launch = (path: string, name: string, runId: string, extra: Record<string, unknown> = {}) => [
+    { type: "step.start", path, input: { name, ...extra } },
+    { type: "step.end", path, stepType: "tool:meta_run_workflow", output: { runId } },
+  ];
+  const delivered = () => mockTx.sharedConversation.update.mock.calls[0][0].data.messages[0];
+
+  /** Answers by URL: the job's own artifacts, the turn's events, and each child run's artifacts. */
+  function serve(opts: { own?: unknown[]; events?: unknown; children?: Record<string, unknown> }) {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url.endsWith("/workflows/job/runs/1790000000000/artifacts")) return json(200, { artifacts: opts.own ?? [plan] });
+      if (url.endsWith("/workflows/job/runs/1790000000000/events")) return json(200, opts.events ?? []);
+      const m = /\/workflows\/([^/]+)\/runs\/([^/]+)\/artifacts$/.exec(url);
+      const child = m && opts.children?.[`${m[1]}/${m[2]}`];
+      return child instanceof Response ? child : json(200, { artifacts: child ?? [] });
+    });
+  }
+  const childCalls = () => mockFetch.mock.calls.map((c) => String(c[0])).filter((u) => !u.includes("/workflows/job/"));
+
+  it("collects the brainstorm run's tree when the agent did not copy it, from the row's swarm", async () => {
+    serve({ events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": [tree, { id: "notes", kind: "markdown", title: "Notes", url: "/artifacts/1790000000111/n.md" }] } });
+    await handleJobTurnSettled(row());
+
+    expect(childCalls()).toEqual(["https://swarm1.sphinx.chat:3355/lab/workflows/brainstorm/runs/1790000000111/artifacts"]);
+    expect(mockFetch.mock.calls.find((c) => String(c[0]).includes("brainstorm"))![1]).toMatchObject({ headers: { "x-api-token": "swarm-key" } });
+    expect(delivered().artifacts.map((a: { id: string }) => a.id)).toEqual(["plan", "brainstorm-tree"]);
+    expect(delivered().artifacts[1]).toEqual(treeRef);
+    expect(mockIndex).toHaveBeenCalledWith(expect.anything(), JOB, [expect.objectContaining({ id: "plan" }), treeRef]);
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0].artifacts.map((a: { title: string }) => a.title)).toEqual(["Plan", "Brainstorm: dark mode"]);
+  });
+
+  it("takes the last brainstorm launch", async () => {
+    serve({
+      events: [...launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), ...launch("job/002-meta_run_workflow", "brainstorm", "1790000000222")],
+      children: { "brainstorm/1790000000111": [{ ...tree, title: "old" }], "brainstorm/1790000000222": [tree] },
+    });
+    await handleJobTurnSettled(row());
+    expect(childCalls()).toEqual(["https://swarm1.sphinx.chat:3355/lab/workflows/brainstorm/runs/1790000000222/artifacts"]);
+  });
+
+  it("does not duplicate a tree the agent copied: its copy (title) wins", async () => {
+    serve({ own: [plan, { ...tree, title: "Better title" }], events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": [tree] } });
+    await handleJobTurnSettled(row());
+    const cards = delivered().artifacts as Array<{ id: string; title: string }>;
+    expect(cards.filter((a) => a.id === "brainstorm-tree")).toEqual([expect.objectContaining({ title: "Better title" })]);
+  });
+
+  it("ignores other workflows, peer children and non-tree artifacts", async () => {
+    serve({
+      events: [
+        ...launch("job/001-meta_run_workflow", "explore", "1790000000111"),
+        { type: "step.start", path: "job/002-strut_run_workflow", input: { workflow: "brainstorm", peer: "other" } },
+        { type: "step.end", path: "job/002-strut_run_workflow", stepType: "tool:strut_run_workflow", output: { runId: "1790000000333", workflow: "brainstorm", peer: "other" } },
+      ],
+      children: { "explore/1790000000111": [tree], "brainstorm/1790000000333": [tree] },
+    });
+    await handleJobTurnSettled(row());
+    expect(childCalls()).toEqual([]);
+
+    serve({ events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": [{ ...tree, kind: "markdown" }, { ...tree, id: "other" }] } });
+    mockTx.sharedConversation.update.mockClear();
+    await handleJobTurnSettled(row());
+    expect(delivered().artifacts.map((a: { id: string }) => a.id)).toEqual(["plan"]);
+  });
+
+  it("a failed read is ignored: the turn is delivered without it and a warn is logged", async () => {
+    const { logger } = await import("@/lib/logger");
+    serve({ events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": json(500, {}) } });
+    await handleJobTurnSettled(row());
+    expect(delivered().artifacts.map((a: { id: string }) => a.id)).toEqual(["plan"]);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("brainstorm"), "JOB_TURN", expect.anything());
+
+    mockTx.sharedConversation.update.mockClear();
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes("/events")) throw new Error("boom");
+      return json(200, { artifacts: [plan] });
+    });
+    await handleJobTurnSettled(row());
+    expect(delivered().artifacts.map((a: { id: string }) => a.id)).toEqual(["plan"]);
+  });
+
+  it("logs every delivered card, the count, and which came from the brainstorm run", async () => {
+    const { logger } = await import("@/lib/logger");
+    serve({ events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": [tree] } });
+    mockCount.mockResolvedValue({ calls: 2, nodes: 3 });
+    await handleJobTurnSettled(row());
+    expect(logger.info).toHaveBeenCalledWith(
+      "Job turn delivered",
+      "JOB_TURN",
+      expect.objectContaining({
+        artifacts: [{ id: "plan", kind: "markdown" }, { id: "brainstorm-tree", kind: "graph" }, { id: `run-graph-${JOB}`, kind: "run_graph" }],
+        artifactCount: 3,
+        collected: ["brainstorm-tree"],
+      }),
+    );
+  });
+});
