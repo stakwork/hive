@@ -266,6 +266,15 @@ describe("dispatchStrutRun", () => {
     expect(mockStrutRun.create.mock.calls[0][0].data.jobId).toBeUndefined();
   });
 
+  it("params ride on the launch body beside input; absent (or empty) when not given", async () => {
+    mockFetch.mockImplementation(async () => json(202, { runId: "1790000000000", callback: true }));
+    await dispatchStrutRun({ ...dispatchArgs, params: { model: "claude-opus-4-1" } });
+    expect(JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string).params).toEqual({ model: "claude-opus-4-1" });
+    await dispatchStrutRun({ ...dispatchArgs, params: {} });
+    await dispatchStrutRun(dispatchArgs);
+    for (const i of [1, 2]) expect(JSON.parse((mockFetch.mock.calls[i][1] as RequestInit).body as string).params).toBeUndefined();
+  });
+
   it("a 400 on a job launch is strut refusing the job id", async () => {
     mockFetch.mockResolvedValue(json(400, { error: "job: not a valid id" }));
     await expect(dispatchStrutRun({ ...dispatchArgs, job: "bad id" })).rejects.toMatchObject({ code: "bad_job" });

@@ -487,7 +487,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         const delivery = await jobDelivery(ctx);
         if ("error" in delivery) return delivery;
         const jobId = crypto.randomUUID();
-        return launchJobTurn({ userId: ctx.userId, workspaceId: target.workspaceId, ...delivery }, { jobId, title, prompt, started: true });
+        return launchJobTurn({ userId: ctx.userId, workspaceId: target.workspaceId, ...delivery }, { jobId, title, prompt, started: true, model: ctx.chatAgentModel || undefined });
       },
     }),
 
@@ -533,7 +533,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         });
         if (live) return { status: "busy", jobId, note: BUSY_NOTE };
 
-        return launchJobTurn({ userId: ctx.userId, workspaceId: target.workspaceId, ...delivery }, { jobId, title: jobTitleOf(first), prompt, started: false });
+        return launchJobTurn({ userId: ctx.userId, workspaceId: target.workspaceId, ...delivery }, { jobId, title: jobTitleOf(first), prompt, started: false, model: ctx.chatAgentModel || undefined });
       },
     }),
   };
