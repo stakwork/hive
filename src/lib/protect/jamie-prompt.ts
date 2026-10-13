@@ -1,4 +1,3 @@
-import { isStrutCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import type { ProtectFinding } from "@/types/protect";
 
 export type ProtectJamieTool = "propose_feature" | "start_job";
@@ -21,12 +20,7 @@ function looksMechanicalSingleFile(finding: ProtectFinding): boolean {
   return Boolean(finding.repositoryUrl);
 }
 
-export async function chooseProtectJamieTool(
-  finding: ProtectFinding,
-  sourceControlOrgId: string | null | undefined,
-): Promise<ProtectJamieTool> {
-  const jobsEnabled = await isStrutCapabilityEnabledForOrg(sourceControlOrgId ?? undefined);
-  if (!jobsEnabled) return "propose_feature";
+export function chooseProtectJamieTool(finding: ProtectFinding): ProtectJamieTool {
   return looksMechanicalSingleFile(finding) ? "start_job" : "propose_feature";
 }
 
