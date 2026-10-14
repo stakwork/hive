@@ -204,6 +204,102 @@ describe("questions and options (IBIS)", () => {
   });
 });
 
+describe("sub-questions and options (Question / Option nodes)", () => {
+  const tn = (ref_id: string, type: string, props: Record<string, unknown>) => ({ ref_id, type, properties: props });
+  const qn = (id: string, k: number) => tn(id, "Question", { question_id: k, text: `Q ${id}` });
+  const on = (id: string, k: number) => tn(id, "Option", { option_id: k, text: `O ${id}`, kind: "option" });
+  const E = (...pairs: string[][]) => pairs.map(([source, target]) => ({ source, target }));
+  const labels = (ns: ReturnType<typeof tn>[], es: ReturnType<typeof E>) => Object.fromEntries(buildChoiceTree(ns, es, "r").items.map((i) => [i.id, i.letter]));
+
+  const mockTree = {
+    nodes: [
+      tn("r", "Question", { question_id: 1, text: "Root?" }),
+      tn("q2", "Question", { question_id: 3, text: "Second?" }),
+      tn("q1", "Question", { question_id: 2, text: "First?" }),
+      on("b", 5),
+      on("a", 4),
+      on("c", 6),
+      tn("f", "Question", { question_id: 7, text: "Follow-up?" }),
+      on("fa", 8),
+      on("fb", 9),
+    ],
+    edges: E(["r", "q2"], ["r", "q1"], ["q1", "b"], ["q1", "a"], ["q2", "c"], ["a", "f"], ["f", "fa"], ["f", "fb"]),
+  };
+
+  it("(a) numbers sub-questions, letters options under them, follow-ups pass the label through", () => {
+    expect(labels(mockTree.nodes, mockTree.edges)).toEqual({ r: undefined, q1: "1", q2: "2", a: "1A", b: "1B", c: "2A", f: undefined, fa: "1AA", fb: "1AB" });
+    const by = Object.fromEntries(buildChoiceTree(mockTree.nodes, mockTree.edges, "r").items.map((i) => [i.id, i]));
+    expect(by.q1.isQuestion && by.q2.isQuestion && by.f.isQuestion).toBe(true);
+    expect(by.a.isQuestion).toBe(false);
+  });
+
+  it("(a) renders chips; sub-questions only Expand; drafts use labels", async () => {
+    setDraft.mockClear();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => mockTree }));
+    const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChoiceTree workspace="hive" focus="r" />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("Root?");
+    for (const l of ["1", "2", "1A", "1B", "2A", "1AA", "1AB"]) expect(screen.getAllByText(l).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("Second?"));
+    expect(screen.queryByText("Go with")).toBeNull();
+    expect(screen.queryByText("Revisit")).toBeNull();
+    fireEvent.click(screen.getByText("Expand"));
+    expect(setDraft).toHaveBeenLastCalledWith('Expand 2: "Second?" (q2)');
+    fireEvent.click(screen.getByText("Second?"));
+    fireEvent.click(screen.getByText("O b"));
+    fireEvent.click(screen.getByText("Go with"));
+    expect(setDraft).toHaveBeenLastCalledWith('Go with 1B: "O b" (b)');
+    fireEvent.click(screen.getByText("O b"));
+    fireEvent.click(screen.getByText("Follow-up?"));
+    fireEvent.click(screen.getByText("Expand"));
+    expect(setDraft).toHaveBeenLastCalledWith('Expand "Follow-up?" (f)');
+    fireEvent.click(screen.getByText("Follow-up?"));
+    fireEvent.click(screen.getByText("O fb"));
+    fireEvent.click(screen.getByText("Expand"));
+    expect(setDraft).toHaveBeenLastCalledWith('Expand 1AB: "O fb" (fb)');
+  });
+
+  it("(b) an old all-Choice tree still renders A, B, AA, AB", async () => {
+    const c = (id: string, k: number, kind: string) => tn(id, "Choice", { choice_id: k, text: `C ${id}`, kind });
+    const ns = [c("r", 1, "question"), c("b", 3, "option"), c("a", 2, "option"), c("lq", 4, "question"), c("x", 5, "option"), c("y", 6, "option")];
+    const es = E(["r", "a"], ["r", "b"], ["a", "lq"], ["lq", "x"], ["lq", "y"]);
+    expect(labels(ns, es)).toEqual({ r: undefined, a: "A", b: "B", lq: undefined, x: "AA", y: "AB" });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ nodes: ns, edges: es }) }));
+    const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChoiceTree workspace="hive" focus="r" />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("C r");
+    for (const l of ["A", "B", "AA", "AB"]) expect(screen.getAllByText(l).length).toBeGreaterThan(0);
+  });
+
+  it("(c) sorts siblings by option_id", () => {
+    const ns = [qn("r", 1), on("z", 10), on("y", 2), on("x", 3)];
+    expect(labels(ns, E(["r", "z"], ["r", "y"], ["r", "x"]))).toEqual({ r: undefined, y: "A", x: "B", z: "C" });
+  });
+
+  it("(d) Question -> Question -> Question gives 1, 1.1 (and options 1.1A)", () => {
+    const ns = [qn("r", 1), qn("s", 2), qn("t", 3), on("o", 4)];
+    expect(labels(ns, E(["r", "s"], ["s", "t"], ["t", "o"]))).toEqual({ r: undefined, s: "1", t: "1.1", o: "1.1A" });
+  });
+
+  it("a sub-question under a follow-up under option A is A1, its options A1A", () => {
+    const ns = [qn("r", 1), on("a", 2), qn("f", 3), qn("s", 4), on("o", 5)];
+    expect(labels(ns, E(["r", "a"], ["a", "f"], ["f", "s"], ["s", "o"]))).toEqual({ r: undefined, a: "A", f: undefined, s: "A1", o: "A1A" });
+  });
+
+  it("(e) a root with both sub-questions and options numbers and letters them side by side", () => {
+    const ns = [qn("r", 1), qn("s1", 2), on("a", 3), qn("s2", 4), on("b", 5)];
+    expect(labels(ns, E(["r", "s1"], ["r", "a"], ["r", "s2"], ["r", "b"]))).toEqual({ r: undefined, s1: "1", s2: "2", a: "A", b: "B" });
+  });
+});
+
 describe("ChoiceTree", () => {
   beforeEach(() => {
     setDraft.mockClear();

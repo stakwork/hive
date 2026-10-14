@@ -12,13 +12,20 @@ import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 
 /**
  * A brainstorm tree (IBIS-style): `Question` nodes (key `question_id`) and
- * `Choice` options (key `choice_id`) linked by `PARENT_OF` both ways, drawn
- * left to right from the artifact's `focus`. Both labels are read unless
- * `label` restricts it to one. Old trees are `Choice` nodes with
- * `kind: "question"`, which still render as questions. Siblings are ordered
- * by `choice_id` (else `question_id`); options are lettered by path (A, B,
- * AA, AB…, counted through questions, which have no letter). Clicking a
- * node's button only drafts a message in the chat input; the user sends it.
+ * `Option` nodes (key `option_id`; old trees use `Choice`, key `choice_id`,
+ * which render as options) linked by `PARENT_OF`: Question->Question (a
+ * sub-question), Question->Option, Option->Question (a follow-up question),
+ * drawn left to right from the artifact's `focus`. All labels are read unless
+ * `label` restricts it. A legacy `Choice` with `kind: "question"` is a
+ * question. Siblings are ordered by `option_id`, `choice_id` or `question_id`.
+ * Labels join along the path: a sub-question (a question under a question)
+ * gets a number among its question siblings, an option a letter among its
+ * option siblings, appended to the nearest labelled ancestor's label (`1`,
+ * `1A`, `1B`, `2`; follow-up questions and the root have none and pass the
+ * label through, so `A` -> `AA`, `AB`). Two adjacent numbers are joined with a
+ * dot (`1.1`, `1.1A`) — an assumption matching strut's `choice/tree`.
+ * Sub-questions are heading-style with only Expand. Clicking a node's button
+ * only drafts a message in the chat input; the user sends it.
  */
 
 const NODE_W = 260;
@@ -35,10 +42,10 @@ const REFETCH_MS = 15_000;
  * The rule for opening the tree instead of the graph workbench, whatever else
  * the content carries (a stray proposal or changes are ignored): `layout:
  * "tree"`, a brainstorm artifact id (`brainstorm-tree`, `job-x:brainstorm-tree`),
- * or a `label` of `Choice` / `Question`. A tree needs a `focus` to open at.
+ * or a `label` of `Choice` / `Option` / `Question`. A tree needs a `focus` to open at.
  */
 export function isTreeArtifact(artifact: { id: string }, content: ArtifactViewerProps<"graph">["content"]): boolean {
-  return content.layout === "tree" || /brainstorm/i.test(artifact.id) || content.label === "Choice" || content.label === "Question";
+  return content.layout === "tree" || /brainstorm/i.test(artifact.id) || content.label === "Choice" || content.label === "Option" || content.label === "Question";
 }
 
 /**
@@ -66,11 +73,11 @@ export interface ChoiceItem {
   name: string;
   madeBy?: string;
   state: ChoiceState;
-  /** Path label: the nearest lettered ancestor's label + its letter among its parent's `option` children (A, B, AA, AB…). */
+  /** Path label: the nearest labelled ancestor's label + own part (a number for a sub-question, a letter for an option): 1, 1A, 2, A, AA… */
   letter?: string;
   quote?: string;
   kind?: string;
-  /** A `Question` node, or a legacy `Choice` with `kind: "question"`. */
+  /** A `Question` node (sub-question or follow-up), or a legacy `Choice` with `kind: "question"`. */
   isQuestion: boolean;
   /** Who said it, shown in place of `madeBy`. */
   speaker?: string;
@@ -80,7 +87,7 @@ export interface ChoiceItem {
 interface RawNode {
   ref_id: string;
   properties?: Record<string, unknown>;
-  /** `Question` or `Choice`, from the node's labels. */
+  /** `Question`, `Option` or `Choice`, from the node's labels. */
   type?: string;
 }
 interface RawEdge {
@@ -88,7 +95,7 @@ interface RawEdge {
   target: string;
 }
 
-/** `choice_id` (else `question_id`) order: numeric when both are numbers, else string with numeric collation. */
+/** `option_id` / `choice_id` / `question_id` order: numeric when both are numbers, else string with numeric collation. */
 export function compareChoiceIds(a: unknown, b: unknown): number {
   const x = String(a ?? "");
   const y = String(b ?? "");
@@ -99,11 +106,12 @@ export function compareChoiceIds(a: unknown, b: unknown): number {
 }
 
 const optionLetter = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : String(i + 1));
-const prefix_ = (prefix: string, letter: string) => prefix + letter;
+/** Joins an own part onto the inherited label; two adjacent numbers get a dot (1.1). */
+const joinLabel = (prefix: string, part: string) => (/\d$/.test(prefix) && /^\d/.test(part) ? `${prefix}.${part}` : prefix + part);
 const text = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 
 const isQuestionNode = (n: RawNode) => n.type === "Question" || n.properties?.kind === "question";
-const orderKey = (n: RawNode) => n.properties?.choice_id ?? n.properties?.question_id;
+const orderKey = (n: RawNode) => n.properties?.option_id ?? n.properties?.choice_id ?? n.properties?.question_id;
 
 const STATES: readonly string[] = ["open", "chosen", "rejected", "simulated", "decided"];
 
@@ -120,10 +128,12 @@ export function buildChoiceTree(nodes: RawNode[], edges: RawEdge[], focus: strin
   const links: Array<{ source: string; target: string }> = [];
   const seen = new Set<string>();
   const props = (id: string) => byId.get(id)!.properties ?? {};
-  const walk = (id: string, letter: string | undefined, prefix: string) => {
+  // `letter` is the node's own label; `inherited` is what its children join onto.
+  const walk = (id: string, letter: string | undefined, inherited: string) => {
     seen.add(id);
     const p = props(id);
     const state = typeof p.state === "string" && STATES.includes(p.state) ? (p.state as ChoiceState) : "open";
+    const self = byId.get(id)!;
     items.push({
       id,
       name: text(p.text) ?? text(p.name) ?? id,
@@ -132,19 +142,22 @@ export function buildChoiceTree(nodes: RawNode[], edges: RawEdge[], focus: strin
       letter,
       quote: text(p.quote),
       kind: text(p.kind),
-      isQuestion: isQuestionNode(byId.get(id)!),
+      isQuestion: isQuestionNode(self),
       speaker: text(p.speaker),
       criteria: text(p.criteria),
       reversibility: text(p.reversibility),
     });
-    const childPrefix = letter ?? prefix;
+    const childPrefix = letter ?? inherited;
     const ordered = (kids.get(id) ?? []).filter((c) => !seen.has(c)).sort((a, b) => compareChoiceIds(orderKey(byId.get(a)!), orderKey(byId.get(b)!)));
     let options = 0;
+    let subQuestions = 0;
     for (const child of ordered) {
       if (seen.has(child)) continue;
       links.push({ source: id, target: child });
-      const isOption = !isQuestionNode(byId.get(child)!);
-      walk(child, isOption ? prefix_(childPrefix, optionLetter(options++)) : undefined, childPrefix);
+      const childIsQuestion = isQuestionNode(byId.get(child)!);
+      // A question under an option is a follow-up: no own part. Under a question, a numbered sub-question.
+      const part = !childIsQuestion ? optionLetter(options++) : self && isQuestionNode(self) ? String(++subQuestions) : undefined;
+      walk(child, part === undefined ? undefined : joinLabel(childPrefix, part), childPrefix);
     }
   };
   if (byId.has(focus)) walk(focus, undefined, "");
@@ -174,7 +187,7 @@ export function layoutTree(
   return Object.fromEntries(ids.map((id) => [id, { x: g.node(id).x - NODE_W / 2, y: g.node(id).y - h(id) / 2 }]));
 }
 
-/** The drafts a node's two buttons leave in the chat input: `Verb B: "<text>" (<ref_id>)`, no letter for a question. */
+/** The drafts a node's two buttons leave in the chat input: `Verb B: "<text>" (<ref_id>)`, no label for the root or a follow-up question. */
 const draft = (verb: string, c: ChoiceItem) => `${verb} ${c.letter ? `${c.letter}: ` : ""}"${c.name}" (${c.id})`;
 export const expandDraft = (c: ChoiceItem) => draft(c.state === "rejected" && !c.isQuestion ? "Revisit" : "Expand", c);
 export const goWithDraft = (c: ChoiceItem) => draft("Go with", c);
@@ -235,7 +248,11 @@ const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<ChoiceNodeD
         {isQuestion && <HelpCircle className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" data-question-icon />}
         {!isQuestion && !selected && <span className={cn("mt-1 h-1.5 w-1.5 shrink-0 rounded-full", DOT[c.state])} data-state-dot={c.state} />}
         <span className={cn("min-w-0 flex-1 break-words", !selected && "line-clamp-3")}>
-          {c.letter && <span className="mr-1 rounded bg-muted px-1 text-[10px] font-semibold">{c.letter}</span>}
+          {c.letter && (
+            <span className={cn("mr-1 rounded px-1 text-[10px] font-semibold", isQuestion ? "border border-primary/50" : "bg-muted")} data-label-chip={isQuestion ? "question" : "option"}>
+              {c.letter}
+            </span>
+          )}
           {c.name}
         </span>
         {isQuestion && c.state === "decided" && (
