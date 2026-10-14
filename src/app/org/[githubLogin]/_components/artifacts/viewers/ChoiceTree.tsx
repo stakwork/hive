@@ -41,6 +41,24 @@ export function isTreeArtifact(artifact: { id: string }, content: ArtifactViewer
   return content.layout === "tree" || /brainstorm/i.test(artifact.id) || content.label === "Choice" || content.label === "Question";
 }
 
+/**
+ * A `json` card that is really a brainstorm tree (an agent copied the card
+ * as JSON before hive mapped it to `graph`): its `value` is an object with a
+ * string `focus` and `workspace`, and `layout: "tree"` or the id
+ * `brainstorm-tree`. The graph content to open it with, else null.
+ */
+export function treeContentOfJson(
+  artifact: { id: string },
+  content: { value: unknown },
+): ArtifactViewerProps<"graph">["content"] | null {
+  const v = content.value;
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const { workspace, focus, layout, label } = v as Record<string, unknown>;
+  if (typeof workspace !== "string" || typeof focus !== "string") return null;
+  if (layout !== "tree" && artifact.id !== "brainstorm-tree") return null;
+  return { workspace, focus, layout: "tree", ...(typeof label === "string" ? { label } : {}) };
+}
+
 export type ChoiceState = "open" | "chosen" | "rejected" | "simulated" | "decided";
 export interface ChoiceItem {
   id: string;

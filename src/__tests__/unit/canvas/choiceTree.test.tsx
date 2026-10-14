@@ -21,7 +21,7 @@ vi.mock("@xyflow/react", () => ({
   ),
 }));
 
-import { estimateNodeHeight, buildChoiceTree, compareChoiceIds, layoutTree, isTreeArtifact, ChoiceTree } from "@/app/org/[githubLogin]/_components/artifacts/viewers/ChoiceTree";
+import { estimateNodeHeight, buildChoiceTree, compareChoiceIds, layoutTree, isTreeArtifact, treeContentOfJson, ChoiceTree } from "@/app/org/[githubLogin]/_components/artifacts/viewers/ChoiceTree";
 
 // The choice-tree route returns label-filtered nodes with no node_type.
 const n = (ref_id: string, props: Record<string, unknown>) => ({ ref_id, properties: props });
@@ -294,5 +294,19 @@ describe("ChoiceTree", () => {
     await renderTree();
     expect(await screen.findByText("Could not load the tree.")).toBeTruthy();
     expect(screen.queryByText("Nothing to show for this choice yet.")).toBeNull();
+  });
+});
+
+describe("treeContentOfJson — a json card that is really a brainstorm tree", () => {
+  const value = { workspace: "hive", focus: "f1", layout: "tree" };
+  it("opens as the tree", () => {
+    expect(treeContentOfJson({ id: "x" }, { value })).toEqual(value);
+    expect(treeContentOfJson({ id: "brainstorm-tree" }, { value: { workspace: "hive", focus: "f1" } })).toEqual({ workspace: "hive", focus: "f1", layout: "tree" });
+  });
+  it("leaves other json alone", () => {
+    expect(treeContentOfJson({ id: "x" }, { value: { workspace: "hive", focus: "f1" } })).toBeNull();
+    expect(treeContentOfJson({ id: "brainstorm-tree" }, { value: { focus: "f1" } })).toBeNull();
+    expect(treeContentOfJson({ id: "x" }, { value: [1] })).toBeNull();
+    expect(treeContentOfJson({ id: "x" }, { value: "s" })).toBeNull();
   });
 });
