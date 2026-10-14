@@ -35,13 +35,24 @@ export interface PoolRollout {
   };
 }
 
+/**
+ * Which config a pod runs: one created after the last completed push runs
+ * the config hive holds now ("new"); any other ("old") ran an earlier one,
+ * and with no push recorded every pod is "old". The one rule the rollout,
+ * the pod list (`pool/pods`) and a claim of a new pod (`claim-pod
+ * ?generation=new`) share.
+ */
+export function podGeneration(createdAt: Date, poolPushedAt: Date | null): "new" | "old" {
+  return poolPushedAt !== null && createdAt > poolPushedAt ? "new" : "old";
+}
+
 const PENDING: PodStatus[] = [PodStatus.PENDING, PodStatus.STARTING, PodStatus.CREATING];
 const FAILED: PodStatus[] = [PodStatus.FAILED, PodStatus.STOPPED, PodStatus.CRASHING, PodStatus.UNSTABLE];
 
 export function getPoolRolloutStatus(swarm: RolloutSwarmInput, pods: RolloutPodInput[], now: Date): PoolRollout {
   const { poolChangeId, poolChangeRequestedAt, poolPushedAt, poolPushError } = swarm;
 
-  const isNew = (p: RolloutPodInput) => poolPushedAt !== null && p.createdAt > poolPushedAt;
+  const isNew = (p: RolloutPodInput) => podGeneration(p.createdAt, poolPushedAt) === "new";
 
   const counts = { new: 0, old: 0, oldInUse: 0, pending: 0, failed: 0, minimumVms: swarm.minimumVms };
   let readyPod = false;
