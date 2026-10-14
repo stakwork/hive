@@ -97,7 +97,6 @@ vi.mock('@/lib/constants/prompt', () => ({
   // (@/lib/ai/capabilities), reached transitively via runCanvasAgent.
   getRoadmapCapabilitySnippet: vi.fn(() => ''),
   getWhiteboardCapabilitySnippet: vi.fn(() => ''),
-  getPlannerCapabilitySnippet: vi.fn(() => ''),
   getResearchCapabilitySnippet: vi.fn(() => ''),
   getConnectionsCapabilitySnippet: vi.fn(() => ''),
   getHtmlPagesCapabilitySnippet: vi.fn(() => ''),
@@ -1573,7 +1572,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
     // Regression guard. The route used to hand `orgId` to the agent only
     // when the request carried MORE than one workspace slug, so every org
     // with exactly one workspace ran its org canvas chat as the plain
-    // per-workspace agent — no `propose_feature`, no `read_canvas`, no
+    // per-workspace agent — no `propose_initiative`, no `read_canvas`, no
     // capability prompt suffix. Many orgs have a single workspace.
     async function setupSingleWorkspaceOrg() {
       const owner = await createTestUser({
@@ -1629,7 +1628,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       return Object.keys(callArgs.tools ?? {});
     }
 
-    it('merges the org toolset (propose_feature, read_canvas, planner) for a one-workspace org', async () => {
+    it('merges the org toolset (propose_initiative, read_canvas) for a one-workspace org', async () => {
       const { owner, org, workspace } = await setupSingleWorkspaceOrg();
       mockStream();
 
@@ -1647,11 +1646,11 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       expect(response.status).toBe(200);
 
       const toolNames = lastToolNames();
-      expect(toolNames).toContain('propose_feature');
+      expect(toolNames).not.toContain('propose_feature');
       expect(toolNames).toContain('propose_milestone');
       expect(toolNames).toContain('propose_initiative');
       expect(toolNames).toContain('read_canvas');
-      expect(toolNames).toContain('send_to_feature_planner');
+      expect(toolNames).not.toContain('send_to_feature_planner');
     });
 
     it('names the bound workspace in the single-workspace org prompt overlay', async () => {
@@ -1698,7 +1697,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       expect(response.status).toBe(200);
 
       const toolNames = lastToolNames();
-      expect(toolNames).not.toContain('propose_feature');
+      expect(toolNames).not.toContain('propose_initiative');
       expect(toolNames).not.toContain('read_canvas');
       const prefixCall = vi.mocked(getQuickAskPrefixMessages).mock.calls.at(-1)!;
       expect(prefixCall[5]).toBeUndefined();

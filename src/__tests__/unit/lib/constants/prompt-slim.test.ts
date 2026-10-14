@@ -2,28 +2,19 @@ import { describe, it, expect } from "vitest";
 import {
   getMultiWorkspaceSystemPrompt,
   getRoadmapCapabilitySnippet,
-  getPlannerCapabilitySnippet,
   getGraphWalkerCapabilitySnippet,
   getConceptsCapabilitySnippet,
 } from "@/lib/constants/prompt";
 import {
   getSlimRoadmapCapabilitySnippet,
-  getSlimPlannerCapabilitySnippet,
   getSlimGraphWalkerCapabilitySnippet,
   getSlimConceptsCapabilitySnippet,
 } from "@/lib/constants/prompt-slim";
 import {
-  PLANNER_FORM_RULE,
-  PLANNER_FORM_WAKE_RULE,
   GITHUB_ORG_RULE,
 } from "@/lib/constants/prompt-rules";
 import { composeCapabilityPromptSuffix } from "@/lib/ai/capabilities";
-import { buildInitiativeTools } from "@/lib/ai/initiativeTools";
 import type { WorkspaceConfig } from "@/lib/ai/types";
-
-// `buildInitiativeTools` only constructs `ToolSet` objects (descriptions
-// are static strings) — it never touches the DB at build time, so no
-// `@/lib/db` mock is needed here; only `execute()` calls would need one.
 
 /**
  * Jamie slim prompt (concept-tree mode, opt-in via the per-browser settings switch)
@@ -53,11 +44,10 @@ function makeWs(slug: string): WorkspaceConfig {
   } as unknown as WorkspaceConfig;
 }
 
-const CORE_CAPABILITIES = ["roadmap", "planner", "graph_walker", "concepts"] as const;
+const CORE_CAPABILITIES = ["roadmap", "graph_walker", "concepts"] as const;
 
 const ALL_CAPABILITY_TEXT = () =>
   getSlimRoadmapCapabilitySnippet() +
-  getSlimPlannerCapabilitySnippet() +
   getSlimGraphWalkerCapabilitySnippet() +
   getSlimConceptsCapabilitySnippet();
 
@@ -65,7 +55,6 @@ describe("Jamie slim prompt — toggle", () => {
   it("off: the suffix uses the full core snippets", () => {
     const suffix = composeCapabilityPromptSuffix([...CORE_CAPABILITIES]);
     expect(suffix).toContain(getRoadmapCapabilitySnippet());
-    expect(suffix).toContain(getPlannerCapabilitySnippet());
     expect(suffix).toContain(getGraphWalkerCapabilitySnippet());
     expect(suffix).toContain(getConceptsCapabilitySnippet());
   });
@@ -75,7 +64,6 @@ describe("Jamie slim prompt — toggle", () => {
       slimPrompt: true,
     });
     expect(suffix).toContain(getSlimRoadmapCapabilitySnippet());
-    expect(suffix).toContain(getSlimPlannerCapabilitySnippet());
     expect(suffix).toContain(getSlimGraphWalkerCapabilitySnippet());
     expect(suffix).toContain(getSlimConceptsCapabilitySnippet());
     expect(suffix).not.toContain(getRoadmapCapabilitySnippet());
@@ -91,16 +79,6 @@ describe("Jamie slim prompt — toggle", () => {
     }
   });
 
-  it("send_to_feature_planner carries PLANNER_FORM_RULE only when on", () => {
-    const off = buildInitiativeTools("org-1", "user-1")[
-      "send_to_feature_planner"
-    ] as { description: string };
-    const on = buildInitiativeTools("org-1", "user-1", undefined, undefined, true)[
-      "send_to_feature_planner"
-    ] as { description: string };
-    expect(off.description).not.toContain(PLANNER_FORM_RULE);
-    expect(on.description).toContain(PLANNER_FORM_RULE);
-  });
 });
 
 describe("Jamie slim prompt — no hardcoded concepts", () => {
@@ -109,7 +87,6 @@ describe("Jamie slim prompt — no hardcoded concepts", () => {
     for (const name of [
       "Hive Roadmap and Canvas",
       "Jamie Roadmap Proposals",
-      "Jamie Managing Feature Planners",
       "The Knowledge Graph on Stadeum",
       "Jamie Knowledge Capture",
     ]) {
@@ -126,12 +103,8 @@ describe("Jamie slim prompt — kept safety strings (seed-list audit)", () => {
     "**Propose, don't write.**",
     // 2. repo_agent is read-only.
     "STRICTLY READ-ONLY investigation",
-    // 3. FORM rule → PLANNER_FORM_RULE (deliberate change)
-    PLANNER_FORM_RULE,
     // 4. graph_query is member-scoped, not admin-only
     "any member of the named workspace",
-    // 5. Never invent a contract
-    "Never invent a contract",
     // 6. Never construct URNs by hand
     "Never construct URN strings by hand",
     // 7. Mirror-owned types are not editable
@@ -148,21 +121,6 @@ describe("Jamie slim prompt — kept safety strings (seed-list audit)", () => {
     }
   });
 
-  it("rule 8 (cycles rejected) is kept in the propose_feature tool's dependsOn* describe() text", () => {
-    const tools = buildInitiativeTools("org-1", "user-1");
-    const proposeFeature = tools["propose_feature"] as {
-      inputSchema: { shape: Record<string, { description?: string }> };
-    };
-    expect(proposeFeature).toBeDefined();
-    const shape = proposeFeature.inputSchema.shape;
-    const depA = String(shape.dependsOnFeatureIds?.description ?? "");
-    const depB = String(shape.dependsOnProposalIds?.description ?? "");
-    const combined = depA + depB;
-    expect(combined).toContain(
-      "Cycles, including two proposals that depend on each other, are rejected",
-    );
-    expect(combined).toContain("Never create mutual dependencies.");
-  });
 });
 
 describe("Jamie slim prompt — must-stay lines", () => {
@@ -203,15 +161,6 @@ describe("Jamie slim prompt — removed vocabulary", () => {
 });
 
 describe("Jamie slim prompt — tool text carries moved rules", () => {
-  it("send_to_feature_planner description has the IN_PROGRESS re-check wording", () => {
-    const tools = buildInitiativeTools("org-1", "user-1");
-    const send = tools["send_to_feature_planner"] as { description: string };
-    expect(send.description).toContain(
-      "the tool re-checks every 2.5s for up to ~20s",
-    );
-    expect(send.description).toContain("re-read the feature later and retry");
-  });
-
   it("REF_DESCRIPTION (canvasTools) has ws: and initiative: but not the four projected id kinds; read_canvas has all four", async () => {
     const { buildCanvasTools } = await import("@/lib/ai/canvasTools");
     const tools = buildCanvasTools("org-1") as unknown as Record<
@@ -237,26 +186,6 @@ describe("Jamie slim prompt — tool text carries moved rules", () => {
     expect(readCanvasDesc).toContain("milestone:<cuid>");
     expect(readCanvasDesc).toContain("feature:<cuid>");
     expect(readCanvasDesc).toContain("research:<cuid>");
-  });
-});
-
-describe("Jamie slim prompt — autoturn wake message", () => {
-  it("the form wake branch contains both FORM rules", async () => {
-    const fs = await import("fs/promises");
-    const path = await import("path");
-    const src = await fs.readFile(
-      path.resolve(process.cwd(), "src/services/canvas-agent-autoturn.ts"),
-      "utf-8",
-    );
-    expect(src).toContain(
-      "This wake reason is \\`form\\`. ${PLANNER_FORM_RULE} ${PLANNER_FORM_WAKE_RULE}",
-    );
-  });
-
-  it("PLANNER_FORM_WAKE_RULE states it wins over any earlier instruction", () => {
-    expect(PLANNER_FORM_WAKE_RULE).toContain(
-      "wins over any earlier instruction in this conversation",
-    );
   });
 });
 

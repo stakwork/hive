@@ -32,8 +32,8 @@ export const getWorkspaceChannelName = (workspaceSlug: string) => `workspace-${w
 export const getFeatureChannelName = (featureId: string) => `feature-${featureId}`;
 export const getOrgChannelName = (githubLogin: string) => `org-${githubLogin}`;
 // Per-canvas-conversation channel. The org canvas chat subscribes to this
-// for its active `SharedConversation` so server-side appends (planner
-// fan-out, autonomous canvas-agent turns, planner-form answers) push to an
+// for its active `SharedConversation` so server-side appends (autonomous
+// canvas-agent turns, research / strut fan-out) push to an
 // open browser live, with no polling.
 export const getCanvasConversationChannelName = (conversationId: string) =>
   `canvas-conversation-${conversationId}`;
@@ -80,8 +80,8 @@ export const PUSHER_EVENTS = {
   CANVAS_SELECTION_UPDATE: "canvas-selection-update",
   // Agent log upserted for a feature — triggers live Logs tab updates in plan view
   AGENT_LOG_UPDATED: "agent-log-updated",
-  // A canvas conversation's `messages` JSON changed server-side (planner
-  // fan-out, autonomous canvas-agent turn, or a planner-form answer). The
+  // A canvas conversation's `messages` JSON changed server-side (autonomous
+  // canvas-agent turn, user message, research / strut fan-out). The
   // payload is a lightweight nudge `{ conversationId, reason }`; the client
   // refetches the conversation and merges in the new rows (avoids Pusher's
   // 10KB-per-message cap and keeps a single source of truth).
@@ -116,9 +116,7 @@ export const PUSHER_EVENTS = {
  * client log / debug which server path fired the nudge.
  */
 export type CanvasConversationUpdateReason =
-  | "planner"
   | "autoturn"
-  | "form-answer"
   | "research"
   // A human appended a message to a shared conversation. Fires from the
   // autosave PUT so other people sitting on the same shared room refetch
@@ -129,12 +127,6 @@ export type CanvasConversationUpdateReason =
   // its own turn out of the merge by id prefix; other viewers / a
   // reopened tab live-sync it in.
   | "user-turn"
-  // A feature's planner workflow reached a new (often terminal) status
-  // AFTER its message already fanned out — the stakwork webhook updated
-  // the latest planner row's `source.workflowStatus` in place (same id).
-  // The client reconciles existing planner rows' `source` from the
-  // server copy so the `SubAgentRunCard` pill re-derives live.
-  | "workflow-status"
   // A deferred check was cancelled by the user via the DeferredCheckCard.
   | "deferred-check-cancelled"
   // A deferred check was fired by the cron dispatcher and the result

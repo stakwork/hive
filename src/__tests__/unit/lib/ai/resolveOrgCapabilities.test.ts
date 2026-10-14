@@ -28,7 +28,6 @@ vi.mock("@/lib/ai/workflowExplorerTools", () => ({
 }));
 vi.mock("@/lib/constants/prompt", () => ({
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
@@ -120,8 +119,8 @@ describe("prompts capability org-gating", () => {
 
   it("does not invoke the gate for ungated capabilities", async () => {
     isPromptsCapabilityEnabledForOrg.mockResolvedValue(true);
-    const resolved = await resolveOrgCapabilities(["planner"], "org-x");
-    expect(resolved).toEqual(["planner"]);
+    const resolved = await resolveOrgCapabilities(["whiteboard"], "org-x");
+    expect(resolved).toEqual(["whiteboard"]);
     expect(isPromptsCapabilityEnabledForOrg).not.toHaveBeenCalled();
   });
 });

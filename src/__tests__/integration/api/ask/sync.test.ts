@@ -68,7 +68,6 @@ vi.mock('@/lib/constants/prompt', () => ({
   buildCanvasScopeMessage: vi.fn(() => null),
   getRoadmapCapabilitySnippet: vi.fn(() => ''),
   getWhiteboardCapabilitySnippet: vi.fn(() => ''),
-  getPlannerCapabilitySnippet: vi.fn(() => ''),
   getResearchCapabilitySnippet: vi.fn(() => ''),
   getConnectionsCapabilitySnippet: vi.fn(() => ''),
   getHtmlPagesCapabilitySnippet: vi.fn(() => ''),
@@ -568,11 +567,12 @@ describe('POST /api/ask/sync', () => {
       const toolNames = Object.keys(callArgs.tools ?? {});
 
       // Pure-output proposal tools survive the readonly strip.
-      expect(toolNames).toContain('propose_feature');
+      expect(toolNames).toContain('propose_initiative');
       // Genuinely-mutating tools are stripped...
       expect(toolNames).not.toContain('update_canvas');
       expect(toolNames).not.toContain('assign_feature_to_initiative');
-      // ...and the planner capability (real Stakwork dispatch) is absent.
+      // ...and no feature-planner tools exist at all.
+      expect(toolNames).not.toContain('propose_feature');
       expect(toolNames).not.toContain('send_to_feature_planner');
       // No deferred-check write tool injected.
       expect(toolNames).not.toContain('schedule_check');
@@ -670,7 +670,7 @@ describe('POST /api/ask/sync', () => {
   describe('Org toolset for single-workspace orgs', () => {
     it('a live single-workspace turn merges the org toolset (not only dryRun)', async () => {
       // The live branch used to gate `orgId` on `slugs.length > 1`, so a
-      // one-workspace org's turn ran with no `propose_feature` at all.
+      // one-workspace org's turn ran with no `propose_initiative` at all.
       const { owner, workspace } = await setupOrgWorkspace();
 
       vi.mocked(streamText).mockReturnValue(
@@ -688,11 +688,12 @@ describe('POST /api/ask/sync', () => {
 
       const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
       const toolNames = Object.keys(callArgs.tools ?? {});
-      expect(toolNames).toContain('propose_feature');
+      expect(toolNames).toContain('propose_initiative');
       expect(toolNames).toContain('read_canvas');
-      // Live (non-dryRun): mutators and the planner are present too.
+      // Live (non-dryRun): mutators are present too; planner tools are gone.
       expect(toolNames).toContain('assign_feature_to_initiative');
-      expect(toolNames).toContain('send_to_feature_planner');
+      expect(toolNames).not.toContain('propose_feature');
+      expect(toolNames).not.toContain('send_to_feature_planner');
     });
   });
 });

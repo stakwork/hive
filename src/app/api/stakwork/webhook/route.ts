@@ -6,7 +6,6 @@ import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 import { notifyFeatureCanvasRefresh } from "@/lib/canvas";
-import { syncPlannerWorkflowStatusToCanvas } from "@/services/canvas-planner-fanout";
 import { createAndSendNotification } from "@/services/notifications";
 import { retryWorkflowEditorTask } from "@/services/workflow-editor-retry";
 import { releaseTaskPod } from "@/lib/pods/utils";
@@ -189,7 +188,6 @@ export async function POST(request: NextRequest) {
           assigneeId: true,
           createdById: true,
           title: true,
-          parentCanvasConversationId: true,
           workspace: { select: { slug: true } },
         },
       });
@@ -207,21 +205,6 @@ export async function POST(request: NextRequest) {
           priorStatus: priorFeatureStatus,
           newStatus: workflowStatus,
         });
-
-        // Patch the (frozen) `source.workflowStatus` snapshot on the
-        // feature's latest planner row in its owning canvas conversation,
-        // so the `SubAgentRunCard` pill reflects the just-written status
-        // (the planner message usually fanned out a few seconds earlier,
-        // while the feature still read IN_PROGRESS). No-ops when there's
-        // no owning conversation / planner row, and self-heals on reload
-        // if missed — so it never blocks the webhook.
-        if (feature.parentCanvasConversationId) {
-          await syncPlannerWorkflowStatusToCanvas(
-            feature.parentCanvasConversationId,
-            feature.id,
-            workflowStatus,
-          );
-        }
 
         // Fire WORKFLOW_HALTED notification for feature path (fire-and-forget)
         if (workflowStatus === WorkflowStatus.HALTED) {

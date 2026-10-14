@@ -6,15 +6,11 @@
  * of tool names that count as writes (stripped in readonly mode).
  * `runCanvasAgent` composes its org toolset + prompt suffix + readonly
  * strip set from a selected capability list, so the same agent loop
- * can run on surfaces without a canvas (e.g. planner-only).
+ * can run on surfaces without a canvas (e.g. no canvas).
  *
  * Capabilities are defined by INTENT, not by the `buildXTools` factory
- * boundaries — `buildInitiativeTools` in particular spans two
- * capabilities (everything that authors/organizes roadmap structure —
- * the initiative/milestone tools AND `propose_feature` — belongs to
- * `roadmap`; only `send_to_feature_planner` + `read_user_activity`
- * belong to `planner`), so those entries pick the relevant keys out of
- * the factory's output. Likewise `buildCanvasTools`' output is split:
+ * boundaries — roadmap entries pick the relevant keys out of
+ * `buildInitiativeTools`' output. Likewise `buildCanvasTools`' output is split:
  * `read_canvas` is a `roadmap` tool (you read the canvas to find
  * anchors before proposing); `update_canvas` / `patch_canvas` are
  * `whiteboard` tools.
@@ -22,7 +18,7 @@
  * ## Prompt composition
  *
  * Every resolved capability's tools are registered. Only the formerly-core
- * capabilities (`roadmap`, `planner`, `graph_walker`, `concepts`) emit their
+ * capabilities (`roadmap`, `graph_walker`, `concepts`) emit their
  * prompt snippet in the system prompt, in canonical order; capabilities with
  * a `slimPromptSnippet` use it in slim-prompt mode. The other capabilities
  * (whiteboard, research, connections, html_pages, infra, strut,
@@ -42,14 +38,12 @@
  * `resolveOrgCapabilities`; gated capabilities must never appear in an
  * `includes` list (the sync resolver can't run the gate).
  *
- * The five capabilities:
+ * The capabilities:
  *   - `roadmap` — propose/organize roadmap structure
- *     (initiatives/milestones/features) + `read_canvas`. Folds the rest
+ *     (initiatives/milestones, organizing features) + `read_canvas` and
+ *     `read_user_activity`. Folds the rest
  *     of the canvas set in via `includes` so their tools (plus
  *     their snippets) are present whenever roadmap is selected.
- *   - `planner` — driving an EXISTING feature's per-feature
- *     planning agent via `send_to_feature_planner`. Usable without
- *     `roadmap`: the motivating surface is the per-feature Plan page.
  *   - `whiteboard` (tools only) — free-form canvas drawing/annotation:
  *     `update_canvas` / `patch_canvas`, notes/decisions, edges, layout.
  *   - `research` (tools only) — Research documents (web-search writeups).
@@ -86,7 +80,6 @@ import {
 } from "@/lib/ai/researchTools";
 import type { WebSearchHandle } from "@/lib/ai/provider";
 import {
-  PROPOSE_FEATURE_TOOL,
   PROPOSE_INITIATIVE_TOOL,
   PROPOSE_MILESTONE_TOOL,
   PROPOSE_NEW_PROMPT_TOOL,
@@ -107,7 +100,6 @@ import {
   getGraphWalkerCapabilitySnippet,
   getHtmlPagesCapabilitySnippet,
   getInfraCapabilitySnippet,
-  getPlannerCapabilitySnippet,
   getPromptsCapabilitySnippet,
   getResearchCapabilitySnippet,
   getRoadmapCapabilitySnippet,
@@ -117,13 +109,11 @@ import {
 import {
   getSlimConceptsCapabilitySnippet,
   getSlimGraphWalkerCapabilitySnippet,
-  getSlimPlannerCapabilitySnippet,
   getSlimRoadmapCapabilitySnippet,
 } from "@/lib/constants/prompt-slim";
 
 export type OrgCapability =
   | "roadmap"
-  | "planner"
   | "whiteboard"
   | "research"
   | "connections"
@@ -156,18 +146,10 @@ export interface CapabilityContext {
   publicBaseUrl?: string;
   /**
    * The user's `chatAgentModel` preference (e.g. `"anthropic/claude-opus-4-6"`).
-   * Forwarded to `buildInitiativeTools` so `send_to_feature_planner` can pass
-   * it as the `model` arg to `sendFeatureChatMessage`, covering features whose
-   * `Feature.model` is not already set (e.g. features not created via canvas).
+   * Forwarded to strut job launches (`start_job` / `continue_job`) as the
+   * job's model.
    */
   chatAgentModel?: string;
-  /**
-   * Slim-prompt mode (the per-browser settings switch). Forwarded to
-   * `buildInitiativeTools` so `send_to_feature_planner` carries the FORM
-   * rule only in slim-prompt mode (the full prompt keeps its own FORM
-   * guidance).
-   */
-  slimPrompt?: boolean;
   /**
    * The run's `web_search` handle (from `createWebSearch`). Carries the
    * ordered result list `update_research` cites into and the citation
@@ -238,9 +220,8 @@ function pickTools(tools: ToolSet, names: readonly string[]): ToolSet {
 }
 
 // Intent-based split of buildInitiativeTools' output (see module doc).
-// All the roadmap-authoring/organizing tools — including
-// `propose_feature` — are `roadmap`; `send_to_feature_planner` (drive an
-// existing feature's planner) + `read_user_activity` are `planner`.
+// All the roadmap-authoring/organizing tools (plus the read-only
+// `read_user_activity`) belong to `roadmap`.
 const ROADMAP_INITIATIVE_TOOL_NAMES = [
   "read_initiative",
   "read_milestone",
@@ -248,13 +229,7 @@ const ROADMAP_INITIATIVE_TOOL_NAMES = [
   "assign_feature_to_workspace",
   "unassign_feature_from_workspace",
   PROPOSE_INITIATIVE_TOOL,
-  PROPOSE_FEATURE_TOOL,
   PROPOSE_MILESTONE_TOOL,
-] as const;
-
-const PLANNER_TOOL_NAMES = [
-  "send_to_feature_planner",
-  "cancel_feature_planner",
   "read_user_activity",
 ] as const;
 
@@ -266,7 +241,6 @@ const WHITEBOARD_CANVAS_TOOL_NAMES = ["update_canvas", "patch_canvas"] as const;
 /** Canonical composition order — also the prompt snippet order. */
 export const ALL_CAPABILITIES: readonly OrgCapability[] = [
   "roadmap",
-  "planner",
   "whiteboard",
   "research",
   "connections",
@@ -282,22 +256,12 @@ export const ALL_CAPABILITIES: readonly OrgCapability[] = [
 export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
   {
     roadmap: {
-      // Both `roadmap` and `planner` call buildInitiativeTools and pick
-      // their keys — the factory is a pure ToolSet builder (no I/O at
-      // build time), so constructing it twice when both capabilities
-      // are selected is cheap and keeps the entries independent.
       // `read_canvas` comes from buildCanvasTools (the only canvas tool
       // roadmap needs; update/patch are whiteboard).
       buildTools: (ctx) => ({
         ...pickTools(buildCanvasTools(ctx.orgId), ["read_canvas"]),
         ...pickTools(
-          buildInitiativeTools(
-            ctx.orgId,
-            ctx.userId,
-            ctx.currentCanvasConversationId,
-            ctx.chatAgentModel,
-            ctx.slimPrompt,
-          ),
+          buildInitiativeTools(ctx.orgId, ctx.userId),
           ROADMAP_INITIATIVE_TOOL_NAMES,
         ),
       }),
@@ -308,7 +272,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
         "assign_feature_to_workspace",
         "unassign_feature_from_workspace",
         PROPOSE_INITIATIVE_TOOL,
-        PROPOSE_FEATURE_TOOL,
         PROPOSE_MILESTONE_TOOL,
       ],
       // Pull the rest of the canvas set in so their tools are registered
@@ -318,25 +281,6 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
       // `includes` is expanded by the sync resolver which can't run the
       // gate — so it must stay explicitly-selected-only.
       includes: ["whiteboard", "research", "connections", "html_pages", "graph_walker", "infra", "concepts"],
-    },
-    planner: {
-      buildTools: (ctx) =>
-        pickTools(
-          buildInitiativeTools(
-            ctx.orgId,
-            ctx.userId,
-            ctx.currentCanvasConversationId,
-            ctx.chatAgentModel,
-            ctx.slimPrompt,
-          ),
-          PLANNER_TOOL_NAMES,
-        ),
-      promptSnippet: getPlannerCapabilitySnippet,
-      slimPromptSnippet: getSlimPlannerCapabilitySnippet,
-      // send_to_feature_planner survives readonly mode — it messages an
-      // agent rather than mutating org state directly. cancel_feature_planner
-      // does mutate run + feature status, so it is stripped in readonly.
-      writeToolNames: ["cancel_feature_planner"],
     },
     whiteboard: {
       buildTools: (ctx) =>
@@ -471,7 +415,7 @@ export const CAPABILITY_REGISTRY: Record<OrgCapability, CapabilityDefinition> =
 
 /**
  * Expand `includes` transitively and return the resulting set in
- * canonical order. `["roadmap", "planner"]` resolves to all five.
+ * canonical order. `["roadmap"]` resolves to roadmap plus everything it includes.
  */
 export function resolveCapabilities(
   selected: readonly OrgCapability[],
@@ -520,7 +464,6 @@ export async function resolveOrgCapabilities(
 /** Capabilities whose snippets are still emitted in the system prompt. */
 const PROMPT_SNIPPET_CAPABILITIES: ReadonlySet<OrgCapability> = new Set([
   "roadmap",
-  "planner",
   "graph_walker",
   "concepts",
 ]);
@@ -544,7 +487,7 @@ export function composeCapabilityTools(
 
 /**
  * Build the system-prompt suffix for the selected capabilities: the
- * roadmap / planner / graph_walker / concepts snippets are emitted inline,
+ * roadmap / graph_walker / concepts snippets are emitted inline,
  * in canonical order. Other capabilities contribute tools only (their
  * instructions live in the "Jamie Capabilities" concept tree).
  */

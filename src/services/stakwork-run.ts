@@ -40,7 +40,6 @@ import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { optionalEnvVars } from "@/config/env";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { addNode, addEdge } from "@/services/swarm/api/nodes";
-import { syncPlannerWorkflowStatusToCanvas } from "@/services/canvas-planner-fanout";
 import { z } from "zod";
 
 const encryptionService = EncryptionService.getInstance();
@@ -2023,7 +2022,6 @@ export async function stopStakworkRun(
           members: { where: { userId, leftAt: null }, select: { role: true } },
         },
       },
-      feature: { select: { parentCanvasConversationId: true } },
     },
   });
 
@@ -2109,19 +2107,6 @@ export async function stopStakworkRun(
     });
 
     if (halted.count > 0) {
-      const conversationId = run.feature?.parentCanvasConversationId;
-      if (conversationId) {
-        try {
-          await syncPlannerWorkflowStatusToCanvas(
-            conversationId,
-            run.featureId,
-            WorkflowStatus.HALTED,
-          );
-        } catch (error) {
-          console.error("Error syncing planner status to canvas:", error);
-        }
-      }
-
       try {
         await pusherServer.trigger(
           getFeatureChannelName(run.featureId),
