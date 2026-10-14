@@ -68,7 +68,7 @@
 import { after } from "next/server";
 import { z } from "zod";
 import { StrutRunStatus } from "@prisma/client";
-import type { ArtifactKind, ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
+import { parseArtifactContent, type ArtifactKind, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
@@ -253,6 +253,29 @@ function inlineContent(kind: string, content: unknown): { kind: ArtifactKind; co
   }
 }
 
+/** The brainstorm card's artifact id (declared again with the collector below). */
+const TREE_ID = "brainstorm-tree";
+
+/**
+ * A brainstorm tree card an agent may have copied under any kind: the entry's
+ * id is `brainstorm-tree`, or its inline content (a record or JSON-object
+ * text) has a string `focus` and `layout: "tree"`. `content` is the object a
+ * `graph` ref stores; `unsupported` when it cannot be one (no string
+ * `workspace`). Null when the entry is not a tree card.
+ */
+function treeCardContent(entry: StrutArtifact): { content: Record<string, unknown> } | "unsupported" | null {
+  let raw: unknown = entry.content;
+  if (typeof raw === "string") raw = raw.length > MAX_INLINE_CHARS ? undefined : parseJsonObject(raw);
+  if (!isRecord(raw)) return null;
+  // A `json` card's own shape: the object under `value`.
+  if (entry.kind === "json" && !("focus" in raw) && isRecord(raw.value)) raw = raw.value;
+  const record = raw as Record<string, unknown>;
+  const shaped = typeof record.focus === "string" && record.layout === "tree";
+  if (entry.id !== TREE_ID && !shaped) return null;
+  if (typeof record.workspace !== "string" || !parseArtifactContent("graph", record)) return "unsupported";
+  return { content: record };
+}
+
 /** The file's name, for a `code` ref's highlighting. */
 const basename = (key: string): string => key.split("?")[0].split("/").pop() ?? key;
 
@@ -271,6 +294,15 @@ export function mapStrutArtifacts(
     const base = { id: entry.id, title: entry.title, ...(entry.label ? { label: entry.label } : {}), ...(entry.summary ? { summary: entry.summary } : {}) };
     if (entry.error) {
       dropped.push({ title: entry.title, reason: entry.error });
+      continue;
+    }
+    // A tree card is a `graph` whatever kind the agent gave it. A url keeps
+    // its own handling, unless the card is the brainstorm's.
+    const hasUrl = typeof entry.url === "string" && entry.url.length > 0;
+    const tree = entry.content !== undefined && (entry.id === TREE_ID || !hasUrl) ? treeCardContent(entry) : null;
+    if (tree) {
+      if (tree === "unsupported") dropped.push({ title: entry.title, reason: "unsupported content" });
+      else refs.push({ ...base, kind: "graph", source: { type: "inline", content: tree.content } });
       continue;
     }
     if (typeof entry.url === "string" && entry.url.length > 0) {
@@ -447,26 +479,36 @@ export async function readRunArtifacts(row: StrutRunRow): Promise<ArtifactsRead>
 
 /** The workflow whose run a job turn launches for a brainstorm, and the artifact it reports. */
 const BRAINSTORM_WORKFLOW = "brainstorm";
-export const BRAINSTORM_ARTIFACT_ID = "brainstorm-tree";
+export const BRAINSTORM_ARTIFACT_ID = TREE_ID;
+
+/** What reading the brainstorm run gave: its cards, how many brainstorm runs the turn launched, and why none (or some). */
+export interface BrainstormRead {
+  refs: ArtifactRef[];
+  launches: number;
+  reason: "collected" | "no brainstorm run launched" | "run had no brainstorm-tree graph artifact" | `read failed: ${string}`;
+}
 
 /**
  * The `brainstorm-tree` card of the brainstorm run this turn launched (the
  * LAST local `brainstorm` child, from the turn's events), mapped to refs on
- * the ROW's swarm like the job's own. Empty when there is none. Never throws.
+ * the ROW's swarm like the job's own. No refs when there is none. Never throws.
  */
-export async function readBrainstormArtifacts(row: StrutRunRow): Promise<ArtifactRef[]> {
+export async function readBrainstormArtifacts(row: StrutRunRow): Promise<BrainstormRead> {
+  let launchCount = 0;
   try {
     const events = await fetchStrutRunEvents(row, TRACE_READ_TIMEOUT_MS);
-    if (!events) return [];
+    if (!events) return { refs: [], launches: 0, reason: "read failed: no events" };
     const { calls, launches } = projectWithLaunches(events);
-    const launch = calls
+    const found = calls
       .filter((c) => c.child?.workflow === BRAINSTORM_WORKFLOW && !c.child.peer)
       .map((c) => launches.get(c.path))
-      .filter((l): l is NonNullable<typeof l> => !!l && l.workflow === BRAINSTORM_WORKFLOW && !l.peer)
-      .pop();
-    if (!launch) return [];
+      .filter((l): l is NonNullable<typeof l> => !!l && l.workflow === BRAINSTORM_WORKFLOW && !l.peer);
+    launchCount = found.length;
+    const launch = found.pop();
+    if (!launch) return { refs: [], launches: 0, reason: "no brainstorm run launched" };
     const lab = await labForRow(row);
-    if (!lab) return [];
+    if (!lab) return { refs: [], launches: launchCount, reason: "read failed: no lab" };
+    logger.info("Job turn reading brainstorm run", LOG_TAG, { runId: row.id, childRunId: launch.runId });
     const res = await fetch(
       `${lab.labBase}/workflows/${BRAINSTORM_WORKFLOW}/runs/${encodeURIComponent(launch.runId)}/artifacts`,
       { headers: { "x-api-token": lab.swarmApiKey }, cache: "no-store", signal: AbortSignal.timeout(TRACE_READ_TIMEOUT_MS) },
@@ -474,13 +516,14 @@ export async function readBrainstormArtifacts(row: StrutRunRow): Promise<Artifac
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = (await res.json()) as { artifacts?: unknown };
     const tree = parseStrutArtifacts(body.artifacts).filter((a) => a.id === BRAINSTORM_ARTIFACT_ID && a.kind === "graph");
-    return mapStrutArtifacts(tree, row.swarmId).refs;
+    const refs = mapStrutArtifacts(tree, row.swarmId).refs.filter((r) => r.kind === "graph");
+    return refs.length > 0
+      ? { refs, launches: launchCount, reason: "collected" }
+      : { refs, launches: launchCount, reason: "run had no brainstorm-tree graph artifact" };
   } catch (err) {
-    logger.warn("Job turn brainstorm artifacts unavailable — delivering without them", LOG_TAG, {
-      runId: row.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return [];
+    const error = err instanceof Error ? err.message : String(err);
+    logger.warn("Job turn brainstorm artifacts unavailable — delivering without them", LOG_TAG, { runId: row.id, error });
+    return { refs: [], launches: launchCount, reason: `read failed: ${error}` };
   }
 }
 
@@ -662,6 +705,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
   let dropped: Array<{ title: string; reason: string }> = [];
   let trace: ArtifactRef | null = null;
   let collected: ArtifactRef[] = [];
+  let brainstormLog: { found: number; launches: number; replaced: string | null; reason: string } | null = null;
   if (reply.outcome === "success") {
     const [read, turnTrace, brainstorm] = await Promise.all([readRunArtifacts(row), readTurnTrace(row, jobId), readBrainstormArtifacts(row)]);
     trace = turnTrace;
@@ -674,9 +718,20 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       // Strut re-posts the callback on a 5xx; the next attempt reads again.
       throw new Error(`job turn artifacts unavailable: ${read.reason}`);
     }
-    // The agent's own copy wins: it may carry a better title.
-    collected = brainstorm.filter((b) => !refs.some((r) => r.id === b.id));
-    refs = [...refs, ...collected];
+    // The run's card wins: the agent's copy of the id (whatever kind it
+    // gave it) is replaced in place, else the run's card is appended.
+    collected = brainstorm.refs;
+    brainstormLog = { found: brainstorm.refs.length, launches: brainstorm.launches, replaced: null, reason: brainstorm.reason };
+    const card = brainstorm.refs.find((b) => b.id === BRAINSTORM_ARTIFACT_ID);
+    if (card) {
+      const at = refs.findIndex((r) => r.id === BRAINSTORM_ARTIFACT_ID);
+      if (at >= 0) {
+        brainstormLog.replaced = refs[at].id;
+        brainstormLog.reason = "replaced agent copy";
+        refs = refs.filter((r) => r.id !== BRAINSTORM_ARTIFACT_ID);
+        refs.splice(at, 0, card);
+      } else refs = [...refs, card];
+    }
   }
 
   // The index an event about one of these is looked up in: every ref with
@@ -715,6 +770,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
     artifacts: cards.map((c) => ({ id: c.id, kind: c.kind })),
     artifactCount: cards.length,
     collected: collected.map((c) => c.id),
+    ...(brainstormLog ? { brainstorm: brainstormLog } : {}),
     trace: trace !== null,
     dropped: dropped.length,
     result,
