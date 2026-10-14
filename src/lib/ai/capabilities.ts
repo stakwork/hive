@@ -145,6 +145,12 @@ export interface CapabilityContext {
    */
   publicBaseUrl?: string;
   /**
+   * The user's `chatAgentModel` preference (e.g. `"anthropic/claude-opus-4-6"`).
+   * Forwarded to strut job launches (`start_job` / `continue_job`) as the
+   * job's model.
+   */
+  chatAgentModel?: string;
+  /**
    * The run's `web_search` handle (from `createWebSearch`). Carries the
    * ordered result list `update_research` cites into and the citation
    * treatment for written-up text — which differs by backend, so tools
