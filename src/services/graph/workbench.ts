@@ -275,24 +275,24 @@ export async function getConnectionPage(
 
 export interface ChoiceTreeNode {
   ref_id: string;
-  /** `Question` when the node's labels include it, else `Choice`. */
-  type: "Question" | "Choice";
+  /** `Question` when the node's labels include it, else `Option` when they include that, else `Choice`. */
+  type: "Question" | "Option" | "Choice";
   properties: Record<string, unknown>;
 }
 
 export interface ChoiceTreeData {
   nodes: ChoiceTreeNode[];
-  /** Every edge is `PARENT_OF`, parent to child (a question's options, an option's questions). */
+  /** Every edge is `PARENT_OF`, parent to child (a question's sub-questions and options, an option's follow-up questions). */
   edges: Array<{ source: string; target: string }>;
   /** True when upstream's row cap may have cut the node or edge list short. */
   truncated: boolean;
 }
 
-export const CHOICE_TREE_LABELS = ["Choice", "Question"];
+export const CHOICE_TREE_LABELS = ["Question", "Option", "Choice"];
 
 /**
  * The `focus` node and its `PARENT_OF` descendants carrying any of `labels`
- * (default `Choice` and `Question`), read by Cypher (the REST node listing
+ * (default `Question`, `Option` and `Choice`), read by Cypher (the REST node listing
  * only knows a fixed set of labels and reports `node_type` from the wrong
  * label). Selection is by label, never `node_type`.
  */
@@ -328,7 +328,8 @@ export async function getChoiceTree(
     data: {
       nodes: nodes.data.flatMap((r) => {
         const id = str(r.id);
-        const type: ChoiceTreeNode["type"] = Array.isArray(r.labels) && r.labels.includes("Question") ? "Question" : "Choice";
+        const ls = Array.isArray(r.labels) ? r.labels : [];
+        const type: ChoiceTreeNode["type"] = ls.includes("Question") ? "Question" : ls.includes("Option") ? "Option" : "Choice";
         return id ? [{ ref_id: id, type, properties: fromPropertyPairs(r.props) }] : [];
       }),
       edges: edges.data.flatMap((r) => {
