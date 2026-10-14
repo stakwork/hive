@@ -114,7 +114,7 @@ export interface FeatureProposalPayload {
    * Cuids of features that ALREADY EXIST in the DB and must reach
    * completion before this feature can start. The agent discovered
    * them via `read_canvas` (live ids are `feature:<cuid>` — pass just
-   * the `<cuid>` part) or via `<slug>__list_features`. Validated at
+   * the `<cuid>` part). Validated at
    * propose time: every id must exist and belong to this org.
    *
    * At approval time, the handler unions this array with the cuids

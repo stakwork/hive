@@ -107,10 +107,8 @@ const PLACEMENT_DESCRIPTION =
  * invariant (CANVAS.md "agent does NOT create initiatives or
  * milestones") survives by routing all writes through human approval.
  *
- * Discovery: the agent already has per-workspace `<slug>__list_features`
- * tools (see `askToolsMulti.ts`). It should fan out across those to
- * find candidate features for `assign_feature_to_initiative`, and to
- * pick the right `workspaceId` when proposing a feature.
+ * Discovery: the agent finds candidate feature ids via `read_canvas`
+ * (`feature:<cuid>` nodes), `<slug>__check_status` and `read_user_activity`.
  *
  * Validation: every mutation (or proposal) verifies workspace / org
  * ownership against `orgId` so an agent invoked under org A can never
@@ -206,8 +204,9 @@ export function buildInitiativeTools(
         "is provided, the feature's `initiativeId` is derived from the " +
         "milestone automatically — you don't need to send both. Use this " +
         "after the user creates a new initiative and asks to organize " +
-        "existing features under it. To discover features, call the " +
-        "per-workspace `<slug>__list_features` tools first.",
+        "existing features under it. To discover feature ids, use " +
+        "`read_canvas` (`feature:<cuid>` nodes), `<slug>__check_status` " +
+        "or `read_user_activity`.",
       inputSchema: z.object({
         featureId: z
           .string()
