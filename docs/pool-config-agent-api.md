@@ -4,7 +4,7 @@ Read and update a workspace's pool config (pm2.config.js, Dockerfile, docker-com
 
 ## Auth
 
-Send an org API key in the `x-api-token` header: `x-api-token: hiveorg_…`. The workspace must belong to the key's org (otherwise `403`); a revoked/invalid key gets `401`. No session is needed. (The global `API_TOKEN` also works.)
+Send an org API key in the `x-api-token` header: `x-api-token: hiveorg_…`. The workspace must belong to the key's org (otherwise `403`); a revoked/invalid key gets `401`. No session is needed. (The global `API_TOKEN` also works.) The `pool/…` routes under Diagnose answer `404` for a wrong-org key instead, so a key cannot tell a foreign workspace from a missing one.
 
 ## Calls
 
@@ -57,6 +57,30 @@ Poll `GET` every 5–10 s and read `data.rollout`:
 ## Testing the new pods
 
 When `ready`, `POST /api/pool-manager/claim-pod/{slug}` with the same `hiveorg_` key to claim a pod and test.
+
+## Diagnose
+
+All read-only, same auth as above (`x-api-token: hiveorg_…`, same org). A wrong-org key gets `404`, a bad/revoked key `401`. Pod passwords are never returned; log output is redacted: the pod password and every stored env var value of 6+ chars become `[redacted]`, except values under a name that is public by construction (`NEXT_PUBLIC_*`, `PUBLIC_*`, `VITE_*`, `REACT_APP_*`, `EXPO_PUBLIC_*`, `NUXT_PUBLIC_*`) or plain config (`NODE_ENV`, `PORT`, `HOST`, `HOSTNAME`), so `production` and a public URL stay readable.
+
+- `GET /api/w/{slug}/pool/status` — pool counters plus, for token callers only: `rollout` (same shape as in Polling), `flaggedPods` (pods flagged for recreation), `minimumVms`, `minimumPods`.
+- `GET /api/w/{slug}/pool/pods[?live=1]` — per pod: `podId`, `url`, `status` (raw enum), `usageStatus`, `usedBy` (`null` or `{kind:"task"|"job", id, title}`), `markedAt`, `createdAt`, `flaggedForRecreation`, `flaggedReason`, `flaggedAt`, `lastHealthCheck`, `generation` (`"new"` if created after the last push, else `"old"`; with no push recorded every pod is `"old"`), `willUpdateWhenReleased` (in use, and either flagged or created before a recorded push — nothing is pending without a push). DB only by default; `live=1` also fetches each RUNNING pod's process list (`jlist`, `null` if the pod is not RUNNING or is unreachable).
+- `GET /api/w/{slug}/pool/{podId}/processes` — the pod's pm2 processes (`data.processes`). `409 {error:"pod_not_running", status}` if the pod isn't RUNNING; `502 {error:"pod_unreachable"}` if it can't be reached.
+- `GET /api/w/{slug}/pool/{podId}/logs[?process=<name>&lines=<n>]` — pm2 logs, all processes or one (`process` matches `^[A-Za-z0-9._-]{1,100}$`, else 400). `lines` defaults to 200, clamped to 1..1000. Output is capped to the last 200 KB (`truncated: true`). Response `data: { podId, process, lines, logs, truncated }`. Pods in use are readable. `409 {error:"pod_not_running", status}` if the pod isn't RUNNING; `502 {error:"pod_unreachable"}` if unreachable/timeout/non-OK.
+
+## Repair loop
+
+1. `GET pool/status` — look at `rollout`, `flaggedPods`, failed/pending counts.
+2. `GET pool/pods` — find FAILED/flagged/crashing pods.
+3. `GET pool/{podId}/processes` and `GET pool/{podId}/logs[?process=…]` — find the cause.
+4. `GET /api/workspaces/{slug}/stakgraph` — read the current config.
+5. `PUT /api/workspaces/{slug}/stakgraph` — send the fix; keep the returned `changeId`.
+6. Poll `GET …/stakgraph` (or `pool/status`) until `rollout.state` is `ready` or `failed` for that `changeId`.
+7. `POST /api/pool-manager/claim-pod/{slug}` to verify on a new pod (check `processes`/`logs` on it too).
+8. `POST /api/pool-manager/drop-pod/{slug}?podId=<podId>` to release the pod you claimed when done.
+
+Notes:
+- After a push the pool manager recreates **unused** pods; pods that are **in use** are marked to update when they are released. An old pod that is in use (`willUpdateWhenReleased: true`) is therefore not a failure — don't wait for it.
+- Recreation only follows a PUT that changes infrastructure. If `changeId` is `null`, nothing infra-related changed and no pods will be recreated.
 
 ## Caveat: pm2.config.js
 
