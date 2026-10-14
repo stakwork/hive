@@ -176,6 +176,27 @@ describe("parseStrutArtifacts", () => {
 });
 
 describe("mapStrutArtifacts", () => {
+  it("a tree card the agent copied under another kind maps to graph; unrelated json stays json", () => {
+    const obj = { workspace: "hive", focus: "1d184bca-d7fd-4754-9977-f38d69d3f88f", layout: "tree" };
+    const { refs, dropped } = mapStrutArtifacts(
+      [
+        entry({ id: "brainstorm-tree", kind: "json", title: "Tree", content: JSON.stringify(obj) }),
+        entry({ id: "other", kind: "json", title: "Other", content: { focus: "x", workspace: "w", layout: "tree" } }),
+        entry({ id: "brainstorm-tree", kind: "markdown", title: "Md", content: obj }),
+        entry({ id: "nows", kind: "json", title: "No workspace", content: { focus: "x", layout: "tree" } }),
+        entry({ id: "data", kind: "json", title: "Data", content: '{"a":1}' }),
+      ],
+      "swarm-1",
+    );
+    expect(refs.map((r) => [r.id, r.kind, r.source])).toEqual([
+      ["brainstorm-tree", "graph", { type: "inline", content: obj }],
+      ["other", "graph", { type: "inline", content: { focus: "x", workspace: "w", layout: "tree" } }],
+      ["brainstorm-tree", "graph", { type: "inline", content: obj }],
+      ["data", "json", { type: "inline", content: { value: { a: 1 } } }],
+    ]);
+    expect(dropped).toEqual([{ title: "No workspace", reason: "unsupported content" }]);
+  });
+
   it("a graph card maps to an inline graph ref — record content, or JSON text; bad text is dropped", () => {
     const content = { workspace: "hive", focus: "c1" };
     const { refs, dropped } = mapStrutArtifacts(
@@ -796,11 +817,36 @@ describe("handleJobTurnSettled — the brainstorm run's card", () => {
     expect(childCalls()).toEqual(["https://swarm1.sphinx.chat:3355/lab/workflows/brainstorm/runs/1790000000222/artifacts"]);
   });
 
-  it("does not duplicate a tree the agent copied: its copy (title) wins", async () => {
-    serve({ own: [plan, { ...tree, title: "Better title" }], events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": [tree] } });
+  it("the run's card replaces the agent's copy of the id, whatever its kind, in its position", async () => {
+    const copy = { id: "brainstorm-tree", kind: "json", title: "Tree", content: '{"workspace":"hive","focus":"1d184bca-d7fd-4754-9977-f38d69d3f88f","layout":"tree"}' };
+    const notes = { id: "notes", kind: "markdown", title: "Notes", content: "hi" };
+    serve({ own: [plan, copy, notes], events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": [tree] } });
     await handleJobTurnSettled(row());
-    const cards = delivered().artifacts as Array<{ id: string; title: string }>;
-    expect(cards.filter((a) => a.id === "brainstorm-tree")).toEqual([expect.objectContaining({ title: "Better title" })]);
+    const cards = delivered().artifacts as Array<{ id: string; kind: string; title: string }>;
+    expect(cards.map((a) => a.id)).toEqual(["plan", "brainstorm-tree", "notes"]);
+    expect(cards.filter((a) => a.id === "brainstorm-tree")).toEqual([expect.objectContaining({ kind: "graph", title: "Brainstorm: dark mode" })]);
+    const { logger } = await import("@/lib/logger");
+    expect(logger.info).toHaveBeenCalledWith("Job turn delivered", "JOB_TURN", expect.objectContaining({
+      brainstorm: { found: 1, launches: 1, replaced: "brainstorm-tree", reason: "replaced agent copy" },
+    }));
+  });
+
+  it("logs the brainstorm reason: collected, no launch, no graph artifact, read failed", async () => {
+    const { logger } = await import("@/lib/logger");
+    const last = () => (logger.info as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter((c) => c[0] === "Job turn delivered").pop()![2] as { brainstorm: unknown };
+    serve({ events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": [tree] } });
+    await handleJobTurnSettled(row());
+    expect(last().brainstorm).toEqual({ found: 1, launches: 1, replaced: null, reason: "collected" });
+    serve({ events: [] });
+    await handleJobTurnSettled(row());
+    expect(last().brainstorm).toEqual({ found: 0, launches: 0, replaced: null, reason: "no brainstorm run launched" });
+    serve({ events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": [{ ...tree, id: "other" }] } });
+    await handleJobTurnSettled(row());
+    expect(last().brainstorm).toEqual({ found: 0, launches: 1, replaced: null, reason: "run had no brainstorm-tree graph artifact" });
+    serve({ events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": json(500, {}) } });
+    await handleJobTurnSettled(row());
+    expect(last().brainstorm).toEqual({ found: 0, launches: 1, replaced: null, reason: "read failed: HTTP 500" });
+    expect(logger.info).toHaveBeenCalledWith("Job turn reading brainstorm run", "JOB_TURN", expect.objectContaining({ childRunId: "1790000000111" }));
   });
 
   it("ignores other workflows, peer children and non-tree artifacts", async () => {
