@@ -12,8 +12,6 @@ import { shouldTrimConceptsToIds } from "./concepts";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import {
-  mcpListFeatures,
-  mcpReadFeature,
   mcpListTasks,
   mcpReadTask,
   mcpCheckStatus,
@@ -428,36 +426,6 @@ export function askToolsMulti(
       workspaceSlug: ws.slug,
       userId: ws.userId,
     };
-
-    // list_features
-    allTools[`${prefix}__list_features`] = tool({
-      description: `[${ws.slug}] List roadmap features for the ${ws.slug} workspace (up to 40, most recently updated first).`,
-      inputSchema: z.object({}),
-      execute: async () => {
-        try {
-          return mcpText(await mcpListFeatures(auth));
-        } catch (e) {
-          console.error(`Error listing features for ${ws.slug}:`, e);
-          return `Could not list features for ${ws.slug}`;
-        }
-      },
-    });
-
-    // read_feature
-    allTools[`${prefix}__read_feature`] = tool({
-      description: `[${ws.slug}] Read a feature's details, brief, requirements, architecture, and chat history for ${ws.slug}.`,
-      inputSchema: z.object({
-        featureId: z.string().describe("The ID of the feature to read"),
-      }),
-      execute: async ({ featureId }: { featureId: string }) => {
-        try {
-          return mcpText(await mcpReadFeature(auth, featureId));
-        } catch (e) {
-          console.error(`Error reading feature for ${ws.slug}:`, e);
-          return `Could not read feature for ${ws.slug}`;
-        }
-      },
-    });
 
     // list_tasks
     allTools[`${prefix}__list_tasks`] = tool({

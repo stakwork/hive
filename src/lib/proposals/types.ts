@@ -114,7 +114,7 @@ export interface FeatureProposalPayload {
    * Cuids of features that ALREADY EXIST in the DB and must reach
    * completion before this feature can start. The agent discovered
    * them via `read_canvas` (live ids are `feature:<cuid>` — pass just
-   * the `<cuid>` part) or via `<slug>__list_features`. Validated at
+   * the `<cuid>` part). Validated at
    * propose time: every id must exist and belong to this org.
    *
    * At approval time, the handler unions this array with the cuids
@@ -743,15 +743,6 @@ export type ProposeToolName =
   | typeof PROPOSE_DELETE_EDGE_TOOL
   | typeof PROPOSE_MOVE_NODE_TOOL
   | typeof PROPOSE_DELETE_NODE_TOOL;
-
-/**
- * Sub-agent delegation tool name. Not a proposal (no approve/reject
- * flow), but lives next to the propose constants so every place the
- * chat UI looks up a known tool name by string finds the canonical
- * source here. Used by `SubAgentRunCard`'s extractor to filter
- * `message.toolCalls[]` down to planner-dispatch calls.
- */
-export const SEND_TO_FEATURE_PLANNER_TOOL = "send_to_feature_planner" as const;
 
 // ─── Approval / rejection intent (rides on user messages) ──────────────
 

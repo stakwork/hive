@@ -624,11 +624,11 @@ export async function POST(request: NextRequest) {
       } = await runCanvasAgent({
           userId,
           // Any org-scoped request (the org canvas SidebarChat) gets the org
-          // toolset — roadmap / planner / research / etc. — regardless of
+          // toolset — roadmap / research / etc. — regardless of
           // how many workspaces the org has. This used to be gated on
           // `slugs.length > 1`, which silently ran every single-workspace
           // org's canvas chat as the plain per-workspace agent (no
-          // `propose_feature`, no `read_canvas`, no capability prompt).
+          // `propose_initiative`, no `read_canvas`, no capability prompt).
           // `runCanvasAgent`'s single-workspace branch merges the same
           // capability tools + prompt suffix when handed an orgId. Public
           // viewers never carry an orgId (rejected above), and membership
@@ -663,14 +663,13 @@ export async function POST(request: NextRequest) {
           messages: convertedMessages,
           // The validated SharedConversation.id (or null when the
           // body's `conversationId` failed validation). Forwarded to
-          // `buildInitiativeTools` so `send_to_feature_planner` can
-          // lazy-claim `Feature.parentCanvasConversationId` for
-          // fan-out. Using the validated id (not the raw body field)
+          // the capability tools that key off the conversation (strut,
+          // research, schedule_check, …). Using the validated id (not the raw body field)
           // prevents a malicious caller from laundering ownership
           // claims into someone else's conversation.
           // Org-canvas rows are workspace-null, so `tokenAttributionRowId`
           // never matches them — `canvasConversationRowId` (the
-          // server-owned org-canvas row) is the one fan-out needs.
+          // server-owned org-canvas row) is the one those tools need.
           ...((canvasConversationRowId ?? tokenAttributionRowId)
             ? {
                 currentCanvasConversationId:

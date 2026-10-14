@@ -156,7 +156,6 @@ vi.mock("@/lib/constants/prompt", () => ({
   buildCanvasScopeMessage: vi.fn(() => null),
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
   getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
