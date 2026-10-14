@@ -26,10 +26,13 @@ export async function GET(
 
     const pod = await db.pod.findFirst({
       where: { podId, deletedAt: null, swarm: { workspaceId: caller.workspaceId } },
-      select: { podId: true, password: true },
+      select: { podId: true, password: true, status: true },
     });
     if (!pod) {
       return NextResponse.json({ error: "Pod not found in this workspace" }, { status: 404 });
+    }
+    if (pod.status !== "RUNNING") {
+      return NextResponse.json({ error: "pod_not_running", status: pod.status }, { status: 409 });
     }
 
     try {

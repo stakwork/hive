@@ -78,15 +78,31 @@ export function storedGlobalEnv(jsonField: unknown, tableEnv: Record<string, str
   return out;
 }
 
+/** Prefixes a frontend toolchain ships to the browser bundle: public by construction. */
+const PUBLIC_ENV_PREFIXES = ["NEXT_PUBLIC_", "PUBLIC_", "VITE_", "REACT_APP_", "EXPO_PUBLIC_", "NUXT_PUBLIC_"];
+/** Plain runtime config, never a credential. */
+const PUBLIC_ENV_NAMES = new Set(["NODE_ENV", "PORT", "HOST", "HOSTNAME"]);
+
+/** An env var whose value is not a secret by its name alone — never redacted from pod output. */
+export function isPublicEnvName(name: string): boolean {
+  return PUBLIC_ENV_NAMES.has(name) || PUBLIC_ENV_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
 /**
  * Every decrypted stored env var value of a swarm (global JSON field + table,
- * and per-service table rows). Used to redact secrets from pod output.
+ * and per-service table rows), except those under a public name
+ * (`isPublicEnvName`): redacting `NODE_ENV=production` or a `NEXT_PUBLIC_*`
+ * URL would blank the very lines a repair agent reads. Used to redact
+ * secrets from pod output.
  */
 export async function loadAllStoredEnvValues(swarmId: string, jsonField: unknown): Promise<string[]> {
   const values = new Set<string>();
-  const global = storedGlobalEnv(jsonField, await loadGlobalTableEnv(swarmId));
-  for (const v of Object.values(global)) values.add(v);
-  const services = await loadServiceEnvMap(swarmId);
-  for (const env of Object.values(services)) for (const v of Object.values(env)) values.add(v);
-  return Array.from(values).filter((v) => typeof v === "string" && v.length > 0);
+  const collect = (env: Record<string, string>) => {
+    for (const [name, value] of Object.entries(env)) {
+      if (!isPublicEnvName(name) && typeof value === "string" && value.length > 0) values.add(value);
+    }
+  };
+  collect(storedGlobalEnv(jsonField, await loadGlobalTableEnv(swarmId)));
+  for (const env of Object.values(await loadServiceEnvMap(swarmId))) collect(env);
+  return Array.from(values);
 }

@@ -83,6 +83,7 @@ describe("GET pool/pods", () => {
       mkPod({ podId: "old-used", createdAt: new Date("2026-01-01T00:00:00Z"), usageStatus: "USED", usageStatusMarkedBy: "task-1", password: "SECRET" }),
       mkPod({ podId: "old-free", createdAt: new Date("2026-01-01T00:00:00Z") }),
       mkPod({ podId: "job-pod", usageStatus: "USED", usageStatusMarkedBy: "job:j1" }),
+      mkPod({ podId: "flagged-used", usageStatus: "USED", usageStatusMarkedBy: "task-1", flaggedForRecreation: true }),
     ] as never);
     vi.mocked(db.task.findMany).mockResolvedValue([{ id: "task-1", title: "T", createdBy: { name: null, image: null } }] as never);
     vi.mocked(db.strutRun.findMany).mockResolvedValue([{ jobId: "j1", userId: "u1", input: {} }] as never);
@@ -99,9 +100,25 @@ describe("GET pool/pods", () => {
     expect(by["old-used"].usedBy).toEqual({ kind: "task", id: "task-1", title: "T" });
     expect(by["job-pod"].usedBy).toMatchObject({ kind: "job", id: "j1" });
     expect(by["job-pod"].willUpdateWhenReleased).toBe(false);
+    expect(by["flagged-used"].generation).toBe("new");
+    expect(by["flagged-used"].willUpdateWhenReleased).toBe(true);
     expect(JSON.stringify(json)).not.toContain("SECRET");
     expect(JSON.stringify(json)).not.toContain("password");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("with no push recorded every pod is old and nothing is pending", async () => {
+    vi.mocked(db.swarm.findFirst).mockResolvedValue({ id: "sw", poolPushedAt: null } as never);
+    vi.mocked(db.pod.findMany).mockResolvedValue([
+      mkPod({ podId: "used", usageStatus: "USED", usageStatusMarkedBy: "task-1" }),
+      mkPod({ podId: "flagged", usageStatus: "USED", usageStatusMarkedBy: "task-1", flaggedForRecreation: true }),
+    ] as never);
+    vi.mocked(db.task.findMany).mockResolvedValue([] as never);
+    const json = await (await getPods(req("/pods"), slugParams)).json();
+    const by = Object.fromEntries(json.data.pods.map((p: { podId: string }) => [p.podId, p]));
+    expect(by.used.generation).toBe("old");
+    expect(by.used.willUpdateWhenReleased).toBe(false);
+    expect(by.flagged.willUpdateWhenReleased).toBe(true);
   });
 
   it("live=1 fetches jlist, nulls failures, still hides password", async () => {
@@ -109,6 +126,7 @@ describe("GET pool/pods", () => {
     vi.mocked(db.pod.findMany).mockResolvedValue([
       mkPod({ podId: "a", password: "SECRET" }),
       mkPod({ podId: "b", password: "SECRET" }),
+      mkPod({ podId: "c", password: "SECRET", status: "FAILED" }),
     ] as never);
     fetchSpy.mockImplementation(async (url: string) =>
       url.includes("//a-")
@@ -120,6 +138,9 @@ describe("GET pool/pods", () => {
     const by = Object.fromEntries(json.data.pods.map((p: { podId: string }) => [p.podId, p]));
     expect(by.a.jlist).toEqual([{ name: "x", status: "online" }]);
     expect(by.b.jlist).toBeNull();
+    expect(by.c.jlist).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls.map((c) => c[0]).some((u: string) => u.includes("//c-"))).toBe(false);
     expect(JSON.stringify(json)).not.toContain("SECRET");
   });
 });
@@ -133,8 +154,16 @@ describe("GET pool/[podId]/processes", () => {
     });
   });
 
+  it("409 when not running, nothing fetched", async () => {
+    vi.mocked(db.pod.findFirst).mockResolvedValue({ podId: "pod-1", password: "pw", status: "FAILED" } as never);
+    const res = await getProcesses(req("/pod-1/processes"), podParams());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "pod_not_running", status: "FAILED" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("returns processes", async () => {
-    vi.mocked(db.pod.findFirst).mockResolvedValue({ podId: "pod-1", password: "pw" } as never);
+    vi.mocked(db.pod.findFirst).mockResolvedValue({ podId: "pod-1", password: "pw", status: "RUNNING" } as never);
     fetchSpy.mockResolvedValue(new Response(JSON.stringify([{ name: "frontend", status: "online" }])));
     const res = await getProcesses(req("/pod-1/processes"), podParams());
     expect(res.status).toBe(200);
@@ -142,7 +171,7 @@ describe("GET pool/[podId]/processes", () => {
   });
 
   it("502 when unreachable", async () => {
-    vi.mocked(db.pod.findFirst).mockResolvedValue({ podId: "pod-1", password: "pw" } as never);
+    vi.mocked(db.pod.findFirst).mockResolvedValue({ podId: "pod-1", password: "pw", status: "RUNNING" } as never);
     fetchSpy.mockRejectedValue(new Error("timeout"));
     const res = await getProcesses(req("/pod-1/processes"), podParams());
     expect(res.status).toBe(502);

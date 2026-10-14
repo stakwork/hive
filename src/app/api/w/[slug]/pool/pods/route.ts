@@ -88,8 +88,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         flaggedAt: pod.flaggedAt,
         lastHealthCheck: pod.lastHealthCheck,
         generation,
+        // In use, and something will recreate it on release: it is flagged, or
+        // a push happened after it was created. With no push recorded every
+        // pod is "old" and nothing is pending.
         willUpdateWhenReleased:
-          pod.usageStatus === "USED" && (generation === "old" || pod.flaggedForRecreation),
+          pod.usageStatus === "USED" &&
+          (pod.flaggedForRecreation || (generation === "old" && swarm.poolPushedAt !== null)),
       };
     });
 
@@ -100,7 +104,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         while (next < pods.length) {
           const i = next++;
           const pod = pods[i] as (typeof pods)[number] & { password?: string | null };
-          jlists[i] = await fetchJlist(pod.podId, pod.password ?? null, LIVE_TIMEOUT_MS).catch(() => null);
+          // A pod that is not RUNNING has no staklink to answer; skip the timeout
+          jlists[i] =
+            pod.status === "RUNNING"
+              ? await fetchJlist(pod.podId, pod.password ?? null, LIVE_TIMEOUT_MS).catch(() => null)
+              : null;
         }
       };
       await Promise.all(Array.from({ length: Math.min(LIVE_CONCURRENCY, pods.length) }, worker));
