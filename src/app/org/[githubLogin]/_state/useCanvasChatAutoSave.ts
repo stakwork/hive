@@ -50,7 +50,6 @@ import {
 import { parseArtifactRefs } from "./canvasChatArtifacts";
 import {
   mergeServerMessages,
-  reconcilePlannerSources,
 } from "./canvasChatPersistence";
 import {
   getPusherClient,
@@ -190,15 +189,6 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
           authoredPrefixes(),
         );
 
-        // Append-only merge can't refresh an existing row — so a planner
-        // row whose `source.workflowStatus` the server patched in place
-        // (the `"workflow-status"` nudge: a feature's run reached a
-        // terminal status after its message fanned out) would stay stale.
-        // Reconcile those existing planner rows from the server copy so
-        // the `SubAgentRunCard` pill re-derives live. Never drops/reorders
-        // rows, so the no-message-loss invariant holds.
-        const reconciled = reconcilePlannerSources(merged.messages, mapped);
-
         const store = useCanvasChatStore.getState();
 
         // Title can land independently of messages (LLM title after the
@@ -215,12 +205,8 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
           store.setConversationTitle(conversationId, fetchedTitle);
         }
 
-        if (
-          merged.added.length === 0 &&
-          !reconciled.changed
-        )
-          return; // in sync
-        store.setConversationMessages(conversationId, reconciled.messages);
+        if (merged.added.length === 0) return; // in sync
+        store.setConversationMessages(conversationId, merged.messages);
 
         // The user is looking at this chat (only the active conv is
         // subscribed/synced live), and we just merged new server content
@@ -373,9 +359,7 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
     // Browsers suspend backgrounded-tab websockets and Pusher drops on
     // network blips; in both cases the nudges fired during the gap are
     // never replayed. On return (tab visible again, socket reconnected)
-    // refetch the active conversation so missed planner / sub-agent rows
-    // appear. Mirrors the `visibilitychange` catch-up in the sibling
-    // `useSubAgentStatusRefresh`.
+    // refetch the active conversation so missed rows appear.
     const handleVisibility = (): void => {
       if (document.visibilityState === "visible") catchUpActive();
     };

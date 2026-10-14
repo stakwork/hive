@@ -285,12 +285,8 @@ export function useSendCanvasChatMessage() {
             // and a stakgraph round-trip per turn.
             skipEnrichments: true,
             // The server `SharedConversation.id` (once autosave has
-            // created the row). The approval handler needs it to stamp
-            // `Feature.parentCanvasConversationId` on a newly-created
-            // feature so the planner fan-out knows which conversation to
-            // post its `source.kind === "planner"` messages back into
-            // (that's what renders the `<SubAgentRunCard>`). Without it,
-            // an approved feature is orphaned and never fans out.
+            // created the row). Used to validate/attribute the turn
+            // server-side and to stamp approvals.
             ...(conv.serverConversationId
               ? { conversationId: conv.serverConversationId }
               : {}),

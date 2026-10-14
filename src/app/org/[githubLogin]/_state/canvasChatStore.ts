@@ -57,7 +57,6 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { STOPPED_TURN_TEXT } from "@/lib/ai/conversationHelpers";
 import type { ApprovalIntent, ApprovalResult, RejectionIntent } from "@/lib/proposals/types";
-import type { ClarifyingQuestion } from "@/types/stakwork";
 import type { StreamTimelineItem, StreamToolCall, ToolCallStatus } from "@/types/streaming";
 import type { TokenUsage } from "@/types/usage";
 import type { ArtifactPanelState, ArtifactRef } from "./canvasChatArtifacts";
@@ -89,66 +88,16 @@ export interface CanvasAttachment {
 
 /**
  * Marks a `CanvasChatMessage` row whose origin is NOT the canvas
- * conversation itself. The fan-out worker
- * (`src/services/canvas-planner-fanout.ts`) writes inbound rows
- * carrying `kind: "planner"`; Phase 4's planner-form answer endpoint
- * writes outbound rows carrying `kind: "user-answered-planner-form"`.
+ * conversation itself. Render-side filters key on `source.kind`
+ * directly. Round-trips through `SharedConversation.messages` JSON.
  *
- * Render-side filters key on `source.kind` directly — see
- * `SidebarChat.tsx` (early-return) and `SubAgentRunCard.tsx`
- * (inbound thread entries). Round-trips through
- * `SharedConversation.messages` JSON for free.
- *
- * Discriminated union (rather than a flat marker) so Phase 4 can
- * land its variant without breaking Phase 2 consumers.
+ * The `planner` and `user-answered-planner-form` variants are LEGACY:
+ * the planner fan-out was removed, but conversations persisted before
+ * that still carry such rows, so the type is kept (and `SidebarChat`
+ * hides them) rather than letting them render as stray bubbles.
  */
 export type CanvasMessageSource =
-  | {
-      kind: "planner";
-      featureId: string;
-      plannerMessageId: string;
-      /**
-       * Feature display metadata at fan-out time, so an inbound-only run
-       * (the approval flow, where the canvas agent never made an outbound
-       * `send_to_feature_planner` call) can render the real feature name /
-       * workspace + a working "Open plan" link instead of "Unknown
-       * feature". All optional — rows written before this landed (and any
-       * future caller that omits them) fall back to the placeholder.
-       */
-      featureTitle?: string;
-      workspaceSlug?: string;
-      workspaceName?: string;
-      /**
-       * The feature's `workflowStatus` at the moment the planner posted
-       * (Phase 3). Lets `SubAgentRunCard` show a meaningful status pill
-       * — `Running` (IN_PROGRESS), `Plan ready` (COMPLETED), `Failed`
-       * (FAILED/ERROR/HALTED) — without a re-read. Optional: rows
-       * written before Phase 3 (and any non-planner source) won't carry
-       * it, and the card falls back to its direction-based headline.
-       */
-      workflowStatus?: string;
-      /**
-       * `true` when the planner message carried a clarifying-questions
-       * artifact (`PLAN` + `ask_clarifying_questions`) — its explicit
-       * "a human must pick" signal (Phase 3). Drives the `Waiting for
-       * you` pill and surfaces the FORM via `PlannerFormSlot`.
-       */
-      hasForm?: boolean;
-      /**
-       * The planner's clarifying-question list (Phase 4), embedded so
-       * `PlannerFormSlot` can render `ClarifyingQuestionsPreview`
-       * verbatim with no extra fetch. Present iff `hasForm` is `true`.
-       */
-      formQuestions?: ClarifyingQuestion[];
-      /**
-       * `true` when the planner just generated a task breakdown (a
-       * `TASKS` artifact). Gates the card's **Start Tasks** button,
-       * which reads the live ready-count from the feature itself.
-       */
-      hasTasks?: boolean;
-    }
-  // Added in Phase 4 — kept in the union now to make exhaustive
-  // checks in switch statements complete from Phase 2 onward.
+  | { kind: "planner"; featureId: string; plannerMessageId: string }
   | { kind: "user-answered-planner-form"; featureId: string; plannerMessageId: string }
   | {
       kind: "research";

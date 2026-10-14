@@ -2,12 +2,11 @@
  * Mock org-canvas Jamie chats for the control panel demo.
  *
  * Seeds three active conversations (and one archived) for the mock user
- * on an org they can open, wired the way real ones are: two of them spawned
- * plans (the plans point back via `Feature.parentCanvasConversationId`, the
- * chat carries the outbound `send_to_feature_planner` tool call and the
- * planner's fan-out rows), one plan has tasks, and one planner is waiting
- * on a clarifying question. So chat → plan → task is a real chain on the
- * control panel, and the state glyphs light up for real reasons.
+ * on an org they can open: two of them own plans (the plans point back via
+ * `Feature.parentCanvasConversationId`), one plan has tasks, and one plan
+ * is waiting on a clarifying question in its own plan chat. So chat → plan →
+ * task is a real chain on the control panel, and the state glyphs light up
+ * for real reasons.
  *
  * The plans hang off the seeded features (`seedMockData`) in whichever
  * of the org's workspaces the user owns or belongs to — the personal
@@ -20,7 +19,6 @@
 import { db } from "@/lib/db";
 import { ArtifactType, ChatRole, Priority, TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
 
-const SEND_TO_FEATURE_PLANNER = "send_to_feature_planner";
 const SEED_SETTINGS = { seed: "control-panel" };
 const ARCHIVED_SEED_SETTINGS = { seed: "control-panel-archived" };
 const SEED_TITLES = {
@@ -59,38 +57,6 @@ function userRow(id: string, content: string, at: Date) {
 
 function assistantRow(id: string, content: string, at: Date, extra: Record<string, unknown> = {}) {
   return { id, role: "assistant", content, timestamp: at.toISOString(), ...extra };
-}
-
-/** The row `fanOutPlannerMessageToCanvas` appends when a planner posts. */
-function plannerRow(id: string, plan: PlanRef, content: string, at: Date, extra: Record<string, unknown> = {}) {
-  return assistantRow(id, content, at, {
-    source: {
-      kind: "planner",
-      featureId: plan.feature.id,
-      plannerMessageId: `mock-planner-${id}`,
-      featureTitle: plan.feature.title,
-      workspaceSlug: plan.workspace.slug,
-      workspaceName: plan.workspace.name,
-      ...extra,
-    },
-  });
-}
-
-/** The outbound tool call the canvas agent makes when it hands a plan to its planner. */
-function sendToPlannerCall(plan: PlanRef, message: string) {
-  return {
-    id: `mock-tc-${plan.feature.id}`,
-    toolName: SEND_TO_FEATURE_PLANNER,
-    status: "output-available",
-    input: { featureId: plan.feature.id, message },
-    output: {
-      status: "sent",
-      featureId: plan.feature.id,
-      featureTitle: plan.feature.title,
-      workspaceSlug: plan.workspace.slug,
-      workspaceName: plan.workspace.name,
-    },
-  };
 }
 
 /**
@@ -230,49 +196,21 @@ async function seedActiveConversations(
         ),
         assistantRow(
           "kickoff-2",
-          "Two plans, two planners. I've sent both briefs; their updates land here as they post.",
+          "Two plans, started on the analytics dashboard and API rate limiting.",
           hoursAgo(25.9),
-          {
-            toolCalls: [
-              sendToPlannerCall(
-                dashboard,
-                "Plan the real-time analytics dashboard: completion rates, velocity, coverage trends.",
-              ),
-              sendToPlannerCall(rateLimit, "Plan API rate limiting with per-key limits and a workspace cap."),
-            ],
-          },
-        ),
-        plannerRow(
-          "kickoff-3",
-          dashboard,
-          "Posted the plan. Brief, user stories, requirements and architecture are ready, and the tasks are generated.",
-          hoursAgo(24),
-          { workflowStatus: WorkflowStatus.IN_PROGRESS, hasTasks: true },
         ),
         userRow("kickoff-4", "How's rate limiting going?", hoursAgo(5)),
-        plannerRow(
+        assistantRow(
           "kickoff-5",
-          rateLimit,
-          "Before I split this into tasks: should limits apply per API key or per workspace?",
+          "Rate limiting has an open question in its plan chat: per API key or per workspace?",
           hoursAgo(3),
-          {
-            workflowStatus: WorkflowStatus.PENDING,
-            hasForm: true,
-            formQuestions: [
-              {
-                question: "Should rate limits apply per API key or per workspace?",
-                type: "single_choice",
-                options: ["Per API key", "Per workspace", "Both, key limit under a workspace cap"],
-              },
-            ],
-          },
         ),
       ],
     },
     select: { id: true },
   });
 
-  // The planners last touched their plans when their fan-out rows say.
+  // The plans were last touched at the times below.
   await db.feature.update({
     where: { id: dashboard.feature.id },
     data: {
@@ -350,13 +288,7 @@ async function seedActiveConversations(
       ownerSeenAt: hoursAgo(49),
       messages: [
         userRow("search-1", "Plan the advanced search filters rollout.", hoursAgo(72)),
-        assistantRow("search-2", "Sent to the planner with the brief as written.", hoursAgo(71.9), {
-          toolCalls: [sendToPlannerCall(search, "Plan the advanced search filters rollout.")],
-        }),
-        plannerRow("search-3", search, "Posted the plan and generated the task breakdown.", hoursAgo(70), {
-          workflowStatus: WorkflowStatus.COMPLETED,
-          hasTasks: true,
-        }),
+        assistantRow("search-2", "Plan created, and the task breakdown is generated.", hoursAgo(71.9)),
         userRow("search-4", "Start the tasks.", hoursAgo(50)),
         assistantRow(
           "search-5",

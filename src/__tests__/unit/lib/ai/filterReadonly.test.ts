@@ -42,7 +42,6 @@ vi.mock("@/lib/constants/prompt", () => ({
   // (@/lib/ai/capabilities) that runCanvasAgent composes from.
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getHtmlPagesCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
@@ -75,7 +74,6 @@ describe("filterReadonly", () => {
     save_html: makeFakeTool(),
     update_html: makeFakeTool(),
     propose_initiative: makeFakeTool(),
-    propose_feature: makeFakeTool(),
     propose_milestone: makeFakeTool(),
     assign_feature_to_initiative: makeFakeTool(),
     assign_feature_to_workspace: makeFakeTool(),
@@ -103,7 +101,6 @@ describe("filterReadonly", () => {
     expect(result).not.toHaveProperty("save_html");
     expect(result).not.toHaveProperty("update_html");
     expect(result).not.toHaveProperty("propose_initiative");
-    expect(result).not.toHaveProperty("propose_feature");
     expect(result).not.toHaveProperty("propose_milestone");
     expect(result).not.toHaveProperty("assign_feature_to_initiative");
     expect(result).not.toHaveProperty("assign_feature_to_workspace");
@@ -130,7 +127,6 @@ describe("filterReadonly", () => {
     expect(result).not.toHaveProperty("save_html");
     expect(result).not.toHaveProperty("update_html");
     expect(result).not.toHaveProperty("propose_initiative");
-    expect(result).not.toHaveProperty("propose_feature");
     expect(result).not.toHaveProperty("propose_milestone");
     expect(result).not.toHaveProperty("assign_feature_to_initiative");
     // read tools still present
