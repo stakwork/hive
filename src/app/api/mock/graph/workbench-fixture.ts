@@ -222,28 +222,36 @@ export function mockConnectionPage({ refId, edge, outgoing, limit }: ConnectionP
     .slice(0, limit);
 }
 
-/** A small brainstorm tree under `focus`: a root question, options A and B, and under A a question with options AA and AB. */
-export function mockChoiceTree(focus: string, labels: string[] = ["Choice", "Question"]): ChoiceTreeData {
+/** A small brainstorm tree under `focus`: a root question with sub-questions 1 and 2, options 1A, 1B, 2A, and under 1A a follow-up question with options 1AA and 1AB. */
+export function mockChoiceTree(focus: string, labels: string[] = ["Question", "Option", "Choice"]): ChoiceTreeData {
   const kid = (n: string) => `${focus}-${n}`;
   const q = (id: string, n: number, text: string, state = "open") =>
     ({ ref_id: id, type: "Question" as const, properties: { question_id: n, text, made_by: "user", state } });
   const o = (id: string, n: number, text: string, state = "open") =>
-    ({ ref_id: id, type: "Choice" as const, properties: { choice_id: n, text, kind: "option", made_by: "model", state } });
+    ({ ref_id: id, type: "Option" as const, properties: { option_id: n, text, kind: "option", made_by: "model", state } });
   const nodes = [
     q(focus, 1, "Mock question?"),
-    o(kid("a"), 2, "Option A"),
-    o(kid("b"), 3, "Option B", "rejected"),
-    q(kid("q"), 4, "Follow-up?"),
-    o(kid("aa"), 5, "Option AA"),
-    o(kid("ab"), 6, "Option AB"),
+    q(kid("q1"), 2, "Sub-question one?"),
+    q(kid("q2"), 3, "Sub-question two?"),
+    o(kid("1a"), 4, "Option 1A"),
+    o(kid("1b"), 5, "Option 1B", "rejected"),
+    o(kid("2a"), 6, "Option 2A"),
+    q(kid("fq"), 7, "Follow-up?"),
+    o(kid("1aa"), 8, "Option 1AA"),
+    o(kid("1ab"), 9, "Option 1AB"),
   ].filter((n) => labels.includes(n.type));
   const ids = new Set(nodes.map((n) => n.ref_id));
   const edges = [
-    { source: focus, target: kid("a") },
-    { source: focus, target: kid("b") },
-    { source: kid("a"), target: kid("q") },
-    { source: kid("q"), target: kid("aa") },
-    { source: kid("q"), target: kid("ab") },
-  ].filter((e) => ids.has(e.source) && ids.has(e.target));
+    [focus, kid("q1")],
+    [focus, kid("q2")],
+    [kid("q1"), kid("1a")],
+    [kid("q1"), kid("1b")],
+    [kid("q2"), kid("2a")],
+    [kid("1a"), kid("fq")],
+    [kid("fq"), kid("1aa")],
+    [kid("fq"), kid("1ab")],
+  ]
+    .map(([source, target]) => ({ source, target }))
+    .filter((e) => ids.has(e.source) && ids.has(e.target));
   return { nodes, edges, truncated: false };
 }

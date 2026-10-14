@@ -36,7 +36,7 @@ describe("GET /graph/choice-tree", () => {
     expect(await res.json()).toEqual({ error: "Invalid label" });
   });
 
-  test("200 with the tree, labels defaulting to the service's (both)", async () => {
+  test("200 with the tree, labels defaulting to the service's (all three)", async () => {
     const data = { nodes: [{ ref_id: "abc", type: "Question", properties: {} }], edges: [], truncated: false };
     getChoiceTree.mockResolvedValue({ ok: true, data });
     const res = await call("?focus=abc");
@@ -51,5 +51,7 @@ describe("GET /graph/choice-tree", () => {
     expect(getChoiceTree).toHaveBeenLastCalledWith({ slug: "hive", userId: "u1" }, "abc", ["Choice"]);
     await call("?focus=abc&label=Choice,%20Question");
     expect(getChoiceTree).toHaveBeenLastCalledWith({ slug: "hive", userId: "u1" }, "abc", ["Choice", "Question"]);
+    await call("?focus=abc&label=Option");
+    expect(getChoiceTree).toHaveBeenLastCalledWith({ slug: "hive", userId: "u1" }, "abc", ["Option"]);
   });
 });

@@ -25,6 +25,7 @@ beforeEach(() => {
             [[["text", "Root?"], ["question_id", 1], ["made_by", "user"], ["state", "decided"]], ["Data_Bank", "Question"], FOCUS],
             [[["text", "Opt"], ["choice_id", 2], ["kind", "option"], ["made_by", "model"], ["state", "open"]], ["Choice"], "child-1"],
             [[["text", "Old"], ["choice_id", 3], ["kind", "question"]], ["Choice"], "child-2"],
+            [[["text", "New"], ["option_id", 4], ["kind", "option"]], ["Data_Bank", "Option"], "child-3"],
           ],
         },
       };
@@ -43,6 +44,7 @@ describe("getChoiceTree", () => {
           { ref_id: FOCUS, type: "Question", properties: { text: "Root?", question_id: 1, made_by: "user", state: "decided" } },
           { ref_id: "child-1", type: "Choice", properties: { text: "Opt", choice_id: 2, kind: "option", made_by: "model", state: "open" } },
           { ref_id: "child-2", type: "Choice", properties: { text: "Old", choice_id: 3, kind: "question" } },
+          { ref_id: "child-3", type: "Option", properties: { text: "New", option_id: 4, kind: "option" } },
         ],
         edges: [{ source: FOCUS, target: "child-1" }],
         truncated: false,
@@ -50,13 +52,14 @@ describe("getChoiceTree", () => {
     });
   });
 
-  test("queries both labels by default, with the focus and PARENT_OF, never node_type", async () => {
+  test("queries all three labels by default, with the focus and PARENT_OF, never node_type", async () => {
     await getChoiceTree(caller, FOCUS);
     const qs = mockedQuery.mock.calls.map(([a]) => String(a.query));
     expect(qs).toHaveLength(2);
     expect(qs.find((q) => q.includes("AS props"))).toContain("labels(n) AS labels");
     for (const q of qs) {
       expect(q).toContain("`Choice`");
+      expect(q).toContain("`Option`");
       expect(q).toContain("`Question`");
       expect(q).toContain(`ref_id: '${FOCUS}'`);
       expect(q).toContain("PARENT_OF");
@@ -75,7 +78,7 @@ describe("getChoiceTree", () => {
   test("mock mode returns a question in the middle, typed", async () => {
     vi.stubEnv("USE_MOCKS", "true");
     const res = await getChoiceTree(caller, FOCUS);
-    expect(res.ok && res.data.nodes.map((n) => n.type)).toEqual(["Question", "Choice", "Choice", "Question", "Choice", "Choice"]);
+    expect(res.ok && res.data.nodes.map((n) => n.type)).toEqual(["Question", "Question", "Question", "Option", "Option", "Option", "Question", "Option", "Option"]);
     expect(mockedQuery).not.toHaveBeenCalled();
   });
 

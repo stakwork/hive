@@ -5,10 +5,10 @@ import { getChoiceTree } from "@/services/graph/workbench";
 export const runtime = "nodejs";
 
 /**
- * GET /api/workspaces/[slug]/graph/choice-tree?focus=<ref_id>[&label=Choice[,Question]]
+ * GET /api/workspaces/[slug]/graph/choice-tree?focus=<ref_id>[&label=Question[,Option[,Choice]]]
  *
  * The brainstorm tree under `focus`: its `PARENT_OF` descendants labelled
- * `Choice` or `Question` with the edges among them. `label` (legacy) narrows
+ * `Question`, `Option` or (legacy) `Choice` with the edges among them. `label` (legacy) narrows
  * it to one label, or a comma list. Any member may read.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
