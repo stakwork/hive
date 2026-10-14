@@ -6,8 +6,6 @@ import { parseOwnerRepo } from "./utils";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { withMcpTimeout, isMcpTimeout } from './mcpTimeout';
 import {
-  mcpListFeatures,
-  mcpReadFeature,
   mcpListTasks,
   mcpReadTask,
   mcpCheckStatus,
@@ -754,7 +752,7 @@ Example queries:
 import { mcpText, capMcpResult } from "./mcpResult";
 
 /**
- * Build feature/task read-only tools + logs_agent when workspace auth is available.
+ * Build task read-only tools + logs_agent when workspace auth is available.
  * swarmUrl/swarmApiKey are passed so logs_agent can be registered alongside search_logs.
  */
 function buildWorkspaceTools(
@@ -764,32 +762,6 @@ function buildWorkspaceTools(
 ): ToolSet {
   if (!auth) return {};
   return {
-    list_features: tool({
-      description: "List roadmap features for this workspace (up to 40, most recently updated first).",
-      inputSchema: z.object({}),
-      execute: async () => {
-        try {
-          return mcpText(await mcpListFeatures(auth));
-        } catch (e) {
-          console.error("Error listing features:", e);
-          return "Could not list features";
-        }
-      },
-    }),
-    read_feature: tool({
-      description: "Read a feature's details, brief, requirements, architecture, and chat history.",
-      inputSchema: z.object({
-        featureId: z.string().describe("The ID of the feature to read"),
-      }),
-      execute: async ({ featureId }: { featureId: string }) => {
-        try {
-          return mcpText(await mcpReadFeature(auth, featureId));
-        } catch (e) {
-          console.error("Error reading feature:", e);
-          return "Could not read feature";
-        }
-      },
-    }),
     list_tasks: tool({
       description: "List tasks for this workspace (up to 40, most recently updated first).",
       inputSchema: z.object({}),

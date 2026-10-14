@@ -56,7 +56,6 @@ vi.mock("@/lib/ai/graphWalkDispatchTools", () => ({
 }));
 vi.mock("@/lib/constants/prompt", () => ({
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),

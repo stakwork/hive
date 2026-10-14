@@ -83,19 +83,9 @@ vi.mock("@/app/org/[githubLogin]/_components/ProposalCard", () => ({
   ProposalCard: () => null,
   getProposalsFromMessage: () => [],
 }));
-vi.mock("@/app/org/[githubLogin]/_components/SubAgentRunCard", () => ({
-  SubAgentRunCard: () => null,
-  getSubAgentRunsFromMessages: () => [],
-}));
 vi.mock("@/app/org/[githubLogin]/_components/ResearchRunCard", () => ({
   ResearchRunCard: () => null,
   getResearchRunsFromMessages: () => [],
-}));
-vi.mock("@/app/org/[githubLogin]/_components/PlannerFormSlot", () => ({
-  PlannerFormSlot: () => null,
-}));
-vi.mock("@/app/org/[githubLogin]/_components/StartTasksSlot", () => ({
-  StartTasksSlot: () => null,
 }));
 vi.mock("@/app/org/[githubLogin]/_components/AttentionList", () => ({
   AttentionList: () => null,

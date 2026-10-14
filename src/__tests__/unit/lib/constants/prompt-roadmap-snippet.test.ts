@@ -18,7 +18,7 @@ describe("getRoadmapCapabilitySnippet — Stakwork workflow routing rule", () =>
 
   it("contains the workflow routing directive", () => {
     expect(getRoadmapCapabilitySnippet()).toContain(
-      "requests to create/update/fix a Stakwork workflow → propose_feature in the stakwork workspace"
+      "requests to create/update/fix a Stakwork workflow → `start_job` naming the stakwork workspace as `@stakwork`"
     );
   });
 
@@ -56,7 +56,7 @@ describe("getRoadmapCapabilitySnippet — a bare 'workflow' means strut", () => 
   // `strut` is composed for every org, and nothing in the system prompt
   // lists it as a capability. Wording that makes jobs conditional on it
   // being available let Jamie claim `start_job` was missing while it was
-  // in its tool list, and route a single-repo change to propose_feature.
+  // in its tool list, and route a single-repo change elsewhere.
   it.each([
     ["full", getRoadmapCapabilitySnippet],
     ["slim", getSlimRoadmapCapabilitySnippet],

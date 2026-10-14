@@ -42,10 +42,6 @@ vi.mock("@/lib/screenshot-upload", () => ({
   processRecordingUpload: vi.fn(),
 }));
 
-vi.mock("@/services/canvas-planner-fanout", () => ({
-  fanOutPlannerMessageToCanvas: vi.fn().mockResolvedValue(null),
-}));
-
 vi.mock("@/lib/helpers/prompt-baseline-snapshot", () => ({
   enrichPublishPromptArtifacts: vi.fn().mockResolvedValue(undefined),
 }));

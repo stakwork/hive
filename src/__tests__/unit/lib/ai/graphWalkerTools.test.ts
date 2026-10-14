@@ -99,7 +99,6 @@ vi.mock("@/lib/ai/htmlArtifactTools", () => ({ buildHtmlArtifactTools: vi.fn(() 
 vi.mock("@/lib/ai/infraTools", () => ({ buildInfraTools: vi.fn(() => ({})) }));
 vi.mock("@/lib/constants/prompt", () => ({
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
@@ -1530,8 +1529,8 @@ describe("resolveCapabilities", () => {
     expect(resolved).toContain("graph_walker");
   });
 
-  it('graph_walker is not included when only "planner" is selected', () => {
-    const resolved = resolveCapabilities(["planner"]);
+  it('graph_walker is not included when only "whiteboard" is selected', () => {
+    const resolved = resolveCapabilities(["whiteboard"]);
     expect(resolved).not.toContain("graph_walker");
   });
 });
