@@ -25,6 +25,7 @@ import { CodeInline, CodePanel, codeLanguage } from "./viewers/code";
 import { DiffInline, DiffPanel, diffPatchText } from "./viewers/diff";
 import { GraphInline, GraphPanel } from "./viewers/graph";
 import { HtmlInline, HtmlPanel } from "./viewers/html";
+import { treeContentOfJson } from "./viewers/ChoiceTree";
 import { JsonInline, JsonPanel, jsonSummary } from "./viewers/json";
 import { LogInline, LogPanel } from "./viewers/log";
 import { MarkdownInline, MarkdownPanel } from "./viewers/markdown";
@@ -145,7 +146,8 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Icon: Braces,
     Inline: JsonInline,
     Panel: JsonPanel,
-    fact: (content) => jsonSummary(content.value),
+    // A json card that is really a brainstorm tree reads like the graph card.
+    fact: (content) => treeContentOfJson({ id: "" }, content)?.workspace ?? jsonSummary(content.value),
     copyText: (content) => toJsonText(content.value),
   },
   graph: {

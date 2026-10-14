@@ -13,7 +13,6 @@ import { useCanvasChatStore, type CanvasChatMessage, type GraphFocus } from "../
 import { GraphView } from "./GraphView";
 import { parseArtifactRefs } from "../_state/canvasChatArtifacts";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
-import { useSubAgentStatusRefresh } from "../_state/useSubAgentStatusRefresh";
 import { useGraphProposalRefresh } from "../_state/useGraphProposalRefresh";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { AttentionMapProvider } from "../connections/AttentionMapContext";
@@ -630,7 +629,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // the page level, not inside `SidebarChat`, so tab switches and
   // chat unmounts don't lose pending saves.
   useCanvasChatAutoSave({ githubLogin });
-  useSubAgentStatusRefresh({ githubLogin });
   useGraphProposalRefresh();
 
   return (

@@ -34,13 +34,10 @@ import { cn } from "@/lib/utils";
 import { SidebarChatMessage } from "./SidebarChatMessage";
 import { ProposalCard, getProposalsFromMessage, sortProposalsByDependency } from "./ProposalCard";
 import { PROPOSE_FEATURE_TOOL, PROPOSE_INITIATIVE_TOOL, PROPOSE_MILESTONE_TOOL } from "@/lib/proposals/types";
-import { SubAgentRunCard, getSubAgentRunsFromMessages } from "./SubAgentRunCard";
 import { ResearchRunCard, getResearchRunsFromMessages } from "./ResearchRunCard";
 import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
 import { JobEventRow, JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
-import { PlannerFormSlot } from "./PlannerFormSlot";
-import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
 import { ArtifactCard } from "./artifacts/ArtifactCard";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
@@ -235,28 +232,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 
   const hasMessages = messages.length > 0;
 
-  // Group all `send_to_feature_planner` calls in this conversation
-  // by featureId, then bucket the resulting runs by the message they
-  // should hang under (the most recent send for that feature). This
-  // lets one card render even when the agent has messaged the same
-  // planner multiple times — the card moves down with the latest
-  // exchange. See `SubAgentRunCard.tsx` for the design rationale.
-  const subAgentRunsByAnchor = useMemo(() => {
-    const runs = getSubAgentRunsFromMessages(messages);
-    const byAnchor = new Map<string, typeof runs>();
-    for (const run of runs) {
-      const existing = byAnchor.get(run.anchorMessageId);
-      if (existing) {
-        existing.push(run);
-      } else {
-        byAnchor.set(run.anchorMessageId, [run]);
-      }
-    }
-    return byAnchor;
-  }, [messages]);
-
-  // Group dispatched research runs by their anchor message, mirroring the
-  // subAgentRunsByAnchor pattern. Inbound fan-out rows win the anchor.
+  // Group dispatched research runs by their anchor message, by anchor message.
   const researchRunsByAnchor = useMemo(() => {
     const runs = getResearchRunsFromMessages(messages);
     const byAnchor = new Map<string, typeof runs>();
@@ -315,60 +291,6 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   // artifact gets none, so a plan re-reported every turn shows once.
   const artifactCards = useMemo(() => indexArtifactCards(listArtifacts(messages)), [messages]);
 
-  // Render the SubAgentRunCard(s) anchored to a message. Extracted so it
-  // can render under BOTH a normal message AND a suppressed fan-out
-  // message (an inbound planner reply / form-answer — whose bubble is
-  // hidden but which is the anchor for an inbound-only run, e.g. the
-  // approval flow where the agent never made an outbound
-  // `send_to_feature_planner` call).
-  const renderSubAgentRuns = (runs: ReturnType<typeof getSubAgentRunsFromMessages>) => (
-    <div className="space-y-1.5">
-      {runs.map((run) => (
-        <div key={run.featureId} className="space-y-1.5">
-          <SubAgentRunCard run={run} />
-          {/*
-            Phase 4: an unanswered planner FORM surfaces OUTSIDE the
-            collapsed card so the user can answer it inline without
-            expanding or leaving canvas chat. Only the run with a
-            `pendingForm` renders a slot.
-          */}
-          {run.pendingForm && (
-            <PlannerFormSlot
-              githubLogin={githubLogin}
-              featureId={run.featureId}
-              featureTitle={run.featureTitle}
-              plannerMessageId={run.pendingForm.plannerMessageId}
-              questions={run.pendingForm.questions}
-            />
-          )}
-          {/*
-            Offer a Start Tasks button once the planner has replied at
-            all — NOT just when a reply carried a `TASKS` artifact.
-            Tasks created by the remote planner over MCP
-            (`create_task` / `create_feature_task`) hit the DB directly
-            with no artifact, no chat message, and no fan-out, so
-            `run.hasGeneratedTasks` (artifact-derived) stays false even
-            though real tasks exist. The slot itself reads the live
-            ready-count (`GET …/tasks/assign-all`) and renders nothing
-            when zero, so showing it for any answered run is safe — the
-            count is the artifact-independent source of truth. We pass
-            `revalidateKey` (the anchor, which moves on each new planner
-            reply) so a closing "tasks created" message re-queries the
-            count and surfaces the button live. Suppressed while a FORM
-            is pending — answer the planner first.
-          */}
-          {!run.pendingForm && run.messages.some((m) => m.direction === "in") && (
-            <StartTasksSlot
-              featureId={run.featureId}
-              featureTitle={run.featureTitle}
-              revalidateKey={run.anchorMessageId}
-            />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-
   return (
     <div className="relative flex h-full flex-col min-h-0" {...dragProps}>
       {isDragging && (
@@ -412,20 +334,6 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 return null;
               }
 
-              const subAgentRuns = subAgentRunsByAnchor.get(message.id);
-
-              // Fan-out messages from planners (and Phase 4's planner-
-              // form answers) don't render as top-level chat bubbles —
-              // BUT they're the anchor for inbound-only runs (the approval
-              // flow: the agent never made an outbound
-              // `send_to_feature_planner` call, so the planner's reply is
-              // the only activity and thus the anchor). Suppress the
-              // bubble, but still render any SubAgentRunCard anchored
-              // here, otherwise the card disappears the moment the planner
-              // replies. They stay in the messages array so
-              // `getSubAgentRunsFromMessages` can walk them and so they
-              // round-trip through autosave / share. See
-              // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
               const researchRuns = researchRunsByAnchor.get(message.id);
               const htmlPages = htmlPagesByAnchor.get(message.id);
               const strutChats = strutChatsByAnchor.get(message.id);
@@ -474,16 +382,19 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 );
               }
 
+              // Rows persisted by the retired planner fan-out stay in old
+              // conversations; keep them hidden rather than as stray bubbles.
               if (
                 message.source?.kind === "planner" ||
-                message.source?.kind === "user-answered-planner-form" ||
-                message.source?.kind === "research"
+                message.source?.kind === "user-answered-planner-form"
               ) {
-                if ((!subAgentRuns || subAgentRuns.length === 0) && (!researchRuns || researchRuns.length === 0))
-                  return null;
+                return null;
+              }
+
+              if (message.source?.kind === "research") {
+                if (!researchRuns || researchRuns.length === 0) return null;
                 return (
                   <div key={message.id} className="space-y-1.5">
-                    {subAgentRuns && renderSubAgentRuns(subAgentRuns)}
                     {researchRuns?.map((run) => (
                       <ResearchRunCard key={run.researchId} run={run} githubLogin={githubLogin} />
                     ))}
@@ -576,7 +487,6 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                   {message.deferredCheck && (
                     <DeferredCheckCard deferredCheck={message.deferredCheck} githubLogin={githubLogin} />
                   )}
-                  {subAgentRuns && subAgentRuns.length > 0 && renderSubAgentRuns(subAgentRuns)}
                   {researchRuns &&
                     researchRuns.length > 0 &&
                     researchRuns.map((run) => (
@@ -754,8 +664,7 @@ export function SidebarChatActions({
   const setRunActive = useCanvasChatStore((s) => s.setRunActive);
   // Org context for Stop — needed by the abort endpoint.
   const orgContext = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.context : null) ?? null);
-  const { id: workspaceId } = useWorkspace();
-  const { isActive } = useCanvasAgentActivity(activeId, workspaceId);
+  const { isActive } = useCanvasAgentActivity(activeId);
   const [isForking, setIsForking] = useState(false);
 
   const handleShare = async () => {

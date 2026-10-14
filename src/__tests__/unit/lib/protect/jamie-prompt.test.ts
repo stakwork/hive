@@ -28,7 +28,7 @@ describe("chooseProtectJamieTool", () => {
     expect(chooseProtectJamieTool(finding())).toBe("start_job");
   });
 
-  it("seeds propose_feature for multi-file or ambiguous findings", () => {
+  it("seeds discuss for multi-file or ambiguous findings", () => {
     expect(
       chooseProtectJamieTool(
         finding({
@@ -36,11 +36,11 @@ describe("chooseProtectJamieTool", () => {
           recommendation: "Redesign the auth module",
         }),
       ),
-    ).toBe("propose_feature");
+    ).toBe("discuss");
   });
 
-  it("seeds propose_feature when the finding names no repository", () => {
-    expect(chooseProtectJamieTool(finding({ repositoryUrl: "" }))).toBe("propose_feature");
+  it("seeds discuss when the finding names no repository", () => {
+    expect(chooseProtectJamieTool(finding({ repositoryUrl: "" }))).toBe("discuss");
   });
 });
 
@@ -48,12 +48,12 @@ describe("buildProtectJamieSeed", () => {
   it("redacts secret-category evidence", () => {
     const seed = buildProtectJamieSeed(
       finding({ category: "secret", evidence: "sk-live-secret" }),
-      "propose_feature",
+      "discuss",
       "acme-hive",
     );
     expect(seed).not.toContain("sk-live-secret");
     expect(seed).toContain("redacted");
-    expect(seed).toContain("propose_feature");
+    expect(seed).toContain("multi-file or ambiguous");
   });
 
   it("tells a job to take the workspace and name the repository in its prompt", () => {
