@@ -60,6 +60,7 @@ next-env.d.ts
 
 # Logs
 logs
+!src/app/api/w/*/pool/*/logs/
 *.log
 dev-debug.log
 # Dependency directories
