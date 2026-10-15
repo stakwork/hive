@@ -10,20 +10,15 @@ const POLL_MS = 30_000;
 export const CONTROL_PANEL_PAGE = 30;
 
 /**
- * The user's control panel for this org — fetched when enabled, polled
- * every 30 s and refetched on window focus. The page size only ever
- * grows; every refetch asks for everything shown so far. While disabled
- * (the canvas is showing) nothing is fetched and the last list is kept,
- * so coming back shows it at once.
+ * The user's chat list for this org — polled every 30 s and refetched on
+ * window focus. The page size only ever grows; every refetch asks for
+ * everything shown so far.
  *
  * Archive rides the same fetch (`archivedItems` on the response). There
  * is no second poll and no `?archived=1`. `remaining` / `showMore` stay
  * wired to active chats only.
  */
-export function useControlPanelItems(
-  githubLogin: string,
-  enabled: boolean,
-): {
+export function useControlPanelItems(githubLogin: string): {
   items: ControlPanelItem[];
   archivedItems: ControlPanelItem[];
   /** Chats the user has in this org beyond the ones listed. */
@@ -48,7 +43,7 @@ export function useControlPanelItems(
   archivedItemsRef.current = archivedItems;
 
   const refetch = useCallback(async () => {
-    if (!githubLogin || !enabled) return;
+    if (!githubLogin) return;
     if (inFlightRef.current) {
       pendingRefetchRef.current = true;
       return;
@@ -74,10 +69,9 @@ export function useControlPanelItems(
         void refetch();
       }
     }
-  }, [githubLogin, enabled]);
+  }, [githubLogin]);
 
   useEffect(() => {
-    if (!enabled) return;
     void refetch();
     const id = setInterval(() => void refetch(), POLL_MS);
     const onFocus = () => void refetch();
@@ -86,7 +80,7 @@ export function useControlPanelItems(
       clearInterval(id);
       window.removeEventListener("focus", onFocus);
     };
-  }, [enabled, refetch]);
+  }, [refetch]);
 
   const showMore = useCallback(() => {
     limitRef.current += CONTROL_PANEL_PAGE;

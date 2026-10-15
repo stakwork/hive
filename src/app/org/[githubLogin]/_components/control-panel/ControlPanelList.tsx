@@ -1,97 +1,34 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import React, { useState } from "react";
 import {
   Archive,
   ArchiveRestore,
   ChevronDown,
   ChevronRight,
-  FileText,
   Loader2,
-  MessageCircle,
+  MoreHorizontal,
+  PanelLeftClose,
   Search,
+  SquarePen,
   X,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
-import { jamieName } from "@/lib/constants/jamie";
-import { formatAge } from "@/lib/date-utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
-import type { ControlPanelItem, ControlPanelItemKind, ControlPanelItemState } from "@/types/control-panel";
-import { NEEDS_YOU_STATES, type ControlPanelGroup, type ControlPanelRow } from "@/services/orgs/control-panel-state";
-import { ActionTip } from "../ActionTip";
-import { CONTROL_PANEL_PAGE } from "./useControlPanelItems";
+import type { ControlPanelGroup } from "@/services/orgs/control-panel-state";
+import type { ControlPanelItem, ControlPanelJob, ControlPanelPullRequest } from "@/types/control-panel";
+import type { PullRequestState } from "../../_state/canvasChatArtifacts";
+import { ToolbarButton } from "../artifacts/chrome";
+import { plural } from "../artifacts/lines";
+import { PULL_REQUEST_STATE } from "../artifacts/viewers/pullRequest";
 
-/** A row that changes place slides there rather than jumping (a sent message bubbles its chat up). */
-const ROW_MOVE = { layout: { duration: 0.35, ease: "easeInOut" } } as const;
-
-/** Kind is icon and colour: a Jamie chat is sky, the plan it spawned violet (the violet a plan artifact pill wears). */
-const KIND: Record<ControlPanelItemKind, { Icon: typeof MessageCircle; className: string }> = {
-  chat: { Icon: MessageCircle, className: "text-sky-500" },
-  plan: { Icon: FileText, className: "text-violet-500" },
-};
-
-/**
- * Row geometry, in pixels, from the row's classes: `py-2.5`, the icon's
- * `mt-0.5`, a chat's `h-4` icon, a plan's `h-3.5` one, `gap-2` between the
- * chevron (`w-4`) and count (`w-3`) columns. A chat's icon follows those
- * columns; its plans start under its title, hanging off a guide that runs
- * down the chat icon's centre to a tick at each plan.
- */
-const ROW_PAD_Y = 10;
-const ICON_TOP = 2;
-const CHAT_ICON = 16;
-const PLAN_ICON = 14;
-const CHAT_ROW_PAD = 8;
-const CHAT_ICON_LEFT = CHAT_ROW_PAD + 16 + 8 + 12 + 8;
-const GUIDE_LEFT = CHAT_ICON_LEFT + CHAT_ICON / 2;
-const PLAN_ROW_PAD = CHAT_ICON_LEFT + CHAT_ICON + 8;
-const ICON_CENTER_TOP = ROW_PAD_Y + ICON_TOP + PLAN_ICON / 2;
-/** A breath below the chat icon, where its stem starts. */
-const STEM_TOP = ROW_PAD_Y + ICON_TOP + CHAT_ICON + 2;
-
-/**
- * One dot, four meanings: amber and pulsing while an agent or planner
- * is working, an amber ring while the thread waits on you, a green
- * filled dot when a plan is done or when a Jamie parent has nested
- * features and every one is COMPLETED, grey when nothing is happening.
- */
-export function StateDot({ state, className }: { state: ControlPanelItemState; className?: string }) {
-  const tone =
-    state === "running"
-      ? "working"
-      : state === "done"
-        ? "done"
-        : NEEDS_YOU_STATES.has(state)
-          ? "waiting"
-          : "idle";
-  const label =
-    tone === "working"
-      ? "Agent working"
-      : tone === "waiting"
-        ? "Waiting on you"
-        : tone === "done"
-          ? "Done"
-          : "Nothing happening";
-  return (
-    <span
-      role="img"
-      aria-label={label}
-      title={label}
-      className={cn(
-        "inline-block h-2 w-2 shrink-0 rounded-full",
-        tone === "working" && "animate-pulse bg-amber-500",
-        tone === "waiting" && "border-2 border-amber-500 bg-transparent",
-        tone === "done" && "bg-green-500",
-        tone === "idle" && "bg-muted-foreground/40",
-        className,
-      )}
-    />
-  );
-}
-
-/** True when a key press or the focus belongs to a text field, menu or dialog, not the list. */
+/** Keys typed into a field, a menu or a dialog are not the list's. */
 export function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
@@ -105,185 +42,45 @@ export function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 export interface ControlPanelListProps {
-  /** Searched, nested, day-grouped rows — built by the parent. */
+  /** Searched, day-grouped chats — built by the parent. */
   groups: ControlPanelGroup[];
-  /** Unsearched item count, for the empty-state copy. */
+  /** Unsearched chat count, for the empty-state copy. */
   totalCount: number;
   loading: boolean;
   query: string;
   onQueryChange: (query: string) => void;
-  /** Chats whose nested plans are showing; everything else is collapsed. */
-  expandedKeys: ReadonlySet<string>;
-  onToggleExpanded: (key: string) => void;
   /** Keyboard cursor (↑↓ / j k). */
-  cursorKey: string | null;
-  /** The thread currently on stage. */
-  focusedKey: string | null;
+  cursorId: string | null;
+  /** The active chat. */
+  activeId: string | null;
   onOpen: (item: ControlPanelItem) => void;
+  /** A job opens its chat at the job's newest card. */
+  onOpenJob: (item: ControlPanelItem, job: ControlPanelJob) => void;
+  /** A pull request opens its chat with the PR on the artifact panel. */
+  onOpenPullRequest: (item: ControlPanelItem, pr: ControlPanelPullRequest) => void;
   /** Chats the user has beyond the ones listed. */
   remaining: number;
   onShowMore: () => void;
-  /** Flat archived chats (plans nested under their parent). Outside day grouping. */
-  archivedRows: ControlPanelRow[];
+  archivedItems: ControlPanelItem[];
   archivedExpanded: boolean;
   onToggleArchived: () => void;
   onArchive: (item: ControlPanelItem) => void;
   onRestore: (item: ControlPanelItem) => void;
+  onNewChat: () => void;
+  onHide: () => void;
 }
 
-function PanelRow({
-  item,
-  depth,
-  parentKey,
-  childCount,
-  latestAt,
-  lastChild,
-  expandedKeys,
-  onToggleExpanded,
-  cursorKey,
-  focusedKey,
-  onOpen,
-  rowOrder,
-  action,
-}: {
-  item: ControlPanelItem;
-  depth: number;
-  parentKey?: string;
-  childCount?: number;
-  latestAt: string;
-  lastChild: boolean;
-  expandedKeys: ReadonlySet<string>;
-  onToggleExpanded: (key: string) => void;
-  cursorKey: string | null;
-  focusedKey: string | null;
-  onOpen: (item: ControlPanelItem) => void;
-  rowOrder: string;
-  action?: { label: string; Icon: typeof Archive; onClick: (item: ControlPanelItem) => void };
-}) {
-  if (parentKey && !expandedKeys.has(parentKey)) return null;
-  const { Icon, className: kindClass } = KIND[item.kind];
-  const ActionIcon = action?.Icon;
-  const focused = item.key === focusedKey;
-  const cursor = item.key === cursorKey;
-  const collapsible = (childCount ?? 0) > 0;
-  const collapsed = collapsible && !expandedKeys.has(item.key);
-  const meta = [item.workspaceName, item.sinceYou].filter(Boolean).join(" · ");
-  return (
-    <motion.div
-      key={item.key}
-      layout="position"
-      layoutDependency={rowOrder}
-      transition={ROW_MOVE}
-      role="button"
-      tabIndex={0}
-      data-panel-key={item.key}
-      onClick={() => onOpen(item)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen(item);
-        }
-      }}
-      aria-current={focused ? "true" : undefined}
-      style={{ paddingLeft: depth > 0 ? PLAN_ROW_PAD : CHAT_ROW_PAD }}
-      className={cn(
-        "group relative flex w-full cursor-pointer items-start gap-2 border-b py-2.5 pr-3 text-left outline-none transition-colors",
-        focused ? "bg-muted" : "hover:bg-muted/60",
-        cursor && "ring-1 ring-inset ring-ring",
-      )}
-    >
-      {/* The tree: a stem from an open chat's icon, a guide down its plans, a tick into each. */}
-      {collapsible && !collapsed && (
-        <span aria-hidden className="absolute bottom-0 w-px bg-border" style={{ left: GUIDE_LEFT, top: STEM_TOP }} />
-      )}
-      {depth > 0 && (
-        <>
-          <span
-            aria-hidden
-            className="absolute top-0 w-px bg-border"
-            style={{ left: GUIDE_LEFT, ...(lastChild ? { height: ICON_CENTER_TOP } : { bottom: 0 }) }}
-          />
-          <span
-            aria-hidden
-            className="absolute h-px bg-border"
-            style={{ left: GUIDE_LEFT, width: PLAN_ROW_PAD - GUIDE_LEFT - 6, top: ICON_CENTER_TOP }}
-          />
-        </>
-      )}
-      {collapsible ? (
-        <button
-          type="button"
-          aria-label={collapsed ? "Show plans" : "Hide plans"}
-          aria-expanded={!collapsed}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleExpanded(item.key);
-          }}
-          className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-        </button>
-      ) : (
-        depth === 0 && <span className="w-4 shrink-0" aria-hidden />
-      )}
-      {/* Every chat row reserves the same slot for the count, so titles line up. */}
-      {depth === 0 && (
-        <span
-          className="mt-0.5 w-3 shrink-0 text-[10px] tabular-nums leading-4 text-muted-foreground"
-          title={collapsed ? `${childCount} plans` : undefined}
-        >
-          {collapsed ? childCount : ""}
-        </span>
-      )}
-      <Icon className={cn("mt-0.5 shrink-0", depth > 0 ? "h-3.5 w-3.5" : "h-4 w-4", kindClass)} />
-      <div className="min-w-0 flex-1">
-        <div
-          className={cn(
-            "truncate",
-            depth > 0 ? "text-[13px]" : "text-sm",
-            (item.unread || focused) && "font-semibold",
-          )}
-        >
-          {item.title}
-        </div>
-        <div className="truncate text-xs text-muted-foreground">{meta}</div>
-      </div>
-      <div className="flex shrink-0 items-start gap-1">
-        {item.kind === "chat" && action && ActionIcon && (
-          <ActionTip label={action.label}>
-            <button
-              type="button"
-              aria-label={action.label}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                action.onClick(item);
-              }}
-              className="mt-0.5 flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
-            >
-              <ActionIcon className="h-3.5 w-3.5" />
-            </button>
-          </ActionTip>
-        )}
-        <div className="flex w-14 shrink-0 flex-col items-end gap-1.5">
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {formatAge(Date.now() - Date.parse(latestAt))}
-          </span>
-          <StateDot state={item.state} />
-        </div>
-      </div>
-    </motion.div>
-  );
-}
+const SUBTLE_ROW = "w-full rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:text-foreground";
+
+/** The glyph wears what still needs doing: any open PR reads as open, then draft, merged, closed. */
+const GLYPH_ORDER: PullRequestState[] = ["open", "draft", "merged", "closed"];
 
 /**
- * The control panel column: Jamie chats as the spine, a plan spawned
- * from a chat nested under it (collapsed until opened), all grouped by the day of
- * their newest activity. One row per thread with a "since you" line, a
- * time column and a state dot; a "Show N more" at the end when the org
- * has more chats than are listed. Archived chats live in a flat section
- * at the bottom, outside day grouping. New chat lives in the chat's own
- * actions in the bar across the divider (`n` here does the same).
+ * The org page's chat list: one row per Jamie chat, its title alone. Day
+ * headers carry the time; the right edge carries only what is worth a
+ * glance — Jamie working, the pull requests the chat's jobs reported. A
+ * chat's jobs nest under it, the newest showing and the rest behind
+ * "N more".
  */
 export function ControlPanelList({
   groups,
@@ -291,221 +88,344 @@ export function ControlPanelList({
   loading,
   query,
   onQueryChange,
-  expandedKeys,
-  onToggleExpanded,
-  cursorKey,
-  focusedKey,
+  cursorId,
+  activeId,
   onOpen,
+  onOpenJob,
+  onOpenPullRequest,
   remaining,
   onShowMore,
-  archivedRows,
+  archivedItems,
   archivedExpanded,
   onToggleArchived,
   onArchive,
   onRestore,
+  onNewChat,
+  onHide,
 }: ControlPanelListProps) {
-  const [searchOpen, setSearchOpen] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-
-  const firstVisible = useMemo(
-    () => groups.flatMap((g) => g.rows).find((r) => !(r.parentKey && !expandedKeys.has(r.parentKey))),
-    [groups, expandedKeys],
-  );
-  const archivedChatCount = useMemo(
-    () => archivedRows.filter((r) => r.item.kind === "chat").length,
-    [archivedRows],
-  );
-  const bothEmpty = totalCount === 0 && archivedChatCount === 0;
-  // Rows only move when their order does; framer measures them only then.
-  const rowOrder = useMemo(
-    () =>
-      [
-        ...groups.flatMap((g) => g.rows.map((r) => r.item.key)),
-        ...archivedRows.map((r) => r.item.key),
-      ].join("|"),
-    [groups, archivedRows],
-  );
-
-  // Real DOM focus follows the keyboard cursor, so the browser's own
-  // focus ring never lingers on the last clicked row — unless the user
-  // is typing (the composer, search), which a list refresh must not
-  // interrupt.
-  useEffect(() => {
-    if (!cursorKey) return;
-    const el = document.querySelector<HTMLElement>(`[data-panel-key="${cursorKey}"]`);
-    if (!el) return;
-    el.scrollIntoView({ block: "nearest" });
-    if (!isTypingTarget(document.activeElement)) {
-      el.focus({ preventScroll: true });
-    }
-  }, [cursorKey]);
-
-  useEffect(() => {
-    if (searchOpen) searchInputRef.current?.focus();
-  }, [searchOpen]);
-
+  const [searching, setSearching] = useState(false);
   const closeSearch = () => {
     onQueryChange("");
-    setSearchOpen(false);
+    setSearching(false);
   };
-
-  const rowProps = {
-    expandedKeys,
-    onToggleExpanded,
-    cursorKey,
-    focusedKey,
-    onOpen,
-    rowOrder,
-  };
+  const rowProps = { cursorId, activeId, onOpen, onOpenJob, onOpenPullRequest };
+  const empty = groups.length === 0;
 
   return (
-    <aside className="flex h-full w-full flex-col bg-background">
-      <div className="flex h-11 shrink-0 items-center justify-end border-b px-3">
-        <ActionTip label="Search chats and plans">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Search"
-            aria-pressed={searchOpen}
-            onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
-            className={cn("h-7 w-7", searchOpen && "bg-muted")}
-          >
-            <Search className="h-3.5 w-3.5" />
-          </Button>
-        </ActionTip>
-      </div>
-
-      {searchOpen && (
-        <div className="flex items-center gap-2 border-b px-3 py-2">
-          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <input
-            ref={searchInputRef}
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                closeSearch();
-              } else if (e.key === "Enter" && firstVisible) {
-                e.preventDefault();
-                onOpen(firstVisible.item);
-              }
-            }}
-            placeholder="Search chats and plans"
-            aria-label="Search chats and plans"
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          />
-          <button
-            type="button"
-            onClick={closeSearch}
-            aria-label="Close search"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-
-      <div className="relative min-h-0 flex-1">
-        <motion.div layoutScroll className="h-full overflow-y-auto pb-8">
-          {loading && bothEmpty ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
+    <section aria-label="Chats" className="flex h-full flex-col bg-background">
+      <div className="flex h-11 shrink-0 items-center gap-1 border-b pl-3 pr-2">
+        {searching ? (
+          <>
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              onBlur={() => !query && setSearching(false)}
+              onKeyDown={(e) => e.key === "Escape" && closeSearch()}
+              placeholder="Search chats"
+              aria-label="Search chats"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+            <ToolbarButton label="Clear search" onClick={closeSearch}>
+              <X className="h-4 w-4" />
+            </ToolbarButton>
+          </>
+        ) : (
+          <>
+            <h2 className="text-sm font-medium">Chats</h2>
+            <div className="ml-auto flex items-center">
+              <ToolbarButton label="Search chats" onClick={() => setSearching(true)}>
+                <Search className="h-4 w-4" />
+              </ToolbarButton>
+              <ToolbarButton label="New chat" onClick={onNewChat}>
+                <SquarePen className="h-4 w-4" />
+              </ToolbarButton>
+              <ToolbarButton label="Hide chats" onClick={onHide}>
+                <PanelLeftClose className="h-4 w-4" />
+              </ToolbarButton>
             </div>
-          ) : bothEmpty ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              {`Nothing yet. Start a ${jamieName} chat and it lands here.`}
-            </p>
-          ) : (
-            <>
-              {!firstVisible && totalCount > 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-muted-foreground">No chats or plans match.</p>
-              ) : firstVisible ? (
-                groups.flatMap((group) => [
-                  <h3
-                    key={`day:${group.key}`}
-                    className="sticky top-0 z-10 border-b bg-background/95 px-3 pb-1 pt-2.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur"
-                  >
-                    {group.label}
-                  </h3>,
-                  ...group.rows.map(({ item, depth, parentKey, childCount, latestAt }, i) => (
-                    <PanelRow
-                      key={item.key}
-                      item={item}
-                      depth={depth}
-                      parentKey={parentKey}
-                      childCount={childCount}
-                      latestAt={latestAt}
-                      lastChild={group.rows[i + 1]?.parentKey !== parentKey}
-                      action={{ label: "Archive", Icon: Archive, onClick: onArchive }}
-                      {...rowProps}
-                    />
-                  )),
-                ])
-              ) : null}
-              {firstVisible && remaining > 0 && (
-                <button
-                  type="button"
-                  onClick={onShowMore}
-                  className="w-full px-3 py-2.5 text-center text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-                >
-                  Show {Math.min(remaining, CONTROL_PANEL_PAGE)} more
-                </button>
-              )}
-
-              <section data-testid="control-panel-archive">
-                <button
-                  type="button"
-                  aria-expanded={archivedExpanded}
-                  aria-label={archivedExpanded ? "Hide archive" : "Show archive"}
-                  onClick={onToggleArchived}
-                  className="sticky top-0 z-10 flex w-full items-center gap-2 border-y bg-background/95 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur hover:text-foreground"
-                >
-                  {archivedExpanded ? (
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  ) : (
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  )}
-                  Archive
-                  {archivedChatCount > 0 && (
-                    <span className="tabular-nums text-muted-foreground/80">{archivedChatCount}</span>
-                  )}
-                </button>
-                {archivedExpanded &&
-                  (archivedChatCount === 0 ? (
-                    <p className="px-4 py-6 text-center text-sm text-muted-foreground">No archived chats</p>
-                  ) : (
-                    archivedRows.map(({ item, depth, parentKey, childCount, latestAt }, i) => (
-                      <PanelRow
-                        key={item.key}
-                        item={item}
-                        depth={depth}
-                        parentKey={parentKey}
-                        childCount={childCount}
-                        latestAt={latestAt}
-                        lastChild={archivedRows[i + 1]?.parentKey !== parentKey}
-                        action={{ label: "Restore", Icon: ArchiveRestore, onClick: onRestore }}
-                        {...rowProps}
-                      />
-                    ))
-                  ))}
-              </section>
-            </>
-          )}
-        </motion.div>
-        {(firstVisible || archivedChatCount > 0) && (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background to-transparent"
-          />
+          </>
         )}
       </div>
 
-      <div className="flex items-center gap-2 border-t px-3 py-2 text-xs text-muted-foreground">
-        <Kbd>↑↓</Kbd> move
-        <Kbd>⏎</Kbd> open
-        <Kbd>n</Kbd> new chat
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+        {empty && (
+          <div className="px-2 py-6 text-sm text-muted-foreground">
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-label="Loading chats" />
+            ) : query && totalCount > 0 ? (
+              "No chats match."
+            ) : (
+              "No chats yet."
+            )}
+          </div>
+        )}
+
+        {groups.map((group) => (
+          <DayGroup key={group.key} label={group.label}>
+            {group.items.map((item) => (
+              <ChatRow
+                key={item.id}
+                item={item}
+                {...rowProps}
+                menu={{ label: "Archive", Icon: Archive, onSelect: onArchive }}
+              />
+            ))}
+          </DayGroup>
+        ))}
+
+        {remaining > 0 && !query && (
+          <button type="button" onClick={onShowMore} className={cn(SUBTLE_ROW, "mt-1")}>
+            Show more
+          </button>
+        )}
+
+        {archivedItems.length > 0 && (
+          <DayGroup label="Archived" expanded={archivedExpanded} onToggle={onToggleArchived}>
+            {archivedItems.map((item) => (
+              <ChatRow
+                key={item.id}
+                item={item}
+                {...rowProps}
+                menu={{ label: "Restore", Icon: ArchiveRestore, onSelect: onRestore }}
+              />
+            ))}
+          </DayGroup>
+        )}
       </div>
-    </aside>
+    </section>
+  );
+}
+
+/** Chats under a label — a day, or Archived — that folds them away; Archived's fold is the parent's. */
+function DayGroup({
+  label,
+  expanded,
+  onToggle,
+  children,
+}: {
+  label: string;
+  expanded?: boolean;
+  onToggle?: () => void;
+  children: React.ReactNode;
+}) {
+  const [ownExpanded, setOwnExpanded] = useState(true);
+  const open = expanded ?? ownExpanded;
+  return (
+    <section className="pt-3">
+      <button
+        type="button"
+        onClick={onToggle ?? (() => setOwnExpanded((o) => !o))}
+        aria-expanded={open}
+        className="group flex items-center gap-1 px-2 pb-1 text-xs text-muted-foreground hover:text-foreground"
+      >
+        {label}
+        {open ? (
+          <ChevronDown className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+      </button>
+      {open && children}
+    </section>
+  );
+}
+
+interface RowProps {
+  cursorId: string | null;
+  activeId: string | null;
+  onOpen: (item: ControlPanelItem) => void;
+  onOpenJob: (item: ControlPanelItem, job: ControlPanelJob) => void;
+  onOpenPullRequest: (item: ControlPanelItem, pr: ControlPanelPullRequest) => void;
+}
+
+/** A chat, and the jobs it started under a guide line: the newest one, the rest behind "N more". */
+function ChatRow({
+  item,
+  cursorId,
+  activeId,
+  onOpen,
+  onOpenJob,
+  onOpenPullRequest,
+  menu,
+}: RowProps & {
+  item: ControlPanelItem;
+  menu: { label: string; Icon: typeof Archive; onSelect: (item: ControlPanelItem) => void };
+}) {
+  const [jobsExpanded, setJobsExpanded] = useState(false);
+  const jobs = jobsExpanded ? item.jobs : item.jobs.slice(0, 1);
+  const hiddenJobs = item.jobs.length - jobs.length;
+  const openPr = (pr: ControlPanelPullRequest) => onOpenPullRequest(item, pr);
+
+  return (
+    <div data-testid="chat-list-item" data-chat-id={item.id}>
+      <Row
+        title={item.title}
+        active={item.id === activeId}
+        cursor={item.id === cursorId}
+        working={item.working}
+        pullRequests={item.pullRequests}
+        onOpen={() => onOpen(item)}
+        onOpenPullRequest={openPr}
+        menu={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Chat actions"
+                className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => menu.onSelect(item)}>
+                <menu.Icon />
+                {menu.label}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
+      {item.jobs.length > 0 && (
+        <div className="ml-3 border-l pl-2">
+          {jobs.map((job) => (
+            <Row
+              key={job.id}
+              title={job.title}
+              working={job.working}
+              pullRequests={item.pullRequests.filter((pr) => pr.jobId === job.id)}
+              onOpen={() => onOpenJob(item, job)}
+              onOpenPullRequest={openPr}
+            />
+          ))}
+          {hiddenJobs > 0 && (
+            <button type="button" onClick={() => setJobsExpanded(true)} className={SUBTLE_ROW}>
+              {hiddenJobs} more
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({
+  title,
+  active = false,
+  cursor = false,
+  working,
+  pullRequests,
+  onOpen,
+  onOpenPullRequest,
+  menu,
+}: {
+  title: string;
+  active?: boolean;
+  cursor?: boolean;
+  working: boolean;
+  pullRequests: ControlPanelPullRequest[];
+  onOpen: () => void;
+  onOpenPullRequest: (pr: ControlPanelPullRequest) => void;
+  menu?: React.ReactNode;
+}) {
+  // The title is the row's button, stretched over the whole row; the PRs and
+  // the menu sit above it as siblings, so their clicks never open the chat.
+  return (
+    <div
+      className={cn(
+        "group relative flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors",
+        active
+          ? "bg-muted text-foreground"
+          : cn("text-foreground/80 hover:bg-muted/60 hover:text-foreground", cursor && "bg-muted/40"),
+      )}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-current={active ? "page" : undefined}
+        className="min-w-0 flex-1 truncate text-left outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-1 focus-visible:after:ring-ring"
+      >
+        {title}
+      </button>
+      {/* Two fixed slots, so nothing on the right ever moves: the PRs, then
+        the status — Jamie working, else empty — which turns into the menu
+        on hover. */}
+      <span className="relative z-10 flex w-8 shrink-0 justify-end text-xs text-muted-foreground">
+        {pullRequests.length > 0 && <PullRequestGlyph pullRequests={pullRequests} onOpen={onOpenPullRequest} />}
+      </span>
+      <span className="relative z-10 flex h-5 w-5 shrink-0 items-center justify-center">
+        {working && (
+          <Loader2
+            aria-label="Working"
+            className={cn(
+              "h-3.5 w-3.5 animate-spin text-sky-500",
+              menu && "group-focus-within:hidden group-hover:hidden group-has-[[data-state=open]]:hidden",
+            )}
+          />
+        )}
+        {menu && (
+          <span className="absolute inset-0 hidden items-center justify-center group-hover:flex group-focus-within:flex has-[[data-state=open]]:flex">
+            {menu}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/** The PR glyph and count: hovering lists them, a click opens one on the artifact panel. */
+function PullRequestGlyph({
+  pullRequests,
+  onOpen,
+}: {
+  pullRequests: ControlPanelPullRequest[];
+  onOpen: (pr: ControlPanelPullRequest) => void;
+}) {
+  const lead = GLYPH_ORDER.find((state) => pullRequests.some((pr) => pr.state === state)) ?? "open";
+  const { Icon, color } = PULL_REQUEST_STATE[lead];
+  const count = pullRequests.length;
+  return (
+    <span className="flex">
+      <HoverCard openDelay={150} closeDelay={100}>
+        <HoverCardTrigger asChild>
+          <button
+            type="button"
+            aria-label={plural(count, "pull request")}
+            onClick={() => {
+              if (count === 1) onOpen(pullRequests[0]);
+            }}
+            className="flex items-center gap-1 rounded px-0.5 hover:bg-muted"
+          >
+            <Icon className="h-3.5 w-3.5" style={{ color }} />
+            {count > 1 && <span className="tabular-nums">{count}</span>}
+          </button>
+        </HoverCardTrigger>
+        <HoverCardContent side="right" align="start" className="w-80 p-1.5">
+          {pullRequests.map((pr) => {
+            const state = PULL_REQUEST_STATE[pr.state];
+            return (
+              <button
+                key={pr.identity}
+                type="button"
+                onClick={() => onOpen(pr)}
+                className="block w-full rounded-md px-2.5 py-2 text-left transition-colors hover:bg-muted"
+              >
+                <span className="block truncate text-sm">{pr.title}</span>
+                <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <state.Icon className="h-3.5 w-3.5 shrink-0" style={{ color: state.color }} />
+                  <span style={{ color: state.color }}>{state.label}</span>
+                  <span>·</span>
+                  <span className="truncate">
+                    {pr.repo} #{pr.number}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </HoverCardContent>
+      </HoverCard>
+    </span>
   );
 }

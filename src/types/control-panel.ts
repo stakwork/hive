@@ -1,49 +1,57 @@
 /**
- * Wire-format types for the org Control panel (`/org/[githubLogin]?view=control-panel`).
+ * Wire-format types for the org page's chat list (the default org view).
  *
- * A control panel item is a Jamie (org-canvas) chat or a plan (Feature)
- * spawned from one, ordered by the newest activity from anyone, so
- * whatever is moving floats to the top. Produced by
- * `src/services/orgs/control-panel.ts`; consumed by the control panel
- * column on the client.
+ * A row is one of the user's Jamie (org-canvas) chats, ordered by the
+ * newest activity from anyone. Under it, the jobs the chat started; beside
+ * it, the pull requests those jobs reported. Produced by
+ * `src/services/orgs/control-panel.ts`; consumed by the chat list column.
  */
+import type { PullRequestState } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 
-export type ControlPanelItemKind = "chat" | "plan";
-
-/**
- * Derived thread state. The four attention states reuse the attention
- * feed's vocabulary (`src/services/attention/typeMeta.ts`) so the control panel,
- * the Live Now panel and the canvas badges agree on colour and glyph.
- */
-export type ControlPanelItemState = "running" | "halted" | "question" | "awaiting-reply" | "review" | "done" | "none";
-
-export interface ControlPanelItem {
-  /** Stable key, `${kind}:${id}`. */
-  key: string;
-  kind: ControlPanelItemKind;
+/** A strut job a chat started (`start_job`) — its turns land in the chat. */
+export interface ControlPanelJob {
   id: string;
   title: string;
-  /** Null for org-canvas chats (they are org-scoped, not workspace-scoped). */
-  workspaceSlug: string | null;
-  workspaceId: string | null;
-  workspaceName: string | null;
-  /** ISO. Most recent activity by anyone on the thread. */
+  /** A turn is in flight. */
+  working: boolean;
+  /** ISO. The job's latest turn, launched or settled. */
   lastActivityAt: string;
-  /** One line describing what happened after the user's last touch, or the thread's status. */
-  sinceYou: string;
-  state: ControlPanelItemState;
-  /** True when activity landed after the user last looked. */
-  unread: boolean;
-  /** Plans only: the Jamie chat this plan was spawned from, when any. */
-  parentChatId?: string | null;
-  /** Chats only: when the owner archived this chat (null / omitted = active). */
+}
+
+/** A pull request a chat's job reported, as its newest card has it. */
+export interface ControlPanelPullRequest {
+  /** The card's `artifactIdentity` — what opens it on the artifact panel. */
+  identity: string;
+  title: string;
+  url: string;
+  /** `owner/name`. */
+  repo: string;
+  number: number;
+  state: PullRequestState;
+  /** The job that reported it, when a job's row carried it. */
+  jobId?: string;
+}
+
+export interface ControlPanelItem {
+  /** `SharedConversation.id`, or the store's local id until the chat's first turn is saved. */
+  id: string;
+  title: string;
+  /** ISO. Most recent activity by anyone on the chat or its jobs. */
+  lastActivityAt: string;
+  /** Jamie, or one of the chat's jobs, is working right now. */
+  working: boolean;
+  /** When the owner archived this chat (null / omitted = active). */
   archivedAt?: string | null;
+  /** Newest first. */
+  jobs: ControlPanelJob[];
+  /** Newest first. */
+  pullRequests: ControlPanelPullRequest[];
 }
 
 export interface ControlPanelResponse {
   items: ControlPanelItem[];
-  /** Archived chats (and their nested plans). Empty when none. */
+  /** Archived chats. Empty when none. */
   archivedItems: ControlPanelItem[];
-  /** Chats are the spine: how many are listed, and how many the user has in this org. */
+  /** How many chats are listed, and how many the user has in this org. */
   chats: { shown: number; total: number };
 }

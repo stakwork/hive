@@ -1,589 +1,229 @@
 /**
- * Unit tests for the pure control panel helpers
+ * Unit tests for the pure chat list helpers
  * (`src/services/orgs/control-panel-state.ts`).
  *
  * Covered:
- *   - Plan state precedence: done → halted → question (only if not
- *     running) → awaiting-reply (only if not running) → review →
- *     running → plain status.
- *   - Chat state precedence: running → question → done (every nested
- *     feature COMPLETED) → none. Cancelled nested features do not green
- *     the parent. overlayActiveChat streaming outranks a server "done".
- *   - Running labels: planner only, agents only, both.
- *   - Search, newest-activity ordering, the stand-in row for the chat
- *     on stage, and the one-line preview.
- *   - Hierarchy + day groups: plans nest under their chat, orphan plans
- *     are left out, a chat floats up with its newest plan, day labels.
+ *   - A chat's jobs from its job-turn runs: titled by the launch, working
+ *     while a turn is pending, newest activity first.
+ *   - A chat's pull requests from its messages: one per PR at its newest
+ *     card, credited to the job whose row carried it, non-PR and
+ *     non-inline refs left out.
+ *   - Search over chat, job and PR titles; newest-activity day groups.
+ *   - The chat on stage: the stand-in row, the overlay, Active vs Archive.
+ *   - Optimistic archive and restore.
  */
 import { describe, expect, test } from "vitest";
 import type { ControlPanelItem } from "@/types/control-panel";
 import {
   activeChatItem,
-  buildArchivedRows,
   buildControlPanelGroups,
-  deriveChatState,
-  derivePlanState,
+  chatJobs,
+  chatPullRequests,
   matchesControlPanelQuery,
   moveChatToActive,
   moveChatToArchive,
   overlayActiveChat,
-  unlistedOnStageChatTitle,
-  previewLine,
   resolveControlPanelLists,
-  sortControlPanelItems,
-  visibleControlPanelItems,
+  activeChatTitle,
+  type ActiveChatSnapshot,
 } from "@/services/orgs/control-panel-state";
 
-const noMessage = null;
-const assistantForm = { role: "ASSISTANT", hasForm: true };
-const assistantText = { role: "ASSISTANT", hasForm: false };
-const userText = { role: "USER", hasForm: false };
+function chat(id: string, lastActivityAt: string, overrides: Partial<ControlPanelItem> = {}): ControlPanelItem {
+  return { id, title: `Chat ${id}`, lastActivityAt, working: false, jobs: [], pullRequests: [], ...overrides };
+}
 
-describe("derivePlanState", () => {
-  test("completed and cancelled plans are done regardless of workflow", () => {
-    expect(
-      derivePlanState({
-        status: "COMPLETED",
-        workflowStatus: "IN_PROGRESS",
-        tasks: [{ status: "TODO", workflowStatus: "IN_PROGRESS" }],
-        lastMessage: assistantForm,
-      }),
-    ).toEqual({ state: "done", label: "Completed" });
-    expect(
-      derivePlanState({ status: "CANCELLED", workflowStatus: null, tasks: [], lastMessage: noMessage }).state,
-    ).toBe("done");
-  });
-
-  test("halted wins over a pending question", () => {
-    const result = derivePlanState({
-      status: "IN_PROGRESS",
-      workflowStatus: "HALTED",
-      tasks: [],
-      lastMessage: assistantForm,
-    });
-    expect(result.state).toBe("halted");
-    expect(result.label).toBe("Halted");
-  });
-
-  test("a FAILED child task halts the plan and stops the planner counting as running", () => {
-    const result = derivePlanState({
-      status: "IN_PROGRESS",
-      workflowStatus: "IN_PROGRESS",
-      tasks: [
-        { status: "TODO", workflowStatus: "FAILED" },
-        { status: "TODO", workflowStatus: "IN_PROGRESS" },
-      ],
-      lastMessage: userText,
-    });
-    expect(result.state).toBe("halted");
-  });
-
-  test("an assistant FORM message is a question waiting", () => {
-    expect(
-      derivePlanState({
-        status: "PLANNED",
-        workflowStatus: "PENDING",
-        tasks: [{ status: "TODO", workflowStatus: "PENDING" }],
-        lastMessage: assistantForm,
-      }).state,
-    ).toBe("question");
-  });
-
-  test("assistant last message with no tasks is awaiting the user's reply", () => {
-    const result = derivePlanState({
-      status: "PLANNED",
-      workflowStatus: "PENDING",
-      tasks: [],
-      lastMessage: assistantText,
-    });
-    expect(result.state).toBe("awaiting-reply");
-    expect(result.label).toBe("Awaiting your reply");
-  });
-
-  test("completed workflow on an open plan is ready to review", () => {
-    expect(
-      derivePlanState({
-        status: "IN_PROGRESS",
-        workflowStatus: "COMPLETED",
-        tasks: [{ status: "DONE", workflowStatus: "COMPLETED" }],
-        lastMessage: userText,
-      }).state,
-    ).toBe("review");
-  });
-
-  test("review still beats a live child task on a completed workflow", () => {
-    expect(
-      derivePlanState({
-        status: "IN_PROGRESS",
-        workflowStatus: "COMPLETED",
-        tasks: [{ status: "TODO", workflowStatus: "IN_PROGRESS" }],
-        lastMessage: userText,
-      }).state,
-    ).toBe("review");
-  });
-
-  test("IN_PROGRESS with an assistant last message is running, not awaiting-reply", () => {
-    const result = derivePlanState({
-      status: "IN_PROGRESS",
-      workflowStatus: "IN_PROGRESS",
-      tasks: [],
-      lastMessage: assistantText,
-    });
-    expect(result).toEqual({ state: "running", label: "Planner working" });
-  });
-
-  test("IN_PROGRESS with a leftover assistant FORM is running, not a question", () => {
-    const result = derivePlanState({
-      status: "IN_PROGRESS",
-      workflowStatus: "IN_PROGRESS",
-      tasks: [],
-      lastMessage: assistantForm,
-    });
-    expect(result.state).toBe("running");
-    expect(result.label).toBe("Planner working");
-  });
-
-  test("running labels: planner, agents, both", () => {
-    const planner = derivePlanState({
-      status: "IN_PROGRESS",
-      workflowStatus: "IN_PROGRESS",
-      tasks: [],
-      lastMessage: userText,
-    });
-    expect(planner).toEqual({ state: "running", label: "Planner working" });
-
-    const agents = derivePlanState({
-      status: "IN_PROGRESS",
-      workflowStatus: "PENDING",
-      tasks: [
-        { status: "TODO", workflowStatus: "IN_PROGRESS" },
-        { status: "TODO", workflowStatus: "PENDING", mode: "agent" },
-        { status: "TODO", workflowStatus: "PENDING", mode: "live" },
-      ],
-      lastMessage: userText,
-    });
-    expect(agents).toEqual({ state: "running", label: "2 agents running" });
-
-    const both = derivePlanState({
-      status: "IN_PROGRESS",
-      workflowStatus: "IN_PROGRESS",
-      tasks: [{ status: "TODO", workflowStatus: "IN_PROGRESS" }],
-      lastMessage: userText,
-    });
-    expect(both.label).toBe("Planner working · 1 agent running");
-  });
-
-  test("a never-started plan shows its plain status", () => {
-    expect(
-      derivePlanState({ status: "BACKLOG", workflowStatus: "PENDING", tasks: [], lastMessage: noMessage }),
-    ).toEqual({ state: "none", label: "Backlog" });
-  });
-});
-
-describe("deriveChatState", () => {
-  test("all nested COMPLETED is done", () => {
-    expect(
-      deriveChatState({
-        isRunning: false,
-        hasPendingQuestion: false,
-        nestedStatuses: ["COMPLETED", "COMPLETED"],
-      }),
-    ).toBe("done");
-  });
-
-  test("empty nested is none", () => {
-    expect(deriveChatState({ isRunning: false, hasPendingQuestion: false, nestedStatuses: [] })).toBe("none");
-  });
-
-  test("any non-COMPLETED nested status is none, including CANCELLED", () => {
-    expect(
-      deriveChatState({
-        isRunning: false,
-        hasPendingQuestion: false,
-        nestedStatuses: ["COMPLETED", "CANCELLED"],
-      }),
-    ).toBe("none");
-    expect(
-      deriveChatState({
-        isRunning: false,
-        hasPendingQuestion: false,
-        nestedStatuses: ["COMPLETED", "BACKLOG"],
-      }),
-    ).toBe("none");
-    expect(
-      deriveChatState({ isRunning: false, hasPendingQuestion: false, nestedStatuses: ["CANCELLED"] }),
-    ).toBe("none");
-  });
-
-  test("isRunning and hasPendingQuestion beat done", () => {
-    expect(
-      deriveChatState({
-        isRunning: true,
-        hasPendingQuestion: false,
-        nestedStatuses: ["COMPLETED"],
-      }),
-    ).toBe("running");
-    expect(
-      deriveChatState({
-        isRunning: false,
-        hasPendingQuestion: true,
-        nestedStatuses: ["COMPLETED"],
-      }),
-    ).toBe("question");
-    expect(
-      deriveChatState({
-        isRunning: true,
-        hasPendingQuestion: true,
-        nestedStatuses: ["COMPLETED"],
-      }),
-    ).toBe("running");
-  });
-});
-
-function makeItem(overrides: Partial<ControlPanelItem>): ControlPanelItem {
-  const id = overrides.id ?? "x";
-  const kind = overrides.kind ?? "plan";
+function snapshot(overrides: Partial<ActiveChatSnapshot> = {}): ActiveChatSnapshot {
   return {
-    key: `${kind}:${id}`,
-    kind,
-    id,
-    title: "x",
-    workspaceSlug: "ws",
-    workspaceId: "ws-id",
-    workspaceName: "WS",
-    lastActivityAt: "2026-09-04T10:00:00.000Z",
-    sinceYou: "",
-    state: "none",
-    unread: false,
+    localId: "local-1",
+    serverId: null,
+    lastMessageAt: null,
+    hasMessages: false,
+    isStreaming: false,
+    title: null,
     ...overrides,
   };
 }
 
-describe("search, ordering and the chat on stage", () => {
-  const fresh = {
-    localId: "local-1",
-    serverId: null,
-    lastMessageAt: null,
-    lastReply: null,
-    hasMessages: false,
-    isStreaming: false,
-    title: null,
-  };
-  const startedAt = "2026-09-04T09:00:00.000Z";
+describe("chatJobs", () => {
+  const run = (jobId: string, status: string, createdAt: string, settledAt: string | null = null) => ({
+    jobId,
+    status,
+    createdAt: new Date(createdAt),
+    settledAt: settledAt ? new Date(settledAt) : null,
+  });
+  const titles = new Map([
+    ["j1", "Backfill"],
+    ["j2", "Docs"],
+  ]);
 
-  test("activeChatItem stands in for a chat the server has not listed yet", () => {
-    const empty = activeChatItem(fresh, startedAt, "New chat");
-    expect(empty).toMatchObject({
-      key: "chat:local-1",
-      title: "New chat",
-      lastActivityAt: startedAt,
-      sinceYou: "Empty chat",
-      state: "none",
-    });
-
-    const replying = activeChatItem(
-      { ...fresh, serverId: "srv-1", lastMessageAt: "2026-09-04T09:05:00.000Z", hasMessages: true, isStreaming: true },
-      startedAt,
-      "Kickoff",
+  test("one entry per job, titled from its launch, working while a turn is pending", () => {
+    const jobs = chatJobs(
+      [
+        run("j1", "SUCCESS", "2026-03-01T00:00:00Z", "2026-03-01T00:05:00Z"),
+        run("j1", "PENDING", "2026-03-02T00:00:00Z"),
+        run("j2", "SUCCESS", "2026-03-01T12:00:00Z", "2026-03-01T12:10:00Z"),
+      ],
+      titles,
     );
-    expect(replying).toMatchObject({
-      key: "chat:srv-1",
-      lastActivityAt: "2026-09-04T09:05:00.000Z",
-      sinceYou: "Jamie is replying",
-      state: "running",
-    });
-
-    const answered = activeChatItem(
-      { ...fresh, hasMessages: true, lastReply: "Done.\n\nAnything else?" },
-      startedAt,
-      "Kickoff",
-    );
-    expect(answered.sinceYou).toBe("Done. Anything else?");
+    expect(jobs).toEqual([
+      { id: "j1", title: "Backfill", working: true, lastActivityAt: "2026-03-02T00:00:00.000Z" },
+      { id: "j2", title: "Docs", working: false, lastActivityAt: "2026-03-01T12:10:00.000Z" },
+    ]);
   });
 
-  test("overlayActiveChat brings the server's row up to what the store knows", () => {
-    const server = makeItem({
-      kind: "chat",
-      id: "srv-1",
-      lastActivityAt: "2026-09-04T09:00:00.000Z",
-      sinceYou: "Planner posted an update",
-      state: "question",
-      unread: true,
-    });
-    // Nothing newer in the store: the server's row, read.
-    expect(
-      overlayActiveChat(server, {
-        ...fresh,
-        serverId: "srv-1",
-        lastMessageAt: "2026-09-04T08:00:00.000Z",
-        hasMessages: true,
-      }),
-    ).toMatchObject({
-      lastActivityAt: "2026-09-04T09:00:00.000Z",
-      sinceYou: "Planner posted an update",
-      state: "question",
-      unread: false,
-    });
-    // A message the fetch missed: the store's time and line win.
-    expect(
-      overlayActiveChat(server, {
-        ...fresh,
-        serverId: "srv-1",
-        lastMessageAt: "2026-09-04T09:30:00.000Z",
-        hasMessages: true,
-      }),
-    ).toMatchObject({ lastActivityAt: "2026-09-04T09:30:00.000Z", sinceYou: "No reply yet", state: "question" });
-    // Streaming: working, whatever the server says.
-    expect(
-      overlayActiveChat(server, { ...fresh, serverId: "srv-1", hasMessages: true, isStreaming: true }),
-    ).toMatchObject({ state: "running", sinceYou: "Jamie is replying" });
-    // Streaming over a server "done" still forces running; settled overlay keeps done.
-    const doneServer = makeItem({
-      kind: "chat",
-      id: "srv-1",
-      lastActivityAt: "2026-09-04T09:00:00.000Z",
-      sinceYou: "All plans done",
-      state: "done",
-    });
-    expect(
-      overlayActiveChat(doneServer, {
-        ...fresh,
-        serverId: "srv-1",
-        hasMessages: true,
-        isStreaming: true,
-      }),
-    ).toMatchObject({ state: "running" });
-    expect(
-      overlayActiveChat(doneServer, {
-        ...fresh,
-        serverId: "srv-1",
-        hasMessages: true,
-        isStreaming: false,
-      }),
-    ).toMatchObject({ state: "done" });
-    // Store title wins so the live list row updates without a refetch.
-    expect(
-      overlayActiveChat(server, {
-        ...fresh,
-        serverId: "srv-1",
-        hasMessages: true,
-        title: "Auth token refresh",
-      }).title,
-    ).toBe("Auth token refresh");
+  test("a job with no title reads as Job", () => {
+    const [job] = chatJobs([run("j3", "SUCCESS", "2026-03-01T00:00:00Z")], titles);
+    expect(job.title).toBe("Job");
+  });
+});
+
+describe("chatPullRequests", () => {
+  const prRef = (state: string, number = 7) => ({
+    id: `pr-${number}`,
+    kind: "pull_request",
+    title: `PR ${number}`,
+    source: {
+      type: "inline",
+      content: { url: `https://github.com/acme/app/pull/${number}`, repo: "acme/app", number, state },
+    },
   });
 
-  test("unlisted on-stage row prefers store title over generateTitle", () => {
-    const messages = [{ role: "user", content: "How does the auth middleware work when tokens expire?" }];
-    expect(
-      unlistedOnStageChatTitle(
-        { ...fresh, hasMessages: true, title: "Auth token refresh" },
-        messages,
-      ),
-    ).toBe("Auth token refresh");
-    expect(unlistedOnStageChatTitle({ ...fresh, hasMessages: true, title: null }, messages)).toBe(
-      "How does the auth middleware work when tokens expire?",
-    );
-    expect(unlistedOnStageChatTitle(fresh, [])).toBe("New chat");
+  test("each PR at its newest card, newest reported first, credited to its job", () => {
+    const prs = chatPullRequests([
+      { source: { kind: "job", jobId: "j1" }, artifacts: [prRef("open", 7)] },
+      { artifacts: [prRef("open", 8)] },
+      { source: { kind: "job", jobId: "j1" }, artifacts: [prRef("merged", 7)] },
+    ]);
+    expect(prs.map((p) => [p.number, p.state, p.jobId])).toEqual([
+      [7, "merged", "j1"],
+      [8, "open", undefined],
+    ]);
+    expect(prs[0].identity).toBe("pull_request:acme/app#7");
   });
 
-  test("previewLine collapses whitespace and cuts long text with an ellipsis", () => {
-    expect(previewLine("  a \n b  ")).toBe("a b");
-    const long = previewLine("x".repeat(120));
-    expect(long).toHaveLength(90);
-    expect(long.endsWith("…")).toBe(true);
+  test("leaves out other kinds, graph-sourced refs and malformed content", () => {
+    const prs = chatPullRequests([
+      {
+        artifacts: [
+          { id: "doc", kind: "markdown", title: "Plan", source: { type: "inline", content: { text: "# Plan" } } },
+          { id: "pr-g", kind: "pull_request", title: "Remote", source: { type: "graph", swarmId: "s", key: "/k" } },
+          { id: "pr-bad", kind: "pull_request", title: "Bad", source: { type: "inline", content: { url: 3 } } },
+        ],
+      },
+      { artifacts: "not an array" },
+    ]);
+    expect(prs).toEqual([]);
+  });
+});
+
+describe("matchesControlPanelQuery", () => {
+  const item = chat("a", "2026-03-01T00:00:00Z", {
+    title: "Org default workspace",
+    jobs: [{ id: "j", title: "Backfill script", working: false, lastActivityAt: "2026-03-01T00:00:00Z" }],
+    pullRequests: [{ identity: "p", title: "Add migration", url: "u", repo: "acme/app", number: 1, state: "open" }],
   });
 
-  test("search matches title, workspace and since-you, case-insensitively; empty query matches all", () => {
-    const item = makeItem({ title: "Payout retries", workspaceName: "Hive", sinceYou: "Planner working" });
-    expect(matchesControlPanelQuery(item, "PAYOUT")).toBe(true);
-    expect(matchesControlPanelQuery(item, "hive")).toBe(true);
-    expect(matchesControlPanelQuery(item, "planner")).toBe(true);
-    expect(matchesControlPanelQuery(item, "onboarding")).toBe(false);
-    expect(matchesControlPanelQuery(item, "   ")).toBe(true);
-  });
-
-  test("sortControlPanelItems orders by newest activity first, without mutating", () => {
-    const older = makeItem({ id: "a", lastActivityAt: "2026-09-01T00:00:00.000Z" });
-    const newer = makeItem({ id: "b", lastActivityAt: "2026-09-03T00:00:00.000Z" });
-    const input = [older, newer];
-    const sorted = sortControlPanelItems(input);
-    expect(sorted.map((i) => i.id)).toEqual(["b", "a"]);
-    expect(input.map((i) => i.id)).toEqual(["a", "b"]);
+  test("matches the chat, its jobs and its PRs, case-insensitively", () => {
+    expect(matchesControlPanelQuery(item, "DEFAULT")).toBe(true);
+    expect(matchesControlPanelQuery(item, "backfill")).toBe(true);
+    expect(matchesControlPanelQuery(item, "migration")).toBe(true);
+    expect(matchesControlPanelQuery(item, "nothing")).toBe(false);
+    expect(matchesControlPanelQuery(item, "  ")).toBe(true);
   });
 });
 
 describe("buildControlPanelGroups", () => {
-  // Fixed "now" at local noon so day boundaries are unambiguous.
-  const now = new Date(2026, 8, 4, 12, 0, 0);
-  const at = (daysAgo: number, hour = 9) => {
-    const d = new Date(now);
-    d.setDate(now.getDate() - daysAgo);
-    d.setHours(hour, 0, 0, 0);
-    return d.toISOString();
-  };
-
-  const chat = makeItem({ kind: "chat", id: "c1", title: "Kickoff", lastActivityAt: at(1) });
-  const older = makeItem({ kind: "chat", id: "c2", title: "Older", lastActivityAt: at(2, 10) });
-  const spawned = makeItem({ kind: "plan", id: "p1", title: "Spawned", parentChatId: "c1", lastActivityAt: at(0) });
-  const orphan = makeItem({ kind: "plan", id: "p2", title: "Orphan", parentChatId: "missing", lastActivityAt: at(2) });
-  const standalone = makeItem({ kind: "plan", id: "p3", title: "Standalone", lastActivityAt: at(1, 8) });
-
-  test("chats are the rows, plans nest under their chat, the chat floats up to its newest plan, everything else is left out", () => {
-    const groups = buildControlPanelGroups([chat, older, spawned, orphan, standalone], () => true, now);
-    expect(groups.map((g) => g.label)).toEqual(["Today", "September 2"]);
-    // The chat's own activity was yesterday but its plan moved today, so it leads the Today group.
-    expect(groups[0].rows.map((r) => [r.item.id, r.depth])).toEqual([
-      ["c1", 0],
-      ["p1", 1],
+  test("groups by local day of newest activity, newest first", () => {
+    const now = new Date(2026, 9, 15, 12);
+    const at = (d: number, h: number) => new Date(2026, 9, d, h).toISOString();
+    const groups = buildControlPanelGroups(
+      [chat("old", at(13, 9)), chat("today", at(15, 10)), chat("yesterday", at(14, 9)), chat("today2", at(15, 11))],
+      now,
+    );
+    expect(groups.map((g) => [g.label, g.items.map((i) => i.id)])).toEqual([
+      ["Today", ["today2", "today"]],
+      ["Yesterday", ["yesterday"]],
+      [new Date(2026, 9, 13).toLocaleDateString(undefined, { month: "short", day: "numeric" }), ["old"]],
     ]);
-    expect(groups[0].rows[0].childCount).toBe(1);
-    expect(groups[0].rows[0].latestAt).toBe(at(0));
-    expect(groups[0].rows[1].parentKey).toBe("chat:c1");
-    expect(groups[1].rows.map((r) => r.item.id)).toEqual(["c2"]);
-    const ids = groups.flatMap((g) => g.rows).map((r) => r.item.id);
-    expect(ids).not.toContain("p2");
-    expect(ids).not.toContain("p3");
-  });
-
-  test("a chat stays when only a nested plan matches the filter, and only matching plans render under it", () => {
-    const running = makeItem({
-      kind: "plan",
-      id: "p4",
-      parentChatId: "c1",
-      state: "running",
-      lastActivityAt: at(1, 10),
-    });
-    const groups = buildControlPanelGroups([chat, spawned, running], (item) => item.state === "running", now);
-    expect(groups.flatMap((g) => g.rows).map((r) => r.item.id)).toEqual(["c1", "p4"]);
-  });
-
-  test("a chat that matches nothing and has no matching plans is dropped", () => {
-    const groups = buildControlPanelGroups([chat, spawned], () => false, now);
-    expect(groups).toEqual([]);
-  });
-
-  test("dates from another year carry the year", () => {
-    const old = makeItem({ kind: "chat", id: "c9", lastActivityAt: new Date(2025, 11, 20, 9).toISOString() });
-    const groups = buildControlPanelGroups([old], () => true, now);
-    expect(groups[0].label).toBe("December 20, 2025");
   });
 });
 
-describe("archive move and on-stage gating", () => {
-  const startedAt = "2026-09-04T09:00:00.000Z";
-  const archivedAt = "2026-09-04T12:00:00.000Z";
-  const chat = makeItem({ kind: "chat", id: "c1", title: "Kickoff", lastActivityAt: startedAt });
-  const plan = makeItem({
-    kind: "plan",
-    id: "p1",
-    title: "Spawned",
-    parentChatId: "c1",
-    lastActivityAt: "2026-09-04T10:00:00.000Z",
-  });
-  const other = makeItem({ kind: "chat", id: "c2", title: "Other", lastActivityAt: startedAt });
-  const snapshot = {
-    localId: "local-1",
-    serverId: "c1",
-    lastMessageAt: "2026-09-04T11:00:00.000Z",
-    lastReply: "Done.",
-    hasMessages: true,
-    isStreaming: false,
-    title: null,
-  };
-
-  test("moveChatToArchive takes nested plans with the chat and inserts them at the top of Archive", () => {
-    const moved = moveChatToArchive([chat, plan, other], [], "c1", archivedAt);
-    expect(moved.items.map((i) => i.id)).toEqual(["c2"]);
-    expect(moved.archivedItems.map((i) => i.id)).toEqual(["c1", "p1"]);
-    expect(moved.archivedItems[0].archivedAt).toBe(archivedAt);
-    expect(moved.items.some((i) => i.id === "p1")).toBe(false);
+describe("the chat on stage", () => {
+  test("a fresh chat stands in until the server lists it", () => {
+    const item = activeChatItem(
+      snapshot({ hasMessages: true, isStreaming: true, lastMessageAt: "2026-03-02T00:00:00Z" }),
+      "2026-03-01T00:00:00Z",
+      "New thing",
+    );
+    expect(item).toEqual({
+      id: "local-1",
+      title: "New thing",
+      lastActivityAt: "2026-03-02T00:00:00Z",
+      working: true,
+      jobs: [],
+      pullRequests: [],
+    });
   });
 
-  test("moveChatToActive restores the chat and its plans to the top of Active", () => {
-    const archived = moveChatToArchive([chat, plan, other], [], "c1", archivedAt);
-    const restored = moveChatToActive(archived.items, archived.archivedItems, "c1");
-    expect(restored.items.map((i) => i.id)).toEqual(["c1", "p1", "c2"]);
-    expect(restored.archivedItems).toEqual([]);
-    expect(restored.items[0].archivedAt).toBeNull();
+  test("the overlay takes a newer store message, the store title and streaming", () => {
+    const server = chat("s1", "2026-03-01T00:00:00Z", { title: "Server title" });
+    const overlaid = overlayActiveChat(
+      server,
+      snapshot({ serverId: "s1", lastMessageAt: "2026-03-02T00:00:00Z", isStreaming: true, title: "Store title" }),
+    );
+    expect(overlaid).toMatchObject({ lastActivityAt: "2026-03-02T00:00:00Z", working: true, title: "Store title" });
+    // A server row that is already working stays working when the store is idle.
+    expect(overlayActiveChat({ ...server, working: true }, snapshot({ serverId: "s1" })).working).toBe(true);
   });
 
-  test("an archived on-stage chat is not injected into active displayItems; nested plans stay in Archive", () => {
-    const archived = moveChatToArchive([chat, plan, other], [], "c1", archivedAt);
-    const resolved = resolveControlPanelLists(archived.items, archived.archivedItems, snapshot, {
-      chatOnStage: true,
-      startedAt,
-      titleForNew: "Kickoff",
-    });
-    expect(resolved.displayItems.map((i) => i.id)).toEqual(["c2"]);
-    expect(resolved.displayArchivedItems.map((i) => i.id)).toEqual(["c1", "p1"]);
-    expect(resolved.displayArchivedItems[0]).toMatchObject({
-      id: "c1",
-      unread: false,
-      lastActivityAt: snapshot.lastMessageAt,
-    });
-    const groups = buildControlPanelGroups(resolved.displayItems);
-    expect(groups.flatMap((g) => g.rows).map((r) => r.item.id)).toEqual(["c2"]);
+  test("an unlisted chat is titled by the store, else its first message", () => {
+    expect(activeChatTitle(snapshot({ title: "Titled" }), [])).toBe("Titled");
+    expect(activeChatTitle(snapshot(), undefined)).toBe("New chat");
   });
 
-  test("a brand-new on-stage chat not in either list is prepended into Active", () => {
-    const fresh = {
-      localId: "local-new",
-      serverId: null,
-      lastMessageAt: null,
-      lastReply: null,
-      hasMessages: false,
-      isStreaming: false,
-      title: null,
-    };
-    const resolved = resolveControlPanelLists([other], [], fresh, {
-      chatOnStage: true,
-      startedAt,
-      titleForNew: "New chat",
-    });
-    expect(resolved.displayItems[0]).toMatchObject({ key: "chat:local-new", title: "New chat" });
-    expect(resolved.displayItems.map((i) => i.id)).toEqual(["local-new", "c2"]);
-    expect(resolved.displayArchivedItems).toEqual([]);
-  });
+  test("Active, Archive or prepended — and an empty new chat waits for its first message", () => {
+    const items = [chat("a", "2026-03-01T00:00:00Z")];
+    const archived = [chat("z", "2026-01-01T00:00:00Z", { archivedAt: "2026-02-01T00:00:00Z" })];
+    const opts = { startedAt: "2026-03-05T00:00:00Z", titleForNew: "New" };
 
-  test("buildArchivedRows is a flat archivedAt-desc list with plans nested under their parent, not day-grouped", () => {
-    const older = makeItem({
-      kind: "chat",
-      id: "c-old",
-      title: "Older",
-      archivedAt: "2026-09-01T00:00:00.000Z",
-      lastActivityAt: "2026-09-04T18:00:00.000Z",
-    });
-    const newer = makeItem({
-      kind: "chat",
-      id: "c-new",
-      title: "Newer",
-      archivedAt: "2026-09-03T00:00:00.000Z",
-      lastActivityAt: "2026-09-02T00:00:00.000Z",
-    });
-    const nested = makeItem({
-      kind: "plan",
-      id: "p-old",
-      parentChatId: "c-old",
-      lastActivityAt: "2026-09-04T19:00:00.000Z",
-    });
-    const rows = buildArchivedRows([older, nested, newer]);
-    expect(rows.map((r) => [r.item.id, r.depth])).toEqual([
-      ["c-new", 0],
-      ["c-old", 0],
-      ["p-old", 1],
+    const listed = resolveControlPanelLists(items, archived, snapshot({ serverId: "a", isStreaming: true }), opts);
+    expect(listed.displayItems[0].working).toBe(true);
+
+    const inArchive = resolveControlPanelLists(items, archived, snapshot({ serverId: "z", hasMessages: true }), opts);
+    expect(inArchive.displayItems.map((i) => i.id)).toEqual(["a"]);
+
+    const empty = resolveControlPanelLists(items, archived, snapshot(), opts);
+    expect(empty.displayItems.map((i) => i.id)).toEqual(["a"]);
+
+    const fresh = resolveControlPanelLists(items, archived, snapshot({ hasMessages: true }), opts);
+    expect(fresh.displayItems.map((i) => i.id)).toEqual(["local-1", "a"]);
+  });
+});
+
+describe("archive and restore", () => {
+  test("archive moves the chat to the top of Archive, stamped", () => {
+    const moved = moveChatToArchive(
+      [chat("a", "2026-03-01T00:00:00Z"), chat("b", "2026-03-02T00:00:00Z")],
+      [chat("z", "2026-01-01T00:00:00Z", { archivedAt: "2026-02-01T00:00:00Z" })],
+      "a",
+      "2026-03-10T00:00:00Z",
+    );
+    expect(moved.items.map((i) => i.id)).toEqual(["b"]);
+    expect(moved.archivedItems.map((i) => [i.id, i.archivedAt])).toEqual([
+      ["a", "2026-03-10T00:00:00Z"],
+      ["z", "2026-02-01T00:00:00Z"],
     ]);
-    expect(rows[1].childCount).toBe(1);
-    expect(rows[2].parentKey).toBe("chat:c-old");
   });
 
-  test("visibleControlPanelItems appends Archive rows only when the section is expanded", () => {
-    const groups = buildControlPanelGroups([other]);
-    const rows = buildArchivedRows([{ ...chat, archivedAt }, plan]);
-    const collapsed = visibleControlPanelItems(groups, rows, new Set(), false);
-    expect(collapsed.map((i) => i.id)).toEqual(["c2"]);
-    const expanded = visibleControlPanelItems(groups, rows, new Set(), true);
-    expect(expanded.map((i) => i.id)).toEqual(["c2", "c1"]);
-    const withPlans = visibleControlPanelItems(groups, rows, new Set(["chat:c1"]), true);
-    expect(withPlans.map((i) => i.id)).toEqual(["c2", "c1", "p1"]);
+  test("restore moves it back to the top of Active, unstamped; an unknown id changes nothing", () => {
+    const items = [chat("b", "2026-03-02T00:00:00Z")];
+    const archived = [chat("a", "2026-03-01T00:00:00Z", { archivedAt: "2026-03-10T00:00:00Z" })];
+    const moved = moveChatToActive(items, archived, "a");
+    expect(moved.items.map((i) => [i.id, i.archivedAt])).toEqual([
+      ["a", null],
+      ["b", undefined],
+    ]);
+    expect(moved.archivedItems).toEqual([]);
+    expect(moveChatToActive(items, archived, "nope")).toEqual({ items, archivedItems: archived });
   });
 });
