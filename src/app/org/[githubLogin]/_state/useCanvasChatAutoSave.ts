@@ -55,7 +55,9 @@ import {
   getPusherClient,
   getCanvasConversationChannelName,
   PUSHER_EVENTS,
+  type CanvasJobUpdate,
 } from "@/lib/pusher";
+import { useJobLiveStore } from "./jobLiveStore";
 import type { Channel } from "pusher-js";
 
 interface AutoSaveArgs {
@@ -290,6 +292,12 @@ export function useCanvasChatAutoSave({ githubLogin }: AutoSaveArgs) {
             (k) => s.conversations[k].serverConversationId === activeServerId,
           );
           if (cid) s.setRunActive(cid, data.active);
+        });
+        // A strut job's live update (strut plans/live-artifacts.md): kept
+        // in memory for the working card, the walkthrough viewer and the
+        // claims card. The conversation's rows stay the record.
+        channel.bind(PUSHER_EVENTS.CANVAS_JOB_UPDATE, (data: CanvasJobUpdate) => {
+          if (data && typeof data.jobId === "string" && typeof data.kind === "string") useJobLiveStore.getState().apply(data);
         });
         subRef.current = { serverId: activeServerId, channel };
         // Catch up immediately on (re)subscribe: Pusher has no replay, so

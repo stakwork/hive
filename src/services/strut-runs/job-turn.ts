@@ -141,6 +141,7 @@ const KINDS: ReadonlySet<string> = new Set<ArtifactKind>([
   "log",
   "json",
   "graph",
+  "walkthrough",
 ]);
 /** Kinds whose content is an address, so an absolute `url` shows as given. */
 const ADDRESS_KINDS: ReadonlySet<string> = new Set<ArtifactKind>(["image", "video", "audio", "pdf", "url"]);
