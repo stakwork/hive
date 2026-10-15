@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { StakworkRunType } from "@prisma/client";
 import { parseBenchmarkRunResult } from "@/types/legal";
 import type { ProposedFix } from "@/types/legal";
+import { compareFixRows } from "@/lib/harvey-lab/fix-sort";
 
 type RouteParams = {
   params: Promise<{ slug: string }>;
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // list is filtered the same way the real path is in Step 9.
     if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "production") {
       const mockFixes: ProposedFix[] = buildSnapshotMockFixes().filter(
-        (f) => f.status !== "rejected",
+        (f) => (f.eval_status ?? f.status) !== "rejected",
       );
       return NextResponse.json({ fixes: mockFixes });
     }
@@ -137,12 +138,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const fixes: ProposedFix[] = searchResult.nodes
       .map((node) => projectFix(node.ref_id, node.properties))
       // Exclude only explicitly-rejected fixes; pending/accepted/untagged remain visible
-      .filter((f) => f.status !== "rejected")
+      .filter((f) => {
+        const effectiveStatus = f.eval_status ?? f.status;
+        return effectiveStatus !== "rejected";
+      })
       .sort((a, b) => {
-        // Entries with a rerun_run_id (more recent reruns) surface first
+        // Primary: entries with a rerun_run_id (more recent reruns) surface first
         const aHas = a.rerun_run_id != null ? 1 : 0;
         const bHas = b.rerun_run_id != null ? 1 : 0;
-        return bHas - aHas;
+        const byRerun = bHas - aHas;
+        if (byRerun !== 0) return byRerun;
+        // Secondary: deterministic tiebreak (target_name → criterion_id → ref_id)
+        return compareFixRows(a, b);
       });
 
     return NextResponse.json({ fixes });
