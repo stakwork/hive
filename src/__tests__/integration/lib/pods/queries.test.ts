@@ -435,6 +435,36 @@ describe("Pod Queries", () => {
       expect(claimedPod).toBeNull();
     });
 
+    it("with createdAfter claims only an unflagged pod created after it (a pod for checking a config push)", async () => {
+      const pushedAt = new Date(Date.now() - 10 * 60 * 1000);
+      const at = (ms: number) => new Date(pushedAt.getTime() + ms);
+      const make = (name: string, createdAt: Date, flaggedForRecreation = false) =>
+        db.pod.create({
+          data: {
+            podId: `test-pod-generation-${name}-${Date.now()}`,
+            swarmId: testSwarmId,
+            status: PodStatus.RUNNING,
+            usageStatus: PodUsageStatus.UNUSED,
+            createdAt,
+            flaggedForRecreation,
+            lastHealthCheck: new Date(),
+          },
+        });
+      // The oldest would be claimed first without the filter
+      const old = await make("old", at(-60_000));
+      await make("flagged", at(30_000), true);
+      const fresh = await make("new", at(60_000));
+
+      const claimed = await claimAvailablePod(testSwarmId, testUserId, undefined, "run-1", pushedAt);
+      expect(claimed?.id).toBe(fresh.id);
+      expect(claimed?.usageStatusReason).toBe("run-1");
+      // Nothing newer is left: no fallback to the old pod
+      expect(await claimAvailablePod(testSwarmId, testUserId, undefined, undefined, pushedAt)).toBeNull();
+      expect((await db.pod.findUnique({ where: { id: old.id } }))?.usageStatus).toBe(PodUsageStatus.UNUSED);
+      // Without it, the old pod is claimable as ever
+      expect((await claimAvailablePod(testSwarmId, testUserId))?.id).toBe(old.id);
+    });
+
     it("should claim pod B when excludePodIds contains pod A's podId and pod B is also available", async () => {
       const recentHealthCheck = new Date(Date.now() - 10 * 60 * 1000);
       const timestamp = Date.now();

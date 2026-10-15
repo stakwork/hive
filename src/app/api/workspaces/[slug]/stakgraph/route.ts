@@ -17,7 +17,7 @@ import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import type { SwarmSelectResult } from "@/types/swarm";
-import { syncPM2AndServices, extractRepoName } from "@/utils/stakgraphSync";
+import { syncPM2AndServices, extractRepoName, type StoredPM2Env } from "@/utils/stakgraphSync";
 import { extractEnvVarsFromPM2Config, SERVICE_CONFIG_ENV_VARS } from "@/utils/devContainerUtils";
 import { hasInfrastructureChange } from "@/utils/swarmInfraChanges";
 import { SwarmStatus, PodState } from "@prisma/client";
@@ -641,12 +641,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
 
+    // The stored global env, when a new list is sent: what masked values map back to, and
+    // the globals a regenerated pm2.config.js no longer carries unless they are sent again.
+    const storedGlobals =
+      existingSwarm && settings.environmentVariables
+        ? storedGlobalEnv(existingSwarm.environmentVariables, await loadGlobalTableEnv(existingSwarm.id))
+        : {};
+
     // Token callers read env values masked. Restore stored values for any entry sent back
     // unchanged, before anything else (infra diff, pm2 regeneration, DB writes) sees it.
     if (isApiTokenAuth && existingSwarm) {
       if (settings.environmentVariables) {
-        const stored = storedGlobalEnv(existingSwarm.environmentVariables, await loadGlobalTableEnv(existingSwarm.id));
-        settings.environmentVariables = unmaskEnvVarList(settings.environmentVariables, stored);
+        settings.environmentVariables = unmaskEnvVarList(settings.environmentVariables, storedGlobals);
       }
       if (settings.services) {
         // Resolve stored service env exactly as GET serves it (table rows, else env embedded in the
@@ -674,6 +680,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       ? (settings.environmentVariables as Array<{ name: string; value: string }>)
       : undefined;
 
+    // Global env vars sent without services or pm2.config.js: pm2.config.js is regenerated from
+    // the stored services, with their env as GET serves it (Case 7 of syncPM2AndServices).
+    const storedPM2Env: StoredPM2Env | undefined =
+      existingSwarm && globalEnvVars && !settings.services && !settings.containerFiles?.["pm2.config.js"]
+        ? {
+            services: parseSwarmServices(existingSwarm.services, await loadServiceEnvMap(existingSwarm.id)),
+            globalNames: Object.keys(storedGlobals),
+          }
+        : undefined;
+
     // Check if infrastructure-affecting fields have changed BEFORE syncPM2AndServices modifies containerFiles
     // If repositories not provided in settings, use existing repos (don't treat as removal)
     const incomingRepos = settings.repositories ?? allRepos;
@@ -700,6 +716,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       settings.containerFiles,
       repoNames,
       globalEnvVars,
+      storedPM2Env,
     );
 
     // Merge all fields - use incoming if provided, else preserve existing

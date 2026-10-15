@@ -159,6 +159,9 @@ export async function findDeletedPods(swarmId: string): Promise<Pod[]> {
  * @param userInfo - Who is claiming: a task id, or `job:<id>` for a strut job
  * @param excludePodIds - Pods not to hand out (a claim that failed downstream)
  * @param reason - What the claim is for, as `usage_status_reason` — a strut run id
+ * @param createdAfter - Only a pod created after this moment (the last pool
+ *   push) and not flagged for recreation: what the rollout counts as a
+ *   ready new pod, the one a config change is checked on
  * @returns The claimed pod or null if none available
  */
 export async function claimAvailablePod(
@@ -166,6 +169,7 @@ export async function claimAvailablePod(
   userInfo?: string,
   excludePodIds?: string[],
   reason?: string,
+  createdAfter?: Date,
 ): Promise<Pod | null> {
   // Use raw SQL for atomic SELECT FOR UPDATE SKIP LOCKED
   interface RawPodResult {
@@ -194,6 +198,10 @@ export async function claimAvailablePod(
       ? Prisma.sql`AND pod_id != ALL(ARRAY[${Prisma.join(excludePodIds)}])`
       : Prisma.sql``;
 
+  const generationClause = createdAfter
+    ? Prisma.sql`AND created_at > ${createdAfter} AND flagged_for_recreation = false`
+    : Prisma.sql``;
+
   const rawPods = await db.$queryRaw<RawPodResult[]>`
     UPDATE pods
     SET 
@@ -209,6 +217,7 @@ export async function claimAvailablePod(
         AND usage_status = 'UNUSED'::"PodUsageStatus"
         AND deleted_at IS NULL
         AND last_health_check > NOW() - INTERVAL '1 hour'
+        ${generationClause}
         ${exclusionClause}
       ORDER BY created_at ASC
       LIMIT 1

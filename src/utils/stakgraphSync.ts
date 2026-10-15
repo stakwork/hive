@@ -1,10 +1,18 @@
 import { ServiceConfig } from "@/services/swarm/db";
 import { ServiceDataConfig } from "@/components/stakgraph/types";
-import { getPM2AppsContent, parsePM2Content } from "./devContainerUtils";
+import { getPM2AppsContent, parseEnvVarsFromPM2Config, parsePM2Content } from "./devContainerUtils";
 
 interface SyncResult {
   services: ServiceConfig[];
   containerFiles: Record<string, string>;
+}
+
+/** What Case 7 regenerates pm2.config.js from, besides the new globals. */
+export interface StoredPM2Env {
+  /** The stored services, each with its stored env (as GET serves them). */
+  services: ServiceDataConfig[];
+  /** Names of the global env vars stored before this update. */
+  globalNames: string[];
 }
 
 /**
@@ -36,6 +44,9 @@ export function mergeContainerFiles(
  * 3. Only pm2.config.js sent → merge files + parse PM2 → update services
  * 4. Both sent → services wins, regenerate pm2.config.js
  * 5. Only other containerFiles sent (no pm2, no services) → merge files only
+ * 6. Empty services array sent → clear services + regenerate pm2.config.js
+ * 7. Global env vars sent without services or pm2.config.js, a pm2.config.js stored → regenerate
+ *    it from the stored services (`stored`) and the new globals, merge any other files
  */
 export function syncPM2AndServices(
   existingServices: ServiceConfig[],
@@ -43,13 +54,36 @@ export function syncPM2AndServices(
   incomingServices: ServiceConfig[] | undefined,
   incomingContainerFiles: Record<string, string> | undefined,
   repoNames: string[],
-  globalEnvVars?: Array<{ name: string; value: string }>
+  globalEnvVars?: Array<{ name: string; value: string }>,
+  stored?: StoredPM2Env
 ): SyncResult {
   // Differentiate between "not sent" (undefined) and "explicitly empty" ([])
   const servicesWasSent = incomingServices !== undefined;
   const hasIncomingServices = servicesWasSent && incomingServices.length > 0;
   const hasEmptyServicesArray = servicesWasSent && incomingServices.length === 0;
   const hasIncomingPM2 = incomingContainerFiles?.["pm2.config.js"];
+
+  // Case 7: Only global env vars sent (no services, no pm2.config.js) - regenerate the stored
+  // pm2.config.js from the stored services and the new globals, as Case 2 does with the services
+  // sent back unchanged: env reaches pods through this file, and the pool push lets its values win.
+  // Env only the old file holds stays, as service env; old globals don't, so a removed one is gone.
+  // With no file stored there is nothing stale: the pool push (or create-pool) generates them all.
+  const oldPM2 = existingContainerFiles["pm2.config.js"];
+  if (globalEnvVars && stored && oldPM2 && !servicesWasSent && !hasIncomingPM2) {
+    const oldEnv = parseEnvVarsFromPM2Config(Buffer.from(oldPM2, "base64").toString("utf-8"));
+    const oldGlobals = new Set(stored.globalNames);
+    const services = stored.services.map((service) => ({
+      ...service,
+      env: {
+        ...Object.fromEntries(Object.entries(oldEnv.get(service.name) ?? {}).filter(([name]) => !oldGlobals.has(name))),
+        ...service.env,
+      },
+    }));
+    const pm2Content = getPM2AppsContent(repoNames, services, globalEnvVars);
+    const mergedFiles = mergeContainerFiles(existingContainerFiles, incomingContainerFiles || {});
+    mergedFiles["pm2.config.js"] = Buffer.from(pm2Content.content).toString("base64");
+    return { services: existingServices, containerFiles: mergedFiles };
+  }
 
   // Case 1: Neither sent - return existing
   if (!servicesWasSent && !incomingContainerFiles) {
