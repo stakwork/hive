@@ -107,7 +107,7 @@
     "ai": "7.0.105",
     "aieo": "^0.2.4",
     "autoprefixer": "^10.4.21",
-    "axios": "1.10.0",
+    "axios": "1.15.1",
     "bcryptjs": "^3.0.2",
     "bitcoinjs-lib": "^6.1.7",
     "bitcoinjs-message": "^2.2.0",
