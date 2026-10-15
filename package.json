@@ -144,7 +144,7 @@
     "next": "^15.5.16",
     "next-auth": "^4.24.11",
     "next-themes": "^0.4.6",
-    "postcss": "^8.5.6",
+    "postcss": "8.5.12",
     "postprocessing": "^6.38.3",
     "prisma": "^6.12.0",
     "prismjs": "^1.30.0",
@@ -220,14 +220,16 @@
     "flat-cache": "4.0.1",
     "file-entry-cache": "8.0.0",
     "ai": "7.0.105",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "postcss": "8.5.12"
   },
   "resolutions": {
     "keyv": "4.5.4",
     "flat-cache": "4.0.1",
     "file-entry-cache": "8.0.0",
     "ai": "7.0.105",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "postcss": "8.5.12"
   },
   "engines": {
     "node": ">=22"
