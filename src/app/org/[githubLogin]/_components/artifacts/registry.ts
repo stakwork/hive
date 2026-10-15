@@ -19,7 +19,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toJsonText } from "@/components/streaming/toolCallValue";
-import type { ArtifactContents, ArtifactKind, ArtifactViewerProps } from "../../_state/canvasChatArtifacts";
+import {
+  claimNeedsLook,
+  parseArtifactContent,
+  type ArtifactContents,
+  type ArtifactKind,
+  type ArtifactRef,
+  type ArtifactViewerProps,
+} from "../../_state/canvasChatArtifacts";
 import { buildSharePath } from "../HtmlPageCard";
 import { addressParts, webAddress } from "./address";
 import { lineCount, plural } from "./lines";
@@ -61,6 +68,11 @@ export interface ArtifactKindSpec<K extends ArtifactKind> {
   copyText?: (content: ArtifactContents[K]) => string;
   /** Where the artifact itself lives, as its content gives it; null when this one has nowhere of its own. A link gets it only through `artifactHref`. */
   address?: (content: ArtifactContents[K], githubLogin: string) => string | null;
+  /**
+   * The artifact waits on the reader — a PR to review, a claim to look at — so its card stays in the chat; the rest fold
+   * away. Decided from inline content only (`artifactAsks`): a kind read from elsewhere always folds.
+   */
+  asks?: (content: ArtifactContents[K]) => boolean;
 }
 
 export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
@@ -128,6 +140,7 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Panel: PullRequestPanel,
     fact: (content) => `${content.repo} #${content.number}`,
     address: (content) => content.url,
+    asks: (content) => content.state === "open" || content.state === "draft",
   },
   code: {
     label: "Code",
@@ -188,6 +201,7 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     label: "Claims",
     Icon: ListChecks,
     Panel: ClaimsPanel,
+    asks: (content) => content.claims.some(claimNeedsLook),
   },
 };
 
@@ -198,6 +212,26 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
 export function artifactKind(kind: ArtifactKind): ArtifactKindSpec<ArtifactKind> {
   return ARTIFACT_KINDS[kind] as unknown as ArtifactKindSpec<ArtifactKind>;
 }
+
+/**
+ * Whether an artifact waits on the reader (`asks`). Read off inline content
+ * only — what is read from elsewhere is not known until it loads, and folds.
+ */
+export function artifactAsks(artifact: ArtifactRef): boolean {
+  const known = asksByRef.get(artifact);
+  if (known !== undefined) return known;
+  const { asks } = artifactKind(artifact.kind);
+  let result = false;
+  if (asks && artifact.source.type === "inline") {
+    const content = parseArtifactContent(artifact.kind, artifact.source.content);
+    result = !!content && asks(content);
+  }
+  asksByRef.set(artifact, result);
+  return result;
+}
+
+/** Refs are immutable once parsed, and the chat asks about each on every streamed chunk: parse once. */
+const asksByRef = new WeakMap<ArtifactRef, boolean>();
 
 /**
  * Where an artifact opens in a tab of its own, or null when it has no

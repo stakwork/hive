@@ -488,7 +488,7 @@ interface CanvasChatState {
    * The input owns the consumption — `<SidebarChatInput />` watches
    * for non-null values and applies + clears them in an effect. An
    * empty string only focuses the input and leaves its text alone
-   * (the control panel's "New chat" uses it).
+   * (the chat list's "New chat" uses it).
    */
   pendingInputDraft: string | null;
   /**
@@ -548,14 +548,17 @@ interface CanvasChatState {
   // ─── Artifact panel ──────────────────────────────────────────────────
   /**
    * The artifact of the active conversation that is up on the artifact
-   * panel, or null when the panel is closed. A card in the chat opens it;
-   * `OrgCanvasView` gives the panel the canvas's place while it is set.
+   * panel — or, with a null `identity`, the index of all of them — or null
+   * when the panel is closed. A card in the chat opens it; `OrgCanvasView`
+   * gives it its pane while it is set.
    * Cleared whenever the active conversation changes — an artifact belongs
    * to the chat it came from.
    */
   artifactPanel: ArtifactPanelState | null;
   /** Put an artifact on the panel, by its `artifactIdentity`. Omit `version` to follow its newest version. */
   openArtifactPanel: (identity: string, version?: number | null) => void;
+  /** Put the index of the chat's artifacts on the panel. */
+  openArtifactIndex: () => void;
   closeArtifactPanel: () => void;
 
   // ─── Conversation actions ────────────────────────────────────────────
@@ -731,6 +734,8 @@ export const useCanvasChatStore = create<CanvasChatState>()(
 
       openArtifactPanel: (identity, version = null) =>
         set({ artifactPanel: { identity, version } }, false, "openArtifactPanel"),
+
+      openArtifactIndex: () => set({ artifactPanel: { identity: null, version: null } }, false, "openArtifactIndex"),
 
       closeArtifactPanel: () => set({ artifactPanel: null }, false, "closeArtifactPanel"),
 
