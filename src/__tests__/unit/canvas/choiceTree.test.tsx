@@ -3,8 +3,9 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 
 const setDraft = vi.fn();
+const appendDraft = vi.fn();
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
-  useCanvasChatStore: (sel: (s: unknown) => unknown) => sel({ setPendingInputDraft: setDraft }),
+  useCanvasChatStore: (sel: (s: unknown) => unknown) => sel({ setPendingInputDraft: setDraft, appendPendingInputDraft: appendDraft }),
 }));
 vi.mock("@xyflow/react", () => ({
   Handle: () => null,
@@ -72,6 +73,12 @@ describe("buildChoiceTree / layoutTree", () => {
     const es = [["r", "a"], ["r", "b"], ["a", "a1"], ["a", "a2"], ["a2", "a2x"], ["b", "bq"], ["bq", "bq1"], ["bq", "bq2"]].map(([source, target]) => ({ source, target }));
     const label = Object.fromEntries(buildChoiceTree(ns, es, "r").items.map((i) => [i.id, i.letter]));
     expect(label).toEqual({ r: undefined, a: "A", b: "B", a1: "AA", a2: "AB", a2x: "ABA", bq: undefined, bq1: "BA", bq2: "BB" });
+  });
+
+  it("estimates a taller selected question with criteria and reversibility", () => {
+    const q = { name: "Do we extend existing tooling or build a new component for PII conversion?", isQuestion: true, state: "open" as const, madeBy: "model" };
+    const withDetails = { ...q, criteria: "effort, fit with pseudonymization needs, maintenance, reuse", reversibility: "two_way" };
+    expect(estimateNodeHeight(withDetails, true)).toBeGreaterThan(estimateNodeHeight(q, true));
   });
 
   it("estimates height growing with text, clamped to 3 lines unless selected", () => {
@@ -235,6 +242,7 @@ describe("sub-questions and options (Question / Option nodes)", () => {
 
   it("(a) renders chips; sub-questions only Expand; drafts use labels", async () => {
     setDraft.mockClear();
+    appendDraft.mockClear();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => mockTree }));
     const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
     render(
@@ -252,7 +260,7 @@ describe("sub-questions and options (Question / Option nodes)", () => {
     fireEvent.click(screen.getByText("Second?"));
     fireEvent.click(screen.getByText("O b"));
     fireEvent.click(screen.getByText("Go with"));
-    expect(setDraft).toHaveBeenLastCalledWith('Go with 1B: "O b" (b)');
+    expect(appendDraft).toHaveBeenLastCalledWith('Go with 1B: "O b" (b)');
     fireEvent.click(screen.getByText("O b"));
     fireEvent.click(screen.getByText("Follow-up?"));
     fireEvent.click(screen.getByText("Expand"));
@@ -303,6 +311,7 @@ describe("sub-questions and options (Question / Option nodes)", () => {
 describe("ChoiceTree", () => {
   beforeEach(() => {
     setDraft.mockClear();
+    appendDraft.mockClear();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ nodes, edges, truncated: false }) }));
   });
 
@@ -342,7 +351,7 @@ describe("ChoiceTree", () => {
 
     fireEvent.click(screen.getByText("Legacy name"));
     fireEvent.click(screen.getByText("Go with"));
-    expect(setDraft).toHaveBeenLastCalledWith('Go with AA: "Legacy name" (g)');
+    expect(appendDraft).toHaveBeenLastCalledWith('Go with AA: "Legacy name" (g)');
 
     fireEvent.click(screen.getByTestId("pane"));
     expect(screen.queryByText("Go with")).toBeNull();

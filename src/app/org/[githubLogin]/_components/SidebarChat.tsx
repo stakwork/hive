@@ -1024,6 +1024,21 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
     useCanvasChatStore.getState().setPendingInputDraft(null);
   }, [pendingDraft]);
 
+  // Appended text ("Go with" taps) keeps what the user typed and adds a new line.
+  const pendingAppend = useCanvasChatStore((s) => s.pendingInputAppend);
+  useEffect(() => {
+    if (!pendingAppend) return;
+    setInput((prev) => (prev.trim() ? `${prev.replace(/\s+$/, "")}\n${pendingAppend}` : pendingAppend));
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.selectionStart = el.selectionEnd = el.value.length;
+      }
+    });
+    useCanvasChatStore.setState({ pendingInputAppend: null });
+  }, [pendingAppend]);
+
   // ─── Unmount cleanup — revoke all preview object URLs ──────────────
   useEffect(() => {
     return () => {
