@@ -15,6 +15,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ClaimsPanel, locatorView, outcomeWords, verifiedOn } from "@/app/org/[githubLogin]/_components/artifacts/viewers/claims";
 import { artifactKind } from "@/app/org/[githubLogin]/_components/artifacts/registry";
 import { parseArtifactContent, type ArtifactContents, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
+import { useJobLiveStore } from "@/app/org/[githubLogin]/_state/jobLiveStore";
+import { act } from "@testing-library/react";
 
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/useArtifactPanel", () => ({ useChatOrgLogin: () => "acme-org" }));
 
@@ -71,6 +73,7 @@ const mockFetch = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("fetch", mockFetch);
+  useJobLiveStore.setState({ byJob: {}, verifying: {} });
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -115,6 +118,8 @@ describe("the words", () => {
       name: "report.json",
     });
     expect(locatorView("acme-org", content, { url: "https://pod-1.example.com/api/settings" })).toEqual({ link: "https://pod-1.example.com/api/settings" });
+    // A recording (strut browser/walkthrough): the manifest, scrubbed in place.
+    expect(locatorView("acme-org", content, { url: `/jobs/${JOB}/files/walkthroughs/002/walkthrough.json` })).toEqual({ walkthrough: `/jobs/${JOB}/files/walkthroughs/002/walkthrough.json` });
     expect(locatorView("acme-org", content, { url: "/secrets" })).toBeNull();
     expect(locatorView("acme-org", content, { url: "javascript:alert(1)" })).toBeNull();
   });
@@ -203,6 +208,21 @@ describe("the panel", () => {
     fireEvent.click(add);
     await screen.findByTestId("claims-note");
     expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ action: "claim", text: "The page works on a phone", description: "Open it at 375 px wide." });
+  });
+
+  test("a DETACHED Verify: verdicts show as the job reports them; the toolbar says Verifying until the pass ends", async () => {
+    useJobLiveStore.setState({ byJob: {}, verifying: {} });
+    mockFetch.mockResolvedValue(json(200, { card: null, summary: "", started: true }));
+    render(<ClaimsPanel artifact={artifact} content={content} jobId={JOB} />);
+    fireEvent.click(screen.getByTestId("claims-verify"));
+    expect(await screen.findByTestId("claims-verifying")).toBeTruthy();
+    expect((screen.getByTestId("claims-verify") as HTMLButtonElement).disabled).toBe(true);
+    act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: "swarm-1", at: "t", kind: "evidence", id: "ev-9", title: "The settings page renders", state: "supported", url: SHOT }));
+    expect((await screen.findByTestId("claims-live")).textContent).toContain("supported The settings page renders");
+    act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: "swarm-1", at: "t", kind: "verify", state: "done" }));
+    await waitFor(() => expect(screen.queryByTestId("claims-verifying")).toBeNull());
+    expect(screen.queryByTestId("claims-live")).toBeNull();
+    expect((screen.getByTestId("claims-verify") as HTMLButtonElement).disabled).toBe(false);
   });
 
   test("a refusal says why — only the job's owner acts on its claims", async () => {

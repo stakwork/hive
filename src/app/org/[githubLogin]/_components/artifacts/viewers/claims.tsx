@@ -13,6 +13,8 @@ import {
 } from "../../../_state/canvasChatArtifacts";
 import { PanelToolbar } from "../chrome";
 import { useChatOrgLogin } from "../useArtifactPanel";
+import { liveItemsToShow, useJobLiveStore, type JobLiveItem } from "../../../_state/jobLiveStore";
+import { WalkthroughInline } from "./walkthrough";
 
 /**
  * A strut job's claims (strut plans/job-claims.md §7;
@@ -88,10 +90,12 @@ export function locatorView(
   githubLogin: string,
   content: Pick<ClaimsContent, "swarmId">,
   locator: { url?: string; file?: string } | undefined,
-): { image: string } | { file: string; name: string } | { link: string } | null {
+): { image: string } | { walkthrough: string } | { file: string; name: string } | { link: string } | null {
   const url = locator?.url;
   if (!url) return null;
   if (parseStrutArtifactKey(url)) {
+    // A recording (`browser/walkthrough`): its manifest, scrubbed in place.
+    if (url.endsWith("/walkthrough.json")) return { walkthrough: url };
     const reader = strutArtifactReaderUrl(githubLogin, content.swarmId, url);
     return IMAGE.test(url) ? { image: reader } : { file: reader, name: url.split("/").pop() ?? url };
   }
@@ -113,17 +117,19 @@ function StatusPill({ pill }: { pill: Pill }) {
 
 type ActionState = { status: "idle" } | { status: "busy"; what: string } | { status: "done"; note: string } | { status: "failed"; error: string };
 
-/** One POST to the job's claims route; the new card's content when it published one. */
-async function act(githubLogin: string, job: string, body: Record<string, unknown>): Promise<{ note: string; content?: ClaimsContent }> {
+/** One POST to the job's claims route; the new card's content when it published one, or `started` for a Verify the job runs detached. */
+async function act(githubLogin: string, job: string, body: Record<string, unknown>): Promise<{ note: string; content?: ClaimsContent; started?: true }> {
   const res = await fetch(`/api/orgs/${encodeURIComponent(githubLogin)}/strut/jobs/${encodeURIComponent(job)}/claims`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const out = (await res.json().catch(() => ({}))) as { error?: string; card?: { source?: { content?: unknown } } | null; summary?: string; runId?: string; recorded?: boolean };
+  const out = (await res.json().catch(() => ({}))) as { error?: string; card?: { source?: { content?: unknown } } | null; summary?: string; runId?: string; recorded?: boolean; started?: boolean };
   if (res.status === 202) return { note: "Sent to the job as its next turn." };
   if (!res.ok) throw new Error(out.recorded ? `Recorded, but ${out.error ?? "the turn could not start"}` : (out.error ?? `HTTP ${res.status}`));
+  // A Verify the job runs detached (strut plans/live-artifacts.md §7): the verdicts arrive as they land, the card when it ends.
+  if (out.started === true) return { note: "", started: true };
   const content = parseArtifactContent("claims", out.card?.source?.content) ?? undefined;
   return { note: out.summary ? `Verified: ${out.summary}.` : "Done.", ...(content ? { content } : {}) };
 }
@@ -137,12 +143,21 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
   const [state, setState] = useState<ActionState>({ status: "idle" });
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState({ text: "", description: "" });
-  const busy = state.status === "busy";
+  // A detached Verify in flight, and the verdicts it has reported so far.
+  const verifyingSince = useJobLiveStore((s) => s.verifying[content.job]);
+  const jobItems = useJobLiveStore((s) => s.byJob[content.job]);
+  const verdicts: JobLiveItem[] = verifyingSince === undefined ? [] : liveItemsToShow(jobItems, { since: verifyingSince }).filter((i) => i.kind === "evidence");
+  const busy = state.status === "busy" || verifyingSince !== undefined;
 
   const run = async (what: string, body: Record<string, unknown>, after?: () => void) => {
     setState({ status: "busy", what });
     try {
       const out = await act(githubLogin, content.job, body);
+      if (out.started) {
+        useJobLiveStore.getState().startVerify(content.job);
+        setState({ status: "idle" });
+        return;
+      }
       if (out.content) setPublished(out.content);
       after?.();
       setState({ status: "done", note: out.note });
@@ -161,6 +176,11 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
         <span className="text-muted-foreground">As of {turnNo ? `turn ${turnNo}` : "the turn"}</span>
         <span className="ml-auto flex items-center gap-2">
           {state.status === "busy" && <span className="text-muted-foreground">{state.what}…</span>}
+          {verifyingSince !== undefined && (
+            <span data-testid="claims-verifying" className="text-muted-foreground">
+              Verifying… {verdicts.length > 0 ? `${verdicts.length} verdict${verdicts.length === 1 ? "" : "s"} in` : ""}
+            </span>
+          )}
           {state.status === "done" && <span data-testid="claims-note">{state.note}</span>}
           {state.status === "failed" && <span className="text-amber-600 dark:text-amber-400">{state.error}</span>}
           <button
@@ -177,6 +197,18 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
       </PanelToolbar>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 text-sm">
+        {verdicts.length > 0 && (
+          <ul data-testid="claims-live" className="space-y-0.5 rounded-lg border border-dashed p-2 text-xs text-muted-foreground">
+            {verdicts.map((v) => (
+              <li key={v.key} className="truncate">
+                <span className={cn("font-semibold uppercase", v.state === "supported" && "text-emerald-700 dark:text-emerald-300", v.state === "refuted" && "text-rose-700 dark:text-rose-300")}>
+                  {v.state ?? "evidence"}
+                </span>{" "}
+                {v.title}
+              </li>
+            ))}
+          </ul>
+        )}
         {content.claims.length === 0 && <p className="text-xs text-muted-foreground">No claims yet — nothing says what this job must deliver.</p>}
 
         {ordered.map((claim) => {
@@ -205,6 +237,14 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
                     <span className="font-mono text-foreground">{claim.latest.content}</span>
                   </p>
                   {on && <p>verified on {on}{claim.latest.checkVersion ? ` · ${claim.latest.checkVersion}` : ""}</p>}
+                  {where && "walkthrough" in where && (
+                    <div className="overflow-hidden rounded border">
+                      <WalkthroughInline
+                        artifact={{ id: where.walkthrough, kind: "walkthrough", title: claim.text, source: { type: "graph", swarmId: content.swarmId, key: where.walkthrough } }}
+                        content={{ swarmId: content.swarmId, key: where.walkthrough }}
+                      />
+                    </div>
+                  )}
                   {where && "image" in where && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={where.image} alt={`What "${claim.text}" was checked against`} loading="lazy" className="max-h-64 w-full rounded border bg-muted/30 object-contain" />

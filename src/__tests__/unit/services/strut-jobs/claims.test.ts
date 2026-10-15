@@ -38,6 +38,7 @@ import {
   claimsArtifact,
   claimsArtifactId,
   mergeClaims,
+  publishVerifiedVersion,
   readJobClaims,
   readTurnClaimsCard,
   summarizeClaims,
@@ -208,6 +209,42 @@ describe("the card's actions", () => {
       artifacts: [card],
     });
     expect(card?.source).toMatchObject({ content: { turn: TURN_2, swarmId: "swarm-1" } });
+  });
+
+  it("a job whose live updates reach hive verifies DETACHED: strut starts the pass and nothing is published until it ends", async () => {
+    mockDb.strutRun.findFirst.mockResolvedValue({ strutRunId: TURN_2, liveUpdates: true });
+    serve({ [`/jobs/${JOB}/verify`]: () => json(202, { job: JOB, started: true }) });
+    expect(await verifyJobClaims(FIRST, JOB)).toEqual({ card: null, summary: "", started: true });
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ detach: true });
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it("an older strut ignores detach and answers with the pass: it is published as before", async () => {
+    mockDb.strutRun.findFirst.mockResolvedValue({ strutRunId: TURN_2, liveUpdates: true });
+    serve({ [`/jobs/${JOB}/verify`]: () => json(200, { job: JOB, runId: TURN_2, checks: [], evidence: 1, slots: 1, costUsd: 0, claims: LEDGER }), "/claims?": () => json(200, { claims: LISTING }) });
+    const out = await verifyJobClaims(FIRST, JOB);
+    expect(out.started).toBeUndefined();
+    expect(out.card).not.toBeNull();
+    expect(mockAppend).toHaveBeenCalledTimes(1);
+  });
+
+  it("a job without live updates waits on the pass, as before — no detach asked", async () => {
+    serve({ [`/jobs/${JOB}/verify`]: () => json(200, { job: JOB, runId: TURN_2, checks: [], evidence: 1, slots: 1, costUsd: 0, claims: LEDGER }), "/claims?": () => json(200, { claims: LISTING }) });
+    await verifyJobClaims(FIRST, JOB);
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({});
+  });
+
+  it("when a detached Verify ends, the ledger as it is now is the card's next version", async () => {
+    serve({ [`/jobs/${JOB}/claims`]: () => json(200, { enabled: true, claims: LEDGER }), "/claims?": () => json(200, { claims: LISTING }) });
+    const card = await publishVerifiedVersion(FIRST, JOB, TURN_2);
+    expect(card?.source).toMatchObject({ content: { turn: TURN_2, swarmId: "swarm-1" } });
+    expect(mockAppend).toHaveBeenCalledWith(FIRST, {
+      content: "Verified the job's claims on turn 2: 1 supported, 1 needs a look.",
+      source: { kind: "job_claims", jobId: JOB, title: "Settings page" },
+      artifacts: [card],
+    });
+    mockLab.mockResolvedValue(null);
+    expect(await publishVerifiedVersion(FIRST, JOB, TURN_2)).toBeNull();
   });
 
   it("strut's refusals come back as the route answers them", async () => {
