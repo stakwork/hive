@@ -1,16 +1,19 @@
 /**
- * The claims card's viewers (`viewers/claims.tsx`; strut plans/job-claims.md
- * §7): each claim with its status, who stated it, the latest verdict and the
- * turn it is about, the screenshot through Hive's reader route (never the
- * swarm's own link), its checks' outcomes in words, the open slots first as
- * to-dos — and the panel's actions: Verify, Supports / Refutes, a new claim,
- * each through the job's claims route, the published version shown at once.
+ * The claims panel (`viewers/claims.tsx`; strut plans/job-claims.md §7):
+ * each claim once, with its status, who stated it, the latest verdict and
+ * the turn it is about, the screenshot through Hive's reader route (never
+ * the swarm's own link), its tool checks' outcomes in words; a claim waiting
+ * on a person first, with what to look at and Accept / Reject in it — and
+ * the panel's actions: Verify, Accept / Reject, a new claim, each through
+ * the job's claims route, the published version shown at once. The chat
+ * card is the summary alone: no preview, no claim text.
  */
 
 import React from "react";
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ClaimsInline, ClaimsPanel, claimsFact, locatorView, outcomeWords, verifiedOn } from "@/app/org/[githubLogin]/_components/artifacts/viewers/claims";
+import { ClaimsPanel, locatorView, outcomeWords, verifiedOn } from "@/app/org/[githubLogin]/_components/artifacts/viewers/claims";
+import { artifactKind } from "@/app/org/[githubLogin]/_components/artifacts/registry";
 import { parseArtifactContent, type ArtifactContents, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/useArtifactPanel", () => ({ useChatOrgLogin: () => "acme-org" }));
@@ -90,11 +93,6 @@ describe("the content", () => {
 });
 
 describe("the words", () => {
-  test("the fact counts what holds", () => {
-    expect(claimsFact(content)).toBe("1/3 supported · 1 refuted");
-    expect(claimsFact({ ...content, claims: [] })).toBeNull();
-  });
-
   test("which turn a verdict is about", () => {
     expect(verifiedOn(content, TURN_2)).toBe("this turn (turn 2)");
     expect(verifiedOn(content, TURN_1)).toBe("turn 1");
@@ -123,36 +121,46 @@ describe("the words", () => {
 });
 
 describe("the card", () => {
-  test("a pill per claim and what waits on the person", () => {
-    render(<ClaimsInline artifact={artifact} content={content} />);
-    expect(screen.getByText("The settings page renders")).toBeTruthy();
-    expect(screen.getByText("supported")).toBeTruthy();
-    expect(screen.getByText("refuted")).toBeTruthy();
-    expect(screen.getByText("1 check is waiting on you")).toBeTruthy();
+  test("is the summary alone: no preview and no caption fact, so no claim text in the chat", () => {
+    const spec = artifactKind("claims");
+    expect(spec.Inline).toBeUndefined();
+    expect(spec.fact).toBeUndefined();
+    expect(spec.Panel).toBe(ClaimsPanel);
   });
 });
 
 describe("the panel", () => {
-  test("each claim with its status, speaker, verdict and turn; the screenshot through the reader; checks in words; the slot first as a to-do", () => {
+  test("each claim once, the one waiting on a person first with what to look at; status, speaker, verdict and turn; the screenshot through the reader; tool checks in words", () => {
     render(<ClaimsPanel artifact={artifact} content={content} jobId={JOB} />);
-    const todo = screen.getByTestId("claims-todo");
-    expect(todo.textContent).toContain("Needs a look — A preference saved stays saved after a reload");
-    expect(todo.textContent).toContain("is it still ticked?");
-
     const claims = screen.getAllByTestId("claims-claim");
-    expect(claims.map((c) => c.querySelector("span")?.textContent)).toEqual(["supported", "refuted", "unknown"]);
-    expect(claims[0].textContent).toContain("by the job's agent");
-    expect(claims[0].textContent).toContain("/settings reached; all 2 expectations hold");
-    expect(claims[0].textContent).toContain("verified on this turn (turn 2)");
-    expect(claims[1].textContent).toContain("by a person");
-    expect(claims[1].textContent).toContain("verified on turn 1");
+    expect(claims.map((c) => c.querySelector("span")?.textContent)).toEqual(["needs a look", "supported", "refuted"]);
 
-    const img = claims[0].querySelector("img")!;
+    // The look is inside its claim, not a second entry: no `unknown`, no check line for it.
+    const todo = screen.getByTestId("claims-todo");
+    expect(claims[0].contains(todo)).toBe(true);
+    expect(claims[0].textContent).toContain("A preference saved stays saved after a reload");
+    expect(todo.textContent).toContain("Tick Email, save, reload.");
+    expect(screen.queryByText("unknown")).toBeNull();
+    expect(screen.queryByText("waiting on a person")).toBeNull();
+
+    expect(claims[1].textContent).toContain("by the job's agent");
+    expect(claims[1].textContent).toContain("/settings reached; all 2 expectations hold");
+    expect(claims[1].textContent).toContain("verified on this turn (turn 2)");
+    expect(claims[2].textContent).toContain("by a person");
+    expect(claims[2].textContent).toContain("verified on turn 1");
+
+    const img = claims[1].querySelector("img")!;
     expect(img.getAttribute("src")).toBe(`/api/orgs/acme-org/strut/artifacts?swarmId=swarm-1&key=${encodeURIComponent(SHOT)}`);
     expect(img.getAttribute("src")).not.toContain("?t=");
-    expect(claims[1].querySelector("img")).toBeNull();
+    expect(claims[2].querySelector("img")).toBeNull();
 
-    expect(screen.getAllByTestId("claims-outcome").map((o) => o.textContent)).toEqual(["ran", "superseded — a newer turn", "waiting on a person"]);
+    expect(screen.getAllByTestId("claims-outcome").map((o) => o.textContent)).toEqual(["ran", "superseded — a newer turn"]);
+  });
+
+  test("the slot's question stands in when the check has no description", () => {
+    const bare = { ...content, claims: content.claims.map((c) => ({ ...c, checks: c.checks.map((k) => ({ ...k, description: undefined })) })) };
+    render(<ClaimsPanel artifact={artifact} content={bare} jobId={JOB} />);
+    expect(screen.getByTestId("claims-todo").textContent).toContain("is it still ticked?");
   });
 
   test("Verify posts to the job's claims route and shows the version it published", async () => {
@@ -167,19 +175,20 @@ describe("the panel", () => {
     expect(url).toBe(ROUTE);
     expect(init).toMatchObject({ method: "POST", credentials: "same-origin" });
     expect(JSON.parse(init.body)).toEqual({ action: "verify" });
-    await waitFor(() => expect(screen.getAllByTestId("claims-claim").map((c) => c.querySelector("span")?.textContent)).toEqual(["supported", "supported", "unknown"]));
+    await waitFor(() => expect(screen.getAllByTestId("claims-claim").map((c) => c.querySelector("span")?.textContent)).toEqual(["needs a look", "supported", "supported"]));
   });
 
-  test("Supports answers the open slot on its own turn; a refutation with a note goes to the job as its next turn", async () => {
+  test("Accept answers the open slot on its own turn; a rejection with a note goes to the job as its next turn", async () => {
     mockFetch.mockResolvedValueOnce(json(200, { card: null }));
     render(<ClaimsPanel artifact={artifact} content={content} jobId={JOB} />);
-    fireEvent.click(screen.getByText("Supports"));
+    expect(screen.queryByText("Supports")).toBeNull();
+    fireEvent.click(screen.getByText("Accept"));
     await screen.findByTestId("claims-note");
     expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ action: "answer", claimId: "c-save", slot: "ev-1", runId: TURN_2, supports: true, note: "" });
 
     mockFetch.mockResolvedValueOnce(json(202, { runId: "row-9" }));
     fireEvent.change(screen.getByPlaceholderText(/What did you see/), { target: { value: "It unticks itself after the reload." } });
-    fireEvent.click(screen.getByText("Refutes"));
+    fireEvent.click(screen.getByText("Reject"));
     await waitFor(() => expect(screen.getByTestId("claims-note").textContent).toBe("Sent to the job as its next turn."));
     expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({ action: "answer", claimId: "c-save", slot: "ev-1", runId: TURN_2, supports: false, note: "It unticks itself after the reload." });
   });

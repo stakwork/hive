@@ -98,6 +98,9 @@ export interface JobClaim {
   slots: Array<{ evidence: string; check?: string; runId?: string; question?: string }>;
 }
 
+/** The claim waits on a person's look — an open slot, and nothing has refuted it. Counted and shown as that, never also as `unknown`. */
+export const claimNeedsLook = (claim: Pick<JobClaim, "status" | "slots">): boolean => claim.slots.length > 0 && claim.status !== "refuted";
+
 /** What a viewer draws, for each kind. */
 export interface ArtifactContents {
   markdown: { text: string };

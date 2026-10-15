@@ -20,7 +20,7 @@
  *   person's acceptance criterion; the job's agent may hang its instrument
  *   on it). Each re-reads the ledger and publishes a NEW VERSION of the card
  *   as a quiet `job_claims` row (`appendJobClaimsRow`), so the conversation
- *   is the record. A refutation with a note is the one that goes further:
+ *   is the record. A rejection with a note is the one that goes further:
  *   the slot is filled first, then the note is the job's next turn,
  *   `[claim-event] refuted "<claim>": <note>` (`formatClaimEvent`), through
  *   the same launch as an artifact event — that turn's reply brings the
@@ -29,7 +29,7 @@
 
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { parseJobClaims, type ArtifactRef, type JobClaim } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
+import { claimNeedsLook, parseJobClaims, type ArtifactRef, type JobClaim } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { JOB_TURN_KIND, formatClaimEvent, jobTitleOf } from "@/lib/strut-jobs";
 import { STRUT_ACTOR_HEADER, resolveStrutActor } from "@/services/bifrost/strut-delegation";
 import { labForRow, type StrutRunRow } from "@/services/strut-runs";
@@ -103,16 +103,16 @@ export async function readJobClaims(lab: Lab, jobId: string, timeoutMs = READ_TI
 
 // ─── The card ─────────────────────────────────────────────────────────────
 
-/** "2 of 3 supported, 1 refuted, 1 waiting on you" — the card's sentence. Pure. */
+/** "2 supported, 1 needs a look" — the card's sentence; a claim waiting on a person counts once, as that. Pure. */
 export function summarizeClaims(claims: JobClaim[]): string {
-  const n = (status: JobClaim["status"]) => claims.filter((c) => c.status === status).length;
-  const todos = claims.reduce((sum, c) => sum + c.slots.length, 0);
+  const looks = claims.filter(claimNeedsLook).length;
+  const n = (status: JobClaim["status"]) => claims.filter((c) => c.status === status && !claimNeedsLook(c)).length;
   const parts = [
-    `${n("supported")} of ${claims.length} supported`,
+    n("supported") ? `${n("supported")} supported` : "",
     n("refuted") ? `${n("refuted")} refuted` : "",
     n("stale") ? `${n("stale")} stale` : "",
     n("unknown") ? `${n("unknown")} unknown` : "",
-    todos ? `${todos} waiting on you` : "",
+    looks ? `${looks} ${looks === 1 ? "needs" : "need"} a look` : "",
   ].filter(Boolean);
   return parts.join(", ");
 }
@@ -286,8 +286,8 @@ export interface ClaimAnswer {
 }
 
 /**
- * A person's answer to an open check: Supports or Refutes fills the slot
- * (a write, no turn). A refutation WITH a note goes on to the job as its
+ * A person's answer to an open check: Accept or Reject fills the slot
+ * (a write, no turn). A rejection WITH a note goes on to the job as its
  * next turn — `[claim-event] refuted "<claim>": <note>` — so the agent
  * starts from a ledger that already says refuted and a line that says why.
  * `launch` is the caller's: the route owns who may start a turn.
