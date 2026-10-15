@@ -7,6 +7,7 @@ import type { ModelMessage } from "ai";
 import { truncateField } from "@/lib/ai/mcpResult";
 import { PROPOSE_CODE_CHANGE_TOOL } from "@/lib/proposals/types";
 import { buildUserContent, type AttachmentLike } from "@/lib/ai/attachmentParts";
+import { parseClaimEvent } from "@/lib/strut-jobs";
 
 /** Max chars of a proposed diff replayed back into model context. */
 const REPLAY_DIFF_CHAR_CAP = 4_000;
@@ -63,7 +64,19 @@ export interface ReplayMessage {
  * could learn to write.
  */
 export function jobEventNotice(jobId: string | undefined, content: string): string {
+  if (parseClaimEvent(content)) {
+    return `(Job ${jobId ?? "?"} was continued by the user from its claims card — they refuted one of its claims, not you:\n${content})`;
+  }
   return `(Job ${jobId ?? "?"} was continued by hive for an event about an artifact it reported — not by you, not by the user:\n${content})`;
+}
+
+/**
+ * Replayed in place of a claims-card row (`source.kind: "job_claims"`): what
+ * the user did on a job's claims card, with no turn of the job — a Verify,
+ * an answer to a check, a new claim — as a notice from the user.
+ */
+export function jobClaimsNotice(jobId: string | undefined, content: string): string {
+  return `(On job ${jobId ?? "?"}'s claims card, the user — not you — did this, with no turn of the job: ${content})`;
 }
 
 /**
@@ -90,6 +103,9 @@ export function toModelMessages(messages: ReplayMessage[]): ModelMessage[] {
       }
       if (m.source?.kind === "job_event") {
         return [{ role: "user", content: jobEventNotice(m.source.jobId, m.content) }];
+      }
+      if (m.source?.kind === "job_claims") {
+        return [{ role: "user", content: jobClaimsNotice(m.source.jobId, m.content) }];
       }
       if (m.role === "user" && m.attachments?.length) {
         return [
