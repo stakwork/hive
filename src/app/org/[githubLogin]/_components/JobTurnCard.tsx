@@ -200,7 +200,7 @@ function StatusPill({ look }: { look: JobTurnLook }) {
 export function JobEventRow({ message, source }: { message: Pick<CanvasChatMessage, "content">; source: JobEventSource }) {
   const event = parseArtifactEvent(message.content);
   const refuted = event ? null : parseClaimEvent(message.content);
-  const text = event ? describeArtifactEvent(event) : refuted ? `you refuted "${refuted.claim}": ${refuted.note}` : message.content.split("\n")[0];
+  const text = event ? describeArtifactEvent(event) : refuted ? `you rejected "${refuted.claim}": ${refuted.note}` : message.content.split("\n")[0];
   return (
     <div
       data-testid="job-event-row"
