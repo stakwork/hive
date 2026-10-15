@@ -46,7 +46,7 @@ function isFullscreenPage(pathname: string): boolean {
 
 /** Mirrors the <main> className logic in DashboardLayout.tsx */
 function mainClassName(pathname: string): string {
-  const docs = isDocumentsPage(pathname);
+  const docs = isDocumentsPage(pathname) || /^\/w\/[^/]+\/strut\/?$/.test(pathname);
   const fullscreen = isFullscreenPage(pathname);
   return `flex-1 flex flex-col min-h-0 ${docs ? "overflow-hidden p-0" : fullscreen ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`;
 }
@@ -140,6 +140,18 @@ describe("DashboardLayout — <main> overflow class", () => {
     const cls = mainClassName("/w/my-workspace/settings");
     expect(cls).toContain("overflow-auto");
     expect(cls).not.toContain("overflow-hidden");
+  });
+
+  it("applies p-0 (not p-4) on /w/my-ws/strut and keeps the sidebar offset", () => {
+    const cls = mainClassName("/w/my-ws/strut");
+    expect(cls).toContain("overflow-hidden");
+    expect(cls).toContain("p-0");
+    expect(cls).not.toContain("p-4");
+    expect(sidebarOffsetClass("/w/my-ws/strut")).toBe("md:pl-64");
+  });
+
+  it("still applies p-4 on /w/my-ws/tasks", () => {
+    expect(mainClassName("/w/my-ws/tasks")).toContain("p-4");
   });
 
   it("applies overflow-auto on the workspace root", () => {
