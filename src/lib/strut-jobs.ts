@@ -108,6 +108,36 @@ export function parseArtifactEvent(text: unknown): ArtifactEvent | null {
   return m ? { kind: m[1], url: m[2], what: m[3].trim() } : null;
 }
 
+// ─── Claim events ─────────────────────────────────────────────────────────
+
+/**
+ * A person refuted one of a job's claims from its claims card, with a note
+ * (strut `plans/job-claims.md` §7): the job's next turn begins with this
+ * line, the slot already filled, so the ledger the agent reads at the
+ * turn's start says refuted and the line says why.
+ *
+ *   [claim-event] refuted "<claim text>": <note>
+ */
+export const CLAIM_EVENT_PREFIX = "[claim-event]";
+
+/** The turn's message: one line, the note's own lines folded into it. */
+export function formatClaimEvent(claimText: string, note: string): string {
+  const flat = (s: string) => s.trim().replace(/\s+/g, " ");
+  return `${CLAIM_EVENT_PREFIX} refuted ${JSON.stringify(flat(claimText))}: ${flat(note)}`;
+}
+
+/** The refutation a turn's message carries, read off its first line; null for anything else. */
+export function parseClaimEvent(text: unknown): { claim: string; note: string } | null {
+  if (typeof text !== "string") return null;
+  const m = /^\[claim-event\] refuted ("(?:[^"\\]|\\.)*"): (.+)$/.exec(text.split("\n", 1)[0].trim());
+  if (!m) return null;
+  try {
+    return { claim: JSON.parse(m[1]) as string, note: m[2].trim() };
+  } catch {
+    return null;
+  }
+}
+
 const GITHUB_PR = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)(?:[/?#]|$)/i;
 
 /** The event for a person: `pull request acme/app#12 merged`, else the line's own words. */

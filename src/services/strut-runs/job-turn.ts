@@ -43,6 +43,15 @@
  * refs alone are indexed for events and named to the wake — the trace is
  * not something the job reported.
  *
+ * Beside both, the job's CLAIMS card (strut plans/job-claims.md §7): what
+ * the work must deliver and whether it does, as of this turn — the ledger
+ * read off the row's swarm (`GET {lab}/jobs/<job>/claims`, enriched from the
+ * listing) by `readTurnClaimsCard` (`strut-jobs/claims.ts`). One per job
+ * (`claims-<job>`), every turn a version, bounded like the trace and never
+ * a reason to fail or retry: a swarm without claims, or a job that claims
+ * nothing, adds no card. Hive's card, not the job's: not indexed, not named
+ * to the wake.
+ *
  * A turn that launched a `brainstorm` workflow ran it as a run of its own:
  * its `brainstorm-tree` graph artifact is collected from that run
  * (`readBrainstormArtifacts`) and joins the job's refs unless the agent
@@ -438,12 +447,22 @@ export type JobEventRowSource = {
   runId: string;
 };
 
+/**
+ * A new version of the job's claims card made from the card — a Verify, an
+ * answer, a new claim (`services/strut-jobs/claims.ts`): no turn, no agent.
+ */
+export type JobClaimsRowSource = {
+  kind: "job_claims";
+  jobId: string;
+  title?: string;
+};
+
 type JobMessageRow = {
   id: string;
   role: "assistant";
   content: string;
   timestamp: string;
-  source: JobRowSource | JobEventRowSource;
+  source: JobRowSource | JobEventRowSource | JobClaimsRowSource;
   artifacts?: ArtifactRef[];
 };
 
@@ -601,6 +620,18 @@ export async function appendJobEventRow(
   return appendConversationRow(row, jobEventRowId(row), message);
 }
 
+/**
+ * A new version of the job's claims card, made from the card (`job_claims`),
+ * into the job's conversation with the job row's discipline. Each action is
+ * its own row.
+ */
+export async function appendJobClaimsRow(
+  row: Pick<StrutRunRow, "workspaceId" | "userId" | "conversationId">,
+  message: { content: string; source: JobClaimsRowSource; artifacts: ArtifactRef[] },
+): Promise<JobFanOutResult> {
+  return appendConversationRow(row, `job-claims-${message.source.jobId}-${Date.now()}`, message);
+}
+
 async function appendConversationRow(
   row: Pick<StrutRunRow, "workspaceId" | "userId" | "conversationId">,
   id: string,
@@ -704,11 +735,18 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
   let refs: ArtifactRef[] = [];
   let dropped: Array<{ title: string; reason: string }> = [];
   let trace: ArtifactRef | null = null;
+  let claimsCard: ArtifactRef | null = null;
   let collected: ArtifactRef[] = [];
   let brainstormLog: { found: number; launches: number; replaced: string | null; reason: string } | null = null;
   if (reply.outcome === "success") {
-    const [read, turnTrace, brainstorm] = await Promise.all([readRunArtifacts(row), readTurnTrace(row, jobId), readBrainstormArtifacts(row)]);
+    const [read, turnTrace, brainstorm, claims] = await Promise.all([
+      readRunArtifacts(row),
+      readTurnTrace(row, jobId),
+      readBrainstormArtifacts(row),
+      import("@/services/strut-jobs/claims").then((m) => m.readTurnClaimsCard(row, jobId, TRACE_READ_TIMEOUT_MS)).catch(() => null),
+    ]);
     trace = turnTrace;
+    claimsCard = claims;
     if (read.ok) {
       ({ refs, dropped } = mapStrutArtifacts(read.artifacts, row.swarmId));
     } else if (read.permanent) {
@@ -748,8 +786,8 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
   const event = parseArtifactEvent(launched.success ? launched.data.prompt : undefined);
 
   const title = jobTitleOf(row);
-  // The job's own refs, then hive's trace card.
-  const cards = trace ? [...refs, trace] : refs;
+  // The job's own refs, then hive's cards: its claims, its trace.
+  const cards = [...refs, ...(claimsCard ? [claimsCard] : []), ...(trace ? [trace] : [])];
   const result = await appendJobRow(row, {
     content: renderJobContent({ jobId, title, reply, dropped }),
     source: {
@@ -772,6 +810,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
     collected: collected.map((c) => c.id),
     ...(brainstormLog ? { brainstorm: brainstormLog } : {}),
     trace: trace !== null,
+    claims: claimsCard !== null,
     dropped: dropped.length,
     result,
   });

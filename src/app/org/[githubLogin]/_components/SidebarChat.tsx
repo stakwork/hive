@@ -367,6 +367,25 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
                 );
               }
 
+              // A new version of a job's claims card made from the card (a
+              // Verify, an answer, a new claim): a quiet line, the card under it.
+              if (message.source?.kind === "job_claims") {
+                return (
+                  <div key={message.id} className="space-y-1.5">
+                    <p data-testid="job-claims-row" className="px-1 text-xs text-muted-foreground">
+                      <span className="font-medium">{message.source.title || "Job"}</span>
+                      {" · "}
+                      {message.content}
+                    </p>
+                    <MessageArtifacts
+                      artifacts={message.artifacts}
+                      cards={artifactCards}
+                      jobId={message.source.jobId}
+                    />
+                  </div>
+                );
+              }
+
               // A job turn's reply: collapsed to its header line (the canvas
               // agent's own turn summarizes it), its artifacts as cards under it.
               if (message.source?.kind === "job") {
