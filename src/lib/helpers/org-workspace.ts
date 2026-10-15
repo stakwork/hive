@@ -7,6 +7,7 @@
  */
 
 import { db } from "@/lib/db";
+import { Prisma, SwarmStatus } from "@prisma/client";
 
 export interface OrgDefaultWorkspace {
   id: string;
@@ -113,4 +114,40 @@ export async function resolveOrgSwarmWorkspaceForUser(
     where: accessibleWithSwarm,
     include: { swarm: true },
   });
+}
+
+/**
+ * Make `workspaceId` its org's default workspace, but only if the org has no
+ * default yet and the workspace has a (non-FAILED) swarm. Never overwrites an
+ * existing default. Returns true when the default was set.
+ */
+export async function setOrgDefaultWorkspaceIfUnset(
+  workspaceId: string,
+): Promise<boolean> {
+  const workspace = await db.workspace.findFirst({
+    where: { id: workspaceId, deleted: false },
+    select: {
+      sourceControlOrgId: true,
+      swarm: { select: { id: true, status: true } },
+    },
+  });
+
+  if (!workspace?.sourceControlOrgId || !workspace.swarm) return false;
+  if (workspace.swarm.status === SwarmStatus.FAILED) return false;
+
+  try {
+    const result = await db.sourceControlOrg.updateMany({
+      where: { id: workspace.sourceControlOrgId, defaultWorkspaceId: null },
+      data: { defaultWorkspaceId: workspaceId },
+    });
+    return result.count > 0;
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return false;
+    }
+    throw error;
+  }
 }

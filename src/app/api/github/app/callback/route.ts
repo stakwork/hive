@@ -9,6 +9,7 @@ import {
   verifyGithubAppState,
   type GithubAppStatePayload,
 } from "@/lib/auth/github-app-state";
+import { setOrgDefaultWorkspaceIfUnset } from "@/lib/helpers/org-workspace";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -393,6 +394,17 @@ export async function GET(request: NextRequest) {
       });
 
       console.log(`✅ Linked ${result.count} workspace(s) to SourceControlOrg ${githubOwner}`);
+
+      // Best-effort: a workspace that already has a swarm may become the org default
+      try {
+        const linked = await db.workspace.findUnique({
+          where: { slug: workspaceSlug },
+          select: { id: true },
+        });
+        if (linked) await setOrgDefaultWorkspaceIfUnset(linked.id);
+      } catch (defaultError) {
+        console.error("Failed to set org default workspace:", defaultError);
+      }
 
       // Check repository access after linking
       const workspace = await db.workspace.findUnique({
