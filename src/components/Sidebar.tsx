@@ -20,6 +20,8 @@ import {
   Languages,
   Map,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Mic,
   Network,
   Phone,
@@ -38,6 +40,9 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useState, useMemo, useEffect } from "react";
 import { useVoiceStore } from "@/stores/useVoiceStore";
+import { useSidebarStore } from "@/stores/useSidebarStore";
+import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -47,7 +52,6 @@ import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { useUnresolvedErrorCount } from "@/hooks/useUnresolvedErrorCount";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
-import { SIDEBAR_WIDTH } from "@/lib/constants";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
@@ -113,6 +117,9 @@ interface SidebarContentProps {
   workspaceKind?: string | null;
   isPublicViewer: boolean;
   unresolvedErrorCount: number;
+  /** Desktop-only thin rail mode (icons only). */
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
 const baseNavigationItems: NavigationItem[] = [
@@ -156,22 +163,40 @@ const baseNavigationItems: NavigationItem[] = [
   },
 ];
 
-function VoiceIndicator({ slug, onNavigate }: { slug: string | null; onNavigate: () => void }) {
+function RailTooltip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function VoiceIndicator({
+  slug,
+  onNavigate,
+  collapsed = false,
+}: {
+  slug: string | null;
+  onNavigate: () => void;
+  collapsed?: boolean;
+}) {
   const isConnected = useVoiceStore((s) => s.isConnected);
   if (!isConnected || !slug) return null;
   return (
-    <div className="px-4 pb-2">
+    <div className={collapsed ? "px-2 pb-2" : "px-4 pb-2"}>
       <Button
         asChild
         variant="ghost"
-        className="w-full justify-start text-green-600 dark:text-green-400"
+        title={collapsed ? "Voice Active" : undefined}
+        className={cn("w-full justify-start text-green-600 dark:text-green-400", collapsed && "justify-center px-0")}
       >
-        <Link href={`/w/${slug}/calls`} onClick={onNavigate}>
-          <div className="relative mr-2">
+        <Link href={`/w/${slug}/calls`} onClick={onNavigate} aria-label="Voice Active">
+          <div className={cn("relative", !collapsed && "mr-2")}>
             <Mic className="w-4 h-4" />
             <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
           </div>
-          Voice Active
+          {!collapsed && "Voice Active"}
         </Link>
       </Button>
     </div>
@@ -194,6 +219,8 @@ function SidebarContent({
   workspaceKind,
   isPublicViewer,
   unresolvedErrorCount,
+  collapsed = false,
+  onToggleCollapsed,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     // Auto-expand Protect if any child route is active
@@ -218,13 +245,33 @@ function SidebarContent({
     });
   };
 
+  // In rail mode, clicking a section icon expands the sidebar and opens that section.
+  const openSectionFromRail = (label: string) => {
+    setExpandedSections((prev) => new Set(prev).add(label));
+    onToggleCollapsed?.();
+  };
+
+  const collapseToggle = onToggleCollapsed ? (
+    <Button
+      data-testid="sidebar-collapse-toggle"
+      variant="ghost"
+      size="icon"
+      className={cn("hidden md:inline-flex shrink-0", collapsed ? "w-full" : "")}
+      aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      title={collapsed ? undefined : "Collapse sidebar"}
+      onClick={onToggleCollapsed}
+    >
+      {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+    </Button>
+  ) : null;
+
   return (
     <div className="flex flex-col h-full">
       {/* Workspace Switcher — public viewers see a non-interactive
           label (no workspaces list to switch between). */}
-      <WorkspaceSwitcher onWorkspaceChange={() => null} readOnly={isPublicViewer} />
+      <WorkspaceSwitcher onWorkspaceChange={() => null} readOnly={isPublicViewer} collapsed={collapsed} />
       {/* Navigation */}
-      <nav className="flex-1 p-4">
+      <nav className={cn("flex-1 min-h-0 overflow-y-auto", collapsed ? "p-2" : "p-4")}>
         <ul className="space-y-2">
           {navigationItems.map((item) => {
             const hasChildren = item.children && item.children.length > 0;
@@ -240,6 +287,56 @@ function SidebarContent({
             const itemHref = workspaceSlug 
               ? (item.href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${item.href}`)
               : '/workspaces';
+
+            if (collapsed) {
+              const hasBadge = showBadge || showCapacityBadge;
+              const railClass = "relative w-full justify-center px-0 hover:bg-primary/5 dark:hover:bg-primary/10";
+              const dot = hasBadge && (
+                <span
+                  className={cn(
+                    "absolute top-1.5 right-2 h-2 w-2 rounded-full",
+                    showBadge ? "bg-amber-500" : "bg-blue-500",
+                  )}
+                />
+              );
+              return (
+                <li key={item.href}>
+                  <RailTooltip label={item.label}>
+                    {hasChildren ? (
+                      <Button
+                        data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                        variant="ghost"
+                        aria-label={item.label}
+                        className={railClass}
+                        onClick={() => openSectionFromRail(item.label)}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        {dot}
+                      </Button>
+                    ) : (
+                      <Button
+                        asChild
+                        data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                        variant={isActive ? "secondary" : "ghost"}
+                        className={cn(railClass, isActive && "bg-primary/10 dark:bg-primary/20")}
+                      >
+                        <Link
+                          href={itemHref}
+                          aria-label={item.label}
+                          onClick={() => {
+                            if (item.href === "/tasks") refreshTaskNotifications();
+                            setIsOpen(false);
+                          }}
+                        >
+                          <item.icon className="w-4 h-4" />
+                          {dot}
+                        </Link>
+                      </Button>
+                    )}
+                  </RailTooltip>
+                </li>
+              );
+            }
 
             return (
               <li key={item.href}>
@@ -353,67 +450,80 @@ function SidebarContent({
           })}
         </ul>
       </nav>
-      {/* Spacer to push bottom content down */}
-      <div className="flex-1" />
       {/* Report Bug — hidden for public viewers (POSTs a feature on submit) */}
       {!isPublicViewer && (
-        <div className="p-4 pb-2">
+        <div className={collapsed ? "p-2 pb-2" : "p-4 pb-2"}>
           <Button
             data-testid="report-bug-button"
             variant="ghost"
-            className="w-full justify-start"
+            className={cn("w-full justify-start", collapsed && "justify-center px-0")}
+            title={collapsed ? "Report Bug" : undefined}
+            aria-label="Report Bug"
             onClick={() => setIsBugReportOpen(true)}
           >
-            <Bug className="w-4 h-4 mr-2" />
-            Report Bug
+            <Bug className={cn("w-4 h-4", !collapsed && "mr-2")} />
+            {!collapsed && "Report Bug"}
           </Button>
         </div>
       )}
       {/* Voice Agent Indicator — requires LiveKit auth; hide for public viewers */}
       {!isPublicViewer && (
-        <VoiceIndicator slug={workspaceSlug} onNavigate={() => setIsOpen(false)} />
+        <VoiceIndicator slug={workspaceSlug} onNavigate={() => setIsOpen(false)} collapsed={collapsed} />
       )}
       {/* GraphMindset Admin */}
       {workspaceKind === "graph_mindset" && workspaceSlug && canAdmin && (
-        <div className="px-4 pb-2">
+        <div className={collapsed ? "px-2 pb-2" : "px-4 pb-2"}>
           <Button
             asChild
             variant="ghost"
-            className="w-full justify-start"
+            className={cn("w-full justify-start", collapsed && "justify-center px-0")}
+            title={collapsed ? "GraphMindset Admin" : undefined}
           >
             <Link
               href={`/w/${workspaceSlug}/graph-admin`}
               onClick={() => setIsOpen(false)}
               data-testid="graphmindset-admin-button"
+              aria-label="GraphMindset Admin"
             >
-              <Brain className="w-4 h-4 mr-2" />
-              GraphMindset Admin
+              <Brain className={cn("w-4 h-4", !collapsed && "mr-2")} />
+              {!collapsed && "GraphMindset Admin"}
             </Link>
           </Button>
         </div>
       )}
-      {/* Settings */}
-      {canAdmin && (
-        <div className="px-4 pb-2">
-          <Button
-            asChild
-            data-testid="settings-button"
-            variant="ghost"
-            className="w-full justify-start"
-          >
-            <Link
-              href={workspaceSlug ? `/w/${workspaceSlug}/settings` : '/workspaces'}
-              onClick={() => setIsOpen(false)}
+      {/* Settings (+ collapse toggle: inline on the right when expanded, own rail item when collapsed) */}
+      {(canAdmin || collapseToggle) && (
+        <div className={cn("pb-2", collapsed ? "px-2 space-y-1" : "px-4 flex items-center gap-1")}>
+          {canAdmin && (
+            <Button
+              asChild
+              data-testid="settings-button"
+              variant="ghost"
+              className={cn("justify-start", collapsed ? "w-full justify-center px-0" : "flex-1")}
+              title={collapsed ? "Settings" : undefined}
             >
-              <Settings className="w-4 h-4 mr-2" />
-              Settings
-            </Link>
-          </Button>
+              <Link
+                href={workspaceSlug ? `/w/${workspaceSlug}/settings` : '/workspaces'}
+                onClick={() => setIsOpen(false)}
+                aria-label="Settings"
+              >
+                <Settings className={cn("w-4 h-4", !collapsed && "mr-2")} />
+                {!collapsed && "Settings"}
+              </Link>
+            </Button>
+          )}
+          {collapseToggle && (
+            collapsed ? (
+              <RailTooltip label="Expand sidebar">{collapseToggle}</RailTooltip>
+            ) : (
+              <div className="ml-auto">{collapseToggle}</div>
+            )
+          )}
         </div>
       )}
       <Separator />
       {/* User Popover, or Sign-in CTA for public viewers */}
-      <div className="p-4">
+      <div className={collapsed ? "p-2 flex justify-center" : "p-4"}>
         {isPublicViewer ? (
           <Button asChild variant="default" className="w-full">
             <Link href="/auth/signin" data-testid="public-viewer-signin">
@@ -422,6 +532,7 @@ function SidebarContent({
           </Button>
         ) : (
           <NavUser
+            variant={collapsed ? "compact" : "default"}
             user={{
               name: user.name || "User",
               email: user.email || "",
@@ -588,6 +699,12 @@ export function Sidebar({ user }: SidebarProps) {
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const pathname = usePathname();
   const isFullscreenPage = pathname.includes("/task/") || pathname.includes("/plan/") || pathname.endsWith("/documents");
+  const collapsed = useSidebarStore((s) => s.collapsed);
+  const toggleCollapsed = useSidebarStore((s) => s.toggle);
+
+  useEffect(() => {
+    useSidebarStore.getState().hydrate();
+  }, []);
 
   return (
     <>
@@ -625,9 +742,15 @@ export function Sidebar({ user }: SidebarProps) {
       )}
       {/* Desktop Sidebar */}
       <div
-        className={`${isFullscreenPage ? "hidden" : "hidden md:flex"} ${SIDEBAR_WIDTH} md:flex-col md:fixed md:inset-y-0 md:z-0`}
+        data-testid="workspace-sidebar"
+        data-collapsed={collapsed ? "true" : "false"}
+        className={cn(
+          isFullscreenPage ? "hidden" : "hidden md:flex",
+          collapsed ? "md:w-14" : "md:w-64",
+          "md:flex-col md:fixed md:inset-y-0 md:z-0 transition-[width] duration-200 ease-in-out overflow-hidden",
+        )}
       >
-        <div className="flex flex-col flex-grow bg-sidebar border-sidebar-border border-r">
+        <div className="flex flex-col flex-1 min-h-0 bg-sidebar border-sidebar-border border-r">
           <SidebarContent
             navigationItems={navigationItems}
             pathname={pathname}
@@ -643,6 +766,8 @@ export function Sidebar({ user }: SidebarProps) {
             workspaceKind={workspaceKind}
             isPublicViewer={isPublicViewer}
             unresolvedErrorCount={unresolvedErrorCount}
+            collapsed={collapsed}
+            onToggleCollapsed={toggleCollapsed}
           />
         </div>
       </div>
