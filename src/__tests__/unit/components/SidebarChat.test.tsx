@@ -883,7 +883,11 @@ describe("SidebarChat — DailyRecapCard placement", () => {
     expect(wrapper).toHaveClass("flex-1");
     expect(wrapper).not.toHaveClass("h-full");
 
-    const scrollContainer = wrapper.parentElement!;
+    // The thread's one column (reading width on the chats view) fills the scroll container.
+    const column = wrapper.parentElement!;
+    expect(column).toHaveClass("flex-col");
+    expect(column).toHaveClass("flex-1");
+    const scrollContainer = column.parentElement!;
     expect(scrollContainer).toHaveClass("flex-col");
     expect(scrollContainer).toHaveClass("overflow-y-auto");
     expect(container.contains(scrollContainer)).toBe(true);

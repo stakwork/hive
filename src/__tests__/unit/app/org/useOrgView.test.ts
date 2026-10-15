@@ -14,7 +14,7 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-import { useOrgView, viewIsFullBleed } from "@/app/org/[githubLogin]/_components/useOrgView";
+import { canvasViewHref, useOrgView, viewIsFullBleed } from "@/app/org/[githubLogin]/_components/useOrgView";
 
 beforeEach(() => {
   mockSearchParamsStore = {};
@@ -33,10 +33,32 @@ describe("useOrgView", () => {
     expect(result.current).toBe("strut");
   });
 
-  it("maps the base path to canvas by default", () => {
+  it("maps the base path to chats by default", () => {
     mockPathname = "/org/acme";
     const { result } = renderHook(() => useOrgView("acme"));
+    expect(result.current).toBe("chats");
+  });
+
+  it("maps the base path with ?view=canvas to canvas", () => {
+    mockPathname = "/org/acme";
+    mockSearchParamsStore = { view: "canvas" };
+    const { result } = renderHook(() => useOrgView("acme"));
     expect(result.current).toBe("canvas");
+  });
+
+  it("keeps older canvas-only links (?canvas=, ?r=) on the canvas", () => {
+    mockPathname = "/org/acme";
+    mockSearchParamsStore = { canvas: "initiative:abc" };
+    expect(renderHook(() => useOrgView("acme")).result.current).toBe("canvas");
+    mockSearchParamsStore = { r: "stripe-connect" };
+    expect(renderHook(() => useOrgView("acme")).result.current).toBe("canvas");
+  });
+
+  it("lands the old control panel link on chats", () => {
+    mockPathname = "/org/acme";
+    mockSearchParamsStore = { view: "control-panel", chat: "c1" };
+    const { result } = renderHook(() => useOrgView("acme"));
+    expect(result.current).toBe("chats");
   });
 
   it("maps the base path with ?view=graph to graph", () => {
@@ -47,7 +69,18 @@ describe("useOrgView", () => {
   });
 });
 
+describe("canvasViewHref", () => {
+  it("switches to the canvas view keeping the open chat, applying the patch", () => {
+    const href = canvasViewHref("/org/acme", new URLSearchParams("chat=c1&view=chats"), { r: "doc", canvas: "" });
+    expect(href).toBe("/org/acme?chat=c1&view=canvas&r=doc");
+  });
+});
+
 describe("viewIsFullBleed", () => {
+  it("treats chats as full-bleed", () => {
+    expect(viewIsFullBleed("chats")).toBe(true);
+  });
+
   it("treats advisor as full-bleed", () => {
     expect(viewIsFullBleed("advisor")).toBe(true);
   });

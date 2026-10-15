@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useMemo, useRef } from "react";
+import React, { useContext, useMemo, useRef } from "react";
 import { useInView } from "framer-motion";
-import { ArrowUpRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ArrowUpRight, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import {
@@ -15,7 +15,7 @@ import { ActionTip } from "../ActionTip";
 import { ICON_BUTTON_CLASS, MissingPreview, ViewerBoundary } from "./chrome";
 import { artifactHref, artifactKind } from "./registry";
 import { useArtifactContent, type ArtifactContentState } from "./useArtifactContent";
-import { useChatOrgLogin } from "./useArtifactPanel";
+import { ArtifactPanelSideContext, useChatOrgLogin } from "./useArtifactPanel";
 
 interface ArtifactCardProps {
   artifact: ArtifactRef;
@@ -100,7 +100,11 @@ export const ArtifactCard = React.memo(function ArtifactCard({ artifact, version
   const content = state.status === "ready" ? state.content : null;
   const href = content && artifactHref(artifact.kind, content, githubLogin);
   const fact = useMemo(() => content && spec.fact?.(content), [spec, content]);
-  const PanelIcon = onPanel ? PanelLeftClose : PanelLeftOpen;
+  const [OpenIcon, CloseIcon] =
+    useContext(ArtifactPanelSideContext) === "right"
+      ? [PanelRightOpen, PanelRightClose]
+      : [PanelLeftOpen, PanelLeftClose];
+  const PanelIcon = onPanel ? CloseIcon : OpenIcon;
   const panelAction = onPanel ? "Close panel" : "Open in panel";
 
   return (

@@ -232,9 +232,10 @@ export interface ArtifactViewerProps<K extends ArtifactKind> {
   jobId?: string;
 }
 
-/** The artifact on the panel, by `artifactIdentity`. `version` is its place among that artifact's versions; null follows the newest. */
+/** What is on the panel. `version` is the artifact's place among its versions; null follows the newest. */
 export interface ArtifactPanelState {
-  identity: string;
+  /** The artifact, by its `artifactIdentity`; null for the index of every artifact in the chat. */
+  identity: string | null;
   version: number | null;
 }
 
@@ -647,7 +648,7 @@ export function resolveArtifactPanel(
   all: ArtifactRef[],
   panel: ArtifactPanelState | null,
 ): ResolvedArtifactPanel | null {
-  if (!panel) return null;
+  if (!panel?.identity) return null;
   const group = all.filter((artifact) => artifactIdentity(artifact) === panel.identity);
   if (group.length === 0) return null;
   const versions = versionsOf(group);
