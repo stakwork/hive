@@ -312,7 +312,7 @@ describe("pusher.ts", () => {
         AGENT_TRACE_READY: "agent-trace-ready",
         ERROR_ISSUE_UPDATED: "error-issue-updated",
         CANVAS_PR_UPDATED: "canvas-pr-updated",
-
+        GITHUB_INSTALLATION_UPDATED: "github-installation-updated",
       });
     });
 
