@@ -253,23 +253,22 @@ function SidebarContent({
     onToggleCollapsed?.();
   };
 
+  const collapseToggle = onToggleCollapsed ? (
+    <Button
+      data-testid="sidebar-collapse-toggle"
+      variant="ghost"
+      size="icon"
+      className={cn("hidden md:inline-flex shrink-0", collapsed ? "w-full" : "")}
+      aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      title={collapsed ? undefined : "Collapse sidebar"}
+      onClick={onToggleCollapsed}
+    >
+      {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+    </Button>
+  ) : null;
+
   return (
     <div className="flex flex-col h-full">
-      {onToggleCollapsed && (
-        <div className={cn("hidden md:flex px-2 pt-2", collapsed ? "justify-center" : "justify-end")}>
-          <Button
-            data-testid="sidebar-collapse-toggle"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            onClick={onToggleCollapsed}
-          >
-            {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-          </Button>
-        </div>
-      )}
       {/* Workspace Switcher — public viewers see a non-interactive
           label (no workspaces list to switch between). */}
       <WorkspaceSwitcher onWorkspaceChange={() => null} readOnly={isPublicViewer} collapsed={collapsed} />
@@ -496,25 +495,34 @@ function SidebarContent({
           </Button>
         </div>
       )}
-      {/* Settings */}
-      {canAdmin && (
-        <div className={collapsed ? "px-2 pb-2" : "px-4 pb-2"}>
-          <Button
-            asChild
-            data-testid="settings-button"
-            variant="ghost"
-            className={cn("w-full justify-start", collapsed && "justify-center px-0")}
-            title={collapsed ? "Settings" : undefined}
-          >
-            <Link
-              href={workspaceSlug ? `/w/${workspaceSlug}/settings` : '/workspaces'}
-              onClick={() => setIsOpen(false)}
-              aria-label="Settings"
+      {/* Settings (+ collapse toggle: inline on the right when expanded, own rail item when collapsed) */}
+      {(canAdmin || collapseToggle) && (
+        <div className={cn("pb-2", collapsed ? "px-2 space-y-1" : "px-4 flex items-center gap-1")}>
+          {canAdmin && (
+            <Button
+              asChild
+              data-testid="settings-button"
+              variant="ghost"
+              className={cn("justify-start", collapsed ? "w-full justify-center px-0" : "flex-1")}
+              title={collapsed ? "Settings" : undefined}
             >
-              <Settings className={cn("w-4 h-4", !collapsed && "mr-2")} />
-              {!collapsed && "Settings"}
-            </Link>
-          </Button>
+              <Link
+                href={workspaceSlug ? `/w/${workspaceSlug}/settings` : '/workspaces'}
+                onClick={() => setIsOpen(false)}
+                aria-label="Settings"
+              >
+                <Settings className={cn("w-4 h-4", !collapsed && "mr-2")} />
+                {!collapsed && "Settings"}
+              </Link>
+            </Button>
+          )}
+          {collapseToggle && (
+            collapsed ? (
+              <RailTooltip label="Expand sidebar">{collapseToggle}</RailTooltip>
+            ) : (
+              <div className="ml-auto">{collapseToggle}</div>
+            )
+          )}
         </div>
       )}
       <Separator />
