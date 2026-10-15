@@ -51,6 +51,24 @@ export function parseStrutArtifactKey(key: unknown): StrutArtifactKey | null {
   return rest.length > 0 ? { runId: decodeURIComponent(owner), path: rest.join("/") } : null;
 }
 
+/**
+ * Where a job's live update may point, as the browser will use it (strut
+ * plans/live-artifacts.md): a file of THIS job or of a run — strut's two
+ * link shapes, read through the reader route — or an absolute http(s)
+ * address (a pod's frontend). Anything else is dropped from the update.
+ */
+export function forwardableJobUrl(url: string | undefined, jobId: string): string | undefined {
+  if (!url) return undefined;
+  const key = parseStrutArtifactKey(url);
+  if (key) return "job" in key && key.job !== jobId ? undefined : url;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The reader route's URL for a `graph` ref, root-relative (hive's own origin). */
 export function strutArtifactReaderUrl(githubLogin: string, swarmId: string, key: string): string {
   return `/api/orgs/${encodeURIComponent(githubLogin)}/strut/artifacts?${new URLSearchParams({ swarmId, key })}`;
