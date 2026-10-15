@@ -324,6 +324,11 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
 
   // The URL is the credential. Never log it.
   const callbackUrl = `${publicBaseUrl}/api/strut-runs/webhook?id=${row.id}&token=${rawToken}`;
+  // A job turn also registers where the JOB's live updates go (strut
+  // plans/live-artifacts.md §1): kept on the job, the latest launch wins, so
+  // every later update — this turn's shots, a Verify days later — comes
+  // under this row and its token. A strut that predates it ignores the field.
+  const jobCallbackUrl = job ? `${publicBaseUrl}/api/strut-jobs/events?id=${row.id}&token=${rawToken}` : null;
 
   let res: Response;
   try {
@@ -334,7 +339,13 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
         "x-api-token": target.swarmApiKey,
         [STRUT_ACTOR_HEADER]: target.actor,
       },
-      body: JSON.stringify({ input, callback: { url: callbackUrl }, ...(job ? { job, ...(title ? { title } : {}) } : {}), ...(params && Object.keys(params).length ? { params } : {}) }),
+      body: JSON.stringify({
+        input,
+        callback: { url: callbackUrl },
+        ...(job ? { job, ...(title ? { title } : {}) } : {}),
+        ...(jobCallbackUrl ? { jobCallback: { url: jobCallbackUrl } } : {}),
+        ...(params && Object.keys(params).length ? { params } : {}),
+      }),
       cache: "no-store",
       signal: AbortSignal.timeout(LAUNCH_TIMEOUT_MS),
     });
@@ -367,7 +378,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
     throw new StrutDispatchError("strut_http", detail || `Strut returned HTTP ${res.status}.`);
   }
 
-  const accepted = (await res.json().catch(() => ({}))) as { runId?: unknown; callback?: unknown };
+  const accepted = (await res.json().catch(() => ({}))) as { runId?: unknown; callback?: unknown; jobCallback?: unknown };
   const strutRunId = typeof accepted.runId === "string" && accepted.runId ? accepted.runId : null;
 
   if (accepted.callback !== true) {
@@ -387,7 +398,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
     throw new StrutDispatchError("no_run_id", "Strut accepted the launch but returned no run id.");
   }
 
-  await db.strutRun.update({ where: { id: row.id }, data: { strutRunId } });
+  await db.strutRun.update({ where: { id: row.id }, data: { strutRunId, ...(jobCallbackUrl && accepted.jobCallback === true ? { liveUpdates: true } : {}) } });
   logger.info("Dispatched strut run", STRUT_RUN_LOG_TAG, {
     runId: row.id,
     kind,

@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   checksFailedEvent,
+  forwardableJobUrl,
   checksRunning,
   describeArtifactEvent,
   formatArtifactEvent,
@@ -147,5 +148,18 @@ describe("checks failed — the event the card's Fix and the automatic first fix
     expect(checksFailedEvent({ url: "https://github.com/acme/app/pull/12", checks })?.details).toEqual(["- lint — https://github.com/acme/app/actions/runs/1", "- e2e"]);
     expect(checksFailedEvent({ url: "https://github.com/acme/app/pull/12", checks: [checks[0], { name: "x", status: "pending" }] })).toBeNull();
     expect(checksFailedEvent({ url: "https://github.com/acme/app/pull/12" })).toBeNull();
+  });
+});
+
+describe("forwardableJobUrl (strut plans/live-artifacts.md)", () => {
+  it("keeps a file of THIS job or of a run, and an http(s) address; drops anything else", () => {
+    expect(forwardableJobUrl("/jobs/j-1/files/walkthroughs/001/walkthrough.json", "j-1")).toBe("/jobs/j-1/files/walkthroughs/001/walkthrough.json");
+    expect(forwardableJobUrl("/artifacts/1790000000000/shots/001.png", "j-1")).toBe("/artifacts/1790000000000/shots/001.png");
+    expect(forwardableJobUrl("https://pod-7.example.com/settings", "j-1")).toBe("https://pod-7.example.com/settings");
+    expect(forwardableJobUrl("/jobs/j-2/files/plan.md", "j-1")).toBeUndefined();
+    expect(forwardableJobUrl("/jobs/j-1/files/../../j-2/files/plan.md", "j-1")).toBeUndefined();
+    expect(forwardableJobUrl("javascript:alert(1)", "j-1")).toBeUndefined();
+    expect(forwardableJobUrl("/etc/passwd", "j-1")).toBeUndefined();
+    expect(forwardableJobUrl(undefined, "j-1")).toBeUndefined();
   });
 });

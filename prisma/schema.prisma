@@ -2658,6 +2658,12 @@ model StrutRun {
   /// can find the job's rows and check they are this user's. Null for a
   /// launch that is not a job turn.
   jobId          String?        @map("job_id")
+  /// Strut accepted this launch's `jobCallback` (its 202 said
+  /// `jobCallback: true`, strut plans/live-artifacts.md §1): the job's live
+  /// updates — shots, a recording, a pod, a check's verdict — come to
+  /// `/api/strut-jobs/events` under this row, so a Verify can return at once
+  /// and publish the card when the pass ends. False for every other launch.
+  liveUpdates    Boolean        @default(false) @map("live_updates")
   createdAt      DateTime       @default(now()) @map("created_at")
   settledAt      DateTime?      @map("settled_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
