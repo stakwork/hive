@@ -20,7 +20,8 @@ import { parseWalkthroughManifest, type WalkthroughManifest } from "../walkthrou
 
 type Loaded = { status: "loading" } | { status: "failed" } | { status: "ready"; manifest: WalkthroughManifest };
 
-function useWalkthrough(swarmId: string, key: string): Loaded {
+/** The manifest at `key`, read again on each update the job reports for it. Key the caller by `key`: a failed re-read keeps what it had. */
+export function useWalkthrough(swarmId: string, key: string): Loaded {
   const githubLogin = useChatOrgLogin();
   // A new frame on this recording: read the manifest again.
   const tick = useLatestUpdateFor(key)?.receivedAt ?? 0;
