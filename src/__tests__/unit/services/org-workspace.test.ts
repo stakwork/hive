@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 vi.mock("@/lib/db");
 
-import { getDefaultWorkspaceForOrg, resolveOrgDefaultSwarmWorkspace } from "@/lib/helpers/org-workspace";
+import { getDefaultWorkspaceForOrg, resolveOrgDefaultSwarmWorkspace, setOrgDefaultWorkspaceIfUnset } from "@/lib/helpers/org-workspace";
 
 const mockedDb = vi.mocked(db, true);
 
@@ -128,5 +129,50 @@ describe("resolveOrgDefaultSwarmWorkspace", () => {
     setup({ org: { defaultWorkspaceId: "ws_1" }, workspace: { id: "ws_1", slug: "no-swarm", swarm: null } });
     const result = await resolveOrgDefaultSwarmWorkspace("acme");
     expect(result).toBeNull();
+  });
+});
+
+describe("setOrgDefaultWorkspaceIfUnset", () => {
+  function setup(workspace: any, count = 1) {
+    const updateMany = vi.fn(async () => ({ count }));
+    (mockedDb.workspace as any) = { findFirst: vi.fn(async () => workspace) };
+    (mockedDb.sourceControlOrg as any) = { updateMany };
+    return updateMany;
+  }
+
+  it("sets the default when unset", async () => {
+    const updateMany = setup({ sourceControlOrgId: "org_1", swarm: { id: "s", status: "ACTIVE" } });
+    expect(await setOrgDefaultWorkspaceIfUnset("ws_1")).toBe(true);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "org_1", defaultWorkspaceId: null },
+      data: { defaultWorkspaceId: "ws_1" },
+    });
+  });
+
+  it("does not overwrite an existing default (count 0)", async () => {
+    setup({ sourceControlOrgId: "org_1", swarm: { id: "s", status: "ACTIVE" } }, 0);
+    expect(await setOrgDefaultWorkspaceIfUnset("ws_1")).toBe(false);
+  });
+
+  it("no-ops when workspace has no org", async () => {
+    const updateMany = setup({ sourceControlOrgId: null, swarm: { id: "s", status: "ACTIVE" } });
+    expect(await setOrgDefaultWorkspaceIfUnset("ws_1")).toBe(false);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it("no-ops when workspace has no swarm or a FAILED swarm", async () => {
+    const updateMany = setup({ sourceControlOrgId: "org_1", swarm: null });
+    expect(await setOrgDefaultWorkspaceIfUnset("ws_1")).toBe(false);
+    setup({ sourceControlOrgId: "org_1", swarm: { id: "s", status: "FAILED" } });
+    expect(await setOrgDefaultWorkspaceIfUnset("ws_1")).toBe(false);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns false on unique constraint error", async () => {
+    const updateMany = setup({ sourceControlOrgId: "org_1", swarm: { id: "s", status: "ACTIVE" } });
+    updateMany.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("dup", { code: "P2002", clientVersion: "x" }),
+    );
+    expect(await setOrgDefaultWorkspaceIfUnset("ws_1")).toBe(false);
   });
 });
