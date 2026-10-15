@@ -119,6 +119,13 @@ export const PUSHER_EVENTS = {
   // `{ repo, number, at }`, NO pr data: the client refetches through the
   // existing per-viewer-token route (`/api/orgs/[githubLogin]/strut/pull-request`).
   CANVAS_PR_UPDATED: "canvas-pr-updated",
+  // A strut JOB told its host what changed as it happened (strut
+  // plans/live-artifacts.md): a shot, a walkthrough frame, a pod held or
+  // let go, a check's verdict, a Verify ended. Fired on the conversation
+  // channel by `/api/strut-jobs/events`; the payload is the update itself
+  // (`CanvasJobUpdate`), small by construction — links, never bytes. A
+  // notification, not the record: the client re-reads what it points at.
+  CANVAS_JOB_UPDATE: "canvas-job-update",
   // The workspace's GitHub App installation changed (repos added/removed,
   // permissions accepted, suspended…) — open setup screens re-check access.
   GITHUB_INSTALLATION_UPDATED: "github-installation-updated",
@@ -276,5 +283,36 @@ export function notifyActivityUpdated(userId: string): void {
       });
   } catch (err) {
     console.error("[pusher] notifyActivityUpdated threw (non-fatal):", err);
+  }
+}
+
+/**
+ * A strut job's live update as the browser gets it (strut
+ * plans/live-artifacts.md §2): strut's `job.update` with the swarm it came
+ * from, so a link to a job file can be read through the reader route.
+ */
+export interface CanvasJobUpdate {
+  jobId: string;
+  swarmId: string;
+  at: string;
+  kind: string;
+  runId?: string;
+  url?: string;
+  id?: string;
+  title?: string;
+  state?: string;
+  detail?: Record<string, unknown>;
+}
+
+/** Fire-and-forget broadcast of a job's live update to the conversation it reports into. Never throws. */
+export function notifyCanvasJobUpdate(conversationId: string, update: CanvasJobUpdate): void {
+  try {
+    void pusherServer
+      .trigger(getCanvasConversationChannelName(conversationId), PUSHER_EVENTS.CANVAS_JOB_UPDATE, update)
+      .catch((err) => {
+        console.error("[pusher] notifyCanvasJobUpdate failed (non-fatal):", err);
+      });
+  } catch (err) {
+    console.error("[pusher] notifyCanvasJobUpdate threw (non-fatal):", err);
   }
 }

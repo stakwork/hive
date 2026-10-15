@@ -199,6 +199,14 @@ export interface ArtifactContents {
     turns?: Record<string, number>;
     claims: JobClaim[];
   };
+  /**
+   * A recording a strut job made of a flow (`browser/walkthrough`, strut
+   * plans/live-artifacts.md §4): a directory of frames and the manifest
+   * naming them, where it is on the swarm. The viewer reads the manifest
+   * through the reader route, scrubs the frames, and reads it again when
+   * the job reports a new frame.
+   */
+  walkthrough: { swarmId: string; key: string };
 }
 
 /** One node a trace link's step read or wrote, when it touched the graph. */
@@ -606,6 +614,11 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
       ? Object.fromEntries(Object.entries(raw.turns).filter(([id, n]) => id.length <= MAX_ID_LENGTH && count(n) !== undefined))
       : undefined;
     return { workspace, swarmId, job, turn, ...(turns ? { turns: turns as Record<string, number> } : {}), claims: parseJobClaims(raw.claims) };
+  },
+  walkthrough: (raw) => {
+    const swarmId = bounded(raw.swarmId, MAX_ID_LENGTH);
+    const key = bounded(raw.key, MAX_ID_LENGTH);
+    return swarmId && key ? { swarmId, key } : null;
   },
 };
 

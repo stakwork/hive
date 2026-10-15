@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { JobLiveStrip } from "./JobLiveStrip";
 import { Ban, Bot, Check, ChevronRight, CircleDashed, HelpCircle, Loader2, XCircle, Zap } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { describeArtifactEvent, parseArtifactEvent, parseClaimEvent } from "@/lib/strut-jobs";
@@ -33,7 +34,9 @@ import type { CanvasChatMessage } from "../_state/canvasChatStore";
  * with the card under it.
  *
  * Pure projections of the conversation, like `StrutChatCard`: nothing is
- * fetched, and the expansion is the settled card's own state.
+ * fetched, and the expansion is the settled card's own state — except the
+ * pending card's live strip (`JobLiveStrip`), which shows the job's live
+ * updates as they arrive (strut plans/live-artifacts.md).
  */
 
 export type JobTurnSource = Extract<NonNullable<CanvasChatMessage["source"]>, { kind: "job" }>;
@@ -223,8 +226,14 @@ export function JobEventRow({ message, source }: { message: Pick<CanvasChatMessa
   );
 }
 
-/** A turn strut is working on: its title and a running pill, nothing to open yet. */
+/**
+ * A turn strut is working on: its title and a running pill, and under them
+ * what the job is doing as it does it — shots, a recording, a pod, a
+ * verdict (`JobLiveStrip`, strut plans/live-artifacts.md) — from the moment
+ * the card appeared.
+ */
 export function PendingJobTurnCard({ turn }: { turn: PendingJobTurn }) {
+  const [since] = useState(() => Date.now());
   return (
     <div
       data-testid="job-turn-pending-card"
@@ -237,6 +246,7 @@ export function PendingJobTurnCard({ turn }: { turn: PendingJobTurn }) {
         <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">{turn.title || "Job"}</span>
         <StatusPill look={RUNNING_LOOK} />
       </div>
+      <JobLiveStrip jobId={turn.jobId} since={since} />
     </div>
   );
 }
