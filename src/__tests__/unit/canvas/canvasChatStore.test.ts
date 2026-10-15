@@ -23,6 +23,7 @@ function freshStore() {
     activeConversationId: null,
     ephemeralSeedCounts: {},
     pendingInputDraft: null,
+    pendingInputAppend: null,
     proposals: {},
     subAgentRuns: {},
     artifacts: {},
@@ -209,6 +210,14 @@ describe("canvasChatStore — stopping and editing a turn", () => {
 
     expect(useCanvasChatStore.getState().conversations[id].editingTurnId).toBe("t1");
     expect(useCanvasChatStore.getState().pendingInputDraft).toBe("Explain auth");
+  });
+
+  it("appendPendingInputDraft accumulates unconsumed appends with newlines", () => {
+    useCanvasChatStore.getState().appendPendingInputDraft("Go with A");
+    expect(useCanvasChatStore.getState().pendingInputAppend).toBe("Go with A");
+    useCanvasChatStore.getState().appendPendingInputDraft("Go with B");
+    expect(useCanvasChatStore.getState().pendingInputAppend).toBe("Go with A\nGo with B");
+    expect(useCanvasChatStore.getState().pendingInputDraft).toBeNull();
   });
 
   it("removeTurn drops the turn's rows and ends the edit", () => {

@@ -36,6 +36,10 @@ const CLAMP_LINES = 3;
 // Selected node's extra rows: state/made_by line and the action buttons.
 const DETAILS_H = 20;
 const ACTIONS_H = 30;
+// Row gap (gap-1) and the chars per line of the narrower text-[13px] question title / text-[11px] detail lines.
+const GAP_H = 4;
+const QUESTION_CHARS_PER_LINE = 28;
+const DETAIL_CHARS_PER_LINE = 40;
 const REFETCH_MS = 15_000;
 
 /**
@@ -165,10 +169,21 @@ export function buildChoiceTree(nodes: RawNode[], edges: RawEdge[], focus: strin
 }
 
 /** Rendered height of a node, from its text length (see the constants above). */
-export function estimateNodeHeight(c: Pick<ChoiceItem, "name" | "quote">, selected: boolean): number {
-  const lines = (t: string) => Math.max(1, Math.ceil(t.length / CHARS_PER_LINE));
-  if (!selected) return Math.min(CLAMP_LINES, lines(c.name)) * LINE_H + PAD_H;
-  return (lines(c.name) + (c.quote ? lines(c.quote) : 0)) * LINE_H + PAD_H + DETAILS_H + ACTIONS_H;
+export function estimateNodeHeight(
+  c: Pick<ChoiceItem, "name" | "quote"> & Partial<Pick<ChoiceItem, "criteria" | "reversibility" | "isQuestion" | "state" | "madeBy" | "speaker">>,
+  selected: boolean,
+): number {
+  const lines = (t: string, per = CHARS_PER_LINE) => Math.max(1, Math.ceil(t.length / per));
+  const nameLines = lines(c.name, c.isQuestion ? QUESTION_CHARS_PER_LINE : CHARS_PER_LINE);
+  if (!selected) return Math.min(CLAMP_LINES, nameLines) * LINE_H + PAD_H;
+  // Each rendered row: its height; rows are separated by GAP_H.
+  const rows = [nameLines * LINE_H];
+  if (c.quote) rows.push(lines(c.quote, DETAIL_CHARS_PER_LINE) * LINE_H);
+  if ((c.state && c.state !== "open") || c.speaker || c.madeBy) rows.push(DETAILS_H);
+  if (c.isQuestion && c.criteria) rows.push(lines(`Criteria: ${c.criteria}`, DETAIL_CHARS_PER_LINE) * LINE_H);
+  if (c.isQuestion && c.reversibility) rows.push(lines(`Reversibility: ${c.reversibility}`, DETAIL_CHARS_PER_LINE) * LINE_H);
+  rows.push(ACTIONS_H);
+  return rows.reduce((a, b) => a + b, 0) + (rows.length - 1) * GAP_H + PAD_H;
 }
 
 /** Left-to-right positions, as the graph workbench's tree lays out; `heights` per node id (default 64). */
@@ -224,18 +239,19 @@ interface ChoiceNodeData extends Record<string, unknown> {
 const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<ChoiceNodeData>>) {
   const { choice: c, selected, onSelect } = data;
   const setDraft = useCanvasChatStore((s) => s.setPendingInputDraft);
+  const appendDraft = useCanvasChatStore((s) => s.appendPendingInputDraft);
   const isQuestion = c.isQuestion;
   const by = c.speaker ?? c.madeBy;
   const button = "nodrag rounded border px-1.5 py-0.5 text-[10px] hover:bg-accent";
-  const act = (e: React.MouseEvent, message: string) => {
+  const act = (e: React.MouseEvent, message: string, append = false) => {
     e.stopPropagation();
-    setDraft(message);
+    (append ? appendDraft : setDraft)(message);
   };
   const MadeBy = c.madeBy === "user" ? User : Bot;
   return (
     <div
       className={cn(
-        "group flex h-full w-full cursor-pointer flex-col gap-1 rounded-md border px-2 py-1.5 text-xs hover:ring-1 hover:ring-ring/40",
+        "group flex min-h-full w-full cursor-pointer flex-col gap-1 rounded-md border px-2 py-1.5 text-xs hover:ring-1 hover:ring-ring/40",
         isQuestion ? "border-border border-l-2 border-l-primary/60 bg-card" : STATE_STYLE[c.state],
         selected && "ring-2 ring-ring",
       )}
@@ -283,7 +299,7 @@ const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<ChoiceNodeD
               {!isQuestion && c.state === "rejected" ? "Revisit" : "Expand"}
             </button>
             {!isQuestion && (
-              <button type="button" className={button} onClick={(e) => act(e, goWithDraft(c))}>
+              <button type="button" className={button} onClick={(e) => act(e, goWithDraft(c), true)}>
                 Go with
               </button>
             )}

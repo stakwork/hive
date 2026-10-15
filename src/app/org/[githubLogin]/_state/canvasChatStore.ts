@@ -491,6 +491,13 @@ interface CanvasChatState {
    * (the control panel's "New chat" uses it).
    */
   pendingInputDraft: string | null;
+  /**
+   * Text to APPEND (on a new line) to the chat input instead of replacing
+   * it — the brainstorm tree's "Go with" uses it so several options can be
+   * collected in one message. Taps made while the input is unmounted
+   * accumulate, joined with "\n". Consumed and cleared like `pendingInputDraft`.
+   */
+  pendingInputAppend: string | null;
 
   // ─── Canvas viewport (written by OrgCanvasBackground on every pan/zoom) ─
   /**
@@ -653,6 +660,7 @@ interface CanvasChatState {
    * after consumption — callers usually shouldn't need to clear).
    */
   setPendingInputDraft: (draft: string | null) => void;
+  appendPendingInputDraft: (text: string) => void;
 
   // ─── Canvas deeplink ─────────────────────────────────────────────────
   /**
@@ -705,6 +713,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       ephemeralSeedCounts: {},
       locallyAuthoredTurnIds: new Set<string>(),
       pendingInputDraft: null,
+      pendingInputAppend: null,
       pendingDeeplink: null,
       canvasViewport: null,
       proposals: {},
@@ -1150,6 +1159,12 @@ export const useCanvasChatStore = create<CanvasChatState>()(
         ),
 
       setPendingInputDraft: (draft) => set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
+      appendPendingInputDraft: (text) =>
+        set(
+          (s) => ({ pendingInputAppend: s.pendingInputAppend ? `${s.pendingInputAppend}\n${text}` : text }),
+          false,
+          "appendPendingInputDraft",
+        ),
 
       triggerDeeplink: (dl) => set({ pendingDeeplink: dl }, false, "triggerDeeplink"),
 

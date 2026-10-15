@@ -37,6 +37,7 @@ let mockStoreState = {
   artifacts: {} as Record<string, unknown>,
   dismissedArtifactIds: {} as Record<string, boolean>,
   pendingInputDraft: null as string | null,
+  pendingInputAppend: null as string | null,
 };
 
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
