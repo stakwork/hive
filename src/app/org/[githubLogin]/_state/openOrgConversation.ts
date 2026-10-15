@@ -5,8 +5,8 @@
  * active conversation in the canvas chat store.
  *
  * Shared by every "open this chat" affordance on the org page — the
- * history popover, the automations inbox, the control panel and a
- * plan's "View in Chat" — so they all hydrate messages the same way and
+ * history popover, the automations inbox, the chat list and a plan's
+ * "View in Chat" — so they all hydrate messages the same way and
  * never re-save what the server already holds
  * (`ephemeralSeedCount = messages.length`).
  *
@@ -184,7 +184,7 @@ export async function openOrgConversation(
  * active one in place, so an in-flight stream on the previous chat keeps
  * writing to its own slot and can't bleed into the new one — and drop
  * `?chat=` so a refresh lands in the new chat rather than the old one.
- * An untouched fresh chat already on stage is what "new" means, so it is
+ * An untouched fresh chat already active is what "new" means, so it is
  * reused rather than stacked. Either way the composer takes focus (the
  * store's draft hand-off; an empty draft only focuses). Returns the
  * local conversation id.

@@ -1,9 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import {
-  createAuthenticatedGetRequest,
-  generateUniqueId,
-} from "@/__tests__/support/helpers";
-import { createTestUser, createTestFeature } from "@/__tests__/support/factories";
+import { createAuthenticatedGetRequest, generateUniqueId } from "@/__tests__/support/helpers";
+import { createTestUser } from "@/__tests__/support/factories";
 import { db } from "@/lib/db";
 import { GET as getControlPanel } from "@/app/api/orgs/[githubLogin]/control-panel/route";
 
@@ -44,12 +41,12 @@ const createdOrgIds: string[] = [];
 const createdWorkspaceIds: string[] = [];
 const createdUserIds: string[] = [];
 const createdConversationIds: string[] = [];
-const createdFeatureIds: string[] = [];
+const createdRunIds: string[] = [];
 
 afterEach(async () => {
-  if (createdFeatureIds.length > 0) {
-    await db.feature.deleteMany({ where: { id: { in: createdFeatureIds } } });
-    createdFeatureIds.length = 0;
+  if (createdRunIds.length > 0) {
+    await db.strutRun.deleteMany({ where: { id: { in: createdRunIds } } });
+    createdRunIds.length = 0;
   }
   if (createdConversationIds.length > 0) {
     await db.sharedConversation.deleteMany({
@@ -72,201 +69,143 @@ afterEach(async () => {
 });
 
 describe("GET /api/orgs/[githubLogin]/control-panel", () => {
-  it("returns archivedItems without a query param; active items and chats.total stay active-only", async () => {
+  async function setup() {
     const user = await createTestUser();
     createdUserIds.push(user.id);
     const org = await createOrg(`test-org-cp-${generateUniqueId()}`);
     createdOrgIds.push(org.id);
     const ws = await createWorkspaceInOrg(user.id, org.id);
     createdWorkspaceIds.push(ws.id);
+    return { user, org, ws };
+  }
 
-    const active = await db.sharedConversation.create({
+  async function createChat(
+    orgId: string,
+    userId: string,
+    data: { title: string; messages?: object[]; lastMessageAt: Date; archivedAt?: Date },
+  ) {
+    const chat = await db.sharedConversation.create({
       data: {
-        sourceControlOrgId: org.id,
-        userId: user.id,
+        sourceControlOrgId: orgId,
+        userId,
         workspaceId: null,
-        messages: sampleMessages as object[],
-        title: "Active chat",
+        messages: data.messages ?? (sampleMessages as object[]),
+        title: data.title,
         source: "org-canvas",
         followUpQuestions: [],
-        lastMessageAt: new Date(),
+        lastMessageAt: data.lastMessageAt,
+        archivedAt: data.archivedAt,
       },
     });
-    createdConversationIds.push(active.id);
+    createdConversationIds.push(chat.id);
+    return chat;
+  }
 
-    const archived = await db.sharedConversation.create({
-      data: {
-        sourceControlOrgId: org.id,
-        userId: user.id,
-        workspaceId: null,
-        messages: sampleMessages as object[],
-        title: "Archived chat",
-        source: "org-canvas",
-        followUpQuestions: [],
-        lastMessageAt: new Date("2026-01-01T00:00:00Z"),
-        archivedAt: new Date("2026-02-01T00:00:00Z"),
-      },
+  async function fetchList(
+    org: { githubLogin: string },
+    user: { id: string; email: string | null; name: string | null },
+  ) {
+    const req = createAuthenticatedGetRequest(`http://localhost/api/orgs/${org.githubLogin}/control-panel`, {
+      id: user.id,
+      email: user.email ?? "",
+      name: user.name ?? "",
     });
-    createdConversationIds.push(archived.id);
-
-    const nestedPlan = await createTestFeature({
-      title: "Archived nested plan",
-      workspaceId: ws.id,
-      createdById: user.id,
-      updatedById: user.id,
-    });
-    createdFeatureIds.push(nestedPlan.id);
-    await db.feature.update({
-      where: { id: nestedPlan.id },
-      data: { parentCanvasConversationId: archived.id },
-    });
-
-    const req = createAuthenticatedGetRequest(
-      `http://localhost/api/orgs/${org.githubLogin}/control-panel`,
-      { id: user.id, email: user.email ?? "", name: user.name ?? "" },
-    );
     const res = await getControlPanel(req, { params: listParams(org.githubLogin) });
     expect(res.status).toBe(200);
+    return res.json();
+  }
 
-    const body = await res.json();
-    expect(Array.isArray(body.items)).toBe(true);
-    expect(Array.isArray(body.archivedItems)).toBe(true);
+  it("returns archivedItems without a query param; active items and chats.total stay active-only", async () => {
+    const { user, org } = await setup();
+    const active = await createChat(org.id, user.id, { title: "Active chat", lastMessageAt: new Date() });
+    const archived = await createChat(org.id, user.id, {
+      title: "Archived chat",
+      lastMessageAt: new Date("2026-01-01T00:00:00Z"),
+      archivedAt: new Date("2026-02-01T00:00:00Z"),
+    });
 
-    const activeChatIds = body.items.filter((i: { kind: string }) => i.kind === "chat").map((i: { id: string }) => i.id);
-    expect(activeChatIds).toEqual([active.id]);
-    expect(body.items.some((i: { id: string }) => i.id === archived.id)).toBe(false);
-    expect(body.items.some((i: { id: string }) => i.id === nestedPlan.id)).toBe(false);
+    const body = await fetchList(org, user);
 
-    expect(body.chats.total).toBe(1);
-    expect(body.chats.shown).toBe(1);
-
-    const archivedChats = body.archivedItems.filter((i: { kind: string }) => i.kind === "chat");
-    expect(archivedChats).toHaveLength(1);
-    expect(archivedChats[0].id).toBe(archived.id);
-    expect(archivedChats[0].archivedAt).toBe("2026-02-01T00:00:00.000Z");
-
-    const archivedPlans = body.archivedItems.filter((i: { kind: string }) => i.kind === "plan");
-    expect(archivedPlans).toHaveLength(1);
-    expect(archivedPlans[0].id).toBe(nestedPlan.id);
-    expect(archivedPlans[0].parentChatId).toBe(archived.id);
+    expect(body.items.map((i: { id: string }) => i.id)).toEqual([active.id]);
+    expect(body.chats).toEqual({ shown: 1, total: 1 });
+    expect(body.archivedItems).toHaveLength(1);
+    expect(body.archivedItems[0].id).toBe(archived.id);
+    expect(body.archivedItems[0].archivedAt).toBe("2026-02-01T00:00:00.000Z");
   });
 
-  it("sets Jamie parent state to done only when every nested feature is COMPLETED", async () => {
-    const user = await createTestUser();
-    createdUserIds.push(user.id);
-    const org = await createOrg(`test-org-cp-done-${generateUniqueId()}`);
-    createdOrgIds.push(org.id);
-    const ws = await createWorkspaceInOrg(user.id, org.id);
-    createdWorkspaceIds.push(ws.id);
-
-    const allDoneChat = await db.sharedConversation.create({
-      data: {
-        sourceControlOrgId: org.id,
-        userId: user.id,
-        workspaceId: null,
-        messages: sampleMessages as object[],
-        title: "All done chat",
-        source: "org-canvas",
-        followUpQuestions: [],
-        lastMessageAt: new Date("2026-03-01T00:00:00Z"),
+  it("lists a chat's jobs from its job turns and its pull requests from its messages", async () => {
+    const { user, org, ws } = await setup();
+    const pr = (state: string) => ({
+      id: "pr",
+      kind: "pull_request",
+      title: "Add the backfill script",
+      source: {
+        type: "inline",
+        content: { url: "https://github.com/acme/app/pull/7", repo: "acme/app", number: 7, state },
       },
     });
-    createdConversationIds.push(allDoneChat.id);
+    const chat = await createChat(org.id, user.id, {
+      title: "Backfill chat",
+      lastMessageAt: new Date("2026-03-01T00:00:00Z"),
+      messages: [
+        { role: "user", content: "Backfill the orgs" },
+        {
+          id: "job-a",
+          role: "assistant",
+          content: "**Job · j1 · Backfill**",
+          source: { kind: "job", jobId: "j1" },
+          artifacts: [pr("open")],
+        },
+        {
+          id: "job-b",
+          role: "assistant",
+          content: "**Job · j1 · Backfill**",
+          source: { kind: "job", jobId: "j1" },
+          artifacts: [pr("merged")],
+        },
+      ],
+    });
 
-    const mixedChat = await db.sharedConversation.create({
-      data: {
-        sourceControlOrgId: org.id,
-        userId: user.id,
-        workspaceId: null,
-        messages: sampleMessages as object[],
-        title: "Mixed chat",
-        source: "org-canvas",
-        followUpQuestions: [],
-        lastMessageAt: new Date("2026-03-02T00:00:00Z"),
+    const run = (status: "SUCCESS" | "PENDING", createdAt: string) =>
+      db.strutRun.create({
+        data: {
+          tokenHash: generateUniqueId(),
+          workspaceId: ws.id,
+          swarmId: "swarm-test",
+          userId: user.id,
+          kind: "job_turn",
+          workflow: "job",
+          status,
+          input: { title: "Backfill", prompt: "go" },
+          conversationId: chat.id,
+          jobId: "j1",
+          createdAt: new Date(createdAt),
+        },
+      });
+    const runs = [await run("SUCCESS", "2026-03-02T00:00:00Z"), await run("PENDING", "2026-03-03T00:00:00Z")];
+    createdRunIds.push(...runs.map((r) => r.id));
+
+    const body = await fetchList(org, user);
+    const item = body.items.find((i: { id: string }) => i.id === chat.id);
+
+    expect(item.jobs).toEqual([
+      { id: "j1", title: "Backfill", working: true, lastActivityAt: "2026-03-03T00:00:00.000Z" },
+    ]);
+    expect(item.working).toBe(true);
+    // The job's latest turn is newer than the chat's own last message.
+    expect(item.lastActivityAt).toBe("2026-03-03T00:00:00.000Z");
+    // One PR, at its newest card's state, credited to the job.
+    expect(item.pullRequests).toEqual([
+      {
+        identity: "pull_request:acme/app#7",
+        title: "Add the backfill script",
+        url: "https://github.com/acme/app/pull/7",
+        repo: "acme/app",
+        number: 7,
+        state: "merged",
+        jobId: "j1",
       },
-    });
-    createdConversationIds.push(mixedChat.id);
-
-    const emptyChat = await db.sharedConversation.create({
-      data: {
-        sourceControlOrgId: org.id,
-        userId: user.id,
-        workspaceId: null,
-        messages: sampleMessages as object[],
-        title: "Empty chat",
-        source: "org-canvas",
-        followUpQuestions: [],
-        lastMessageAt: new Date("2026-03-03T00:00:00Z"),
-      },
-    });
-    createdConversationIds.push(emptyChat.id);
-
-    const doneA = await createTestFeature({
-      title: "Done plan A",
-      workspaceId: ws.id,
-      createdById: user.id,
-      updatedById: user.id,
-    });
-    const doneB = await createTestFeature({
-      title: "Done plan B",
-      workspaceId: ws.id,
-      createdById: user.id,
-      updatedById: user.id,
-    });
-    const mixedDone = await createTestFeature({
-      title: "Mixed done plan",
-      workspaceId: ws.id,
-      createdById: user.id,
-      updatedById: user.id,
-    });
-    const mixedCancelled = await createTestFeature({
-      title: "Mixed cancelled plan",
-      workspaceId: ws.id,
-      createdById: user.id,
-      updatedById: user.id,
-    });
-    createdFeatureIds.push(doneA.id, doneB.id, mixedDone.id, mixedCancelled.id);
-
-    await db.feature.update({
-      where: { id: doneA.id },
-      data: { parentCanvasConversationId: allDoneChat.id, status: "COMPLETED" },
-    });
-    await db.feature.update({
-      where: { id: doneB.id },
-      data: { parentCanvasConversationId: allDoneChat.id, status: "COMPLETED" },
-    });
-    await db.feature.update({
-      where: { id: mixedDone.id },
-      data: { parentCanvasConversationId: mixedChat.id, status: "COMPLETED" },
-    });
-    await db.feature.update({
-      where: { id: mixedCancelled.id },
-      data: { parentCanvasConversationId: mixedChat.id, status: "CANCELLED" },
-    });
-
-    const req = createAuthenticatedGetRequest(
-      `http://localhost/api/orgs/${org.githubLogin}/control-panel`,
-      { id: user.id, email: user.email ?? "", name: user.name ?? "" },
-    );
-    const res = await getControlPanel(req, { params: listParams(org.githubLogin) });
-    expect(res.status).toBe(200);
-
-    const body = await res.json();
-    const chats = body.items.filter((i: { kind: string }) => i.kind === "chat");
-    const plans = body.items.filter((i: { kind: string }) => i.kind === "plan");
-
-    const allDoneItem = chats.find((i: { id: string }) => i.id === allDoneChat.id);
-    expect(allDoneItem?.state).toBe("done");
-
-    const mixedItem = chats.find((i: { id: string }) => i.id === mixedChat.id);
-    expect(mixedItem?.state).toBe("none");
-
-    const emptyItem = chats.find((i: { id: string }) => i.id === emptyChat.id);
-    expect(emptyItem?.state).toBe("none");
-
-    const cancelledPlan = plans.find((i: { id: string }) => i.id === mixedCancelled.id);
-    expect(cancelledPlan?.state).toBe("done");
-    expect(cancelledPlan?.parentChatId).toBe(mixedChat.id);
+    ]);
   });
 
   it("returns 404 for a non-member", async () => {
@@ -279,10 +218,11 @@ describe("GET /api/orgs/[githubLogin]/control-panel", () => {
     const ws = await createWorkspaceInOrg(owner.id, org.id);
     createdWorkspaceIds.push(ws.id);
 
-    const req = createAuthenticatedGetRequest(
-      `http://localhost/api/orgs/${org.githubLogin}/control-panel`,
-      { id: outsider.id, email: outsider.email ?? "", name: outsider.name ?? "" },
-    );
+    const req = createAuthenticatedGetRequest(`http://localhost/api/orgs/${org.githubLogin}/control-panel`, {
+      id: outsider.id,
+      email: outsider.email ?? "",
+      name: outsider.name ?? "",
+    });
     const res = await getControlPanel(req, { params: listParams(org.githubLogin) });
     expect(res.status).toBe(404);
   });
