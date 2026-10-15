@@ -273,7 +273,7 @@ function SidebarContent({
           label (no workspaces list to switch between). */}
       <WorkspaceSwitcher onWorkspaceChange={() => null} readOnly={isPublicViewer} collapsed={collapsed} />
       {/* Navigation */}
-      <nav className={cn("flex-1 overflow-y-auto", collapsed ? "p-2" : "p-4")}>
+      <nav className={cn("flex-1 min-h-0 overflow-y-auto", collapsed ? "p-2" : "p-4")}>
         <ul className="space-y-2">
           {navigationItems.map((item) => {
             const hasChildren = item.children && item.children.length > 0;
@@ -452,8 +452,6 @@ function SidebarContent({
           })}
         </ul>
       </nav>
-      {/* Spacer to push bottom content down */}
-      <div className="flex-1" />
       {/* Report Bug — hidden for public viewers (POSTs a feature on submit) */}
       {!isPublicViewer && (
         <div className={collapsed ? "p-2 pb-2" : "p-4 pb-2"}>
@@ -754,7 +752,7 @@ export function Sidebar({ user }: SidebarProps) {
           "md:flex-col md:fixed md:inset-y-0 md:z-0 transition-[width] duration-200 ease-in-out overflow-hidden",
         )}
       >
-        <div className="flex flex-col flex-grow bg-sidebar border-sidebar-border border-r">
+        <div className="flex flex-col flex-1 min-h-0 bg-sidebar border-sidebar-border border-r">
           <SidebarContent
             navigationItems={navigationItems}
             pathname={pathname}
