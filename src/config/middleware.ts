@@ -185,6 +185,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/agent/webhook", strategy: "prefix", access: "webhook" }, // has its own auth check
   { path: "/api/agent-runs/webhook", strategy: "prefix", access: "webhook" }, // session-less swarm callback; has its own token auth
   { path: "/api/strut-runs/webhook", strategy: "prefix", access: "webhook" }, // strut run.end callback; token in the query string, checked in the handler
+  { path: "/api/strut-jobs/events", strategy: "prefix", access: "webhook" }, // strut job.update (live artifacts); a job turn's row token in the query string, checked in the handler
   { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },
   { path: "/api/webhook/agent-trace", strategy: "prefix", access: "webhook" },
   { path: "/api/webhook/errors", strategy: "prefix", access: "webhook" }, // has its own key-based auth
