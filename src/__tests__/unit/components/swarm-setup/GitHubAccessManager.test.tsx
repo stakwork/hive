@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { GitHubAccessManager } from "@/components/swarm-setup/GitHubAccessManager";
 
 // Mock useWorkspace
@@ -9,6 +9,11 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: vi.fn(() => ({
     workspace: { slug: "test-workspace" },
   })),
+}));
+
+const mockChannel = { bind: vi.fn(), unbind: vi.fn() };
+vi.mock("@/hooks/usePusherChannel", () => ({
+  usePusherChannel: vi.fn((name: string | null) => (name ? mockChannel : null)),
 }));
 
 // Mock checkRepositoryAccess
@@ -79,7 +84,7 @@ describe("GitHubAccessManager", () => {
       await waitFor(() =>
         expect(screen.getByRole("link", { name: "Reconnect GitHub" })).toBeInTheDocument(),
       );
-      expect(screen.getByText("After granting access, refresh this page.")).toBeInTheDocument();
+      expect(screen.getByText(/come back here — we.ll pick it up automatically/)).toBeInTheDocument();
       // Badge with repo name
       expect(screen.getByText("org/repo")).toBeInTheDocument();
     });
@@ -127,7 +132,7 @@ describe("GitHubAccessManager", () => {
       await waitFor(() =>
         expect(screen.getByRole("link", { name: "Grant Access on GitHub" })).toBeInTheDocument(),
       );
-      expect(screen.getByText("After granting access, refresh this page.")).toBeInTheDocument();
+      expect(screen.getByText(/come back here — we.ll pick it up automatically/)).toBeInTheDocument();
     });
 
     it("calls getInstallationLink for installation-update state", async () => {
@@ -167,7 +172,7 @@ describe("GitHubAccessManager", () => {
       await waitFor(() =>
         expect(screen.getByRole("link", { name: "Install GitHub App" })).toBeInTheDocument(),
       );
-      expect(screen.getByText("After granting access, refresh this page.")).toBeInTheDocument();
+      expect(screen.getByText(/come back here — we.ll pick it up automatically/)).toBeInTheDocument();
     });
 
     it("calls getInstallationLink for other (app_not_installed) state", async () => {
@@ -202,9 +207,9 @@ describe("GitHubAccessManager", () => {
         ),
       ).toBeInTheDocument();
       expect(screen.queryByRole("link")).toBeNull();
-      expect(screen.queryByRole("button")).toBeNull();
+      expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Check again"]);
       expect(
-        screen.queryByText("After granting access, refresh this page."),
+        screen.queryByText(/come back here — we.ll pick it up automatically/),
       ).toBeNull();
       // Badge still visible
       expect(screen.getByText("org/repo")).toBeInTheDocument();
@@ -244,7 +249,7 @@ describe("GitHubAccessManager", () => {
         ),
       ).toBeInTheDocument();
       expect(screen.queryByRole("link")).toBeNull();
-      expect(screen.queryByRole("button")).toBeNull();
+      expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Check again"]);
       expect(screen.getByText("org/repo")).toBeInTheDocument();
     });
 
@@ -278,9 +283,9 @@ describe("GitHubAccessManager", () => {
         ),
       ).toBeInTheDocument();
       expect(screen.queryByRole("link")).toBeNull();
-      expect(screen.queryByRole("button")).toBeNull();
+      expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Check again"]);
       expect(
-        screen.queryByText("After granting access, refresh this page."),
+        screen.queryByText(/come back here — we.ll pick it up automatically/),
       ).toBeNull();
     });
 
@@ -296,7 +301,7 @@ describe("GitHubAccessManager", () => {
       // fetch may be called for getInstallationLink (errorType is 'other'), but even if it is,
       // buttonText comes back as undefined so no CTA is rendered
       // The key assertion: no button/link in the DOM
-      expect(screen.queryByRole("button")).toBeNull();
+      expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Check again"]);
       expect(screen.queryByRole("link")).toBeNull();
     });
   });
@@ -316,6 +321,53 @@ describe("GitHubAccessManager", () => {
         expect(screen.getByText("GitHub App Not Installed")).toBeInTheDocument(),
       );
       expect(screen.getByRole("button", { name: /loading/i })).toBeInTheDocument();
+    });
+  });
+
+  describe("re-checking while blocked", () => {
+    const blocked = { hasAccess: false, requiresInstallationUpdate: true, installationId: 7, error: "not accessible" };
+
+    async function renderBlocked() {
+      mockCheckAccess.mockResolvedValue(blocked);
+      mockInstallFetch();
+      render(<GitHubAccessManager repositoryUrl={REPO_URL} onAccessError={onAccessError} />);
+      await screen.findByText("Repository Not Accessible");
+      mockCheckAccess.mockResolvedValue({ hasAccess: true });
+    }
+
+    it("re-checks when the tab becomes visible again and clears the error", async () => {
+      await renderBlocked();
+
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      await waitFor(() => expect(onAccessError).toHaveBeenLastCalledWith(false));
+      expect(mockCheckAccess).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText("Repository Not Accessible")).toBeNull();
+    });
+
+    it("re-checks when the workspace channel says the installation changed", async () => {
+      await renderBlocked();
+      const usePusherChannel = (await import("@/hooks/usePusherChannel")).usePusherChannel as ReturnType<typeof vi.fn>;
+      expect(usePusherChannel).toHaveBeenLastCalledWith("workspace-test-workspace");
+
+      const [event, handler] = mockChannel.bind.mock.calls.at(-1)!;
+      expect(event).toBe("github-installation-updated");
+      await act(async () => handler());
+
+      await waitFor(() => expect(onAccessError).toHaveBeenLastCalledWith(false));
+    });
+
+    it("re-checks from the Check again button, keeping the screen up while it runs", async () => {
+      await renderBlocked();
+      mockCheckAccess.mockResolvedValue(blocked);
+
+      fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+
+      expect(screen.getByText("Repository Not Accessible")).toBeInTheDocument();
+      await waitFor(() => expect(mockCheckAccess).toHaveBeenCalledTimes(2));
+      expect(await screen.findByRole("button", { name: "Check again" })).toBeEnabled();
     });
   });
 });
