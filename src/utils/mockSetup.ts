@@ -8,6 +8,8 @@ import {
   LlmProvider,
   MilestoneStatus,
   PodState,
+  PodStatus,
+  PodUsageStatus,
   PoolState,
   RepositoryStatus,
   SourceControlOrgType,
@@ -19,6 +21,48 @@ import { slugify } from "./slugify";
 
 // Mock GitHub user ID counter (starts high to avoid conflicts)
 let mockGitHubIdCounter = 100000;
+
+/**
+ * Mock GitHub IDs come from an in-memory counter that resets on every server
+ * reload, so re-seed it above any installation id already in the DB.
+ */
+async function nextMockGitHubIds(): Promise<{ githubUserId: string; installationId: number }> {
+  const last = await db.sourceControlOrg.aggregate({ _max: { githubInstallationId: true } });
+  mockGitHubIdCounter = Math.max(mockGitHubIdCounter, (last._max.githubInstallationId ?? 0) + 1);
+  return { githubUserId: String(mockGitHubIdCounter++), installationId: mockGitHubIdCounter++ };
+}
+
+/**
+ * Ensures the mock workspace's swarm has 2 mock pods (one in use, one available)
+ * so the DB-backed Capacity page has something to show. No-op if pods exist.
+ */
+async function ensureMockPods(workspaceId: string): Promise<void> {
+  const swarm = await db.swarm.findFirst({ where: { workspaceId }, select: { id: true } });
+  if (!swarm) return;
+  const existing = await db.pod.count({ where: { swarmId: swarm.id, deletedAt: null } });
+  if (existing > 0) return;
+  await db.pod.createMany({
+    data: [
+      {
+        podId: `mock-pool-pod-${workspaceId}-0`,
+        swarmId: swarm.id,
+        password: "mock-password-0",
+        status: PodStatus.RUNNING,
+        usageStatus: PodUsageStatus.USED,
+        usageStatusMarkedAt: new Date(),
+        usageStatusMarkedBy: "mock-user",
+      },
+      {
+        podId: `mock-pool-pod-${workspaceId}-1`,
+        swarmId: swarm.id,
+        password: "mock-password-1",
+        status: PodStatus.RUNNING,
+        usageStatus: PodUsageStatus.UNUSED,
+      },
+    ],
+    skipDuplicates: true,
+  });
+}
 
 /**
  * Ensures a mock workspace and a completed swarm exist for a given user.
@@ -33,7 +77,10 @@ export async function ensureMockWorkspaceForUser(userId: string): Promise<string
     select: { id: true, slug: true },
   });
 
-  if (existing?.slug) return existing.slug;
+  if (existing?.slug) {
+    await ensureMockPods(existing.id);
+    return existing.slug;
+  }
 
   const baseSlug = "mock-stakgraph";
   let slugCandidate = baseSlug;
@@ -51,8 +98,7 @@ export async function ensureMockWorkspaceForUser(userId: string): Promise<string
   // Generate mock GitHub username from user's name or email
   const mockGitHubUsername =
     user?.name?.toLowerCase().replace(/\s+/g, "-") || user?.email?.split("@")[0] || "mock-user";
-  const mockGitHubUserId = String(mockGitHubIdCounter++);
-  const mockInstallationId = mockGitHubIdCounter++;
+  const { githubUserId: mockGitHubUserId, installationId: mockInstallationId } = await nextMockGitHubIds();
 
   // Create encrypted tokens for mock (optional - gracefully handle if encryption not available)
   let encryptedPoolApiKey: string | null = null;
@@ -212,6 +258,8 @@ export async function ensureMockWorkspaceForUser(userId: string): Promise<string
     return workspace;
   });
 
+  await ensureMockPods(workspace.id);
+
   // Seed mock data (features, tasks, janitor config, etc.)
   // This runs outside the transaction - workspace creation succeeds even if seeding fails
   try {
@@ -258,8 +306,7 @@ export async function ensureStakworkMockWorkspace(userId: string): Promise<strin
 
   // Generate mock GitHub username from user's name or email (stakwork-specific)
   const mockGitHubUsername = `${user?.name?.toLowerCase().replace(/\s+/g, "-") || user?.email?.split("@")[0] || "mock-user"}-stakwork`;
-  const mockGitHubUserId = String(mockGitHubIdCounter++);
-  const mockInstallationId = mockGitHubIdCounter++;
+  const { githubUserId: mockGitHubUserId, installationId: mockInstallationId } = await nextMockGitHubIds();
 
   // Create encrypted tokens for mock (optional - gracefully handle if encryption not available)
   let encryptedPoolApiKey: string | null = null;
