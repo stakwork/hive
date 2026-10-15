@@ -221,6 +221,42 @@ ${envEntries}
 }
 
 /**
+ * Parse env vars from existing PM2 config content
+ * Returns a map of service name -> env vars
+ */
+export function parseEnvVarsFromPM2Config(pm2Content: string): Map<string, Record<string, string>> {
+  const result = new Map<string, Record<string, string>>();
+
+  try {
+    // Match each app block with its name and env
+    const appBlockRegex = /\{\s*name:\s*["']([^"']+)["'][^}]*env:\s*\{([^}]*)\}/g;
+    let match;
+
+    while ((match = appBlockRegex.exec(pm2Content)) !== null) {
+      const serviceName = match[1];
+      const envBlock = match[2];
+      const envVars: Record<string, string> = {};
+
+      // Parse individual env var entries
+      const envVarRegex = /(\w+):\s*["']([^"']*)["']/g;
+      let envMatch;
+
+      while ((envMatch = envVarRegex.exec(envBlock)) !== null) {
+        envVars[envMatch[1]] = envMatch[2];
+      }
+
+      if (Object.keys(envVars).length > 0) {
+        result.set(serviceName, envVars);
+      }
+    }
+  } catch (error) {
+    console.warn("[parseEnvVarsFromPM2Config] Failed to parse PM2 config:", error);
+  }
+
+  return result;
+}
+
+/**
  * Extract all env vars from PM2 config, grouped by service name
  * Filters out script commands and PORT which are service config, not env vars
  * Returns a map of service name -> env vars array
