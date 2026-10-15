@@ -11,6 +11,7 @@ import {
   GitPullRequest,
   Globe,
   Image as ImageIcon,
+  ListChecks,
   Network,
   ScrollText,
   Search,
@@ -22,6 +23,7 @@ import type { ArtifactContents, ArtifactKind, ArtifactViewerProps } from "../../
 import { buildSharePath } from "../HtmlPageCard";
 import { addressParts, webAddress } from "./address";
 import { lineCount, plural } from "./lines";
+import { ClaimsInline, ClaimsPanel, claimsFact } from "./viewers/claims";
 import { CodeInline, CodePanel, codeLanguage } from "./viewers/code";
 import { DiffInline, DiffPanel, diffPatchText } from "./viewers/diff";
 import { GraphInline, GraphPanel } from "./viewers/graph";
@@ -180,6 +182,13 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Panel: TracePanel,
     fact: traceFact,
     copyText: (content) => content.selection,
+  },
+  claims: {
+    label: "Claims",
+    Icon: ListChecks,
+    Inline: ClaimsInline,
+    Panel: ClaimsPanel,
+    fact: claimsFact,
   },
 };
 

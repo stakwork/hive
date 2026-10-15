@@ -168,6 +168,19 @@ export type CanvasMessageSource =
     }
   | {
       /**
+       * A new version of a job's claims card made from the card itself — a
+       * Verify, a person's answer to an open check, a new claim (strut
+       * plans/job-claims.md §7) — with no turn and no agent
+       * (`services/strut-jobs/claims.ts`). Renders as a quiet line with the
+       * card under it; replayed to the model as a notice from the user
+       * (`toModelMessages`).
+       */
+      kind: "job_claims";
+      jobId: string;
+      title?: string;
+    }
+  | {
+      /**
        * The end of a turn the user stopped — after whatever it got
        * through. Renders as a muted "Stopped" line; replayed to the model
        * as a notice from the user (`toModelMessages`).
