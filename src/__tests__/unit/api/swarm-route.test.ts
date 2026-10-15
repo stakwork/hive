@@ -50,6 +50,10 @@ vi.mock("@/services/workspace", () => ({
   validateWorkspaceAccessById: vi.fn(),
 }));
 
+vi.mock("@/lib/helpers/org-workspace", () => ({
+  setOrgDefaultWorkspaceIfUnset: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("@/services/swarm/db", () => ({
   saveOrUpdateSwarm: vi.fn(),
 }));
@@ -110,6 +114,8 @@ const mockRandomUUID = randomUUID as Mock;
 // Import and setup db mocks
 import { db } from "@/lib/db";
 const mockDb = db as any;
+
+import { setOrgDefaultWorkspaceIfUnset } from "@/lib/helpers/org-workspace";
 
 describe("POST /api/swarm - Unit Tests", () => {
   let mockSwarmServiceInstance: {
@@ -556,6 +562,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(response.status).toBe(503);
       expect(data.success).toBe(false);
       expect(data.message).toBe("Service temporarily unavailable");
+      expect(setOrgDefaultWorkspaceIfUnset).not.toHaveBeenCalled();
 
       // Verify placeholder swarm was marked as FAILED
       expect(mockDb.swarm.update).toHaveBeenCalledWith({
@@ -785,6 +792,19 @@ describe("POST /api/swarm - Unit Tests", () => {
         id: "placeholder-swarm-123",
         status: SwarmStatus.PENDING,
       });
+    });
+
+    test("should set org default workspace after ACTIVE save, even if helper throws", async () => {
+      vi.mocked(setOrgDefaultWorkspaceIfUnset).mockRejectedValueOnce(new Error("boom"));
+      mockSwarmServiceInstance.createSwarm.mockResolvedValue({
+        data: { swarm_id: "s1", address: "s1.sphinx.chat", x_api_key: "k", ec2_id: "i-1" },
+      });
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "placeholder-swarm-123", status: SwarmStatus.ACTIVE });
+
+      const response = await POST(createMockRequest(validSwarmData));
+
+      expect(response.status).toBe(200);
+      expect(setOrgDefaultWorkspaceIfUnset).toHaveBeenCalledWith(validSwarmData.workspaceId);
     });
 
     test("should create placeholder swarm then update after successful service creation", async () => {
