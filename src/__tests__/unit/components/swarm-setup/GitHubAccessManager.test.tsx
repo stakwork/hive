@@ -331,7 +331,9 @@ describe("GitHubAccessManager", () => {
       mockCheckAccess.mockResolvedValue(blocked);
       mockInstallFetch();
       render(<GitHubAccessManager repositoryUrl={REPO_URL} onAccessError={onAccessError} />);
-      await screen.findByText("Repository Not Accessible");
+      // The title commits before its effects run. The link is fetched from the same effects that
+      // attach the visibilitychange listener and the Pusher binding, so once it shows they're live.
+      await screen.findByRole("link", { name: "Grant Access on GitHub" });
       mockCheckAccess.mockResolvedValue({ hasAccess: true });
     }
 
