@@ -1,128 +1,96 @@
 /**
- * Pure state derivation for Control panel items — no db, no React, so both the
- * server service (`./control-panel.ts`) and client rendering can import it and
- * unit tests need no Prisma.
- *
- * The plan predicates deliberately mirror the attention feed's four signals
- * (`src/services/attention/topItems.ts`: halted / awaiting-reply /
- * plan-question / ready-to-review) minus its ownership filter — a control panel
- * item is a thread the user *messaged*, which is a wider net than
- * "created or assigned". Running comes from the same predicate the
- * canvas projector uses (`deriveFeatureRunState`).
+ * Pure derivation for the org page's chat list — no db, no React, so both
+ * the server service (`./control-panel.ts`) and the client list can import
+ * it and unit tests need no Prisma.
  */
 import { generateTitle } from "@/lib/ai/conversationHelpers";
-import { deriveFeatureRunState, formatRunningLabel } from "@/lib/canvas/feature-live-state";
-import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
-import type { ControlPanelItem, ControlPanelItemState } from "@/types/control-panel";
+import {
+  artifactIdentity,
+  jobIdOfArtifact,
+  latestArtifacts,
+  parseArtifactContent,
+  parseArtifactRefs,
+} from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
+import type { ControlPanelItem, ControlPanelJob, ControlPanelPullRequest } from "@/types/control-panel";
 
-const HALTED_WORKFLOW: ReadonlySet<string> = new Set(["HALTED", "FAILED", "ERROR"]);
+// ─── Jobs and pull requests ─────────────────────────────────────────────
 
-export interface LastMessageSummary {
-  /** Prisma `ChatRole` value (`USER` / `ASSISTANT` / ...). */
-  role: string;
-  /** True when the message carries a FORM artifact (a clarifying question). */
-  hasForm: boolean;
-}
-
-export interface PlanStateInput {
+/** One job turn's `StrutRun`, as the service selects it. */
+export interface JobTurnRow {
+  jobId: string;
   status: string;
-  workflowStatus: string | null;
-  tasks: ReadonlyArray<{ status: string; workflowStatus: string | null; mode?: string | null }>;
-  lastMessage: LastMessageSummary | null;
-}
-
-export interface DerivedState {
-  state: ControlPanelItemState;
-  label: string;
-}
-
-function featureStatusLabel(status: string): string {
-  return (FEATURE_STATUS_LABELS as Record<string, string>)[status] ?? status;
+  createdAt: Date;
+  settledAt: Date | null;
 }
 
 /**
- * Input for a Jamie chat parent's control-panel StateDot.
- *
- * `nestedStatuses` are raw Feature `status` values (not nested plan
- * `state`). `derivePlanState` maps `CANCELLED` to `done`; cancelled
- * nested features must not green the parent.
+ * A chat's jobs from its job-turn runs: working while any turn is PENDING,
+ * newest activity first. `titles` holds each job's title, from its launch.
  */
-export interface ChatStateInput {
-  isRunning: boolean;
-  hasPendingQuestion: boolean;
-  nestedStatuses: readonly string[];
+export function chatJobs(runs: readonly JobTurnRow[], titles: ReadonlyMap<string, string>): ControlPanelJob[] {
+  const jobs = new Map<string, ControlPanelJob>();
+  for (const run of runs) {
+    const at = (run.settledAt ?? run.createdAt).toISOString();
+    const job = jobs.get(run.jobId);
+    if (!job) {
+      jobs.set(run.jobId, {
+        id: run.jobId,
+        title: titles.get(run.jobId) ?? "Job",
+        working: run.status === "PENDING",
+        lastActivityAt: at,
+      });
+      continue;
+    }
+    if (run.status === "PENDING") job.working = true;
+    if (at > job.lastActivityAt) job.lastActivityAt = at;
+  }
+  return sortByActivity([...jobs.values()]);
+}
+
+/** Loose shape of one stored org-canvas message — only what the PRs are read from. */
+interface StoredMessage {
+  artifacts?: unknown;
+  source?: { kind?: string; jobId?: string } | null;
 }
 
 /**
- * Derive a Jamie chat's control panel state. Precedence: running →
- * question → done (every nested feature `COMPLETED`) → none.
- *
- * Applied to every conversation `getControlPanelItems` emits
- * (`source: "org-canvas"` only). `shapeControlPanelItems` has no
- * `source` on `ConversationRow`, so if the shaper is ever reused for
- * other chat sources, pass empty `nestedStatuses` (or gate the `done`
- * clause) so non-Jamie rows cannot go green.
+ * The pull requests a chat's messages carry, each as its newest card has
+ * it (`latestArtifacts`: a later turn's ref is a newer version of the same
+ * PR), newest report first, credited to the job whose row carried it
+ * (`jobIdOfArtifact`). Only inline PR refs are read: that is how a job's
+ * row stores one.
  */
-export function deriveChatState(input: ChatStateInput): ControlPanelItemState {
-  const { isRunning, hasPendingQuestion, nestedStatuses } = input;
-  if (isRunning) return "running";
-  if (hasPendingQuestion) return "question";
-  if (nestedStatuses.length > 0 && nestedStatuses.every((status) => status === "COMPLETED")) {
-    return "done";
-  }
-  return "none";
+export function chatPullRequests(messages: readonly StoredMessage[]): ControlPanelPullRequest[] {
+  const parsed = messages.map((message) => ({
+    artifacts: parseArtifactRefs(message.artifacts),
+    source: message.source?.kind ? { kind: message.source.kind, jobId: message.source.jobId } : undefined,
+  }));
+  const all = parsed.flatMap((message) => message.artifacts ?? []);
+  const reportedAt = new Map(all.map((ref, i) => [ref, i]));
+  return latestArtifacts(all)
+    .sort((a, b) => reportedAt.get(b)! - reportedAt.get(a)!)
+    .flatMap((ref) => {
+      if (ref.kind !== "pull_request" || ref.source.type !== "inline") return [];
+      const content = parseArtifactContent("pull_request", ref.source.content);
+      if (!content) return [];
+      const jobId = jobIdOfArtifact(parsed, ref);
+      return [
+        {
+          identity: artifactIdentity(ref),
+          title: ref.title,
+          url: content.url,
+          repo: content.repo,
+          number: content.number,
+          state: content.state,
+          ...(jobId ? { jobId } : {}),
+        },
+      ];
+    });
 }
 
-/**
- * Derive a plan's control panel state. Precedence: done → halted →
- * question (only if not running) → awaiting-reply (only if not running) →
- * review → running → status.
- */
-export function derivePlanState(input: PlanStateInput): DerivedState {
-  const { status, workflowStatus, tasks, lastMessage } = input;
-  const run = deriveFeatureRunState(workflowStatus, tasks);
-  const isRunning = run.plannerRunning || run.agentsRunningCount > 0;
+// ─── The active chat ────────────────────────────────────────────────────
 
-  if (status === "COMPLETED" || status === "CANCELLED") {
-    return { state: "done", label: featureStatusLabel(status) };
-  }
-  if (status === "ERROR" || (workflowStatus && HALTED_WORKFLOW.has(workflowStatus)) || run.hasErrorTask) {
-    return { state: "halted", label: "Halted" };
-  }
-  if (!isRunning && lastMessage?.role === "ASSISTANT" && lastMessage.hasForm) {
-    return { state: "question", label: "Question waiting" };
-  }
-  if (!isRunning && lastMessage?.role === "ASSISTANT" && tasks.length === 0) {
-    return { state: "awaiting-reply", label: "Awaiting your reply" };
-  }
-  if (workflowStatus === "COMPLETED") {
-    return { state: "review", label: "Ready to review" };
-  }
-  if (isRunning) {
-    return { state: "running", label: formatRunningLabel(run) };
-  }
-  return { state: "none", label: featureStatusLabel(status) };
-}
-
-/** States that mean "waiting on the user" — the amber ring on a row's dot. */
-export const NEEDS_YOU_STATES: ReadonlySet<ControlPanelItemState> = new Set([
-  "halted",
-  "question",
-  "awaiting-reply",
-  "review",
-]);
-
-const PREVIEW_MAX_LENGTH = 90;
-
-/** One line of a message for a row's "since you" text: whitespace collapsed, cut with an ellipsis. */
-export function previewLine(text: string): string {
-  const line = text.replace(/\s+/g, " ").trim();
-  return line.length > PREVIEW_MAX_LENGTH ? `${line.slice(0, PREVIEW_MAX_LENGTH - 1)}…` : line;
-}
-
-// ─── The chat on stage ──────────────────────────────────────────────────
-
-/** The chat on stage, as the canvas chat store holds it. */
+/** The active chat, as the canvas chat store holds it. */
 export interface ActiveChatSnapshot {
   /** Local store id — the item id until the server row exists. */
   localId: string;
@@ -130,109 +98,80 @@ export interface ActiveChatSnapshot {
   serverId: string | null;
   /** ISO of the newest message, from anyone; null while the chat is empty. */
   lastMessageAt: string | null;
-  /** Jamie's last message, when Jamie spoke last and the turn has settled. */
-  lastReply: string | null;
   hasMessages: boolean;
   isStreaming: boolean;
   /** Store title when set (LLM / seeded); null while still generating. */
   title: string | null;
 }
 
-function sinceYouOf(chat: ActiveChatSnapshot): string {
-  if (chat.isStreaming) return "Jamie is replying";
-  if (chat.lastReply) return previewLine(chat.lastReply);
-  return chat.hasMessages ? "No reply yet" : "Empty chat";
-}
-
 /**
- * Label for an unlisted on-stage chat row. Prefer the store title (LLM /
+ * Label for the active chat's row while the server has not listed it. Prefer the store title (LLM /
  * seeded) so the live list does not stay stuck on a truncated first
  * message until the next list refetch.
  */
-export function unlistedOnStageChatTitle(
-  chat: ActiveChatSnapshot,
-  messages: unknown[] | undefined,
-): string {
+export function activeChatTitle(chat: ActiveChatSnapshot, messages: unknown[] | undefined): string {
   if (chat.title) return chat.title;
   if (chat.hasMessages && messages) return generateTitle(messages);
   return "New chat";
 }
 
 /**
- * The list row for the chat on stage before the server lists it. A fresh
+ * The list row for the active chat before the server lists it. A fresh
  * chat has no `SharedConversation` row until its first turn is persisted,
  * and the list fetch trails that by a moment; this row stands in until
- * then, saying what the server will say, so the hand-over is invisible.
+ * then, so the hand-over is invisible.
  */
 export function activeChatItem(chat: ActiveChatSnapshot, startedAt: string, title: string): ControlPanelItem {
-  const id = chat.serverId ?? chat.localId;
   return {
-    key: `chat:${id}`,
-    kind: "chat",
-    id,
+    id: chat.serverId ?? chat.localId,
     title,
-    workspaceSlug: null,
-    workspaceId: null,
-    workspaceName: null,
     lastActivityAt: chat.lastMessageAt ?? startedAt,
-    sinceYou: sinceYouOf(chat),
-    state: chat.isStreaming ? "running" : "none",
-    unread: false,
+    working: chat.isStreaming,
+    jobs: [],
+    pullRequests: [],
   };
 }
 
 /**
- * The server's row for the chat on stage, brought up to what the store
- * already knows: it is read (it is on stage), it is working while Jamie
- * replies, and a message the store holds that the server has not listed
- * yet counts now — so a fetch that raced a send can't move the row back.
+ * The server's row for the active chat, brought up to what the store
+ * already knows: it is working while Jamie replies, and a message the
+ * store holds that the server has not listed yet counts now — so a fetch
+ * that raced a send can't move the row back.
  */
 export function overlayActiveChat(item: ControlPanelItem, chat: ActiveChatSnapshot): ControlPanelItem {
   const storeAhead = !!chat.lastMessageAt && chat.lastMessageAt > item.lastActivityAt;
   return {
     ...item,
-    unread: false,
     lastActivityAt: storeAhead ? chat.lastMessageAt! : item.lastActivityAt,
-    state: chat.isStreaming ? "running" : item.state,
-    sinceYou: chat.isStreaming || storeAhead ? sinceYouOf(chat) : item.sinceYou,
+    working: item.working || chat.isStreaming,
     title: chat.title || item.title,
   };
 }
 
 // ─── Search + order ─────────────────────────────────────────────────────
 
-/** Case-insensitive substring match on title, workspace and the since-you line. */
+/** Case-insensitive substring match on the chat's title, its jobs' and its pull requests'. */
 export function matchesControlPanelQuery(item: ControlPanelItem, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return [item.title, item.workspaceName ?? "", item.sinceYou].some((text) => text.toLowerCase().includes(q));
+  return [item.title, ...item.jobs.map((j) => j.title), ...item.pullRequests.map((p) => p.title)].some((text) =>
+    text.toLowerCase().includes(q),
+  );
 }
 
 /** Newest activity first. Stable on ties so server order survives. */
-export function sortControlPanelItems(items: ControlPanelItem[]): ControlPanelItem[] {
+export function sortByActivity<T extends { lastActivityAt: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
 }
 
-// ─── Hierarchy + day groups ─────────────────────────────────────────────
-
-export interface ControlPanelRow {
-  item: ControlPanelItem;
-  /** 0 = top level, 1 = plan nested under the Jamie chat it came from. */
-  depth: number;
-  /** Key of the chat this row nests under (depth 1 only). */
-  parentKey?: string;
-  /** Top-level chats: how many plans nest under it (drives the collapse chevron). */
-  childCount?: number;
-  /** Newest activity on the row — for a chat, including its nested plans — which is what it is sorted and grouped by. */
-  latestAt: string;
-}
+// ─── Day groups ─────────────────────────────────────────────────────────
 
 export interface ControlPanelGroup {
   /** `YYYY-MM-DD` of the group's day, local time. */
   key: string;
-  /** "Today", "Yesterday", or a long-form date. */
+  /** "Today", "Yesterday", or a short date ("Oct 13"). */
   label: string;
-  rows: ControlPanelRow[];
+  items: ControlPanelItem[];
 }
 
 function localDayKey(date: Date): string {
@@ -249,74 +188,58 @@ function dayLabel(date: Date, now: Date): string {
   yesterday.setDate(now.getDate() - 1);
   if (key === localDayKey(yesterday)) return "Yesterday";
   return date.toLocaleDateString(undefined, {
-    month: "long",
+    month: "short",
     day: "numeric",
     ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
   });
 }
 
-/**
- * Pull a chat and the plans nested under it out of a flat item list.
- * Used by the optimistic archive/restore move so nested plans follow
- * the parent instead of hanging in the other collection.
- */
-export function takeChatFamily(
-  items: ControlPanelItem[],
-  chatId: string,
-): { family: ControlPanelItem[]; rest: ControlPanelItem[] } {
-  const family: ControlPanelItem[] = [];
-  const rest: ControlPanelItem[] = [];
-  for (const item of items) {
-    if ((item.kind === "chat" && item.id === chatId) || (item.kind === "plan" && item.parentChatId === chatId)) {
-      family.push(item);
-    } else {
-      rest.push(item);
-    }
+/** Chats grouped by the day of their newest activity, newest first. */
+export function buildControlPanelGroups(items: ControlPanelItem[], now: Date = new Date()): ControlPanelGroup[] {
+  const groups: ControlPanelGroup[] = [];
+  for (const item of sortByActivity(items)) {
+    const date = new Date(item.lastActivityAt);
+    const key = localDayKey(date);
+    const group = groups[groups.length - 1];
+    if (group?.key === key) group.items.push(item);
+    else groups.push({ key, label: dayLabel(date, now), items: [item] });
   }
-  return { family, rest };
+  return groups;
 }
 
-function orderChatFamily(family: ControlPanelItem[]): ControlPanelItem[] {
-  const chat = family.find((item) => item.kind === "chat");
-  const plans = family.filter((item) => item.kind === "plan");
-  return chat ? [chat, ...plans] : family;
-}
+// ─── Archive ────────────────────────────────────────────────────────────
 
-/**
- * Optimistic archive: drop the chat and its nested plans from Active
- * and insert them at the top of Archive (newest `archivedAt` first).
- */
+/** Optimistic archive: the chat leaves Active for the top of Archive. */
 export function moveChatToArchive(
   items: ControlPanelItem[],
   archivedItems: ControlPanelItem[],
   chatId: string,
   archivedAt: string,
 ): { items: ControlPanelItem[]; archivedItems: ControlPanelItem[] } {
-  const { family, rest } = takeChatFamily(items, chatId);
-  if (family.length === 0) return { items, archivedItems };
-  const stamped = family.map((item) => (item.kind === "chat" ? { ...item, archivedAt } : item));
-  const { rest: archivedRest } = takeChatFamily(archivedItems, chatId);
-  return { items: rest, archivedItems: [...orderChatFamily(stamped), ...archivedRest] };
+  const chat = items.find((item) => item.id === chatId);
+  if (!chat) return { items, archivedItems };
+  return {
+    items: items.filter((item) => item.id !== chatId),
+    archivedItems: [{ ...chat, archivedAt }, ...archivedItems.filter((item) => item.id !== chatId)],
+  };
 }
 
-/**
- * Optimistic restore: drop the chat and its nested plans from Archive
- * and insert them at the top of Active.
- */
+/** Optimistic restore: the chat leaves Archive for the top of Active. */
 export function moveChatToActive(
   items: ControlPanelItem[],
   archivedItems: ControlPanelItem[],
   chatId: string,
 ): { items: ControlPanelItem[]; archivedItems: ControlPanelItem[] } {
-  const { family, rest } = takeChatFamily(archivedItems, chatId);
-  if (family.length === 0) return { items, archivedItems };
-  const stamped = family.map((item) => (item.kind === "chat" ? { ...item, archivedAt: null } : item));
-  const { rest: itemsRest } = takeChatFamily(items, chatId);
-  return { items: [...orderChatFamily(stamped), ...itemsRest], archivedItems: rest };
+  const chat = archivedItems.find((item) => item.id === chatId);
+  if (!chat) return { items, archivedItems };
+  return {
+    items: [{ ...chat, archivedAt: null }, ...items.filter((item) => item.id !== chatId)],
+    archivedItems: archivedItems.filter((item) => item.id !== chatId),
+  };
 }
 
 /**
- * Place the on-stage chat into Active or Archive without re-injecting an
+ * Place the active chat into Active or Archive without re-injecting an
  * archived chat into the active list. Overlay live store data onto whichever
  * row already holds it; only a brand-new chat (in neither list) is prepended
  * into Active.
@@ -325,148 +248,26 @@ export function resolveControlPanelLists(
   items: ControlPanelItem[],
   archivedItems: ControlPanelItem[],
   activeChat: ActiveChatSnapshot | null,
-  opts: { chatOnStage: boolean; startedAt: string; titleForNew: string },
+  opts: { startedAt: string; titleForNew: string },
 ): { displayItems: ControlPanelItem[]; displayArchivedItems: ControlPanelItem[] } {
-  if (!activeChat) {
-    return { displayItems: items, displayArchivedItems: archivedItems };
-  }
-  const key = `chat:${activeChat.serverId ?? activeChat.localId}`;
-  if (items.some((item) => item.key === key)) {
+  if (!activeChat) return { displayItems: items, displayArchivedItems: archivedItems };
+  const id = activeChat.serverId ?? activeChat.localId;
+  if (items.some((item) => item.id === id)) {
     return {
-      displayItems: items.map((item) => (item.key === key ? overlayActiveChat(item, activeChat) : item)),
+      displayItems: items.map((item) => (item.id === id ? overlayActiveChat(item, activeChat) : item)),
       displayArchivedItems: archivedItems,
     };
   }
-  if (archivedItems.some((item) => item.key === key)) {
+  if (archivedItems.some((item) => item.id === id)) {
     return {
       displayItems: items,
-      displayArchivedItems: archivedItems.map((item) =>
-        item.key === key ? overlayActiveChat(item, activeChat) : item,
-      ),
+      displayArchivedItems: archivedItems.map((item) => (item.id === id ? overlayActiveChat(item, activeChat) : item)),
     };
   }
-  if (!activeChat.hasMessages && !opts.chatOnStage) {
-    return { displayItems: items, displayArchivedItems: archivedItems };
-  }
+  // An empty new chat has nothing to list yet; it gets its row with its first message.
+  if (!activeChat.hasMessages) return { displayItems: items, displayArchivedItems: archivedItems };
   return {
     displayItems: [activeChatItem(activeChat, opts.startedAt, opts.titleForNew), ...items],
     displayArchivedItems: archivedItems,
   };
-}
-
-/**
- * Archive is a flat list of chats sorted by `archivedAt` desc, with each
- * chat's plans nested directly beneath it. Do not run this through
- * `buildControlPanelGroups` — that pipeline day-buckets rows and only
- * nests a plan whose parent is in the same array.
- */
-export function buildArchivedRows(items: ControlPanelItem[]): ControlPanelRow[] {
-  const chats = items.filter((item) => item.kind === "chat");
-  const chatIds = new Set(chats.map((item) => item.id));
-  const childrenByChat = new Map<string, ControlPanelItem[]>();
-  for (const item of items) {
-    if (item.kind === "plan" && item.parentChatId && chatIds.has(item.parentChatId)) {
-      const list = childrenByChat.get(item.parentChatId) ?? [];
-      list.push(item);
-      childrenByChat.set(item.parentChatId, list);
-    }
-  }
-  const sortedChats = [...chats].sort((a, b) => {
-    const byArchived = (b.archivedAt ?? "").localeCompare(a.archivedAt ?? "");
-    return byArchived !== 0 ? byArchived : b.lastActivityAt.localeCompare(a.lastActivityAt);
-  });
-  const rows: ControlPanelRow[] = [];
-  for (const chat of sortedChats) {
-    const children = sortControlPanelItems(childrenByChat.get(chat.id) ?? []);
-    rows.push({
-      item: chat,
-      depth: 0,
-      childCount: children.length,
-      latestAt: chat.archivedAt ?? chat.lastActivityAt,
-    });
-    for (const child of children) {
-      rows.push({ item: child, depth: 1, parentKey: chat.key, latestAt: child.lastActivityAt });
-    }
-  }
-  return rows;
-}
-
-/** Rows the keyboard can land on. Collapsed chats hide their plans; a collapsed Archive is skipped entirely. */
-export function visibleControlPanelItems(
-  groups: ControlPanelGroup[],
-  archivedRows: ControlPanelRow[],
-  expandedKeys: ReadonlySet<string>,
-  archivedExpanded: boolean,
-): ControlPanelItem[] {
-  const fromGroups = groups.flatMap((g) =>
-    g.rows.filter((r) => !(r.parentKey && !expandedKeys.has(r.parentKey))).map((r) => r.item),
-  );
-  if (!archivedExpanded) return fromGroups;
-  const fromArchive = archivedRows
-    .filter((r) => !(r.parentKey && !expandedKeys.has(r.parentKey)))
-    .map((r) => r.item);
-  return [...fromGroups, ...fromArchive];
-}
-
-/**
- * Turn the flat item list into the control panel's list: Jamie chats
- * are the rows, and the plans a chat spawned nest under it. A plan
- * whose chat is not listed is left out. Everything is grouped by the
- * day of its newest activity, from anyone — a chat takes the newest
- * among itself and its nested plans, so a planner posting on a plan
- * floats its chat up into Today.
- *
- * `keep` filters items; a chat stays when it or any nested plan is
- * kept, and only the kept plans render under it.
- */
-export function buildControlPanelGroups(
-  items: ControlPanelItem[],
-  keep: (item: ControlPanelItem) => boolean = () => true,
-  now: Date = new Date(),
-): ControlPanelGroup[] {
-  const chatIds = new Set(items.filter((i) => i.kind === "chat").map((i) => i.id));
-
-  const childrenByChat = new Map<string, ControlPanelItem[]>();
-  const topLevel: ControlPanelItem[] = [];
-  for (const item of items) {
-    if (item.kind === "chat") {
-      topLevel.push(item);
-      continue;
-    }
-    if (item.parentChatId && chatIds.has(item.parentChatId)) {
-      const list = childrenByChat.get(item.parentChatId) ?? [];
-      list.push(item);
-      childrenByChat.set(item.parentChatId, list);
-    }
-  }
-
-  interface Entry {
-    item: ControlPanelItem;
-    children: ControlPanelItem[];
-    sortAt: string;
-  }
-  const entries: Entry[] = [];
-  for (const item of topLevel) {
-    const children = sortControlPanelItems(childrenByChat.get(item.id) ?? []).filter(keep);
-    if (!keep(item) && children.length === 0) continue;
-    const sortAt = [item.lastActivityAt, ...children.map((c) => c.lastActivityAt)].sort().at(-1)!;
-    entries.push({ item, children, sortAt });
-  }
-  entries.sort((a, b) => b.sortAt.localeCompare(a.sortAt));
-
-  const groups: ControlPanelGroup[] = [];
-  for (const entry of entries) {
-    const date = new Date(entry.sortAt);
-    const key = localDayKey(date);
-    let group = groups[groups.length - 1];
-    if (!group || group.key !== key) {
-      group = { key, label: dayLabel(date, now), rows: [] };
-      groups.push(group);
-    }
-    group.rows.push({ item: entry.item, depth: 0, childCount: entry.children.length, latestAt: entry.sortAt });
-    for (const child of entry.children) {
-      group.rows.push({ item: child, depth: 1, parentKey: entry.item.key, latestAt: child.lastActivityAt });
-    }
-  }
-  return groups;
 }

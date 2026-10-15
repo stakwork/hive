@@ -26,7 +26,7 @@ import { useChatOrgLogin } from "../useArtifactPanel";
 import { LineCounts } from "./diff";
 
 /** GitHub's colours for a pull request's state — the ones the task page's pull request card wears. */
-const STATE: Record<PullRequestState, { label: string; Icon: LucideIcon; color: string }> = {
+export const PULL_REQUEST_STATE: Record<PullRequestState, { label: string; Icon: LucideIcon; color: string }> = {
   open: { label: "Open", Icon: GitPullRequest, color: "#238636" },
   draft: { label: "Draft", Icon: GitPullRequestDraft, color: "#6e7681" },
   merged: { label: "Merged", Icon: GitMerge, color: "#8957e5" },
@@ -69,7 +69,7 @@ function CheckMark({ status }: { status: PullRequestCheck["status"] }) {
 }
 
 export function PullRequestInline({ content }: ArtifactViewerProps<"pull_request">) {
-  const state = STATE[content.state];
+  const state = PULL_REQUEST_STATE[content.state];
   const files = useMemo(() => (content.diffs?.length ? parseDiffs(content.diffs) : null), [content.diffs]);
   const passed = passedOfRan(content.checks);
   const fromTo = branches(content);
@@ -177,7 +177,7 @@ function FixButton({ jobId, event }: { jobId: string; event: NonNullable<ReturnT
 }
 
 export function PullRequestPanel({ artifact, content, jobId }: ArtifactViewerProps<"pull_request">) {
-  const state = STATE[content.state];
+  const state = PULL_REQUEST_STATE[content.state];
   const fromTo = branches(content);
   const checks = useMemo(
     () => [...(content.checks ?? [])].sort((a, b) => CHECK_ORDER[a.status] - CHECK_ORDER[b.status]),

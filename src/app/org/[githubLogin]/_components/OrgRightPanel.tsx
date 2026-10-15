@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CanvasNode } from "system-canvas";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, Layers, MousePointerClick, Network } from "lucide-react";
+import { Layers, MousePointerClick, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { NodeDetail } from "./NodeDetail";
 import { MultiNodeDetail } from "./MultiNodeDetail";
@@ -12,18 +12,13 @@ import { SidebarChat, SidebarChatActions, TokenCounter } from "./SidebarChat";
 import type { InternalEdge } from "../connections/OrgCanvasBackground";
 import { useAutomationInbox, type InboxRun } from "../_state/useAutomationInbox";
 import { formatRelativeTime } from "./CanvasHistoryPopover";
-import { PlanStage, taskNodeFor, type ControlPanelStageProps } from "./control-panel/ControlPanelStage";
-import type { ControlPanelFocus } from "./control-panel/types";
-import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
+import { useCanvasChatStore } from "../_state/canvasChatStore";
+import { latestArtifacts } from "../_state/canvasChatArtifacts";
+import { ToolbarButton } from "./artifacts/chrome";
+import { useActiveArtifacts, useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 import { ActionTip } from "./ActionTip";
 
 type Tab = "chat" | "details";
-
-/** The plan/task on (or last on) the control panel's stage, with the workspace its page needs. */
-interface StageDetail {
-  focus: ControlPanelFocus;
-  workspace: { id: string; slug: string } | null;
-}
 
 interface OrgRightPanelProps {
   githubLogin: string;
@@ -39,30 +34,24 @@ interface OrgRightPanelProps {
   selectedNodes: CanvasNode[];
   selectedNodesInternalEdges: InternalEdge[];
   /**
-   * Control panel mode: this panel is the stage. The tab strip gives way
-   * to the stage's tabs, and what shows follows the control panel's focus —
-   * the Jamie chat (the same mounted `<SidebarChat>`, so switching views
-   * never remounts it) or a plan/task through `NodeDetail`, as the
-   * Details tab renders a canvas node.
+   * The Chats view: this panel is the page's main column — the chat alone
+   * under its title, no tabs, with the artifacts pane's toggle in the bar.
+   * `onShowList` is set while the chat list is hidden.
    */
-  controlPanel?: ControlPanelStageProps;
-  /** Switch the org page to the control panel (the chat grows into its stage). Absent where it doesn't apply. */
-  onOpenControlPanel?: () => void;
+  chatsView?: { onShowList?: () => void };
 }
 
 /**
- * Tabbed right sidebar for the canvas view. Two tabs:
+ * The chat — the Chats view's main column, or the canvas's tabbed right
+ * sidebar. On the canvas, two tabs:
  *
  * - **Chat** — `<SidebarChat />`. The default landing tab; the
  *   agent's home base on the canvas page.
  * - **Details** — node summary. Auto-selected when a node is clicked.
  *
- * One bar in both views: tabs on the left, the chat's actions (`SidebarChatActions`,
- * the chat itself renders headerless) and the canvas ⇄ control panel toggle on
- * the right. In control panel mode (`controlPanel` set) the same panel is the
- * stage: Chat and Details follow, and set, what is on stage; the inbox
- * badge steps aside; a plan is the
- * real plan page.
+ * One bar: tabs (on the Chats view, the chat's title) on the left, the
+ * chat's actions (`SidebarChatActions`; the chat itself renders headerless)
+ * on the right.
  *
  * **Both tabs stay mounted.** Inactive tabs are hidden via the
  * `hidden` attribute rather than unmounted. This is load-bearing for
@@ -79,8 +68,7 @@ export function OrgRightPanel({
   selectedNodes,
   selectedNodesInternalEdges,
   chatReady,
-  controlPanel,
-  onOpenControlPanel,
+  chatsView,
 }: OrgRightPanelProps) {
   // Default to Chat — the canvas's primary agent surface. Auto-flip
   // to Details when the user clicks a node. Manual tab clicks
@@ -101,35 +89,7 @@ export function OrgRightPanel({
 
   const { count, runs, openRun } = useAutomationInbox(githubLogin, { chatReady });
 
-  // On the control panel what shows follows its focus, not the tabs. The
-  // last plan/task on stage stays mounted (hidden) while the chat is up —
-  // as the Details tab keeps a canvas node — so flipping back is instant,
-  // and the Details tab brings it back.
-  const stage = controlPanel ?? null;
-  const stageFocus = stage?.focus ?? null;
-  const focusedItem = stage?.focusedItem ?? null;
-  const currentDetail: StageDetail | null =
-    stageFocus && stageFocus.kind !== "chat"
-      ? {
-          focus: stageFocus,
-          workspace:
-            focusedItem?.workspaceId && focusedItem.workspaceSlug
-              ? { id: focusedItem.workspaceId, slug: focusedItem.workspaceSlug }
-              : null,
-        }
-      : null;
-  const [lastDetail, setLastDetail] = useState<StageDetail | null>(null);
-  useEffect(() => {
-    if (!stageFocus) setLastDetail(null);
-    else if (currentDetail) setLastDetail((prev) => (prev?.focus === currentDetail.focus ? prev : currentDetail));
-    // `currentDetail` is derived from these two.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stageFocus, focusedItem]);
-  const detail = currentDetail ?? lastDetail;
-  const detailPlanId = detail?.focus.kind === "plan" ? detail.focus.id : null;
-  const detailTaskNode = detail ? taskNodeFor(detail.focus) : null;
-  const backToPlanId = detail?.focus.kind === "task" ? (detail.focus.planId ?? null) : null;
-  const activeTab: Tab = stage ? (stageFocus?.kind === "chat" ? "chat" : "details") : tab;
+  const activeTab: Tab = chatsView ? "chat" : tab;
 
   const handleRunClick = async (run: InboxRun) => {
     setInboxOpen(false);
@@ -142,129 +102,90 @@ export function OrgRightPanel({
       className={cn(
         "h-full w-full flex flex-col bg-background",
         // Beside the artifact panel the divider alone is the line; the border keeps its width so the chat does not shift.
-        !stage && (artifactOpen ? "border-l border-transparent" : "border-l"),
+        !chatsView && (artifactOpen ? "border-l border-transparent" : "border-l"),
       )}
     >
-      {/* One bar for both views: tabs on the left, the chat's actions and
-          the view toggle on the right, the same height as the control
-          panel's list header across the divider — so switching views only
-          swaps what sits beside the tabs and nothing jumps. */}
+      {/* One bar, the same height as the chat list's header across the divider. */}
       <div className="flex h-11 shrink-0 items-stretch border-b text-sm">
-        <div className="flex items-stretch pl-1">
-          <TabButton
-            label="Chat"
-            isActive={activeTab === "chat"}
-            onClick={() => (stage ? stage.onFocusChange({ kind: "chat" }) : setTab("chat"))}
-          />
-          {!stage && count > 0 && (
-            <Popover open={inboxOpen} onOpenChange={setInboxOpen}>
-              <PopoverTrigger asChild>
-                <button
-                  disabled={!chatReady}
-                  className={cn(
-                    "flex items-center px-1.5 py-2.5 border-b-2 -mb-[1px] border-transparent",
-                    "transition-colors",
-                    chatReady ? "cursor-pointer hover:text-foreground" : "opacity-50 cursor-not-allowed",
-                  )}
-                  aria-label={`${count} unseen automation run${count !== 1 ? "s" : ""}`}
-                >
-                  <Badge variant="secondary" className="ml-0">
-                    {count}
-                  </Badge>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="end" side="bottom" className="w-72 p-0 overflow-hidden">
-                <div className="px-3 py-2 border-b">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Unseen automation runs
-                  </p>
-                </div>
-                <ul className="max-h-60 overflow-y-auto divide-y">
-                  {runs.map((run) => (
-                    <li key={run.automationId}>
-                      <button
-                        className="w-full text-left px-3 py-2.5 hover:bg-muted transition-colors"
-                        onClick={() => handleRunClick(run)}
-                      >
-                        <p className="text-sm font-medium truncate">{run.automationName}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{formatRelativeTime(run.lastRunAt)}</p>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </PopoverContent>
-            </Popover>
-          )}
-          <TabButton
-            label="Details"
-            isActive={activeTab === "details"}
-            onClick={() => {
-              if (!stage) setTab("details");
-              else if (detail) stage.onFocusChange(detail.focus);
-            }}
-            disabled={stage ? !detail : !selectedNode && selectedNodes.length < 2}
-          />
-        </div>
+        {chatsView ? (
+          <div className="flex min-w-0 items-center gap-1 pl-2">
+            {chatsView.onShowList && (
+              <ToolbarButton label="Show chats" onClick={chatsView.onShowList}>
+                <PanelLeftOpen className="h-4 w-4" />
+              </ToolbarButton>
+            )}
+            <ChatTitle />
+          </div>
+        ) : (
+          <div className="flex items-stretch pl-1">
+            <TabButton label="Chat" isActive={activeTab === "chat"} onClick={() => setTab("chat")} />
+            {count > 0 && (
+              <Popover open={inboxOpen} onOpenChange={setInboxOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    disabled={!chatReady}
+                    className={cn(
+                      "flex items-center px-1.5 py-2.5 border-b-2 -mb-[1px] border-transparent",
+                      "transition-colors",
+                      chatReady ? "cursor-pointer hover:text-foreground" : "opacity-50 cursor-not-allowed",
+                    )}
+                    aria-label={`${count} unseen automation run${count !== 1 ? "s" : ""}`}
+                  >
+                    <Badge variant="secondary" className="ml-0">
+                      {count}
+                    </Badge>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" side="bottom" className="w-72 p-0 overflow-hidden">
+                  <div className="px-3 py-2 border-b">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Unseen automation runs
+                    </p>
+                  </div>
+                  <ul className="max-h-60 overflow-y-auto divide-y">
+                    {runs.map((run) => (
+                      <li key={run.automationId}>
+                        <button
+                          className="w-full text-left px-3 py-2.5 hover:bg-muted transition-colors"
+                          onClick={() => handleRunClick(run)}
+                        >
+                          <p className="text-sm font-medium truncate">{run.automationName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{formatRelativeTime(run.lastRunAt)}</p>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </PopoverContent>
+              </Popover>
+            )}
+            <TabButton
+              label="Details"
+              isActive={activeTab === "details"}
+              onClick={() => setTab("details")}
+              disabled={!selectedNode && selectedNodes.length < 2}
+            />
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-1 pr-2">
           {/* Kept mounted: its settings popover and activity hook fetch on mount. */}
           <div className={cn("flex items-center", activeTab !== "chat" && "hidden")}>
             <TokenCounter />
-            <SidebarChatActions githubLogin={githubLogin} hideHistory={!!stage} />
+            <SidebarChatActions githubLogin={githubLogin} hideHistory={!!chatsView} />
           </div>
-          {(stage || onOpenControlPanel) && (
-            <ActionTip label={stage ? "Canvas" : "Control panel"}>
-              <button
-                type="button"
-                onClick={stage ? stage.onExit : onOpenControlPanel}
-                aria-label={stage ? "Canvas" : "Control panel"}
-                className="p-1.5 rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                {stage ? <Network className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
-              </button>
-            </ActionTip>
-          )}
+          {chatsView && <ArtifactsToggle />}
         </div>
       </div>
 
       <div className="flex-1 min-h-0 relative">
         {/* Chat tab — always mounted, hidden when inactive. */}
         <TabBody hidden={activeTab !== "chat"}>
-          {chatReady ? <SidebarChat githubLogin={githubLogin} /> : <ChatLoadingState />}
+          {chatReady ? <SidebarChat githubLogin={githubLogin} wide={!!chatsView} /> : <ChatLoadingState />}
         </TabBody>
 
         {/* Details tab — also kept mounted so node-detail fetches
-            don't restart when the user flips back. On the control panel
-            it is what is on stage: a plan is the real plan page; a task
-            renders as on the canvas, with a way back up to its plan. */}
+            don't restart when the user flips back. */}
         <TabBody hidden={activeTab !== "details"}>
-          {stage && detailPlanId ? (
-            <PlanStage
-              featureId={detailPlanId}
-              workspace={detail?.workspace ?? null}
-              onBack={() => stage.onFocusChange({ kind: "chat" })}
-            />
-          ) : stage && detailTaskNode ? (
-            <div className="flex h-full flex-col">
-              {backToPlanId && (
-                <button
-                  type="button"
-                  onClick={() => stage.onFocusChange({ kind: "plan", id: backToPlanId })}
-                  className="flex shrink-0 items-center gap-1 border-b px-4 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                  Back to plan
-                </button>
-              )}
-              <div className="min-h-0 flex-1">
-                <NodeDetail
-                  key={detailTaskNode.id}
-                  node={detailTaskNode}
-                  githubLogin={githubLogin}
-                  onSwitchToChat={() => stage.onFocusChange({ kind: "chat" })}
-                />
-              </div>
-            </div>
-          ) : selectedNode ? (
+          {selectedNode ? (
             <NodeDetail node={selectedNode} githubLogin={githubLogin} onSwitchToChat={() => setTab("chat")} />
           ) : selectedNodes.length >= 2 ? (
             <MultiNodeDetail
@@ -278,6 +199,45 @@ export function OrgRightPanel({
         </TabBody>
       </div>
     </div>
+  );
+}
+
+/** The chat's title, as the list shows it. */
+function ChatTitle() {
+  const title = useCanvasChatStore((s) =>
+    s.activeConversationId ? s.conversations[s.activeConversationId]?.title : null,
+  );
+  return <h1 className="min-w-0 truncate px-1 text-sm font-medium">{title || "New chat"}</h1>;
+}
+
+/**
+ * Shows or hides the artifacts pane: open, it lists what Jamie made in
+ * this chat; the count is how many artifacts there are.
+ */
+function ArtifactsToggle() {
+  const artifacts = useActiveArtifacts();
+  const count = useMemo(() => latestArtifacts(artifacts).length, [artifacts]);
+  const open = useArtifactPanelOpen();
+  if (count === 0) return null;
+  const label = open ? "Hide artifacts" : "Show artifacts";
+  return (
+    <ActionTip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={open}
+        onClick={() => {
+          const store = useCanvasChatStore.getState();
+          if (open) store.closeArtifactPanel();
+          else store.openArtifactIndex();
+        }}
+        className="flex h-7 items-center gap-1.5 rounded px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <Layers className="h-4 w-4" />
+        <span className="tabular-nums">{count}</span>
+        {open ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+      </button>
+    </ActionTip>
   );
 }
 
