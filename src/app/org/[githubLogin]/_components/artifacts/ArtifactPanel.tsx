@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef } from "react";
-import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import {
   DropdownMenu,
@@ -23,16 +23,17 @@ import {
 import { ActionTip } from "../ActionTip";
 import { isTypingTarget } from "../control-panel/ControlPanelList";
 import { ICON_BUTTON_CLASS, MissingContentPanel, ToolbarButton, ViewerBoundary } from "./chrome";
-import { artifactHref, artifactKind } from "./registry";
+import { artifactAsks, artifactHref, artifactKind } from "./registry";
 import { useArtifactContent } from "./useArtifactContent";
-import { useActiveArtifacts, useArtifactJobId, useChatOrgLogin } from "./useArtifactPanel";
+import { useActiveArtifacts, useArtifactJobId, useArtifactJobs, useChatOrgLogin } from "./useArtifactPanel";
 
 /**
- * The artifact panel: the artifact a chat card opened, at full size. The
- * org page gives it the canvas's place, beside the chat it came from
- * (`OrgCanvasView`). One bar — the artifact's name, which doubles as the
- * way to any other artifact in the chat, its versions, and what can be
- * done with it — over the kind's own viewer. Escape closes it.
+ * The artifact panel: the artifact a chat card opened, at full size, or
+ * the index of every artifact in the chat. The org page gives it its own
+ * pane beside the chat it came from (`OrgCanvasView`). One bar — the
+ * artifact's name, which doubles as the way to any other artifact in the
+ * chat, its versions, and what can be done with it — over the kind's own
+ * viewer; ← goes back to the index. Escape closes it.
  */
 export function ArtifactPanel() {
   const artifacts = useActiveArtifacts();
@@ -55,7 +56,98 @@ export function ArtifactPanel() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  if (panel && panel.identity === null) return <ArtifactIndex artifacts={others} />;
   return shown ? <OpenArtifact shown={shown} others={others} /> : null;
+}
+
+interface IndexGroup {
+  key: string;
+  label: string;
+  artifacts: ArtifactRef[];
+}
+
+/**
+ * The index's sections: what waits on the reader first, then one section
+ * per job (its artifacts together, under the job's title) and one for what
+ * Jamie made itself — each newest first, ordered by its newest artifact.
+ */
+export function groupIndex(
+  newestFirst: ArtifactRef[],
+  jobs: ReadonlyMap<string, { jobId: string; title: string }>,
+): IndexGroup[] {
+  const waiting: IndexGroup = { key: "waiting", label: "Waiting on you", artifacts: [] };
+  const groups = new Map<string, IndexGroup>();
+  for (const artifact of newestFirst) {
+    if (artifactAsks(artifact)) {
+      waiting.artifacts.push(artifact);
+      continue;
+    }
+    const job = jobs.get(artifactIdentity(artifact));
+    const key = job ? `job:${job.jobId}` : "jamie";
+    const group = groups.get(key) ?? { key, label: job ? job.title : "From Jamie", artifacts: [] };
+    group.artifacts.push(artifact);
+    groups.set(key, group);
+  }
+  return [waiting, ...groups.values()].filter((group) => group.artifacts.length > 0);
+}
+
+/** Every artifact in the chat, grouped: what waits on you, then by job, then what Jamie made. */
+function ArtifactIndex({ artifacts }: { artifacts: ArtifactRef[] }) {
+  const { openArtifactPanel, closeArtifactPanel } = useCanvasChatStore.getState();
+  const jobs = useArtifactJobs();
+  const groups = useMemo(() => groupIndex([...artifacts].reverse(), jobs), [artifacts, jobs]);
+  return (
+    <section aria-label="Artifacts" className="flex h-full w-full flex-col bg-background">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b pl-3 pr-2">
+        <h2 className="text-sm font-medium">Artifacts</h2>
+        <span className="text-xs tabular-nums text-muted-foreground">{artifacts.length}</span>
+        <div className="ml-auto">
+          <ToolbarButton label="Close" onClick={closeArtifactPanel}>
+            <X className="h-4 w-4" />
+          </ToolbarButton>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+        {groups.map((group) => (
+          <section key={group.key} aria-label={group.label} className="pt-3">
+            <h3
+              className={cn(
+                "flex items-center gap-1.5 px-2 pb-1 text-xs",
+                group.key === "waiting" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+              )}
+            >
+              <span className="truncate">{group.label}</span>
+              <span className="tabular-nums opacity-70">{group.artifacts.length}</span>
+            </h3>
+            <ul>
+              {group.artifacts.map((artifact) => {
+                const spec = artifactKind(artifact.kind);
+                const identity = artifactIdentity(artifact);
+                return (
+                  <li key={identity}>
+                    <button
+                      type="button"
+                      onClick={() => openArtifactPanel(identity)}
+                      className="flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60"
+                    >
+                      <spec.Icon aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm">{artifact.title}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {artifact.label ?? spec.label}
+                          {artifact.summary && ` · ${artifact.summary}`}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 /**
@@ -83,7 +175,12 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
 
   return (
     <section aria-label={artifact.title} className="flex h-full w-full flex-col bg-background">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b pl-3 pr-2">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b pl-1.5 pr-2">
+        {others.length > 1 && (
+          <ToolbarButton label="All artifacts" onClick={useCanvasChatStore.getState().openArtifactIndex}>
+            <ArrowLeft className="h-4 w-4" />
+          </ToolbarButton>
+        )}
         <spec.Icon aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
         {others.length > 1 ? (
           <DropdownMenu>
