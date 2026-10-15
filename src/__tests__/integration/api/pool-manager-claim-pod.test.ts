@@ -432,4 +432,62 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       expect(pod?.usageStatusReason).toBeNull();
     });
   });
+
+  // A pod for checking a pool config push (strut plans/pod-config.md §4):
+  // `?generation=new` takes only a pod created after the last completed push,
+  // never an older one; none ready is 409. Every claim reports `generation`.
+  describe("?generation=new", () => {
+    async function scenario(pushedAt: Date | null, podCreatedAt: Date[]) {
+      const s = await createTestWorkspaceScenario({ withSwarm: true, withPods: true, podCount: podCreatedAt.length });
+      await db.swarm.update({ where: { id: s.swarm!.id }, data: { poolPushedAt: pushedAt } });
+      for (const [i, createdAt] of podCreatedAt.entries()) {
+        await db.pod.update({ where: { id: s.pods[i].id }, data: { createdAt } });
+      }
+      return s;
+    }
+    const claim = (workspaceId: string, owner: Parameters<typeof createAuthenticatedPostRequest>[1], query: string) =>
+      POST(createAuthenticatedPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspaceId}${query}`, owner, {}), {
+        params: Promise.resolve({ workspaceId }),
+      });
+    const minutesAgo = (n: number) => new Date(Date.now() - n * 60_000);
+
+    test("claims a pod created after the push and says it is new", async () => {
+      const { owner, workspace, pods } = await scenario(minutesAgo(10), [minutesAgo(20), minutesAgo(5)]);
+
+      const data = await expectSuccess(await claim(workspace.id, owner, "?generation=new&job=6f1c-job&run=1790000000000"), 200);
+
+      expect(data.podId).toBe(pods[1].podId);
+      expect(data.generation).toBe("new");
+      const pod = await db.pod.findUnique({ where: { id: pods[1].id } });
+      expect(pod?.usageStatusMarkedBy).toBe("job:6f1c-job");
+      expect((await db.pod.findUnique({ where: { id: pods[0].id } }))?.usageStatus).toBe("UNUSED");
+    });
+
+    test("409 while only older pods are free — never an older pod", async () => {
+      const { owner, workspace, pods } = await scenario(minutesAgo(10), [minutesAgo(20)]);
+
+      const response = await claim(workspace.id, owner, "?generation=new");
+
+      await expectError(response, "No pod created after the last pool push is ready yet", 409);
+      expect((await db.pod.findUnique({ where: { id: pods[0].id } }))?.usageStatus).toBe("UNUSED");
+    });
+
+    test("409 when no push has completed", async () => {
+      const { owner, workspace } = await scenario(null, [minutesAgo(5)]);
+
+      const response = await claim(workspace.id, owner, "?generation=new");
+
+      expect(response.status).toBe(409);
+      expect((await response.json()).error).toMatch(/No completed pool push is recorded/);
+    });
+
+    test("a plain claim takes an older pod as before, and says so", async () => {
+      const { owner, workspace, pods } = await scenario(minutesAgo(10), [minutesAgo(20)]);
+
+      const data = await expectSuccess(await claim(workspace.id, owner, ""), 200);
+
+      expect(data.podId).toBe(pods[0].podId);
+      expect(data.generation).toBe("old");
+    });
+  });
 });

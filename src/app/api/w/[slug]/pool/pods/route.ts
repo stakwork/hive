@@ -3,6 +3,7 @@ import { resolvePodCaller } from "@/lib/auth/pod-access";
 import { db } from "@/lib/db";
 import { resolvePodClaimants } from "@/lib/pods/capacity-queries";
 import { POD_BASE_DOMAIN, jobOfClaimant } from "@/lib/pods/queries";
+import { podGeneration } from "@/lib/pods/rollout";
 import { fetchJlist } from "@/lib/pods/staklink";
 
 export const runtime = "nodejs";
@@ -72,8 +73,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
       }
 
-      const generation: "new" | "old" =
-        swarm.poolPushedAt !== null && pod.createdAt > swarm.poolPushedAt ? "new" : "old";
+      const generation = podGeneration(pod.createdAt, swarm.poolPushedAt);
 
       return {
         podId: pod.podId,

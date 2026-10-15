@@ -56,7 +56,7 @@ Poll `GET` every 5–10 s and read `data.rollout`:
 
 ## Testing the new pods
 
-When `ready`, `POST /api/pool-manager/claim-pod/{slug}` with the same `hiveorg_` key to claim a pod and test.
+When `ready`, `POST /api/pool-manager/claim-pod/{slug}?generation=new` with the same `hiveorg_` key to claim a pod and test. `generation=new` hands out only a pod created after the last completed push (and not flagged for recreation) — the same rule as `generation` in `pool/pods` — so the pod runs the config you just pushed. When none is ready yet the answer is `409` (try again shortly), never an older pod; it is also `409` while no push has completed. Every claim's response carries the pod's `generation` (`"new"` or `"old"`). Without the parameter the claim takes any ready pod, as before.
 
 ## Diagnose
 
@@ -75,7 +75,7 @@ All read-only, same auth as above (`x-api-token: hiveorg_…`, same org). A wron
 4. `GET /api/workspaces/{slug}/stakgraph` — read the current config.
 5. `PUT /api/workspaces/{slug}/stakgraph` — send the fix; keep the returned `changeId`.
 6. Poll `GET …/stakgraph` (or `pool/status`) until `rollout.state` is `ready` or `failed` for that `changeId`.
-7. `POST /api/pool-manager/claim-pod/{slug}` to verify on a new pod (check `processes`/`logs` on it too).
+7. `POST /api/pool-manager/claim-pod/{slug}?generation=new` to verify on a new pod (check `processes`/`logs` on it too).
 8. `POST /api/pool-manager/drop-pod/{slug}?podId=<podId>` to release the pod you claimed when done.
 
 Notes:
