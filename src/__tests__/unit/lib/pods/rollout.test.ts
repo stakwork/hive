@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PodStatus, PodUsageStatus } from "@prisma/client";
-import { getPoolRolloutStatus, type RolloutPodInput } from "@/lib/pods/rollout";
+import { getPoolRolloutStatus, podGeneration, type RolloutPodInput } from "@/lib/pods/rollout";
 
 const now = new Date("2026-01-01T12:00:00Z");
 const min = (n: number) => new Date(now.getTime() - n * 60_000);
@@ -69,5 +69,14 @@ describe("getPoolRolloutStatus", () => {
       now,
     );
     expect(r.state).toBe("rolling");
+  });
+});
+
+describe("podGeneration", () => {
+  it("is new only for a pod created after a recorded push", () => {
+    expect(podGeneration(min(1), min(2))).toBe("new");
+    expect(podGeneration(min(3), min(2))).toBe("old");
+    expect(podGeneration(min(2), min(2))).toBe("old");
+    expect(podGeneration(min(1), null)).toBe("old");
   });
 });

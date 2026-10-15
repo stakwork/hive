@@ -115,8 +115,9 @@ async function attemptClaimWithKarpenter(
   excludePodIds: string[],
   swarm: { poolName: string | null; poolApiKey: string | null } | null,
   reason?: string,
+  createdAfter?: Date,
 ): Promise<{ pod: Pod; karpenterOk: boolean } | null> {
-  const pod = await claimAvailablePod(swarmId, userInfo, excludePodIds, reason);
+  const pod = await claimAvailablePod(swarmId, userInfo, excludePodIds, reason, createdAfter);
   if (!pod) return null;
 
   let karpenterOk = true;
@@ -130,12 +131,14 @@ async function attemptClaimWithKarpenter(
  * `userInfo` is the claimant written on the pod (`usage_status_marked_by`):
  * a task id, or `job:<id>` for a strut job; `reason` is what the claim is
  * for (`usage_status_reason`) — a strut run id — when the caller says.
+ * `createdAfter` (the last pool push) claims only a pod newer than it.
  */
 export async function claimPodAndGetFrontend(
   swarmId: string,
   userInfo?: string,
   services?: ServiceInfo[],
   reason?: string,
+  createdAfter?: Date,
 ): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
   // Fetch swarm once upfront for both attempts
   const swarm = await db.swarm.findUnique({
@@ -144,7 +147,7 @@ export async function claimPodAndGetFrontend(
   });
 
   // Attempt 1: claim a pod and mark it as used in Karpenter
-  let result = await attemptClaimWithKarpenter(swarmId, userInfo, [], swarm, reason);
+  let result = await attemptClaimWithKarpenter(swarmId, userInfo, [], swarm, reason, createdAfter);
   if (!result) throw new Error(`No available pods for swarm: ${swarmId}`);
 
   if (!result.karpenterOk) {
@@ -156,7 +159,7 @@ export async function claimPodAndGetFrontend(
     );
 
     // Attempt 2 — exclude the failed pod
-    const result2 = await attemptClaimWithKarpenter(swarmId, userInfo, [failedPodId], swarm, reason);
+    const result2 = await attemptClaimWithKarpenter(swarmId, userInfo, [failedPodId], swarm, reason, createdAfter);
     if (!result2) throw new Error(`No available pods for swarm: ${swarmId}`);
 
     if (!result2.karpenterOk) {
