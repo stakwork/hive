@@ -67,6 +67,7 @@ export function DashboardLayout({ children, user, isPublicWorkspace = false }: D
   const pathname = usePathname();
   const router = useRouter();
   const isDocumentsPage = pathname.endsWith("/documents");
+  const isStrutPage = pathname.endsWith("/strut");
   const isFullscreenPage = isDocumentsPage || pathname.includes("/task/") || pathname.includes("/plan/");
   const [workspaceLogoUrl, setWorkspaceLogoUrl] = useState<string | null>(null);
 
@@ -177,7 +178,7 @@ export function DashboardLayout({ children, user, isPublicWorkspace = false }: D
       <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${isFullscreenPage ? "md:pl-0" : "md:pl-64"}`}>
         <ViewerAccessBanner />
         <PublicWorkspaceBanner />
-        <main className={`flex-1 flex flex-col min-h-0 ${isDocumentsPage ? "overflow-hidden p-0" : isFullscreenPage ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`}>
+        <main className={`flex-1 flex flex-col min-h-0 ${isDocumentsPage || isStrutPage ? "overflow-hidden p-0" : isFullscreenPage ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`}>
           {children}
         </main>
       </div>
