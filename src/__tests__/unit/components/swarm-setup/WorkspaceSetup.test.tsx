@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
 import { WorkspaceSetup } from "@/components/swarm-setup/WorkspaceSetup";
 
@@ -121,5 +121,68 @@ describe("WorkspaceSetup - shows spinner when not ready", () => {
     );
 
     expect(getByText(/preparing environment/i)).toBeInTheDocument();
+  });
+});
+
+describe("WorkspaceSetup - starting ingest", () => {
+  const ingestCalls = () =>
+    vi.mocked(global.fetch).mock.calls.filter(([url]) => url === "/api/swarm/stakgraph/ingest");
+
+  function mockIngest(...responses: Array<{ status: number; body?: unknown }>) {
+    const queue = [...responses];
+    global.fetch = vi.fn(async (url: string) => {
+      if (url !== "/api/swarm/stakgraph/ingest") return { ok: true, status: 200, json: async () => ({}) };
+      const next = queue.length > 1 ? queue.shift()! : queue[0];
+      return { ok: next.status < 300, status: next.status, json: async () => next.body ?? {} };
+    }) as unknown as typeof fetch;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseWorkspace.mockReturnValue({
+      workspace: makeWorkspace({ swarmId: "swarm-1", containerFilesSetUp: true }),
+      slug: "my-workspace",
+      id: "ws-1",
+      updateWorkspace: mockUpdateWorkspace,
+      refreshCurrentWorkspace: mockRefreshCurrentWorkspace,
+    });
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("keeps retrying while stakgraph answers 503, then saves the ingest request", async () => {
+    vi.useFakeTimers();
+    mockIngest({ status: 503 }, { status: 503 }, { status: 200, body: { data: { request_id: "req-1" } } });
+
+    render(<WorkspaceSetup repositoryUrl="https://github.com/org/repo" />);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ingestCalls()).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(ingestCalls()).toHaveLength(3);
+    expect(mockUpdateWorkspace).toHaveBeenCalledWith({ ingestRefId: "req-1" });
+  });
+
+  it("gives up after the retry window and shows the server's message", async () => {
+    vi.useFakeTimers();
+    mockIngest({ status: 503, body: { message: "Stakgraph service is not available" } });
+
+    const { findByText } = render(<WorkspaceSetup repositoryUrl="https://github.com/org/repo" />);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    vi.useRealTimers();
+
+    expect(await findByText("Stakgraph service is not available")).toBeInTheDocument();
+    expect(ingestCalls()).toHaveLength(21);
+  });
+
+  it("does not retry other failures", async () => {
+    mockIngest({ status: 400, body: { message: "No GitHub credentials found for this workspace" } });
+
+    const { findByText } = render(<WorkspaceSetup repositoryUrl="https://github.com/org/repo" />);
+
+    expect(await findByText("No GitHub credentials found for this workspace")).toBeInTheDocument();
+    expect(ingestCalls()).toHaveLength(1);
   });
 });

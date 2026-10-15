@@ -7,6 +7,49 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+const INSTALLATION_REPOS_PAGE_SIZE = 100;
+const INSTALLATION_REPOS_MAX_PAGES = 10;
+
+/**
+ * Whether the installation's repository list holds `repoId`, read with the
+ * user's app token. `null` when it can't tell (request failed, or the list is
+ * longer than we page through) — callers treat that as accessible.
+ */
+async function installationIncludesRepo(
+  token: string,
+  installationId: number | string,
+  repoId: number,
+): Promise<boolean | null> {
+  try {
+    for (let page = 1; page <= INSTALLATION_REPOS_MAX_PAGES; page++) {
+      const res = await fetch(
+        `${serviceConfigs.github.baseURL}/user/installations/${installationId}/repositories?per_page=${INSTALLATION_REPOS_PAGE_SIZE}&page=${page}`,
+        {
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${token}`,
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        },
+      );
+      if (!res.ok) {
+        console.log("[REPO CHECK] Installation repositories request failed:", res.status);
+        return null;
+      }
+      const data = (await res.json()) as { total_count?: number; repositories?: Array<{ id: number }> };
+      const repos = data.repositories ?? [];
+      if (repos.some((r) => r.id === repoId)) return true;
+      if (repos.length < INSTALLATION_REPOS_PAGE_SIZE || page * INSTALLATION_REPOS_PAGE_SIZE >= (data.total_count ?? 0)) {
+        return false;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.log("[REPO CHECK] Installation repositories check failed:", error);
+    return null;
+  }
+}
+
 /**
  * Checks whether the current user has push access to a GitHub repository
  * through a GitHub App installation.
@@ -152,6 +195,28 @@ export async function GET(request: Request) {
 
     // 8️⃣ Parse repo permissions
     const repoData = await response.json();
+
+    // A public repo reads fine even when the installation doesn't include it,
+    // so the 404 above can't catch it — ask the installation directly.
+    if (repoData.private === false) {
+      const included = await installationIncludesRepo(
+        tokens.accessToken,
+        sourceControlOrg.githubInstallationId,
+        repoData.id,
+      );
+      console.log("[REPO CHECK] Public repo installation check:", { included });
+      if (included === false) {
+        return NextResponse.json(
+          {
+            hasPushAccess: false,
+            error: `Repository '${owner}/${repo}' is not accessible through the GitHub App installation.`,
+            requiresInstallationUpdate: true,
+            installationId: sourceControlOrg.githubInstallationId,
+          },
+          { status: 200 }
+        );
+      }
+    }
     console.log("[REPO CHECK] Repository permissions:", {
       push: !!repoData.permissions?.push,
       maintain: !!repoData.permissions?.maintain,
