@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { parseStrutArtifactKey, strutArtifactReaderUrl } from "@/lib/strut-jobs";
 import {
+  claimNeedsLook,
   parseArtifactContent,
   type ArtifactContents,
   type ArtifactViewerProps,
@@ -14,41 +15,40 @@ import { PanelToolbar } from "../chrome";
 import { useChatOrgLogin } from "../useArtifactPanel";
 
 /**
- * A strut job's claims card (strut plans/job-claims.md §7;
+ * A strut job's claims (strut plans/job-claims.md §7;
  * `services/strut-jobs/claims.ts`): what the work must deliver and whether
- * it does, as of a turn. Each claim with its status, who stated it, the
- * latest verdict and the turn it is about, the screenshot it pointed at
- * (a job file, read through Hive's reader route — never the swarm's own
- * link), its checks with how each did on the latest pass, and the open
- * slots first, as to-dos. The panel's actions — Verify, Supports / Refutes,
- * a new claim — go to the job's claims route; each publishes the card's
- * next version, shown here at once.
+ * it does, as of a turn. The chat card is the summary alone; the panel has
+ * each claim once — its status, who stated it, the latest verdict and the
+ * turn it is about, the screenshot it pointed at (a job file, read through
+ * Hive's reader route — never the swarm's own link), its tool checks with
+ * how each did on the latest pass, and, when it waits on a person, what to
+ * look at with Accept / Reject right there. Those waiting come first. The
+ * panel's actions — Verify, Accept / Reject, a new claim — go to the job's
+ * claims route; each publishes the card's next version, shown here at once.
  */
 
 type ClaimsContent = ArtifactContents["claims"];
 
-const STATUS_CLASSES: Record<JobClaim["status"], string> = {
+/** What a claim's pill says: its status, or that it waits on a person's look. */
+type Pill = JobClaim["status"] | "needs a look";
+
+const PILL_CLASSES: Record<Pill, string> = {
   supported: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-500/20",
   refuted: "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-rose-500/20",
   stale: "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/20",
   unknown: "bg-muted text-muted-foreground ring-border",
+  "needs a look": "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/20",
 };
 
-const STATUS_HINT: Record<JobClaim["status"], string> = {
+const PILL_HINT: Record<Pill, string> = {
   supported: "The newest verdict, on the newest turn, supports it.",
   refuted: "A verdict on the newest turn refutes it.",
   stale: "The verdict is about an earlier turn: verify to check the newest one.",
   unknown: "Never verified.",
+  "needs a look": "Only a person can tell: look, then accept or reject.",
 };
 
-/** "2/3 supported · 1 refuted" — the card's caption. */
-export function claimsFact(content: ClaimsContent): string | null {
-  const { claims } = content;
-  if (claims.length === 0) return null;
-  const supported = claims.filter((c) => c.status === "supported").length;
-  const refuted = claims.filter((c) => c.status === "refuted").length;
-  return `${supported}/${claims.length} supported${refuted ? ` · ${refuted} refuted` : ""}`;
-}
+const pillOf = (claim: JobClaim): Pill => (claimNeedsLook(claim) ? "needs a look" : claim.status);
 
 /** Which turn a verdict is about, as a person reads it. */
 export function verifiedOn(content: Pick<ClaimsContent, "turn" | "turns">, about: string | undefined): string | null {
@@ -98,36 +98,14 @@ export function locatorView(
   return /^https?:\/\//i.test(url) ? { link: url } : null;
 }
 
-function StatusPill({ status }: { status: JobClaim["status"] }) {
+function StatusPill({ pill }: { pill: Pill }) {
   return (
     <span
-      title={STATUS_HINT[status]}
-      className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset", STATUS_CLASSES[status])}
+      title={PILL_HINT[pill]}
+      className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset", PILL_CLASSES[pill])}
     >
-      {status}
+      {pill}
     </span>
-  );
-}
-
-// ─── The card ─────────────────────────────────────────────────────────────
-
-const INLINE_LIMIT = 4;
-
-export function ClaimsInline({ content }: ArtifactViewerProps<"claims">) {
-  const shown = content.claims.slice(0, INLINE_LIMIT);
-  const todos = content.claims.reduce((n, c) => n + c.slots.length, 0);
-  return (
-    <div className="space-y-1.5 px-3 py-2.5 text-xs">
-      {shown.map((c) => (
-        <div key={c.id} className="flex items-start gap-2">
-          <StatusPill status={c.status} />
-          <span className="min-w-0 flex-1 truncate text-foreground">{c.text}</span>
-        </div>
-      ))}
-      {content.claims.length > INLINE_LIMIT && <p className="text-muted-foreground">+{content.claims.length - INLINE_LIMIT} more</p>}
-      {content.claims.length === 0 && <p className="text-muted-foreground">No claims yet.</p>}
-      {todos > 0 && <p className="text-amber-700 dark:text-amber-300">{todos === 1 ? "1 check is" : `${todos} checks are`} waiting on you</p>}
-    </div>
   );
 }
 
@@ -174,7 +152,8 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
   };
 
   const turnNo = content.turns?.[content.turn];
-  const todos = content.claims.flatMap((claim) => claim.slots.map((slot) => ({ claim, slot })));
+  // Those waiting on the person first; otherwise the ledger's order.
+  const ordered = [...content.claims].sort((a, b) => Number(claimNeedsLook(b)) - Number(claimNeedsLook(a)));
 
   return (
     <div className="flex h-full flex-col">
@@ -198,53 +177,24 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
       </PanelToolbar>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 text-sm">
-        {todos.map(({ claim, slot }) => (
-          <div key={slot.evidence} data-testid="claims-todo" className="space-y-2 rounded-lg border border-dashed border-amber-500/50 bg-amber-500/5 p-3">
-            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Needs a look — {claim.text}</p>
-            <p className="whitespace-pre-wrap text-xs">{slot.question ?? claim.checks.find((k) => k.id === slot.check)?.description ?? claim.checks.find((k) => k.id === slot.check)?.name ?? "An external check is waiting on you."}</p>
-            <textarea
-              rows={2}
-              value={notes[slot.evidence] ?? ""}
-              placeholder="What did you see? A refutation with a note goes to the job as its next turn."
-              onChange={(e) => setNotes((n) => ({ ...n, [slot.evidence]: e.target.value }))}
-              className="w-full rounded-md border bg-background px-2 py-1 text-xs"
-            />
-            <div className="flex justify-end gap-2">
-              {([true, false] as const).map((supports) => (
-                <button
-                  key={String(supports)}
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    run(
-                      supports ? "Recording" : "Refuting",
-                      { action: "answer", claimId: claim.id, slot: slot.evidence, runId: slot.runId ?? content.turn, supports, note: notes[slot.evidence] ?? "" },
-                      () => setNotes((n) => ({ ...n, [slot.evidence]: "" })),
-                    )
-                  }
-                  className={cn(
-                    "rounded-md border px-2 py-0.5 text-xs font-medium transition-colors disabled:opacity-60",
-                    supports ? "border-emerald-600/40 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300" : "border-rose-600/40 text-rose-700 hover:bg-rose-500/10 dark:text-rose-300",
-                  )}
-                >
-                  {supports ? "Supports" : "Refutes"}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-
         {content.claims.length === 0 && <p className="text-xs text-muted-foreground">No claims yet — nothing says what this job must deliver.</p>}
 
-        {content.claims.map((claim) => {
+        {ordered.map((claim) => {
           const on = verifiedOn(content, claim.latest?.about);
           const where = locatorView(githubLogin, content, claim.latest?.locator);
+          const look = claimNeedsLook(claim);
+          // A check a slot stands for is the slot's question, not a line of its own.
+          const tools = claim.checks.filter((k) => !claim.slots.some((slot) => slot.check === k.id));
           return (
-            <div key={claim.id} data-testid="claims-claim" className="space-y-2 rounded-lg border p-3">
+            <div
+              key={claim.id}
+              data-testid="claims-claim"
+              className={cn("space-y-2 rounded-lg border p-3", look && "border-dashed border-amber-500/50 bg-amber-500/5")}
+            >
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <StatusPill status={claim.status} />
+                <StatusPill pill={pillOf(claim)} />
                 {claim.assertedOnly && <span className="text-amber-700 dark:text-amber-300">asserted only</span>}
-                {claim.unverified > 0 && claim.status !== "unknown" && <span className="text-muted-foreground">{claim.unverified} unverified</span>}
+                {claim.unverified > 0 && claim.status !== "unknown" && !look && <span className="text-muted-foreground">{claim.unverified} unverified</span>}
                 {speakerWords(claim.speaker) && <span className="text-muted-foreground">by {speakerWords(claim.speaker)}</span>}
               </div>
               <p>{claim.text}</p>
@@ -271,9 +221,9 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
                   )}
                 </div>
               )}
-              {claim.checks.length > 0 && (
+              {tools.length > 0 && (
                 <ul className="space-y-0.5 text-xs">
-                  {claim.checks.map((k) => (
+                  {tools.map((k) => (
                     <li key={k.id} className="flex flex-wrap gap-x-2">
                       <span className="font-medium">{k.name}</span>
                       <span className="text-muted-foreground">{k.external ? "a person" : "a tool"}</span>
@@ -282,6 +232,43 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
                   ))}
                 </ul>
               )}
+              {claim.slots.map((slot) => {
+                const check = claim.checks.find((k) => k.id === slot.check);
+                return (
+                  <div key={slot.evidence} data-testid="claims-todo" className="space-y-2">
+                    <p className="whitespace-pre-wrap text-xs">{check?.description ?? slot.question ?? check?.name ?? "An external check is waiting on you."}</p>
+                    <textarea
+                      rows={2}
+                      value={notes[slot.evidence] ?? ""}
+                      placeholder="What did you see? A rejection with a note goes back to the job as its next turn."
+                      onChange={(e) => setNotes((n) => ({ ...n, [slot.evidence]: e.target.value }))}
+                      className="w-full rounded-md border bg-background px-2 py-1 text-xs"
+                    />
+                    <div className="flex justify-end gap-2">
+                      {([true, false] as const).map((supports) => (
+                        <button
+                          key={String(supports)}
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            run(
+                              supports ? "Accepting" : "Rejecting",
+                              { action: "answer", claimId: claim.id, slot: slot.evidence, runId: slot.runId ?? content.turn, supports, note: notes[slot.evidence] ?? "" },
+                              () => setNotes((n) => ({ ...n, [slot.evidence]: "" })),
+                            )
+                          }
+                          className={cn(
+                            "rounded-md border px-2 py-0.5 text-xs font-medium transition-colors disabled:opacity-60",
+                            supports ? "border-emerald-600/40 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300" : "border-rose-600/40 text-rose-700 hover:bg-rose-500/10 dark:text-rose-300",
+                          )}
+                        >
+                          {supports ? "Accept" : "Reject"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           );
         })}

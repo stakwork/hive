@@ -9,8 +9,8 @@
  *   { action: "verify" }
  *     every check on every claim against the newest turn, now;
  *   { action: "answer", claimId, slot, runId, supports, note? }
- *     a person's Supports / Refutes on an open check (a write, no turn).
- *     A refutation WITH a note fills the slot, then goes to the job as its
+ *     a person's Accept / Reject on an open check (a write, no turn).
+ *     A rejection WITH a note fills the slot, then goes to the job as its
  *     next turn — `[claim-event] refuted "<claim>": <note>` — through the
  *     same launch an artifact event takes (202 `{ runId }`); a job with a
  *     turn in flight answers 409 `busy` before anything is written;
