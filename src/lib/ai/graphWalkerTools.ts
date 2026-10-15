@@ -1500,7 +1500,19 @@ export function buildGraphWalkerTools(
         "view (Person, Episode, Clip, Document) those tools surface — results are NOT " +
         "interchangeable between the two. The server strips any inline LIMIT clause from your " +
         "query and applies its own based on the limit argument (max 200), so express top-N with " +
-        "ORDER BY plus limit rather than an inline LIMIT. Query text is capped at 4096 characters.",
+        "ORDER BY plus limit rather than an inline LIMIT. Query text is capped at 4096 characters. " +
+        "SCHEMA — labels: Repository, Directory, File, Function, Class, Endpoint, Request, " +
+        "Datamodel, Page, Var, UnitTest, IntegrationTest, E2etest. Every code node has the " +
+        "properties name, file, body, start, end. `file` is the path with its repo prefix " +
+        "(e.g. 'stakwork/hive/src/app/page.tsx'); on File nodes `name` is only the basename. " +
+        "Relationships: CONTAINS (structural parent → child: Repository → Directory → File → " +
+        "Function/Class/Datamodel), CALLS (Function → Function), HANDLER (Endpoint → its " +
+        "handler Function), OPERAND (Class → its methods), RENDERS (Page → component), " +
+        "NESTED_IN (Function → enclosing Function), IMPORTS, USES. Example: " +
+        "MATCH (caller:Function)-[:CALLS]->(f:Function {name: 'runCanvasAgent'}) " +
+        "RETURN caller.name, caller.file ORDER BY caller.file. A misspelled label, property " +
+        "or relationship type returns zero rows, not an error — when a result is unexpectedly " +
+        "empty, check the names before concluding nothing matches.",
       inputSchema: z.object({
         workspace: z.string().describe(
           "Required workspace slug to run the query against — credentials resolve from " +
