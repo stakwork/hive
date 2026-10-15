@@ -210,9 +210,28 @@ describe("claimPodAndGetFrontend — Karpenter retry logic", () => {
 
     // Second claim call includes exclusion of pod A's podId
     expect(claimAvailablePod).toHaveBeenCalledTimes(2);
-    expect(claimAvailablePod).toHaveBeenNthCalledWith(2, "swarm-1", "task-1", [mockPodA.podId], undefined);
+    expect(claimAvailablePod).toHaveBeenNthCalledWith(2, "swarm-1", "task-1", [mockPodA.podId], undefined, undefined);
 
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("mark-used failed"));
+  });
+
+  it("a claim for a pod newer than the last push keeps that filter on the retry", async () => {
+    const { claimAvailablePod, releasePodById } = await import("@/lib/pods/queries");
+    const { markPodAsUsed } = await import("@/lib/pods/karpenter");
+    const { db } = await import("@/lib/db");
+
+    vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm as any);
+    vi.mocked(markPodAsUsed).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    vi.mocked(claimAvailablePod).mockResolvedValueOnce(mockPodA as any).mockResolvedValueOnce(mockPodB as any);
+    vi.mocked(releasePodById).mockResolvedValue(mockPodA as any);
+
+    const { claimPodAndGetFrontend } = await import("@/lib/pods/utils");
+    const pushedAt = new Date("2026-10-14T12:00:00Z");
+
+    await expect(claimPodAndGetFrontend("swarm-1", "job:j1", undefined, "run-1", pushedAt)).rejects.toThrow();
+
+    expect(claimAvailablePod).toHaveBeenNthCalledWith(1, "swarm-1", "job:j1", [], "run-1", pushedAt);
+    expect(claimAvailablePod).toHaveBeenNthCalledWith(2, "swarm-1", "job:j1", [mockPodA.podId], "run-1", pushedAt);
   });
 
   it("releases both pods and throws when Karpenter fails on both attempts", async () => {

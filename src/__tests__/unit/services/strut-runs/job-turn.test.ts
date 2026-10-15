@@ -22,7 +22,12 @@
  *   - the trace card: a successful turn that touched the graph carries a
  *     `run_graph` ref after the job's own, one id per job, counted from the
  *     run's log within a bounded read — never indexed, never named to the
- *     wake, and never a reason to fail or retry the delivery.
+ *     wake, and never a reason to fail or retry the delivery;
+ *   - the claims card: a successful turn of a job that claims something
+ *     carries a `claims` ref (its ledger, read off the row's swarm and
+ *     enriched from the listing) between the job's refs and the trace, one
+ *     id per job; none from a swarm without claims, and never a reason to
+ *     fail.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -42,6 +47,7 @@ const {
   mockRequeue,
   mockCheckFailure,
   mockCount,
+  mockTurns,
   afterCallbacks,
 } = vi.hoisted(() => {
   const mockTx = {
@@ -63,6 +69,7 @@ const {
     mockRequeue: vi.fn(),
     mockCheckFailure: vi.fn(),
     mockCount: vi.fn(),
+    mockTurns: vi.fn(),
     afterCallbacks: [] as Array<() => Promise<void>>,
   };
 });
@@ -71,7 +78,9 @@ vi.mock("next/server", async (orig) => ({
   ...(await orig<typeof import("next/server")>()),
   after: (fn: () => Promise<void>) => void afterCallbacks.push(fn),
 }));
-vi.mock("@/lib/db", () => ({ db: { $transaction: mockTransaction, workspace: { findUnique: mockWorkspaceFindUnique } } }));
+vi.mock("@/lib/db", () => ({
+  db: { $transaction: mockTransaction, workspace: { findUnique: mockWorkspaceFindUnique }, strutRun: { findMany: mockTurns } },
+}));
 vi.mock("@/services/canvas-strut-autoturn", () => ({ invokeCanvasAgentOnJobTurn: mockWake }));
 vi.mock("@/services/strut-jobs/artifact-events", () => ({
   indexJobArtifacts: mockIndex,
@@ -150,6 +159,7 @@ beforeEach(() => {
   mockRequeue.mockResolvedValue(false);
   mockCheckFailure.mockResolvedValue({ jobs: [] });
   mockCount.mockResolvedValue(null);
+  mockTurns.mockResolvedValue([]);
   afterCallbacks.length = 0;
 });
 
@@ -773,6 +783,88 @@ describe("handleJobTurnSettled — the trace card", () => {
   });
 });
 
+describe("handleJobTurnSettled — the claims card", () => {
+  const plan = { id: "plan", kind: "markdown", title: "Plan", url: `/jobs/${JOB}/files/plan.md` };
+  const planRef = { id: "plan", kind: "markdown", title: "Plan", source: { type: "graph", swarmId: "swarm-1", key: `/jobs/${JOB}/files/plan.md` } };
+  const ledger = [
+    {
+      id: "c-page",
+      text: "The settings page renders",
+      status: "supported",
+      assertedOnly: false,
+      unverified: 0,
+      latest: { content: "/settings reached", observed_at: 1790000060, mode: "observed", about: "1790000000000", locator: { url: `/jobs/${JOB}/files/shots/001.png` } },
+      checks: [{ id: "k-page", name: "browser/verify" }],
+    },
+  ];
+  const delivered = () => mockTx.sharedConversation.update.mock.calls[0][0].data.messages[0];
+
+  /** Answers by URL: the turn's artifacts, the job's ledger, the listing. */
+  function serve(opts: { ledger?: () => Response; listing?: () => Response } = {}) {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url.endsWith("/workflows/job/runs/1790000000000/artifacts")) return json(200, { artifacts: [plan] });
+      if (url.endsWith(`/jobs/${JOB}/claims`)) return opts.ledger ? opts.ledger() : json(200, { enabled: true, job: JOB, claims: ledger });
+      if (url.includes("/claims?")) return opts.listing ? opts.listing() : json(200, { enabled: true, claims: [{ id: "c-page", speaker: "ai", slots: [], checks: [] }] });
+      return json(200, []);
+    });
+  }
+
+  it("rides on the row after the job's own refs, read off the row's swarm, one id per job, every turn a version", async () => {
+    serve();
+    mockTurns.mockResolvedValue([{ strutRunId: "1789999990000" }, { strutRunId: "1790000000000" }]);
+    await handleJobTurnSettled(row());
+
+    const [mine, card] = delivered().artifacts;
+    expect(mine).toEqual(planRef);
+    expect(card).toMatchObject({ id: `claims-${JOB}`, kind: "claims", title: "Dark mode plan", summary: "1 of 1 supported" });
+    expect(card.source).toEqual({
+      type: "inline",
+      content: {
+        workspace: "acme",
+        swarmId: "swarm-1",
+        job: JOB,
+        turn: "1790000000000",
+        turns: { "1790000000000": 2 },
+        claims: [expect.objectContaining({ id: "c-page", status: "supported", speaker: "ai", latest: expect.objectContaining({ about: "1790000000000", observedAt: 1790000060 }) })],
+      },
+    });
+    const urls = mockFetch.mock.calls.map((c) => String(c[0]));
+    expect(urls).toContain(`https://swarm1.sphinx.chat:3355/lab/jobs/${JOB}/claims`);
+  });
+
+  it("sits between the job's refs and the trace, and is hive's: never indexed, never named to the wake", async () => {
+    serve();
+    mockCount.mockResolvedValue({ calls: 3, nodes: 2 });
+    await handleJobTurnSettled(row());
+    expect(delivered().artifacts.map((a: { kind: string }) => a.kind)).toEqual(["markdown", "claims", "run_graph"]);
+    expect(mockIndex).toHaveBeenCalledWith(expect.anything(), JOB, [planRef]);
+    await flushAfter();
+    expect(mockWake.mock.calls[0][0].artifacts).toEqual([{ title: "Plan", kind: "markdown" }]);
+  });
+
+  it("no card from a swarm without claims, a job that claims nothing, or a read that fails — the row lands either way", async () => {
+    for (const ledgerAnswer of [
+      () => json(200, { enabled: false, job: JOB, claims: [] }),
+      () => json(200, { enabled: true, job: JOB, claims: [] }),
+      () => json(404, { error: "not found" }),
+      () => {
+        throw new Error("ECONNREFUSED");
+      },
+    ]) {
+      vi.clearAllMocks();
+      serve({ ledger: ledgerAnswer });
+      await handleJobTurnSettled(row());
+      expect(delivered().artifacts).toEqual([planRef]);
+    }
+  });
+
+  it("a turn that did not succeed reads no claims", async () => {
+    serve();
+    await handleJobTurnSettled(row({ status: StrutRunStatus.ERROR, output: null, error: "agent failed: boom" }));
+    expect(mockFetch.mock.calls.map((c) => String(c[0])).filter((u) => u.includes("/claims"))).toEqual([]);
+  });
+});
+
 describe("handleJobTurnSettled — the brainstorm run's card", () => {
   const plan = { id: "plan", kind: "markdown", title: "Plan", url: `/jobs/${JOB}/files/plan.md` };
   const tree = { id: "brainstorm-tree", kind: "graph", title: "Brainstorm: dark mode", content: '{"workspace":"hive","focus":"ref-1"}' };
@@ -793,7 +885,8 @@ describe("handleJobTurnSettled — the brainstorm run's card", () => {
       return child instanceof Response ? child : json(200, { artifacts: child ?? [] });
     });
   }
-  const childCalls = () => mockFetch.mock.calls.map((c) => String(c[0])).filter((u) => !u.includes("/workflows/job/"));
+  // The claims card's reads are the job's, not a child run's.
+  const childCalls = () => mockFetch.mock.calls.map((c) => String(c[0])).filter((u) => !u.includes("/workflows/job/") && !u.includes("/claims"));
 
   it("collects the brainstorm run's tree when the agent did not copy it, from the row's swarm", async () => {
     serve({ events: launch("job/001-meta_run_workflow", "brainstorm", "1790000000111"), children: { "brainstorm/1790000000111": [tree, { id: "notes", kind: "markdown", title: "Notes", url: "/artifacts/1790000000111/n.md" }] } });

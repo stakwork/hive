@@ -5,6 +5,7 @@ import {
   INTERRUPTED_TOOL_RESULT,
   STOPPED_TURN_NOTICE,
   STOPPED_TURN_TEXT,
+  jobClaimsNotice,
   jobEventNotice,
   toModelMessages,
 } from "@/lib/ai/conversationHelpers";
@@ -196,6 +197,23 @@ describe("toModelMessages", () => {
     ]);
     expect(jobEventNotice("6f1c", line)).toContain("not by you, not by the user");
     expect(jobEventNotice("6f1c", line)).toContain(line);
+  });
+
+  it("a refutation from the claims card replays as the user's, and a claims-card row as a notice of what the user did", () => {
+    const refuted = '[claim-event] refuted "the settings page renders": the Save button does nothing';
+    const stored = [
+      { id: "e", role: "assistant", content: refuted, source: { kind: "job_event", jobId: "6f1c", title: "Settings", runId: "row-3" } },
+      { id: "c", role: "assistant", content: "Verified the job's claims on turn 2: 1 of 2 supported, 1 refuted.", source: { kind: "job_claims", jobId: "6f1c", title: "Settings" } },
+    ] as unknown as StoredMessage[];
+
+    const replayed = toModelMessages(stored);
+    expect(replayed).toEqual([
+      { role: "user", content: jobEventNotice("6f1c", refuted) },
+      { role: "user", content: jobClaimsNotice("6f1c", "Verified the job's claims on turn 2: 1 of 2 supported, 1 refuted.") },
+    ]);
+    expect(jobEventNotice("6f1c", refuted)).toContain("continued by the user from its claims card");
+    expect(jobEventNotice("6f1c", refuted)).not.toContain("not by the user");
+    expect(jobClaimsNotice("6f1c", "x")).toContain("with no turn of the job");
   });
 
   it("filters out messages with empty content and no toolCalls", () => {
