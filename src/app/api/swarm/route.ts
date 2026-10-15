@@ -2,6 +2,7 @@ import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
 import { SWARM_DEFAULT_INSTANCE_TYPE } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { setOrgDefaultWorkspaceIfUnset } from "@/lib/helpers/org-workspace";
 import { EncryptionService } from "@/lib/encryption";
 import { stakworkService } from "@/lib/service-factory";
 import { generateSecurePassword } from "@/lib/utils/password";
@@ -294,6 +295,13 @@ export async function POST(request: NextRequest) {
       });
 
       console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm?.id} to ACTIVE status with swarmId: ${swarm_id}`);
+
+      // Best-effort: make this the org's default workspace if none is set
+      try {
+        await setOrgDefaultWorkspaceIfUnset(workspaceId);
+      } catch (defaultError) {
+        console.error("[SWARM_CREATE] Failed to set org default workspace:", defaultError);
+      }
 
       // Fire-and-forget: set graph title for graph_mindset workspaces
       // Retries handled inside setGraphTitle via retryWithExponentialBackoff — never blocks this response
