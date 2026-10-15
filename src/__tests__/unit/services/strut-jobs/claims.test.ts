@@ -159,12 +159,17 @@ describe("the card", () => {
   it("one id per job, the turn it is of, a sentence about where things stand", () => {
     const claims = mergeClaims(LEDGER, LISTING);
     expect(claimsArtifactId(JOB)).toBe(`claims-${JOB}`);
-    expect(summarizeClaims(claims)).toBe("1 of 2 supported, 1 unknown, 1 waiting on you");
+    // The claim waiting on a person counts once, as that — never also as unknown.
+    expect(summarizeClaims(claims)).toBe("1 supported, 1 needs a look");
+    const [page, save] = claims;
+    expect(summarizeClaims([save, { ...save, id: "c-2" }])).toBe("2 need a look");
+    // A refutation outranks the look; a claim with no slot and no verdict is unknown.
+    expect(summarizeClaims([{ ...save, status: "refuted" }, { ...page, status: "unknown", slots: [] }])).toBe("1 refuted, 1 unknown");
     expect(claimsArtifact({ jobId: JOB, title: "Settings page", workspace: "acme", swarmId: "swarm-1", turn: TURN_2, turns: { [TURN_2]: 2 }, claims })).toEqual({
       id: `claims-${JOB}`,
       kind: "claims",
       title: "Settings page",
-      summary: "1 of 2 supported, 1 unknown, 1 waiting on you",
+      summary: "1 supported, 1 needs a look",
       source: { type: "inline", content: { workspace: "acme", swarmId: "swarm-1", job: JOB, turn: TURN_2, turns: { [TURN_2]: 2 }, claims } },
     });
   });
@@ -196,9 +201,9 @@ describe("the card's actions", () => {
     expect(init.method).toBe("POST");
     expect(init.headers).toEqual({ "Content-Type": "application/json", "x-api-token": "swarm-key", "x-strut-actor": "user-1-octo" });
     expect(mockActor).toHaveBeenCalledWith("user-1");
-    expect(summary).toBe("1 of 2 supported, 1 unknown, 1 waiting on you");
+    expect(summary).toBe("1 supported, 1 needs a look");
     expect(mockAppend).toHaveBeenCalledWith(FIRST, {
-      content: "Verified the job's claims on turn 2: 1 of 2 supported, 1 unknown, 1 waiting on you.",
+      content: "Verified the job's claims on turn 2: 1 supported, 1 needs a look.",
       source: { kind: "job_claims", jobId: JOB, title: "Settings page" },
       artifacts: [card],
     });

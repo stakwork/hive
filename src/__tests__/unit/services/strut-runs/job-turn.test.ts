@@ -816,7 +816,7 @@ describe("handleJobTurnSettled — the claims card", () => {
 
     const [mine, card] = delivered().artifacts;
     expect(mine).toEqual(planRef);
-    expect(card).toMatchObject({ id: `claims-${JOB}`, kind: "claims", title: "Dark mode plan", summary: "1 of 1 supported" });
+    expect(card).toMatchObject({ id: `claims-${JOB}`, kind: "claims", title: "Dark mode plan", summary: "1 supported" });
     expect(card.source).toEqual({
       type: "inline",
       content: {
