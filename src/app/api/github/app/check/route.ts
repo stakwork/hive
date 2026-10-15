@@ -17,7 +17,7 @@ const INSTALLATION_REPOS_MAX_PAGES = 10;
  */
 async function installationIncludesRepo(
   token: string,
-  installationId: string,
+  installationId: number | string,
   repoId: number,
 ): Promise<boolean | null> {
   try {
