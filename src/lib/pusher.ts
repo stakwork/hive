@@ -109,6 +109,9 @@ export const PUSHER_EVENTS = {
   // `{ repo, number, at }`, NO pr data: the client refetches through the
   // existing per-viewer-token route (`/api/orgs/[githubLogin]/strut/pull-request`).
   CANVAS_PR_UPDATED: "canvas-pr-updated",
+  // The workspace's GitHub App installation changed (repos added/removed,
+  // permissions accepted, suspended…) — open setup screens re-check access.
+  GITHUB_INSTALLATION_UPDATED: "github-installation-updated",
 } as const;
 
 /**

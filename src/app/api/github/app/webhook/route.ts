@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { isInstallationChange, notifyInstallationChange } from "@/lib/github/installation-events";
 
 export async function POST(req: NextRequest) {
 
@@ -27,6 +28,12 @@ export async function POST(req: NextRequest) {
     if (event === "github_app_authorization" && payload.action === "revoked") {
         console.log("🔴 User revoked authorization:", payload.sender.login);
         // Delete user token from DB or cache
+    }
+
+    if (event && isInstallationChange(event, payload)) {
+        await notifyInstallationChange(event, payload).catch((error) =>
+            console.error("[GithubAppWebhook] Failed to notify installation change:", error),
+        );
     }
 
     return NextResponse.json({ success: true });
