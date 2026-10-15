@@ -1,7 +1,6 @@
-import { isStrutCapabilityEnabledForOrg } from "@/lib/ai/capabilityGates";
 import type { ProtectFinding } from "@/types/protect";
 
-export type ProtectJamieTool = "propose_feature" | "start_job";
+export type ProtectJamieTool = "discuss" | "start_job";
 
 function looksMechanicalSingleFile(finding: ProtectFinding): boolean {
   if (!finding.file || finding.file.includes(",") || finding.file.includes(" ")) {
@@ -21,13 +20,8 @@ function looksMechanicalSingleFile(finding: ProtectFinding): boolean {
   return Boolean(finding.repositoryUrl);
 }
 
-export async function chooseProtectJamieTool(
-  finding: ProtectFinding,
-  sourceControlOrgId: string | null | undefined,
-): Promise<ProtectJamieTool> {
-  const jobsEnabled = await isStrutCapabilityEnabledForOrg(sourceControlOrgId ?? undefined);
-  if (!jobsEnabled) return "propose_feature";
-  return looksMechanicalSingleFile(finding) ? "start_job" : "propose_feature";
+export function chooseProtectJamieTool(finding: ProtectFinding): ProtectJamieTool {
+  return looksMechanicalSingleFile(finding) ? "start_job" : "discuss";
 }
 
 export function buildProtectJamieSeed(
@@ -43,7 +37,7 @@ export function buildProtectJamieSeed(
   const toolInstruction =
     tool === "start_job"
       ? `This looks like a small single-file, single-repo mechanical fix. Make it as a job: use the start_job tool with workspace "${workspaceSlug}", and name the repository ${finding.repositoryUrl} in the job's prompt.`
-      : `This looks multi-file or ambiguous. Use the propose_feature tool and pass workspaceSlug "${workspaceSlug}" and repositoryUrl "${finding.repositoryUrl}".`;
+      : `This looks multi-file or ambiguous. Do not start a job yet: investigate read-only in workspace "${workspaceSlug}" (repository ${finding.repositoryUrl || "unknown"}), then confirm the scope with the user in chat before making any change.`;
 
   return [
     "You are helping a workspace member act on a single Protect security finding.",

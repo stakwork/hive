@@ -10,6 +10,7 @@ import { WebhookService } from "@/services/github/WebhookService";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { triggerIngestAsync, checkStakgraphAvailability, SyncOptions } from "@/services/swarm/stakgraph-actions";
+import { strutActorForLaunch } from "@/services/bifrost/strut-delegation";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
@@ -304,6 +305,14 @@ export async function POST(request: NextRequest) {
     const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
     const stakgraphCallbackUrl = getStakgraphWebhookCallbackUrl(request);
 
+    // Who the ingest (and the describe run it leads to) is for: the requesting
+    // user, whose PAT it carries.
+    const strutActor = await strutActorForLaunch(
+      { workspaceId: repoWorkspaceId, workspaceSlug: workspace.slug, userId: session.user.id },
+      { swarmUrl: swarm.swarmUrl, swarmApiKey: decryptedApiKey },
+    );
+    const ingestOptions: SyncOptions | undefined = strutActor ? { ...syncOptions, strutActor } : syncOptions;
+
     console.log(`[STAKGRAPH_INGEST] Ingest parameters - vanity address: ${swarmVanityAddress}, callback URL: ${stakgraphCallbackUrl}, API key present: ${!!decryptedApiKey}`);
 
     const startTime = Date.now();
@@ -314,7 +323,7 @@ export async function POST(request: NextRequest) {
       { username, pat },
       stakgraphCallbackUrl,
       use_lsp,
-      syncOptions,
+      ingestOptions,
     );
 
     const ingestDuration = Date.now() - startTime;

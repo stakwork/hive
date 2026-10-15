@@ -86,6 +86,11 @@ describe("launchJobTurn", () => {
     expect(mockAppendEvent).not.toHaveBeenCalled();
   });
 
+  it("a turn with a model launches with params.model", async () => {
+    await launchJobTurn(target, { jobId: JOB, title: "T", prompt: "p", started: true, model: "claude-opus-4-1" });
+    expect(mockDispatch.mock.calls[0][0]).toMatchObject({ params: { model: "claude-opus-4-1" } });
+  });
+
   it("an owner who can no longer reach the workspace launches nothing", async () => {
     mockResolve.mockResolvedValue({ ok: false, error: { type: "ACCESS_DENIED" } });
     expect(await launchJobTurn(target, { jobId: JOB, title: "T", prompt: "p", started: false })).toEqual({ status: "error", error: "target: ACCESS_DENIED" });

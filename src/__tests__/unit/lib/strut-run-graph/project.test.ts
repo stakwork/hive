@@ -10,11 +10,25 @@
  *   - a search keeps its place among the calls and the count of what it
  *     matched, and none of its hits as nodes;
  *   - node refs are deduplicated and malformed ones dropped;
- *   - a ref tagged with a peer (another strut's graph) is skipped.
+ *   - a ref tagged with a peer (another workspace's graph) is kept under a
+ *     qualified id, and a tag that is not a slug drops the ref;
+ *   - a call that launched a run of its own carries its workflow (and peer),
+ *     and is a call even with no nodes of its own (its child may have some),
+ *     the run id only server-side, read from whole or truncated JSON; a
+ *     child's calls go under a prefix, its untagged refs in its peer's graph;
+ *   - with `fileReads`, a file an agent viewed (or summarized with
+ *     `file_summary`) in a repository the run checked out is a read call
+ *     whose file is `owner/repo/<path>`.
  */
 
 import { describe, it, expect } from "vitest";
-import { accessOf, distinctNodeRefs, isSearch, projectRunGraphCalls } from "@/lib/strut-run-graph/project";
+import {
+  accessOf,
+  distinctNodeRefs,
+  isSearch,
+  projectRunGraphCalls,
+  projectWithLaunches,
+} from "@/lib/strut-run-graph/project";
 
 const start = (path: string, stepType: string, input: unknown, ts = "2026-09-28T16:56:45.000Z") => ({
   ts,
@@ -171,19 +185,27 @@ describe("projectRunGraphCalls", () => {
     expect(calls[0].startedAt).toBeNull();
   });
 
-  it("skips a node another strut's run touched (tagged with its peer)", () => {
+  it("keeps a node another workspace's run touched under a qualified id, apart from this graph's", () => {
     const calls = projectRunGraphCalls([
       end("wf/ask", "strut/run-workflow", {
         nodes: [
           { ref_id: "a", node_type: "Concept", peer: "cloud" },
+          { ref_id: "a", node_type: "Concept" },
           { ref_id: "b", node_type: "Concept", peer: "" },
-          { ref_id: "c" },
+          { ref_id: "c", peer: "not a slug!" },
+          { ref_id: "a", peer: "cloud" },
         ],
       }),
-      end("wf/remote-only", "strut/run-workflow", { nodes: [{ ref_id: "d", peer: "cloud" }] }),
+      end("wf/remote-only", "strut/run-workflow", { nodes: [{ ref_id: "d", peer: "other-ws" }] }),
     ]);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].nodes).toEqual([{ ref_id: "b", node_type: "Concept" }, { ref_id: "c" }]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].nodes).toEqual([
+      { ref_id: "@cloud:a", node_type: "Concept", peer: "cloud" },
+      { ref_id: "a", node_type: "Concept" },
+      { ref_id: "b", node_type: "Concept" },
+    ]);
+    expect(calls[1].nodes).toEqual([{ ref_id: "@other-ws:d", peer: "other-ws" }]);
+    expect(distinctNodeRefs(calls).map((n) => n.ref_id)).toEqual(["@cloud:a", "a", "b", "@other-ws:d"]);
   });
 
   it("answers an empty list for anything that is not an event log", () => {
@@ -232,7 +254,10 @@ describe("distinctNodeRefs", () => {
         nodes: [{ ref_id: "a" }, { ref_id: "b" }],
       }),
       end("wf/a/002-graph_graph_get", "tool:graph_graph_get", {
-        nodes: [{ ref_id: "b", node_type: "ClinicalFinding" }, { ref_id: "c", node_type: "Concept" }],
+        nodes: [
+          { ref_id: "b", node_type: "ClinicalFinding" },
+          { ref_id: "c", node_type: "Concept" },
+        ],
       }),
     ]);
     expect(distinctNodeRefs(calls)).toEqual([
@@ -240,5 +265,146 @@ describe("distinctNodeRefs", () => {
       { ref_id: "b", node_type: "ClinicalFinding" },
       { ref_id: "c", node_type: "Concept" },
     ]);
+  });
+});
+
+describe("launching calls", () => {
+  it("marks a local launch with its workflow, and keeps the run id server-side — from a truncated output too", () => {
+    const { calls, launches } = projectWithLaunches([
+      start("job/work/002-meta_run_workflow", "tool:meta_run_workflow", { name: "explore", input: { prompt: "how?" } }),
+      end("job/work/002-meta_run_workflow", "tool:meta_run_workflow", {
+        nodes: [{ ref_id: "a" }],
+        output: '{"runId":"1791647782933","status":"success","output":{"answer":"**Caveat:** no repo is chec',
+      }),
+    ]);
+    expect(calls[0].child).toEqual({ workflow: "explore" });
+    expect(JSON.stringify(calls)).not.toContain("1791647782933");
+    expect(launches.get("job/work/002-meta_run_workflow")).toEqual({ workflow: "explore", runId: "1791647782933" });
+  });
+
+  it("keeps a launch whose child touched no graph node — the child's file views are found only when it is opened", () => {
+    const { calls, launches } = projectWithLaunches([
+      start("job/work/004-meta_run_workflow", "tool:meta_run_workflow", { name: "explore", input: "{}" }),
+      end("job/work/004-meta_run_workflow", "tool:meta_run_workflow", {
+        output: '{"runId":"1791735843683","status":"success","output":{"answer":"All paths are under',
+      }),
+      start("job/work/005-bash", "tool:bash", { command: "ls" }),
+      end("job/work/005-bash", "tool:bash"),
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ path: "job/work/004-meta_run_workflow", nodes: [], child: { workflow: "explore" } });
+    expect(launches.get("job/work/004-meta_run_workflow")).toEqual({ workflow: "explore", runId: "1791735843683" });
+  });
+
+  it("marks a peer launch with its workflow and peer, as a workflow step or a tool", () => {
+    const { calls, launches } = projectWithLaunches([
+      start("wf/ask", "strut/run-workflow", { peer: "apps", workflow: "explore" }),
+      end("wf/ask", "strut/run-workflow", {
+        nodes: [{ ref_id: "x", peer: "apps" }],
+        output: { peer: "apps", workflow: "explore", runId: "1791647731999", status: "success" },
+      }),
+    ]);
+    expect(calls[0].child).toEqual({ workflow: "explore", peer: "apps" });
+    expect(launches.get("wf/ask")).toEqual({ workflow: "explore", runId: "1791647731999", peer: "apps" });
+  });
+
+  it("is no launch without a usable run id, workflow or peer, or for any other step", () => {
+    const { calls, launches } = projectWithLaunches([
+      end("wf/a", "tool:meta_run_workflow", { nodes: [{ ref_id: "a" }], output: { runId: "1" } }),
+      start("wf/b", "tool:meta_run_workflow", { name: "../etc" }),
+      end("wf/b", "tool:meta_run_workflow", { nodes: [{ ref_id: "a" }], output: { runId: "2" } }),
+      start("wf/c", "tool:strut_run_workflow", { workflow: "explore", peer: "not a slug" }),
+      end("wf/c", "tool:strut_run_workflow", { nodes: [{ ref_id: "a" }], output: { runId: "3" } }),
+      start("wf/d", "tool:meta_run_workflow", { name: "explore" }),
+      end("wf/d", "tool:meta_run_workflow", { nodes: [{ ref_id: "a" }], output: { runId: "x/../y" } }),
+      start("wf/e", "tool:graph_graph_get", { name: "explore" }),
+      end("wf/e", "tool:graph_graph_get", { nodes: [{ ref_id: "a" }], output: { runId: "4" } }),
+    ]);
+    expect(calls.filter((c) => c.child)).toEqual([]);
+    expect(launches.size).toBe(0);
+  });
+
+  it("puts a child's calls under a prefix, and its untagged refs in the peer's graph it ran on", () => {
+    const calls = projectRunGraphCalls(
+      [
+        end("explore/explore/001-graph_graph_get", "tool:graph_graph_get", {
+          nodes: [
+            { ref_id: "fn", node_type: "Function" },
+            { ref_id: "far", peer: "elsewhere" },
+          ],
+        }),
+      ],
+      { prefix: "job/work/004-strut_run_workflow", peer: "apps" },
+    );
+    expect(calls[0].path).toBe("job/work/004-strut_run_workflow/explore/explore/001-graph_graph_get");
+    expect(calls[0].nodes).toEqual([
+      { ref_id: "@apps:fn", node_type: "Function", peer: "apps" },
+      { ref_id: "@elsewhere:far", peer: "elsewhere" },
+    ]);
+  });
+});
+
+describe("file reads", () => {
+  const DIR = "/data/artifacts/1791665463791";
+  const checkout = (path: string, dir: string, repo: string) =>
+    end(path, "git/checkout", { output: { path: dir, repo, sha: "abc", ref: "master" } });
+  const view = (n: number, input: Record<string, unknown>) => [
+    start(`explore/explore/00${n}-str_replace_based_edit_tool`, "tool:str_replace_based_edit_tool", input),
+    end(`explore/explore/00${n}-str_replace_based_edit_tool`, "tool:str_replace_based_edit_tool", { output: "1\t…" }),
+  ];
+  const EVENTS = [
+    checkout("explore/checkouts#0", `${DIR}/hive`, "stakwork/hive"),
+    ...view(1, { command: "view", path: `${DIR}/hive/src/lib/auth/sphinx-verify.ts`, view_range: [76, 173] }),
+    ...view(2, { command: "view", path: "hive/src/app/api/auth/sphinx/token/route.ts" }),
+    ...view(3, { command: "view", path: `${DIR}/plan.md` }),
+    ...view(4, { command: "str_replace", path: `${DIR}/hive/src/x.ts`, old_str: "a", new_str: "b" }),
+    ...view(5, { command: "view", path: `${DIR}/hive/../hive/secret.ts` }),
+    ...view(6, { command: "view", path: `${DIR}/hive/src/it's.ts` }),
+  ];
+
+  it("reads a viewed file in a checked-out repository as owner/repo/<path> — absolute or relative to the agent's directory", () => {
+    const { calls, fileReads } = projectWithLaunches(EVENTS, { fileReads: true });
+    expect([...fileReads]).toEqual([
+      ["explore/explore/001-str_replace_based_edit_tool", "stakwork/hive/src/lib/auth/sphinx-verify.ts"],
+      ["explore/explore/002-str_replace_based_edit_tool", "stakwork/hive/src/app/api/auth/sphinx/token/route.ts"],
+    ]);
+    expect(calls).toEqual([
+      expect.objectContaining({
+        path: "explore/explore/001-str_replace_based_edit_tool",
+        tool: "str_replace_based_edit_tool",
+        by: "agent",
+        access: "read",
+        query: { file: "stakwork/hive/src/lib/auth/sphinx-verify.ts" },
+        nodes: [],
+      }),
+      expect.objectContaining({ query: { file: "stakwork/hive/src/app/api/auth/sphinx/token/route.ts" } }),
+    ]);
+  });
+
+  it("reads a summarized file too, by the path file_summary was given", () => {
+    const { calls, fileReads } = projectWithLaunches(
+      [
+        checkout("explore/checkouts#0", `${DIR}/hive`, "stakwork/hive"),
+        start("explore/explore/001-file_summary", "tool:file_summary", { file_path: "hive/src/lib/githubApp.ts" }),
+        end("explore/explore/001-file_summary", "tool:file_summary", { output: "…" }),
+        start("explore/explore/002-file_summary", "tool:file_summary", { file_path: "elsewhere/x.ts" }),
+        end("explore/explore/002-file_summary", "tool:file_summary", { output: "…" }),
+        start("wf/summary", "file_summary", { file_path: "hive/src/y.ts" }),
+        end("wf/summary", "file_summary", { output: "…" }),
+      ],
+      { fileReads: true },
+    );
+    expect([...fileReads]).toEqual([["explore/explore/001-file_summary", "stakwork/hive/src/lib/githubApp.ts"]]);
+    expect(calls).toEqual([
+      expect.objectContaining({ tool: "file_summary", by: "agent", access: "read", query: { file: "stakwork/hive/src/lib/githubApp.ts" } }),
+    ]);
+  });
+
+  it("keeps file views out unless asked, and puts them under a child's prefix", () => {
+    expect(projectRunGraphCalls(EVENTS)).toEqual([]);
+    const { fileReads } = projectWithLaunches(EVENTS, { fileReads: true, prefix: "job/work/002-meta_run_workflow" });
+    expect([...fileReads.keys()][0]).toBe(
+      "job/work/002-meta_run_workflow/explore/explore/001-str_replace_based_edit_tool",
+    );
   });
 });

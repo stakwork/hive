@@ -50,6 +50,57 @@ export interface PullRequestCheck {
   url?: string;
 }
 
+/** A check's outcome on the latest pass over a job's claims (strut's `LastVerify`). */
+export type ClaimCheckOutcome =
+  | { ran: true }
+  | { pending: true }
+  /** An external check waiting on a person: the open slot's evidence id. */
+  | { planned: string }
+  /** `superseded`: the pass was for a turn that is no longer the newest. */
+  | { skipped: string; reason?: string };
+
+export interface JobClaimCheck {
+  id: string;
+  name: string;
+  /** Answered by a person or an outside system, not run by a tool. */
+  external?: boolean;
+  /** What an external check asks — the to-do's question. */
+  description?: string;
+  lastVerify?: ClaimCheckOutcome;
+}
+
+/** One claim about a strut job (strut's `LedgerClaim`, with the listing's speaker and open slots). */
+export interface JobClaim {
+  id: string;
+  /** What the work must deliver, one sentence. */
+  text: string;
+  status: "supported" | "refuted" | "stale" | "unknown";
+  /** Who stated it: `ai` (the job's agent) or `person`. */
+  speaker?: string;
+  /** The verdict rests on a person's or a model's word — nothing observed. */
+  assertedOnly: boolean;
+  /** Checks with no verdict about the newest turn. */
+  unverified: number;
+  latest?: {
+    content?: string;
+    /** `observed` (an instrument measured it) or `asserted`. */
+    mode?: string;
+    /** Seconds. */
+    observedAt?: number;
+    checkVersion?: string;
+    /** The turn the verdict is about — a strut run id. */
+    about?: string;
+    /** What the check pointed at: a job file (a screenshot) or an endpoint. */
+    locator?: { url?: string; file?: string };
+  };
+  checks: JobClaimCheck[];
+  /** External checks waiting on a person: the evidence to answer, the turn it is on, the question. */
+  slots: Array<{ evidence: string; check?: string; runId?: string; question?: string }>;
+}
+
+/** The claim waits on a person's look — an open slot, and nothing has refuted it. Counted and shown as that, never also as `unknown`. */
+export const claimNeedsLook = (claim: Pick<JobClaim, "status" | "slots">): boolean => claim.slots.length > 0 && claim.status !== "refuted";
+
 /** What a viewer draws, for each kind. */
 export interface ArtifactContents {
   markdown: { text: string };
@@ -105,8 +156,17 @@ export interface ArtifactContents {
    * A workspace's knowledge graph, opened on the graph workbench — centred on
    * `focus` when given, with `changes` drawn on it. `proposal` is the id of
    * the proposal those changes are, so the view can follow its decision.
+   * `layout: "tree"` opens a left-to-right tree of `label` nodes (default
+   * `Choice`) below `focus` instead — the brainstorm tree (`ChoiceTree`).
    */
-  graph: { workspace: string; focus?: string; changes?: GraphChange[]; proposal?: string };
+  graph: {
+    workspace: string;
+    focus?: string;
+    changes?: GraphChange[];
+    proposal?: string;
+    layout?: "tree";
+    label?: string;
+  };
   /**
    * What a strut run did in a workspace's knowledge graph, call by call —
    * the run graph (`components/strut-run-graph`), read live from the run's
@@ -114,6 +174,22 @@ export interface ArtifactContents {
    * what it had touched when the ref was written, for the card.
    */
   run_graph: { workspace: string; run: string; calls?: number; nodes?: number };
+  /**
+   * A strut job's CLAIMS (strut plans/job-claims.md): what the work must
+   * deliver and whether it does, as of a turn — read from the job's swarm
+   * after the turn (`GET {lab}/jobs/<job>/claims`), one card per job, each
+   * turn and each action on the card a version. `turn` is the strut run id
+   * the snapshot is of; `swarmId` is where a verdict's screenshot is read
+   * (the reader route); `turns` numbers the turns for "verified on turn N".
+   */
+  claims: {
+    workspace: string;
+    swarmId: string;
+    job: string;
+    turn: string;
+    turns?: Record<string, number>;
+    claims: JobClaim[];
+  };
 }
 
 export type ArtifactKind = keyof ArtifactContents;
@@ -156,9 +232,10 @@ export interface ArtifactViewerProps<K extends ArtifactKind> {
   jobId?: string;
 }
 
-/** The artifact on the panel, by `artifactIdentity`. `version` is its place among that artifact's versions; null follows the newest. */
+/** What is on the panel. `version` is the artifact's place among its versions; null follows the newest. */
 export interface ArtifactPanelState {
-  identity: string;
+  /** The artifact, by its `artifactIdentity`; null for the index of every artifact in the chat. */
+  identity: string | null;
   version: number | null;
 }
 
@@ -261,6 +338,88 @@ const text = (raw: Record<string, unknown>): { text: string } | null =>
 const count = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 
+const CLAIM_STATUSES = ["supported", "refuted", "stale", "unknown"] as const;
+const MAX_CLAIMS = 100;
+const MAX_CLAIM_TEXT = 2_000;
+const MAX_CLAIM_CONTENT = 4_000;
+
+/** A string with something in it, at most `max` long — else left out. */
+const within = (value: unknown, max: number): string | undefined =>
+  typeof value === "string" && value.length > 0 && value.length <= max ? value : undefined;
+
+function parseClaimOutcome(raw: unknown): ClaimCheckOutcome | undefined {
+  if (!isRecord(raw)) return undefined;
+  if (raw.ran === true) return { ran: true };
+  if (raw.pending === true) return { pending: true };
+  const planned = within(raw.planned, MAX_ID_LENGTH);
+  if (planned) return { planned };
+  const skipped = within(raw.skipped, MAX_ID_LENGTH);
+  const reason = within(raw.reason, MAX_SUMMARY_LENGTH);
+  return skipped ? { skipped, ...(reason ? { reason } : {}) } : undefined;
+}
+
+function parseClaimCheck(raw: unknown): JobClaimCheck | null {
+  if (!isRecord(raw)) return null;
+  const id = within(raw.id, MAX_ID_LENGTH);
+  const name = within(raw.name, MAX_TITLE_LENGTH);
+  if (!id || !name) return null;
+  const description = within(raw.description, MAX_CLAIM_TEXT);
+  const lastVerify = parseClaimOutcome(raw.lastVerify);
+  return { id, name, ...(raw.external === true ? { external: true } : {}), ...(description ? { description } : {}), ...(lastVerify ? { lastVerify } : {}) };
+}
+
+function parseClaimSlot(raw: unknown): JobClaim["slots"][number] | null {
+  if (!isRecord(raw)) return null;
+  const evidence = within(raw.evidence, MAX_ID_LENGTH);
+  if (!evidence) return null;
+  const check = within(raw.check, MAX_ID_LENGTH);
+  const runId = within(raw.runId, MAX_ID_LENGTH);
+  const question = within(raw.question, MAX_CLAIM_TEXT);
+  return { evidence, ...(check ? { check } : {}), ...(runId ? { runId } : {}), ...(question ? { question } : {}) };
+}
+
+function parseClaimLatest(raw: unknown): JobClaim["latest"] | undefined {
+  if (!isRecord(raw)) return undefined;
+  const seconds = typeof raw.observedAt === "number" ? raw.observedAt : raw.observed_at;
+  const locator = isRecord(raw.locator) ? { url: within(raw.locator.url, MAX_CLAIM_TEXT), file: within(raw.locator.file, MAX_CLAIM_TEXT) } : undefined;
+  const latest: NonNullable<JobClaim["latest"]> = {
+    content: within(raw.content, MAX_CLAIM_CONTENT),
+    mode: within(raw.mode, MAX_ID_LENGTH),
+    observedAt: typeof seconds === "number" && Number.isFinite(seconds) ? seconds : undefined,
+    checkVersion: within(raw.checkVersion, MAX_ID_LENGTH),
+    about: within(raw.about, MAX_ID_LENGTH),
+    locator: locator && (locator.url || locator.file) ? locator : undefined,
+  };
+  return latest;
+}
+
+function parseJobClaim(raw: unknown): JobClaim | null {
+  if (!isRecord(raw)) return null;
+  const id = within(raw.id, MAX_ID_LENGTH);
+  const text = within(raw.text, MAX_CLAIM_TEXT);
+  const status = oneOf(CLAIM_STATUSES, raw.status);
+  if (!id || !text || !status) return null;
+  const speaker = within(raw.speaker, MAX_LABEL_LENGTH);
+  const latest = parseClaimLatest(raw.latest);
+  return {
+    id,
+    text,
+    status,
+    ...(speaker ? { speaker } : {}),
+    assertedOnly: raw.assertedOnly === true,
+    unverified: count(raw.unverified) ?? 0,
+    ...(latest ? { latest } : {}),
+    checks: Array.isArray(raw.checks) ? raw.checks.map(parseClaimCheck).filter((c): c is JobClaimCheck => c !== null) : [],
+    slots: Array.isArray(raw.slots) ? raw.slots.map(parseClaimSlot).filter((s): s is JobClaim["slots"][number] => s !== null) : [],
+  };
+}
+
+/** A job's claims as they come back — every claim that is whole, the rest dropped. */
+export function parseJobClaims(raw: unknown): JobClaim[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_CLAIMS).map(parseJobClaim).filter((c): c is JobClaim => c !== null);
+}
+
 const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => ArtifactContents[K] | null } = {
   markdown: text,
   log: text,
@@ -323,6 +482,8 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
           focus: bounded(raw.focus, MAX_ID_LENGTH) ?? undefined,
           changes: parseGraphChanges(raw.changes),
           proposal: bounded(raw.proposal, MAX_ID_LENGTH) ?? undefined,
+          layout: raw.layout === "tree" ? ("tree" as const) : undefined,
+          label: bounded(raw.label, MAX_ID_LENGTH) ?? undefined,
         }
       : null;
   },
@@ -330,6 +491,17 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
     const workspace = bounded(raw.workspace, MAX_ID_LENGTH);
     const run = bounded(raw.run, MAX_ID_LENGTH);
     return workspace && run ? { workspace, run, calls: count(raw.calls), nodes: count(raw.nodes) } : null;
+  },
+  claims: (raw) => {
+    const workspace = bounded(raw.workspace, MAX_ID_LENGTH);
+    const swarmId = bounded(raw.swarmId, MAX_ID_LENGTH);
+    const job = bounded(raw.job, MAX_ID_LENGTH);
+    const turn = bounded(raw.turn, MAX_ID_LENGTH);
+    if (!workspace || !swarmId || !job || !turn) return null;
+    const turns = isRecord(raw.turns)
+      ? Object.fromEntries(Object.entries(raw.turns).filter(([id, n]) => id.length <= MAX_ID_LENGTH && count(n) !== undefined))
+      : undefined;
+    return { workspace, swarmId, job, turn, ...(turns ? { turns: turns as Record<string, number> } : {}), claims: parseJobClaims(raw.claims) };
   },
 };
 
@@ -453,7 +625,8 @@ export function jobIdOfArtifact(
   artifact: ArtifactRef,
 ): string | undefined {
   for (const message of messages ?? []) {
-    if (message.source?.kind === "job" && message.artifacts?.includes(artifact)) return message.source.jobId;
+    // A job's turn, or a new version of its claims card made from the card (`job_claims`).
+    if ((message.source?.kind === "job" || message.source?.kind === "job_claims") && message.artifacts?.includes(artifact)) return message.source.jobId;
   }
   return undefined;
 }
@@ -475,7 +648,7 @@ export function resolveArtifactPanel(
   all: ArtifactRef[],
   panel: ArtifactPanelState | null,
 ): ResolvedArtifactPanel | null {
-  if (!panel) return null;
+  if (!panel?.identity) return null;
   const group = all.filter((artifact) => artifactIdentity(artifact) === panel.identity);
   if (group.length === 0) return null;
   const versions = versionsOf(group);

@@ -84,7 +84,6 @@ vi.mock("@/lib/ai/workflowExplorerTools", () => ({
 }));
 vi.mock("@/lib/constants/prompt", () => ({
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
@@ -115,7 +114,6 @@ vi.mock("@/lib/proposals/types", () => ({
 vi.mock("@/lib/ai/capabilityGates", () => ({
   isPromptsCapabilityEnabledForOrg: vi.fn(async () => false),
   isGraphWriteCapabilityEnabledForOrg: vi.fn(async () => false),
-  isStrutCapabilityEnabledForOrg: vi.fn(async () => false),
 }));
 
 import { db } from "@/lib/db";
@@ -603,7 +601,6 @@ describe("html_pages capability registration", () => {
       "update_html",
       "get_html",
     ]);
-    expect(CAPABILITY_REGISTRY.html_pages.core).toBe(false);
     expect(CAPABILITY_REGISTRY.research.writeToolNames).not.toContain("save_html");
     expect(CAPABILITY_REGISTRY.research.writeToolNames).not.toContain("update_html");
     expect(CAPABILITY_REGISTRY.research.writeToolNames).not.toContain("get_html");

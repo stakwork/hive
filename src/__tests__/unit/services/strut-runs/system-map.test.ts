@@ -2,8 +2,8 @@
  * Unit tests for `services/strut-runs/system-map.ts`.
  *
  * Coverage:
- *   - launch: dispatches `swarm-systemmap-schema-sync` (default key) or
- *     `swarm-systemmap-graph-materialize` (key `materialize`) with purpose `system_map`, the workspace swarm's
+ *   - launch: dispatches `swarm-systemmap` (default key, no `workspace` input)
+ *     or a CWE workflow with purpose `system_map`, the workspace swarm's
  *     stakgraph base as `input.swarm_url` and its secret alias as
  *     `input.swarm_secret_alias`; no swarm / alias → no_target.
  *   - list: rows serialized newest-first with a strut view link; a PENDING
@@ -46,7 +46,7 @@ vi.mock("@/services/strut-runs", () => ({
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { launchSystemMapRun, listSystemMapRuns } from "@/services/strut-runs/system-map";
+import { launchSystemMapRun, listSystemMapRuns, parseCweIds } from "@/services/strut-runs/system-map";
 
 const NOW = new Date("2026-09-25T12:00:00Z");
 
@@ -78,7 +78,7 @@ beforeEach(() => {
 });
 
 describe("launchSystemMapRun", () => {
-  it("dispatches the workflow with the workspace swarm's base URL and secret alias as input", async () => {
+  it("dispatches swarm-systemmap with the workspace swarm's base URL and secret alias as input, no workspace", async () => {
     mockWorkspace.findUnique.mockResolvedValue({
       swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
     });
@@ -99,34 +99,14 @@ describe("launchSystemMapRun", () => {
       workspaceId: "ws-1",
       userId: "user-1",
       kind: "system_map",
-      workflow: "swarm-systemmap-schema-sync",
+      workflow: "swarm-systemmap",
       purpose: "system_map",
       input: {
-        workspace: "acme-ws",
         swarm_url: "https://acme.sphinx.chat:3355",
         swarm_secret_alias: "{{SWARM_123_API_KEY}}",
       },
       publicBaseUrl: "https://hive.example",
     });
-  });
-
-  it("dispatches the materialize workflow under its own kind", async () => {
-    mockWorkspace.findUnique.mockResolvedValue({
-      swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
-    });
-    mockDispatch.mockResolvedValue({ runId: "run-2", strutRunId: "2", swarmId: "swarm-1" });
-
-    await launchSystemMapRun({
-      workspaceId: "ws-1",
-      workspaceSlug: "acme-ws",
-      userId: "user-1",
-      publicBaseUrl: "https://hive.example",
-      key: "materialize",
-    });
-
-    expect(mockDispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "system_map_materialize", workflow: "swarm-systemmap-graph-materialize", purpose: "system_map" }),
-    );
   });
 
   it("dispatches the CWE check workflow under its own kind, with the same input", async () => {
@@ -158,13 +138,12 @@ describe("launchSystemMapRun", () => {
   });
 
   it.each([
-    ["cloud_links", "system_map_cloud_links", "systemmap-cloud-links"],
-    ["security_review", "system_map_security_review", "swarm-cwe-security-review"],
-  ] as const)("dispatches %s under its own kind and workflow", async (key, kind, workflow) => {
+    ["cwe_check", ["CWE-79", "CWE-89"], { cwe_ids: ["CWE-79", "CWE-89"] }],
+  ] as const)("scopes %s to the CWEs as cwe_ids", async (key, cweIds, expected) => {
     mockWorkspace.findUnique.mockResolvedValue({
       swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
     });
-    mockDispatch.mockResolvedValue({ runId: "run-4", strutRunId: "4", swarmId: "swarm-1" });
+    mockDispatch.mockResolvedValue({ runId: "run-5", strutRunId: "5", swarmId: "swarm-1" });
 
     await launchSystemMapRun({
       workspaceId: "ws-1",
@@ -172,9 +151,38 @@ describe("launchSystemMapRun", () => {
       userId: "user-1",
       publicBaseUrl: "https://hive.example",
       key,
+      cweIds: [...cweIds],
     });
 
-    expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ kind, workflow, purpose: "system_map" }));
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: {
+          workspace: "acme-ws",
+          swarm_url: "https://acme.sphinx.chat:3355",
+          swarm_secret_alias: "{{SWARM_123_API_KEY}}",
+          ...expected,
+        },
+      }),
+    );
+  });
+
+  it("returns the run's strut view link when the workspace has an org", async () => {
+    mockWorkspace.findUnique.mockResolvedValue({
+      swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
+      sourceControlOrg: { githubLogin: "acme" },
+    });
+    mockDispatch.mockResolvedValue({ runId: "run-6", strutRunId: "1700000000000", swarmId: "swarm-1" });
+
+    const out = await launchSystemMapRun({
+      workspaceId: "ws-1",
+      workspaceSlug: "acme-ws",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      key: "cwe_check",
+      cweIds: ["CWE-79"],
+    });
+
+    expect(out.strutUrl).toBe("/org/acme/strut?strut=wf%3Dswarm-systemmap-cwe-check-templates%26run%3D1700000000000");
   });
 
   it("refuses with no_target when the workspace swarm has no secret alias", async () => {
@@ -189,13 +197,28 @@ describe("launchSystemMapRun", () => {
   });
 });
 
+describe("parseCweIds", () => {
+  it("is undefined when absent and dedupes valid ids", () => {
+    expect(parseCweIds("cwe_check", undefined)).toBeUndefined();
+    expect(parseCweIds("cwe_check", ["CWE-79", "CWE-79", "CWE-89"])).toEqual(["CWE-79", "CWE-89"]);
+  });
+
+  it("rejects malformed ids, empty lists and workflows without CWE scope", () => {
+    expect(parseCweIds("cwe_check", ["79"])).toHaveProperty("error");
+    expect(parseCweIds("cwe_check", "CWE-79")).toHaveProperty("error");
+    expect(parseCweIds("cwe_check", [])).toHaveProperty("error");
+    expect(parseCweIds("cwe_check", Array.from({ length: 51 }, (_, i) => `CWE-${i + 1}`))).toHaveProperty("error");
+    expect(parseCweIds("system_map", ["CWE-79"])).toEqual({ error: "This workflow does not take cweIds" });
+  });
+});
+
 describe("listSystemMapRuns", () => {
   it("serializes settled rows with a strut view link and does not probe them", async () => {
     mockStrutRun.findMany.mockResolvedValue([
       row({ status: StrutRunStatus.SUCCESS, output: { summary: "ok" }, durationMs: 1234, settledAt: NOW }),
     ]);
 
-    const runs = await listSystemMapRuns("ws-1", "schema", { now: NOW });
+    const runs = await listSystemMapRuns("ws-1", "system_map", { now: NOW });
 
     expect(mockProbe).not.toHaveBeenCalled();
     expect(runs).toEqual([
@@ -210,6 +233,7 @@ describe("listSystemMapRuns", () => {
         createdAt: new Date(NOW.getTime() - 60_000).toISOString(),
         settledAt: NOW.toISOString(),
         strutUrl: "/org/acme/strut?strut=wf%3Dswarm-systemmap-schema-sync%26run%3D1700000000000",
+        cweIds: null,
       },
     ]);
     expect(mockStrutRun.findMany).toHaveBeenCalledWith(
@@ -217,11 +241,22 @@ describe("listSystemMapRuns", () => {
     );
   });
 
-  it("lists the materialize workflow's runs under its own kind", async () => {
+  it("reads the CWEs a run was scoped to from its input", async () => {
+    mockStrutRun.findMany.mockResolvedValue([
+      row({ id: "a", status: StrutRunStatus.SUCCESS, settledAt: NOW, input: { cwe_ids: ["CWE-79", "CWE-89"] } }),
+      row({ id: "c", status: StrutRunStatus.SUCCESS, settledAt: NOW, input: { workspace: "acme-ws" } }),
+    ]);
+
+    const runs = await listSystemMapRuns("ws-1", "cwe_check", { now: NOW });
+
+    expect(runs.map((r) => r.cweIds)).toEqual([["CWE-79", "CWE-89"], null]);
+  });
+
+  it("lists the CWE check workflow's runs under its own kind", async () => {
     mockStrutRun.findMany.mockResolvedValue([]);
-    await listSystemMapRuns("ws-1", "materialize", { now: NOW });
+    await listSystemMapRuns("ws-1", "cwe_check", { now: NOW });
     expect(mockStrutRun.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: "ws-1", kind: "system_map_materialize" } }),
+      expect.objectContaining({ where: { workspaceId: "ws-1", kind: "system_map_cwe_check" } }),
     );
   });
 
@@ -235,7 +270,7 @@ describe("listSystemMapRuns", () => {
       .mockResolvedValueOnce(settled);
     mockComplete.mockResolvedValue("claimed");
 
-    const runs = await listSystemMapRuns("ws-1", "schema", { now: NOW });
+    const runs = await listSystemMapRuns("ws-1", "system_map", { now: NOW });
 
     expect(mockProbe).toHaveBeenCalledWith(pending);
     expect(mockComplete).toHaveBeenCalledWith(
@@ -252,7 +287,7 @@ describe("listSystemMapRuns", () => {
     mockStrutRun.findMany.mockResolvedValue([fresh, running]);
     mockProbe.mockResolvedValue({ kind: "running", status: "running" });
 
-    const runs = await listSystemMapRuns("ws-1", "schema", { now: NOW });
+    const runs = await listSystemMapRuns("ws-1", "system_map", { now: NOW });
 
     expect(mockProbe).toHaveBeenCalledTimes(1);
     expect(mockProbe).toHaveBeenCalledWith(running);
@@ -264,7 +299,7 @@ describe("listSystemMapRuns", () => {
     mockStrutRun.findMany.mockResolvedValue([row()]);
     mockProbe.mockRejectedValue(new Error("boom"));
 
-    const runs = await listSystemMapRuns("ws-1", "schema", { now: NOW });
+    const runs = await listSystemMapRuns("ws-1", "system_map", { now: NOW });
 
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe("PENDING");
@@ -275,7 +310,7 @@ describe("listSystemMapRuns", () => {
     mockWorkspace.findUnique.mockResolvedValue({ sourceControlOrg: null });
     mockStrutRun.findMany.mockResolvedValue([row({ status: StrutRunStatus.ERROR, error: "nope", settledAt: NOW })]);
 
-    const runs = await listSystemMapRuns("ws-1", "schema", { now: NOW });
+    const runs = await listSystemMapRuns("ws-1", "system_map", { now: NOW });
 
     expect(runs[0].strutUrl).toBeNull();
     expect(runs[0].error).toBe("nope");

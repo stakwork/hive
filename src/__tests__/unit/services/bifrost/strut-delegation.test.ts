@@ -60,6 +60,7 @@ import {
   isPastHalfLife,
   isWithinRenewWindow,
   resolveStrutActor,
+  strutActorForLaunch,
   strutDelegationMaxCostUsd,
   strutLabBaseUrl,
 } from "@/services/bifrost/strut-delegation";
@@ -368,5 +369,62 @@ describe("helpers", () => {
     expect(strutDelegationMaxCostUsd()).toBe(10_000);
     process.env.STRUT_DELEGATION_MAX_COST_USD = "lots";
     expect(strutDelegationMaxCostUsd()).toBe(10_000);
+  });
+});
+
+describe("strutActorForLaunch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", mockFetch);
+    process.env.BIFROST_ENABLED = "true";
+    delete process.env.BIFROST_ENABLED_AGENTS;
+    mockUserFindUnique.mockResolvedValue({ githubAuth: { githubUsername: "alice" } });
+    mockMemberUpdateMany.mockResolvedValue({ count: 1 });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    restoreEnv();
+  });
+
+  it("names the actor where the Bifrost gate is off, and pushes no delegation", async () => {
+    delete process.env.BIFROST_ENABLED;
+    expect(await strutActorForLaunch(auth, swarm)).toBe(ACTOR);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockMintInvocationMacaroon).not.toHaveBeenCalled();
+  });
+
+  it("names the actor where the agent gate excludes strut-agent, and pushes no delegation", async () => {
+    process.env.BIFROST_ENABLED_AGENTS = "repo-agent";
+    expect(await strutActorForLaunch(auth, swarm)).toBe(ACTOR);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("names the actor without a swarm key to push to, and pushes nothing", async () => {
+    expect(await strutActorForLaunch(auth, { swarmUrl: null, swarmApiKey: "k" })).toBe(ACTOR);
+    expect(await strutActorForLaunch(auth, { swarmUrl: swarm.swarmUrl, swarmApiKey: undefined })).toBe(ACTOR);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("never names the public viewer", async () => {
+    expect(await strutActorForLaunch({ ...auth, userId: "__public_viewer__" }, swarm)).toBeUndefined();
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockUserFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("is the actor of the user's live delegation", async () => {
+    mockFetch.mockResolvedValueOnce(json(200, [{ actor: ACTOR, exp: new Date(Date.now() + 59 * DAY_MS).toISOString(), delegationId: "d1" }]));
+    expect(await strutActorForLaunch(auth, swarm)).toBe(ACTOR);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("still names the actor when the delegation could not be verified — the launch is not blocked", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("lab down"));
+    expect(await strutActorForLaunch(auth, swarm)).toBe(ACTOR);
+  });
+
+  it("never throws: a failing actor lookup launches unattributed", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("lab down"));
+    mockUserFindUnique.mockRejectedValue(new Error("db down"));
+    expect(await strutActorForLaunch(auth, swarm)).toBeUndefined();
   });
 });

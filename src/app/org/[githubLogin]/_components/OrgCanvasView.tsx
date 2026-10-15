@@ -13,14 +13,13 @@ import { useCanvasChatStore, type CanvasChatMessage, type GraphFocus } from "../
 import { GraphView } from "./GraphView";
 import { parseArtifactRefs } from "../_state/canvasChatArtifacts";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
-import { useSubAgentStatusRefresh } from "../_state/useSubAgentStatusRefresh";
 import { useGraphProposalRefresh } from "../_state/useGraphProposalRefresh";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { AttentionMapProvider } from "../connections/AttentionMapContext";
 import { cn } from "@/lib/utils";
-import { ControlPanelList } from "./control-panel/ControlPanelList";
-import { useControlPanel } from "./control-panel/useControlPanel";
+import { ChatsLayout } from "./ChatsLayout";
 import { ArtifactPanel } from "./artifacts/ArtifactPanel";
+import { orgPageView } from "./useOrgView";
 import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 
 /** Sidebar layout sizes (percent of container width). */
@@ -29,18 +28,16 @@ const SIDEBAR_MIN_SIZE = 16;
 const SIDEBAR_MAX_SIZE = 80;
 
 /**
- * The org page's other view: the control panel (Jamie chats on the
- * left, the thread on stage to the right), toggled from the end of the
- * right panel's bar and deep-linked as `?view=control-panel`. Switching
- * grows the chat panel to the stage's width while the canvas gives way
- * to the list; coming back shrinks it to the width it had. The stage
- * width is never persisted as the sidebar's layout (see `panelStorage`).
+ * The org page's views, from `?view=`: **chats** (the default — the chat
+ * list, the chat, and the artifact pane beside it), **canvas** (the chat
+ * beside it, as ever) and **graph** (the chat tucked away on the right
+ * until "Ask Jamie"). Each is its own place in the org rail; a link from the old control panel
+ * (`?view=control-panel`) lands on chats.
  */
-type OrgPageMode = "canvas" | "control-panel" | "graph";
-const CONTROL_PANEL_STAGE_SIZE = 72;
+type OrgPageMode = "chats" | "canvas" | "graph";
 /** Programmatic panel resizes animate; a drag must not (the handle turns it off while held). */
 const PANEL_TRANSITION = "transition-[flex-grow] duration-300 ease-in-out";
-/** What fills the left panel — the chat list, the artifact panel — eases in and out. */
+/** What fills the left panel — the canvas, the graph, the artifact panel — eases in and out. */
 const LEFT_SURFACE_TRANSITION = { duration: 0.25, ease: "easeOut" } as const;
 
 /** Strip the `ws:` prefix from a live workspace id. */
@@ -55,25 +52,22 @@ interface OrgCanvasViewProps {
 }
 
 /**
- * The org canvas view — the default `/org/[githubLogin]` route.
+ * The org page — the default `/org/[githubLogin]` route.
  *
- * Two layers:
+ * **Chats** (the default): the chat list (`ControlPanelList`, state from
+ * `useControlPanel`), the chat as the main column, and — when a card or
+ * the bar opens it — the artifact pane on the right.
+ *
+ * **Canvas** (`?view=canvas`) and **graph** (`?view=graph`), two layers:
  *   1. Full-bleed system-canvas (`OrgCanvasBackground`) on the left.
  *   2. Fixed-width tabbed right panel (`OrgRightPanel`) on the right
  *      with two tabs — **Chat** (`SidebarChat`, default landing
  *      tab) and **Details**.
  *
- * Or, with `?view=control-panel`, the control panel: the same panel
- * group, with the chat list in the left panel instead of the canvas and
- * the right panel — the same mounted one — grown into the stage. So the
- * switch is one motion and the chat never remounts. Its state lives in
- * `useControlPanel`; this component keeps owning the chat lifecycle and
- * the attention feed for both views.
- *
- * In either view, an artifact opened from the chat takes the left panel
- * (`ArtifactPanel`): the canvas or the chat list gives way to it and the
- * chat stays beside it at the sidebar's width. Closing it brings back
- * whichever view it was opened over.
+ * On the graph view the chat starts tucked away and slides in on "Ask
+ * Jamie". An artifact opened from the chat takes the canvas's place
+ * (`ArtifactPanel`), the chat staying beside it; closing it brings the
+ * canvas back.
  *
  * This component owns the canvas chat *lifecycle*: starting the
  * active conversation in the store, keeping its `context` up to
@@ -107,22 +101,25 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    */
   const [panelWidth, setPanelWidth] = useState(384);
 
-  const [mode, setMode] = useState<OrgPageMode>(() => {
-    const view = searchParams.get("view");
-    return view === "control-panel" || view === "graph" ? view : "canvas";
-  });
+  const [mode] = useState<OrgPageMode>(() => orgPageView(searchParams));
+  // A canvas reached without `?view=canvas` (an older `?canvas=` / `?r=` link) says so in the URL,
+  // so it stays the canvas — in the rail and on refresh — once the canvas clears those params.
+  useEffect(() => {
+    if (mode !== "canvas" || searchParams.get("view")) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", "canvas");
+    window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
+    // Mount-only: the view is fixed for the page's life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // On the graph view the chat starts hidden and slides in on "Ask Jamie".
   const [chatOpen, setChatOpen] = useState(mode !== "graph");
   /** The graph node in view — what "this" means to Jamie on the graph view. */
   const [graphFocus, setGraphFocus] = useState<GraphFocus | null>(null);
-  const modeRef = useRef(mode);
-  /** Sidebar width before it grew into the stage; restored on the way back. */
-  const preStageSizeRef = useRef<number | null>(null);
   /** While the divider is held the panels must follow the pointer, not ease. */
   const [dragging, setDragging] = useState(false);
-  // The panel library persists every layout; on the control panel the
-  // right panel is stage-wide, and that must not become the sidebar's
-  // remembered width.
+  // The panel library persists every layout; a tucked-away chat (collapsed
+  // to nothing) must not become the sidebar's remembered width.
   const panelStorage = useMemo(
     () => ({
       getItem: (name: string) => {
@@ -133,7 +130,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         }
       },
       setItem: (name: string, value: string) => {
-        if (modeRef.current !== "canvas") return;
+        if (sidebarPanelRef.current?.isCollapsed()) return;
         try {
           localStorage.setItem(name, value);
         } catch {
@@ -143,11 +140,10 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     }),
     [],
   );
-  // What has the left panel: the canvas, the control panel's chat list,
-  // or — over either — the artifact the chat has open.
+  // Beside the canvas or the graph, what has the left panel: that view, or
+  // — over it — the artifact the chat has open.
   const artifactOpen = useArtifactPanelOpen();
-  const leftSurface = artifactOpen ? "artifact" : mode === "control-panel" ? "list" : mode;
-  const controlPanel = useControlPanel(githubLogin, mode === "control-panel", leftSurface === "list");
+  const leftSurface = artifactOpen ? "artifact" : mode;
 
   // Sync `panelWidth` to the panel's actual rendered width on mount,
   // before the browser paints. Two paths land it at the right value:
@@ -326,7 +322,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    */
   useEffect(() => {
     const slug = searchParams.get("r");
-    if (!slug) return;
+    // The chats view has no Details tab to show it in: it sends `?r=` to the canvas view (`ChatsLayout`).
+    if (!slug || mode === "chats") return;
     // Skip if we're already showing this research — avoids re-fetch
     // loops when the URL writer below settles after user interaction.
     if (
@@ -434,96 +431,25 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     setCurrentCanvasBreadcrumb(breadcrumb);
   }, []);
 
-  // ─── Canvas ⇄ control panel ─────────────────────────────────────────
-  const writeViewParam = useCallback(
-    (next: OrgPageMode) => {
-      // `history.replaceState` (NOT `router.replace`). See CANVAS.md "Deep links".
-      const params = new URLSearchParams(window.location.search);
-      if (next === "control-panel") {
-        params.set("view", "control-panel");
-      } else {
-        params.delete("view");
-        params.delete("plan");
-        params.delete("task");
-      }
-      const qs = params.toString();
-      window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
-    },
-    [pathname],
-  );
-
-  // The chat panel grows into the stage while the canvas gives way to
-  // the list — one motion, nothing on the right remounts. Asking for the
-  // other view is asking to see it, so an open artifact steps aside.
-  const openControlPanel = useCallback(() => {
-    useCanvasChatStore.getState().closeArtifactPanel();
-    modeRef.current = "control-panel";
-    const panel = sidebarPanelRef.current;
-    if (panel) {
-      preStageSizeRef.current = panel.getSize();
-      panel.resize(CONTROL_PANEL_STAGE_SIZE);
-    }
-    setMode("control-panel");
-    writeViewParam("control-panel");
-  }, [writeViewParam]);
-
-  const closeControlPanel = useCallback(() => {
-    useCanvasChatStore.getState().closeArtifactPanel();
-    modeRef.current = "canvas";
-    const prior = preStageSizeRef.current;
-    preStageSizeRef.current = null;
-    if (prior !== null) sidebarPanelRef.current?.resize(prior);
-    setMode("canvas");
-    writeViewParam("canvas");
-  }, [writeViewParam]);
-
-  // Landing on `?view=control-panel`: the layout restored is the sidebar's,
-  // so grow into the stage from it (and remember it for the way back).
-  // Landing on `?view=graph`: the chat waits, collapsed, until asked for —
-  // before paint, so nothing slides away on load.
+  // On the graph view the chat waits, collapsed, until asked for — before
+  // paint, so nothing slides away on load.
   useLayoutEffect(() => {
-    const panel = sidebarPanelRef.current;
-    if (!panel) return;
-    if (modeRef.current === "graph") {
-      panel.collapse();
-      return;
-    }
-    if (modeRef.current !== "control-panel") return;
-    preStageSizeRef.current = panel.getSize();
-    panel.resize(CONTROL_PANEL_STAGE_SIZE);
+    if (mode === "graph") sidebarPanelRef.current?.collapse();
+    // Mount-only: the view is fixed for the page's life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** "Ask Jamie" on the graph view: slide the chat in (or back out). */
-  const toggleGraphChat = useCallback(() => {
+  const toggleChat = useCallback(() => {
     const panel = sidebarPanelRef.current;
     if (!panel) return;
     if (panel.isCollapsed()) panel.expand();
     else panel.collapse();
   }, []);
 
-  // ─── Artifact panel ─────────────────────────────────────────────────
-  // On the canvas the artifact simply has the canvas's place. On the
-  // control panel the chat is stage-wide, so it steps back to the
-  // sidebar's width while an artifact is up and returns when it closes.
-  useEffect(() => {
-    if (modeRef.current !== "control-panel") return;
-    sidebarPanelRef.current?.resize(
-      artifactOpen ? (preStageSizeRef.current ?? SIDEBAR_DEFAULT_SIZE) : CONTROL_PANEL_STAGE_SIZE,
-    );
-  }, [artifactOpen]);
-
   // The panel is this page's: the store outlives the page, and an
   // artifact left open must not be the first thing the next visit shows.
   useEffect(() => () => useCanvasChatStore.getState().closeArtifactPanel(), []);
-
-  // A plan or task pulled onto the stage needs the stage's width; the
-  // artifact belongs to the chat it left.
-  const stageFocusKind = controlPanel.stage.focus.kind;
-  useEffect(() => {
-    if (mode === "control-panel" && stageFocusKind !== "chat") {
-      useCanvasChatStore.getState().closeArtifactPanel();
-    }
-  }, [mode, stageFocusKind]);
 
   // ─── Canvas chat conversation lifecycle ─────────────────────────────
   // Start the active conversation once everything we need is loaded.
@@ -532,18 +458,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [conversationStarted, setConversationStarted] = useState(false);
   const currentCanvasRef = searchParams.get("canvas") ?? "";
   // The hidden-workspace list comes from the canvas; without a canvas to
-  // report it (landing straight on the control panel), don't wait for it.
+  // report it (the chats and graph views), don't wait for it.
   const chatReady = !loadingWorkspaces && (hiddenInitialized || leftSurface !== "canvas") && chatLoadComplete;
 
-  // What "this" means to Jamie: the canvas selection, or — on the
-  // control panel — the plan/task on stage, exactly like a canvas click.
-  const panelFocusNodeId = controlPanel.focusNodeId;
-  // On the graph view the canvas isn't on screen: its selection isn't "this" — `graphFocus` is.
-  const contextNodeId =
-    mode === "control-panel" ? panelFocusNodeId : mode === "graph" ? null : (selectedNode?.id ?? null);
+  // What "this" means to Jamie: the canvas selection. Off the canvas it
+  // isn't on screen — on the graph view `graphFocus` is "this".
+  const contextNodeId = mode === "canvas" ? (selectedNode?.id ?? null) : null;
   const contextNodeIds = useMemo(
-    () => (mode === "canvas" ? selectedNodes.map((n) => n.id) : contextNodeId ? [contextNodeId] : []),
-    [mode, contextNodeId, selectedNodes],
+    () => (mode === "canvas" ? selectedNodes.map((n) => n.id) : []),
+    [mode, selectedNodes],
   );
 
   useEffect(() => {
@@ -630,46 +553,56 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // the page level, not inside `SidebarChat`, so tab switches and
   // chat unmounts don't lose pending saves.
   useCanvasChatAutoSave({ githubLogin });
-  useSubAgentStatusRefresh({ githubLogin });
   useGraphProposalRefresh();
+
+  const rightPanel = (onShowList?: () => void) => (
+    <OrgRightPanel
+      githubLogin={githubLogin}
+      selectedNode={selectedNode}
+      selectedNodes={selectedNodes}
+      selectedNodesInternalEdges={selectedNodesInternalEdges}
+      chatReady={chatReady && conversationStarted}
+      chatsView={mode === "chats" ? { onShowList } : undefined}
+    />
+  );
 
   return (
     <AttentionMapProvider githubLogin={githubLogin} visibleWorkspaceSlugs={chatWorkspaceSlugs}>
       <div ref={containerRef} className="relative flex h-full w-full overflow-hidden">
-        {/* The canvas, under the panel group. On the control panel it fades
-          out behind the list and is unmounted; an open artifact takes its
-          place the same way. */}
-        <AnimatePresence initial={false}>
-          {leftSurface === "canvas" && (
-            <motion.div
-              key="canvas"
-              className="absolute inset-0 flex"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25 }}
-            >
-              <OrgCanvasBackground
-                githubLogin={githubLogin}
-                // Inset the canvas's right edge by the dynamic panel width so
-                // canvas chrome (FAB, etc.) stays outside the sidebar.
-                rightInset={panelWidth}
-                orgName={orgName}
-                onHiddenChange={handleHiddenChange}
-                onSelectionChange={handleSelectionChange}
-                onCanvasBreadcrumbChange={handleCanvasBreadcrumbChange}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {mode === "chats" ? (
+          <ChatsLayout githubLogin={githubLogin} renderChat={rightPanel} />
+        ) : (
+          <>
+            {/* The canvas, under the panel group. An open artifact takes its place
+          (the canvas unmounts) and gives it back on close. */}
+            <AnimatePresence initial={false}>
+              {leftSurface === "canvas" && (
+                <motion.div
+                  key="canvas"
+                  className="absolute inset-0 flex"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <OrgCanvasBackground
+                    githubLogin={githubLogin}
+                    // Inset the canvas's right edge by the dynamic panel width so
+                    // canvas chrome (FAB, etc.) stays outside the sidebar.
+                    rightInset={panelWidth}
+                    orgName={orgName}
+                    onHiddenChange={handleHiddenChange}
+                    onSelectionChange={handleSelectionChange}
+                    onCanvasBreadcrumbChange={handleCanvasBreadcrumbChange}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-        {/* Resizable sidebar overlay — sits at z-20, absolutely
+            {/* Resizable sidebar overlay — sits at z-20, absolutely
           positioned to cover the right portion of the canvas.
-          The left filler panel is transparent; only the right
-          ResizablePanel renders visible content. On the control panel
-          the same group is the layout: the left panel hosts the chat
-          list and the right panel — the same mounted one — is the
-          stage, so switching views only resizes.
+          The left filler panel is transparent over the canvas; only the
+          right ResizablePanel renders visible content.
 
           Stable `id`s on the group + every panel are required
           whenever `autoSaveId` is set: the library persists layout
@@ -678,114 +611,93 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
           ids, `useId()` generates a fresh id per mount that doesn't
           match the stored layout, the lookup throws "No group
           element found for id" and the canvas crashes. */}
-        <div className="absolute inset-0 z-20 pointer-events-none">
-          <ResizablePanelGroup
-            id="org-right-panel-group"
-            direction="horizontal"
-            autoSaveId="org-right-panel"
-            storage={panelStorage}
-            className="h-full w-full"
-          >
-            {/* Left: transparent over the canvas, the chat list, or — over
+            <div className="absolute inset-0 z-20 pointer-events-none">
+              <ResizablePanelGroup
+                id="org-right-panel-group"
+                direction="horizontal"
+                autoSaveId="org-right-panel"
+                storage={panelStorage}
+                className="h-full w-full"
+              >
+                {/* Left: transparent over the canvas, the graph, or — over
               either — the artifact the chat has open. One surface eases
-              out while the next eases in, so each fills the panel on its
-              own layer instead of sitting under the other. */}
-            <ResizablePanel
-              id="org-right-panel-filler"
-              order={1}
-              defaultSize={100 - SIDEBAR_DEFAULT_SIZE}
-              className={cn(
-                "relative",
-                leftSurface === "canvas" ? "pointer-events-none" : "pointer-events-auto",
-                !dragging && PANEL_TRANSITION,
-              )}
-            >
-              <AnimatePresence initial={false}>
-                {leftSurface === "artifact" ? (
-                  <motion.div
-                    key="artifact"
-                    className="absolute inset-0 bg-background"
-                    initial={{ opacity: 0, x: 24 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 24 }}
-                    transition={LEFT_SURFACE_TRANSITION}
-                  >
-                    <ArtifactPanel />
-                  </motion.div>
-                ) : leftSurface === "list" ? (
-                  <motion.div
-                    key="list"
-                    className="absolute inset-0 bg-background"
-                    initial={{ opacity: 0, x: -24 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -24 }}
-                    transition={LEFT_SURFACE_TRANSITION}
-                  >
-                    <ControlPanelList {...controlPanel.list} />
-                  </motion.div>
-                ) : leftSurface === "graph" ? (
-                  <motion.div
-                    key="graph"
-                    className="absolute inset-0 bg-background"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={LEFT_SURFACE_TRANSITION}
-                  >
-                    <GraphView
-                      githubLogin={githubLogin}
-                      workspaces={workspaces}
-                      loading={loadingWorkspaces}
-                      chatOpen={chatOpen}
-                      onToggleChat={toggleGraphChat}
-                      onFocusChange={setGraphFocus}
-                    />
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-            </ResizablePanel>
+              out while the next eases in. */}
+                <ResizablePanel
+                  id="org-right-panel-filler"
+                  order={1}
+                  defaultSize={100 - SIDEBAR_DEFAULT_SIZE}
+                  className={cn(
+                    "relative",
+                    leftSurface === "canvas" ? "pointer-events-none" : "pointer-events-auto",
+                    !dragging && PANEL_TRANSITION,
+                  )}
+                >
+                  <AnimatePresence initial={false}>
+                    {leftSurface === "artifact" ? (
+                      <motion.div
+                        key="artifact"
+                        className="absolute inset-0 bg-background"
+                        initial={{ opacity: 0, x: 24 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 24 }}
+                        transition={LEFT_SURFACE_TRANSITION}
+                      >
+                        <ArtifactPanel />
+                      </motion.div>
+                    ) : leftSurface === "graph" ? (
+                      <motion.div
+                        key="graph"
+                        className="absolute inset-0 bg-background"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={LEFT_SURFACE_TRANSITION}
+                      >
+                        <GraphView
+                          githubLogin={githubLogin}
+                          workspaces={workspaces}
+                          loading={loadingWorkspaces}
+                          chatOpen={chatOpen}
+                          onToggleChat={toggleChat}
+                          onFocusChange={setGraphFocus}
+                        />
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </ResizablePanel>
 
-            <ResizableHandle
-              withHandle
-              // Nothing to drag while the graph view's chat is tucked away.
-              className={cn("pointer-events-auto", mode === "graph" && !chatOpen && "hidden")}
-              onDragging={setDragging}
-            />
+                <ResizableHandle
+                  withHandle
+                  // Nothing to drag while the graph view's chat is tucked away.
+                  className={cn("pointer-events-auto", mode === "graph" && !chatOpen && "hidden")}
+                  onDragging={setDragging}
+                />
 
-            {/* Right panel — the visible sidebar, and the stage */}
-            <ResizablePanel
-              ref={sidebarPanelRef}
-              id="org-right-panel-sidebar"
-              order={2}
-              defaultSize={SIDEBAR_DEFAULT_SIZE}
-              minSize={SIDEBAR_MIN_SIZE}
-              maxSize={SIDEBAR_MAX_SIZE}
-              // Only the graph view tucks the chat away entirely.
-              collapsible={mode === "graph"}
-              collapsedSize={0}
-              onCollapse={() => setChatOpen(false)}
-              onExpand={() => setChatOpen(true)}
-              className={cn("pointer-events-auto", !dragging && PANEL_TRANSITION)}
-              onResize={(percent) => {
-                const containerWidth = containerRef.current?.offsetWidth ?? 1600;
-                setPanelWidth(Math.round((percent / 100) * containerWidth));
-              }}
-            >
-              <OrgRightPanel
-                githubLogin={githubLogin}
-                selectedNode={selectedNode}
-                selectedNodes={selectedNodes}
-                selectedNodesInternalEdges={selectedNodesInternalEdges}
-                chatReady={chatReady && conversationStarted}
-                controlPanel={
-                  mode === "control-panel" ? { ...controlPanel.stage, onExit: closeControlPanel } : undefined
-                }
-                // The canvas ⇄ control panel toggle doesn't apply on the graph view.
-                onOpenControlPanel={mode === "graph" ? undefined : openControlPanel}
-              />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
+                {/* Right panel — the chat; on the graph view, tucked away until "Ask Jamie". */}
+                <ResizablePanel
+                  ref={sidebarPanelRef}
+                  id="org-right-panel-sidebar"
+                  order={2}
+                  defaultSize={SIDEBAR_DEFAULT_SIZE}
+                  minSize={SIDEBAR_MIN_SIZE}
+                  maxSize={SIDEBAR_MAX_SIZE}
+                  // Only the graph view tucks the chat away entirely.
+                  collapsible={mode === "graph"}
+                  collapsedSize={0}
+                  onCollapse={() => setChatOpen(false)}
+                  onExpand={() => setChatOpen(true)}
+                  className={cn("pointer-events-auto", !dragging && PANEL_TRANSITION)}
+                  onResize={(percent) => {
+                    const containerWidth = containerRef.current?.offsetWidth ?? 1600;
+                    setPanelWidth(Math.round((percent / 100) * containerWidth));
+                  }}
+                >
+                  {rightPanel()}
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </div>
+          </>
+        )}
       </div>
     </AttentionMapProvider>
   );

@@ -57,7 +57,6 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { STOPPED_TURN_TEXT } from "@/lib/ai/conversationHelpers";
 import type { ApprovalIntent, ApprovalResult, RejectionIntent } from "@/lib/proposals/types";
-import type { ClarifyingQuestion } from "@/types/stakwork";
 import type { StreamTimelineItem, StreamToolCall, ToolCallStatus } from "@/types/streaming";
 import type { TokenUsage } from "@/types/usage";
 import type { ArtifactPanelState, ArtifactRef } from "./canvasChatArtifacts";
@@ -89,66 +88,16 @@ export interface CanvasAttachment {
 
 /**
  * Marks a `CanvasChatMessage` row whose origin is NOT the canvas
- * conversation itself. The fan-out worker
- * (`src/services/canvas-planner-fanout.ts`) writes inbound rows
- * carrying `kind: "planner"`; Phase 4's planner-form answer endpoint
- * writes outbound rows carrying `kind: "user-answered-planner-form"`.
+ * conversation itself. Render-side filters key on `source.kind`
+ * directly. Round-trips through `SharedConversation.messages` JSON.
  *
- * Render-side filters key on `source.kind` directly — see
- * `SidebarChat.tsx` (early-return) and `SubAgentRunCard.tsx`
- * (inbound thread entries). Round-trips through
- * `SharedConversation.messages` JSON for free.
- *
- * Discriminated union (rather than a flat marker) so Phase 4 can
- * land its variant without breaking Phase 2 consumers.
+ * The `planner` and `user-answered-planner-form` variants are LEGACY:
+ * the planner fan-out was removed, but conversations persisted before
+ * that still carry such rows, so the type is kept (and `SidebarChat`
+ * hides them) rather than letting them render as stray bubbles.
  */
 export type CanvasMessageSource =
-  | {
-      kind: "planner";
-      featureId: string;
-      plannerMessageId: string;
-      /**
-       * Feature display metadata at fan-out time, so an inbound-only run
-       * (the approval flow, where the canvas agent never made an outbound
-       * `send_to_feature_planner` call) can render the real feature name /
-       * workspace + a working "Open plan" link instead of "Unknown
-       * feature". All optional — rows written before this landed (and any
-       * future caller that omits them) fall back to the placeholder.
-       */
-      featureTitle?: string;
-      workspaceSlug?: string;
-      workspaceName?: string;
-      /**
-       * The feature's `workflowStatus` at the moment the planner posted
-       * (Phase 3). Lets `SubAgentRunCard` show a meaningful status pill
-       * — `Running` (IN_PROGRESS), `Plan ready` (COMPLETED), `Failed`
-       * (FAILED/ERROR/HALTED) — without a re-read. Optional: rows
-       * written before Phase 3 (and any non-planner source) won't carry
-       * it, and the card falls back to its direction-based headline.
-       */
-      workflowStatus?: string;
-      /**
-       * `true` when the planner message carried a clarifying-questions
-       * artifact (`PLAN` + `ask_clarifying_questions`) — its explicit
-       * "a human must pick" signal (Phase 3). Drives the `Waiting for
-       * you` pill and surfaces the FORM via `PlannerFormSlot`.
-       */
-      hasForm?: boolean;
-      /**
-       * The planner's clarifying-question list (Phase 4), embedded so
-       * `PlannerFormSlot` can render `ClarifyingQuestionsPreview`
-       * verbatim with no extra fetch. Present iff `hasForm` is `true`.
-       */
-      formQuestions?: ClarifyingQuestion[];
-      /**
-       * `true` when the planner just generated a task breakdown (a
-       * `TASKS` artifact). Gates the card's **Start Tasks** button,
-       * which reads the live ready-count from the feature itself.
-       */
-      hasTasks?: boolean;
-    }
-  // Added in Phase 4 — kept in the union now to make exhaustive
-  // checks in switch statements complete from Phase 2 onward.
+  | { kind: "planner"; featureId: string; plannerMessageId: string }
   | { kind: "user-answered-planner-form"; featureId: string; plannerMessageId: string }
   | {
       kind: "research";
@@ -216,6 +165,19 @@ export type CanvasMessageSource =
       title?: string;
       /** The launch's `StrutRun` id — the job row that settles it is `job-<runId>`. */
       runId: string;
+    }
+  | {
+      /**
+       * A new version of a job's claims card made from the card itself — a
+       * Verify, a person's answer to an open check, a new claim (strut
+       * plans/job-claims.md §7) — with no turn and no agent
+       * (`services/strut-jobs/claims.ts`). Renders as a quiet line with the
+       * card under it; replayed to the model as a notice from the user
+       * (`toModelMessages`).
+       */
+      kind: "job_claims";
+      jobId: string;
+      title?: string;
     }
   | {
       /**
@@ -526,9 +488,16 @@ interface CanvasChatState {
    * The input owns the consumption — `<SidebarChatInput />` watches
    * for non-null values and applies + clears them in an effect. An
    * empty string only focuses the input and leaves its text alone
-   * (the control panel's "New chat" uses it).
+   * (the chat list's "New chat" uses it).
    */
   pendingInputDraft: string | null;
+  /**
+   * Text to APPEND (on a new line) to the chat input instead of replacing
+   * it — the brainstorm tree's "Go with" uses it so several options can be
+   * collected in one message. Taps made while the input is unmounted
+   * accumulate, joined with "\n". Consumed and cleared like `pendingInputDraft`.
+   */
+  pendingInputAppend: string | null;
 
   // ─── Canvas viewport (written by OrgCanvasBackground on every pan/zoom) ─
   /**
@@ -579,14 +548,17 @@ interface CanvasChatState {
   // ─── Artifact panel ──────────────────────────────────────────────────
   /**
    * The artifact of the active conversation that is up on the artifact
-   * panel, or null when the panel is closed. A card in the chat opens it;
-   * `OrgCanvasView` gives the panel the canvas's place while it is set.
+   * panel — or, with a null `identity`, the index of all of them — or null
+   * when the panel is closed. A card in the chat opens it; `OrgCanvasView`
+   * gives it its pane while it is set.
    * Cleared whenever the active conversation changes — an artifact belongs
    * to the chat it came from.
    */
   artifactPanel: ArtifactPanelState | null;
   /** Put an artifact on the panel, by its `artifactIdentity`. Omit `version` to follow its newest version. */
   openArtifactPanel: (identity: string, version?: number | null) => void;
+  /** Put the index of the chat's artifacts on the panel. */
+  openArtifactIndex: () => void;
   closeArtifactPanel: () => void;
 
   // ─── Conversation actions ────────────────────────────────────────────
@@ -691,6 +663,7 @@ interface CanvasChatState {
    * after consumption — callers usually shouldn't need to clear).
    */
   setPendingInputDraft: (draft: string | null) => void;
+  appendPendingInputDraft: (text: string) => void;
 
   // ─── Canvas deeplink ─────────────────────────────────────────────────
   /**
@@ -743,6 +716,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       ephemeralSeedCounts: {},
       locallyAuthoredTurnIds: new Set<string>(),
       pendingInputDraft: null,
+      pendingInputAppend: null,
       pendingDeeplink: null,
       canvasViewport: null,
       proposals: {},
@@ -753,6 +727,8 @@ export const useCanvasChatStore = create<CanvasChatState>()(
 
       openArtifactPanel: (identity, version = null) =>
         set({ artifactPanel: { identity, version } }, false, "openArtifactPanel"),
+
+      openArtifactIndex: () => set({ artifactPanel: { identity: null, version: null } }, false, "openArtifactIndex"),
 
       closeArtifactPanel: () => set({ artifactPanel: null }, false, "closeArtifactPanel"),
 
@@ -1188,6 +1164,12 @@ export const useCanvasChatStore = create<CanvasChatState>()(
         ),
 
       setPendingInputDraft: (draft) => set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
+      appendPendingInputDraft: (text) =>
+        set(
+          (s) => ({ pendingInputAppend: s.pendingInputAppend ? `${s.pendingInputAppend}\n${text}` : text }),
+          false,
+          "appendPendingInputDraft",
+        ),
 
       triggerDeeplink: (dl) => set({ pendingDeeplink: dl }, false, "triggerDeeplink"),
 

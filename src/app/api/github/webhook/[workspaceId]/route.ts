@@ -7,6 +7,7 @@ import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 import { RepositoryStatus, Prisma, TaskStatus, WorkflowStatus, NotificationTriggerType } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { scheduleAutoLearnForPush } from "@/services/swarm/auto-learn";
+import { strutActorForLaunch } from "@/services/bifrost/strut-delegation";
 import { releaseTaskPod } from "@/lib/pods/utils";
 import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
@@ -1559,6 +1560,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (repository.mocksEnabled) syncOptions.mocks = true;
     if (repository.embeddingsEnabled) syncOptions.embeddings = true;
 
+    // Who the sync — and the describe + auto-learn runs it leads to — is for:
+    // the workspace owner, whose PAT it carries.
+    const strutActor = workspace?.ownerId
+      ? await strutActorForLaunch(
+          { workspaceId: repository.workspaceId, workspaceSlug: workspace.slug, userId: workspace.ownerId },
+          { swarmUrl: swarm.swarmUrl, swarmApiKey: decryptedSwarmApiKey },
+        )
+      : undefined;
+    if (strutActor) syncOptions.strutActor = strutActor;
+
     console.log("[GithubWebhook] Triggering async sync", {
       delivery,
       workspaceId: repository.workspaceId,
@@ -1633,6 +1644,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         swarm: { autoLearnEnabled: swarm.autoLearnEnabled, swarmUrl: swarm.swarmUrl },
         swarmApiKey: decryptedSwarmApiKey,
         githubPat,
+        strutActor,
         syncRequestId: typeof syncRequestId === "string" && syncRequestId ? syncRequestId : undefined,
         delivery,
       });

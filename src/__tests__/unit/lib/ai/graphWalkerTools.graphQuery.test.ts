@@ -145,6 +145,7 @@ interface ParseResult {
   data?: { limit?: number; query?: string; workspace?: string };
 }
 interface ToolUnderTest {
+  description: string;
   inputSchema: { safeParse(value: unknown): ParseResult };
   execute(args: Record<string, unknown>): Promise<Record<string, unknown>>;
 }
@@ -203,6 +204,24 @@ describe("graph_query tool", () => {
   afterEach(() => {
     process.env.USE_MOCKS = ORIGINAL_USE_MOCKS;
     global.fetch = ORIGINAL_FETCH;
+  });
+
+  describe("description", () => {
+    // The model writes Cypher from this text alone — no tool exposes the
+    // stakgraph schema — so the property and relationship names must be here.
+    it.each([
+      "name, file, body, start, end",
+      "'stakwork/hive/src/app/page.tsx'",
+      "on File nodes `name` is only the basename",
+      "CONTAINS",
+      "CALLS (Function → Function)",
+      "HANDLER (Endpoint",
+      "Datamodel",
+      "MATCH (caller:Function)-[:CALLS]->",
+      "returns zero rows, not an error",
+    ])("names %s", (needle) => {
+      expect(graphQueryTool().description).toContain(needle);
+    });
   });
 
   describe("input schema bounds", () => {

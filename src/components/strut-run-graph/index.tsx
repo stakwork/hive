@@ -9,6 +9,7 @@ import {
   Crosshair,
   ExternalLink,
   Eye,
+  ListTree,
   Loader2,
   Pause,
   PenLine,
@@ -25,19 +26,27 @@ import { layoutRunGraph } from "@/lib/strut-run-graph/layout";
 import { ancestorsOf, lineageParents } from "@/lib/strut-run-graph/lineage";
 import {
   buildRunGraphTree,
+  childToLoad,
   callLabel,
   keepGraphRead,
+  launchSections,
   replayFrame,
   scopeCalls,
   scopeOfBranch,
+  withChildCalls,
+  withChildGraph,
   type RunGraphTreeNode,
 } from "@/lib/strut-run-graph/replay";
 import { nodeText } from "@/lib/strut-run-graph/node-text";
+import { parseQualifiedRef } from "@/lib/strut-run-graph/peer-ref";
+import { distinctNodeRefs } from "@/lib/strut-run-graph/project";
 import type {
   RunGraphAccess,
   RunGraphCall,
+  RunGraphEdge,
   RunGraphNode,
   RunGraphNodeBody,
+  RunGraphPeer,
   RunGraphTrace,
 } from "@/lib/strut-run-graph/types";
 import { runGraphHops, runGraphLinks, type RunGraphLink } from "@/lib/strut-run-graph/walk";
@@ -47,6 +56,8 @@ import { RunGraphCanvas, type RunGraphCanvasNode } from "./RunGraphCanvas";
 
 /** Refresh cadence while the run is still going. */
 const LIVE_POLL_MS = 10_000;
+/** A run that touched fewer nodes than this opens the runs it launched on its own. */
+const AUTO_OPEN_BELOW = 10;
 /** One call per tick when playing. */
 const PLAY_INTERVAL_MS = 800;
 
@@ -63,7 +74,8 @@ function AccessIcon({ access, className }: { access: RunGraphAccess; className?:
 /** The one thing a call asked for, for its row in the tree. */
 function querySummary(call: RunGraphCall): string {
   const { query } = call;
-  const value = query.q ?? query.query ?? query.name ?? query.ref_id ?? query.source_ref_id ?? query.ref_ids;
+  const value =
+    query.q ?? query.query ?? query.name ?? query.file ?? query.ref_id ?? query.source_ref_id ?? query.ref_ids;
   if (value === undefined) return "";
   return Array.isArray(value) ? `${value.length} refs` : String(value);
 }
@@ -94,6 +106,8 @@ function TreeBranch({
   onToggle,
   onPick,
   onFocus,
+  childState,
+  onOpenChild,
 }: {
   node: RunGraphTreeNode;
   depth: number;
@@ -104,6 +118,10 @@ function TreeBranch({
   onPick: (index: number) => void;
   /** Show only this branch. */
   onFocus: (path: string) => void;
+  /** Where loading the run a launching call started stands, by the call's path in the tree. */
+  childState: (path: string) => ChildState | undefined;
+  /** Load the run a launching call started, by the call's path in the tree. */
+  onOpenChild: (path: string) => void | Promise<void>;
 }) {
   const indent = { paddingLeft: `${depth * 14 + 8}px` };
 
@@ -111,14 +129,14 @@ function TreeBranch({
     const call = calls[node.callIndex];
     const current = step === node.callIndex;
     const past = step === null || node.callIndex < step;
-    return (
+    const pickButton = (
       <button
         type="button"
         onClick={() => onPick(node.callIndex as number)}
         style={indent}
         data-testid="run-graph-call"
         data-current={current}
-        className={`flex w-full items-center gap-2 py-1 pr-2 text-left text-xs transition-colors hover:bg-muted/60 ${
+        className={`flex min-w-0 flex-1 items-center gap-2 py-1 pr-2 text-left text-xs transition-colors hover:bg-muted/60 ${
           current ? "bg-muted font-medium" : past ? "" : "text-muted-foreground/60"
         }`}
       >
@@ -127,6 +145,28 @@ function TreeBranch({
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{querySummary(call)}</span>
         <span className="shrink-0 tabular-nums text-muted-foreground">{answerSummary(call)}</span>
       </button>
+    );
+    if (!call.child) return pickButton;
+    // A call that ran a workflow as its own run: its calls are loaded when opened, and take its place.
+    const state = childState(node.path);
+    const where = call.child.peer ? ` on @${call.child.peer}` : "";
+    return (
+      <div className="flex w-full items-center">
+        {pickButton}
+        <button
+          type="button"
+          onClick={() => void onOpenChild(node.path)}
+          disabled={state?.state === "loading"}
+          aria-label={`Open the ${call.child.workflow} run${where}`}
+          title={state?.state === "failed" ? state.error : `Open the ${call.child.workflow} run${where}`}
+          data-testid="run-graph-open-child"
+          className={`mr-1 shrink-0 rounded p-0.5 hover:text-foreground ${
+            state?.state === "failed" ? "text-destructive" : "text-muted-foreground"
+          }`}
+        >
+          {state?.state === "loading" ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListTree className="h-3 w-3" />}
+        </button>
+      </div>
     );
   }
 
@@ -171,11 +211,19 @@ function TreeBranch({
             onToggle={onToggle}
             onPick={onPick}
             onFocus={onFocus}
+            childState={childState}
+            onOpenChild={onOpenChild}
           />
         ))}
     </div>
   );
 }
+
+/** Where loading a launching call's run stands. */
+type ChildState =
+  | { state: "loading" }
+  | { state: "loaded"; calls: RunGraphCall[]; nodes: RunGraphNode[]; edges: RunGraphEdge[] }
+  | { state: "failed"; error: string };
 
 /** A node's body, as the graph has answered for it so far. */
 type NodeBodyState =
@@ -240,6 +288,7 @@ function NodeDetail({
   node,
   color,
   workspaceSlug,
+  peer,
   calls,
   links,
   nodeById,
@@ -255,6 +304,8 @@ function NodeDetail({
   color: string;
   /** The workspace whose graph the run used, for the Graph Explorer link; no link without it. */
   workspaceSlug?: string;
+  /** For a node in a peer workspace's graph: that workspace, and whether its graph was read for this viewer. */
+  peer?: RunGraphPeer;
   /** False when the graph did not answer for the nodes, which is not a node it no longer holds. */
   graphAnswered: boolean;
   /** Why it did not, in parentheses, or empty. */
@@ -271,6 +322,9 @@ function NodeDetail({
   onClose: () => void;
 }) {
   const [reading, setReading] = useState(false);
+  /** The node's id in its own graph, and the workspace that graph is: a peer's, else the run's. */
+  const refId = parseQualifiedRef(node.ref_id).refId;
+  const explorerSlug = node.peer ?? workspaceSlug;
   const touchedBy = useMemo(
     () => calls.flatMap((call, index) => (call.nodes.some((n) => n.ref_id === node.ref_id) ? [{ call, index }] : [])),
     [calls, node.ref_id],
@@ -295,6 +349,11 @@ function NodeDetail({
         <div className="min-w-0 flex-1">
           <p className="break-words text-sm font-semibold">{node.name}</p>
           <p className="text-muted-foreground">{node.node_type}</p>
+          {node.peer && (
+            <Badge variant="outline" className="mt-1 font-normal" data-testid="run-graph-node-peer">
+              @{node.peer}
+            </Badge>
+          )}
         </div>
         <button
           type="button"
@@ -310,17 +369,21 @@ function NodeDetail({
           Namespace <span className="font-mono text-foreground">{node.namespace}</span>
         </p>
       )}
-      <p className="break-all font-mono text-muted-foreground">{node.ref_id}</p>
+      <p className="break-all font-mono text-muted-foreground">{refId}</p>
       {!node.found && (
         <p className="text-muted-foreground" data-testid="run-graph-node-unresolved">
-          {graphAnswered
-            ? "The graph no longer holds this node."
-            : `The graph did not answer${unreadReason}, so this is only what the run's log says of the node.`}
+          {node.peer
+            ? peer?.read
+              ? `@${node.peer}'s graph no longer holds this node.`
+              : `In @${node.peer}'s graph, not read here${peer?.reason ? ` (${peer.reason})` : ""}, so this is only what the run's log says of the node.`
+            : graphAnswered
+              ? "The graph no longer holds this node."
+              : `The graph did not answer${unreadReason}, so this is only what the run's log says of the node.`}
         </p>
       )}
-      {node.found && workspaceSlug && (
+      {node.found && explorerSlug && (
         <Link
-          href={`/w/${workspaceSlug}/context/graph?ref_id=${encodeURIComponent(node.ref_id)}`}
+          href={`/w/${explorerSlug}/context/graph?ref_id=${encodeURIComponent(refId)}`}
           target="_blank"
           className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
         >
@@ -482,12 +545,38 @@ export function StrutRunGraph({
     return () => clearInterval(timer);
   }, [live, load]);
 
-  const inScope = useMemo(() => scopeCalls(trace?.calls ?? [], scope), [trace?.calls, scope]);
+  /** The runs launching calls started, by the launching call's full path: loaded when opened, never before. */
+  const [children, setChildren] = useState<Record<string, ChildState>>({});
+  const loadedChildren = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(children).flatMap(([path, c]) => (c.state === "loaded" ? [[path, c.calls]] : [])),
+      ) as Record<string, RunGraphCall[]>,
+    [children],
+  );
+  const allCalls = useMemo(() => withChildCalls(trace?.calls ?? [], loadedChildren), [trace?.calls, loadedChildren]);
+  /** The trace's nodes and edges with what the opened child runs brought: the files they read. */
+  const graph = useMemo(
+    () =>
+      withChildGraph(
+        trace?.nodes ?? [],
+        trace?.edges ?? [],
+        Object.values(children).flatMap((c) => (c.state === "loaded" ? [c] : [])),
+      ),
+    [trace?.nodes, trace?.edges, children],
+  );
+  /** Every launching call, loaded or not, by its path in the whole run: each draws its run in a lane of its own. */
+  const launches = useMemo(
+    () => [...(trace?.calls ?? []), ...Object.values(loadedChildren).flat()].filter((call) => call.child !== undefined),
+    [trace?.calls, loadedChildren],
+  );
+  const sections = useMemo(() => launchSections(launches, scope), [launches, scope]);
+  const inScope = useMemo(() => scopeCalls(allCalls, scope), [allCalls, scope]);
   const calls = useMemo(() => inScope.filter((call) => shown[call.access]), [inScope, shown]);
   const current = step !== null && step < calls.length ? step : null;
 
   const tree = useMemo(() => buildRunGraphTree(calls), [calls]);
-  const nodeById = useMemo(() => new Map((trace?.nodes ?? []).map((n) => [n.ref_id, n])), [trace?.nodes]);
+  const nodeById = useMemo(() => new Map(graph.nodes.map((n) => [n.ref_id, n])), [graph.nodes]);
 
   // A node's body is read when it is first selected and kept, so coming back to it asks nothing.
   const [bodies, setBodies] = useState<Record<string, NodeBodyState>>({});
@@ -514,9 +603,9 @@ export function StrutRunGraph({
   // Everything the shown calls touched, whatever its type, and the lineage above it — the legend counts these.
   const touched = useMemo(() => {
     const ids = new Set(calls.flatMap((call) => call.nodes.map((n) => n.ref_id)));
-    return (trace?.nodes ?? []).filter((n) => ids.has(n.ref_id));
-  }, [calls, trace?.nodes]);
-  const parents = useMemo(() => lineageParents(trace?.edges ?? []), [trace?.edges]);
+    return graph.nodes.filter((n) => ids.has(n.ref_id));
+  }, [calls, graph.nodes]);
+  const parents = useMemo(() => lineageParents(graph.edges), [graph.edges]);
   const lineage = useMemo(() => {
     const above = new Set(
       ancestorsOf(
@@ -524,8 +613,8 @@ export function StrutRunGraph({
         parents,
       ),
     );
-    return (trace?.nodes ?? []).filter((n) => above.has(n.ref_id));
-  }, [touched, parents, trace?.nodes]);
+    return graph.nodes.filter((n) => above.has(n.ref_id));
+  }, [touched, parents, graph.nodes]);
   const drawn = useMemo(() => [...touched, ...lineage], [touched, lineage]);
 
   const typeCounts = useMemo(() => {
@@ -538,13 +627,16 @@ export function StrutRunGraph({
   const typeVisible = useCallback((type: string) => typeOverrides[type] ?? !isProvenanceType(type), [typeOverrides]);
 
   const graphNodes = useMemo<RunGraphCanvasNode[]>(
-    () => drawn.filter((n) => typeVisible(n.node_type)).map((n) => ({ id: n.ref_id, name: n.name, type: n.node_type })),
+    () =>
+      drawn
+        .filter((n) => typeVisible(n.node_type))
+        .map((n) => ({ id: n.ref_id, name: n.name, type: n.node_type, ...(n.peer ? { peer: n.peer } : {}) })),
     [drawn, typeVisible],
   );
   const links = useMemo(() => {
     const ids = new Set(graphNodes.map((n) => n.id));
-    return runGraphLinks(trace?.edges ?? [], runGraphHops(calls)).filter((l) => ids.has(l.source) && ids.has(l.target));
-  }, [graphNodes, trace?.edges, calls]);
+    return runGraphLinks(graph.edges, runGraphHops(calls)).filter((l) => ids.has(l.source) && ids.has(l.target));
+  }, [graphNodes, graph.edges, calls]);
   const hopCount = useMemo(() => links.filter((l) => l.hops.length > 0).length, [links]);
   const layout = useMemo(
     () =>
@@ -553,8 +645,9 @@ export function StrutRunGraph({
         graphNodes.map((n) => n.id),
         links,
         parents,
+        sections,
       ),
-    [calls, graphNodes, links, parents],
+    [calls, graphNodes, links, parents, sections],
   );
 
   const frame = useMemo(() => replayFrame(calls, current ?? calls.length), [calls, current]);
@@ -606,6 +699,71 @@ export function StrutRunGraph({
     if (current === null) setStep(0);
     setPlaying(true);
   }, [playing, current]);
+  /** Load the run the launching call at `full` (its path in the whole run) started, once; its calls, when this call loaded them. */
+  const openChild = useCallback(
+    async (full: string): Promise<RunGraphCall[] | null> => {
+      if (children[full] && children[full].state !== "failed") return null;
+      setChildren((prev) => ({ ...prev, [full]: { state: "loading" } }));
+      try {
+        const response = await fetch(`${endpoint}/calls?under=${encodeURIComponent(full)}`, { cache: "no-store" });
+        const body = (await response.json().catch(() => ({}))) as {
+          calls?: RunGraphCall[];
+          nodes?: RunGraphNode[];
+          edges?: RunGraphEdge[];
+          error?: string;
+        };
+        if (!response.ok || !Array.isArray(body.calls)) throw new Error(body.error || "Could not load the run");
+        const loaded = body.calls;
+        // The indices of the replay move, so it starts over; the launch opens as a branch in the tree.
+        setPlaying(false);
+        setStep(null);
+        const nodes = Array.isArray(body.nodes) ? body.nodes : [];
+        const edges = Array.isArray(body.edges) ? body.edges : [];
+        setChildren((prev) => ({ ...prev, [full]: { state: "loaded", calls: loaded, nodes, edges } }));
+        return loaded;
+      } catch (e) {
+        const error = e instanceof Error ? e.message : "Could not load the run";
+        setChildren((prev) => ({ ...prev, [full]: { state: "failed", error } }));
+        return null;
+      }
+    },
+    [children, endpoint],
+  );
+  /** A path in the tree as drawn (re-rooted at the branch shown) → its path in the whole run. */
+  const fullPath = useCallback(
+    (treePath: string) => `${allCalls[0]?.path.split("/")[0] ?? ""}/${scopeOfBranch(scope, treePath)}`,
+    [allCalls, scope],
+  );
+  const childState = useCallback((treePath: string) => children[fullPath(treePath)], [children, fullPath]);
+  const openChildAt = useCallback(
+    async (treePath: string) => {
+      const full = fullPath(treePath);
+      const loaded = await openChild(full);
+      if (!loaded) return;
+      // Opened from its row, the run opens down to its calls: every branch between the launch and each call.
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        for (const call of loaded) {
+          const segments = call.path.slice(full.length).split("/").filter(Boolean);
+          for (let i = 0; i < segments.length; i++) next.add([treePath, ...segments.slice(0, i)].join("/"));
+        }
+        return next;
+      });
+    },
+    [fullPath, openChild],
+  );
+  // A branch shown inside a run not loaded yet (a link to it, or a lane of one) loads that run.
+  useEffect(() => {
+    const path = childToLoad(allCalls, scope);
+    if (path && !children[path]) void openChild(path);
+  }, [allCalls, scope, children, openChild]);
+
+  // A run that touched little opens what it launched: the launches are where its work went.
+  useEffect(() => {
+    if (distinctNodeRefs(allCalls).length >= AUTO_OPEN_BELOW) return;
+    for (const call of allCalls) if (call.child && !children[call.path]) void openChild(call.path);
+  }, [allCalls, children, openChild]);
+
   const toggleBranch = useCallback((path: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -796,6 +954,8 @@ export function StrutRunGraph({
           )}
           {tree && (
             <TreeBranch
+              childState={childState}
+              onOpenChild={openChildAt}
               node={tree}
               depth={0}
               calls={calls}
@@ -827,6 +987,11 @@ export function StrutRunGraph({
               node={selected}
               color={colorMap[selected.node_type] ?? "#6b7280"}
               workspaceSlug={workspaceSlug}
+              peer={
+                selected.peer
+                  ? (trace.peers?.find((p) => p.slug === selected.peer) ?? { slug: selected.peer, read: false })
+                  : undefined
+              }
               calls={calls}
               links={links}
               nodeById={nodeById}

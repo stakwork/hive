@@ -2,20 +2,21 @@
  * System Map — the strut workflows behind the "Run" buttons on
  * `/w/<slug>/system-map`, one per tab (`SYSTEM_MAP_WORKFLOWS`):
  *
- *   schema       `swarm-systemmap-schema-sync`         kind `system_map`
- *                verifies the Sys* ontology against the workspace graph
- *   materialize  `swarm-systemmap-graph-materialize`   kind `system_map_materialize`
- *                writes the real system nodes and edges into the graph
+ *   system_map   `swarm-systemmap`                     kind `system_map`
+ *                schema sync, graph materialize and cloud links in one run
+ *                (they were three workflows; the `system_map_materialize` /
+ *                `system_map_cloud_links` kinds survive only on old rows)
  *   cwe_check    `swarm-systemmap-cwe-check-templates` kind `system_map_cwe_check`
  *                writes the `infosec` namespace's security graph
- *   cloud_links  `systemmap-cloud-links`               kind `system_map_cloud_links`
- *   security_review `swarm-cwe-security-review`        kind `system_map_security_review`
+ *                (it also does the security review, once `swarm-cwe-security-review`;
+ *                its `system_map_security_review` kind survives only on old rows)
  *
  * All are authored in the org strut view (`/org/<login>/strut`), so the
  * launch targets that strut (`purpose: "system_map"` → the org default
  * swarm). Their subject is the WORKSPACE's swarm — not necessarily the one
  * strut runs on — as their `validate` step reads it:
  *
+ *   input.workspace            the workspace slug — CWE workflows only
  *   input.swarm_url            the workspace swarm's stakgraph base (`https://x:3355`)
  *   input.swarm_secret_alias   the swarm's secret alias (`Swarm.swarmSecretAlias`),
  *                              the same reference the janitor / task workflows
@@ -51,13 +52,50 @@ import type { SystemMapRun } from "@/types/system-map";
 
 /** The workflows the page can run, keyed by tab. Names as published in the org strut view. */
 export const SYSTEM_MAP_WORKFLOWS = {
-  schema: { kind: "system_map", workflow: "swarm-systemmap-schema-sync", label: "Schema sync" },
-  materialize: { kind: "system_map_materialize", workflow: "swarm-systemmap-graph-materialize", label: "Graph materialize" },
+  system_map: { kind: "system_map", workflow: "swarm-systemmap", label: "System map" },
   cwe_check: { kind: "system_map_cwe_check", workflow: "swarm-systemmap-cwe-check-templates", label: "CWE check" },
-  cloud_links: { kind: "system_map_cloud_links", workflow: "systemmap-cloud-links", label: "Cloud links" },
-  security_review: { kind: "system_map_security_review", workflow: "swarm-cwe-security-review", label: "CWE security review" },
 } as const;
 export type SystemMapWorkflowKey = keyof typeof SYSTEM_MAP_WORKFLOWS;
+
+/**
+ * The workflows a run can be scoped to some CWEs (optional — absent means
+ * every CWE):
+ *   cwe_check  `cwe_ids: ["CWE-79", "CWE-89"]`, up to 50
+ */
+export const CWE_SCOPED_WORKFLOWS: Partial<Record<SystemMapWorkflowKey, { max: number }>> = {
+  cwe_check: { max: 50 },
+};
+const CWE_ID_RE = /^CWE-\d{1,5}$/;
+
+/**
+ * A request's `cweIds` for workflow `key`: undefined when absent, the
+ * deduplicated ids when valid, or an error message when the workflow takes
+ * no CWEs, an id is not `CWE-<n>`, or there are too many.
+ */
+export function parseCweIds(key: SystemMapWorkflowKey, value: unknown): string[] | undefined | { error: string } {
+  if (value === undefined) return undefined;
+  const scope = CWE_SCOPED_WORKFLOWS[key];
+  if (!scope) return { error: "This workflow does not take cweIds" };
+  if (!Array.isArray(value) || !value.every((id): id is string => typeof id === "string" && CWE_ID_RE.test(id))) {
+    return { error: 'cweIds must be ids like "CWE-79"' };
+  }
+  const ids = [...new Set(value)];
+  if (ids.length === 0 || ids.length > scope.max) {
+    return { error: `cweIds must hold 1–${scope.max} ids` };
+  }
+  return ids;
+}
+
+/** The workflow input field for `cweIds`. */
+function cweInput(cweIds: string[] | undefined): Record<string, unknown> {
+  return cweIds?.length ? { cwe_ids: cweIds } : {};
+}
+
+function cweIdsFromInput(input: unknown): string[] | null {
+  if (!input || typeof input !== "object") return null;
+  const ids = (input as { cwe_ids?: unknown }).cwe_ids;
+  return Array.isArray(ids) && ids.length > 0 && ids.every((x) => typeof x === "string") ? (ids as string[]) : null;
+}
 
 export function isSystemMapWorkflowKey(value: unknown): value is SystemMapWorkflowKey {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(SYSTEM_MAP_WORKFLOWS, value);
@@ -67,8 +105,8 @@ export function isSystemMapWorkflowKey(value: unknown): value is SystemMapWorkfl
 export const SYSTEM_MAP_KINDS = Object.values(SYSTEM_MAP_WORKFLOWS).map((w) => w.kind);
 
 // Back-compat names for the first workflow.
-export const SYSTEM_MAP_KIND = SYSTEM_MAP_WORKFLOWS.schema.kind;
-export const SYSTEM_MAP_WORKFLOW = SYSTEM_MAP_WORKFLOWS.schema.workflow;
+export const SYSTEM_MAP_KIND = SYSTEM_MAP_WORKFLOWS.system_map.kind;
+export const SYSTEM_MAP_WORKFLOW = SYSTEM_MAP_WORKFLOWS.system_map.workflow;
 /** How many runs the page lists. */
 const LIST_LIMIT = 20;
 /** A PENDING row younger than this is not probed — its callback is on the way. */
@@ -118,6 +156,7 @@ export function serializeSystemMapRun(row: StrutRunRow, orgGithubLogin: string |
       orgGithubLogin && row.strutRunId
         ? strutViewPath(orgGithubLogin, strutRunDeepLink(row.workflow, row.strutRunId))
         : null,
+    cweIds: cweIdsFromInput(row.input),
   };
 }
 
@@ -148,7 +187,7 @@ async function settleFromStrut(row: StrutRunRow, now: Date): Promise<StrutRunRow
 /** The workspace's runs of one workflow, newest first, PENDING ones settled from strut when they are over. */
 export async function listSystemMapRuns(
   workspaceId: string,
-  key: SystemMapWorkflowKey = "schema",
+  key: SystemMapWorkflowKey = "system_map",
   opts: { now?: Date; limit?: number } = {},
 ): Promise<SystemMapRun[]> {
   const now = opts.now ?? new Date();
@@ -177,7 +216,7 @@ export async function listSystemMapRuns(
 }
 
 /** Is a run of this workflow already in flight for the workspace? (One at a time, per workflow.) */
-export async function hasPendingSystemMapRun(workspaceId: string, key: SystemMapWorkflowKey = "schema"): Promise<boolean> {
+export async function hasPendingSystemMapRun(workspaceId: string, key: SystemMapWorkflowKey = "system_map"): Promise<boolean> {
   const row = await db.strutRun.findFirst({
     where: { workspaceId, kind: SYSTEM_MAP_WORKFLOWS[key].kind, status: StrutRunStatus.PENDING },
     select: { id: true },
@@ -191,8 +230,10 @@ export interface LaunchSystemMapRunArgs {
   userId: string;
   /** Swarm-reachable base URL of this hive (the callback host). */
   publicBaseUrl: string;
-  /** Which workflow; defaults to the schema sync. */
+  /** Which workflow; defaults to the system map. */
   key?: SystemMapWorkflowKey;
+  /** Scope a CWE workflow (`CWE_SCOPED_WORKFLOWS`) to these CWEs; validate with `parseCweIds`. */
+  cweIds?: string[];
 }
 
 /**
@@ -200,27 +241,43 @@ export interface LaunchSystemMapRunArgs {
  * when the workspace has no swarm URL or secret alias (`no_target`) or
  * nothing is running on strut's side.
  */
-export async function launchSystemMapRun(args: LaunchSystemMapRunArgs): Promise<DispatchStrutRunResult> {
+export async function launchSystemMapRun(
+  args: LaunchSystemMapRunArgs,
+): Promise<DispatchStrutRunResult & { strutUrl: string | null }> {
   const workspace = await db.workspace.findUnique({
     where: { id: args.workspaceId },
-    select: { swarm: { select: { swarmUrl: true, swarmSecretAlias: true } } },
+    select: {
+      swarm: { select: { swarmUrl: true, swarmSecretAlias: true } },
+      sourceControlOrg: { select: { githubLogin: true } },
+    },
   });
   const swarm = workspace?.swarm;
   if (!swarm?.swarmUrl || !swarm.swarmSecretAlias) {
     throw new StrutDispatchError("no_target", "This workspace has no swarm URL or secret alias to map.");
   }
-  const { kind, workflow } = SYSTEM_MAP_WORKFLOWS[args.key ?? "schema"];
-  return dispatchStrutRun({
+  const key = args.key ?? "system_map";
+  const { kind, workflow } = SYSTEM_MAP_WORKFLOWS[key];
+  const dispatched = await dispatchStrutRun({
     workspaceId: args.workspaceId,
     userId: args.userId,
     kind,
     workflow,
     purpose: "system_map",
     input: {
-      workspace: args.workspaceSlug,
+      // `swarm-systemmap` reads the swarm alone; the CWE workflows still take the slug.
+      ...(key === "system_map" ? {} : { workspace: args.workspaceSlug }),
       swarm_url: transformSwarmUrlToRepo2Graph(swarm.swarmUrl),
       swarm_secret_alias: swarm.swarmSecretAlias,
+      ...cweInput(args.cweIds),
     },
     publicBaseUrl: args.publicBaseUrl,
   });
+  const orgLogin = workspace?.sourceControlOrg?.githubLogin;
+  return {
+    ...dispatched,
+    strutUrl:
+      orgLogin && dispatched.strutRunId
+        ? strutViewPath(orgLogin, strutRunDeepLink(workflow, dispatched.strutRunId))
+        : null,
+  };
 }

@@ -1,9 +1,9 @@
 /**
  * GET /api/orgs/[githubLogin]/control-panel?limit=30
  *
- * The calling user's control panel: their Jamie chats in this org (the
- * newest `limit` by activity) and the plans those chats spawned. Powers
- * the control panel column on the org page (`?view=control-panel`).
+ * The calling user's chat list: their Jamie chats in this org (the
+ * newest `limit` by activity), with each chat's jobs and pull requests.
+ * Powers the chat list on the org page.
  *
  * Session required (middleware "protected" default); membership is
  * re-checked through `resolveAuthorizedOrgId` so a private org's login
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const parsed = Number.parseInt(request.nextUrl.searchParams.get("limit") ?? "", 10);
     const limit = Number.isFinite(parsed) ? parsed : undefined;
 
-    const body: ControlPanelResponse = await getControlPanelItems({ githubLogin, orgId, userId, limit });
+    const body: ControlPanelResponse = await getControlPanelItems({ orgId, userId, limit });
     return NextResponse.json(body);
   } catch (error) {
     console.error("[GET /api/orgs/[githubLogin]/control-panel] Error:", error);

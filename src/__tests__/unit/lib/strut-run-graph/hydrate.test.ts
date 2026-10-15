@@ -11,7 +11,10 @@
  *     and says what it did not read, and why;
  *   - the swarm's refusal reaches the trace in its own words;
  *   - one node is read whole without its vectors, and a node the graph no
- *     longer holds is told from one it could not answer for.
+ *     longer holds is told from one it could not answer for;
+ *   - a peer workspace's nodes are read from ITS graph and named by their
+ *     qualified id, or kept as the log named them, with why, when its graph
+ *     is not read for this viewer.
  */
 
 import { afterEach, describe, it, expect, vi } from "vitest";
@@ -22,8 +25,10 @@ vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn() } }));
 
 import {
   hydrateRunGraph,
+  hydrateRunGraphAcross,
   isRunGraphRefId,
   readRunGraphNode,
+  resolveFileReads,
   RUN_GRAPH_MAX_NODES,
   swarmCypherRunner,
   typeFromLabels,
@@ -433,5 +438,108 @@ describe("readRunGraphNode", () => {
     const run = vi.fn<CypherRunner>();
     expect(await readRunGraphNode("'}) MATCH (n) DETACH DELETE n //", run)).toEqual({ found: false });
     expect(run).not.toHaveBeenCalled();
+  });
+});
+
+describe("hydrateRunGraphAcross", () => {
+  /** A graph holding `held` (ref id → [name, labels]) and one PARENT_OF edge, `parent` → each held node. */
+  const graph = (held: Record<string, string>, parent?: string) =>
+    vi.fn<CypherRunner>(async (query) => {
+      const asked = [...query.matchAll(/'([^']+)'/g)].map((m) => m[1]).filter((id) => id in held);
+      switch (kind(query)) {
+        case "nodes":
+          return {
+            columns: ["ref_id", "labels", "name", "namespace"],
+            rows: asked.map((id) => [id, CONCEPT, held[id], "default"]),
+          };
+        case "edges":
+          return { columns: ["source", "edge_type", "target"], rows: [] };
+        case "lineage":
+          return parent
+            ? {
+                columns: ["source", "target", "labels", "name", "namespace"],
+                rows: asked.map((id) => [parent, id, CONCEPT, "Root", "default"]),
+              }
+            : { columns: ["source", "target", "labels", "name", "namespace"], rows: [] };
+      }
+    });
+
+  it("reads this graph's nodes here and a peer's from its own graph, under qualified ids", async () => {
+    const local = graph({ a: "Job" });
+    const cloud = graph({ x: "verifySphinxToken" }, "r");
+    const peerGraph = vi.fn(async (slug: string) => (slug === "cloud" ? { run: cloud } : { reason: "no" }));
+    const trace = await hydrateRunGraphAcross(
+      [
+        { ref_id: "a", node_type: "Concept" },
+        { ref_id: "@cloud:x", node_type: "Function", peer: "cloud" },
+      ],
+      local,
+      peerGraph,
+    );
+    expect(peerGraph).toHaveBeenCalledWith("cloud");
+    // The peer's graph is asked for its own ref id, never the qualified one.
+    expect(cloud.mock.calls.every(([q]) => q.includes("'x'") && !q.includes("@cloud"))).toBe(true);
+    expect(local.mock.calls.every(([q]) => !q.includes("'x'"))).toBe(true);
+    expect(trace.nodes).toEqual([
+      expect.objectContaining({ ref_id: "a", name: "Job", found: true }),
+      expect.objectContaining({ ref_id: "@cloud:x", name: "verifySphinxToken", found: true, peer: "cloud" }),
+      expect.objectContaining({ ref_id: "@cloud:r", name: "Root", ancestor: true, peer: "cloud" }),
+    ]);
+    expect(trace.edges).toEqual([{ source: "@cloud:r", target: "@cloud:x", edge_type: "PARENT_OF" }]);
+    expect(trace.peers).toEqual([{ slug: "cloud", read: true }]);
+  });
+
+  it("keeps a peer's nodes as the log named them when its graph is not read for this viewer", async () => {
+    const local = graph({});
+    const trace = await hydrateRunGraphAcross(
+      [{ ref_id: "@secret:x", node_type: "File", peer: "secret" }],
+      local,
+      async (slug) => ({ reason: `you are not a member of @${slug}` }),
+    );
+    expect(trace.nodes).toEqual([
+      { ref_id: "@secret:x", node_type: "File", name: "x", namespace: null, found: false, peer: "secret" },
+    ]);
+    expect(trace.peers).toEqual([{ slug: "secret", read: false, reason: "you are not a member of @secret" }]);
+    expect(trace.nodesRead).toBe(true);
+  });
+
+  it("is hydrateRunGraph when the run reached no peer", async () => {
+    const local = graph({ a: "Job" });
+    const trace = await hydrateRunGraphAcross([{ ref_id: "a" }], local, async () => ({ reason: "unused" }));
+    expect(trace.peers).toBeUndefined();
+    expect(trace.nodes).toEqual([expect.objectContaining({ ref_id: "a", found: true })]);
+  });
+});
+
+describe("resolveFileReads", () => {
+  it("asks for the File nodes by path in one query, and answers file → ref id for those the graph holds", async () => {
+    const run = vi.fn<CypherRunner>(async () => ({
+      columns: ["file", "ref_id"],
+      rows: [["stakwork/hive/src/lib/auth/sphinx-verify.ts", "f-1"]],
+    }));
+    const found = await resolveFileReads(
+      [
+        "stakwork/hive/src/lib/auth/sphinx-verify.ts",
+        "stakwork/hive/src/lib/auth/sphinx-verify.ts",
+        "stakwork/hive/gone.ts",
+      ],
+      run,
+    );
+    expect(found).toEqual(new Map([["stakwork/hive/src/lib/auth/sphinx-verify.ts", "f-1"]]));
+    expect(run).toHaveBeenCalledTimes(1);
+    const [query] = run.mock.calls[0];
+    expect(query).toContain("MATCH (f:File) WHERE f.file IN files");
+    expect(query).toContain("'stakwork/hive/gone.ts'");
+  });
+
+  it("never sends a path that is not one, and asks nothing for none", async () => {
+    const run = vi.fn<CypherRunner>(async () => ({ columns: ["file", "ref_id"], rows: [] }));
+    expect(await resolveFileReads(["a/b/x' OR 1=1 //", "no-repo.ts"], run)).toEqual(new Map());
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("says why when the graph does not answer", async () => {
+    const run = vi.fn<CypherRunner>(async () => ({ unread: "no answer in 20 s" }));
+    expect(await resolveFileReads(["stakwork/hive/a.ts"], run)).toEqual({ unread: "no answer in 20 s" });
   });
 });

@@ -1,5 +1,12 @@
 import { describe, test, expect } from "vitest";
-import { getJarvisUrl, transformSwarmUrlToRepo2Graph, extractSwarmSuffix, getSwarmBaseUrl, getSecondBrainBaseUrl } from "@/lib/utils/swarm";
+import {
+  getJarvisUrl,
+  transformSwarmUrlToRepo2Graph,
+  transformSwarmUrlToAdvisor,
+  extractSwarmSuffix,
+  getSwarmBaseUrl,
+  getSecondBrainBaseUrl,
+} from "@/lib/utils/swarm";
 
 describe("swarm utils", () => {
   describe("getJarvisUrl", () => {
@@ -58,6 +65,68 @@ describe("swarm utils", () => {
     test("returns empty string for undefined", () => {
       const result = transformSwarmUrlToRepo2Graph(undefined);
       expect(result).toBe("");
+    });
+  });
+
+  describe("transformSwarmUrlToAdvisor", () => {
+    test("transforms URL ending with /api", () => {
+      expect(transformSwarmUrlToAdvisor("https://swarm38.sphinx.chat/api")).toBe(
+        "https://advisor-swarm38.sphinx.chat",
+      );
+    });
+
+    test("transforms URL with no path", () => {
+      expect(transformSwarmUrlToAdvisor("https://swarm38.sphinx.chat")).toBe(
+        "https://advisor-swarm38.sphinx.chat",
+      );
+    });
+
+    test("drops a port", () => {
+      expect(transformSwarmUrlToAdvisor("https://swarm38.sphinx.chat:3355/api")).toBe(
+        "https://advisor-swarm38.sphinx.chat",
+      );
+    });
+
+    test("drops a different path, query and hash", () => {
+      expect(
+        transformSwarmUrlToAdvisor("https://swarm38.sphinx.chat/some/other/path?x=1#frag"),
+      ).toBe("https://advisor-swarm38.sphinx.chat");
+    });
+
+    test("returns empty string for empty input", () => {
+      expect(transformSwarmUrlToAdvisor("")).toBe("");
+    });
+
+    test("returns empty string for null", () => {
+      expect(transformSwarmUrlToAdvisor(null)).toBe("");
+    });
+
+    test("returns empty string for undefined", () => {
+      expect(transformSwarmUrlToAdvisor(undefined)).toBe("");
+    });
+
+    test("returns empty string for unparseable input", () => {
+      expect(transformSwarmUrlToAdvisor("not a url")).toBe("");
+    });
+
+    test("returns empty string for http://", () => {
+      expect(transformSwarmUrlToAdvisor("http://swarm38.sphinx.chat")).toBe("");
+    });
+
+    test("returns empty string for localhost", () => {
+      expect(transformSwarmUrlToAdvisor("https://localhost/api")).toBe("");
+    });
+
+    test("returns empty string for an IP host", () => {
+      expect(transformSwarmUrlToAdvisor("https://10.0.0.1/api")).toBe("");
+    });
+
+    test("returns empty string for a multi-level sphinx.chat subdomain", () => {
+      expect(transformSwarmUrlToAdvisor("https://a.b.sphinx.chat/api")).toBe("");
+    });
+
+    test("returns empty string for a non-sphinx.chat host", () => {
+      expect(transformSwarmUrlToAdvisor("https://swarm38.example.com/api")).toBe("");
     });
   });
 

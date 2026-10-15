@@ -9,8 +9,10 @@ import {
   checksRunning,
   describeArtifactEvent,
   formatArtifactEvent,
+  formatClaimEvent,
   jobTitleOf,
   parseArtifactEvent,
+  parseClaimEvent,
   parseGithubPullRequestUrl,
   parseStrutArtifactKey,
   strutArtifactReaderUrl,
@@ -93,6 +95,22 @@ describe("artifact events — the one line every source emits and every reader p
   it("describes a pull request by repository and number, anything else by its words", () => {
     expect(describeArtifactEvent(merged)).toBe("pull request acme/app#12 merged");
     expect(describeArtifactEvent({ kind: "deploy_preview", url: "https://p.test/x", what: "failed" })).toBe("deploy preview https://p.test/x failed");
+  });
+});
+
+describe("claim events — a refutation with a note, as the job's next turn", () => {
+  it("is one line: the claim quoted, the note folded onto it", () => {
+    const line = formatClaimEvent("the settings page renders", "  The Save button\ndoes nothing  ");
+    expect(line).toBe('[claim-event] refuted "the settings page renders": The Save button does nothing');
+    expect(parseClaimEvent(line)).toEqual({ claim: "the settings page renders", note: "The Save button does nothing" });
+  });
+
+  it("a quote in the claim survives the round trip; anything else is not a claim event", () => {
+    const line = formatClaimEvent('the "Save" button works', "it does not");
+    expect(parseClaimEvent(line)).toEqual({ claim: 'the "Save" button works', note: "it does not" });
+    expect(parseClaimEvent("[artifact-event] pull_request https://github.com/a/b/pull/1 merged")).toBeNull();
+    expect(parseClaimEvent("refuted \"x\": y")).toBeNull();
+    expect(parseClaimEvent(undefined)).toBeNull();
   });
 });
 

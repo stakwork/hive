@@ -7,12 +7,12 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
-import { CweCheckTab } from "@/components/system-map/CweCheckTab";
+import { CweListsTab } from "@/components/system-map/CweListsTab";
 import { DomainNodesTab } from "@/components/system-map/DomainNodesTab";
-import { EndpointsTab } from "@/components/system-map/EndpointsTab";
+import { FindingsTab } from "@/components/system-map/FindingsTab";
 import { SystemMapRuns } from "@/components/system-map/SystemMapRuns";
 
-const TABS = ["overview", "materialize", "cwe-check", "cloud-links", "security-review", "nodes", "endpoints"] as const;
+const TABS = ["overview", "cwe-lists", "findings", "nodes"] as const;
 type SystemMapTab = (typeof TABS)[number];
 
 function parseTab(value: string | null): SystemMapTab {
@@ -42,47 +42,29 @@ function SystemMapTabs() {
     <Tabs value={tab} onValueChange={onTabChange}>
       <TabsList data-testid="system-map-tabs">
         <TabsTrigger value="overview" data-testid="system-map-tab-overview">
-          Schema workflow
+          System map workflow
         </TabsTrigger>
-        <TabsTrigger value="materialize" data-testid="system-map-tab-materialize">
-          Materialize workflow
+        <TabsTrigger value="cwe-lists" data-testid="system-map-tab-cwe-lists">
+          CWE lists
         </TabsTrigger>
-        <TabsTrigger value="cwe-check" data-testid="system-map-tab-cwe-check">
-          CWE check workflow
-        </TabsTrigger>
-        <TabsTrigger value="cloud-links" data-testid="system-map-tab-cloud-links">
-          Cloud links workflow
-        </TabsTrigger>
-        <TabsTrigger value="security-review" data-testid="system-map-tab-security-review">
-          Security review workflow
+        <TabsTrigger value="findings" data-testid="system-map-tab-findings">
+          Findings
         </TabsTrigger>
         <TabsTrigger value="nodes" data-testid="system-map-tab-nodes">
           Domain nodes
         </TabsTrigger>
-        <TabsTrigger value="endpoints" data-testid="system-map-tab-endpoints">
-          Endpoints
-        </TabsTrigger>
       </TabsList>
       <TabsContent value="overview" className="mt-4">
-        <SystemMapRuns workflowKey="schema" />
+        <SystemMapRuns workflowKey="system_map" />
       </TabsContent>
-      <TabsContent value="materialize" className="mt-4">
-        <SystemMapRuns workflowKey="materialize" />
+      <TabsContent value="cwe-lists" className="mt-4">
+        <CweListsTab />
       </TabsContent>
-      <TabsContent value="cwe-check" className="mt-4">
-        <CweCheckTab />
-      </TabsContent>
-      <TabsContent value="cloud-links" className="mt-4">
-        <SystemMapRuns workflowKey="cloud_links" />
-      </TabsContent>
-      <TabsContent value="security-review" className="mt-4">
-        <SystemMapRuns workflowKey="security_review" />
+      <TabsContent value="findings" className="mt-4">
+        <FindingsTab />
       </TabsContent>
       <TabsContent value="nodes" className="mt-4">
         <DomainNodesTab />
-      </TabsContent>
-      <TabsContent value="endpoints" className="mt-4">
-        <EndpointsTab />
       </TabsContent>
     </Tabs>
   );

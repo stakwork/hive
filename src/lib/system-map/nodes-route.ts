@@ -1,8 +1,7 @@
 /**
- * Shared handler behind `GET /api/workspaces/:slug/system-map/nodes`
- * (namespace `systemmap`) and `GET /api/workspaces/:slug/system-map/infosec-nodes`
- * (namespace `infosec`). The server picks the namespace; it is never read
- * from the request.
+ * Handler behind `GET /api/workspaces/:slug/system-map/nodes` (namespace
+ * `systemmap`). The server picks the namespace; it is never read from the
+ * request.
  */
 
 import { NextRequest, NextResponse } from "next/server";

@@ -4,7 +4,7 @@
  */
 
 import { isLineageEdge } from "./lineage";
-import type { RunGraphCall, RunGraphEdge, RunGraphTrace } from "./types";
+import type { RunGraphCall, RunGraphEdge, RunGraphNode, RunGraphTrace } from "./types";
 
 const edgeKey = (edge: RunGraphEdge): string => `${edge.source}|${edge.edge_type}|${edge.target}`;
 
@@ -102,6 +102,91 @@ export function scopeCalls(calls: RunGraphCall[], scope: string | null): RunGrap
 export function scopeOfBranch(scope: string | null, branchPath: string): string {
   const segments = branchPath.split("/");
   return scope ? [...scope.split("/").slice(0, -1), ...segments].join("/") : segments.slice(1).join("/");
+}
+
+/**
+ * The calls with each loaded child run's calls IN PLACE of the call that
+ * launched it — at its place in the order, under its path — recursively, so
+ * the launch reads as a branch of the run and its folded nodes are not
+ * counted twice. A child with no calls leaves its launching call as it was.
+ */
+export function withChildCalls(
+  calls: RunGraphCall[],
+  loaded: Readonly<Record<string, RunGraphCall[]>>,
+): RunGraphCall[] {
+  const out: RunGraphCall[] = [];
+  for (const call of calls) {
+    const own = call.child ? loaded[call.path] : undefined;
+    if (own && own.length > 0) out.push(...withChildCalls(own, loaded));
+    else out.push(call);
+  }
+  return out;
+}
+
+/**
+ * The launching call whose child run a branch lies in — or is — and that is
+ * not loaded yet (a loaded one is no longer among the calls): `scope` is the
+ * branch's path under the run. Null when the branch needs nothing loaded.
+ */
+export function childToLoad(calls: RunGraphCall[], scope: string | null): string | null {
+  if (!scope || calls.length === 0) return null;
+  const full = `${calls[0].path.split("/")[0]}/${scope}`;
+  const call = calls.find((c) => c.child && (full === c.path || full.startsWith(`${c.path}/`)));
+  return call ? call.path : null;
+}
+
+/**
+ * The lanes of the runs launching calls started, for the branch shown: each
+ * launch's path as `scopeCalls` re-roots it, with its workflow (and the peer
+ * it ran on) to name the lane. `launches` are the launching calls by their
+ * paths in the whole run, loaded or not. A launch the branch does not hold —
+ * or is — has no lane: inside it, its own steps are the lanes.
+ */
+export function launchSections(launches: RunGraphCall[], scope: string | null): Map<string, string> {
+  const sections = new Map<string, string>();
+  for (const call of launches) {
+    if (!call.child) continue;
+    const name = call.child.peer ? `${call.child.workflow} on @${call.child.peer}` : call.child.workflow;
+    if (!scope) {
+      sections.set(call.path, name);
+      continue;
+    }
+    const prefix = `${call.path.split("/")[0]}/${scope}/`;
+    if (!call.path.startsWith(prefix)) continue;
+    sections.set(`${scope.split("/").pop()}/${call.path.slice(prefix.length)}`, name);
+  }
+  return sections;
+}
+
+/**
+ * The trace's nodes and edges with those of each loaded child run added —
+ * a child brings what the trace cannot have folded onto its launch (the
+ * files it read). A node the trace already has keeps the trace's reading;
+ * an edge is added once.
+ */
+export function withChildGraph(
+  nodes: RunGraphNode[],
+  edges: RunGraphEdge[],
+  children: ReadonlyArray<{ nodes?: RunGraphNode[]; edges?: RunGraphEdge[] }>,
+): { nodes: RunGraphNode[]; edges: RunGraphEdge[] } {
+  if (children.length === 0) return { nodes, edges };
+  const has = new Set(nodes.map((n) => n.ref_id));
+  const known = new Set(edges.map(edgeKey));
+  const allNodes = [...nodes];
+  const allEdges = [...edges];
+  for (const child of children) {
+    for (const n of child.nodes ?? []) {
+      if (has.has(n.ref_id)) continue;
+      has.add(n.ref_id);
+      allNodes.push(n);
+    }
+    for (const e of child.edges ?? []) {
+      if (known.has(edgeKey(e))) continue;
+      known.add(edgeKey(e));
+      allEdges.push(e);
+    }
+  }
+  return { nodes: allNodes, edges: allEdges };
 }
 
 export interface ReplayFrame {

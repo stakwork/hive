@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SafeMarkdown } from "@/components/run-report/SafeMarkdown";
 import { nodeText } from "@/lib/strut-run-graph/node-text";
+import { parseQualifiedRef } from "@/lib/strut-run-graph/peer-ref";
 import type { RunGraphNode, RunGraphNodeBody } from "@/lib/strut-run-graph/types";
 
 /** A property that is not prose, as one line. */
@@ -41,8 +42,15 @@ export function RunGraphNodeReader({
             <Badge variant="outline" className="shrink-0 font-normal">
               {node.node_type}
             </Badge>
+            {node.peer && (
+              <Badge variant="outline" className="shrink-0 font-normal">
+                @{node.peer}
+              </Badge>
+            )}
           </DialogTitle>
-          <DialogDescription className="break-all font-mono text-xs">{node.ref_id}</DialogDescription>
+          <DialogDescription className="break-all font-mono text-xs">
+            {parseQualifiedRef(node.ref_id).refId}
+          </DialogDescription>
         </DialogHeader>
         {text.prose.map(([key, markdown]) => (
           <section key={key} data-testid="run-graph-node-prose">

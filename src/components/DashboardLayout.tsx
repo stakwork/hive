@@ -10,6 +10,8 @@ import { GlobalSearch } from "./GlobalSearch";
 import { ViewerAccessBanner } from "./workspace/ViewerAccessBanner";
 import { PublicWorkspaceBanner } from "./workspace/PublicWorkspaceBanner";
 import { useEffect, useState } from "react";
+import { useSidebarStore } from "@/stores/useSidebarStore";
+import { cn } from "@/lib/utils";
 
 /**
  * Sub-paths under `/w/[slug]/` that are off-limits to public (unauthenticated)
@@ -67,7 +69,9 @@ export function DashboardLayout({ children, user, isPublicWorkspace = false }: D
   const pathname = usePathname();
   const router = useRouter();
   const isDocumentsPage = pathname.endsWith("/documents");
+  const isStrutPage = pathname.endsWith("/strut");
   const isFullscreenPage = isDocumentsPage || pathname.includes("/task/") || pathname.includes("/plan/");
+  const sidebarCollapsed = useSidebarStore((s) => s.collapsed);
   const [workspaceLogoUrl, setWorkspaceLogoUrl] = useState<string | null>(null);
 
   // Redirect public viewers away from sensitive or write-only pages.
@@ -174,10 +178,15 @@ export function DashboardLayout({ children, user, isPublicWorkspace = false }: D
       <GlobalSearch />
 
       {/* Main content */}
-      <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${isFullscreenPage ? "md:pl-0" : "md:pl-64"}`}>
+      <div
+        className={cn(
+          "flex-1 flex flex-col min-h-0 overflow-hidden transition-[padding] duration-200 ease-in-out",
+          isFullscreenPage ? "md:pl-0" : sidebarCollapsed ? "md:pl-14" : "md:pl-64",
+        )}
+      >
         <ViewerAccessBanner />
         <PublicWorkspaceBanner />
-        <main className={`flex-1 flex flex-col min-h-0 ${isDocumentsPage ? "overflow-hidden p-0" : isFullscreenPage ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`}>
+        <main className={`flex-1 flex flex-col min-h-0 ${isDocumentsPage || isStrutPage ? "overflow-hidden p-0" : isFullscreenPage ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`}>
           {children}
         </main>
       </div>

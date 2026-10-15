@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  MessageSquare,
   Network,
   Blocks,
+  ShieldCheck,
   Gauge,
   Target,
   LayoutGrid,
@@ -26,13 +28,19 @@ interface RailItem {
   view: OrgView;
   label: string;
   icon: LucideIcon;
-  /** Path appended to `/org/{githubLogin}` to reach this view. */
+  /**
+   * Appended to `/org/{githubLogin}` to reach this view. A query (`""`,
+   * `?view=…`) is a view of the org page itself, switched to in place; a
+   * path (`/…`) is another page, opened in a new tab.
+   */
   path: string;
 }
 
 const ITEMS: RailItem[] = [
-  { view: "canvas", label: "Canvas", icon: Network, path: "" },
+  { view: "chats", label: "Chats", icon: MessageSquare, path: "" },
+  { view: "canvas", label: "Canvas", icon: Network, path: "?view=canvas" },
   { view: "strut", label: "Strut", icon: Blocks, path: "/strut" },
+  { view: "advisor", label: "Advisor", icon: ShieldCheck, path: "/advisor" },
   { view: "gateway", label: "Gateway", icon: Gauge, path: "/gateway" },
   { view: "initiatives", label: "Initiatives", icon: Target, path: "/initiatives" },
   { view: "workspaces", label: "Workspaces", icon: LayoutGrid, path: "/workspaces" },
@@ -51,7 +59,7 @@ interface OrgRailProps {
 /**
  * Icon-only navigation rail for the org page. Tooltips on hover give
  * each icon a name without taking up horizontal space — the rail
- * stays narrow so the canvas (the default view) gets the real estate.
+ * stays narrow so the chat (the default view) gets the real estate.
  */
 export function OrgRail({ githubLogin, activeView, user }: OrgRailProps) {
   return (
@@ -68,8 +76,7 @@ export function OrgRail({ githubLogin, activeView, user }: OrgRailProps) {
               <TooltipTrigger asChild>
                 <a
                   href={`/org/${githubLogin}${item.path}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  {...(item.path.startsWith("/") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                   aria-label={item.label}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(

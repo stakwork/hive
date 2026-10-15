@@ -57,7 +57,6 @@ vi.mock("@/lib/ai/graphWriteTools", () => ({
 // ── Stub prompts ────────────────────────────────────────────────────────────
 vi.mock("@/lib/constants/prompt", () => ({
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
@@ -106,7 +105,6 @@ vi.mock("@/lib/ai/capabilityGates", () => ({
     isPromptsCapabilityEnabledForOrg(orgId),
   isGraphWriteCapabilityEnabledForOrg: (orgId: string | undefined) =>
     isGraphWriteCapabilityEnabledForOrg(orgId),
-  isStrutCapabilityEnabledForOrg: vi.fn(async () => false),
 }));
 
 import {

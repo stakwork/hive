@@ -51,6 +51,8 @@ export interface JobTurnLaunch {
   started: boolean;
   /** No person asked for this turn: the prompt is an `[artifact-event]`, written into the conversation as the turn's origin. */
   event?: boolean;
+  /** The model the job workflow runs with (`params.model`); omitted → strut's default. */
+  model?: string;
 }
 
 export type JobLaunchResult =
@@ -128,6 +130,7 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
       input: { prompt, title, workspace: strut.workspaceSlug },
       job: jobId,
       title,
+      ...(turn.model ? { params: { model: turn.model } } : {}),
       publicBaseUrl,
       conversationId,
       actorSecrets: { GITHUB_TOKEN: pat },

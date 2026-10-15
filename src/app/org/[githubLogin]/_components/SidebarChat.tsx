@@ -35,15 +35,14 @@ import { cn } from "@/lib/utils";
 import { SidebarChatMessage } from "./SidebarChatMessage";
 import { ProposalCard, getProposalsFromMessage, sortProposalsByDependency } from "./ProposalCard";
 import { PROPOSE_FEATURE_TOOL, PROPOSE_INITIATIVE_TOOL, PROPOSE_MILESTONE_TOOL } from "@/lib/proposals/types";
-import { SubAgentRunCard, getSubAgentRunsFromMessages } from "./SubAgentRunCard";
 import { ResearchRunCard, getResearchRunsFromMessages } from "./ResearchRunCard";
 import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
 import { JobEventRow, JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
-import { PlannerFormSlot } from "./PlannerFormSlot";
-import { StartTasksSlot } from "./StartTasksSlot";
 import { DeferredCheckCard } from "./DeferredCheckCard";
 import { ArtifactCard } from "./artifacts/ArtifactCard";
+import { FoldedArtifacts } from "./artifacts/FoldedArtifacts";
+import { artifactAsks } from "./artifacts/registry";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { detectSlashTrigger, insertSlashConcept } from "../_state/slashConceptTrigger";
@@ -98,14 +97,14 @@ import { StreamScrollIndicator } from "@/components/dashboard/DashboardChat/Stre
 interface SidebarChatProps {
   /** Slug of the org. Used by the Share button to scope the POST. */
   githubLogin: string;
-  /**
-   * Hide the history popover and the new-chat button in the header.
-   * The control panel lists every chat and owns "New" in its own
-   * column, so those controls would be duplicates there.
-   */
+  /** The page's main column (the chats view): messages and composer keep a reading width, centred. */
+  wide?: boolean;
 }
 
-export function SidebarChat({ githubLogin }: SidebarChatProps) {
+/** The reading width of a wide chat — every row of the thread, and the composer. */
+const WIDE_COLUMN = "mx-auto w-full max-w-3xl";
+
+export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
   // ─── Selectors — narrow on purpose ─────────────────────────────────
   // Each selector returns a primitive or a stable reference so
   // streaming text-deltas don't trigger re-renders in selectors that
@@ -236,28 +235,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
 
   const hasMessages = messages.length > 0;
 
-  // Group all `send_to_feature_planner` calls in this conversation
-  // by featureId, then bucket the resulting runs by the message they
-  // should hang under (the most recent send for that feature). This
-  // lets one card render even when the agent has messaged the same
-  // planner multiple times — the card moves down with the latest
-  // exchange. See `SubAgentRunCard.tsx` for the design rationale.
-  const subAgentRunsByAnchor = useMemo(() => {
-    const runs = getSubAgentRunsFromMessages(messages);
-    const byAnchor = new Map<string, typeof runs>();
-    for (const run of runs) {
-      const existing = byAnchor.get(run.anchorMessageId);
-      if (existing) {
-        existing.push(run);
-      } else {
-        byAnchor.set(run.anchorMessageId, [run]);
-      }
-    }
-    return byAnchor;
-  }, [messages]);
-
-  // Group dispatched research runs by their anchor message, mirroring the
-  // subAgentRunsByAnchor pattern. Inbound fan-out rows win the anchor.
+  // Group dispatched research runs by their anchor message, by anchor message.
   const researchRunsByAnchor = useMemo(() => {
     const runs = getResearchRunsFromMessages(messages);
     const byAnchor = new Map<string, typeof runs>();
@@ -316,60 +294,6 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
   // artifact gets none, so a plan re-reported every turn shows once.
   const artifactCards = useMemo(() => indexArtifactCards(listArtifacts(messages)), [messages]);
 
-  // Render the SubAgentRunCard(s) anchored to a message. Extracted so it
-  // can render under BOTH a normal message AND a suppressed fan-out
-  // message (an inbound planner reply / form-answer — whose bubble is
-  // hidden but which is the anchor for an inbound-only run, e.g. the
-  // approval flow where the agent never made an outbound
-  // `send_to_feature_planner` call).
-  const renderSubAgentRuns = (runs: ReturnType<typeof getSubAgentRunsFromMessages>) => (
-    <div className="space-y-1.5">
-      {runs.map((run) => (
-        <div key={run.featureId} className="space-y-1.5">
-          <SubAgentRunCard run={run} />
-          {/*
-            Phase 4: an unanswered planner FORM surfaces OUTSIDE the
-            collapsed card so the user can answer it inline without
-            expanding or leaving canvas chat. Only the run with a
-            `pendingForm` renders a slot.
-          */}
-          {run.pendingForm && (
-            <PlannerFormSlot
-              githubLogin={githubLogin}
-              featureId={run.featureId}
-              featureTitle={run.featureTitle}
-              plannerMessageId={run.pendingForm.plannerMessageId}
-              questions={run.pendingForm.questions}
-            />
-          )}
-          {/*
-            Offer a Start Tasks button once the planner has replied at
-            all — NOT just when a reply carried a `TASKS` artifact.
-            Tasks created by the remote planner over MCP
-            (`create_task` / `create_feature_task`) hit the DB directly
-            with no artifact, no chat message, and no fan-out, so
-            `run.hasGeneratedTasks` (artifact-derived) stays false even
-            though real tasks exist. The slot itself reads the live
-            ready-count (`GET …/tasks/assign-all`) and renders nothing
-            when zero, so showing it for any answered run is safe — the
-            count is the artifact-independent source of truth. We pass
-            `revalidateKey` (the anchor, which moves on each new planner
-            reply) so a closing "tasks created" message re-queries the
-            count and surfaces the button live. Suppressed while a FORM
-            is pending — answer the planner first.
-          */}
-          {!run.pendingForm && run.messages.some((m) => m.direction === "in") && (
-            <StartTasksSlot
-              featureId={run.featureId}
-              featureTitle={run.featureTitle}
-              revalidateKey={run.anchorMessageId}
-            />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-
   return (
     <div className="relative flex h-full flex-col min-h-0" {...dragProps}>
       {isDragging && (
@@ -383,259 +307,273 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         </div>
       )}
       <div className="relative flex-1 min-h-0">
-        <div ref={scrollRef} onScroll={handleScroll} className="flex flex-col min-h-0 overflow-y-auto h-full px-4 py-3">
-          <div className="shrink-0">
-            <DailyRecapCard dismissible showActivityLink className="mb-3" />
-          </div>
-          {!hasMessages && activeToolCalls.length === 0 && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/10 text-sky-500">
-                <MessageCircle className="h-4 w-4" />
-              </span>
-              <p className="text-sm font-medium">What should we work on?</p>
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="flex flex-col min-h-0 overflow-y-auto h-full px-4 py-3"
+        >
+          {/* One column for the thread: at reading width on the chats view. */}
+          <div className={cn("flex flex-1 flex-col", wide && WIDE_COLUMN)}>
+            <div className="shrink-0">
+              <DailyRecapCard dismissible showActivityLink className="mb-3" />
             </div>
-          )}
-          <div className="space-y-2 shrink-0">
-            {messages.map((message, index) => {
-              const isLastMessage = index === messages.length - 1;
-              // `isStreaming` (true until the stream settles), NOT `isLoading`
-              // (cleared on the first chunk) — with isLoading every row
-              // rendered as "done" the moment anything streamed in.
-              const isMessageStreaming = isLastMessage && isStreaming;
+            {!hasMessages && activeToolCalls.length === 0 && (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/10 text-sky-500">
+                  <MessageCircle className="h-4 w-4" />
+                </span>
+                <p className="text-sm font-medium">What should we work on?</p>
+              </div>
+            )}
+            <div className="space-y-2 shrink-0">
+              {messages.map((message, index) => {
+                const isLastMessage = index === messages.length - 1;
+                // `isStreaming` (true until the stream settles), NOT `isLoading`
+                // (cleared on the first chunk) — with isLoading every row
+                // rendered as "done" the moment anything streamed in.
+                const isMessageStreaming = isLastMessage && isStreaming;
 
-              // User messages that ride structured Approve / Reject
-              // intents are not chat content for the user — the proposal
-              // card transition is the visual feedback. Suppress the
-              // bubble entirely; the message stays in the JSON for the
-              // route handler to detect on subsequent clicks and for
-              // status derivation across forks.
-              if (message.role === "user" && (message.approval || message.rejection)) {
-                return null;
-              }
+                // User messages that ride structured Approve / Reject
+                // intents are not chat content for the user — the proposal
+                // card transition is the visual feedback. Suppress the
+                // bubble entirely; the message stays in the JSON for the
+                // route handler to detect on subsequent clicks and for
+                // status derivation across forks.
+                if (message.role === "user" && (message.approval || message.rejection)) {
+                  return null;
+                }
 
-              const subAgentRuns = subAgentRunsByAnchor.get(message.id);
+                const researchRuns = researchRunsByAnchor.get(message.id);
+                const htmlPages = htmlPagesByAnchor.get(message.id);
+                const strutChats = strutChatsByAnchor.get(message.id);
+                const pendingJobTurns = pendingJobTurnsByAnchor.get(message.id);
 
-              // Fan-out messages from planners (and Phase 4's planner-
-              // form answers) don't render as top-level chat bubbles —
-              // BUT they're the anchor for inbound-only runs (the approval
-              // flow: the agent never made an outbound
-              // `send_to_feature_planner` call, so the planner's reply is
-              // the only activity and thus the anchor). Suppress the
-              // bubble, but still render any SubAgentRunCard anchored
-              // here, otherwise the card disappears the moment the planner
-              // replies. They stay in the messages array so
-              // `getSubAgentRunsFromMessages` can walk them and so they
-              // round-trip through autosave / share. See
-              // `docs/plans/canvas-agent-manages-planners.md` Phase 2.
-              const researchRuns = researchRunsByAnchor.get(message.id);
-              const htmlPages = htmlPagesByAnchor.get(message.id);
-              const strutChats = strutChatsByAnchor.get(message.id);
-              const pendingJobTurns = pendingJobTurnsByAnchor.get(message.id);
+                // The end of a turn the user stopped: a quiet marker, not a bubble.
+                if (message.source?.kind === "stopped") {
+                  return (
+                    <div
+                      key={message.id}
+                      className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground"
+                      data-testid="stopped-turn-marker"
+                    >
+                      <Square className="h-2.5 w-2.5 fill-current" />
+                      Stopped
+                    </div>
+                  );
+                }
 
-              // The end of a turn the user stopped: a quiet marker, not a bubble.
-              if (message.source?.kind === "stopped") {
-                return (
-                  <div
-                    key={message.id}
-                    className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground"
-                    data-testid="stopped-turn-marker"
-                  >
-                    <Square className="h-2.5 w-2.5 fill-current" />
-                    Stopped
-                  </div>
-                );
-              }
+                // A turn hive started for an event about an artifact the job
+                // reported: the event where a person's words would be, the
+                // working card under it until the job row lands.
+                if (message.source?.kind === "job_event") {
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      <JobEventRow message={message} source={message.source} />
+                      {pendingJobTurns?.map((turn) => (
+                        <PendingJobTurnCard key={turn.jobId} turn={turn} />
+                      ))}
+                    </div>
+                  );
+                }
 
-              // A turn hive started for an event about an artifact the job
-              // reported: the event where a person's words would be, the
-              // working card under it until the job row lands.
-              if (message.source?.kind === "job_event") {
+                // A new version of a job's claims card made from the card (a
+                // Verify, an answer, a new claim): a quiet line, the card under it.
+                if (message.source?.kind === "job_claims") {
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      <p data-testid="job-claims-row" className="px-1 text-xs text-muted-foreground">
+                        <span className="font-medium">{message.source.title || "Job"}</span>
+                        {" · "}
+                        {message.content}
+                      </p>
+                      <MessageArtifacts
+                        artifacts={message.artifacts}
+                        cards={artifactCards}
+                        jobId={message.source.jobId}
+                      />
+                    </div>
+                  );
+                }
+
+                // A job turn's reply: collapsed to its header line (the canvas
+                // agent's own turn summarizes it), its artifacts as cards under it.
+                if (message.source?.kind === "job") {
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      <JobTurnCard message={message} source={message.source} />
+                      <MessageArtifacts
+                        artifacts={message.artifacts}
+                        cards={artifactCards}
+                        jobId={message.source.jobId}
+                      />
+                    </div>
+                  );
+                }
+
+                // Rows persisted by the retired planner fan-out stay in old
+                // conversations; keep them hidden rather than as stray bubbles.
+                if (
+                  message.source?.kind === "planner" ||
+                  message.source?.kind === "user-answered-planner-form"
+                ) {
+                  return null;
+                }
+
+                if (message.source?.kind === "research") {
+                  if (!researchRuns || researchRuns.length === 0) return null;
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      {researchRuns?.map((run) => (
+                        <ResearchRunCard key={run.researchId} run={run} githubLogin={githubLogin} />
+                      ))}
+                    </div>
+                  );
+                }
+
+                const proposals = getProposalsFromMessage(message);
+
+                // Collect tool-call IDs that produced a ProposalCard (successful
+                // proposal outputs only — failed calls stay in the timeline).
+                const proposalToolCallIds = new Set<string>();
+                if (proposals.length > 0) {
+                  for (const tc of message.toolCalls ?? []) {
+                    if (
+                      tc.toolName !== PROPOSE_FEATURE_TOOL &&
+                      tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
+                      tc.toolName !== PROPOSE_MILESTONE_TOOL
+                    )
+                      continue;
+                    const o = tc.output;
+                    if (!o || typeof o !== "object" || "error" in o) continue;
+                    proposalToolCallIds.add(tc.id);
+                  }
+                }
+
+                // The streamed (live) path attaches a rich `timeline` to
+                // tool-call rows. The server only persists `toolCalls`, so a
+                // reloaded / shared / live-synced row has `toolCalls` but no
+                // `timeline` — synthesize one from `toolCalls` so its tool
+                // cards render identically to a live turn.
+                const effectiveTimeline =
+                  message.timeline ?? (message.toolCalls?.length ? timelineFromToolCalls(message.toolCalls) : undefined);
+
+                const filteredTimeline =
+                  proposalToolCallIds.size > 0
+                    ? effectiveTimeline?.filter((item) => item.type !== "toolCall" || !proposalToolCallIds.has(item.id))
+                    : effectiveTimeline;
+
+                // A streamed tool-call row carries a `timeline` (and empty
+                // text content). Render it as rich, expandable tool cards via
+                // the shared `<StreamingMessage>` — names, args, outputs, and
+                // live status, in order with any interleaved text. Plain text
+                // rows fall through to `SidebarChatMessage` so the bubble look
+                // and the `?r=` deep-link interceptor are preserved.
+                const hasTimeline = !!filteredTimeline?.length;
+
                 return (
                   <div key={message.id} className="space-y-1.5">
-                    <JobEventRow message={message} source={message.source} />
+                    {hasTimeline ? (
+                      <div className="w-full text-foreground/90">
+                        <StreamingMessage
+                          message={{
+                            id: message.id,
+                            content: message.content,
+                            timeline: filteredTimeline,
+                            isStreaming: isMessageStreaming,
+                            usage: message.usage,
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <SidebarChatMessage message={message} isStreaming={isMessageStreaming} />
+                    )}
+                    {activeId && message.id === `${stoppedTurnId}-u` && editingTurnId !== stoppedTurnId && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setEditingTurn(activeId, stoppedTurnId)}
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          Edit
+                        </button>
+                      </div>
+                    )}
+                    {proposals.length > 0 && (
+                      <div className="space-y-1.5">
+                        {sortProposalsByDependency(proposals).map((p) => (
+                          <ProposalCard
+                            key={p.proposalId}
+                            proposal={p}
+                            messageId={message.id}
+                            githubLogin={githubLogin}
+                            messageTimestamp={message.timestamp}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {message.deferredCheck && (
+                      <DeferredCheckCard deferredCheck={message.deferredCheck} githubLogin={githubLogin} />
+                    )}
+                    {researchRuns &&
+                      researchRuns.length > 0 &&
+                      researchRuns.map((run) => (
+                        <ResearchRunCard key={run.researchId} run={run} githubLogin={githubLogin} />
+                      ))}
+                    {htmlPages &&
+                      htmlPages.length > 0 &&
+                      htmlPages.map((page) => <HtmlPageCard key={page.slug} page={page} githubLogin={githubLogin} />)}
+                    {strutChats?.map((chat) => (
+                      <StrutChatCard key={chat.chatId} chat={chat} githubLogin={githubLogin} />
+                    ))}
                     {pendingJobTurns?.map((turn) => (
                       <PendingJobTurnCard key={turn.jobId} turn={turn} />
                     ))}
+                    <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
                   </div>
                 );
-              }
-
-              // A job turn's reply: collapsed to its header line (the canvas
-              // agent's own turn summarizes it), its artifacts as cards under it.
-              if (message.source?.kind === "job") {
-                return (
-                  <div key={message.id} className="space-y-1.5">
-                    <JobTurnCard message={message} source={message.source} />
-                    <MessageArtifacts
-                      artifacts={message.artifacts}
-                      cards={artifactCards}
-                      jobId={message.source.jobId}
-                    />
-                  </div>
-                );
-              }
-
-              if (
-                message.source?.kind === "planner" ||
-                message.source?.kind === "user-answered-planner-form" ||
-                message.source?.kind === "research"
-              ) {
-                if ((!subAgentRuns || subAgentRuns.length === 0) && (!researchRuns || researchRuns.length === 0))
-                  return null;
-                return (
-                  <div key={message.id} className="space-y-1.5">
-                    {subAgentRuns && renderSubAgentRuns(subAgentRuns)}
-                    {researchRuns?.map((run) => (
-                      <ResearchRunCard key={run.researchId} run={run} githubLogin={githubLogin} />
-                    ))}
-                  </div>
-                );
-              }
-
-              const proposals = getProposalsFromMessage(message);
-
-              // Collect tool-call IDs that produced a ProposalCard (successful
-              // proposal outputs only — failed calls stay in the timeline).
-              const proposalToolCallIds = new Set<string>();
-              if (proposals.length > 0) {
-                for (const tc of message.toolCalls ?? []) {
-                  if (
-                    tc.toolName !== PROPOSE_FEATURE_TOOL &&
-                    tc.toolName !== PROPOSE_INITIATIVE_TOOL &&
-                    tc.toolName !== PROPOSE_MILESTONE_TOOL
-                  )
-                    continue;
-                  const o = tc.output;
-                  if (!o || typeof o !== "object" || "error" in o) continue;
-                  proposalToolCallIds.add(tc.id);
-                }
-              }
-
-              // The streamed (live) path attaches a rich `timeline` to
-              // tool-call rows. The server only persists `toolCalls`, so a
-              // reloaded / shared / live-synced row has `toolCalls` but no
-              // `timeline` — synthesize one from `toolCalls` so its tool
-              // cards render identically to a live turn.
-              const effectiveTimeline =
-                message.timeline ?? (message.toolCalls?.length ? timelineFromToolCalls(message.toolCalls) : undefined);
-
-              const filteredTimeline =
-                proposalToolCallIds.size > 0
-                  ? effectiveTimeline?.filter((item) => item.type !== "toolCall" || !proposalToolCallIds.has(item.id))
-                  : effectiveTimeline;
-
-              // A streamed tool-call row carries a `timeline` (and empty
-              // text content). Render it as rich, expandable tool cards via
-              // the shared `<StreamingMessage>` — names, args, outputs, and
-              // live status, in order with any interleaved text. Plain text
-              // rows fall through to `SidebarChatMessage` so the bubble look
-              // and the `?r=` deep-link interceptor are preserved.
-              const hasTimeline = !!filteredTimeline?.length;
-
-              return (
-                <div key={message.id} className="space-y-1.5">
-                  {hasTimeline ? (
-                    <div className="w-full text-foreground/90">
-                      <StreamingMessage
-                        message={{
-                          id: message.id,
-                          content: message.content,
-                          timeline: filteredTimeline,
-                          isStreaming: isMessageStreaming,
-                          usage: message.usage,
-                        }}
-                      />
+              })}
+              <AnimatePresence>
+                {agentTurnsInProgress > 0 && activeToolCalls.length === 0 && (
+                  <motion.div
+                    key="thinking-dots"
+                    data-testid="thinking-dots"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="flex justify-start"
+                  >
+                    <div className="rounded-2xl px-3 py-2 bg-muted/40 shadow-sm">
+                      <div className="flex gap-1 items-center h-4">
+                        <motion.span
+                          animate={{ opacity: [0.3, 1, 0.3] }}
+                          transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
+                          className="text-sm text-foreground/60"
+                        >
+                          .
+                        </motion.span>
+                        <motion.span
+                          animate={{ opacity: [0.3, 1, 0.3] }}
+                          transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
+                          className="text-sm text-foreground/60"
+                        >
+                          .
+                        </motion.span>
+                        <motion.span
+                          animate={{ opacity: [0.3, 1, 0.3] }}
+                          transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
+                          className="text-sm text-foreground/60"
+                        >
+                          .
+                        </motion.span>
+                      </div>
                     </div>
-                  ) : (
-                    <SidebarChatMessage message={message} isStreaming={isMessageStreaming} />
-                  )}
-                  {activeId && message.id === `${stoppedTurnId}-u` && editingTurnId !== stoppedTurnId && (
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setEditingTurn(activeId, stoppedTurnId)}
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        <Pencil className="h-3 w-3" />
-                        Edit
-                      </button>
-                    </div>
-                  )}
-                  {proposals.length > 0 && (
-                    <div className="space-y-1.5">
-                      {sortProposalsByDependency(proposals).map((p) => (
-                        <ProposalCard
-                          key={p.proposalId}
-                          proposal={p}
-                          messageId={message.id}
-                          githubLogin={githubLogin}
-                          messageTimestamp={message.timestamp}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {message.deferredCheck && (
-                    <DeferredCheckCard deferredCheck={message.deferredCheck} githubLogin={githubLogin} />
-                  )}
-                  {subAgentRuns && subAgentRuns.length > 0 && renderSubAgentRuns(subAgentRuns)}
-                  {researchRuns &&
-                    researchRuns.length > 0 &&
-                    researchRuns.map((run) => (
-                      <ResearchRunCard key={run.researchId} run={run} githubLogin={githubLogin} />
-                    ))}
-                  {htmlPages &&
-                    htmlPages.length > 0 &&
-                    htmlPages.map((page) => <HtmlPageCard key={page.slug} page={page} githubLogin={githubLogin} />)}
-                  {strutChats?.map((chat) => (
-                    <StrutChatCard key={chat.chatId} chat={chat} githubLogin={githubLogin} />
-                  ))}
-                  {pendingJobTurns?.map((turn) => (
-                    <PendingJobTurnCard key={turn.jobId} turn={turn} />
-                  ))}
-                  <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
-                </div>
-              );
-            })}
-            <AnimatePresence>
-              {agentTurnsInProgress > 0 && activeToolCalls.length === 0 && (
-                <motion.div
-                  key="thinking-dots"
-                  data-testid="thinking-dots"
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex justify-start"
-                >
-                  <div className="rounded-2xl px-3 py-2 bg-muted/40 shadow-sm">
-                    <div className="flex gap-1 items-center h-4">
-                      <motion.span
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
-                        className="text-sm text-foreground/60"
-                      >
-                        .
-                      </motion.span>
-                      <motion.span
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
-                        className="text-sm text-foreground/60"
-                      >
-                        .
-                      </motion.span>
-                      <motion.span
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
-                        className="text-sm text-foreground/60"
-                      >
-                        .
-                      </motion.span>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <div ref={messagesEndRef} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <div ref={messagesEndRef} />
+            </div>
           </div>
         </div>
         <StreamScrollIndicator
@@ -656,7 +594,7 @@ export function SidebarChat({ githubLogin }: SidebarChatProps) {
         />
       </div>{" "}
       {/* end relative wrapper */}
-      <div className="border-t p-2">
+      <div className={wide ? cn(WIDE_COLUMN, "px-4 pb-4") : "border-t p-2"}>
         <SidebarChatInput
           ref={composerRef}
           onSend={handleSend}
@@ -724,8 +662,8 @@ export function TokenCounter() {
 
 /**
  * The chat header's actions — the agent-active dot, Stop, the share
- * link, Fork, agent settings, history (unless `hideHistory`: the control
- * panel's list is the history) and New chat. Reads the store itself, so
+ * link, Fork, agent settings, history (unless `hideHistory`: the chat
+ * list beside it is the history) and New chat. Reads the store itself, so
  * the chat's own header and the org page's one bar can both place it.
  */
 export function SidebarChatActions({
@@ -755,8 +693,7 @@ export function SidebarChatActions({
   const setRunActive = useCanvasChatStore((s) => s.setRunActive);
   // Org context for Stop — needed by the abort endpoint.
   const orgContext = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.context : null) ?? null);
-  const { id: workspaceId } = useWorkspace();
-  const { isActive } = useCanvasAgentActivity(activeId, workspaceId);
+  const { isActive } = useCanvasAgentActivity(activeId);
   const [isForking, setIsForking] = useState(false);
 
   const handleShare = async () => {
@@ -878,9 +815,11 @@ const EMPTY_MESSAGES: CanvasChatMessage[] = [];
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
 
 /**
- * The cards under a message: one for each artifact the message is the
- * latest report of (`indexArtifactCards`) — a ref a later message
- * reported again gets none here. How a kind looks is the viewer
+ * The artifacts under a message: the ones the message is the latest report
+ * of (`indexArtifactCards`) — a ref a later message reported again shows
+ * there instead. One that waits on the reader (`artifactAsks`: a PR to
+ * review, a claim to look at) is a card; the rest fold into one line that
+ * opens them on the artifact panel. How a kind looks is the viewer
  * registry's business (`artifacts/registry.ts`), and reading its content
  * the card's own; a card is memoised on its ref, so streaming text never
  * re-renders one.
@@ -897,9 +836,11 @@ function MessageArtifacts({
 }) {
   const shown = artifacts?.filter((artifact) => cards.has(artifact));
   if (!shown?.length) return null;
+  const asking = shown.filter(artifactAsks);
+  const folded = shown.filter((artifact) => !asking.includes(artifact));
   return (
     <div className="space-y-1.5">
-      {shown.map((artifact) => {
+      {asking.map((artifact) => {
         const version = cards.get(artifact) ?? { index: 0, count: 1 };
         return (
           <ArtifactCard
@@ -911,6 +852,7 @@ function MessageArtifacts({
           />
         );
       })}
+      {folded.length > 0 && <FoldedArtifacts artifacts={folded} afterCards={asking.length > 0} />}
     </div>
   );
 }
@@ -1096,6 +1038,21 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
     });
     useCanvasChatStore.getState().setPendingInputDraft(null);
   }, [pendingDraft]);
+
+  // Appended text ("Go with" taps) keeps what the user typed and adds a new line.
+  const pendingAppend = useCanvasChatStore((s) => s.pendingInputAppend);
+  useEffect(() => {
+    if (!pendingAppend) return;
+    setInput((prev) => (prev.trim() ? `${prev.replace(/\s+$/, "")}\n${pendingAppend}` : pendingAppend));
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.selectionStart = el.selectionEnd = el.value.length;
+      }
+    });
+    useCanvasChatStore.setState({ pendingInputAppend: null });
+  }, [pendingAppend]);
 
   // ─── Unmount cleanup — revoke all preview object URLs ──────────────
   useEffect(() => {

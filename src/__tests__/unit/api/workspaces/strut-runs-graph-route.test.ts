@@ -2,6 +2,7 @@
  * Unit tests for the strut run graph routes:
  *   /api/workspaces/[slug]/strut/runs/[runId]/graph
  *   /api/workspaces/[slug]/strut/runs/[runId]/graph/nodes/[refId]
+ *   /api/workspaces/[slug]/strut/runs/[runId]/graph/calls?under=
  *
  * Coverage:
  *   - both are for the workspace's members, and scoped to its runs of any
@@ -9,17 +10,22 @@
  *   - the trace is the projection, and strut not answering is said as such;
  *   - a node is read whole, a ref id that is not one never reaches the row
  *     lookup, and a node the graph no longer holds is told from a graph that
- *     did not answer.
+ *     did not answer;
+ *   - a peer workspace's graph is checked against the viewer's own access to
+ *     that workspace, and a node of it they may not read is a 403;
+ *   - a launching call's child calls are read by the call's path, with the
+ *     reader's answers said as 404 / 403 / 502.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const { mockAccess, mockFindRow, mockGraph, mockNode } = vi.hoisted(() => ({
+const { mockAccess, mockFindRow, mockGraph, mockNode, mockChild } = vi.hoisted(() => ({
   mockAccess: vi.fn(),
   mockFindRow: vi.fn(),
   mockGraph: vi.fn(),
   mockNode: vi.fn(),
+  mockChild: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ db: {} }));
@@ -28,13 +34,18 @@ vi.mock("@/lib/auth/workspace-access", async (importOriginal) => ({
   resolveWorkspaceAccess: mockAccess,
 }));
 vi.mock("@/services/strut-runs", () => ({ findStrutRunRow: mockFindRow }));
-vi.mock("@/services/strut-runs/run-graph", () => ({ readStrutRunGraph: mockGraph, readStrutRunGraphNode: mockNode }));
+vi.mock("@/services/strut-runs/run-graph", () => ({
+  readStrutRunGraph: mockGraph,
+  readStrutRunGraphNode: mockNode,
+  readStrutRunGraphChild: mockChild,
+}));
 vi.mock("@/lib/constants", () => ({ getSwarmVanityAddress: (name: string) => `${name}.sphinx.chat` }));
 vi.mock("@/lib/utils/stakgraph-url", () => ({ getStakgraphUrl: (host: string) => `https://${host}:7799` }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
 
 import { GET as getGraph } from "@/app/api/workspaces/[slug]/strut/runs/[runId]/graph/route";
 import { GET as getNode } from "@/app/api/workspaces/[slug]/strut/runs/[runId]/graph/nodes/[refId]/route";
+import { GET as getCalls } from "@/app/api/workspaces/[slug]/strut/runs/[runId]/graph/calls/route";
 
 const BASE = "http://hive.example/api/workspaces/hive/strut/runs/run-1/graph";
 const ROW = {
@@ -73,7 +84,27 @@ describe("GET graph", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ calls: [], nodes: [] });
     expect(mockFindRow).toHaveBeenCalledWith("ws-1", "run-1");
-    expect(mockGraph).toHaveBeenCalledWith(ROW);
+    expect(mockGraph).toHaveBeenCalledWith(ROW, expect.any(Function));
+  });
+
+  it("hands the reader a peer workspace's graph only when the viewer is a member of it", async () => {
+    mockGraph.mockResolvedValue({
+      calls: [],
+      nodes: [],
+      edges: [],
+      nodesRead: true,
+      edgesRead: true,
+      truncated: false,
+    });
+    await graph();
+    const access = mockGraph.mock.calls[0][1] as (slug: string) => Promise<unknown>;
+    mockAccess.mockResolvedValueOnce({ ...MEMBER, workspaceId: "ws-apps", slug: "apps" });
+    expect(await access("apps")).toEqual({ workspaceId: "ws-apps" });
+    expect(mockAccess).toHaveBeenLastCalledWith(expect.anything(), { slug: "apps" });
+    mockAccess.mockResolvedValueOnce({ kind: "forbidden" });
+    expect(await access("secret")).toEqual({ reason: "you are not a member of @secret" });
+    mockAccess.mockResolvedValueOnce({ kind: "public-viewer", userId: null, workspaceId: "ws-x", slug: "open" });
+    expect(await access("open")).toEqual({ reason: "you are not a member of @open" });
   });
 
   it("answers 404 for a run of another workspace", async () => {
@@ -113,7 +144,7 @@ describe("GET graph node", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(BODY);
     expect(mockFindRow).toHaveBeenCalledWith("ws-1", "run-1");
-    expect(mockNode).toHaveBeenCalledWith(ROW, "c-1");
+    expect(mockNode).toHaveBeenCalledWith(ROW, "c-1", expect.any(Function));
   });
 
   it("refuses a ref id that is not one before looking anything up", async () => {
@@ -134,6 +165,19 @@ describe("GET graph node", () => {
     expect((await unread.json()).error).toBe("The graph did not answer (no answer in 20 s)");
   });
 
+  it("reads a node of a peer's graph by its qualified id, and refuses one the viewer may not read", async () => {
+    mockNode.mockResolvedValue({ found: true, node: BODY });
+    expect((await node("@apps:fn-1")).status).toBe(200);
+    expect(mockNode).toHaveBeenCalledWith(ROW, "@apps:fn-1", expect.any(Function));
+
+    mockNode.mockResolvedValue({ found: false, denied: "you are not a member of @secret" });
+    const denied = await node("@secret:fn-1");
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error).toBe("Not readable here: you are not a member of @secret");
+
+    expect((await node("@apps:'}) DETACH DELETE n //")).status).toBe(400);
+  });
+
   it("answers 502 when the run's swarm cannot be read", async () => {
     mockNode.mockResolvedValue(null);
     expect((await node("c-1")).status).toBe(502);
@@ -149,5 +193,48 @@ describe("GET graph node", () => {
     mockAccess.mockResolvedValue({ kind: "forbidden" });
     expect((await node("c-1")).status).toBe(403);
     expect(mockFindRow).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET graph calls", () => {
+  const under = "job/work/002-meta_run_workflow";
+  const calls = (query: string) =>
+    getCalls(new NextRequest(`${BASE}/calls${query}`), { params: Promise.resolve({ slug: "hive", runId: "run-1" }) });
+
+  it("answers the child run's calls, read by the launching call's path", async () => {
+    const answer = {
+      calls: [{ path: `${under}/explore/explore/001-str_replace_based_edit_tool` }],
+      nodes: [{ ref_id: "f-1", node_type: "File", name: "route.ts", namespace: null, found: true }],
+      edges: [],
+    };
+    mockChild.mockResolvedValue(answer);
+    const res = await calls(`?under=${encodeURIComponent(under)}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(answer);
+    expect(mockChild).toHaveBeenCalledWith(ROW, under, expect.any(Function));
+  });
+
+  it("refuses a request that names no call, before looking anything up", async () => {
+    expect((await calls("")).status).toBe(400);
+    expect((await calls(`?under=${"a".repeat(2001)}`)).status).toBe(400);
+    expect(mockFindRow).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ notFound: true }, 404],
+    [{ denied: "you are not a member of @apps" }, 403],
+    [{ unread: true }, 502],
+  ])("says %o as a %i", async (read, status) => {
+    mockChild.mockResolvedValue(read);
+    expect((await calls(`?under=${encodeURIComponent(under)}`)).status).toBe(status);
+  });
+
+  it("is for members of the run's workspace, and its runs only", async () => {
+    mockAccess.mockResolvedValue({ kind: "forbidden" });
+    expect((await calls(`?under=${encodeURIComponent(under)}`)).status).toBe(403);
+    mockAccess.mockResolvedValue(MEMBER);
+    mockFindRow.mockResolvedValue(null);
+    expect((await calls(`?under=${encodeURIComponent(under)}`)).status).toBe(404);
+    expect(mockChild).not.toHaveBeenCalled();
   });
 });

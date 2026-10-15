@@ -1,9 +1,11 @@
 /**
- * GET  /api/workspaces/:slug/system-map/runs?workflow=schema|materialize|cwe_check|cloud_links|security_review
+ * GET  /api/workspaces/:slug/system-map/runs?workflow=system_map|cwe_check
  *      — the workspace's runs of that System Map workflow, newest first
  *      (PENDING ones settled from strut when the run is over there and the
  *      callback never arrived). Default `schema`.
- * POST /api/workspaces/:slug/system-map/runs  { workflow?: SystemMapWorkflowKey }
+ * POST /api/workspaces/:slug/system-map/runs  { workflow?: SystemMapWorkflowKey, cweIds?: string[] }
+ *      (`cweIds` — `["CWE-79", …]` — only for the CWE workflows: CWE check
+ *      sends them as `input.cwe_ids`, security review takes one as `input.cwe_id`)
  *      — launch that workflow on the org strut. One run in flight per
  *      workspace per workflow; DEVELOPER and up.
  */
@@ -22,6 +24,7 @@ import {
   isSystemMapWorkflowKey,
   launchSystemMapRun,
   listSystemMapRuns,
+  parseCweIds,
   SYSTEM_MAP_WORKFLOWS,
   type SystemMapWorkflowKey,
 } from "@/services/strut-runs/system-map";
@@ -35,7 +38,7 @@ const RUN_WINDOW_SECS = 60 * 60;
 
 /** `schema` when absent; null when present but unknown. */
 function parseKey(raw: unknown): SystemMapWorkflowKey | null {
-  if (raw === null || raw === undefined || raw === "") return "schema";
+  if (raw === null || raw === undefined || raw === "") return "system_map";
   return isSystemMapWorkflowKey(raw) ? raw : null;
 }
 
@@ -80,9 +83,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Developer access required" }, { status: 403 });
     }
 
-    const payload = (await request.json().catch(() => ({}))) as { workflow?: unknown };
+    const payload = (await request.json().catch(() => ({}))) as { workflow?: unknown; cweIds?: unknown };
     const key = parseKey(payload.workflow);
     if (!key) return NextResponse.json({ error: "Unknown workflow" }, { status: 400 });
+
+    const cweIds = parseCweIds(key, payload.cweIds);
+    if (cweIds && !Array.isArray(cweIds)) return NextResponse.json({ error: cweIds.error }, { status: 400 });
 
     if (await hasPendingSystemMapRun(member.workspaceId, key)) {
       return NextResponse.json({ error: "A run of this workflow is already in progress" }, { status: 409 });
@@ -102,9 +108,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       userId: member.userId,
       publicBaseUrl: getBaseUrl(request.headers.get("host")),
       key,
+      cweIds,
     });
     return NextResponse.json(
-      { success: true, key, runId: dispatched.runId, strutRunId: dispatched.strutRunId },
+      { success: true, key, runId: dispatched.runId, strutRunId: dispatched.strutRunId, strutUrl: dispatched.strutUrl },
       { status: 202 },
     );
   } catch (error) {

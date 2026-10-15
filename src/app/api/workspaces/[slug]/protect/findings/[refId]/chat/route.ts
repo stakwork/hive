@@ -62,7 +62,7 @@ export async function POST(
       return NextResponse.json({ error: ORG_MEMBERSHIP_ERROR }, { status: 403 });
     }
 
-    const tool = await chooseProtectJamieTool(finding, sourceControlOrgId);
+    const tool = chooseProtectJamieTool(finding);
     const seed = buildProtectJamieSeed(finding, tool, slug);
 
     const existing = await db.sharedConversation.findFirst({

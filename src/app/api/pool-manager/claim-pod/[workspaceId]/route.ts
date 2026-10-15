@@ -5,11 +5,14 @@ import { type ApiError } from "@/types";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
 import { POD_BASE_DOMAIN, jobClaimant, releasePodById } from "@/lib/pods/queries";
 import { resolvePodCaller } from "@/lib/auth/pod-access";
+import { podGeneration } from "@/lib/pods/rollout";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   let claimedPodId: string | null = null;
+  // A claim for a pod that runs the workspace's current config (`?generation=new`)
+  let fresh = false;
   try {
     const { workspaceId: workspaceRef } = await params;
 
@@ -38,6 +41,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // is written. `drop-pod?job=` releases only a pod still marked by it.
     const job = taskId ? null : searchParams.get("job");
     const run = job ? searchParams.get("run") : null;
+    // A pod created after the last pool push, which runs the config hive
+    // holds now (strut plans/pod-config.md §4): the pod a pool config change
+    // is checked on. Never an older pod: none ready yet is 409.
+    fresh = searchParams.get("generation") === "new";
 
     const workspace = await db.workspace.findFirst({
       where: { id: workspaceId },
@@ -114,6 +121,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: "Workspace has no swarm configured" }, { status: 400 });
     }
 
+    let createdAfter: Date | undefined;
+    if (fresh) {
+      const { poolPushedAt, poolPushError } = workspace.swarm;
+      if (!poolPushedAt) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: poolPushError
+              ? `The last pool push failed (${poolPushError}): no pod runs the current config`
+              : "No completed pool push is recorded for this workspace: no pod is newer than its config yet",
+          },
+          { status: 409 },
+        );
+      }
+      createdAfter = poolPushedAt;
+    }
+
     // Guard: reject if the task already has a pod assigned
     if (taskId) {
       const existingTask = await db.task.findUnique({
@@ -142,6 +166,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       userInfo,
       services || undefined,
       run || undefined,
+      createdAfter,
     );
     claimedPodId = podWorkspace.id;
 
@@ -204,6 +229,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         control,
         ide,
         password: podWorkspace.password,
+        // "new": created after the last pool push, so it runs the config hive holds now
+        generation: podGeneration(new Date(podWorkspace.created), workspace.swarm.poolPushedAt),
       },
       { status: 200 },
     );
@@ -224,8 +251,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // No pods available — capacity issue, not a server error
+    // No pods available — capacity issue, not a server error. For a new
+    // pod it is a wait: the pool is still recreating pods after the push.
     if (error instanceof Error && error.message.includes("No available pods")) {
+      if (fresh) {
+        return NextResponse.json(
+          { success: false, error: "No pod created after the last pool push is ready yet" },
+          { status: 409 },
+        );
+      }
       return NextResponse.json(
         { success: false, error: "No available pods" },
         { status: 503 },

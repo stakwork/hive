@@ -9,6 +9,7 @@
 import type {
   ConnectionGroup,
   ConnectionItem,
+  ChoiceTreeData,
   ConnectionPageArgs,
   Hierarchy,
   NodeConnections,
@@ -219,4 +220,38 @@ export function mockConnectionPage({ refId, edge, outgoing, limit }: ConnectionP
     .map((e) => (outgoing ? e.target : e.source))
     .map((o) => ({ id: o.id, name: o.name, type: typeFromLabels(o.labels) }))
     .slice(0, limit);
+}
+
+/** A small brainstorm tree under `focus`: a root question with sub-questions 1 and 2, options 1A, 1B, 2A, and under 1A a follow-up question with options 1AA and 1AB. */
+export function mockChoiceTree(focus: string, labels: string[] = ["Question", "Option", "Choice"]): ChoiceTreeData {
+  const kid = (n: string) => `${focus}-${n}`;
+  const q = (id: string, n: number, text: string, state = "open") =>
+    ({ ref_id: id, type: "Question" as const, properties: { question_id: n, text, made_by: "user", state } });
+  const o = (id: string, n: number, text: string, state = "open") =>
+    ({ ref_id: id, type: "Option" as const, properties: { option_id: n, text, kind: "option", made_by: "model", state } });
+  const nodes = [
+    q(focus, 1, "Mock question?"),
+    q(kid("q1"), 2, "Sub-question one?"),
+    q(kid("q2"), 3, "Sub-question two?"),
+    o(kid("1a"), 4, "Option 1A"),
+    o(kid("1b"), 5, "Option 1B", "rejected"),
+    o(kid("2a"), 6, "Option 2A"),
+    q(kid("fq"), 7, "Follow-up?"),
+    o(kid("1aa"), 8, "Option 1AA"),
+    o(kid("1ab"), 9, "Option 1AB"),
+  ].filter((n) => labels.includes(n.type));
+  const ids = new Set(nodes.map((n) => n.ref_id));
+  const edges = [
+    [focus, kid("q1")],
+    [focus, kid("q2")],
+    [kid("q1"), kid("1a")],
+    [kid("q1"), kid("1b")],
+    [kid("q2"), kid("2a")],
+    [kid("1a"), kid("fq")],
+    [kid("fq"), kid("1aa")],
+    [kid("fq"), kid("1ab")],
+  ]
+    .map(([source, target]) => ({ source, target }))
+    .filter((e) => ids.has(e.source) && ids.has(e.target));
+  return { nodes, edges, truncated: false };
 }

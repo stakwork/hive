@@ -175,43 +175,6 @@ describe("canvas scope message", () => {
     expect(block).not.toContain('use the name "');
   });
 
-  // ─── Linked-workspace hint (initiative-scoped) ─────────────────────────────
-  // The agent picks `workspaceId` for `propose_feature` itself; without
-  // a DB-level Initiative→Workspace FK, only the root canvas's
-  // `ws ↔ initiative` edge tells us which workspace a feature should
-  // belong to. These tests lock the prompt-side surfacing of that hint.
-
-  it("surfaces a single linked workspace as a strong slug directive (no cuid)", () => {
-    const block = scopeBlock({
-      currentCanvasRef: "initiative:abc",
-      linkedWorkspaces: [{ id: "ws-hive", slug: "hive", name: "Hive" }],
-    });
-    expect(block).toContain("**Hive**");
-    expect(block).toContain("slug `hive`");
-    expect(block).toContain('workspaceSlug: "hive"');
-    expect(block).toContain("propose_feature");
-    // The id must not leak into the prompt — that's the failure mode
-    // we're protecting against. Tools resolve slug → id internally.
-    expect(block).not.toContain("ws-hive");
-    expect(block).not.toContain("workspaceId:");
-  });
-
-  it("surfaces multiple linked workspaces as a list with an ask-the-user nudge", () => {
-    const block = scopeBlock({
-      currentCanvasRef: "initiative:abc",
-      linkedWorkspaces: [
-        { id: "ws-hive", slug: "hive", name: "Hive" },
-        { id: "ws-sg", slug: "stakgraph", name: "Stakgraph" },
-      ],
-    });
-    expect(block).toContain("**Hive**");
-    expect(block).toContain("**Stakgraph**");
-    expect(block).toContain("ask them before calling `propose_feature`");
-    // No cuids in the multi-linked branch either.
-    expect(block).not.toContain("ws-hive");
-    expect(block).not.toContain("ws-sg");
-  });
-
   it("does NOT surface the linked-workspace hint outside initiative scopes", () => {
     const block = scopeBlock({
       currentCanvasRef: "ws:zzz",

@@ -458,6 +458,42 @@ export async function ensureStrutDelegation(
 }
 
 /**
+ * The actor for a launch hive makes on a user's behalf — `x-strut-actor` on
+ * a `/gitree/process` call, or `strut_actor` on a sync body that standalone
+ * forwards to mcp's `/repo/describe` — so mcp runs it as a lab workflow
+ * attributed to that person, with their PAT kept as their actor secret.
+ *
+ * Every real user is named, whatever the Bifrost gates say — as hive's other
+ * strut launches name theirs. Only the delegation push is gated (inside
+ * `ensureStrutDelegation`): where it lands, the run's LLM calls are billed to
+ * the user through the gateway; where it does not (Bifrost off for the
+ * workspace, no swarm key, a failed push), strut finds nothing to bill and
+ * calls the providers with the swarm's own keys, as mcp's old handlers do.
+ * The public viewer is never named. Never throws: a failure means no actor,
+ * and the launch goes ahead unattributed.
+ */
+export async function strutActorForLaunch(
+  auth: WorkspaceAuth,
+  swarm: { swarmUrl: string | null | undefined; swarmApiKey: string | null | undefined },
+): Promise<string | undefined> {
+  if (auth.userId === PUBLIC_VIEWER_USER_ID) return undefined;
+  try {
+    if (swarm.swarmUrl && swarm.swarmApiKey) {
+      const ensured = await ensureStrutDelegation(auth, { swarmUrl: swarm.swarmUrl, swarmApiKey: swarm.swarmApiKey });
+      if (ensured.actor) return ensured.actor;
+    }
+    return await resolveStrutActor(auth.userId);
+  } catch (err) {
+    logger.warn("Could not resolve the strut actor for a launch; launching unattributed", STRUT_DELEGATION_LOG_TAG, {
+      workspaceId: auth.workspaceId,
+      userId: auth.userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return undefined;
+  }
+}
+
+/**
  * A delegation is worth renewing on a visit once it is past half its
  * (60-day) life. Strut only reports `exp`, so "life left" is measured
  * against the fixed TTL. An unparseable `exp` counts as expired.

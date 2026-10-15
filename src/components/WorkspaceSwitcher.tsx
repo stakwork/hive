@@ -15,6 +15,7 @@ import { PresignedImage } from "@/components/ui/presigned-image";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
 import type { WorkspaceWithRole } from "@/types/workspace";
+import { cn } from "@/lib/utils";
 import { Building2, ChevronsUpDown, Plus, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { WORKSPACE_LIMITS } from "@/lib/constants";
@@ -33,11 +34,14 @@ interface WorkspaceSwitcherProps {
    * they're on but have no other workspaces to switch to.
    */
   readOnly?: boolean;
+  /** Render only the workspace avatar (thin sidebar rail). */
+  collapsed?: boolean;
 }
 
 export function WorkspaceSwitcher({
   onWorkspaceChange,
   readOnly = false,
+  collapsed = false,
 }: WorkspaceSwitcherProps) {
   const {
     workspace: activeWorkspace,
@@ -81,8 +85,8 @@ export function WorkspaceSwitcher({
   // Loading state
   if (loading) {
     return (
-      <div className="p-4 border-b">
-        <div className="flex items-center gap-3 p-3 border rounded-lg">
+      <div className={cn("border-b", collapsed ? "p-2 flex justify-center" : "p-4")}>
+        <div className={cn("flex items-center gap-3 border rounded-lg", collapsed ? "p-1.5" : "p-3")}>
           <Skeleton className="w-8 h-8 rounded-lg" />
           <div className="text-left flex-1 space-y-1">
             <Skeleton className="h-4 w-32" />
@@ -118,8 +122,8 @@ export function WorkspaceSwitcher({
   // Read-only variant: avatar + name, no dropdown.
   if (readOnly) {
     return (
-      <div className="p-4 border-b">
-        <div className="flex items-center gap-3 p-3 border rounded-lg">
+      <div className={cn("border-b", collapsed ? "p-2 flex justify-center" : "p-4")} title={collapsed ? activeWorkspace.name : undefined}>
+        <div className={cn("flex items-center gap-3 border rounded-lg", collapsed ? "p-1.5" : "p-3")}>
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground overflow-hidden shrink-0">
             {canAccessWorkspaceLogo && logoUrls[activeWorkspace.id] ? (
               <PresignedImage
@@ -135,23 +139,30 @@ export function WorkspaceSwitcher({
               <Building2 className="w-4 h-4" />
             )}
           </div>
-          <div className="text-left flex-1 min-w-0">
-            <div className="font-medium text-sm truncate">
-              {activeWorkspace.name}
+          {!collapsed && (
+            <div className="text-left flex-1 min-w-0">
+              <div className="font-medium text-sm truncate">
+                {activeWorkspace.name}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 border-b">
+    <div className={cn("border-b", collapsed ? "p-2 flex justify-center" : "p-4")}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="outline"
-            className="w-full justify-between h-auto p-3 hover:bg-accent transition-colors"
+            className={cn(
+              "h-auto hover:bg-accent transition-colors",
+              collapsed ? "p-1.5 justify-center" : "w-full justify-between p-3",
+            )}
+            title={collapsed ? activeWorkspace.name : undefined}
+            aria-label={collapsed ? `Switch workspace (current: ${activeWorkspace.name})` : undefined}
             disabled={loading}
           >
             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -172,13 +183,15 @@ export function WorkspaceSwitcher({
                   <Building2 className="w-4 h-4" />
                 )}
               </div>
-              <div className="text-left flex-1 min-w-0">
-                <div className="font-medium text-sm truncate">
-                  {activeWorkspace.name}
+              {!collapsed && (
+                <div className="text-left flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate">
+                    {activeWorkspace.name}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
-            <ChevronsUpDown className="w-4 h-4 ml-2 opacity-50" />
+            {!collapsed && <ChevronsUpDown className="w-4 h-4 ml-2 opacity-50" />}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent

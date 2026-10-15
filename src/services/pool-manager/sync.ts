@@ -12,46 +12,11 @@ import {
   devcontainerJsonContent,
   dockerComposeContent,
   dockerfileContent,
+  parseEnvVarsFromPM2Config,
 } from "@/utils/devContainerUtils";
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 
 const encryptionService = EncryptionService.getInstance();
-
-/**
- * Parse env vars from existing PM2 config content
- * Returns a map of service name -> env vars
- */
-function parseEnvVarsFromPM2Config(pm2Content: string): Map<string, Record<string, string>> {
-  const result = new Map<string, Record<string, string>>();
-
-  try {
-    // Match each app block with its name and env
-    const appBlockRegex = /\{\s*name:\s*["']([^"']+)["'][^}]*env:\s*\{([^}]*)\}/g;
-    let match;
-
-    while ((match = appBlockRegex.exec(pm2Content)) !== null) {
-      const serviceName = match[1];
-      const envBlock = match[2];
-      const envVars: Record<string, string> = {};
-
-      // Parse individual env var entries
-      const envVarRegex = /(\w+):\s*["']([^"']*)["']/g;
-      let envMatch;
-
-      while ((envMatch = envVarRegex.exec(envBlock)) !== null) {
-        envVars[envMatch[1]] = envMatch[2];
-      }
-
-      if (Object.keys(envVars).length > 0) {
-        result.set(serviceName, envVars);
-      }
-    }
-  } catch (error) {
-    console.warn("[parseEnvVarsFromPM2Config] Failed to parse PM2 config:", error);
-  }
-
-  return result;
-}
 
 export interface SyncPoolManagerParams {
   workspaceId: string;
@@ -174,7 +139,10 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     // Generate container files with merged env vars
     const pm2Apps = generatePM2Apps(repoNames, services, globalEnvVars);
 
-    // Parse existing PM2 config to preserve any env vars not in the new config
+    // Parse existing PM2 config to preserve any env vars not in the new config (a port-0
+    // service's PORT, env the DB never got) through pushes made without a stakgraph PUT.
+    // Existing takes precedence: that PUT rewrites the file whenever services, the global
+    // env list or pm2.config.js are sent, so its values are the latest.
     const existingContainerFiles = (swarm.containerFiles as Record<string, string>) || {};
     if (existingContainerFiles["pm2.config.js"]) {
       try {

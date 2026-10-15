@@ -1075,7 +1075,7 @@ export async function mcpUpdateTask(
 
 /**
  * Send a message from the feature planner (or any orchestrating agent)
- * to a task's agent chat. Mirrors `send_to_feature_planner` in
+ * to a task's agent chat. Mirrors the feature-chat send in
  * `initiativeTools.ts` — fire-and-forget delegation, async reply,
  * fails when the task agent is currently running.
  *
@@ -1095,7 +1095,7 @@ export async function mcpSendToTaskAgent(
     const err = verifyWorkspace(task, auth, "Task");
     if (err) return err;
 
-    // Same guard as send_to_feature_planner: don't try to send while a
+    // Same guard as the feature chat send: don't try to send while a
     // run is already in flight. The downstream service would throw;
     // returning a structured error here is friendlier to the caller.
     if (task!.workflowStatus === "IN_PROGRESS") {

@@ -105,7 +105,6 @@ vi.mock("@/lib/ai/canvas-system-prompt", () => ({
 vi.mock("@/lib/ai/capabilityGates", () => ({
   isPromptsCapabilityEnabledForOrg: vi.fn(async () => false),
   isGraphWriteCapabilityEnabledForOrg: vi.fn(async () => false),
-  isStrutCapabilityEnabledForOrg: vi.fn(async () => false),
 }));
 vi.mock("@/lib/constants/prompt", () => ({
   getMultiWorkspacePrefixMessages: vi.fn(() => []),
@@ -113,7 +112,6 @@ vi.mock("@/lib/constants/prompt", () => ({
   buildCanvasScopeMessage: vi.fn(() => null),
   getRoadmapCapabilitySnippet: vi.fn(() => ""),
   getWhiteboardCapabilitySnippet: vi.fn(() => ""),
-  getPlannerCapabilitySnippet: vi.fn(() => ""),
   getResearchCapabilitySnippet: vi.fn(() => ""),
   getConnectionsCapabilitySnippet: vi.fn(() => ""),
   getHtmlPagesCapabilitySnippet: vi.fn(() => ""),

@@ -18,6 +18,7 @@ export async function fetchPoolEnvVars(
   const response = await fetch(url, {
     method: "GET",
     headers: headers,
+    signal: AbortSignal.timeout(60_000),
   });
   if (!response.ok) {
     throw new Error(`Failed to fetch pool env vars: ${response.status}`);
@@ -79,6 +80,7 @@ export async function updatePoolDataApi(
       "Content-Type": "application/json",
     },
     body,
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!response.ok) {

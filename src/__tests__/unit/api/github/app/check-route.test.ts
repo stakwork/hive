@@ -484,6 +484,60 @@ describe('GET /api/github/app/check', () => {
       expect(data.error).toContain('owner/repo');
     });
 
+    describe('public repository', () => {
+      const publicRepo = (id = 42) => ({
+        ok: true,
+        json: async () => ({ id, private: false, full_name: 'owner/repo', permissions: { admin: true, push: true } }),
+      });
+      const installationRepos = (ids: number[], total = ids.length) => ({
+        ok: true,
+        json: async () => ({ total_count: total, repositories: ids.map((id) => ({ id })) }),
+      });
+
+      it('returns requiresInstallationUpdate when the installation does not include it', async () => {
+        mockFetch.mockResolvedValueOnce(publicRepo()).mockResolvedValueOnce(installationRepos([7, 8]));
+
+        const response = await GET(createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo'));
+
+        const data = await response.json();
+        expect(data).toMatchObject({ hasPushAccess: false, requiresInstallationUpdate: true, installationId: '12345' });
+        expect(mockFetch.mock.calls[1][0]).toContain('/user/installations/12345/repositories?per_page=100&page=1');
+      });
+
+      it('passes when a later page of the installation includes it', async () => {
+        const firstPage = Array.from({ length: 100 }, (_, i) => i + 1000);
+        mockFetch
+          .mockResolvedValueOnce(publicRepo())
+          .mockResolvedValueOnce(installationRepos(firstPage, 150))
+          .mockResolvedValueOnce(installationRepos([42], 150));
+
+        const data = await (await GET(createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo'))).json();
+
+        expect(data).toEqual({ hasPushAccess: true });
+        expect(mockFetch).toHaveBeenCalledTimes(3);
+      });
+
+      it('falls back to the repo permissions when the installation list cannot be read', async () => {
+        mockFetch.mockResolvedValueOnce(publicRepo()).mockResolvedValueOnce({ ok: false, status: 403 });
+
+        const data = await (await GET(createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo'))).json();
+
+        expect(data).toEqual({ hasPushAccess: true });
+      });
+
+      it('does not list the installation for a private repo', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ id: 42, private: true, permissions: { push: true } }),
+        });
+
+        const data = await (await GET(createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo'))).json();
+
+        expect(data).toEqual({ hasPushAccess: true });
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+    });
+
     it('should handle successful repository access check', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

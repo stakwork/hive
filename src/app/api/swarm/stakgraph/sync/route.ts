@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { AsyncSyncResult, triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
+import { strutActorForLaunch } from "@/services/bifrost/strut-delegation";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
@@ -129,6 +130,14 @@ export async function POST(request: NextRequest) {
       ? { filter: `blob:limit=${rawLimit}` }
       : undefined;
 
+    // Who the sync (and the describe run it leads to) is for: the requesting
+    // user, whose PAT it carries.
+    const strutActor = await strutActorForLaunch(
+      { workspaceId: swarm.workspaceId, workspaceSlug: workspace.slug, userId },
+      { swarmUrl: swarm.swarmUrl, swarmApiKey: swarm.swarmApiKey },
+    );
+    const options = strutActor ? { ...syncOptions, strutActor } : syncOptions;
+
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
       swarmVanityHost,
       swarm.swarmApiKey,
@@ -136,7 +145,7 @@ export async function POST(request: NextRequest) {
       username && pat ? { username, pat } : undefined,
       callbackUrl,
       false,
-      syncOptions,
+      options,
     );
 
     console.log("[Sync] Async sync response", {

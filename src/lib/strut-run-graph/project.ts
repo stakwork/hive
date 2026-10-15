@@ -9,6 +9,7 @@
  * A search touched nothing: what it matched is counted (`hits`), not kept.
  */
 
+import { isPeerSlug, qualifyRef } from "./peer-ref";
 import type { RunGraphAccess, RunGraphCall, RunGraphNodeRef, RunGraphQueryValue } from "./types";
 
 const TOOL_PREFIX = "tool:";
@@ -87,34 +88,158 @@ function queryOf(input: unknown): Record<string, RunGraphQueryValue> {
 }
 
 /**
- * A ref tagged `peer` names a node in ANOTHER strut's graph — a
+ * A ref tagged `peer` names a node in ANOTHER workspace's graph — a
  * `strut/run-workflow` step folds the peer run's nodes onto its own
- * `step.end` (strut plans/federation.md §2.2). It means nothing against this
- * workspace's graph, so it is not a node of this run.
+ * `step.end` (strut plans/federation.md §2.2), tagged with the peer's id,
+ * the workspace's slug. It is kept under a qualified id (`peer-ref.ts`) and
+ * resolved against that workspace's graph, never this one. A tag that is not
+ * a slug is not a ref this trace can place, so it is dropped.
  */
-const isPeerRef = (item: Record<string, unknown>) => typeof item.peer === "string" && item.peer.trim() !== "";
-
-function nodesOf(value: unknown): RunGraphNodeRef[] {
+function nodesOf(value: unknown, home?: string): RunGraphNodeRef[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const nodes: RunGraphNodeRef[] = [];
   for (const item of value) {
-    if (!isRecord(item) || typeof item.ref_id !== "string" || !item.ref_id || seen.has(item.ref_id)) continue;
-    if (isPeerRef(item)) continue;
-    seen.add(item.ref_id);
-    nodes.push(
-      typeof item.node_type === "string" && item.node_type
-        ? { ref_id: item.ref_id, node_type: item.node_type }
-        : { ref_id: item.ref_id },
-    );
+    if (!isRecord(item) || typeof item.ref_id !== "string" || !item.ref_id) continue;
+    const tagged = typeof item.peer === "string" && item.peer.trim() !== "";
+    // An untagged ref in a peer's own run is in that peer's graph.
+    const peer = tagged ? (item.peer as string).trim() : home;
+    if (tagged && !isPeerSlug(peer)) continue;
+    const id = qualifyRef(item.ref_id, peer);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    nodes.push({
+      ref_id: id,
+      ...(typeof item.node_type === "string" && item.node_type ? { node_type: item.node_type } : {}),
+      ...(peer ? { peer } : {}),
+    });
   }
   return nodes;
 }
 
+/** The steps that launch a workflow as a run of its own, by their names as a step or as an agent's tool. */
+const LAUNCHERS: Record<string, "local" | "peer"> = { meta_run_workflow: "local", strut_run_workflow: "peer" };
+
+/** Strut's run ids are millisecond timestamps; a workflow name is a path-safe name. Nothing else is ever sent upstream. */
+const RUN_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const WORKFLOW_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+
+/** A field of a step's input or output: an object, or JSON text — whole, or cut short by strut's log truncation. */
+function fieldOf(value: unknown, key: string): string | undefined {
+  let record: unknown = value;
+  if (typeof value === "string") {
+    try {
+      record = JSON.parse(value);
+    } catch {
+      const m = new RegExp(`"${key}"\\s*:\\s*"([^"\\\\]*)"`).exec(value);
+      return m ? m[1] : undefined;
+    }
+  }
+  const field = isRecord(record) ? record[key] : undefined;
+  return typeof field === "string" && field ? field : undefined;
+}
+
+/** The run a launching call started — from its input (`name`, or `workflow` + `peer`) and its output (`runId`). */
+export interface RunGraphLaunch {
+  workflow: string;
+  runId: string;
+  peer?: string;
+}
+
+function launchOf(tool: string, input: unknown, output: unknown): RunGraphLaunch | null {
+  const kind = LAUNCHERS[tool.replace(/[/-]/g, "_")];
+  if (!kind) return null;
+  const runId = fieldOf(output, "runId");
+  const workflow =
+    kind === "local" ? fieldOf(input, "name") : (fieldOf(output, "workflow") ?? fieldOf(input, "workflow"));
+  const peer = kind === "peer" ? (fieldOf(output, "peer") ?? fieldOf(input, "peer")) : undefined;
+  if (!runId || !RUN_ID_RE.test(runId) || !workflow || !WORKFLOW_RE.test(workflow)) return null;
+  if (kind === "peer" && !isPeerSlug(peer)) return null;
+  return { workflow, runId, ...(peer ? { peer } : {}) };
+}
+
+export interface ProjectOptions {
+  /** Put every path under this one: the launching call's, for a child run's calls. */
+  prefix?: string;
+  /** The peer workspace whose strut ran these events: an untagged ref is in its graph. */
+  peer?: string;
+  /**
+   * Also keep each file an agent READ in a repository the run checked out,
+   * as a read call with no nodes yet and its `owner/repo/<path>` in
+   * `fileReads` — for the server to resolve to the graph's `File` node.
+   */
+  fileReads?: boolean;
+}
+
+/**
+ * The file an agent's tool call read, as the tool was given it: a `view` by
+ * strut's file tool (`str_replace_based_edit_tool`), or a `file_summary` (its
+ * structural summary of one file). Anything else reads no one file.
+ */
+function fileReadOf(tool: string, input: unknown): string | undefined {
+  if (tool === "str_replace_based_edit_tool") {
+    return fieldOf(input, "command") === "view" ? fieldOf(input, "path") : undefined;
+  }
+  return tool === "file_summary" ? fieldOf(input, "file_path") : undefined;
+}
+/** `owner/name`, as `git/checkout` reports a repository. */
+const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+/** A repository file as the graph names it (`File.file`): interpolated into Cypher, so only this shape is ever sent. */
+export const REPO_FILE_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.@+\-/ ]{1,400}$/;
+
+/** A checkout the run made: the directory it put the repository in, and the repository. */
+interface Checkout {
+  dir: string;
+  repo: string;
+}
+
+function checkoutOf(output: unknown): Checkout | null {
+  const dir = fieldOf(output, "path");
+  const repo = fieldOf(output, "repo");
+  return dir && repo && REPO_RE.test(repo) ? { dir: dir.replace(/\/+$/, ""), repo } : null;
+}
+
+/**
+ * A path a file tool was given → the file as the graph names it,
+ * `owner/repo/<path in the repository>`: absolute under a checkout's
+ * directory, or relative to the agent's working directory (where a
+ * checkout is one subdirectory, by its name). Null for anything else.
+ */
+function repoFileOf(read: string, checkouts: Checkout[]): string | null {
+  const path = read.replace(/^\.\//, "");
+  for (const { dir, repo } of checkouts) {
+    const base = dir.slice(dir.lastIndexOf("/") + 1);
+    const rest = path.startsWith(`${dir}/`)
+      ? path.slice(dir.length + 1)
+      : !path.startsWith("/") && path.startsWith(`${base}/`)
+        ? path.slice(base.length + 1)
+        : null;
+    if (rest === null || rest.split("/").includes("..")) continue;
+    const file = `${repo}/${rest.replace(/\/+$/, "")}`;
+    return REPO_FILE_RE.test(file) ? file : null;
+  }
+  return null;
+}
+
 /** Every call that touched the graph, in the order the run finished them. */
-export function projectRunGraphCalls(events: unknown): RunGraphCall[] {
-  if (!Array.isArray(events)) return [];
+export function projectRunGraphCalls(events: unknown, options: ProjectOptions = {}): RunGraphCall[] {
+  return projectWithLaunches(events, options).calls;
+}
+
+/**
+ * The calls, and for each launching call (by its path, as returned) the run
+ * it started — server-side only: a run id never reaches the browser. With
+ * `fileReads`, also each file-read call's file, by the call's path.
+ */
+export function projectWithLaunches(
+  events: unknown,
+  options: ProjectOptions = {},
+): { calls: RunGraphCall[]; launches: Map<string, RunGraphLaunch>; fileReads: Map<string, string> } {
+  const launches = new Map<string, RunGraphLaunch>();
+  const fileReads = new Map<string, string>();
+  if (!Array.isArray(events)) return { calls: [], launches, fileReads };
   const starts = new Map<string, { ts: string | null; input: unknown }>();
+  const checkouts: Checkout[] = [];
   const calls: RunGraphCall[] = [];
   for (const event of events) {
     if (!isRecord(event) || typeof event.path !== "string") continue;
@@ -123,15 +248,44 @@ export function projectRunGraphCalls(events: unknown): RunGraphCall[] {
       continue;
     }
     if (event.type !== "step.end") continue;
-    const nodes = nodesOf(event.nodes);
-    if (nodes.length === 0) continue;
     const stepType = typeof event.stepType === "string" ? event.stepType : "";
     const byAgent = stepType.startsWith(TOOL_PREFIX);
     const tool = byAgent ? stepType.slice(TOOL_PREFIX.length) : stepType;
     const start = starts.get(event.path);
+    const path = options.prefix ? `${options.prefix}/${event.path}` : event.path;
+    if (stepType === "git/checkout") {
+      const checkout = checkoutOf(event.output);
+      if (checkout) checkouts.push(checkout);
+      continue;
+    }
+    const read = options.fileReads && byAgent ? fileReadOf(tool, start?.input) : undefined;
+    if (read !== undefined) {
+      const file = repoFileOf(read, checkouts);
+      if (file) {
+        fileReads.set(path, file);
+        calls.push({
+          path,
+          tool,
+          by: "agent",
+          access: "read",
+          startedAt: start?.ts ?? null,
+          endedAt: typeof event.ts === "string" ? event.ts : null,
+          durationMs: typeof event.durationMs === "number" ? Math.round(event.durationMs) : null,
+          query: { file },
+          nodes: [],
+        });
+      }
+      continue;
+    }
+    const nodes = nodesOf(event.nodes, options.peer);
+    const launch = launchOf(tool, start?.input, event.output);
+    // A launch is kept with no nodes of its own: the child it opens can still
+    // have read the graph — the files its agent read are resolved only then.
+    if (nodes.length === 0 && !launch) continue;
     const search = isSearch(tool);
+    if (launch) launches.set(path, launch);
     calls.push({
-      path: event.path,
+      path,
       tool,
       by: byAgent ? "agent" : "workflow",
       access: accessOf(tool),
@@ -141,9 +295,10 @@ export function projectRunGraphCalls(events: unknown): RunGraphCall[] {
       query: queryOf(start?.input),
       nodes: search ? [] : nodes,
       ...(search ? { hits: nodes.length } : {}),
+      ...(launch ? { child: { workflow: launch.workflow, ...(launch.peer ? { peer: launch.peer } : {}) } } : {}),
     });
   }
-  return calls;
+  return { calls, launches, fileReads };
 }
 
 /** The distinct nodes a list of calls read or wrote, first touch first. A later ref's type fills an earlier untyped one. */

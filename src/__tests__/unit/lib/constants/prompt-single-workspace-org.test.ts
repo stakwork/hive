@@ -51,7 +51,7 @@ describe("getQuickAskPrefixMessages — single-workspace org overlay", () => {
     );
     // The slug is given as the exact value to pass to org tools.
     expect(content).toContain("pass exactly `senza`");
-    expect(content).toContain("`propose_feature`");
+    expect(content).toContain("`assign_feature_to_workspace`");
   });
 
   it("places the workspace list BEFORE the capability suffix", () => {
@@ -87,6 +87,6 @@ describe("getQuickAskPrefixMessages — single-workspace org overlay", () => {
   it("omits the section entirely without orgContext (dashboard chat)", () => {
     const content = systemPromptFor(undefined);
     expect(content).not.toContain("## Available Workspaces & Repositories");
-    expect(content).not.toContain("propose_feature");
+    expect(content).not.toContain("assign_feature_to_workspace");
   });
 });

@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Ban, Bot, Check, ChevronRight, CircleDashed, HelpCircle, Loader2, XCircle, Zap } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
-import { describeArtifactEvent, parseArtifactEvent } from "@/lib/strut-jobs";
+import { describeArtifactEvent, parseArtifactEvent, parseClaimEvent } from "@/lib/strut-jobs";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 
 /**
@@ -199,7 +199,8 @@ function StatusPill({ look }: { look: JobTurnLook }) {
  */
 export function JobEventRow({ message, source }: { message: Pick<CanvasChatMessage, "content">; source: JobEventSource }) {
   const event = parseArtifactEvent(message.content);
-  const text = event ? describeArtifactEvent(event) : message.content.split("\n")[0];
+  const refuted = event ? null : parseClaimEvent(message.content);
+  const text = event ? describeArtifactEvent(event) : refuted ? `you rejected "${refuted.claim}": ${refuted.note}` : message.content.split("\n")[0];
   return (
     <div
       data-testid="job-event-row"

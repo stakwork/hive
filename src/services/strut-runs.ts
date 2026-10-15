@@ -136,6 +136,7 @@ export type StrutRunHandler = (row: StrutRunRow, ctx?: StrutRunHandlerContext) =
  */
 const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   system_map: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
+  // Kinds of retired workflows (folded into `swarm-systemmap` / the CWE check), kept so their old rows still settle.
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_cwe_check: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_cloud_links: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
@@ -226,6 +227,8 @@ export interface DispatchStrutRunArgs {
    * names the job.
    */
   title?: string;
+  /** Launch-level `params` (e.g. `{ model }`), a sibling of `input`; sent only when non-empty. */
+  params?: Record<string, unknown>;
   /**
    * Per-actor secrets pushed to the target before the launch
    * (`PUT /actors/:actor/secrets/:name`) — the user's `GITHUB_TOKEN` for a
@@ -269,7 +272,7 @@ async function failRow(id: string, error: string): Promise<void> {
  * if created, is marked ERROR with the reason).
  */
 export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<DispatchStrutRunResult> {
-  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title } = args;
+  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title, params } = args;
   if (!HANDLERS[kind]) throw new Error(`No strut-run handler for kind "${kind}"`);
 
   const resolved = await resolveStrutTarget({ purpose, userId, workspaceId });
@@ -331,7 +334,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
         "x-api-token": target.swarmApiKey,
         [STRUT_ACTOR_HEADER]: target.actor,
       },
-      body: JSON.stringify({ input, callback: { url: callbackUrl }, ...(job ? { job, ...(title ? { title } : {}) } : {}) }),
+      body: JSON.stringify({ input, callback: { url: callbackUrl }, ...(job ? { job, ...(title ? { title } : {}) } : {}), ...(params && Object.keys(params).length ? { params } : {}) }),
       cache: "no-store",
       signal: AbortSignal.timeout(LAUNCH_TIMEOUT_MS),
     });

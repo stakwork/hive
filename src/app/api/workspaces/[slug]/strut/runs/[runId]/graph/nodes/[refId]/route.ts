@@ -4,15 +4,18 @@
  *     the vectors, read from the graph the run used. The trace names a node;
  *     this is for reading it — a Concept's docs, a Document's text.
  *
- * Access: as for the trace, any member of the run's workspace.
+ * Access: as for the trace, any member of the run's workspace; a node in a
+ * peer workspace's graph (`@slug:<ref_id>`), a member of that one too.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireMemberAccess, resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 import { logger } from "@/lib/logger";
 import { isRunGraphRefId } from "@/lib/strut-run-graph/hydrate";
+import { parseQualifiedRef } from "@/lib/strut-run-graph/peer-ref";
 import { findStrutRunRow } from "@/services/strut-runs";
 import { readStrutRunGraphNode } from "@/services/strut-runs/run-graph";
+import { peerAccessFor } from "@/services/strut-runs/run-graph-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,14 +28,16 @@ export async function GET(
     const { slug, runId, refId } = await params;
     const member = requireMemberAccess(await resolveWorkspaceAccess(request, { slug }));
     if (member instanceof NextResponse) return member;
-    if (!isRunGraphRefId(refId)) return NextResponse.json({ error: "Not a node id" }, { status: 400 });
+    if (!isRunGraphRefId(parseQualifiedRef(refId).refId))
+      return NextResponse.json({ error: "Not a node id" }, { status: 400 });
 
     const row = await findStrutRunRow(member.workspaceId, runId);
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const read = await readStrutRunGraphNode(row, refId);
+    const read = await readStrutRunGraphNode(row, refId, peerAccessFor(request));
     if (!read) return NextResponse.json({ error: "Could not reach the run's swarm" }, { status: 502 });
     if (!read.found) {
+      if (read.denied) return NextResponse.json({ error: `Not readable here: ${read.denied}` }, { status: 403 });
       return read.unread
         ? NextResponse.json({ error: `The graph did not answer (${read.unread})` }, { status: 502 })
         : NextResponse.json({ error: "The graph no longer holds this node" }, { status: 404 });

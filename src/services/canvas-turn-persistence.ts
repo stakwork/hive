@@ -2,14 +2,14 @@
  * Shared server-side persistence for canvas-chat agent turns.
  *
  * Extracted from `canvas-agent-autoturn.ts` so BOTH the autonomous
- * planner-woken turn AND the user-driven `/api/ask/quick` turn write
+ * strut-woken turn AND the user-driven `/api/ask/quick` turn write
  * through one code path. The contract is identical for both:
  *
  *   - Reconstruct `CanvasChatMessage`-shaped rows from a finished
  *     `streamText` run's `steps` (`messagesFromSteps`).
  *   - Append them to `SharedConversation.messages` under a
  *     `SELECT … FOR UPDATE` row lock so the write serializes against the
- *     other writers on that row (the planner fan-out, the conversations
+ *     other writers on that row (research / strut fan-out, the conversations
  *     PUT route), and is idempotent on a caller-chosen id prefix so a
  *     retried `after()` / re-delivered webhook never double-appends.
  *   - Fire a `CANVAS_CONVERSATION_UPDATED` Pusher nudge on a fresh
@@ -18,7 +18,7 @@
  * The id prefix is the dedup key. Callers pick a prefix unique to the
  * turn: the user-driven path uses `${turnId}-a` (assistant rows) and
  * `${turnId}-u` (the user row); the auto-turn path uses
- * `autoturn-${plannerMessageId}-`. The org-canvas client filters server
+ * `autoturn-${wakeId}-`. The org-canvas client filters server
  * rows by `${turnId}-` prefix in its live-sync merge so the authoring
  * tab never double-renders its own optimistic stream.
  */
@@ -227,8 +227,7 @@ export function redactHtmlToolOutput(toolName: string, output: unknown): unknown
  * Reconstruct the agent's output as `CanvasChatMessage`-shaped rows from
  * the finished stream's `steps`. Mirrors the client-side timeline split
  * in `useSendCanvasChatMessage.ts`: text becomes a text message, tool
- * calls become a tool-call message (so `SubAgentRunCard` can extract
- * `send_to_feature_planner` calls as outbound thread entries).
+ * calls become a tool-call message.
  *
  * Row ids are `${idPrefix}${n}` (n = 0,1,2,…), so `idPrefix` doubles as
  * the idempotency key for `appendTurnMessages`.

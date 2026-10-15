@@ -17,6 +17,7 @@ import {
   resolveArtifactPanel,
   type ArtifactRef,
 } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
+import { isTreeArtifact } from "@/app/org/[githubLogin]/_components/artifacts/viewers/ChoiceTree";
 
 const graph = { type: "graph", swarmId: "swarm-1", key: "node-1" };
 const whole = { id: "plan", kind: "markdown", title: "Plan", label: "Plan", summary: "Three phases.", source: graph };
@@ -205,6 +206,22 @@ describe("parseArtifactContent", () => {
     expect(parseArtifactContent("run_graph", { workspace: "acme" })).toBeNull();
     expect(parseArtifactContent("run_graph", { run: "row-1" })).toBeNull();
     expect(parseArtifactContent("run_graph", { workspace: "", run: "row-1" })).toBeNull();
+  });
+});
+
+describe("parseArtifactContent — graph, brainstorm tree", () => {
+  test("keeps layout and a label string", () => {
+    expect(parseArtifactContent("graph", { workspace: "hive", focus: "x", layout: "tree", label: "Question" })).toMatchObject({ layout: "tree", label: "Question" });
+    expect(parseArtifactContent("graph", { workspace: "hive", focus: "x", layout: "other", label: 3 })).toMatchObject({ layout: undefined, label: undefined });
+  });
+
+  test("the strut job's shape with the brainstorm-tree id is a tree, even with a stray proposal or changes", () => {
+    for (const extra of [{}, { proposal: "p1" }, { changes: [{ kind: "node", name: "n" }] }]) {
+      const content = parseArtifactContent("graph", { workspace: "hive", focus: "x", ...extra })!;
+      expect(isTreeArtifact({ id: "brainstorm-tree" }, content)).toBe(true);
+    }
+    const plain = parseArtifactContent("graph", { workspace: "hive", focus: "x" })!;
+    expect(isTreeArtifact({ id: "proposal-1" }, plain)).toBe(false);
   });
 });
 

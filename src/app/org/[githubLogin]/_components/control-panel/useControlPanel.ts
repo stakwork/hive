@@ -1,100 +1,54 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
 import { useShallow } from "zustand/react/shallow";
 import {
-  buildArchivedRows,
   buildControlPanelGroups,
   matchesControlPanelQuery,
   resolveControlPanelLists,
-  unlistedOnStageChatTitle,
-  visibleControlPanelItems,
+  activeChatTitle,
   type ActiveChatSnapshot,
 } from "@/services/orgs/control-panel-state";
-import type { ControlPanelItem } from "@/types/control-panel";
+import type { ControlPanelItem, ControlPanelJob, ControlPanelPullRequest } from "@/types/control-panel";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import { openOrgConversation, startNewOrgConversation } from "../../_state/openOrgConversation";
 import { isTypingTarget, type ControlPanelListProps } from "./ControlPanelList";
-import type { ControlPanelStageProps } from "./ControlPanelStage";
 import { useControlPanelItems } from "./useControlPanelItems";
-import { focusNodeIdOf, type ControlPanelFocus } from "./types";
 
-function focusFromParams(params: URLSearchParams): ControlPanelFocus {
-  const plan = params.get("plan");
-  if (plan) return { kind: "plan", id: plan };
-  const task = params.get("task");
-  if (task) return { kind: "task", id: task };
-  return { kind: "chat" };
-}
+/** How long a job's card gets to appear in a chat that is still loading before the scroll gives up. */
+const REVEAL_FRAMES = 90;
 
-export interface ControlPanelState {
-  /** Everything the list column needs. */
-  list: ControlPanelListProps;
-  /** What the right panel puts on stage in control panel mode (the org page adds `onExit`). */
-  stage: Omit<ControlPanelStageProps, "onExit">;
-  /** The plan/task on stage as a canvas node id — what "this" means to Jamie — or null for a chat. */
-  focusNodeId: string | null;
+/** Scroll the chat to a job's newest card once it has rendered. */
+function revealJob(jobId: string) {
+  let frames = 0;
+  const tick = () => {
+    const cards = document.querySelectorAll<HTMLElement>(`[data-job-id="${CSS.escape(jobId)}"]`);
+    const card = cards[cards.length - 1];
+    if (card) card.scrollIntoView({ block: "center", behavior: "smooth" });
+    else if (++frames < REVEAL_FRAMES) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 /**
- * The control panel's state — the org page's other view (`?view=control-panel`).
- *
- * Jamie chats as the spine, the plans each chat spawned nested under
- * them, grouped by the day of their newest activity; whichever one the
- * user pulled up on the stage. `OrgCanvasView` owns the conversation
- * lifecycle, renders the list in the left panel and hands `stage` to the
- * right panel — the same `<SidebarChat>` the canvas shows, so switching
- * views never remounts the chat. Only the list, the focus and the
- * keyboard live here. While `enabled` is false (the canvas is showing)
- * nothing is fetched, the store is not watched and no keys are bound.
- * While the list is covered (`listVisible` false — an artifact has its
- * place) the panel keeps its state and only stops fetching and taking keys.
+ * The org page's chat list: the user's Jamie chats, each with the jobs it
+ * started and the pull requests they reported, grouped by the day of
+ * their newest activity. `OrgCanvasView` owns the conversation lifecycle
+ * and `ChatsLayout` renders the list beside the chat; this hook holds the
+ * list, the search, the keyboard cursor and what opening a row does.
  */
-export function useControlPanel(githubLogin: string, enabled: boolean, listVisible = true): ControlPanelState {
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
-  const listening = enabled && listVisible;
-  const {
-    items,
-    archivedItems,
-    remaining,
-    loading,
-    refetch,
-    showMore,
-    archiveConversation,
-    restoreConversation,
-  } = useControlPanelItems(githubLogin, listening);
+export function useControlPanel(githubLogin: string): Omit<ControlPanelListProps, "onHide"> {
+  const { items, archivedItems, remaining, loading, refetch, showMore, archiveConversation, restoreConversation } =
+    useControlPanelItems(githubLogin);
 
   const [query, setQuery] = useState("");
-  const [focus, setFocus] = useState<ControlPanelFocus>(() => focusFromParams(searchParams));
-  const [cursorKey, setCursorKey] = useState<string | null>(null);
-  // Chats start collapsed: the row is the chat, its plans open on demand.
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
+  const [cursorId, setCursorId] = useState<string | null>(null);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
-  const toggleExpanded = useCallback((key: string) => {
-    setExpandedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
-  const toggleArchived = useCallback(() => setArchivedExpanded((open) => !open), []);
 
-  // Leaving the control panel puts the chat back on stage, so coming
-  // back starts clean (the URL's `?plan=`/`?task=` go with it).
-  useEffect(() => {
-    if (!enabled) setFocus({ kind: "chat" });
-  }, [enabled]);
-
-  // What the list needs to know about the chat on stage — primitives
-  // only, so streaming's per-chunk store writes don't re-render the page
-  // (Jamie's reply is left out until the turn settles for the same
-  // reason), and nothing at all while the canvas is showing.
+  // What the list needs to know about the active chat — primitives
+  // only, so streaming's per-chunk store writes don't re-render the page.
   const activeChat = useCanvasChatStore(
     useShallow((s): ActiveChatSnapshot | null => {
-      if (!enabled) return null;
       const conv = s.activeConversationId ? s.conversations[s.activeConversationId] : undefined;
       if (!conv) return null;
       const last = conv.messages[conv.messages.length - 1];
@@ -102,7 +56,6 @@ export function useControlPanel(githubLogin: string, enabled: boolean, listVisib
         localId: conv.id,
         serverId: conv.serverConversationId,
         lastMessageAt: last ? last.timestamp.toISOString() : null,
-        lastReply: !conv.isStreaming && last?.role === "assistant" ? last.content : null,
         hasMessages: conv.messages.length > 0,
         isStreaming: conv.isStreaming,
         title: conv.title,
@@ -110,31 +63,11 @@ export function useControlPanel(githubLogin: string, enabled: boolean, listVisib
     }),
   );
   const activeLocalId = activeChat?.localId ?? null;
-  const activeServerConversationId = activeChat?.serverId ?? null;
-  const activeChatKey = activeChat ? `chat:${activeServerConversationId ?? activeChat.localId}` : null;
+  const activeServerId = activeChat?.serverId ?? null;
+  const activeId = activeChat ? (activeServerId ?? activeLocalId) : null;
 
-  // ── Focus + URL ─────────────────────────────────────────────────────
-  // `history.replaceState` (never a router navigation) so the deep-link
-  // params update without an RSC round-trip — see CANVAS.md "Deep links".
-  const changeFocus = useCallback(
-    (next: ControlPanelFocus) => {
-      setFocus(next);
-      const params = new URLSearchParams(window.location.search);
-      params.delete("plan");
-      params.delete("task");
-      if (next.kind === "plan") params.set("plan", next.id);
-      if (next.kind === "task") params.set("task", next.id);
-      const qs = params.toString();
-      window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
-    },
-    [pathname],
-  );
-
-  // A chat that becomes active while the panel is up goes on stage —
-  // that covers New chat and Fork from the bar as well as a row click.
-  // Not on the first conversation the page starts (a `?plan=` deep link
-  // owns the stage then). A fresh chat gets its server row on its first
-  // turn: fetch then, so the stand-in row hands over to the real one.
+  // A fresh chat gets its server row on its first turn: fetch then, so the
+  // stand-in row hands over to the real one; and again when a reply settles.
   const newChatStartedAtRef = useRef(new Date().toISOString());
   const prevChatRef = useRef<{ local: string | null; server: string | null; streaming: boolean }>({
     local: null,
@@ -143,132 +76,74 @@ export function useControlPanel(githubLogin: string, enabled: boolean, listVisib
   });
   useEffect(() => {
     const prev = prevChatRef.current;
-    prevChatRef.current = {
-      local: activeLocalId,
-      server: activeServerConversationId,
-      streaming: activeChat?.isStreaming ?? false,
-    };
-    if (!enabled || !activeLocalId) return;
+    prevChatRef.current = { local: activeLocalId, server: activeServerId, streaming: activeChat?.isStreaming ?? false };
+    if (!activeLocalId) return;
     if (prev.local !== activeLocalId) {
-      if (!activeServerConversationId) newChatStartedAtRef.current = new Date().toISOString();
-      if (prev.local !== null) {
-        changeFocus({ kind: "chat" });
-        setCursorKey(`chat:${activeServerConversationId ?? activeLocalId}`);
-      }
+      if (!activeServerId) newChatStartedAtRef.current = new Date().toISOString();
+      setCursorId(activeServerId ?? activeLocalId);
       return;
     }
-    if (prev.server === null && activeServerConversationId) void refetch();
+    if (prev.server === null && activeServerId) void refetch();
     if (prev.streaming && !activeChat?.isStreaming) void refetch();
-  }, [enabled, activeLocalId, activeServerConversationId, activeChat?.isStreaming, changeFocus, refetch]);
+  }, [activeLocalId, activeServerId, activeChat?.isStreaming, refetch]);
 
-  // The chat on stage is always in a list, and the list already knows
-  // what the store knows about it: a fresh chat has no server row until
-  // its first turn lands, so until the server lists it the row is built
-  // from the store; once listed, the server's row is brought up to date
-  // (read, working while Jamie replies, a message the fetch missed).
-  // An archived on-stage chat stays in Archive — never re-prepended into
-  // Active after a poll drops it from `items`.
-  const chatOnStage = focus.kind === "chat";
+  // The active chat is always in a list, brought up to what the store
+  // knows; an archived one stays in Archive.
   const { displayItems, displayArchivedItems } = useMemo(() => {
     const conv = activeChat ? useCanvasChatStore.getState().conversations[activeChat.localId] : undefined;
-    const title = activeChat ? unlistedOnStageChatTitle(activeChat, conv?.messages) : "New chat";
+    const title = activeChat ? activeChatTitle(activeChat, conv?.messages) : "New chat";
     return resolveControlPanelLists(items, archivedItems, activeChat, {
-      chatOnStage,
       startedAt: newChatStartedAtRef.current,
       titleForNew: title,
     });
-  }, [items, archivedItems, activeChat, chatOnStage]);
+  }, [items, archivedItems, activeChat]);
 
-  const focusedKey = focus.kind === "chat" ? activeChatKey : `${focus.kind}:${focus.id}`;
-  const focusedItem = useMemo(() => {
-    if (!focusedKey) return null;
-    return (
-      displayItems.find((i) => i.key === focusedKey) ??
-      displayArchivedItems.find((i) => i.key === focusedKey) ??
-      null
-    );
-  }, [displayItems, displayArchivedItems, focusedKey]);
-
-  const openItem = useCallback(
-    async (item: ControlPanelItem) => {
-      setCursorKey(item.key);
-      if (item.kind === "plan") {
-        changeFocus({ kind: "plan", id: item.id });
-        return;
-      }
-      // The chat on stage is already open — nothing to fetch or switch.
-      if (item.id === activeServerConversationId || item.id === activeLocalId) {
-        changeFocus({ kind: "chat" });
-        return;
-      }
-      const opened = await openOrgConversation(githubLogin, item.id, { syncUrl: true, markSeen: true });
-      if (opened) changeFocus({ kind: "chat" });
+  const openChat = useCallback(
+    async (item: ControlPanelItem): Promise<boolean> => {
+      setCursorId(item.id);
+      if (item.id === activeServerId || item.id === activeLocalId) return true;
+      return openOrgConversation(githubLogin, item.id, { syncUrl: true, markSeen: true });
     },
-    [githubLogin, changeFocus, activeServerConversationId, activeLocalId],
+    [githubLogin, activeServerId, activeLocalId],
   );
 
-  // ── List: search → nest → day groups; keyboard cursor over the rows ──
+  const onOpen = useCallback((item: ControlPanelItem) => void openChat(item), [openChat]);
+  const onOpenJob = useCallback(
+    async (item: ControlPanelItem, job: ControlPanelJob) => {
+      if (await openChat(item)) revealJob(job.id);
+    },
+    [openChat],
+  );
+  const onOpenPullRequest = useCallback(
+    async (item: ControlPanelItem, pr: ControlPanelPullRequest) => {
+      // Opening a chat clears the panel (an artifact belongs to its chat), so the PR goes up after.
+      if (await openChat(item)) useCanvasChatStore.getState().openArtifactPanel(pr.identity);
+    },
+    [openChat],
+  );
+
   const groups = useMemo(
-    () => buildControlPanelGroups(displayItems, (item) => matchesControlPanelQuery(item, query)),
+    () => buildControlPanelGroups(displayItems.filter((item) => matchesControlPanelQuery(item, query))),
     [displayItems, query],
   );
-  const archivedRows = useMemo(() => buildArchivedRows(displayArchivedItems), [displayArchivedItems]);
-  // A search is asking to see matches, so every chat with a match opens;
-  // otherwise what the user opened holds.
-  const effectiveExpanded = useMemo(
-    () =>
-      query
-        ? new Set(groups.flatMap((g) => g.rows.filter((r) => (r.childCount ?? 0) > 0).map((r) => r.item.key)))
-        : expandedKeys,
-    [query, groups, expandedKeys],
-  );
 
-  // Rows the keyboard can land on: collapsed chats hide their plans;
-  // a collapsed Archive is skipped entirely.
+  // Rows the keyboard can land on: a collapsed Archive is skipped.
   const visible = useMemo(
-    () => visibleControlPanelItems(groups, archivedRows, effectiveExpanded, archivedExpanded),
-    [groups, archivedRows, effectiveExpanded, archivedExpanded],
+    () => [...groups.flatMap((g) => g.items), ...(archivedExpanded ? displayArchivedItems : [])],
+    [groups, archivedExpanded, displayArchivedItems],
   );
-
-  useEffect(() => {
-    if (visible.length === 0) {
-      setCursorKey(null);
-      return;
-    }
-    if (!cursorKey || !visible.some((i) => i.key === cursorKey)) {
-      setCursorKey(visible[0].key);
-    }
-  }, [visible, cursorKey]);
 
   const moveCursor = useCallback(
     (delta: number) => {
       if (visible.length === 0) return;
-      const idx = visible.findIndex((i) => i.key === cursorKey);
+      const idx = visible.findIndex((i) => i.id === cursorId);
       const next = idx === -1 ? 0 : Math.min(Math.max(idx + delta, 0), visible.length - 1);
-      setCursorKey(visible[next].key);
+      setCursorId(visible[next].id);
     },
-    [visible, cursorKey],
-  );
-
-  const onOpen = useCallback((item: ControlPanelItem) => void openItem(item), [openItem]);
-  const onArchive = useCallback(
-    (item: ControlPanelItem) => {
-      if (item.kind !== "chat") return;
-      setArchivedExpanded(true);
-      void archiveConversation(item.id);
-    },
-    [archiveConversation],
-  );
-  const onRestore = useCallback(
-    (item: ControlPanelItem) => {
-      if (item.kind !== "chat") return;
-      void restoreConversation(item.id);
-    },
-    [restoreConversation],
+    [visible, cursorId],
   );
 
   useEffect(() => {
-    if (!listening) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isTypingTarget(e.target)) return;
@@ -282,12 +157,13 @@ export function useControlPanel(githubLogin: string, enabled: boolean, listVisib
           moveCursor(-1);
           break;
         case "Enter": {
-          const item = visible.find((i) => i.key === cursorKey);
-          if (item) void openItem(item);
+          // Enter on a focused button or link is that control's own.
+          if (e.target instanceof Element && e.target.closest("button, a, [role='button']")) return;
+          const item = visible.find((i) => i.id === cursorId);
+          if (item) void openChat(item);
           break;
         }
         case "n":
-          // Same as New chat in the bar; the effect above puts it on stage.
           startNewOrgConversation(githubLogin);
           break;
         default:
@@ -297,33 +173,37 @@ export function useControlPanel(githubLogin: string, enabled: boolean, listVisib
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [listening, githubLogin, moveCursor, visible, cursorKey, openItem]);
+  }, [githubLogin, moveCursor, visible, cursorId, openChat]);
+
+  const onToggleArchived = useCallback(() => setArchivedExpanded((open) => !open), []);
+  const onArchive = useCallback(
+    (item: ControlPanelItem) => {
+      setArchivedExpanded(true);
+      void archiveConversation(item.id);
+    },
+    [archiveConversation],
+  );
+  const onRestore = useCallback((item: ControlPanelItem) => void restoreConversation(item.id), [restoreConversation]);
+  const onNewChat = useCallback(() => startNewOrgConversation(githubLogin), [githubLogin]);
 
   return {
-    list: {
-      groups,
-      totalCount: displayItems.length,
-      loading,
-      query,
-      onQueryChange: setQuery,
-      expandedKeys: effectiveExpanded,
-      onToggleExpanded: toggleExpanded,
-      cursorKey,
-      focusedKey,
-      onOpen,
-      remaining,
-      onShowMore: showMore,
-      archivedRows,
-      archivedExpanded,
-      onToggleArchived: toggleArchived,
-      onArchive,
-      onRestore,
-    },
-    stage: {
-      focus,
-      focusedItem,
-      onFocusChange: changeFocus,
-    },
-    focusNodeId: focusNodeIdOf(focus),
+    groups,
+    totalCount: displayItems.length,
+    loading,
+    query,
+    onQueryChange: setQuery,
+    cursorId,
+    activeId,
+    onOpen,
+    onOpenJob,
+    onOpenPullRequest,
+    remaining,
+    onShowMore: showMore,
+    archivedItems: displayArchivedItems,
+    archivedExpanded,
+    onToggleArchived,
+    onArchive,
+    onRestore,
+    onNewChat,
   };
 }

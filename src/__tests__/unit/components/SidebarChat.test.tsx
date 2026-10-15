@@ -37,6 +37,7 @@ let mockStoreState = {
   artifacts: {} as Record<string, unknown>,
   dismissedArtifactIds: {} as Record<string, boolean>,
   pendingInputDraft: null as string | null,
+  pendingInputAppend: null as string | null,
 };
 
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
@@ -88,19 +89,9 @@ vi.mock("@/app/org/[githubLogin]/_components/ProposalCard", () => ({
   ProposalCard: () => null,
   getProposalsFromMessage: () => [],
 }));
-vi.mock("@/app/org/[githubLogin]/_components/SubAgentRunCard", () => ({
-  SubAgentRunCard: () => null,
-  getSubAgentRunsFromMessages: () => [],
-}));
 vi.mock("@/app/org/[githubLogin]/_components/ResearchRunCard", () => ({
   ResearchRunCard: () => null,
   getResearchRunsFromMessages: () => [],
-}));
-vi.mock("@/app/org/[githubLogin]/_components/PlannerFormSlot", () => ({
-  PlannerFormSlot: () => null,
-}));
-vi.mock("@/app/org/[githubLogin]/_components/StartTasksSlot", () => ({
-  StartTasksSlot: () => null,
 }));
 vi.mock("@/app/org/[githubLogin]/_components/AttentionList", () => ({
   AttentionList: () => null,
@@ -897,7 +888,11 @@ describe("SidebarChat — DailyRecapCard placement", () => {
     expect(wrapper).toHaveClass("flex-1");
     expect(wrapper).not.toHaveClass("h-full");
 
-    const scrollContainer = wrapper.parentElement!;
+    // The thread's one column (reading width on the chats view) fills the scroll container.
+    const column = wrapper.parentElement!;
+    expect(column).toHaveClass("flex-col");
+    expect(column).toHaveClass("flex-1");
+    const scrollContainer = column.parentElement!;
     expect(scrollContainer).toHaveClass("flex-col");
     expect(scrollContainer).toHaveClass("overflow-y-auto");
     expect(container.contains(scrollContainer)).toBe(true);

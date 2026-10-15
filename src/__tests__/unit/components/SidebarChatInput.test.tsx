@@ -95,7 +95,7 @@ vi.mock("@/lib/upload-image-to-s3", () => ({
 // Canvas store mock — only needed for pendingInputDraft
 vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
   useCanvasChatStore: (selector: (s: unknown) => unknown) =>
-    selector({ pendingInputDraft: null }),
+    selector({ pendingInputDraft: null, pendingInputAppend: null }),
 }));
 
 vi.mock("@/components/dashboard/DashboardChat/ToolCallIndicator", () => ({
@@ -344,6 +344,22 @@ describe("SidebarChatInput — pendingDraft injection", () => {
     );
 
     expect(onDraftConsumed).not.toHaveBeenCalled();
+  });
+});
+
+describe("SidebarChatInput — pendingInputAppend", () => {
+  function AppendHarness({ append }: { append: string }) {
+    const [input, setInput] = React.useState("typed so far  ");
+    React.useEffect(() => {
+      setInput((prev) => (prev.trim() ? `${prev.replace(/\s+$/, "")}\n${append}` : append));
+    }, [append]);
+    return <textarea data-testid="chat-input" value={input} onChange={(e) => setInput(e.target.value)} />;
+  }
+
+  it("keeps existing text and adds the appended text on a new line", async () => {
+    render(<AppendHarness append='Go with 1B: "x" (b)' />);
+    const ta = screen.getByTestId("chat-input") as HTMLTextAreaElement;
+    await waitFor(() => expect(ta.value).toBe('typed so far\nGo with 1B: "x" (b)'));
   });
 });
 

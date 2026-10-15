@@ -9,6 +9,12 @@ import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+/** A new swarm takes a few minutes to boot; ingest answers 503 until stakgraph is up. */
+const INGEST_RETRY_MS = 30_000;
+const INGEST_RETRY_WINDOW_MS = 10 * 60_000;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 interface WorkspaceSetupProps {
   repositoryUrl: string;
   onServicesStarted?: (started: boolean) => void;
@@ -27,13 +33,16 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const lastWorkspaceId = useRef<string | null>(null);
   const swarmCreationStarted = useRef(false);
   const ingestionStarted = useRef(false);
+  const mounted = useRef(true);
 
   console.log(`WorkspaceSetup render - workspace:`, workspace);
 
   // Log component mount/unmount for debugging
   useEffect(() => {
     console.log(`WorkspaceSetup component mounted`);
+    mounted.current = true;
     return () => {
+      mounted.current = false;
       console.log(`WorkspaceSetup component unmounted`);
     };
   }, []);
@@ -61,11 +70,19 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     ingestionStarted.current = true;
 
     try {
-      const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId }),
-      });
+      const deadline = Date.now() + INGEST_RETRY_WINDOW_MS;
+      let ingestRes: Response;
+      for (;;) {
+        ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId }),
+        });
+        if (ingestRes.status !== 503 || Date.now() + INGEST_RETRY_MS > deadline) break;
+        console.log("Stakgraph not up yet, retrying ingest in", INGEST_RETRY_MS, "ms");
+        await wait(INGEST_RETRY_MS);
+        if (!mounted.current) return;
+      }
 
       if (!ingestRes.ok) {
         if (ingestRes.status === 409) {
@@ -73,7 +90,8 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
           console.log("Code ingestion already in progress for workspace:", workspaceId);
           return;
         }
-        throw new Error("Failed to start code ingestion");
+        const body = (await ingestRes.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(body?.message || "Failed to start code ingestion");
       }
 
       const ingestData = await ingestRes.json();

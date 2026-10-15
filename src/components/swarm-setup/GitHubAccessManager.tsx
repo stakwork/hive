@@ -11,9 +11,11 @@ import {
   EmptyDescription,
   EmptyContent,
 } from "@/components/ui/empty";
+import { usePusherChannel } from "@/hooks/usePusherChannel";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { checkRepositoryAccess } from "@/lib/github/checkRepositoryAccess";
-import { Github, Loader2 } from "lucide-react";
+import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { Github, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 interface GitHubAccessManagerProps {
@@ -78,42 +80,48 @@ function getStateContent(
 
 export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAccessManagerProps) {
   const { workspace } = useWorkspace();
-  const [accessState, setAccessState] = useState<"checking" | "no-access" | "reconnecting">(
-    "checking",
-  );
+  const [accessState, setAccessState] = useState<"checking" | "no-access" | "granted">("checking");
+  const [rechecking, setRechecking] = useState(false);
   const [installationId, setInstallationId] = useState<number | undefined>();
   const [errorType, setErrorType] = useState<
     "reauth" | "installation-update" | "other" | "no-cta"
   >("other");
   const [error, setError] = useState<string | null>(null);
-  const [installationLink, setInstallationLink] = useState<string | null>(null);
+  // Keyed by error type: a re-check that lands on a different error needs a new link.
+  const [linkState, setLinkState] = useState<{ type: typeof errorType; link: string } | null>(null);
+  const installationLink = linkState?.type === errorType ? linkState.link : null;
 
-  useEffect(() => {
-    const checkAccess = async () => {
-      setAccessState("checking");
+  /** `recheck` keeps the current screen up while it runs instead of blanking it. */
+  const checkAccess = useCallback(
+    async (recheck = false) => {
+      if (recheck) setRechecking(true);
+      else setAccessState("checking");
 
       try {
         const result = await checkRepositoryAccess(repositoryUrl);
 
         if (result.hasAccess) {
           setError(null);
+          setAccessState("granted");
           onAccessError(false);
         } else {
           onAccessError(true);
           setAccessState("no-access");
           setInstallationId(result.installationId);
 
+          let nextType: typeof errorType;
           if (result.requiresReauth) {
-            setErrorType("reauth");
+            nextType = "reauth";
           } else if (result.requiresInstallationUpdate) {
-            setErrorType("installation-update");
+            nextType = "installation-update";
           } else if (result.error === "user_not_authorised") {
-            setErrorType("no-cta");
+            nextType = "no-cta";
           } else if (!result.error && !result.hasAccess) {
-            setErrorType("no-cta");
+            nextType = "no-cta";
           } else {
-            setErrorType("other");
+            nextType = "other";
           }
+          setErrorType(nextType);
 
           setError(result.error || null);
         }
@@ -122,11 +130,39 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
         setAccessState("no-access");
         onAccessError(true);
         setError("Failed to check repository access");
+      } finally {
+        setRechecking(false);
       }
-    };
+    },
+    [repositoryUrl, onAccessError],
+  );
 
+  useEffect(() => {
     checkAccess();
-  }, [repositoryUrl, onAccessError]);
+  }, [checkAccess]);
+
+  // While blocked, re-check when the user comes back from GitHub (tab focus)
+  // and when the GitHub App webhook says the installation changed.
+  const waiting = accessState === "no-access";
+  const channel = usePusherChannel(waiting && workspace?.slug ? getWorkspaceChannelName(workspace.slug) : null);
+
+  useEffect(() => {
+    if (!waiting) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkAccess(true);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [waiting, checkAccess]);
+
+  useEffect(() => {
+    if (!channel) return;
+    const onUpdate = () => checkAccess(true);
+    channel.bind(PUSHER_EVENTS.GITHUB_INSTALLATION_UPDATED, onUpdate);
+    return () => {
+      channel.unbind(PUSHER_EVENTS.GITHUB_INSTALLATION_UPDATED, onUpdate);
+    };
+  }, [channel, checkAccess]);
 
   const getInstallationLink = useCallback(async () => {
     if (!workspace?.slug) {
@@ -151,7 +187,7 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
       const installData = await installResponse.json();
 
       if (installData.success && installData.data?.link) {
-        setInstallationLink(installData.data.link);
+        setLinkState({ type: errorType, link: installData.data.link });
       } else {
         throw new Error(installData.message || "Failed to generate GitHub App installation link");
       }
@@ -203,9 +239,16 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
                 </Button>
               )}
 
-              <p className="text-xs text-muted-foreground">After granting access, refresh this page.</p>
+              <p className="text-xs text-muted-foreground">
+                After granting access on GitHub, come back here — we&apos;ll pick it up automatically.
+              </p>
             </>
           )}
+
+          <Button variant="ghost" size="sm" onClick={() => checkAccess(true)} disabled={rechecking}>
+            <RefreshCw className={rechecking ? "animate-spin" : undefined} />
+            {rechecking ? "Checking…" : "Check again"}
+          </Button>
         </EmptyContent>
       </Empty>
     );
