@@ -375,4 +375,15 @@ describe("identity and versions", () => {
     expect(resolveArtifactPanel(all, null)).toBeNull();
     expect(resolveArtifactPanel(all, { identity: "id:gone", version: null })).toBeNull();
   });
+
+  test("a job's live artifact shows until the chat holds one under the same link, which then takes over", () => {
+    const key = "/jobs/j-1/files/walkthroughs/003/walkthrough.json";
+    const live: ArtifactRef = { id: key, kind: "walkthrough", title: "Settings flow", source: { type: "graph", swarmId: "swarm-1", key } };
+    const identity = artifactIdentity(live);
+    expect(resolveArtifactPanel(all, { identity, version: null, live })).toEqual({ artifact: live, versions: [live], index: 0 });
+    const delivered: ArtifactRef = { ...live, id: "settings-walkthrough", title: "Settings, recorded" };
+    expect(resolveArtifactPanel([...all, delivered], { identity, version: null, live })?.artifact).toBe(delivered);
+    // A live ref under another identity is not what the panel was opened on.
+    expect(resolveArtifactPanel(all, { identity: "id:gone", version: null, live })).toBeNull();
+  });
 });
