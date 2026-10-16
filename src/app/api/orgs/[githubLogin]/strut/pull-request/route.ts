@@ -15,6 +15,12 @@
  * be read like any other. No token for that owner is a 403; a PR GitHub
  * will not show them is a 404, as GitHub answers.
  *
+ * Optional `conversationId`: the chat the card is shown in. After a good
+ * read, the PR's state is written back onto that chat's stored PR refs
+ * (`reconcileChatPullRequestState`, access-checked there) so the sidebar
+ * and a refresh stop showing a stale state. Best-effort: a failure is
+ * logged and never changes the response.
+ *
  * Cache: `private, max-age=15`.
  */
 
@@ -24,6 +30,7 @@ import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { getPullRequestStatus } from "@/lib/github/pullRequestStatus";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { reconcileChatPullRequestState } from "@/services/orgs/reconcile-chat-pull-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +78,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
     console.warn("[strut-pull-request] GitHub API error", { repo, number, error: msg });
     return NextResponse.json({ error: "GitHub API error" }, { status: 502 });
+  }
+
+  const conversationId = sp.get("conversationId");
+  if (conversationId) {
+    try {
+      await reconcileChatPullRequestState({ conversationId, orgId, userId, repo, number, state: status.state });
+    } catch (err) {
+      console.warn("[strut-pull-request] reconcile failed", {
+        conversationId,
+        repo,
+        number,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   return NextResponse.json(status, { headers: { "Cache-Control": "private, max-age=15" } });
