@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -14,9 +14,11 @@ import { canvasViewHref, orgPageView } from "./useOrgView";
 
 /**
  * The org page's chats view: the chat list, the chat, and the artifact pane
- * beside it while one is open — each divider draggable, the widths
- * remembered. The list hides by collapsing; `renderChat` is handed the way
- * to show it again.
+ * beside it — each divider draggable, the widths remembered. The list hides
+ * by collapsing; `renderChat` is handed the way to show it again. The
+ * artifact pane is always in the layout and folds away (collapses) when no
+ * artifact is open, so the panel set never changes and the list and the
+ * artifact keep their dragged widths; opening only takes space from the chat.
  *
  * There is no canvas on this view, so anything that asks for one — a
  * canvas-only param written into the URL (`?r=`, `?canvas=`), a canvas
@@ -33,6 +35,19 @@ export function ChatsLayout({
   const [listOpen, setListOpen] = useState(true);
   const chatList = useControlPanel(githubLogin);
   const artifactOpen = useArtifactPanelOpen();
+  const artifactPanelRef = useRef<ImperativePanelHandle>(null);
+  const artifactOpenRef = useRef(artifactOpen);
+  artifactOpenRef.current = artifactOpen;
+  const artifactDraggingRef = useRef(false);
+
+  // Fold the artifact pane away / back out before paint (collapse remembers
+  // its size, expand restores it).
+  useLayoutEffect(() => {
+    const panel = artifactPanelRef.current;
+    if (!panel) return;
+    if (!artifactOpen && !panel.isCollapsed()) panel.collapse();
+    else if (artifactOpen && panel.isCollapsed()) panel.expand();
+  }, [artifactOpen]);
 
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -66,14 +81,30 @@ export function ChatsLayout({
         <ResizablePanel id="org-chats-chat" order={2} minSize={30}>
           {renderChat(listOpen ? undefined : () => listPanelRef.current?.expand())}
         </ResizablePanel>
-        {artifactOpen && (
-          <>
-            <ResizableHandle withHandle />
-            <ResizablePanel id="org-chats-artifact" order={3} defaultSize={40} minSize={25}>
-              <ArtifactPanel />
-            </ResizablePanel>
-          </>
-        )}
+        <ResizableHandle
+          withHandle
+          className={cn(!artifactOpen && "hidden")}
+          onDragging={(d) => {
+            artifactDraggingRef.current = d;
+          }}
+        />
+        <ResizablePanel
+          ref={artifactPanelRef}
+          id="org-chats-artifact"
+          order={3}
+          defaultSize={40}
+          minSize={25}
+          collapsible
+          collapsedSize={0}
+          onCollapse={() => {
+            // Only a user drag of the divider closes the artifact. The group
+            // also fires onCollapse when it loads a saved layout with this
+            // panel at 0 (e.g. mounting with an artifact already open).
+            if (artifactDraggingRef.current && artifactOpenRef.current) useCanvasChatStore.getState().closeArtifactPanel();
+          }}
+        >
+          {artifactOpen && <ArtifactPanel />}
+        </ResizablePanel>
       </ResizablePanelGroup>
     </ArtifactPanelSideContext.Provider>
   );
