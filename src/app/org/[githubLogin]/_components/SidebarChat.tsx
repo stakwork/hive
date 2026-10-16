@@ -722,7 +722,7 @@ export function NewChatButton({ githubLogin }: { githubLogin: string }) {
         onClick={() => startNewOrgConversation(githubLogin)}
         disabled={!hasMessages}
         aria-label="New chat"
-        className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="p-1 @[22rem]:p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         <Plus className="w-4 h-4" />
       </button>
@@ -804,7 +804,7 @@ export function SidebarChatActions({
   };
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex shrink-0 items-center gap-0.5 @[22rem]:gap-1">
       {isActive && (
         <span
           className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
@@ -819,10 +819,11 @@ export function SidebarChatActions({
           onClick={handleShare}
           disabled={!serverConversationId}
           aria-label="Copy share link"
-          className="flex h-7 items-center gap-1.5 rounded px-2 text-xs font-medium hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="flex h-7 items-center gap-1.5 rounded px-1 @[22rem]:px-2 text-xs font-medium hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <Share2 className="w-4 h-4" />
-          Share
+          {/* Icon-only until the header (a container) is wide enough. */}
+          <span className="hidden @[22rem]:inline">Share</span>
         </button>
       </ActionTip>
       <DropdownMenu>
@@ -831,13 +832,13 @@ export function SidebarChatActions({
             <button
               type="button"
               aria-label="More actions"
-              className="p-1.5 rounded hover:bg-muted transition-colors data-[state=open]:bg-muted"
+              className="p-1 @[22rem]:p-1.5 rounded hover:bg-muted transition-colors data-[state=open]:bg-muted"
             >
               <MoreHorizontal className="w-4 h-4" />
             </button>
           </DropdownMenuTrigger>
         </ActionTip>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" sideOffset={4} collisionPadding={8}>
           <DropdownMenuItem
             disabled={!serverConversationId || isStreaming || isForking}
             onSelect={() => void handleFork()}
