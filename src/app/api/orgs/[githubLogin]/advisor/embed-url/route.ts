@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { resolveOrgDefaultSwarmWorkspace } from "@/lib/helpers/org-workspace";
+import { resolveAdvisorUrl } from "@/lib/helpers/advisor-url";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { transformSwarmUrlToAdvisor } from "@/lib/utils/swarm";
-import { validateWorkspaceAccess } from "@/services/workspace";
 
 export const runtime = "nodejs";
 
@@ -43,32 +41,21 @@ export async function POST(
 
   const { githubLogin } = await params;
 
-  const workspace = await resolveOrgDefaultSwarmWorkspace(githubLogin);
-  if (!workspace?.swarm) {
-    return NextResponse.json(
-      { error: "Advisor is not configured for this org", reason: "not_configured" },
-      { status: 404, headers: NO_STORE_HEADERS },
-    );
-  }
-
-  const access = await validateWorkspaceAccess(workspace.slug, userOrResponse.id);
-  if (!access.canAdmin) {
-    return NextResponse.json(
-      { error: "Owner or Admin access required to open the Advisor", reason: "no_access" },
-      { status: 403, headers: NO_STORE_HEADERS },
-    );
-  }
-
-  const url = transformSwarmUrlToAdvisor(workspace.swarm.swarmUrl);
-  if (!url) {
-    return NextResponse.json(
-      { error: "Advisor is not configured for this org", reason: "not_configured" },
-      { status: 404, headers: NO_STORE_HEADERS },
-    );
+  const result = await resolveAdvisorUrl(githubLogin, userOrResponse.id);
+  if (!result.ok) {
+    return result.reason === "no_access"
+      ? NextResponse.json(
+          { error: "Owner or Admin access required to open the Advisor", reason: "no_access" },
+          { status: 403, headers: NO_STORE_HEADERS },
+        )
+      : NextResponse.json(
+          { error: "Advisor is not configured for this org", reason: "not_configured" },
+          { status: 404, headers: NO_STORE_HEADERS },
+        );
   }
 
   return NextResponse.json(
-    { url, workspaceSlug: workspace.slug },
+    { url: result.url, workspaceSlug: result.workspaceSlug },
     { headers: NO_STORE_HEADERS },
   );
 }

@@ -24,7 +24,9 @@ import { AttentionMapProvider } from "../connections/AttentionMapContext";
 import { cn } from "@/lib/utils";
 import { ChatsLayout } from "./ChatsLayout";
 import { ArtifactPanel } from "./artifacts/ArtifactPanel";
-import { orgPageView } from "./useOrgView";
+import Link from "next/link";
+import { OrgInitiatives } from "../OrgInitiatives";
+import { canvasTab, canvasViewHref, orgPageView } from "./useOrgView";
 import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 
 /** Sidebar layout sizes (percent of container width). */
@@ -144,7 +146,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // Beside the canvas or the graph, what has the left panel: that view, or
   // — over it — the artifact the chat has open.
   const artifactOpen = useArtifactPanelOpen();
-  const leftSurface = artifactOpen ? "artifact" : mode;
+  const tab = canvasTab(searchParams);
+  const leftSurface = artifactOpen ? "artifact" : mode === "canvas" && tab === "initiatives" ? "initiatives" : mode;
+  const showTabs = mode === "canvas" && !artifactOpen;
 
   // Sync `panelWidth` to the panel's actual rendered width on mount,
   // before the browser paints. Two paths land it at the right value:
@@ -634,7 +638,20 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                   )}
                 >
                   <AnimatePresence initial={false}>
-                    {leftSurface === "artifact" ? (
+                    {leftSurface === "initiatives" ? (
+                      <motion.div
+                        key="initiatives"
+                        className="absolute inset-0 bg-background overflow-y-auto"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={LEFT_SURFACE_TRANSITION}
+                      >
+                        <div className="max-w-4xl mx-auto px-4 py-8 pt-14">
+                          <OrgInitiatives githubLogin={githubLogin} />
+                        </div>
+                      </motion.div>
+                    ) : leftSurface === "artifact" ? (
                       <motion.div
                         key="artifact"
                         className="absolute inset-0 bg-background"
@@ -664,6 +681,32 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                       </motion.div>
                     ) : null}
                   </AnimatePresence>
+                  {showTabs && (
+                    <div
+                      role="tablist"
+                      aria-label="Canvas view"
+                      className="absolute top-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center rounded-md border bg-background/90 backdrop-blur p-0.5 text-sm shadow-sm"
+                    >
+                      {(["map", "initiatives"] as const).map((t) => (
+                        <Link
+                          key={t}
+                          role="tab"
+                          aria-selected={tab === t}
+                          replace
+                          scroll={false}
+                          href={canvasViewHref(pathname, searchParams, { tab: t === "initiatives" ? "initiatives" : "" })}
+                          className={cn(
+                            "px-3 py-1 rounded-sm transition-colors",
+                            tab === t
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                          )}
+                        >
+                          {t === "map" ? "Map" : "Initiatives"}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                 </ResizablePanel>
 
                 <ResizableHandle

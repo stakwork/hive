@@ -299,7 +299,7 @@ function KindExtras({ detail, githubLogin }: ExtrasProps) {
               ...(completedAt ? [{ label: "Completed", value: formatDate(completedAt) }] : []),
             ]}
           />
-          <FooterLink href={`/org/${githubLogin}/initiatives`} label="Open in Initiatives" />
+          <FooterLink href={`/org/${githubLogin}?view=canvas&tab=initiatives`} label="Open in Initiatives" />
         </div>
       );
     }
@@ -463,7 +463,7 @@ function MilestoneExtras({ extras, nodeId, githubLogin }: MilestoneExtrasProps) 
           </SelectContent>
         </Select>
       </div>
-      <FooterLink href={`/org/${githubLogin}/initiatives`} label="Open in Initiatives" />
+      <FooterLink href={`/org/${githubLogin}?view=canvas&tab=initiatives`} label="Open in Initiatives" />
     </div>
   );
 }

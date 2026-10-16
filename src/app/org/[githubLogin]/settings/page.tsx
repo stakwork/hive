@@ -1,4 +1,5 @@
-import { OrgSettingsView } from "../_components/OrgSettingsView";
+import { Suspense } from "react";
+import { OrgSettingsShell } from "../_components/OrgSettingsShell";
 
 interface SettingsPageProps {
   params: Promise<{ githubLogin: string }>;
@@ -6,5 +7,9 @@ interface SettingsPageProps {
 
 export default async function OrgSettingsPage({ params }: SettingsPageProps) {
   const { githubLogin } = await params;
-  return <OrgSettingsView githubLogin={githubLogin} />;
+  return (
+    <Suspense>
+      <OrgSettingsShell githubLogin={githubLogin} />
+    </Suspense>
+  );
 }

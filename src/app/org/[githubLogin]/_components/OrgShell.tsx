@@ -2,6 +2,7 @@
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ExternalLink } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { OrgRail } from "./OrgRail";
 import { useOrgView, viewIsFullBleed } from "./useOrgView";
 
@@ -18,18 +19,13 @@ interface OrgShellProps {
  * Outer chrome for every `/org/[githubLogin]/...` route. Owns the
  * left icon rail and (for non-full-bleed views) the org header.
  *
- * Full-bleed views (canvas, connections, schematic, graph) skip the
- * header and render their own content edge-to-edge alongside the
- * rail. Other views (initiatives, workspaces, members, chat) render
- * inside a centered max-w container with the org header at the top.
+ * Views: chats, canvas (Map | Initiatives), graph, strut and canvas-demo are
+ * full-bleed and render edge-to-edge beside the rail. Settings (workspaces,
+ * members, MCP servers) renders inside a centered container under the org
+ * header.
  */
 export function OrgShell({
   githubLogin,
-  // orgId / avatarUrl threaded through `OrgShellContext` if/when child
-  // routes need them; current children re-fetch what they need so we
-  // don't pre-pass them. Kept on the props for forward compatibility
-  // and so the layout's server component has a single place to wire
-  // server-loaded org data into the client tree.
   orgId: _orgId,
   orgName,
   avatarUrl,
@@ -42,7 +38,12 @@ export function OrgShell({
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
-      <OrgRail githubLogin={githubLogin} activeView={view} user={user} />
+      <OrgRail
+        githubLogin={githubLogin}
+        activeView={view}
+        user={user}
+        org={{ name: orgName ?? githubLogin, avatarUrl }}
+      />
 
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {fullBleed ? (
@@ -51,7 +52,7 @@ export function OrgShell({
           children
         ) : (
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-4xl mx-auto px-4 pt-10 pb-10 w-full">
+            <div className={cn("mx-auto px-4 pt-10 pb-10 w-full", view === "settings" ? "max-w-5xl" : "max-w-4xl")}>
               <div className="flex items-center gap-4 mb-8">
                 <Avatar className="h-14 w-14 rounded-xl">
                   <AvatarImage src={avatarUrl ?? undefined} alt={displayName} />

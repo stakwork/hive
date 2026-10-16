@@ -14,20 +14,20 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-import { canvasViewHref, useOrgView, viewIsFullBleed } from "@/app/org/[githubLogin]/_components/useOrgView";
+import { canvasTab, canvasViewHref, useOrgView, viewIsFullBleed } from "@/app/org/[githubLogin]/_components/useOrgView";
 
 beforeEach(() => {
   mockSearchParamsStore = {};
 });
 
 describe("useOrgView", () => {
-  it("maps the advisor path to the advisor view", () => {
-    mockPathname = "/org/acme/advisor";
+  it.each(["settings", "workspaces", "members"])("maps /%s to settings", (seg) => {
+    mockPathname = `/org/acme/${seg}`;
     const { result } = renderHook(() => useOrgView("acme"));
-    expect(result.current).toBe("advisor");
+    expect(result.current).toBe("settings");
   });
 
-  it("maps the strut path to the strut view (unaffected by advisor addition)", () => {
+  it("maps the strut path to the strut view", () => {
     mockPathname = "/org/acme/strut";
     const { result } = renderHook(() => useOrgView("acme"));
     expect(result.current).toBe("strut");
@@ -81,8 +81,9 @@ describe("viewIsFullBleed", () => {
     expect(viewIsFullBleed("chats")).toBe(true);
   });
 
-  it("treats advisor as full-bleed", () => {
-    expect(viewIsFullBleed("advisor")).toBe(true);
+  it("treats canvas and graph as full-bleed", () => {
+    expect(viewIsFullBleed("canvas")).toBe(true);
+    expect(viewIsFullBleed("graph")).toBe(true);
   });
 
   it("treats strut as full-bleed (unaffected)", () => {
@@ -91,5 +92,14 @@ describe("viewIsFullBleed", () => {
 
   it("does not treat settings as full-bleed", () => {
     expect(viewIsFullBleed("settings")).toBe(false);
+  });
+});
+
+describe("canvasTab", () => {
+  it("defaults to map, initiatives only when asked", () => {
+    expect(canvasTab(new URLSearchParams(""))).toBe("map");
+    expect(canvasTab(new URLSearchParams("tab=other"))).toBe("map");
+    expect(canvasTab(new URLSearchParams("tab=initiatives"))).toBe("initiatives");
+    expect(canvasTab(null)).toBe("map");
   });
 });

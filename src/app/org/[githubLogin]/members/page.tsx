@@ -1,10 +1,13 @@
-import { MembersView } from "../_components/MembersView";
+import { redirect } from "next/navigation";
+import { orgRedirectTarget } from "@/lib/helpers/org-redirects";
 
-interface MembersPageProps {
+interface PageProps {
   params: Promise<{ githubLogin: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function MembersPage({ params }: MembersPageProps) {
+/** Folded into another page; old links land there. */
+export default async function Page({ params, searchParams }: PageProps) {
   const { githubLogin } = await params;
-  return <MembersView githubLogin={githubLogin} />;
+  redirect(orgRedirectTarget("members", githubLogin, await searchParams));
 }

@@ -1,10 +1,13 @@
-import { OrgInitiatives } from "../OrgInitiatives";
+import { redirect } from "next/navigation";
+import { orgRedirectTarget } from "@/lib/helpers/org-redirects";
 
-interface InitiativesPageProps {
+interface PageProps {
   params: Promise<{ githubLogin: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function InitiativesPage({ params }: InitiativesPageProps) {
+/** Folded into another page; old links land there. */
+export default async function Page({ params, searchParams }: PageProps) {
   const { githubLogin } = await params;
-  return <OrgInitiatives githubLogin={githubLogin} />;
+  redirect(orgRedirectTarget("initiatives", githubLogin, await searchParams));
 }

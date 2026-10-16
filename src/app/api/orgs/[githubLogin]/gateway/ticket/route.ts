@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { EncryptionService } from "@/lib/encryption";
-import { resolveOrgSwarmWorkspaceForUser } from "@/lib/helpers/org-workspace";
-import { deriveBifrostBaseUrl } from "@/services/bifrost/resolve";
-import { BIFROST_HTTP_TIMEOUT_MS } from "@/services/bifrost/constants";
+import { mintGatewayTicket } from "@/lib/helpers/gateway-ticket";
 
 /**
  * POST /api/orgs/[githubLogin]/gateway/ticket
@@ -39,75 +36,9 @@ export async function POST(
   const { githubLogin } = await params;
   const userId = userOrResponse.id;
 
-  // The org's default workspace when accessible, else first-reachable.
-  const workspace = await resolveOrgSwarmWorkspaceForUser(githubLogin, userId);
-
-  if (!workspace || !workspace.swarm) {
-    return NextResponse.json(
-      { error: "No swarm configured for any workspace in this org" },
-      { status: 404 },
-    );
+  const result = await mintGatewayTicket(githubLogin, userId);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
-  const { swarm } = workspace;
-  if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-    return NextResponse.json(
-      { error: "Swarm is missing swarmUrl or swarmApiKey" },
-      { status: 503 },
-    );
-  }
-
-  let provisioningToken: string;
-  try {
-    provisioningToken = EncryptionService.getInstance().decryptField(
-      "swarmApiKey",
-      swarm.swarmApiKey,
-    );
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error: `Failed to decrypt swarmApiKey: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      },
-      { status: 500 },
-    );
-  }
-
-  const baseUrl = deriveBifrostBaseUrl(swarm.swarmUrl);
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), BIFROST_HTTP_TIMEOUT_MS);
-  let resp: Response;
-  try {
-    resp = await fetch(`${baseUrl}/_plugin/auth/ticket`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${provisioningToken}` },
-      signal: controller.signal,
-    });
-  } catch (err) {
-    clearTimeout(timer);
-    const msg = (err as Error).name === "AbortError"
-      ? `gateway mint timed out after ${BIFROST_HTTP_TIMEOUT_MS}ms`
-      : `gateway mint failed: ${err instanceof Error ? err.message : String(err)}`;
-    return NextResponse.json({ error: msg }, { status: 502 });
-  }
-  clearTimeout(timer);
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    return NextResponse.json(
-      { error: `gateway mint returned ${resp.status}: ${text.slice(0, 200)}` },
-      { status: 502 },
-    );
-  }
-
-  const body = (await resp.json()) as { ticket?: string };
-  if (!body?.ticket) {
-    return NextResponse.json(
-      { error: "gateway mint returned no ticket" },
-      { status: 502 },
-    );
-  }
-
-  return NextResponse.json({ url: baseUrl, ticket: body.ticket });
+  return NextResponse.json({ url: result.url, ticket: result.ticket });
 }

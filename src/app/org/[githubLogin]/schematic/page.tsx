@@ -1,14 +1,13 @@
-import { OrgSchematic } from "../OrgSchematic";
+import { redirect } from "next/navigation";
+import { orgRedirectTarget } from "@/lib/helpers/org-redirects";
 
-interface SchematicPageProps {
+interface PageProps {
   params: Promise<{ githubLogin: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function SchematicPage({ params }: SchematicPageProps) {
+/** Folded into another page; old links land there. */
+export default async function Page({ params, searchParams }: PageProps) {
   const { githubLogin } = await params;
-  return (
-    <div className="flex-1 flex flex-col min-h-0 h-full">
-      <OrgSchematic githubLogin={githubLogin} />
-    </div>
-  );
+  redirect(orgRedirectTarget("schematic", githubLogin, await searchParams));
 }

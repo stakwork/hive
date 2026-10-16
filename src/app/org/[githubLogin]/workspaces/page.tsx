@@ -1,10 +1,13 @@
-import { WorkspacesView } from "../_components/WorkspacesView";
+import { redirect } from "next/navigation";
+import { orgRedirectTarget } from "@/lib/helpers/org-redirects";
 
-interface WorkspacesPageProps {
+interface PageProps {
   params: Promise<{ githubLogin: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function WorkspacesPage({ params }: WorkspacesPageProps) {
+/** Folded into another page; old links land there. */
+export default async function Page({ params, searchParams }: PageProps) {
   const { githubLogin } = await params;
-  return <WorkspacesView githubLogin={githubLogin} />;
+  redirect(orgRedirectTarget("workspaces", githubLogin, await searchParams));
 }
