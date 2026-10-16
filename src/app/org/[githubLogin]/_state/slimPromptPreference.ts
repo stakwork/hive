@@ -1,6 +1,6 @@
 /**
  * Short-lived, per-browser opt-in for the slim canvas-agent prompt
- * (concept-tree mode). Toggled from the agent settings cog and sent with
+ * (concept-tree mode). Toggled from the chat header's ⋯ menu (Agent settings) and sent with
  * each canvas chat request as `slimPrompt`. Planner wake turns run
  * server-side without this flag, so they always get the full prompt.
  *

@@ -75,8 +75,11 @@ vi.mock("@/app/org/[githubLogin]/_state/useSendCanvasChatMessage", () => ({
 vi.mock("@/app/org/[githubLogin]/_components/CanvasHistoryPopover", () => ({
   CanvasHistoryPopover: () => null,
 }));
-vi.mock("@/app/org/[githubLogin]/_components/ModelChipMenu", () => ({
-  ModelChipMenu: () => null,
+vi.mock("@/app/org/[githubLogin]/_components/AutomationsSection", () => ({
+  AutomationsSection: () => <div data-testid="automations-section" />,
+}));
+vi.mock("@/app/org/[githubLogin]/_components/ModelPicker", () => ({
+  ModelPicker: () => null,
 }));
 vi.mock("@/app/org/[githubLogin]/_components/SidebarChatMessage", () => ({
   SidebarChatMessage: () => null,
@@ -1532,6 +1535,22 @@ describe("SidebarChat — header & composer layout", () => {
     await renderSidebarChatActions();
     expect(screen.queryByLabelText("Stop")).toBeNull();
     expect(screen.queryByLabelText("Agent settings")).toBeNull();
+  });
+
+  it("⋯ menu holds Fork, Concept-tree prompt and Automations; no Auto-respond anywhere", async () => {
+    mockStoreState = conv();
+    const { container } = await renderSidebarChatActions();
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("More actions"));
+    expect(await screen.findByRole("menuitem", { name: /Fork into my copy/ })).toBeTruthy();
+    const toggle = screen.getByRole("menuitemcheckbox", { name: /Concept-tree prompt/ });
+    // Toggling keeps the menu open.
+    await user.click(toggle);
+    expect(screen.getByRole("menuitemcheckbox", { name: /Concept-tree prompt/ }).getAttribute("aria-checked")).toBe("true");
+    await user.click(screen.getByRole("menuitem", { name: /Automations/ }));
+    expect(await screen.findByTestId("automations-section")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Auto-respond/i);
+    expect(container.textContent).not.toMatch(/Auto-respond/i);
   });
 
   it("hideNewChat removes the header New chat button", async () => {

@@ -24,8 +24,15 @@ import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
 import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
 import { CanvasHistoryPopover } from "./CanvasHistoryPopover";
-import { ModelChipMenu } from "./ModelChipMenu";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ModelPicker } from "./ModelPicker";
+import { AgentSettingsMenuItems, AutomationsDialog } from "./AgentSettingsMenu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { StreamingMessage } from "@/components/streaming";
@@ -621,9 +628,9 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
           workspaceId={workspaceId}
           orgId={githubLogin}
         />
-        {/* Model chip and token count live with the composer, not the header. */}
+        {/* Model picker and token count live with the composer, not the header. */}
         <div className="mt-1 flex items-center gap-1 px-1">
-          <ModelChipMenu githubLogin={githubLogin} />
+          <ModelPicker />
           <TokenCounter />
         </div>
       </div>
@@ -728,8 +735,8 @@ export function NewChatButton({ githubLogin }: { githubLogin: string }) {
  * The chat header's actions — the agent-active dot, history (unless
  * `hideHistory`: the chat list beside it is the history), New chat (unless
  * `hideNewChat`: the chat list's header has it), a labelled Share and a ⋯
- * menu holding Fork. Reads the store itself, so the org page's one bar can
- * place it. Stop, the token count and the model chip live in the composer.
+ * menu holding Fork and the agent settings (Concept-tree prompt, Automations). Reads the store itself, so the org page's one bar can
+ * place it. Stop, the token count and the model picker live in the composer.
  */
 export function SidebarChatActions({
   githubLogin,
@@ -752,6 +759,7 @@ export function SidebarChatActions({
   const isStreaming = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false);
   const { isActive } = useCanvasAgentActivity(activeId);
   const [isForking, setIsForking] = useState(false);
+  const [automationsOpen, setAutomationsOpen] = useState(false);
 
   const handleShare = async () => {
     if (!serverConversationId) return;
@@ -838,8 +846,11 @@ export function SidebarChatActions({
             <Split className="w-4 h-4" />
             Fork into my copy
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <AgentSettingsMenuItems onOpenAutomations={() => setAutomationsOpen(true)} />
         </DropdownMenuContent>
       </DropdownMenu>
+      <AutomationsDialog githubLogin={githubLogin} open={automationsOpen} onOpenChange={setAutomationsOpen} />
     </div>
   );
 }

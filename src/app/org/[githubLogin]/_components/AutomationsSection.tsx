@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Automations manager embedded in the composer model chip menu (ModelChipMenu).
+ * Automations manager opened from the chat header ⋯ menu (AutomationsDialog).
  *
  * Lists the user's recurring automations and lets them add a new one with
  * the `+` button: a name, a time of day (interpreted in the browser's
