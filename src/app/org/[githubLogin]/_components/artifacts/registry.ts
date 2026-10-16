@@ -4,6 +4,7 @@ import {
   BookOpenText,
   Braces,
   Clapperboard,
+  ShieldQuestion,
   Code,
   FileCode2,
   FileDiff,
@@ -30,6 +31,7 @@ import {
 } from "../../_state/canvasChatArtifacts";
 import { buildSharePath } from "../HtmlPageCard";
 import { webAddress } from "./address";
+import { CaptchaPanel } from "./viewers/captcha";
 import { ClaimsPanel, ClaimsRowMeta } from "./viewers/claims";
 import { CodePanel } from "./viewers/code";
 import { DiffPanel, diffPatchText } from "./viewers/diff";
@@ -211,6 +213,14 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Icon: Clapperboard,
     chat: { place: "media", Thumb: WalkthroughThumb },
     Panel: WalkthroughPanel,
+  },
+  // A captcha a strut job cannot solve: tapped or typed on the panel, the answer is the job's next turn.
+  captcha: {
+    label: "Captcha",
+    Icon: ShieldQuestion,
+    chat: { place: "row" },
+    Panel: CaptchaPanel,
+    asks: (content) => (content.state === undefined || content.state === "waiting") && !(content.expiresAt && Date.parse(content.expiresAt) <= Date.now()),
   },
 };
 

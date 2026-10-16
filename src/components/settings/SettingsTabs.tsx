@@ -12,6 +12,7 @@ import { Neo4jConfigSettings } from "@/components/settings/Neo4jConfigSettings";
 import { VercelIntegrationSettings } from "@/components/settings/VercelIntegrationSettings";
 import { SphinxIntegrationSettings } from "@/components/settings/SphinxIntegrationSettings";
 import { ApiKeysSettings } from "@/components/settings/ApiKeysSettings";
+import { CaptchaSitesSettings } from "@/components/settings/CaptchaSitesSettings";
 import { NodeTypeOrderSettings } from "@/components/settings/NodeTypeOrderSettings";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { EnvironmentForm, ProjectInfoForm, RepositoryForm, ServicesForm, SwarmForm } from "@/components/stakgraph";
@@ -263,6 +264,7 @@ export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwne
         <div className="max-w-2xl space-y-6 mt-6">
           <ApiKeysSettings />
           <NodeTypeOrderSettings />
+          <CaptchaSitesSettings />
         </div>
       </TabsContent>
     </Tabs>
