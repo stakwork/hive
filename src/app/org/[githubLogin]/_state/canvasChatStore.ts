@@ -59,7 +59,7 @@ import { STOPPED_TURN_TEXT } from "@/lib/ai/conversationHelpers";
 import type { ApprovalIntent, ApprovalResult, RejectionIntent } from "@/lib/proposals/types";
 import type { StreamTimelineItem, StreamToolCall, ToolCallStatus } from "@/types/streaming";
 import type { TokenUsage } from "@/types/usage";
-import type { ArtifactPanelState, ArtifactRef } from "./canvasChatArtifacts";
+import { artifactIdentity, type ArtifactPanelState, type ArtifactRef } from "./canvasChatArtifacts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -557,6 +557,8 @@ interface CanvasChatState {
   artifactPanel: ArtifactPanelState | null;
   /** Put an artifact on the panel, by its `artifactIdentity`. Omit `version` to follow its newest version. */
   openArtifactPanel: (identity: string, version?: number | null) => void;
+  /** Put something a job is still making on the panel (`ArtifactPanelState.live`). */
+  openLiveArtifact: (artifact: ArtifactRef) => void;
   /** Put the index of the chat's artifacts on the panel. */
   openArtifactIndex: () => void;
   closeArtifactPanel: () => void;
@@ -734,6 +736,9 @@ export const useCanvasChatStore = create<CanvasChatState>()(
 
       openArtifactPanel: (identity, version = null) =>
         set({ artifactPanel: { identity, version } }, false, "openArtifactPanel"),
+
+      openLiveArtifact: (artifact) =>
+        set({ artifactPanel: { identity: artifactIdentity(artifact), version: null, live: artifact } }, false, "openLiveArtifact"),
 
       openArtifactIndex: () => set({ artifactPanel: { identity: null, version: null } }, false, "openArtifactIndex"),
 

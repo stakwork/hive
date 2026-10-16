@@ -14,11 +14,12 @@ export function useActiveArtifacts(): ArtifactRef[] {
   return useCanvasChatStore(useShallow((s) => listArtifacts(selectActiveMessages(s))));
 }
 
-/** True while the artifact panel has something to show: the index of a chat that has artifacts, or one the active conversation holds. */
+/** True while the artifact panel has something to show: the index of a chat that has artifacts, one the active conversation holds, or a job's live one. */
 export function useArtifactPanelOpen(): boolean {
   return useCanvasChatStore((s) => {
     const panel = s.artifactPanel;
     if (!panel) return false;
+    if (panel.live && artifactIdentity(panel.live) === panel.identity) return true;
     // Proposal-derived graph artifacts count too: their card is the proposal card.
     const artifacts = listArtifacts(selectActiveMessages(s));
     if (panel.identity === null) return artifacts.length > 0;

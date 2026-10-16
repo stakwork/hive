@@ -18,9 +18,9 @@ import {
   type JobEventSource,
   type JobTurnSource,
 } from "@/app/org/[githubLogin]/_components/JobTurnCard";
-import type { CanvasChatMessage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
+import { useCanvasChatStore, type CanvasChatMessage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
 import { useJobLiveStore } from "@/app/org/[githubLogin]/_state/jobLiveStore";
-import { act } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
 
 vi.mock("@/components/MarkdownRenderer", () => ({
   MarkdownRenderer: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
@@ -329,21 +329,80 @@ describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-a
     expect(screen.queryByTestId("job-live-strip")).toBeNull();
   });
 
-  test("updates that arrive while the turn runs show under it: shots as thumbnails, a verdict, a pod; another job's never", () => {
+  test("updates that arrive while the turn runs show under it: the newest shot as the one tile, the rest one counted line; another job's never", () => {
     useJobLiveStore.setState({ byJob: {}, verifying: {} });
     render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />);
     act(() => {
       const { apply } = useJobLiveStore.getState();
       apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url: `/jobs/${JOB}/files/shots/001.png`, state: "done", title: "shots/001.png" });
+      apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url: `/jobs/${JOB}/files/shots/002.png`, state: "done", title: "shots/002.png" });
       apply({ jobId: JOB, swarmId: SWARM, at, kind: "pod", id: "pod-7", url: "https://pod-7.example.com", state: "held" });
       apply({ jobId: JOB, swarmId: SWARM, at, kind: "evidence", id: "ev-1", title: "The settings page renders", state: "refuted" });
-      apply({ jobId: "j-other", swarmId: SWARM, at, kind: "image", url: "/jobs/j-other/files/shots/001.png" });
+      apply({ jobId: JOB, swarmId: SWARM, at, kind: "evidence", id: "ev-2", title: "The toggle saves", state: "supported" });
+      apply({ jobId: "j-other", swarmId: SWARM, at, kind: "image", url: "/jobs/j-other/files/shots/003.png" });
     });
-    const shots = screen.getByTestId("job-live-shots").querySelectorAll("img");
-    expect(shots).toHaveLength(1);
-    expect(shots[0].getAttribute("src")).toContain(encodeURIComponent(`/jobs/${JOB}/files/shots/001.png`));
-    const lines = screen.getAllByTestId("job-live-line").map((l) => l.textContent);
-    expect(lines).toEqual(["pod held · https://pod-7.example.com", "The settings page renders does not hold"]);
+    const tiles = screen.getAllByTestId("job-live-now");
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0].querySelector("img")?.getAttribute("src")).toContain(encodeURIComponent(`/jobs/${JOB}/files/shots/002.png`));
+    expect(tiles[0].textContent).toBe("Screenshotshots/002.png");
+    const tally = screen.getByTestId("job-live-tally");
+    expect(tally.textContent).toBe("2 shots · pod held · 2 checks: 1 supported, 1 refuted");
+    expect(tally.querySelector("a")?.getAttribute("href")).toBe("https://pod-7.example.com");
+    expect(tally.getAttribute("title")).toBe("refuted: The settings page renders\nsupported: The toggle saves");
+  });
+
+  test("a job that records again and again: one tile for the newest recording's newest frame, the earlier and stopped ones only counted", async () => {
+    useJobLiveStore.setState({ byJob: {}, verifying: {} });
+    const manifest = (n: string) => `/jobs/${JOB}/files/walkthroughs/${n}/walkthrough.json`;
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          title: "Settings flow",
+          status: "recording",
+          frames: [
+            { file: "01.png", caption: "Open settings" },
+            { file: "02.png", caption: "Click Billing" },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />);
+      act(() => {
+        const { apply } = useJobLiveStore.getState();
+        apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url: `/jobs/${JOB}/files/shots/001.png`, state: "done" });
+        apply({ jobId: JOB, swarmId: SWARM, at, kind: "walkthrough", url: manifest("001"), state: "stopped" });
+        apply({ jobId: JOB, swarmId: SWARM, at, kind: "walkthrough", url: manifest("002"), state: "stopped" });
+        apply({ jobId: JOB, swarmId: SWARM, at, kind: "walkthrough", url: manifest("003"), state: "recording", title: "Settings flow" });
+      });
+      const tile = screen.getByTestId("job-live-now");
+      await waitFor(() => expect(tile.querySelector("img")?.getAttribute("src")).toContain(encodeURIComponent(`/jobs/${JOB}/files/walkthroughs/003/02.png`)));
+      expect(screen.getAllByTestId("job-live-now")).toHaveLength(1);
+      expect(screen.queryByTestId("walkthrough")).toBeNull();
+      expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([expect.stringContaining(encodeURIComponent(manifest("003")))]);
+      expect(tile.textContent).toBe("Recording · Settings flowClick Billing · 2 frames");
+      expect(screen.getByTestId("job-live-tally").textContent).toBe("3 recordings, 2 stopped · 1 shot");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("the tile opens on the artifact panel before the chat holds it, under the link the delivered card will have", () => {
+    useJobLiveStore.setState({ byJob: {}, verifying: {} });
+    useCanvasChatStore.setState({ artifactPanel: null });
+    const url = `/jobs/${JOB}/files/shots/001.png`;
+    render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />);
+    act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url, state: "done", title: "shots/001.png" }));
+    expect(screen.queryByTestId("job-live-tally")).toBeNull();
+    fireEvent.click(screen.getByTestId("job-live-now"));
+    expect(useCanvasChatStore.getState().artifactPanel).toEqual({
+      identity: `graph:${SWARM}:${url}`,
+      version: null,
+      live: { id: url, kind: "image", title: "shots/001.png", label: "Screenshot", source: { type: "graph", swarmId: SWARM, key: url } },
+    });
+    useCanvasChatStore.setState({ artifactPanel: null });
   });
 
   test("what arrived before the card appeared — an earlier turn's — is not this turn's", () => {

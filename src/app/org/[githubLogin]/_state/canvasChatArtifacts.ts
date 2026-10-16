@@ -292,6 +292,12 @@ export interface ArtifactPanelState {
   /** The artifact, by its `artifactIdentity`; null for the index of every artifact in the chat. */
   identity: string | null;
   version: number | null;
+  /**
+   * Something a strut job is still making (the working card's live strip):
+   * shown under `identity` while the chat holds nothing there, and handed
+   * over to the chat's own once the turn delivers it under the same link.
+   */
+  live?: ArtifactRef;
 }
 
 // ─── Reading refs out of stored JSON ────────────────────────────────────
@@ -760,14 +766,17 @@ export interface ResolvedArtifactPanel {
   index: number;
 }
 
-/** What the panel shows, or null when nothing is open or the conversation no longer holds it. */
+/** What the panel shows — the chat's artifact, else the live one it was opened on — or null when nothing is open or neither is there. */
 export function resolveArtifactPanel(
   all: ArtifactRef[],
   panel: ArtifactPanelState | null,
 ): ResolvedArtifactPanel | null {
   if (!panel?.identity) return null;
   const group = all.filter((artifact) => artifactIdentity(artifact) === panel.identity);
-  if (group.length === 0) return null;
+  if (group.length === 0) {
+    const { live } = panel;
+    return live && artifactIdentity(live) === panel.identity ? { artifact: live, versions: [live], index: 0 } : null;
+  }
   const versions = versionsOf(group);
   const index = Math.min(panel.version ?? versions.length - 1, versions.length - 1);
   return { artifact: versions[index], versions, index };
