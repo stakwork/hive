@@ -328,6 +328,53 @@ describe("GitHub App Callback API Integration Tests", () => {
         expect(decryptedToken).toBe("ghu_oauth_token");
       });
 
+      test("should find an installation made outside Hive when OAuth returns no installation_id", async () => {
+        const testUser = await createTestUser({ name: "Outside Install User" });
+        const workspace = await createTestWorkspace({
+          ownerId: testUser.id,
+          slug: "outside-install-workspace",
+          repositoryDraft: "https://github.com/outside-org/outside-repo",
+        });
+
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+        const state = await signStateFor(testUser, { workspaceSlug: workspace.slug, timestamp: Date.now() });
+
+        // Token exchange
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ access_token: "ghu_outside_token", refresh_token: "ghr_outside_refresh" }),
+        });
+        // Authenticated user
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 13579, login: "some-member" }),
+        });
+        // The user's installations
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            installations: [{ id: 777001, account: { login: "Outside-Org", type: "Organization", name: "Outside Org" } }],
+          }),
+        });
+
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", { code: "oauth_code", state });
+        const response = await GET(request);
+
+        expect(response.status).toBe(307);
+        expect(response.headers.get("location")).not.toContain("no_installation_found");
+
+        const org = await db.sourceControlOrg.findUnique({ where: { githubInstallationId: 777001 } });
+        expect(org).toMatchObject({ githubLogin: "Outside-Org", type: "ORG" });
+
+        const token = await db.sourceControlToken.findUnique({
+          where: { userId_sourceControlOrgId: { userId: testUser.id, sourceControlOrgId: org!.id } },
+        });
+        expect(token).toBeTruthy();
+      });
+
       test("should handle repository access validation with push permissions", async () => {
         const testUser = await createTestUser({ name: "Push User" });
         const workspace = await createTestWorkspace({

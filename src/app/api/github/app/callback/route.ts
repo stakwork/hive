@@ -4,6 +4,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { config, optionalEnvVars } from "@/config/env";
 import { serviceConfigs } from "@/config/services";
 import { checkRepositoryAccess } from "@/lib/github-oauth-repository-access";
+import { findUserInstallationFor } from "@/lib/github/user-installations";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import {
   verifyGithubAppState,
@@ -257,10 +258,20 @@ export async function GET(request: NextRequest) {
                   ` Found existing SourceControlOrg for ${repoGithubOwner}, reusing for workspace ${workspaceSlug}`,
                 );
               } else {
-                // No existing SourceControlOrg for this GitHub owner - this shouldn't happen in OAuth flow
-                console.log(` No SourceControlOrg found for ${repoGithubOwner}, falling back to authenticated user`);
-                githubOwner = githubUser.login;
-                ownerType = "user";
+                // Installed on GitHub but unknown to Hive (installed outside
+                // our flow, or its callback never landed): find it by owner.
+                const installation = await findUserInstallationFor(userAccessToken, repoGithubOwner);
+                if (installation) {
+                  githubOwner = installation.account.login;
+                  ownerType = installation.account.type === "User" ? "user" : "org";
+                  installationIdNumber = installation.id;
+                  installationAccount = installation.account;
+                  console.log(`✅ Found installation for ${githubOwner} without installation_id: ${installation.id}`);
+                } else {
+                  console.log(` No SourceControlOrg or installation for ${repoGithubOwner}, falling back to authenticated user`);
+                  githubOwner = githubUser.login;
+                  ownerType = "user";
+                }
               }
             } else {
               // Invalid repository URL - fallback to authenticated user
