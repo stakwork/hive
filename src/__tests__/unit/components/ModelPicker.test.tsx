@@ -44,15 +44,15 @@ describe("ModelPicker", () => {
     await waitFor(() => expect(screen.getByTestId("model-chip").textContent).toContain("GPT Five"));
   });
 
-  it("lists Default first with the note, and Default sends null", async () => {
+  it("lists Default first, no note, and Default sends null", async () => {
     const { getModelValue } = await import("@/lib/ai/models");
     const fetchMock = stubFetch(getModelValue(MODELS[0] as never));
     render(<ModelPicker />);
     await waitFor(() => expect(screen.getByTestId("model-chip").textContent).toContain("Claude Sonnet"));
     const user = userEvent.setup();
     await user.click(screen.getByTestId("model-chip"));
-    expect(await screen.findByText("Applies to all your chats, in every org.")).toBeTruthy();
-    const options = screen.getAllByRole("option");
+    const options = await screen.findAllByRole("option");
+    expect(screen.queryByText(/Applies to all your chats/)).toBeNull();
     expect(options[0].textContent).toBe("Default");
     await user.click(options[0]);
     await waitFor(() => {

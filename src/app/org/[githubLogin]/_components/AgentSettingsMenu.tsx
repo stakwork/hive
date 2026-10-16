@@ -1,24 +1,21 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Clock } from "lucide-react";
-import {
-  DropdownMenuCheckboxItem,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu";
+import { Clock, ListTree } from "lucide-react";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AutomationsSection } from "./AutomationsSection";
 import { readSlimPromptPreference, writeSlimPromptPreference } from "../_state/slimPromptPreference";
 
 /**
- * The "Agent settings" group of the chat header's ⋯ menu:
+ * The agent-settings rows of the chat header's ⋯ menu, after Fork:
  *
  *   - **Concept-tree prompt** — experimental, per-browser (localStorage,
  *     see `slimPromptPreference.ts`): the canvas agent gets the shorter
  *     capability sections and relies on the concept tree for how-to
  *     detail. Off = the full sections. Toggling keeps the menu open.
- *   - **Automations…** — opens `AutomationsDialog` (the list and add form
+ *   - **Automations** — opens `AutomationsDialog` (the list and add form
  *     are too big for a menu).
  *
  * Render inside a `DropdownMenuContent`; the dialog is mounted by the caller
@@ -38,19 +35,28 @@ export function AgentSettingsMenuItems({ onOpenAutomations }: { onOpenAutomation
 
   return (
     <>
-      <DropdownMenuLabel className="text-xs text-muted-foreground">Agent settings</DropdownMenuLabel>
-      <DropdownMenuCheckboxItem
-        checked={slimPrompt}
-        onCheckedChange={handleSlimToggle}
+      <DropdownMenuItem
+        role="menuitemcheckbox"
+        aria-checked={slimPrompt}
         // Keep the menu open so the toggle reads as a switch, not an action.
-        onSelect={(e) => e.preventDefault()}
+        onSelect={(e) => {
+          e.preventDefault();
+          handleSlimToggle(!slimPrompt);
+        }}
         title="Experimental, this browser only. Use shorter capability sections and rely on the concept tree for detail."
       >
+        <ListTree className="w-4 h-4" />
         Concept-tree prompt
-      </DropdownMenuCheckboxItem>
+        <Switch
+          checked={slimPrompt}
+          tabIndex={-1}
+          aria-hidden
+          className="pointer-events-none ml-auto scale-75"
+        />
+      </DropdownMenuItem>
       <DropdownMenuItem onSelect={onOpenAutomations}>
         <Clock className="w-4 h-4" />
-        Automations…
+        Automations
       </DropdownMenuItem>
     </>
   );

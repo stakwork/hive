@@ -30,7 +30,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
@@ -846,7 +845,6 @@ export function SidebarChatActions({
             <Split className="w-4 h-4" />
             Fork into my copy
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <AgentSettingsMenuItems onOpenAutomations={() => setAutomationsOpen(true)} />
         </DropdownMenuContent>
       </DropdownMenu>

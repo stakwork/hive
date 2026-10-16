@@ -1544,10 +1544,13 @@ describe("SidebarChat — header & composer layout", () => {
     await user.click(screen.getByLabelText("More actions"));
     expect(await screen.findByRole("menuitem", { name: /Fork into my copy/ })).toBeTruthy();
     const toggle = screen.getByRole("menuitemcheckbox", { name: /Concept-tree prompt/ });
-    // Toggling keeps the menu open.
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByText("Agent settings")).toBeNull();
+    // Toggling keeps the menu open and flips the state.
     await user.click(toggle);
     expect(screen.getByRole("menuitemcheckbox", { name: /Concept-tree prompt/ }).getAttribute("aria-checked")).toBe("true");
-    await user.click(screen.getByRole("menuitem", { name: /Automations/ }));
+    expect(screen.getByRole("menuitem", { name: /Fork into my copy/ })).toBeTruthy();
+    await user.click(screen.getByRole("menuitem", { name: /^Automations$/ }));
     expect(await screen.findByTestId("automations-section")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/Auto-respond/i);
     expect(container.textContent).not.toMatch(/Auto-respond/i);

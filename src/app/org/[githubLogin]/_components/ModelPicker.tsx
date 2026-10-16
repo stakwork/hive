@@ -16,8 +16,8 @@ import { ActionTip } from "./ActionTip";
  * The choice is the per-user `chatAgentModel` preference, stored in
  * `getModelValue()` "provider/name" form and persisted via
  * `PATCH /api/user/preferences`. "Default" clears it (sends null) and
- * inherits the admin-configured default. It applies to all the user's chats,
- * in every org. Fetched once on mount; saved optimistically with a rollback
+ * inherits the admin-configured default. It is per-user and applies to all
+ * the user's chats. Fetched once on mount; saved optimistically with a rollback
  * on failure. The model list comes from `/api/llm-models`, which already
  * filters out providers whose API key isn't configured server-side.
  */
@@ -123,7 +123,6 @@ export function ModelPicker() {
             })}
           </CommandList>
         </Command>
-        <p className="border-t px-3 py-2 text-xs text-muted-foreground">Applies to all your chats, in every org.</p>
       </PopoverContent>
     </Popover>
   );
