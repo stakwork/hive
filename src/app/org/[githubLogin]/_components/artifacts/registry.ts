@@ -3,6 +3,7 @@ import {
   AudioLines,
   BookOpenText,
   Braces,
+  Clapperboard,
   Code,
   FileCode2,
   FileDiff,
@@ -43,6 +44,7 @@ import { PdfPanel } from "./viewers/pdf";
 import { PullRequestInline, PullRequestPanel } from "./viewers/pullRequest";
 import { RunGraphInline, RunGraphPanel, runGraphFact } from "./viewers/runGraph";
 import { UrlInline, UrlPanel } from "./viewers/url";
+import { WalkthroughInline, WalkthroughPanel } from "./viewers/walkthrough";
 import { orgGraphHref } from "../graphHref";
 
 /**
@@ -189,6 +191,14 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Icon: ListChecks,
     Panel: ClaimsPanel,
     asks: (content) => content.claims.some(claimNeedsLook),
+  },
+  // A strut job's recording of a flow: the preview is the scrubber itself, so it is operated in place.
+  walkthrough: {
+    label: "Walkthrough",
+    Icon: Clapperboard,
+    Inline: WalkthroughInline,
+    Panel: WalkthroughPanel,
+    inlineInteractive: true,
   },
 };
 

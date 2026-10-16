@@ -41,7 +41,7 @@ import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
 import { JobEventRow, JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
 import { DeferredCheckCard } from "./DeferredCheckCard";
 import { ArtifactCard } from "./artifacts/ArtifactCard";
-import { FoldedArtifacts } from "./artifacts/FoldedArtifacts";
+import { FoldedArtifacts, lastThumbnailSet } from "./artifacts/FoldedArtifacts";
 import { artifactAsks } from "./artifacts/registry";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
@@ -293,6 +293,8 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
   // counted so the card can say "v2". An earlier report of the same
   // artifact gets none, so a plan re-reported every turn shows once.
   const artifactCards = useMemo(() => indexArtifactCards(listArtifacts(messages)), [messages]);
+  // The newest folded images show small, which loads them: opened on the panel, they are there at once.
+  const thumbnailSetId = useMemo(() => lastThumbnailSet(messages), [messages]);
 
   return (
     <div className="relative flex h-full flex-col min-h-0" {...dragProps}>
@@ -390,6 +392,7 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                         artifacts={message.artifacts}
                         cards={artifactCards}
                         jobId={message.source.jobId}
+                        thumbnails={message.id === thumbnailSetId}
                       />
                     </div>
                   );
@@ -405,6 +408,7 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                         artifacts={message.artifacts}
                         cards={artifactCards}
                         jobId={message.source.jobId}
+                        thumbnails={message.id === thumbnailSetId}
                       />
                     </div>
                   );
@@ -529,7 +533,11 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                     {pendingJobTurns?.map((turn) => (
                       <PendingJobTurnCard key={turn.jobId} turn={turn} />
                     ))}
-                    <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
+                    <MessageArtifacts
+                      artifacts={message.artifacts}
+                      cards={artifactCards}
+                      thumbnails={message.id === thumbnailSetId}
+                    />
                   </div>
                 );
               })}
@@ -828,11 +836,14 @@ function MessageArtifacts({
   artifacts,
   cards,
   jobId,
+  thumbnails,
 }: {
   artifacts?: ArtifactRef[];
   cards: Map<ArtifactRef, ArtifactVersion>;
   /** The strut job whose row these ride on — the card's viewer can act on it. */
   jobId?: string;
+  /** The folded images show small (`lastThumbnailSet`). */
+  thumbnails?: boolean;
 }) {
   const shown = artifacts?.filter((artifact) => cards.has(artifact));
   if (!shown?.length) return null;
@@ -852,7 +863,7 @@ function MessageArtifacts({
           />
         );
       })}
-      {folded.length > 0 && <FoldedArtifacts artifacts={folded} afterCards={asking.length > 0} />}
+      {folded.length > 0 && <FoldedArtifacts artifacts={folded} afterCards={asking.length > 0} thumbnails={thumbnails} />}
     </div>
   );
 }

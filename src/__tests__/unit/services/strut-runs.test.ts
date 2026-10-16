@@ -254,7 +254,25 @@ describe("dispatchStrutRun", () => {
     // `title` names the JOB on strut (its index, its graph node): a launch
     // field like `job`, never inside `input`, which the workflow's input
     // block would strip.
-    expect(body).toEqual({ input: { prompt: "Plan dark mode", title: "Dark mode plan" }, callback: { url: expect.any(String) }, job, title: "Dark mode plan" });
+    expect(body).toEqual({
+      input: { prompt: "Plan dark mode", title: "Dark mode plan" },
+      callback: { url: expect.any(String) },
+      job,
+      title: "Dark mode plan",
+      jobCallback: { url: expect.any(String) },
+    });
+    // The job's live updates (strut plans/live-artifacts.md) come under this row and its token, to their own route.
+    const rowId = mockStrutRun.create.mock.results[0] ? (await mockStrutRun.create.mock.results[0].value).id : undefined;
+    expect(body.jobCallback.url).toMatch(new RegExp(`/api/strut-jobs/events\\?id=${rowId}&token=[0-9a-f]{64}$`));
+    expect(new URL(body.jobCallback.url).searchParams.get("token")).toBe(new URL(body.callback.url).searchParams.get("token"));
+    // A strut that predates live updates says nothing about them: the row is not marked.
+    expect(mockStrutRun.update.mock.calls.at(-1)?.[0].data).toEqual({ strutRunId: "1790000000000" });
+  });
+
+  it("a strut that accepts the jobCallback marks the row: the job's live updates reach this host", async () => {
+    mockFetch.mockResolvedValue(json(202, { runId: "1790000000000", callback: true, jobCallback: true }));
+    await dispatchStrutRun({ ...dispatchArgs, kind: "job_turn", workflow: "job", purpose: "job", input: { prompt: "x" }, proposalId: undefined, actorSecrets: undefined, job: "j-1" });
+    expect(mockStrutRun.update.mock.calls.at(-1)?.[0].data).toEqual({ strutRunId: "1790000000000", liveUpdates: true });
   });
 
   it("without a job the launch body and the row carry none — and no title, which names a job", async () => {

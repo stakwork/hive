@@ -251,13 +251,36 @@ async function publishVersion(first: JobClaimsOwner, jobId: string, lab: Lab, ar
 const turnLabel = (turns: Record<string, number> | undefined, turn: string): string => (turns?.[turn] ? `turn ${turns[turn]}` : "the newest turn");
 
 /**
+ * The job's live updates reach hive (strut plans/live-artifacts.md): its
+ * newest turn was launched with a `jobCallback` strut accepted, so strut
+ * holds this host's events URL for the job.
+ */
+async function jobHasLiveUpdates(jobId: string): Promise<boolean> {
+  const row = await db.strutRun.findFirst({
+    where: { jobId, kind: JOB_TURN_KIND, strutRunId: { not: null } },
+    orderBy: { createdAt: "desc" },
+    select: { liveUpdates: true },
+  });
+  return row?.liveUpdates === true;
+}
+
+/**
  * Verify: every check on every claim against the job's newest turn, now —
  * the person's door two (strut `POST /jobs/:id/verify`) — then the card's
  * next version with each check's outcome on this pass.
+ *
+ * DETACHED when the job's live updates reach hive (`jobHasLiveUpdates`):
+ * strut answers at once (`started`), each check's evidence streams to the
+ * conversation as it lands, and the events route publishes the card when
+ * the pass ends (`publishVerifiedVersion`). Otherwise — a job whose newest
+ * turn predates that, or a strut that does not detach — the pass is waited
+ * on here, as before.
  */
-export async function verifyJobClaims(first: JobClaimsOwner, jobId: string): Promise<{ card: ArtifactRef | null; summary: string }> {
+export async function verifyJobClaims(first: JobClaimsOwner, jobId: string): Promise<{ card: ArtifactRef | null; summary: string; started?: true }> {
   const { lab, headers } = await ownerLab(first);
-  const result = await labWrite(lab, headers, `/jobs/${encodeURIComponent(jobId)}/verify`, {}, VERIFY_TIMEOUT_MS);
+  const detach = await jobHasLiveUpdates(jobId);
+  const result = await labWrite(lab, headers, `/jobs/${encodeURIComponent(jobId)}/verify`, detach ? { detach: true } : {}, VERIFY_TIMEOUT_MS);
+  if (result.started === true) return { card: null, summary: "", started: true };
   const turn = typeof result.runId === "string" && result.runId ? result.runId : null;
   if (!turn) throw new JobClaimsError(409, "The job has no turn to verify yet.");
   // The pass's own ledger carries each check's outcome on it; the listing adds the speaker and the slots.
@@ -273,6 +296,21 @@ export async function verifyJobClaims(first: JobClaimsOwner, jobId: string): Pro
   const turns = await jobTurnNumbers(jobId, [turn]);
   const card = await publishVersion(first, jobId, lab, { turn, claims, content: `Verified the job's claims on ${turnLabel(turns, turn)}: ${summary}.` });
   return { card, summary };
+}
+
+/**
+ * A detached Verify ended (`verify / done` on the events route): the card's
+ * next version from the ledger as it is now. The ledger read after the pass
+ * carries each claim's verdict, not each check's outcome on it — the live
+ * events showed those as they landed.
+ */
+export async function publishVerifiedVersion(first: JobClaimsOwner, jobId: string, turn: string | null): Promise<ArtifactRef | null> {
+  const lab = await labForRow(first);
+  if (!lab) return null;
+  const claims = await readJobClaims(lab, jobId);
+  if (!claims) return null;
+  const on = turn ? turnLabel(await jobTurnNumbers(jobId, [turn]), turn) : "the newest turn";
+  return publishVersion(first, jobId, lab, { turn, claims, content: `Verified the job's claims on ${on}: ${summarizeClaims(claims)}.` });
 }
 
 export interface ClaimAnswer {

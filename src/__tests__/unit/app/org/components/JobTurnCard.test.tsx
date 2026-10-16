@@ -19,6 +19,8 @@ import {
   type JobTurnSource,
 } from "@/app/org/[githubLogin]/_components/JobTurnCard";
 import type { CanvasChatMessage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
+import { useJobLiveStore } from "@/app/org/[githubLogin]/_state/jobLiveStore";
+import { act } from "@testing-library/react";
 
 vi.mock("@/components/MarkdownRenderer", () => ({
   MarkdownRenderer: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
@@ -315,5 +317,44 @@ describe("JobEventRow", () => {
     render(<JobEventRow message={m} source={m.source as JobEventSource} />);
     expect(screen.getByTestId("job-event-row").textContent).toBe("Job · something else");
     expect(screen.queryByRole("link")).toBeNull();
+  });
+});
+
+describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-artifacts.md)", () => {
+  const SWARM = "swarm-1";
+  const at = "2026-10-15T18:04:11.201Z";
+  test("nothing live: the card is its header alone", () => {
+    useJobLiveStore.setState({ byJob: {}, verifying: {} });
+    render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />);
+    expect(screen.queryByTestId("job-live-strip")).toBeNull();
+  });
+
+  test("updates that arrive while the turn runs show under it: shots as thumbnails, a verdict, a pod; another job's never", () => {
+    useJobLiveStore.setState({ byJob: {}, verifying: {} });
+    render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />);
+    act(() => {
+      const { apply } = useJobLiveStore.getState();
+      apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url: `/jobs/${JOB}/files/shots/001.png`, state: "done", title: "shots/001.png" });
+      apply({ jobId: JOB, swarmId: SWARM, at, kind: "pod", id: "pod-7", url: "https://pod-7.example.com", state: "held" });
+      apply({ jobId: JOB, swarmId: SWARM, at, kind: "evidence", id: "ev-1", title: "The settings page renders", state: "refuted" });
+      apply({ jobId: "j-other", swarmId: SWARM, at, kind: "image", url: "/jobs/j-other/files/shots/001.png" });
+    });
+    const shots = screen.getByTestId("job-live-shots").querySelectorAll("img");
+    expect(shots).toHaveLength(1);
+    expect(shots[0].getAttribute("src")).toContain(encodeURIComponent(`/jobs/${JOB}/files/shots/001.png`));
+    const lines = screen.getAllByTestId("job-live-line").map((l) => l.textContent);
+    expect(lines).toEqual(["pod held · https://pod-7.example.com", "The settings page renders does not hold"]);
+  });
+
+  test("what arrived before the card appeared — an earlier turn's — is not this turn's", () => {
+    useJobLiveStore.setState({ byJob: {}, verifying: {} });
+    useJobLiveStore.getState().apply({ jobId: JOB, swarmId: SWARM, at, kind: "pod", id: "pod-1", state: "released" });
+    vi.useFakeTimers({ now: Date.now() + 1000, toFake: ["Date"] });
+    try {
+      render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />);
+      expect(screen.queryByTestId("job-live-strip")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
