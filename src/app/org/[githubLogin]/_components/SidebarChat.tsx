@@ -378,13 +378,12 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                 }
 
                 // A new version of a job's claims card made from the card (a
-                // Verify, an answer, a new claim): a quiet line, the card under it.
+                // Verify, an answer, a new claim): a quiet line saying what
+                // changed, the card under it — the card carries the job's title.
                 if (message.source?.kind === "job_claims") {
                   return (
                     <div key={message.id} className="space-y-1.5">
                       <p data-testid="job-claims-row" className="px-1 text-xs text-muted-foreground">
-                        <span className="font-medium">{message.source.title || "Job"}</span>
-                        {" · "}
                         {message.content}
                       </p>
                       <MessageArtifacts
