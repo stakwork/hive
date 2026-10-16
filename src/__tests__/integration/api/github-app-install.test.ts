@@ -454,26 +454,12 @@ describe("GitHub App Install API Integration Tests", () => {
           accessToken: "test_token_123",
         });
 
-        // Mock GitHub API response for user type check
+        // The user's visible installations
         mockFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
           json: async () => ({
-            login: "test-owner",
-            type: "User",
-          }),
-        });
-
-        // Mock GitHub API response for installation check
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            id: 87654321,
-            account: {
-              login: "test-owner",
-              type: "User",
-            },
+            installations: [{ id: 87654321, account: { login: "Test-Owner", type: "User" } }],
           }),
         });
 
@@ -496,7 +482,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
         // Verify GitHub API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/users/test-owner`,
+          `${serviceConfigs.github.baseURL}/user/installations?per_page=100`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: "Bearer test_token_123",
@@ -521,26 +507,14 @@ describe("GitHub App Install API Integration Tests", () => {
           accessToken: "test_org_token",
         });
 
-        // Mock user type check - org
         mockFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
           json: async () => ({
-            login: "test-org",
-            type: "Organization",
-          }),
-        });
-
-        // Mock org installation check
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            id: 99999999,
-            account: {
-              login: "test-org",
-              type: "Organization",
-            },
+            installations: [
+              { id: 11111111, account: { login: "someone-else", type: "User" } },
+              { id: 99999999, account: { login: "test-org", type: "Organization" } },
+            ],
           }),
         });
 
@@ -560,9 +534,8 @@ describe("GitHub App Install API Integration Tests", () => {
         expect(data.data.installationId).toBe(99999999);
         expect(data.data.ownerType).toBe("org");
 
-        // Verify org-specific API endpoint was called
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/orgs/test-org/installation`,
+          `${serviceConfigs.github.baseURL}/user/installations?per_page=100`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: "Bearer test_org_token",
@@ -586,21 +559,18 @@ describe("GitHub App Install API Integration Tests", () => {
           accessToken: "test_token",
         });
 
-        // Mock user type check
+        // No installation on test-owner among the user's installations
         mockFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => ({
-            login: "test-owner",
-            type: "User",
-          }),
+          json: async () => ({ installations: [{ id: 1, account: { login: "other", type: "User" } }] }),
         });
 
-        // Mock installation check - 404 not found
+        // Owner type check
         mockFetch.mockResolvedValueOnce({
-          ok: false,
-          status: 404,
-          statusText: "Not Found",
+          ok: true,
+          status: 200,
+          json: async () => ({ login: "test-owner", type: "User" }),
         });
 
         const request = createPostRequest(
@@ -618,6 +588,43 @@ describe("GitHub App Install API Integration Tests", () => {
         expect(data.data.flowType).toBe("installation");
         expect(data.data.appInstalled).toBe(false);
         expect(data.data.installationId).toBeUndefined();
+        expect(data.data.link).toContain("target_type=User");
+      });
+
+      test("should find an installation made outside Hive using any token the user holds", async () => {
+        const testUser = await createTestUser();
+        const workspace = await createTestWorkspace({
+          ownerId: testUser.id,
+          slug: "outside-install-workspace",
+        });
+
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+        // No token for the owner (no SourceControlOrg yet), but one for another account
+        vi.mocked(getUserAppTokens).mockImplementation(async (_userId, owner) =>
+          owner ? null : { accessToken: "other_account_token" },
+        );
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            installations: [{ id: 424242, account: { login: "absurddev-lab", type: "Organization" } }],
+          }),
+        });
+
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: "https://github.com/absurddev-lab/peel-3",
+        });
+
+        const response = await POST(request);
+        const data = await expectSuccess(response);
+
+        expect(data.data.flowType).toBe("user_authorization");
+        expect(data.data.appInstalled).toBe(true);
+        expect(data.data.installationId).toBe(424242);
+        expect(data.data.link).toContain("login/oauth/authorize");
       });
     });
 
