@@ -12,14 +12,10 @@ let mockSearch = "";
 let mockDeeplink: { canvasRef: string } | null = null;
 let mockArtifactOpen = false;
 const closeArtifactPanel = vi.fn();
-/** The artifact pane's imperative handle, as the panel library would expose it. */
-const artifactHandle = {
-  collapsed: true,
-  expand: vi.fn(),
-  collapse: vi.fn(),
-  isCollapsed: () => artifactHandle.collapsed,
-};
-let artifactDragging: ((isDragging: boolean) => void) | undefined;
+const dragHandlers = vi.hoisted(() => [] as Array<(dragging: boolean) => void>);
+const panels = vi.hoisted(
+  () => ({}) as Record<string, { collapse: ReturnType<typeof vi.fn>; expand: ReturnType<typeof vi.fn>; collapsed: boolean; onCollapse?: () => void }>,
+);
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/org/acme",
@@ -33,34 +29,51 @@ vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
 }));
 vi.mock("@/components/ui/resizable", () => ({
   ResizablePanelGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  ResizablePanel: React.forwardRef(function Panel(
+  ResizablePanel: React.forwardRef(function MockPanel(
     {
       id,
       children,
+      onCollapse,
       onTransitionEnd,
-    }: { id?: string; children: React.ReactNode; onTransitionEnd?: React.TransitionEventHandler },
+    }: {
+      id: string;
+      children?: React.ReactNode;
+      onCollapse?: () => void;
+      onTransitionEnd?: React.TransitionEventHandler;
+    },
     ref: React.Ref<unknown>,
   ) {
-    React.useImperativeHandle(ref, () => (id === "org-chats-artifact" ? artifactHandle : {}));
+    const p = (panels[id] ??= {
+      collapse: vi.fn(() => {
+        panels[id].collapsed = true;
+      }),
+      expand: vi.fn(() => {
+        panels[id].collapsed = false;
+      }),
+      collapsed: false,
+    });
+    p.onCollapse = onCollapse;
+    React.useImperativeHandle(ref, () => ({
+      collapse: p.collapse,
+      expand: p.expand,
+      isCollapsed: () => p.collapsed,
+    }));
     return (
-      <div data-testid={id} onTransitionEnd={onTransitionEnd}>
+      <div data-panel-id={id} onTransitionEnd={onTransitionEnd}>
         {children}
       </div>
     );
   }),
-  ResizableHandle: ({ onDragging }: { onDragging?: (isDragging: boolean) => void }) => {
-    if (onDragging) artifactDragging = onDragging;
+  ResizableHandle: ({ onDragging }: { onDragging?: (dragging: boolean) => void }) => {
+    if (onDragging) dragHandlers.push(onDragging);
     return null;
   },
   RESIZABLE_PANEL_TRANSITION: "",
 }));
 vi.mock("@/app/org/[githubLogin]/_components/control-panel/useControlPanel", () => ({ useControlPanel: () => ({}) }));
 vi.mock("@/app/org/[githubLogin]/_components/control-panel/ControlPanelList", () => ({ ControlPanelList: () => null }));
-vi.mock("@/app/org/[githubLogin]/_components/artifacts/ArtifactPanel", () => ({
-  ArtifactPanel: () => <p>artifact</p>,
-}));
+vi.mock("@/app/org/[githubLogin]/_components/artifacts/ArtifactPanel", () => ({ ArtifactPanel: () => <p>artifact-content</p> }));
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/useArtifactPanel", () => ({
-  ArtifactPanelSideContext: React.createContext("left"),
   useArtifactPanelOpen: () => mockArtifactOpen,
 }));
 
@@ -73,8 +86,9 @@ describe("ChatsLayout", () => {
     mockSearch = "chat=c1";
     mockDeeplink = null;
     mockArtifactOpen = false;
-    artifactHandle.collapsed = true;
-    vi.clearAllMocks();
+    closeArtifactPanel.mockReset();
+    dragHandlers.length = 0;
+    for (const k of Object.keys(panels)) delete panels[k];
     vi.stubGlobal("location", { ...window.location, assign });
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -98,40 +112,54 @@ describe("ChatsLayout", () => {
     expect(assign).toHaveBeenCalledWith("/org/acme?chat=c1&view=canvas&canvas=initiative%3Axyz");
   });
 
-  describe("artifact pane", () => {
-    test("stays collapsed and empty while nothing is open", () => {
-      renderLayout();
-      expect(screen.queryByText("artifact")).toBeNull();
-      expect(artifactHandle.expand).not.toHaveBeenCalled();
-    });
+  const layout = () => <ChatsLayout githubLogin="acme" renderChat={() => <p>chat</p>} />;
 
-    test("expands with the artifact when one opens", () => {
-      const { rerender } = renderLayout();
-      mockArtifactOpen = true;
-      rerender(<ChatsLayout githubLogin="acme" renderChat={() => <p>chat</p>} />);
-      expect(artifactHandle.expand).toHaveBeenCalled();
-      expect(screen.getByText("artifact")).toBeTruthy();
-    });
+  test("the artifact panel is rendered whether or not an artifact is open", () => {
+    const { container, rerender } = render(layout());
+    expect(container.querySelector('[data-panel-id="org-chats-artifact"]')).not.toBeNull();
+    mockArtifactOpen = true;
+    rerender(layout());
+    expect(container.querySelector('[data-panel-id="org-chats-artifact"]')).not.toBeNull();
+  });
 
-    test("keeps the artifact up while it eases shut, then unmounts it", () => {
-      mockArtifactOpen = true;
-      artifactHandle.collapsed = false;
-      const { rerender } = renderLayout();
-      mockArtifactOpen = false;
-      rerender(<ChatsLayout githubLogin="acme" renderChat={() => <p>chat</p>} />);
-      expect(artifactHandle.collapse).toHaveBeenCalled();
-      expect(screen.getByText("artifact")).toBeTruthy();
-      fireEvent.transitionEnd(screen.getByTestId("org-chats-artifact"));
-      expect(screen.queryByText("artifact")).toBeNull();
-    });
+  test("open/close collapses and expands the artifact panel only", () => {
+    const { rerender } = render(layout());
+    expect(panels["org-chats-artifact"].collapse).toHaveBeenCalledTimes(1);
+    mockArtifactOpen = true;
+    rerender(layout());
+    expect(panels["org-chats-artifact"].expand).toHaveBeenCalledTimes(1);
+    mockArtifactOpen = false;
+    rerender(layout());
+    expect(panels["org-chats-artifact"].collapse).toHaveBeenCalledTimes(2);
+    expect(panels["org-chats-list"].collapse).not.toHaveBeenCalled();
+    expect(panels["org-chats-list"].expand).not.toHaveBeenCalled();
+  });
 
-    test("dragged shut, the artifact closes", () => {
-      mockArtifactOpen = true;
-      artifactHandle.collapsed = false;
-      renderLayout();
-      artifactHandle.collapsed = true;
-      artifactDragging?.(false);
-      expect(closeArtifactPanel).toHaveBeenCalled();
-    });
+  test("artifact content renders while open, stays up while the pane eases shut, then unmounts", () => {
+    const { container, rerender } = render(layout());
+    expect(screen.queryByText("artifact-content")).toBeNull();
+    mockArtifactOpen = true;
+    rerender(layout());
+    expect(screen.getByText("artifact-content")).toBeTruthy();
+    mockArtifactOpen = false;
+    rerender(layout());
+    expect(screen.getByText("artifact-content")).toBeTruthy();
+    fireEvent.transitionEnd(container.querySelector('[data-panel-id="org-chats-artifact"]')!);
+    expect(screen.queryByText("artifact-content")).toBeNull();
+  });
+
+  test("a collapse the group reports without a drag does not close the open artifact", () => {
+    mockArtifactOpen = true;
+    render(layout());
+    panels["org-chats-artifact"].onCollapse?.();
+    expect(closeArtifactPanel).not.toHaveBeenCalled();
+  });
+
+  test("dragging the artifact divider shut closes the open artifact", () => {
+    mockArtifactOpen = true;
+    render(layout());
+    dragHandlers.at(-1)?.(true);
+    panels["org-chats-artifact"].onCollapse?.();
+    expect(closeArtifactPanel).toHaveBeenCalledTimes(1);
   });
 });

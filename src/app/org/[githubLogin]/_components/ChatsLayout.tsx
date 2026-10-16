@@ -19,10 +19,12 @@ import { canvasViewHref, orgPageView } from "./useOrgView";
 
 /**
  * The org page's chats view: the chat list, the chat, and the artifact pane
- * beside it while one is open — each divider draggable, the widths
- * remembered. The list hides by collapsing; `renderChat` is handed the way
- * to show it again. The artifact pane stays mounted and collapses while
- * nothing is open, so it eases open and shut as the list does.
+ * beside it — each divider draggable, the widths remembered. The list hides
+ * by collapsing; `renderChat` is handed the way to show it again. The
+ * artifact pane is always in the layout and folds away (collapses) when no
+ * artifact is open, so the panel set never changes and the list and the
+ * artifact keep their dragged widths; opening only takes space from the chat.
+ * Both ease open and shut, as the canvas view's panels do.
  *
  * There is no canvas on this view, so anything that asks for one — a
  * canvas-only param written into the URL (`?r=`, `?canvas=`), a canvas
@@ -38,24 +40,27 @@ export function ChatsLayout({
   const listPanelRef = useRef<ImperativePanelHandle>(null);
   const [listOpen, setListOpen] = useState(true);
   const chatList = useControlPanel(githubLogin);
-  const artifactPanelRef = useRef<ImperativePanelHandle>(null);
   const artifactOpen = useArtifactPanelOpen();
+  const artifactPanelRef = useRef<ImperativePanelHandle>(null);
+  const artifactOpenRef = useRef(artifactOpen);
+  artifactOpenRef.current = artifactOpen;
+  const artifactDraggingRef = useRef(false);
   /** The artifact stays up while its pane eases shut, then unmounts — nothing hidden keeps playing or polling. */
   const [artifactMounted, setArtifactMounted] = useState(artifactOpen);
   /** Off until the first layout has settled, so the restored widths don't animate in. */
   const [animate, setAnimate] = useState(false);
   const transition = animate ? RESIZABLE_PANEL_TRANSITION : undefined;
 
+  // Fold the artifact pane away / back out before paint (collapse remembers
+  // its size, expand restores it).
   useLayoutEffect(() => {
     const panel = artifactPanelRef.current;
-    if (artifactOpen) {
-      setArtifactMounted(true);
-      panel?.expand();
-    } else if (!panel || panel.isCollapsed()) {
-      setArtifactMounted(false);
-    } else {
-      panel.collapse();
-    }
+    if (artifactOpen) setArtifactMounted(true);
+    if (!panel) return;
+    if (!artifactOpen && !panel.isCollapsed()) panel.collapse();
+    else if (artifactOpen && panel.isCollapsed()) panel.expand();
+    // Already shut (dragged there, or never open): nothing to ease out.
+    else if (!artifactOpen) setArtifactMounted(false);
   }, [artifactOpen]);
   const unmountIfShut = (e: React.TransitionEvent) => {
     if (e.target === e.currentTarget && !artifactOpen) setArtifactMounted(false);
@@ -100,13 +105,10 @@ export function ChatsLayout({
       <ResizableHandle
         withHandle
         className={cn(!artifactMounted && "hidden")}
-        // Dragged shut: the artifact is closed, as its own close would.
-        onDragging={(isDragging) => {
-          if (!isDragging && artifactPanelRef.current?.isCollapsed())
-            useCanvasChatStore.getState().closeArtifactPanel();
+        onDragging={(d) => {
+          artifactDraggingRef.current = d;
         }}
       />
-      {/* Starts at its default width and, with nothing open, collapses from there — so the first open restores that width, not `minSize`. */}
       <ResizablePanel
         ref={artifactPanelRef}
         id="org-chats-artifact"
@@ -115,6 +117,13 @@ export function ChatsLayout({
         minSize={25}
         collapsible
         collapsedSize={0}
+        onCollapse={() => {
+          // Only a user drag of the divider closes the artifact. The group
+          // also fires onCollapse when it loads a saved layout with this
+          // panel at 0 (e.g. mounting with an artifact already open).
+          if (artifactDraggingRef.current && artifactOpenRef.current)
+            useCanvasChatStore.getState().closeArtifactPanel();
+        }}
         className={transition}
         onTransitionEnd={unmountIfShut}
         // A drag that interrupts the ease ends it without a transitionend.
