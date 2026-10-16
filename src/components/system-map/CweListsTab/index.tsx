@@ -13,12 +13,8 @@ import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { CWE_LISTS, isUsableCwe } from "@/lib/system-map/cwe-lists";
-import type {
-  CweEntry,
-  CweListMember,
-  CweListResponse,
-  CweMappingUsage,
-} from "@/types/system-map";
+import type { CweEntry, CweListMember, CweListResponse, CweMappingUsage } from "@/types/system-map";
+import { ComponentPicker } from "./ComponentPicker";
 import { RelatedPanel } from "./RelatedPanel";
 
 /** Most CWEs one CWE check run takes (`CWE_SCOPED_WORKFLOWS.cwe_check.max`). */
@@ -222,6 +218,7 @@ export function CweListsTab() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [launching, setLaunching] = useState<string | null>(null);
+  const [components, setComponents] = useState<string[]>([]);
 
   const load = useCallback(async (workspaceSlug: string, view: string, signal?: AbortSignal) => {
     setLoading(true);
@@ -283,9 +280,17 @@ export function CweListsTab() {
         const response = await fetch(`/api/workspaces/${slug}/system-map/runs`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workflow: "cwe_check", cweIds }),
+          body: JSON.stringify({
+            workflow: "cwe_check",
+            cweIds,
+            ...(components.length > 0 ? { components } : {}),
+          }),
         });
-        const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string; strutUrl?: string | null };
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          code?: string;
+          strutUrl?: string | null;
+        };
         if (!response.ok) {
           const title =
             response.status === 409
@@ -296,8 +301,16 @@ export function CweListsTab() {
           toast.error(title, { description: body.error });
           return;
         }
-        toast.success(`${label} started on ${cweIds.length === 1 ? cweIds[0] : `${cweIds.length} CWEs`}`, {
-          action: body.strutUrl ? { label: "View run", onClick: () => window.open(body.strutUrl!, "_blank") } : undefined,
+        const scope =
+          components.length === 0
+            ? ""
+            : components.length === 1
+              ? ` · ${components[0]}`
+              : ` · ${components.length} components`;
+        toast.success(`${label} started on ${cweIds.length === 1 ? cweIds[0] : `${cweIds.length} CWEs`}${scope}`, {
+          action: body.strutUrl
+            ? { label: "View run", onClick: () => window.open(body.strutUrl!, "_blank") }
+            : undefined,
         });
         if (cweIds.length > 1) setSelected(new Set());
       } catch (error) {
@@ -308,7 +321,7 @@ export function CweListsTab() {
         setLaunching(null);
       }
     },
-    [slug, launching],
+    [slug, launching, components],
   );
 
   const actions: RowActions = { canWrite, selected, onToggle: toggle, launching, onLaunch: launch };
@@ -319,7 +332,7 @@ export function CweListsTab() {
       <p className="text-sm text-muted-foreground">
         A curated list from the shared infosec graph&apos;s CWE catalogue. Entries MITRE marks Discouraged or Prohibited
         are too abstract to review directly, so their usable children are listed under them. Run the CWE check on one or
-        many CWEs.
+        many CWEs, optionally scoped to some of the system map&apos;s components.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -344,6 +357,7 @@ export function CweListsTab() {
         >
           <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", loading && "animate-spin")} /> Reload
         </Button>
+        {canWrite && <ComponentPicker slug={slug} value={components} onChange={setComponents} />}
         <div className="relative ml-auto w-72 max-w-full">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input

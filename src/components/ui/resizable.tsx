@@ -6,6 +6,10 @@ import * as ResizablePrimitive from "react-resizable-panels";
 
 import { cn } from "@/lib/utils";
 
+/** Eases a panel's programmatic resize (collapse, expand); off while a handle in its group is dragged, so the panel follows the pointer. */
+const RESIZABLE_PANEL_TRANSITION =
+  "transition-[flex-grow] duration-300 ease-in-out [[data-panel-group]:has(>[data-resize-handle-state=drag])>&]:transition-none";
+
 function ResizablePanelGroup({
   className,
   ...props
@@ -53,4 +57,4 @@ function ResizableHandle({
   );
 }
 
-export { ResizablePanelGroup, ResizablePanel, ResizableHandle };
+export { ResizablePanelGroup, ResizablePanel, ResizableHandle, RESIZABLE_PANEL_TRANSITION };

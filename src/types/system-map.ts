@@ -16,6 +16,8 @@ export interface SystemMapRun {
   strutUrl: string | null;
   /** The CWEs the run was scoped to (`input.cwe_ids`); null when it covered everything. */
   cweIds: string[] | null;
+  /** The System Map components the run was scoped to (`input.components`); null when it covered all. */
+  components: string[] | null;
 }
 
 export type SystemMapWorkflowKey = "system_map" | "cwe_check";
