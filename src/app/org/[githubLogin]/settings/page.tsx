@@ -1,10 +1,12 @@
-import { OrgSettingsView } from "../_components/OrgSettingsView";
+import { OrgSettingsShell } from "../_components/OrgSettingsShell";
 
 interface SettingsPageProps {
   params: Promise<{ githubLogin: string }>;
+  searchParams: Promise<{ section?: string }>;
 }
 
-export default async function OrgSettingsPage({ params }: SettingsPageProps) {
+export default async function OrgSettingsPage({ params, searchParams }: SettingsPageProps) {
   const { githubLogin } = await params;
-  return <OrgSettingsView githubLogin={githubLogin} />;
+  const { section } = await searchParams;
+  return <OrgSettingsShell githubLogin={githubLogin} section={section} />;
 }

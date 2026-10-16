@@ -24,7 +24,9 @@ import { AttentionMapProvider } from "../connections/AttentionMapContext";
 import { cn } from "@/lib/utils";
 import { ChatsLayout } from "./ChatsLayout";
 import { ArtifactPanel } from "./artifacts/ArtifactPanel";
-import { orgPageView } from "./useOrgView";
+import Link from "next/link";
+import { canvasTab, orgPageView } from "./useOrgView";
+import { OrgInitiatives } from "../OrgInitiatives";
 import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 
 /** Sidebar layout sizes (percent of container width). */
@@ -145,6 +147,14 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // — over it — the artifact the chat has open.
   const artifactOpen = useArtifactPanelOpen();
   const leftSurface = artifactOpen ? "artifact" : mode;
+  const tab = canvasTab(searchParams);
+  const tabHref = (next: "map" | "initiatives") => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "canvas");
+    if (next === "map") params.delete("tab");
+    else params.set("tab", next);
+    return `${pathname}?${params.toString()}`;
+  };
 
   // Sync `panelWidth` to the panel's actual rendered width on mount,
   // before the browser paints. Two paths land it at the right value:
@@ -580,7 +590,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               {leftSurface === "canvas" && (
                 <motion.div
                   key="canvas"
-                  className="absolute inset-0 flex"
+                  // `isolate` contains the canvas's own overlays (Live Now, hidden-live pill, FAB…)
+                  // in this layer, so the initiatives surface and the tab control sit above them.
+                  className={cn("absolute inset-x-0 bottom-0 z-0 flex isolate", mode === "canvas" ? "top-11" : "top-0")}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -599,6 +611,46 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {mode === "canvas" && leftSurface === "canvas" && (
+              <>
+                {tab === "initiatives" && (
+                  <div
+                    className="absolute bottom-0 left-0 top-11 z-10 overflow-y-auto bg-background"
+                    style={{ right: panelWidth }}
+                  >
+                    <div className="max-w-4xl mx-auto px-6 py-6 w-full">
+                      <OrgInitiatives githubLogin={githubLogin} />
+                    </div>
+                  </div>
+                )}
+                {/* The tab bar lines up with the chat panel's header across the divider. */}
+                <div
+                  role="tablist"
+                  aria-label="Canvas view"
+                  className="absolute left-0 top-0 z-30 flex h-11 items-stretch border-b bg-background pl-1 text-sm"
+                  style={{ right: panelWidth }}
+                >
+                  {(["map", "initiatives"] as const).map((t) => (
+                    <Link
+                      key={t}
+                      role="tab"
+                      aria-selected={tab === t}
+                      href={tabHref(t)}
+                      replace
+                      className={cn(
+                        "-mb-px flex items-center border-b-2 px-4 font-medium transition-colors",
+                        tab === t
+                          ? "border-foreground text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {t === "map" ? "Map" : "Initiatives"}
+                    </Link>
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* Resizable sidebar overlay — sits at z-20, absolutely
           positioned to cover the right portion of the canvas.
