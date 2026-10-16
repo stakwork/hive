@@ -1,10 +1,17 @@
-import { MembersView } from "../_components/MembersView";
+import { redirect } from "next/navigation";
 
-interface MembersPageProps {
+interface PageProps {
   params: Promise<{ githubLogin: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function MembersPage({ params }: MembersPageProps) {
+/** Now a section of settings. */
+export default async function Page({ params, searchParams }: PageProps) {
   const { githubLogin } = await params;
-  return <MembersView githubLogin={githubLogin} />;
+  const query = await searchParams;
+  const next = new URLSearchParams({ section: "members" });
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === "string" && !next.has(key)) next.set(key, value);
+  }
+  redirect(`/org/${githubLogin}/settings?${next.toString()}`);
 }

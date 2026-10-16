@@ -1,14 +1,17 @@
-import { OrgSchematic } from "../OrgSchematic";
+import { redirect } from "next/navigation";
 
-interface SchematicPageProps {
+interface PageProps {
   params: Promise<{ githubLogin: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function SchematicPage({ params }: SchematicPageProps) {
+/** The schematic is no longer surfaced; land on the canvas. */
+export default async function Page({ params, searchParams }: PageProps) {
   const { githubLogin } = await params;
-  return (
-    <div className="flex-1 flex flex-col min-h-0 h-full">
-      <OrgSchematic githubLogin={githubLogin} />
-    </div>
-  );
+  const query = await searchParams;
+  const next = new URLSearchParams({ view: "canvas" });
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === "string" && !next.has(key)) next.set(key, value);
+  }
+  redirect(`/org/${githubLogin}?${next.toString()}`);
 }
