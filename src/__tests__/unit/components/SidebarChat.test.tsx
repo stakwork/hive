@@ -10,6 +10,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 // jsdom does not implement scrollIntoView — install a no-op globally so
 // the SidebarChat scroll effect never throws. Scroll behaviour tests
@@ -74,8 +75,11 @@ vi.mock("@/app/org/[githubLogin]/_state/useSendCanvasChatMessage", () => ({
 vi.mock("@/app/org/[githubLogin]/_components/CanvasHistoryPopover", () => ({
   CanvasHistoryPopover: () => null,
 }));
-vi.mock("@/app/org/[githubLogin]/_components/CanvasAgentSettingsPopover", () => ({
-  CanvasAgentSettingsPopover: () => null,
+vi.mock("@/app/org/[githubLogin]/_components/AutomationsSection", () => ({
+  AutomationsSection: () => <div data-testid="automations-section" />,
+}));
+vi.mock("@/app/org/[githubLogin]/_components/ModelPicker", () => ({
+  ModelPicker: () => null,
 }));
 vi.mock("@/app/org/[githubLogin]/_components/SidebarChatMessage", () => ({
   SidebarChatMessage: () => null,
@@ -918,7 +922,15 @@ describe("SidebarChat — DailyRecapCard placement", () => {
   });
 });
 
-// ── Fork chat — toolbar button disabled states & happy path ───────────────────
+// ── Fork — ⋯ menu item disabled states & happy path ───────────────────
+
+// Fork lives in the header's ⋯ menu — open it and return the menu item.
+async function openForkItem() {
+  const user = userEvent.setup();
+  await user.click(screen.getByLabelText("More actions"));
+  return screen.findByRole("menuitem", { name: /Fork into my copy/ });
+}
+const isItemDisabled = (el: HTMLElement) => el.getAttribute("aria-disabled") === "true";
 
 describe("SidebarChat — Fork chat button", () => {
   let startConversationMock: ReturnType<typeof vi.fn>;
@@ -1008,10 +1020,10 @@ describe("SidebarChat — Fork chat button", () => {
     };
   });
 
-  it("renders the Fork chat button in the toolbar", async () => {
+  it("renders Fork in the ⋯ menu", async () => {
     mockStoreState = withServerConversation();
     await renderSidebarChatActions();
-    expect(screen.getByLabelText("Fork chat")).toBeTruthy();
+    expect(await openForkItem()).toBeTruthy();
   });
 
   it("is disabled when there is no serverConversationId (empty conversation)", async () => {
@@ -1034,8 +1046,8 @@ describe("SidebarChat — Fork chat button", () => {
 
     await renderSidebarChatActions();
 
-    const forkBtn = screen.getByLabelText("Fork chat");
-    expect((forkBtn as HTMLButtonElement).disabled).toBe(true);
+    const forkBtn = await openForkItem();
+    expect(isItemDisabled(forkBtn)).toBe(true);
   });
 
   it("is disabled while the conversation is streaming", async () => {
@@ -1043,16 +1055,16 @@ describe("SidebarChat — Fork chat button", () => {
 
     await renderSidebarChatActions();
 
-    const forkBtn = screen.getByLabelText("Fork chat");
-    expect((forkBtn as HTMLButtonElement).disabled).toBe(true);
+    const forkBtn = await openForkItem();
+    expect(isItemDisabled(forkBtn)).toBe(true);
   });
 
   it("is enabled when serverConversationId exists and not streaming", async () => {
     mockStoreState = withServerConversation();
     await renderSidebarChatActions();
 
-    const forkBtn = screen.getByLabelText("Fork chat");
-    expect((forkBtn as HTMLButtonElement).disabled).toBe(false);
+    const forkBtn = await openForkItem();
+    expect(isItemDisabled(forkBtn)).toBe(false);
   });
 
   it("click: issues GET then POST, seeds store with forkedFromShareId + ephemeralSeedCount, replaceStates ?chat= to fork id", async () => {
@@ -1062,8 +1074,9 @@ describe("SidebarChat — Fork chat button", () => {
 
     await renderSidebarChatActions();
 
+    const forkItem = await openForkItem();
     await act(async () => {
-      fireEvent.click(screen.getByLabelText("Fork chat"));
+      fireEvent.click(forkItem);
     });
 
     // 1. GET was called first
@@ -1102,8 +1115,9 @@ describe("SidebarChat — Fork chat button", () => {
 
     await renderSidebarChatActions();
 
+    const forkItem = await openForkItem();
     await act(async () => {
-      fireEvent.click(screen.getByLabelText("Fork chat"));
+      fireEvent.click(forkItem);
     });
 
     const [, , url] = replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1] as [unknown, unknown, string];
@@ -1138,10 +1152,8 @@ describe("SidebarChat — Fork chat button", () => {
     mockStoreState = withServerConversation();
     await renderSidebarChatActions();
 
-    const forkBtn = screen.getByLabelText("Fork chat");
-
     // First click — fork in-flight
-    fireEvent.click(forkBtn);
+    fireEvent.click(await openForkItem());
 
     // Flush microtasks so the GET resolves and the POST is initiated,
     // which assigns resolveFork and causes React to re-render with
@@ -1150,9 +1162,11 @@ describe("SidebarChat — Fork chat button", () => {
       await new Promise((r) => setTimeout(r, 0));
     });
 
-    // Second click while in-flight — button is disabled (isForking=true),
+    // Second click while in-flight — the item is disabled (isForking=true),
     // and handleFork's own guard also returns early.
-    fireEvent.click(forkBtn);
+    const second = await openForkItem();
+    expect(isItemDisabled(second)).toBe(true);
+    fireEvent.click(second);
 
     // Resolve the slow POST
     await act(async () => {
@@ -1173,8 +1187,9 @@ describe("SidebarChat — Fork chat button", () => {
 
     const { toast } = await import("sonner");
 
+    const forkItem = await openForkItem();
     await act(async () => {
-      fireEvent.click(screen.getByLabelText("Fork chat"));
+      fireEvent.click(forkItem);
     });
 
     expect(startConversationMock).not.toHaveBeenCalled();
@@ -1476,5 +1491,82 @@ describe("SidebarChat — edit a stopped turn and send it again", () => {
 
     expect(mockSetEditingTurn).toHaveBeenCalledWith("conv-1", null);
     expect(textarea.value).toBe("");
+  });
+});
+
+// ── Layout B header / composer placement ──────────────────────────────────────
+
+describe("SidebarChat — header & composer layout", () => {
+  const conv = (extras?: Record<string, unknown>) =>
+    ({
+      activeConversationId: "conv-1",
+      conversations: {
+        "conv-1": {
+          messages: [{ id: "m1", role: "user", content: "hello", timestamp: new Date() }],
+          isLoading: false,
+          isStreaming: false,
+          activeToolCalls: [],
+          serverConversationId: "srv-1",
+          context: { orgId: "o1", githubLogin: "test-org" },
+          ...extras,
+        },
+      },
+      artifacts: {},
+      dismissedArtifactIds: {},
+      pendingInputDraft: null,
+      pendingInputAppend: null,
+    }) as typeof mockStoreState;
+
+  beforeEach(() => {
+    vi.resetModules();
+    mockIsActive = false;
+  });
+
+  it("shows a labelled Share button, disabled without a server conversation", async () => {
+    mockStoreState = conv({ serverConversationId: null });
+    await renderSidebarChatActions();
+    const share = screen.getByLabelText("Copy share link") as HTMLButtonElement;
+    expect(share.textContent).toContain("Share");
+    expect(share.disabled).toBe(true);
+  });
+
+  it("header has no Stop button, even while a run is active", async () => {
+    mockStoreState = conv({ runActive: true });
+    await renderSidebarChatActions();
+    expect(screen.queryByLabelText("Stop")).toBeNull();
+    expect(screen.queryByLabelText("Agent settings")).toBeNull();
+  });
+
+  it("⋯ menu holds Fork, Concept-tree prompt and Automations; no Auto-respond anywhere", async () => {
+    mockStoreState = conv();
+    const { container } = await renderSidebarChatActions();
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("More actions"));
+    expect(await screen.findByRole("menuitem", { name: /Fork into my copy/ })).toBeTruthy();
+    const toggle = screen.getByRole("menuitemcheckbox", { name: /Concept-tree prompt/ });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByText("Agent settings")).toBeNull();
+    // Toggling keeps the menu open and flips the state.
+    await user.click(toggle);
+    expect(screen.getByRole("menuitemcheckbox", { name: /Concept-tree prompt/ }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("menuitem", { name: /Fork into my copy/ })).toBeTruthy();
+    await user.click(screen.getByRole("menuitem", { name: /^Automations$/ }));
+    expect(await screen.findByTestId("automations-section")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Auto-respond/i);
+    expect(container.textContent).not.toMatch(/Auto-respond/i);
+  });
+
+  it("hideNewChat removes the header New chat button", async () => {
+    mockStoreState = conv();
+    const { SidebarChatActions } = await import("@/app/org/[githubLogin]/_components/SidebarChat");
+    render(<SidebarChatActions githubLogin="test-org" hideNewChat />);
+    expect(screen.queryByLabelText("New chat")).toBeNull();
+  });
+
+  it("composer shows Stop (not Send) while a run is active", async () => {
+    mockStoreState = conv({ runActive: true });
+    await renderSidebarChat();
+    expect(screen.getByLabelText("Stop")).toBeTruthy();
+    expect(screen.queryByLabelText("Send")).toBeNull();
   });
 });

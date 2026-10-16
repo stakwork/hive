@@ -13,7 +13,9 @@ import { healUserChatAgentModel } from "@/lib/ai/resolve-model";
  * - `chatAgentModel` — the per-user default model for the canvas Agent
  *   chat, in `getModelValue()` "provider/name" form. Null = inherit the
  *   admin-configured default.
- * Both are edited from the gear menu on the canvas Agent chat panel.
+ * `chatAgentModel` is edited from the model picker in the canvas Agent
+ * composer. No UI edits `canvasAutonomousTurns` any more; the field and its
+ * runtime gate remain.
  */
 
 /** GET /api/user/preferences — read the current user's preferences. */

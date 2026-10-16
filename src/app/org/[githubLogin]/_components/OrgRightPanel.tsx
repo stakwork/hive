@@ -8,7 +8,7 @@ import { Layers, MousePointerClick, PanelLeftOpen, PanelRightClose, PanelRightOp
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { NodeDetail } from "./NodeDetail";
 import { MultiNodeDetail } from "./MultiNodeDetail";
-import { SidebarChat, SidebarChatActions, TokenCounter } from "./SidebarChat";
+import { NewChatButton, SidebarChat, SidebarChatActions } from "./SidebarChat";
 import type { InternalEdge } from "../connections/OrgCanvasBackground";
 import { useAutomationInbox, type InboxRun } from "../_state/useAutomationInbox";
 import { formatRelativeTime } from "./CanvasHistoryPopover";
@@ -105,8 +105,9 @@ export function OrgRightPanel({
         !chatsView && (artifactOpen ? "border-l border-transparent" : "border-l"),
       )}
     >
-      {/* One bar, the same height as the chat list's header across the divider. */}
-      <div className="flex h-11 shrink-0 items-stretch border-b text-sm">
+      {/* One bar, the same height as the chat list's header across the divider. It is a
+          container: the actions collapse (Share → icon-only) by the bar's own width. */}
+      <div className="@container flex h-11 shrink-0 items-stretch overflow-hidden border-b text-sm">
         {chatsView ? (
           <div className="flex min-w-0 items-center gap-1 pl-2">
             {chatsView.onShowList && (
@@ -114,10 +115,12 @@ export function OrgRightPanel({
                 <PanelLeftOpen className="h-4 w-4" />
               </ToolbarButton>
             )}
+            {/* The chat list's header has New chat; with the list hidden it moves here. */}
+            {chatsView.onShowList && <NewChatButton githubLogin={githubLogin} />}
             <ChatTitle />
           </div>
         ) : (
-          <div className="flex items-stretch pl-1">
+          <div className="flex shrink-0 items-stretch pl-0 @[22rem]:pl-1">
             <TabButton label="Chat" isActive={activeTab === "chat"} onClick={() => setTab("chat")} />
             {count > 0 && (
               <Popover open={inboxOpen} onOpenChange={setInboxOpen}>
@@ -166,11 +169,10 @@ export function OrgRightPanel({
             />
           </div>
         )}
-        <div className="ml-auto flex items-center gap-1 pr-2">
-          {/* Kept mounted: its settings popover and activity hook fetch on mount. */}
+        <div className="ml-auto flex shrink-0 items-center gap-0 pl-1 pr-1 @[22rem]:gap-1 @[22rem]:pr-2">
+          {/* Kept mounted: its activity hook fetches on mount. */}
           <div className={cn("flex items-center", activeTab !== "chat" && "hidden")}>
-            <TokenCounter />
-            <SidebarChatActions githubLogin={githubLogin} hideHistory={!!chatsView} />
+            <SidebarChatActions githubLogin={githubLogin} hideHistory={!!chatsView} hideNewChat={!!chatsView} />
           </div>
           {chatsView && <ArtifactsToggle />}
         </div>
@@ -275,7 +277,8 @@ function TabButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "px-4 py-2.5 font-medium transition-colors flex items-center justify-center gap-1.5",
+        // Tight below the header's 22rem container breakpoint so both tabs fit a ~190px panel.
+        "px-1 py-2.5 text-xs @[22rem]:px-4 @[22rem]:text-sm font-medium transition-colors flex items-center justify-center gap-1.5",
         "border-b-2 -mb-[1px]",
         isActive
           ? "border-foreground text-foreground"
