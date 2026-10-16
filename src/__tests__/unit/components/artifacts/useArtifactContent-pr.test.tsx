@@ -30,6 +30,8 @@ vi.mock(
 
 const mockFetch = vi.fn();
 
+import { useCanvasChatStore } from "@/app/org/[githubLogin]/_state/canvasChatStore";
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function wrapper() {
@@ -265,5 +267,37 @@ describe("useArtifactContent — pull_request live polling", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
     // Only one network request should be made despite two hook calls.
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useArtifactContent — conversationId on the live read", () => {
+  afterEach(() => {
+    useCanvasChatStore.setState({ activeConversationId: null, conversations: {} });
+  });
+
+  it("carries the active chat's serverConversationId", async () => {
+    useCanvasChatStore.setState({
+      activeConversationId: "local-1",
+      conversations: { "local-1": { serverConversationId: "srv-9" } as never },
+    });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify(LIVE), { status: 200 }));
+    const { Wrapper } = wrapper();
+    const { useArtifactContent } = await import("@/app/org/[githubLogin]/_components/artifacts/useArtifactContent");
+    renderHook(() => useArtifactContent(prRef()), { wrapper: Wrapper });
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    expect(mockFetch.mock.calls[0][0]).toContain("conversationId=srv-9");
+  });
+
+  it("omits it for an unsaved chat", async () => {
+    useCanvasChatStore.setState({
+      activeConversationId: "local-1",
+      conversations: { "local-1": { serverConversationId: null } as never },
+    });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify(LIVE), { status: 200 }));
+    const { Wrapper } = wrapper();
+    const { useArtifactContent } = await import("@/app/org/[githubLogin]/_components/artifacts/useArtifactContent");
+    renderHook(() => useArtifactContent(prRef()), { wrapper: Wrapper });
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    expect(mockFetch.mock.calls[0][0]).not.toContain("conversationId");
   });
 });
