@@ -17,7 +17,9 @@
  * job's conversation over Pusher (`CANVAS_JOB_UPDATE`), where the working
  * card and the claims card show it live; and when a Verify ends (`kind:
  * "verify", state: "done"`) it publishes the claims card's next version,
- * which a detached Verify (`verifyJobClaims`) left to this moment.
+ * which a detached Verify (`verifyJobClaims`) left to this moment — only
+ * for a Verify a person started (`publishVerifiedVersion` decides); the
+ * job's agent verifying its own turn ends without a row.
  *
  * Security mirrors the run webhook: a rate limit before any lookup, the
  * bearer token in the query string (strut sends no custom headers),

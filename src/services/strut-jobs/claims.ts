@@ -20,7 +20,11 @@
  *   person's acceptance criterion; the job's agent may hang its instrument
  *   on it). Each re-reads the ledger and publishes a NEW VERSION of the card
  *   as a quiet `job_claims` row (`appendJobClaimsRow`), so the conversation
- *   is the record. A rejection with a note is the one that goes further:
+ *   is the record — a Verify's line says what it changed against the card
+ *   the conversation showed (`describeVerify`). Only the person's actions
+ *   publish one: a pass the job's agent runs on its own turn ends without a
+ *   row (`takePersonVerify`), the turn's row brings the card. A rejection
+ *   with a note is the one that goes further:
  *   the slot is filled first, then the note is the job's next turn,
  *   `[claim-event] refuted "<claim>": <note>` (`formatClaimEvent`), through
  *   the same launch as an artifact event — that turn's reply brings the
@@ -29,7 +33,9 @@
 
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { claimNeedsLook, parseJobClaims, type ArtifactRef, type JobClaim } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
+import { redis } from "@/lib/redis";
+import { withMcpTimeout } from "@/lib/ai/mcpTimeout";
+import { claimNeedsLook, parseArtifactContent, parseJobClaims, type ArtifactRef, type JobClaim } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { JOB_TURN_KIND, formatClaimEvent, jobTitleOf } from "@/lib/strut-jobs";
 import { STRUT_ACTOR_HEADER, resolveStrutActor } from "@/services/bifrost/strut-delegation";
 import { labForRow, type StrutRunRow } from "@/services/strut-runs";
@@ -115,6 +121,26 @@ export function summarizeClaims(claims: JobClaim[]): string {
     looks ? `${looks} ${looks === 1 ? "needs" : "need"} a look` : "",
   ].filter(Boolean);
   return parts.join(", ");
+}
+
+/** A claim as its pill reads: its status, or that it waits on a person. */
+const standing = (claim: JobClaim): string => (claimNeedsLook(claim) ? "needs a look" : claim.status);
+
+const quoted = (text: string): string => `"${text.length > 60 ? `${text.slice(0, 59).trimEnd()}…` : text}"`;
+
+/**
+ * A Verify's line in the chat: what it changed against the card the chat
+ * showed (`before`) — `"<claim>" unknown → supported` — or that it changed
+ * nothing; the tally only when there is no card to compare with. Pure.
+ */
+export function describeVerify(on: string, before: JobClaim[] | null, after: JobClaim[]): string {
+  const tally = summarizeClaims(after) || "no claims";
+  if (!before) return `Verified ${on}: ${tally}.`;
+  const was = new Map(before.map((c) => [c.id, standing(c)]));
+  const changes = after.flatMap((c) => (was.get(c.id) === standing(c) ? [] : [`${quoted(c.text)} ${was.get(c.id) ?? "new"} → ${standing(c)}`]));
+  if (changes.length === 0) return `Verified ${on}: no change (${tally}).`;
+  const shown = changes.slice(0, 3);
+  return `Verified ${on}: ${shown.join("; ")}${changes.length > shown.length ? `; ${changes.length - shown.length} more changed` : ""}.`;
 }
 
 /** The card as a ref. Pure. */
@@ -265,22 +291,82 @@ async function jobHasLiveUpdates(jobId: string): Promise<boolean> {
 }
 
 /**
+ * A detached Verify a person started, until its pass ends. strut reports
+ * the end of EVERY pass over the job (`verify / done`) — the job's agent
+ * verifying its own turn too, which the turn's row already carries — so
+ * the end publishes a version only when one of these is waiting.
+ */
+const personVerifyKey = (jobId: string): string => `strut-job:person-verify:${jobId}`;
+/** Longer than any pass (`VERIFY_TIMEOUT_MS`); bounds a mark whose end never came. */
+const PERSON_VERIFY_TTL_SECS = 1800;
+/** ioredis queues commands while it reconnects; an unreachable Redis must not hold a click. */
+const REDIS_OP_TIMEOUT_MS = 1500;
+
+/** Mark a person's detached Verify; false when Redis could not take it. */
+async function markPersonVerify(jobId: string): Promise<boolean> {
+  try {
+    await withMcpTimeout(() => redis.set(personVerifyKey(jobId), "1", "EX", PERSON_VERIFY_TTL_SECS), REDIS_OP_TIMEOUT_MS);
+    return true;
+  } catch (err) {
+    logger.warn("Person Verify not marked — waiting on the pass instead", LOG_TAG, { jobId, error: err instanceof Error ? err.message : String(err) });
+    return false;
+  }
+}
+
+/** Take the mark: whether a person's Verify was waiting on this end. */
+async function takePersonVerify(jobId: string): Promise<boolean> {
+  try {
+    return (await withMcpTimeout(() => redis.del(personVerifyKey(jobId)), REDIS_OP_TIMEOUT_MS)) > 0;
+  } catch (err) {
+    logger.warn("Person Verify mark unreadable — publishing nothing", LOG_TAG, { jobId, error: err instanceof Error ? err.message : String(err) });
+    return false;
+  }
+}
+
+/** The claims the job's conversation shows now — its card's newest version — for what a Verify changed. Null when it shows none or cannot be read. */
+async function shownClaims(conversationId: string | null, jobId: string): Promise<JobClaim[] | null> {
+  if (!conversationId) return null;
+  try {
+    const row = await db.sharedConversation.findUnique({ where: { id: conversationId }, select: { messages: true } });
+    const messages: unknown[] = Array.isArray(row?.messages) ? row.messages : [];
+    const id = claimsArtifactId(jobId);
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      const artifacts: unknown[] = isRecord(m) && Array.isArray(m.artifacts) ? m.artifacts : [];
+      const card = artifacts.findLast((a): a is Record<string, unknown> => isRecord(a) && a.id === id && a.kind === "claims");
+      if (card) return parseArtifactContent("claims", isRecord(card.source) ? card.source.content : undefined)?.claims ?? null;
+    }
+    return null;
+  } catch (err) {
+    logger.warn("Job conversation unreadable — the Verify line falls back to the tally", LOG_TAG, { jobId, error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
+}
+
+/**
  * Verify: every check on every claim against the job's newest turn, now —
  * the person's door two (strut `POST /jobs/:id/verify`) — then the card's
- * next version with each check's outcome on this pass.
+ * next version with each check's outcome on this pass, its line saying
+ * what changed (`describeVerify`).
  *
- * DETACHED when the job's live updates reach hive (`jobHasLiveUpdates`):
- * strut answers at once (`started`), each check's evidence streams to the
+ * DETACHED when the job's live updates reach hive (`jobHasLiveUpdates`)
+ * and the Verify is marked as the person's (`markPersonVerify`): strut
+ * answers at once (`started`), each check's evidence streams to the
  * conversation as it lands, and the events route publishes the card when
  * the pass ends (`publishVerifiedVersion`). Otherwise — a job whose newest
- * turn predates that, or a strut that does not detach — the pass is waited
- * on here, as before.
+ * turn predates that, a mark Redis could not take, or a strut that does
+ * not detach — the pass is waited on here, as before.
  */
 export async function verifyJobClaims(first: JobClaimsOwner, jobId: string): Promise<{ card: ArtifactRef | null; summary: string; started?: true }> {
   const { lab, headers } = await ownerLab(first);
-  const detach = await jobHasLiveUpdates(jobId);
-  const result = await labWrite(lab, headers, `/jobs/${encodeURIComponent(jobId)}/verify`, detach ? { detach: true } : {}, VERIFY_TIMEOUT_MS);
+  const detach = (await jobHasLiveUpdates(jobId)) && (await markPersonVerify(jobId));
+  const result = await labWrite(lab, headers, `/jobs/${encodeURIComponent(jobId)}/verify`, detach ? { detach: true } : {}, VERIFY_TIMEOUT_MS).catch(async (err) => {
+    if (detach) await takePersonVerify(jobId);
+    throw err;
+  });
   if (result.started === true) return { card: null, summary: "", started: true };
+  // A strut that ignored detach answered with the pass: published here, so its end must not publish too.
+  if (detach) await takePersonVerify(jobId);
   const turn = typeof result.runId === "string" && result.runId ? result.runId : null;
   if (!turn) throw new JobClaimsError(409, "The job has no turn to verify yet.");
   // The pass's own ledger carries each check's outcome on it; the listing adds the speaker and the slots.
@@ -294,23 +380,29 @@ export async function verifyJobClaims(first: JobClaimsOwner, jobId: string): Pro
   const claims = mergeClaims(result.claims, isRecord(listing) ? listing.claims : undefined);
   const summary = summarizeClaims(claims);
   const turns = await jobTurnNumbers(jobId, [turn]);
-  const card = await publishVersion(first, jobId, lab, { turn, claims, content: `Verified the job's claims on ${turnLabel(turns, turn)}: ${summary}.` });
+  const before = await shownClaims(first.conversationId, jobId);
+  const card = await publishVersion(first, jobId, lab, { turn, claims, content: describeVerify(turnLabel(turns, turn), before, claims) });
   return { card, summary };
 }
 
 /**
- * A detached Verify ended (`verify / done` on the events route): the card's
- * next version from the ledger as it is now. The ledger read after the pass
- * carries each claim's verdict, not each check's outcome on it — the live
- * events showed those as they landed.
+ * A pass over the job ended (`verify / done` on the events route). Only a
+ * detached Verify a person started (`takePersonVerify`) publishes: the
+ * card's next version from the ledger as it is now, its line saying what
+ * changed. A pass the job's agent ran on its own turn publishes nothing —
+ * that turn's row brings the card when it lands. The ledger read after the
+ * pass carries each claim's verdict, not each check's outcome on it — the
+ * live events showed those as they landed.
  */
 export async function publishVerifiedVersion(first: JobClaimsOwner, jobId: string, turn: string | null): Promise<ArtifactRef | null> {
+  if (!(await takePersonVerify(jobId))) return null;
   const lab = await labForRow(first);
   if (!lab) return null;
   const claims = await readJobClaims(lab, jobId);
   if (!claims) return null;
   const on = turn ? turnLabel(await jobTurnNumbers(jobId, [turn]), turn) : "the newest turn";
-  return publishVersion(first, jobId, lab, { turn, claims, content: `Verified the job's claims on ${on}: ${summarizeClaims(claims)}.` });
+  const before = await shownClaims(first.conversationId, jobId);
+  return publishVersion(first, jobId, lab, { turn, claims, content: describeVerify(on, before, claims) });
 }
 
 export interface ClaimAnswer {
