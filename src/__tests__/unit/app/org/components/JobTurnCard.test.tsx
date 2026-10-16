@@ -318,6 +318,16 @@ describe("JobEventRow", () => {
     expect(screen.getByTestId("job-event-row").textContent).toBe("Job · something else");
     expect(screen.queryByRole("link")).toBeNull();
   });
+
+  test("a captcha answer is a short row — the count of taps, or the length of the text, never the text", () => {
+    const taps = eventRow("e1", { content: '[captcha-answer] {"round":1,"site":"a.com","taps":[{"nx":0.1,"ny":0.1},{"nx":0.5,"ny":0.5},{"nx":0.9,"ny":0.9}]}' });
+    const { unmount } = render(<JobEventRow message={taps} source={taps.source as JobEventSource} />);
+    expect(screen.getByTestId("job-event-row").textContent).toBe("Dark mode plan · Captcha answer: 3 taps");
+    unmount();
+    const text = eventRow("e2", { content: '[captcha-answer] {"round":1,"site":"a.com","text":"SecretAb"}' });
+    render(<JobEventRow message={text} source={text.source as JobEventSource} />);
+    expect(screen.getByTestId("job-event-row").textContent).toBe("Dark mode plan · Captcha answer: text (8 chars)");
+  });
 });
 
 describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-artifacts.md)", () => {

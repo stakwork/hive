@@ -186,6 +186,13 @@ describe("parseStrutArtifacts", () => {
 });
 
 describe("mapStrutArtifacts", () => {
+  it("a captcha with a strut-relative manifest url maps to a captcha graph ref", () => {
+    const url = `/jobs/${JOB}/files/captcha/001/captcha.json`;
+    const { refs, dropped } = mapStrutArtifacts([entry({ id: "captcha", kind: "captcha", title: "Captcha", url })], "swarm-1");
+    expect(dropped).toEqual([]);
+    expect(refs).toEqual([{ id: "captcha", kind: "captcha", title: "Captcha", source: { type: "graph", swarmId: "swarm-1", key: url } }]);
+  });
+
   it("a tree card the agent copied under another kind maps to graph; unrelated json stays json", () => {
     const obj = { workspace: "hive", focus: "1d184bca-d7fd-4754-9977-f38d69d3f88f", layout: "tree" };
     const { refs, dropped } = mapStrutArtifacts(
