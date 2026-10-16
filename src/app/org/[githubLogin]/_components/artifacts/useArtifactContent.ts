@@ -12,6 +12,7 @@ import {
   type ArtifactRef,
   type ArtifactSource,
 } from "../../_state/canvasChatArtifacts";
+import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import { useChatOrgLogin } from "./useArtifactPanel";
 
 /**
@@ -141,10 +142,16 @@ interface PrLiveTarget {
  * (`api/orgs/[githubLogin]/strut/pull-request`). Null when the ref does not
  * name a pull request by repo and number.
  */
-function prLiveTarget(githubLogin: string, inline: Record<string, unknown>): PrLiveTarget | null {
+function prLiveTarget(
+  githubLogin: string,
+  inline: Record<string, unknown>,
+  conversationId?: string | null,
+): PrLiveTarget | null {
   const { repo, number } = inline;
   if (typeof repo !== "string" || !repo || typeof number !== "number" || !Number.isInteger(number)) return null;
   const sp = new URLSearchParams({ repo, number: String(number) });
+  // Lets the route write the live state back onto this chat's stored ref. Not part of the query key.
+  if (conversationId) sp.set("conversationId", conversationId);
   return { url: `/api/orgs/${encodeURIComponent(githubLogin)}/strut/pull-request?${sp}`, repo, number };
 }
 
@@ -178,6 +185,9 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
   const githubLogin = useChatOrgLogin();
   const queryClient = useQueryClient();
   const { kind, source } = artifact;
+  const conversationId = useCanvasChatStore((s) =>
+    s.activeConversationId ? (s.conversations[s.activeConversationId]?.serverConversationId ?? null) : null,
+  );
 
   // Content on the ref needs no round trip, and so no loading state.
   const inline = useMemo(
@@ -196,9 +206,9 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
   const prTarget = useMemo(
     () =>
       kind === "pull_request" && source.type === "inline"
-        ? prLiveTarget(githubLogin, source.content)
+        ? prLiveTarget(githubLogin, source.content, conversationId)
         : null,
-    [kind, source, githubLogin],
+    [kind, source, githubLogin, conversationId],
   );
 
   const prLiveQuery = useQuery({

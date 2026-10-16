@@ -14,7 +14,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
-const { mockResolveAuthorizedOrgId, mockGetUserAppTokens, mockGetPullRequestStatus } = vi.hoisted(() => ({
+const { mockResolveAuthorizedOrgId, mockGetUserAppTokens, mockGetPullRequestStatus, mockReconcile } = vi.hoisted(() => ({
+  mockReconcile: vi.fn(),
   mockResolveAuthorizedOrgId: vi.fn(),
   mockGetUserAppTokens: vi.fn(),
   mockGetPullRequestStatus: vi.fn(),
@@ -28,6 +29,7 @@ class FakeOctokit {
 vi.mock("@octokit/rest", () => ({ Octokit: FakeOctokit }));
 vi.mock("@/lib/auth/org-access", () => ({ resolveAuthorizedOrgId: mockResolveAuthorizedOrgId }));
 vi.mock("@/lib/githubApp", () => ({ getUserAppTokens: mockGetUserAppTokens }));
+vi.mock("@/services/orgs/reconcile-chat-pull-request", () => ({ reconcileChatPullRequestState: mockReconcile }));
 vi.mock("@/lib/github/pullRequestStatus", () => ({ getPullRequestStatus: mockGetPullRequestStatus }));
 
 const { GET } = await import("@/app/api/orgs/[githubLogin]/strut/pull-request/route");
@@ -64,6 +66,7 @@ beforeEach(() => {
   mockResolveAuthorizedOrgId.mockResolvedValue("org-1");
   mockGetUserAppTokens.mockResolvedValue({ accessToken: "tok-viewer" });
   mockGetPullRequestStatus.mockResolvedValue(LIVE_STATUS);
+  mockReconcile.mockResolvedValue({ updated: 1 });
 });
 
 describe("GET /api/orgs/[githubLogin]/strut/pull-request", () => {
@@ -137,5 +140,37 @@ describe("GET /api/orgs/[githubLogin]/strut/pull-request", () => {
   it("502 on other GitHub API errors", async () => {
     mockGetPullRequestStatus.mockRejectedValue(new Error("rate limited"));
     expect((await GET(request(GOOD_QUERY), params)).status).toBe(502);
+  });
+});
+
+describe("conversationId reconcile", () => {
+  it("reconciles with GitHub's state when conversationId is given", async () => {
+    mockGetPullRequestStatus.mockResolvedValue({ ...LIVE_STATUS, state: "merged" });
+    const res = await GET(request({ ...GOOD_QUERY, conversationId: "conv-1" }), params);
+    expect(res.status).toBe(200);
+    expect(mockReconcile).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      orgId: "org-1",
+      userId: "user-1",
+      repo: "acme/app",
+      number: 7,
+      state: "merged",
+    });
+  });
+
+  it("does not reconcile without conversationId", async () => {
+    await GET(request(GOOD_QUERY), params);
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  it("a throwing reconcile still returns 200 with the same body", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockReconcile.mockRejectedValue(new Error("db down"));
+    const res = await GET(request({ ...GOOD_QUERY, conversationId: "conv-1" }), params);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(LIVE_STATUS);
+    expect(res.headers.get("Cache-Control")).toBe("private, max-age=15");
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
