@@ -8,6 +8,7 @@ import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { useLatestUpdateFor } from "../../../_state/jobLiveStore";
 import { useChatOrgLogin } from "../useArtifactPanel";
 import { PanelToolbar } from "../chrome";
+import { PlayMark } from "./media";
 import { parseWalkthroughManifest, type WalkthroughManifest } from "../walkthroughManifest";
 
 /**
@@ -187,8 +188,8 @@ function Unavailable() {
   return <p className="px-3 py-6 text-center text-xs text-muted-foreground">This recording could not be loaded.</p>;
 }
 
-/** The card's preview: the newest frame (or the one picked), its caption, a slider — operable in place. */
-export function WalkthroughInline({ content }: ArtifactViewerProps<"walkthrough">) {
+/** The recording small — the newest frame (or the one picked), its caption, a slider — operated in place; a claim's evidence on the claims panel. */
+export function WalkthroughCompact({ content }: ArtifactViewerProps<"walkthrough">) {
   const loaded = useWalkthrough(content.swarmId, content.key);
   if (loaded.status === "loading") return <p className="px-3 py-4 text-xs text-muted-foreground">Loading…</p>;
   if (loaded.status === "failed") return <Unavailable />;
@@ -216,5 +217,24 @@ export function WalkthroughPanel({ content }: ArtifactViewerProps<"walkthrough">
         <p className="px-3 pb-3 text-xs text-rose-600 dark:text-rose-400">{manifest.failed.join(" · ")}</p>
       )}
     </div>
+  );
+}
+
+/** The recording's newest frame, for the chat's strip; it plays in the panel. */
+export function WalkthroughThumb({ content }: ArtifactViewerProps<"walkthrough">) {
+  const githubLogin = useChatOrgLogin();
+  const loaded = useWalkthrough(content.swarmId, content.key);
+  const frame = loaded.status === "ready" ? loaded.manifest.frames.at(-1) : undefined;
+  if (!frame) return null;
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={strutArtifactReaderUrl(githubLogin, content.swarmId, frame.key)}
+        alt={frame.caption}
+        className="h-full w-full object-cover"
+      />
+      <PlayMark />
+    </>
   );
 }

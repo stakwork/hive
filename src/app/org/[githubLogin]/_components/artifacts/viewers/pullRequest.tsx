@@ -20,10 +20,8 @@ import type {
   PullRequestState,
 } from "../../../_state/canvasChatArtifacts";
 import { ScrollFade } from "../chrome";
-import { MultiFileDiffView, parseDiffs } from "../diff";
-import { plural } from "../lines";
+import { MultiFileDiffView } from "../diff";
 import { useChatOrgLogin } from "../useArtifactPanel";
-import { LineCounts } from "./diff";
 
 /** GitHub's colours for a pull request's state — the ones the task page's pull request card wears. */
 export const PULL_REQUEST_STATE: Record<PullRequestState, { label: string; Icon: LucideIcon; color: string }> = {
@@ -65,36 +63,6 @@ function CheckMark({ status }: { status: PullRequestCheck["status"] }) {
         status === "success" ? "bg-green-500" : "border border-muted-foreground/50",
       )}
     />
-  );
-}
-
-export function PullRequestInline({ content }: ArtifactViewerProps<"pull_request">) {
-  const state = PULL_REQUEST_STATE[content.state];
-  const files = useMemo(() => (content.diffs?.length ? parseDiffs(content.diffs) : null), [content.diffs]);
-  const passed = passedOfRan(content.checks);
-  const fromTo = branches(content);
-  return (
-    <div className="space-y-1.5 px-3 py-2.5 text-xs">
-      <div className="flex items-center gap-1.5">
-        <state.Icon aria-hidden className="h-3.5 w-3.5 shrink-0" style={{ color: state.color }} />
-        <span className="shrink-0 font-medium" style={{ color: state.color }}>
-          {state.label}
-        </span>
-        {fromTo && <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">{fromTo}</span>}
-      </div>
-      {(files || passed) && (
-        // Spaced, not dotted: in a narrow chat these wrap, and a separator would be left hanging at a line's end.
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
-          {files && (
-            <>
-              <LineCounts files={files} />
-              <span>{plural(files.length, "file")}</span>
-            </>
-          )}
-          {passed && <span>{passed} checks passed</span>}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -271,5 +239,20 @@ export function PullRequestPanel({ artifact, content, jobId }: ArtifactViewerPro
         </section>
       )}
     </ScrollFade>
+  );
+}
+
+/** The pull request's row in the chat: how many checks passed, then its state in GitHub's colours. */
+export function PullRequestRowMeta({ content }: ArtifactViewerProps<"pull_request">) {
+  const state = PULL_REQUEST_STATE[content.state];
+  const passed = passedOfRan(content.checks);
+  return (
+    <span className="flex items-center gap-2">
+      {passed && <span className="tabular-nums">{passed} checks</span>}
+      <span className="flex items-center gap-1" style={{ color: state.color }}>
+        <state.Icon aria-hidden className="h-3.5 w-3.5" />
+        {state.label}
+      </span>
+    </span>
   );
 }
