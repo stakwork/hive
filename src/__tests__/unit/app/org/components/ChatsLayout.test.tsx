@@ -6,7 +6,7 @@
  */
 import React from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 let mockSearch = "";
 let mockDeeplink: { canvasRef: string } | null = null;
@@ -30,7 +30,17 @@ vi.mock("@/app/org/[githubLogin]/_state/canvasChatStore", () => ({
 vi.mock("@/components/ui/resizable", () => ({
   ResizablePanelGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   ResizablePanel: React.forwardRef(function MockPanel(
-    { id, children, onCollapse }: { id: string; children?: React.ReactNode; onCollapse?: () => void },
+    {
+      id,
+      children,
+      onCollapse,
+      onTransitionEnd,
+    }: {
+      id: string;
+      children?: React.ReactNode;
+      onCollapse?: () => void;
+      onTransitionEnd?: React.TransitionEventHandler;
+    },
     ref: React.Ref<unknown>,
   ) {
     const p = (panels[id] ??= {
@@ -48,12 +58,17 @@ vi.mock("@/components/ui/resizable", () => ({
       expand: p.expand,
       isCollapsed: () => p.collapsed,
     }));
-    return <div data-panel-id={id}>{children}</div>;
+    return (
+      <div data-panel-id={id} onTransitionEnd={onTransitionEnd}>
+        {children}
+      </div>
+    );
   }),
   ResizableHandle: ({ onDragging }: { onDragging?: (dragging: boolean) => void }) => {
     if (onDragging) dragHandlers.push(onDragging);
     return null;
   },
+  RESIZABLE_PANEL_TRANSITION: "",
 }));
 vi.mock("@/app/org/[githubLogin]/_components/control-panel/useControlPanel", () => ({ useControlPanel: () => ({}) }));
 vi.mock("@/app/org/[githubLogin]/_components/control-panel/ControlPanelList", () => ({ ControlPanelList: () => null }));
@@ -120,14 +135,16 @@ describe("ChatsLayout", () => {
     expect(panels["org-chats-list"].expand).not.toHaveBeenCalled();
   });
 
-  test("artifact content only renders while open", () => {
-    const { rerender } = render(layout());
+  test("artifact content renders while open, stays up while the pane eases shut, then unmounts", () => {
+    const { container, rerender } = render(layout());
     expect(screen.queryByText("artifact-content")).toBeNull();
     mockArtifactOpen = true;
     rerender(layout());
     expect(screen.getByText("artifact-content")).toBeTruthy();
     mockArtifactOpen = false;
     rerender(layout());
+    expect(screen.getByText("artifact-content")).toBeTruthy();
+    fireEvent.transitionEnd(container.querySelector('[data-panel-id="org-chats-artifact"]')!);
     expect(screen.queryByText("artifact-content")).toBeNull();
   });
 
