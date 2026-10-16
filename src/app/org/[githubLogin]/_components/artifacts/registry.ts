@@ -32,7 +32,7 @@ import { webAddress } from "./address";
 import { ClaimsPanel, ClaimsRowMeta } from "./viewers/claims";
 import { CodePanel } from "./viewers/code";
 import { DiffPanel, diffPatchText } from "./viewers/diff";
-import { GraphPanel } from "./viewers/graph";
+import { GraphPanel, GraphThumb } from "./viewers/graph";
 import { HtmlPanel } from "./viewers/html";
 import { JsonPanel } from "./viewers/json";
 import { LogPanel } from "./viewers/log";
@@ -40,7 +40,7 @@ import { MarkdownPanel, MarkdownPreview } from "./viewers/markdown";
 import { AudioPanel, ImagePanel, ImageThumb, VideoPanel, VideoThumb } from "./viewers/media";
 import { PdfPanel } from "./viewers/pdf";
 import { PullRequestPanel, PullRequestRowMeta } from "./viewers/pullRequest";
-import { RunGraphPanel } from "./viewers/runGraph";
+import { RunGraphPanel, RunGraphThumb } from "./viewers/runGraph";
 import { UrlPanel, UrlRowMeta } from "./viewers/url";
 import { WalkthroughPanel, WalkthroughThumb } from "./viewers/walkthrough";
 
@@ -49,13 +49,13 @@ import { WalkthroughPanel, WalkthroughThumb } from "./viewers/walkthrough";
  *
  * - `row` — something to act on or open (a pull request, claims, a pod or a
  *   page): one compact row, its state on the right.
- * - `media` — something to look at (a screenshot, a recording): a thumbnail
- *   in the message's strip.
+ * - `media` — something to look at (a screenshot, a recording, a graph): a
+ *   thumbnail in the message's strip.
  * - `preview` — something to read (a plan, a document): its first lines
  *   under its title.
  *
  * A kind with none folds into the message's "N more" line — reference
- * material the panel holds (logs, JSON, code, diffs, graph traces).
+ * material the panel holds (logs, JSON, code, diffs).
  */
 export type ChatPlacement<K extends ArtifactKind> =
   | {
@@ -172,6 +172,7 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
   graph: {
     label: "Graph",
     Icon: Network,
+    chat: { place: "media", Thumb: GraphThumb },
     Panel: GraphPanel,
     // The org page's graph view, on the same workspace and node.
     address: (content, githubLogin) => {
@@ -183,6 +184,7 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
   run_graph: {
     label: "Graph trace",
     Icon: Waypoints,
+    chat: { place: "media", Thumb: RunGraphThumb },
     Panel: RunGraphPanel,
   },
   // The row is the summary alone ("1 needs a look"); the claims themselves are on the panel.
