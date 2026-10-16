@@ -76,6 +76,8 @@ export async function readStrutArtifact(
     case "html":
     case "walkthrough":
       return { swarmId: source.swarmId, key: source.key };
+    case "captcha":
+      return { manifest: { swarmId: source.swarmId, key: source.key } };
     case "markdown":
     case "log":
     case "code":

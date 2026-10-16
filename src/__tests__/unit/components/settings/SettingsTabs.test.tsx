@@ -79,6 +79,11 @@ vi.mock("@/components/settings/NodeTypeOrderSettings", () => ({
     <div data-testid="node-type-order-settings">NodeTypeOrderSettings</div>
   ),
 }));
+vi.mock("@/components/settings/CaptchaSitesSettings", () => ({
+  CaptchaSitesSettings: () => (
+    <div data-testid="captcha-sites-settings">CaptchaSitesSettings</div>
+  ),
+}));
 vi.mock("@/components/settings/WorkspaceVisibilitySettings", () => ({
   WorkspaceVisibilitySettings: () => (
     <div data-testid="workspace-visibility-settings">WorkspaceVisibilitySettings</div>

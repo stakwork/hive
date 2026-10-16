@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { JobLiveStrip } from "./JobLiveStrip";
 import { Ban, Bot, Check, ChevronRight, CircleDashed, HelpCircle, Loader2, XCircle, Zap } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
-import { describeArtifactEvent, parseArtifactEvent, parseClaimEvent } from "@/lib/strut-jobs";
+import { CAPTCHA_ANSWER_PREFIX, describeArtifactEvent, describeCaptchaAnswer, parseArtifactEvent, parseCaptchaAnswer, parseClaimEvent } from "@/lib/strut-jobs";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 
 /**
@@ -203,7 +203,8 @@ function StatusPill({ look }: { look: JobTurnLook }) {
 export function JobEventRow({ message, source }: { message: Pick<CanvasChatMessage, "content">; source: JobEventSource }) {
   const event = parseArtifactEvent(message.content);
   const refuted = event ? null : parseClaimEvent(message.content);
-  const text = event ? describeArtifactEvent(event) : refuted ? `you rejected "${refuted.claim}": ${refuted.note}` : message.content.split("\n")[0];
+  const captcha = event || refuted ? null : parseCaptchaAnswer(message.content);
+  const text = event ? describeArtifactEvent(event) : captcha ? `Captcha answer: ${describeCaptchaAnswer(captcha)}` : refuted ? `you rejected "${refuted.claim}": ${refuted.note}` : message.content.startsWith(CAPTCHA_ANSWER_PREFIX) ? "Captcha answer" : message.content.split("\n")[0];
   return (
     <div
       data-testid="job-event-row"
