@@ -198,6 +198,66 @@ describe("the chat on stage", () => {
     const fresh = resolveControlPanelLists(items, archived, snapshot({ hasMessages: true }), opts);
     expect(fresh.displayItems.map((i) => i.id)).toEqual(["local-1", "a"]);
   });
+
+  test("a chat replying in the background keeps its row, working and current", () => {
+    const items = [chat("a", "2026-03-01T00:00:00Z"), chat("b", "2026-03-02T00:00:00Z")];
+    const archived = [chat("z", "2026-01-01T00:00:00Z", { archivedAt: "2026-02-01T00:00:00Z" })];
+    const base = { startedAt: "2026-03-05T00:00:00Z", titleForNew: "New" };
+    const background = (overrides: Partial<ActiveChatSnapshot>, title = "Standing in") => ({
+      chat: snapshot({ localId: "bg", hasMessages: true, isStreaming: true, ...overrides }),
+      title,
+      startedAt: "2026-03-05T01:00:00Z",
+    });
+
+    // Listed on the server: overlaid in place, so it is working and moves to its newest message.
+    const listed = resolveControlPanelLists(items, archived, snapshot({ serverId: "b" }), {
+      ...base,
+      backgroundChats: [background({ serverId: "a", lastMessageAt: "2026-03-05T02:00:00Z" })],
+    });
+    expect(listed.displayItems.map((i) => [i.id, i.working, i.lastActivityAt])).toEqual([
+      ["a", true, "2026-03-05T02:00:00Z"],
+      ["b", false, "2026-03-02T00:00:00Z"],
+    ]);
+
+    // Not listed yet: prepended as a stand-in, once, under its local id.
+    const fresh = resolveControlPanelLists(items, archived, snapshot({ serverId: "b" }), {
+      ...base,
+      backgroundChats: [
+        background({ lastMessageAt: "2026-03-05T02:00:00Z" }),
+        background({ lastMessageAt: "2026-03-05T02:00:00Z" }),
+      ],
+    });
+    expect(fresh.displayItems.map((i) => [i.id, i.title, i.working])).toEqual([
+      ["bg", "Standing in", true],
+      ["a", "Chat a", false],
+      ["b", "Chat b", false],
+    ]);
+
+    // Archived stays archived; the active chat is never doubled by a background entry; empty gets no row.
+    const inArchive = resolveControlPanelLists(items, archived, snapshot({ serverId: "b" }), {
+      ...base,
+      backgroundChats: [
+        background({ serverId: "z" }),
+        background({ serverId: "b" }),
+        background({ hasMessages: false, localId: "e" }),
+      ],
+    });
+    expect(inArchive.displayItems.map((i) => i.id)).toEqual(["a", "b"]);
+    expect(inArchive.displayArchivedItems.map((i) => [i.id, i.working])).toEqual([["z", true]]);
+
+    // A settled chat keeps a listed row current but does not stand in for an unlisted one.
+    const settled = resolveControlPanelLists(items, archived, snapshot({ serverId: "b" }), {
+      ...base,
+      backgroundChats: [
+        background({ serverId: "a", isStreaming: false, lastMessageAt: "2026-03-05T02:00:00Z" }),
+        background({ isStreaming: false, lastMessageAt: "2026-03-05T02:00:00Z" }),
+      ],
+    });
+    expect(settled.displayItems.map((i) => [i.id, i.working, i.lastActivityAt])).toEqual([
+      ["a", false, "2026-03-05T02:00:00Z"],
+      ["b", false, "2026-03-02T00:00:00Z"],
+    ]);
+  });
 });
 
 describe("archive and restore", () => {

@@ -90,7 +90,7 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
             <button
               type="button"
               aria-label="Conversation history"
-              className="p-1.5 rounded hover:bg-muted transition-colors"
+              className="p-1 @[22rem]:p-1.5 rounded hover:bg-muted transition-colors"
             >
               <History className="w-4 h-4" />
             </button>
