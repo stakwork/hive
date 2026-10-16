@@ -34,11 +34,11 @@ afterEach(() => vi.unstubAllGlobals());
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
 describe("walkthrough", () => {
-  test("the kind: a graph ref's content is where it is on the swarm; the preview is operated in place", () => {
+  test("the kind: a graph ref's content is where it is on the swarm; a thumbnail in the chat's strip", () => {
     expect(content).toEqual({ swarmId: "swarm-1", key: KEY });
     expect(parseArtifactContent("walkthrough", { swarmId: "swarm-1" })).toBeNull();
     expect(artifactKind("walkthrough").label).toBe("Walkthrough");
-    expect(artifactKind("walkthrough").inlineInteractive).toBe(true);
+    expect(artifactKind("walkthrough").chat?.place).toBe("media");
   });
 
   test("the panel reads the manifest through the reader, follows the newest frame, scrubs, and reads again on a new frame", async () => {
@@ -59,6 +59,61 @@ describe("walkthrough", () => {
     act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: "swarm-1", at: "t", kind: "walkthrough", url: KEY, state: "done", detail: { frames: 3 } }));
     await waitFor(() => expect(screen.getByTestId("walkthrough-count").textContent).toBe("1 / 3"));
     expect(screen.getByText("Done")).toBeTruthy();
+  });
+
+  test("every frame is mounted, hidden but the one showing, so scrubbing never waits on a load", async () => {
+    mockFetch.mockResolvedValueOnce(json(manifest(3, "done")));
+    render(<WalkthroughPanel artifact={artifact} content={content} />);
+    await screen.findByTestId("walkthrough-count");
+    const stacked = Array.from(screen.getByTestId("walkthrough").firstElementChild!.querySelectorAll("img"));
+    expect(stacked.map((img) => img.getAttribute("src"))).toEqual(
+      ["01.png", "02.png", "03.png"].map((f) => reader(`/jobs/${JOB}/files/walkthroughs/001/${f}`)),
+    );
+    expect(stacked.map((img) => img.getAttribute("aria-hidden"))).toEqual(["true", "true", null]);
+    expect(stacked.map((img) => img.getAttribute("loading"))).toEqual(["lazy", "lazy", "eager"]);
+
+    fireEvent.change(screen.getByLabelText("Frame"), { target: { value: "0" } });
+    expect(stacked.map((img) => img.getAttribute("aria-hidden"))).toEqual([null, "true", "true"]);
+  });
+
+  test("the bar is a segment per step, in two alternating blues, faded ahead of the frame showing", async () => {
+    mockFetch.mockResolvedValueOnce(json(manifest(3, "done")));
+    render(<WalkthroughPanel artifact={artifact} content={content} />);
+    await screen.findByTestId("walkthrough-count");
+    const segments = () => Array.from(screen.getByTestId("walkthrough-steps").children).map((s) => s.className);
+    expect(segments()).toHaveLength(2);
+    expect(segments()[0]).toContain("bg-blue-500");
+    expect(segments()[1]).toContain("bg-blue-400");
+    expect(segments().some((c) => c.includes("opacity-40"))).toBe(false);
+
+    fireEvent.change(screen.getByLabelText("Frame"), { target: { value: "1" } });
+    expect(segments().map((c) => c.includes("opacity-40"))).toEqual([false, true]);
+  });
+
+  test("play steps a frame every 800ms, starting over from the end, and stops on the last", async () => {
+    mockFetch.mockResolvedValueOnce(json(manifest(3, "done")));
+    render(<WalkthroughPanel artifact={artifact} content={content} />);
+    const count = await screen.findByTestId("walkthrough-count");
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      expect(count.textContent).toBe("1 / 3");
+      act(() => vi.advanceTimersByTime(799));
+      expect(count.textContent).toBe("1 / 3");
+      act(() => vi.advanceTimersByTime(1));
+      expect(count.textContent).toBe("2 / 3");
+
+      fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+      act(() => vi.advanceTimersByTime(2_000));
+      expect(count.textContent).toBe("2 / 3");
+
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      act(() => vi.advanceTimersByTime(800));
+      expect(count.textContent).toBe("3 / 3");
+      expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("a stopped recording says why under the frame it stopped on", async () => {

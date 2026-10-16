@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { strutArtifactReaderUrl } from "@/lib/strut-jobs";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { useLatestUpdateFor } from "../../../_state/jobLiveStore";
 import { useChatOrgLogin } from "../useArtifactPanel";
 import { PanelToolbar } from "../chrome";
+import { PlayMark } from "./media";
 import { parseWalkthroughManifest, type WalkthroughManifest } from "../walkthroughManifest";
 
 /**
@@ -20,7 +22,8 @@ import { parseWalkthroughManifest, type WalkthroughManifest } from "../walkthrou
 
 type Loaded = { status: "loading" } | { status: "failed" } | { status: "ready"; manifest: WalkthroughManifest };
 
-function useWalkthrough(swarmId: string, key: string): Loaded {
+/** The manifest at `key`, read again on each update the job reports for it. Key the caller by `key`: a failed re-read keeps what it had. */
+export function useWalkthrough(swarmId: string, key: string): Loaded {
   const githubLogin = useChatOrgLogin();
   // A new frame on this recording: read the manifest again.
   const tick = useLatestUpdateFor(key)?.receivedAt ?? 0;
@@ -45,13 +48,44 @@ function useWalkthrough(swarmId: string, key: string): Loaded {
 
 const STATUS_WORDS: Record<string, string> = { recording: "Recording…", done: "Done", stopped: "Stopped" };
 
-/** The frames, one at a time, with a slider and a strip to step through them. ← → step on the panel. */
+/** How long each frame shows while playing. */
+const STEP_MS = 800;
+
+/** The native range, drawn as a round thumb over the step bar behind it. */
+const RANGE = cn(
+  "relative block h-3 w-full cursor-pointer appearance-none rounded-full bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+  "[&::-webkit-slider-runnable-track]:h-3 [&::-webkit-slider-runnable-track]:bg-transparent",
+  "[&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-blue-500 [&::-webkit-slider-thumb]:bg-background [&::-webkit-slider-thumb]:shadow",
+  "[&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:bg-transparent",
+  "[&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-blue-500 [&::-moz-range-thumb]:bg-background [&::-moz-range-thumb]:shadow",
+);
+
+/**
+ * The frames, one at a time, with play, a slider and a strip to step through them. ← → step on the panel.
+ * Every frame is mounted, stacked and hidden but the one showing, so the
+ * browser has them all by the time the reader scrubs or plays to one.
+ */
 function Scrubber({ swarmId, manifest, compact }: { swarmId: string; manifest: WalkthroughManifest; compact?: boolean }) {
   const githubLogin = useChatOrgLogin();
   const count = manifest.frames.length;
   const [at, setAt] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
   // Following the newest frame until the reader picks one.
   const i = Math.min(at ?? count - 1, count - 1);
+  // Playing: the next frame every STEP_MS, from wherever the reader is, until the last.
+  useEffect(() => {
+    if (!playing) return;
+    const t = setTimeout(() => {
+      setAt(Math.min(i + 1, count - 1));
+      if (i + 1 >= count - 1) setPlaying(false);
+    }, STEP_MS);
+    return () => clearTimeout(t);
+  }, [playing, i, count]);
+  const togglePlay = () => {
+    // At the end, play starts over.
+    if (!playing && i >= count - 1) setAt(0);
+    setPlaying(!playing);
+  };
   useEffect(() => {
     if (compact) return;
     const onKey = (e: KeyboardEvent) => {
@@ -66,16 +100,25 @@ function Scrubber({ swarmId, manifest, compact }: { swarmId: string; manifest: W
   const src = (key: string) => strutArtifactReaderUrl(githubLogin, swarmId, key);
   return (
     <div data-testid="walkthrough" className={cn("flex flex-col gap-2", compact ? "p-2" : "min-h-0 flex-1 p-3")}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src(frame.key)}
-        alt={frame.caption}
-        className={cn(
-          "w-full rounded border bg-muted/30 object-contain",
-          compact ? "max-h-56" : "min-h-0 flex-1",
-          frame.failed && "border-rose-500/60",
-        )}
-      />
+      <div className={cn("grid", !compact && "min-h-0 flex-1 grid-rows-[minmax(0,1fr)]")}>
+        {manifest.frames.map((f, n) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={f.key}
+            src={src(f.key)}
+            alt={f.caption}
+            aria-hidden={n !== i || undefined}
+            loading={n === i ? "eager" : "lazy"}
+            fetchPriority={n === i ? "high" : "low"}
+            className={cn(
+              "w-full rounded border bg-muted/30 object-contain [grid-area:1/1]",
+              compact ? "max-h-56" : "h-full min-h-0",
+              n !== i && "invisible",
+              f.failed && "border-rose-500/60",
+            )}
+          />
+        ))}
+      </div>
       <div className="flex items-baseline gap-2 text-xs">
         <span data-testid="walkthrough-count" className="shrink-0 tabular-nums text-muted-foreground">
           {i + 1} / {count}
@@ -85,16 +128,37 @@ function Scrubber({ swarmId, manifest, compact }: { swarmId: string; manifest: W
       </div>
       {frame.failed && <p className="text-xs text-rose-600 dark:text-rose-400">{frame.failed}</p>}
       {count > 1 && (
-        <input
-          type="range"
-          min={0}
-          max={count - 1}
-          value={i}
-          aria-label="Frame"
-          onChange={(e) => setAt(Number(e.target.value))}
-          onClick={(e) => e.stopPropagation()}
-          className="w-full"
-        />
+        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            aria-label={playing ? "Pause" : "Play"}
+            onClick={togglePlay}
+            className="flex size-6 shrink-0 items-center justify-center rounded-full text-blue-600 hover:bg-muted dark:text-blue-400"
+          >
+            {playing ? <Pause className="size-3.5 fill-current" /> : <Play className="size-3.5 fill-current" />}
+          </button>
+          <div className="relative min-w-0 flex-1">
+            {/* A segment per step, in two alternating blues; the ones still ahead are faded. Inset by the thumb's radius so the edges meet the steps. */}
+            <div
+              data-testid="walkthrough-steps"
+              aria-hidden
+              className="pointer-events-none absolute inset-x-1.5 top-1/2 flex h-1.5 -translate-y-1/2 overflow-hidden rounded-full"
+            >
+              {Array.from({ length: count - 1 }, (_, n) => (
+                <span key={n} className={cn("flex-1", n % 2 ? "bg-blue-400" : "bg-blue-500", n >= i && "opacity-40")} />
+              ))}
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={count - 1}
+              value={i}
+              aria-label="Frame"
+              onChange={(e) => setAt(Number(e.target.value))}
+              className={RANGE}
+            />
+          </div>
+        </div>
       )}
       {!compact && count > 1 && (
         <div className="flex gap-1 overflow-x-auto pb-1">
@@ -124,8 +188,8 @@ function Unavailable() {
   return <p className="px-3 py-6 text-center text-xs text-muted-foreground">This recording could not be loaded.</p>;
 }
 
-/** The card's preview: the newest frame (or the one picked), its caption, a slider — operable in place. */
-export function WalkthroughInline({ content }: ArtifactViewerProps<"walkthrough">) {
+/** The recording small — the newest frame (or the one picked), its caption, a slider — operated in place; a claim's evidence on the claims panel. */
+export function WalkthroughCompact({ content }: ArtifactViewerProps<"walkthrough">) {
   const loaded = useWalkthrough(content.swarmId, content.key);
   if (loaded.status === "loading") return <p className="px-3 py-4 text-xs text-muted-foreground">Loading…</p>;
   if (loaded.status === "failed") return <Unavailable />;
@@ -153,5 +217,24 @@ export function WalkthroughPanel({ content }: ArtifactViewerProps<"walkthrough">
         <p className="px-3 pb-3 text-xs text-rose-600 dark:text-rose-400">{manifest.failed.join(" · ")}</p>
       )}
     </div>
+  );
+}
+
+/** The recording's newest frame, for the chat's strip; it plays in the panel. */
+export function WalkthroughThumb({ content }: ArtifactViewerProps<"walkthrough">) {
+  const githubLogin = useChatOrgLogin();
+  const loaded = useWalkthrough(content.swarmId, content.key);
+  const frame = loaded.status === "ready" ? loaded.manifest.frames.at(-1) : undefined;
+  if (!frame) return null;
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={strutArtifactReaderUrl(githubLogin, content.swarmId, frame.key)}
+        alt={frame.caption}
+        className="h-full w-full object-cover"
+      />
+      <PlayMark />
+    </>
   );
 }

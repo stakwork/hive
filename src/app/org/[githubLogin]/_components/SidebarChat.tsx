@@ -9,7 +9,7 @@ import {
   MessageCircle,
   Mic,
   MicOff,
-  OctagonX,
+  MoreHorizontal,
   Paperclip,
   Pencil,
   Plus,
@@ -25,7 +25,14 @@ import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
 import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
 import { GraphFocusChip } from "./GraphFocusChip";
 import { CanvasHistoryPopover } from "./CanvasHistoryPopover";
-import { CanvasAgentSettingsPopover } from "./CanvasAgentSettingsPopover";
+import { ModelPicker } from "./ModelPicker";
+import { AgentSettingsMenuItems, AutomationsDialog } from "./AgentSettingsMenu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { StreamingMessage } from "@/components/streaming";
@@ -40,9 +47,7 @@ import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
 import { JobEventRow, JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
 import { DeferredCheckCard } from "./DeferredCheckCard";
-import { ArtifactCard } from "./artifacts/ArtifactCard";
-import { FoldedArtifacts, lastThumbnailSet } from "./artifacts/FoldedArtifacts";
-import { artifactAsks } from "./artifacts/registry";
+import { ChatArtifacts } from "./artifacts/ChatArtifacts";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { detectSlashTrigger, insertSlashConcept } from "../_state/slashConceptTrigger";
@@ -227,6 +232,8 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
     });
   };
 
+  const { runActive, stopInvestigation } = useStopInvestigation();
+
   const handleStop = async () => {
     if (activeId && !(await stopCanvasChatTurn(activeId))) {
       toast.error(`Couldn't stop ${jamieName} — it's still running.`);
@@ -289,12 +296,10 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
     return byAnchor;
   }, [messages]);
 
-  // The card each artifact gets — on its newest ref, with its versions
-  // counted so the card can say "v2". An earlier report of the same
-  // artifact gets none, so a plan re-reported every turn shows once.
+  // Where each artifact shows — under its newest ref, with its versions
+  // counted so it can say "v2". An earlier report of the same artifact
+  // shows nothing, so a plan re-reported every turn shows once.
   const artifactCards = useMemo(() => indexArtifactCards(listArtifacts(messages)), [messages]);
-  // The newest folded images show small, which loads them: opened on the panel, they are there at once.
-  const thumbnailSetId = useMemo(() => lastThumbnailSet(messages), [messages]);
 
   return (
     <div className="relative flex h-full flex-col min-h-0" {...dragProps}>
@@ -379,21 +384,15 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                 }
 
                 // A new version of a job's claims card made from the card (a
-                // Verify, an answer, a new claim): a quiet line, the card under it.
+                // Verify, an answer, a new claim): a quiet line saying what
+                // changed, the card under it — the card carries the job's title.
                 if (message.source?.kind === "job_claims") {
                   return (
                     <div key={message.id} className="space-y-1.5">
                       <p data-testid="job-claims-row" className="px-1 text-xs text-muted-foreground">
-                        <span className="font-medium">{message.source.title || "Job"}</span>
-                        {" · "}
                         {message.content}
                       </p>
-                      <MessageArtifacts
-                        artifacts={message.artifacts}
-                        cards={artifactCards}
-                        jobId={message.source.jobId}
-                        thumbnails={message.id === thumbnailSetId}
-                      />
+                      <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
                     </div>
                   );
                 }
@@ -404,12 +403,7 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                   return (
                     <div key={message.id} className="space-y-1.5">
                       <JobTurnCard message={message} source={message.source} />
-                      <MessageArtifacts
-                        artifacts={message.artifacts}
-                        cards={artifactCards}
-                        jobId={message.source.jobId}
-                        thumbnails={message.id === thumbnailSetId}
-                      />
+                      <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
                     </div>
                   );
                 }
@@ -533,11 +527,7 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                     {pendingJobTurns?.map((turn) => (
                       <PendingJobTurnCard key={turn.jobId} turn={turn} />
                     ))}
-                    <MessageArtifacts
-                      artifacts={message.artifacts}
-                      cards={artifactCards}
-                      thumbnails={message.id === thumbnailSetId}
-                    />
+                    <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
                   </div>
                 );
               })}
@@ -607,15 +597,24 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
           ref={composerRef}
           onSend={handleSend}
           runningTurn={
-            activeTurn && {
-              stopping: activeTurn.stopping,
-              onStop: activeTurn.canStop ? () => void handleStop() : null,
-            }
+            activeTurn
+              ? {
+                  stopping: activeTurn.stopping,
+                  onStop: activeTurn.canStop ? () => void handleStop() : null,
+                }
+              : runActive
+                ? { stopping: false, onStop: stopInvestigation }
+                : null
           }
           onCancelEdit={activeId && editingTurnId ? () => setEditingTurn(activeId, null) : null}
           workspaceId={workspaceId}
           orgId={githubLogin}
         />
+        {/* Model picker and token count live with the composer, not the header. */}
+        <div className="mt-1 flex items-center gap-1 px-1">
+          <ModelPicker />
+          <TokenCounter />
+        </div>
       </div>
     </div>
   );
@@ -646,8 +645,7 @@ function useConversationTokenTotals() {
 }
 
 /**
- * Header token counter — sits beside `SidebarChatActions` in the org
- * page's one bar. Sums `CanvasChatMessage.usage` across the active
+ * Token counter — sits beside the model chip under the composer. Sums `CanvasChatMessage.usage` across the active
  * conversation (input + output tokens; see `sumConversationTokenUsage`)
  * and renders it compact with no denominator, because there is no
  * model context-window constant in this repo to divide by. Hidden
@@ -669,20 +667,69 @@ export function TokenCounter() {
 }
 
 /**
- * The chat header's actions — the agent-active dot, Stop, the share
- * link, Fork, agent settings, history (unless `hideHistory`: the chat
- * list beside it is the history) and New chat. Reads the store itself, so
- * the chat's own header and the org page's one bar can both place it.
+ * Stops the running investigation (`runActive`) for the active chat — the
+ * Send button becomes Stop in the composer while one runs.
+ * runActive: driven by local tool-call detection (via setRunActive called from
+ * useSendCanvasChatMessage) AND by the Pusher CANVAS_RUN_ACTIVE event (for
+ * all participants including non-initiators, bound in useCanvasChatAutoSave).
+ */
+function useStopInvestigation() {
+  const activeId = useCanvasChatStore((s) => s.activeConversationId);
+  const runActive = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.runActive : false) ?? false);
+  const serverConversationId = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.serverConversationId : null) ?? null,
+  );
+  // stopRun action — posts to /api/ask/abort without exposing request_id.
+  const stopRun = useCanvasChatStore((s) => s.stopRun);
+  const setRunActive = useCanvasChatStore((s) => s.setRunActive);
+  // Org context for Stop — needed by the abort endpoint.
+  const orgContext = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.context : null) ?? null);
+  const stopInvestigation = () => {
+    if (serverConversationId && orgContext) {
+      void stopRun({ serverConversationId, orgId: orgContext.orgId });
+      // Optimistic local clear — the Pusher event will confirm.
+      if (activeId) setRunActive(activeId, false);
+    }
+  };
+  return { runActive, stopInvestigation };
+}
+
+/** Starts a fresh chat; disabled until the current one has messages. */
+export function NewChatButton({ githubLogin }: { githubLogin: string }) {
+  const activeId = useCanvasChatStore((s) => s.activeConversationId);
+  const hasMessages = useCanvasChatStore((s) => ((activeId ? s.conversations[activeId]?.messages.length : 0) ?? 0) > 0);
+  return (
+    <ActionTip label="New chat">
+      <button
+        type="button"
+        onClick={() => startNewOrgConversation(githubLogin)}
+        disabled={!hasMessages}
+        aria-label="New chat"
+        className="p-1 @[22rem]:p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        <Plus className="w-4 h-4" />
+      </button>
+    </ActionTip>
+  );
+}
+
+/**
+ * The chat header's actions — the agent-active dot, history (unless
+ * `hideHistory`: the chat list beside it is the history), New chat (unless
+ * `hideNewChat`: the chat list's header has it), a labelled Share and a ⋯
+ * menu holding Fork and the agent settings (Concept-tree prompt, Automations). Reads the store itself, so the org page's one bar can
+ * place it. Stop, the token count and the model picker live in the composer.
  */
 export function SidebarChatActions({
   githubLogin,
   hideHistory = false,
+  hideNewChat = false,
 }: {
   githubLogin: string;
   hideHistory?: boolean;
+  hideNewChat?: boolean;
 }) {
   const activeId = useCanvasChatStore((s) => s.activeConversationId);
-  const hasMessages = useCanvasChatStore((s) => ((activeId ? s.conversations[activeId]?.messages.length : 0) ?? 0) > 0);
   // The persisted row id. Sharing flips this row to `isShared` and hands
   // out its id, so the sharer and every joiner live in the *same* room.
   // Null until the first turn has created the row — Share/Fork are gated on it.
@@ -692,17 +739,9 @@ export function SidebarChatActions({
   // The source must be persisted before it is forked, so Fork stays
   // disabled until streaming ends.
   const isStreaming = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false);
-  // runActive: driven by local tool-call detection (via setRunActive called from
-  // useSendCanvasChatMessage) AND by the Pusher CANVAS_RUN_ACTIVE event (for
-  // all participants including non-initiators, bound in useCanvasChatAutoSave).
-  const runActive = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.runActive : false) ?? false);
-  // stopRun action — posts to /api/ask/abort without exposing request_id.
-  const stopRun = useCanvasChatStore((s) => s.stopRun);
-  const setRunActive = useCanvasChatStore((s) => s.setRunActive);
-  // Org context for Stop — needed by the abort endpoint.
-  const orgContext = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.context : null) ?? null);
   const { isActive } = useCanvasAgentActivity(activeId);
   const [isForking, setIsForking] = useState(false);
+  const [automationsOpen, setAutomationsOpen] = useState(false);
 
   const handleShare = async () => {
     if (!serverConversationId) return;
@@ -748,68 +787,52 @@ export function SidebarChatActions({
   };
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex shrink-0 items-center gap-0.5 @[22rem]:gap-1">
       {isActive && (
         <span
           className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
           aria-label="agent active"
         />
       )}
-      {runActive && (
-        <button
-          type="button"
-          onClick={() => {
-            if (serverConversationId && orgContext) {
-              void stopRun({
-                serverConversationId,
-                orgId: orgContext.orgId,
-              });
-              // Optimistic local clear — the Pusher event will confirm.
-              if (activeId) setRunActive(activeId, false);
-            }
-          }}
-          title="Stop investigation"
-          className="flex items-center gap-1 px-2 py-1 rounded bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-medium transition-colors"
-        >
-          <OctagonX className="w-3.5 h-3.5" />
-          Stop
-        </button>
-      )}
+      {!hideHistory && <CanvasHistoryPopover githubLogin={githubLogin} />}
+      {!hideNewChat && <NewChatButton githubLogin={githubLogin} />}
       <ActionTip label="Copy share link">
         <button
           type="button"
           onClick={handleShare}
           disabled={!serverConversationId}
           aria-label="Copy share link"
-          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="flex h-7 items-center gap-1.5 rounded px-1 @[22rem]:px-2 text-xs font-medium hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <Share2 className="w-4 h-4" />
+          {/* Icon-only until the header (a container) is wide enough. */}
+          <span className="hidden @[22rem]:inline">Share</span>
         </button>
       </ActionTip>
-      <ActionTip label="Fork chat">
-        <button
-          type="button"
-          onClick={handleFork}
-          disabled={!serverConversationId || isStreaming || isForking}
-          aria-label="Fork chat"
-          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <Split className="w-4 h-4" />
-        </button>
-      </ActionTip>
-      <CanvasAgentSettingsPopover githubLogin={githubLogin} />
-      {!hideHistory && <CanvasHistoryPopover githubLogin={githubLogin} />}
-      <ActionTip label="New chat">
-        <button
-          type="button"
-          onClick={() => startNewOrgConversation(githubLogin)}
-          disabled={!hasMessages}
-          aria-label="New chat"
-          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-      </ActionTip>
+      <DropdownMenu>
+        <ActionTip label="More actions">
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="More actions"
+              className="p-1 @[22rem]:p-1.5 rounded hover:bg-muted transition-colors data-[state=open]:bg-muted"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          </DropdownMenuTrigger>
+        </ActionTip>
+        <DropdownMenuContent align="end" sideOffset={4} collisionPadding={8}>
+          <DropdownMenuItem
+            disabled={!serverConversationId || isStreaming || isForking}
+            onSelect={() => void handleFork()}
+          >
+            <Split className="w-4 h-4" />
+            Fork into my copy
+          </DropdownMenuItem>
+          <AgentSettingsMenuItems onOpenAutomations={() => setAutomationsOpen(true)} />
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AutomationsDialog githubLogin={githubLogin} open={automationsOpen} onOpenChange={setAutomationsOpen} />
     </div>
   );
 }
@@ -825,47 +848,20 @@ const EMPTY_TOOL_CALLS: ToolCall[] = [];
 /**
  * The artifacts under a message: the ones the message is the latest report
  * of (`indexArtifactCards`) — a ref a later message reported again shows
- * there instead. One that waits on the reader (`artifactAsks`: a PR to
- * review, a claim to look at) is a card; the rest fold into one line that
- * opens them on the artifact panel. How a kind looks is the viewer
- * registry's business (`artifacts/registry.ts`), and reading its content
- * the card's own; a card is memoised on its ref, so streaming text never
- * re-renders one.
+ * there instead — laid out by `ChatArtifacts` (rows, a thumbnail strip,
+ * first lines, the folded rest). Memoised on its refs, so streaming text
+ * never re-renders them.
  */
 function MessageArtifacts({
   artifacts,
   cards,
-  jobId,
-  thumbnails,
 }: {
   artifacts?: ArtifactRef[];
   cards: Map<ArtifactRef, ArtifactVersion>;
-  /** The strut job whose row these ride on — the card's viewer can act on it. */
-  jobId?: string;
-  /** The folded images show small (`lastThumbnailSet`). */
-  thumbnails?: boolean;
 }) {
-  const shown = artifacts?.filter((artifact) => cards.has(artifact));
-  if (!shown?.length) return null;
-  const asking = shown.filter(artifactAsks);
-  const folded = shown.filter((artifact) => !asking.includes(artifact));
-  return (
-    <div className="space-y-1.5">
-      {asking.map((artifact) => {
-        const version = cards.get(artifact) ?? { index: 0, count: 1 };
-        return (
-          <ArtifactCard
-            key={artifact.id}
-            artifact={artifact}
-            version={version.index}
-            versionCount={version.count}
-            jobId={jobId}
-          />
-        );
-      })}
-      {folded.length > 0 && <FoldedArtifacts artifacts={folded} afterCards={asking.length > 0} thumbnails={thumbnails} />}
-    </div>
-  );
+  const shown = artifacts?.filter((artifact) => cards.has(artifact)) ?? [];
+  if (shown.length === 0) return null;
+  return <ChatArtifacts artifacts={shown} versions={cards} />;
 }
 
 // ─── File attachment types ───────────────────────────────────────────────────

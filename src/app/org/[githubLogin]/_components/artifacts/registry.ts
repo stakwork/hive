@@ -28,50 +28,66 @@ import {
   type ArtifactViewerProps,
 } from "../../_state/canvasChatArtifacts";
 import { buildSharePath } from "../HtmlPageCard";
-import { addressParts, webAddress } from "./address";
-import { lineCount, plural } from "./lines";
-import { ClaimsPanel } from "./viewers/claims";
-import { CodeInline, CodePanel, codeLanguage } from "./viewers/code";
-import { DiffInline, DiffPanel, diffPatchText } from "./viewers/diff";
-import { GraphInline, GraphPanel } from "./viewers/graph";
-import { HtmlInline, HtmlPanel } from "./viewers/html";
-import { treeContentOfJson } from "./viewers/ChoiceTree";
-import { JsonInline, JsonPanel, jsonSummary } from "./viewers/json";
-import { LogInline, LogPanel } from "./viewers/log";
-import { MarkdownInline, MarkdownPanel } from "./viewers/markdown";
-import { AudioInline, AudioPanel, ImageInline, ImagePanel, VideoInline, VideoPanel } from "./viewers/media";
+import { webAddress } from "./address";
+import { ClaimsPanel, ClaimsRowMeta } from "./viewers/claims";
+import { CodePanel } from "./viewers/code";
+import { DiffPanel, diffPatchText } from "./viewers/diff";
+import { GraphPanel } from "./viewers/graph";
+import { HtmlPanel } from "./viewers/html";
+import { JsonPanel } from "./viewers/json";
+import { LogPanel } from "./viewers/log";
+import { MarkdownPanel, MarkdownPreview } from "./viewers/markdown";
+import { AudioPanel, ImagePanel, ImageThumb, VideoPanel, VideoThumb } from "./viewers/media";
 import { PdfPanel } from "./viewers/pdf";
-import { PullRequestInline, PullRequestPanel } from "./viewers/pullRequest";
-import { RunGraphInline, RunGraphPanel, runGraphFact } from "./viewers/runGraph";
-import { UrlInline, UrlPanel } from "./viewers/url";
-import { WalkthroughInline, WalkthroughPanel } from "./viewers/walkthrough";
+import { PullRequestPanel, PullRequestRowMeta } from "./viewers/pullRequest";
+import { RunGraphPanel } from "./viewers/runGraph";
+import { UrlPanel, UrlRowMeta } from "./viewers/url";
+import { WalkthroughPanel, WalkthroughThumb } from "./viewers/walkthrough";
 import { orgGraphHref } from "../graphHref";
 
 /**
- * How Hive shows each kind of artifact: its preview on the chat card and
- * its full view on the artifact panel. The one place a kind is switched
- * on — the card and the panel look their artifact up here and know
- * nothing about kinds themselves.
+ * Where an artifact shows in the chat, under the message that reported it:
+ *
+ * - `row` — something to act on or open (a pull request, claims, a pod or a
+ *   page): one compact row, its state on the right.
+ * - `media` — something to look at (a screenshot, a recording): a thumbnail
+ *   in the message's strip.
+ * - `preview` — something to read (a plan, a document): its first lines
+ *   under its title.
+ *
+ * A kind with none folds into the message's "N more" line — reference
+ * material the panel holds (logs, JSON, code, diffs, graph traces).
+ */
+export type ChatPlacement<K extends ArtifactKind> =
+  | {
+      place: "row";
+      /** The row's state, on its right; without one, the artifact's label. */
+      Meta?: ComponentType<ArtifactViewerProps<K>>;
+    }
+  | { place: "media"; Thumb: ComponentType<ArtifactViewerProps<K>> }
+  | { place: "preview"; Lines: ComponentType<ArtifactViewerProps<K>> };
+
+/**
+ * How Hive shows each kind of artifact: where it sits in the chat and its
+ * full view on the artifact panel. The one place a kind is switched on —
+ * the chat and the panel look their artifact up here and know nothing
+ * about kinds themselves.
  */
 export interface ArtifactKindSpec<K extends ArtifactKind> {
   /** The kind's own name, shown when an artifact carries no `label`. */
   label: string;
   Icon: LucideIcon;
-  /** The preview on the chat card. A kind without one gets a card that is its name alone. */
-  Inline?: ComponentType<ArtifactViewerProps<K>>;
+  /** Where it shows in the chat, and what draws it there; absent, it folds. */
+  chat?: ChatPlacement<K>;
   /** The full view on the artifact panel. */
   Panel: ComponentType<ArtifactViewerProps<K>>;
-  /** The card's preview is something to operate (a player), so a click on it does not open the panel. */
-  inlineInteractive?: boolean;
-  /** A short fact for the card's caption: "3 files", "stakwork/hive #5372". */
-  fact?: (content: ArtifactContents[K]) => string | null;
   /** The content as text, for the panel's copy button. */
   copyText?: (content: ArtifactContents[K]) => string;
   /** Where the artifact itself lives, as its content gives it; null when this one has nowhere of its own. A link gets it only through `artifactHref`. */
   address?: (content: ArtifactContents[K], githubLogin: string) => string | null;
   /**
-   * The artifact waits on the reader — a PR to review, a claim to look at — so its card stays in the chat; the rest fold
-   * away. Decided from inline content only (`artifactAsks`): a kind read from elsewhere always folds.
+   * The artifact waits on the reader — a PR to review, a claim to look at — so it tops the artifact panel's index.
+   * Decided from inline content only (`artifactAsks`): a kind read from elsewhere never does.
    */
   asks?: (content: ArtifactContents[K]) => boolean;
 }
@@ -80,14 +96,14 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
   markdown: {
     label: "Document",
     Icon: FileText,
-    Inline: MarkdownInline,
+    chat: { place: "preview", Lines: MarkdownPreview },
     Panel: MarkdownPanel,
     copyText: (content) => content.text,
   },
   html: {
     label: "Page",
     Icon: FileCode2,
-    Inline: HtmlInline,
+    chat: { place: "row" },
     Panel: HtmlPanel,
     // A page a strut job wrote has no page of its own on Hive: the reader serves it, and serves it static.
     address: (content, githubLogin) => ("slug" in content ? buildSharePath(githubLogin, encodeURIComponent(content.slug)) : null),
@@ -95,22 +111,19 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
   image: {
     label: "Image",
     Icon: ImageIcon,
-    Inline: ImageInline,
+    chat: { place: "media", Thumb: ImageThumb },
     Panel: ImagePanel,
   },
   video: {
     label: "Video",
     Icon: Film,
-    Inline: VideoInline,
+    chat: { place: "media", Thumb: VideoThumb },
     Panel: VideoPanel,
-    inlineInteractive: true,
   },
   audio: {
     label: "Audio",
     Icon: AudioLines,
-    Inline: AudioInline,
     Panel: AudioPanel,
-    inlineInteractive: true,
   },
   pdf: {
     label: "PDF",
@@ -121,59 +134,46 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
   url: {
     label: "Browser",
     Icon: Globe,
-    Inline: UrlInline,
+    chat: { place: "row", Meta: UrlRowMeta },
     Panel: UrlPanel,
-    fact: (content) => addressParts(content.url).host,
     address: (content) => content.url,
   },
   diff: {
     label: "Diff",
     Icon: FileDiff,
-    Inline: DiffInline,
     Panel: DiffPanel,
-    fact: (content) => plural(content.diffs.length, "file"),
     copyText: (content) => diffPatchText(content.diffs),
   },
   pull_request: {
     label: "Pull request",
     Icon: GitPullRequest,
-    Inline: PullRequestInline,
+    chat: { place: "row", Meta: PullRequestRowMeta },
     Panel: PullRequestPanel,
-    fact: (content) => `${content.repo} #${content.number}`,
     address: (content) => content.url,
     asks: (content) => content.state === "open" || content.state === "draft",
   },
   code: {
     label: "Code",
     Icon: Code,
-    Inline: CodeInline,
     Panel: CodePanel,
-    fact: (content) => content.filename ?? codeLanguage(content),
     copyText: (content) => content.code,
   },
   log: {
     label: "Logs",
     Icon: ScrollText,
-    Inline: LogInline,
     Panel: LogPanel,
-    fact: (content) => plural(lineCount(content.text), "line"),
     copyText: (content) => content.text,
   },
   json: {
     label: "JSON",
     Icon: Braces,
-    Inline: JsonInline,
     Panel: JsonPanel,
-    // A json card that is really a brainstorm tree reads like the graph card.
-    fact: (content) => treeContentOfJson({ id: "" }, content)?.workspace ?? jsonSummary(content.value),
     copyText: (content) => toJsonText(content.value),
   },
   graph: {
     label: "Graph",
     Icon: Network,
-    Inline: GraphInline,
     Panel: GraphPanel,
-    fact: (content) => content.workspace,
     // The org page's graph view, on the same workspace and node.
     address: (content, githubLogin) =>
       orgGraphHref(githubLogin, { workspace: content.workspace, refId: content.focus }),
@@ -181,24 +181,22 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
   run_graph: {
     label: "Graph trace",
     Icon: Waypoints,
-    Inline: RunGraphInline,
     Panel: RunGraphPanel,
-    fact: runGraphFact,
   },
-  // The card is the summary alone ("1 needs a look"); the claims themselves are on the panel.
+  // The row is the summary alone ("1 needs a look"); the claims themselves are on the panel.
   claims: {
     label: "Claims",
     Icon: ListChecks,
+    chat: { place: "row", Meta: ClaimsRowMeta },
     Panel: ClaimsPanel,
     asks: (content) => content.claims.some(claimNeedsLook),
   },
-  // A strut job's recording of a flow: the preview is the scrubber itself, so it is operated in place.
+  // A strut job's recording of a flow: its newest frame in the chat, scrubbed on the panel.
   walkthrough: {
     label: "Walkthrough",
     Icon: Clapperboard,
-    Inline: WalkthroughInline,
+    chat: { place: "media", Thumb: WalkthroughThumb },
     Panel: WalkthroughPanel,
-    inlineInteractive: true,
   },
 };
 

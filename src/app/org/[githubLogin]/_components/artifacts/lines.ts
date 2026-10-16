@@ -17,35 +17,51 @@ export function lineCount(text: string): number {
   return count;
 }
 
-/** The last `count` lines of a text, found from its end, so a long text is not read through for a few lines. */
-export function lastLines(text: string, count: number): string {
-  let start = text.endsWith("\n") ? text.length - 1 : text.length;
-  for (let found = 0; found < count; found++) {
-    if (start <= 0) return text;
-    start = text.lastIndexOf("\n", start - 1);
-    if (start === -1) return text;
-  }
-  return text.slice(start + 1);
+const CODE_FENCE = /^\s*(?:`{3,}|~{3,})/;
+const TABLE_RULE = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+
+/** A markdown line as plain text: no heading, list or quote marker, no emphasis, links as their words, a table row's cells joined. */
+function plainLine(line: string): string {
+  let text = line.trim();
+  if (text.startsWith("|"))
+    text = text
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((cell) => cell.trim())
+      .join(" · ");
+  return text
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^>\s?/, "")
+    .replace(/^(?:[-*+]|\d+[.)])\s+/, "")
+    .replace(/^\[[ xX]\]\s+/, "")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    // Paired delimiters only — and an underscore pair only at word edges, so snake_case stays.
+    .replace(/(\*\*|~~|\*|`)(\S(?:.*?\S)?)\1/g, "$2")
+    .replace(/(?<!\w)(__|_)(\S(?:.*?\S)?)\1(?!\w)/g, "$2")
+    .trim();
 }
 
-const CODE_FENCE = /^\s*(?:`{3,}|~{3,})/;
-
 /**
- * The opening `maxLines` lines of a markdown document, for a preview that
- * shows no more than that. A cut that lands inside a fenced block ends the
- * excerpt before the block instead — half a diagram is not a diagram —
- * unless the block is all there is.
+ * The opening lines of a markdown document as plain text, for a preview
+ * that is a glance, not a render: blank lines, fenced blocks and a table's
+ * rule skipped, at most `maxLines` of what is left.
  */
-export function markdownExcerpt(text: string, maxLines: number): string {
-  const lines = text.split("\n", maxLines + 1);
-  if (lines.length <= maxLines) return text;
-  lines.length = maxLines;
-  const fences = lines.flatMap((line, i) => (CODE_FENCE.test(line) ? [i] : []));
-  if (fences.length % 2 === 1) {
-    const before = lines.slice(0, fences[fences.length - 1]);
-    if (before.some((line) => line.trim())) return before.join("\n");
+export function markdownPreviewLines(text: string, maxLines: number): string[] {
+  const out: string[] = [];
+  let fenced = false;
+  for (const line of text.split("\n")) {
+    if (CODE_FENCE.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced || TABLE_RULE.test(line)) continue;
+    const plain = plainLine(line);
+    if (!plain) continue;
+    out.push(plain);
+    if (out.length === maxLines) break;
   }
-  return lines.join("\n");
+  return out;
 }
 
 export type LogLevel = "error" | "warn" | "info" | "debug";

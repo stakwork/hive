@@ -1,17 +1,15 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { WrapText } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "@/hooks/use-theme";
 import { getLanguageFromFile } from "@/lib/syntax-utils";
 import type { ArtifactContents, ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
-import { InlineClamp, PanelToolbar, ScrollFade, ToolbarButton } from "../chrome";
+import { PanelToolbar, ScrollFade, ToolbarButton } from "../chrome";
 import { lineCount, plural } from "../lines";
 
-/** How much of a file a card shows before it fades out. */
-const INLINE_LINES = 12;
 /** Past this a file is shown as plain text: colouring it would hold the panel up. */
 const HIGHLIGHT_MAX_CHARS = 200_000;
 
@@ -24,7 +22,6 @@ export function codeLanguage({ language, filename }: ArtifactContents["code"]): 
 interface CodeBlockProps {
   code: string;
   language: string;
-  lineNumbers?: boolean;
   wrap?: boolean;
 }
 
@@ -32,7 +29,6 @@ interface CodeBlockProps {
 const Highlighted = React.memo(function Highlighted({
   code,
   language,
-  lineNumbers = false,
   wrap = false,
   dark,
 }: CodeBlockProps & { dark: boolean }) {
@@ -42,9 +38,9 @@ const Highlighted = React.memo(function Highlighted({
       <SyntaxHighlighter
         language={code.length > HIGHLIGHT_MAX_CHARS ? "text" : language}
         style={dark ? oneDark : oneLight}
-        showLineNumbers={lineNumbers}
+        showLineNumbers
         wrapLongLines={wrap}
-        // No scrolling of its own: the card clips it and the panel scrolls it.
+        // No scrolling of its own: the panel scrolls it.
         customStyle={{
           margin: 0,
           padding: 0,
@@ -68,15 +64,6 @@ function CodeBlock(props: CodeBlockProps) {
   return <Highlighted {...props} dark={resolvedTheme === "dark"} />;
 }
 
-export function CodeInline({ content }: ArtifactViewerProps<"code">) {
-  const head = useMemo(() => content.code.split("\n", INLINE_LINES).join("\n"), [content.code]);
-  return (
-    <InlineClamp className="overflow-hidden px-3 py-2.5">
-      <CodeBlock code={head} language={codeLanguage(content)} />
-    </InlineClamp>
-  );
-}
-
 export function CodePanel({ content }: ArtifactViewerProps<"code">) {
   const [wrap, setWrap] = useState(false);
   const language = codeLanguage(content);
@@ -93,7 +80,7 @@ export function CodePanel({ content }: ArtifactViewerProps<"code">) {
       </PanelToolbar>
       <div className="min-h-0 flex-1">
         <ScrollFade className={wrap ? "p-4" : "w-max min-w-full p-4"}>
-          <CodeBlock code={content.code} language={language} lineNumbers wrap={wrap} />
+          <CodeBlock code={content.code} language={language} wrap={wrap} />
         </ScrollFade>
       </div>
     </div>

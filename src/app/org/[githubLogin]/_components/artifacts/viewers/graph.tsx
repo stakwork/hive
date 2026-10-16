@@ -16,23 +16,6 @@ const NOTICE = {
 
 const NoRoot = () => <p className="px-3 py-2.5 text-xs text-muted-foreground">This brainstorm card has no root to open.</p>;
 
-export function GraphInline({ artifact, content }: ArtifactViewerProps<"graph">) {
-  if (isTreeArtifact(artifact, content))
-    return content.focus ? <p className="px-3 py-2.5 text-xs text-muted-foreground">{artifact.title} — Open tree</p> : <NoRoot />;
-  if (content.changes?.length)
-    return (
-      <p className="px-3 py-2.5 text-xs text-muted-foreground">
-        Shows {artifact.title} on the graph, with the change dashed
-      </p>
-    );
-  return (
-    <p className="px-3 py-2.5 text-xs text-muted-foreground">
-      {content.focus ? `Opens on ${artifact.title}` : "Opens the graph"} in{" "}
-      <span className="font-mono">{content.workspace}</span>
-    </p>
-  );
-}
-
 /**
  * A brainstorm tree (see `isTreeArtifact`), else the graph workbench itself, centred on the artifact's node. A proposal's
  * change is drawn on it until the proposal is decided; after that it shows
