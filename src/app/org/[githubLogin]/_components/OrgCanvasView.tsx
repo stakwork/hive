@@ -14,7 +14,12 @@ import { GraphView } from "./GraphView";
 import { parseArtifactRefs } from "../_state/canvasChatArtifacts";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
 import { useGraphProposalRefresh } from "../_state/useGraphProposalRefresh";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  RESIZABLE_PANEL_TRANSITION,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { AttentionMapProvider } from "../connections/AttentionMapContext";
 import { cn } from "@/lib/utils";
 import { ChatsLayout } from "./ChatsLayout";
@@ -35,8 +40,6 @@ const SIDEBAR_MAX_SIZE = 80;
  * (`?view=control-panel`) lands on chats.
  */
 type OrgPageMode = "chats" | "canvas" | "graph";
-/** Programmatic panel resizes animate; a drag must not (the handle turns it off while held). */
-const PANEL_TRANSITION = "transition-[flex-grow] duration-300 ease-in-out";
 /** What fills the left panel — the canvas, the graph, the artifact panel — eases in and out. */
 const LEFT_SURFACE_TRANSITION = { duration: 0.25, ease: "easeOut" } as const;
 
@@ -116,8 +119,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [chatOpen, setChatOpen] = useState(mode !== "graph");
   /** The graph node in view — what "this" means to Jamie on the graph view. */
   const [graphFocus, setGraphFocus] = useState<GraphFocus | null>(null);
-  /** While the divider is held the panels must follow the pointer, not ease. */
-  const [dragging, setDragging] = useState(false);
   // The panel library persists every layout; a tucked-away chat (collapsed
   // to nothing) must not become the sidebar's remembered width.
   const panelStorage = useMemo(
@@ -629,7 +630,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                   className={cn(
                     "relative",
                     leftSurface === "canvas" ? "pointer-events-none" : "pointer-events-auto",
-                    !dragging && PANEL_TRANSITION,
+                    RESIZABLE_PANEL_TRANSITION,
                   )}
                 >
                   <AnimatePresence initial={false}>
@@ -669,7 +670,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                   withHandle
                   // Nothing to drag while the graph view's chat is tucked away.
                   className={cn("pointer-events-auto", mode === "graph" && !chatOpen && "hidden")}
-                  onDragging={setDragging}
                 />
 
                 {/* Right panel — the chat; on the graph view, tucked away until "Ask Jamie". */}
@@ -685,7 +685,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                   collapsedSize={0}
                   onCollapse={() => setChatOpen(false)}
                   onExpand={() => setChatOpen(true)}
-                  className={cn("pointer-events-auto", !dragging && PANEL_TRANSITION)}
+                  className={cn("pointer-events-auto", RESIZABLE_PANEL_TRANSITION)}
                   onResize={(percent) => {
                     const containerWidth = containerRef.current?.offsetWidth ?? 1600;
                     setPanelWidth(Math.round((percent / 100) * containerWidth));
