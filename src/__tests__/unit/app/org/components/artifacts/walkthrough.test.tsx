@@ -61,6 +61,61 @@ describe("walkthrough", () => {
     expect(screen.getByText("Done")).toBeTruthy();
   });
 
+  test("every frame is mounted, hidden but the one showing, so scrubbing never waits on a load", async () => {
+    mockFetch.mockResolvedValueOnce(json(manifest(3, "done")));
+    render(<WalkthroughPanel artifact={artifact} content={content} />);
+    await screen.findByTestId("walkthrough-count");
+    const stacked = Array.from(screen.getByTestId("walkthrough").firstElementChild!.querySelectorAll("img"));
+    expect(stacked.map((img) => img.getAttribute("src"))).toEqual(
+      ["01.png", "02.png", "03.png"].map((f) => reader(`/jobs/${JOB}/files/walkthroughs/001/${f}`)),
+    );
+    expect(stacked.map((img) => img.getAttribute("aria-hidden"))).toEqual(["true", "true", null]);
+    expect(stacked.map((img) => img.getAttribute("loading"))).toEqual(["lazy", "lazy", "eager"]);
+
+    fireEvent.change(screen.getByLabelText("Frame"), { target: { value: "0" } });
+    expect(stacked.map((img) => img.getAttribute("aria-hidden"))).toEqual([null, "true", "true"]);
+  });
+
+  test("the bar is a segment per step, in two alternating blues, faded ahead of the frame showing", async () => {
+    mockFetch.mockResolvedValueOnce(json(manifest(3, "done")));
+    render(<WalkthroughPanel artifact={artifact} content={content} />);
+    await screen.findByTestId("walkthrough-count");
+    const segments = () => Array.from(screen.getByTestId("walkthrough-steps").children).map((s) => s.className);
+    expect(segments()).toHaveLength(2);
+    expect(segments()[0]).toContain("bg-blue-500");
+    expect(segments()[1]).toContain("bg-blue-400");
+    expect(segments().some((c) => c.includes("opacity-40"))).toBe(false);
+
+    fireEvent.change(screen.getByLabelText("Frame"), { target: { value: "1" } });
+    expect(segments().map((c) => c.includes("opacity-40"))).toEqual([false, true]);
+  });
+
+  test("play steps a frame every 800ms, starting over from the end, and stops on the last", async () => {
+    mockFetch.mockResolvedValueOnce(json(manifest(3, "done")));
+    render(<WalkthroughPanel artifact={artifact} content={content} />);
+    const count = await screen.findByTestId("walkthrough-count");
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      expect(count.textContent).toBe("1 / 3");
+      act(() => vi.advanceTimersByTime(799));
+      expect(count.textContent).toBe("1 / 3");
+      act(() => vi.advanceTimersByTime(1));
+      expect(count.textContent).toBe("2 / 3");
+
+      fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+      act(() => vi.advanceTimersByTime(2_000));
+      expect(count.textContent).toBe("2 / 3");
+
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      act(() => vi.advanceTimersByTime(800));
+      expect(count.textContent).toBe("3 / 3");
+      expect(screen.getByRole("button", { name: "Play" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("a stopped recording says why under the frame it stopped on", async () => {
     const stopped = { ...manifest(2, "stopped"), frames: [frames(2)[0], { ...frames(2)[1], failed: "step 1 (click text=Billing) failed: matched nothing" }] };
     mockFetch.mockResolvedValueOnce(json(stopped));
