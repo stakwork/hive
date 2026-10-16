@@ -86,15 +86,48 @@ export function parseCweIds(key: SystemMapWorkflowKey, value: unknown): string[]
   return ids;
 }
 
-/** The workflow input field for `cweIds`. */
-function cweInput(cweIds: string[] | undefined): Record<string, unknown> {
-  return cweIds?.length ? { cwe_ids: cweIds } : {};
+/**
+ * The same workflows can also be scoped to some System Map components, by
+ * name (`SysComponent` `properties.name`, e.g. `"stakwork/hive"`) — absent
+ * means every component.
+ */
+const MAX_COMPONENTS = 50;
+const MAX_COMPONENT_NAME = 200;
+
+/**
+ * A request's `components` for workflow `key`: undefined when absent, the
+ * trimmed, deduplicated names when valid, or an error message.
+ */
+export function parseComponents(key: SystemMapWorkflowKey, value: unknown): string[] | undefined | { error: string } {
+  if (value === undefined) return undefined;
+  if (!CWE_SCOPED_WORKFLOWS[key]) return { error: "This workflow does not take components" };
+  if (!Array.isArray(value) || !value.every((name): name is string => typeof name === "string")) {
+    return { error: "components must be component names" };
+  }
+  const names = [...new Set(value.map((name) => name.trim()))];
+  if (names.some((name) => name === "" || name.length > MAX_COMPONENT_NAME)) {
+    return { error: `component names must be 1–${MAX_COMPONENT_NAME} characters` };
+  }
+  if (names.length === 0 || names.length > MAX_COMPONENTS) {
+    return { error: `components must hold 1–${MAX_COMPONENTS} names` };
+  }
+  return names;
 }
 
-function cweIdsFromInput(input: unknown): string[] | null {
+/** The workflow input fields for `cweIds` and `components`. */
+function cweInput(cweIds: string[] | undefined, components: string[] | undefined): Record<string, unknown> {
+  return {
+    ...(cweIds?.length ? { cwe_ids: cweIds } : {}),
+    ...(components?.length ? { components } : {}),
+  };
+}
+
+function stringsFromInput(input: unknown, field: "cwe_ids" | "components"): string[] | null {
   if (!input || typeof input !== "object") return null;
-  const ids = (input as { cwe_ids?: unknown }).cwe_ids;
-  return Array.isArray(ids) && ids.length > 0 && ids.every((x) => typeof x === "string") ? (ids as string[]) : null;
+  const values = (input as Record<string, unknown>)[field];
+  return Array.isArray(values) && values.length > 0 && values.every((x) => typeof x === "string")
+    ? (values as string[])
+    : null;
 }
 
 export function isSystemMapWorkflowKey(value: unknown): value is SystemMapWorkflowKey {
@@ -156,7 +189,8 @@ export function serializeSystemMapRun(row: StrutRunRow, orgGithubLogin: string |
       orgGithubLogin && row.strutRunId
         ? strutViewPath(orgGithubLogin, strutRunDeepLink(row.workflow, row.strutRunId))
         : null,
-    cweIds: cweIdsFromInput(row.input),
+    cweIds: stringsFromInput(row.input, "cwe_ids"),
+    components: stringsFromInput(row.input, "components"),
   };
 }
 
@@ -234,6 +268,8 @@ export interface LaunchSystemMapRunArgs {
   key?: SystemMapWorkflowKey;
   /** Scope a CWE workflow (`CWE_SCOPED_WORKFLOWS`) to these CWEs; validate with `parseCweIds`. */
   cweIds?: string[];
+  /** Scope it to these System Map components; validate with `parseComponents`. */
+  components?: string[];
 }
 
 /**
@@ -268,7 +304,7 @@ export async function launchSystemMapRun(
       ...(key === "system_map" ? {} : { workspace: args.workspaceSlug }),
       swarm_url: transformSwarmUrlToRepo2Graph(swarm.swarmUrl),
       swarm_secret_alias: swarm.swarmSecretAlias,
-      ...cweInput(args.cweIds),
+      ...cweInput(args.cweIds, args.components),
     },
     publicBaseUrl: args.publicBaseUrl,
   });
