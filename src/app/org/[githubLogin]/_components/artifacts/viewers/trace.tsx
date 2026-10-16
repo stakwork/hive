@@ -2,10 +2,10 @@
 
 import React from "react";
 import type { ArtifactContents, ArtifactViewerProps, TraceLink, TraceOrigin } from "../../../_state/canvasChatArtifacts";
-import { InlineClamp, ScrollFade } from "../chrome";
+import { ScrollFade } from "../chrome";
 import { plural } from "../lines";
 
-/** "3 exact · 2 inferred", for the card's caption. */
+/** "3 exact · 2 inferred", for the preview's caption. */
 export function traceFact(content: ArtifactContents["trace"]): string | null {
   const exact = content.upstream.filter((link) => link.match === "exact").length;
   const inferred = content.upstream.length - exact;
@@ -48,14 +48,17 @@ function LinkRow({ link }: { link: TraceLink }) {
   );
 }
 
-export function TraceInline({ content }: ArtifactViewerProps<"trace">) {
+/** The chat preview: where the selection came from, and the exact/inferred tally. */
+export function TracePreview({ content }: ArtifactViewerProps<"trace">) {
+  const fact = traceFact(content);
   return (
-    <InlineClamp className="px-3 py-2.5">
-      <p className="text-xs text-muted-foreground">
+    <span className="block space-y-0.5 text-xs text-muted-foreground">
+      <span className="block truncate">
         Where <span className="rounded bg-muted px-1 font-mono text-foreground">{content.selection}</span> came from in{" "}
         {originLabel(content.origin)}
-      </p>
-    </InlineClamp>
+      </span>
+      {fact && <span className="block truncate">{fact}</span>}
+    </span>
   );
 }
 

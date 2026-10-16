@@ -8,7 +8,7 @@ import { framablePdfAddress, webAddress } from "../address";
 /**
  * The document in the browser's own PDF viewer. A PDF somewhere else on
  * the web is not framed (see `framablePdfAddress`); it is offered as a
- * link instead. There is no card preview: a first page would need a PDF
+ * link instead. It folds in the chat: a first page would need a PDF
  * renderer of our own.
  */
 export function PdfPanel({ artifact, content }: ArtifactViewerProps<"pdf">) {
