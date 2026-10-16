@@ -28,7 +28,7 @@ import { useArtifactContent } from "./useArtifactContent";
 import { useActiveArtifacts, useArtifactJobId, useArtifactJobs, useChatOrgLogin } from "./useArtifactPanel";
 
 /**
- * The artifact panel: the artifact a chat card opened, at full size, or
+ * The artifact panel: the artifact opened from the chat, at full size, or
  * the index of every artifact in the chat. The org page gives it its own
  * pane beside the chat it came from (`OrgCanvasView`). One bar — the
  * artifact's name, which doubles as the way to any other artifact in the
