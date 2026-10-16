@@ -59,7 +59,6 @@ vi.mock("@/app/org/[githubLogin]/_components/control-panel/useControlPanel", () 
 vi.mock("@/app/org/[githubLogin]/_components/control-panel/ControlPanelList", () => ({ ControlPanelList: () => null }));
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/ArtifactPanel", () => ({ ArtifactPanel: () => <p>artifact-content</p> }));
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/useArtifactPanel", () => ({
-  ArtifactPanelSideContext: React.createContext("left"),
   useArtifactPanelOpen: () => mockArtifactOpen,
 }));
 

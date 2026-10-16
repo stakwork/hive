@@ -6,10 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { PanelToolbar, ScrollFade, ToolbarButton } from "../chrome";
-import { lastLines, parseLogLines, plural, type LogLevel, type LogLine } from "../lines";
+import { parseLogLines, plural, type LogLevel, type LogLine } from "../lines";
 
-/** A card shows the end of a log: the last thing that happened is the first thing asked about. */
-const INLINE_LINES = 6;
 /** Lines the panel draws at once. A longer log shows its end; the filters reach the rest. */
 const PANEL_LINES = 2000;
 
@@ -20,37 +18,6 @@ const LEVEL_CLASS: Record<LogLevel, string> = {
   info: "text-muted-foreground",
   debug: "text-muted-foreground/60",
 };
-
-export function LogInline({ content }: ArtifactViewerProps<"log">) {
-  // Only the end is shown, so only the end is read.
-  const { tail, more } = useMemo(() => {
-    const text = content.text.trimEnd();
-    const end = lastLines(text, INLINE_LINES);
-    return { tail: parseLogLines(end), more: end.length < text.length };
-  }, [content.text]);
-  const hasLevel = tail.some((line) => line.level);
-  if (tail.length === 0) return <p className="px-3 py-2.5 text-xs text-muted-foreground">No output.</p>;
-  return (
-    <div className="relative px-3 py-2.5 font-mono text-[11px] leading-5">
-      {tail.map((line) => (
-        <div key={line.number} className={cn("flex gap-2", line.level === "debug" && "text-muted-foreground")}>
-          {hasLevel && (
-            <span className={cn("w-[5ch] shrink-0 uppercase", line.level && LEVEL_CLASS[line.level])}>
-              {line.level ?? ""}
-            </span>
-          )}
-          <span className="min-w-0 truncate">{line.text}</span>
-        </div>
-      ))}
-      {more && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-7 bg-gradient-to-b from-card to-transparent"
-        />
-      )}
-    </div>
-  );
-}
 
 type LevelFilter = "all" | "warn" | "error";
 

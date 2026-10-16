@@ -12,14 +12,15 @@ import {
   type JobClaim,
 } from "../../../_state/canvasChatArtifacts";
 import { PanelToolbar } from "../chrome";
+import { plural } from "../lines";
 import { useChatOrgLogin } from "../useArtifactPanel";
 import { liveItemsToShow, useJobLiveStore, type JobLiveItem } from "../../../_state/jobLiveStore";
-import { WalkthroughInline } from "./walkthrough";
+import { WalkthroughCompact } from "./walkthrough";
 
 /**
  * A strut job's claims (strut plans/job-claims.md §7;
  * `services/strut-jobs/claims.ts`): what the work must deliver and whether
- * it does, as of a turn. The chat card is the summary alone; the panel has
+ * it does, as of a turn. The chat row is the summary alone; the panel has
  * each claim once — its status, who stated it, the latest verdict and the
  * turn it is about, the screenshot it pointed at (a job file, read through
  * Hive's reader route — never the swarm's own link), its tool checks with
@@ -239,7 +240,7 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
                   {on && <p>verified on {on}{claim.latest.checkVersion ? ` · ${claim.latest.checkVersion}` : ""}</p>}
                   {where && "walkthrough" in where && (
                     <div className="overflow-hidden rounded border">
-                      <WalkthroughInline
+                      <WalkthroughCompact
                         artifact={{ id: where.walkthrough, kind: "walkthrough", title: claim.text, source: { type: "graph", swarmId: content.swarmId, key: where.walkthrough } }}
                         content={{ swarmId: content.swarmId, key: where.walkthrough }}
                       />
@@ -341,5 +342,16 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** The claims' row in the chat: how many wait on a person, in amber, else how many there are. */
+export function ClaimsRowMeta({ content }: ArtifactViewerProps<"claims">) {
+  const looks = content.claims.filter(claimNeedsLook).length;
+  if (looks === 0) return <span>{plural(content.claims.length, "claim")}</span>;
+  return (
+    <span className={cn("rounded-full px-2 py-0.5 ring-1 ring-inset", PILL_CLASSES["needs a look"])}>
+      {looks} {looks === 1 ? "needs" : "need"} a look
+    </span>
   );
 }

@@ -12,6 +12,7 @@ import {
   type ArtifactRef,
   type ArtifactSource,
 } from "../../_state/canvasChatArtifacts";
+import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import { useChatOrgLogin } from "./useArtifactPanel";
 
 /**
@@ -141,14 +142,20 @@ interface PrLiveTarget {
  * (`api/orgs/[githubLogin]/strut/pull-request`). Null when the ref does not
  * name a pull request by repo and number.
  */
-function prLiveTarget(githubLogin: string, inline: Record<string, unknown>): PrLiveTarget | null {
+function prLiveTarget(
+  githubLogin: string,
+  inline: Record<string, unknown>,
+  conversationId?: string | null,
+): PrLiveTarget | null {
   const { repo, number } = inline;
   if (typeof repo !== "string" || !repo || typeof number !== "number" || !Number.isInteger(number)) return null;
   const sp = new URLSearchParams({ repo, number: String(number) });
+  // Lets the route write the live state back onto this chat's stored ref. Not part of the query key.
+  if (conversationId) sp.set("conversationId", conversationId);
   return { url: `/api/orgs/${encodeURIComponent(githubLogin)}/strut/pull-request?${sp}`, repo, number };
 }
 
-/** Query key the card and the panel share — one poll, one live-nudge target, serves both. */
+/** Query key the chat and the panel share — one poll, one live-nudge target, serves both. */
 const prLiveQueryKey = (githubLogin: string, repo: string, number: number) =>
   ["canvas-pr-live", githubLogin, repo, number] as const;
 
@@ -178,6 +185,9 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
   const githubLogin = useChatOrgLogin();
   const queryClient = useQueryClient();
   const { kind, source } = artifact;
+  const conversationId = useCanvasChatStore((s) =>
+    s.activeConversationId ? (s.conversations[s.activeConversationId]?.serverConversationId ?? null) : null,
+  );
 
   // Content on the ref needs no round trip, and so no loading state.
   const inline = useMemo(
@@ -189,16 +199,17 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
   //
   // The inline content is the first paint — the state the job reported —
   // and this query overlays the live state once it arrives, read from
-  // GitHub with the viewer's own token. The card and the panel share the
-  // same query key so a single poll serves both. Polling stops once the PR
-  // is merged or closed, or once a read has failed (`prLivePollInterval`),
-  // and does not run when the tab is hidden.
+  // GitHub with the viewer's own token. The chat's row and the panel share
+  // the same query key so a single poll serves both. A PR reported merged or
+  // closed is never read — its state is final — and polling stops once one
+  // turns so, or once a read has failed (`prLivePollInterval`), and does not
+  // run when the tab is hidden.
   const prTarget = useMemo(
     () =>
-      kind === "pull_request" && source.type === "inline"
-        ? prLiveTarget(githubLogin, source.content)
+      kind === "pull_request" && source.type === "inline" && !isTerminalPrState(source.content.state)
+        ? prLiveTarget(githubLogin, source.content, conversationId)
         : null,
-    [kind, source, githubLogin],
+    [kind, source, githubLogin, conversationId],
   );
 
   const prLiveQuery = useQuery({
