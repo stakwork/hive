@@ -1,10 +1,17 @@
-import { WorkspacesView } from "../_components/WorkspacesView";
+import { redirect } from "next/navigation";
 
-interface WorkspacesPageProps {
+interface PageProps {
   params: Promise<{ githubLogin: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function WorkspacesPage({ params }: WorkspacesPageProps) {
+/** Now a section of settings. */
+export default async function Page({ params, searchParams }: PageProps) {
   const { githubLogin } = await params;
-  return <WorkspacesView githubLogin={githubLogin} />;
+  const query = await searchParams;
+  const next = new URLSearchParams({ section: "workspaces" });
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === "string" && !next.has(key)) next.set(key, value);
+  }
+  redirect(`/org/${githubLogin}/settings?${next.toString()}`);
 }

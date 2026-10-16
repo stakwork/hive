@@ -2,19 +2,8 @@
 
 import { usePathname, useSearchParams } from "next/navigation";
 
-export type OrgView =
-  | "chats"
-  | "canvas"
-  | "strut"
-  | "advisor"
-  | "gateway"
-  | "canvas-demo"
-  | "initiatives"
-  | "workspaces"
-  | "members"
-  | "schematic"
-  | "graph"
-  | "settings";
+/** `ops` — Gateway and Advisor, both behind the rail's Ops menu. */
+export type OrgView = "chats" | "canvas" | "strut" | "ops" | "canvas-demo" | "graph" | "settings";
 
 /** Params that only mean something to the canvas: a sub-canvas, a research doc, a node. */
 const CANVAS_PARAMS = ["canvas", "r", "node", "select"];
@@ -29,6 +18,13 @@ export function orgPageView(params: Pick<URLSearchParams, "get"> | null): "chats
   if (view === "canvas" || view === "graph") return view;
   if (!view && CANVAS_PARAMS.some((key) => params?.get(key))) return "canvas";
   return "chats";
+}
+
+export type CanvasTab = "map" | "initiatives";
+
+/** The canvas view's tab, from `?tab=`; the map by default. */
+export function canvasTab(params: Pick<URLSearchParams, "get"> | null): CanvasTab {
+  return params?.get("tab") === "initiatives" ? "initiatives" : "map";
 }
 
 /** The org page's URL on the canvas view, carrying over the current params (the open chat among them) plus `patch`. */
@@ -58,28 +54,9 @@ export function useOrgView(githubLogin: string): OrgView {
   // Chats (the default), the canvas and the graph are views of the org page itself (`?view=`).
   if (pathname === base || pathname === `${base}/`) return orgPageView(searchParams);
   if (pathname.startsWith(`${base}/strut`)) return "strut";
-  if (pathname.startsWith(`${base}/advisor`)) return "advisor";
-  if (pathname.startsWith(`${base}/gateway`)) return "gateway";
+  if (pathname.startsWith(`${base}/advisor`) || pathname.startsWith(`${base}/gateway`)) return "ops";
   if (pathname.startsWith(`${base}/canvas-demo`)) return "canvas-demo";
-  if (pathname.startsWith(`${base}/initiatives`)) return "initiatives";
-  if (pathname.startsWith(`${base}/workspaces`)) return "workspaces";
-  if (pathname.startsWith(`${base}/members`)) return "members";
-  if (pathname.startsWith(`${base}/schematic`)) return "schematic";
   if (pathname.startsWith(`${base}/graph`)) return "graph";
   if (pathname.startsWith(`${base}/settings`)) return "settings";
   return "canvas";
-}
-
-/** Views that fill the viewport (no scrollable max-w container). */
-export function viewIsFullBleed(view: OrgView): boolean {
-  return (
-    view === "chats" ||
-    view === "canvas" ||
-    view === "strut" ||
-    view === "advisor" ||
-    view === "gateway" ||
-    view === "canvas-demo" ||
-    view === "schematic" ||
-    view === "graph"
-  );
 }
