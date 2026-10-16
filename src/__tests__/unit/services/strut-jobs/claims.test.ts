@@ -7,7 +7,10 @@
  *     swarm has no claims layer, the job is not there, or it did not answer;
  *   - the card: one id per job, the turn it is of, the turns numbered;
  *   - the actions, as the job's owner: Verify publishes the next version
- *     with the pass's outcomes; Supports fills the slot and publishes; a
+ *     with the pass's outcomes, its line saying what changed against the
+ *     card the conversation shows; a detached Verify is marked as the
+ *     person's, and a pass's end publishes only for that mark — the job's
+ *     agent verifying its own turn publishes nothing; Supports fills the slot and publishes; a
  *     refutation with a note fills the slot and becomes the job's next turn
  *     (`[claim-event] …`), publishing nothing itself; a new claim carries an
  *     external check.
@@ -15,17 +18,21 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockDb, mockLab, mockActor, mockAppend } = vi.hoisted(() => ({
+const { mockDb, mockLab, mockActor, mockAppend, mockRedis } = vi.hoisted(() => ({
   mockDb: {
     strutRun: { findMany: vi.fn(), findFirst: vi.fn() },
     workspace: { findUnique: vi.fn() },
+    sharedConversation: { findUnique: vi.fn() },
   },
   mockLab: vi.fn(),
   mockActor: vi.fn(),
   mockAppend: vi.fn(),
+  mockRedis: { set: vi.fn(), del: vi.fn() },
 }));
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
+vi.mock("@/lib/redis", () => ({ redis: mockRedis }));
+vi.mock("@/lib/ai/mcpTimeout", () => ({ withMcpTimeout: (fn: () => Promise<unknown>) => fn() }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
 vi.mock("@/services/bifrost/strut-delegation", () => ({ STRUT_ACTOR_HEADER: "x-strut-actor", resolveStrutActor: mockActor }));
@@ -37,6 +44,7 @@ import {
   answerJobClaim,
   claimsArtifact,
   claimsArtifactId,
+  describeVerify,
   mergeClaims,
   publishVerifiedVersion,
   readJobClaims,
@@ -113,6 +121,20 @@ beforeEach(() => {
   mockDb.strutRun.findFirst.mockResolvedValue({ strutRunId: TURN_2 });
   mockDb.workspace.findUnique.mockResolvedValue({ slug: "acme" });
   mockAppend.mockResolvedValue("appended");
+  mockRedis.set.mockResolvedValue("OK");
+  mockRedis.del.mockResolvedValue(1);
+  mockDb.sharedConversation.findUnique.mockResolvedValue(null);
+});
+
+const MARK = `strut-job:person-verify:${JOB}`;
+
+/** The job's conversation showing `claims` as its card's newest version, after an older one. */
+const showing = (claims: unknown[]) => ({
+  messages: [
+    { id: "m-1", artifacts: [{ id: claimsArtifactId(JOB), kind: "claims", source: { type: "inline", content: { workspace: "acme", swarmId: "swarm-1", job: JOB, turn: TURN_1, claims: [] } } }] },
+    { id: "m-2", content: "hello" },
+    { id: "m-3", artifacts: [{ id: "shot", kind: "image" }, { id: claimsArtifactId(JOB), kind: "claims", source: { type: "inline", content: { workspace: "acme", swarmId: "swarm-1", job: JOB, turn: TURN_1, claims } } }] },
+  ],
 });
 
 describe("mergeClaims", () => {
@@ -191,6 +213,29 @@ describe("the card", () => {
   });
 });
 
+describe("describeVerify", () => {
+  const after = mergeClaims(LEDGER, LISTING);
+  const was = (status: string) => mergeClaims(LEDGER.map((c) => (c.id === "c-page" ? { ...c, status } : c)), LISTING);
+
+  it("each claim whose pill moved, from → to; a claim the card did not show is new", () => {
+    expect(describeVerify("turn 2", was("unknown"), after)).toBe('Verified turn 2: "The settings page renders" unknown → supported.');
+    expect(describeVerify("turn 2", [], after)).toBe('Verified turn 2: "The settings page renders" new → supported; "A preference saved stays saved" new → needs a look.');
+  });
+
+  it("no change says so, with where things stand; no card to compare with is the tally alone", () => {
+    expect(describeVerify("turn 2", after, after)).toBe("Verified turn 2: no change (1 supported, 1 needs a look).");
+    expect(describeVerify("the newest turn", null, after)).toBe("Verified the newest turn: 1 supported, 1 needs a look.");
+    expect(describeVerify("turn 2", null, [])).toBe("Verified turn 2: no claims.");
+  });
+
+  it("a long claim is cut short; past three changes, the rest are counted", () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({ ...LEDGER[0], id: `c-${i}`, text: i === 0 ? "x".repeat(80) : `Claim ${i}` }));
+    const line = describeVerify("turn 2", [], mergeClaims(many));
+    expect(line).toContain(`"${"x".repeat(59)}…" new → supported`);
+    expect(line).toMatch(/"Claim 2" new → supported; 2 more changed\.$/);
+  });
+});
+
 describe("the card's actions", () => {
   it("Verify runs the pass as the job's owner and publishes the next version with its outcomes", async () => {
     const passed = LEDGER.map((c) => (c.id === "c-save" ? c : { ...c, checks: [{ id: "k-page", name: "browser/verify", lastVerify: { ran: true } }] }));
@@ -204,7 +249,7 @@ describe("the card's actions", () => {
     expect(mockActor).toHaveBeenCalledWith("user-1");
     expect(summary).toBe("1 supported, 1 needs a look");
     expect(mockAppend).toHaveBeenCalledWith(FIRST, {
-      content: "Verified the job's claims on turn 2: 1 supported, 1 needs a look.",
+      content: "Verified turn 2: 1 supported, 1 needs a look.",
       source: { kind: "job_claims", jobId: JOB, title: "Settings page" },
       artifacts: [card],
     });
@@ -216,7 +261,25 @@ describe("the card's actions", () => {
     serve({ [`/jobs/${JOB}/verify`]: () => json(202, { job: JOB, started: true }) });
     expect(await verifyJobClaims(FIRST, JOB)).toEqual({ card: null, summary: "", started: true });
     expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ detach: true });
+    expect(mockRedis.set).toHaveBeenCalledWith(MARK, "1", "EX", 1800);
+    expect(mockRedis.del).not.toHaveBeenCalled();
     expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it("a mark Redis cannot take waits on the pass instead — the person still gets the line", async () => {
+    mockDb.strutRun.findFirst.mockResolvedValue({ strutRunId: TURN_2, liveUpdates: true });
+    mockRedis.set.mockRejectedValue(new Error("redis down"));
+    serve({ [`/jobs/${JOB}/verify`]: () => json(200, { job: JOB, runId: TURN_2, checks: [], evidence: 1, slots: 1, costUsd: 0, claims: LEDGER }), "/claims?": () => json(200, { claims: LISTING }) });
+    await verifyJobClaims(FIRST, JOB);
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({});
+    expect(mockAppend).toHaveBeenCalledTimes(1);
+  });
+
+  it("a refused detached Verify takes its mark back, so a later pass of the agent's does not publish", async () => {
+    mockDb.strutRun.findFirst.mockResolvedValue({ strutRunId: TURN_2, liveUpdates: true });
+    serve({ [`/jobs/${JOB}/verify`]: () => json(404, { error: `No job "${JOB}"` }) });
+    await expect(verifyJobClaims(FIRST, JOB)).rejects.toMatchObject({ status: 404 });
+    expect(mockRedis.del).toHaveBeenCalledWith(MARK);
   });
 
   it("an older strut ignores detach and answers with the pass: it is published as before", async () => {
@@ -226,25 +289,46 @@ describe("the card's actions", () => {
     expect(out.started).toBeUndefined();
     expect(out.card).not.toBeNull();
     expect(mockAppend).toHaveBeenCalledTimes(1);
+    // Published here: the mark is taken back, so the pass's end does not publish it again.
+    expect(mockRedis.del).toHaveBeenCalledWith(MARK);
   });
 
   it("a job without live updates waits on the pass, as before — no detach asked", async () => {
     serve({ [`/jobs/${JOB}/verify`]: () => json(200, { job: JOB, runId: TURN_2, checks: [], evidence: 1, slots: 1, costUsd: 0, claims: LEDGER }), "/claims?": () => json(200, { claims: LISTING }) });
     await verifyJobClaims(FIRST, JOB);
     expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({});
+    expect(mockRedis.set).not.toHaveBeenCalled();
   });
 
   it("when a detached Verify ends, the ledger as it is now is the card's next version", async () => {
     serve({ [`/jobs/${JOB}/claims`]: () => json(200, { enabled: true, claims: LEDGER }), "/claims?": () => json(200, { claims: LISTING }) });
     const card = await publishVerifiedVersion(FIRST, JOB, TURN_2);
+    expect(mockRedis.del).toHaveBeenCalledWith(MARK);
     expect(card?.source).toMatchObject({ content: { turn: TURN_2, swarmId: "swarm-1" } });
     expect(mockAppend).toHaveBeenCalledWith(FIRST, {
-      content: "Verified the job's claims on turn 2: 1 supported, 1 needs a look.",
+      content: "Verified turn 2: 1 supported, 1 needs a look.",
       source: { kind: "job_claims", jobId: JOB, title: "Settings page" },
       artifacts: [card],
     });
     mockLab.mockResolvedValue(null);
     expect(await publishVerifiedVersion(FIRST, JOB, TURN_2)).toBeNull();
+  });
+
+  it("a pass's end with no person's Verify waiting — the job's agent verifying its own turn — publishes nothing", async () => {
+    mockRedis.del.mockResolvedValue(0);
+    expect(await publishVerifiedVersion(FIRST, JOB, TURN_2)).toBeNull();
+    mockRedis.del.mockRejectedValue(new Error("redis down"));
+    expect(await publishVerifiedVersion(FIRST, JOB, TURN_2)).toBeNull();
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockAppend).not.toHaveBeenCalled();
+  });
+
+  it("the line says what changed against the card the conversation shows", async () => {
+    mockDb.sharedConversation.findUnique.mockResolvedValue(showing(mergeClaims(LEDGER.map((c) => (c.id === "c-page" ? { ...c, status: "unknown", latest: undefined } : c)), LISTING)));
+    serve({ [`/jobs/${JOB}/claims`]: () => json(200, { enabled: true, claims: LEDGER }), "/claims?": () => json(200, { claims: LISTING }) });
+    await publishVerifiedVersion(FIRST, JOB, TURN_2);
+    expect(mockDb.sharedConversation.findUnique).toHaveBeenCalledWith({ where: { id: "conv-1" }, select: { messages: true } });
+    expect(mockAppend.mock.calls[0][1].content).toBe('Verified turn 2: "The settings page renders" unknown → supported.');
   });
 
   it("strut's refusals come back as the route answers them", async () => {
