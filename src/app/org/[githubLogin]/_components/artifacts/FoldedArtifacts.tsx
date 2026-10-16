@@ -10,8 +10,8 @@ import { artifactKind } from "./registry";
 
 /**
  * A message's reference material — the kinds with no place in the chat
- * (`chat` in `artifacts/registry.ts`: logs, JSON, code, diffs, graph
- * traces) — as one quiet line under it: each name opens that artifact on
+ * (`chat` in `artifacts/registry.ts`: logs, JSON, code, diffs) — as one
+ * quiet line under it: each name opens that artifact on
  * the panel, the count opens the panel's index of everything in the chat.
  */
 export const FoldedArtifacts = React.memo(function FoldedArtifacts({

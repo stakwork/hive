@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -330,10 +330,16 @@ function Row({
   onOpenPullRequest: (pr: ControlPanelPullRequest) => void;
   menu?: React.ReactNode;
 }) {
+  // The keyboard cursor never leaves the list's view.
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (cursor) rowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [cursor]);
   // The title is the row's button, stretched over the whole row; the PRs and
   // the menu sit above it as siblings, so their clicks never open the chat.
   return (
     <div
+      ref={rowRef}
       className={cn(
         "group relative flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors",
         active
@@ -357,10 +363,11 @@ function Row({
       </span>
       <span className="relative z-10 flex h-5 w-5 shrink-0 items-center justify-center">
         {working && (
-          <Loader2
+          <span
+            role="status"
             aria-label="Working"
             className={cn(
-              "h-3.5 w-3.5 animate-spin text-sky-500",
+              "h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/60",
               menu && "group-focus-within:hidden group-hover:hidden group-has-[[data-state=open]]:hidden",
             )}
           />

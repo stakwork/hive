@@ -18,6 +18,8 @@ import { useControlPanelItems } from "./useControlPanelItems";
 
 /** How long a job's card gets to appear in a chat that is still loading before the scroll gives up. */
 const REVEAL_FRAMES = 90;
+/** How long ↑↓ wait for the key to rest before opening the chat. */
+const KEYBOARD_OPEN_DELAY_MS = 150;
 
 /** Scroll the chat to a job's newest card once it has rendered. */
 function revealJob(jobId: string) {
@@ -179,14 +181,20 @@ export function useControlPanel(githubLogin: string): Omit<ControlPanelListProps
     [groups, archivedExpanded, displayArchivedItems],
   );
 
+  // ↑↓ open the chat they land on — once the key rests, so holding one
+  // opens the last chat rather than every chat it passes.
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(openTimerRef.current), []);
   const moveCursor = useCallback(
     (delta: number) => {
       if (visible.length === 0) return;
       const idx = visible.findIndex((i) => i.id === cursorId);
-      const next = idx === -1 ? 0 : Math.min(Math.max(idx + delta, 0), visible.length - 1);
-      setCursorId(visible[next].id);
+      const item = visible[idx === -1 ? 0 : Math.min(Math.max(idx + delta, 0), visible.length - 1)];
+      setCursorId(item.id);
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = setTimeout(() => void openChat(item), KEYBOARD_OPEN_DELAY_MS);
     },
-    [visible, cursorId],
+    [visible, cursorId, openChat],
   );
 
   useEffect(() => {

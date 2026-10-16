@@ -184,6 +184,15 @@ function RunCard({
               · {run.cweIds.length > 3 ? `${run.cweIds.slice(0, 3).join(", ")} +${run.cweIds.length - 3}` : run.cweIds.join(", ")}
             </span>
           )}
+          {run.components && (
+            <span
+              className="max-w-xs truncate text-xs text-muted-foreground"
+              title={run.components.join(", ")}
+              data-testid="system-map-run-components"
+            >
+              · on {run.components.length > 2 ? `${run.components.slice(0, 2).join(", ")} +${run.components.length - 2}` : run.components.join(", ")}
+            </span>
+          )}
           {run.strutUrl && (
             <Link
               href={run.strutUrl}

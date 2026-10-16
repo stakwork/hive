@@ -46,7 +46,7 @@ vi.mock("@/services/strut-runs", () => ({
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { launchSystemMapRun, listSystemMapRuns, parseCweIds } from "@/services/strut-runs/system-map";
+import { launchSystemMapRun, listSystemMapRuns, parseComponents, parseCweIds } from "@/services/strut-runs/system-map";
 
 const NOW = new Date("2026-09-25T12:00:00Z");
 
@@ -166,6 +166,35 @@ describe("launchSystemMapRun", () => {
     );
   });
 
+  it("scopes the CWE check to components", async () => {
+    mockWorkspace.findUnique.mockResolvedValue({
+      swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
+    });
+    mockDispatch.mockResolvedValue({ runId: "run-7", strutRunId: "7", swarmId: "swarm-1" });
+
+    await launchSystemMapRun({
+      workspaceId: "ws-1",
+      workspaceSlug: "acme-ws",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      key: "cwe_check",
+      cweIds: ["CWE-306"],
+      components: ["stakwork/hive"],
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: {
+          workspace: "acme-ws",
+          swarm_url: "https://acme.sphinx.chat:3355",
+          swarm_secret_alias: "{{SWARM_123_API_KEY}}",
+          cwe_ids: ["CWE-306"],
+          components: ["stakwork/hive"],
+        },
+      }),
+    );
+  });
+
   it("returns the run's strut view link when the workspace has an org", async () => {
     mockWorkspace.findUnique.mockResolvedValue({
       swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
@@ -194,6 +223,25 @@ describe("launchSystemMapRun", () => {
       launchSystemMapRun({ workspaceId: "ws-1", workspaceSlug: "acme-ws", userId: "user-1", publicBaseUrl: "https://h" }),
     ).rejects.toMatchObject({ code: "no_target" });
     expect(mockDispatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("parseComponents", () => {
+  it("passes absent through and trims / dedupes names", () => {
+    expect(parseComponents("cwe_check", undefined)).toBeUndefined();
+    expect(parseComponents("cwe_check", ["stakwork/hive", " stakwork/hive ", "jarvis"])).toEqual([
+      "stakwork/hive",
+      "jarvis",
+    ]);
+  });
+
+  it("rejects bad shapes, empty names, too many, and workflows without CWE scope", () => {
+    expect(parseComponents("cwe_check", "stakwork/hive")).toHaveProperty("error");
+    expect(parseComponents("cwe_check", [1])).toHaveProperty("error");
+    expect(parseComponents("cwe_check", ["  "])).toHaveProperty("error");
+    expect(parseComponents("cwe_check", [])).toHaveProperty("error");
+    expect(parseComponents("cwe_check", Array.from({ length: 51 }, (_, i) => `c${i}`))).toHaveProperty("error");
+    expect(parseComponents("system_map", ["stakwork/hive"])).toEqual({ error: "This workflow does not take components" });
   });
 });
 
@@ -234,6 +282,7 @@ describe("listSystemMapRuns", () => {
         settledAt: NOW.toISOString(),
         strutUrl: "/org/acme/strut?strut=wf%3Dswarm-systemmap-schema-sync%26run%3D1700000000000",
         cweIds: null,
+        components: null,
       },
     ]);
     expect(mockStrutRun.findMany).toHaveBeenCalledWith(
@@ -243,13 +292,19 @@ describe("listSystemMapRuns", () => {
 
   it("reads the CWEs a run was scoped to from its input", async () => {
     mockStrutRun.findMany.mockResolvedValue([
-      row({ id: "a", status: StrutRunStatus.SUCCESS, settledAt: NOW, input: { cwe_ids: ["CWE-79", "CWE-89"] } }),
+      row({
+        id: "a",
+        status: StrutRunStatus.SUCCESS,
+        settledAt: NOW,
+        input: { cwe_ids: ["CWE-79", "CWE-89"], components: ["stakwork/hive"] },
+      }),
       row({ id: "c", status: StrutRunStatus.SUCCESS, settledAt: NOW, input: { workspace: "acme-ws" } }),
     ]);
 
     const runs = await listSystemMapRuns("ws-1", "cwe_check", { now: NOW });
 
     expect(runs.map((r) => r.cweIds)).toEqual([["CWE-79", "CWE-89"], null]);
+    expect(runs.map((r) => r.components)).toEqual([["stakwork/hive"], null]);
   });
 
   it("lists the CWE check workflow's runs under its own kind", async () => {
