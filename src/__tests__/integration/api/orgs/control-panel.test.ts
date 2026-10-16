@@ -2,6 +2,9 @@ import { describe, it, expect, afterEach } from "vitest";
 import { createAuthenticatedGetRequest, generateUniqueId } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/factories";
 import { db } from "@/lib/db";
+import { reconcileChatPullRequestState } from "@/services/orgs/reconcile-chat-pull-request";
+import { getControlPanelItems } from "@/services/orgs/control-panel";
+import { appendTurnMessages } from "@/services/canvas-turn-persistence";
 import { GET as getControlPanel } from "@/app/api/orgs/[githubLogin]/control-panel/route";
 
 let installationIdCounter = 982000;
@@ -225,5 +228,92 @@ describe("GET /api/orgs/[githubLogin]/control-panel", () => {
     });
     const res = await getControlPanel(req, { params: listParams(org.githubLogin) });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("reconcileChatPullRequestState", () => {
+  const prMessage = {
+    id: "m-pr",
+    role: "assistant",
+    content: "done",
+    artifacts: [
+      {
+        id: "pr-1",
+        kind: "pull_request",
+        title: "PR",
+        source: { type: "inline", content: { url: "u", repo: "acme/app", number: 7, state: "open" } },
+      },
+    ],
+  };
+
+  it("shows the new state in the control panel and keeps a concurrent append", async () => {
+    const user = await createTestUser();
+    createdUserIds.push(user.id);
+    const org = await createOrg(`test-org-rc-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const chat = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: user.id,
+        workspaceId: null,
+        messages: [{ id: "m-u", role: "user", content: "hi" }, prMessage] as object[],
+        title: "t",
+        source: "org-canvas",
+        followUpQuestions: [],
+        lastMessageAt: new Date("2024-01-01T00:00:00Z"),
+      },
+    });
+    createdConversationIds.push(chat.id);
+
+    const [rec] = await Promise.all([
+      reconcileChatPullRequestState({
+        conversationId: chat.id,
+        orgId: org.id,
+        userId: user.id,
+        repo: "ACME/app",
+        number: 7,
+        state: "merged",
+      }),
+      appendTurnMessages({
+        conversationId: chat.id,
+        rows: [{ id: "turn-a-a", role: "assistant", content: "more", timestamp: new Date().toISOString() } as never],
+        idPrefix: "turn-a",
+        reason: "autoturn",
+      }),
+    ]);
+    expect(rec.updated).toBe(1);
+
+    const row = await db.sharedConversation.findUniqueOrThrow({ where: { id: chat.id } });
+    const msgs = row.messages as { id: string; artifacts?: { source: { content: { state: string } } }[] }[];
+    expect(msgs.some((m) => m.id === "turn-a-a")).toBe(true);
+    expect(msgs.find((m) => m.id === "m-pr")!.artifacts![0].source.content.state).toBe("merged");
+
+    const panel = await getControlPanelItems({ orgId: org.id, userId: user.id });
+    expect(JSON.stringify(panel)).toContain("merged");
+  });
+
+  it("does nothing for another user's unshared chat", async () => {
+    const user = await createTestUser();
+    const other = await createTestUser();
+    createdUserIds.push(user.id, other.id);
+    const org = await createOrg(`test-org-rc-${generateUniqueId()}`);
+    createdOrgIds.push(org.id);
+    const chat = await db.sharedConversation.create({
+      data: {
+        sourceControlOrgId: org.id,
+        userId: user.id,
+        workspaceId: null,
+        messages: [prMessage] as object[],
+        title: "t",
+        source: "org-canvas",
+        followUpQuestions: [],
+        lastMessageAt: new Date(),
+      },
+    });
+    createdConversationIds.push(chat.id);
+    const res = await reconcileChatPullRequestState({
+      conversationId: chat.id, orgId: org.id, userId: other.id, repo: "acme/app", number: 7, state: "merged",
+    });
+    expect(res.updated).toBe(0);
   });
 });
