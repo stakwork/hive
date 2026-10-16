@@ -45,6 +45,17 @@ describe("github-app-state", () => {
       );
     });
 
+    test("carries the signing user's id", () => {
+      const state = signGithubAppState({
+        workspaceSlug: "my-workspace",
+        randomState: "random-abc",
+        timestamp: Date.now(),
+        userId: "user-123",
+      });
+
+      expect(verifyGithubAppState(state).payload?.userId).toBe("user-123");
+    });
+
     test("throws when NEXTAUTH_SECRET is missing", () => {
       delete process.env.NEXTAUTH_SECRET;
       expect(() =>
