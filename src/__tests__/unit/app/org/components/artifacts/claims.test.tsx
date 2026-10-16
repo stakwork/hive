@@ -12,9 +12,9 @@
 import React from "react";
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ClaimsPanel, locatorView, outcomeWords, verifiedOn } from "@/app/org/[githubLogin]/_components/artifacts/viewers/claims";
+import { ClaimsPanel, ClaimsRowMeta, locatorView, outcomeWords, verifiedOn } from "@/app/org/[githubLogin]/_components/artifacts/viewers/claims";
 import { artifactKind } from "@/app/org/[githubLogin]/_components/artifacts/registry";
-import { parseArtifactContent, type ArtifactContents, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
+import { claimNeedsLook, parseArtifactContent, type ArtifactContents, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { useJobLiveStore } from "@/app/org/[githubLogin]/_state/jobLiveStore";
 import { act } from "@testing-library/react";
 
@@ -125,12 +125,20 @@ describe("the words", () => {
   });
 });
 
-describe("the card", () => {
-  test("is the summary alone: no preview and no caption fact, so no claim text in the chat", () => {
+describe("in the chat", () => {
+  test("a row with its summary alone, so no claim text in the chat", () => {
     const spec = artifactKind("claims");
-    expect(spec.Inline).toBeUndefined();
-    expect(spec.fact).toBeUndefined();
+    expect(spec.chat).toEqual({ place: "row", Meta: ClaimsRowMeta });
     expect(spec.Panel).toBe(ClaimsPanel);
+  });
+
+  test("the row says how many wait on a person, else how many claims there are", () => {
+    const { rerender } = render(<ClaimsRowMeta artifact={artifact} content={content} />);
+    const looks = content.claims.filter(claimNeedsLook).length;
+    expect(screen.getByText(`${looks} ${looks === 1 ? "needs" : "need"} a look`)).toBeTruthy();
+    const settled = { ...content, claims: content.claims.map((claim) => ({ ...claim, slots: [] })) };
+    rerender(<ClaimsRowMeta artifact={artifact} content={settled} />);
+    expect(screen.getByText(`${settled.claims.length} claim${settled.claims.length === 1 ? "" : "s"}`)).toBeTruthy();
   });
 });
 
