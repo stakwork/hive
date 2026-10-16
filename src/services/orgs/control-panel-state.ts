@@ -238,36 +238,70 @@ export function moveChatToActive(
   };
 }
 
+/** A chat other than the active one, with the label and start its stand-in row needs. */
+export interface BackgroundChat {
+  chat: ActiveChatSnapshot;
+  title: string;
+  /** Used for the stand-in row's day while the chat has no message yet. */
+  startedAt: string;
+}
+
+type ControlPanelLists = { displayItems: ControlPanelItem[]; displayArchivedItems: ControlPanelItem[] };
+
 /**
- * Place the active chat into Active or Archive without re-injecting an
+ * Place one live chat into Active or Archive without re-injecting an
  * archived chat into the active list. Overlay live store data onto whichever
  * row already holds it; only a brand-new chat (in neither list) is prepended
  * into Active.
+ */
+function placeLiveChat(
+  lists: ControlPanelLists,
+  chat: ActiveChatSnapshot,
+  startedAt: string,
+  title: string,
+  canStandIn = true,
+) {
+  const { displayItems, displayArchivedItems } = lists;
+  const id = chat.serverId ?? chat.localId;
+  if (displayItems.some((item) => item.id === id)) {
+    return {
+      displayItems: displayItems.map((item) => (item.id === id ? overlayActiveChat(item, chat) : item)),
+      displayArchivedItems,
+    };
+  }
+  if (displayArchivedItems.some((item) => item.id === id)) {
+    return {
+      displayItems,
+      displayArchivedItems: displayArchivedItems.map((item) => (item.id === id ? overlayActiveChat(item, chat) : item)),
+    };
+  }
+  // An empty new chat has nothing to list yet; it gets its row with its first message.
+  if (!chat.hasMessages || !canStandIn) return lists;
+  return { displayItems: [activeChatItem(chat, startedAt, title), ...displayItems], displayArchivedItems };
+}
+
+/**
+ * Place the active chat — and the other chats the store holds, which the
+ * list fetch trails just the same (a reply the user switched away from, one
+ * that just settled) — into Active or Archive. A chat appears once,
+ * whichever way the store names it.
  */
 export function resolveControlPanelLists(
   items: ControlPanelItem[],
   archivedItems: ControlPanelItem[],
   activeChat: ActiveChatSnapshot | null,
-  opts: { startedAt: string; titleForNew: string },
-): { displayItems: ControlPanelItem[]; displayArchivedItems: ControlPanelItem[] } {
-  if (!activeChat) return { displayItems: items, displayArchivedItems: archivedItems };
-  const id = activeChat.serverId ?? activeChat.localId;
-  if (items.some((item) => item.id === id)) {
-    return {
-      displayItems: items.map((item) => (item.id === id ? overlayActiveChat(item, activeChat) : item)),
-      displayArchivedItems: archivedItems,
-    };
+  opts: { startedAt: string; titleForNew: string; backgroundChats?: BackgroundChat[] },
+): ControlPanelLists {
+  let lists: ControlPanelLists = { displayItems: items, displayArchivedItems: archivedItems };
+  const activeId = activeChat ? (activeChat.serverId ?? activeChat.localId) : null;
+  const seen = new Set<string>();
+  for (const { chat, title, startedAt } of opts.backgroundChats ?? []) {
+    const id = chat.serverId ?? chat.localId;
+    if (id === activeId || seen.has(id)) continue;
+    seen.add(id);
+    // Only a chat still replying stands in for a row the server has not listed; a settled one just
+    // keeps its row current until the list catches up with it.
+    lists = placeLiveChat(lists, chat, startedAt, title, chat.isStreaming);
   }
-  if (archivedItems.some((item) => item.id === id)) {
-    return {
-      displayItems: items,
-      displayArchivedItems: archivedItems.map((item) => (item.id === id ? overlayActiveChat(item, activeChat) : item)),
-    };
-  }
-  // An empty new chat has nothing to list yet; it gets its row with its first message.
-  if (!activeChat.hasMessages) return { displayItems: items, displayArchivedItems: archivedItems };
-  return {
-    displayItems: [activeChatItem(activeChat, opts.startedAt, opts.titleForNew), ...items],
-    displayArchivedItems: archivedItems,
-  };
+  return activeChat ? placeLiveChat(lists, activeChat, opts.startedAt, opts.titleForNew) : lists;
 }

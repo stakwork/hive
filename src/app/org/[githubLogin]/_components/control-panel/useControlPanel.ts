@@ -8,6 +8,7 @@ import {
   resolveControlPanelLists,
   activeChatTitle,
   type ActiveChatSnapshot,
+  type BackgroundChat,
 } from "@/services/orgs/control-panel-state";
 import type { ControlPanelItem, ControlPanelJob, ControlPanelPullRequest } from "@/types/control-panel";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
@@ -66,37 +67,82 @@ export function useControlPanel(githubLogin: string): Omit<ControlPanelListProps
   const activeServerId = activeChat?.serverId ?? null;
   const activeId = activeChat ? (activeServerId ?? activeLocalId) : null;
 
+  // Every chat in the store, as one string of primitives: the store's
+  // per-chunk writes leave it unchanged, so streaming doesn't re-render
+  // the page, and it still moves when a chat starts, settles or is
+  // persisted. The background chats and the refetch triggers read it.
+  const chatsKey = useCanvasChatStore((s) =>
+    JSON.stringify(
+      Object.values(s.conversations).map((conv) => [
+        conv.id,
+        conv.serverConversationId,
+        conv.isStreaming,
+        conv.messages[0]?.timestamp.toISOString() ?? null,
+        conv.messages[conv.messages.length - 1]?.timestamp.toISOString() ?? null,
+        conv.messages.length > 0,
+        conv.title,
+      ]),
+    ),
+  );
+  const chats = useMemo(
+    () =>
+      (
+        JSON.parse(chatsKey) as [string, string | null, boolean, string | null, string | null, boolean, string | null][]
+      ).map(([localId, serverId, isStreaming, startedAt, lastMessageAt, hasMessages, title]) => ({
+        startedAt,
+        chat: { localId, serverId, lastMessageAt, hasMessages, isStreaming, title } satisfies ActiveChatSnapshot,
+      })),
+    [chatsKey],
+  );
+
   // A fresh chat gets its server row on its first turn: fetch then, so the
   // stand-in row hands over to the real one; and again when a reply settles.
+  // Any chat counts, not just the active one — a reply the user switched
+  // away from still finishes and persists.
   const newChatStartedAtRef = useRef(new Date().toISOString());
-  const prevChatRef = useRef<{ local: string | null; server: string | null; streaming: boolean }>({
-    local: null,
-    server: null,
-    streaming: false,
-  });
+  const prevChatsRef = useRef(new Map<string, { server: string | null; streaming: boolean }>());
   useEffect(() => {
-    const prev = prevChatRef.current;
-    prevChatRef.current = { local: activeLocalId, server: activeServerId, streaming: activeChat?.isStreaming ?? false };
-    if (!activeLocalId) return;
-    if (prev.local !== activeLocalId) {
-      if (!activeServerId) newChatStartedAtRef.current = new Date().toISOString();
-      setCursorId(activeServerId ?? activeLocalId);
-      return;
+    const prev = prevChatsRef.current;
+    const next = new Map<string, { server: string | null; streaming: boolean }>();
+    let changed = false;
+    for (const { chat } of chats) {
+      const before = prev.get(chat.localId);
+      if (before && ((before.server === null && chat.serverId) || (before.streaming && !chat.isStreaming))) {
+        changed = true;
+      }
+      next.set(chat.localId, { server: chat.serverId, streaming: chat.isStreaming });
     }
-    if (prev.server === null && activeServerId) void refetch();
-    if (prev.streaming && !activeChat?.isStreaming) void refetch();
-  }, [activeLocalId, activeServerId, activeChat?.isStreaming, refetch]);
+    prevChatsRef.current = next;
+    if (changed) void refetch();
+  }, [chats, refetch]);
 
-  // The active chat is always in a list, brought up to what the store
+  const prevActiveLocalIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeLocalId || prevActiveLocalIdRef.current === activeLocalId) return;
+    prevActiveLocalIdRef.current = activeLocalId;
+    if (!activeServerId) newChatStartedAtRef.current = new Date().toISOString();
+    setCursorId(activeServerId ?? activeLocalId);
+  }, [activeLocalId, activeServerId]);
+
+  // Every live chat is always in a list, brought up to what the store
   // knows; an archived one stays in Archive.
   const { displayItems, displayArchivedItems } = useMemo(() => {
-    const conv = activeChat ? useCanvasChatStore.getState().conversations[activeChat.localId] : undefined;
+    const { conversations } = useCanvasChatStore.getState();
+    const backgroundChats: BackgroundChat[] = chats
+      .filter(({ chat }) => chat.hasMessages && chat.localId !== activeLocalId)
+      .map(({ chat, startedAt }) => ({
+        chat,
+        title: activeChatTitle(chat, conversations[chat.localId]?.messages),
+        startedAt: startedAt ?? new Date().toISOString(),
+      }));
+    const conv = activeChat ? conversations[activeChat.localId] : undefined;
     const title = activeChat ? activeChatTitle(activeChat, conv?.messages) : "New chat";
     return resolveControlPanelLists(items, archivedItems, activeChat, {
       startedAt: newChatStartedAtRef.current,
       titleForNew: title,
+      backgroundChats,
     });
-  }, [items, archivedItems, activeChat]);
+  }, [items, archivedItems, activeChat, activeLocalId, chats]);
 
   const openChat = useCallback(
     async (item: ControlPanelItem): Promise<boolean> => {
