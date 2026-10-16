@@ -34,6 +34,9 @@ export async function seedMockData(
     return;
   }
 
+  // Capacity page reads pods from the DB; keep them seeded even for existing workspaces
+  await seedMockPods(workspaceId);
+
   // Idempotency check - if features exist, skip seeding
   const existingFeatures = await db.feature.count({
     where: { workspaceId, deleted: false },
@@ -2125,6 +2128,33 @@ async function seedPullRequestArtifacts(
   console.log(
     `  - ${prTemplates.filter((t) => t.createdHoursAgo > 72).length} older than 72h`
   );
+}
+
+/**
+ * Seeds 2 DB pod records so the Capacity page (which reads the pods table)
+ * is not empty. Idempotent via upsert on the unique podId.
+ */
+async function seedMockPods(workspaceId: string): Promise<void> {
+  const swarm = await db.swarm.findFirst({
+    where: { workspaceId },
+    select: { id: true },
+  });
+  if (!swarm) return;
+
+  for (let i = 0; i < 2; i++) {
+    const podId = `mock-pool-pod-${i}`;
+    await db.pod.upsert({
+      where: { podId },
+      update: {},
+      create: {
+        podId,
+        swarmId: swarm.id,
+        password: `mock-password-${i}`,
+        status: "RUNNING",
+        usageStatus: "UNUSED",
+      },
+    });
+  }
 }
 
 /**
