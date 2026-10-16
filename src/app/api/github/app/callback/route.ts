@@ -102,19 +102,21 @@ export async function GET(request: NextRequest) {
     }
     const statePayload: GithubAppStatePayload = stateResult.payload;
 
-    // Additionally bind the state to this user's session. The install
-    // handler stores the signed state on `session.githubState`, so even
-    // if an attacker somehow replayed a valid signed state issued to
-    // another user (e.g. via log exfil), it won't match this user's
-    // session and the rewire will be rejected.
-    const userSession = await db.session.findFirst({
-      where: {
-        userId: session.user.id as string,
-        githubState: state,
-      },
-      select: { id: true },
-    });
-    if (!userSession) {
+    // Additionally bind the state to the user who started the install, so a
+    // valid signed state issued to another user (e.g. via log exfil) is
+    // rejected. The signed `userId` is the binding; states minted before it
+    // existed fall back to the `session.githubState` row the install handler
+    // wrote (which only pre-JWT sessions have).
+    const boundToUser = statePayload.userId
+      ? statePayload.userId === session.user.id
+      : !!(await db.session.findFirst({
+          where: {
+            userId: session.user.id as string,
+            githubState: state,
+          },
+          select: { id: true },
+        }));
+    if (!boundToUser) {
       console.error(
         "GitHub App callback: state not bound to user session",
         session.user.id,
