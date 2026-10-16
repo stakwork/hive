@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { Scan, ZoomIn, ZoomOut } from "lucide-react";
+import { Play, Scan, ZoomIn, ZoomOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { PanelToolbar, ToolbarButton } from "../chrome";
@@ -11,21 +11,6 @@ function ImageUnavailable() {
 }
 
 // ─── Image ──────────────────────────────────────────────────────────────
-
-export function ImageInline({ artifact, content }: ArtifactViewerProps<"image">) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return <ImageUnavailable />;
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={content.url}
-      alt={content.alt ?? artifact.title}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className="max-h-64 w-full bg-muted/30 object-contain"
-    />
-  );
-}
 
 const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
 /** Room left around an image that is fitted to the panel. */
@@ -115,12 +100,6 @@ export function ImagePanel({ artifact, content }: ArtifactViewerProps<"image">) 
 
 // ─── Video ──────────────────────────────────────────────────────────────
 
-export function VideoInline({ content }: ArtifactViewerProps<"video">) {
-  return (
-    <video src={content.url} poster={content.poster} controls preload="metadata" className="max-h-64 w-full bg-black" />
-  );
-}
-
 export function VideoPanel({ content }: ArtifactViewerProps<"video">) {
   return (
     <video
@@ -138,19 +117,58 @@ export function VideoPanel({ content }: ArtifactViewerProps<"video">) {
 /** The browser draws its own player; this has it follow the app's theme rather than the system's. */
 const PLAYER_THEME = "[color-scheme:light] [.dark_&]:[color-scheme:dark]";
 
-export function AudioInline({ content }: ArtifactViewerProps<"audio">) {
-  return (
-    <div className="px-3 py-2.5">
-      <audio src={content.url} controls preload="metadata" className={cn("h-9 w-full", PLAYER_THEME)} />
-    </div>
-  );
-}
-
 /** Sound has nothing to show, so the panel is the same player with room around it. */
 export function AudioPanel({ content }: ArtifactViewerProps<"audio">) {
   return (
     <div className="flex h-full items-center justify-center p-8">
       <audio src={content.url} controls preload="metadata" className={cn("w-full max-w-xl", PLAYER_THEME)} />
     </div>
+  );
+}
+
+// ─── Thumbnails, for the chat's strip ───────────────────────────────────
+
+/** The play mark on a recording's thumbnail. */
+export function PlayMark() {
+  return (
+    <span className="absolute inset-0 flex items-center justify-center">
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white">
+        <Play aria-hidden className="h-3.5 w-3.5" />
+      </span>
+    </span>
+  );
+}
+
+export function ImageThumb({ artifact, content }: ArtifactViewerProps<"image">) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={content.url}
+      alt={content.alt ?? artifact.title}
+      loading="lazy"
+      draggable={false}
+      onError={() => setFailed(true)}
+      // A screenshot's top is where its page starts.
+      className="h-full w-full object-cover object-top"
+    />
+  );
+}
+
+/** The recording's first frame — or its poster — with the play mark; it plays in the panel. */
+export function VideoThumb({ content }: ArtifactViewerProps<"video">) {
+  return (
+    <>
+      {/* A poster draws the frame without fetching any of the video. */}
+      <video
+        src={content.url}
+        poster={content.poster}
+        muted
+        preload={content.poster ? "none" : "metadata"}
+        className="h-full w-full object-cover"
+      />
+      <PlayMark />
+    </>
   );
 }

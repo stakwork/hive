@@ -2,7 +2,7 @@
  * Live PR nudge — the org-canvas twin of `strut-jobs/artifact-events.ts`
  * and `check-failures.ts`, but for the PERSON looking at the canvas rather
  * than the job that reported the pull request. Any pull request the canvas
- * can show (`PullRequestInline` / `PullRequestPanel`) polls its live state
+ * can show (`PullRequestRowMeta` / `PullRequestPanel`) polls its live state
  * every 30s through `/api/orgs/[githubLogin]/strut/pull-request` with the
  * viewer's own GitHub token; this just makes that refetch immediate by
  * nudging the org's Pusher channel when GitHub says something changed.

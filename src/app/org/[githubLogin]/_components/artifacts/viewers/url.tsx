@@ -14,18 +14,6 @@ import { PanelToolbar, ToolbarButton } from "../chrome";
  */
 const BROWSER_SANDBOX = "allow-scripts allow-same-origin allow-forms allow-popups";
 
-export function UrlInline({ content }: ArtifactViewerProps<"url">) {
-  const { host, rest } = addressParts(content.url);
-  return (
-    <div className="px-3 py-2.5">
-      <div className="truncate rounded-full border bg-background px-3 py-1 font-mono text-[11px]">
-        {host}
-        <span className="text-muted-foreground">{rest}</span>
-      </div>
-    </div>
-  );
-}
-
 /**
  * A small browser on the artifact's address: an address bar, reload, and
  * back and forward over the addresses entered here. Links followed inside
@@ -110,4 +98,9 @@ export function UrlPanel({ artifact, content }: ArtifactViewerProps<"url">) {
       )}
     </div>
   );
+}
+
+/** A pod's or page's row in the chat: where it is. */
+export function UrlRowMeta({ content }: ArtifactViewerProps<"url">) {
+  return <span className="block max-w-44 truncate font-mono">{addressParts(content.url).host}</span>;
 }

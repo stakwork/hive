@@ -46,9 +46,7 @@ import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
 import { JobEventRow, JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
 import { DeferredCheckCard } from "./DeferredCheckCard";
-import { ArtifactCard } from "./artifacts/ArtifactCard";
-import { FoldedArtifacts, lastThumbnailSet } from "./artifacts/FoldedArtifacts";
-import { artifactAsks } from "./artifacts/registry";
+import { ChatArtifacts } from "./artifacts/ChatArtifacts";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
 import { Command, CommandItem, CommandList } from "@/components/ui/command";
 import { detectSlashTrigger, insertSlashConcept } from "../_state/slashConceptTrigger";
@@ -297,12 +295,10 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
     return byAnchor;
   }, [messages]);
 
-  // The card each artifact gets — on its newest ref, with its versions
-  // counted so the card can say "v2". An earlier report of the same
-  // artifact gets none, so a plan re-reported every turn shows once.
+  // Where each artifact shows — under its newest ref, with its versions
+  // counted so it can say "v2". An earlier report of the same artifact
+  // shows nothing, so a plan re-reported every turn shows once.
   const artifactCards = useMemo(() => indexArtifactCards(listArtifacts(messages)), [messages]);
-  // The newest folded images show small, which loads them: opened on the panel, they are there at once.
-  const thumbnailSetId = useMemo(() => lastThumbnailSet(messages), [messages]);
 
   return (
     <div className="relative flex h-full flex-col min-h-0" {...dragProps}>
@@ -395,12 +391,7 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                       <p data-testid="job-claims-row" className="px-1 text-xs text-muted-foreground">
                         {message.content}
                       </p>
-                      <MessageArtifacts
-                        artifacts={message.artifacts}
-                        cards={artifactCards}
-                        jobId={message.source.jobId}
-                        thumbnails={message.id === thumbnailSetId}
-                      />
+                      <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
                     </div>
                   );
                 }
@@ -411,12 +402,7 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                   return (
                     <div key={message.id} className="space-y-1.5">
                       <JobTurnCard message={message} source={message.source} />
-                      <MessageArtifacts
-                        artifacts={message.artifacts}
-                        cards={artifactCards}
-                        jobId={message.source.jobId}
-                        thumbnails={message.id === thumbnailSetId}
-                      />
+                      <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
                     </div>
                   );
                 }
@@ -540,11 +526,7 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                     {pendingJobTurns?.map((turn) => (
                       <PendingJobTurnCard key={turn.jobId} turn={turn} />
                     ))}
-                    <MessageArtifacts
-                      artifacts={message.artifacts}
-                      cards={artifactCards}
-                      thumbnails={message.id === thumbnailSetId}
-                    />
+                    <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
                   </div>
                 );
               })}
@@ -865,47 +847,20 @@ const EMPTY_TOOL_CALLS: ToolCall[] = [];
 /**
  * The artifacts under a message: the ones the message is the latest report
  * of (`indexArtifactCards`) — a ref a later message reported again shows
- * there instead. One that waits on the reader (`artifactAsks`: a PR to
- * review, a claim to look at) is a card; the rest fold into one line that
- * opens them on the artifact panel. How a kind looks is the viewer
- * registry's business (`artifacts/registry.ts`), and reading its content
- * the card's own; a card is memoised on its ref, so streaming text never
- * re-renders one.
+ * there instead — laid out by `ChatArtifacts` (rows, a thumbnail strip,
+ * first lines, the folded rest). Memoised on its refs, so streaming text
+ * never re-renders them.
  */
 function MessageArtifacts({
   artifacts,
   cards,
-  jobId,
-  thumbnails,
 }: {
   artifacts?: ArtifactRef[];
   cards: Map<ArtifactRef, ArtifactVersion>;
-  /** The strut job whose row these ride on — the card's viewer can act on it. */
-  jobId?: string;
-  /** The folded images show small (`lastThumbnailSet`). */
-  thumbnails?: boolean;
 }) {
-  const shown = artifacts?.filter((artifact) => cards.has(artifact));
-  if (!shown?.length) return null;
-  const asking = shown.filter(artifactAsks);
-  const folded = shown.filter((artifact) => !asking.includes(artifact));
-  return (
-    <div className="space-y-1.5">
-      {asking.map((artifact) => {
-        const version = cards.get(artifact) ?? { index: 0, count: 1 };
-        return (
-          <ArtifactCard
-            key={artifact.id}
-            artifact={artifact}
-            version={version.index}
-            versionCount={version.count}
-            jobId={jobId}
-          />
-        );
-      })}
-      {folded.length > 0 && <FoldedArtifacts artifacts={folded} afterCards={asking.length > 0} thumbnails={thumbnails} />}
-    </div>
-  );
+  const shown = artifacts?.filter((artifact) => cards.has(artifact)) ?? [];
+  if (shown.length === 0) return null;
+  return <ChatArtifacts artifacts={shown} versions={cards} />;
 }
 
 // ─── File attachment types ───────────────────────────────────────────────────
