@@ -9,7 +9,7 @@ import {
   MessageCircle,
   Mic,
   MicOff,
-  OctagonX,
+  MoreHorizontal,
   Paperclip,
   Pencil,
   Plus,
@@ -24,7 +24,14 @@ import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { useVoiceCorrectionCapture } from "@/hooks/useVoiceCorrectionCapture";
 import { useVoiceLearningPreference } from "@/hooks/useVoiceLearningPreference";
 import { CanvasHistoryPopover } from "./CanvasHistoryPopover";
-import { CanvasAgentSettingsPopover } from "./CanvasAgentSettingsPopover";
+import { ModelPicker } from "./ModelPicker";
+import { AgentSettingsMenuItems, AutomationsDialog } from "./AgentSettingsMenu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { StreamingMessage } from "@/components/streaming";
@@ -225,6 +232,8 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
       ...(editingTurnId ? { replacesTurnId: editingTurnId } : {}),
     });
   };
+
+  const { runActive, stopInvestigation } = useStopInvestigation();
 
   const handleStop = async () => {
     if (activeId && !(await stopCanvasChatTurn(activeId))) {
@@ -605,15 +614,24 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
           ref={composerRef}
           onSend={handleSend}
           runningTurn={
-            activeTurn && {
-              stopping: activeTurn.stopping,
-              onStop: activeTurn.canStop ? () => void handleStop() : null,
-            }
+            activeTurn
+              ? {
+                  stopping: activeTurn.stopping,
+                  onStop: activeTurn.canStop ? () => void handleStop() : null,
+                }
+              : runActive
+                ? { stopping: false, onStop: stopInvestigation }
+                : null
           }
           onCancelEdit={activeId && editingTurnId ? () => setEditingTurn(activeId, null) : null}
           workspaceId={workspaceId}
           orgId={githubLogin}
         />
+        {/* Model picker and token count live with the composer, not the header. */}
+        <div className="mt-1 flex items-center gap-1 px-1">
+          <ModelPicker />
+          <TokenCounter />
+        </div>
       </div>
     </div>
   );
@@ -644,8 +662,7 @@ function useConversationTokenTotals() {
 }
 
 /**
- * Header token counter — sits beside `SidebarChatActions` in the org
- * page's one bar. Sums `CanvasChatMessage.usage` across the active
+ * Token counter — sits beside the model chip under the composer. Sums `CanvasChatMessage.usage` across the active
  * conversation (input + output tokens; see `sumConversationTokenUsage`)
  * and renders it compact with no denominator, because there is no
  * model context-window constant in this repo to divide by. Hidden
@@ -667,20 +684,69 @@ export function TokenCounter() {
 }
 
 /**
- * The chat header's actions — the agent-active dot, Stop, the share
- * link, Fork, agent settings, history (unless `hideHistory`: the chat
- * list beside it is the history) and New chat. Reads the store itself, so
- * the chat's own header and the org page's one bar can both place it.
+ * Stops the running investigation (`runActive`) for the active chat — the
+ * Send button becomes Stop in the composer while one runs.
+ * runActive: driven by local tool-call detection (via setRunActive called from
+ * useSendCanvasChatMessage) AND by the Pusher CANVAS_RUN_ACTIVE event (for
+ * all participants including non-initiators, bound in useCanvasChatAutoSave).
+ */
+function useStopInvestigation() {
+  const activeId = useCanvasChatStore((s) => s.activeConversationId);
+  const runActive = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.runActive : false) ?? false);
+  const serverConversationId = useCanvasChatStore(
+    (s) => (activeId ? s.conversations[activeId]?.serverConversationId : null) ?? null,
+  );
+  // stopRun action — posts to /api/ask/abort without exposing request_id.
+  const stopRun = useCanvasChatStore((s) => s.stopRun);
+  const setRunActive = useCanvasChatStore((s) => s.setRunActive);
+  // Org context for Stop — needed by the abort endpoint.
+  const orgContext = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.context : null) ?? null);
+  const stopInvestigation = () => {
+    if (serverConversationId && orgContext) {
+      void stopRun({ serverConversationId, orgId: orgContext.orgId });
+      // Optimistic local clear — the Pusher event will confirm.
+      if (activeId) setRunActive(activeId, false);
+    }
+  };
+  return { runActive, stopInvestigation };
+}
+
+/** Starts a fresh chat; disabled until the current one has messages. */
+export function NewChatButton({ githubLogin }: { githubLogin: string }) {
+  const activeId = useCanvasChatStore((s) => s.activeConversationId);
+  const hasMessages = useCanvasChatStore((s) => ((activeId ? s.conversations[activeId]?.messages.length : 0) ?? 0) > 0);
+  return (
+    <ActionTip label="New chat">
+      <button
+        type="button"
+        onClick={() => startNewOrgConversation(githubLogin)}
+        disabled={!hasMessages}
+        aria-label="New chat"
+        className="p-1 @[22rem]:p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        <Plus className="w-4 h-4" />
+      </button>
+    </ActionTip>
+  );
+}
+
+/**
+ * The chat header's actions — the agent-active dot, history (unless
+ * `hideHistory`: the chat list beside it is the history), New chat (unless
+ * `hideNewChat`: the chat list's header has it), a labelled Share and a ⋯
+ * menu holding Fork and the agent settings (Concept-tree prompt, Automations). Reads the store itself, so the org page's one bar can
+ * place it. Stop, the token count and the model picker live in the composer.
  */
 export function SidebarChatActions({
   githubLogin,
   hideHistory = false,
+  hideNewChat = false,
 }: {
   githubLogin: string;
   hideHistory?: boolean;
+  hideNewChat?: boolean;
 }) {
   const activeId = useCanvasChatStore((s) => s.activeConversationId);
-  const hasMessages = useCanvasChatStore((s) => ((activeId ? s.conversations[activeId]?.messages.length : 0) ?? 0) > 0);
   // The persisted row id. Sharing flips this row to `isShared` and hands
   // out its id, so the sharer and every joiner live in the *same* room.
   // Null until the first turn has created the row — Share/Fork are gated on it.
@@ -690,17 +756,9 @@ export function SidebarChatActions({
   // The source must be persisted before it is forked, so Fork stays
   // disabled until streaming ends.
   const isStreaming = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false);
-  // runActive: driven by local tool-call detection (via setRunActive called from
-  // useSendCanvasChatMessage) AND by the Pusher CANVAS_RUN_ACTIVE event (for
-  // all participants including non-initiators, bound in useCanvasChatAutoSave).
-  const runActive = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.runActive : false) ?? false);
-  // stopRun action — posts to /api/ask/abort without exposing request_id.
-  const stopRun = useCanvasChatStore((s) => s.stopRun);
-  const setRunActive = useCanvasChatStore((s) => s.setRunActive);
-  // Org context for Stop — needed by the abort endpoint.
-  const orgContext = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.context : null) ?? null);
   const { isActive } = useCanvasAgentActivity(activeId);
   const [isForking, setIsForking] = useState(false);
+  const [automationsOpen, setAutomationsOpen] = useState(false);
 
   const handleShare = async () => {
     if (!serverConversationId) return;
@@ -746,68 +804,52 @@ export function SidebarChatActions({
   };
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex shrink-0 items-center gap-0.5 @[22rem]:gap-1">
       {isActive && (
         <span
           className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
           aria-label="agent active"
         />
       )}
-      {runActive && (
-        <button
-          type="button"
-          onClick={() => {
-            if (serverConversationId && orgContext) {
-              void stopRun({
-                serverConversationId,
-                orgId: orgContext.orgId,
-              });
-              // Optimistic local clear — the Pusher event will confirm.
-              if (activeId) setRunActive(activeId, false);
-            }
-          }}
-          title="Stop investigation"
-          className="flex items-center gap-1 px-2 py-1 rounded bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-medium transition-colors"
-        >
-          <OctagonX className="w-3.5 h-3.5" />
-          Stop
-        </button>
-      )}
+      {!hideHistory && <CanvasHistoryPopover githubLogin={githubLogin} />}
+      {!hideNewChat && <NewChatButton githubLogin={githubLogin} />}
       <ActionTip label="Copy share link">
         <button
           type="button"
           onClick={handleShare}
           disabled={!serverConversationId}
           aria-label="Copy share link"
-          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="flex h-7 items-center gap-1.5 rounded px-1 @[22rem]:px-2 text-xs font-medium hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <Share2 className="w-4 h-4" />
+          {/* Icon-only until the header (a container) is wide enough. */}
+          <span className="hidden @[22rem]:inline">Share</span>
         </button>
       </ActionTip>
-      <ActionTip label="Fork chat">
-        <button
-          type="button"
-          onClick={handleFork}
-          disabled={!serverConversationId || isStreaming || isForking}
-          aria-label="Fork chat"
-          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <Split className="w-4 h-4" />
-        </button>
-      </ActionTip>
-      <CanvasAgentSettingsPopover githubLogin={githubLogin} />
-      {!hideHistory && <CanvasHistoryPopover githubLogin={githubLogin} />}
-      <ActionTip label="New chat">
-        <button
-          type="button"
-          onClick={() => startNewOrgConversation(githubLogin)}
-          disabled={!hasMessages}
-          aria-label="New chat"
-          className="p-1.5 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-      </ActionTip>
+      <DropdownMenu>
+        <ActionTip label="More actions">
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="More actions"
+              className="p-1 @[22rem]:p-1.5 rounded hover:bg-muted transition-colors data-[state=open]:bg-muted"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          </DropdownMenuTrigger>
+        </ActionTip>
+        <DropdownMenuContent align="end" sideOffset={4} collisionPadding={8}>
+          <DropdownMenuItem
+            disabled={!serverConversationId || isStreaming || isForking}
+            onSelect={() => void handleFork()}
+          >
+            <Split className="w-4 h-4" />
+            Fork into my copy
+          </DropdownMenuItem>
+          <AgentSettingsMenuItems onOpenAutomations={() => setAutomationsOpen(true)} />
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AutomationsDialog githubLogin={githubLogin} open={automationsOpen} onOpenChange={setAutomationsOpen} />
     </div>
   );
 }
