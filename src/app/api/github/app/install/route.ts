@@ -70,9 +70,11 @@ export async function POST(request: NextRequest) {
       repositoryUrl, // Include repository URL in state for callback
       randomState,
       timestamp: Date.now(),
+      userId: session.user.id as string,
     });
 
-    // Store the GitHub state in the user's session
+    // Legacy binding for callbacks that predate `userId` in the state (only
+    // users with a pre-JWT DB session row have one to update).
     await db.session.updateMany({
       where: { userId: session.user.id as string },
       data: { githubState: state },

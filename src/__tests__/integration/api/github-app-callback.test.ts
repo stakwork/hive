@@ -1472,6 +1472,46 @@ describe("GitHub App Callback API Integration Tests", () => {
         expect(mockFetch).not.toHaveBeenCalled();
       });
 
+      test("accepts a state signed for this user with no DB session row (JWT sessions)", async () => {
+        const user = await createTestUser({ name: "jwt-session-user" });
+        const workspace = await createTestWorkspace({ ownerId: user.id, slug: "jwt-session-workspace" });
+        const state = signGithubAppState({
+          workspaceSlug: workspace.slug,
+          randomState: "jwt-random",
+          timestamp: Date.now(),
+          userId: user.id,
+        });
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+        const response = await GET(
+          createGetRequest("http://localhost:3000/api/github/app/callback", { code: "jwt_code", state }),
+        );
+
+        expect(response.headers.get("location")).not.toContain("error=invalid_state");
+        // Got past the binding to the token exchange
+        expect(mockFetch).toHaveBeenCalled();
+      });
+
+      test("rejects a state signed for another user", async () => {
+        const victim = await createTestUser({ name: "userid-bind-victim" });
+        const attacker = await createTestUser({ name: "userid-bind-attacker" });
+        const workspace = await createTestWorkspace({ ownerId: victim.id, slug: "userid-bind-workspace" });
+        const state = signGithubAppState({
+          workspaceSlug: workspace.slug,
+          randomState: "victim-random",
+          timestamp: Date.now(),
+          userId: victim.id,
+        });
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(attacker));
+
+        const response = await GET(
+          createGetRequest("http://localhost:3000/api/github/app/callback", { code: "replay_code", state }),
+        );
+
+        expect(response.headers.get("location")).toContain("error=invalid_state");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
       test("rejects when caller is not an admin on the workspace named in state", async () => {
         // A plain workspace member (DEVELOPER) signs a state for a
         // victim workspace they co-own. The rewire must be blocked
