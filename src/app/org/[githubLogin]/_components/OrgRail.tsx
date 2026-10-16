@@ -90,14 +90,16 @@ export function OrgRail({ githubLogin, activeView, org, user }: OrgRailProps) {
           return (
             <Tooltip key={item.view}>
               <TooltipTrigger asChild>
-                <Link
+                {/* A plain anchor, not next/link: the org page reads `?view=` once on mount,
+                    so switching views needs a full load. */}
+                <a
                   href={`${base}${item.path}`}
                   aria-label={item.label}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(ITEM_CLASS, activeClass(isActive))}
                 >
                   <Icon className="h-5 w-5" />
-                </Link>
+                </a>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={6}>
                 {item.label}
