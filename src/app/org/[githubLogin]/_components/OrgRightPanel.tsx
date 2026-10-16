@@ -8,7 +8,7 @@ import { Layers, MousePointerClick, PanelLeftOpen, PanelRightClose, PanelRightOp
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { NodeDetail } from "./NodeDetail";
 import { MultiNodeDetail } from "./MultiNodeDetail";
-import { SidebarChat, SidebarChatActions, TokenCounter } from "./SidebarChat";
+import { NewChatButton, SidebarChat, SidebarChatActions } from "./SidebarChat";
 import type { InternalEdge } from "../connections/OrgCanvasBackground";
 import { useAutomationInbox, type InboxRun } from "../_state/useAutomationInbox";
 import { formatRelativeTime } from "./CanvasHistoryPopover";
@@ -114,6 +114,8 @@ export function OrgRightPanel({
                 <PanelLeftOpen className="h-4 w-4" />
               </ToolbarButton>
             )}
+            {/* The chat list's header has New chat; with the list hidden it moves here. */}
+            {chatsView.onShowList && <NewChatButton githubLogin={githubLogin} />}
             <ChatTitle />
           </div>
         ) : (
@@ -167,10 +169,9 @@ export function OrgRightPanel({
           </div>
         )}
         <div className="ml-auto flex items-center gap-1 pr-2">
-          {/* Kept mounted: its settings popover and activity hook fetch on mount. */}
+          {/* Kept mounted: its activity hook fetches on mount. */}
           <div className={cn("flex items-center", activeTab !== "chat" && "hidden")}>
-            <TokenCounter />
-            <SidebarChatActions githubLogin={githubLogin} hideHistory={!!chatsView} />
+            <SidebarChatActions githubLogin={githubLogin} hideHistory={!!chatsView} hideNewChat={!!chatsView} />
           </div>
           {chatsView && <ArtifactsToggle />}
         </div>

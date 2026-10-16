@@ -13,7 +13,7 @@ import { healUserChatAgentModel } from "@/lib/ai/resolve-model";
  * - `chatAgentModel` — the per-user default model for the canvas Agent
  *   chat, in `getModelValue()` "provider/name" form. Null = inherit the
  *   admin-configured default.
- * Both are edited from the gear menu on the canvas Agent chat panel.
+ * Both are edited from the model chip menu in the canvas Agent composer.
  */
 
 /** GET /api/user/preferences — read the current user's preferences. */
