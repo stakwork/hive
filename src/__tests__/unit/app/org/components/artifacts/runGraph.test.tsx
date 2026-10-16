@@ -2,14 +2,13 @@
  * The run graph artifact's viewers (`viewers/runGraph.tsx`): the panel
  * draws the run graph of the run the ref names, from that run's own route
  * under its workspace, filling the panel — and starts over when the panel
- * steps to another version, which is another run. The card's fact counts
- * what the run touched.
+ * steps to another version, which is another run.
  */
 
 import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { RunGraphInline, RunGraphPanel, runGraphFact } from "@/app/org/[githubLogin]/_components/artifacts/viewers/runGraph";
+import { RunGraphPanel } from "@/app/org/[githubLogin]/_components/artifacts/viewers/runGraph";
 import type { ArtifactContents, ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 
 const { mounts } = vi.hoisted(() => ({ mounts: [] as Array<Record<string, unknown>> }));
@@ -48,19 +47,5 @@ describe("RunGraphPanel", () => {
       "/api/workspaces/acme/strut/runs/row-1/graph",
       "/api/workspaces/acme/strut/runs/row-3/graph",
     ]);
-  });
-});
-
-describe("the card", () => {
-  test("names the workspace whose graph it shows", () => {
-    render(<RunGraphInline artifact={artifact} content={content} />);
-    expect(screen.getByText("acme")).toBeTruthy();
-  });
-
-  test("its fact counts the calls and the nodes, and is nothing without the counts", () => {
-    expect(runGraphFact(content)).toBe("14 calls · 37 nodes");
-    expect(runGraphFact({ ...content, calls: 1, nodes: 1 })).toBe("1 call · 1 node");
-    expect(runGraphFact({ workspace: "acme", run: "row-1", calls: 3 })).toBe("3 calls");
-    expect(runGraphFact({ workspace: "acme", run: "row-1" })).toBeNull();
   });
 });

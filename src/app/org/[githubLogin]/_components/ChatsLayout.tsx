@@ -7,7 +7,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { cn } from "@/lib/utils";
 import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { ArtifactPanel } from "./artifacts/ArtifactPanel";
-import { ArtifactPanelSideContext, useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
+import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 import { ControlPanelList } from "./control-panel/ControlPanelList";
 import { useControlPanel } from "./control-panel/useControlPanel";
 import { canvasViewHref, orgPageView } from "./useOrgView";
@@ -46,35 +46,33 @@ export function ChatsLayout({
   }, [pendingDeeplink, pathname, searchParams]);
 
   return (
-    <ArtifactPanelSideContext.Provider value="right">
-      <ResizablePanelGroup id="org-chats-group" direction="horizontal" autoSaveId="org-chats" className="h-full w-full">
-        <ResizablePanel
-          ref={listPanelRef}
-          id="org-chats-list"
-          order={1}
-          defaultSize={20}
-          minSize={12}
-          maxSize={40}
-          collapsible
-          collapsedSize={0}
-          onCollapse={() => setListOpen(false)}
-          onExpand={() => setListOpen(true)}
-        >
-          <ControlPanelList {...chatList} onHide={() => listPanelRef.current?.collapse()} />
-        </ResizablePanel>
-        <ResizableHandle withHandle className={cn(!listOpen && "hidden")} />
-        <ResizablePanel id="org-chats-chat" order={2} minSize={30}>
-          {renderChat(listOpen ? undefined : () => listPanelRef.current?.expand())}
-        </ResizablePanel>
-        {artifactOpen && (
-          <>
-            <ResizableHandle withHandle />
-            <ResizablePanel id="org-chats-artifact" order={3} defaultSize={40} minSize={25}>
-              <ArtifactPanel />
-            </ResizablePanel>
-          </>
-        )}
-      </ResizablePanelGroup>
-    </ArtifactPanelSideContext.Provider>
+    <ResizablePanelGroup id="org-chats-group" direction="horizontal" autoSaveId="org-chats" className="h-full w-full">
+      <ResizablePanel
+        ref={listPanelRef}
+        id="org-chats-list"
+        order={1}
+        defaultSize={20}
+        minSize={12}
+        maxSize={40}
+        collapsible
+        collapsedSize={0}
+        onCollapse={() => setListOpen(false)}
+        onExpand={() => setListOpen(true)}
+      >
+        <ControlPanelList {...chatList} onHide={() => listPanelRef.current?.collapse()} />
+      </ResizablePanel>
+      <ResizableHandle withHandle className={cn(!listOpen && "hidden")} />
+      <ResizablePanel id="org-chats-chat" order={2} minSize={30}>
+        {renderChat(listOpen ? undefined : () => listPanelRef.current?.expand())}
+      </ResizablePanel>
+      {artifactOpen && (
+        <>
+          <ResizableHandle withHandle />
+          <ResizablePanel id="org-chats-artifact" order={3} defaultSize={40} minSize={25}>
+            <ArtifactPanel />
+          </ResizablePanel>
+        </>
+      )}
+    </ResizablePanelGroup>
   );
 }

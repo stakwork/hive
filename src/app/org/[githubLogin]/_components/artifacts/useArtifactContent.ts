@@ -148,7 +148,7 @@ function prLiveTarget(githubLogin: string, inline: Record<string, unknown>): PrL
   return { url: `/api/orgs/${encodeURIComponent(githubLogin)}/strut/pull-request?${sp}`, repo, number };
 }
 
-/** Query key the card and the panel share — one poll, one live-nudge target, serves both. */
+/** Query key the chat and the panel share — one poll, one live-nudge target, serves both. */
 const prLiveQueryKey = (githubLogin: string, repo: string, number: number) =>
   ["canvas-pr-live", githubLogin, repo, number] as const;
 
@@ -189,13 +189,14 @@ export function useArtifactContent(artifact: ArtifactRef, enabled = true): Artif
   //
   // The inline content is the first paint — the state the job reported —
   // and this query overlays the live state once it arrives, read from
-  // GitHub with the viewer's own token. The card and the panel share the
-  // same query key so a single poll serves both. Polling stops once the PR
-  // is merged or closed, or once a read has failed (`prLivePollInterval`),
-  // and does not run when the tab is hidden.
+  // GitHub with the viewer's own token. The chat's row and the panel share
+  // the same query key so a single poll serves both. A PR reported merged or
+  // closed is never read — its state is final — and polling stops once one
+  // turns so, or once a read has failed (`prLivePollInterval`), and does not
+  // run when the tab is hidden.
   const prTarget = useMemo(
     () =>
-      kind === "pull_request" && source.type === "inline"
+      kind === "pull_request" && source.type === "inline" && !isTerminalPrState(source.content.state)
         ? prLiveTarget(githubLogin, source.content)
         : null,
     [kind, source, githubLogin],

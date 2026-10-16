@@ -6,9 +6,8 @@
  */
 import { describe, test, expect } from "vitest";
 import {
-  lastLines,
   lineCount,
-  markdownExcerpt,
+  markdownPreviewLines,
   parseLogLines,
   plural,
 } from "@/app/org/[githubLogin]/_components/artifacts/lines";
@@ -32,47 +31,31 @@ describe("lineCount", () => {
   });
 });
 
-describe("lastLines", () => {
-  test("cuts a text down to its last lines", () => {
-    expect(lastLines("a\nb\nc", 2)).toBe("b\nc");
-    expect(lastLines("a\nb\nc", 1)).toBe("c");
+describe("markdownPreviewLines", () => {
+  test("the first lines as plain text: markers, emphasis and links gone, blank lines skipped", () => {
+    const text = "# Plan\n\n- **Header:** Share up front\n\n1. Add the [model chip](https://x.dev)\n> Not yet\n\nMore";
+    expect(markdownPreviewLines(text, 3)).toEqual(["Plan", "Header: Share up front", "Add the model chip"]);
   });
 
-  test("a closing newline stays with the last line", () => {
-    expect(lastLines("a\nb\nc\n", 2)).toBe("b\nc\n");
+  test("underscores and stars inside words are words, not emphasis", () => {
+    expect(markdownPreviewLines("Rename snake_case_name and _this_ but keep a*b*c", 1)).toEqual([
+      "Rename snake_case_name and this but keep abc",
+    ]);
   });
 
-  test("a text with no more lines than asked for comes back whole", () => {
-    expect(lastLines("a\nb\nc", 3)).toBe("a\nb\nc");
-    expect(lastLines("a\nb\nc", 9)).toBe("a\nb\nc");
-    expect(lastLines("", 3)).toBe("");
+  test("a table reads as its rows, the rule skipped; a checklist as its items", () => {
+    const text = "| Site | Writes? |\n| --- | --- |\n| onboarding | no |\n- [x] Done thing";
+    expect(markdownPreviewLines(text, 5)).toEqual(["Site · Writes?", "onboarding · no", "Done thing"]);
   });
 
-  test("an empty line counts as a line", () => {
-    expect(lastLines("\nb", 2)).toBe("\nb");
-    expect(lastLines("a\n\nb", 2)).toBe("\nb");
-  });
-});
-
-describe("markdownExcerpt", () => {
-  test("a document no longer than the limit comes back whole", () => {
-    expect(markdownExcerpt("# Plan\n\nText", 3)).toBe("# Plan\n\nText");
+  test("a fenced block and an image are not text to glance at", () => {
+    const text = "Intro\n```ts\nconst a = 1;\n```\n![shot](x.png)\nAfter";
+    expect(markdownPreviewLines(text, 5)).toEqual(["Intro", "After"]);
   });
 
-  test("a longer one is cut at the limit", () => {
-    expect(markdownExcerpt("one\ntwo\nthree\nfour", 2)).toBe("one\ntwo");
-  });
-
-  test("a block closed before the cut is kept", () => {
-    expect(markdownExcerpt("```\ncode\n```\nafter\nmore", 4)).toBe("```\ncode\n```\nafter");
-  });
-
-  test("a cut inside a fenced block ends the excerpt before the block", () => {
-    expect(markdownExcerpt("intro\n\n```mermaid\ngraph TD\nA --> B\n```\nafter", 4)).toBe("intro\n");
-  });
-
-  test("unless the block is all there is to show", () => {
-    expect(markdownExcerpt("```ts\nconst a = 1;\nconst b = 2;\n```", 2)).toBe("```ts\nconst a = 1;");
+  test("fewer lines than asked for come back as they are", () => {
+    expect(markdownPreviewLines("Only one", 3)).toEqual(["Only one"]);
+    expect(markdownPreviewLines("", 3)).toEqual([]);
   });
 });
 

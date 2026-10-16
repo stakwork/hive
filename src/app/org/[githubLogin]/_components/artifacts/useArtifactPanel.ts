@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useMemo } from "react";
+import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { selectActiveMessages, useCanvasChatStore } from "../../_state/canvasChatStore";
 import { artifactIdentity, jobIdOfArtifact, listArtifacts, type ArtifactRef } from "../../_state/canvasChatArtifacts";
@@ -64,6 +64,3 @@ export function useChatOrgLogin(): string {
     (s) => (s.activeConversationId ? s.conversations[s.activeConversationId]?.context.githubLogin : undefined) ?? "",
   );
 }
-
-/** Which side of the chat the artifact panel opens on: the chats view's pane is on the right, the canvas's place on the left. */
-export const ArtifactPanelSideContext = createContext<"left" | "right">("left");

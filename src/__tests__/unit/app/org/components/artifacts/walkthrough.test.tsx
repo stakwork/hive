@@ -34,11 +34,11 @@ afterEach(() => vi.unstubAllGlobals());
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
 describe("walkthrough", () => {
-  test("the kind: a graph ref's content is where it is on the swarm; the preview is operated in place", () => {
+  test("the kind: a graph ref's content is where it is on the swarm; a thumbnail in the chat's strip", () => {
     expect(content).toEqual({ swarmId: "swarm-1", key: KEY });
     expect(parseArtifactContent("walkthrough", { swarmId: "swarm-1" })).toBeNull();
     expect(artifactKind("walkthrough").label).toBe("Walkthrough");
-    expect(artifactKind("walkthrough").inlineInteractive).toBe(true);
+    expect(artifactKind("walkthrough").chat?.place).toBe("media");
   });
 
   test("the panel reads the manifest through the reader, follows the newest frame, scrubs, and reads again on a new frame", async () => {

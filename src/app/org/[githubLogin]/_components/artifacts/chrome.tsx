@@ -3,15 +3,13 @@
 import React, { useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { StreamErrorBoundary } from "@/components/streaming/StreamErrorBoundary";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ActionTip } from "../ActionTip";
 import type { ArtifactContentState, ArtifactLoadFailure } from "./useArtifactContent";
 
 /**
- * The pieces the artifact card, panel and viewers share: what stands in
- * for content that is not there, a preview capped in height for the chat
- * card, a scrolling body for the panel, and the panel's toolbar.
+ * The pieces the artifact panel and its viewers share: what stands in for
+ * content that is not there, a scrolling body, and the panel's toolbar.
  */
 
 // ─── Content that is not there (yet) ────────────────────────────────────
@@ -34,24 +32,6 @@ function RetryButton({ state }: { state: MissingContent }) {
     >
       Try again
     </button>
-  );
-}
-
-/** On the card: content on its way, or a line saying why there is none. Never alarming — it is just absent. */
-export function MissingPreview({ state }: { state: MissingContent }) {
-  if (state.status === "loading") {
-    return (
-      <div className="space-y-1.5 px-3 py-3">
-        <Skeleton className="h-2.5 w-3/4" />
-        <Skeleton className="h-2.5 w-1/2" />
-      </div>
-    );
-  }
-  return (
-    <p className="flex flex-wrap gap-x-2 px-3 py-2.5 text-xs text-muted-foreground">
-      {MISSING_TEXT[state.status]}
-      <RetryButton state={state} />
-    </p>
   );
 }
 
@@ -89,7 +69,6 @@ export function ViewerBoundary({ children }: { children: ReactNode }) {
 
 // ─── Overflow ───────────────────────────────────────────────────────────
 
-const isClipped = (el: HTMLElement) => el.scrollHeight > el.clientHeight + 1;
 const hasMoreBelow = (el: HTMLElement) => el.scrollTop + el.clientHeight < el.scrollHeight - 2;
 
 /** Re-reads a fact about an element whenever it or its content changes size, and as it scrolls. */
@@ -112,25 +91,6 @@ function useMeasured(ref: RefObject<HTMLElement | null>, read: (el: HTMLElement)
   }, [ref, read]);
 
   return value;
-}
-
-/** A card preview capped in height, fading out at the bottom when its content runs past the cap. */
-export function InlineClamp({ className, children }: { className?: string; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const clipped = useMeasured(ref, isClipped);
-  return (
-    <div className="relative">
-      <div ref={ref} className="max-h-[168px] overflow-hidden">
-        <div className={className}>{children}</div>
-      </div>
-      {clipped && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent"
-        />
-      )}
-    </div>
-  );
 }
 
 /** A panel body that scrolls, fading out at the bottom while there is more below. */
