@@ -387,3 +387,23 @@ describe("identity and versions", () => {
     expect(resolveArtifactPanel(all, { identity: "id:gone", version: null, live })).toBeNull();
   });
 });
+
+describe("captcha artifacts", () => {
+  const manifest = { swarmId: "swarm-1", key: "/jobs/j-1/files/captcha/001/captcha.json" };
+
+  test("content is parsed defensively", () => {
+    expect(parseArtifactContent("captcha", { manifest })).toEqual({ manifest });
+    expect(
+      parseArtifactContent("captcha", { manifest, site: "a.com", mode: "either", round: 2, maxRounds: 5, grid: { rows: 3, cols: 3 }, state: "waiting", extra: 1 }),
+    ).toEqual({ manifest, site: "a.com", mode: "either", round: 2, maxRounds: 5, grid: { rows: 3, cols: 3 }, state: "waiting" });
+    expect(parseArtifactContent("captcha", { manifest, mode: "swipe", state: "nope", grid: { rows: 0, cols: 3 } })).toEqual({ manifest });
+    expect(parseArtifactContent("captcha", {})).toBeNull();
+    expect(parseArtifactContent("captcha", { manifest: { swarmId: "s" } })).toBeNull();
+  });
+
+  test("a ref of the kind survives parsing and is identified by its manifest", () => {
+    const ref: ArtifactRef = { id: "c", kind: "captcha", title: "Captcha", source: { type: "graph", ...manifest } };
+    expect(parseArtifactRefs([ref])).toEqual([ref]);
+    expect(artifactIdentity(ref)).toBe(`graph:swarm-1:${manifest.key}`);
+  });
+});

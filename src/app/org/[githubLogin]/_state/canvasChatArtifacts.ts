@@ -198,6 +198,25 @@ export interface ArtifactContents {
    * the job reports a new frame.
    */
   walkthrough: { swarmId: string; key: string };
+  /**
+   * A captcha a strut job hit and cannot solve: the manifest (a json file in
+   * the job's folder) names the cropped image, the instruction, the site and
+   * whether a person taps tiles or types text. The viewer reads the manifest
+   * through the reader route and resolves the image beside it.
+   */
+  captcha: {
+    manifest: { swarmId: string; key: string };
+    image?: { swarmId: string; key: string };
+    instruction?: string;
+    site?: string;
+    mode?: "tap" | "text" | "either";
+    round?: number;
+    maxRounds?: number;
+    askedAt?: string;
+    expiresAt?: string;
+    grid?: { rows: number; cols: number };
+    state?: "waiting" | "sent" | "solved" | "failed" | "expired";
+  };
 }
 
 export type ArtifactKind = keyof ArtifactContents;
@@ -521,6 +540,41 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
     const swarmId = bounded(raw.swarmId, MAX_ID_LENGTH);
     const key = bounded(raw.key, MAX_ID_LENGTH);
     return swarmId && key ? { swarmId, key } : null;
+  },
+  captcha: (raw) => {
+    const ref = (v: unknown) => {
+      if (!isRecord(v)) return undefined;
+      const swarmId = bounded(v.swarmId, MAX_ID_LENGTH);
+      const key = bounded(v.key, MAX_ID_LENGTH);
+      return swarmId && key ? { swarmId, key } : undefined;
+    };
+    const manifest = ref(raw.manifest);
+    if (!manifest) return null;
+    const image = ref(raw.image);
+    const instruction = bounded(raw.instruction, 500);
+    const site = bounded(raw.site, 253);
+    const mode = raw.mode === "tap" || raw.mode === "text" || raw.mode === "either" ? raw.mode : undefined;
+    const int = (v: unknown, max: number) => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= max ? v : undefined);
+    const round = int(raw.round, 1000);
+    const maxRounds = int(raw.maxRounds, 1000);
+    const askedAt = bounded(raw.askedAt, 40);
+    const expiresAt = bounded(raw.expiresAt, 40);
+    const rows = isRecord(raw.grid) ? int(raw.grid.rows, 20) : undefined;
+    const cols = isRecord(raw.grid) ? int(raw.grid.cols, 20) : undefined;
+    const state = oneOf(["waiting", "sent", "solved", "failed", "expired"] as const, raw.state);
+    return {
+      manifest,
+      ...(image ? { image } : {}),
+      ...(instruction ? { instruction } : {}),
+      ...(site ? { site } : {}),
+      ...(mode ? { mode } : {}),
+      ...(round ? { round } : {}),
+      ...(maxRounds ? { maxRounds } : {}),
+      ...(askedAt ? { askedAt } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
+      ...(rows && cols ? { grid: { rows, cols } } : {}),
+      ...(state ? { state } : {}),
+    };
   },
 };
 
