@@ -31,7 +31,7 @@ vi.mock("@/app/w/[slug]/task/[...taskParams]/components/TaskBreadcrumbs", () => 
   default: () => <div>TaskBreadcrumbs</div>,
 }));
 
-vi.mock("@/components/whiteboard/CollaboratorAvatars", () => ({
+vi.mock("@/components/collaboration/CollaboratorAvatars", () => ({
   CollaboratorAvatars: () => <div>CollaboratorAvatars</div>,
 }));
 

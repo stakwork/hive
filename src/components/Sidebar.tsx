@@ -24,7 +24,6 @@ import {
   PanelLeftOpen,
   Mic,
   Network,
-  PenLine,
   Phone,
   Scale,
   ScrollText,
@@ -133,7 +132,6 @@ const baseNavigationItems: NavigationItem[] = [
     children: [
       { icon: CheckSquare, label: "Tasks", href: "/tasks" },
       { icon: Map, label: "Plan", href: "/plan" },
-      { icon: PenLine, label: "Whiteboards", href: "/whiteboards" },
       { icon: Workflow, label: "Strut", href: "/strut" },
     ],
   },

@@ -104,11 +104,6 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/phases/*", strategy: "pattern", access: "public", methods: ["GET"] },
   { path: "/api/tickets/*", strategy: "pattern", access: "public", methods: ["GET"] },
 
-  { path: "/api/whiteboards", strategy: "exact", access: "public", methods: ["GET"] },
-  { path: "/api/whiteboards/*", strategy: "pattern", access: "public", methods: ["GET"] },
-  { path: "/api/whiteboards/*/images", strategy: "pattern", access: "public", methods: ["GET"] },
-  { path: "/api/whiteboards/*/versions", strategy: "pattern", access: "public", methods: ["GET"] },
-
   { path: "/api/swarm/jarvis/schema", strategy: "exact", access: "public", methods: ["GET"] },
   { path: "/api/swarm/jarvis/nodes", strategy: "exact", access: "public", methods: ["GET"] },
 

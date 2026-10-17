@@ -184,10 +184,10 @@ describe("extractS3KeyInfo", () => {
       type: "workspace",
       id: "ws-1",
     });
-    expect(extractS3KeyInfo("whiteboards/ws-2/a.json")).toEqual({
-      type: "workspace",
-      id: "ws-2",
-    });
+  });
+
+  test("returns null for removed whiteboard prefix (feature removed)", () => {
+    expect(extractS3KeyInfo("whiteboards/ws-2/a.json")).toBeNull();
   });
 
   test("returns null for unknown prefixes or too-short keys", () => {
