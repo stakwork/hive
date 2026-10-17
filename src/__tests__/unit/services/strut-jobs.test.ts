@@ -86,9 +86,32 @@ describe("launchJobTurn", () => {
     expect(mockAppendEvent).not.toHaveBeenCalled();
   });
 
-  it("a turn with a model launches with params.model", async () => {
+  it("a turn with a model launches with params.model, and records it on the input", async () => {
     await launchJobTurn(target, { jobId: JOB, title: "T", prompt: "p", started: true, model: "claude-opus-4-1" });
+    expect(mockDispatch.mock.calls[0][0]).toMatchObject({ params: { model: "claude-opus-4-1" }, input: { model: "claude-opus-4-1" } });
+    // A first turn has no earlier one to read.
+    expect(mockStrutRunFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("a turn nobody picked a model for runs on the one the job's first turn ran on", async () => {
+    mockStrutRunFindFirst.mockResolvedValue({ id: "row-1", input: { prompt: "p", title: "T", workspace: "acme", model: "openai/gpt-5" } });
+    await launchJobTurn(target, { jobId: JOB, title: "T", prompt: LINE, started: false, event: true });
+    expect(mockStrutRunFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { jobId: JOB, kind: "job_turn" }, orderBy: { createdAt: "asc" } }));
+    expect(mockDispatch.mock.calls[0][0]).toMatchObject({ params: { model: "openai/gpt-5" }, input: { model: "openai/gpt-5" } });
+  });
+
+  it("a person's pick wins over the first turn's model", async () => {
+    mockStrutRunFindFirst.mockResolvedValue({ id: "row-1", input: { prompt: "p", title: "T", model: "openai/gpt-5" } });
+    await launchJobTurn(target, { jobId: JOB, title: "T", prompt: "p", started: false, model: "claude-opus-4-1" });
     expect(mockDispatch.mock.calls[0][0]).toMatchObject({ params: { model: "claude-opus-4-1" } });
+    expect(mockStrutRunFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("a job whose first turn ran on strut's default sends no params", async () => {
+    mockStrutRunFindFirst.mockResolvedValue({ id: "row-1", input: { prompt: "p", title: "T" } });
+    await launchJobTurn(target, { jobId: JOB, title: "T", prompt: LINE, started: false, event: true });
+    expect(mockDispatch.mock.calls[0][0]).not.toHaveProperty("params");
+    expect(mockDispatch.mock.calls[0][0].input).not.toHaveProperty("model");
   });
 
   it("an owner who can no longer reach the workspace launches nothing", async () => {

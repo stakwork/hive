@@ -25,7 +25,7 @@
 import { StrutRunStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { JOB_TURN_KIND, JOB_WORKFLOW } from "@/lib/strut-jobs";
+import { JOB_TURN_KIND, JOB_WORKFLOW, jobModelOf } from "@/lib/strut-jobs";
 import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
 import { describeStrutTargetError, resolveStrutTarget } from "@/services/strut-target";
 
@@ -51,7 +51,7 @@ export interface JobTurnLaunch {
   started: boolean;
   /** No person asked for this turn: the prompt is an `[artifact-event]`, written into the conversation as the turn's origin. */
   event?: boolean;
-  /** The model the job workflow runs with (`params.model`); omitted → strut's default. */
+  /** The model the job workflow runs with (`params.model`); omitted → the model the job's first turn ran on, else strut's default. */
   model?: string;
 }
 
@@ -108,6 +108,14 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
     console.warn("[job] github token lookup failed; launching without it", { jobId, error: err instanceof Error ? err.message : String(err) });
   }
 
+  // The model: a person's turn carries their picker's (Jamie's
+  // `chatAgentModel`); a turn nobody picked for — an event, a captcha
+  // answer, a check's verdict — runs on the one the job started with, read
+  // back from its first turn's input. Not strut's default: the job's agent
+  // thread keeps its first turn's provider (strut `session_mismatch:`), so
+  // a job started on another provider could not take the turn at all.
+  const model = turn.model || (started ? undefined : jobModelOf(await firstJobTurn(jobId)));
+
   let dispatched: Awaited<ReturnType<typeof dispatchStrutRun>>;
   try {
     dispatched = await dispatchStrutRun({
@@ -126,11 +134,12 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
       // (`strut-peers.ts`), so `@<slug>` names one the same way; a pod is
       // claimed for whichever workspace's code is changing, by slug (the
       // pod routes take a slug or an id). Every turn, since every launch
-      // is validated on its own.
-      input: { prompt, title, workspace: strut.workspaceSlug },
+      // is validated on its own. `model` rides along like `title`, so the
+      // row records what the turn ran on; strut reads `params.model`.
+      input: { prompt, title, workspace: strut.workspaceSlug, ...(model ? { model } : {}) },
       job: jobId,
       title,
-      ...(turn.model ? { params: { model: turn.model } } : {}),
+      ...(model ? { params: { model } } : {}),
       publicBaseUrl,
       conversationId,
       actorSecrets: { GITHUB_TOKEN: pat },
