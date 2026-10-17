@@ -8,20 +8,16 @@
  * job must be the answerer's (its first row's `userId`), 403 for anyone else.
  *
  * Body: `{ round, site, taps? | text? | skip? }`, exactly one of the three.
- * The site must be one the workspace's admins allow (`captchaAllowedSites`),
- * else 403 `site_not_allowed`. The text is passed on exactly as typed. A job
- * with a turn in flight answers 409 `busy`; 202 `{ runId }` once strut has
- * the turn.
+ * The text is passed on exactly as typed. A job with a turn in flight answers
+ * 409 `busy`; 202 `{ runId }` once strut has the turn.
  *
- * GET `?site=` — whether the site is allowed in the job's workspace and
- * whether the caller is the job's owner, for the viewer to show or hide its
- * image and controls.
+ * GET — whether the caller is the job's owner, for the viewer to show or hide
+ * its controls.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
-import { siteAllowed } from "@/lib/captcha";
 import { db } from "@/lib/db";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { formatCaptchaAnswer, jobTitleOf } from "@/lib/strut-jobs";
@@ -45,16 +41,16 @@ const bodySchema = z
 
 type Params = { params: Promise<{ githubLogin: string; jobId: string }> };
 
-/** The job's first row and its workspace in this org, or null. */
+/** The job's first row, when its workspace is in this org, or null. */
 async function jobInOrg(orgId: string, jobId: string) {
   const first = await firstJobTurn(jobId);
   const workspace = first
     ? await db.workspace.findFirst({
         where: { id: first.workspaceId, sourceControlOrgId: orgId, deleted: false },
-        select: { id: true, captchaAllowedSites: true },
+        select: { id: true },
       })
     : null;
-  return first && workspace ? { first, workspace } : null;
+  return first && workspace ? first : null;
 }
 
 export async function GET(request: NextRequest, { params }: Params) {
@@ -65,11 +61,10 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const orgId = await resolveAuthorizedOrgId(githubLogin, userId, false);
   if (!orgId) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const job = await jobInOrg(orgId, jobId);
-  if (!job) return NextResponse.json({ error: "No such job" }, { status: 404 });
+  const first = await jobInOrg(orgId, jobId);
+  if (!first) return NextResponse.json({ error: "No such job" }, { status: 404 });
 
-  const site = request.nextUrl.searchParams.get("site") ?? "";
-  return NextResponse.json({ allowed: siteAllowed(site, job.workspace.captchaAllowedSites), owner: job.first.userId === userId });
+  return NextResponse.json({ owner: first.userId === userId });
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -90,16 +85,11 @@ export async function POST(request: NextRequest, { params }: Params) {
   const orgId = await resolveAuthorizedOrgId(githubLogin, userId, false);
   if (!orgId) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const job = await jobInOrg(orgId, jobId);
-  if (!job) return NextResponse.json({ error: "No such job" }, { status: 404 });
-  const { first, workspace } = job;
+  const first = await jobInOrg(orgId, jobId);
+  if (!first) return NextResponse.json({ error: "No such job" }, { status: 404 });
   if (first.userId !== userId) {
     log("not_owner");
     return NextResponse.json({ error: "Only the person who started a job can continue it" }, { status: 403 });
-  }
-  if (!siteAllowed(site, workspace.captchaAllowedSites)) {
-    log("site_not_allowed");
-    return NextResponse.json({ error: "site_not_allowed" }, { status: 403 });
   }
   if (!first.conversationId) {
     return NextResponse.json({ error: "This job has no conversation to reply into" }, { status: 409 });
