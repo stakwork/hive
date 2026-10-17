@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";
+import { mockPoolState } from "@/lib/mock/pool-manager-state";
 import { EncryptionService } from "@/lib/encryption";
 import { HTML_PAGE_FIXTURES, htmlPageFixtureS3Key } from "@/lib/mock/html-fixtures";
 import {
@@ -21,6 +22,54 @@ import { slugify } from "./slugify";
 let mockGitHubIdCounter = 100000;
 
 /**
+ * Idempotently seeds 2 mock pods (one in use, one available) for a mock workspace's swarm
+ * so the Capacity page has something to render. Mock-only (called from mock setup).
+ */
+async function ensureMockPods(workspaceId: string): Promise<void> {
+  const swarm = await db.swarm.findFirst({ where: { workspaceId }, select: { id: true } });
+  if (!swarm) return;
+  // Pool Manager mock is keyed by swarm id (see PoolManagerService.getPoolWorkspaces); keep it at 2 pods
+  const mockPool = mockPoolState.getOrCreatePool(swarm.id, 2);
+  mockPool.pods[0].usage_status = "in_use";
+  mockPool.pods[0].userInfo = "mock-user";
+  mockPool.pods[0].repositories = ["stakwork/hive"];
+  mockPool.pods[0].branches = ["main"];
+  mockPool.pods[1].repositories = ["stakwork/hive"];
+  mockPool.pods[1].branches = ["main"];
+  const [pod1Id, pod2Id] = mockPool.pods.map((p) => p.id);
+
+  const existingCount = await db.pod.count({ where: { swarmId: swarm.id, deletedAt: null } });
+  if (existingCount > 0) return;
+
+  const now = new Date();
+  await db.pod.createMany({
+    data: [
+      {
+        podId: pod1Id,
+        swarmId: swarm.id,
+        password: "mock-password-1",
+        status: "RUNNING",
+        usageStatus: "USED",
+        usageStatusMarkedAt: now,
+        usageStatusMarkedBy: "mock-user",
+        lastHealthCheck: now,
+        portMappings: { "3000": "http://localhost:3000", "15551": "http://localhost:3000", "15552": "http://localhost:3000" },
+      },
+      {
+        podId: pod2Id,
+        swarmId: swarm.id,
+        password: "mock-password-2",
+        status: "RUNNING",
+        usageStatus: "UNUSED",
+        lastHealthCheck: now,
+        portMappings: { "3000": "http://localhost:3000", "15551": "http://localhost:3000", "15552": "http://localhost:3000" },
+      },
+    ],
+    skipDuplicates: true,
+  });
+}
+
+/**
  * Ensures a mock workspace and a completed swarm exist for a given user.
  * Also creates GitHub-related records (GitHubAuth, SourceControlOrg, SourceControlToken)
  * to enable full GitHub feature testing in mock mode.
@@ -33,7 +82,10 @@ export async function ensureMockWorkspaceForUser(userId: string): Promise<string
     select: { id: true, slug: true },
   });
 
-  if (existing?.slug) return existing.slug;
+  if (existing?.slug) {
+    await ensureMockPods(existing.id).catch((e) => console.error("[MockSetup] Failed to seed mock pods:", e));
+    return existing.slug;
+  }
 
   const baseSlug = "mock-stakgraph";
   let slugCandidate = baseSlug;
@@ -220,6 +272,8 @@ export async function ensureMockWorkspaceForUser(userId: string): Promise<string
     console.error("[MockSetup] Failed to seed mock data:", error);
     // Don't fail workspace creation if seeding fails
   }
+
+  await ensureMockPods(workspace.id).catch((e) => console.error("[MockSetup] Failed to seed mock pods:", e));
 
   // Seed the public demo workspace for testing public-viewer + access-request flows
   try {
