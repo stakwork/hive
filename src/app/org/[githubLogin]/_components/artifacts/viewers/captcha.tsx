@@ -30,7 +30,7 @@ import {
  * answer; everyone else sees the image alone.
  */
 
-type Access = { status: "loading" } | { status: "ready"; allowed: boolean; owner: boolean };
+type Access = { status: "loading" } | { status: "ready"; owner: boolean };
 type Sent = { status: "idle" } | { status: "busy" } | { status: "sent" } | { status: "failed"; error: string };
 
 const ACCENT = "#0071e3";
@@ -66,24 +66,20 @@ export function CaptchaPanel({ content, jobId }: ArtifactViewerProps<"captcha">)
   const site = manifest?.site ?? content.site;
   const [access, setAccess] = useState<Access>({ status: "loading" });
   useEffect(() => {
-    // No job to answer to: the image alone. A job but no site to judge: not allowed, once the manifest has said so.
+    // No job to answer to: the image alone.
     if (!jobId) {
-      setAccess({ status: "ready", allowed: true, owner: false });
-      return;
-    }
-    if (!site) {
-      if (manifest || failed) setAccess({ status: "ready", allowed: false, owner: false });
+      setAccess({ status: "ready", owner: false });
       return;
     }
     let cancelled = false;
-    fetch(`${captchaUrl(githubLogin, jobId)}?${new URLSearchParams({ site })}`, { credentials: "same-origin", cache: "no-store" })
+    fetch(captchaUrl(githubLogin, jobId), { credentials: "same-origin", cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((out: { allowed?: boolean; owner?: boolean }) => !cancelled && setAccess({ status: "ready", allowed: out.allowed === true, owner: out.owner === true }))
-      .catch(() => !cancelled && setAccess({ status: "ready", allowed: false, owner: false }));
+      .then((out: { owner?: boolean }) => !cancelled && setAccess({ status: "ready", owner: out.owner === true }))
+      .catch(() => !cancelled && setAccess({ status: "ready", owner: false }));
     return () => {
       cancelled = true;
     };
-  }, [githubLogin, jobId, site, manifest, failed]);
+  }, [githubLogin, jobId]);
 
   const [now, setNow] = useState(() => Date.now());
   const expiresAt = manifest?.expiresAt ?? content.expiresAt;
@@ -110,8 +106,7 @@ export function CaptchaPanel({ content, jobId }: ArtifactViewerProps<"captcha">)
   const imageKey = manifest?.imageKey ?? content.image?.key;
   const imageSwarm = content.image?.swarmId ?? swarmId;
 
-  const blocked = access.status === "ready" && !access.allowed;
-  const canAnswer = access.status === "ready" && access.allowed && access.owner && !!jobId;
+  const canAnswer = access.status === "ready" && access.owner && !!jobId && !!site;
   const done = sent.status === "sent" || state === "sent" || state === "solved";
 
   const submit = async (body: Record<string, unknown>) => {
@@ -127,7 +122,6 @@ export function CaptchaPanel({ content, jobId }: ArtifactViewerProps<"captcha">)
       const out = (await res.json().catch(() => ({}))) as { error?: string };
       if (res.status === 202) return setSent({ status: "sent" });
       if (res.status === 403) {
-        if (out.error === "site_not_allowed") return setAccess({ status: "ready", allowed: false, owner: false });
         setAccess((a) => (a.status === "ready" ? { ...a, owner: false } : a));
         return setSent({ status: "idle" });
       }
@@ -143,15 +137,6 @@ export function CaptchaPanel({ content, jobId }: ArtifactViewerProps<"captcha">)
     const tap = tapFromPointer(e.clientX, e.clientY, img.getBoundingClientRect());
     setTaps((t) => (grid ? toggleCellTap(t, tap, grid) : addTap(t, tap)));
   };
-
-  if (blocked) {
-    return (
-      <div className="space-y-1 p-4 text-sm" data-testid="captcha-blocked">
-        <p className="font-medium">Site not allowed</p>
-        <p className="text-xs text-muted-foreground">Ask an admin to add it{site ? ` (${site})` : ""} to the workspace's captcha sites.</p>
-      </div>
-    );
-  }
 
   const showTaps = mode !== "text";
   const showText = mode !== "tap";
