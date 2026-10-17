@@ -175,6 +175,15 @@ export interface ArtifactContents {
    */
   run_graph: { workspace: string; run: string; calls?: number; nodes?: number };
   /**
+   * The lineage of one highlighted span of an output — a number, a
+   * phrase, a few lines of code — from a Jamie reply or a strut run:
+   * the step or tool call that produced it, the chain back to its
+   * sources, and the later steps that used it, when it came from a
+   * middle step. Built by `services/trace`; labelled "Lineage" in the
+   * registry so it is not confused with `run_graph`'s own "trace" wording.
+   */
+  trace: { selection: string; origin: TraceOrigin; upstream: TraceLink[]; downstream: TraceLink[] };
+  /**
    * A strut job's CLAIMS (strut plans/job-claims.md): what the work must
    * deliver and whether it does, as of a turn — read from the job's swarm
    * after the turn (`GET {lab}/jobs/<job>/claims`), one card per job, each
@@ -217,6 +226,44 @@ export interface ArtifactContents {
     grid?: { rows: number; cols: number };
     state?: "waiting" | "sent" | "solved" | "failed" | "expired";
   };
+}
+
+/** One node a trace link's step read or wrote, when it touched the graph. */
+export interface TraceNode {
+  ref_id: string;
+  node_type?: string;
+}
+
+const TRACE_MATCH_KINDS = ["exact", "inferred"] as const;
+export type TraceMatchKind = (typeof TRACE_MATCH_KINDS)[number];
+
+/**
+ * One step in a trace's chain: the tool call or step that produced or used
+ * the selection. `toolCallId` names a Jamie tool-call row; `path` names a
+ * strut event's path. `match` is `"exact"` when the excerpt holds the
+ * selection verbatim (after whitespace/number normalizing), else
+ * `"inferred"` — a model's best guess, never a value it computed itself
+ * made exact.
+ */
+export interface TraceLink {
+  toolCallId?: string;
+  path?: string;
+  toolName: string;
+  excerpt: string;
+  match: TraceMatchKind;
+  nodes?: TraceNode[];
+}
+
+const TRACE_ORIGIN_KINDS = ["jamie", "strut"] as const;
+export type TraceOriginKind = (typeof TRACE_ORIGIN_KINDS)[number];
+
+/** Where the highlighted selection itself was read from. */
+export interface TraceOrigin {
+  kind: TraceOriginKind;
+  conversationId?: string;
+  messageId?: string;
+  workspace?: string;
+  run?: string;
 }
 
 export type ArtifactKind = keyof ArtifactContents;
@@ -371,6 +418,54 @@ const text = (raw: Record<string, unknown>): { text: string } | null =>
 const count = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 
+const MAX_SELECTION_LENGTH = 2000;
+const MAX_EXCERPT_LENGTH = 4000;
+const MAX_TOOL_NAME_LENGTH = 200;
+const MAX_LINKS = 50;
+
+function parseTraceNode(raw: unknown): TraceNode | null {
+  if (!isRecord(raw)) return null;
+  const ref_id = bounded(raw.ref_id, MAX_ID_LENGTH);
+  return ref_id ? { ref_id, node_type: optional(raw.node_type) } : null;
+}
+
+function parseTraceLink(raw: unknown): TraceLink | null {
+  if (!isRecord(raw)) return null;
+  const toolName = bounded(raw.toolName, MAX_TOOL_NAME_LENGTH);
+  const excerpt = bounded(raw.excerpt, MAX_EXCERPT_LENGTH);
+  const match = oneOf(TRACE_MATCH_KINDS, raw.match);
+  if (!toolName || excerpt === null || !match) return null;
+  const nodes = raw.nodes === undefined ? undefined : parseEach(raw.nodes, parseTraceNode);
+  if (raw.nodes !== undefined && nodes === null) return null;
+  return {
+    toolName,
+    excerpt,
+    match,
+    toolCallId: optional(raw.toolCallId),
+    path: optional(raw.path),
+    ...(nodes ? { nodes } : {}),
+  };
+}
+
+function parseTraceLinks(raw: unknown): TraceLink[] | null {
+  if (raw === undefined) return [];
+  const links = parseEach(raw, parseTraceLink);
+  return links ? links.slice(0, MAX_LINKS) : null;
+}
+
+function parseTraceOrigin(raw: unknown): TraceOrigin | null {
+  if (!isRecord(raw)) return null;
+  const kind = oneOf(TRACE_ORIGIN_KINDS, raw.kind);
+  if (!kind) return null;
+  return {
+    kind,
+    conversationId: optional(raw.conversationId),
+    messageId: optional(raw.messageId),
+    workspace: optional(raw.workspace),
+    run: optional(raw.run),
+  };
+}
+
 const CLAIM_STATUSES = ["supported", "refuted", "stale", "unknown"] as const;
 const MAX_CLAIMS = 100;
 const MAX_CLAIM_TEXT = 2_000;
@@ -524,6 +619,15 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
     const workspace = bounded(raw.workspace, MAX_ID_LENGTH);
     const run = bounded(raw.run, MAX_ID_LENGTH);
     return workspace && run ? { workspace, run, calls: count(raw.calls), nodes: count(raw.nodes) } : null;
+  },
+  trace: (raw) => {
+    const selection = bounded(raw.selection, MAX_SELECTION_LENGTH);
+    const origin = parseTraceOrigin(raw.origin);
+    if (!selection || !origin) return null;
+    const upstream = parseTraceLinks(raw.upstream);
+    const downstream = parseTraceLinks(raw.downstream);
+    if (upstream === null || downstream === null) return null;
+    return { selection, origin, upstream, downstream };
   },
   claims: (raw) => {
     const workspace = bounded(raw.workspace, MAX_ID_LENGTH);

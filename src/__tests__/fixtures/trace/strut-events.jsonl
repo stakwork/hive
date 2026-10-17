@@ -1,0 +1,6 @@
+{"type":"step.start","path":"1","stepType":"tool:search/accounts","ts":"2026-09-28T16:56:40.000Z","input":{"query":"acme"}}
+{"type":"step.end","path":"1","stepType":"tool:search/accounts","toolCallId":"call-1","ts":"2026-09-28T16:56:41.000Z","durationMs":120,"output":"Found 1 account: Acme Corp (id acct_1)","nodes":[{"ref_id":"acct_1","node_type":"Account"}]}
+{"type":"step.start","path":"2","stepType":"tool:billing/sum-invoices","ts":"2026-09-28T16:56:41.500Z","input":{"accountId":"acct_1"}}
+{"type":"step.end","path":"2","stepType":"tool:billing/sum-invoices","toolCallId":"call-2","outputRef":"outputs/002-tool.json","ts":"2026-09-28T16:56:42.000Z","durationMs":4000,"output":"Invoices for acct_1: Jan $4,000.00, Feb $4,120.00, Mar $4,218.84 … (truncated)","nodes":[]}
+{"type":"step.start","path":"3","stepType":"tool:report/write-summary","ts":"2026-09-28T16:56:43.000Z","input":{"total":"$12,338.84","account":"Acme Corp"}}
+{"type":"step.end","path":"3","stepType":"tool:report/write-summary","toolCallId":"call-3","ts":"2026-09-28T16:56:43.500Z","durationMs":80,"output":"Wrote the summary: Acme Corp owes $12,338.84 across Q1.","nodes":[]}

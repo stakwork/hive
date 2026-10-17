@@ -16,6 +16,7 @@ import {
   ListChecks,
   Network,
   ScrollText,
+  Search,
   Waypoints,
   type LucideIcon,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import { AudioPanel, ImagePanel, ImageThumb, VideoPanel, VideoThumb } from "./vi
 import { PdfPanel } from "./viewers/pdf";
 import { PullRequestPanel, PullRequestRowMeta } from "./viewers/pullRequest";
 import { RunGraphPanel, RunGraphThumb } from "./viewers/runGraph";
+import { TracePanel, TracePreview } from "./viewers/trace";
 import { UrlPanel, UrlRowMeta } from "./viewers/url";
 import { WalkthroughPanel, WalkthroughThumb } from "./viewers/walkthrough";
 
@@ -188,6 +190,14 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Icon: Waypoints,
     chat: { place: "media", Thumb: RunGraphThumb },
     Panel: RunGraphPanel,
+  },
+  // Labelled "Lineage", not "trace" — `run_graph` already uses that word.
+  trace: {
+    label: "Lineage",
+    Icon: Search,
+    chat: { place: "preview", Lines: TracePreview },
+    Panel: TracePanel,
+    copyText: (content) => content.selection,
   },
   // The row is the summary alone ("1 needs a look"); the claims themselves are on the panel.
   claims: {

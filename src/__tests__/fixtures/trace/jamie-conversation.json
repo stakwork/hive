@@ -1,0 +1,27 @@
+{
+  "messages": [
+    {
+      "id": "m-0",
+      "role": "user",
+      "content": "What does Acme Corp owe this quarter?"
+    },
+    {
+      "id": "m-1",
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "id": "jamie-call-1",
+          "toolName": "start_job",
+          "input": { "prompt": "sum Acme Corp's Q1 invoices" },
+          "output": { "runId": "run-1", "status": "started" }
+        }
+      ]
+    },
+    {
+      "id": "m-2",
+      "role": "assistant",
+      "content": "Acme Corp owes $12,338.84 across Q1."
+    }
+  ]
+}
