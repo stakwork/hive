@@ -2,10 +2,10 @@
  * Unit tests for POST /api/orgs/[githubLogin]/strut/jobs/[jobId]/captcha —
  * a person's answer to a captcha a job posted.
  *
- * Covers: 401, 403 for a non-owner, 403 `site_not_allowed`, 400 for a body
- * not in shape (two answers, none, out-of-range tap), 409 busy, 202 with the
- * `[captcha-answer]` prompt carrying the text verbatim, and the GET that tells
- * the viewer whether the site is allowed.
+ * Covers: 401, 403 for a non-owner, 400 for a body not in shape (two answers,
+ * none, out-of-range tap), 409 busy, 202 with the `[captcha-answer]` prompt
+ * carrying the text verbatim, and the GET that tells the viewer whether the
+ * caller owns the job.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -58,7 +58,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, "log").mockImplementation(() => {});
   mockResolveAuthorizedOrgId.mockResolvedValue("org-1");
-  mockWorkspaceFindFirst.mockResolvedValue({ id: "ws-1", captchaAllowedSites: ["example.com"] });
+  mockWorkspaceFindFirst.mockResolvedValue({ id: "ws-1" });
   mockFirst.mockResolvedValue(FIRST);
   mockLive.mockResolvedValue(false);
   mockLaunch.mockResolvedValue({ status: "continued", jobId: JOB, title: "Login", runId: "row-2", note: "" });
@@ -76,11 +76,9 @@ describe("POST …/captcha", () => {
     expect(mockLaunch).not.toHaveBeenCalled();
   });
 
-  it("403 site_not_allowed when the workspace does not allow the site", async () => {
-    mockWorkspaceFindFirst.mockResolvedValueOnce({ id: "ws-1", captchaAllowedSites: ["other.com"] });
-    const res = await POST(request(TAPS), params);
-    expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "site_not_allowed" });
+  it("404 when the job's workspace is not in this org", async () => {
+    mockWorkspaceFindFirst.mockResolvedValueOnce(null);
+    expect((await POST(request(TAPS), params)).status).toBe(404);
     expect(mockLaunch).not.toHaveBeenCalled();
   });
 
@@ -139,12 +137,12 @@ describe("POST …/captcha", () => {
 });
 
 describe("GET …/captcha", () => {
-  it("says whether the site is allowed and whether the caller owns the job", async () => {
-    const res = await GET(request(null, true, "GET", "?site=a.example.com"), params);
-    expect(await res.json()).toEqual({ allowed: true, owner: true });
+  it("says whether the caller owns the job", async () => {
+    const res = await GET(request(null, true, "GET"), params);
+    expect(await res.json()).toEqual({ owner: true });
     mockFirst.mockResolvedValueOnce({ ...FIRST, userId: "user-2" });
-    const other = await GET(request(null, true, "GET", "?site=evil.io"), params);
-    expect(await other.json()).toEqual({ allowed: false, owner: false });
+    const other = await GET(request(null, true, "GET"), params);
+    expect(await other.json()).toEqual({ owner: false });
   });
 
   it("401 without a session", async () => {

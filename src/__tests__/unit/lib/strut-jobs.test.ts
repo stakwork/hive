@@ -11,6 +11,7 @@ import {
   describeArtifactEvent,
   formatArtifactEvent,
   formatClaimEvent,
+  jobModelOf,
   jobTitleOf,
   parseArtifactEvent,
   parseClaimEvent,
@@ -66,6 +67,16 @@ describe("jobTitleOf", () => {
     expect(jobTitleOf({ input: { prompt: "p", title: "  " } })).toBe("Job");
     expect(jobTitleOf({ input: { prompt: "p" } })).toBe("Job");
     expect(jobTitleOf({ input: null })).toBe("Job");
+  });
+});
+
+describe("jobModelOf", () => {
+  it("reads the model off a turn's input, else nothing", () => {
+    expect(jobModelOf({ input: { prompt: "p", model: "openai/gpt-5" } })).toBe("openai/gpt-5");
+    expect(jobModelOf({ input: { prompt: "p", model: " " } })).toBeUndefined();
+    expect(jobModelOf({ input: { prompt: "p" } })).toBeUndefined();
+    expect(jobModelOf({ input: null })).toBeUndefined();
+    expect(jobModelOf(null)).toBeUndefined();
   });
 });
 
