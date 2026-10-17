@@ -155,32 +155,7 @@ export function ProposalCard({
   // Milestone proposals additionally expose a feature checklist (see
   // below); checked ids ride along on the approval intent's
   // `featureIds` override.
-  const initialTitle =
-    proposal.kind === "initiative"
-      ? proposal.payload.name
-      : proposal.kind === "milestone"
-        ? proposal.payload.name
-        : proposal.kind === "promptCreate"
-          ? proposal.payload.name
-          : proposal.kind === "promptUpdate"
-            ? (proposal.meta.promptName ?? proposal.payload.promptId)
-            : proposal.kind === "conceptCreate"
-              ? proposal.payload.name
-              : proposal.kind === "conceptUpdate"
-                ? (proposal.meta.conceptName ?? proposal.payload.conceptId)
-                : proposal.kind === "graphNodeCreate"
-                  ? proposal.payload.node_type
-                  : proposal.kind === "graphNodeEdit"
-                    ? proposal.payload.ref_id
-                    : proposal.kind === "graphTripletCreate"
-                      ? proposal.payload.edge_type
-                      : proposal.kind === "graphBatchTripletCreate"
-                        ? "Batch Triplets"
-                        : proposal.kind === "graphEdgeDelete"
-                          ? proposal.payload.edge_type
-                          : proposal.kind === "graphNodeMove" || proposal.kind === "graphNodeDelete"
-                            ? (proposal.meta.node_name ?? proposal.payload.ref_id)
-                            : proposal.payload.title;
+  const initialTitle = getProposalTitle(proposal);
   const [editedTitle, setEditedTitle] = useState(initialTitle);
   const [isEditing, setIsEditing] = useState(false);
   // Prompt/concept/graph proposals forward no inline-edit override (handleApprove
@@ -385,36 +360,15 @@ export function ProposalCard({
       }
     }
 
-    // Read the live canvas viewport from the store (safe to call outside
-    // React render — this is a click handler). Compute canvas-space bounds:
-    //   canvasX = -vpX / zoom  (left edge of visible area in canvas coords)
-    //   canvasY = -vpY / zoom  (top edge)
-    //   canvasW = containerW / zoom  (visible width in canvas coords)
-    //   canvasH = containerH / zoom  (visible height in canvas coords)
-    const cv = useCanvasChatStore.getState().canvasViewport;
-    const viewportState =
-      cv && cv.zoom > 0
-        ? {
-            canvasX: -cv.x / cv.zoom,
-            canvasY: -cv.y / cv.zoom,
-            canvasW: cv.containerW / cv.zoom,
-            canvasH: cv.containerH / cv.zoom,
-          }
-        : undefined;
-
-    const intent: ApprovalIntent = {
+    const intent = buildApprovalIntent({
       proposalId: proposal.proposalId,
-      ...(payload && { payload }),
-      currentRef: currentRef || "",
-      // Legacy safety-net fallback for the server (used when viewportState
-      // is absent or findFreeSlotInViewport returns null on a packed canvas).
-      viewport: { x: 40, y: 40 },
-      ...(viewportState && { viewportState }),
-    };
+      payload,
+      currentRef,
+    });
 
     await sendMessage({
       conversationId: activeId,
-      content: `Approved: ${editedTitle}`,
+      content: approvalContent(editedTitle),
       approval: intent,
     });
   };
@@ -423,7 +377,7 @@ export function ProposalCard({
     if (!activeId || !isPending) return;
     await sendMessage({
       conversationId: activeId,
-      content: `Rejected: ${initialTitle}`,
+      content: rejectionContent(initialTitle),
       rejection: { proposalId: proposal.proposalId },
     });
   };
@@ -1999,6 +1953,76 @@ function GraphNodeDeleteMeta({
       {meta.refusedReason && <GraphRefusedNote reason={meta.refusedReason} />}
     </div>
   );
+}
+
+/** Display title of a proposal (the card's initial / editable title). */
+export function getProposalTitle(proposal: ProposalOutput): string {
+  return (
+    proposal.kind === "initiative"
+    ? proposal.payload.name
+    : proposal.kind === "milestone"
+      ? proposal.payload.name
+      : proposal.kind === "promptCreate"
+        ? proposal.payload.name
+        : proposal.kind === "promptUpdate"
+          ? (proposal.meta.promptName ?? proposal.payload.promptId)
+          : proposal.kind === "conceptCreate"
+            ? proposal.payload.name
+            : proposal.kind === "conceptUpdate"
+              ? (proposal.meta.conceptName ?? proposal.payload.conceptId)
+              : proposal.kind === "graphNodeCreate"
+                ? proposal.payload.node_type
+                : proposal.kind === "graphNodeEdit"
+                  ? proposal.payload.ref_id
+                  : proposal.kind === "graphTripletCreate"
+                    ? proposal.payload.edge_type
+                    : proposal.kind === "graphBatchTripletCreate"
+                      ? "Batch Triplets"
+                      : proposal.kind === "graphEdgeDelete"
+                        ? proposal.payload.edge_type
+                        : proposal.kind === "graphNodeMove" || proposal.kind === "graphNodeDelete"
+                          ? (proposal.meta.node_name ?? proposal.payload.ref_id)
+                          : proposal.payload.title);
+}
+
+export const approvalContent = (title: string) => `Approved: ${title}`;
+export const rejectionContent = (title: string) => `Rejected: ${title}`;
+
+/**
+ * Builds the `ApprovalIntent` a card sends on Approve. Shared by the card
+ * and the batch-approve bar so both take literally the same path. Reads the
+ * live canvas viewport from the store (safe outside render).
+ *   canvasX = -vpX / zoom, canvasY = -vpY / zoom,
+ *   canvasW = containerW / zoom, canvasH = containerH / zoom
+ */
+export function buildApprovalIntent({
+  proposalId,
+  payload,
+  currentRef,
+}: {
+  proposalId: string;
+  payload?: ApprovalIntent["payload"];
+  currentRef: string;
+}): ApprovalIntent {
+  const cv = useCanvasChatStore.getState().canvasViewport;
+  const viewportState =
+    cv && cv.zoom > 0
+      ? {
+          canvasX: -cv.x / cv.zoom,
+          canvasY: -cv.y / cv.zoom,
+          canvasW: cv.containerW / cv.zoom,
+          canvasH: cv.containerH / cv.zoom,
+        }
+      : undefined;
+  return {
+    proposalId,
+    ...(payload && { payload }),
+    currentRef: currentRef || "",
+    // Legacy safety-net fallback for the server (used when viewportState
+    // is absent or findFreeSlotInViewport returns null on a packed canvas).
+    viewport: { x: 40, y: 40 },
+    ...(viewportState && { viewportState }),
+  };
 }
 
 /**
