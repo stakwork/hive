@@ -21,6 +21,7 @@ import {
 import { useCanvasChatStore, type CanvasChatMessage } from "@/app/org/[githubLogin]/_state/canvasChatStore";
 import { useJobLiveStore } from "@/app/org/[githubLogin]/_state/jobLiveStore";
 import { act, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("@/components/MarkdownRenderer", () => ({
   MarkdownRenderer: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
@@ -379,7 +380,11 @@ describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-a
     );
     vi.stubGlobal("fetch", fetchMock);
     try {
-      render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />);
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />
+        </QueryClientProvider>,
+      );
       act(() => {
         const { apply } = useJobLiveStore.getState();
         apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url: `/jobs/${JOB}/files/shots/001.png`, state: "done" });
