@@ -135,7 +135,7 @@ export type HandleRejectionReturn = { ok: true } | { ok: false; error: string };
  * message that emitted a propose tool call with this proposalId.
  * Returns the structured `ProposalOutput` it carried.
  */
-function findProposal(
+export function findProposal(
   messages: MessageLike[],
   proposalId: string,
 ): ProposalOutput | null {

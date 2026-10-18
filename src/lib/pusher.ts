@@ -149,6 +149,9 @@ export type CanvasConversationUpdateReason =
   | "user-turn"
   // A deferred check was cancelled by the user via the DeferredCheckCard.
   | "deferred-check-cancelled"
+  // An external agent (e.g. strut's Orchestrator) posted a proposal card
+  // into the conversation over the org-scope MCP propose tools.
+  | "mcp"
   // A deferred check was fired by the cron dispatcher and the result
   // has been appended to the conversation.
   | "deferred-check-fired"

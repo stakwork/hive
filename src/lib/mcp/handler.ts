@@ -197,8 +197,9 @@ async function getWorkspaceAuth(
 //     keyed off a single workspace + swarm. Used by long-lived
 //     hive_* API keys and the legacy workspace JWTs minted by
 //     /api/livekit-token.
-//   - "org": exposes only `org_agent`, the single callback tool that
-//     wraps `runCanvasAgent`. Used by org-JWTs minted from
+//   - "org": exposes `org_agent` (the callback tool that wraps
+//     `runCanvasAgent`), `read_conversation`, and the nine `propose_*`
+//     card tools (orgProposeTools.ts). Used by org-JWTs minted from
 //     /api/mcp/org-token for plan-mode swarm callbacks and (future)
 //     voice agents.
 //

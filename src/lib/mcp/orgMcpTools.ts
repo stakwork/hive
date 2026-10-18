@@ -41,6 +41,7 @@
  *   what the caller asks for.
  */
 
+import { registerOrgProposeTools } from "@/lib/mcp/orgProposeTools";
 import { stripEndMarker } from "@/lib/ai/endMarker";
 import { randomUUID } from "crypto";
 import { z } from "zod";
@@ -192,6 +193,8 @@ export function registerOrgTools(
   const orgLabel = options.orgName?.trim() || "";
   const titleLabel = orgLabel ? `${orgLabel} Org Agent` : "Org Agent";
   const subject = orgLabel || "the organization";
+
+  registerOrgProposeTools(server);
 
   server.registerTool(
     "org_agent",
