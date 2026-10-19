@@ -225,6 +225,32 @@ export function mockConnectionPage({ refId, edge, outgoing, limit }: ConnectionP
 
 /** A small brainstorm tree under `focus`: a root question with sub-questions 1 and 2, options 1A, 1B, 2A, and under 1A a follow-up question with options 1AA and 1AB. */
 export function mockChoiceTree(focus: string, labels: string[] = ["Question", "Option", "Choice"]): ChoiceTreeData {
+  const data = mockChoiceTreeUndated(focus, labels);
+  const days = MOCK_DAYS_AGO[focus] ?? mockDaysAgoOf(focus);
+  const at = Math.floor(Date.now() / 1000) - days * 86400 - 3600;
+  // Jarvis stamps `date_added_to_graph` in epoch seconds; the desk's timeline reads it.
+  return {
+    ...data,
+    nodes: data.nodes.map((n) => ({ ...n, properties: { date_added_to_graph: at, ...n.properties } })),
+  };
+}
+
+/** How many days ago each mock brainstorm was added, for the desk's timeline. */
+const MOCK_DAYS_AGO: Record<string, number> = {
+  "mock-brainstorm-large": 0,
+  "mock-brainstorm-board": 1,
+  "mock-brainstorm-pricing": 4,
+  "mock-brainstorm-onboarding": 30,
+};
+
+/** A node inside a board mock is as old as its board. */
+function mockDaysAgoOf(id: string): number {
+  if (mockLargeTree().nodes.some((n) => n.ref_id === id)) return MOCK_DAYS_AGO[MOCK_LARGE_ROOT];
+  if (mockBoardTree().nodes.some((n) => n.ref_id === id)) return MOCK_DAYS_AGO[MOCK_BOARD_ROOT];
+  return 2;
+}
+
+function mockChoiceTreeUndated(focus: string, labels: string[]): ChoiceTreeData {
   // Any node of a board mock opens its own subtree (the board's "Start here").
   for (const build of [mockLargeTree, mockBoardTree]) {
     const tree = build(labels);

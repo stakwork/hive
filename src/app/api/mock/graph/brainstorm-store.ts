@@ -38,7 +38,7 @@ export function mockBrainstormWrite(plan: SavePlan): Record<string, string> {
   for (const c of plan.creates) {
     const id = `mock-bs-${++s.seq}`;
     created[c.temp] = id;
-    s.nodes.set(id, { ref_id: id, type: c.nodeType, properties: { ...c.data } });
+    s.nodes.set(id, { ref_id: id, type: c.nodeType, properties: { date_added_to_graph: Math.floor(Date.now() / 1000), ...c.data } });
     if (c.parent) s.edges.push({ source: ref(c.parent), target: id });
     else s.roots.unshift(id);
   }

@@ -10,6 +10,7 @@ import {
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
+  useStore,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -23,7 +24,7 @@ import { useContextMenu } from "@/components/graph-workbench/ContextMenu";
 import { buildChoiceTree, type ChoiceItem } from "../artifacts/viewers/ChoiceTree";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import { cardActions, composeFor, isBoardAction, type DeskAction } from "./actions";
-import { placeDesk, workspaceAt, type DeskBlock } from "./desk-layout";
+import { HEADING_ABOVE, latestAdded, placeDesk, type DeskBlock } from "./desk-layout";
 import { edgeTypes, type BoardEdgeData } from "./edges";
 import { hand } from "./fonts";
 import { CARD_W, layoutBoard } from "./layout";
@@ -87,9 +88,14 @@ interface Block {
   positions: Record<string, XY>;
   width: number;
   height: number;
+  /** Latest time a card was added, ms; now when unsaved pencil. */
+  at: number | undefined;
   slots: Array<{ id: string; question: string }>;
   draftId: string | null;
 }
+
+/** The opening view never zooms out past this; a tall day shows its top instead. */
+const MIN_OPEN_ZOOM = 0.45;
 
 /** Keys typed into the chat composer (or any field) must not drive the desk. */
 const isTyping = (t: EventTarget | null) =>
@@ -133,6 +139,9 @@ export function Desk({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
 
 function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; workspaceSlugs: string[] }) {
   const rf = useReactFlow();
+  // The pane's own size (the desk is narrower than the window: the chat panel sits beside it).
+  const paneW = useStore((s) => s.width);
+  const paneH = useStore((s) => s.height);
   const qc = useQueryClient();
   const params = useSearchParams();
   const initial = useRef({ ws: params.get("ws"), root: params.get("root") });
@@ -160,7 +169,13 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
   });
   const listsSettled = slugs.length > 0 && lists.settled;
   const roots = useMemo(
-    () => lists.data.flatMap((d, i) => (d ?? []).map((r) => ({ ...r, ws: slugs[i] }))),
+    () => {
+      // Workspaces don't split the desk, so a brainstorm listed by several shows once (first workspace wins).
+      const seen = new Set<string>();
+      return lists.data
+        .flatMap((d, i) => (d ?? []).map((r) => ({ ...r, ws: slugs[i] })))
+        .filter((r) => !seen.has(r.ref_id) && !!seen.add(r.ref_id));
+    },
     [lists, slugs],
   );
   // Same key and read as the chat card's tree, so the two share one cache entry.
@@ -273,6 +288,8 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
           ),
         },
       );
+      const now = Date.now();
+      const at = pencil[key]?.ops.length ? now : latestAdded(raw?.nodes);
       const ids = Object.keys(laid.positions);
       const minX = Math.min(...ids.map((id) => laid.positions[id].x));
       const minY = Math.min(...ids.map((id) => laid.positions[id].y));
@@ -281,7 +298,7 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
       );
       const width = Math.max(...ids.map((id) => positions[id].x + CARD_W));
       const height = Math.max(...ids.map((id) => positions[id].y + laid.heights[id]));
-      return [{ key, ws, root, job, tree, positions, width, height, slots, draftId }];
+      return [{ key, ws, root, job, tree, positions, width, height, at, slots, draftId }];
     });
   }, [roots, trees, pencil, draft, selected, measured, me]);
 
@@ -291,13 +308,14 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
       ws: b.ws,
       width: b.width,
       height: b.height,
+      at: b.at,
       anchor: anchors[b.key],
     }));
     if (draft && draft.root === null && draft.at) {
-      deskBlocks.push({ key: "draft-root", ws: draft.ws, width: ROOT_DRAFT.w, height: ROOT_DRAFT.h, anchor: draft.at });
+      deskBlocks.push({ key: "draft-root", ws: draft.ws, at: Date.now(), width: ROOT_DRAFT.w, height: ROOT_DRAFT.h, anchor: draft.at });
     }
-    return placeDesk(deskBlocks, slugs);
-  }, [blocks, anchors, draft, slugs]);
+    return placeDesk(deskBlocks, Date.now());
+  }, [blocks, anchors, draft]);
 
   /** Which brainstorm each card belongs to. */
   const keyOf = useMemo(() => new Map(blocks.flatMap((b) => b.tree.items.map((i) => [i.id, b] as const))), [blocks]);
@@ -359,7 +377,7 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
       setSelected(null);
       setDraft({
         key: newTempId(),
-        ws: workspaceAt(placement, at.x, slugs[0] ?? ""),
+        ws: slugs[0] ?? "",
         root: null,
         kind: "question",
         parent: null,
@@ -369,7 +387,7 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
       // Write it at a readable size, wherever the desk was zoomed to.
       void rf.setCenter(at.x, at.y, { zoom: Math.max(rf.getZoom(), 0.9), duration: 320 });
     },
-    [placement, slugs, rf],
+    [slugs, rf],
   );
 
   const onAct = useCallback(
@@ -470,9 +488,9 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
     const flowNodes: Node[] = [];
     const flowEdges: Edge[] = [];
     for (const h of placement.headings) {
-      const data: HeadingData = { title: h.ws, subtitle: `${h.count} brainstorm${h.count === 1 ? "" : "s"}` };
+      const data: HeadingData = { title: h.title, subtitle: `${h.count} brainstorm${h.count === 1 ? "" : "s"}` };
       flowNodes.push({
-        id: `heading:${h.ws}`,
+        id: `heading:${h.day}`,
         type: "heading",
         position: { x: h.x, y: h.y },
         data,
@@ -643,6 +661,30 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
     },
     [rf, deskBounds],
   );
+  /** Today: the newest (rightmost) day's brainstorms, at a readable zoom. */
+  const showNewest = useCallback(() => {
+    const last = placement.columns[placement.columns.length - 1];
+    if (!last) return fit(0);
+    const top = -HEADING_ABOVE - 20;
+    const bottom = Math.max(
+      ...blocks
+        .map((b) => ({ ...(placement.offsets[b.key] ?? { x: 0, y: 0 }), h: b.height }))
+        .filter((b) => b.x >= last.x0 && b.x <= last.x1)
+        .map((b) => b.y + b.h),
+      0,
+    );
+    const w = last.x1 - last.x0;
+    const h = bottom - top;
+    const pad = 0.06;
+    const fitZoom = Math.min((paneW * (1 - 2 * pad)) / w, (paneH * (1 - 2 * pad)) / h);
+    if (fitZoom >= MIN_OPEN_ZOOM) {
+      const zoom = Math.min(1, fitZoom);
+      void rf.setViewport({ x: (paneW - w * zoom) / 2 - last.x0 * zoom, y: (paneH - h * zoom) / 2 - top * zoom, zoom });
+    } else {
+      // A tall day: keep it readable; its label and newest tree up top, clear of the toolbar.
+      void rf.setViewport({ x: 80 - last.x0 * MIN_OPEN_ZOOM, y: 120 - top * MIN_OPEN_ZOOM, zoom: MIN_OPEN_ZOOM });
+    }
+  }, [placement, blocks, rf, fit, paneW, paneH]);
   const focusOn = useCallback(
     (key: string | null) => {
       setFocus(key);
@@ -662,15 +704,15 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
   // Runs once; a change before it fires (cards reporting their sizes) just restarts the wait.
   const opened = useRef(false);
   useEffect(() => {
-    if (opened.current || !listsSettled || !blocks.length) return;
+    if (opened.current || !listsSettled || !blocks.length || !paneW || !paneH) return;
     const t = setTimeout(() => {
       opened.current = true;
       const named = initial.current.root && blocks.some((b) => b.key === initial.current.root);
       if (named) focusOn(initial.current.root);
-      else fit(0);
+      else showNewest();
     }, 150);
     return () => clearTimeout(t);
-  }, [listsSettled, blocks, focusOn, fit]);
+  }, [listsSettled, blocks, focusOn, showNewest, paneW, paneH]);
 
   // A brainstorm being written or opened from search is brought into view.
   const flyTo = useCallback(
