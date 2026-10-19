@@ -18,9 +18,13 @@ export interface SystemMapRun {
   cweIds: string[] | null;
   /** The System Map components the run was scoped to (`input.components`); null when it covered all. */
   components: string[] | null;
+  /** The `Finding`s a finding check ran on (`input.finding_ref_ids`); null for other workflows. */
+  findingRefIds: string[] | null;
+  /** Whether a finding check wrote its verdict (`input.apply`); null for other workflows. */
+  apply: boolean | null;
 }
 
-export type SystemMapWorkflowKey = "system_map" | "cwe_check";
+export type SystemMapWorkflowKey = "system_map" | "cwe_check" | "finding_verify";
 
 export interface SystemMapRunsResponse {
   /** Which workflow these runs belong to. */
