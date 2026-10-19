@@ -6,7 +6,7 @@
  *
  * Env: `INFOSEC_GRAPH_URL` (default `https://infosec.sphinx.chat/api`) and
  * `INFOSEC_GRAPH_API_KEY`, sent as `x-api-token` when set — every route is
- * free with it; the two reads below are free without it too.
+ * free with it; the reads below are free without it too.
  */
 
 export const DEFAULT_INFOSEC_GRAPH_URL = "https://infosec.sphinx.chat/api";
@@ -65,6 +65,22 @@ export async function findInfosecNode(nodeType: string, key: string): Promise<st
   const params = new URLSearchParams({ node_type: nodeType, key });
   const body = await get<{ exists?: boolean; ref_id?: string | null }>(`/v2/nodes/check?${params.toString()}`);
   return body.exists && body.ref_id ? body.ref_id : null;
+}
+
+export interface InfosecSearchHit {
+  ref_id: string;
+  node_type: string;
+  title: string;
+}
+
+/**
+ * Nodes of one type whose title matches `query` (no properties):
+ * `GET /v2/nodes/search?q=…&type=…&limit=…`.
+ */
+export async function searchInfosecNodes(nodeType: string, query: string, limit = 20): Promise<InfosecSearchHit[]> {
+  const params = new URLSearchParams({ q: query, type: nodeType, limit: String(limit) });
+  const body = await get<{ nodes?: InfosecSearchHit[] }>(`/v2/nodes/search?${params.toString()}`);
+  return Array.isArray(body.nodes) ? body.nodes.filter((n) => n && typeof n.ref_id === "string") : [];
 }
 
 /**
