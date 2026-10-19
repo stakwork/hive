@@ -661,7 +661,7 @@ export function TokenCounter() {
     `cache read: ${totals.cacheReadTokens.toLocaleString()}, ` +
     `cache write: ${totals.cacheWriteTokens.toLocaleString()}`;
   return (
-    <span className="px-1.5 text-xs text-muted-foreground tabular-nums select-none" title={title}>
+    <span className="px-1.5 text-xs text-muted-foreground tabular-nums select-none max-md:hidden" title={title}>
       {formatCompactTokenCount(totals.used)}
     </span>
   );
@@ -715,21 +715,10 @@ export function NewChatButton({ githubLogin }: { githubLogin: string }) {
 }
 
 /**
- * The chat header's actions — the agent-active dot, history (unless
- * `hideHistory`: the chat list beside it is the history), New chat (unless
- * `hideNewChat`: the chat list's header has it), a labelled Share and a ⋯
- * menu holding Fork and the agent settings (Concept-tree prompt, Automations). Reads the store itself, so the org page's one bar can
- * place it. Stop, the token count and the model picker live in the composer.
+ * The chat's Share and Fork actions and the state that gates them — shared by
+ * the desktop header (`SidebarChatActions`) and the mobile actions sheet.
  */
-export function SidebarChatActions({
-  githubLogin,
-  hideHistory = false,
-  hideNewChat = false,
-}: {
-  githubLogin: string;
-  hideHistory?: boolean;
-  hideNewChat?: boolean;
-}) {
+export function useChatShareFork(githubLogin: string) {
   const activeId = useCanvasChatStore((s) => s.activeConversationId);
   // The persisted row id. Sharing flips this row to `isShared` and hands
   // out its id, so the sharer and every joiner live in the *same* room.
@@ -742,7 +731,6 @@ export function SidebarChatActions({
   const isStreaming = useCanvasChatStore((s) => (activeId ? s.conversations[activeId]?.isStreaming : false) ?? false);
   const { isActive } = useCanvasAgentActivity(activeId);
   const [isForking, setIsForking] = useState(false);
-  const [automationsOpen, setAutomationsOpen] = useState(false);
 
   const handleShare = async () => {
     if (!serverConversationId) return;
@@ -786,6 +774,29 @@ export function SidebarChatActions({
       setIsForking(false);
     }
   };
+
+  return { activeId, serverConversationId, isStreaming, isForking, isActive, handleShare, handleFork };
+}
+
+/**
+ * The chat header's actions — the agent-active dot, history (unless
+ * `hideHistory`: the chat list beside it is the history), New chat (unless
+ * `hideNewChat`: the chat list's header has it), a labelled Share and a ⋯
+ * menu holding Fork and the agent settings (Concept-tree prompt, Automations). Reads the store itself, so the org page's one bar can
+ * place it. Stop, the token count and the model picker live in the composer.
+ */
+export function SidebarChatActions({
+  githubLogin,
+  hideHistory = false,
+  hideNewChat = false,
+}: {
+  githubLogin: string;
+  hideHistory?: boolean;
+  hideNewChat?: boolean;
+}) {
+  const { serverConversationId, isStreaming, isForking, isActive, handleShare, handleFork } =
+    useChatShareFork(githubLogin);
+  const [automationsOpen, setAutomationsOpen] = useState(false);
 
   return (
     <div className="flex shrink-0 items-center gap-0.5 @[22rem]:gap-1">
@@ -1355,7 +1366,7 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
               onPaste={handlePaste}
               isUploading={isUploading}
               rows={1}
-              className="field-sizing-content max-h-[200px] min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-1.5 text-sm shadow-none placeholder:text-muted-foreground/60 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed md:text-sm dark:bg-transparent"
+              className="field-sizing-content max-h-[200px] min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-1.5 text-sm max-md:text-base shadow-none placeholder:text-muted-foreground/60 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed md:text-sm dark:bg-transparent"
             />
           </div>
 
