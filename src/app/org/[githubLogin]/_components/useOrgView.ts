@@ -20,11 +20,12 @@ export function orgPageView(params: Pick<URLSearchParams, "get"> | null): "chats
   return "chats";
 }
 
-export type CanvasTab = "map" | "initiatives";
+export type CanvasTab = "map" | "initiatives" | "brainstorm";
 
 /** The canvas view's tab, from `?tab=`; the map by default. */
 export function canvasTab(params: Pick<URLSearchParams, "get"> | null): CanvasTab {
-  return params?.get("tab") === "initiatives" ? "initiatives" : "map";
+  const tab = params?.get("tab");
+  return tab === "initiatives" || tab === "brainstorm" ? tab : "map";
 }
 
 /** The org page's URL on the canvas view, carrying over the current params (the open chat among them) plus `patch`. */

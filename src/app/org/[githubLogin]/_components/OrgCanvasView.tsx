@@ -25,7 +25,8 @@ import { cn } from "@/lib/utils";
 import { ChatsLayout } from "./ChatsLayout";
 import { ArtifactPanel } from "./artifacts/ArtifactPanel";
 import Link from "next/link";
-import { canvasTab, orgPageView } from "./useOrgView";
+import { canvasTab, orgPageView, type CanvasTab } from "./useOrgView";
+import { BrainstormBoard } from "./brainstorm-board/BrainstormBoard";
 import { OrgInitiatives } from "../OrgInitiatives";
 import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 
@@ -82,6 +83,8 @@ interface OrgCanvasViewProps {
  * the store; `<SidebarChat />` reads them directly without prop
  * drilling.
  */
+const TAB_LABEL: Record<CanvasTab, string> = { map: "Map", initiatives: "Initiatives", brainstorm: "Brainstorm" };
+
 export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProps) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -121,6 +124,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [chatOpen, setChatOpen] = useState(mode !== "graph");
   /** The graph node in view — what "this" means to Jamie on the graph view. */
   const [graphFocus, setGraphFocus] = useState<GraphFocus | null>(null);
+  /** The brainstorm board in view (published by the board while mounted). */
+  const brainstormFocus = useCanvasChatStore((s) => s.brainstormFocus);
   // The panel library persists every layout; a tucked-away chat (collapsed
   // to nothing) must not become the sidebar's remembered width.
   const panelStorage = useMemo(
@@ -148,7 +153,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const artifactOpen = useArtifactPanelOpen();
   const leftSurface = artifactOpen ? "artifact" : mode;
   const tab = canvasTab(searchParams);
-  const tabHref = (next: "map" | "initiatives") => {
+  const tabHref = (next: CanvasTab) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "canvas");
     if (next === "map") params.delete("tab");
@@ -546,6 +551,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       selectedNodeId: contextNodeId,
       selectedNodeIds: contextNodeIds,
       graphFocus,
+      brainstormFocus,
     });
   }, [
     conversationStarted,
@@ -558,6 +564,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     contextNodeId,
     contextNodeIds,
     graphFocus,
+    brainstormFocus,
   ]);
 
   // Mount auto-save (write-through to `chat_conversations`). Lives at
@@ -624,6 +631,11 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                     </div>
                   </div>
                 )}
+                {tab === "brainstorm" && (
+                  <div className="absolute bottom-0 left-0 top-11 z-10 overflow-hidden bg-background" style={{ right: panelWidth }}>
+                    <BrainstormBoard githubLogin={githubLogin} workspaceSlugs={chatWorkspaceSlugs} />
+                  </div>
+                )}
                 {/* The tab bar lines up with the chat panel's header across the divider. */}
                 <div
                   role="tablist"
@@ -631,7 +643,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                   className="absolute left-0 top-0 z-30 flex h-11 items-stretch border-b bg-background pl-1 text-sm"
                   style={{ right: panelWidth }}
                 >
-                  {(["map", "initiatives"] as const).map((t) => (
+                  {(["map", "initiatives", "brainstorm"] as const).map((t) => (
                     <Link
                       key={t}
                       role="tab"
@@ -645,7 +657,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                           : "border-transparent text-muted-foreground hover:text-foreground",
                       )}
                     >
-                      {t === "map" ? "Map" : "Initiatives"}
+                      {TAB_LABEL[t]}
                     </Link>
                   ))}
                 </div>

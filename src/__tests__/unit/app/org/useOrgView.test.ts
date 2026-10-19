@@ -93,4 +93,8 @@ describe("canvasTab", () => {
   it("parses ?tab=initiatives", () => {
     expect(canvasTab(new URLSearchParams("view=canvas&tab=initiatives"))).toBe("initiatives");
   });
+
+  it("parses ?tab=brainstorm, ignoring the board params", () => {
+    expect(canvasTab(new URLSearchParams("view=canvas&tab=brainstorm&ws=hive&root=abc"))).toBe("brainstorm");
+  });
 });
