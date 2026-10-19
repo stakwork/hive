@@ -4,12 +4,11 @@ import { BaseEdge, getBezierPath, type Edge, type EdgeProps } from "@xyflow/reac
 import { inkPath } from "./rough";
 
 export const RED = "#c8452c";
-const BROWN = "#8a6a43";
 const INK = "#2f2b26";
 const SLATE = "#4b5f73";
 
 export interface BoardEdgeData extends Record<string, unknown> {
-  kind: "chosen" | "ghost" | "built" | "normal";
+  kind: "chosen" | "ghost" | "normal";
   /** The source node was written by a person. */
   fromPerson: boolean;
   /** An unchosen option's edge: quieter. */
@@ -18,7 +17,6 @@ export interface BoardEdgeData extends Record<string, unknown> {
 
 function colour(d: BoardEdgeData) {
   if (d.kind === "chosen") return RED;
-  if (d.kind === "built") return BROWN;
   return d.fromPerson ? INK : SLATE;
 }
 
@@ -27,7 +25,7 @@ export function InkEdge({ id, sourceX, sourceY, targetX, targetY, data }: EdgePr
   const d = data ?? { kind: "normal", fromPerson: true };
   const c = colour(d);
   const ghost = d.kind === "ghost";
-  const opacity = ghost ? 0.4 : d.dim ? 0.55 : 1;
+  const opacity = ghost ? 0.55 : d.dim ? 0.7 : 1;
   const dash = ghost ? "6 6" : undefined;
   return (
     <g opacity={opacity} data-edge-kind={d.kind}>
@@ -44,7 +42,7 @@ export function AgentEdge({ id, sourceX, sourceY, targetX, targetY, sourcePositi
   const c = colour(d);
   const ghost = d.kind === "ghost";
   return (
-    <g opacity={ghost ? 0.4 : d.dim ? 0.55 : 1} data-edge-kind={d.kind}>
+    <g opacity={ghost ? 0.55 : d.dim ? 0.7 : 1} data-edge-kind={d.kind}>
       <BaseEdge id={id} path={path} style={{ stroke: c, strokeWidth: 1.6, strokeDasharray: ghost ? "6 6" : undefined }} />
       <circle cx={targetX} cy={targetY} r={4} fill={c} />
     </g>

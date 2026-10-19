@@ -60,14 +60,15 @@ describe("listBrainstormRoots", () => {
     expect(await listBrainstormRoots(caller)).toEqual({ ok: false, status: 502, message: "down" });
   });
 
-  test("USE_MOCKS: three roots, the first is the board mock the choice tree answers for", async () => {
+  test("USE_MOCKS: four roots, the first the large board mock and the second the board mock the choice tree answers for", async () => {
     vi.stubEnv("USE_MOCKS", "true");
     const res = await listBrainstormRoots(caller);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.data).toHaveLength(3);
+    expect(res.data).toHaveLength(4);
+    expect(res.data[0].ref_id).toBe("mock-brainstorm-large");
     expect(mockedQuery).not.toHaveBeenCalled();
-    const tree = await getChoiceTree(caller, res.data[0].ref_id);
+    const tree = await getChoiceTree(caller, res.data[1].ref_id);
     expect(tree.ok && tree.data.nodes.map((n) => n.properties.state)).toEqual(
       expect.arrayContaining(["decided", "chosen", "rejected", "open", "simulated"]),
     );
