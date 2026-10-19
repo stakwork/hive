@@ -220,6 +220,15 @@ interface OrgCanvasBackgroundProps {
 /** The smallest zoom the read-only (phone) map opens at: below it the cards are not readable. */
 const READONLY_MIN_ZOOM = 0.7;
 
+/** What a view-only canvas turns off or changes: no editing or creating, no minimap, a plain drag pans. */
+const READ_ONLY_CANVAS_PROPS = {
+  editable: false,
+  panMode: "drag",
+  showMinimap: false,
+  alignDistributeMenu: false,
+  renderAddNodeButton: undefined,
+} as const;
+
 export function OrgCanvasBackground({
   githubLogin,
   rightInset = 0,
@@ -1413,11 +1422,11 @@ export function OrgCanvasBackground({
           ref={canvasHandleRef}
           defaultViewport={readOnly && !leftRoot ? (readOnlyViewport ?? undefined) : undefined}
           canvas={canvasForRender}
-          panMode={readOnly ? "drag" : "trackpad"}
+          panMode="trackpad"
           multiSelectKey="space"
           canvases={subCanvasesForRender}
           theme={connectionsTheme}
-          editable={!readOnly}
+          editable
           zoomNavigation
           onResolveCanvas={onResolveCanvas}
           onBreadcrumbsChange={handleBreadcrumbsChange}
@@ -1434,7 +1443,7 @@ export function OrgCanvasBackground({
           onNodeDrop={handleNodeDrop}
           nodeContextMenu={nodeContextMenu}
           canvasContextMenu={canvasContextMenu}
-          renderAddNodeButton={readOnly ? undefined : renderAddNodeButton}
+          renderAddNodeButton={renderAddNodeButton}
           rootLabel={orgName || githubLogin}
           onViewportChange={(vp) => {
             currentViewportRef.current = vp;
@@ -1448,10 +1457,11 @@ export function OrgCanvasBackground({
             });
           }}
           collaborators={collaborators}
-          showMinimap={!readOnly}
-          alignDistributeMenu={!readOnly}
+          showMinimap={true}
+          alignDistributeMenu={true}
           snapGrid={true}
           snapToLanes={true}
+          {...(readOnly ? READ_ONLY_CANVAS_PROPS : null)}
         />
         )}
         {/*
