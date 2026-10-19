@@ -3,7 +3,7 @@ import { buildChoiceTree, type ChoiceItem } from "@/app/org/[githubLogin]/_compo
 import { cardActions } from "@/app/org/[githubLogin]/_components/brainstorm-board/actions";
 import {
   placeDesk,
-  workspaceAt,
+  latestAdded,
   COLUMN_GAP,
   HEADING_ABOVE,
   MIN_COLUMN,
@@ -94,33 +94,48 @@ describe("pencil", () => {
 });
 
 describe("placeDesk", () => {
-  const block = (key: string, ws: string, width = 500, height = 300) => ({ key, ws, width, height });
+  const NOW = new Date(2026, 9, 19, 15, 0).getTime();
+  const DAY = 86400000;
+  const block = (key: string, at: number | undefined, width = 500, height = 300) => ({ key, ws: "hive", width, height, at });
 
-  it("stacks each workspace's brainstorms in a column under a heading, columns side by side", () => {
-    const p = placeDesk([block("a", "hive"), block("b", "stakwork", 1200), block("c", "hive")], ["hive", "stakwork"]);
-    expect(p.offsets).toEqual({
-      a: { x: 0, y: 0 },
-      c: { x: 0, y: 300 + STACK_GAP },
-      b: { x: MIN_COLUMN + COLUMN_GAP, y: 0 },
-    });
-    expect(p.headings).toEqual([
-      { ws: "hive", x: 0, y: -HEADING_ABOVE, count: 2 },
-      { ws: "stakwork", x: MIN_COLUMN + COLUMN_GAP, y: -HEADING_ABOVE, count: 1 },
-    ]);
+  it("lays days out left to right, oldest first, today on the right", () => {
+    const p = placeDesk([block("t", NOW), block("old", NOW - 30 * DAY), block("y", NOW - DAY)], NOW);
+    expect(p.offsets.old.x).toBeLessThan(p.offsets.y.x);
+    expect(p.offsets.y.x).toBeLessThan(p.offsets.t.x);
+    expect(p.offsets.y.x).toBe(MIN_COLUMN + COLUMN_GAP);
+  });
+
+  it("stacks a day's trees newest first, and an empty day takes no space", () => {
+    const p = placeDesk([block("a", NOW - 3600000), block("b", NOW), block("c", NOW - 5 * DAY, 1200)], NOW);
+    expect(p.offsets.c).toEqual({ x: 0, y: 0 });
+    expect(p.offsets.b).toEqual({ x: 1200 + COLUMN_GAP, y: 0 });
+    expect(p.offsets.a).toEqual({ x: 1200 + COLUMN_GAP, y: 300 + STACK_GAP });
+    expect(p.headings.map((h) => h.count)).toEqual([1, 2]);
+    expect(p.headings[0].y).toBe(-HEADING_ABOVE);
+  });
+
+  it("trees without a time go far left", () => {
+    const p = placeDesk([block("t", NOW), block("none", undefined)], NOW);
+    expect(p.offsets.none).toEqual({ x: 0, y: 0 });
+    expect(p.offsets.t.x).toBeGreaterThan(0);
+  });
+
+  it("a tree's time is the latest of its cards, seconds as number or string", () => {
+    const n = (v: unknown) => ({ properties: { date_added_to_graph: v } });
+    expect(latestAdded([n(100), n("300"), n(200), { properties: {} }])).toBe(300000);
+    expect(latestAdded([{ properties: {} }])).toBeUndefined();
+    expect(latestAdded(undefined)).toBeUndefined();
+  });
+
+  it("labels days", () => {
+    const p = placeDesk([block("t", NOW), block("y", NOW - DAY), block("o", NOW - 6 * DAY), block("ly", new Date(2025, 9, 13, 9).getTime())], NOW);
+    expect(p.headings.map((h) => h.title)).toEqual(["Mon 13 Oct 2025", "Tue 13 Oct", "Yesterday", "Today"]);
   });
 
   it("a brainstorm opened on the desk stays where it was opened", () => {
-    const p = placeDesk([block("a", "hive"), { ...block("n", "hive"), anchor: { x: 4000, y: 900 } }], ["hive"]);
+    const p = placeDesk([block("a", NOW), { ...block("n", NOW), anchor: { x: 4000, y: 900 } }], NOW);
     expect(p.offsets.n).toEqual({ x: 4000, y: 900 });
     expect(p.headings[0].count).toBe(1);
-  });
-
-  it("a new box belongs to the workspace column under it, or the nearest", () => {
-    const p = placeDesk([block("a", "hive"), block("b", "stakwork")], ["hive", "stakwork"]);
-    expect(workspaceAt(p, 100, "x")).toBe("hive");
-    expect(workspaceAt(p, MIN_COLUMN + COLUMN_GAP + 50, "x")).toBe("stakwork");
-    expect(workspaceAt(p, MIN_COLUMN + 100, "x")).toBe("hive");
-    expect(workspaceAt(placeDesk([], []), 0, "fallback")).toBe("fallback");
   });
 });
 
