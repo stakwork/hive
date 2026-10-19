@@ -25,6 +25,7 @@ import { isTypingTarget } from "../control-panel/ControlPanelList";
 import { ICON_BUTTON_CLASS, MissingContentPanel, ToolbarButton, ViewerBoundary } from "./chrome";
 import { artifactAsks, artifactHref, artifactKind } from "./registry";
 import { useArtifactContent } from "./useArtifactContent";
+import { useOpenArtifact } from "./openArtifact";
 import { useActiveArtifacts, useArtifactJobId, useArtifactJobs, useChatOrgLogin } from "./useArtifactPanel";
 
 /**
@@ -93,7 +94,7 @@ export function groupIndex(
 
 /** Every artifact in the chat, grouped: what waits on you, then by job, then what Jamie made. */
 function ArtifactIndex({ artifacts }: { artifacts: ArtifactRef[] }) {
-  const { openArtifactPanel, closeArtifactPanel } = useCanvasChatStore.getState();
+  const { closeArtifactPanel } = useCanvasChatStore.getState();
   const jobs = useArtifactJobs();
   const groups = useMemo(() => groupIndex([...artifacts].reverse(), jobs), [artifacts, jobs]);
   return (
@@ -120,28 +121,9 @@ function ArtifactIndex({ artifacts }: { artifacts: ArtifactRef[] }) {
               <span className="tabular-nums opacity-70">{group.artifacts.length}</span>
             </h3>
             <ul>
-              {group.artifacts.map((artifact) => {
-                const spec = artifactKind(artifact.kind);
-                const identity = artifactIdentity(artifact);
-                return (
-                  <li key={identity}>
-                    <button
-                      type="button"
-                      onClick={() => openArtifactPanel(identity)}
-                      className="flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60"
-                    >
-                      <spec.Icon aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm">{artifact.title}</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {artifact.label ?? spec.label}
-                          {artifact.summary && ` · ${artifact.summary}`}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+              {group.artifacts.map((artifact) => (
+                <IndexRow key={artifactIdentity(artifact)} artifact={artifact} />
+              ))}
             </ul>
           </section>
         ))}
@@ -276,5 +258,31 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
         )}
       </div>
     </section>
+  );
+}
+
+/** One line of the index. A brainstorm tree opens on the desk, anything else on the panel. */
+function IndexRow({ artifact }: { artifact: ArtifactRef }) {
+  const spec = artifactKind(artifact.kind);
+  const open = useOpenArtifact(useChatOrgLogin());
+  const state = useArtifactContent(artifact, artifact.kind === "graph" || artifact.kind === "json");
+  const content = state.status === "ready" ? state.content : null;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => open(artifact, content)}
+        className="flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60"
+      >
+        <spec.Icon aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm">{artifact.title}</span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {artifact.label ?? spec.label}
+            {artifact.summary && ` · ${artifact.summary}`}
+          </span>
+        </span>
+      </button>
+    </li>
   );
 }
