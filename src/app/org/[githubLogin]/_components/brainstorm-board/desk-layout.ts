@@ -94,12 +94,19 @@ export function placeDesk(blocks: DeskBlock[], now: number = Date.now()): DeskPl
   return { offsets, headings, columns };
 }
 
-/** The latest `date_added_to_graph` (epoch seconds, number or numeric string) over a tree's cards, in ms. */
+/** Epoch seconds or milliseconds (the live graph stores ms, older nodes seconds) to ms; undefined if not a positive number. */
+export function graphEpochToMs(value: unknown): number | undefined {
+  const v = Number(value);
+  if (!Number.isFinite(v) || v <= 0) return undefined;
+  return v > 1e12 ? v : v * 1000;
+}
+
+/** The latest `date_added_to_graph` (epoch ms or seconds, number or numeric string) over a tree's cards, in ms. */
 export function latestAdded(nodes: Array<{ properties?: Record<string, unknown> }> | undefined): number | undefined {
   let best: number | undefined;
   for (const n of nodes ?? []) {
-    const v = Number(n.properties?.date_added_to_graph);
-    if (Number.isFinite(v) && v > 0 && (best === undefined || v * 1000 > best)) best = v * 1000;
+    const ms = graphEpochToMs(n.properties?.date_added_to_graph);
+    if (ms !== undefined && (best === undefined || ms > best)) best = ms;
   }
   return best;
 }
