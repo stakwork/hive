@@ -279,6 +279,38 @@ export interface ChoiceTreeNode {
   /** `Question` when the node's labels include it, else `Option` when they include that, else `Choice`. */
   type: "Question" | "Option" | "Choice";
   properties: Record<string, unknown>;
+  /** Options only: live `HAS_EFFECT` effects, highest impact first. Absent when there are none. */
+  effects?: ChoiceEffect[];
+}
+
+/** A pro or con of an option, from `(Option)-[:HAS_EFFECT]->(Effect)`. Read-only. */
+export interface ChoiceEffect {
+  ref_id: string;
+  name: string;
+  description: string;
+  direction: "pro" | "con";
+  /** 0–1, or null when missing/not numeric. */
+  impact: number | null;
+}
+
+function toEffects(raw: unknown): ChoiceEffect[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ChoiceEffect[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== "object") continue;
+    const r = e as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name.trim() : "";
+    if (!name || (r.direction !== "pro" && r.direction !== "con")) continue;
+    const n = typeof r.impact === "number" ? r.impact : typeof r.impact === "string" && r.impact.trim() ? Number(r.impact) : NaN;
+    out.push({
+      ref_id: str(r.ref_id) ?? "",
+      name,
+      description: str(r.description) ?? "",
+      direction: r.direction,
+      impact: Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : null,
+    });
+  }
+  return out.sort((a, b) => (b.impact ?? -1) - (a.impact ?? -1));
 }
 
 export interface ChoiceTreeData {
@@ -311,7 +343,9 @@ export async function getChoiceTree(
     rows(
       caller,
       `${root} MATCH (r)-[:PARENT_OF*0..20]->(n) WHERE ${any("n")} AND ${nodeLive("n")} ` +
-        `RETURN DISTINCT n.ref_id AS id, labels(n) AS labels, ${propertyPairs("n")} AS props`,
+        `RETURN DISTINCT n.ref_id AS id, labels(n) AS labels, ${propertyPairs("n")} AS props, ` +
+        `[(n)-[he:HAS_EFFECT]->(x:Effect) WHERE ${edgeLive("he")} AND ${nodeLive("x")} | ` +
+        `{ref_id: x.ref_id, name: x.name, description: x.description, direction: x.direction, impact: x.impact}] AS effects`,
       GRAPH_ROW_CAP,
     ),
     rows(
@@ -331,7 +365,9 @@ export async function getChoiceTree(
         const id = str(r.id);
         const ls = Array.isArray(r.labels) ? r.labels : [];
         const type: ChoiceTreeNode["type"] = ls.includes("Question") ? "Question" : ls.includes("Option") ? "Option" : "Choice";
-        return id ? [{ ref_id: id, type, properties: fromPropertyPairs(r.props) }] : [];
+        if (!id) return [];
+        const effects = type === "Option" ? toEffects(r.effects) : [];
+        return [{ ref_id: id, type, properties: fromPropertyPairs(r.props), ...(effects.length ? { effects } : {}) }];
       }),
       edges: edges.data.flatMap((r) => {
         const source = str(r.source);

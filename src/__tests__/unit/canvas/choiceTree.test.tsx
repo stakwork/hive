@@ -117,6 +117,36 @@ describe("buildChoiceTree / layoutTree", () => {
   });
 });
 
+describe("effects", () => {
+  const effects = [
+    { ref_id: "e1", name: "Fast", description: "Ships soon, and a long description that wraps over more than one line of the card", direction: "pro", impact: 0.8 },
+    { ref_id: "e2", name: "Risky", description: "", direction: "con", impact: 0.3 },
+    { ref_id: "e3", name: "bad", direction: "other", impact: 0.3 },
+  ];
+  it("buildChoiceTree maps effects onto options only", () => {
+    const { items } = buildChoiceTree(
+      [
+        { ref_id: "r", type: "Question", properties: { text: "Q" }, effects },
+        { ref_id: "a", type: "Option", properties: { text: "A", option_id: 1 }, effects },
+        { ref_id: "b", type: "Option", properties: { text: "B", option_id: 2 } },
+      ],
+      [{ source: "r", target: "a" }, { source: "r", target: "b" }],
+      "r",
+    );
+    const by = Object.fromEntries(items.map((i) => [i.id, i]));
+    expect(by.a.effects?.map((e) => e.name)).toEqual(["Fast", "Risky"]);
+    expect(by.r.effects).toBeUndefined();
+    expect(by.b.effects).toBeUndefined();
+  });
+  it("estimateNodeHeight grows with effects when selected, unchanged otherwise", () => {
+    const base = { name: "Opt", quote: undefined };
+    const withFx = { ...base, effects: effects.slice(0, 2) as never };
+    expect(estimateNodeHeight(withFx, true)).toBeGreaterThan(estimateNodeHeight(base, true));
+    expect(estimateNodeHeight(withFx, false)).toBe(estimateNodeHeight(base, false));
+    expect(estimateNodeHeight({ ...base, effects: [] }, true)).toBe(estimateNodeHeight(base, true));
+  });
+});
+
 describe("isTreeArtifact", () => {
   const ws = { workspace: "hive" };
   it("layout tree, a brainstorm id (any case, any prefix) or a Choice/Question label — focus or not", () => {

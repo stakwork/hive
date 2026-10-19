@@ -90,4 +90,12 @@ describe("drafts", () => {
     expect(dropDraft(o)).toBe(`Drop 2B: "${o.name}" (mock-bl-q2-b)`);
     expect(reopenDraft(o)).toBe(`Reopen 2B: "${o.name}" (mock-bl-q2-b)`);
   });
+
+  test("effects add height only when the option has them", () => {
+    const base = { id: "x", name: "Opt", state: "open", isQuestion: false, madeBy: "model" } as never;
+    const fx = { ...(base as object), effects: [{ ref_id: "e", name: "n", description: "some description", direction: "pro", impact: 0.5 }] } as never;
+    expect(boardCardHeight(fx, false)).toBeGreaterThan(boardCardHeight(base, false));
+    expect(boardCardHeight(fx, true)).toBeGreaterThan(boardCardHeight(base, true));
+    expect(boardCardHeight({ ...(base as object), effects: [] } as never, true)).toBe(boardCardHeight(base, true));
+  });
 });
