@@ -503,7 +503,7 @@ interface CanvasChatState {
    * (the chat list's "New chat" uses it).
    */
   /**
-   * The brainstorm board in view, published by `<BrainstormBoard>` while it
+   * The brainstorm in view on the desk, published by `<Desk>` while it
    * is mounted (null otherwise); `OrgCanvasView` copies it into the active
    * conversation's context.
    */

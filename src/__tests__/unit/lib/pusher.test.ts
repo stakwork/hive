@@ -304,6 +304,7 @@ describe("pusher.ts", () => {
         CANVAS_RUN_ACTIVE: "canvas-run-active",
         GRAPH_AGENT_RUN_UPDATED: "graph-agent-run-updated",
         RESEARCH_UPDATED: "research-updated",
+        BRAINSTORM_UPDATED: "brainstorm-updated",
         AGENT_LOG_UPDATED: "agent-log-updated",
         CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",
         ACTIVITY_UPDATED: "activity-updated",

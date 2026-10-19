@@ -7,7 +7,8 @@
  * interpolated into Cypher is checked against a strict pattern first.
  */
 
-import { mockBrainstormList, mockChoiceTree, mockConnectionPage, mockHierarchy, mockNodeConnections } from "@/app/api/mock/graph/workbench-fixture";
+import { mockConnectionPage, mockHierarchy, mockNodeConnections } from "@/app/api/mock/graph/workbench-fixture";
+import { mockBrainstormListWithWrites, mockChoiceTreeWithWrites } from "@/app/api/mock/graph/brainstorm-store";
 import { fromPropertyPairs, isRunGraphRefId, propertyPairs, typeFromLabels } from "@/lib/strut-run-graph/hydrate";
 import { runWorkspaceGraphQuery, type WorkspaceGraphQueryFailure } from "./query";
 
@@ -303,7 +304,7 @@ export async function getChoiceTree(
 ): Promise<WorkbenchResult<ChoiceTreeData>> {
   if (labels.length === 0 || !labels.every((l) => IDENT.test(l))) return invalid("Invalid label");
   if (!isRunGraphRefId(focusRefId)) return invalid("Invalid ref_id");
-  if (useMocks()) return { ok: true, data: mockChoiceTree(focusRefId, labels) };
+  if (useMocks()) return { ok: true, data: mockChoiceTreeWithWrites(focusRefId, labels) };
   const any = (v: string) => `(${labels.map((l) => `${v}:\`${l}\``).join(" OR ")})`;
   const root = `MATCH (r:Data_Bank {ref_id: '${focusRefId}'})`;
   const [nodes, edges] = await Promise.all([
@@ -363,7 +364,7 @@ export const BRAINSTORM_LIST_CAP = 50;
  * (when the node has it), then by ref_id; at most `BRAINSTORM_LIST_CAP`.
  */
 export async function listBrainstormRoots(caller: Caller): Promise<WorkbenchResult<BrainstormRoot[]>> {
-  if (useMocks()) return { ok: true, data: mockBrainstormList() };
+  if (useMocks()) return { ok: true, data: mockBrainstormListWithWrites() };
   const isParent = CHOICE_TREE_LABELS.map((l) => `p:\`${l}\``).join(" OR ");
   const result = await rows(
     caller,

@@ -3,31 +3,34 @@
 import type { CSSProperties } from "react";
 import { useStore } from "@xyflow/react";
 
-export const LINEN = "#efe8da";
+export const LINEN = "#ece3cf";
 
-const NOISE_TILE = 240;
-const NOISE_SVG =
-  `<svg xmlns='http://www.w3.org/2000/svg' width='${NOISE_TILE}' height='${NOISE_TILE}'>` +
-  `<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/>` +
-  `<feColorMatrix values='0 0 0 0 .35  0 0 0 0 .28  0 0 0 0 .18  0 0 0 .24 0'/></filter>` +
+const FIBRE_TILE = 240;
+const FIBRE_SVG =
+  `<svg xmlns='http://www.w3.org/2000/svg' width='${FIBRE_TILE}' height='${FIBRE_TILE}'>` +
+  `<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/>` +
+  `<feColorMatrix values='0 0 0 0 .35  0 0 0 0 .27  0 0 0 0 .16  0 0 0 .2 0'/></filter>` +
   `<rect width='100%' height='100%' filter='url(#n)'/></svg>`;
-const NOISE_URL = `url("data:image/svg+xml,${encodeURIComponent(NOISE_SVG)}")`;
-const WEAVE = 7;
-const THREAD = "rgba(110,90,60,.075)";
+const MOTTLE_TILE = 1100;
+const MOTTLE_SVG =
+  `<svg xmlns='http://www.w3.org/2000/svg' width='${MOTTLE_TILE}' height='${MOTTLE_TILE}'>` +
+  `<filter id='m'><feTurbulence type='fractalNoise' baseFrequency='.0045' numOctaves='3' seed='4' stitchTiles='stitch'/>` +
+  `<feColorMatrix values='0 0 0 0 .55  0 0 0 0 .4  0 0 0 0 .2  0 0 0 .22 -.04'/></filter>` +
+  `<rect width='100%' height='100%' filter='url(#m)'/></svg>`;
+const url = (svg: string) => `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 
 /**
- * The board's linen: fractal noise and faint woven lines, tiled in the
- * viewport's own transform (offset and size follow pan and zoom, like xyflow's
- * Background) so the cloth moves with the cards.
+ * The desk: linen-coloured paper with fine fibre and soft mottling, tiled in
+ * the viewport's own transform (offset and size follow pan and zoom, like
+ * xyflow's Background) so the paper moves with the cards. No weave: at
+ * normal zoom a weave reads as graph paper.
  */
 export function Linen() {
   const [x, y, zoom] = useStore((s) => s.transform);
-  const weave = WEAVE * zoom;
-  const showWeave = weave >= 3.5;
   const style: CSSProperties = {
     backgroundColor: LINEN,
-    backgroundImage: [NOISE_URL, ...(showWeave ? [`linear-gradient(${THREAD} 1px, transparent 1px)`, `linear-gradient(90deg, ${THREAD} 1px, transparent 1px)`] : [])].join(", "),
-    backgroundSize: [`${NOISE_TILE * zoom}px`, ...(showWeave ? [`${weave}px ${weave}px`, `${weave}px ${weave}px`] : [])].join(", "),
+    backgroundImage: `${url(FIBRE_SVG)}, ${url(MOTTLE_SVG)}`,
+    backgroundSize: `${FIBRE_TILE * zoom}px, ${MOTTLE_TILE * zoom}px`,
     backgroundPosition: `${x}px ${y}px`,
   };
   return <div className="pointer-events-none absolute inset-0 -z-10" style={style} data-linen />;
