@@ -22,7 +22,7 @@ vi.mock("@xyflow/react", () => ({
   ),
 }));
 
-import { estimateNodeHeight, buildChoiceTree, compareChoiceIds, layoutTree, isTreeArtifact, treeContentOfJson, ChoiceTree } from "@/app/org/[githubLogin]/_components/artifacts/viewers/ChoiceTree";
+import { estimateNodeHeight, buildChoiceTree, compareChoiceIds, layoutTree, isTreeArtifact, treeContentOfJson, ChoiceTree, impactLevel } from "@/app/org/[githubLogin]/_components/artifacts/viewers/ChoiceTree";
 
 // The choice-tree route returns label-filtered nodes with no node_type.
 const n = (ref_id: string, props: Record<string, unknown>) => ({ ref_id, properties: props });
@@ -443,5 +443,20 @@ describe("treeContentOfJson — a json card that is really a brainstorm tree", (
     expect(treeContentOfJson({ id: "brainstorm-tree" }, { value: { focus: "f1" } })).toBeNull();
     expect(treeContentOfJson({ id: "x" }, { value: [1] })).toBeNull();
     expect(treeContentOfJson({ id: "x" }, { value: "s" })).toBeNull();
+  });
+});
+
+describe("impactLevel", () => {
+  it.each([
+    [0, "low"],
+    [0.39, "low"],
+    [0.4, "medium"],
+    [0.55, "medium"],
+    [0.7, "medium"],
+    [0.71, "high"],
+    [1, "high"],
+    [null, null],
+  ])("maps %s to %s", (impact, level) => {
+    expect(impactLevel(impact)).toBe(level);
   });
 });
