@@ -5,11 +5,15 @@ import { ChevronDown, ChevronRight, Loader2, RefreshCw, Search } from "lucide-re
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import type { SystemMapFinding, SystemMapFindingsResponse } from "@/types/system-map";
 import { RelatedNodes } from "./RelatedNodes";
+import { FindingVerify } from "./FindingVerify";
+import { BatchVerifyBar, MAX_BATCH } from "./BatchVerifyBar";
 
 const SEVERITY_CLASS: Record<string, string> = {
   critical: "border-red-500/50 bg-red-500/15 text-red-700 dark:text-red-300",
@@ -43,7 +47,19 @@ function SeverityBadge({ severity }: { severity: string }) {
   );
 }
 
-function FindingCard({ finding }: { finding: SystemMapFinding }) {
+function FindingCard({
+  finding,
+  selected,
+  onSelect,
+  checksVersion,
+  onVerdict,
+}: {
+  finding: SystemMapFinding;
+  selected: boolean;
+  onSelect: (selected: boolean) => void;
+  checksVersion: number;
+  onVerdict: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const location = finding.file ? `${finding.file}${finding.line ? `:${finding.line}` : ""}` : null;
   const Chevron = open ? ChevronDown : ChevronRight;
@@ -51,29 +67,38 @@ function FindingCard({ finding }: { finding: SystemMapFinding }) {
   return (
     <Card data-testid="finding-row">
       <CardContent className="p-0">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-muted/40"
-        >
-          <Chevron className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <SeverityBadge severity={severityOf(finding)} />
-              {finding.cweId && (
-                <Badge variant="secondary" className="font-mono text-[11px]">
-                  {finding.cweId}
-                </Badge>
+        <div className="flex items-start">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(v) => onSelect(v === true)}
+            className="ml-3 mt-3 shrink-0"
+            aria-label="Select finding"
+            data-testid="finding-select"
+          />
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2.5 text-left hover:bg-muted/40"
+          >
+            <Chevron className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <SeverityBadge severity={severityOf(finding)} />
+                {finding.cweId && (
+                  <Badge variant="secondary" className="font-mono text-[11px]">
+                    {finding.cweId}
+                  </Badge>
+                )}
+                <span className="text-sm font-medium">{finding.title}</span>
+                {finding.status && <span className="text-xs text-muted-foreground">· {finding.status}</span>}
+              </div>
+              {location && <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">{location}</p>}
+              {!open && finding.description && (
+                <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{finding.description}</p>
               )}
-              <span className="text-sm font-medium">{finding.title}</span>
-              {finding.status && <span className="text-xs text-muted-foreground">· {finding.status}</span>}
             </div>
-            {location && <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">{location}</p>}
-            {!open && finding.description && (
-              <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{finding.description}</p>
-            )}
-          </div>
-        </button>
+          </button>
+        </div>
         {open && (
           <div className="space-y-3 border-t px-3 py-3" data-testid="finding-detail">
             {finding.description && <p className="whitespace-pre-wrap text-sm">{finding.description}</p>}
@@ -90,6 +115,9 @@ function FindingCard({ finding }: { finding: SystemMapFinding }) {
               <dt className="truncate font-mono text-muted-foreground">ref_id</dt>
               <dd className="break-all font-mono">{finding.refId}</dd>
             </dl>
+            <div className="border-t pt-3">
+              <FindingVerify refId={finding.refId} version={checksVersion} onVerdict={onVerdict} />
+            </div>
             <div className="border-t pt-3">
               <p className="mb-2 text-xs font-medium">Related nodes</p>
               <RelatedNodes refId={finding.refId} />
@@ -109,11 +137,18 @@ export function FindingsTab() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [severity, setSeverity] = useState<string | null>(null);
+  const { canWrite } = useWorkspaceAccess();
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Bumped when a batch check starts, so the open cards' check lists re-read.
+  const [checksVersion, setChecksVersion] = useState(0);
 
-  const load = useCallback(async (workspaceSlug: string, signal?: AbortSignal) => {
-    setLoading(true);
+  const load = useCallback(async (workspaceSlug: string, signal?: AbortSignal, quiet = false) => {
+    if (!quiet) setLoading(true);
     try {
-      const response = await fetch(`/api/workspaces/${workspaceSlug}/system-map/findings`, { cache: "no-store", signal });
+      const response = await fetch(`/api/workspaces/${workspaceSlug}/system-map/findings`, {
+        cache: "no-store",
+        signal,
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setData((await response.json()) as SystemMapFindingsResponse);
     } catch (error) {
@@ -131,6 +166,11 @@ export function FindingsTab() {
     return () => controller.abort();
   }, [slug, load]);
 
+  const reload = useCallback(() => {
+    // Quiet: keep the list (and the open card) on screen while it re-reads.
+    if (slug) void load(slug, undefined, true);
+  }, [slug, load]);
+
   const findings = useMemo(() => (data?.status === "ready" ? data.findings : []), [data]);
 
   const counts = useMemo(() => {
@@ -145,6 +185,18 @@ export function FindingsTab() {
       (finding) => (!severity || severityOf(finding) === severity) && (!query || matches(finding, query)),
     );
   }, [findings, search, severity]);
+
+  const select = useCallback((refId: string, on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(refId);
+      else next.delete(refId);
+      return next;
+    });
+  }, []);
+  const allShownSelected = visible.length > 0 && visible.every((f) => selected.has(f.refId));
+  const toggleShown = () =>
+    setSelected(allShownSelected ? new Set() : new Set(visible.slice(0, MAX_BATCH).map((f) => f.refId)));
 
   return (
     <div className="max-w-6xl space-y-4">
@@ -198,6 +250,30 @@ export function FindingsTab() {
         </div>
       </div>
 
+      {!loading && data?.status === "ready" && visible.length > 0 && (
+        <div className="flex items-center gap-2 px-3 text-xs text-muted-foreground">
+          <Checkbox
+            checked={allShownSelected}
+            onCheckedChange={toggleShown}
+            aria-label="Select shown findings"
+            data-testid="findings-select-shown"
+          />
+          {allShownSelected
+            ? "Deselect all"
+            : `Select ${visible.length > MAX_BATCH ? `first ${MAX_BATCH}` : "all"} shown`}
+        </div>
+      )}
+
+      {selected.size > 0 && (
+        <BatchVerifyBar
+          slug={slug}
+          selected={[...selected]}
+          canWrite={canWrite}
+          onClear={() => setSelected(new Set())}
+          onStarted={() => setChecksVersion((v) => v + 1)}
+        />
+      )}
+
       {loading && (
         <Card data-testid="findings-loading">
           <CardContent className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
@@ -208,7 +284,9 @@ export function FindingsTab() {
 
       {!loading && data?.status === "error" && (
         <Card data-testid="findings-error">
-          <CardContent className="py-8 text-sm text-muted-foreground">Could not load findings: {data.error}</CardContent>
+          <CardContent className="py-8 text-sm text-muted-foreground">
+            Could not load findings: {data.error}
+          </CardContent>
         </Card>
       )}
 
@@ -218,12 +296,23 @@ export function FindingsTab() {
             <p className="text-xs text-muted-foreground">Showing the first {findings.length} findings.</p>
           )}
           {visible.map((finding) => (
-            <FindingCard key={finding.refId} finding={finding} />
+            <FindingCard
+              key={finding.refId}
+              finding={finding}
+              selected={selected.has(finding.refId)}
+              onSelect={(on) => select(finding.refId, on)}
+              checksVersion={checksVersion}
+              onVerdict={reload}
+            />
           ))}
           {findings.length === 0 && (
-            <p className="text-sm text-muted-foreground">No Finding nodes in this workspace&apos;s infosec namespace yet.</p>
+            <p className="text-sm text-muted-foreground">
+              No Finding nodes in this workspace&apos;s infosec namespace yet.
+            </p>
           )}
-          {findings.length > 0 && visible.length === 0 && <p className="text-sm text-muted-foreground">Nothing matches.</p>}
+          {findings.length > 0 && visible.length === 0 && (
+            <p className="text-sm text-muted-foreground">Nothing matches.</p>
+          )}
         </div>
       )}
     </div>

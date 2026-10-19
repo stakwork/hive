@@ -31,6 +31,12 @@ const COPY: Record<SystemMapWorkflowKey, { description: string; button: string; 
     empty: "No runs yet. Start one to build this workspace's security graph.",
     started: "CWE check started",
   },
+  finding_verify: {
+    description: "Checks whether a finding is real by reproducing it on one of this workspace's pods.",
+    button: "Check on pod",
+    empty: "Not checked yet.",
+    started: "Finding check started",
+  },
 };
 
 /** Poll cadence while a run is in flight. */
@@ -146,7 +152,7 @@ function RunOutput({ run, workflowKey }: { run: SystemMapRun; workflowKey: Syste
   );
 }
 
-function RunCard({
+export function RunCard({
   run,
   defaultExpanded,
   workflowKey,
@@ -191,6 +197,16 @@ function RunCard({
               data-testid="system-map-run-components"
             >
               · on {run.components.length > 2 ? `${run.components.slice(0, 2).join(", ")} +${run.components.length - 2}` : run.components.join(", ")}
+            </span>
+          )}
+          {run.findingRefIds && run.findingRefIds.length > 1 && (
+            <span className="text-xs text-muted-foreground" data-testid="system-map-run-findings">
+              · {run.findingRefIds.length} findings
+            </span>
+          )}
+          {run.apply !== null && (
+            <span className="text-xs text-muted-foreground" data-testid="system-map-run-apply">
+              · {run.apply ? "writes verdict" : "dry run"}
             </span>
           )}
           {run.strutUrl && (

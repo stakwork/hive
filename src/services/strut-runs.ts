@@ -139,6 +139,7 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   // Kinds of retired workflows (folded into `swarm-systemmap` / the CWE check), kept so their old rows still settle.
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_cwe_check: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
+  system_map_finding_verify: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_cloud_links: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_security_review: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
