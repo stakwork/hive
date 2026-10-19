@@ -138,6 +138,8 @@ export type CweListResponse =
   | { status: "ready"; view: { id: string; name: string }; members: CweListMember[] }
   | { status: "error"; error: string };
 
+export type CweSearchResponse = { status: "ready"; results: CweEntry[] } | { status: "error"; error: string };
+
 /** A catalogue node linked from a CWE (template, mitigation, detection method, platform). */
 export interface CweRelatedNode {
   refId: string;

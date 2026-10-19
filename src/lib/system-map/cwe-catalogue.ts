@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import type { CweEntry, CweListMember, CweMappingUsage, CweRelatedResponse, CweUsableChild } from "@/types/system-map";
 import { isUsableCwe } from "./cwe-lists";
-import { expandInfosecNode, findInfosecNode, type InfosecNode } from "./infosec-graph";
+import { expandInfosecNode, findInfosecNode, searchInfosecNodes, type InfosecNode } from "./infosec-graph";
 
 const CWE_NODE_TYPE = "CWE";
 /** How deep the PARENT_OF walk goes looking for usable children. */
@@ -250,4 +250,42 @@ export async function loadCweRelated(refId: string): Promise<CweRelated> {
   }
   for (const bucket of Object.values(RELATED_EDGES)) out[bucket].sort((a, b) => a.name.localeCompare(b.name));
   return out;
+}
+
+const SEARCH_LIMIT = 20;
+const CWE_ID_QUERY = /^(?:cwe)?[-\s]?(\d{1,5})$/i;
+
+/**
+ * One CWE with its properties, by ref id. A filtered expand returns the node
+ * itself even when it has no such edges; `APPLIES_TO` keeps the read small.
+ */
+async function loadCwe(refId: string): Promise<CweEntry | null> {
+  const read = await expandInfosecNode(refId, ["APPLIES_TO"], 1);
+  const node = read.nodes.find((n) => n.ref_id === refId);
+  return node ? toCweEntry(node) : null;
+}
+
+export type SearchCwesResult = { ok: true; results: CweEntry[] } | { ok: false; error: string };
+
+/**
+ * Any CWE in the catalogue — weakness, category or view — by id (`CWE-79`,
+ * `cwe79`, `79`) or by name (title match, up to 20).
+ */
+export async function searchCwes(query: string): Promise<SearchCwesResult> {
+  const q = query.trim();
+  if (!q) return { ok: true, results: [] };
+  try {
+    const idMatch = CWE_ID_QUERY.exec(q);
+    if (idMatch) {
+      const refId = await findInfosecNode(CWE_NODE_TYPE, `CWE-${Number(idMatch[1])}`);
+      const entry = refId ? await loadCwe(refId) : null;
+      return { ok: true, results: entry ? [entry] : [] };
+    }
+    const hits = await searchInfosecNodes(CWE_NODE_TYPE, q, SEARCH_LIMIT);
+    const run = limiter(CONCURRENCY);
+    const entries = await Promise.all(hits.map((hit) => run(() => loadCwe(hit.ref_id).catch(() => null))));
+    return { ok: true, results: entries.filter((e): e is CweEntry => e !== null) };
+  } catch (error) {
+    return { ok: false, error: `Infosec graph: ${error instanceof Error ? error.message : String(error)}` };
+  }
 }
