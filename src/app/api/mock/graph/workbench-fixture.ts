@@ -225,7 +225,11 @@ export function mockConnectionPage({ refId, edge, outgoing, limit }: ConnectionP
 
 /** A small brainstorm tree under `focus`: a root question with sub-questions 1 and 2, options 1A, 1B, 2A, and under 1A a follow-up question with options 1AA and 1AB. */
 export function mockChoiceTree(focus: string, labels: string[] = ["Question", "Option", "Choice"]): ChoiceTreeData {
-  if (focus === MOCK_BOARD_ROOT) return mockBoardTree(labels);
+  // Any node of a board mock opens its own subtree (the board's "Start here").
+  for (const build of [mockLargeTree, mockBoardTree]) {
+    const tree = build(labels);
+    if (tree.nodes.some((n) => n.ref_id === focus)) return subtreeOf(tree, focus);
+  }
   const kid = (n: string) => `${focus}-${n}`;
   const q = (id: string, n: number, text: string, state = "open") =>
     ({ ref_id: id, type: "Question" as const, properties: { question_id: n, text, made_by: "user", state } });
@@ -258,12 +262,25 @@ export function mockChoiceTree(focus: string, labels: string[] = ["Question", "O
   return { nodes, edges, truncated: false };
 }
 
-/** The root of the brainstorm board mock (`mockBoardTree`); the first of `mockBrainstormList`. */
+/** The root of the brainstorm board mock (`mockBoardTree`). */
 export const MOCK_BOARD_ROOT = "mock-brainstorm-board";
+/** The root of the large, production-shaped board mock (`mockLargeTree`); the first of `mockBrainstormList`. */
+export const MOCK_LARGE_ROOT = "mock-brainstorm-large";
 
-/** Three brainstorm roots, newest first; the first is the board mock. */
+/** `data` cut down to `focus` and its descendants. */
+function subtreeOf(data: ChoiceTreeData, focus: string): ChoiceTreeData {
+  const keep = new Set([focus]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const e of data.edges) if (keep.has(e.source) && !keep.has(e.target)) keep.add(e.target), (grew = true);
+  }
+  return { ...data, nodes: data.nodes.filter((n) => keep.has(n.ref_id)), edges: data.edges.filter((e) => keep.has(e.source) && keep.has(e.target)) };
+}
+
+/** Four brainstorm roots, newest first; the first is the large board mock. */
 export function mockBrainstormList(): BrainstormRoot[] {
   return [
+    { ref_id: MOCK_LARGE_ROOT, text: "ASSUMED GOAL: catch changes that weaken security before they merge, without slowing every PR down", job: "job-mock-large", made_by: "user" },
     { ref_id: MOCK_BOARD_ROOT, text: "How should teams share brainstorm boards?", job: "job-mock-board", made_by: "user" },
     { ref_id: "mock-brainstorm-pricing", text: "What should the pricing page lead with?", job: "job-mock-pricing", made_by: "model" },
     { ref_id: "mock-brainstorm-onboarding", text: "How do we shorten onboarding?", job: null, made_by: "user" },
@@ -330,4 +347,79 @@ export function mockBoardTree(labels: string[] = ["Question", "Option", "Choice"
     .map(([source, target]) => ({ source, target }))
     .filter((e) => ids.has(e.source) && ids.has(e.target));
   return { nodes, edges, truncated: false };
+}
+
+/**
+ * A production-shaped brainstorm: a long root question, five sub-questions
+ * with 3-4 long options each (mixed person / agent, one chosen per decided
+ * sub-question), two options with follow-up questions of three options, one
+ * follow-up a level deeper, and a couple of simulated options. People are
+ * `Alice Dev` and `Bob Dev` (seeded mock-org members, matched by name); plain `user`
+ * matches nobody. `mock-bl-q2-b` is an open option.
+ */
+export function mockLargeTree(labels: string[] = ["Question", "Option", "Choice"]): ChoiceTreeData {
+  const R = MOCK_LARGE_ROOT;
+  let questionId = 0;
+  let optionId = 0;
+  const nodes: ChoiceTreeData["nodes"] = [];
+  const edges: ChoiceTreeData["edges"] = [];
+  const q = (id: string, parent: string | null, text: string, props: Record<string, unknown> = {}) => {
+    nodes.push({ ref_id: id, type: "Question", properties: { question_id: ++questionId, made_by: "model", state: "open", text, ...props } });
+    if (parent) edges.push({ source: parent, target: id });
+  };
+  const o = (id: string, parent: string, text: string, madeBy: string, state = "open", props: Record<string, unknown> = {}) => {
+    nodes.push({ ref_id: id, type: "Option", properties: { option_id: ++optionId, kind: "option", made_by: madeBy, state, text, ...props } });
+    edges.push({ source: parent, target: id });
+  };
+  q(R, null, "ASSUMED GOAL: catch changes that weaken security before they merge, without slowing every PR down", {
+    made_by: "Bob Dev",
+    state: "decided",
+    quote: "Last quarter two PRs loosened auth checks and nobody noticed until the audit. I want a guard that speaks up early, but reviewers already wait too long.",
+    criteria: "Fewer weakening changes reach main; median PR time does not grow",
+    reversibility: "two_way",
+    job: "job-mock-large",
+  });
+
+  q("mock-bl-q1", R, "What counts as a change that weakens security?", { state: "decided", criteria: "Concrete enough to automate", reversibility: "two_way" });
+  o("mock-bl-q1-a", "mock-bl-q1", "Any edit to authentication or session code, however small, so a human always looks at it", "model");
+  o("mock-bl-q1-b", "mock-bl-q1", "A diff that removes or loosens a permission check, a validation, or an authorization guard", "Bob Dev", "chosen");
+  o("mock-bl-q1-c", "mock-bl-q1", "New dependencies, or version bumps, that carry a known vulnerability in the advisory feed", "user");
+  o("mock-bl-q1-d", "mock-bl-q1", "Secrets, tokens or private keys appearing anywhere in the diff or in the commit history", "model");
+
+  q("mock-bl-q2", R, "Where in the pull request flow should the check run?", { criteria: "Feedback before a reviewer spends time", reversibility: "two_way" });
+  o("mock-bl-q2-a", "mock-bl-q2", "As a required CI job on every push, with the result posted as a single summary comment", "model");
+  o("mock-bl-q2-b", "mock-bl-q2", "As an advisory bot that comments only when the diff touches code paths tagged as sensitive", "Alice Dev");
+  o("mock-bl-q2-c", "mock-bl-q2", "A local pre-push hook developers install, plus a lighter server-side re-check at merge time", "user");
+  q("mock-bl-q2-c-q", "mock-bl-q2-c", "How do we keep the check from blocking urgent hotfixes?", { criteria: "Hotfixes ship in minutes, not hours", reversibility: "two_way" });
+  o("mock-bl-q2-c-q-a", "mock-bl-q2-c-q", "An on-call engineer can override the block with a written reason that is logged and reviewed later", "model");
+  o("mock-bl-q2-c-q-b", "mock-bl-q2-c-q", "Hotfix branches get the full check but only after merge, with an automatic revert if it fails", "Bob Dev");
+  q("mock-bl-q2-c-q-b-q", "mock-bl-q2-c-q-b", "Who owns the automatic revert when the late check fails?", { criteria: "A named owner, never nobody", reversibility: "one_way" });
+  o("mock-bl-q2-c-q-b-q-a", "mock-bl-q2-c-q-b-q", "The author of the hotfix, notified in the incident channel", "model");
+  o("mock-bl-q2-c-q-b-q-b", "mock-bl-q2-c-q-b-q", "Whoever is on the security rota that week, with a four hour response target", "user");
+  o("mock-bl-q2-c-q-b-q-c", "mock-bl-q2-c-q-b-q", "A bot reverts at once and the author reopens the change with a fix", "model", "simulated");
+  o("mock-bl-q2-c-q-c", "mock-bl-q2-c-q", "Skip the check for changes labelled hotfix by a maintainer, and audit the label usage monthly", "user");
+
+  q("mock-bl-q3", R, "Who reviews what the check flags?", { state: "decided", criteria: "Flags get a human answer within a day", reversibility: "two_way" });
+  o("mock-bl-q3-a", "mock-bl-q3", "The code owner of the touched files, since they know the context best", "model", "chosen");
+  o("mock-bl-q3-b", "mock-bl-q3", "A small rotating security champion group, one person per team", "Bob Dev");
+  o("mock-bl-q3-c", "mock-bl-q3", "A dedicated security engineer who triages everything, before it reaches the team", "user");
+
+  q("mock-bl-q4", R, "How should the check learn what is risky in our codebase?", { criteria: "Few false alarms after the first month", reversibility: "two_way" });
+  o("mock-bl-q4-a", "mock-bl-q4", "A hand-written list of rules maintained by the security team, reviewed every quarter", "user");
+  o("mock-bl-q4-b", "mock-bl-q4", "Ask a language model to read each diff and judge whether it weakens a security property", "model");
+  q("mock-bl-q4-b-q", "mock-bl-q4-b", "How do we trust the model's verdict on a diff?", { criteria: "Verdicts are explainable and testable", reversibility: "two_way" });
+  o("mock-bl-q4-b-q-a", "mock-bl-q4-b-q", "Require it to quote the exact lines and name the property it believes is weakened", "Bob Dev");
+  o("mock-bl-q4-b-q-b", "mock-bl-q4-b-q", "Replay a fixed set of past incidents against it before every model or prompt change", "model");
+  o("mock-bl-q4-b-q-c", "mock-bl-q4-b-q", "Let a human mark each verdict right or wrong and track the score over time", "Alice Dev");
+  o("mock-bl-q4-c", "mock-bl-q4", "Mine our own history: every past security fix becomes a pattern that the check looks for", "model");
+  o("mock-bl-q4-d", "mock-bl-q4", "A learning system that watches review comments and proposes new rules on its own", "user", "simulated");
+
+  q("mock-bl-q5", R, "How do we know it works without slowing PRs down?", { state: "decided", criteria: "A number we can read each week", reversibility: "two_way" });
+  o("mock-bl-q5-a", "mock-bl-q5", "Track the median time from open to merge, before and after, for PRs the check touched", "user");
+  o("mock-bl-q5-b", "mock-bl-q5", "Count weakening changes found by later audits that the check had let through", "model");
+  o("mock-bl-q5-c", "mock-bl-q5", "Both numbers on one weekly dashboard, with a budget of two extra minutes per PR", "Bob Dev", "chosen");
+
+  const kept = nodes.filter((n) => labels.includes(n.type));
+  const ids = new Set(kept.map((n) => n.ref_id));
+  return { nodes: kept, edges: edges.filter((e) => ids.has(e.source) && ids.has(e.target)), truncated: false };
 }
