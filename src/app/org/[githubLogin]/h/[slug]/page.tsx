@@ -80,7 +80,7 @@ export default async function HtmlSharePage({ params }: HtmlSharePageProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-start justify-between gap-4 border-b px-6 py-4">
+      <header className="flex items-start justify-between gap-4 border-b px-4 py-4 md:px-6">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 className="truncate text-lg font-semibold tracking-tight">{page.title}</h1>
           <p className="text-xs text-muted-foreground">

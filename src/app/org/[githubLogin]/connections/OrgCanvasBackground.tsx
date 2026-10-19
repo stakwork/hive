@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
   AddNodeButton,
@@ -210,7 +210,24 @@ interface OrgCanvasBackgroundProps {
    * user explores.
    */
   onLinkedConnectionIdsChange?: (ids: Set<string>) => void;
+  /**
+   * View-only canvas (the mobile map): no editing, dragging or creating, no
+   * restore pill, and a plain drag pans. Defaults to the full editor.
+   */
+  readOnly?: boolean;
 }
+
+/** The smallest zoom the read-only (phone) map opens at: below it the cards are not readable. */
+const READONLY_MIN_ZOOM = 0.7;
+
+/** What a view-only canvas turns off or changes: no editing or creating, no minimap, a plain drag pans. */
+const READ_ONLY_CANVAS_PROPS = {
+  editable: false,
+  panMode: "drag",
+  showMinimap: false,
+  alignDistributeMenu: false,
+  renderAddNodeButton: undefined,
+} as const;
 
 export function OrgCanvasBackground({
   githubLogin,
@@ -221,6 +238,7 @@ export function OrgCanvasBackground({
   edgePatchHandleRef,
   onCanvasBreadcrumbChange,
   onLinkedConnectionIdsChange,
+  readOnly = false,
 }: OrgCanvasBackgroundProps) {
   const { data: session } = useSession();
   const {
@@ -892,6 +910,45 @@ export function OrgCanvasBackground({
     featureRefs: liveNowFeatureMeta.refs,
   });
 
+  // Read-only (phone) map: open fitted to the content but never smaller than a
+  // readable zoom, centred on it. `defaultViewport` replaces the library's own
+  // fit (which would shrink the cards to fit a narrow screen), so it is only
+  // handed over on the root canvas, before the user has drilled anywhere.
+  const [readOnlyViewport, setReadOnlyViewport] = useState<{ x: number; y: number; zoom: number } | null>(null);
+  const [leftRoot, setLeftRoot] = useState(false);
+  useEffect(() => {
+    if (currentRef !== "") setLeftRoot(true);
+  }, [currentRef]);
+  const hasRoot = !!root;
+  useLayoutEffect(() => {
+    if (!readOnly || !hasRoot || readOnlyViewport) return;
+    const container = canvasContainerRef.current;
+    const nodes = rootRef.current?.nodes ?? [];
+    if (!container || nodes.length === 0) {
+      setReadOnlyViewport({ x: 0, y: 0, zoom: 1 });
+      return;
+    }
+    const sized = nodes.map((n) => ({ ...n, width: n.width ?? 160, height: n.height ?? 60 }));
+    const minX = Math.min(...sized.map((n) => n.x));
+    const maxX = Math.max(...sized.map((n) => n.x + n.width));
+    const minY = Math.min(...sized.map((n) => n.y));
+    const maxY = Math.max(...sized.map((n) => n.y + n.height));
+    const pad = 24;
+    const fitZoom = Math.min(
+      (container.clientWidth - pad * 2) / (maxX - minX),
+      (container.clientHeight - pad * 2) / (maxY - minY),
+      1,
+    );
+    const zoom = Math.max(fitZoom, READONLY_MIN_ZOOM);
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    setReadOnlyViewport({
+      zoom,
+      x: container.clientWidth / 2 - cx * zoom,
+      y: container.clientHeight / 2 - cy * zoom,
+    });
+  }, [readOnly, hasRoot, readOnlyViewport, rootRef]);
+
   const canvasForRender = useMemo<CanvasData>(
     () =>
       decorateNodesWithLiveState(
@@ -1360,8 +1417,10 @@ export function OrgCanvasBackground({
       {featureLiveBinders}
       <div className="absolute inset-0 bg-[#15171c]" aria-hidden />
       <div ref={canvasContainerRef} className="absolute inset-y-0 left-0" style={canvasContainerStyle}>
+        {(!readOnly || readOnlyViewport) && (
         <SystemCanvas
           ref={canvasHandleRef}
+          defaultViewport={readOnly && !leftRoot ? (readOnlyViewport ?? undefined) : undefined}
           canvas={canvasForRender}
           panMode="trackpad"
           multiSelectKey="space"
@@ -1402,7 +1461,9 @@ export function OrgCanvasBackground({
           alignDistributeMenu={true}
           snapGrid={true}
           snapToLanes={true}
+          {...(readOnly ? READ_ONLY_CANVAS_PROPS : null)}
         />
+        )}
         {/*
          * Restore pill — top-right of the canvas area. Shown on any
          * canvas with at least one hidden live node: workspaces on
@@ -1414,13 +1475,13 @@ export function OrgCanvasBackground({
          * `currentRef` change. Sits inside the canvas container so it
          * tracks `rightInset` alongside the canvas itself.
          */}
-        <HiddenLivePill
+        {!readOnly && <HiddenLivePill
           // Pre-fetch (`hiddenLive === null`) the pill is given an
           // empty list — it auto-hides when there's nothing to show,
           // so this just keeps it dormant until the fetch lands.
           entries={hiddenLive ?? []}
           onRestore={handleRestoreLive}
-        />
+        />}
         {/*
          * Live Now panel — stacked directly beneath the restore pill
          * (which owns `top:16, right:16, zIndex:25`). Renders nothing
@@ -1430,11 +1491,13 @@ export function OrgCanvasBackground({
          * row clicks dispatch `pendingDeeplink` commands through the
          * chat store, consumed by the hardened effect up top.
          */}
-        <LiveNowPanel
-          rows={liveNow.rows}
-          overflowCount={liveNow.overflowCount}
-          lastUpdatedAt={attentionUpdatedAt}
-        />
+        {!readOnly && (
+          <LiveNowPanel
+            rows={liveNow.rows}
+            overflowCount={liveNow.overflowCount}
+            lastUpdatedAt={attentionUpdatedAt}
+          />
+        )}
 
         {/*
          * Deep-link load overlay. When the page loads with a `?canvas=`
