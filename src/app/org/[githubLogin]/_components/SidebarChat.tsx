@@ -46,6 +46,8 @@ import { ResearchRunCard, getResearchRunsFromMessages } from "./ResearchRunCard"
 import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
 import { JobEventRow, JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
+import { PendingOrchestratorTurnCard, StrutProposalResultRow, pendingOrchestratorLaunchIds } from "./OrchestratorTurnCard";
+import { StrutProposalCard } from "./StrutProposalCard";
 import { DeferredCheckCard } from "./DeferredCheckCard";
 import { ChatArtifacts } from "./artifacts/ChatArtifacts";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
@@ -296,6 +298,10 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
     return byAnchor;
   }, [messages]);
 
+  // Jamie on strut: a turn strut is still working on shows a card on its
+  // launch marker until the reply row lands (`OrchestratorTurnCard`).
+  const pendingOrchestratorLaunches = useMemo(() => pendingOrchestratorLaunchIds(messages), [messages]);
+
   // Where each artifact shows — under its newest ref, with its versions
   // counted so it can say "v2". An earlier report of the same artifact
   // shows nothing, so a plan re-reported every turn shows once.
@@ -404,6 +410,33 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                     <div key={message.id} className="space-y-1.5">
                       <JobTurnCard message={message} source={message.source} />
                       <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
+                    </div>
+                  );
+                }
+
+                // Jamie on strut (`lib/strut-orchestrator.ts`): the launch
+                // marker carries the working card until the reply row lands;
+                // a proposal row is its card; a decision is a quiet line. The
+                // reply row itself falls through to the plain bubble below.
+                if (message.source?.kind === "orchestrator_launch") {
+                  if (!pendingOrchestratorLaunches.has(message.id)) return null;
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      <PendingOrchestratorTurnCard source={message.source} />
+                    </div>
+                  );
+                }
+                if (message.source?.kind === "proposal") {
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      <StrutProposalCard source={message.source} githubLogin={githubLogin} />
+                    </div>
+                  );
+                }
+                if (message.source?.kind === "proposal_result") {
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      <StrutProposalResultRow message={message} source={message.source} />
                     </div>
                   );
                 }

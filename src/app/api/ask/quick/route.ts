@@ -51,6 +51,8 @@ import {
 } from "@/services/canvas-turn-enrichments";
 import { isOwnStoppedTurn, isValidTurnId, registerTurn, watchTurnAbort } from "@/services/canvas-turn-abort";
 import { notifyCanvasUpdated } from "@/lib/canvas/pusher";
+import { jamieEngineForOrg } from "@/lib/ai/jamieEngine";
+import { runOrchestratorTurn } from "@/services/strut-orchestrator";
 import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
 import { fanOutGraphWalkToCanvas } from "@/services/canvas-graph-walk-fanout";
 import type { PartialStep } from "@/lib/ai/runCanvasAgent";
@@ -523,6 +525,26 @@ export async function POST(request: NextRequest) {
       });
     }
     console.log("[quick-ask] timing", { stage: "persistCanvasUserMessage", ms: Date.now() - tPersist, workspaces: slugs, orgId: orgId ?? null });
+
+    // ============================================================
+    // Jamie engine (`lib/ai/jamieEngine.ts`). An org whose engine is
+    // `strut` hands a persisted canvas turn to strut's `orchestrator`
+    // workflow instead of `runCanvasAgent`: the user's row is written
+    // above, the reply lands later as rows through the strut-runs webhook
+    // (`services/strut-orchestrator.ts`). Everything below is the default
+    // (`hive`) path and runs exactly as before for every other org.
+    // ============================================================
+    if (orgId && userId && canvasConversationRowId && (await jamieEngineForOrg(orgId)) === "strut") {
+      console.log("[quick-ask] timing", { stage: "early-exit:strut-orchestrator", ms: Date.now() - t0, workspaces: slugs, orgId });
+      return await runOrchestratorTurn({
+        userId,
+        orgId,
+        conversationId: canvasConversationRowId,
+        message: newUserContent,
+        publicBaseUrl: getBaseUrl(request.headers.get("host")),
+        timeZone: userTimezone,
+      });
+    }
 
     // ============================================================
     // Per-turn Stop control (the composer's Stop button). Only for a

@@ -3,12 +3,14 @@ import { cn } from "@/lib/utils";
 import { MembersView } from "./MembersView";
 import { OrgSettingsView } from "./OrgSettingsView";
 import { WorkspacesView } from "./WorkspacesView";
+import { JamieEngineSettings } from "./JamieEngineSettings";
 
 /** `titled: false` — the section's own card carries its title. */
 const SECTIONS = [
   { id: "workspaces", label: "Workspaces", titled: true },
   { id: "members", label: "Members", titled: true },
   { id: "mcp", label: "MCP servers", titled: false },
+  { id: "jamie", label: "Jamie", titled: false },
 ] as const;
 
 interface OrgSettingsShellProps {
@@ -45,6 +47,7 @@ export function OrgSettingsShell({ githubLogin, section }: OrgSettingsShellProps
           {active.id === "workspaces" && <WorkspacesView githubLogin={githubLogin} />}
           {active.id === "members" && <MembersView githubLogin={githubLogin} />}
           {active.id === "mcp" && <OrgSettingsView githubLogin={githubLogin} />}
+          {active.id === "jamie" && <JamieEngineSettings githubLogin={githubLogin} />}
         </div>
       </div>
     </div>

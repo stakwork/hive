@@ -202,6 +202,12 @@ model SourceControlOrg {
   macaroonOrgPrivkey   String?              @map("macaroon_org_privkey") // encrypted; custodial in phase 1
   defaultWorkspaceId   String?              @unique @map("default_workspace_id")
   defaultWorkspace     Workspace?           @relation("OrgDefaultWorkspace", fields: [defaultWorkspaceId], references: [id])
+  // Which engine answers the org canvas chat (Jamie): "hive" — the canvas
+  // agent in `lib/ai/runCanvasAgent` (today, the default) — or "strut" —
+  // one run of the swarm strut's `orchestrator` workflow per message
+  // (`services/strut-orchestrator.ts`). Read per request by
+  // `jamieEngineForOrg`; an unknown value reads as "hive".
+  jamieEngine          String               @default("hive") @map("jamie_engine")
   tokens               SourceControlToken[]
   workspaces           Workspace[]
   sharedConversations  SharedConversation[]
