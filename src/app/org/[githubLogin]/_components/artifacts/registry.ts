@@ -34,7 +34,7 @@ import { CaptchaPanel } from "./viewers/captcha";
 import { ClaimsPanel, ClaimsRowMeta } from "./viewers/claims";
 import { CodePanel } from "./viewers/code";
 import { DiffPanel, diffPatchText } from "./viewers/diff";
-import { GraphPanel, GraphThumb } from "./viewers/graph";
+import { brainstormBoardHref, GraphPanel, GraphThumb } from "./viewers/graph";
 import { HtmlPanel } from "./viewers/html";
 import { JsonPanel } from "./viewers/json";
 import { LogPanel } from "./viewers/log";
@@ -177,9 +177,11 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Icon: Network,
     chat: { place: "media", Thumb: GraphThumb },
     Panel: GraphPanel,
-    // The org page's graph view, on the same workspace and node.
+    // The org page's graph view, on the same workspace and node; a brainstorm tree opens on the desk.
     address: (content, githubLogin) =>
-      orgGraphHref(githubLogin, { workspace: content.workspace, refId: content.focus }),
+      content.layout === "tree" && content.focus
+        ? brainstormBoardHref(githubLogin, content.workspace, content.focus)
+        : orgGraphHref(githubLogin, { workspace: content.workspace, refId: content.focus }),
   },
   run_graph: {
     label: "Graph trace",

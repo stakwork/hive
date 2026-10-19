@@ -42,6 +42,7 @@ import {
   type RawTree,
 } from "./pencil";
 import { DeskSearch } from "./DeskSearch";
+import { openingFocus } from "./opening";
 import type { SearchEntry } from "./search";
 
 const MAX_SLUGS = 12;
@@ -121,7 +122,9 @@ const placeholder = (id: string): ChoiceItem => ({ id, name: "", state: "open", 
  * workspaces on one linen desk, a column per workspace. People write cards
  * by hand in pencil and save them to the graph; everything else they ask of
  * a card is drafted into Jamie's chat, as before. `?ws=&root=` focuses one
- * brainstorm.
+ * brainstorm; a `root` that is a card inside a brainstorm focuses that
+ * brainstorm and points at the card, as does `?ws=&root=&node=` (see
+ * `openingFocus`). The desk follows those params as they change.
  */
 export function Desk({ githubLogin, workspaceSlugs }: { githubLogin: string; workspaceSlugs: string[] }) {
   return (
@@ -135,15 +138,17 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
   const rf = useReactFlow();
   const qc = useQueryClient();
   const params = useSearchParams();
-  const initial = useRef({ ws: params.get("ws"), root: params.get("root") });
+  const linkWs = params.get("ws");
+  const linkRoot = params.get("root");
+  const linkNode = params.get("node");
   const me = useSession().data?.user?.name ?? null;
   const members = useMembers(githubLogin);
   const { open: openMenu, menu } = useContextMenu();
 
   // ── Data: the brainstorms of every workspace, and each one's tree ────────
   const slugs = useMemo(
-    () => [...new Set([initial.current.ws, ...workspaceSlugs].filter((s): s is string => !!s))].slice(0, MAX_SLUGS),
-    [workspaceSlugs],
+    () => [...new Set([linkWs, ...workspaceSlugs].filter((s): s is string => !!s))].slice(0, MAX_SLUGS),
+    [linkWs, workspaceSlugs],
   );
   const lists = useQueries({
     queries: slugs.map((slug) => ({
@@ -200,7 +205,7 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
   const [pencil, setPencil] = useState<Pencil>({});
   const [draft, setDraft] = useState<Draft | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [focus, setFocus] = useState<string | null>(initial.current.root);
+  const [focus, setFocus] = useState<string | null>(linkRoot);
   const [searching, setSearching] = useState(false);
   /** Where brainstorms opened on the desk sit this session; nothing is stored. */
   const [anchors, setAnchors] = useState<Record<string, XY>>({});
@@ -658,19 +663,34 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
     [placement, blocks, rf, fit],
   );
 
-  // Opening view, once the brainstorms are on the desk: the one the link names, else everything.
-  // Runs once; a change before it fires (cards reporting their sizes) just restarts the wait.
-  const opened = useRef(false);
+  // Opening view, once the brainstorms are on the desk: what the link names, else everything.
+  // Runs once per link (a new `ws`/`root`/`node` re-aims it); a change before it fires
+  // (cards reporting their sizes) just restarts the wait.
+  const [flyToCard, setFlyToCard] = useState<string | null>(null);
+  const openedFor = useRef<string | null>(null);
+  const linkKey = `${linkWs}|${linkRoot}|${linkNode}`;
   useEffect(() => {
-    if (opened.current || !listsSettled || !blocks.length) return;
+    if (openedFor.current === linkKey || !listsSettled || !blocks.length) return;
     const t = setTimeout(() => {
-      opened.current = true;
-      const named = initial.current.root && blocks.some((b) => b.key === initial.current.root);
-      if (named) focusOn(initial.current.root);
-      else fit(0);
+      openedFor.current = linkKey;
+      const open = openingFocus(
+        linkRoot,
+        linkNode,
+        (key) => blocks.some((b) => b.key === key),
+        (id) => keyOf.get(id)?.key,
+      );
+      if (open.kind === "fit") {
+        setFocus(null);
+        return void fit(0);
+      }
+      focusOn(open.key);
+      if (open.card) {
+        setSelected(open.card);
+        setFlyToCard(open.card);
+      }
     }, 150);
     return () => clearTimeout(t);
-  }, [listsSettled, blocks, focusOn, fit]);
+  }, [linkKey, linkRoot, linkNode, listsSettled, blocks, keyOf, focusOn, fit]);
 
   // A brainstorm being written or opened from search is brought into view.
   const flyTo = useCallback(
@@ -684,6 +704,15 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
     },
     [flowNodes, rf],
   );
+  // The card a link points at, once it is on the desk with the layout its selection gives it.
+  useEffect(() => {
+    if (!flyToCard || !flowNodes.some((f) => f.id === flyToCard)) return;
+    const t = setTimeout(() => {
+      flyTo(flyToCard);
+      setFlyToCard(null);
+    }, 450);
+    return () => clearTimeout(t);
+  }, [flyToCard, flowNodes, flyTo]);
 
   // ── Jamie: the brainstorm in view and the card selected on it ─────────────
   const setBrainstormFocus = useCanvasChatStore((s) => s.setBrainstormFocus);

@@ -1,15 +1,18 @@
 /**
- * GET  /api/workspaces/:slug/system-map/runs?workflow=system_map|cwe_check
- *      — the workspace's runs of that System Map workflow, newest first
- *      (PENDING ones settled from strut when the run is over there and the
- *      callback never arrived). Default `schema`.
+ * GET  /api/workspaces/:slug/system-map/runs?workflow=system_map|cwe_check|finding_verify[&findingRefId=]
+ *      — the workspace's runs of that System Map workflow (the finding checks
+ *      covering one finding, with `findingRefId`), newest first (PENDING ones settled from strut
+ *      when the run is over there and the callback never arrived). Default `schema`.
  * POST /api/workspaces/:slug/system-map/runs
  *      { workflow?: SystemMapWorkflowKey, cweIds?: string[], components?: string[] }
  *      (`cweIds` — `["CWE-79", …]` — and `components` — System Map component
  *      names, `["stakwork/hive", …]` — only for the CWE check, sent as
  *      `input.cwe_ids` / `input.components`)
+ *      { workflow: "finding_verify", findingRefIds: string[], apply?: boolean }
+ *      (up to 50 `Finding` ref_ids, sent as `input.finding_ref_ids`; `apply`
+ *      writes the verdicts, else a dry run)
  *      — launch that workflow on the org strut. One run in flight per
- *      workspace per workflow; DEVELOPER and up.
+ *      workspace per workflow (per finding for the finding check); DEVELOPER and up.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -28,6 +31,7 @@ import {
   listSystemMapRuns,
   parseComponents,
   parseCweIds,
+  parseFindingInput,
   SYSTEM_MAP_WORKFLOWS,
   type SystemMapWorkflowKey,
 } from "@/services/strut-runs/system-map";
@@ -64,10 +68,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const key = parseKey(request.nextUrl.searchParams.get("workflow"));
     if (!key) return NextResponse.json({ error: "Unknown workflow" }, { status: 400 });
 
+    const findingRefId = request.nextUrl.searchParams.get("findingRefId") || undefined;
     const body: SystemMapRunsResponse = {
       key,
       workflow: SYSTEM_MAP_WORKFLOWS[key].workflow,
-      runs: await listSystemMapRuns(member.workspaceId, key),
+      runs: await listSystemMapRuns(member.workspaceId, key, { findingRefId }),
     };
     return NextResponse.json(body);
   } catch (error) {
@@ -90,6 +95,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       workflow?: unknown;
       cweIds?: unknown;
       components?: unknown;
+      findingRefIds?: unknown;
+      apply?: unknown;
     };
     const key = parseKey(payload.workflow);
     if (!key) return NextResponse.json({ error: "Unknown workflow" }, { status: 400 });
@@ -102,8 +109,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: components.error }, { status: 400 });
     }
 
-    if (await hasPendingSystemMapRun(member.workspaceId, key)) {
-      return NextResponse.json({ error: "A run of this workflow is already in progress" }, { status: 409 });
+    const findings = parseFindingInput(key, payload.findingRefIds, payload.apply);
+    if (findings && "error" in findings) return NextResponse.json({ error: findings.error }, { status: 400 });
+
+    if (await hasPendingSystemMapRun(member.workspaceId, key, findings?.findingRefIds)) {
+      const error = findings
+        ? "One of these findings is already being checked"
+        : "A run of this workflow is already in progress";
+      return NextResponse.json({ error }, { status: 409 });
     }
 
     const rate = await checkRateLimit(`system-map:run:${member.workspaceId}:${key}`, RUN_RATE_LIMIT, RUN_WINDOW_SECS);
@@ -122,6 +135,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       key,
       cweIds,
       components,
+      findings,
     });
     return NextResponse.json(
       { success: true, key, runId: dispatched.runId, strutRunId: dispatched.strutRunId, strutUrl: dispatched.strutUrl },

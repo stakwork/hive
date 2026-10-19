@@ -10,6 +10,9 @@
  *                writes the `infosec` namespace's security graph
  *                (it also does the security review, once `swarm-cwe-security-review`;
  *                its `system_map_security_review` kind survives only on old rows)
+ *   finding_verify `finding-verify-pod-batch`          kind `system_map_finding_verify`
+ *                checks some infosec `Finding`s on the workspace's pods; with
+ *                `apply` it writes the verdict as `finding_status`
  *
  * All are authored in the org strut view (`/org/<login>/strut`), so the
  * launch targets that strut (`purpose: "system_map"` → the org default
@@ -17,6 +20,9 @@
  * strut runs on — as their `validate` step reads it:
  *
  *   input.workspace            the workspace slug — CWE workflows only
+ *   input.workspace_id         the workspace id (whose pods have the repo) — finding check only
+ *   input.finding_ref_ids      the `Finding` nodes' ref_ids — finding check only
+ *   input.apply                write the verdict (else a dry run) — finding check only
  *   input.swarm_url            the workspace swarm's stakgraph base (`https://x:3355`)
  *   input.swarm_secret_alias   the swarm's secret alias (`Swarm.swarmSecretAlias`),
  *                              the same reference the janitor / task workflows
@@ -54,6 +60,7 @@ import type { SystemMapRun } from "@/types/system-map";
 export const SYSTEM_MAP_WORKFLOWS = {
   system_map: { kind: "system_map", workflow: "swarm-systemmap", label: "System map" },
   cwe_check: { kind: "system_map_cwe_check", workflow: "swarm-systemmap-cwe-check-templates", label: "CWE check" },
+  finding_verify: { kind: "system_map_finding_verify", workflow: "finding-verify-pod-batch", label: "Finding check" },
 } as const;
 export type SystemMapWorkflowKey = keyof typeof SYSTEM_MAP_WORKFLOWS;
 
@@ -122,7 +129,39 @@ function cweInput(cweIds: string[] | undefined, components: string[] | undefined
   };
 }
 
-function stringsFromInput(input: unknown, field: "cwe_ids" | "components"): string[] | null {
+/** The workflows that check some `Finding`s; their runs carry `input.finding_ref_ids`. */
+export const FINDING_WORKFLOWS: Partial<Record<SystemMapWorkflowKey, { max: number }>> = { finding_verify: { max: 50 } };
+const REF_ID_RE = /^[A-Za-z0-9_-]{1,100}$/;
+
+/**
+ * A request's `findingRefIds` / `apply` for workflow `key`: undefined for a
+ * workflow that takes neither, the deduplicated ids and `apply` when valid,
+ * or an error message.
+ */
+export function parseFindingInput(
+  key: SystemMapWorkflowKey,
+  refIds: unknown,
+  apply: unknown,
+): { findingRefIds: string[]; apply: boolean } | undefined | { error: string } {
+  const scope = FINDING_WORKFLOWS[key];
+  if (!scope) {
+    return refIds === undefined && apply === undefined ? undefined : { error: "This workflow does not take findings" };
+  }
+  if (!Array.isArray(refIds) || !refIds.every((id): id is string => typeof id === "string" && REF_ID_RE.test(id))) {
+    return { error: "findingRefIds must be Finding ref_ids" };
+  }
+  const ids = [...new Set(refIds)];
+  if (ids.length === 0 || ids.length > scope.max) return { error: `findingRefIds must hold 1–${scope.max} ids` };
+  if (apply !== undefined && typeof apply !== "boolean") return { error: "apply must be a boolean" };
+  return { findingRefIds: ids, apply: apply === true };
+}
+
+function applyOf(input: unknown): boolean | null {
+  const value = input && typeof input === "object" ? (input as Record<string, unknown>).apply : undefined;
+  return typeof value === "boolean" ? value : null;
+}
+
+function stringsFromInput(input: unknown, field: "cwe_ids" | "components" | "finding_ref_ids"): string[] | null {
   if (!input || typeof input !== "object") return null;
   const values = (input as Record<string, unknown>)[field];
   return Array.isArray(values) && values.length > 0 && values.every((x) => typeof x === "string")
@@ -191,6 +230,8 @@ export function serializeSystemMapRun(row: StrutRunRow, orgGithubLogin: string |
         : null,
     cweIds: stringsFromInput(row.input, "cwe_ids"),
     components: stringsFromInput(row.input, "components"),
+    findingRefIds: stringsFromInput(row.input, "finding_ref_ids"),
+    apply: applyOf(row.input),
   };
 }
 
@@ -218,16 +259,30 @@ async function settleFromStrut(row: StrutRunRow, now: Date): Promise<StrutRunRow
   return settled ?? row;
 }
 
-/** The workspace's runs of one workflow, newest first, PENDING ones settled from strut when they are over. */
+/** Rows of one workflow, narrowed to the runs that cover any of `findingRefIds` when given. */
+function runsWhere(workspaceId: string, key: SystemMapWorkflowKey, findingRefIds?: string[]) {
+  return {
+    workspaceId,
+    kind: SYSTEM_MAP_WORKFLOWS[key].kind,
+    ...(findingRefIds?.length
+      ? { OR: findingRefIds.map((id) => ({ input: { path: ["finding_ref_ids"], array_contains: [id] } })) }
+      : {}),
+  };
+}
+
+/**
+ * The workspace's runs of one workflow (of one finding, with
+ * `findingRefId`), newest first, PENDING ones settled from strut when they are over.
+ */
 export async function listSystemMapRuns(
   workspaceId: string,
   key: SystemMapWorkflowKey = "system_map",
-  opts: { now?: Date; limit?: number } = {},
+  opts: { now?: Date; limit?: number; findingRefId?: string } = {},
 ): Promise<SystemMapRun[]> {
   const now = opts.now ?? new Date();
   const [rows, orgLogin] = await Promise.all([
     db.strutRun.findMany({
-      where: { workspaceId, kind: SYSTEM_MAP_WORKFLOWS[key].kind },
+      where: runsWhere(workspaceId, key, opts.findingRefId ? [opts.findingRefId] : undefined),
       select: ROW_SELECT,
       orderBy: { createdAt: "desc" },
       take: opts.limit ?? LIST_LIMIT,
@@ -249,10 +304,18 @@ export async function listSystemMapRuns(
   return shown.map((row) => serializeSystemMapRun(row, orgLogin));
 }
 
-/** Is a run of this workflow already in flight for the workspace? (One at a time, per workflow.) */
-export async function hasPendingSystemMapRun(workspaceId: string, key: SystemMapWorkflowKey = "system_map"): Promise<boolean> {
+/**
+ * Is a run of this workflow already in flight for the workspace? (One at a
+ * time, per workflow — for a finding check, per finding: none of
+ * `findingRefIds` may be in a check already running.)
+ */
+export async function hasPendingSystemMapRun(
+  workspaceId: string,
+  key: SystemMapWorkflowKey = "system_map",
+  findingRefIds?: string[],
+): Promise<boolean> {
   const row = await db.strutRun.findFirst({
-    where: { workspaceId, kind: SYSTEM_MAP_WORKFLOWS[key].kind, status: StrutRunStatus.PENDING },
+    where: { ...runsWhere(workspaceId, key, findingRefIds), status: StrutRunStatus.PENDING },
     select: { id: true },
   });
   return row !== null;
@@ -270,6 +333,8 @@ export interface LaunchSystemMapRunArgs {
   cweIds?: string[];
   /** Scope it to these System Map components; validate with `parseComponents`. */
   components?: string[];
+  /** The findings a finding check (`FINDING_WORKFLOWS`) runs on; validate with `parseFindingInput`. */
+  findings?: { findingRefIds: string[]; apply: boolean };
 }
 
 /**
@@ -292,6 +357,7 @@ export async function launchSystemMapRun(
     throw new StrutDispatchError("no_target", "This workspace has no swarm URL or secret alias to map.");
   }
   const key = args.key ?? "system_map";
+  if (FINDING_WORKFLOWS[key] && !args.findings?.findingRefIds.length) throw new Error("A finding check needs findings");
   const { kind, workflow } = SYSTEM_MAP_WORKFLOWS[key];
   const dispatched = await dispatchStrutRun({
     workspaceId: args.workspaceId,
@@ -301,7 +367,10 @@ export async function launchSystemMapRun(
     purpose: "system_map",
     input: {
       // `swarm-systemmap` reads the swarm alone; the CWE workflows still take the slug.
-      ...(key === "system_map" ? {} : { workspace: args.workspaceSlug }),
+      ...(key === "system_map" || FINDING_WORKFLOWS[key] ? {} : { workspace: args.workspaceSlug }),
+      ...(FINDING_WORKFLOWS[key] && args.findings
+        ? { finding_ref_ids: args.findings.findingRefIds, workspace_id: args.workspaceId, apply: args.findings.apply }
+        : {}),
       swarm_url: transformSwarmUrlToRepo2Graph(swarm.swarmUrl),
       swarm_secret_alias: swarm.swarmSecretAlias,
       ...cweInput(args.cweIds, args.components),
