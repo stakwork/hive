@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { expandInfosecNode, findInfosecNode, InfosecGraphError } from "@/lib/system-map/infosec-graph";
+import { expandInfosecNode, findInfosecNode, InfosecGraphError, searchInfosecNodes } from "@/lib/system-map/infosec-graph";
 
 const fetchMock = vi.fn();
 
@@ -26,6 +26,15 @@ describe("infosec graph client", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://infosec.sphinx.chat/api/v2/nodes/check?node_type=CWE&key=CWE-1435");
     expect(init.headers).toEqual({});
+  });
+
+  it("searches node titles of one type", async () => {
+    fetchMock.mockResolvedValue(reply(200, { nodes: [{ ref_id: "r1", node_type: "CWE", title: "Cross-Site Request Forgery (CSRF)" }] }));
+
+    expect(await searchInfosecNodes("CWE", "csrf")).toEqual([
+      { ref_id: "r1", node_type: "CWE", title: "Cross-Site Request Forgery (CSRF)" },
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://infosec.sphinx.chat/api/v2/nodes/search?q=csrf&type=CWE&limit=20");
   });
 
   it("returns null for a node that does not exist", async () => {
