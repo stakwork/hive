@@ -1,5 +1,8 @@
 "use client";
 
+import React from "react";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { MobileOrgShell } from "./mobile/MobileOrgShell";
 import { OrgRail } from "./OrgRail";
 import { useOrgView } from "./useOrgView";
 
@@ -30,10 +33,21 @@ export function OrgShell({
   children,
 }: OrgShellProps) {
   const view = useOrgView(githubLogin);
+  const isMobile = useIsMobile();
   const displayName = orgName ?? githubLogin;
 
+  // On a phone: one full-screen column and a drawer, not the rail and its panels.
+  if (isMobile) {
+    return (
+      <MobileOrgShell githubLogin={githubLogin} orgName={orgName} avatarUrl={avatarUrl} user={user}>
+        {children}
+      </MobileOrgShell>
+    );
+  }
+
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+    // `max-md:invisible`: the server can't tell a phone, so it renders this; hidden until the mobile shell takes over.
+    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground max-md:invisible">
       <OrgRail githubLogin={githubLogin} activeView={view} org={{ name: displayName, avatarUrl }} user={user} />
 
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">{children}</div>
