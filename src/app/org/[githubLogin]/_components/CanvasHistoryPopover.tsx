@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { History, PlusCircle } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ConversationListItem } from "@/types/shared-conversation";
 import { UNTITLED_CONVERSATION } from "@/lib/ai/conversationHelpers";
+import { useCanvasChatStore } from "../_state/canvasChatStore";
 import { openOrgConversation, startNewOrgConversation } from "../_state/openOrgConversation";
 
 interface CanvasHistoryPopoverProps {
@@ -33,6 +34,10 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
   const [items, setItems] = useState<ConversationListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
+
+  // Set when the popover closes because a chat was picked, so focus goes to the
+  // composer instead of Radix returning it to the trigger.
+  const skipCloseAutoFocusRef = useRef(false);
 
   const fetchList = useCallback(async () => {
     setIsLoading(true);
@@ -69,7 +74,10 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
       if (!opened) return;
 
       setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, unread: false } : it)));
+      skipCloseAutoFocusRef.current = true;
       setOpen(false);
+      // Empty draft = focus the composer, keep its text (applied in a rAF, after the close).
+      useCanvasChatStore.getState().setPendingInputDraft("");
     } finally {
       setLoadingItemId(null);
     }
@@ -77,6 +85,7 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
 
   const handleNewConversation = () => {
     startNewOrgConversation(githubLogin);
+    skipCloseAutoFocusRef.current = true;
     setOpen(false);
   };
 
@@ -97,7 +106,17 @@ export function CanvasHistoryPopover({ githubLogin }: CanvasHistoryPopoverProps)
           </TooltipTrigger>
         </PopoverTrigger>
         <TooltipContent side="bottom">Conversation history</TooltipContent>
-        <PopoverContent align="end" className="w-80 p-0 overflow-hidden" sideOffset={8}>
+        <PopoverContent
+          align="end"
+          className="w-80 p-0 overflow-hidden"
+          sideOffset={8}
+          onCloseAutoFocus={(e) => {
+            if (skipCloseAutoFocusRef.current) {
+              e.preventDefault();
+              skipCloseAutoFocusRef.current = false;
+            }
+          }}
+        >
           <div className="flex items-center justify-between px-3 py-2 border-b border-border/50">
             <p className="text-xs font-medium text-foreground">Recent Conversations</p>
             <button
