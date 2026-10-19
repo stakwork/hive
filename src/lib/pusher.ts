@@ -71,6 +71,8 @@ export const PUSHER_EVENTS = {
   // The right-panel viewer subscribes to stream content in without a
   // full canvas refetch.
   RESEARCH_UPDATED: "research-updated",
+  // A person saved changes to a brainstorm tree; open desks refetch that one tree.
+  BRAINSTORM_UPDATED: "brainstorm-updated",
   // Canvas events (system-canvas document on the org)
   CANVAS_UPDATED: "canvas-updated",
   // Canvas presence events (ephemeral — not persisted)
@@ -304,5 +306,28 @@ export function notifyCanvasJobUpdate(conversationId: string, update: CanvasJobU
       });
   } catch (err) {
     console.error("[pusher] notifyCanvasJobUpdate threw (non-fatal):", err);
+  }
+}
+
+/**
+ * Fire-and-forget nudge that one brainstorm tree changed in the graph (a
+ * person saved edits on the desk). Carries no tree data: every open desk
+ * refetches that tree through its own read. Never throws.
+ */
+export function notifyBrainstormUpdated(
+  githubLogin: string,
+  payload: { workspaceSlug: string; root: string },
+): void {
+  try {
+    void pusherServer
+      .trigger(getOrgChannelName(githubLogin), PUSHER_EVENTS.BRAINSTORM_UPDATED, {
+        ...payload,
+        at: Date.now(),
+      })
+      .catch((err) => {
+        console.error("[pusher] notifyBrainstormUpdated failed (non-fatal):", err);
+      });
+  } catch (err) {
+    console.error("[pusher] notifyBrainstormUpdated threw (non-fatal):", err);
   }
 }
