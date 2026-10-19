@@ -34,7 +34,7 @@ import { CaptchaPanel } from "./viewers/captcha";
 import { ClaimsPanel, ClaimsRowMeta } from "./viewers/claims";
 import { CodePanel } from "./viewers/code";
 import { DiffPanel, diffPatchText } from "./viewers/diff";
-import { GraphPanel, GraphThumb } from "./viewers/graph";
+import { brainstormBoardHref, GraphPanel, GraphThumb } from "./viewers/graph";
 import { HtmlPanel } from "./viewers/html";
 import { JsonPanel } from "./viewers/json";
 import { LogPanel } from "./viewers/log";
@@ -178,6 +178,9 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Panel: GraphPanel,
     // The org page's graph view, on the same workspace and node.
     address: (content, githubLogin) => {
+      // A brainstorm tree opens on the desk.
+      if (content.layout === "tree" && content.focus)
+        return brainstormBoardHref(githubLogin, content.workspace, content.focus);
       const params = new URLSearchParams({ view: "graph", workspace: content.workspace });
       if (content.focus) params.set("gnode", content.focus);
       return `/org/${githubLogin}?${params.toString()}`;
