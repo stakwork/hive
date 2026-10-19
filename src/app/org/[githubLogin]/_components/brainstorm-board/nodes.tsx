@@ -4,7 +4,8 @@ import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Handle, NodeToolbar, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import type { ChoiceItem } from "../artifacts/viewers/ChoiceTree";
+import { effectCounts, impactPercent, type ChoiceItem } from "../artifacts/viewers/ChoiceTree";
+import type { ChoiceEffect } from "@/services/graph/workbench";
 import { cardActions, type DeskAction } from "./actions";
 import { hand, typed } from "./fonts";
 import { RED } from "./edges";
@@ -156,6 +157,58 @@ function Details({ item }: { item: ChoiceItem }) {
   );
 }
 
+const PRO = "#4d6b3a";
+const CON = "#9c3b2e";
+
+/** Compact "+2 pros · −1 con" line for an unselected card with effects. */
+function EffectsSummary({ effects, size }: { effects: ChoiceEffect[]; size: string }) {
+  const { pros, cons } = effectCounts(effects);
+  return (
+    <p
+      className={cn("relative flex gap-2 leading-tight", size)}
+      data-effects-summary
+      title={`${pros} pro${pros === 1 ? "" : "s"}, ${cons} con${cons === 1 ? "" : "s"}`}
+    >
+      {pros > 0 && <span style={{ color: PRO }}>+{pros} pro{pros === 1 ? "" : "s"}</span>}
+      {cons > 0 && <span style={{ color: CON }}>−{cons} con{cons === 1 ? "" : "s"}</span>}
+    </p>
+  );
+}
+
+/** Read-only pros and cons of a selected card: name, impact (percent and dots), description. */
+function EffectsList({ effects }: { effects: ChoiceEffect[] }) {
+  return (
+    <div className="relative mt-1 flex flex-col gap-1.5 border-t border-black/15 pt-1 text-[15px] leading-tight" data-effects>
+      {(["pro", "con"] as const).map((dir) => {
+        const list = effects.filter((e) => e.direction === dir);
+        if (!list.length) return null;
+        const color = dir === "pro" ? PRO : CON;
+        return (
+          <div key={dir} className="flex flex-col gap-1">
+            <div className="font-bold" style={{ color }}>{dir === "pro" ? "Pros" : "Cons"}</div>
+            {list.map((e) => {
+              const dots = e.impact === null ? 0 : Math.max(1, Math.round(e.impact * 5));
+              return (
+                <div key={e.ref_id || e.name} data-effect data-direction={dir}>
+                  <div className="flex items-baseline gap-2">
+                    <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{e.name}</span>
+                    {e.impact !== null && (
+                      <span className="shrink-0 whitespace-nowrap" style={{ color }} title={`impact ${impactPercent(e.impact)}`}>
+                        <span aria-hidden>{"●".repeat(dots)}<span className="opacity-25">{"●".repeat(5 - dots)}</span></span> {impactPercent(e.impact)}
+                      </span>
+                    )}
+                  </div>
+                  {e.description && <p className="text-[14px] opacity-70 [overflow-wrap:anywhere]">{e.description}</p>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Pencilled() {
   return <span className="text-[14px] italic text-[#7b7b7b]">in pencil · not saved</span>;
 }
@@ -205,7 +258,9 @@ function PersonCard({ d }: { d: CardData }) {
             “{item.quote}”
           </p>
         )}
+        {!selected && !item.isQuestion && item.effects && <EffectsSummary effects={item.effects} size="text-[16px]" />}
         {selected && !d.pencil && <Details item={item} />}
+        {selected && !item.isQuestion && item.effects && <EffectsList effects={item.effects} />}
         {(d.pencil || member) && (
           <p className="relative mt-auto flex items-baseline justify-between gap-2 pt-1 text-[17px]" data-signature>
             {d.pencil ? <Pencilled /> : <span />}
@@ -261,7 +316,9 @@ function AgentCard({ d }: { d: CardData }) {
         {selected && item.quote && (
           <p className="relative text-[14px] italic leading-snug [overflow-wrap:anywhere]">“{item.quote}”</p>
         )}
+        {!selected && !item.isQuestion && item.effects && <EffectsSummary effects={item.effects} size="text-[14px]" />}
         {selected && <Details item={item} />}
+        {selected && !item.isQuestion && item.effects && <EffectsList effects={item.effects} />}
       </div>
       {item.state === "chosen" && !item.isQuestion && <PenCircle id={item.id} />}
     </div>
