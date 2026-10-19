@@ -26,7 +26,7 @@ import { ChatsLayout } from "./ChatsLayout";
 import { ArtifactPanel } from "./artifacts/ArtifactPanel";
 import Link from "next/link";
 import { canvasTab, orgPageView, type CanvasTab } from "./useOrgView";
-import { BrainstormBoard } from "./brainstorm-board/BrainstormBoard";
+import { Desk } from "./brainstorm-board/Desk";
 import { OrgInitiatives } from "../OrgInitiatives";
 import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 
@@ -633,7 +633,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                 )}
                 {tab === "brainstorm" && (
                   <div className="absolute bottom-0 left-0 top-11 z-10 overflow-hidden bg-background" style={{ right: panelWidth }}>
-                    <BrainstormBoard githubLogin={githubLogin} workspaceSlugs={chatWorkspaceSlugs} />
+                    <Desk githubLogin={githubLogin} workspaceSlugs={chatWorkspaceSlugs} />
                   </div>
                 )}
                 {/* The tab bar lines up with the chat panel's header across the divider. */}
