@@ -6,6 +6,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { CanvasNode } from "system-canvas";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { MobileOrgView } from "./mobile/MobileOrgView";
 import { OrgCanvasBackground, type SelectionWithLabels, type InternalEdge } from "../connections/OrgCanvasBackground";
 import type { HiddenLiveEntry } from "../connections/HiddenLivePill";
 import { OrgRightPanel } from "./OrgRightPanel";
@@ -89,6 +91,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const { slug: workspaceSlug } = useWorkspace();
+  const isMobile = useIsMobile();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
@@ -583,6 +586,24 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       chatsView={mode === "chats" ? { onShowList } : undefined}
     />
   );
+
+  // On a phone the same lifecycle above drives one screen instead of the resizable panels.
+  if (isMobile) {
+    return (
+      <AttentionMapProvider githubLogin={githubLogin} visibleWorkspaceSlugs={chatWorkspaceSlugs}>
+        <MobileOrgView
+          mode={mode}
+          githubLogin={githubLogin}
+          orgName={orgName}
+          chatReady={chatReady && conversationStarted}
+          workspaces={workspaces}
+          loadingWorkspaces={loadingWorkspaces}
+          onHiddenChange={handleHiddenChange}
+          onGraphFocusChange={setGraphFocus}
+        />
+      </AttentionMapProvider>
+    );
+  }
 
   return (
     <AttentionMapProvider githubLogin={githubLogin} visibleWorkspaceSlugs={chatWorkspaceSlugs}>
