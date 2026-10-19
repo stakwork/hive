@@ -74,8 +74,36 @@ export function strutArtifactReaderUrl(githubLogin: string, swarmId: string, key
   return `/api/orgs/${encodeURIComponent(githubLogin)}/strut/artifacts?${new URLSearchParams({ swarmId, key })}`;
 }
 
-/** The workflow `input` a job turn is launched with: the prompt, the job's title riding along for the reply's header (strut ignores it), the workspace the job belongs to — the hive workspace id a pod is claimed for (strut's `job` v6 declares it; an older one strips it) — and the model the turn ran on, riding along like the title so the row records it (strut reads `params.model`). */
-export const jobTurnInputSchema = z.object({ prompt: z.string(), title: z.string().optional(), workspace: z.string().optional(), model: z.string().optional() }).passthrough();
+/**
+ * The workflow `input` a job turn is launched with: the prompt, the job's
+ * title riding along for the reply's header (strut ignores it), the
+ * workspace the job belongs to — the hive workspace id a pod is claimed for
+ * (strut's `job` v6 declares it; an older one strips it) — and the model the
+ * turn ran on, riding along like the title so the row records it (strut
+ * reads `params.model`).
+ *
+ * A turn hive did not launch — a job strut's orchestrator started inside
+ * strut, adopted by the strut-runs webhook — carries `via: "orchestrator"`
+ * (an empty prompt: the orchestrator's agent wrote the job's brief on strut)
+ * and the orchestrator turn's `StrutRun.id` as `parentRunId`. The
+ * completion handler wakes no canvas agent for such a turn.
+ */
+export const jobTurnInputSchema = z
+  .object({
+    prompt: z.string(),
+    title: z.string().optional(),
+    workspace: z.string().optional(),
+    model: z.string().optional(),
+    via: z.literal("orchestrator").optional(),
+    parentRunId: z.string().optional(),
+  })
+  .passthrough();
+
+/** The turn was adopted from strut's orchestrator, not launched by hive. */
+export function jobTurnViaOrchestrator(row: { input: unknown }): boolean {
+  const input = jobTurnInputSchema.safeParse(row.input);
+  return input.success && input.data.via === "orchestrator";
+}
 
 /** The title `start_job` put on the launch, carried on every turn's input. */
 export function jobTitleOf(row: { input: unknown }): string {

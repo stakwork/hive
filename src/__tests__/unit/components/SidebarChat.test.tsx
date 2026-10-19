@@ -1387,6 +1387,43 @@ describe("SidebarChat — Stop", () => {
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("an orchestrator wake answered with the silent marker renders nothing; a reply with text still does", async () => {
+    // The bubble is mocked to nothing file-wide; here it needs to say which rows reached it.
+    vi.doMock("@/app/org/[githubLogin]/_components/SidebarChatMessage", () => ({
+      SidebarChatMessage: ({ message }: { message: { id: string; content: string } }) => (
+        <div data-testid="bubble" data-id={message.id}>
+          {message.content}
+        </div>
+      ),
+    }));
+    mockStoreState = buildRunningTurnState(null, [
+      { id: "u-1", role: "user", content: "Ship the plan", timestamp: new Date() },
+      {
+        id: "orchestrator-row-1",
+        role: "assistant",
+        content: "",
+        timestamp: new Date(),
+        source: { kind: "orchestrator", runId: "row-1", strutRunId: "1", status: "silent" },
+      },
+      {
+        id: "orchestrator-row-2",
+        role: "assistant",
+        content: "The job shipped the plan.",
+        timestamp: new Date(),
+        source: { kind: "orchestrator", runId: "row-2", strutRunId: "2", status: "success" },
+      },
+    ]);
+    const { container } = await renderSidebarChat();
+    try {
+      expect(screen.getByText("The job shipped the plan.")).toBeTruthy();
+      // The user's row and the reply reach the bubble; the silent row never does.
+      expect(screen.getAllByTestId("bubble").map((el) => el.getAttribute("data-id"))).toEqual(["u-1", "orchestrator-row-2"]);
+      expect(container.textContent).not.toContain("[silent]");
+    } finally {
+      vi.doMock("@/app/org/[githubLogin]/_components/SidebarChatMessage", () => ({ SidebarChatMessage: () => null }));
+    }
+  });
+
   it("renders a stopped turn's marker row as a quiet Stopped line", async () => {
     mockStoreState = buildRunningTurnState(null, [
       SAMPLE_MESSAGE,

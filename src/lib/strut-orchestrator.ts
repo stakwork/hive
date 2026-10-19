@@ -77,8 +77,25 @@ export const orchestratorLaunchRowId = (runId: string): string => `orchestrator-
 export const strutProposalRowId = (runId: string, proposalId: string): string =>
   `orchestrator-${runId}-proposal-${proposalId}`;
 
-/** How the turn ended, as the row's `source.status` says it. */
-export type OrchestratorTurnOutcome = "success" | "error" | "cancelled" | "lost";
+/**
+ * How the turn ended, as the row's `source.status` says it. `silent` is a
+ * successful turn whose whole reply was `ORCHESTRATOR_SILENT_MARKER`: the
+ * row is appended (the working card hangs on it) and shown as nothing.
+ */
+export type OrchestratorTurnOutcome = "success" | "silent" | "error" | "cancelled" | "lost";
+
+/**
+ * The stay-silent convention. The orchestrator answers only in text (no
+ * tool hive could watch), so a wake that needs no visible reply — a job
+ * the user stopped, a one-line entry — asks for exactly this marker and
+ * nothing else; `services/strut-runs/orchestrator-turn.ts` turns it into
+ * a `silent` row. Tolerant of quoting and a trailing stop.
+ */
+export const ORCHESTRATOR_SILENT_MARKER = "[silent]";
+const SILENT_REPLY = /^[\s`'"*_]*\[silent\][\s`'"*_.]*$/i;
+export function isOrchestratorSilentReply(text: string | undefined): boolean {
+  return typeof text === "string" && SILENT_REPLY.test(text);
+}
 
 /** The reply of one turn (`services/strut-runs/orchestrator-turn.ts`). */
 export type OrchestratorRowSource = {
@@ -95,7 +112,31 @@ export type OrchestratorRowSource = {
 export type OrchestratorLaunchRowSource = {
   kind: "orchestrator_launch";
   runId: string;
+  /**
+   * The turn was a WAKE, not a person's message: the job row it reacts to
+   * (`job-<StrutRun.id>`, `services/strut-orchestrator-wake.ts`). The wake's
+   * idempotency mark — one launch per job row, ever.
+   */
+  wakeId?: string;
 };
+
+/**
+ * Rounds of the job loop in the transcript tail, for the orchestrator
+ * wake's loop breaker: job rows (each a turn that landed and woke the
+ * orchestrator, which may continue the job and land another) back to the
+ * last human message, which resets the window.
+ */
+export function countTrailingJobRows(
+  messages: ReadonlyArray<{ role?: string; source?: { kind?: string } | null }>,
+): number {
+  let count = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "user") break;
+    if (m.source?.kind === "job") count++;
+  }
+  return count;
+}
 
 export const STRUT_PROPOSAL_STATUSES = ["pending", "accepted", "rejected", "applied", "failed"] as const;
 export type StrutProposalStatus = (typeof STRUT_PROPOSAL_STATUSES)[number];

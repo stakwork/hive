@@ -22,10 +22,15 @@
  *     record live and decides it on strut.
  * `error` / `cancelled` / LOST rows append a reply row saying so; a run
  * strut refused because the session was still on the previous message
- * (`session_busy:`) says "still working", not "failed".
+ * (`session_busy:`) says "still working", not "failed". A reply that is
+ * exactly `ORCHESTRATOR_SILENT_MARKER` — a wake with nothing to add
+ * (`strut-orchestrator-wake.ts`) — appends a `silent` row with no text,
+ * which the chat hides: the working card still needs the row to land.
  *
- * No wake and no auto-turn: strut's agent remembers the conversation
- * through its session, and hive's Jamie is not in this loop. The append
+ * No hive auto-turn: strut's agent remembers the conversation through its
+ * session, and hive's Jamie is not in this loop. The one wake in it goes
+ * the other way — a job the orchestrator started lands and wakes the
+ * orchestrator (`strut-orchestrator-wake.ts`). The append
  * has `job-turn.ts`'s discipline — `FOR UPDATE`, ownership re-checked
  * against hive's rows (never the payload), idempotent by row id — and
  * never throws for a missing target. A transient failure reading strut
@@ -42,6 +47,7 @@ import {
   ORCHESTRATOR_BUSY_NOTE,
   ORCHESTRATOR_TURN_KIND,
   ORCHESTRATOR_WORKFLOW,
+  isOrchestratorSilentReply,
   orchestratorRowId,
   parseStrutProposalBriefs,
   strutProposalRowId,
@@ -103,8 +109,10 @@ export function replyForOrchestratorRow(row: StrutRunRow): OrchestratorReply {
       error: "unexpected output",
     };
   }
-  const text = parsed.data.text?.trim() ? cap(parsed.data.text.trim(), MAX_TEXT_CHARS) : "_(no reply text)_";
   const ask = parsed.data.ask?.message?.trim() || undefined;
+  // The stay-silent convention: the marker alone, and no question.
+  if (!ask && isOrchestratorSilentReply(parsed.data.text)) return { outcome: "silent", text: "" };
+  const text = parsed.data.text?.trim() ? cap(parsed.data.text.trim(), MAX_TEXT_CHARS) : "_(no reply text)_";
   return { outcome: "success", text, ...(ask ? { ask } : {}) };
 }
 
@@ -113,7 +121,7 @@ export function renderOrchestratorContent(
   reply: OrchestratorReply,
   dropped: Array<{ title: string; reason: string }>,
 ): string {
-  const parts = [reply.text];
+  const parts = reply.text ? [reply.text] : [];
   if (reply.ask) parts.push(`**Question for you:** ${reply.ask}`);
   if (dropped.length > 0) parts.push(dropped.map((d) => `_Unavailable: ${d.title} (${d.reason})_`).join("\n"));
   return parts.join("\n\n");
@@ -287,7 +295,9 @@ export async function handleOrchestratorTurnSettled(row: StrutRunRow, _ctx?: Str
   let refs: ArtifactRef[] = [];
   let dropped: Array<{ title: string; reason: string }> = [];
   let proposals: StrutProposalBrief[] = [];
-  if (reply.outcome === "success") {
+  // A silent turn may still have produced cards or proposals: read them
+  // too, and the row shows as nothing only when it carries none.
+  if (reply.outcome === "success" || reply.outcome === "silent") {
     const [artifacts, read] = await Promise.all([readRunArtifacts(row), readRunProposals(row)]);
     if (artifacts.ok) {
       ({ refs, dropped } = mapStrutArtifacts(artifacts.artifacts, row.swarmId));

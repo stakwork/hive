@@ -82,6 +82,75 @@ nothing about the org, the user or the conversation records the choice.
 4. **Readout** — `read_conversation` (org MCP) lists each strut proposal
    row with its latest status.
 
+## Jobs the orchestrator starts
+
+Strut's orchestrator is granted `job/start` and `job/continue`: it hands
+bigger work to strut's `job` workflow and ends its turn. That job runs
+**detached inside strut** — hive launched nothing, so no `StrutRun` row
+exists for it — and, per strut `specs/CALLBACKS.md` §4 ("A job your run
+started"), its `run.end` is posted to the **orchestrator turn's** callback
+URL with `workflow: "job"`, the job id, the job run's `runId`, its output
+and its resolved artifacts.
+
+1. **Adoption** — the strut-runs webhook (`src/app/api/strut-runs/webhook`)
+   recognises that payload under an `orchestrator_turn` row and, instead of
+   answering 400 for the workflow mismatch, finds-or-creates a `job_turn`
+   row for (the row's swarm, `job`, `runId`) — an upsert on the unique
+   index, so two deliveries mint one row. Everything that routes the reply
+   is copied from the orchestrator row (workspace, user, swarm,
+   conversation); the job id and run id are strut's; the input is a hive
+   launch's shape with an empty prompt, `via: "orchestrator"` and the
+   orchestrator row as `parentRunId`; the token is fresh and unused (strut
+   posts to the orchestrator's URL). The row is then settled through
+   `completeStrutRun` like any job turn, so `handleJobTurnSettled` runs
+   unchanged: artifacts read from the swarm, the claims and trace cards,
+   the artifact index, the reader route (`/jobs/<job>/files/…` now has a
+   row to match), PR events and the one automatic check-failure fix. A
+   replay of the same `run.end` finds the row and takes the settled path.
+   Every later turn of such a job that hive launches — an event's, a card's
+   — carries `via: "orchestrator"` forward from the first.
+
+2. **The wake goes to the orchestrator** (`src/services/strut-orchestrator-wake.ts`).
+   Where a hive-launched job's row wakes the canvas agent to summarize it,
+   a row marked `via: "orchestrator"` launches one turn of strut's
+   orchestrator on the same conversation and session, with a wake prompt
+   modeled on the canvas agent's: the job's outcome, its reply text
+   **inline** (strut's agent cannot read hive's rows; capped), its question,
+   the cards the user already sees, and three choices — summarize (the
+   default), continue through its own `job/continue`, or stay silent. The
+   reply lands as a normal orchestrator row. The wake runs behind the same
+   gates as hive's own (`runGatedAutoTurn` in `canvas-strut-autoturn.ts`):
+   the master kill switch, the per-conversation claim, the owner's
+   `canvasAutonomousTurns` opt-in, idempotency — the launch marker row
+   carries the job row's id as `wakeId` — and a loop breaker that counts
+   job rows since the last human message (`countTrailingJobRows`, cap
+   `MAX_CONSECUTIVE_STRUT_DISPATCHES`), since continue → land → wake →
+   continue could otherwise cycle.
+
+   - **Silence** is a text convention: the orchestrator answers with
+     exactly `[silent]` (`ORCHESTRATOR_SILENT_MARKER`) and the handler
+     appends a `silent` row with no text — the row must land for the
+     working card to clear — which the chat and the readout skip, unless
+     the turn still produced cards.
+   - **Busy** is never a notice. A person's turn in flight, or the
+     orchestrator turn that started the job still ending, makes the launch
+     busy (hive's pending-row guard or strut's `session_busy`); the wake is
+     retried a bounded number of times inside the callback's after-response
+     budget (`ORCHESTRATOR_WAKE_RETRY_DELAYS_MS`), then dropped with a log —
+     the orchestrator reads the job back through `job/get` on its next turn.
+
+Known gaps:
+
+- **No live strip.** Strut registers a `jobCallback` only on a launch hive
+  makes; a job started inside strut has none, so its live updates (shots,
+  a recording, a pod, a check's verdict) never reach `/api/strut-jobs/events`.
+  The reply lands whole when the turn ends.
+- **PR attribution.** A hive-launched job pushes the owner's GitHub token
+  to strut as the actor's secret before each turn. A strut-started job's
+  first turn had no such push, so a pull request it opens is attributed to
+  strut's deployment token, not the user. Later turns hive launches (an
+  event's) push the token as usual.
+
 ## What the strut path cannot do yet
 
 - Hive-owned proposal kinds — initiatives, milestones, prompts — have no

@@ -180,6 +180,15 @@ describe("launchOrchestratorTurn", () => {
     );
   });
 
+  it("a wake's launch marker carries the wake id — its idempotency mark — and strut's input is unchanged", async () => {
+    await launchOrchestratorTurn({ ...args, wakeId: "job-row-7" });
+    expect(mockAppendRows).toHaveBeenCalledWith(expect.anything(), [
+      { id: "orchestrator-launch-row-1", content: "", source: { kind: "orchestrator_launch", runId: "row-1", wakeId: "job-row-7" } },
+    ]);
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(Object.keys(body.input).sort()).toEqual(["context", "prompt", "session"]);
+  });
+
   it("a turn of the conversation still PENDING is busy — nothing is launched", async () => {
     mockStrutRun.findFirst.mockResolvedValue({ id: "row-0" });
     const out = await launchOrchestratorTurn(args);

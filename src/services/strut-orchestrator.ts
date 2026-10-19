@@ -49,6 +49,12 @@ export interface OrchestratorTurnArgs {
   /** The person's IANA zone for `context.line`; UTC when unknown. */
   timeZone?: string;
   now?: Date;
+  /**
+   * The turn is a WAKE on a job row (`strut-orchestrator-wake.ts`), not a
+   * person's message: recorded on the launch marker as its idempotency
+   * mark. The input strut receives is the same either way.
+   */
+  wakeId?: string;
 }
 
 export type OrchestratorLaunchResult =
@@ -160,7 +166,11 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
       {
         id: orchestratorLaunchRowId(dispatched.runId),
         content: "",
-        source: { kind: "orchestrator_launch", runId: dispatched.runId },
+        source: {
+          kind: "orchestrator_launch",
+          runId: dispatched.runId,
+          ...(args.wakeId ? { wakeId: args.wakeId } : {}),
+        },
       },
     ]);
   } catch (err) {
@@ -174,6 +184,7 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
     conversationId,
     runId: dispatched.runId,
     strutRunId: dispatched.strutRunId,
+    ...(args.wakeId ? { wakeId: args.wakeId } : {}),
   });
   return { status: "started", runId: dispatched.runId, strutRunId: dispatched.strutRunId };
 }

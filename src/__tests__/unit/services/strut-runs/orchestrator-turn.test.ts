@@ -51,6 +51,7 @@ import {
   handleOrchestratorTurnSettled,
   readRunProposals,
   renderProposalContent,
+  renderOrchestratorContent,
   replyForOrchestratorRow,
 } from "@/services/strut-runs/orchestrator-turn";
 import type { StrutRunRow } from "@/services/strut-runs";
@@ -160,6 +161,27 @@ describe("replyForOrchestratorRow", () => {
   });
 });
 
+describe("replyForOrchestratorRow — the stay-silent convention", () => {
+  it("the marker alone is a silent reply with no text; quoting and a trailing stop are tolerated", () => {
+    for (const text of ["[silent]", "  [SILENT]  ", "`[silent]`", "**[silent]**.", "\"[silent]\""]) {
+      expect(replyForOrchestratorRow(row({ output: { text, artifacts: [] } }))).toEqual({ outcome: "silent", text: "" });
+    }
+  });
+
+  it("the marker beside anything else, or with a question, is an ordinary reply", () => {
+    expect(replyForOrchestratorRow(row({ output: { text: "[silent] — done", artifacts: [] } }))).toMatchObject({ outcome: "success", text: "[silent] — done" });
+    expect(replyForOrchestratorRow(row({ output: { text: "[silent]", artifacts: [], ask: { message: "Which?" } } }))).toMatchObject({
+      outcome: "success",
+      ask: "Which?",
+    });
+  });
+
+  it("renders as nothing — only what could not be shown", () => {
+    expect(renderOrchestratorContent({ outcome: "silent", text: "" }, [])).toBe("");
+    expect(renderOrchestratorContent({ outcome: "silent", text: "" }, [{ title: "a card", reason: "gone" }])).toBe("_Unavailable: a card (gone)_");
+  });
+});
+
 describe("readRunProposals", () => {
   it("reads the run's list from the ROW's swarm; 404 is permanent, 5xx transient", async () => {
     expect(await readRunProposals(row())).toEqual({ ok: true, proposals: [BRIEF] });
@@ -253,6 +275,24 @@ describe("handleOrchestratorTurnSettled", () => {
     });
     await handleOrchestratorTurnSettled(row());
     expect(mockTx.sharedConversation.update).not.toHaveBeenCalled();
+  });
+
+  it("a silent turn appends a silent row with no text (the working card lands on it), still carrying what the turn produced", async () => {
+    mockFetch.mockResolvedValue(json(200, { workflow: "orchestrator", runId: "1790000000000", proposals: [] }));
+    await handleOrchestratorTurnSettled(row({ output: { text: "[silent]", artifacts: [] } }));
+    expect(written()).toEqual([
+      expect.objectContaining({
+        id: "orchestrator-row-1",
+        role: "assistant",
+        content: "",
+        source: { kind: "orchestrator", runId: "row-1", strutRunId: "1790000000000", status: "silent" },
+      }),
+    ]);
+    expect(written()[0]).not.toHaveProperty("artifacts");
+    expect(mockNotify).toHaveBeenCalledWith("conv-1", "orchestrator");
+    // Its cards and proposals are read like a success's.
+    expect(mockReadArtifacts).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("an error row appends the reason without reading strut; session_busy reads as still working", async () => {

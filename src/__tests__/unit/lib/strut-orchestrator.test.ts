@@ -7,6 +7,9 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  ORCHESTRATOR_SILENT_MARKER,
+  countTrailingJobRows,
+  isOrchestratorSilentReply,
   ORCHESTRATOR_TURN_KIND,
   ORCHESTRATOR_WORKFLOW,
   orchestratorContextLine,
@@ -37,6 +40,33 @@ describe("the launch's input", () => {
     expect(orchestratorContextLine(NOW, "Europe/London")).toBe("Mon 19 Oct, 14:02, Europe/London. ");
     expect(orchestratorContextLine(NOW, undefined)).toBe("Mon 19 Oct, 13:02, UTC. ");
     expect(orchestratorContextLine(NOW, "Nowhere/Zone")).toBe("Mon 19 Oct, 13:02, UTC. ");
+  });
+});
+
+describe("the stay-silent convention", () => {
+  it("the marker alone, however quoted or stopped, is silent; anything more is not", () => {
+    expect(ORCHESTRATOR_SILENT_MARKER).toBe("[silent]");
+    for (const text of ["[silent]", "[Silent]", " `[silent]` ", "**[silent]**", "'[silent]'.", "_[silent]_"]) {
+      expect(isOrchestratorSilentReply(text)).toBe(true);
+    }
+    for (const text of ["", "silent", "[silent] ok", "ok [silent]", "[silent]\nmore", undefined]) {
+      expect(isOrchestratorSilentReply(text)).toBe(false);
+    }
+  });
+});
+
+describe("countTrailingJobRows — the orchestrator wake's loop breaker", () => {
+  const user = { role: "user" };
+  const job = { role: "assistant", source: { kind: "job" } };
+  const reply = { role: "assistant", source: { kind: "orchestrator" } };
+  const launch = { role: "assistant", source: { kind: "orchestrator_launch" } };
+
+  it("counts job rows back to the last human message, which resets the window", () => {
+    expect(countTrailingJobRows([])).toBe(0);
+    expect(countTrailingJobRows([user, reply, launch])).toBe(0);
+    expect(countTrailingJobRows([user, job, reply, job, reply, job])).toBe(3);
+    expect(countTrailingJobRows([job, job, user, launch, job])).toBe(1);
+    expect(countTrailingJobRows([job, job, user])).toBe(0);
   });
 });
 

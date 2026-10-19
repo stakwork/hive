@@ -440,6 +440,12 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                     </div>
                   );
                 }
+                // A wake the orchestrator answered with the silent marker:
+                // the row is there (the working card hangs on it) and shows
+                // nothing — unless the turn still produced cards.
+                if (message.source?.kind === "orchestrator" && message.source.status === "silent" && !message.artifacts?.length) {
+                  return null;
+                }
 
                 // Rows persisted by the retired planner fan-out stay in old
                 // conversations; keep them hidden rather than as stray bubbles.
