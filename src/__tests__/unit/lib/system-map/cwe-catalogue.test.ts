@@ -1,10 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { listCweView, loadCweRelated } from "@/lib/system-map/cwe-catalogue";
+import { listCweView, loadCweRelated, searchCwes } from "@/lib/system-map/cwe-catalogue";
 import * as infosec from "@/lib/system-map/infosec-graph";
 
 vi.mock("@/lib/system-map/infosec-graph", () => ({
   findInfosecNode: vi.fn(),
   expandInfosecNode: vi.fn(),
+  searchInfosecNodes: vi.fn(),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
@@ -188,5 +189,52 @@ describe("loadCweRelated", () => {
       ],
       platforms: [{ refId: "p1", nodeType: "SysTechnology", name: "JavaScript", description: null, details: ["Often"] }],
     });
+  });
+});
+
+describe("searchCwes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(infosec.findInfosecNode).mockImplementation(async (_type, key) =>
+      CATALOGUE[`ref-${key}`] ? `ref-${key}` : null,
+    );
+    edgesFor({});
+  });
+
+  it.each(["CWE-79", "cwe79", "79", " CWE 79 "])("finds %j by id", async (q) => {
+    const found = await searchCwes(q);
+    expect(found).toEqual({ ok: true, results: [expect.objectContaining({ id: "CWE-79", name: "name CWE-79" })] });
+    expect(infosec.findInfosecNode).toHaveBeenCalledWith("CWE", "CWE-79");
+    expect(infosec.searchInfosecNodes).not.toHaveBeenCalled();
+  });
+
+  it("returns nothing for an id the catalogue lacks", async () => {
+    expect(await searchCwes("CWE-4242")).toEqual({ ok: true, results: [] });
+  });
+
+  it("searches names and loads each hit, categories and unusable ones included", async () => {
+    vi.mocked(infosec.searchInfosecNodes).mockResolvedValue([
+      { ref_id: "ref-CWE-284", node_type: "CWE", title: "name CWE-284" },
+      { ref_id: "ref-CWE-1345", node_type: "CWE", title: "A01" },
+      { ref_id: "ref-missing", node_type: "CWE", title: "gone" },
+    ]);
+
+    const found = await searchCwes("access");
+
+    expect(infosec.searchInfosecNodes).toHaveBeenCalledWith("CWE", "access", 20);
+    expect(found.ok && found.results.map((r) => [r.id, r.usage, r.kind])).toEqual([
+      ["CWE-284", "Discouraged", "weakness"],
+      ["CWE-1345", "Allowed", "category"],
+    ]);
+  });
+
+  it("reports a failed graph read", async () => {
+    vi.mocked(infosec.searchInfosecNodes).mockRejectedValue(new Error("503"));
+    expect(await searchCwes("xss")).toEqual({ ok: false, error: "Infosec graph: 503" });
+  });
+
+  it("returns nothing for a blank query without calling the graph", async () => {
+    expect(await searchCwes("   ")).toEqual({ ok: true, results: [] });
+    expect(infosec.findInfosecNode).not.toHaveBeenCalled();
   });
 });

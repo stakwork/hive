@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { CWE_LISTS, isUsableCwe } from "@/lib/system-map/cwe-lists";
-import type { CweEntry, CweListMember, CweListResponse, CweMappingUsage } from "@/types/system-map";
+import type { CweEntry, CweListMember, CweListResponse, CweMappingUsage, CweSearchResponse } from "@/types/system-map";
 import { ComponentPicker } from "./ComponentPicker";
 import { RelatedPanel } from "./RelatedPanel";
 
@@ -198,6 +198,53 @@ function MemberCard({ member, actions }: { member: CweListMember; actions: RowAc
   );
 }
 
+/** A catalogue search hit: checkable when usable, otherwise shown with why not. */
+function CatalogueResult({ cwe, actions }: { cwe: CweEntry; actions: RowActions }) {
+  const [open, setOpen] = useState(false);
+  if (isUsableCwe(cwe.usage)) {
+    return (
+      <div className="rounded-lg border bg-card">
+        <UsableRow cwe={cwe} note={cwe.kind !== "weakness" ? cwe.kind : undefined} actions={actions} />
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-dashed bg-card">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-start gap-2 px-2 py-1.5 text-left"
+      >
+        <span className="mt-0.5 text-muted-foreground">
+          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <CweTitle cwe={cwe} muted />
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {cwe.kind !== "weakness" ? `${cwe.kind} · ` : ""}too abstract to check directly
+          </p>
+        </div>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t px-2 py-2 pl-8">
+          <CweDetails cwe={cwe} />
+          {cwe.usageRationale && (
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground/80">Why not directly: </span>
+              {cwe.usageRationale}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type CatalogueState =
+  | { query: string; status: "loading" }
+  | { query: string; status: "ready"; results: CweEntry[] }
+  | { query: string; status: "error"; error: string };
+
 function matches(cwe: CweEntry, query: string): boolean {
   const number = query.replace(/^cwe-?/, "");
   return cwe.name.toLowerCase().includes(query) || (number !== "" && String(cwe.number).startsWith(number));
@@ -219,6 +266,7 @@ export function CweListsTab() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [launching, setLaunching] = useState<string | null>(null);
   const [components, setComponents] = useState<string[]>([]);
+  const [catalogue, setCatalogue] = useState<CatalogueState | null>(null);
 
   const load = useCallback(async (workspaceSlug: string, view: string, signal?: AbortSignal) => {
     setLoading(true);
@@ -324,6 +372,35 @@ export function CweListsTab() {
     [slug, launching, components],
   );
 
+  const searchCatalogue = useCallback(
+    async (raw: string) => {
+      const query = raw.trim();
+      if (!slug || !query) return;
+      setCatalogue({ query, status: "loading" });
+      try {
+        const response = await fetch(`/api/workspaces/${slug}/system-map/cwe-search?q=${encodeURIComponent(query)}`, {
+          cache: "no-store",
+        });
+        const body = (await response.json().catch(() => null)) as (CweSearchResponse & { error?: string }) | null;
+        if (!response.ok || !body) throw new Error(body?.error ?? `HTTP ${response.status}`);
+        setCatalogue((current) =>
+          current?.query !== query
+            ? current
+            : body.status === "ready"
+              ? { query, status: "ready", results: body.results }
+              : { query, status: "error", error: body.error },
+        );
+      } catch (error) {
+        setCatalogue((current) =>
+          current?.query !== query
+            ? current
+            : { query, status: "error", error: error instanceof Error ? error.message : "Request failed" },
+        );
+      }
+    },
+    [slug],
+  );
+
   const actions: RowActions = { canWrite, selected, onToggle: toggle, launching, onLaunch: launch };
   const selectedIds = [...selected];
 
@@ -362,8 +439,14 @@ export function CweListsTab() {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Filter by id or name, e.g. 862"
+            onChange={(event) => {
+              setSearch(event.target.value);
+              if (!event.target.value.trim()) setCatalogue(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void searchCatalogue(search);
+            }}
+            placeholder="Filter by id or name, e.g. 862 — Enter searches all CWEs"
             className="h-8 pl-8 text-sm"
             data-testid="cwe-list-search"
           />
@@ -430,9 +513,39 @@ export function CweListsTab() {
             {visible.map((member) => (
               <MemberCard key={member.id} member={member} actions={actions} />
             ))}
-            {visible.length === 0 && <p className="text-sm text-muted-foreground">Nothing matches.</p>}
+            {visible.length === 0 && <p className="text-sm text-muted-foreground">Nothing in this list matches.</p>}
           </div>
         </>
+      )}
+
+      {search.trim() && (!catalogue || catalogue.query !== search.trim()) && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void searchCatalogue(search)}
+          data-testid="cwe-catalogue-search"
+        >
+          <Search className="mr-1.5 h-3.5 w-3.5" /> Search all CWEs for &ldquo;{search.trim()}&rdquo;
+        </Button>
+      )}
+
+      {catalogue && (
+        <div className="space-y-2" data-testid="cwe-catalogue-results">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            All CWEs matching &ldquo;{catalogue.query}&rdquo;
+          </p>
+          {catalogue.status === "loading" && (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Searching the catalogue…
+            </p>
+          )}
+          {catalogue.status === "error" && <p className="text-sm text-muted-foreground">{catalogue.error}</p>}
+          {catalogue.status === "ready" && catalogue.results.length === 0 && (
+            <p className="text-sm text-muted-foreground">No CWE matches.</p>
+          )}
+          {catalogue.status === "ready" &&
+            catalogue.results.map((cwe) => <CatalogueResult key={cwe.refId} cwe={cwe} actions={actions} />)}
+        </div>
       )}
     </div>
   );

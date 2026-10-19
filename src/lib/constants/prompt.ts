@@ -1,5 +1,5 @@
 import { ModelMessage } from "ai";
-import type { GraphFocusHint } from "@/lib/canvas/graph-focus";
+import type { BrainstormFocusHint, GraphFocusHint } from "@/lib/canvas/graph-focus";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
 import { shouldTrimConceptsToIds, MAX_SEEDED_CONCEPTS_PER_WORKSPACE, isConceptSeedingEnabled } from "@/lib/ai/concepts";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
@@ -1008,6 +1008,11 @@ export interface CanvasScopeHint {
    * canvas — is what "this" means.
    */
   graphFocus?: GraphFocusHint;
+  /**
+   * The brainstorm board the user is on (the canvas's Brainstorm tab,
+   * validated by `parseBrainstormFocus`). Adds a section; the canvas scope stays.
+   */
+  brainstormFocus?: BrainstormFocusHint;
 }
 
 export function getMultiWorkspacePrefixMessages(
@@ -1125,6 +1130,23 @@ If a \`<canvas-scope>\` block appears at the end of the conversation, it is inje
  */
 function getCanvasScopeHint(scope?: CanvasScopeHint): string {
   if (!scope) return "";
+  const board = scope.brainstormFocus ? getBrainstormBoardHint(scope.brainstormFocus) : "";
+  return getCanvasRefHint(scope) + board;
+}
+
+/** The "## Current brainstorm board" section: what "this", "2A" and "go with…" mean on the board. */
+function getBrainstormBoardHint(f: BrainstormFocusHint): string {
+  return [
+    "",
+    "",
+    "## Current brainstorm board",
+    "",
+    `The user is on the brainstorm board for workspace \`${f.workspaceSlug}\`: root question "${f.rootText}" (\`${f.rootRefId}\`), job ${f.jobId ? `\`${f.jobId}\`` : "unknown (the root has no job)"}.${f.selectedRefId ? ` They have selected node ${f.selectedLabel ? `**${f.selectedLabel}** ` : ""}(\`${f.selectedRefId}\`).` : ""}`,
+    `They are PROBABLY talking about this brainstorm, so "this", "2A", "go with…" refer to it. For changes to the tree (choose, expand, deselect, reject, add options) call \`continue_job\` with ${f.jobId ? `job id \`${f.jobId}\`` : "the job id"} and the user's words unchanged, naming the root ref_id \`${f.rootRefId}\`. If \`continue_job\` says the job is not theirs, tell the user it is a teammate's brainstorm and ask before calling \`start_job\` for a new job on the same root. Any other question (not about the brainstorm) is answered normally.`,
+  ].join("\n");
+}
+
+function getCanvasRefHint(scope: CanvasScopeHint): string {
   // Distinguish "field omitted" from "explicitly empty" — `""` is the
   // root canvas and the agent benefits from being told that, just as
   // much as it benefits from being told a sub-canvas ref.
