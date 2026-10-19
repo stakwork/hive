@@ -385,6 +385,16 @@ export interface GraphFocus {
   type: string;
 }
 
+/** The brainstorm board the user is on (the canvas's Brainstorm tab) — hidden context, never in the visible message. */
+export interface BrainstormFocus {
+  workspaceSlug: string;
+  rootRefId: string;
+  rootText: string;
+  jobId?: string | null;
+  selectedRefId?: string | null;
+  selectedLabel?: string | null;
+}
+
 export interface ConversationContext {
   workspaceSlug: string | null;
   workspaceSlugs: string[];
@@ -396,6 +406,8 @@ export interface ConversationContext {
   selectedNodeIds: string[];
   /** Set on the graph view: what "this" means there. */
   graphFocus?: GraphFocus | null;
+  /** Set while the Brainstorm board is mounted: what "this" means there. */
+  brainstormFocus?: BrainstormFocus | null;
 }
 
 // ─── Reserved slots for canvas-bound features (filled in later PRs) ─────────
@@ -490,6 +502,12 @@ interface CanvasChatState {
    * empty string only focuses the input and leaves its text alone
    * (the chat list's "New chat" uses it).
    */
+  /**
+   * The brainstorm board in view, published by `<BrainstormBoard>` while it
+   * is mounted (null otherwise); `OrgCanvasView` copies it into the active
+   * conversation's context.
+   */
+  brainstormFocus: BrainstormFocus | null;
   pendingInputDraft: string | null;
   /**
    * Text to APPEND (on a new line) to the chat input instead of replacing
@@ -664,6 +682,7 @@ interface CanvasChatState {
    * `null` to clear without applying (the input clears its own draft
    * after consumption — callers usually shouldn't need to clear).
    */
+  setBrainstormFocus: (focus: BrainstormFocus | null) => void;
   setPendingInputDraft: (draft: string | null) => void;
   appendPendingInputDraft: (text: string) => void;
 
@@ -717,6 +736,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       activeConversationId: null,
       ephemeralSeedCounts: {},
       locallyAuthoredTurnIds: new Set<string>(),
+      brainstormFocus: null,
       pendingInputDraft: null,
       pendingInputAppend: null,
       pendingDeeplink: null,
@@ -1168,6 +1188,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
           "dismissArtifact",
         ),
 
+      setBrainstormFocus: (focus) => set({ brainstormFocus: focus }, false, "setBrainstormFocus"),
       setPendingInputDraft: (draft) => set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
       appendPendingInputDraft: (text) =>
         set(
