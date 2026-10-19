@@ -1,32 +1,35 @@
 # Jamie engine — Hive or the strut orchestrator
 
-An org-level setting that picks which engine answers the org canvas chat
+A per-browser experiment that picks which engine answers the org canvas chat
 (Jamie, `/org/<githubLogin>?chat=<id>`). Two values:
 
-| Value   | Label (settings UI)  | What answers a message                                                                                   |
-| ------- | -------------------- | -------------------------------------------------------------------------------------------------------- |
-| `hive`  | Hive                 | Today's canvas agent (`src/lib/ai/runCanvasAgent.ts`) with its tools, cards and approval flow. **Default.** |
-| `strut` | Strut orchestrator   | One run of the swarm strut's `orchestrator` workflow per message (`src/services/strut-orchestrator.ts`). |
+| Switch | What answers a message                                                                                   |
+| ------ | -------------------------------------------------------------------------------------------------------- |
+| off    | Today's canvas agent (`src/lib/ai/runCanvasAgent.ts`) with its tools, cards and approval flow. **Default.** |
+| on     | One run of the swarm strut's `orchestrator` workflow per message (`src/services/strut-orchestrator.ts`). |
 
 The strut path is an **option** beside the default, never a replacement:
-with the setting on `hive` every existing code path runs exactly as before.
+with the switch off every existing code path runs exactly as before, and
+nothing about the org, the user or the conversation records the choice.
 
 ## Where it lives
 
-- Stored on `SourceControlOrg.jamieEngine` (`source_control_orgs.jamie_engine`,
-  text, default `'hive'`; migration `20261019120000_source_control_org_jamie_engine`).
-- Read per request by `jamieEngineForOrg(orgId)` (`src/lib/ai/jamieEngine.ts`).
-  Fails closed to `hive`: a missing org, an unknown value or a lookup error
-  all leave the default path alone.
-- Flipped from **Org settings → Jamie** (`JamieEngineSettings`), which
-  reads and writes `GET`/`PATCH /api/orgs/[githubLogin]/settings`
-  (`{ jamieEngine: "hive" | "strut" }`). Owners and admins only, like the
-  default-workspace setting on the same route.
+- A **Strut orchestrator** switch in the chat header's ⋯ menu (and the
+  mobile chat actions sheet), next to the Concept-tree prompt, which it
+  mirrors: `localStorage` only (`src/app/org/[githubLogin]/_state/strutEnginePreference.ts`,
+  key `hive.jamieStrutEngine`), off by default, storage errors read as off.
+  Any org member can flip it for their own browser; the rest of the org is
+  untouched.
+- Sent with each canvas chat request as `strutEngine: true`
+  (`useSendCanvasChatMessage`), exactly like `slimPrompt`. The route
+  (`/api/ask/quick`) reads the flag off the body; nothing is looked up.
+- Server-side turns — planner wakes, automations, anything not sent from a
+  browser — never carry the flag, so they always run on Hive.
 
 ## The strut path, turn by turn
 
 1. **Launch** — `/api/ask/quick` persists the user's row as today, then
-   (engine `strut`) hands the turn to `runOrchestratorTurn` instead of
+   (`strutEngine: true`) hands the turn to `runOrchestratorTurn` instead of
    `runCanvasAgent`. That dispatches a `StrutRun` of kind `orchestrator_turn`
    through `dispatchStrutRun` (purpose `orchestrator` → the org default
    swarm, like `chat` and `job`):
@@ -85,9 +88,13 @@ with the setting on `hive` every existing code path runs exactly as before.
   strut step, so the orchestrator cannot propose them. Features, research
   and the other Hive-engine tools are likewise not on this path.
 - Attachments on a message are not forwarded to strut (text only).
-- Flipping the engine mid-conversation starts a **cold** strut session (the
-  session is new to strut, and hive replays nothing). Start a fresh
+- Flipping the switch mid-conversation starts a **cold** strut session (the
+  session is new to strut, and hive replays nothing), and flipping it back
+  leaves Hive's agent without strut's turns in its history. Start a fresh
   conversation after switching.
+- The switch is per browser, so two people in one shared conversation can be
+  on different engines. Each engine only sees the rows the other appended,
+  not its memory.
 - Depends on the swarm's lab seeding the orchestrator's graph tools and
   gating the writes as proposals — stakwork/stakgraph#1799 — and on a strut
   with proposals (stakwork/strut#222). Without the workflow the launch

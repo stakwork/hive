@@ -194,7 +194,7 @@ export type CanvasMessageSource =
       kind: "stopped";
     }
   /**
-   * Jamie on strut (`lib/strut-orchestrator.ts`; the org's "Jamie engine"
+   * Jamie on strut (`lib/strut-orchestrator.ts`; the chat's per-browser "Strut orchestrator"
    * setting): the reply of an orchestrator turn (a plain bubble with its
    * artifacts), the launch marker its working card hangs on, one row per
    * proposal the turn made (`StrutProposalCard`), and a person's decision

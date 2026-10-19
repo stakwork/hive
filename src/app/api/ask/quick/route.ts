@@ -51,7 +51,6 @@ import {
 } from "@/services/canvas-turn-enrichments";
 import { isOwnStoppedTurn, isValidTurnId, registerTurn, watchTurnAbort } from "@/services/canvas-turn-abort";
 import { notifyCanvasUpdated } from "@/lib/canvas/pusher";
-import { jamieEngineForOrg } from "@/lib/ai/jamieEngine";
 import { runOrchestratorTurn } from "@/services/strut-orchestrator";
 import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
 import { fanOutGraphWalkToCanvas } from "@/services/canvas-graph-walk-fanout";
@@ -108,6 +107,10 @@ export async function POST(request: NextRequest) {
       // Per-browser opt-in to the slim prompt (concept-tree mode), sent by
       // the canvas SidebarChat when its settings switch is on.
       slimPrompt,
+      // Per-browser opt-in to run the turn on strut's `orchestrator`
+      // workflow instead of `runCanvasAgent`, sent the same way
+      // (`strutEnginePreference.ts`, `docs/jamie-engine.md`).
+      strutEngine,
       // Agent-proposal flow (see `src/lib/proposals/`). Set on the
       // user's send when they click Approve / Reject in a
       // `<ProposalCard>`. The route runs the side effect synchronously
@@ -527,14 +530,15 @@ export async function POST(request: NextRequest) {
     console.log("[quick-ask] timing", { stage: "persistCanvasUserMessage", ms: Date.now() - tPersist, workspaces: slugs, orgId: orgId ?? null });
 
     // ============================================================
-    // Jamie engine (`lib/ai/jamieEngine.ts`). An org whose engine is
-    // `strut` hands a persisted canvas turn to strut's `orchestrator`
+    // Strut orchestrator (`docs/jamie-engine.md`). A persisted org-canvas
+    // turn whose request carries `strutEngine: true` — the per-browser
+    // switch in the chat's ⋯ menu — goes to strut's `orchestrator`
     // workflow instead of `runCanvasAgent`: the user's row is written
     // above, the reply lands later as rows through the strut-runs webhook
-    // (`services/strut-orchestrator.ts`). Everything below is the default
-    // (`hive`) path and runs exactly as before for every other org.
+    // (`services/strut-orchestrator.ts`). Without the flag everything
+    // below is the default path and runs exactly as before.
     // ============================================================
-    if (orgId && userId && canvasConversationRowId && (await jamieEngineForOrg(orgId)) === "strut") {
+    if (orgId && userId && canvasConversationRowId && strutEngine === true) {
       console.log("[quick-ask] timing", { stage: "early-exit:strut-orchestrator", ms: Date.now() - t0, workspaces: slugs, orgId });
       return await runOrchestratorTurn({
         userId,

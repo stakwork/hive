@@ -74,7 +74,7 @@ const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
   // `chat` row moves.
   job: "org-default",
   // Jamie on strut's `orchestrator` workflow (`services/strut-orchestrator.ts`,
-  // the org's "Jamie engine" setting): one conversation is one strut
+  // the chat's per-browser "Strut orchestrator" switch): one conversation is one strut
   // session, so a turn runs where `chat` and `job` do — the org default —
   // and follows them if they move.
   orchestrator: "org-default",

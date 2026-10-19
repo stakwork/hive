@@ -1,9 +1,10 @@
 /**
  * Jamie on strut — the launch (`lib/strut-orchestrator.ts` for the
  * contract; the completion handler in `strut-runs/orchestrator-turn.ts`;
- * the engine switch in `lib/ai/jamieEngine.ts`).
+ * the per-browser switch in `_state/strutEnginePreference.ts`).
  *
- * When an org's Jamie engine is `strut`, the canvas chat route hands each
+ * When a canvas chat request carries `strutEngine: true` — the "Strut
+ * orchestrator" switch in the chat's ⋯ menu — the route hands the
  * message here instead of to `runCanvasAgent`: one launch of strut's
  * `orchestrator` workflow on the org's strut (`resolveStrutTarget`,
  * purpose `orchestrator`), with the conversation's row id as the
@@ -38,7 +39,7 @@ const LOG_TAG = "STRUT_ORCHESTRATOR";
 
 export interface OrchestratorTurnArgs {
   userId: string;
-  /** `SourceControlOrg.id` — the org whose engine is `strut`. */
+  /** `SourceControlOrg.id` — the org the conversation belongs to (its default swarm runs the turn). */
   orgId: string;
   /** The `SharedConversation` row the route has validated and written the user's message to. */
   conversationId: string;
@@ -113,7 +114,7 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
         status: "error",
         error:
           err.code === "workflow_missing"
-            ? "This swarm's strut has no `orchestrator` workflow yet (its lab is not on a build that seeds it). Switch the Jamie engine back to Hive, or update the swarm."
+            ? "This swarm's strut has no `orchestrator` workflow yet (its lab is not on a build that seeds it). Turn the Strut orchestrator switch off, or update the swarm."
             : err.message,
       };
     }

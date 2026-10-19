@@ -1,7 +1,7 @@
 /**
  * Completion handler for `kind: "orchestrator_turn"` — one turn of strut's
- * `orchestrator` workflow behind Jamie when the org's engine is `strut`
- * (`lib/ai/jamieEngine.ts`; the launch in `services/strut-orchestrator.ts`).
+ * `orchestrator` workflow behind Jamie for a browser with the "Strut
+ * orchestrator" switch on (the launch in `services/strut-orchestrator.ts`).
  *
  * The turn's run settled; this is where its reply reaches the canvas chat.
  * The workflow answers in the job turn's shape — `{ text, artifacts, ask?,
