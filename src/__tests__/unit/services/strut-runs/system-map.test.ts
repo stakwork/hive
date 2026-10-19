@@ -46,7 +46,14 @@ vi.mock("@/services/strut-runs", () => ({
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { launchSystemMapRun, listSystemMapRuns, parseComponents, parseCweIds } from "@/services/strut-runs/system-map";
+import {
+  hasPendingSystemMapRun,
+  launchSystemMapRun,
+  listSystemMapRuns,
+  parseComponents,
+  parseCweIds,
+  parseFindingInput,
+} from "@/services/strut-runs/system-map";
 
 const NOW = new Date("2026-09-25T12:00:00Z");
 
@@ -195,6 +202,36 @@ describe("launchSystemMapRun", () => {
     );
   });
 
+  it("dispatches the finding check with the findings, the workspace id and apply, no slug", async () => {
+    mockWorkspace.findUnique.mockResolvedValue({
+      swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
+    });
+    mockDispatch.mockResolvedValue({ runId: "run-8", strutRunId: "8", swarmId: "swarm-1" });
+
+    await launchSystemMapRun({
+      workspaceId: "ws-1",
+      workspaceSlug: "acme-ws",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      key: "finding_verify",
+      findings: { findingRefIds: ["f-1", "f-2"], apply: true },
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "system_map_finding_verify",
+        workflow: "finding-verify-pod-batch",
+        input: {
+          swarm_url: "https://acme.sphinx.chat:3355",
+          swarm_secret_alias: "{{SWARM_123_API_KEY}}",
+          finding_ref_ids: ["f-1", "f-2"],
+          workspace_id: "ws-1",
+          apply: true,
+        },
+      }),
+    );
+  });
+
   it("returns the run's strut view link when the workspace has an org", async () => {
     mockWorkspace.findUnique.mockResolvedValue({
       swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
@@ -245,6 +282,49 @@ describe("parseComponents", () => {
   });
 });
 
+describe("parseFindingInput", () => {
+  it("is undefined for other workflows, dedupes ids and defaults apply to a dry run", () => {
+    expect(parseFindingInput("cwe_check", undefined, undefined)).toBeUndefined();
+    expect(parseFindingInput("finding_verify", ["f-1", "f-1", "f-2"], undefined)).toEqual({
+      findingRefIds: ["f-1", "f-2"],
+      apply: false,
+    });
+    expect(parseFindingInput("finding_verify", ["f-1"], true)).toEqual({ findingRefIds: ["f-1"], apply: true });
+  });
+
+  it("rejects missing, malformed, empty or too many ids, a non-boolean apply, and findings on other workflows", () => {
+    expect(parseFindingInput("finding_verify", undefined, undefined)).toHaveProperty("error");
+    expect(parseFindingInput("finding_verify", "f-1", undefined)).toHaveProperty("error");
+    expect(parseFindingInput("finding_verify", ["a b"], undefined)).toHaveProperty("error");
+    expect(parseFindingInput("finding_verify", [], undefined)).toHaveProperty("error");
+    expect(parseFindingInput("finding_verify", Array.from({ length: 51 }, (_, i) => `f-${i}`), undefined)).toHaveProperty(
+      "error",
+    );
+    expect(parseFindingInput("finding_verify", ["f-1"], "yes")).toHaveProperty("error");
+    expect(parseFindingInput("cwe_check", ["f-1"], undefined)).toEqual({ error: "This workflow does not take findings" });
+  });
+});
+
+describe("hasPendingSystemMapRun", () => {
+  it("looks for a running finding check covering any of the findings", async () => {
+    mockStrutRun.findFirst.mockResolvedValue(null);
+    expect(await hasPendingSystemMapRun("ws-1", "finding_verify", ["f-1", "f-2"])).toBe(false);
+    expect(mockStrutRun.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          workspaceId: "ws-1",
+          kind: "system_map_finding_verify",
+          OR: [
+            { input: { path: ["finding_ref_ids"], array_contains: ["f-1"] } },
+            { input: { path: ["finding_ref_ids"], array_contains: ["f-2"] } },
+          ],
+          status: StrutRunStatus.PENDING,
+        },
+      }),
+    );
+  });
+});
+
 describe("parseCweIds", () => {
   it("is undefined when absent and dedupes valid ids", () => {
     expect(parseCweIds("cwe_check", undefined)).toBeUndefined();
@@ -283,6 +363,8 @@ describe("listSystemMapRuns", () => {
         strutUrl: "/org/acme/strut?strut=wf%3Dswarm-systemmap-schema-sync%26run%3D1700000000000",
         cweIds: null,
         components: null,
+        findingRefIds: null,
+        apply: null,
       },
     ]);
     expect(mockStrutRun.findMany).toHaveBeenCalledWith(
@@ -305,6 +387,23 @@ describe("listSystemMapRuns", () => {
 
     expect(runs.map((r) => r.cweIds)).toEqual([["CWE-79", "CWE-89"], null]);
     expect(runs.map((r) => r.components)).toEqual([["stakwork/hive"], null]);
+  });
+
+  it("lists the checks covering one finding and reads the findings and apply from their input", async () => {
+    mockStrutRun.findMany.mockResolvedValue([
+      row({ status: StrutRunStatus.SUCCESS, settledAt: NOW, input: { finding_ref_ids: ["f-123", "f-9"], apply: false } }),
+    ]);
+    const runs = await listSystemMapRuns("ws-1", "finding_verify", { now: NOW, findingRefId: "f-123" });
+    expect(runs.map((r) => [r.findingRefIds, r.apply])).toEqual([[["f-123", "f-9"], false]]);
+    expect(mockStrutRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          workspaceId: "ws-1",
+          kind: "system_map_finding_verify",
+          OR: [{ input: { path: ["finding_ref_ids"], array_contains: ["f-123"] } }],
+        },
+      }),
+    );
   });
 
   it("lists the CWE check workflow's runs under its own kind", async () => {
