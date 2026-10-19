@@ -27,9 +27,18 @@ function useProposalDecision(content: ArtifactViewerProps<"graph">["content"]) {
   return status === "approved" || status === "rejected" ? status : null;
 }
 
-/** The org page's Brainstorm tab on this tree. A plain link: the page reads `?view=` once, on mount. */
-export const brainstormBoardHref = (githubLogin: string, workspace: string, root: string) =>
-  `/org/${encodeURIComponent(githubLogin)}?${new URLSearchParams({ view: "canvas", tab: "brainstorm", ws: workspace, root })}`;
+/**
+ * The org page's Brainstorm tab (the desk) on this tree: `root` is the brainstorm, or a card inside one;
+ * `node` points at a card of `root`'s brainstorm. The desk follows `ws`/`root`/`node` as they change.
+ */
+export const brainstormBoardHref = (githubLogin: string, workspace: string, root: string, node?: string) =>
+  `/org/${encodeURIComponent(githubLogin)}?${new URLSearchParams({
+    view: "canvas",
+    tab: "brainstorm",
+    ws: workspace,
+    root,
+    ...(node ? { node } : {}),
+  })}`;
 
 function TreeWithBoardLink({ workspace, focus, label }: { workspace: string; focus: string; label?: string }) {
   const login = useParams<{ githubLogin?: string }>()?.githubLogin;
