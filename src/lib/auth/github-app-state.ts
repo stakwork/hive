@@ -25,6 +25,12 @@ export interface GithubAppStatePayload {
   repositoryUrl?: string;
   randomState: string;
   timestamp: number;
+  /**
+   * The Hive user who started the install. The callback requires it to be
+   * the signed-in user. Sessions are JWT, so there is no DB session row to
+   * bind the state to for users who signed in after that switch.
+   */
+  userId?: string;
 }
 
 const MAX_STATE_AGE_MS = 60 * 60 * 1000; // 1 hour — matches the callback's pre-existing timestamp check
@@ -118,7 +124,8 @@ export function verifyGithubAppState(state: string | null | undefined): VerifyRe
     !payload ||
     typeof payload.workspaceSlug !== "string" ||
     typeof payload.randomState !== "string" ||
-    typeof payload.timestamp !== "number"
+    typeof payload.timestamp !== "number" ||
+    (payload.userId !== undefined && typeof payload.userId !== "string")
   ) {
     return { ok: false, reason: "invalid_payload" };
   }

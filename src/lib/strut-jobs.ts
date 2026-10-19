@@ -74,13 +74,19 @@ export function strutArtifactReaderUrl(githubLogin: string, swarmId: string, key
   return `/api/orgs/${encodeURIComponent(githubLogin)}/strut/artifacts?${new URLSearchParams({ swarmId, key })}`;
 }
 
-/** The workflow `input` a job turn is launched with: the prompt, the job's title riding along for the reply's header (strut ignores it), and the workspace the job belongs to — the hive workspace id a pod is claimed for (strut's `job` v6 declares it; an older one strips it). */
-export const jobTurnInputSchema = z.object({ prompt: z.string(), title: z.string().optional(), workspace: z.string().optional() }).passthrough();
+/** The workflow `input` a job turn is launched with: the prompt, the job's title riding along for the reply's header (strut ignores it), the workspace the job belongs to — the hive workspace id a pod is claimed for (strut's `job` v6 declares it; an older one strips it) — and the model the turn ran on, riding along like the title so the row records it (strut reads `params.model`). */
+export const jobTurnInputSchema = z.object({ prompt: z.string(), title: z.string().optional(), workspace: z.string().optional(), model: z.string().optional() }).passthrough();
 
 /** The title `start_job` put on the launch, carried on every turn's input. */
 export function jobTitleOf(row: { input: unknown }): string {
   const input = jobTurnInputSchema.safeParse(row.input);
   return (input.success && input.data.title?.trim()) || "Job";
+}
+
+/** The model a turn was launched with, from its input; undefined when it ran on strut's default. */
+export function jobModelOf(row: { input: unknown } | null): string | undefined {
+  const input = jobTurnInputSchema.safeParse(row?.input);
+  return (input.success && input.data.model?.trim()) || undefined;
 }
 
 // ─── Artifact events ──────────────────────────────────────────────────────
@@ -154,6 +160,56 @@ export function parseClaimEvent(text: unknown): { claim: string; note: string } 
   } catch {
     return null;
   }
+}
+
+// ─── Captcha answers ──────────────────────────────────────────────────────
+
+/**
+ * A person's answer to a captcha a job posted, from the captcha viewer: the
+ * job's next turn begins with this line, the JSON on the same line (its
+ * newlines escaped, so the text reaches the job exactly as typed).
+ *
+ *   [captcha-answer] {"round":1,"site":"example.com","taps":[{"nx":0.5,"ny":0.5}]}
+ */
+export const CAPTCHA_ANSWER_PREFIX = "[captcha-answer]";
+
+export interface CaptchaAnswer {
+  round: number;
+  site: string;
+  /** Exactly one of these. */
+  taps?: Array<{ nx: number; ny: number }>;
+  text?: string;
+  skip?: boolean;
+}
+
+/** The turn's message. The text is never trimmed or changed. */
+export function formatCaptchaAnswer(answer: CaptchaAnswer): string {
+  return `${CAPTCHA_ANSWER_PREFIX} ${JSON.stringify(answer)}`;
+}
+
+/** The answer a turn's message carries, read off its first line; null for anything else. */
+export function parseCaptchaAnswer(text: unknown): CaptchaAnswer | null {
+  if (typeof text !== "string" || !text.startsWith(`${CAPTCHA_ANSWER_PREFIX} `)) return null;
+  try {
+    const raw = JSON.parse(text.split("\n", 1)[0].slice(CAPTCHA_ANSWER_PREFIX.length + 1)) as Record<string, unknown>;
+    if (typeof raw !== "object" || raw === null) return null;
+    if (typeof raw.round !== "number" || typeof raw.site !== "string") return null;
+    const answer: CaptchaAnswer = { round: raw.round, site: raw.site };
+    if (Array.isArray(raw.taps)) answer.taps = raw.taps as CaptchaAnswer["taps"];
+    else if (typeof raw.text === "string") answer.text = raw.text;
+    else if (raw.skip === true) answer.skip = true;
+    else return null;
+    return answer;
+  } catch {
+    return null;
+  }
+}
+
+/** What a person sees of an answer — never the text itself. */
+export function describeCaptchaAnswer(answer: CaptchaAnswer): string {
+  if (answer.taps) return `${answer.taps.length} ${answer.taps.length === 1 ? "tap" : "taps"}`;
+  if (answer.text !== undefined) return `text (${answer.text.length} chars)`;
+  return "skipped";
 }
 
 const GITHUB_PR = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)(?:[/?#]|$)/i;

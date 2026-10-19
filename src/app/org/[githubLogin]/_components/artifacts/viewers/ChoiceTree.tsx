@@ -191,11 +191,12 @@ export function layoutTree(
   ids: string[],
   links: Array<{ source: string; target: string }>,
   heights: Record<string, number> = {},
+  spacing: { ranksep?: number; nodesep?: number } = {},
 ): Record<string, { x: number; y: number }> {
   const h = (id: string) => heights[id] ?? 64;
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "LR", ranksep: 64, nodesep: 12 });
+  g.setGraph({ rankdir: "LR", ranksep: spacing.ranksep ?? 64, nodesep: spacing.nodesep ?? 12 });
   ids.forEach((id) => g.setNode(id, { width: NODE_W, height: h(id) }));
   links.forEach((l) => g.setEdge(l.source, l.target));
   dagre.layout(g);

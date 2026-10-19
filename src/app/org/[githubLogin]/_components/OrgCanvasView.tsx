@@ -14,12 +14,20 @@ import { GraphView } from "./GraphView";
 import { parseArtifactRefs } from "../_state/canvasChatArtifacts";
 import { useCanvasChatAutoSave } from "../_state/useCanvasChatAutoSave";
 import { useGraphProposalRefresh } from "../_state/useGraphProposalRefresh";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  RESIZABLE_PANEL_TRANSITION,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { AttentionMapProvider } from "../connections/AttentionMapContext";
 import { cn } from "@/lib/utils";
 import { ChatsLayout } from "./ChatsLayout";
 import { ArtifactPanel } from "./artifacts/ArtifactPanel";
-import { orgPageView } from "./useOrgView";
+import Link from "next/link";
+import { canvasTab, orgPageView, type CanvasTab } from "./useOrgView";
+import { Desk } from "./brainstorm-board/Desk";
+import { OrgInitiatives } from "../OrgInitiatives";
 import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 
 /** Sidebar layout sizes (percent of container width). */
@@ -35,8 +43,6 @@ const SIDEBAR_MAX_SIZE = 80;
  * (`?view=control-panel`) lands on chats.
  */
 type OrgPageMode = "chats" | "canvas" | "graph";
-/** Programmatic panel resizes animate; a drag must not (the handle turns it off while held). */
-const PANEL_TRANSITION = "transition-[flex-grow] duration-300 ease-in-out";
 /** What fills the left panel — the canvas, the graph, the artifact panel — eases in and out. */
 const LEFT_SURFACE_TRANSITION = { duration: 0.25, ease: "easeOut" } as const;
 
@@ -77,6 +83,8 @@ interface OrgCanvasViewProps {
  * the store; `<SidebarChat />` reads them directly without prop
  * drilling.
  */
+const TAB_LABEL: Record<CanvasTab, string> = { map: "Map", initiatives: "Initiatives", brainstorm: "Brainstorm" };
+
 export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProps) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -116,8 +124,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [chatOpen, setChatOpen] = useState(mode !== "graph");
   /** The graph node in view — what "this" means to Jamie on the graph view. */
   const [graphFocus, setGraphFocus] = useState<GraphFocus | null>(null);
-  /** While the divider is held the panels must follow the pointer, not ease. */
-  const [dragging, setDragging] = useState(false);
+  /** The brainstorm board in view (published by the board while mounted). */
+  const brainstormFocus = useCanvasChatStore((s) => s.brainstormFocus);
   // The panel library persists every layout; a tucked-away chat (collapsed
   // to nothing) must not become the sidebar's remembered width.
   const panelStorage = useMemo(
@@ -144,6 +152,14 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // — over it — the artifact the chat has open.
   const artifactOpen = useArtifactPanelOpen();
   const leftSurface = artifactOpen ? "artifact" : mode;
+  const tab = canvasTab(searchParams);
+  const tabHref = (next: CanvasTab) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "canvas");
+    if (next === "map") params.delete("tab");
+    else params.set("tab", next);
+    return `${pathname}?${params.toString()}`;
+  };
 
   // Sync `panelWidth` to the panel's actual rendered width on mount,
   // before the browser paints. Two paths land it at the right value:
@@ -535,6 +551,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       selectedNodeId: contextNodeId,
       selectedNodeIds: contextNodeIds,
       graphFocus,
+      brainstormFocus,
     });
   }, [
     conversationStarted,
@@ -547,6 +564,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     contextNodeId,
     contextNodeIds,
     graphFocus,
+    brainstormFocus,
   ]);
 
   // Mount auto-save (write-through to `chat_conversations`). Lives at
@@ -579,7 +597,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
               {leftSurface === "canvas" && (
                 <motion.div
                   key="canvas"
-                  className="absolute inset-0 flex"
+                  // `isolate` contains the canvas's own overlays (Live Now, hidden-live pill, FAB…)
+                  // in this layer, so the initiatives surface and the tab control sit above them.
+                  className={cn("absolute inset-x-0 bottom-0 z-0 flex isolate", mode === "canvas" ? "top-11" : "top-0")}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -598,6 +618,51 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {mode === "canvas" && leftSurface === "canvas" && (
+              <>
+                {tab === "initiatives" && (
+                  <div
+                    className="absolute bottom-0 left-0 top-11 z-10 overflow-y-auto bg-background"
+                    style={{ right: panelWidth }}
+                  >
+                    <div className="max-w-4xl mx-auto px-6 py-6 w-full">
+                      <OrgInitiatives githubLogin={githubLogin} />
+                    </div>
+                  </div>
+                )}
+                {tab === "brainstorm" && (
+                  <div className="absolute bottom-0 left-0 top-11 z-10 overflow-hidden bg-background" style={{ right: panelWidth }}>
+                    <Desk githubLogin={githubLogin} workspaceSlugs={chatWorkspaceSlugs} />
+                  </div>
+                )}
+                {/* The tab bar lines up with the chat panel's header across the divider. */}
+                <div
+                  role="tablist"
+                  aria-label="Canvas view"
+                  className="absolute left-0 top-0 z-30 flex h-11 items-stretch border-b bg-background pl-1 text-sm"
+                  style={{ right: panelWidth }}
+                >
+                  {(["map", "initiatives", "brainstorm"] as const).map((t) => (
+                    <Link
+                      key={t}
+                      role="tab"
+                      aria-selected={tab === t}
+                      href={tabHref(t)}
+                      replace
+                      className={cn(
+                        "-mb-px flex items-center border-b-2 px-4 font-medium transition-colors",
+                        tab === t
+                          ? "border-foreground text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {TAB_LABEL[t]}
+                    </Link>
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* Resizable sidebar overlay — sits at z-20, absolutely
           positioned to cover the right portion of the canvas.
@@ -629,7 +694,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                   className={cn(
                     "relative",
                     leftSurface === "canvas" ? "pointer-events-none" : "pointer-events-auto",
-                    !dragging && PANEL_TRANSITION,
+                    RESIZABLE_PANEL_TRANSITION,
                   )}
                 >
                   <AnimatePresence initial={false}>
@@ -670,7 +735,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                   withHandle
                   // Nothing to drag while the graph view's chat is tucked away.
                   className={cn("pointer-events-auto", mode === "graph" && !chatOpen && "hidden")}
-                  onDragging={setDragging}
                 />
 
                 {/* Right panel — the chat; on the graph view, tucked away until "Ask Jamie". */}
@@ -686,7 +750,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                   collapsedSize={0}
                   onCollapse={() => setChatOpen(false)}
                   onExpand={() => setChatOpen(true)}
-                  className={cn("pointer-events-auto", !dragging && PANEL_TRANSITION)}
+                  className={cn("pointer-events-auto", RESIZABLE_PANEL_TRANSITION)}
                   onResize={(percent) => {
                     const containerWidth = containerRef.current?.offsetWidth ?? 1600;
                     setPanelWidth(Math.round((percent / 100) * containerWidth));

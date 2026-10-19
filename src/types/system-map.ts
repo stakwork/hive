@@ -16,6 +16,8 @@ export interface SystemMapRun {
   strutUrl: string | null;
   /** The CWEs the run was scoped to (`input.cwe_ids`); null when it covered everything. */
   cweIds: string[] | null;
+  /** The System Map components the run was scoped to (`input.components`); null when it covered all. */
+  components: string[] | null;
 }
 
 export type SystemMapWorkflowKey = "system_map" | "cwe_check";
@@ -135,6 +137,8 @@ export interface CweListMember extends CweEntry {
 export type CweListResponse =
   | { status: "ready"; view: { id: string; name: string }; members: CweListMember[] }
   | { status: "error"; error: string };
+
+export type CweSearchResponse = { status: "ready"; results: CweEntry[] } | { status: "error"; error: string };
 
 /** A catalogue node linked from a CWE (template, mitigation, detection method, platform). */
 export interface CweRelatedNode {

@@ -91,6 +91,12 @@ export function OrgRightPanel({
 
   const activeTab: Tab = chatsView ? "chat" : tab;
 
+  // A canvas affordance (the brainstorm board's click) composed a message: show the Chat tab it lands in.
+  const composing = useCanvasChatStore((s) => s.pendingInputDraft !== null || s.pendingInputAppend !== null);
+  useEffect(() => {
+    if (composing) setTab("chat");
+  }, [composing]);
+
   const handleRunClick = async (run: InboxRun) => {
     setInboxOpen(false);
     await openRun(run);

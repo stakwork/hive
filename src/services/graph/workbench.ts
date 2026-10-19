@@ -7,7 +7,8 @@
  * interpolated into Cypher is checked against a strict pattern first.
  */
 
-import { mockChoiceTree, mockConnectionPage, mockHierarchy, mockNodeConnections } from "@/app/api/mock/graph/workbench-fixture";
+import { mockConnectionPage, mockHierarchy, mockNodeConnections } from "@/app/api/mock/graph/workbench-fixture";
+import { mockBrainstormListWithWrites, mockChoiceTreeWithWrites } from "@/app/api/mock/graph/brainstorm-store";
 import { fromPropertyPairs, isRunGraphRefId, propertyPairs, typeFromLabels } from "@/lib/strut-run-graph/hydrate";
 import { runWorkspaceGraphQuery, type WorkspaceGraphQueryFailure } from "./query";
 
@@ -303,7 +304,7 @@ export async function getChoiceTree(
 ): Promise<WorkbenchResult<ChoiceTreeData>> {
   if (labels.length === 0 || !labels.every((l) => IDENT.test(l))) return invalid("Invalid label");
   if (!isRunGraphRefId(focusRefId)) return invalid("Invalid ref_id");
-  if (useMocks()) return { ok: true, data: mockChoiceTree(focusRefId, labels) };
+  if (useMocks()) return { ok: true, data: mockChoiceTreeWithWrites(focusRefId, labels) };
   const any = (v: string) => `(${labels.map((l) => `${v}:\`${l}\``).join(" OR ")})`;
   const root = `MATCH (r:Data_Bank {ref_id: '${focusRefId}'})`;
   const [nodes, edges] = await Promise.all([
@@ -339,5 +340,49 @@ export async function getChoiceTree(
       }),
       truncated: nodes.data.length >= GRAPH_ROW_CAP || edges.data.length >= GRAPH_ROW_CAP,
     },
+  };
+}
+
+// ── Brainstorm roots ────────────────────────────────────────────────────────
+
+export interface BrainstormRoot {
+  ref_id: string;
+  /** The root question's `text`, else its `name`, else its ref_id. */
+  text: string;
+  /** The strut job that wrote it, when it says. */
+  job: string | null;
+  made_by: string | null;
+}
+
+/** Brainstorms listed at most (newest first). */
+export const BRAINSTORM_LIST_CAP = 50;
+
+/**
+ * The brainstorms of a workspace: `Question` nodes (and legacy `Choice` nodes
+ * with `kind: "question"`) that no live `PARENT_OF` edge from a question,
+ * option or choice points at — the roots. Newest first by `date_added_to_graph`
+ * (when the node has it), then by ref_id; at most `BRAINSTORM_LIST_CAP`.
+ */
+export async function listBrainstormRoots(caller: Caller): Promise<WorkbenchResult<BrainstormRoot[]>> {
+  if (useMocks()) return { ok: true, data: mockBrainstormListWithWrites() };
+  const isParent = CHOICE_TREE_LABELS.map((l) => `p:\`${l}\``).join(" OR ");
+  const result = await rows(
+    caller,
+    `MATCH (n) WHERE (n:\`Question\` OR (n:\`Choice\` AND n.kind = 'question')) AND ${nodeLive("n")} ` +
+      `OPTIONAL MATCH (p)-[e:PARENT_OF]->(n) WHERE (${isParent}) AND ${edgeLive("e")} AND ${nodeLive("p")} ` +
+      `WITH n, count(p) AS parents WHERE parents = 0 ` +
+      `RETURN n.ref_id AS id, n.text AS text, n.name AS name, n.job AS job, n.made_by AS made_by ` +
+      `ORDER BY coalesce(n.date_added_to_graph, 0) DESC, n.ref_id DESC LIMIT ${BRAINSTORM_LIST_CAP}`,
+    BRAINSTORM_LIST_CAP,
+  );
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    data: result.data.slice(0, BRAINSTORM_LIST_CAP).flatMap((r) => {
+      const id = str(r.id);
+      return id && isRunGraphRefId(id)
+        ? [{ ref_id: id, text: str(r.text) ?? str(r.name) ?? id, job: str(r.job), made_by: str(r.made_by) }]
+        : [];
+    }),
   };
 }

@@ -11,6 +11,7 @@ import {
   describeArtifactEvent,
   formatArtifactEvent,
   formatClaimEvent,
+  jobModelOf,
   jobTitleOf,
   parseArtifactEvent,
   parseClaimEvent,
@@ -66,6 +67,16 @@ describe("jobTitleOf", () => {
     expect(jobTitleOf({ input: { prompt: "p", title: "  " } })).toBe("Job");
     expect(jobTitleOf({ input: { prompt: "p" } })).toBe("Job");
     expect(jobTitleOf({ input: null })).toBe("Job");
+  });
+});
+
+describe("jobModelOf", () => {
+  it("reads the model off a turn's input, else nothing", () => {
+    expect(jobModelOf({ input: { prompt: "p", model: "openai/gpt-5" } })).toBe("openai/gpt-5");
+    expect(jobModelOf({ input: { prompt: "p", model: " " } })).toBeUndefined();
+    expect(jobModelOf({ input: { prompt: "p" } })).toBeUndefined();
+    expect(jobModelOf({ input: null })).toBeUndefined();
+    expect(jobModelOf(null)).toBeUndefined();
   });
 });
 
@@ -161,5 +172,31 @@ describe("forwardableJobUrl (strut plans/live-artifacts.md)", () => {
     expect(forwardableJobUrl("javascript:alert(1)", "j-1")).toBeUndefined();
     expect(forwardableJobUrl("/etc/passwd", "j-1")).toBeUndefined();
     expect(forwardableJobUrl(undefined, "j-1")).toBeUndefined();
+  });
+});
+
+import { describeCaptchaAnswer, formatCaptchaAnswer, parseCaptchaAnswer } from "@/lib/strut-jobs";
+
+describe("captcha answers", () => {
+  it("round-trips taps, text (verbatim, newlines escaped) and skip", () => {
+    const taps = { round: 2, site: "a.com", taps: [{ nx: 0.5, ny: 0.5 }] };
+    expect(parseCaptchaAnswer(formatCaptchaAnswer(taps))).toEqual(taps);
+    const text = { round: 1, site: "a.com", text: " Ab\nC " };
+    const line = formatCaptchaAnswer(text);
+    expect(line.split("\n")).toHaveLength(1);
+    expect(parseCaptchaAnswer(line)).toEqual(text);
+    expect(parseCaptchaAnswer(formatCaptchaAnswer({ round: 1, site: "a.com", skip: true }))).toEqual({ round: 1, site: "a.com", skip: true });
+  });
+
+  it("is null for anything else", () => {
+    for (const bad of [undefined, "hello", "[captcha-answer] {", '[captcha-answer] {"round":1,"site":"a"}', '[captcha-answer] {"site":"a","skip":true}']) {
+      expect(parseCaptchaAnswer(bad)).toBeNull();
+    }
+  });
+
+  it("describes without ever showing the text", () => {
+    expect(describeCaptchaAnswer({ round: 1, site: "a", taps: [{ nx: 0, ny: 0 }, { nx: 1, ny: 1 }, { nx: 1, ny: 0 }] })).toBe("3 taps");
+    expect(describeCaptchaAnswer({ round: 1, site: "a", text: "Hello" })).toBe("text (5 chars)");
+    expect(describeCaptchaAnswer({ round: 1, site: "a", skip: true })).toBe("skipped");
   });
 });
