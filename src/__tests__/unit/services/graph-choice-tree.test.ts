@@ -104,4 +104,53 @@ describe("getChoiceTree", () => {
     mockedQuery.mockResolvedValue({ ok: false, status: 503, message: "down" });
     expect(await getChoiceTree(caller, FOCUS)).toMatchObject({ ok: false, status: 503 });
   });
+
+  describe("effects", () => {
+    const effectRows = [
+      { ref_id: "e1", name: "Low", description: "d", direction: "pro", impact: 0.2 },
+      { ref_id: "e2", name: "High", description: "d", direction: "con", impact: 1.7 },
+      { ref_id: "e3", name: "", description: "", direction: "pro", impact: 0.5 },
+      { ref_id: "e4", name: "Bad dir", direction: "meh", impact: 0.5 },
+      { ref_id: "e5", name: "No impact", direction: "pro", impact: "x" },
+    ];
+    beforeEach(() => {
+      mockedQuery.mockImplementation(async ({ query }) => {
+        if (String(query).includes("AS props")) {
+          return {
+            ok: true,
+            meta,
+            data: {
+              columns: ["effects", "props", "labels", "id"],
+              rows: [
+                [[], [["text", "Q"]], ["Question"], FOCUS],
+                [effectRows, [["text", "A"]], ["Option"], "o1"],
+                [effectRows, [["text", "Q2"]], ["Question"], "q2"],
+                [[], [["text", "B"]], ["Option"], "o2"],
+              ],
+            },
+          };
+        }
+        return { ok: true, meta, data: { columns: ["source", "target"], rows: [] } };
+      });
+    });
+
+    test("maps, sanitizes and sorts effects on options only; keeps them out of the tree walk", async () => {
+      const res = await getChoiceTree(caller, FOCUS);
+      if (!res.ok) throw new Error("expected ok");
+      const by = Object.fromEntries(res.data.nodes.map((n) => [n.ref_id, n]));
+      expect(by.o1.effects).toEqual([
+        { ref_id: "e2", name: "High", description: "d", direction: "con", impact: 1 },
+        { ref_id: "e1", name: "Low", description: "d", direction: "pro", impact: 0.2 },
+        { ref_id: "e5", name: "No impact", description: "", direction: "pro", impact: null },
+      ]);
+      expect(by.q2.effects).toBeUndefined();
+      expect(by[FOCUS].effects).toBeUndefined();
+      expect(by.o2.effects).toBeUndefined();
+      const q = mockedQuery.mock.calls.map(([a]) => String(a.query)).find((x) => x.includes("AS props"))!;
+      expect(q).toContain("HAS_EFFECT");
+      expect(q).toContain("AS effects");
+      expect(q).toContain("`Question`");
+      expect(q).not.toContain("`Effect`");
+    });
+  });
 });
