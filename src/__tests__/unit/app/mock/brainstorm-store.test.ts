@@ -15,7 +15,7 @@ describe("mock brainstorm store", () => {
   test("with no saves the tree is the fixture, stamped with when it was added", () => {
     vi.useFakeTimers({ now: new Date("2026-10-19T12:00:00Z") });
     try {
-      const at = Math.floor(Date.now() / 1000) - 86400 - 3600; // the board mock is a day old
+      const at = Date.now() - 86400000 - 3600000; // the board mock is a day old
       const fixture = mockBoardTree(LABELS);
       const tree = mockChoiceTreeWithWrites(MOCK_BOARD_ROOT, LABELS);
       expect(tree).toEqual({
