@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bot, HelpCircle, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCanvasChatStore } from "../../../_state/canvasChatStore";
+import type { ChoiceEffect } from "@/services/graph/workbench";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 
 /**
@@ -40,6 +41,10 @@ const ACTIONS_H = 30;
 const GAP_H = 4;
 const QUESTION_CHARS_PER_LINE = 28;
 const DETAIL_CHARS_PER_LINE = 40;
+// Selected option's effects: a "Pros" / "Cons" heading, then per effect a name line plus its description lines.
+const EFFECT_HEAD_H = 14;
+const EFFECT_ROW_GAP = 2;
+const EFFECT_CHARS_PER_LINE = 40;
 const REFETCH_MS = 15_000;
 
 /**
@@ -87,12 +92,15 @@ export interface ChoiceItem {
   speaker?: string;
   criteria?: string;
   reversibility?: string;
+  /** An option's pros and cons (`HAS_EFFECT`), highest impact first; absent when it has none. */
+  effects?: ChoiceEffect[];
 }
 interface RawNode {
   ref_id: string;
   properties?: Record<string, unknown>;
   /** `Question`, `Option` or `Choice`, from the node's labels. */
   type?: string;
+  effects?: unknown;
 }
 interface RawEdge {
   source: string;
@@ -116,6 +124,43 @@ const text = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 
 const isQuestionNode = (n: RawNode) => n.type === "Question" || n.properties?.kind === "question";
 const orderKey = (n: RawNode) => n.properties?.option_id ?? n.properties?.choice_id ?? n.properties?.question_id;
+
+/** Defensive client-side copy of the server's sanitising: valid direction and name, impact clamped to 0–1 or null, highest impact first. */
+export function toChoiceEffects(raw: unknown): ChoiceEffect[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ChoiceEffect[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== "object") continue;
+    const r = e as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name.trim() : "";
+    if (!name || (r.direction !== "pro" && r.direction !== "con")) continue;
+    const impact = typeof r.impact === "number" && Number.isFinite(r.impact) ? Math.min(1, Math.max(0, r.impact)) : null;
+    out.push({ ref_id: typeof r.ref_id === "string" ? r.ref_id : name, name, description: typeof r.description === "string" ? r.description : "", direction: r.direction, impact });
+  }
+  return out.sort((a, b) => (b.impact ?? -1) - (a.impact ?? -1));
+}
+
+/** Pros and cons counts, for the compact summary. */
+export const effectCounts = (effects: ChoiceEffect[]) => ({
+  pros: effects.filter((e) => e.direction === "pro").length,
+  cons: effects.filter((e) => e.direction === "con").length,
+});
+/** "80%" for an impact of 0.8; null impact has no label. */
+export const impactPercent = (impact: number | null) => (impact === null ? null : `${Math.round(impact * 100)}%`);
+
+/** Height of the selected-state effects block (headings, name lines, description lines); 0 with no effects. */
+export function effectsHeight(effects: ChoiceEffect[] | undefined, charsPerLine = EFFECT_CHARS_PER_LINE, lineH = LINE_H): number {
+  if (!effects?.length) return 0;
+  const group = (list: ChoiceEffect[]) =>
+    list.length === 0
+      ? 0
+      : EFFECT_HEAD_H +
+        list.reduce((a, e) => a + lineH + (e.description ? Math.max(1, Math.ceil(e.description.length / charsPerLine)) * lineH : 0), 0) +
+        list.length * EFFECT_ROW_GAP;
+  const pros = group(effects.filter((e) => e.direction === "pro"));
+  const cons = group(effects.filter((e) => e.direction === "con"));
+  return pros + cons + (pros && cons ? GAP_H : 0);
+}
 
 const STATES: readonly string[] = ["open", "chosen", "rejected", "simulated", "decided"];
 
@@ -150,6 +195,7 @@ export function buildChoiceTree(nodes: RawNode[], edges: RawEdge[], focus: strin
       speaker: text(p.speaker),
       criteria: text(p.criteria),
       reversibility: text(p.reversibility),
+      ...(!isQuestionNode(self) && toChoiceEffects(self.effects).length ? { effects: toChoiceEffects(self.effects) } : {}),
     });
     const childPrefix = letter ?? inherited;
     const ordered = (kids.get(id) ?? []).filter((c) => !seen.has(c)).sort((a, b) => compareChoiceIds(orderKey(byId.get(a)!), orderKey(byId.get(b)!)));
@@ -170,7 +216,7 @@ export function buildChoiceTree(nodes: RawNode[], edges: RawEdge[], focus: strin
 
 /** Rendered height of a node, from its text length (see the constants above). */
 export function estimateNodeHeight(
-  c: Pick<ChoiceItem, "name" | "quote"> & Partial<Pick<ChoiceItem, "criteria" | "reversibility" | "isQuestion" | "state" | "madeBy" | "speaker">>,
+  c: Pick<ChoiceItem, "name" | "quote"> & Partial<Pick<ChoiceItem, "criteria" | "reversibility" | "isQuestion" | "state" | "madeBy" | "speaker" | "effects">>,
   selected: boolean,
 ): number {
   const lines = (t: string, per = CHARS_PER_LINE) => Math.max(1, Math.ceil(t.length / per));
@@ -182,6 +228,7 @@ export function estimateNodeHeight(
   if ((c.state && c.state !== "open") || c.speaker || c.madeBy) rows.push(DETAILS_H);
   if (c.isQuestion && c.criteria) rows.push(lines(`Criteria: ${c.criteria}`, DETAIL_CHARS_PER_LINE) * LINE_H);
   if (c.isQuestion && c.reversibility) rows.push(lines(`Reversibility: ${c.reversibility}`, DETAIL_CHARS_PER_LINE) * LINE_H);
+  if (!c.isQuestion && c.effects?.length) rows.push(effectsHeight(c.effects));
   rows.push(ACTIONS_H);
   return rows.reduce((a, b) => a + b, 0) + (rows.length - 1) * GAP_H + PAD_H;
 }
@@ -231,6 +278,51 @@ const DOT: Record<ChoiceState, string> = {
   decided: "bg-green-500",
 };
 
+/** Compact "+2 −1" pros/cons counts for an unselected option. */
+function EffectsSummary({ effects }: { effects: ChoiceEffect[] }) {
+  const { pros, cons } = effectCounts(effects);
+  return (
+    <span className="mt-0.5 flex shrink-0 gap-1 text-[10px] font-medium leading-4" data-effects-summary title={`${pros} pro${pros === 1 ? "" : "s"}, ${cons} con${cons === 1 ? "" : "s"}`}>
+      {pros > 0 && <span className="text-green-700 dark:text-green-400">+{pros}</span>}
+      {cons > 0 && <span className="text-destructive">−{cons}</span>}
+    </span>
+  );
+}
+
+/** Read-only pros and cons of the selected option; a list with no rows is omitted. */
+function EffectsList({ effects }: { effects: ChoiceEffect[] }) {
+  return (
+    <div className="flex flex-col gap-1" data-effects>
+      {(["pro", "con"] as const).map((dir) => {
+        const list = effects.filter((e) => e.direction === dir);
+        if (!list.length) return null;
+        const pro = dir === "pro";
+        return (
+          <div key={dir} className="flex flex-col gap-0.5">
+            <div className={cn("text-[10px] font-semibold uppercase leading-[14px]", pro ? "text-green-700 dark:text-green-400" : "text-destructive")}>{pro ? "Pros" : "Cons"}</div>
+            {list.map((e) => (
+              <div key={e.ref_id || e.name} data-effect data-direction={dir} title={e.description || e.name}>
+                <div className="flex items-center gap-1 text-[11px] leading-4">
+                  <span className="min-w-0 flex-1 truncate">{e.name}</span>
+                  {e.impact !== null && (
+                    <>
+                      <span className="h-1 w-8 shrink-0 overflow-hidden rounded bg-muted">
+                        <span className={cn("block h-full", pro ? "bg-green-500" : "bg-red-500")} style={{ width: `${Math.round(e.impact * 100)}%` }} />
+                      </span>
+                      <span className="w-7 shrink-0 text-right text-[10px] text-muted-foreground">{impactPercent(e.impact)}</span>
+                    </>
+                  )}
+                </div>
+                {e.description && <p className="text-[11px] leading-4 text-muted-foreground">{e.description}</p>}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface ChoiceNodeData extends Record<string, unknown> {
   choice: ChoiceItem;
   selected: boolean;
@@ -249,6 +341,7 @@ const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<ChoiceNodeD
     (append ? appendDraft : setDraft)(message);
   };
   const MadeBy = c.madeBy === "user" ? User : Bot;
+  const effects = c.effects ?? [];
   return (
     <div
       className={cn(
@@ -275,6 +368,7 @@ const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<ChoiceNodeD
         {isQuestion && c.state === "decided" && (
           <span className="mt-0.5 shrink-0 rounded bg-green-500/20 px-1 text-[10px] font-normal text-green-700 dark:text-green-400">decided</span>
         )}
+        {!selected && !isQuestion && effects.length > 0 && <EffectsSummary effects={effects} />}
         {!selected && by && (
           <span className="mt-0.5 shrink-0 text-muted-foreground" title={`made by ${by}`}>
             <MadeBy className="h-3 w-3" />
@@ -295,6 +389,7 @@ const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<ChoiceNodeD
           </div>
           {isQuestion && c.criteria && <p className="text-[11px] leading-4 text-muted-foreground">Criteria: {c.criteria}</p>}
           {isQuestion && c.reversibility && <p className="text-[11px] leading-4 text-muted-foreground">Reversibility: {c.reversibility}</p>}
+          {!isQuestion && effects.length > 0 && <EffectsList effects={effects} />}
           <div className="mt-auto flex gap-1">
             <button type="button" className={button} title={isQuestion ? "More options" : undefined} onClick={(e) => act(e, expandDraft(c))}>
               {!isQuestion && c.state === "rejected" ? "Revisit" : "Expand"}
