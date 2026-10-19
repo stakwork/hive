@@ -4,6 +4,7 @@ import { cardActions } from "@/app/org/[githubLogin]/_components/brainstorm-boar
 import {
   placeDesk,
   latestAdded,
+  graphEpochToMs,
   COLUMN_GAP,
   HEADING_ABOVE,
   MIN_COLUMN,
@@ -125,6 +126,30 @@ describe("placeDesk", () => {
     expect(latestAdded([n(100), n("300"), n(200), { properties: {} }])).toBe(300000);
     expect(latestAdded([{ properties: {} }])).toBeUndefined();
     expect(latestAdded(undefined)).toBeUndefined();
+  });
+
+  it("a tree's time accepts ms, numeric-string ms, mixed units and ignores invalid values", () => {
+    const n = (v: unknown) => ({ properties: { date_added_to_graph: v } });
+    expect(latestAdded([n(1792441061009), n(1792441000000)])).toBe(1792441061009);
+    expect(latestAdded([n("1792441061009")])).toBe(1792441061009);
+    expect(latestAdded([n(1792441061), n(1792441061009 - 5000)])).toBe(1792441061000);
+    expect(latestAdded([n(1792441061 + 10), n(1792441061009)])).toBe(1792441071000);
+    expect(latestAdded([n(0), n(-5), n("abc"), n(NaN), n(null), n(undefined)])).toBeUndefined();
+  });
+
+  it("maps a live ms stamp to 2026, not year 58770", () => {
+    const ms = graphEpochToMs(1792441061009)!;
+    expect(ms).toBe(1792441061009);
+    expect(new Date(ms).getFullYear()).toBe(2026);
+  });
+
+  it("several ms-stamped brainstorms on one day share one heading with the right count", () => {
+    const now = new Date(2026, 9, 19, 18).getTime();
+    const at = (h: number) => latestAdded([{ properties: { date_added_to_graph: new Date(2026, 9, 19, h).getTime() } }]);
+    const p = placeDesk([block("a", at(8)), block("b", at(11)), block("c", at(14))], now);
+    expect(p.headings).toHaveLength(1);
+    expect(p.headings[0].count).toBe(3);
+    expect(p.headings[0].title).toBe("Today");
   });
 
   it("labels days", () => {
