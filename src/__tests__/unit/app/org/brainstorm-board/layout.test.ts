@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mockBrainstormList, mockChoiceTree, mockLargeTree, MOCK_LARGE_ROOT } from "@/app/api/mock/graph/workbench-fixture";
 import { buildChoiceTree } from "@/app/org/[githubLogin]/_components/artifacts/viewers/ChoiceTree";
-import { addIdeaDraft, deselectDraft, expandDraft, goWithDraft } from "@/app/org/[githubLogin]/_components/brainstorm-board/actions";
+import { deselectDraft, dropDraft, expandDraft, goWithDraft, reopenDraft } from "@/app/org/[githubLogin]/_components/brainstorm-board/actions";
 import { boardCardHeight, CARD_W, layoutBoard } from "@/app/org/[githubLogin]/_components/brainstorm-board/layout";
 import { matchMember } from "@/app/org/[githubLogin]/_components/brainstorm-board/model";
 
@@ -87,6 +87,7 @@ describe("drafts", () => {
     expect(goWithDraft(o)).toBe(`Go with 2B: "${o.name}" (mock-bl-q2-b)`);
     expect(expandDraft(o)).toBe(`Expand 2B: "${o.name}" (mock-bl-q2-b)`);
     expect(deselectDraft(o)).toBe(`Deselect 2B: "${o.name}" (mock-bl-q2-b)`);
-    expect(addIdeaDraft(item("mock-bl-q2"))).toBe("Add an option under 2: ");
+    expect(dropDraft(o)).toBe(`Drop 2B: "${o.name}" (mock-bl-q2-b)`);
+    expect(reopenDraft(o)).toBe(`Reopen 2B: "${o.name}" (mock-bl-q2-b)`);
   });
 });
