@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import { useStore } from "@xyflow/react";
 
 export const LINEN = "#efe8da";
@@ -31,14 +31,4 @@ export function Linen() {
     backgroundPosition: `${x}px ${y}px`,
   };
   return <div className="pointer-events-none absolute inset-0 -z-10" style={style} data-linen />;
-}
-
-/** Publishes the zoom as `--bb-zoom` on the flow's root element, so cards can counter-scale without re-rendering. */
-export function ZoomVar() {
-  const zoom = useStore((s) => s.transform[2]);
-  const dom = useStore((s) => s.domNode);
-  useEffect(() => {
-    dom?.style.setProperty("--bb-zoom", String(zoom));
-  }, [dom, zoom]);
-  return null;
 }
