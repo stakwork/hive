@@ -1,13 +1,11 @@
 import type { buildChoiceTree, ChoiceItem } from "../artifacts/viewers/ChoiceTree";
 
 /**
- * Pure helpers of the brainstorm board: which zone a node sits in, which
- * branches are ghosts, the chosen path. No React, no DOM.
+ * Pure helpers of the brainstorm board: which branches are ghosts, the
+ * chosen path, who signed a card. No React, no DOM.
  */
 
 export type BoardTree = ReturnType<typeof buildChoiceTree>;
-export type Zone = "built" | "now" | "could";
-export const ZONES: readonly Zone[] = ["built", "now", "could"];
 
 /** A person wrote it: any `made_by` other than "model" (a real login or id may replace "user" later). */
 export const isPerson = (madeBy: string | undefined | null): boolean => madeBy !== "model";
@@ -39,24 +37,6 @@ export function indexOf(tree: BoardTree): Index {
 
 const isOption = (n: ChoiceItem) => !n.isQuestion;
 const decidedQuestion = (n: ChoiceItem | undefined) => !!n && n.isQuestion && n.state === "decided";
-
-/** True when the node or any ancestor is simulated. */
-function underSimulation(id: string, idx: Index): boolean {
-  for (let cur: string | undefined = id; cur; cur = idx.parent.get(cur)) {
-    if (idx.byId.get(cur)?.state === "simulated") return true;
-  }
-  return false;
-}
-
-/** A decided question with every ancestor a decided question or a chosen option. */
-function onChosenPath(id: string, idx: Index): boolean {
-  for (let cur: string | undefined = idx.parent.get(id); cur; cur = idx.parent.get(cur)) {
-    const n = idx.byId.get(cur);
-    if (!n) return false;
-    if (!(decidedQuestion(n) || (isOption(n) && n.state === "chosen"))) return false;
-  }
-  return true;
-}
 
 /**
  * Descendants of the options a decided question did not choose: the
@@ -93,30 +73,6 @@ export function dimmedIds(tree: BoardTree): Set<string> {
   return out;
 }
 
-/**
- * Which zone a node sits in.
- * v1 assumption, see plan: an Option `chosen` under a `decided` Question (and
- * decided questions on the chosen path) is built; `simulated` nodes and
- * everything under them could be; everything else is now. Branches that
- * were not taken (dimmed siblings and their ghost descendants) stay in the
- * zone of the decision they lost to.
- */
-export function zoneOf(node: Pick<ChoiceItem, "id">, tree: BoardTree): Zone {
-  const idx = indexOf(tree);
-  const n = idx.byId.get(node.id);
-  if (!n) return "now";
-  if (underSimulation(n.id, idx)) return "could";
-  if (isOption(n) && n.state === "chosen" && decidedQuestion(idx.byId.get(idx.parent.get(n.id) ?? ""))) return "built";
-  if (decidedQuestion(n) && onChosenPath(n.id, idx)) return "built";
-  if (dimmedIds(tree).has(n.id) || ghostIds(tree).has(n.id)) return "built";
-  return "now";
-}
-
-/** Zone of every item, in one pass. */
-export function zonesOf(tree: BoardTree): Map<string, Zone> {
-  return new Map(tree.items.map((i) => [i.id, zoneOf(i, tree)]));
-}
-
 /** The chosen chain from the root, ending at the first open question (or where the chain stops). */
 export function myPath(tree: BoardTree): string[] {
   const idx = indexOf(tree);
@@ -135,22 +91,6 @@ export function myPath(tree: BoardTree): string[] {
   return path;
 }
 
-/** Whether a could-be node hangs off the chosen path: its topmost simulated ancestor's parent is on it. */
-export function couldOnMyPath(id: string, tree: BoardTree, path: ReadonlySet<string>): boolean {
-  const idx = indexOf(tree);
-  let top = id;
-  for (let cur: string | undefined = id; cur; cur = idx.parent.get(cur)) {
-    if (idx.byId.get(cur)?.state === "simulated") top = cur;
-  }
-  const p = idx.parent.get(top);
-  return !p || path.has(p);
-}
-
-/** The text a signature shows: the speaker, else made_by unless it is the generic "user", else "someone". */
-export function authorName(n: Pick<ChoiceItem, "speaker" | "madeBy">): string {
-  return n.speaker ?? (n.madeBy && n.madeBy !== "user" ? n.madeBy : "someone");
-}
-
 export interface BoardMember {
   id: string;
   name: string | null;
@@ -166,3 +106,6 @@ export function matchMember(members: readonly BoardMember[], n: Pick<ChoiceItem,
     members.find((m) => [m.id, m.githubUsername, m.name].some((v) => v && keys.includes(v.toLowerCase()))) ?? null
   );
 }
+
+/** The name a signature shows for a matched member. */
+export const memberLabel = (m: BoardMember): string => m.name?.trim() || m.githubUsername || m.id;
