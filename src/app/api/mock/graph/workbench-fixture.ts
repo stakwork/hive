@@ -10,6 +10,7 @@ import type {
   ConnectionGroup,
   ConnectionItem,
   BrainstormRoot,
+  ChoiceEffect,
   ChoiceTreeData,
   ConnectionPageArgs,
   Hierarchy,
@@ -223,6 +224,49 @@ export function mockConnectionPage({ refId, edge, outgoing, limit }: ConnectionP
     .slice(0, limit);
 }
 
+
+const fx = (id: string, direction: "pro" | "con", name: string, description: string, impact: number | null): ChoiceEffect =>
+  ({ ref_id: id, direction, name, description, impact });
+
+/** Mock effects by option id; every option not listed has none. */
+const MOCK_EFFECTS: Record<string, ChoiceEffect[]> = {
+  "mock-bb-1a": [
+    fx("fx-bb-1a-1", "pro", "Reuses canvas chrome", "Filters, workspace switcher and auth come for free.", 0.7),
+    fx("fx-bb-1a-2", "pro", "One click from chat", "The tab sits next to the chat that started the job.", 0.5),
+    fx("fx-bb-1a-3", "con", "Crowds the canvas tabs", "Another tab competes for space on small screens.", 0.25),
+  ],
+  "mock-bb-1b": [fx("fx-bb-1b-1", "con", "New route to maintain", "A page of its own needs navigation, auth and tests.", 0.6)],
+  "mock-bb-fqa": [
+    fx("fx-bb-fqa-1", "pro", "No gatekeeping", "Anyone can fix a wrong branch right away.", 0.65),
+    fx("fx-bb-fqa-2", "con", "Accidental deletions", "A teammate may remove a branch someone still needs.", 0.8),
+  ],
+  "mock-bb-fqc": [fx("fx-bb-fqc-1", "pro", "Clear accountability", "One person answers for the tree.", 0.55)],
+  "mock-bl-q2-b": [
+    fx("fx-bl-q2-b-1", "pro", "Low noise", "Developers only see comments on code that matters.", 0.8),
+    fx("fx-bl-q2-b-2", "pro", "Never blocks a merge", "Advisory only, so urgent PRs are not slowed down.", 0.45),
+    fx("fx-bl-q2-b-3", "con", "Tagging upkeep", "Someone must keep the sensitive-path tags current.", 0.2),
+  ],
+  "mock-bl-q2-a": [
+    fx("fx-bl-q2-a-1", "pro", "Covers every push", "Nothing slips past because a path was untagged.", 0.7),
+    fx("fx-bl-q2-a-2", "con", "Adds CI minutes", "Every push waits on one more required job.", 0.6),
+    fx("fx-bl-q2-a-3", "con", "Comment fatigue", "A summary on every PR gets ignored over time.", 0.35),
+  ],
+  "mock-bl-q4-b": [
+    fx("fx-bl-q4-b-1", "pro", "Understands intent", "Catches weakening changes no static rule describes.", 0.75),
+    fx("fx-bl-q4-b-2", "con", "Verdicts can be wrong", "False alarms erode trust in the check.", 0.65),
+  ],
+  "mock-bl-q4-c": [fx("fx-bl-q4-c-1", "pro", "Grounded in real incidents", "Patterns come from fixes we already made.", 0.6)],
+  "mock-bl-q5-c": [
+    fx("fx-bl-q5-c-1", "pro", "One weekly view", "Speed and misses read side by side.", 0.7),
+    fx("fx-bl-q5-c-2", "con", "Needs a dashboard", "Someone has to build and own it.", null),
+  ],
+};
+
+function withMockEffects<T extends { ref_id: string; effects?: ChoiceEffect[] }>(nodes: T[], extra: Record<string, ChoiceEffect[]> = {}): T[] {
+  const all = { ...MOCK_EFFECTS, ...extra };
+  return nodes.map((n) => (all[n.ref_id] ? { ...n, effects: all[n.ref_id] } : n));
+}
+
 /** A small brainstorm tree under `focus`: a root question with sub-questions 1 and 2, options 1A, 1B, 2A, and under 1A a follow-up question with options 1AA and 1AB. */
 export function mockChoiceTree(focus: string, labels: string[] = ["Question", "Option", "Choice"]): ChoiceTreeData {
   // Any node of a board mock opens its own subtree (the board's "Start here").
@@ -259,7 +303,17 @@ export function mockChoiceTree(focus: string, labels: string[] = ["Question", "O
   ]
     .map(([source, target]) => ({ source, target }))
     .filter((e) => ids.has(e.source) && ids.has(e.target));
-  return { nodes, edges, truncated: false };
+  return {
+    nodes: withMockEffects(nodes, {
+      [kid("1a")]: [
+        fx("fx-1a-1", "pro", "Simple to build", "Small change, easy to review.", 0.8),
+        fx("fx-1a-2", "con", "Limited reach", "Only covers the common case.", 0.3),
+      ],
+      [kid("2a")]: [fx("fx-2a-1", "pro", "Fast", "Ships this week.", 0.5)],
+    }),
+    edges,
+    truncated: false,
+  };
 }
 
 /** The root of the brainstorm board mock (`mockBoardTree`). */
@@ -346,7 +400,7 @@ export function mockBoardTree(labels: string[] = ["Question", "Option", "Choice"
   ]
     .map(([source, target]) => ({ source, target }))
     .filter((e) => ids.has(e.source) && ids.has(e.target));
-  return { nodes, edges, truncated: false };
+  return { nodes: withMockEffects(nodes), edges, truncated: false };
 }
 
 /**
@@ -419,7 +473,7 @@ export function mockLargeTree(labels: string[] = ["Question", "Option", "Choice"
   o("mock-bl-q5-b", "mock-bl-q5", "Count weakening changes found by later audits that the check had let through", "model");
   o("mock-bl-q5-c", "mock-bl-q5", "Both numbers on one weekly dashboard, with a budget of two extra minutes per PR", "Bob Dev", "chosen");
 
-  const kept = nodes.filter((n) => labels.includes(n.type));
+  const kept = withMockEffects(nodes).filter((n) => labels.includes(n.type));
   const ids = new Set(kept.map((n) => n.ref_id));
   return { nodes: kept, edges: edges.filter((e) => ids.has(e.source) && ids.has(e.target)), truncated: false };
 }
