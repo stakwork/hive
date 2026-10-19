@@ -271,8 +271,10 @@ function withMockEffects<T extends { ref_id: string; effects?: ChoiceEffect[] }>
 export function mockChoiceTree(focus: string, labels: string[] = ["Question", "Option", "Choice"]): ChoiceTreeData {
   const data = mockChoiceTreeUndated(focus, labels);
   const days = MOCK_DAYS_AGO[focus] ?? mockDaysAgoOf(focus);
-  const at = Math.floor(Date.now() / 1000) - days * 86400 - 3600;
-  // Jarvis stamps `date_added_to_graph` in epoch seconds; the desk's timeline reads it.
+  const ms = Date.now() - days * 86400000 - 3600000;
+  // The live graph stamps `date_added_to_graph` in epoch milliseconds; older nodes used seconds,
+  // so the legacy mock brainstorm keeps seconds. The desk's timeline reads either.
+  const at = days >= LEGACY_SECONDS_DAYS_AGO ? Math.floor(ms / 1000) : ms;
   return {
     ...data,
     nodes: data.nodes.map((n) => ({ ...n, properties: { date_added_to_graph: at, ...n.properties } })),
@@ -283,9 +285,12 @@ export function mockChoiceTree(focus: string, labels: string[] = ["Question", "O
 const MOCK_DAYS_AGO: Record<string, number> = {
   "mock-brainstorm-large": 0,
   "mock-brainstorm-board": 1,
-  "mock-brainstorm-pricing": 4,
+  "mock-brainstorm-pricing": 1, // same day as the board, so that day's heading reads "2 brainstorms"
   "mock-brainstorm-onboarding": 30,
 };
+
+/** Mock brainstorms at least this old are stamped in epoch seconds (legacy format). */
+const LEGACY_SECONDS_DAYS_AGO = 30;
 
 /** A node inside a board mock is as old as its board. */
 function mockDaysAgoOf(id: string): number {
