@@ -2,7 +2,7 @@
  * Where the desk opens, from the link's `?root=` / `?node=`: the brainstorm
  * `root` names (a block key), or the card `root` is inside of, or — with
  * `node` — the card to point at inside `root`'s brainstorm. Anything the desk
- * does not know fits the whole desk.
+ * does not know opens on today (the desk's newest day).
  */
 export type OpeningFocus = { kind: "block"; key: string; card?: string } | { kind: "fit" };
 
