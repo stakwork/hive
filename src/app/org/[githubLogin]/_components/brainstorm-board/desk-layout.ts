@@ -1,8 +1,13 @@
 /**
- * Where each brainstorm sits on the desk: one column per workspace under a
- * handwritten heading, its brainstorms stacked newest first. A brainstorm
- * opened by double-clicking the desk stays where it was opened for the
- * session (nothing is stored). Pure, no React.
+ * Where each brainstorm sits on the desk: a timeline, left to right by day.
+ * A brainstorm's time is the latest time any of its cards was added (or now,
+ * when it has unsaved pencil), so a new branch pulls the whole tree toward
+ * today. Trees are grouped by local calendar day: oldest day on the left,
+ * today on the right, each under a small handwritten day label, its trees
+ * stacked newest first. A day with no trees takes no space, and trees with no
+ * time at all go far left. Workspaces play no part in the layout. A brainstorm
+ * opened by double-clicking the desk stays where it was opened for the session
+ * (nothing is stored). Pure, no React.
  */
 
 export interface DeskBlock {
@@ -10,6 +15,8 @@ export interface DeskBlock {
   ws: string;
   width: number;
   height: number;
+  /** When the brainstorm was last added to, ms since epoch; none sorts it far left. */
+  at?: number;
   /** Top-left where the person opened it, this session. */
   anchor?: { x: number; y: number };
 }
@@ -17,30 +24,60 @@ export interface DeskBlock {
 export interface DeskPlacement {
   /** Top-left of each block. */
   offsets: Record<string, { x: number; y: number }>;
-  /** Each workspace column's heading, top-left. */
-  headings: Array<{ ws: string; x: number; y: number; count: number }>;
-  /** Each column's x range, for "which workspace is this point in". */
-  columns: Array<{ ws: string; x0: number; x1: number }>;
+  /** Each day's label, top-left. `day` is the local date (YYYY-MM-DD), "" for undated. */
+  headings: Array<{ day: string; title: string; x: number; y: number; count: number }>;
+  /** Each day's x range. */
+  columns: Array<{ day: string; x0: number; x1: number }>;
 }
 
-/** Space between brainstorms in a column. */
+/** Space between brainstorms in a day. */
 export const STACK_GAP = 200;
-/** Space between workspace columns. */
+/** Space between days. */
 export const COLUMN_GAP = 420;
-/** The heading sits this far above a column's first brainstorm. */
+/** The label sits this far above a day's first brainstorm. */
 export const HEADING_ABOVE = 260;
-/** A column is at least this wide, so a lone small tree still reads as a column. */
-export const MIN_COLUMN = 900;
+/** A day is at least this wide. */
+export const MIN_COLUMN = 500;
 
-export function placeDesk(blocks: DeskBlock[], wsOrder: string[]): DeskPlacement {
+const pad = (n: number) => String(n).padStart(2, "0");
+const dayKey = (ms: number) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "Today", "Yesterday", else "Mon 13 Oct" (with the year when not this year). */
+export function dayLabel(ms: number, now: number): string {
+  const key = dayKey(ms);
+  if (key === dayKey(now)) return "Today";
+  const y = new Date(now);
+  y.setDate(y.getDate() - 1);
+  if (key === dayKey(y.getTime())) return "Yesterday";
+  const d = new Date(ms);
+  const base = `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  return d.getFullYear() === new Date(now).getFullYear() ? base : `${base} ${d.getFullYear()}`;
+}
+
+export function placeDesk(blocks: DeskBlock[], now: number = Date.now()): DeskPlacement {
   const offsets: DeskPlacement["offsets"] = {};
   const headings: DeskPlacement["headings"] = [];
   const columns: DeskPlacement["columns"] = [];
-  const order = [...new Set([...wsOrder, ...blocks.map((b) => b.ws)])];
+  const days = new Map<string, { at: number; stack: DeskBlock[] }>();
+  const seen = new Set<string>();
+  for (const b of blocks) {
+    if (b.anchor || seen.has(b.key)) continue;
+    seen.add(b.key);
+    const day = b.at === undefined ? "" : dayKey(b.at);
+    const d = days.get(day) ?? { at: b.at ?? 0, stack: [] };
+    d.stack.push(b);
+    days.set(day, d);
+  }
+  // Oldest first; undated ("") first of all. Within a day, newest first (stable on ties).
+  const ordered = [...days.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   let x = 0;
-  for (const ws of order) {
-    const stack = blocks.filter((b) => b.ws === ws && !b.anchor);
-    if (!stack.length) continue;
+  for (const [day, { stack }] of ordered) {
+    stack.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
     let y = 0;
     let width = MIN_COLUMN;
     for (const b of stack) {
@@ -48,20 +85,21 @@ export function placeDesk(blocks: DeskBlock[], wsOrder: string[]): DeskPlacement
       y += b.height + STACK_GAP;
       width = Math.max(width, b.width);
     }
-    headings.push({ ws, x, y: -HEADING_ABOVE, count: stack.length });
-    columns.push({ ws, x0: x, x1: x + width });
+    const title = day ? dayLabel(stack[0].at!, now) : "Undated";
+    headings.push({ day, title, x, y: -HEADING_ABOVE, count: stack.length });
+    columns.push({ day, x0: x, x1: x + width });
     x += width + COLUMN_GAP;
   }
-  for (const b of blocks) if (b.anchor) offsets[b.key] = b.anchor;
+  for (const b of blocks) if (b.anchor && !offsets[b.key]) offsets[b.key] = b.anchor;
   return { offsets, headings, columns };
 }
 
-/** The workspace whose column is under (or nearest to) `x`; the first one when there are none. */
-export function workspaceAt(placement: DeskPlacement, x: number, fallback: string): string {
-  let best: { ws: string; d: number } | null = null;
-  for (const c of placement.columns) {
-    const d = x < c.x0 ? c.x0 - x : x > c.x1 ? x - c.x1 : 0;
-    if (!best || d < best.d) best = { ws: c.ws, d };
+/** The latest `date_added_to_graph` (epoch seconds, number or numeric string) over a tree's cards, in ms. */
+export function latestAdded(nodes: Array<{ properties?: Record<string, unknown> }> | undefined): number | undefined {
+  let best: number | undefined;
+  for (const n of nodes ?? []) {
+    const v = Number(n.properties?.date_added_to_graph);
+    if (Number.isFinite(v) && v > 0 && (best === undefined || v * 1000 > best)) best = v * 1000;
   }
-  return best?.ws ?? fallback;
+  return best;
 }
