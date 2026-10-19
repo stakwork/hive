@@ -155,7 +155,14 @@ export function useControlPanel(githubLogin: string): Omit<ControlPanelListProps
     [githubLogin, activeServerId, activeLocalId],
   );
 
-  const onOpen = useCallback((item: ControlPanelItem) => void openChat(item), [openChat]);
+  // A row click hands focus to the composer so paste/dictation lands in the chat.
+  // Kept out of `openChat` so j/k/arrow navigation leaves focus in the list.
+  const onOpen = useCallback(
+    async (item: ControlPanelItem) => {
+      if (await openChat(item)) useCanvasChatStore.getState().setPendingInputDraft("");
+    },
+    [openChat],
+  );
   const onOpenJob = useCallback(
     async (item: ControlPanelItem, job: ControlPanelJob) => {
       if (await openChat(item)) revealJob(job.id);

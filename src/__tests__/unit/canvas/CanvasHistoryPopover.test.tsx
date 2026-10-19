@@ -350,6 +350,18 @@ describe("CanvasHistoryPopover", () => {
     });
   });
 
+  it("requests composer focus (empty draft) after picking a conversation", async () => {
+    global.fetch = buildFetch(mockItems, { "conv-a": mockConversationDetail });
+    mockSetPendingInputDraft.mockClear();
+
+    render(<CanvasHistoryPopover githubLogin="my-org" />);
+    fireEvent.click(screen.getByTestId("popover-trigger"));
+    await waitFor(() => screen.getByText("Planning session"));
+    fireEvent.click(screen.getByText("Planning session"));
+
+    await waitFor(() => expect(mockSetPendingInputDraft).toHaveBeenCalledWith(""));
+  });
+
   // ── URL sync tests ──────────────────────────────────────────────────────
 
   it("writes ?chat=<item.id> to the URL when a history item is clicked", async () => {
