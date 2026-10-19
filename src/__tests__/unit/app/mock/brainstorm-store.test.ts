@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, vi } from "vitest";
 import {
   mockBrainstormListWithWrites,
   mockBrainstormWrite,
@@ -12,8 +12,19 @@ const LABELS = ["Question", "Option", "Choice"];
 beforeEach(() => resetMockBrainstormStore());
 
 describe("mock brainstorm store", () => {
-  test("with no saves the tree is the fixture", () => {
-    expect(mockChoiceTreeWithWrites(MOCK_BOARD_ROOT, LABELS)).toEqual(mockBoardTree(LABELS));
+  test("with no saves the tree is the fixture, stamped with when it was added", () => {
+    vi.useFakeTimers({ now: new Date("2026-10-19T12:00:00Z") });
+    try {
+      const at = Math.floor(Date.now() / 1000) - 86400 - 3600; // the board mock is a day old
+      const fixture = mockBoardTree(LABELS);
+      const tree = mockChoiceTreeWithWrites(MOCK_BOARD_ROOT, LABELS);
+      expect(tree).toEqual({
+        ...fixture,
+        nodes: fixture.nodes.map((n) => ({ ...n, properties: { date_added_to_graph: at, ...n.properties } })),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("a saved card reads back under its parent, and a saved change applies to a fixture card", () => {
