@@ -9,6 +9,7 @@
 import type {
   ConnectionGroup,
   ConnectionItem,
+  BrainstormRoot,
   ChoiceTreeData,
   ConnectionPageArgs,
   Hierarchy,
@@ -224,6 +225,7 @@ export function mockConnectionPage({ refId, edge, outgoing, limit }: ConnectionP
 
 /** A small brainstorm tree under `focus`: a root question with sub-questions 1 and 2, options 1A, 1B, 2A, and under 1A a follow-up question with options 1AA and 1AB. */
 export function mockChoiceTree(focus: string, labels: string[] = ["Question", "Option", "Choice"]): ChoiceTreeData {
+  if (focus === MOCK_BOARD_ROOT) return mockBoardTree(labels);
   const kid = (n: string) => `${focus}-${n}`;
   const q = (id: string, n: number, text: string, state = "open") =>
     ({ ref_id: id, type: "Question" as const, properties: { question_id: n, text, made_by: "user", state } });
@@ -250,6 +252,80 @@ export function mockChoiceTree(focus: string, labels: string[] = ["Question", "O
     [kid("1a"), kid("fq")],
     [kid("fq"), kid("1aa")],
     [kid("fq"), kid("1ab")],
+  ]
+    .map(([source, target]) => ({ source, target }))
+    .filter((e) => ids.has(e.source) && ids.has(e.target));
+  return { nodes, edges, truncated: false };
+}
+
+/** The root of the brainstorm board mock (`mockBoardTree`); the first of `mockBrainstormList`. */
+export const MOCK_BOARD_ROOT = "mock-brainstorm-board";
+
+/** Three brainstorm roots, newest first; the first is the board mock. */
+export function mockBrainstormList(): BrainstormRoot[] {
+  return [
+    { ref_id: MOCK_BOARD_ROOT, text: "How should teams share brainstorm boards?", job: "job-mock-board", made_by: "user" },
+    { ref_id: "mock-brainstorm-pricing", text: "What should the pricing page lead with?", job: "job-mock-pricing", made_by: "model" },
+    { ref_id: "mock-brainstorm-onboarding", text: "How do we shorten onboarding?", job: null, made_by: "user" },
+  ];
+}
+
+/**
+ * A board-sized brainstorm tree with every state: a decided root by a person
+ * (Tom, with a quote and a job), a decided sub-question with a chosen model
+ * option (1A) and a rejected one (1B), an unchosen option with a follow-up
+ * branch (1C, a ghost), an open follow-up under 1A with three open options
+ * (one by a person, speaker Jamie), and a simulated option with a simulated
+ * follow-up question and options.
+ */
+export function mockBoardTree(labels: string[] = ["Question", "Option", "Choice"]): ChoiceTreeData {
+  const R = MOCK_BOARD_ROOT;
+  const q = (id: string, n: number, props: Record<string, unknown>) =>
+    ({ ref_id: id, type: "Question" as const, properties: { question_id: n, made_by: "model", state: "open", ...props } });
+  const o = (id: string, n: number, props: Record<string, unknown>) =>
+    ({ ref_id: id, type: "Option" as const, properties: { option_id: n, kind: "option", made_by: "model", state: "open", ...props } });
+  const nodes = [
+    q(R, 1, {
+      text: "How should teams share brainstorm boards?",
+      made_by: "user",
+      speaker: "Tom",
+      quote: "I want the whole team to see where a brainstorm stands without opening a chat.",
+      state: "decided",
+      criteria: "Teammates see the same tree; no new infrastructure",
+      reversibility: "two_way",
+      job: "job-mock-board",
+    }),
+    q("mock-bb-q1", 2, { text: "Where should the board live?", state: "decided", criteria: "Close to the chat, one click away", reversibility: "one_way" }),
+    o("mock-bb-1a", 3, { text: "A tab on the org canvas", state: "chosen", criteria: "Reuses the canvas chrome" }),
+    o("mock-bb-1b", 4, { text: "A standalone page per brainstorm", state: "rejected" }),
+    o("mock-bb-1c", 5, { text: "Only inside the chat", state: "open" }),
+    q("mock-bb-1c-q", 6, { text: "Which message holds the card?", criteria: "Stays visible", reversibility: "two_way" }),
+    o("mock-bb-1c-a", 7, { text: "Pin the first message" }),
+    q("mock-bb-fq", 8, { text: "Who may change the tree?", criteria: "Safe for teammates' work", reversibility: "two_way" }),
+    o("mock-bb-fqa", 9, { text: "Anyone in the workspace" }),
+    o("mock-bb-fqb", 10, { text: "Only the person who started the job", made_by: "user", speaker: "Jamie" }),
+    o("mock-bb-fqc", 11, { text: "The workspace owner approves each change", reversibility: "one_way" }),
+    o("mock-bb-fqd", 12, { text: "Live co-editing with cursors", state: "simulated" }),
+    q("mock-bb-sim-q", 13, { text: "How do concurrent edits merge?", state: "simulated", criteria: "No lost branches", reversibility: "one_way" }),
+    o("mock-bb-sim-a", 14, { text: "Last write wins", state: "simulated" }),
+    o("mock-bb-sim-b", 15, { text: "Merge per branch", state: "simulated" }),
+  ].filter((n) => labels.includes(n.type));
+  const ids = new Set(nodes.map((n) => n.ref_id));
+  const edges = [
+    [R, "mock-bb-q1"],
+    ["mock-bb-q1", "mock-bb-1a"],
+    ["mock-bb-q1", "mock-bb-1b"],
+    ["mock-bb-q1", "mock-bb-1c"],
+    ["mock-bb-1c", "mock-bb-1c-q"],
+    ["mock-bb-1c-q", "mock-bb-1c-a"],
+    ["mock-bb-1a", "mock-bb-fq"],
+    ["mock-bb-fq", "mock-bb-fqa"],
+    ["mock-bb-fq", "mock-bb-fqb"],
+    ["mock-bb-fq", "mock-bb-fqc"],
+    ["mock-bb-fq", "mock-bb-fqd"],
+    ["mock-bb-fqd", "mock-bb-sim-q"],
+    ["mock-bb-sim-q", "mock-bb-sim-a"],
+    ["mock-bb-sim-q", "mock-bb-sim-b"],
   ]
     .map(([source, target]) => ({ source, target }))
     .filter((e) => ids.has(e.source) && ids.has(e.target));

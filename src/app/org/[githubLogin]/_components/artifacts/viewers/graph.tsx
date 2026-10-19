@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { GraphWorkbench } from "@/components/graph-workbench";
 import { connectionsQuery } from "@/components/graph-workbench/queries";
@@ -26,6 +27,27 @@ function useProposalDecision(content: ArtifactViewerProps<"graph">["content"]) {
   return status === "approved" || status === "rejected" ? status : null;
 }
 
+/** The org page's Brainstorm tab on this tree. A plain link: the page reads `?view=` once, on mount. */
+export const brainstormBoardHref = (githubLogin: string, workspace: string, root: string) =>
+  `/org/${encodeURIComponent(githubLogin)}?${new URLSearchParams({ view: "canvas", tab: "brainstorm", ws: workspace, root })}`;
+
+function TreeWithBoardLink({ workspace, focus, label }: { workspace: string; focus: string; label?: string }) {
+  const login = useParams<{ githubLogin?: string }>()?.githubLogin;
+  return (
+    <div className="relative h-full">
+      <ChoiceTree workspace={workspace} focus={focus} label={label} />
+      {login && (
+        <a
+          href={brainstormBoardHref(login, workspace, focus)}
+          className="absolute right-2 top-2 z-10 rounded border bg-background/90 px-2 py-0.5 text-xs font-medium hover:bg-accent"
+        >
+          Open board
+        </a>
+      )}
+    </div>
+  );
+}
+
 /**
  * A brainstorm tree (see `isTreeArtifact`), else the graph workbench itself, centred on the artifact's node. A proposal's
  * change is drawn on it until the proposal is decided; after that it shows
@@ -37,7 +59,7 @@ export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) 
   const created = content.changes?.find((c) => c.kind === "node")?.name;
   // An approval lands on what it created, else where the proposal was centred.
   const approvedFocus = [created, content.focus].filter((ref): ref is string => !!ref);
-  if (tree) return content.focus ? <ChoiceTree workspace={content.workspace} focus={content.focus} label={content.label} /> : <NoRoot />;
+  if (tree) return content.focus ? <TreeWithBoardLink workspace={content.workspace} focus={content.focus} label={content.label} /> : <NoRoot />;
   return (
     <div className="h-full">
       <GraphWorkbench
