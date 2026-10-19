@@ -16,6 +16,8 @@ import { ViewerBoundary } from "./chrome";
 import { FoldedArtifacts } from "./FoldedArtifacts";
 import { artifactKind } from "./registry";
 import { useArtifactContent } from "./useArtifactContent";
+import { useOpenArtifact } from "./openArtifact";
+import { useChatOrgLogin } from "./useArtifactPanel";
 
 /** The reading width the artifacts keep under a message. */
 const ARTIFACTS_WIDTH = "max-w-[560px]";
@@ -87,7 +89,7 @@ export const ChatArtifacts = React.memo(
 );
 
 /**
- * A piece's button: it opens the artifact on the panel and is pressed while
+ * A piece's button: it opens the artifact on the panel (a brainstorm tree, on the desk) and is pressed while
  * the panel has it. `View` draws the content, read once the piece has been on
  * screen — and not read at all for a piece that draws none.
  */
@@ -108,13 +110,14 @@ function ChatArtifactButton({
   const seen = useInView(ref, { once: true });
   const state = useArtifactContent(artifact, seen && !!View);
   const identity = artifactIdentity(artifact);
+  const open = useOpenArtifact(useChatOrgLogin());
   const onPanel = useCanvasChatStore((s) => s.artifactPanel?.identity === identity);
   const content = state.status === "ready" ? (state.content as ArtifactContents[ArtifactKind]) : null;
   return (
     <button
       ref={ref}
       type="button"
-      onClick={() => useCanvasChatStore.getState().openArtifactPanel(identity)}
+      onClick={() => open(artifact, content)}
       aria-pressed={onPanel}
       data-artifact-id={artifact.id}
       className={cn("group text-left transition-colors", className, onPanel && pressedClassName)}
