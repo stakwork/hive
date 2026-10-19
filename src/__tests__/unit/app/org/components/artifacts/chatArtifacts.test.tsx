@@ -17,6 +17,15 @@ import { ChatArtifacts } from "@/app/org/[githubLogin]/_components/artifacts/Cha
 import { useCanvasChatStore } from "@/app/org/[githubLogin]/_state/canvasChatStore";
 import { artifactIdentity, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 
+const { mockRouter, nav } = vi.hoisted(() => ({
+  mockRouter: { push: vi.fn(), replace: vi.fn() },
+  nav: { search: "" },
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => mockRouter,
+  usePathname: () => "/org/acme-org",
+  useSearchParams: () => new URLSearchParams(nav.search),
+}));
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/useArtifactPanel", () => ({
   useChatOrgLogin: () => "acme-org",
 }));
@@ -83,7 +92,12 @@ function renderArtifacts(artifacts: ArtifactRef[]) {
 const clickable = (artifact: ArtifactRef) =>
   document.querySelector<HTMLElement>(`[data-artifact-id="${artifact.id}"]`)!;
 
-beforeEach(() => useCanvasChatStore.setState({ artifactPanel: null }));
+beforeEach(() => {
+  useCanvasChatStore.setState({ artifactPanel: null });
+  mockRouter.push.mockClear();
+  mockRouter.replace.mockClear();
+  nav.search = "";
+});
 
 describe("ChatArtifacts", () => {
   test("rows for the PR and the pod, its checks and state, the pod's host", async () => {
@@ -136,5 +150,33 @@ describe("ChatArtifacts", () => {
     fireEvent.click(clickable(pr));
     expect(useCanvasChatStore.getState().artifactPanel).toEqual({ identity: artifactIdentity(pr), version: null });
     expect(clickable(pr).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test("a brainstorm tree card opens the desk, not the panel", () => {
+    nav.search = "view=canvas";
+    const tree: ArtifactRef = {
+      id: "brainstorm-tree",
+      kind: "graph",
+      title: "Brainstorm",
+      source: inline({ workspace: "hive", focus: "root-1", layout: "tree" }),
+    };
+    renderArtifacts([tree]);
+    fireEvent.click(clickable(tree));
+    expect(mockRouter.push).toHaveBeenCalledWith("/org/acme-org?view=canvas&tab=brainstorm&ws=hive&root=root-1");
+    expect(useCanvasChatStore.getState().artifactPanel).toBeNull();
+  });
+
+  test("a graph that is not a tree opens on the panel, without navigating", () => {
+    nav.search = "view=canvas";
+    const graph: ArtifactRef = {
+      id: "graph-1",
+      kind: "graph",
+      title: "Graph",
+      source: inline({ workspace: "hive", focus: "n1" }),
+    };
+    renderArtifacts([graph]);
+    fireEvent.click(clickable(graph));
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    expect(useCanvasChatStore.getState().artifactPanel).toEqual({ identity: artifactIdentity(graph), version: null });
   });
 });
