@@ -38,7 +38,7 @@
  */
 
 import { streamText, ModelMessage, ToolSet, NoSuchToolError } from "ai";
-import type { GraphFocusHint } from "@/lib/canvas/graph-focus";
+import type { BrainstormFocusHint, GraphFocusHint } from "@/lib/canvas/graph-focus";
 import type {
   StreamTextResult,
   OutputInterface,
@@ -339,6 +339,7 @@ export interface RunCanvasAgentOptions {
     currentCanvasBreadcrumb?: string;
     selectedNodeId?: string;
     graphFocus?: GraphFocusHint;
+    brainstormFocus?: BrainstormFocusHint;
   };
   /** User-visible chat messages, in AI SDK ModelMessage[] form. */
   messages: ModelMessage[];
@@ -1319,6 +1320,13 @@ export async function runCanvasAgent(
   //
   // Keep this the final append. Anything inserted after it re-creates
   // the exact problem this fixes.
+  if (canvasScope?.brainstormFocus) {
+    console.log("[runCanvasAgent] brainstorm board", {
+      root: canvasScope.brainstormFocus.rootRefId,
+      job: canvasScope.brainstormFocus.jobId ?? null,
+      orgId: orgId ?? null,
+    });
+  }
   const canvasScopeMessage = buildCanvasScopeMessage(canvasScope);
   const rawMessages: ModelMessage[] = [
     // `prefixMessages` is server-authored: its leading `role:"system"`
@@ -1804,6 +1812,7 @@ export function buildScopeHint(
     linkedWorkspaces:
       linkedWorkspaces.length > 0 ? linkedWorkspaces : undefined,
     graphFocus: scope?.graphFocus,
+    brainstormFocus: scope?.brainstormFocus,
   };
 }
 
