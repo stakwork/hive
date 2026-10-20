@@ -180,7 +180,7 @@ describe("POST /api/strut-runs/webhook", () => {
   describe("a job the orchestrator started inside strut (CALLBACKS.md §4)", () => {
     const JOB = "6f1c0d3e-1111-4222-8333-444455556666";
     const orchestrator = (over: Record<string, unknown> = {}) =>
-      row({ kind: "orchestrator_turn", workflow: "orchestrator", status: "SUCCESS", strutRunId: "1790000000000", ...over });
+      row({ kind: "orchestrator_turn", workflow: "orchestrator", status: "SUCCESS", strutRunId: "1790000000000", liveUpdates: true, ...over });
     const jobEnd = (over: Record<string, unknown> = {}) =>
       body({ workflow: "job", job: JOB, runId: "1790000000777", output: { text: "Shipped.", artifacts: [] }, ...over });
     const adopted = (over: Record<string, unknown> = {}) => ({
@@ -224,6 +224,8 @@ describe("POST /api/strut-runs/webhook", () => {
         input: { prompt: "", title: JOB, workspace: "acme", via: "orchestrator", parentRunId: "row-1" },
         conversationId: "conv-1",
         jobId: JOB,
+        // The turn's jobs inherited its jobCallback: their live updates reach hive.
+        liveUpdates: true,
       });
       // Its own token, not the orchestrator row's.
       expect(call.create.tokenHash).not.toBe(HASH);

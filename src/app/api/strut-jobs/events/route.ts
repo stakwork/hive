@@ -21,10 +21,23 @@
  * for a Verify a person started (`publishVerifiedVersion` decides); the
  * job's agent verifying its own turn ends without a row.
  *
+ * An ORCHESTRATOR turn's launch registers this URL too, with no job of its
+ * own (strut CALLBACKS.md §5): every job the turn starts inside strut
+ * (`job/start`, `job/continue`) inherits it, so one URL serves all of them
+ * and the event is routed by its payload — `job`, and `runId` for the job's
+ * run (`orchestratorJobTurnFor`). A job whose `job_turn` row is not minted
+ * yet (that happens when the orchestrator's run settles; the job reports
+ * from its first step) is forwarded by its id alone: the client keeps
+ * updates per job in memory, so the card picks them up when it appears,
+ * and the update reaches only the conversation the token already opens.
+ * Nothing is buffered — an event is a notification, never the record.
+ *
  * Security mirrors the run webhook: a rate limit before any lookup, the
  * bearer token in the query string (strut sends no custom headers),
  * constant-time hash compare against the row's, and the event must be
- * about the row's own job. NEVER log the raw token or the full URL.
+ * about the row's own job — or, under an orchestrator turn, a job whose
+ * rows are that turn's conversation's. NEVER log the raw token or the
+ * full URL.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -34,9 +47,11 @@ import { timingSafeEqual } from "@/lib/encryption";
 import { notifyCanvasJobUpdate, type CanvasJobUpdate } from "@/lib/pusher";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { JOB_TURN_KIND, forwardableJobUrl } from "@/lib/strut-jobs";
+import { ORCHESTRATOR_TURN_KIND } from "@/lib/strut-orchestrator";
 import { firstJobTurn } from "@/services/strut-jobs";
 import { publishVerifiedVersion } from "@/services/strut-jobs/claims";
 import { hashStrutRunToken } from "@/services/strut-runs";
+import { orchestratorJobTurnFor } from "@/services/strut-runs/orchestrator-jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,7 +59,7 @@ export const dynamic = "force-dynamic";
 /** A Verify's end re-reads the ledger and writes a row: a few seconds at most. */
 export const maxDuration = 60;
 
-/** A frame a second, at most, from one job — and a verify pass's burst of evidence. */
+/** A frame a second, at most, from one job — and a verify pass's burst of evidence. Shared by an orchestrator turn's jobs. */
 const RATE_PER_MINUTE = 240;
 /** `detail` is small by contract (`{ frames: 3 }`); a bigger one is dropped, never forwarded past Pusher's cap. */
 const DETAIL_MAX_CHARS = 4_000;
@@ -88,18 +103,33 @@ export async function POST(request: NextRequest) {
   if (!timingSafeEqual(hashStrutRunToken(rawToken), row.tokenHash)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (row.kind !== JOB_TURN_KIND || !row.jobId) return NextResponse.json({ error: "Not a job turn" }, { status: 400 });
+  const orchestrator = row.kind === ORCHESTRATOR_TURN_KIND;
+  if (!orchestrator && (row.kind !== JOB_TURN_KIND || !row.jobId)) {
+    return NextResponse.json({ error: "Not a job turn" }, { status: 400 });
+  }
 
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Malformed payload" }, { status: 400 });
   const u = parsed.data;
-  // The token vouches for one job: an update about another is refused (4xx: strut does not retry it).
-  if (u.job !== row.jobId) return NextResponse.json({ error: "Job mismatch" }, { status: 400 });
+  const jobId = u.job;
+  // A job turn's token vouches for its one job; an orchestrator turn's, for
+  // the jobs of its conversation. An update about another is refused (4xx:
+  // strut does not retry it).
+  if (orchestrator) {
+    if (!row.conversationId) return NextResponse.json({ error: "Job mismatch" }, { status: 400 });
+    const turn = await orchestratorJobTurnFor(row, jobId, u.runId);
+    if (turn === "foreign") {
+      console.warn("[strut-job-events] update about a job of another conversation refused", { id, job: jobId });
+      return NextResponse.json({ error: "Job mismatch" }, { status: 400 });
+    }
+  } else if (jobId !== row.jobId) {
+    return NextResponse.json({ error: "Job mismatch" }, { status: 400 });
+  }
 
-  const url = forwardableJobUrl(u.url, row.jobId);
+  const url = forwardableJobUrl(u.url, jobId);
   const detail = u.detail && JSON.stringify(u.detail).length <= DETAIL_MAX_CHARS ? u.detail : undefined;
   const update: CanvasJobUpdate = {
-    jobId: row.jobId,
+    jobId,
     swarmId: row.swarmId,
     at: u.at,
     kind: u.kind,
@@ -115,10 +145,10 @@ export async function POST(request: NextRequest) {
   // A Verify that ended: the card's next version, which a detached Verify
   // left to this moment. Awaited — the function may not outlive the response.
   if (u.kind === "verify" && u.state === "done") {
-    const first = await firstJobTurn(row.jobId);
+    const first = await firstJobTurn(jobId);
     if (first) {
       try {
-        await publishVerifiedVersion(first, row.jobId, u.runId ?? null);
+        await publishVerifiedVersion(first, jobId, u.runId ?? null);
       } catch (err) {
         console.warn("[strut-job-events] claims card not published (non-fatal)", { id, error: err instanceof Error ? err.message : String(err) });
       }
