@@ -16,6 +16,8 @@ import {
   clearSaved,
   discard,
   isPencilId,
+  savableKeys,
+  shouldAutoSave,
   setText,
   withPencil,
   type Pencil,
@@ -208,5 +210,21 @@ describe("cardActions", () => {
   it("an unsaved card offers only pencil actions", () => {
     expect(labels(item("open"), true)).toEqual(["Ask a follow-up", "Edit", "Discard"]);
     expect(labels(item("open", true), true)).toEqual(["+ Option", "Edit", "Discard"]);
+  });
+});
+
+describe("auto-save trigger", () => {
+  const mk = (text: string): Pencil =>
+    addCard({}, "root", "ws", "root", { op: "add_option", temp: "t1", parent: "root", text });
+  it("fires when something is pending and no draft is open", () => {
+    expect(shouldAutoSave(mk("Hi"), false)).toBe(true);
+  });
+  it("skips when nothing is pending or a draft is open", () => {
+    expect(shouldAutoSave({}, false)).toBe(false);
+    expect(shouldAutoSave(mk("Hi"), true)).toBe(false);
+  });
+  it("never sends an empty-text card", () => {
+    expect(savableKeys(mk("   "))).toEqual([]);
+    expect(shouldAutoSave(mk(""), false)).toBe(false);
   });
 });
