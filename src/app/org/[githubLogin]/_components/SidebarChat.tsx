@@ -442,8 +442,13 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                 }
                 // A wake the orchestrator answered with the silent marker:
                 // the row is there (the working card hangs on it) and shows
-                // nothing — unless the turn still produced cards.
-                if (message.source?.kind === "orchestrator" && message.source.status === "silent" && !message.artifacts?.length) {
+                // nothing — unless the turn still produced cards or started a job.
+                if (
+                  message.source?.kind === "orchestrator" &&
+                  message.source.status === "silent" &&
+                  !message.artifacts?.length &&
+                  !pendingJobTurns?.length
+                ) {
                   return null;
                 }
 

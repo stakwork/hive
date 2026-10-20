@@ -16,6 +16,7 @@ import {
   orchestratorLaunchRowId,
   orchestratorPrompt,
   orchestratorRowId,
+  parseOrchestratorJobCalls,
   parseStrutProposalBriefs,
   strutProposalRowId,
   strutProposalStepLabel,
@@ -75,6 +76,51 @@ describe("row ids", () => {
     expect(orchestratorRowId("row-1")).toBe("orchestrator-row-1");
     expect(orchestratorLaunchRowId("row-1")).toBe("orchestrator-launch-row-1");
     expect(strutProposalRowId("row-1", "p3f9aKq2")).toBe("orchestrator-row-1-proposal-p3f9aKq2");
+  });
+});
+
+describe("parseOrchestratorJobCalls — the jobs a turn launched, from its event log", () => {
+  const start = (path: string, input: unknown, stepType = "tool:job_start") => ({
+    type: "step.start",
+    path,
+    stepType,
+    input,
+  });
+  const end = (path: string, output: unknown, stepType = "tool:job_start") => ({
+    type: "step.end",
+    path,
+    stepType,
+    output,
+  });
+
+  it("pairs each call's input (the title) with its result (the job and run), in call order", () => {
+    expect(
+      parseOrchestratorJobCalls([
+        { type: "run.start", path: "orchestrator" },
+        start("o/agent/001-job_start", { prompt: "p", title: "Flights" }),
+        end("o/agent/001-job_start", '{"job":"j-1","runId":"r-1","callback":true}'),
+        start("o/agent/002-job_continue", { job: "j-2", prompt: "go on" }, "tool:job_continue"),
+        end("o/agent/002-job_continue", { job: "j-2", runId: "r-2", callback: true }, "tool:job_continue"),
+      ]),
+    ).toEqual([
+      { job: "j-1", runId: "r-1", title: "Flights" },
+      { job: "j-2", runId: "r-2" },
+    ]);
+  });
+
+  it("skips a call that failed, other tools, the journal's own record and junk; a job launched twice keeps its last turn", () => {
+    expect(
+      parseOrchestratorJobCalls([
+        start("a/001-job_start", { title: "X" }),
+        { type: "step.error", path: "a/001-job_start", stepType: "tool:job_start", error: { message: "job_busy" } },
+        end("a/002-graph", '{"job":"j-9","runId":"r-9"}', "tool:graph_search"),
+        { type: "step.end", path: "a#002", output: { job: "j-8", runId: "r-8", callback: true } },
+        end("a/003-job_start", "[… truncated"),
+        null,
+        end("a/004-job_continue", '{"job":"j-1","runId":"r-1"}', "tool:job_continue"),
+        end("a/005-job_continue", '{"job":"j-1","runId":"r-5"}', "tool:job_continue"),
+      ]),
+    ).toEqual([{ job: "j-1", runId: "r-5" }]);
   });
 });
 
