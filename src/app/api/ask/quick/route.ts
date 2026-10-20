@@ -51,6 +51,7 @@ import {
 } from "@/services/canvas-turn-enrichments";
 import { isOwnStoppedTurn, isValidTurnId, registerTurn, watchTurnAbort } from "@/services/canvas-turn-abort";
 import { notifyCanvasUpdated } from "@/lib/canvas/pusher";
+import { runOrchestratorTurn } from "@/services/strut-orchestrator";
 import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
 import { fanOutGraphWalkToCanvas } from "@/services/canvas-graph-walk-fanout";
 import type { PartialStep } from "@/lib/ai/runCanvasAgent";
@@ -106,6 +107,10 @@ export async function POST(request: NextRequest) {
       // Per-browser opt-in to the slim prompt (concept-tree mode), sent by
       // the canvas SidebarChat when its settings switch is on.
       slimPrompt,
+      // Per-browser opt-in to run the turn on strut's `orchestrator`
+      // workflow instead of `runCanvasAgent`, sent the same way
+      // (`strutEnginePreference.ts`, `docs/jamie-engine.md`).
+      strutEngine,
       // Agent-proposal flow (see `src/lib/proposals/`). Set on the
       // user's send when they click Approve / Reject in a
       // `<ProposalCard>`. The route runs the side effect synchronously
@@ -523,6 +528,27 @@ export async function POST(request: NextRequest) {
       });
     }
     console.log("[quick-ask] timing", { stage: "persistCanvasUserMessage", ms: Date.now() - tPersist, workspaces: slugs, orgId: orgId ?? null });
+
+    // ============================================================
+    // Strut orchestrator (`docs/jamie-engine.md`). A persisted org-canvas
+    // turn whose request carries `strutEngine: true` — the per-browser
+    // switch in the chat's ⋯ menu — goes to strut's `orchestrator`
+    // workflow instead of `runCanvasAgent`: the user's row is written
+    // above, the reply lands later as rows through the strut-runs webhook
+    // (`services/strut-orchestrator.ts`). Without the flag everything
+    // below is the default path and runs exactly as before.
+    // ============================================================
+    if (orgId && userId && canvasConversationRowId && strutEngine === true) {
+      console.log("[quick-ask] timing", { stage: "early-exit:strut-orchestrator", ms: Date.now() - t0, workspaces: slugs, orgId });
+      return await runOrchestratorTurn({
+        userId,
+        orgId,
+        conversationId: canvasConversationRowId,
+        message: newUserContent,
+        publicBaseUrl: getBaseUrl(request.headers.get("host")),
+        timeZone: userTimezone,
+      });
+    }
 
     // ============================================================
     // Per-turn Stop control (the composer's Stop button). Only for a
