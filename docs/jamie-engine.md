@@ -110,6 +110,17 @@ and its resolved artifacts.
    Every later turn of such a job that hive launches — an event's, a card's
    — carries `via: "orchestrator"` forward from the first.
 
+   **While it works.** The orchestrator turn that launched the job usually
+   settles first (`job/start` returns at once). Its handler reads the run's
+   event log (`GET …/runs/<runId>/events`), picks out each `tool:job_start`
+   / `tool:job_continue` call (`parseOrchestratorJobCalls`), mints that job
+   run's `job_turn` row PENDING through the same upsert
+   (`services/strut-runs/orchestrator-jobs.ts`), and puts the jobs on the
+   reply row as `source.jobs: [{ jobId, title, runId }]`. The chat hangs a
+   running `PendingJobTurnCard` under the reply until `job-<runId>` lands —
+   so a job that beat the reply draws nothing. A log strut cannot serve
+   delivers the reply without the card.
+
 2. **The wake goes to the orchestrator** (`src/services/strut-orchestrator-wake.ts`).
    Where a hive-launched job's row wakes the canvas agent to summarize it,
    a row marked `via: "orchestrator"` launches one turn of strut's
@@ -144,7 +155,8 @@ Known gaps:
 - **No live strip.** Strut registers a `jobCallback` only on a launch hive
   makes; a job started inside strut has none, so its live updates (shots,
   a recording, a pod, a check's verdict) never reach `/api/strut-jobs/events`.
-  The reply lands whole when the turn ends.
+  The running card shows (above), but its strip stays empty until the reply
+  lands whole.
 - **PR attribution.** A hive-launched job pushes the owner's GitHub token
   to strut as the actor's secret before each turn. A strut-started job's
   first turn had no such push, so a pull request it opens is attributed to
