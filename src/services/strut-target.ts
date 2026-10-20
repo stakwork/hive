@@ -19,6 +19,7 @@
  * | `chat`           | the org default too — see below                         |
  * | `system_map`     | the org default (the workflow is authored in that embed) |
  * | `job`            | the org default (a job's files + thread live on one strut) |
+ * | `orchestrator`   | the org default (Jamie on strut: one session per conversation) |
  * | `benchmark`      | the workspace's OWN swarm (what this caller always did) |
  * | `workspace_embed`| the workspace's OWN swarm (`/w/[slug]/strut`'s embed)    |
  *
@@ -55,7 +56,8 @@ export type StrutPurpose =
   | "embed"
   | "system_map"
   | "workspace_embed"
-  | "job";
+  | "job"
+  | "orchestrator";
 
 /** Where each purpose runs. `org-default` = the org's default workspace swarm. */
 const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
@@ -71,6 +73,11 @@ const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
   // job runs where `chat` does — the org default — and follows it if the
   // `chat` row moves.
   job: "org-default",
+  // Jamie on strut's `orchestrator` workflow (`services/strut-orchestrator.ts`,
+  // the chat's per-browser "Strut orchestrator" switch): one conversation is one strut
+  // session, so a turn runs where `chat` and `job` do — the org default —
+  // and follows them if they move.
+  orchestrator: "org-default",
   benchmark: "workspace",
   // `/w/[slug]/strut`'s embed: the workspace's OWN swarm, never the org
   // default. `benchmark` already resolves to `"workspace"`, but a named

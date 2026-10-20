@@ -104,7 +104,24 @@ describe("launchJobTurn", () => {
     mockStrutRunFindFirst.mockResolvedValue({ id: "row-1", input: { prompt: "p", title: "T", model: "openai/gpt-5" } });
     await launchJobTurn(target, { jobId: JOB, title: "T", prompt: "p", started: false, model: "claude-opus-4-1" });
     expect(mockDispatch.mock.calls[0][0]).toMatchObject({ params: { model: "claude-opus-4-1" } });
+    // A hive-launched job: no mark on the later turn either.
+    expect(mockDispatch.mock.calls[0][0].input).not.toHaveProperty("via");
+  });
+
+  it("a later turn of a job the orchestrator started carries the mark, so its reply wakes the orchestrator", async () => {
+    mockStrutRunFindFirst.mockResolvedValue({
+      id: "row-1",
+      input: { prompt: "", title: JOB, workspace: "acme", via: "orchestrator", parentRunId: "orch-row" },
+    });
+    await launchJobTurn(target, { jobId: JOB, title: "T", prompt: LINE, started: false, event: true, model: "claude-opus-4-1" });
+    expect(mockDispatch.mock.calls[0][0].input).toMatchObject({ via: "orchestrator", model: "claude-opus-4-1" });
+    expect(mockDispatch.mock.calls[0][0].input).not.toHaveProperty("parentRunId");
+    // A first turn reads nothing and carries nothing.
+    mockDispatch.mockClear();
+    mockStrutRunFindFirst.mockClear();
+    await launchJobTurn(target, { jobId: JOB, title: "T", prompt: "p", started: true });
     expect(mockStrutRunFindFirst).not.toHaveBeenCalled();
+    expect(mockDispatch.mock.calls[0][0].input).not.toHaveProperty("via");
   });
 
   it("a job whose first turn ran on strut's default sends no params", async () => {

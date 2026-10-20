@@ -1641,7 +1641,7 @@ function CodeChangeMeta({
 // ─── Graph write proposal meta components ─────────────────────────────────
 
 /** Compact body for a create-node proposal: workspace, type, and node_data. */
-function GraphNodeCreateMeta({
+export function GraphNodeCreateMeta({
   proposal,
 }: {
   proposal: Extract<ProposalOutput, { kind: "graphNodeCreate" }>;
@@ -1742,7 +1742,7 @@ function GraphNodeEditMeta({
 }
 
 /** Compact body for a single triplet proposal: source —EDGE→ target. */
-function GraphTripletCreateMeta({
+export function GraphTripletCreateMeta({
   proposal,
 }: {
   proposal: Extract<ProposalOutput, { kind: "graphTripletCreate" }>;
@@ -1777,7 +1777,7 @@ function GraphTripletCreateMeta({
  * When approval items are present (post-approval), shows per-row
  * created / already-existed / failed state (partial-success).
  */
-function GraphBatchTripletCreateMeta({
+export function GraphBatchTripletCreateMeta({
   proposal,
   approvalItems,
 }: {
@@ -1857,7 +1857,7 @@ function GraphNodeLabel({ name, refId }: { name?: string; refId: string }) {
 }
 
 /** Compact body for an edge-delete proposal: source —EDGE→ target, struck through. */
-function GraphEdgeDeleteMeta({
+export function GraphEdgeDeleteMeta({
   proposal,
 }: {
   proposal: Extract<ProposalOutput, { kind: "graphEdgeDelete" }>;
@@ -1881,7 +1881,7 @@ function GraphEdgeDeleteMeta({
 }
 
 /** Compact body for a node-move proposal: the node, the parent it leaves, the parent it joins. */
-function GraphNodeMoveMeta({
+export function GraphNodeMoveMeta({
   proposal,
 }: {
   proposal: Extract<ProposalOutput, { kind: "graphNodeMove" }>;
