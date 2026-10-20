@@ -18,7 +18,9 @@
  *     an error row appends without reading strut;
  *   - the wake: once the row is appended (not on a replay, not without a
  *     conversation) the canvas agent is woken after the response with the
- *     outcome, the question, the cards and the callback's host;
+ *     outcome, the question, the cards and the callback's host; a turn of
+ *     a job the orchestrator started (`via: "orchestrator"`) wakes the
+ *     orchestrator instead, with the reply text, and never hive's agent;
  *   - the trace card: a successful turn that touched the graph carries a
  *     `run_graph` ref after the job's own, one id per job, counted from the
  *     run's log within a bounded read — never indexed, never named to the
@@ -42,6 +44,7 @@ const {
   mockNotifyRunActive,
   mockWorkspaceFindUnique,
   mockWake,
+  mockOrchestratorWake,
   mockIndex,
   mockPending,
   mockRequeue,
@@ -64,6 +67,7 @@ const {
     mockNotifyRunActive: vi.fn(),
     mockWorkspaceFindUnique: vi.fn(),
     mockWake: vi.fn(),
+    mockOrchestratorWake: vi.fn(),
     mockIndex: vi.fn(),
     mockPending: vi.fn(),
     mockRequeue: vi.fn(),
@@ -82,6 +86,7 @@ vi.mock("@/lib/db", () => ({
   db: { $transaction: mockTransaction, workspace: { findUnique: mockWorkspaceFindUnique }, strutRun: { findMany: mockTurns } },
 }));
 vi.mock("@/services/canvas-strut-autoturn", () => ({ invokeCanvasAgentOnJobTurn: mockWake }));
+vi.mock("@/services/strut-orchestrator-wake", () => ({ invokeOrchestratorOnJobTurn: mockOrchestratorWake }));
 vi.mock("@/services/strut-jobs/artifact-events", () => ({
   indexJobArtifacts: mockIndex,
   launchPendingArtifactEvents: mockPending,
@@ -154,6 +159,7 @@ beforeEach(() => {
   mockNotifyRunActive.mockResolvedValue(undefined);
   mockWorkspaceFindUnique.mockResolvedValue({ slug: "acme" });
   mockWake.mockResolvedValue(undefined);
+  mockOrchestratorWake.mockResolvedValue(undefined);
   mockIndex.mockResolvedValue(0);
   mockPending.mockResolvedValue("none");
   mockRequeue.mockResolvedValue(false);
@@ -604,6 +610,66 @@ describe("handleJobTurnSettled — the wake", () => {
     await handleJobTurnSettled(row({ id: "row-3" }));
     await flushAfter();
     expect(mockWake).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleJobTurnSettled — the wake of a job the orchestrator started", () => {
+  const adopted = (over: Record<string, unknown> = {}) =>
+    row({ input: { prompt: "", title: "Dark mode", workspace: "acme", via: "orchestrator", parentRunId: "orch-row" }, ...over });
+
+  it("wakes the orchestrator after the response, with the reply text inline, and never hive's agent", async () => {
+    mockFetch.mockResolvedValue(json(200, { artifacts: [{ id: "plan", kind: "markdown", title: "Plan", url: `/jobs/${JOB}/files/plan.md` }] }));
+    await handleJobTurnSettled(adopted({ output: { text: "Wrote the plan.", ask: { message: "Which repo?" } } }), { publicBaseUrl: "https://hive.example.com" });
+    expect(mockOrchestratorWake).not.toHaveBeenCalled();
+    await flushAfter();
+    expect(mockWake).not.toHaveBeenCalled();
+    expect(mockOrchestratorWake).toHaveBeenCalledTimes(1);
+    expect(mockOrchestratorWake).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      wakeId: "job-row-1",
+      workspaceSlug: "acme",
+      jobId: JOB,
+      title: "Dark mode",
+      outcome: "success",
+      ask: "Which repo?",
+      text: "Wrote the plan.",
+      artifacts: [{ title: "Plan", kind: "markdown" }],
+      publicBaseUrl: "https://hive.example.com",
+    });
+    // The row itself landed like any job's.
+    const messages = (mockTx.sharedConversation.update.mock.calls[0][0] as { data: { messages: Array<Record<string, unknown>> } }).data.messages;
+    expect(messages[0]).toMatchObject({ id: "job-row-1", source: { kind: "job", jobId: JOB, status: "success" } });
+  });
+
+  it("a failed turn and an event's turn reach the orchestrator too; a replay wakes nothing", async () => {
+    await handleJobTurnSettled(adopted({ id: "row-2", status: StrutRunStatus.ERROR, output: null, error: "boom" }));
+    await flushAfter();
+    expect(mockOrchestratorWake.mock.calls[0][0]).toMatchObject({ wakeId: "job-row-2", outcome: "error", text: expect.stringContaining("boom") });
+
+    mockOrchestratorWake.mockClear();
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    const line = "[artifact-event] pull_request https://github.com/acme/app/pull/7 merged";
+    await handleJobTurnSettled(adopted({ id: "row-3", input: { prompt: line, title: "Dark mode", via: "orchestrator" } }));
+    await flushAfter();
+    expect(mockOrchestratorWake.mock.calls[0][0]).toMatchObject({
+      wakeId: "job-row-3",
+      event: { kind: "pull_request", url: "https://github.com/acme/app/pull/7", what: "merged" },
+    });
+
+    mockOrchestratorWake.mockClear();
+    mockTx.$queryRaw.mockResolvedValue([{ messages: [{ id: "job-row-1", role: "assistant", content: "earlier" }] }]);
+    await handleJobTurnSettled(adopted());
+    await flushAfter();
+    expect(mockOrchestratorWake).not.toHaveBeenCalled();
+    expect(mockWake).not.toHaveBeenCalled();
+  });
+
+  it("a hive-launched job still wakes hive's agent, never the orchestrator", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row());
+    await flushAfter();
+    expect(mockWake).toHaveBeenCalledTimes(1);
+    expect(mockOrchestratorWake).not.toHaveBeenCalled();
   });
 });
 

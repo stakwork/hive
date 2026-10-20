@@ -146,6 +146,7 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_climb: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   job_turn: async () => (await import("./strut-runs/job-turn")).handleJobTurnSettled,
+  orchestrator_turn: async () => (await import("./strut-runs/orchestrator-turn")).handleOrchestratorTurnSettled,
 };
 
 export function hashStrutRunToken(token: string): string {

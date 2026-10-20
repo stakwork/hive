@@ -31,6 +31,13 @@
  * Past `MAX_CONSECUTIVE_STRUT_DISPATCHES` launches — chat dispatches and
  * job turns alike — with no human message in between, the wake is skipped
  * and the user takes it from there.
+ *
+ * The gates are one function, `runGatedAutoTurn`: kill switch, claim,
+ * owner opt-in, idempotency and the loop breaker around whatever the wake
+ * runs. The canvas agent's wakes here run `runCanvasAgent`; the wake of a
+ * job strut's orchestrator started (`strut-orchestrator-wake.ts`) runs a
+ * turn of strut's orchestrator through the same gate, with its own
+ * idempotency mark and its own count of the loop's rounds.
  */
 
 import { tool, type ModelMessage, type ToolSet } from "ai";
@@ -286,8 +293,46 @@ export async function invokeCanvasAgentOnJobTurn(args: JobAutoTurnArgs): Promise
 
 // ─── The turn ─────────────────────────────────────────────────────────────
 
-async function invokeWake(wake: Wake): Promise<void> {
-  const { tag, conversationId, wakeId, about } = wake;
+// ─── The gate ─────────────────────────────────────────────────────────────
+
+/** The conversation as the gate found it — what a wake's turn runs on. */
+export interface GatedConversation {
+  /** The owner: the turn acts AS this user. */
+  userId: string;
+  orgId: string;
+  /** The conversation's own workspace slug, when it has one. */
+  workspaceSlug: string | null;
+  settings: unknown;
+  messages: StoredMessage[];
+}
+
+/** What every wake is gated on, whatever it runs. */
+export interface AutoTurnGate {
+  /** Log prefix. */
+  tag: string;
+  conversationId: string;
+  /** The claim + idempotency key. */
+  wakeId: string;
+  /** What this wake is about — logged with every line. */
+  about: Record<string, unknown>;
+  /** This wake's output is already in the conversation (its permanent dedup). */
+  alreadyHandled: (messages: StoredMessage[]) => boolean;
+  /** Rounds of the loop in the transcript tail — past `MAX_CONSECUTIVE_STRUT_DISPATCHES` the wake is skipped. */
+  trailingLaunches: (messages: StoredMessage[]) => number;
+}
+
+/**
+ * Run a wake behind the gates (file header): the master kill switch, the
+ * per-conversation claim, an owner + org scoped conversation, the owner's
+ * opt-in, the wake's own idempotency mark, the loop breaker. `run` is the
+ * turn itself; whatever it throws is logged, never thrown. The claim is
+ * released either way.
+ */
+export async function runGatedAutoTurn(
+  gate: AutoTurnGate,
+  run: (conversation: GatedConversation) => Promise<void>,
+): Promise<void> {
+  const { tag, conversationId, wakeId, about } = gate;
 
   if (process.env.CANVAS_AUTONOMOUS_TURNS_ENABLED === "false") {
     console.log(`[${tag}] skipped (master kill switch)`, { conversationId, wakeId });
@@ -301,7 +346,8 @@ async function invokeWake(wake: Wake): Promise<void> {
       console.log(`[${tag}] already claimed/handled; skipping`, { conversationId, wakeId });
       return;
     }
-    await runWake(wake);
+    const conversation = await loadGatedConversation(gate);
+    if (conversation) await run(conversation);
   } catch (e) {
     console.error(`[${tag}] failed (non-fatal):`, {
       conversationId,
@@ -318,8 +364,9 @@ async function invokeWake(wake: Wake): Promise<void> {
   }
 }
 
-async function runWake(wake: Wake): Promise<void> {
-  const { tag, conversationId, wakeId, workspaceSlug, about } = wake;
+/** The conversation, if the wake may run on it (null = a gate said no, logged). */
+async function loadGatedConversation(gate: AutoTurnGate): Promise<GatedConversation | null> {
+  const { tag, conversationId, wakeId, about } = gate;
 
   const conversation = await db.sharedConversation.findUnique({
     where: { id: conversationId },
@@ -334,34 +381,60 @@ async function runWake(wake: Wake): Promise<void> {
   });
   if (!conversation?.userId || !conversation.sourceControlOrgId) {
     console.log(`[${tag}] conversation gone or not owner+org scoped; skipping`, { conversationId });
-    return;
+    return null;
   }
   if (!conversation.user?.canvasAutonomousTurns) {
     console.log(`[${tag}] skipped (autonomous turns off)`, { conversationId });
-    return;
+    return null;
   }
 
-  const storedMessages = Array.isArray(conversation.messages)
-    ? (conversation.messages as unknown as StoredMessage[])
-    : [];
+  const messages = Array.isArray(conversation.messages) ? (conversation.messages as unknown as StoredMessage[]) : [];
 
-  const idPrefix = `autoturn-${wakeId}-`;
-  if (storedMessages.some((m) => m.id?.startsWith?.(idPrefix))) return;
+  if (gate.alreadyHandled(messages)) return null;
 
-  const trailing = countTrailingStrutDispatches(storedMessages);
+  const trailing = gate.trailingLaunches(messages);
   if (trailing >= MAX_CONSECUTIVE_STRUT_DISPATCHES) {
     console.error(
       `[${tag}] LOOP BREAKER tripped — too many consecutive strut launches with no human message between; skipping this wake.`,
       { conversationId, wakeId, ...about, trailing },
     );
-    return;
+    return null;
   }
+
+  return {
+    userId: conversation.userId,
+    orgId: conversation.sourceControlOrgId,
+    workspaceSlug: conversation.workspace?.slug ?? null,
+    settings: conversation.settings,
+    messages,
+  };
+}
+
+async function invokeWake(wake: Wake): Promise<void> {
+  const idPrefix = `autoturn-${wake.wakeId}-`;
+  await runGatedAutoTurn(
+    {
+      tag: wake.tag,
+      conversationId: wake.conversationId,
+      wakeId: wake.wakeId,
+      about: wake.about,
+      alreadyHandled: (messages) => messages.some((m) => m.id?.startsWith?.(idPrefix)),
+      trailingLaunches: countTrailingStrutDispatches,
+    },
+    (conversation) => runWake(wake, conversation),
+  );
+}
+
+async function runWake(wake: Wake, conversation: GatedConversation): Promise<void> {
+  const { tag, conversationId, wakeId, workspaceSlug, about } = wake;
+  const storedMessages = conversation.messages;
+  const idPrefix = `autoturn-${wakeId}-`;
 
   // The slug set the user-driven canvas chat used, plus the launch's
   // workspace. Deduped, capped at 20 — as in the planner wake.
   const settings = (conversation.settings ?? {}) as { extraWorkspaceSlugs?: unknown; promptConcepts?: unknown };
   const slugSet = new Set<string>();
-  if (conversation.workspace?.slug) slugSet.add(conversation.workspace.slug);
+  if (conversation.workspaceSlug) slugSet.add(conversation.workspaceSlug);
   if (Array.isArray(settings.extraWorkspaceSlugs)) {
     for (const s of settings.extraWorkspaceSlugs) if (typeof s === "string") slugSet.add(s);
   }
@@ -375,7 +448,7 @@ async function runWake(wake: Wake): Promise<void> {
 
   const { result, cacheableConcepts, cacheHit } = await runCanvasAgent({
     userId: conversation.userId,
-    orgId: conversation.sourceControlOrgId,
+    orgId: conversation.orgId,
     workspaceSlugs,
     messages: [...toModelMessages(storedMessages), wake.message],
     cachedConcepts,
