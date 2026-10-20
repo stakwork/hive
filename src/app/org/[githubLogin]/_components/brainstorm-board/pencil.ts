@@ -119,3 +119,10 @@ export function withPencil(raw: RawTree | undefined, batch: PencilBatch | undefi
   });
   return { nodes, edges };
 }
+
+/** Batches that can be saved: every card has text (an empty card is never sent). */
+export const savableKeys = (p: Pencil): string[] =>
+  Object.keys(p).filter((k) => p[k].ops.length > 0 && p[k].ops.every((o) => o.text.trim()));
+
+/** Auto-save when something is pending and no draft is open (an open draft may hang off a pencil card whose id would change). */
+export const shouldAutoSave = (p: Pencil, draftOpen: boolean): boolean => !draftOpen && savableKeys(p).length > 0;
