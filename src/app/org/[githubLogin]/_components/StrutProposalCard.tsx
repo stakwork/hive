@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Lightbulb, Loader2, RotateCcw, X } from "lucide-react";
-import type { CanvasChatMessage } from "../_state/canvasChatStore";
+import { Check, Lightbulb, Loader2, Network, RotateCcw, X } from "lucide-react";
+import { useCanvasChatStore, type CanvasChatMessage } from "../_state/canvasChatStore";
+import { proposalGraphArtifact } from "../_state/proposalGraphArtifacts";
 import {
   strutProposalStepLabel,
   strutProposalToOutput,
@@ -227,6 +228,13 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
   const rationale = proposal?.rationale ?? source.rationale;
   const look = STATUS[status] ?? STATUS.pending;
   const canDecide = load.state === "ready" && (status === "pending" || status === "failed");
+  // A graph change is looked at on the graph: the same artifact the in-process
+  // proposal cards open, derived from the strut input (parent, new node, edges).
+  const graphArtifact = useMemo(() => {
+    if (!proposal) return null;
+    const output = strutProposalToOutput(proposal.step, proposal.input, proposal.workspaceSlug ?? "");
+    return output ? proposalGraphArtifact({ ...output, proposalId: proposal.id, rationale: proposal.rationale }) : null;
+  }, [proposal]);
   const dimmed = status === "rejected" || status === "applied";
 
   return (
@@ -273,40 +281,56 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
             </p>
           )}
           {notice && <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-300">{notice}</p>}
-          {canDecide && (
+          {(canDecide || graphArtifact) && (
             <div className="mt-1 flex items-center justify-end gap-1">
-              <button
-                type="button"
-                onClick={() => void decide("accept")}
-                disabled={deciding !== null}
-                title={status === "failed" ? "Accept again" : "Approve"}
-                aria-label={status === "failed" ? "Accept again" : "Approve"}
-                className="flex h-6 items-center justify-center gap-1 rounded px-1 text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
-              >
-                {deciding === "accept" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : status === "failed" ? (
-                  <RotateCcw className="h-3.5 w-3.5" />
-                ) : (
-                  <Check className="h-3.5 w-3.5" />
-                )}
-                {status === "failed" && <span className="text-[11px]">Accept again</span>}
-              </button>
-              {status === "pending" && (
+              {graphArtifact && (
                 <button
                   type="button"
-                  onClick={() => void decide("reject")}
-                  disabled={deciding !== null}
-                  title="Reject"
-                  aria-label="Reject"
-                  className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
+                  onClick={() => useCanvasChatStore.getState().openLiveArtifact(graphArtifact)}
+                  title="Open in graph"
+                  aria-label="Open in graph"
+                  className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                  data-testid="proposal-open-in-graph"
                 >
-                  {deciding === "reject" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <X className="h-3.5 w-3.5" />
-                  )}
+                  <Network className="h-3.5 w-3.5" />
                 </button>
+              )}
+              {canDecide && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void decide("accept")}
+                    disabled={deciding !== null}
+                    title={status === "failed" ? "Accept again" : "Approve"}
+                    aria-label={status === "failed" ? "Accept again" : "Approve"}
+                    className="flex h-6 items-center justify-center gap-1 rounded px-1 text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
+                  >
+                    {deciding === "accept" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : status === "failed" ? (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                    {status === "failed" && <span className="text-[11px]">Accept again</span>}
+                  </button>
+                  {status === "pending" && (
+                    <button
+                      type="button"
+                      onClick={() => void decide("reject")}
+                      disabled={deciding !== null}
+                      title="Reject"
+                      aria-label="Reject"
+                      className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
+                    >
+                      {deciding === "reject" ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <X className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
