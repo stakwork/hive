@@ -36,6 +36,8 @@ import {
   clearSaved,
   discard,
   isPencilId,
+  savableKeys,
+  shouldAutoSave,
   newTempId,
   setText,
   withPencil,
@@ -367,15 +369,29 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
 
   const pencilRef = useRef(pencil);
   pencilRef.current = pencil;
+  const queued = useRef(false);
+  /** Save button, ⌘S and auto-save all come through here; one save at a time, one more queued behind it. */
   const saveAll = useCallback(async () => {
-    if (saving.current) return;
+    if (saving.current) {
+      queued.current = true;
+      return;
+    }
     saving.current = true;
     try {
-      for (const key of Object.keys(pencilRef.current)) await saveBatch(key, pencilRef.current);
+      do {
+        queued.current = false;
+        for (const key of savableKeys(pencilRef.current)) await saveBatch(key, pencilRef.current);
+      } while (queued.current);
     } finally {
       saving.current = false;
     }
   }, [saveBatch]);
+
+  // Auto-save: once a card edit is committed (no draft open) or the selection moves on.
+  useEffect(() => {
+    if (shouldAutoSave(pencil, draft !== null)) void saveAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pencil, draft, selected]);
 
   const startNewBox = useCallback(
     (at: XY) => {
