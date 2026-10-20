@@ -12,6 +12,18 @@
  * ROW's `kind` picks the handler that validates it. Routing (workspace,
  * conversation, proposal, swarm) comes from the row, never the payload.
  *
+ * One payload is not the row's own run: a JOB strut's orchestrator started
+ * inside strut (`job/start`, strut CALLBACKS.md §4 "A job your run
+ * started"). That job's run carries the ORCHESTRATOR turn's callback, so
+ * its `run.end` lands here with `workflow: "job"` and the job id, under an
+ * `orchestrator_turn` row. Hive launched nothing, so no row exists for it;
+ * the webhook ADOPTS it — a `job_turn` row minted for (swarm, run id),
+ * routed from the orchestrator row, settled through the same
+ * `completeStrutRun` — and the job's reply, cards and reader links land
+ * exactly as a hive-launched job's do (`services/strut-runs/job-turn.ts`).
+ * Only `job` and `runId` are read off the payload for that; a replay finds
+ * the row it minted and takes the settled path.
+ *
  * Security mirrors `/api/agent-runs/webhook/strut`: rate limit before any
  * lookup, bearer token in the query string (strut sends no custom
  * headers), constant-time hash compare, and a token-gated idempotent claim
@@ -21,11 +33,14 @@
  * NEVER log the raw token or the full callback URL.
  */
 
+import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { StrutRunStatus } from "@prisma/client";
 import { timingSafeEqual } from "@/lib/encryption";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { JOB_TURN_KIND, JOB_WORKFLOW } from "@/lib/strut-jobs";
+import { ORCHESTRATOR_TURN_KIND } from "@/lib/strut-orchestrator";
 import { getBaseUrl } from "@/lib/utils";
 import { completeStrutRun, hashStrutRunToken, type StrutRunTerminalStatus } from "@/services/strut-runs";
 
@@ -38,10 +53,77 @@ const TERMINAL: ReadonlySet<string> = new Set<StrutRunTerminalStatus>(["success"
 /** Cap on `error.message` — an external string headed for a DB column and a card. */
 const MAX_ERROR_CHARS = 4_000;
 
+/** A job id as strut accepts one (its session-id format; hive mints UUIDs). */
+const JOB_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+/** Cap on a title read off the payload for an adopted job. */
+const MAX_TITLE_CHARS = 300;
+
+const WEBHOOK_SELECT = {
+  id: true,
+  tokenHash: true,
+  status: true,
+  workflow: true,
+  strutRunId: true,
+  kind: true,
+  workspaceId: true,
+  swarmId: true,
+  userId: true,
+  conversationId: true,
+} as const;
+
+type WebhookRow = {
+  id: string;
+  tokenHash: string;
+  status: StrutRunStatus;
+  workflow: string;
+  strutRunId: string | null;
+  kind: string;
+  workspaceId: string;
+  swarmId: string;
+  userId: string;
+  conversationId: string | null;
+};
+
 function hardenError(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null;
   const s = typeof raw === "string" ? raw : String(raw);
   return s.length > MAX_ERROR_CHARS ? `${s.slice(0, MAX_ERROR_CHARS)}…` : s;
+}
+
+/**
+ * The `job_turn` row for a job the orchestrator started inside strut —
+ * found, or minted, for (the orchestrator row's swarm, `job`, `runId`):
+ * one row per job run, whichever delivery gets here first (the unique
+ * index on swarm + workflow + run id makes the upsert the race's judge).
+ * Everything that routes the reply is the ORCHESTRATOR row's — workspace,
+ * user, swarm, conversation; the job id and the run id are strut's. The
+ * input is a hive launch's shape (`jobTurnInputSchema`) with an empty
+ * prompt, `via: "orchestrator"` (no wake: the canvas agent is not in a
+ * strut-engine conversation) and the orchestrator row as `parentRunId`.
+ * The token is fresh and thrown away: nothing will ever call this row's
+ * URL, since strut posts to the orchestrator's.
+ */
+async function adoptOrchestratorJobRun(parent: WebhookRow, run: { job: string; runId: string; title: string | null }): Promise<WebhookRow> {
+  const workspace = await db.workspace.findUnique({ where: { id: parent.workspaceId }, select: { slug: true } });
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  return db.strutRun.upsert({
+    where: { swarmId_workflow_strutRunId: { swarmId: parent.swarmId, workflow: JOB_WORKFLOW, strutRunId: run.runId } },
+    create: {
+      tokenHash: hashStrutRunToken(rawToken),
+      workspaceId: parent.workspaceId,
+      swarmId: parent.swarmId,
+      userId: parent.userId,
+      kind: JOB_TURN_KIND,
+      workflow: JOB_WORKFLOW,
+      strutRunId: run.runId,
+      status: StrutRunStatus.PENDING,
+      input: { prompt: "", title: run.title ?? run.job, workspace: workspace?.slug ?? "", via: "orchestrator", parentRunId: parent.id },
+      conversationId: parent.conversationId,
+      jobId: run.job,
+    },
+    update: {},
+    select: WEBHOOK_SELECT,
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -65,15 +147,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing auth token" }, { status: 401 });
   }
 
-  const row = await db.strutRun.findUnique({
-    where: { id },
-    select: { id: true, tokenHash: true, status: true, workflow: true, strutRunId: true, kind: true },
-  });
-  if (!row) {
+  const authed: WebhookRow | null = await db.strutRun.findUnique({ where: { id }, select: WEBHOOK_SELECT });
+  if (!authed) {
     timingSafeEqual(hashStrutRunToken(rawToken), "0".repeat(64)); // constant-time dummy compare
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  if (!timingSafeEqual(hashStrutRunToken(rawToken), row.tokenHash)) {
+  if (!timingSafeEqual(hashStrutRunToken(rawToken), authed.tokenHash)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -86,7 +165,24 @@ export async function POST(request: NextRequest) {
 
   const status = typeof payload.status === "string" && TERMINAL.has(payload.status) ? (payload.status as StrutRunTerminalStatus) : null;
   const runId = typeof payload.runId === "string" && payload.runId.length > 0 && payload.runId.length <= 200 ? payload.runId : null;
-  if (payload.event !== "run.end" || !status || !runId || payload.workflow !== row.workflow) {
+  if (payload.event !== "run.end" || !status || !runId) {
+    return NextResponse.json({ error: "Malformed payload" }, { status: 400 });
+  }
+
+  // The row the payload settles: the authenticated one, or — under an
+  // orchestrator turn, for a `job` run that turn started inside strut — the
+  // job's own row, adopted here. Every other (row, workflow) pair must match.
+  let row = authed;
+  if (authed.kind === ORCHESTRATOR_TURN_KIND && payload.workflow === JOB_WORKFLOW && authed.workflow !== JOB_WORKFLOW) {
+    const job = typeof payload.job === "string" && JOB_ID.test(payload.job) ? payload.job : null;
+    if (!job) {
+      return NextResponse.json({ error: "Malformed payload" }, { status: 400 });
+    }
+    const title = typeof payload.title === "string" && payload.title.trim() ? payload.title.trim().slice(0, MAX_TITLE_CHARS) : null;
+    row = await adoptOrchestratorJobRun(authed, { job, runId, title });
+    console.log("[strut-runs-webhook] adopted a job the orchestrator started", { id, jobRow: row.id, job, status: row.status });
+  }
+  if (payload.workflow !== row.workflow) {
     return NextResponse.json({ error: "Malformed payload" }, { status: 400 });
   }
   // The row knows its run id once the dispatch returned; a callback that

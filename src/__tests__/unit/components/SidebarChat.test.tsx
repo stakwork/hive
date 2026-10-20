@@ -1387,6 +1387,43 @@ describe("SidebarChat — Stop", () => {
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("an orchestrator wake answered with the silent marker renders nothing; a reply with text still does", async () => {
+    // The bubble is mocked to nothing file-wide; here it needs to say which rows reached it.
+    vi.doMock("@/app/org/[githubLogin]/_components/SidebarChatMessage", () => ({
+      SidebarChatMessage: ({ message }: { message: { id: string; content: string } }) => (
+        <div data-testid="bubble" data-id={message.id}>
+          {message.content}
+        </div>
+      ),
+    }));
+    mockStoreState = buildRunningTurnState(null, [
+      { id: "u-1", role: "user", content: "Ship the plan", timestamp: new Date() },
+      {
+        id: "orchestrator-row-1",
+        role: "assistant",
+        content: "",
+        timestamp: new Date(),
+        source: { kind: "orchestrator", runId: "row-1", strutRunId: "1", status: "silent" },
+      },
+      {
+        id: "orchestrator-row-2",
+        role: "assistant",
+        content: "The job shipped the plan.",
+        timestamp: new Date(),
+        source: { kind: "orchestrator", runId: "row-2", strutRunId: "2", status: "success" },
+      },
+    ]);
+    const { container } = await renderSidebarChat();
+    try {
+      expect(screen.getByText("The job shipped the plan.")).toBeTruthy();
+      // The user's row and the reply reach the bubble; the silent row never does.
+      expect(screen.getAllByTestId("bubble").map((el) => el.getAttribute("data-id"))).toEqual(["u-1", "orchestrator-row-2"]);
+      expect(container.textContent).not.toContain("[silent]");
+    } finally {
+      vi.doMock("@/app/org/[githubLogin]/_components/SidebarChatMessage", () => ({ SidebarChatMessage: () => null }));
+    }
+  });
+
   it("renders a stopped turn's marker row as a quiet Stopped line", async () => {
     mockStoreState = buildRunningTurnState(null, [
       SAMPLE_MESSAGE,
@@ -1537,7 +1574,7 @@ describe("SidebarChat — header & composer layout", () => {
     expect(screen.queryByLabelText("Agent settings")).toBeNull();
   });
 
-  it("⋯ menu holds Fork, Concept-tree prompt and Automations; no Auto-respond anywhere", async () => {
+  it("⋯ menu holds Fork, Concept-tree prompt, Strut orchestrator and Automations; no Auto-respond anywhere", async () => {
     mockStoreState = conv();
     const { container } = await renderSidebarChatActions();
     const user = userEvent.setup();
@@ -1550,6 +1587,14 @@ describe("SidebarChat — header & composer layout", () => {
     await user.click(toggle);
     expect(screen.getByRole("menuitemcheckbox", { name: /Concept-tree prompt/ }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("menuitem", { name: /Fork into my copy/ })).toBeTruthy();
+    // The Strut orchestrator switch: same shape, its own localStorage key.
+    const strut = screen.getByRole("menuitemcheckbox", { name: /Strut orchestrator/ });
+    expect(strut.getAttribute("aria-checked")).toBe("false");
+    await user.click(strut);
+    expect(screen.getByRole("menuitemcheckbox", { name: /Strut orchestrator/ }).getAttribute("aria-checked")).toBe("true");
+    expect(window.localStorage.getItem("hive.jamieStrutEngine")).toBe("true");
+    await user.click(screen.getByRole("menuitemcheckbox", { name: /Strut orchestrator/ }));
+    expect(window.localStorage.getItem("hive.jamieStrutEngine")).toBeNull();
     await user.click(screen.getByRole("menuitem", { name: /^Automations$/ }));
     expect(await screen.findByTestId("automations-section")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/Auto-respond/i);

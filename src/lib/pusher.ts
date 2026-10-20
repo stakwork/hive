@@ -162,7 +162,10 @@ export type CanvasConversationUpdateReason =
   | "strut"
   // A strut JOB turn settled and its reply (text + artifact refs) was
   // appended to the conversation (`services/strut-runs/job-turn.ts`).
-  | "job";
+  | "job"
+  // Jamie on strut: an orchestrator turn launched, settled, or a person
+  // decided one of its proposals (`services/strut-runs/orchestrator-turn.ts`).
+  | "orchestrator";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON

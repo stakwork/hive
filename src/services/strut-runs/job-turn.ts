@@ -65,7 +65,15 @@
  * summarize it, relay the job's question, or continue the job; the wake
  * runs in `after()` so the callback answers at once, and is gated there
  * (owner opt-in, master kill switch, loop breaker). Stored rows also reach
- * the model as text on the next human message.
+ * the model as text on the next human message. A turn of a job strut's
+ * ORCHESTRATOR started (`via: "orchestrator"` on the input — the webhook
+ * adopted its first turn, `api/strut-runs/webhook`, and every later turn
+ * carries the mark) wakes the ORCHESTRATOR instead
+ * (`invokeOrchestratorOnJobTurn`, `strut-orchestrator-wake.ts`): hive's
+ * canvas agent is not in that conversation, and the agent that asked for
+ * the job is the one to summarize it. Same gates, same after-response
+ * scheduling; the reply text rides on the wake since strut's agent cannot
+ * read hive's rows.
  *
  * Retry contract (`completeStrutRun`): a transient failure reading the
  * artifacts list throws, so the webhook answers 5xx and strut re-posts;
@@ -81,7 +89,16 @@ import { parseArtifactContent, type ArtifactKind, type ArtifactRef } from "@/app
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
-import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf, jobTurnInputSchema, parseArtifactEvent, parseStrutArtifactKey, type ArtifactEvent } from "@/lib/strut-jobs";
+import {
+  JOB_TURN_KIND,
+  JOB_WORKFLOW,
+  jobTitleOf,
+  jobTurnInputSchema,
+  jobTurnViaOrchestrator,
+  parseArtifactEvent,
+  parseStrutArtifactKey,
+  type ArtifactEvent,
+} from "@/lib/strut-jobs";
 import { getBaseUrl } from "@/lib/utils";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
 import { countStrutRunGraph } from "@/services/strut-runs/run-graph";
@@ -708,6 +725,20 @@ function scheduleJobWake(row: Pick<StrutRunRow, "id" | "workspaceId">, wake: Job
   });
 }
 
+/**
+ * The wake of a job the orchestrator started: strut's orchestrator, on the
+ * same conversation, with the job's reply text inline (it cannot read
+ * hive's rows). Same scheduling as `scheduleJobWake`.
+ */
+function scheduleOrchestratorWake(row: Pick<StrutRunRow, "id" | "workspaceId">, wake: JobWake & { text: string }): void {
+  afterResponse("Orchestrator wake", row, async () => {
+    const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
+    if (!workspace) return;
+    const { invokeOrchestratorOnJobTurn } = await import("@/services/strut-orchestrator-wake");
+    await invokeOrchestratorOnJobTurn({ ...wake, workspaceSlug: workspace.slug });
+  });
+}
+
 /** Run after the response (`after`), or detached outside a request (the reconcile path). Never throws. */
 function afterResponse(what: string, row: Pick<StrutRunRow, "id">, fn: () => Promise<void>): void {
   const run = async () => {
@@ -817,9 +848,12 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
     result,
   });
 
-  // The row landed (once): the agent's turn is the reply the user reads.
+  // The row landed (once): an agent's turn is the reply the user reads —
+  // hive's canvas agent, or, for a job the orchestrator started inside
+  // strut, the orchestrator itself (that conversation runs on strut's
+  // engine, so no hive agent is woken into it).
   if (result === "appended" && row.conversationId) {
-    scheduleJobWake(row, {
+    const wake: JobWake = {
       conversationId: row.conversationId,
       wakeId: jobRowId(row),
       jobId,
@@ -829,7 +863,9 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       artifacts: refs.map((r) => ({ title: r.title, kind: r.kind, ...(r.label ? { label: r.label } : {}) })),
       publicBaseUrl: ctx?.publicBaseUrl ?? getBaseUrl(null),
       ...(event ? { event } : {}),
-    });
+    };
+    if (jobTurnViaOrchestrator(row)) scheduleOrchestratorWake(row, { ...wake, text: reply.text });
+    else scheduleJobWake(row, wake);
   }
 
   // Events that arrived while this turn ran go now, as the next turn, one
