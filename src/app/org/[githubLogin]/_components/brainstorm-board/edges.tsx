@@ -3,7 +3,8 @@
 import { BaseEdge, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
 import { inkPath } from "./rough";
 
-export const RED = "#c8452c";
+/** Amber: the chosen path. Red is reserved for errors. */
+export const CHOSEN = "#d97706";
 const INK = "#2f2b26";
 const SLATE = "#4b5f73";
 
@@ -16,7 +17,7 @@ export interface BoardEdgeData extends Record<string, unknown> {
 }
 
 function colour(d: BoardEdgeData) {
-  if (d.kind === "chosen") return RED;
+  if (d.kind === "chosen") return CHOSEN;
   return d.fromPerson ? INK : SLATE;
 }
 
