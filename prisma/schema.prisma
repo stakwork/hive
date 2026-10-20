@@ -2662,7 +2662,10 @@ model StrutRun {
   /// `jobCallback: true`, strut plans/live-artifacts.md §1): the job's live
   /// updates — shots, a recording, a pod, a check's verdict — come to
   /// `/api/strut-jobs/events` under this row, so a Verify can return at once
-  /// and publish the card when the pass ends. False for every other launch.
+  /// and publish the card when the pass ends. On an orchestrator turn: the
+  /// jobs it starts inherit that URL (strut CALLBACKS.md §5), and the
+  /// `job_turn` rows minted for them carry the flag on. False for every
+  /// other launch.
   liveUpdates    Boolean        @default(false) @map("live_updates")
   createdAt      DateTime       @default(now()) @map("created_at")
   settledAt      DateTime?      @map("settled_at")

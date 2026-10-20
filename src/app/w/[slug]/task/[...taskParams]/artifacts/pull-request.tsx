@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Artifact, PullRequestContent } from "@/lib/chat";
@@ -16,8 +17,42 @@ import {
 } from "lucide-react";
 
 export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
-  const content = artifact.content as PullRequestContent;
+  const baseContent = artifact.content as PullRequestContent;
+  const [merged, setMerged] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
+  const content = merged ? { ...baseContent, status: "DONE" as PullRequestContent["status"] } : baseContent;
   const progress = content.progress;
+
+  const canMerge =
+    content.status === "IN_PROGRESS" &&
+    progress?.mergeable !== false &&
+    progress?.state !== "conflict" &&
+    progress?.state !== "ci_failure" &&
+    progress?.state !== "checking";
+
+  const handleMerge = async () => {
+    setIsMerging(true);
+    setMergeError(null);
+    try {
+      const res = await fetch("/api/github/pr/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artifactId: artifact.id, mergeMethod: "merge" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setMergeError(data?.error || "Failed to merge pull request");
+        return;
+      }
+      setMerged(true);
+      toast.success("Pull request merged");
+    } catch {
+      setMergeError("Failed to merge pull request");
+    } finally {
+      setIsMerging(false);
+    }
+  };
 
   // Determine status-based styling and content
   const getStatusConfig = () => {
@@ -155,7 +190,13 @@ export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
             <div className="text-sm font-medium text-foreground mb-1">Pull Request</div>
             <div className="text-sm text-muted-foreground truncate">{content.repo}</div>
           </div>
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 flex items-center gap-2">
+            {canMerge && (
+              <Button size="sm" variant="outline" className="gap-2" onClick={handleMerge} disabled={isMerging}>
+                {isMerging ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitMerge className="w-4 h-4" />}
+                {isMerging ? "Merging..." : "Merge"}
+              </Button>
+            )}
             <Button asChild size="sm" className={`gap-2 ${config.buttonClassName}`} style={config.buttonStyle}>
               <a href={content.url} target="_blank" rel="noopener noreferrer">
                 {config.buttonText}
@@ -164,6 +205,8 @@ export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
             </Button>
           </div>
         </div>
+
+        {mergeError && <div className="mt-2 text-xs text-red-500">{mergeError}</div>}
 
         {/* Progress indicator row - hide when merged or closed */}
         {progressConfig && content.status !== "DONE" && content.status !== "CANCELLED" && (
