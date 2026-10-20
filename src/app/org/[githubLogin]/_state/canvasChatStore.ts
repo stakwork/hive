@@ -54,6 +54,12 @@
  *   local state on purpose; we explicitly don't merge surfaces.
  */
 import { create } from "zustand";
+import type {
+  OrchestratorLaunchRowSource,
+  OrchestratorRowSource,
+  StrutProposalResultRowSource,
+  StrutProposalRowSource,
+} from "@/lib/strut-orchestrator";
 import { devtools } from "zustand/middleware";
 import { STOPPED_TURN_TEXT } from "@/lib/ai/conversationHelpers";
 import type { ApprovalIntent, ApprovalResult, RejectionIntent } from "@/lib/proposals/types";
@@ -186,7 +192,18 @@ export type CanvasMessageSource =
        * as a notice from the user (`toModelMessages`).
        */
       kind: "stopped";
-    };
+    }
+  /**
+   * Jamie on strut (`lib/strut-orchestrator.ts`; the chat's per-browser "Strut orchestrator"
+   * setting): the reply of an orchestrator turn (a plain bubble with its
+   * artifacts), the launch marker its working card hangs on, one row per
+   * proposal the turn made (`StrutProposalCard`), and a person's decision
+   * on one (a quiet line).
+   */
+  | OrchestratorRowSource
+  | OrchestratorLaunchRowSource
+  | StrutProposalRowSource
+  | StrutProposalResultRowSource;
 
 export interface CanvasChatMessage {
   id: string;
