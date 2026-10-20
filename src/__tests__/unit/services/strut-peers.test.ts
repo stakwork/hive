@@ -60,7 +60,14 @@ const ORG = {
 const WORKSPACES = [
   // The org strut's own workspace: never its own peer.
   { id: "ws-org", slug: "hive", name: "Hive", swarm: swarm("org") },
-  { id: "ws-b", slug: "acme-web", name: "Acme web", swarm: swarm("b") },
+  {
+    id: "ws-b",
+    slug: "acme-web",
+    name: "Acme web",
+    description: "  The storefront  ",
+    repositories: [{ repositoryUrl: "https://github.com/acme/web" }, { repositoryUrl: "https://github.com/acme/ui" }],
+    swarm: swarm("b"),
+  },
   { id: "ws-c", slug: "acme-api", name: "Acme API", swarm: swarm("c") },
 ];
 const MEMBERS = [
@@ -129,6 +136,10 @@ describe("runStrutPeersReconcile — peer records", () => {
     expect(mockWorkspaceFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { sourceControlOrgId: "org-1", deleted: false, swarm: { is: { status: "ACTIVE" } } } }),
     );
+    expect(mockWorkspaceFindMany.mock.calls[0][0].select).toMatchObject({
+      description: true,
+      repositories: { select: { repositoryUrl: true }, orderBy: { createdAt: "asc" } },
+    });
 
     // Minted ON the peer's swarm, with ITS key, as lab:peer — no `sub`.
     const [mint] = calls((u) => u === "https://b.sphinx.chat:3355/mint-token");
@@ -141,7 +152,17 @@ describe("runStrutPeersReconcile — peer records", () => {
     expect(put[1].method).toBe("PUT");
     expect(put[1].headers["x-api-token"]).toBe("org-key");
     expect(put[1].headers.Authorization).toBe("Bearer org-key");
-    expect(JSON.parse(put[1].body)).toEqual({ baseUrl: "https://b.sphinx.chat:3355/lab", token: "peer-tok-b", label: "Acme web" });
+    // With what the workspace holds — what strut/list-peers shows an agent.
+    expect(JSON.parse(put[1].body)).toEqual({
+      baseUrl: "https://b.sphinx.chat:3355/lab",
+      token: "peer-tok-b",
+      label: "Acme web",
+      description: "The storefront",
+      repos: ["https://github.com/acme/web", "https://github.com/acme/ui"],
+    });
+    // A workspace with neither sends neither.
+    const [bare] = calls((u) => u === `${ORG_LAB}/peers/acme-api`);
+    expect(JSON.parse(bare[1].body)).toEqual({ baseUrl: "https://c.sphinx.chat:3355/lab", token: "peer-tok-c", label: "Acme API" });
 
     // Never the org strut's own swarm.
     expect(calls((u) => u.startsWith("https://org.sphinx.chat:3355/mint-token"))).toHaveLength(0);
