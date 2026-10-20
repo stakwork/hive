@@ -145,8 +145,9 @@ export const effectCounts = (effects: ChoiceEffect[]) => ({
   pros: effects.filter((e) => e.direction === "pro").length,
   cons: effects.filter((e) => e.direction === "con").length,
 });
-/** "80%" for an impact of 0.8; null impact has no label. */
-export const impactPercent = (impact: number | null) => (impact === null ? null : `${Math.round(impact * 100)}%`);
+/** Impact label: below 0.4 is "low", 0.4 to 0.7 inclusive is "medium", above 0.7 is "high"; null impact has no label. */
+export const impactLevel = (impact: number | null): "low" | "medium" | "high" | null =>
+  impact === null ? null : impact < 0.4 ? "low" : impact <= 0.7 ? "medium" : "high";
 
 /** Height of the selected-state effects block (headings, name lines, description lines); 0 with no effects. */
 export function effectsHeight(effects: ChoiceEffect[] | undefined, charsPerLine = EFFECT_CHARS_PER_LINE, lineH = LINE_H): number {
@@ -305,12 +306,7 @@ function EffectsList({ effects }: { effects: ChoiceEffect[] }) {
                 <div className="flex items-center gap-1 text-[11px] leading-4">
                   <span className="min-w-0 flex-1 truncate">{e.name}</span>
                   {e.impact !== null && (
-                    <>
-                      <span className="h-1 w-8 shrink-0 overflow-hidden rounded bg-muted">
-                        <span className={cn("block h-full", pro ? "bg-green-500" : "bg-red-500")} style={{ width: `${Math.round(e.impact * 100)}%` }} />
-                      </span>
-                      <span className="w-7 shrink-0 text-right text-[10px] text-muted-foreground">{impactPercent(e.impact)}</span>
-                    </>
+                    <span className="shrink-0 text-right text-[10px] text-muted-foreground" title={`impact: ${impactLevel(e.impact)}`}>{impactLevel(e.impact)}</span>
                   )}
                 </div>
                 {e.description && <p className="text-[11px] leading-4 text-muted-foreground">{e.description}</p>}
