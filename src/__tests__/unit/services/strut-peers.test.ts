@@ -262,11 +262,14 @@ describe("runStrutPeersReconcile — peer records", () => {
     ]);
   });
 
-  it("an org with no other swarm has nothing to push; ?org scopes the pass", async () => {
+  it("a home-only org pushes no peers but still gets its own self record; ?org scopes the pass", async () => {
     mockWorkspaceFindMany.mockResolvedValue([WORKSPACES[0]]);
     const out = await runStrutPeersReconcile({ now: NOW, org: "acme" });
-    expect(out).toMatchObject({ success: true, orgsProcessed: 1, peersPushed: 0 });
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(out).toMatchObject({ success: true, orgsProcessed: 1, peersPushed: 0, selfPushed: 1 });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(String(url)).toMatch(/\/lab\/self$/);
+    expect(init.method).toBe("PUT");
     expect(mockOrgFindMany.mock.calls[0][0].where).toMatchObject({ githubLogin: "acme" });
   });
 });
