@@ -4,7 +4,7 @@ import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Handle, NodeToolbar, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { effectCounts, impactPercent, type ChoiceItem } from "../artifacts/viewers/ChoiceTree";
+import { effectCounts, impactLevel, type ChoiceItem } from "../artifacts/viewers/ChoiceTree";
 import type { ChoiceEffect } from "@/services/graph/workbench";
 import { cardActions, type DeskAction } from "./actions";
 import { hand, typed } from "./fonts";
@@ -175,7 +175,7 @@ function EffectsSummary({ effects, size }: { effects: ChoiceEffect[]; size: stri
   );
 }
 
-/** Read-only pros and cons of a selected card: name, impact (percent and dots), description. */
+/** Read-only pros and cons of a selected card: name, impact level, description. */
 function EffectsList({ effects }: { effects: ChoiceEffect[] }) {
   return (
     <div className="relative mt-1 flex flex-col gap-1.5 border-t border-black/15 pt-1 text-[15px] leading-tight" data-effects>
@@ -187,14 +187,13 @@ function EffectsList({ effects }: { effects: ChoiceEffect[] }) {
           <div key={dir} className="flex flex-col gap-1">
             <div className="font-bold" style={{ color }}>{dir === "pro" ? "Pros" : "Cons"}</div>
             {list.map((e) => {
-              const dots = e.impact === null ? 0 : Math.max(1, Math.round(e.impact * 5));
               return (
                 <div key={e.ref_id || e.name} data-effect data-direction={dir}>
                   <div className="flex items-baseline gap-2">
                     <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{e.name}</span>
                     {e.impact !== null && (
-                      <span className="shrink-0 whitespace-nowrap" style={{ color }} title={`impact ${impactPercent(e.impact)}`}>
-                        <span aria-hidden>{"●".repeat(dots)}<span className="opacity-25">{"●".repeat(5 - dots)}</span></span> {impactPercent(e.impact)}
+                      <span className="shrink-0 whitespace-nowrap" style={{ color }} title={`impact: ${impactLevel(e.impact)}`}>
+                        {impactLevel(e.impact)}
                       </span>
                     )}
                   </div>
