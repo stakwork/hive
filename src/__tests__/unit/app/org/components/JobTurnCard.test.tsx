@@ -302,6 +302,34 @@ describe("getPendingJobTurnsFromMessages — turns an event started", () => {
   });
 });
 
+describe("getPendingJobTurnsFromMessages — jobs the strut orchestrator launched", () => {
+  /** An orchestrator reply row (Jamie on strut) carrying the jobs its turn launched. */
+  const reply = (id: string, jobs: Array<{ jobId: string; title: string; runId: string }>): CanvasChatMessage => ({
+    id,
+    role: "assistant",
+    content: "Started a job for that.",
+    timestamp: new Date(),
+    source: { kind: "orchestrator", runId: "orch-1", strutRunId: "1790000000000", status: "success", jobs },
+  });
+
+  test("each job on the reply is a pending turn anchored on it, settled by its job row", () => {
+    const r = reply("orchestrator-orch-1", [{ jobId: JOB, title: "Dark mode plan", runId: "row-2" }]);
+    expect(getPendingJobTurnsFromMessages([r])).toEqual([
+      { jobId: JOB, title: "Dark mode plan", anchorMessageId: "orchestrator-orch-1" },
+    ]);
+    expect(getPendingJobTurnsFromMessages([r, row("job-row-2")])).toEqual([]);
+  });
+
+  test("a job that ended before the reply landed draws nothing; a title-less one takes the job's last title", () => {
+    expect(
+      getPendingJobTurnsFromMessages([row("job-row-2"), reply("o1", [{ jobId: JOB, title: "", runId: "row-2" }])]),
+    ).toEqual([]);
+    expect(
+      getPendingJobTurnsFromMessages([row("job-row-1"), reply("o1", [{ jobId: JOB, title: "", runId: "row-3" }])]),
+    ).toEqual([{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "o1" }]);
+  });
+});
+
 describe("JobEventRow", () => {
   test("the job's title and the event, linked to the artifact", () => {
     const m = eventRow("e1");

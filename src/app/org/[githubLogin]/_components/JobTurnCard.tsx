@@ -119,7 +119,8 @@ const str = (v: unknown): string | undefined => (typeof v === "string" && v.leng
  * row never waits on a turn that did not start — and the job row that
  * follows settles it. Its run is named (`runId`), so a job row that landed
  * BEFORE the origin was written (the write is after the dispatch) is seen
- * for what it is and the event draws nothing.
+ * for what it is and the event draws nothing. An orchestrator reply (Jamie
+ * on strut) is a launch the same way, one per job in its `jobs`.
  */
 export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): PendingJobTurn[] {
   const pending = new Map<string, PendingJobTurn>();
@@ -140,6 +141,19 @@ export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): P
       if (title) titles.set(jobId, title);
       if (!rows.has(`job-${runId}`)) {
         pending.set(jobId, { jobId, title: title ?? titles.get(jobId) ?? "", anchorMessageId: message.id });
+      }
+      continue;
+    }
+    // Jamie on strut: the jobs an orchestrator turn launched inside strut,
+    // read off its run when the reply landed, each with the row minted for
+    // it — so a job that ended before the reply did draws nothing.
+    if (message.source?.kind === "orchestrator") {
+      for (const launch of message.source.jobs ?? []) {
+        const title = launch.title || titles.get(launch.jobId) || "";
+        if (title) titles.set(launch.jobId, title);
+        if (!rows.has(`job-${launch.runId}`)) {
+          pending.set(launch.jobId, { jobId: launch.jobId, title, anchorMessageId: message.id });
+        }
       }
       continue;
     }

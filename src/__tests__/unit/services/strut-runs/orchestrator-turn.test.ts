@@ -9,14 +9,26 @@
  *     row per proposal the run reported (`source.kind: "proposal"`, read
  *     from the ROW's swarm), in one transaction, idempotent by row id; an
  *     error row appends without reading strut; a 404 delivers the text
- *     alone; a 5xx throws (strut re-posts); no wake of any kind.
+ *     alone; a 5xx throws (strut re-posts); no wake of any kind;
+ *   - the jobs the turn launched (`job/start`, `job/continue`), read from
+ *     its event log: each gets its job row minted and rides the reply row
+ *     as `source.jobs`, so the chat shows a running card while it works.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { StrutRunStatus } from "@prisma/client";
 
-const { mockTx, mockTransaction, mockNotify, mockLab, mockReadArtifacts, mockClearActiveRun, mockNotifyRunActive } =
-  vi.hoisted(() => {
+const {
+  mockTx,
+  mockTransaction,
+  mockNotify,
+  mockLab,
+  mockReadArtifacts,
+  mockClearActiveRun,
+  mockNotifyRunActive,
+  mockEvents,
+  mockAdopt,
+} = vi.hoisted(() => {
     const mockTx = {
       workspace: { findUnique: vi.fn() },
       sharedConversation: { findUnique: vi.fn(), update: vi.fn() },
@@ -30,6 +42,8 @@ const { mockTx, mockTransaction, mockNotify, mockLab, mockReadArtifacts, mockCle
       mockReadArtifacts: vi.fn(),
       mockClearActiveRun: vi.fn(),
       mockNotifyRunActive: vi.fn(),
+      mockEvents: vi.fn(),
+      mockAdopt: vi.fn(),
     };
   });
 
@@ -41,6 +55,8 @@ vi.mock("@/services/canvas-active-runs-hooks", () => ({
   clearActiveRun: mockClearActiveRun,
   notifyRunActive: mockNotifyRunActive,
 }));
+vi.mock("@/services/strut-runs/lab", () => ({ fetchStrutRunEvents: mockEvents }));
+vi.mock("@/services/strut-runs/orchestrator-jobs", () => ({ adoptOrchestratorJobRun: mockAdopt }));
 // The artifact list read is the job turn's; the mapping stays real.
 vi.mock("@/services/strut-runs/job-turn", async (orig) => ({
   ...(await orig<typeof import("@/services/strut-runs/job-turn")>()),
@@ -122,6 +138,8 @@ beforeEach(() => {
   mockTx.sharedConversation.update.mockResolvedValue({});
   mockClearActiveRun.mockResolvedValue({ wasLast: true });
   mockNotifyRunActive.mockResolvedValue(undefined);
+  mockEvents.mockResolvedValue([]);
+  mockAdopt.mockImplementation(async (_parent: unknown, run: { runId: string }) => ({ id: `jobrow-${run.runId}` }));
 });
 
 describe("replyForOrchestratorRow", () => {
@@ -256,6 +274,47 @@ describe("handleOrchestratorTurnSettled", () => {
     // The Stop button: the run is done.
     expect(mockClearActiveRun).toHaveBeenCalledWith("conv-1", "row-1");
     expect(mockNotifyRunActive).toHaveBeenCalledWith("conv-1", false);
+  });
+
+  it("a job the turn launched gets its row minted and rides the reply as source.jobs", async () => {
+    mockFetch.mockResolvedValue(json(200, { workflow: "orchestrator", runId: "1790000000000", proposals: [] }));
+    mockEvents.mockResolvedValue([
+      { type: "step.start", path: "orchestrator/agent/001-job_start", stepType: "tool:job_start", input: { prompt: "Research", title: "Flights to Lisbon" } },
+      { type: "step.end", path: "orchestrator/agent/001-job_start", stepType: "tool:job_start", output: '{"job":"j-1","runId":"1790000000500","callback":true}' },
+    ]);
+    await handleOrchestratorTurnSettled(row({ output: { text: "Started a job for flights.", artifacts: [] } }));
+
+    expect(mockEvents).toHaveBeenCalledWith(expect.objectContaining({ id: "row-1", workflow: "orchestrator" }), expect.any(Number));
+    expect(mockAdopt).toHaveBeenCalledWith(expect.objectContaining({ id: "row-1" }), {
+      job: "j-1",
+      runId: "1790000000500",
+      title: "Flights to Lisbon",
+    });
+    expect(written()[0]).toEqual(
+      expect.objectContaining({
+        id: "orchestrator-row-1",
+        source: expect.objectContaining({
+          kind: "orchestrator",
+          jobs: [{ jobId: "j-1", title: "Flights to Lisbon", runId: "jobrow-1790000000500" }],
+        }),
+      }),
+    );
+  });
+
+  it("a log strut cannot serve, or a row that cannot be minted, delivers the reply without the job", async () => {
+    mockFetch.mockImplementation(async () => json(200, { workflow: "orchestrator", runId: "1790000000000", proposals: [] }));
+    mockEvents.mockResolvedValue(null);
+    await handleOrchestratorTurnSettled(row());
+    expect(written()[0].source).not.toHaveProperty("jobs");
+
+    vi.clearAllMocks();
+    mockTx.$queryRaw.mockResolvedValue([{ messages: [] }]);
+    mockEvents.mockResolvedValue([
+      { type: "step.end", path: "a/001-job_start", stepType: "tool:job_start", output: { job: "j-1", runId: "1790000000500", callback: true } },
+    ]);
+    mockAdopt.mockRejectedValue(new Error("db down"));
+    await handleOrchestratorTurnSettled(row());
+    expect(written()[0].source).not.toHaveProperty("jobs");
   });
 
   it("is idempotent: rows already there are not written again, nothing is announced", async () => {
