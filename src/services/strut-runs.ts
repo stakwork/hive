@@ -7,7 +7,7 @@
  *   dispatchStrutRun   resolve the target (ONE policy — `strut-target.ts`)
  *                      → PENDING row with the target's `swarmId`
  *                      → push the user's delegation + actor secrets to it
- *                      → POST {lab}/workflows/<name>/run { input, callback, job?, title? }
+ *                      → POST {lab}/workflows/<name>/run { input, callback, job?, title?, jobCallback? }
  *                      → refuse a 202 without `callback: true`
  *                      → store `strutRunId`.
  *   completeStrutRun   the token-gated, idempotent claim PENDING → terminal
@@ -229,6 +229,14 @@ export interface DispatchStrutRunArgs {
    * names the job.
    */
   title?: string;
+  /**
+   * Register this host's job-events URL on a launch with no `job` (strut
+   * CALLBACKS.md §5): every job the run starts (`job/start`,
+   * `job/continue`) inherits it, so an orchestrator turn hears all of its
+   * jobs at ONE URL, under this row and its token, each event naming its
+   * `job` and `runId`. A launch with `job` always carries its own.
+   */
+  inheritJobCallback?: boolean;
   /** Launch-level `params` (e.g. `{ model }`), a sibling of `input`; sent only when non-empty. */
   params?: Record<string, unknown>;
   /**
@@ -254,6 +262,11 @@ export interface DispatchStrutRunResult {
   swarmId: string;
 }
 
+/** A refused launch's `error`, when strut said one. */
+async function errorOf(res: Response): Promise<string | undefined> {
+  return ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
+}
+
 async function failRow(id: string, error: string): Promise<void> {
   await db.strutRun
     .updateMany({
@@ -274,7 +287,7 @@ async function failRow(id: string, error: string): Promise<void> {
  * if created, is marked ERROR with the reason).
  */
 export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<DispatchStrutRunResult> {
-  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title, params } = args;
+  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title, params, inheritJobCallback } = args;
   if (!HANDLERS[kind]) throw new Error(`No strut-run handler for kind "${kind}"`);
 
   const resolved = await resolveStrutTarget({ purpose, userId, workspaceId });
@@ -330,11 +343,12 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
   // plans/live-artifacts.md §1): kept on the job, the latest launch wins, so
   // every later update — this turn's shots, a Verify days later — comes
   // under this row and its token. A strut that predates it ignores the field.
-  const jobCallbackUrl = job ? `${publicBaseUrl}/api/strut-jobs/events?id=${row.id}&token=${rawToken}` : null;
+  // A launch with no job (`inheritJobCallback`, an orchestrator turn) hands
+  // the URL on to every job its run starts (strut CALLBACKS.md §5).
+  let jobCallbackUrl = job || inheritJobCallback ? `${publicBaseUrl}/api/strut-jobs/events?id=${row.id}&token=${rawToken}` : null;
 
-  let res: Response;
-  try {
-    res = await fetch(`${target.labBase}/workflows/${encodeURIComponent(workflow)}/run`, {
+  const launch = (jobCallback: string | null) =>
+    fetch(`${target.labBase}/workflows/${encodeURIComponent(workflow)}/run`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -345,12 +359,34 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
         input,
         callback: { url: callbackUrl },
         ...(job ? { job, ...(title ? { title } : {}) } : {}),
-        ...(jobCallbackUrl ? { jobCallback: { url: jobCallbackUrl } } : {}),
+        ...(jobCallback ? { jobCallback: { url: jobCallback } } : {}),
         ...(params && Object.keys(params).length ? { params } : {}),
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(LAUNCH_TIMEOUT_MS),
     });
+
+  let res: Response;
+  /** A 400's `error`, when it was read before the generic handling below. */
+  let refusal: string | undefined;
+  try {
+    res = await launch(jobCallbackUrl);
+    if (res.status === 400 && !job && jobCallbackUrl) {
+      // A strut before inherited job callbacks refuses a jobless
+      // `jobCallback` ("belongs to a job") and starts nothing: launch again
+      // without it — the run works, its jobs just report no live updates.
+      refusal = await errorOf(res);
+      if (/jobCallback/.test(refusal ?? "")) {
+        logger.info("Strut predates inherited job callbacks — launching without one", STRUT_RUN_LOG_TAG, {
+          runId: row.id,
+          workflow,
+          swarmId: target.swarmId,
+        });
+        jobCallbackUrl = null;
+        refusal = undefined;
+        res = await launch(null);
+      }
+    }
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     await failRow(row.id, `initiation_failed: ${detail}`);
@@ -359,7 +395,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
   }
 
   if (!res.ok) {
-    const detail = ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
+    const detail = refusal ?? (await errorOf(res));
     await failRow(row.id, `strut_http_${res.status}${detail ? `: ${detail}` : ""}`);
     if (res.status === 404) {
       throw new StrutDispatchError(
