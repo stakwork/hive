@@ -17,6 +17,10 @@ vi.mock("@/components/MarkdownRenderer", () => ({
 }));
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/useArtifactPanel", () => ({ useChatOrgLogin: () => "acme-org" }));
 
+const mockInvalidate = vi.fn();
+vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: mockInvalidate }) }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
 const JOB = "6f1c0d3e-1111-4222-8333-444455556666";
 const artifact: ArtifactRef = { id: "pr", kind: "pull_request", title: "Dark mode", source: { type: "inline", content: {} } };
 
@@ -104,5 +108,40 @@ describe("PullRequestPanel — Fix", () => {
     fireEvent.click(screen.getByTestId("pr-fix"));
     await waitFor(() => expect(screen.getByText(/Could not send: Only the person/)).toBeInTheDocument());
     expect(screen.getByTestId("pr-fix")).toHaveTextContent("Fix");
+  });
+});
+
+describe("PullRequestPanel — Merge", () => {
+  test("shown for an open pull request only, with or without a job", () => {
+    const { rerender } = render(<PullRequestPanel artifact={artifact} content={content()} />);
+    expect(screen.getByTestId("pr-merge")).toHaveTextContent("Merge");
+    for (const state of ["draft", "merged", "closed"] as const) {
+      rerender(<PullRequestPanel artifact={artifact} content={content({ state })} />);
+      expect(screen.queryByTestId("pr-merge")).toBeNull();
+    }
+    rerender(<PullRequestPanel artifact={artifact} content={content({ number: undefined as unknown as number })} />);
+    expect(screen.queryByTestId("pr-merge")).toBeNull();
+  });
+
+  test("a click posts repo and number to the merge route and shows Merged", async () => {
+    mockFetch.mockResolvedValue(json(200, { success: true, merged: true, sha: "abc" }));
+    render(<PullRequestPanel artifact={artifact} content={content()} />);
+    fireEvent.click(screen.getByTestId("pr-merge"));
+    await waitFor(() => expect(screen.queryByTestId("pr-merge")).toBeNull());
+
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/orgs/acme-org/strut/pull-request/merge");
+    expect(init).toMatchObject({ method: "POST", credentials: "same-origin" });
+    expect(JSON.parse(init.body)).toMatchObject({ repo: "acme/app", number: 12, mergeMethod: "merge" });
+    expect(screen.getByText("Merged")).toBeInTheDocument();
+    expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["canvas-pr-live", "acme-org", "acme/app", 12] });
+  });
+
+  test("a refusal says why and keeps the button", async () => {
+    mockFetch.mockResolvedValue(json(409, { error: "Pull request has merge conflicts" }));
+    render(<PullRequestPanel artifact={artifact} content={content()} />);
+    fireEvent.click(screen.getByTestId("pr-merge"));
+    await waitFor(() => expect(screen.getByText(/Could not merge: Pull request has merge conflicts/)).toBeInTheDocument());
+    expect(screen.getByTestId("pr-merge")).toHaveTextContent("Merge");
   });
 });
