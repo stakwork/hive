@@ -16,7 +16,12 @@
  * It appends to the row's conversation, in one transaction:
  *   - ONE assistant row `orchestrator-<StrutRun.id>` — the agent's `text`,
  *     its `ask` as a question, `artifacts` as refs, `source.kind:
- *     "orchestrator"`; shown as a plain reply bubble;
+ *     "orchestrator"`; shown as a plain reply bubble — and `jobs`, the job
+ *     turns it launched (`job/start`, `job/continue`), read from the run's
+ *     event log. Each gets its `job_turn` row minted PENDING here
+ *     (`orchestrator-jobs.ts`), so the chat hangs a running card under the
+ *     reply until the job's own `run.end` settles that row. A log strut
+ *     cannot serve delivers the reply without them: the job lands whole;
  *   - ONE row per proposal, `orchestrator-<id>-proposal-<proposalId>`,
  *     `source.kind: "proposal"` — the card (`StrutProposalCard`) reads the
  *     record live and decides it on strut.
@@ -49,8 +54,10 @@ import {
   ORCHESTRATOR_WORKFLOW,
   isOrchestratorSilentReply,
   orchestratorRowId,
+  parseOrchestratorJobCalls,
   parseStrutProposalBriefs,
   strutProposalRowId,
+  type OrchestratorJobLaunch,
   type OrchestratorLaunchRowSource,
   type OrchestratorRowSource,
   type OrchestratorTurnOutcome,
@@ -59,6 +66,8 @@ import {
   type StrutProposalRowSource,
 } from "@/lib/strut-orchestrator";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
+import { fetchStrutRunEvents } from "@/services/strut-runs/lab";
+import { adoptOrchestratorJobRun } from "@/services/strut-runs/orchestrator-jobs";
 import { jobTurnOutputSchema, mapStrutArtifacts, readRunArtifacts } from "@/services/strut-runs/job-turn";
 
 export { ORCHESTRATOR_TURN_KIND, ORCHESTRATOR_WORKFLOW };
@@ -178,6 +187,34 @@ export async function readRunProposals(row: StrutRunRow): Promise<ProposalsRead>
   }
 }
 
+/**
+ * The job turns the run launched, each with its `job_turn` row (found or
+ * minted PENDING). Never throws: a log strut cannot serve, or a row that
+ * cannot be written, leaves the job to land whole when it ends.
+ */
+export async function launchedJobTurns(row: StrutRunRow): Promise<OrchestratorJobLaunch[]> {
+  const events = await fetchStrutRunEvents(row, READ_TIMEOUT_MS);
+  if (!events) return [];
+  const launches: OrchestratorJobLaunch[] = [];
+  for (const call of parseOrchestratorJobCalls(events)) {
+    try {
+      const jobRow = await adoptOrchestratorJobRun(row, {
+        job: call.job,
+        runId: call.runId,
+        title: call.title ?? null,
+      });
+      launches.push({ jobId: call.job, title: call.title ?? "", runId: jobRow.id });
+    } catch (err) {
+      logger.warn("Orchestrator turn: could not mint the row of a job it launched", LOG_TAG, {
+        runId: row.id,
+        job: call.job,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return launches;
+}
+
 // ─── Delivery ─────────────────────────────────────────────────────────────
 
 export type OrchestratorAppendResult = { appended: string[]; duplicate: string[]; skipped: boolean };
@@ -256,6 +293,7 @@ export function orchestratorRowsFor(
   refs: ArtifactRef[],
   dropped: Array<{ title: string; reason: string }>,
   proposals: StrutProposalBrief[],
+  jobs: OrchestratorJobLaunch[] = [],
 ): OrchestratorRowDraft[] {
   const main: OrchestratorRowDraft = {
     id: orchestratorRowId(row.id),
@@ -266,6 +304,7 @@ export function orchestratorRowsFor(
       strutRunId: row.strutRunId ?? "",
       status: reply.outcome,
       ...(reply.ask ? { ask: reply.ask } : {}),
+      ...(jobs.length > 0 ? { jobs } : {}),
     },
     ...(refs.length > 0 ? { artifacts: refs } : {}),
   };
@@ -295,10 +334,16 @@ export async function handleOrchestratorTurnSettled(row: StrutRunRow, _ctx?: Str
   let refs: ArtifactRef[] = [];
   let dropped: Array<{ title: string; reason: string }> = [];
   let proposals: StrutProposalBrief[] = [];
+  let jobs: OrchestratorJobLaunch[] = [];
   // A silent turn may still have produced cards or proposals: read them
   // too, and the row shows as nothing only when it carries none.
   if (reply.outcome === "success" || reply.outcome === "silent") {
-    const [artifacts, read] = await Promise.all([readRunArtifacts(row), readRunProposals(row)]);
+    const [artifacts, read, launched] = await Promise.all([
+      readRunArtifacts(row),
+      readRunProposals(row),
+      launchedJobTurns(row),
+    ]);
+    jobs = launched;
     if (artifacts.ok) {
       ({ refs, dropped } = mapStrutArtifacts(artifacts.artifacts, row.swarmId));
     } else if (artifacts.permanent) {
@@ -322,12 +367,13 @@ export async function handleOrchestratorTurnSettled(row: StrutRunRow, _ctx?: Str
     }
   }
 
-  const result = await appendOrchestratorRows(row, orchestratorRowsFor(row, reply, refs, dropped, proposals));
+  const result = await appendOrchestratorRows(row, orchestratorRowsFor(row, reply, refs, dropped, proposals, jobs));
   logger.info("Orchestrator turn delivered", LOG_TAG, {
     runId: row.id,
     status: reply.outcome,
     artifacts: refs.map((r) => ({ id: r.id, kind: r.kind })),
     proposals: proposals.map((p) => ({ id: p.id, step: p.step, status: p.status })),
+    jobs: jobs.map((j) => ({ jobId: j.jobId, runId: j.runId })),
     dropped: dropped.length,
     appended: result.appended.length,
     duplicate: result.duplicate.length,

@@ -106,7 +106,76 @@ export type OrchestratorRowSource = {
   status: OrchestratorTurnOutcome;
   /** The agent stopped for a decision: the question, verbatim. */
   ask?: string;
+  /**
+   * The jobs this turn started or continued (`job/start`, `job/continue`),
+   * read from the run's event log when it settled. Each is a job turn
+   * strut is still working on: the chat hangs a running card under this
+   * row until the job's own row (`job-<runId>`) lands.
+   */
+  jobs?: OrchestratorJobLaunch[];
 };
+
+/** A job turn an orchestrator turn launched inside strut. */
+export type OrchestratorJobLaunch = {
+  jobId: string;
+  title: string;
+  /** The job turn's `StrutRun` id — the row minted for it before it lands. */
+  runId: string;
+};
+
+/** A `job/start` or `job/continue` call as the run's event log records it. */
+export interface OrchestratorJobCall {
+  job: string;
+  /** Strut's run id of the job turn the call launched. */
+  runId: string;
+  title?: string;
+}
+
+/** The tool names strut's agent gives the two steps (`job/start` → `job_start`). */
+const JOB_LAUNCH_TOOLS: ReadonlySet<string> = new Set(["tool:job_start", "tool:job_continue"]);
+
+const parseMaybeJson = (v: unknown): unknown => {
+  if (typeof v !== "string") return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return undefined;
+  }
+};
+
+const nonEmpty = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+
+/**
+ * The job turns a settled orchestrator run launched, in call order, from its
+ * event log (`GET …/runs/<runId>/events`): each agent tool call is a
+ * `step.start` (`stepType: "tool:job_start"`, the call's input) and a
+ * `step.end` at the same path (the step's `{ job, runId, callback }`,
+ * JSON-encoded). A call that failed has no `step.end` and draws nothing; a
+ * job launched twice keeps its last turn (one turn at a time per job).
+ */
+export function parseOrchestratorJobCalls(events: unknown[]): OrchestratorJobCall[] {
+  const inputs = new Map<string, Record<string, unknown>>();
+  const calls = new Map<string, OrchestratorJobCall>();
+  for (const raw of events) {
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as { type?: unknown; path?: unknown; stepType?: unknown; input?: unknown; output?: unknown };
+    if (typeof e.path !== "string" || typeof e.stepType !== "string" || !JOB_LAUNCH_TOOLS.has(e.stepType)) continue;
+    if (e.type === "step.start") {
+      const input = parseMaybeJson(e.input);
+      if (input && typeof input === "object") inputs.set(e.path, input as Record<string, unknown>);
+      continue;
+    }
+    if (e.type !== "step.end") continue;
+    const out = parseMaybeJson(e.output) as { job?: unknown; runId?: unknown } | undefined;
+    const job = nonEmpty(out?.job);
+    const runId = nonEmpty(out?.runId);
+    if (!job || !runId) continue;
+    const title = nonEmpty(inputs.get(e.path)?.title);
+    calls.delete(job);
+    calls.set(job, { job, runId, ...(title ? { title } : {}) });
+  }
+  return [...calls.values()];
+}
 
 /** Written as the turn launches; the working card hangs on it until `orchestrator-<runId>` lands. */
 export type OrchestratorLaunchRowSource = {

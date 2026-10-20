@@ -17,8 +17,9 @@
  * started"). That job's run carries the ORCHESTRATOR turn's callback, so
  * its `run.end` lands here with `workflow: "job"` and the job id, under an
  * `orchestrator_turn` row. Hive launched nothing, so no row exists for it;
- * the webhook ADOPTS it — a `job_turn` row minted for (swarm, run id),
- * routed from the orchestrator row, settled through the same
+ * the webhook ADOPTS it — the `job_turn` row for (swarm, run id), minted
+ * when the orchestrator turn settled or here if the job beat it
+ * (`services/strut-runs/orchestrator-jobs.ts`), routed from the orchestrator row, settled through the same
  * `completeStrutRun` — and the job's reply, cards and reader links land
  * exactly as a hive-launched job's do (`services/strut-runs/job-turn.ts`).
  * Only `job` and `runId` are read off the payload for that; a replay finds
@@ -33,16 +34,16 @@
  * NEVER log the raw token or the full callback URL.
  */
 
-import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { StrutRunStatus } from "@prisma/client";
 import { timingSafeEqual } from "@/lib/encryption";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
-import { JOB_TURN_KIND, JOB_WORKFLOW } from "@/lib/strut-jobs";
+import { JOB_WORKFLOW } from "@/lib/strut-jobs";
 import { ORCHESTRATOR_TURN_KIND } from "@/lib/strut-orchestrator";
 import { getBaseUrl } from "@/lib/utils";
 import { completeStrutRun, hashStrutRunToken, type StrutRunTerminalStatus } from "@/services/strut-runs";
+import { STRUT_RUN_WEBHOOK_SELECT, adoptOrchestratorJobRun } from "@/services/strut-runs/orchestrator-jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,18 +59,7 @@ const JOB_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 /** Cap on a title read off the payload for an adopted job. */
 const MAX_TITLE_CHARS = 300;
 
-const WEBHOOK_SELECT = {
-  id: true,
-  tokenHash: true,
-  status: true,
-  workflow: true,
-  strutRunId: true,
-  kind: true,
-  workspaceId: true,
-  swarmId: true,
-  userId: true,
-  conversationId: true,
-} as const;
+const WEBHOOK_SELECT = STRUT_RUN_WEBHOOK_SELECT;
 
 type WebhookRow = {
   id: string;
@@ -88,42 +78,6 @@ function hardenError(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null;
   const s = typeof raw === "string" ? raw : String(raw);
   return s.length > MAX_ERROR_CHARS ? `${s.slice(0, MAX_ERROR_CHARS)}…` : s;
-}
-
-/**
- * The `job_turn` row for a job the orchestrator started inside strut —
- * found, or minted, for (the orchestrator row's swarm, `job`, `runId`):
- * one row per job run, whichever delivery gets here first (the unique
- * index on swarm + workflow + run id makes the upsert the race's judge).
- * Everything that routes the reply is the ORCHESTRATOR row's — workspace,
- * user, swarm, conversation; the job id and the run id are strut's. The
- * input is a hive launch's shape (`jobTurnInputSchema`) with an empty
- * prompt, `via: "orchestrator"` (no wake: the canvas agent is not in a
- * strut-engine conversation) and the orchestrator row as `parentRunId`.
- * The token is fresh and thrown away: nothing will ever call this row's
- * URL, since strut posts to the orchestrator's.
- */
-async function adoptOrchestratorJobRun(parent: WebhookRow, run: { job: string; runId: string; title: string | null }): Promise<WebhookRow> {
-  const workspace = await db.workspace.findUnique({ where: { id: parent.workspaceId }, select: { slug: true } });
-  const rawToken = crypto.randomBytes(32).toString("hex");
-  return db.strutRun.upsert({
-    where: { swarmId_workflow_strutRunId: { swarmId: parent.swarmId, workflow: JOB_WORKFLOW, strutRunId: run.runId } },
-    create: {
-      tokenHash: hashStrutRunToken(rawToken),
-      workspaceId: parent.workspaceId,
-      swarmId: parent.swarmId,
-      userId: parent.userId,
-      kind: JOB_TURN_KIND,
-      workflow: JOB_WORKFLOW,
-      strutRunId: run.runId,
-      status: StrutRunStatus.PENDING,
-      input: { prompt: "", title: run.title ?? run.job, workspace: workspace?.slug ?? "", via: "orchestrator", parentRunId: parent.id },
-      conversationId: parent.conversationId,
-      jobId: run.job,
-    },
-    update: {},
-    select: WEBHOOK_SELECT,
-  });
 }
 
 export async function POST(request: NextRequest) {
