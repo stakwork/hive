@@ -8,7 +8,7 @@ import { effectCounts, impactLevel, type ChoiceItem } from "../artifacts/viewers
 import type { ChoiceEffect } from "@/services/graph/workbench";
 import { cardActions, type DeskAction } from "./actions";
 import { hand, typed } from "./fonts";
-import { RED } from "./edges";
+import { CHOSEN } from "./edges";
 import { CARD_W } from "./layout";
 import { LINEN } from "./linen";
 import { isPerson, memberLabel, type BoardMember } from "./model";
@@ -16,22 +16,22 @@ import { penCircle, seeded, tilt } from "./rough";
 
 /**
  * The desk's cards. The paper says what a card is: handwritten on taped paper
- * when a person wrote it, typed on an index card when Jamie did, pencil on
+ * when a person wrote it, typed on an index card when the agent did, pencil on
  * tracing paper for a "could be". Settled cards are tea-tinted, a decided
  * question has its corner folded over, a dropped option is crumpled, a chosen
- * one circled in red pen, and the open question on the path is highlighted.
+ * one circled in amber pen, and the open question on the path is highlighted.
  */
 
 const PAPER = "#f5ebc4";
 const AGED = "#ecdba4";
 const LINED: CSSProperties = {
   backgroundImage:
-    "linear-gradient(90deg, transparent 30px, rgba(200,69,44,.45) 30px 31px, transparent 31px), repeating-linear-gradient(transparent 0 25px, rgba(70,110,170,.35) 25px 26px)",
+    "linear-gradient(90deg, transparent 30px, rgba(217,119,6,.45) 30px 31px, transparent 31px), repeating-linear-gradient(transparent 0 25px, rgba(70,110,170,.35) 25px 26px)",
   backgroundPosition: "0 8px",
 };
 const INDEX: CSSProperties = {
   backgroundImage:
-    "linear-gradient(transparent 25px, rgba(200,69,44,.35) 25px 26px, transparent 26px), repeating-linear-gradient(transparent 0 21px, rgba(70,110,170,.13) 21px 22px)",
+    "linear-gradient(transparent 25px, rgba(217,119,6,.35) 25px 26px, transparent 26px), repeating-linear-gradient(transparent 0 21px, rgba(70,110,170,.13) 21px 22px)",
   backgroundPosition: "0 0, 0 26px",
 };
 const SHADOW = "0 1px 2px rgba(80,60,20,.12), 2px 4px 10px rgba(80,60,20,.18)";
@@ -158,7 +158,7 @@ function Details({ item }: { item: ChoiceItem }) {
 }
 
 const PRO = "#4d6b3a";
-const CON = "#9c3b2e";
+const CON = "#b45309";
 
 /** Compact "+2 pros · −1 con" line for an unselected card with effects. */
 function EffectsSummary({ effects, size }: { effects: ChoiceEffect[]; size: string }) {
@@ -298,13 +298,15 @@ function AgentCard({ d }: { d: CardData }) {
       >
         {!simulated && <Grain aged={settled(item)} seed={item.id} />}
         {item.isQuestion && item.state === "decided" && <Fold />}
-        <div className="relative text-[11.5px] uppercase leading-[14px] tracking-[.1em] text-[#8b8473]">
-          {simulated ? "pencilled in · could be" : "typed by jamie"}
-        </div>
+        {simulated && (
+          <div className="relative font-sans text-[11.5px] uppercase leading-[14px] tracking-[.1em] text-[#8b8473]">
+            pencilled in · could be
+          </div>
+        )}
         <p
           data-node-text
           className={cn(
-            "relative mt-1 min-w-0 text-[17px] leading-[1.3] [overflow-wrap:anywhere]",
+            "relative min-w-0 text-[17px] leading-[1.3] [overflow-wrap:anywhere]",
             item.isQuestion && "font-bold",
             item.state === "rejected" && "line-through",
           )}
@@ -324,7 +326,7 @@ function AgentCard({ d }: { d: CardData }) {
   );
 }
 
-/** The red pen circle round a chosen option, sized to the card by CSS. */
+/** The amber pen circle round a chosen option, sized to the card by CSS. */
 function PenCircle({ id }: { id: string }) {
   const W = CARD_W + 28;
   const H = 120;
@@ -339,7 +341,7 @@ function PenCircle({ id }: { id: string }) {
       <path
         d={penCircle(id, W, H)}
         fill="none"
-        stroke={RED}
+        stroke={CHOSEN}
         strokeWidth={3.2}
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
@@ -354,9 +356,7 @@ function Toolbar({ d }: { d: CardData }) {
   return (
     <div
       className={cn(
-        "nodrag nopan flex items-center gap-0.5 rounded-full border border-[#cdbf9c] bg-[#fbf6e6] p-1 shadow-[0_1px_2px_rgba(80,60,20,.1),0_6px_18px_rgba(80,60,20,.14)] animate-in fade-in-0 zoom-in-95",
-        hand.className,
-      )}
+        "nodrag nopan flex items-center gap-0.5 rounded-full border border-[#cdbf9c] bg-[#fbf6e6] p-1 shadow-[0_1px_2px_rgba(80,60,20,.1),0_6px_18px_rgba(80,60,20,.14)] animate-in fade-in-0 zoom-in-95")}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
       data-actions
@@ -366,7 +366,7 @@ function Toolbar({ d }: { d: CardData }) {
           key={a.action}
           type="button"
           className={cn(
-            "whitespace-nowrap rounded-full px-3 py-0.5 text-[18px] transition-colors active:scale-[.97]",
+            "whitespace-nowrap rounded-full px-3 py-0.5 text-[14px] transition-colors active:scale-[.97]",
             i === 0 ? "bg-[#2f2b26] text-[#fbf6e6] hover:bg-black" : "text-[#2f2b26] hover:bg-[rgba(138,106,67,.13)]",
           )}
           onClick={() => d.onAct(a.action, d.item)}
@@ -436,8 +436,7 @@ export const SlotNode = memo(function SlotNode({ id, data }: NodeProps<Node<Slot
       <button
         type="button"
         className={cn(
-          "nodrag flex h-[46px] w-full items-center justify-center rounded-md border-[1.5px] border-dashed border-[rgba(138,106,67,.55)] bg-[rgba(251,246,230,.35)] text-[19px] text-[#8a6a43] transition-colors hover:border-[#8a6a43] hover:bg-[rgba(251,246,230,.95)] hover:text-[#2f2b26] active:scale-[.97]",
-          hand.className,
+          "nodrag flex h-[46px] w-full items-center justify-center rounded-md border-[1.5px] border-dashed border-[rgba(138,106,67,.55)] bg-[rgba(251,246,230,.35)] text-[15px] text-[#8a6a43] transition-colors hover:border-[#8a6a43] hover:bg-[rgba(251,246,230,.95)] hover:text-[#2f2b26] active:scale-[.97]",
         )}
         onClick={(e) => {
           e.stopPropagation();
@@ -481,7 +480,7 @@ export const DraftNode = memo(function DraftNode({ id, data }: NodeProps<Node<Dr
   return (
     <div
       ref={ref}
-      className={cn("relative animate-in fade-in-0 zoom-in-95", hand.className)}
+      className={"relative animate-in fade-in-0 zoom-in-95"}
       style={{
         width: data.root ? 420 : CARD_W,
         padding: data.root ? "22px 22px 12px 48px" : data.kind === "question" ? "18px 16px 8px 40px" : "18px 16px 8px",
@@ -500,6 +499,7 @@ export const DraftNode = memo(function DraftNode({ id, data }: NodeProps<Node<Dr
         placeholder={placeholder}
         aria-label={placeholder}
         className={cn(
+          hand.className,
           "nodrag nowheel nopan w-full resize-none bg-transparent leading-[1.15] text-[#2b261a] outline-none placeholder:text-[#8a6a43]/60",
           data.root ? "text-[30px]" : "text-[20px]",
           data.kind === "question" && "font-bold",
@@ -549,7 +549,7 @@ export interface HeadingData extends Record<string, unknown> {
 /** A workspace's handwritten heading on the desk: no frame, just ink. */
 export const HeadingNode = memo(function HeadingNode({ data }: NodeProps<Node<HeadingData>>) {
   return (
-    <div className={cn("pointer-events-none whitespace-nowrap text-[#3d3626]", hand.className)} data-heading>
+    <div className={"pointer-events-none whitespace-nowrap text-[#3d3626]"} data-heading>
       <div className="text-[110px] leading-none">{data.title}</div>
       <div className="mt-2 text-[44px] text-[#8a6a43]">{data.subtitle}</div>
       <svg width="420" height="22" viewBox="0 0 420 22" className="mt-1 block" aria-hidden>

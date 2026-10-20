@@ -26,7 +26,6 @@ import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import { cardActions, composeFor, isBoardAction, type DeskAction } from "./actions";
 import { HEADING_ABOVE, latestAdded, placeDesk, type DeskBlock } from "./desk-layout";
 import { edgeTypes, type BoardEdgeData } from "./edges";
-import { hand } from "./fonts";
 import { CARD_W, layoutBoard } from "./layout";
 import { Linen, LINEN } from "./linen";
 import { dimmedIds, ghostIds, isPerson, matchMember, myPath, type BoardMember } from "./model";
@@ -106,7 +105,7 @@ const isTyping = (t: EventTarget | null) =>
   (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
 
 const CHIP =
-  "rounded-full border border-[#cdbf9c] bg-[#fbf6e6]/95 px-3.5 py-1 text-[17px] text-[#2f2b26] shadow-[0_1px_2px_rgba(80,60,20,.08),0_2px_6px_rgba(80,60,20,.06)] transition-colors hover:bg-white active:scale-[.97]";
+  "rounded-full border border-[#cdbf9c] bg-[#fbf6e6]/95 px-3.5 py-1 text-[14px] text-[#2f2b26] shadow-[0_1px_2px_rgba(80,60,20,.08),0_2px_6px_rgba(80,60,20,.06)] transition-colors hover:bg-white active:scale-[.97]";
 
 function useMembers(githubLogin: string): BoardMember[] {
   const { data } = useQuery({
@@ -931,7 +930,7 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
       {menu}
 
       {/* Top left: new, search, focus, save */}
-      <div className={cn("absolute left-3 top-3 z-10 flex flex-wrap items-center gap-2", hand.className)}>
+      <div className={"absolute left-3 top-3 z-10 flex flex-wrap items-center gap-2"}>
         <button
           type="button"
           className={CHIP}
@@ -964,13 +963,13 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
           </button>
         )}
         {!unsaved && !focus && (
-          <span className="text-[16px] text-[#8a6a43]">double-click or right-click the desk to add</span>
+          <span className="text-[13px] text-[#8a6a43]">double-click or right-click the desk to add</span>
         )}
       </div>
       {searching && <DeskSearch entries={entries} onPick={onPick} onClose={() => setSearching(false)} />}
 
       {/* Zoom */}
-      <div className={cn("absolute bottom-3 right-3 z-10 flex items-center gap-1.5", hand.className)}>
+      <div className={"absolute bottom-3 right-3 z-10 flex items-center gap-1.5"}>
         <button
           type="button"
           aria-label="Zoom out"
@@ -1001,16 +1000,13 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
       </div>
 
       {!listsSettled && slugs.length > 0 && (
-        <p className={cn("absolute left-4 top-16 text-[20px] text-[#6b6248]", hand.className)}>
+        <p className={"absolute left-4 top-16 text-[16px] text-[#6b6248]"}>
           Looking for brainstorms…
         </p>
       )}
       {empty && (
         <p
-          className={cn(
-            "pointer-events-none absolute inset-0 flex items-center justify-center text-[24px] text-[#6b6248]",
-            hand.className,
-          )}
+          className={"pointer-events-none absolute inset-0 flex items-center justify-center text-[18px] text-[#6b6248]"}
           data-empty
         >
           No brainstorms yet. Double-click anywhere to start one.
