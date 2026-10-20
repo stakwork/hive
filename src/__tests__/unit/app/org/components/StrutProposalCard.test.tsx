@@ -103,6 +103,43 @@ describe("StrutProposalCard", () => {
     expect(screen.queryByLabelText("Reject")).toBeNull();
   });
 
+  it("opens the proposed change on the graph: parent concept, new node and edge", async () => {
+    const { useCanvasChatStore } = await import("@/app/org/[githubLogin]/_state/canvasChatStore");
+    mockFetch.mockResolvedValueOnce(
+      json(200, {
+        proposal: {
+          ...RECORD,
+          step: "graph/create-triplet",
+          input: {
+            source_ref_id: "parent-1",
+            edge_type: "CONTAINS",
+            target_type: "Concept",
+            target_data: { name: "Rate limits" },
+          },
+        },
+      }),
+    );
+    render(<StrutProposalCard source={{ ...SOURCE, step: "graph/create-triplet" }} githubLogin="acme-org" />);
+    fireEvent.click(await screen.findByTestId("proposal-open-in-graph"));
+    const panel = useCanvasChatStore.getState().artifactPanel;
+    expect(panel?.live?.kind).toBe("graph");
+    expect((panel!.live!.source as { content: Record<string, unknown> }).content).toMatchObject({
+      workspace: "acme",
+      focus: "parent-1",
+      proposal: "p1",
+      changes: [{ kind: "edge", edge: "CONTAINS", source: "parent-1", target: "Rate limits" }],
+    });
+  });
+
+  it("shows no graph button for a step that changes no graph", async () => {
+    mockFetch.mockResolvedValueOnce(
+      json(200, { proposal: { ...RECORD, step: "memory/remember", input: { text: "x" } } }),
+    );
+    render(<StrutProposalCard source={{ ...SOURCE, step: "memory/remember" }} githubLogin="acme-org" />);
+    await waitFor(() => expect(screen.getByTestId("strut-proposal-generic-body")).toBeTruthy());
+    expect(screen.queryByTestId("proposal-open-in-graph")).toBeNull();
+  });
+
   it("a failed proposal offers Accept again; a 409 refreshes the card from strut's record", async () => {
     mockFetch.mockResolvedValueOnce(
       json(200, { proposal: { ...RECORD, status: "failed", result: { error: "node_key missing", at: "y" } } }),
