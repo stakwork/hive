@@ -7,8 +7,10 @@
  *   - the target is the org default for THIS user (purpose `orchestrator`);
  *     the launch carries `x-api-token` + `x-strut-actor`; the body is
  *     exactly `{ input: { prompt (workspace line + message), session (the
- *     conversation), context: { line } }, callback: { url } }` — no job, no
- *     title, no params;
+ *     conversation), context: { line } }, callback: { url }, jobCallback:
+ *     { url } }` — no job, no title, no params; the jobCallback is the
+ *     row's job-events URL, which the jobs the turn starts inherit (strut
+ *     CALLBACKS.md §5), and an older strut's 400 to it relaunches without;
  *   - the row is the kind's, on the conversation; the run is registered for
  *     Stop; the launch-marker row is written AFTER strut accepted;
  *   - busy: a PENDING turn of the conversation refuses before any launch;
@@ -157,7 +159,7 @@ describe("launchOrchestratorTurn", () => {
       "x-strut-actor": "alice-user-1",
     });
     const body = JSON.parse(init.body as string);
-    expect(Object.keys(body).sort()).toEqual(["callback", "input"]);
+    expect(Object.keys(body).sort()).toEqual(["callback", "input", "jobCallback"]);
     expect(body.input).toEqual({
       prompt: "@acme-default\nAdd a Concept for billing retries",
       session: "conv-1",
@@ -166,6 +168,11 @@ describe("launchOrchestratorTurn", () => {
     expect(body.callback.url).toMatch(
       /^https:\/\/hive\.example\.com\/api\/strut-runs\/webhook\?id=row-1&token=[0-9a-f]{64}$/,
     );
+    // The jobs this turn starts report live to the row's events URL, same token.
+    expect(body.jobCallback.url).toMatch(
+      /^https:\/\/hive\.example\.com\/api\/strut-jobs\/events\?id=row-1&token=[0-9a-f]{64}$/,
+    );
+    expect(new URL(body.jobCallback.url).searchParams.get("token")).toBe(new URL(body.callback.url).searchParams.get("token"));
 
     // Registered for Stop; the launch marker written AFTER strut accepted, into the conversation.
     expect(mockSetActiveRun).toHaveBeenCalledWith(
@@ -178,6 +185,25 @@ describe("launchOrchestratorTurn", () => {
       { workspaceId: "ws-default", userId: "user-1", conversationId: "conv-1" },
       [{ id: "orchestrator-launch-row-1", content: "", source: { kind: "orchestrator_launch", runId: "row-1" } }],
     );
+  });
+
+  it("strut honoring the jobCallback marks the row; an older strut's 400 to it is a launch without, not a failed turn", async () => {
+    mockFetch.mockResolvedValueOnce(json(202, { runId: "1790000000001", callback: true, jobCallback: true }));
+    await launchOrchestratorTurn(args);
+    expect(mockStrutRun.update.mock.calls.at(-1)?.[0].data).toEqual({ strutRunId: "1790000000001", liveUpdates: true });
+
+    vi.clearAllMocks();
+    mockFetch
+      .mockResolvedValueOnce(json(400, { error: "jobCallback belongs to a job: pass it with `job`" }))
+      .mockResolvedValueOnce(json(202, { runId: "1790000000002", callback: true }));
+    expect(await launchOrchestratorTurn(args)).toEqual({ status: "started", runId: "row-1", strutRunId: "1790000000002" });
+    const bodies = mockFetch.mock.calls.map((c) => JSON.parse((c[1] as RequestInit).body as string));
+    expect(bodies.map((b) => Object.keys(b).sort())).toEqual([
+      ["callback", "input", "jobCallback"],
+      ["callback", "input"],
+    ]);
+    expect(mockStrutRun.update.mock.calls.at(-1)?.[0].data).toEqual({ strutRunId: "1790000000002" });
+    expect(mockStrutRun.updateMany).not.toHaveBeenCalled();
   });
 
   it("a wake's launch marker carries the wake id — its idempotency mark — and strut's input is unchanged", async () => {
