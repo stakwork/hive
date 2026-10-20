@@ -13,8 +13,13 @@
  *     what a person types as `@slug`:
  *
  *         POST {its mcp}/mint-token        { scope: "lab:peer" }
- *         PUT  {org lab}/peers/{slug}       { baseUrl: {its lab}, token, label }
+ *         PUT  {org lab}/peers/{slug}       { baseUrl: {its lab}, token, label,
+ *                                            description?, repos? }
  *
+ *     `description` and `repos` (the workspace's repository URLs) are what
+ *     `strut/list-peers` shows an agent choosing a peer: the code a question
+ *     is about tells it which workspace to ask. A strut older than that
+ *     ignores both.
  *     No `sub`: the org strut forwards each run's person as `x-strut-actor`.
  *     Re-minted every pass — a token lives 60 days and strut reveals nothing
  *     about one it holds. A swarm whose mcp answers without
@@ -88,6 +93,8 @@ interface StrutSwarm {
   workspaceId: string;
   slug: string;
   name: string;
+  description?: string;
+  repos: string[];
   swarmId: string;
   swarmUrl: string;
   mcpBase: string;
@@ -104,6 +111,8 @@ type SwarmRow = {
   id: string;
   slug: string;
   name: string;
+  description?: string | null;
+  repositories?: { repositoryUrl: string }[];
   swarm: { id: string; swarmUrl: string | null; swarmApiKey: string | null } | null;
 };
 
@@ -193,6 +202,8 @@ function toStrutSwarm(ws: SwarmRow): StrutSwarm | null {
     workspaceId: ws.id,
     slug: ws.slug,
     name: ws.name,
+    ...(ws.description?.trim() ? { description: ws.description.trim() } : {}),
+    repos: (ws.repositories ?? []).map((r) => r.repositoryUrl),
     swarmId: ws.swarm.id,
     swarmUrl: ws.swarm.swarmUrl,
     mcpBase,
@@ -209,7 +220,14 @@ async function otherSwarms(
 ): Promise<StrutSwarm[]> {
   const workspaces = await db.workspace.findMany({
     where: { sourceControlOrgId: orgId, deleted: false, swarm: { is: { status: "ACTIVE" } } },
-    select: { id: true, slug: true, name: true, swarm: { select: SWARM_SELECT } },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      description: true,
+      repositories: { select: { repositoryUrl: true }, orderBy: { createdAt: "asc" } },
+      swarm: { select: SWARM_SELECT },
+    },
   });
   const seen = new Set([home.swarmId]);
   const swarms: StrutSwarm[] = [];
@@ -269,7 +287,13 @@ async function pushPeerRecord(
         "x-api-token": home.lab.swarmApiKey,
         Authorization: `Bearer ${home.lab.swarmApiKey}`,
       },
-      body: JSON.stringify({ baseUrl: peer.lab.labBase, token: body.token, label: peer.name }),
+      body: JSON.stringify({
+        baseUrl: peer.lab.labBase,
+        token: body.token,
+        label: peer.name,
+        ...(peer.description ? { description: peer.description } : {}),
+        ...(peer.repos.length ? { repos: peer.repos } : {}),
+      }),
       cache: "no-store",
       signal: AbortSignal.timeout(STRUT_DELEGATION_HTTP_TIMEOUT_MS),
     });
