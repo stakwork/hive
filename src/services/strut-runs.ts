@@ -145,9 +145,16 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_climb: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
+  // Generic benchmarks: `benchmark:<slug>` (see `lib/benchmarks/registry`).
+  benchmark: async () => (await import("./strut-runs/benchmark")).handleBenchmarkRunSettled,
   job_turn: async () => (await import("./strut-runs/job-turn")).handleJobTurnSettled,
   orchestrator_turn: async () => (await import("./strut-runs/orchestrator-turn")).handleOrchestratorTurnSettled,
 };
+
+/** A kind's loader. `kind:detail` (e.g. `benchmark:openhealth`) resolves to the `kind` entry. */
+function handlerFor(kind: string): (() => Promise<StrutRunHandler>) | undefined {
+  return HANDLERS[kind] ?? HANDLERS[kind.split(":")[0]];
+}
 
 export function hashStrutRunToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -288,7 +295,7 @@ async function failRow(id: string, error: string): Promise<void> {
  */
 export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<DispatchStrutRunResult> {
   const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title, params, inheritJobCallback } = args;
-  if (!HANDLERS[kind]) throw new Error(`No strut-run handler for kind "${kind}"`);
+  if (!handlerFor(kind)) throw new Error(`No strut-run handler for kind "${kind}"`);
 
   const resolved = await resolveStrutTarget({ purpose, userId, workspaceId });
   if (!resolved.ok) {
@@ -603,7 +610,7 @@ export async function completeStrutRun(
 
 /** Run a settled row's kind handler. `false` = it threw (retry). */
 export async function runHandler(row: StrutRunRow, ctx?: StrutRunHandlerContext): Promise<boolean> {
-  const load = HANDLERS[row.kind];
+  const load = handlerFor(row.kind);
   if (!load) {
     logger.error("No handler for a settled strut run", STRUT_RUN_LOG_TAG, { runId: row.id, kind: row.kind });
     return true; // nothing to retry into

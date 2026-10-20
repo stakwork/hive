@@ -107,7 +107,7 @@ const ROW_SELECT = {
 } as const;
 
 /** Settle a PENDING row from strut's summary when the run is over there. Returns the row to show. */
-async function settleFromStrut(row: StrutRunRow, now: Date): Promise<StrutRunRow> {
+export async function settleFromStrut(row: StrutRunRow, now: Date): Promise<StrutRunRow> {
   if (row.status !== StrutRunStatus.PENDING || !row.strutRunId) return row;
   if (now.getTime() - row.createdAt.getTime() < PROBE_MIN_AGE_MS) return row;
   try {
