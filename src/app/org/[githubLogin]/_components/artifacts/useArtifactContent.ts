@@ -158,7 +158,7 @@ function prLiveTarget(
 }
 
 /** Query key the chat and the panel share — one poll, one live-nudge target, serves both. */
-const prLiveQueryKey = (githubLogin: string, repo: string, number: number) =>
+export const prLiveQueryKey = (githubLogin: string, repo: string, number: number) =>
   ["canvas-pr-live", githubLogin, repo, number] as const;
 
 /** Whether a PR state is terminal — no more polling needed. */
