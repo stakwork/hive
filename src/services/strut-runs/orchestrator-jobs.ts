@@ -19,7 +19,11 @@
  * prompt, `via: "orchestrator"` (the wake goes to the orchestrator, not the
  * canvas agent) and the orchestrator row as `parentRunId`. The token is
  * fresh and thrown away: nothing will ever call this row's URL, since
- * strut posts to the orchestrator's. An existing row is left as it is.
+ * strut posts to the orchestrator's. `liveUpdates` is the orchestrator
+ * row's: a turn whose launch strut honored `jobCallback` on hands that URL
+ * to the jobs it starts (strut CALLBACKS.md §5), so their live updates
+ * reach `/api/strut-jobs/events` and the claims card's Verify may detach.
+ * An existing row is left as it is.
  */
 
 import crypto from "crypto";
@@ -40,6 +44,7 @@ export const STRUT_RUN_WEBHOOK_SELECT = {
   swarmId: true,
   userId: true,
   conversationId: true,
+  liveUpdates: true,
 } as const;
 
 export type OrchestratorJobParent = {
@@ -48,13 +53,21 @@ export type OrchestratorJobParent = {
   swarmId: string;
   userId: string;
   conversationId: string | null;
+  /** Read from the row when the caller did not select it. */
+  liveUpdates?: boolean;
 };
 
 export async function adoptOrchestratorJobRun(
   parent: OrchestratorJobParent,
   run: { job: string; runId: string; title: string | null },
 ) {
-  const workspace = await db.workspace.findUnique({ where: { id: parent.workspaceId }, select: { slug: true } });
+  const [workspace, liveUpdates] = await Promise.all([
+    db.workspace.findUnique({ where: { id: parent.workspaceId }, select: { slug: true } }),
+    parent.liveUpdates ??
+      db.strutRun
+        .findUnique({ where: { id: parent.id }, select: { liveUpdates: true } })
+        .then((r) => r?.liveUpdates === true),
+  ]);
   const rawToken = crypto.randomBytes(32).toString("hex");
   return db.strutRun.upsert({
     where: { swarmId_workflow_strutRunId: { swarmId: parent.swarmId, workflow: JOB_WORKFLOW, strutRunId: run.runId } },
@@ -76,8 +89,42 @@ export async function adoptOrchestratorJobRun(
       },
       conversationId: parent.conversationId,
       jobId: run.job,
+      liveUpdates,
     },
     update: {},
     select: STRUT_RUN_WEBHOOK_SELECT,
   });
+}
+
+/**
+ * The `job_turn` row a live update is about, for an event posted to an
+ * orchestrator turn's shared `jobCallback` (strut CALLBACKS.md §5: every
+ * job the turn starts inherits ONE URL, so the payload names the job and
+ * its run). `runId` picks the row for (job, run). Without one (a hold let
+ * go by a delete or the idle sweep), or before that row is minted — the
+ * orchestrator's event log is read when ITS run settles, and a job reports
+ * from its first step — the job's newest PENDING row, else its newest.
+ *
+ *   - `null`: no row of the job yet. The caller forwards by job id alone:
+ *     the update goes to the token's own conversation and nowhere else.
+ *   - `"foreign"`: the job's row is another conversation's (or another
+ *     swarm's) — the token does not vouch for it.
+ */
+export async function orchestratorJobTurnFor(
+  parent: Pick<OrchestratorJobParent, "swarmId" | "conversationId">,
+  job: string,
+  runId?: string,
+): Promise<{ id: string } | null | "foreign"> {
+  const rows = await db.strutRun.findMany({
+    where: { jobId: job, kind: JOB_TURN_KIND },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, swarmId: true, conversationId: true, strutRunId: true, status: true },
+  });
+  const turn =
+    (runId ? rows.find((r) => r.strutRunId === runId) : undefined) ??
+    rows.find((r) => r.status === StrutRunStatus.PENDING) ??
+    rows[0];
+  if (!turn) return null;
+  if (turn.swarmId !== parent.swarmId || turn.conversationId !== parent.conversationId) return "foreign";
+  return { id: turn.id };
 }

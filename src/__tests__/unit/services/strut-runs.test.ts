@@ -284,6 +284,52 @@ describe("dispatchStrutRun", () => {
     expect(mockStrutRun.create.mock.calls[0][0].data.jobId).toBeUndefined();
   });
 
+  it("inheritJobCallback: a jobless launch carries the job-events URL under its own row — the jobs its run starts inherit it", async () => {
+    mockFetch.mockResolvedValue(json(202, { runId: "1790000000000", callback: true, jobCallback: true }));
+    await dispatchStrutRun({ ...dispatchArgs, inheritJobCallback: true });
+    const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.job).toBeUndefined();
+    const rowId = (await mockStrutRun.create.mock.results[0].value).id;
+    expect(body.jobCallback.url).toMatch(new RegExp(`/api/strut-jobs/events\\?id=${rowId}&token=[0-9a-f]{64}$`));
+    expect(new URL(body.jobCallback.url).searchParams.get("token")).toBe(new URL(body.callback.url).searchParams.get("token"));
+    // `jobCallback: true` in the 202 is the proof this strut hands it on.
+    expect(mockStrutRun.update.mock.calls.at(-1)?.[0].data).toEqual({ strutRunId: "1790000000000", liveUpdates: true });
+  });
+
+  it("without inheritJobCallback a jobless launch sends no jobCallback; a strut that ignores it leaves the row unmarked", async () => {
+    mockFetch.mockImplementation(async () => json(202, { runId: "1790000000000", callback: true }));
+    await dispatchStrutRun(dispatchArgs);
+    expect(JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string).jobCallback).toBeUndefined();
+    await dispatchStrutRun({ ...dispatchArgs, inheritJobCallback: true });
+    expect(JSON.parse((mockFetch.mock.calls[1][1] as RequestInit).body as string).jobCallback).toBeDefined();
+    expect(mockStrutRun.update.mock.calls.at(-1)?.[0].data).toEqual({ strutRunId: "1790000000000" });
+  });
+
+  it("an older strut's 400 to a jobless jobCallback: launched again without it, unmarked — the turn still runs", async () => {
+    mockFetch
+      .mockResolvedValueOnce(json(400, { error: "jobCallback belongs to a job: pass it with `job`" }))
+      .mockResolvedValueOnce(json(202, { runId: "1790000000000", callback: true }));
+    const result = await dispatchStrutRun({ ...dispatchArgs, inheritJobCallback: true });
+    expect(result.strutRunId).toBe("1790000000000");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const [first, second] = mockFetch.mock.calls.map((c) => JSON.parse((c[1] as RequestInit).body as string));
+    expect(first.jobCallback).toBeDefined();
+    expect(second.jobCallback).toBeUndefined();
+    expect(second.callback).toEqual(first.callback);
+    expect(mockStrutRun.updateMany).not.toHaveBeenCalled();
+    expect(mockStrutRun.update.mock.calls.at(-1)?.[0].data).toEqual({ strutRunId: "1790000000000" });
+  });
+
+  it("any other 400 on an inheritJobCallback launch is not retried", async () => {
+    mockFetch.mockResolvedValue(json(400, { error: "callback.url must be http(s)" }));
+    await expect(dispatchStrutRun({ ...dispatchArgs, inheritJobCallback: true })).rejects.toMatchObject({
+      code: "bad_callback_url",
+      message: "callback.url must be http(s)",
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockStrutRun.updateMany.mock.calls[0][0].data).toMatchObject({ error: "strut_http_400: callback.url must be http(s)" });
+  });
+
   it("params ride on the launch body beside input; absent (or empty) when not given", async () => {
     mockFetch.mockImplementation(async () => json(202, { runId: "1790000000000", callback: true }));
     await dispatchStrutRun({ ...dispatchArgs, params: { model: "claude-opus-4-1" } });

@@ -108,6 +108,11 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
       },
       publicBaseUrl,
       conversationId,
+      // The jobs this turn starts report their live updates (shots,
+      // recordings, holds, verdicts) to this row's events URL — strut hands
+      // it on to each (CALLBACKS.md §5); `/api/strut-jobs/events` routes
+      // them by the payload's `job`.
+      inheritJobCallback: true,
     });
   } catch (err) {
     if (err instanceof StrutDispatchError) {
