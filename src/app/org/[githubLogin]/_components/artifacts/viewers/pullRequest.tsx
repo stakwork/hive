@@ -10,6 +10,8 @@ import {
   Loader2,
   type LucideIcon,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { checksFailedEvent } from "@/lib/strut-jobs";
 import { cn } from "@/lib/utils";
@@ -19,8 +21,10 @@ import type {
   PullRequestCheck,
   PullRequestState,
 } from "../../../_state/canvasChatArtifacts";
+import { useCanvasChatStore } from "../../../_state/canvasChatStore";
 import { ScrollFade } from "../chrome";
 import { MultiFileDiffView } from "../diff";
+import { prLiveQueryKey } from "../useArtifactContent";
 import { useChatOrgLogin } from "../useArtifactPanel";
 
 /** GitHub's colours for a pull request's state — the ones the task page's pull request card wears. */
@@ -144,7 +148,70 @@ function FixButton({ jobId, event }: { jobId: string; event: NonNullable<ReturnT
   );
 }
 
-export function PullRequestPanel({ artifact, content, jobId }: ArtifactViewerProps<"pull_request">) {
+type MergeState = { status: "idle" } | { status: "merging" } | { status: "merged" } | { status: "failed"; error: string };
+
+/**
+ * Merge — merge the pull request from the chat
+ * (`api/orgs/[githubLogin]/strut/pull-request/merge`), with the viewer's own
+ * GitHub token, so GitHub decides whether they may. Shown on any open pull
+ * request in the chat; it does not depend on the job that opened it.
+ */
+function MergeButton({ repo, number, onMerged }: { repo: string; number: number; onMerged: () => void }) {
+  const githubLogin = useChatOrgLogin();
+  const queryClient = useQueryClient();
+  const conversationId = useCanvasChatStore((s) =>
+    s.activeConversationId ? (s.conversations[s.activeConversationId]?.serverConversationId ?? null) : null,
+  );
+  const [state, setState] = useState<MergeState>({ status: "idle" });
+
+  const merge = async () => {
+    setState({ status: "merging" });
+    try {
+      const res = await fetch(`/api/orgs/${encodeURIComponent(githubLogin)}/strut/pull-request/merge`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo, number, mergeMethod: "merge", ...(conversationId ? { conversationId } : {}) }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setState({ status: "failed", error: body.error ?? `HTTP ${res.status}` });
+        return;
+      }
+      setState({ status: "merged" });
+      toast.success("Pull request merged");
+      onMerged();
+      void queryClient.invalidateQueries({ queryKey: prLiveQueryKey(githubLogin, repo, number) });
+    } catch (err) {
+      setState({ status: "failed", error: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  if (state.status === "merged") return null;
+  return (
+    <span className="ml-auto flex items-baseline gap-2">
+      {state.status === "failed" && <span className="text-xs text-amber-600 [.dark_&]:text-amber-400">Could not merge: {state.error}</span>}
+      <button
+        type="button"
+        data-testid="pr-merge"
+        onClick={merge}
+        disabled={state.status === "merging"}
+        title="Merge this pull request on GitHub"
+        className="rounded-md border bg-background px-2 py-0.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+      >
+        {state.status === "merging" ? "Merging…" : "Merge"}
+      </button>
+    </span>
+  );
+}
+
+export function PullRequestPanel({ artifact, content: inlineContent, jobId }: ArtifactViewerProps<"pull_request">) {
+  // A merge done here shows at once, before the live read catches up.
+  const [mergedHere, setMergedHere] = useState(false);
+  const content = useMemo(
+    () => (mergedHere ? { ...inlineContent, state: "merged" as const } : inlineContent),
+    [inlineContent, mergedHere],
+  );
   const state = PULL_REQUEST_STATE[content.state];
   const fromTo = branches(content);
   const checks = useMemo(
@@ -182,6 +249,9 @@ export function PullRequestPanel({ artifact, content, jobId }: ArtifactViewerPro
           <span>{content.repo}</span>
           {content.author && <span>{content.author}</span>}
           {fromTo && <span className="font-mono text-xs">{fromTo}</span>}
+          {content.state === "open" && content.repo && content.number && (
+            <MergeButton repo={content.repo} number={content.number} onMerged={() => setMergedHere(true)} />
+          )}
         </div>
       </header>
 
