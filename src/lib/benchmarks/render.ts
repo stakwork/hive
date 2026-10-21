@@ -101,8 +101,9 @@ const fill = (value: unknown, task: Record<string, unknown>): unknown =>
     ? value.replace(/\{([\w.]+)\}/g, (_m, path: string) => String(getPath(task, path) ?? ""))
     : value;
 
-/** The key of the launch input that identifies the task (`taskId`, or the one mapped from `"id"`). */
-export function taskIdKey(benchmark: Pick<Benchmark, "input">): string {
+/** The key of the launch input that identifies the task (`taskIdKey`, the one mapped from `"id"`, else `taskId`). */
+export function taskIdKey(benchmark: Pick<Benchmark, "input" | "taskIdKey">): string {
+  if (benchmark.taskIdKey) return benchmark.taskIdKey;
   const mapped = Object.entries(benchmark.input?.fromTask ?? {}).find(([, path]) => path === "id");
   return mapped ? mapped[0] : "taskId";
 }
@@ -112,13 +113,13 @@ export function taskIdKey(benchmark: Pick<Benchmark, "input">): string {
  * one the list workflow returned (never client-sent task data).
  */
 export function buildLaunchInput(
-  benchmark: Pick<Benchmark, "input">,
+  benchmark: Pick<Benchmark, "input" | "taskIdKey">,
   taskId: string | number | undefined,
   task: BenchmarkTask | null,
   params: Record<string, unknown> = {},
 ): Record<string, unknown> {
   const spec = benchmark.input;
-  if (!spec?.fromTask) return { ...params, ...(taskId !== undefined ? { taskId } : {}) };
+  if (!spec?.fromTask) return { ...params, ...(taskId !== undefined ? { [taskIdKey(benchmark)]: taskId } : {}) };
   const mapped: Record<string, unknown> = {};
   for (const [key, path] of Object.entries(spec.fromTask)) {
     const v = task ? getPath(task, path) : undefined;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
+import { isLegalBenchmarksWorkspace } from "@/lib/eval-capture-slugs";
 
 // GITHUB_TOKEN must be set in the deployment environment.
 // Unauthenticated GitHub API calls still work but have lower rate limits.
@@ -40,7 +41,7 @@ function handleSwarmAccessError(error: { type: string }) {
  *
  * Fetches task instructions, criteria, and document listings from the
  * harvey-labs GitHub repo for the given task slug.
- * Gated to the `openlaw` workspace only.
+ * Gated to the legal benchmarks workspaces (`isLegalBenchmarksWorkspace`).
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { slug, taskSlug: taskSlugParts } = await params;
 
-    if (slug !== "openlaw") {
+    if (!isLegalBenchmarksWorkspace(slug)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 

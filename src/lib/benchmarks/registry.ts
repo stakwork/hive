@@ -5,7 +5,7 @@
  * schema change, no strut change.
  */
 
-import { OPENHEALTH_SLUGS } from "@/lib/eval-capture-slugs";
+import { LEGAL_STRUT_SLUGS, OPENHEALTH_SLUGS } from "@/lib/eval-capture-slugs";
 
 export interface Benchmark {
   /** URL segment and the suffix of the `StrutRun.kind` (`benchmark:<slug>`). */
@@ -36,6 +36,12 @@ export interface Benchmark {
     /** Constant defaults; string values may use `{field}` templates over the listed task (`"gt-{id}"`). */
     defaults?: Record<string, unknown>;
   };
+  /**
+   * The launch-input key that names the task, for a benchmark whose input is
+   * built outside this registry (no `fromTask`). Default: the key mapped from
+   * `"id"`, else `taskId`.
+   */
+  taskIdKey?: string;
   /** Output keys (any depth) never shown in the JSON tree. */
   denyKeys?: string[];
   /** Workspace slugs allowed to see this benchmark; absent → every workspace. */
@@ -56,6 +62,15 @@ export const BENCHMARKS: readonly Benchmark[] = [
       defaults: { task: "patient_diagnosis", workdir: "gt-{id}" },
     },
     workspaceSlugs: OPENHEALTH_SLUGS,
+  },
+  {
+    slug: "harvey-lab",
+    name: "Legal (Harvey LAB)",
+    // Launched by the Legal Benchmarks page (`legal/benchmarks/strut/run`),
+    // which builds the task input from hive's Harvey LAB catalogue.
+    runWorkflow: "harvey-lab-run",
+    taskIdKey: "task_slug",
+    workspaceSlugs: LEGAL_STRUT_SLUGS,
   },
 ];
 
