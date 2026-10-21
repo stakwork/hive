@@ -215,6 +215,11 @@ export interface DispatchStrutRunArgs {
    * that must name this attempt (a branch unique per `StrutRun`).
    */
   input: Record<string, unknown> | ((runId: string) => Record<string, unknown>);
+  /**
+   * Kept on the row's `input` beside what strut receives, and never sent:
+   * what hive alone reads back (an orchestrator turn's canvas `focus`).
+   */
+  rowInput?: Record<string, unknown>;
   purpose: StrutPurpose;
   /** Swarm-reachable base URL of THIS hive, captured from the request host. */
   publicBaseUrl: string;
@@ -312,7 +317,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
       userId,
       kind,
       workflow,
-      input: typeof args.input === "function" ? Prisma.DbNull : toJson(args.input),
+      input: typeof args.input === "function" ? Prisma.DbNull : toJson({ ...args.input, ...args.rowInput }),
       ...(conversationId ? { conversationId } : {}),
       ...(proposalId ? { proposalId } : {}),
       ...(job ? { jobId: job } : {}),
@@ -324,7 +329,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
   let input: Record<string, unknown>;
   if (typeof args.input === "function") {
     input = args.input(row.id);
-    await db.strutRun.update({ where: { id: row.id }, data: { input: toJson(input) } });
+    await db.strutRun.update({ where: { id: row.id }, data: { input: toJson({ ...input, ...args.rowInput }) } });
   } else {
     input = args.input;
   }

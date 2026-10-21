@@ -96,3 +96,51 @@ export function parseBrainstormFocus(raw: unknown, allowedSlugs: readonly string
     ...(selectedRefId && selectedLabel ? { selectedLabel } : {}),
   };
 }
+
+/** The initiative the user is on (the infinite canvas), as the agent is told about it. */
+export interface InitiativeFocusHint {
+  workspaceSlug: string;
+  initiativeRefId: string;
+  initiativeName: string;
+  /** One line from the graph, e.g. "2 milestones · 3 features · 7 requirements, 3 unaccepted". */
+  stage?: string;
+  selectedRefId?: string;
+  /** The selected card's node type (HiveMilestone, InitiativeFeature, …). */
+  selectedType?: string;
+  selectedLabel?: string;
+}
+
+const initiativeFocusSchema = z.object({
+  workspaceSlug: z.string(),
+  initiativeRefId: z.string(),
+  initiativeName: z.string().optional().nullable(),
+  stage: z.string().optional().nullable(),
+  selectedRefId: z.string().optional().nullable(),
+  selectedType: z.string().optional().nullable(),
+  selectedLabel: z.string().optional().nullable(),
+});
+
+const NODE_TYPE = /^[A-Za-z][A-Za-z0-9]{0,40}$/;
+
+/** Read `initiativeFocus` off a chat request, by the same rules as `parseBrainstormFocus`. */
+export function parseInitiativeFocus(raw: unknown, allowedSlugs: readonly string[]): InitiativeFocusHint | undefined {
+  const parsed = initiativeFocusSchema.safeParse(raw);
+  if (!parsed.success) return undefined;
+  const r = parsed.data;
+  const workspaceSlug = id(r.workspaceSlug);
+  const initiativeRefId = id(r.initiativeRefId);
+  if (!workspaceSlug || !initiativeRefId || !allowedSlugs.includes(workspaceSlug)) return undefined;
+  const stage = promptText(r.stage, 120);
+  const selectedRefId = id(r.selectedRefId);
+  const selectedType = r.selectedType && NODE_TYPE.test(r.selectedType) ? r.selectedType : "";
+  const selectedLabel = promptText(r.selectedLabel, MAX_NAME);
+  return {
+    workspaceSlug,
+    initiativeRefId,
+    initiativeName: promptText(r.initiativeName, MAX_NAME * 2) || initiativeRefId,
+    ...(stage ? { stage } : {}),
+    ...(selectedRefId ? { selectedRefId } : {}),
+    ...(selectedRefId && selectedType ? { selectedType } : {}),
+    ...(selectedRefId && selectedLabel ? { selectedLabel } : {}),
+  };
+}

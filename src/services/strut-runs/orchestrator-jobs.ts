@@ -31,13 +31,20 @@
  * to the jobs it starts (strut CALLBACKS.md §5), so their live updates
  * reach `/api/strut-jobs/events` and the claims card's Verify may detach.
  * An existing row is otherwise left as it is.
+ *
+ * The infinite-canvas card the job is on (`input.focus`, `lib/canvas/
+ * canvas-jobs.ts`) is copied onto the row so a lookup never walks back to
+ * the turn: the card of the job's first turn — a job continued from
+ * elsewhere stays where it started — else the orchestrator turn's.
  */
 
 import crypto from "crypto";
 import { StrutRunStatus } from "@prisma/client";
+import { canvasFocusOfInput } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
 import { JOB_TURN_KIND, JOB_WORKFLOW } from "@/lib/strut-jobs";
 import { hashStrutRunToken } from "@/services/strut-runs";
+import { firstJobTurn } from "@/services/strut-jobs";
 
 /** What the strut-runs webhook reads of a row (and what an adopted row is returned as). */
 export const STRUT_RUN_WEBHOOK_SELECT = {
@@ -52,6 +59,7 @@ export const STRUT_RUN_WEBHOOK_SELECT = {
   userId: true,
   conversationId: true,
   liveUpdates: true,
+  input: true,
 } as const;
 
 export type OrchestratorJobParent = {
@@ -62,6 +70,8 @@ export type OrchestratorJobParent = {
   conversationId: string | null;
   /** Read from the row when the caller did not select it. */
   liveUpdates?: boolean;
+  /** The turn's input (its canvas `focus`); read from the row when the caller did not select it. */
+  input?: unknown;
 };
 
 export async function adoptOrchestratorJobRun(
@@ -75,12 +85,12 @@ export async function adoptOrchestratorJobRun(
   },
 ) {
   const workflow = run.workflow ?? JOB_WORKFLOW;
-  const [workspace, liveUpdates, known] = await Promise.all([
+  const [workspace, stored, first, known] = await Promise.all([
     db.workspace.findUnique({ where: { id: parent.workspaceId }, select: { slug: true } }),
-    parent.liveUpdates ??
-      db.strutRun
-        .findUnique({ where: { id: parent.id }, select: { liveUpdates: true } })
-        .then((r) => r?.liveUpdates === true),
+    parent.liveUpdates !== undefined && parent.input !== undefined
+      ? null
+      : db.strutRun.findUnique({ where: { id: parent.id }, select: { liveUpdates: true, input: true } }),
+    firstJobTurn(run.job),
     db.strutRun.findMany({
       where: { swarmId: parent.swarmId, kind: JOB_TURN_KIND, jobId: run.job, strutRunId: run.runId },
       select: STRUT_RUN_WEBHOOK_SELECT,
@@ -91,6 +101,8 @@ export async function adoptOrchestratorJobRun(
     if (existing.workflow === workflow || existing.status !== StrutRunStatus.PENDING) return existing;
     return db.strutRun.update({ where: { id: existing.id }, data: { workflow }, select: STRUT_RUN_WEBHOOK_SELECT });
   }
+  const liveUpdates = parent.liveUpdates ?? stored?.liveUpdates === true;
+  const focus = canvasFocusOfInput(first?.input) ?? canvasFocusOfInput(parent.input ?? stored?.input);
   const rawToken = crypto.randomBytes(32).toString("hex");
   return db.strutRun.upsert({
     where: { swarmId_workflow_strutRunId: { swarmId: parent.swarmId, workflow, strutRunId: run.runId } },
@@ -109,6 +121,7 @@ export async function adoptOrchestratorJobRun(
         workspace: workspace?.slug ?? "",
         via: "orchestrator",
         parentRunId: parent.id,
+        ...(focus ? { focus } : {}),
       },
       conversationId: parent.conversationId,
       jobId: run.job,
@@ -151,11 +164,11 @@ export async function orchestratorJobTurnFor(
   parent: Pick<OrchestratorJobParent, "swarmId" | "conversationId">,
   job: string,
   runId?: string,
-): Promise<{ id: string } | null | "foreign"> {
+): Promise<{ id: string; input: unknown } | null | "foreign"> {
   const rows = await db.strutRun.findMany({
     where: { jobId: job, kind: JOB_TURN_KIND },
     orderBy: { createdAt: "desc" },
-    select: { id: true, swarmId: true, conversationId: true, strutRunId: true, status: true },
+    select: { id: true, swarmId: true, conversationId: true, strutRunId: true, status: true, input: true },
   });
   const turn =
     (runId ? rows.find((r) => r.strutRunId === runId) : undefined) ??
@@ -163,5 +176,5 @@ export async function orchestratorJobTurnFor(
     rows[0];
   if (!turn) return null;
   if (turn.swarmId !== parent.swarmId || turn.conversationId !== parent.conversationId) return "foreign";
-  return { id: turn.id };
+  return { id: turn.id, input: turn.input };
 }

@@ -108,6 +108,7 @@ import {
   type ArtifactEvent,
 } from "@/lib/strut-jobs";
 import { getBaseUrl } from "@/lib/utils";
+import { canvasJobStateOf, nudgeCanvasCardJob } from "@/services/canvas-jobs";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
 import { countStrutRunGraph } from "@/services/strut-runs/run-graph";
 import { fetchStrutRunEvents } from "@/services/strut-runs/lab";
@@ -931,6 +932,10 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
     dropped: dropped.length,
     result,
   });
+
+  // A job on an infinite-canvas card: every open canvas of the initiative
+  // sees it settle and reads the card's tree and artifacts again.
+  await nudgeCanvasCardJob(row, canvasJobStateOf(row.status));
 
   // The row landed (once): an agent's turn is the reply the user reads —
   // hive's canvas agent, or, for a job the orchestrator started inside
