@@ -415,3 +415,55 @@ describe("useLegalBenchmarkRun", () => {
     expect(result.current.run).toBeNull();
   });
 });
+
+// ─── A strut legal workspace (openlaw-1): one harvey-lab-run run ─────────────
+
+describe("useLegalBenchmarkRun in a strut legal workspace", () => {
+  const runId = "runner-abc";
+  const strutRow = {
+    ...MOCK_RUNNER_ROW,
+    result: JSON.stringify({ taskSlug: "banking/x", taskTitle: "Compliance", runner: "strut", strutRunId: "179" }),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWorkspace.slug = "openlaw-1";
+    vi.mocked(global.fetch).mockResolvedValue({ ok: true, status: 200, json: async () => ({ run: strutRow }) } as Response);
+  });
+
+  afterEach(() => {
+    mockWorkspace.slug = "openlaw";
+    vi.useRealTimers();
+  });
+
+  it("reads the run from the strut runs route", async () => {
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+    await waitFor(() => expect(result.current.run).not.toBeNull());
+    expect(global.fetch).toHaveBeenCalledWith("/api/workspaces/openlaw-1/legal/benchmarks/strut/runs/runner-abc");
+    expect(result.current.run).toMatchObject({ taskSlug: "banking/x", status: "running" });
+    expect(result.current.run?.runnerRun.result).toMatchObject({ runner: "strut", strutRunId: "179" });
+  });
+
+  it("polls while the run is going and never calls it stale", async () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(4 * 60 * 1000);
+      await Promise.resolve();
+    });
+    expect(vi.mocked(global.fetch).mock.calls.length).toBeGreaterThanOrEqual(10);
+    expect(result.current.isStale).toBe(false);
+  });
+
+  it("is null for a run that is not this workspace's", async () => {
+    vi.mocked(global.fetch).mockResolvedValue({ ok: false, status: 404, json: async () => ({}) } as Response);
+    const { result } = renderHook(() => useLegalBenchmarkRun(runId));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.run).toBeNull();
+  });
+});

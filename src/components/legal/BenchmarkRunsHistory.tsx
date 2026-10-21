@@ -43,6 +43,7 @@ import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults"
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
 import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 import { WorkflowStatus } from "@prisma/client";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 
@@ -210,6 +211,9 @@ export function BenchmarkRunsHistory({
   const { workspace, isSuperAdmin } = useWorkspace();
   const workspaceId = workspace?.id;
   const workspaceSlug = workspace?.slug;
+  // A strut legal workspace: manual `harvey-lab-run` runs only — no recursion,
+  // no report bundles, no Stakwork projects, and the workflow scores itself.
+  const strut = isLegalStrutWorkspace(workspaceSlug);
 
   // When a runList prop is supplied, pass undefined to the hook so it never
   // fetches, polls, or binds Pusher — all state comes from the prop.
@@ -222,7 +226,7 @@ export function BenchmarkRunsHistory({
   // Recursion-enrolled task slugs — same source the Recursion tab renders
   // from, so the badge and that tab can never disagree. Non-openlaw
   // workspaces 404 the endpoint, the set stays empty, and no badges render.
-  const { entries: recursionEntries } = useLegalBenchmarkRecursionList();
+  const { entries: recursionEntries } = useLegalBenchmarkRecursionList(!strut);
   const recursionSlugs = useMemo(
     () => new Map(recursionEntries.map((e) => [e.id, e.reason])),
     [recursionEntries],
@@ -379,6 +383,7 @@ export function BenchmarkRunsHistory({
   // evalTriggerRef (manual triggers hang off an EvalRequirement, which the
   // EvalSet expand cannot reach — the row ref is the direct path).
   const graphScoreRequests = useMemo<GraphScoreRequest[]>(() => {
+    if (strut) return [];
     const byTask = new Map<string, { triggerRefs: Set<string>; outputRefs: Set<string> }>();
     for (const run of [...visibleRuns, ...secondaryRows]) {
       if (!run.taskSlug) continue;
@@ -394,7 +399,7 @@ export function BenchmarkRunsHistory({
       triggerRefs: [...refs.triggerRefs],
       outputRefs: [...refs.outputRefs],
     }));
-  }, [visibleRuns, secondaryRows]);
+  }, [visibleRuns, secondaryRows, strut]);
   const graphOutputs = useBenchmarkGraphScoresMap(graphScoreRequests);
 
   const adjustedRuns = useMemo<AdjustedRun[]>(
@@ -547,8 +552,9 @@ export function BenchmarkRunsHistory({
   }
 
   // colSpan: Task + Type + Started + Runner Status + Pass + Fail + Contested +
-  // Disputed + Total + Report + (Stakwork if super admin)
-  const colSpan = isSuperAdmin ? 11 : 10;
+  // Disputed + Total + Report + (Stakwork if super admin). Strut: no Type,
+  // Report or Stakwork.
+  const colSpan = strut ? 8 : isSuperAdmin ? 11 : 10;
 
   return (
     <div className="space-y-3">
@@ -606,22 +612,24 @@ export function BenchmarkRunsHistory({
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Task</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                {/* Column-header micro-filter: a native select keeps the header
-                    one line tall and dodges portal/overlay complexity inside a
-                    table head. Default "all" shows every pipeline merged. */}
-                <select
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value as "all" | "manual" | "recursion")}
-                  className="bg-transparent font-medium text-muted-foreground text-sm cursor-pointer focus:outline-none hover:text-foreground [&>option]:bg-popover [&>option]:text-popover-foreground"
-                  aria-label="Filter by run type"
-                  data-testid="type-filter"
-                >
-                  <option value="all">All types</option>
-                  <option value="manual">Manual</option>
-                  <option value="recursion">Recursion</option>
-                </select>
-              </th>
+              {!strut && (
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                  {/* Column-header micro-filter: a native select keeps the header
+                      one line tall and dodges portal/overlay complexity inside a
+                      table head. Default "all" shows every pipeline merged. */}
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value as "all" | "manual" | "recursion")}
+                    className="bg-transparent font-medium text-muted-foreground text-sm cursor-pointer focus:outline-none hover:text-foreground [&>option]:bg-popover [&>option]:text-popover-foreground"
+                    aria-label="Filter by run type"
+                    data-testid="type-filter"
+                  >
+                    <option value="all">All types</option>
+                    <option value="manual">Manual</option>
+                    <option value="recursion">Recursion</option>
+                  </select>
+                </th>
+              )}
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Pass</th>
@@ -650,8 +658,8 @@ export function BenchmarkRunsHistory({
                 </span>
               </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
-              {isSuperAdmin && (
+              {!strut && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>}
+              {isSuperAdmin && !strut && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
               )}
             </tr>
@@ -704,9 +712,11 @@ export function BenchmarkRunsHistory({
                       );
                     })()}
                   </td>
-                  <td className="px-4 py-3">
-                    <RunTypeBadge runType={run.runType} />
-                  </td>
+                  {!strut && (
+                    <td className="px-4 py-3">
+                      <RunTypeBadge runType={run.runType} />
+                    </td>
+                  )}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span
                       title={new Date(run.createdAt).toISOString()}
@@ -736,12 +746,14 @@ export function BenchmarkRunsHistory({
                   <td className="px-4 py-3">
                     <TotalCell run={run} rosters={rosters} />
                   </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    {/* Report bundles land on recursion rows too (reportUrl
-                        column via webhook) — ReportCell self-handles absence. */}
-                    <ReportCell run={run} slug={workspace?.slug} />
-                  </td>
-                  {isSuperAdmin && (
+                  {!strut && (
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      {/* Report bundles land on recursion rows too (reportUrl
+                          column via webhook) — ReportCell self-handles absence. */}
+                      <ReportCell run={run} slug={workspace?.slug} />
+                    </td>
+                  )}
+                  {isSuperAdmin && !strut && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {run.projectId != null && (
                         <a

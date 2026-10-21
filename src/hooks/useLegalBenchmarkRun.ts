@@ -8,8 +8,12 @@ import {
   deriveBenchmarkStatus,
 } from "@/types/legal";
 import { StakworkRunType, WorkflowStatus } from "@prisma/client";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 
 const STALE_RUN_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+
+/** A strut run (`harvey-lab-run`) takes ~1.5 h and nothing pushes its end: poll while it runs. */
+const STRUT_POLL_MS = 15_000;
 
 /** Operator-facing statuses that represent an in-progress run. */
 const IN_PROGRESS_STATUSES = new Set<string>(["running"]);
@@ -37,9 +41,12 @@ interface RawRunRow {
 /**
  * Fetch and subscribe to a single LEGAL_BENCHMARK_RUNNER run. `null` for
  * `runId` no-ops the hook (returns `{ run: null, isLoading: false, isStale: false }`).
+ * In a strut legal workspace the run is a `harvey-lab-run` StrutRun, read
+ * from `legal/benchmarks/strut/runs/:runId` in the same row shape.
  */
 export function useLegalBenchmarkRun(runId: string | null): UseLegalBenchmarkRunResult {
   const { workspace } = useWorkspace();
+  const strut = isLegalStrutWorkspace(workspace?.slug);
   const [run, setRun] = useState<LegalBenchmarkRun | null>(null);
   const [isLoading, setIsLoading] = useState(runId !== null);
   const [isStale, setIsStale] = useState(false);
@@ -53,18 +60,29 @@ export function useLegalBenchmarkRun(runId: string | null): UseLegalBenchmarkRun
     try {
       setIsLoading(true);
 
-      const res = await fetch(
-        `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&includeResult=true`,
-      );
+      let rawRunner: RawRunRow | undefined;
+      if (strut) {
+        const res = await fetch(
+          `/api/workspaces/${workspace.slug}/legal/benchmarks/strut/runs/${encodeURIComponent(runId)}`,
+        );
+        if (!res.ok && res.status !== 404) {
+          throw new Error("Failed to fetch benchmark run");
+        }
+        rawRunner = res.ok ? ((await res.json()).run as RawRunRow | undefined) : undefined;
+      } else {
+        const res = await fetch(
+          `/api/stakwork/runs?workspaceId=${workspace.id}&type=${StakworkRunType.LEGAL_BENCHMARK_RUNNER}&includeResult=true`,
+        );
 
-      if (!res.ok) {
-        throw new Error("Failed to fetch benchmark runs");
+        if (!res.ok) {
+          throw new Error("Failed to fetch benchmark runs");
+        }
+
+        const data = await res.json();
+        const rawRunnerRuns: RawRunRow[] = data.runs ?? [];
+
+        rawRunner = rawRunnerRuns.find((r) => r.id === runId);
       }
-
-      const data = await res.json();
-      const rawRunnerRuns: RawRunRow[] = data.runs ?? [];
-
-      const rawRunner = rawRunnerRuns.find((r) => r.id === runId);
 
       if (!rawRunner) {
         setRun(null);
@@ -110,7 +128,7 @@ export function useLegalBenchmarkRun(runId: string | null): UseLegalBenchmarkRun
     } finally {
       setIsLoading(false);
     }
-  }, [workspace?.id, runId]);
+  }, [workspace?.id, workspace?.slug, strut, runId]);
 
   fetchRunRef.current = fetchRun;
 
@@ -131,7 +149,8 @@ export function useLegalBenchmarkRun(runId: string | null): UseLegalBenchmarkRun
   const polledRowRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!run || !IN_PROGRESS_STATUSES.has(run.status)) {
+    // A strut run polls instead (below); it is long, not stale.
+    if (strut || !run || !IN_PROGRESS_STATUSES.has(run.status)) {
       setIsStale(false);
       polledRowRef.current = null;
       return;
@@ -151,7 +170,14 @@ export function useLegalBenchmarkRun(runId: string | null): UseLegalBenchmarkRun
     }, Math.max(0, STALE_RUN_TIMEOUT_MS - elapsed));
 
     return () => clearTimeout(timer);
-  }, [run]);
+  }, [run, strut]);
+
+  const runStatus = run?.status;
+  useEffect(() => {
+    if (!strut || !runStatus || !IN_PROGRESS_STATUSES.has(runStatus)) return;
+    const timer = setInterval(() => void fetchRunRef.current?.(), STRUT_POLL_MS);
+    return () => clearInterval(timer);
+  }, [strut, runStatus]);
 
   // Pusher subscription — refetch when a STAKWORK_RUN_UPDATE matches our run id.
   useEffect(() => {

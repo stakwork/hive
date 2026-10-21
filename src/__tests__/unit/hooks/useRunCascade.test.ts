@@ -13,8 +13,10 @@ import type { CascadeSession } from "@/lib/legal-cascade/types";
 
 // ─── Module mocks ──────────────────────────────────────────────────────────────
 
+const workspaceState = vi.hoisted(() => ({ slug: "openlaw" }));
+
 vi.mock("@/hooks/useWorkspace", () => ({
-  useWorkspace: () => ({ workspace: { id: "ws-cuid-123", slug: "openlaw" } }),
+  useWorkspace: () => ({ workspace: { id: "ws-cuid-123", slug: workspaceState.slug } }),
 }));
 
 const mockChannelBind = vi.fn();
@@ -97,6 +99,7 @@ const flush = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  workspaceState.slug = "openlaw";
   calls.sessions = 0;
   calls.session = 0;
   calls.turns = [];
@@ -279,5 +282,18 @@ describe("useRunCascade", () => {
     const handler = mockChannelBind.mock.calls[0][1];
     unmount();
     expect(mockChannelUnbind).toHaveBeenCalledWith("stakwork-run-update", handler);
+  });
+
+  it("reads a strut legal workspace's trace from its strut routes", async () => {
+    workspaceState.slug = "openlaw-1";
+    const { result } = renderHook(() =>
+      useRunCascade(RUN_ID, { enabled: true, runStatus: "COMPLETED" }),
+    );
+    await waitFor(() => expect(result.current.model).not.toBeNull());
+
+    const urls = vi.mocked(global.fetch).mock.calls.map(([u]) => String(u));
+    expect(urls[0]).toBe(`/api/workspaces/openlaw-1/legal/benchmarks/strut/cascade/sessions?runId=${RUN_ID}`);
+    expect(urls.every((u) => u.startsWith("/api/workspaces/openlaw-1/legal/benchmarks/strut/cascade/"))).toBe(true);
+    expect(calls.turns.length).toBeGreaterThan(0);
   });
 });
