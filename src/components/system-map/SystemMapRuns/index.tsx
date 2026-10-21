@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, ExternalLink, Loader2, Play } from "lucide-react";
+import { ChevronRight, ExternalLink, Loader2, Play, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -226,13 +226,25 @@ export function RunCard({
   );
 }
 
+/** How many runs the compact view shows before "Show all". */
+const COMPACT_LIMIT = 3;
+
 export function SystemMapRuns({
   workflowKey = "system_map",
   onRunSettled,
+  compact = false,
+  refreshKey = 0,
 }: {
   workflowKey?: SystemMapWorkflowKey;
   /** Called when a run that was in flight finishes (any outcome). */
   onRunSettled?: () => void;
+  /**
+   * For a tab that launches runs itself: no description or Run button, the
+   * newest few runs collapsed, the rest behind "Show all".
+   */
+  compact?: boolean;
+  /** Bump to re-read the runs, e.g. after the host started one. */
+  refreshKey?: number;
 }) {
   const copy = COPY[workflowKey];
   const { workspace } = useWorkspace();
@@ -241,6 +253,7 @@ export function SystemMapRuns({
   const [data, setData] = useState<SystemMapRunsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(async (workspaceSlug: string) => {
     try {
@@ -263,6 +276,10 @@ export function SystemMapRuns({
     setData(null);
     if (slug) void load(slug);
   }, [slug, load]);
+
+  useEffect(() => {
+    if (slug && refreshKey > 0) void load(slug);
+  }, [slug, refreshKey, load]);
 
   const runs = useMemo(() => data?.runs ?? [], [data?.runs]);
   const inFlight = runs.some((run) => run.status === "PENDING");
@@ -300,6 +317,51 @@ export function SystemMapRuns({
       setStarting(false);
     }
   }, [slug, load, workflowKey, copy.started]);
+
+  if (compact) {
+    const shown = showAll ? runs : runs.slice(0, COMPACT_LIMIT);
+    return (
+      <div className="space-y-2" data-testid="system-map-runs-compact">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium">Runs</p>
+          {inFlight && (
+            <Badge variant="secondary" className="gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> Running
+            </Badge>
+          )}
+          {data?.workflow && <code className="text-xs text-muted-foreground">{data.workflow}</code>}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto h-7 text-xs"
+            disabled={!slug || loading}
+            onClick={() => slug && void load(slug)}
+            data-testid="system-map-runs-reload"
+          >
+            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+        </div>
+        {loading && (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="system-map-runs-loading">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading runs…
+          </p>
+        )}
+        {!loading && runs.length === 0 && (
+          <p className="text-xs text-muted-foreground" data-testid="system-map-runs-empty">
+            {copy.empty}
+          </p>
+        )}
+        {shown.map((run) => (
+          <RunCard key={run.id} run={run} defaultExpanded={false} workflowKey={workflowKey} />
+        ))}
+        {runs.length > COMPACT_LIMIT && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? "Show fewer" : `Show all ${runs.length}`}
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl space-y-4">
