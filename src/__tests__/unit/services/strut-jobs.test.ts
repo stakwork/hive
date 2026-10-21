@@ -124,6 +124,24 @@ describe("launchJobTurn", () => {
     expect(mockDispatch.mock.calls[0][0].input).not.toHaveProperty("via");
   });
 
+  it("a builder job the orchestrator started is never relaunched as a `job` — its next turn is the orchestrator's", async () => {
+    mockStrutRunFindFirst.mockResolvedValue({
+      id: "row-1",
+      workflow: "builder",
+      input: { prompt: "", title: "Digest workflow", workspace: "acme", via: "orchestrator", parentRunId: "orch-row" },
+    });
+    const out = await launchJobTurn(target, { jobId: JOB, title: "Digest workflow", prompt: LINE, started: false, event: true });
+    expect(out).toEqual({ status: "error", error: expect.stringContaining("builder job") });
+    expect(mockResolve).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockAppendEvent).not.toHaveBeenCalled();
+
+    // A `job` job (or a row from before the select carried the workflow) continues as before.
+    mockStrutRunFindFirst.mockResolvedValue({ id: "row-1", workflow: "job", input: { prompt: "p", title: "T" } });
+    expect(await launchJobTurn(target, { jobId: JOB, title: "T", prompt: "p", started: false })).toMatchObject({ status: "continued" });
+    expect(mockStrutRunFindFirst).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ workflow: true }) }));
+  });
+
   it("a job whose first turn ran on strut's default sends no params", async () => {
     mockStrutRunFindFirst.mockResolvedValue({ id: "row-1", input: { prompt: "p", title: "T" } });
     await launchJobTurn(target, { jobId: JOB, title: "T", prompt: LINE, started: false, event: true });

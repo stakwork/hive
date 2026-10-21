@@ -11,7 +11,11 @@
  *   - the happy path: `GET {lab}<key>` with the DECRYPTED swarm key,
  *     the body streamed back with strut's content-type, CSP and nosniff
  *     kept and `cache-control: private, no-store`; a strut 404 → 404;
- *     a strut 5xx / unreachable → 502.
+ *     a strut 5xx / unreachable → 502;
+ *   - a PEER's copy of a job (`/jobs/peer%2F<job>/files/…`, strut
+ *     plans/builder-job.md §3) on a peer swarm: vouched for by the org
+ *     strut's job hive holds in THIS org (no row on the peer swarm), and
+ *     read from that swarm with ITS own key; 404 when no such job is the org's.
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
@@ -24,6 +28,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     swarm: { findUnique: vi.fn() },
     strutRun: { findFirst: vi.fn() },
+    workspace: { findUnique: vi.fn() },
   },
 }));
 vi.mock("@/lib/auth/org-access", () => ({ resolveAuthorizedOrgId: vi.fn() }));
@@ -40,6 +45,7 @@ const { GET } = await import("@/app/api/orgs/[githubLogin]/strut/artifacts/route
 
 const mockSwarmFind = db.swarm.findUnique as Mock;
 const mockRunFind = db.strutRun.findFirst as Mock;
+const mockWorkspaceFind = db.workspace.findUnique as Mock;
 const mockResolveOrg = resolveAuthorizedOrgId as Mock;
 const mockAccess = validateWorkspaceAccess as Mock;
 const mockFetch = vi.fn();
@@ -168,5 +174,54 @@ describe("GET /api/orgs/[githubLogin]/strut/artifacts", () => {
     expect((await GET(request({ swarmId: "swarm-1", key: KEY }), params)).status).toBe(502);
     mockFetch.mockRejectedValue(new Error("ECONNREFUSED"));
     expect((await GET(request({ swarmId: "swarm-1", key: KEY }), params)).status).toBe(502);
+  });
+
+  describe("a peer's copy of a job (a build the org strut ran on another workspace's swarm)", () => {
+    const PEER_KEY = `/jobs/peer%2F${JOB}/files/plan.md`;
+    const PEER_SWARM = {
+      swarmUrl: "https://acme-web.sphinx.chat/api",
+      swarmApiKey: "enc-peer-key",
+      workspace: { id: "ws-2", slug: "acme-web", sourceControlOrgId: "org-1", deleted: false },
+    };
+
+    beforeEach(() => {
+      mockSwarmFind.mockResolvedValue(PEER_SWARM);
+      mockRunFind.mockResolvedValue({ id: "row-9", workspaceId: "ws-1" });
+      mockWorkspaceFind.mockResolvedValue({ sourceControlOrgId: "org-1" });
+    });
+
+    it("is vouched for by the org strut's job in this org and read from the PEER swarm with its own key", async () => {
+      const res = await GET(request({ swarmId: "swarm-peer", key: PEER_KEY }), params);
+      expect(res.status).toBe(200);
+
+      // The job behind `peer/<job>` — hive holds no row on the peer swarm.
+      expect(mockRunFind).toHaveBeenCalledTimes(1);
+      expect(mockRunFind).toHaveBeenCalledWith({ where: { jobId: JOB, kind: "job_turn" }, select: { id: true, workspaceId: true } });
+      expect(mockWorkspaceFind).toHaveBeenCalledWith({ where: { id: "ws-1" }, select: { sourceControlOrgId: true } });
+      expect(mockSwarmFind).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "swarm-peer" } }));
+      expect(mockAccess).toHaveBeenCalledWith("acme-web", "user-1");
+
+      expect(mockDecrypt).toHaveBeenCalledWith("swarmApiKey", "enc-peer-key");
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe(`https://acme-web.sphinx.chat:3355/lab/jobs/peer%2F${JOB}/files/plan.md`);
+      expect(init.headers["x-api-token"]).toBe("dec(enc-peer-key)");
+      expect(url).not.toContain("?t=");
+    });
+
+    it("404 when no job of this org stands behind it — before the key is decrypted", async () => {
+      mockRunFind.mockResolvedValue(null);
+      expect((await GET(request({ swarmId: "swarm-peer", key: PEER_KEY }), params)).status).toBe(404);
+      mockRunFind.mockResolvedValue({ id: "row-9", workspaceId: "ws-x" });
+      mockWorkspaceFind.mockResolvedValue({ sourceControlOrgId: "org-2" });
+      expect((await GET(request({ swarmId: "swarm-peer", key: PEER_KEY }), params)).status).toBe(404);
+      expect(mockDecrypt).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("a peer swarm the caller cannot read is still a 403", async () => {
+      mockAccess.mockResolvedValue({ hasAccess: false, canRead: false, canWrite: false, canAdmin: false });
+      expect((await GET(request({ swarmId: "swarm-peer", key: PEER_KEY }), params)).status).toBe(403);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
   });
 });
