@@ -74,3 +74,35 @@ export async function fetchStrutArtifact(row: LabRow, path: string): Promise<Str
     return null;
   }
 }
+
+const TRANSCRIPT_TIMEOUT_MS = 30_000;
+
+/**
+ * One agent's transcript (its model messages), by the link strut put on
+ * the agent's `step.end` (`/workflows/<wf>/runs/<id>/transcripts/<path>`).
+ * Only a link under THIS row's run is followed; null otherwise, or when the
+ * lab could not answer.
+ */
+export async function fetchStrutTranscript(row: LabRow, link: string): Promise<unknown[] | null> {
+  if (!row.strutRunId) return null;
+  const scope = `/workflows/${encodeURIComponent(row.workflow)}/runs/${encodeURIComponent(row.strutRunId)}/transcripts/`;
+  if (!link.startsWith(scope) || link.includes("..")) return null;
+  const lab = await labForRow(row);
+  if (!lab) return null;
+  try {
+    const res = await fetch(`${lab.labBase}${link}`, {
+      headers: { "x-api-token": lab.swarmApiKey },
+      cache: "no-store",
+      signal: AbortSignal.timeout(TRANSCRIPT_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const messages = (await res.json()) as unknown;
+    return Array.isArray(messages) ? messages : null;
+  } catch (err) {
+    logger.warn("Strut transcript unavailable", STRUT_RUN_LOG_TAG, {
+      runId: row.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}

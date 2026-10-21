@@ -112,7 +112,8 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
   const { workspace } = useWorkspace();
   const slug = workspace?.slug ?? "";
   // A strut legal workspace's run is `harvey-lab-run`: its deliverables are
-  // files, and it has no agent logs, cascade, eval or recursion (Stakwork's).
+  // files, its trace comes from its strut log, and it has no agent logs, eval
+  // or recursion (Stakwork's).
   const strut = isLegalStrutWorkspace(slug);
   const { run, isLoading, isStale, refetch } = useLegalBenchmarkRun(runId);
   const {
@@ -264,11 +265,9 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
         </div>
         {/* Live trace — rows appear as the agents work; the pill pops in once
             the run's first session exists. */}
-        {!strut && (
-          <div className="flex flex-wrap items-start gap-2 empty:hidden">
-            <BenchmarkRunCascade runId={run.id} runStatus={run.runnerRun.status} />
-          </div>
-        )}
+        <div className="flex flex-wrap items-start gap-2 empty:hidden">
+          <BenchmarkRunCascade runId={run.id} runStatus={run.runnerRun.status} />
+        </div>
       </div>
     );
   }
@@ -339,13 +338,13 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
         {renderStaleWarning()}
 
         {/* Pop-in pills that expand into panels: agent sessions and the
-            session-cascade trace. Hidden entirely when a run has neither. */}
-        {!strut && (
-          <div className="flex flex-wrap items-start gap-2 empty:hidden">
-            <BenchmarkRunAgentLogs runId={run.id} />
-            <BenchmarkRunCascade runId={run.id} runStatus={run.runnerRun.status} />
-          </div>
-        )}
+            session-cascade trace. Hidden entirely when a run has neither.
+            A strut run's trace is read from its strut log; it has no
+            Stakwork agent logs. */}
+        <div className="flex flex-wrap items-start gap-2 empty:hidden">
+          {!strut && <BenchmarkRunAgentLogs runId={run.id} />}
+          <BenchmarkRunCascade runId={run.id} runStatus={run.runnerRun.status} />
+        </div>
 
         {/* A strut run's output is files: the deliverables and the shared sheet. */}
         {strut && (
