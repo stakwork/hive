@@ -14,6 +14,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { CWE_LISTS, isUsableCwe } from "@/lib/system-map/cwe-lists";
 import type { CweEntry, CweListMember, CweListResponse, CweMappingUsage, CweSearchResponse } from "@/types/system-map";
+import { SystemMapRuns } from "@/components/system-map/SystemMapRuns";
 import { ComponentPicker } from "./ComponentPicker";
 import { RelatedPanel } from "./RelatedPanel";
 
@@ -267,6 +268,8 @@ export function CweListsTab() {
   const [launching, setLaunching] = useState<string | null>(null);
   const [components, setComponents] = useState<string[]>([]);
   const [catalogue, setCatalogue] = useState<CatalogueState | null>(null);
+  // Bumped after a launch so the runs panel shows the new run.
+  const [runsKey, setRunsKey] = useState(0);
 
   const load = useCallback(async (workspaceSlug: string, view: string, signal?: AbortSignal) => {
     setLoading(true);
@@ -361,6 +364,7 @@ export function CweListsTab() {
             : undefined,
         });
         if (cweIds.length > 1) setSelected(new Set());
+        setRunsKey((k) => k + 1);
       } catch (error) {
         toast.error(`Could not start ${label}`, {
           description: error instanceof Error ? error.message : "Please try again.",
@@ -411,6 +415,12 @@ export function CweListsTab() {
         are too abstract to review directly, so their usable children are listed under them. Run the CWE check on one or
         many CWEs, optionally scoped to some of the system map&apos;s components.
       </p>
+
+      <Card>
+        <CardContent className="py-3">
+          <SystemMapRuns workflowKey="cwe_check" compact refreshKey={runsKey} />
+        </CardContent>
+      </Card>
 
       <div className="flex flex-wrap items-center gap-2">
         <Select value={listId} onValueChange={setListId}>
