@@ -27,7 +27,9 @@
  * `url` becomes a `graph` source (`{ swarmId, key: <that url> }`) that the
  * reader route serves from the swarm; an absolute `url` and inline
  * `content` become `inline` sources; an entry strut could not resolve
- * (`error`) is dropped from the refs and named in the content. An entry
+ * (`error`) is dropped from the refs and named in the content. A job's
+ * `app` (strut plans/apps.md §6) becomes an `app` ref keyed by its
+ * document's link, which `StrutAppFrame` renders and relays. An entry
  * from ANOTHER strut — a build the turn ran on a peer (`builder` with
  * `peer`, strut plans/builder-job.md §3) — comes tagged `{ path, peer, job }`
  * and unresolved (strut CALLBACKS.md §4): it becomes a `graph` source on the
@@ -107,6 +109,7 @@ import {
   peerJobHome,
   type ArtifactEvent,
 } from "@/lib/strut-jobs";
+import { encodeStrutPath, isStrutAppPath, isStrutJobId, jobAppOfKey, STRUT_APP_DOCUMENT } from "@/lib/strut-apps";
 import { getBaseUrl } from "@/lib/utils";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
 import { countStrutRunGraph } from "@/services/strut-runs/run-graph";
@@ -158,6 +161,8 @@ export interface StrutArtifact {
   peer?: string;
   /** With `peer`: the job its files are under THERE (`peer/<job>`). */
   job?: string;
+  /** A job's APP (`kind: "app"`, strut plans/apps.md §6): the job and the app's directory in it; `url` is its document. */
+  app?: { job: string; path: string };
 }
 
 const KINDS: ReadonlySet<string> = new Set<ArtifactKind>([
@@ -183,6 +188,12 @@ const ADDRESS_KINDS: ReadonlySet<string> = new Set<ArtifactKind>(["image", "vide
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown, max: number): string | undefined => (typeof v === "string" && v.length > 0 && v.length <= max ? v : undefined);
 
+/** An app deliverable's `app: { job, path }` (extra keys — `hash`, `builtAt` — dropped). */
+function appOf(raw: unknown): StrutArtifact["app"] {
+  if (!isRecord(raw)) return undefined;
+  return isStrutJobId(raw.job) && isStrutAppPath(raw.path) ? { job: raw.job, path: raw.path } : undefined;
+}
+
 /** Strut's list as it comes: every entry that is whole, in order. */
 export function parseStrutArtifacts(raw: unknown): StrutArtifact[] {
   if (!Array.isArray(raw)) return [];
@@ -204,6 +215,7 @@ export function parseStrutArtifacts(raw: unknown): StrutArtifact[] {
       path: str(entry.path, MAX_KEY_CHARS),
       peer: isStrutPeerId(entry.peer) ? entry.peer : undefined,
       job: str(entry.job, MAX_ID_CHARS),
+      app: appOf(entry.app),
     });
   }
   return out;
@@ -353,6 +365,29 @@ function peerFileKey(entry: StrutArtifact): string | null {
 }
 
 /**
+ * Where a job's app is: the swarm and its document's link
+ * (`/jobs/<job>/files/<path>/dist/index.html`) — strut's `url`, else built
+ * from `app: { job, path }`; for a peer's entry, the peer's file of that job
+ * on the peer's swarm (`peerFileKey`), its document inside it. Null when the
+ * entry names no job's app hive can read.
+ */
+function jobAppSource(entry: StrutArtifact, swarmId: string, peers: ReadonlyMap<string, string>): { swarmId: string; key: string } | null {
+  const documentOf = (key: string) => (key.endsWith(`/${STRUT_APP_DOCUMENT}`) ? key : `${key.replace(/\/+$/, "")}/${STRUT_APP_DOCUMENT}`);
+  if (entry.peer) {
+    const peerSwarmId = peers.get(entry.peer);
+    const key = peerFileKey(entry);
+    return peerSwarmId && key && jobAppOfKey(documentOf(key)) ? { swarmId: peerSwarmId, key: documentOf(key) } : null;
+  }
+  const key =
+    entry.url && isStrutKey(entry.url)
+      ? entry.url
+      : entry.app
+        ? `/jobs/${encodeURIComponent(entry.app.job)}/files/${encodeStrutPath(entry.app.path)}/${STRUT_APP_DOCUMENT}`
+        : null;
+  return key && jobAppOfKey(key) ? { swarmId, key } : null;
+}
+
+/**
  * Strut's resolved entries → hive's refs. Pure. `dropped` names the entries
  * that became no ref — unresolved on strut's side, or a shape hive cannot
  * show — for the content to mention. `peers` is the swarm behind each peer
@@ -370,6 +405,17 @@ export function mapStrutArtifacts(
     if (entry.error) {
       dropped.push({ title: entry.title, reason: entry.error });
       continue;
+    }
+    // A job's APP (strut plans/apps.md §6): live software, rendered through
+    // the app frame, keyed by its document's link on the swarm that holds
+    // the job — the peer's, for a tagged entry. An `app` that is no job's
+    // (a run's) shows as the link it is, below.
+    if (entry.kind === "app") {
+      const app = jobAppSource(entry, swarmId, peers);
+      if (app) {
+        refs.push({ ...base, kind: "app", source: { type: "graph", ...app } });
+        continue;
+      }
     }
     // Another strut's deliverable (strut CALLBACKS.md §4): a `path`, or a
     // strut-relative `url`, is a file on the swarm hive registered as that

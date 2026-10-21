@@ -34,6 +34,8 @@ export interface BenchmarkRun {
 }
 
 export interface BenchmarkRunDetail extends BenchmarkRun, BenchmarkHeadline {
+  /** Strut's own id for the run — what a benchmark's app is opened on. */
+  strutRunId: string | null;
   params: Record<string, unknown> | null;
   extra: { value: unknown; truncated: boolean; bytes?: number };
 }
