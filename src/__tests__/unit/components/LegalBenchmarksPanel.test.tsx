@@ -10,8 +10,10 @@ globalThis.React = React;
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
+const workspaceState = vi.hoisted(() => ({ slug: "openlaw" }));
+
 vi.mock("@/hooks/useWorkspace", () => ({
-  useWorkspace: () => ({ slug: "openlaw", isSuperAdmin: false }),
+  useWorkspace: () => ({ slug: workspaceState.slug, isSuperAdmin: false }),
 }));
 
 vi.mock("sonner", () => ({
@@ -210,12 +212,14 @@ vi.mock("@/components/legal/TaskDetailsModal", () => ({
     onOpenChange,
     task,
     slug,
+    strut,
     onRunTask,
   }: {
     open: boolean;
     onOpenChange: (o: boolean) => void;
     task: { slug: string; title: string };
     slug: string;
+    strut?: boolean;
     onRunTask: (options?: {
       generateJamieChat?: boolean;
       generateRunReport?: boolean;
@@ -227,7 +231,7 @@ vi.mock("@/components/legal/TaskDetailsModal", () => ({
     open
       ? React.createElement(
           "div",
-          { "data-testid": "task-details-modal", "data-task-slug": task?.slug, "data-slug": slug },
+          { "data-testid": "task-details-modal", "data-task-slug": task?.slug, "data-slug": slug, "data-strut": String(!!strut) },
           React.createElement("p", null, task?.title),
           React.createElement(
             "button",
@@ -342,6 +346,7 @@ function makeDefaultFetch(opts: {
 describe("LegalBenchmarksPanel", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    workspaceState.slug = "openlaw";
     vi.stubGlobal("fetch", makeDefaultFetch());
   });
 
@@ -916,6 +921,74 @@ describe("LegalBenchmarksPanel", () => {
     resolveRun({ ok: false, json: async () => ({ error: "nope" }) });
     await waitFor(() => {
       expect(screen.getByTestId(`legal-runner-toggle-${slug}`)).toHaveAttribute("data-disabled", "false");
+    });
+  });
+});
+
+// ─── A strut legal workspace (openlaw-1) ──────────────────────────────────────
+
+describe("LegalBenchmarksPanel in a strut legal workspace", () => {
+  const strutRunCall = () =>
+    vi.mocked(global.fetch).mock.calls.find(
+      ([url, init]) =>
+        typeof url === "string" &&
+        url.includes("/legal/benchmarks/strut/run") &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    workspaceState.slug = "openlaw-1";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (url.includes("/legal/benchmarks/tasks")) return Promise.resolve({ ok: true, json: async () => MOCK_RESPONSE });
+        if (url.includes("/legal/benchmarks/strut/run") && init?.method === "POST") {
+          return Promise.resolve({ ok: true, json: async () => ({ run_id: "strut-row-1" }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }),
+    );
+  });
+
+  it("shows no runner toggle: every run is strut's", async () => {
+    render(React.createElement(LegalBenchmarksPanel));
+    await waitFor(() => expect(screen.getAllByText("Select Task").length).toBeGreaterThan(0));
+    expect(screen.queryAllByTestId(/legal-runner-toggle-/)).toHaveLength(0);
+  });
+
+  it("Select Task launches the task on strut with its slug only", async () => {
+    const user = userEvent.setup();
+    render(React.createElement(LegalBenchmarksPanel));
+    await waitFor(() => expect(screen.getAllByText("Select Task").length).toBeGreaterThan(0));
+
+    await user.click(screen.getAllByText("Select Task")[0]);
+
+    await waitFor(() => expect(screen.getByTestId("legal-benchmark-results")).toHaveAttribute("data-run-id", "strut-row-1"));
+    const call = strutRunCall();
+    expect(call![0]).toBe("/api/workspaces/openlaw-1/legal/benchmarks/strut/run");
+    expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ taskSlug: "antitrust-competition/task-1" });
+    // The Stakwork route is never called.
+    expect(
+      vi.mocked(global.fetch).mock.calls.some(([url]) => typeof url === "string" && url.endsWith("/legal/benchmarks/run")),
+    ).toBe(false);
+  });
+
+  it("the details modal is told it is strut, and its models ride to the strut launch", async () => {
+    const user = userEvent.setup();
+    render(React.createElement(LegalBenchmarksPanel));
+    await waitFor(() => expect(screen.getAllByText("Details").length).toBeGreaterThan(0));
+
+    await user.click(screen.getAllByText("Details")[0]);
+    expect(screen.getByTestId("task-details-modal")).toHaveAttribute("data-strut", "true");
+    await user.click(screen.getByText("Run Task"));
+
+    await waitFor(() => expect(strutRunCall()).toBeDefined());
+    expect(JSON.parse((strutRunCall()![1] as RequestInit).body as string)).toEqual({
+      taskSlug: "antitrust-competition/task-1",
+      standardModel: "anthropic/claude-sonnet-5",
+      reasoningModel: "anthropic/claude-opus-4-6",
+      judgeModel: "anthropic/claude-sonnet-4-6",
     });
   });
 });

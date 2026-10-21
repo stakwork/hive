@@ -57,7 +57,7 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { BugReportSlideout } from "./BugReportSlideout";
-import { STAK_TOOLKIT_SLUGS, LEGAL_SLUGS, OPENHEALTH_SLUGS } from "@/lib/eval-capture-slugs";
+import { STAK_TOOLKIT_SLUGS, OPENHEALTH_SLUGS, isLegalBenchmarksWorkspace } from "@/lib/eval-capture-slugs";
 
 
 
@@ -606,8 +606,8 @@ export function Sidebar({ user }: SidebarProps) {
     },
   ] : [];
 
-  // Create Legal items if in openlaw workspace or dev mode
-  const showLegal = LEGAL_SLUGS.includes(workspaceSlug ?? "") || devMode;
+  // Create Legal items in a legal benchmarks workspace (Stakwork or strut) or dev mode
+  const showLegal = isLegalBenchmarksWorkspace(workspaceSlug) || devMode;
   const legalItems: NavigationItem[] = showLegal
     ? [
         {

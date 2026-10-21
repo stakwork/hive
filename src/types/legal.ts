@@ -30,6 +30,13 @@ export interface BenchmarkRunResult {
   strutRunId?: string;
   /** strut lab UI link for the run — rendered in place of the Stakwork admin link. */
   strutRunUrl?: string;
+  /**
+   * Deliverable file names the run produced (`harvey-lab-run` runs, read
+   * from its output). Served by `legal/benchmarks/strut/runs/:runId/deliverables/:name`.
+   */
+  deliverables?: string[];
+  /** The run's shared Google Sheet (`harvey-lab-run` runs). */
+  spreadsheetUrl?: string;
   /** S3 URL of the runner's output document */
   runnerOutputUrl?: string;
   /** Plain-text runner output */

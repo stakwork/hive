@@ -55,6 +55,11 @@ export interface TaskDetailsModalProps {
   onOpenChange: (open: boolean) => void;
   task: HarveyTask;
   slug: string;
+  /**
+   * A strut legal workspace: the run is `harvey-lab-run` on the swarm, so
+   * there is no runner choice and no Jamie chat or report bundle to ask for.
+   */
+  strut?: boolean;
   onRunTask: (options: {
     generateJamieChat: boolean;
     generateRunReport: boolean;
@@ -123,6 +128,7 @@ export function TaskDetailsModal({
   onOpenChange,
   task,
   slug,
+  strut = false,
   onRunTask,
 }: TaskDetailsModalProps) {
   const [details, setDetails] = useState<TaskDetails | null>(null);
@@ -362,36 +368,38 @@ export function TaskDetailsModal({
                       Jamie Chat  → org-canvas conversation written after the run.
                       Generate Report → `generate_report` set_var to the Harvey
                                         runner, which returns a report_url. */}
-                  <div className="mt-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="jamie-chat"
-                        checked={generateJamieChat}
-                        onCheckedChange={(checked) => setGenerateJamieChat(checked === true)}
-                        data-testid="jamie-chat-checkbox"
-                      />
-                      <label
-                        htmlFor="jamie-chat"
-                        className="text-sm font-medium cursor-pointer select-none"
-                      >
-                        Jamie Chat
-                      </label>
+                  {!strut && (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="jamie-chat"
+                          checked={generateJamieChat}
+                          onCheckedChange={(checked) => setGenerateJamieChat(checked === true)}
+                          data-testid="jamie-chat-checkbox"
+                        />
+                        <label
+                          htmlFor="jamie-chat"
+                          className="text-sm font-medium cursor-pointer select-none"
+                        >
+                          Jamie Chat
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="generate-run-report"
+                          checked={generateRunReport}
+                          onCheckedChange={(checked) => setGenerateRunReport(checked === true)}
+                          data-testid="generate-run-report-checkbox"
+                        />
+                        <label
+                          htmlFor="generate-run-report"
+                          className="text-sm font-medium cursor-pointer select-none"
+                        >
+                          Generate Report
+                        </label>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="generate-run-report"
-                        checked={generateRunReport}
-                        onCheckedChange={(checked) => setGenerateRunReport(checked === true)}
-                        data-testid="generate-run-report-checkbox"
-                      />
-                      <label
-                        htmlFor="generate-run-report"
-                        className="text-sm font-medium cursor-pointer select-none"
-                      >
-                        Generate Report
-                      </label>
-                    </div>
-                  </div>
+                  )}
                 </section>
 
                 <Separator className="my-4" />
@@ -596,35 +604,37 @@ export function TaskDetailsModal({
         )}
 
         <DialogFooter className="border-t px-6 py-4 gap-2 shrink-0 flex-wrap">
-          <ToggleGroup
-            type="single"
-            size="sm"
-            variant="outline"
-            value={runner}
-            // Radix clears the value when the active item is clicked again;
-            // keep the last choice instead of leaving the toggle blank.
-            onValueChange={(v) => {
-              if (v === "strut" || v === "stakwork") setRunner(v);
-            }}
-            disabled={isStarting}
-            aria-label="Benchmark runner"
-            data-testid="legal-modal-runner-toggle"
-          >
-            <ToggleGroupItem
-              value="stakwork"
-              className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
-              aria-label="Run on Stakwork"
+          {!strut && (
+            <ToggleGroup
+              type="single"
+              size="sm"
+              variant="outline"
+              value={runner}
+              // Radix clears the value when the active item is clicked again;
+              // keep the last choice instead of leaving the toggle blank.
+              onValueChange={(v) => {
+                if (v === "strut" || v === "stakwork") setRunner(v);
+              }}
+              disabled={isStarting}
+              aria-label="Benchmark runner"
+              data-testid="legal-modal-runner-toggle"
             >
-              Stakwork
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="strut"
-              className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
-              aria-label="Run on strut"
-            >
-              strut
-            </ToggleGroupItem>
-          </ToggleGroup>
+              <ToggleGroupItem
+                value="stakwork"
+                className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+                aria-label="Run on Stakwork"
+              >
+                Stakwork
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="strut"
+                className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+                aria-label="Run on strut"
+              >
+                strut
+              </ToggleGroupItem>
+            </ToggleGroup>
+          )}
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isStarting}>
             Close
           </Button>

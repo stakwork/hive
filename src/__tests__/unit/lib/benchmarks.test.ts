@@ -20,6 +20,19 @@ describe("benchmark registry", () => {
   });
 });
 
+describe("harvey-lab", () => {
+  it("is registered for the strut legal workspaces only", () => {
+    const b = getBenchmark("harvey-lab")!;
+    expect(b).toMatchObject({ runWorkflow: "harvey-lab-run", taskIdKey: "task_slug" });
+    expect(benchmarkVisibleIn(b, "openlaw-1")).toBe(true);
+    expect(benchmarkVisibleIn(b, "openlaw")).toBe(false);
+  });
+  it("names the task by its declared key", () => {
+    const b = getBenchmark("harvey-lab")!;
+    expect(buildLaunchInput(b, "banking/x", null, { task_goal: "g" })).toEqual({ task_goal: "g", task_slug: "banking/x" });
+  });
+});
+
 describe("buildLaunchInput", () => {
   it("free-form fallback (no task) skips templated defaults and keeps params", () => {
     const oh = getBenchmark("openhealth")!;
