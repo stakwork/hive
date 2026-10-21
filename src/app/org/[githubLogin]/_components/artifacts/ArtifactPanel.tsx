@@ -114,7 +114,7 @@ function ArtifactIndex({ artifacts }: { artifacts: ArtifactRef[] }) {
             <h3
               className={cn(
                 "flex items-center gap-1.5 px-2 pb-1 text-xs",
-                group.key === "waiting" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+                group.key === "waiting" ? "text-amber-600 dark-os:text-amber-400" : "text-muted-foreground",
               )}
             >
               <span className="truncate">{group.label}</span>

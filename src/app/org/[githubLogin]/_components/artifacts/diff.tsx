@@ -56,13 +56,14 @@ const EMPTY_HUNKS: HunkData[] = [];
  * inherited text) so they always match the active theme; only the changed
  * rows and their gutters get explicit GitHub-style colors.
  *
- * Every dark rule in this file uses `[.dark_&]`, NOT `dark:`. This project
+ * Every dark rule in this file uses `dark-app:` (`[.dark_&]`, except on
+ * the infinite canvas's paper — `globals.css`), NOT `dark:`. This project
  * declares no `@custom-variant dark` and does not load its `tailwind.config.js`
  * from CSS, so Tailwind v4 compiles `dark:` to
  * `@media (prefers-color-scheme: dark)` — the OS setting — while the app's own
  * ThemeProvider toggles a `.dark` class on <html>. Verified in the running app:
  * a `dark:text-yellow-400` probe computed to the same color under `.dark` and
- * `.light`. Only `[.dark_&]` follows the in-app theme switch, so mixing the two
+ * `.light`. Only `.dark &` follows the in-app theme switch, so mixing the two
  * would leave this component half-themed whenever the OS and the app setting
  * disagree.
  */
@@ -89,18 +90,18 @@ const DIFF_PALETTE = [
   "[--diff-code-delete-edit-text-color:#24292e]",
 
   // Dark
-  "[.dark_&]:[--diff-gutter-insert-background-color:rgba(26,77,46,0.6)]",
-  "[.dark_&]:[--diff-gutter-insert-text-color:#56d364]",
-  "[.dark_&]:[--diff-gutter-delete-background-color:rgba(111,40,40,0.6)]",
-  "[.dark_&]:[--diff-gutter-delete-text-color:#ffa198]",
-  "[.dark_&]:[--diff-code-insert-background-color:rgba(26,77,46,0.4)]",
-  "[.dark_&]:[--diff-code-insert-text-color:#aff5b4]",
-  "[.dark_&]:[--diff-code-delete-background-color:rgba(111,40,40,0.4)]",
-  "[.dark_&]:[--diff-code-delete-text-color:#ffdcd7]",
-  "[.dark_&]:[--diff-code-insert-edit-background-color:#2ea043]",
-  "[.dark_&]:[--diff-code-insert-edit-text-color:#ffffff]",
-  "[.dark_&]:[--diff-code-delete-edit-background-color:#da3633]",
-  "[.dark_&]:[--diff-code-delete-edit-text-color:#ffffff]",
+  "dark-app:[--diff-gutter-insert-background-color:rgba(26,77,46,0.6)]",
+  "dark-app:[--diff-gutter-insert-text-color:#56d364]",
+  "dark-app:[--diff-gutter-delete-background-color:rgba(111,40,40,0.6)]",
+  "dark-app:[--diff-gutter-delete-text-color:#ffa198]",
+  "dark-app:[--diff-code-insert-background-color:rgba(26,77,46,0.4)]",
+  "dark-app:[--diff-code-insert-text-color:#aff5b4]",
+  "dark-app:[--diff-code-delete-background-color:rgba(111,40,40,0.4)]",
+  "dark-app:[--diff-code-delete-text-color:#ffdcd7]",
+  "dark-app:[--diff-code-insert-edit-background-color:#2ea043]",
+  "dark-app:[--diff-code-insert-edit-text-color:#ffffff]",
+  "dark-app:[--diff-code-delete-edit-background-color:#da3633]",
+  "dark-app:[--diff-code-delete-edit-text-color:#ffffff]",
 ].join(" ");
 
 // ─── Action icon helper ───────────────────────────────────────────────────────
@@ -110,25 +111,25 @@ function getActionInfo(action: Action) {
     case "create":
       return {
         icon: FilePlus,
-        color: "text-green-600 [.dark_&]:text-green-400",
+        color: "text-green-600 dark-app:text-green-400",
         label: "Created",
       };
     case "delete":
       return {
         icon: FileX,
-        color: "text-red-600 [.dark_&]:text-red-400",
+        color: "text-red-600 dark-app:text-red-400",
         label: "Deleted",
       };
     case "rewrite":
       return {
         icon: FileCode,
-        color: "text-blue-600 [.dark_&]:text-blue-400",
+        color: "text-blue-600 dark-app:text-blue-400",
         label: "Rewritten",
       };
     default:
       return {
         icon: FileEdit,
-        color: "text-yellow-600 [.dark_&]:text-yellow-400",
+        color: "text-yellow-600 dark-app:text-yellow-400",
         label: "Modified",
       };
   }
@@ -266,10 +267,10 @@ export function MultiFileDiffView({
       {/* Summary row */}
       <div className="flex items-center gap-3 text-xs text-muted-foreground px-1">
         <span>{totalStats.files} file{totalStats.files !== 1 ? "s" : ""}</span>
-        <span className="text-emerald-600 [.dark_&]:text-emerald-400">
+        <span className="text-emerald-600 dark-app:text-emerald-400">
           +{totalStats.additions}
         </span>
-        <span className="text-rose-600 [.dark_&]:text-rose-400">
+        <span className="text-rose-600 dark-app:text-rose-400">
           −{totalStats.deletions}
         </span>
       </div>
@@ -310,12 +311,12 @@ export function MultiFileDiffView({
                 </span>
                 <span className="flex items-center gap-2 flex-shrink-0 font-mono ml-2">
                   {file.additions > 0 && (
-                    <span className="text-emerald-600 [.dark_&]:text-emerald-400">
+                    <span className="text-emerald-600 dark-app:text-emerald-400">
                       +{file.additions}
                     </span>
                   )}
                   {file.deletions > 0 && (
-                    <span className="text-rose-600 [.dark_&]:text-rose-400">
+                    <span className="text-rose-600 dark-app:text-rose-400">
                       −{file.deletions}
                     </span>
                   )}
@@ -326,7 +327,7 @@ export function MultiFileDiffView({
               {isExpanded && (
                 <div className="border-t border-border">
                   {file.hasError && (
-                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-rose-600 bg-rose-50 [.dark_&]:bg-rose-900/20">
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-rose-600 bg-rose-50 dark-app:bg-rose-900/20">
                       <AlertCircle className="h-3.5 w-3.5" />
                       <span>{file.errorMessage ?? "Failed to render diff"}</span>
                     </div>

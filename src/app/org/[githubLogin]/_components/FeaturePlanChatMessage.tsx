@@ -93,7 +93,7 @@ export function FeaturePlanChatMessage({
                 className={`prose prose-sm max-w-none break-words ${
                   isUser
                     ? "[&>*]:!text-primary-foreground [&_*]:!text-primary-foreground"
-                    : "dark:prose-invert [&>*]:!text-foreground/90 [&_*]:!text-foreground/90"
+                    : "dark-os:prose-invert [&>*]:!text-foreground/90 [&_*]:!text-foreground/90"
                 }`}
               >
                 <ReactMarkdown>{text}</ReactMarkdown>
