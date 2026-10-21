@@ -181,6 +181,7 @@ export function SidebarChatMessage({
               />
             )}
             <div
+              data-chat-bubble={isUser ? "you" : "jamie"}
               className={`rounded-2xl px-3 py-2 shadow-sm ${
                 isUser ? "bg-primary text-primary-foreground inline-block" : "bg-muted/40"
               } ${showCopy ? "pr-8" : ""}`}

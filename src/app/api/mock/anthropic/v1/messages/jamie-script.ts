@@ -14,7 +14,7 @@ import {
   startMockInitiativeBuild,
 } from "@/app/api/mock/graph/initiative-fixture";
 import { mockMarkdownArtifact, mockPullRequestArtifact, startMockCanvasJob } from "@/app/api/mock/graph/canvas-jobs";
-import { initiativeStage, stageLine } from "@/services/graph/workbench";
+import { initiativeStage, stageLine } from "@/lib/initiative-plan";
 
 interface MockMessage {
   role: string;

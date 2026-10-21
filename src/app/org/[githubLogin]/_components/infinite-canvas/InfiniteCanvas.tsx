@@ -93,6 +93,39 @@ const CHAT_W = 420;
 /** A settled job's tick stays on its card this long. */
 const SETTLED_MS = 6_000;
 
+/**
+ * The full chat is the org page's chat (`renderChat`), worn in the canvas's
+ * paper in either app theme: the app's colour tokens re-pointed at the
+ * canvas's own, typeset, your messages in a white bubble and Jamie's plain.
+ */
+const CHAT_PAPER = `
+[data-canvas-chat] {
+  --background: ${v("panel")}; --foreground: ${v("ink")};
+  --card: ${v("sheet")}; --card-foreground: ${v("ink")};
+  --popover: ${v("sheet")}; --popover-foreground: ${v("ink")};
+  --primary: ${v("ink")}; --primary-foreground: ${v("onInk")};
+  --secondary: ${v("field")}; --secondary-foreground: ${v("ink")};
+  --muted: ${v("field")}; --muted-foreground: ${v("muted")};
+  --accent: ${v("field")}; --accent-foreground: ${v("ink")};
+  --border: ${v("border")}; --input: ${v("borderStrong")}; --ring: ${v("borderStrong")};
+  color-scheme: light;
+  background: ${v("panel")};
+  color: ${v("ink")};
+  font-family: ${TYPE};
+}
+[data-canvas-chat] [data-chat-bubble="you"] {
+  --primary: ${v("bubble")}; --primary-foreground: ${v("ink")};
+  border: 1px solid ${v("border")};
+  border-radius: 12px;
+  box-shadow: none;
+}
+[data-canvas-chat] [data-chat-bubble="jamie"] { background: transparent; box-shadow: none; padding-left: 0; }
+[data-canvas-chat] [data-chat-bubble],
+[data-canvas-chat] [data-chat-bubble] :is(p, li) { font-size: 14.5px; line-height: 1.45; }
+/* The composer's border says it has focus; no second box around the text. */
+[data-canvas-chat] form textarea:focus-visible { outline: none; }
+`;
+
 const KEYFRAMES = `
 @keyframes icb-glow { 0%,100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ic-job) 50%, transparent), 0 0 26px 4px color-mix(in srgb, var(--ic-job) 28%, transparent) } 50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ic-job) 85%, transparent), 0 0 46px 12px color-mix(in srgb, var(--ic-job) 40%, transparent) } }
 .icb-glow { animation: icb-glow 1.8s ease-in-out infinite }
@@ -163,7 +196,7 @@ export function InfiniteCanvas({
   githubLogin: string;
   workspaceSlugs: string[];
   /** The org page's chat, for the full-chat size. */
-  renderChat: () => ReactNode;
+  renderChat: (onCollapse: () => void) => ReactNode;
 }) {
   const [initiative, setInitiative] = useState<string | null>(null);
   // The desk: the latest initiatives by `updated_at`, plus any pulled in from the stack or ⌘K this session.
@@ -691,8 +724,9 @@ export function InfiniteCanvas({
         background: v("desk"),
       }}
     >
-      <style>{KEYFRAMES}</style>
+      <style>{KEYFRAMES + CHAT_PAPER}</style>
       <aside
+        data-canvas-chat
         data-chat-panel={mode === "full" ? "open" : "closed"}
         aria-hidden={mode !== "full"}
         inert={mode !== "full"}
@@ -702,7 +736,6 @@ export function InfiniteCanvas({
           overflow: "hidden",
           transition: "width .42s cubic-bezier(.2,.8,.2,1)",
           borderRight: mode === "full" ? `1px solid ${v("chromeBorder")}` : "none",
-          colorScheme: "normal",
         }}
       >
         <div
@@ -714,7 +747,7 @@ export function InfiniteCanvas({
             transition: "transform .42s cubic-bezier(.2,.8,.2,1), opacity .3s",
           }}
         >
-          {chatMounted ? renderChat() : null}
+          {chatMounted ? renderChat(() => setMode("last")) : null}
         </div>
       </aside>
       <div
@@ -844,17 +877,6 @@ export function InfiniteCanvas({
             zIndex: 20,
           }}
         >
-          {mode === "full" ? (
-            <button
-              type="button"
-              data-collapse
-              title="Back to the bar"
-              onClick={() => setMode("last")}
-              style={{ ...topBtn, padding: "0 12px", cursor: "pointer", color: v("muted") }}
-            >
-              ‹ Hide chat
-            </button>
-          ) : null}
           <button
             type="button"
             data-back

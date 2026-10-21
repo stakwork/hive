@@ -593,7 +593,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   useCanvasChatAutoSave({ githubLogin });
   useGraphProposalRefresh();
 
-  const rightPanel = (onShowList?: () => void) => (
+  const rightPanel = (onShowList?: () => void, onCollapse?: () => void) => (
     <OrgRightPanel
       githubLogin={githubLogin}
       selectedNode={selectedNode}
@@ -601,6 +601,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       selectedNodesInternalEdges={selectedNodesInternalEdges}
       chatReady={chatReady && conversationStarted}
       chatsView={mode === "chats" || infiniteCanvas ? { onShowList } : undefined}
+      onCollapse={onCollapse}
     />
   );
 
@@ -674,7 +675,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                     <InfiniteCanvas
                       githubLogin={githubLogin}
                       workspaceSlugs={chatWorkspaceSlugs}
-                      renderChat={() => rightPanel()}
+                      renderChat={(onCollapse) => rightPanel(undefined, onCollapse)}
                     />
                   </div>
                 )}
