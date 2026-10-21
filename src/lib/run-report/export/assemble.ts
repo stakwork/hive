@@ -101,8 +101,18 @@ export async function assembleRunExport(
 ): Promise<RunExportPayload> {
   logger.info("[assemble] assembleRunExport start", LOG_SERVICE, { runId });
 
-  const report = await loadRunReport(runId, reportUrl);
+  return enrichRunExport(runId, await loadRunReport(runId, reportUrl), opts);
+}
 
+/**
+ * The enrichment half of `assembleRunExport`, for a report loaded some other
+ * way (a strut run's report is built from its lab, not fetched from S3).
+ */
+export async function enrichRunExport(
+  runId: string,
+  report: RunReportPayload,
+  opts: RunExportOpts,
+): Promise<RunExportPayload> {
   const empty: RunExportPayload = {
     report,
     peeks: new Map(),

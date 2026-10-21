@@ -1,0 +1,1069 @@
+{
+ "row": {
+  "workflow": "harvey-lab-run",
+  "strutRunId": "1792552899038",
+  "durationMs": 5664576,
+  "input": {
+   "task_slug": "harvey-banking-identify-issues-compliance-cert",
+   "task_title": "Identify Issues in Borrower's Q3 2024 Compliance Certificate Under Senior Secured Credit Facility",
+   "task_goal": "Review the attached compliance certificate against the credit agreement, financial statements, and agent correspondence for errors and covenant issues. Output: `compliance-certificate-issue-memo.docx`.",
+   "task_output_desc": "compliance-certificate-issue-memo.docx",
+   "documents_json": [
+    "https://raw.githubusercontent.com/harveyai/harvey-labs/main/tasks/banking-finance/identify-issues-in-compliance-certificate/documents/agent-correspondence.eml",
+    "https://raw.githubusercontent.com/harveyai/harvey-labs/main/tasks/banking-finance/identify-issues-in-compliance-certificate/documents/credit-agreement-excerpts.docx",
+    "https://raw.githubusercontent.com/harveyai/harvey-labs/main/tasks/banking-finance/identify-issues-in-compliance-certificate/documents/q3-2024-compliance-certificate.docx",
+    "https://raw.githubusercontent.com/harveyai/harvey-labs/main/tasks/banking-finance/identify-issues-in-compliance-certificate/documents/q3-2024-financial-statements.xlsx"
+   ],
+   "rubrics_json": [
+    {
+     "id": "C-001",
+     "title": "ISSUE_001: Identifies restructuring/severance addback exceeds $5M cap",
+     "deliverables": [
+      "compliance-certificate-issue-memo.docx"
+     ],
+     "match_criteria": "PASS if the memo identifies that the $6,100,000 restructuring and severance charges added back to EBITDA exceed the Credit Agreement's annual cap of $5,000,000 per fiscal year. FAIL if this issue is not identified."
+    },
+    {
+     "id": "C-002",
+     "title": "ISSUE_001: Quantifies excess restructuring addback as $1,100,000",
+     "deliverables": [
+      "compliance-certificate-issue-memo.docx"
+     ],
+     "match_criteria": "PASS if the memo states that the excess amount above the cap is $1,100,000 ($6,100,000 minus $5,000,000). FAIL if the excess is not quantified or is quantified incorrectly."
+    },
+    {
+     "id": "C-004",
+     "title": "ISSUE_002: Identifies Unrestricted Cash netting cap of $25,000,000 exceeded",
+     "deliverables": [
+      "compliance-certificate-issue-memo.docx"
+     ],
+     "match_criteria": "PASS if the memo identifies that the Certificate nets $32,500,000 of Unrestricted Cash against Total Funded Debt but the Credit Agreement caps the cash offset at $25,000,000. FAIL if this issue is not identified."
+    },
+    {
+     "id": "C-020",
+     "title": "ISSUE_010: Provides cumulative corrected Total Net Leverage Ratio (~2.40x)",
+     "deliverables": [
+      "compliance-certificate-issue-memo.docx"
+     ],
+     "match_criteria": "PASS if the memo provides a fully corrected Total Net Leverage Ratio incorporating all corrections (corrected EBITDA of ~$125,650,000, corrected Total Net Funded Debt of ~$301,425,000 reflecting the cash cap and Seller Note), arriving at a figure between 2.35x and 2.43x. The reported figure of 2.29x should be compared to the corrected figure. FAIL if a cumulative corrected leverage ratio is not provided or falls outside the range of 2.35x to 2.43x."
+    }
+   ]
+  },
+  "output": {
+   "callback": {
+    "task_slug": "harvey-banking-identify-issues-compliance-cert",
+    "run_id": "1792552899038",
+    "final_output": {
+     "compliance-certificate-issue-memo.docx": "/artifacts/1792552899038/output/compliance-certificate-issue-memo.docx"
+    },
+    "score": 0,
+    "max_score": 1,
+    "all_pass": false,
+    "n_grading_errors": 0,
+    "judge_model": "claude-sonnet-4-6",
+    "model": "claude-opus-5",
+    "standard_model": "claude-sonnet-5",
+    "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1I_DlwW0BUQqgNtnNLOblGVO2stM1JJ06y0-ximLRhRU/edit",
+    "n_passed": 2,
+    "n_total": 4,
+    "criteria_results": [
+     {
+      "id": "C-001",
+      "title": "ISSUE_001: Identifies restructuring/severance addback exceeds $5M cap",
+      "verdict": "pass",
+      "reasoning": "Issue 2 in the agent's output explicitly identifies that the $6,100,000 restructuring and severance addback exceeds the $5,000,000 per-fiscal-year cap under §1.01 'Consolidated EBITDA' cl.(f). The analysis notes that the FY2024 component of $5,100,000 exceeds the cap by $100,000, and this is rated as a Material issue with a confirmed status."
+     },
+     {
+      "id": "C-002",
+      "title": "ISSUE_001: Quantifies excess restructuring addback as $1,100,000",
+      "verdict": "fail",
+      "reasoning": "The criterion requires the memo to state that the excess amount above the $5,000,000 cap is $1,100,000 ($6,100,000 minus $5,000,000). However, the agent's memo (Issue 2) identifies only $100,000 as the confirmed excess, calculated as the FY2024 component of $5,100,000 exceeding the $5,000,000 cap by $100,000. The memo does not state that the total excess is $1,100,000. The agent's approach was to split the $6,100,000 TTM figure into a $5,100,000 FY2024 component (capped at $5,000,000, giving $100,000 excess) and a $1,000,000 Q4 2023 component (untestable). The criterion requires the excess to …",
+      "flagged": true,
+      "contested": true,
+      "flag_basis": "criterion_validity",
+      "llm_flag_reason": "**Criterion Validity** The criterion fixes a single arithmetic answer — excess = $6,100,000 − $5,000,000 = $1,100,000 — which is only correct if the clause (f) cap bites on the trailing-twelve-month test period. The Credit Agreement says the opposite: §1.01 \"Consolidated EBITDA\" cl.(f) permits addback of restructuring/severance \"incurred ... during such period, in an aggregate amount not to exceed $5,000,000 **in any fiscal year**\" (sources/credit-agreement-excerpts.docx.txt, line 55). The TTM period (1 Oct 2023 – 30 Sep 2024) straddles FY2023 and FY2024, so the cap must be tested fiscal year …",
+      "document_excerpt": "(f) restructuring charges and severance costs incurred by the Borrower and its Subsidiaries during such period, in an aggregate amount not to exceed $5,000,000 in any fiscal year;"
+     },
+     {
+      "id": "C-004",
+      "title": "ISSUE_002: Identifies Unrestricted Cash netting cap of $25,000,000 exceeded",
+      "verdict": "pass",
+      "reasoning": "Issue 3 in the memo explicitly identifies that the Certificate deducts $32,500,000 of Unrestricted Cash against Total Funded Debt, while the definition of 'Total Net Funded Debt' contains an express proviso capping the netting at $25,000,000. The memo quantifies the excess as $7,500,000 and rates the issue Critical/Confirmed."
+     },
+     {
+      "id": "C-020",
+      "title": "ISSUE_010: Provides cumulative corrected Total Net Leverage Ratio (~2.40x)",
+      "verdict": "fail",
+      "reasoning": "The agent's memo provides a corrected Total Net Leverage Ratio of 2.66x (computed as $301,425,000 / $113,350,000). The criterion requires the corrected ratio to fall between 2.35x and 2.43x, based on corrected EBITDA of ~$125,650,000 (implying only a ~$1,100,000 EBITDA reduction, not the $13,400,000 reduction the agent applied) and corrected Total Net Funded Debt of ~$301,425,000. The agent's corrected ratio of 2.66x falls well outside the required range of 2.35x–2.43x because the agent applied a much larger EBITDA reduction ($13,400,000 vs. ~$1,100,000 implied by the criterion). The criterion…",
+      "flagged": true,
+      "contested": true,
+      "flag_basis": "criterion_validity",
+      "llm_flag_reason": "**Criterion Validity** The criterion's substantive requirement — a fully cumulative corrected Total Net Leverage Ratio built on corrected Total Net Funded Debt of ~$301,425,000 reflecting the $25,000,000 cash cap and the $3,300,000 Seller Note, compared against the reported 2.29x — is sound and is met. The only defect is the numeric band (2.35x–2.43x), which is purely derivative of the corrected-EBITDA figure disputed at C-003: it silently requires the analyst to carry forward a $41,200,000 net income input that the financial statements contradict.\n\n**Fact Audit** The debt side is common groun…",
+      "document_excerpt": "Total Net ≤ 4.50:1.00 2.29x 2.66x Compliant --- Leverage Ratio headroom 1.84x"
+     }
+    ]
+   },
+   "files": {
+    "dir": "/artifacts/1792552899038",
+    "deliverables": {
+     "compliance-certificate-issue-memo.docx": "/artifacts/1792552899038/output/compliance-certificate-issue-memo.docx"
+    },
+    "checklist": "/artifacts/1792552899038/checklist.md",
+    "facts": "/artifacts/1792552899038/facts.md",
+    "case_law": "/artifacts/1792552899038/case-law-research.md",
+    "scores": "/artifacts/1792552899038/scores.json"
+   },
+   "agents": {
+    "case_law": "ok",
+    "critiques": {
+     "written": [
+      "critiques/critique_completeness.md",
+      "critiques/critique_correctness.md",
+      "critiques/critique_arithmetic.md",
+      "critiques/critique_doctrine.md"
+     ],
+     "failed": {}
+    }
+   },
+   "disputes": {
+    "n_failed": 2,
+    "n_flagged": 2,
+    "n_contested": 2
+   },
+   "graph": {
+    "evalset_ref_id": "87d5176b-1242-402c-be84-75b7725f4698",
+    "trigger_edge": "HAS_BASELINE_TRIGGER",
+    "requirements_missing": []
+   }
+  }
+ },
+ "events": [
+  {
+   "ts": "2026-10-21T03:21:39.126Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run",
+   "type": "run.start",
+   "input": {
+    "task_slug": "harvey-banking-identify-issues-compliance-cert",
+    "task_title": "Identify Issues in Borrower's Q3 2024 Compliance Certificate Under Senior Secured Credit Facility",
+    "task_goal": "Review the attached compliance certificate against the credit agreement, financial statements, and agent correspondence for errors and covenant issues. Output: `compliance-certificate-issue-memo.docx`.",
+    "task_output_desc": "compliance-certificate-issue-memo.docx",
+    "documents_json": [
+     "https://raw.githubusercontent.com/harveyai/harvey-labs/main/tasks/banking-finance/identify-issues-in-compliance-certificate/documents/agent-correspondence.eml",
+     "https://raw.githubusercontent.com/harveyai/harvey-labs/main/tasks/banking-finance/identify-issues-in-compliance-certificate/documents/credit-agreement-excerpts.docx",
+     "https://raw.githubusercontent.com/harveyai/harvey-labs/main/tasks/banking-finance/identify-issues-in-compliance-certificate/documents/q3-2024-compliance-certificate.docx",
+     "https://raw.githubusercontent.com/harveyai/harvey-labs/main/tasks/banking-finance/identify-issues-in-compliance-certificate/documents/q3-2024-financial-statements.xlsx"
+    ],
+    "rubrics_json": [
+     {
+      "id": "C-001",
+      "title": "ISSUE_001: Identifies restructuring/severance addback exceeds $5M cap",
+      "deliverables": [
+       "compliance-certificate-issue-memo.docx"
+      ],
+      "match_criteria": "PASS if the memo identifies that the $6,100,000 restructuring and severance charges added back to EBITDA exceed the Credit Agreement's annual cap of $5,000,000 per fiscal year. FAIL if this issue is not identified."
+     },
+     {
+      "id": "C-002",
+      "title": "ISSUE_001: Quantifies excess restructuring addback as $1,100,000",
+      "deliverables": [
+       "compliance-certificate-issue-memo.docx"
+      ],
+      "match_criteria": "PASS if the memo states that the excess amount above the cap is $1,100,000 ($6,100,000 minus $5,000,000). FAIL if the excess is not quantified or is quantified incorrectly."
+     },
+     {
+      "id": "C-004",
+      "title": "ISSUE_002: Identifies Unrestricted Cash netting cap of $25,000,000 exceeded",
+      "deliverables": [
+       "compliance-certificate-issue-memo.docx"
+      ],
+      "match_criteria": "PASS if the memo identifies that the Certificate nets $32,500,000 of Unrestricted Cash against Total Funded Debt but the Credit Agreement caps the cash offset at $25,000,000. FAIL if this issue is not identified."
+     },
+     {
+      "id": "C-020",
+      "title": "ISSUE_010: Provides cumulative corrected Total Net Leverage Ratio (~2.40x)",
+      "deliverables": [
+       "compliance-certificate-issue-memo.docx"
+      ],
+      "match_criteria": "PASS if the memo provides a fully corrected Total Net Leverage Ratio incorporating all corrections (corrected EBITDA of ~$125,650,000, corrected Total Net Funded Debt of ~$301,425,000 reflecting the cash cap and Seller Note), arriving at a figure between 2.35x and 2.43x. The reported figure of 2.29x should be compared to the corrected figure. FAIL if a cumulative corrected leverage ratio is not provided or falls outside the range of 2.35x to 2.43x."
+     }
+    ],
+    "namespace": "",
+    "agent_ingestion_flag": true,
+    "cross_checker_agent": true,
+    "use_case_law_research": true
+   },
+   "workflowHash": "7a0a2324209c",
+   "stepHashes": {
+    "eval/criterion-refs": "4dfde875adcf",
+    "artifacts/dir": "046989bcedfc",
+    "wfbench/build-roster": "6d0b9f17eb30",
+    "wfbench/trigger-edge": "0cc7f3a86a0a",
+    "wfbench/build-eval-output": "ad7b78b79e23",
+    "harvey/prepare-task": "0ed884ac9844",
+    "harvey/requirement-refs": "80383a74c788",
+    "harvey/merge-disputes": "5a26c14670e1",
+    "harvey/filter-contested": "ca487befbeea"
+   },
+   "actor": "Evanfeenstra-cmdhykqh80000jv04n9fwsc4w",
+   "principal": "Evanfeenstra-cmdhykqh80000jv04n9fwsc4w"
+  },
+  {
+   "ts": "2026-10-21T03:21:39.131Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/docs",
+   "type": "step.start",
+   "stepType": "exec",
+   "input": {
+    "cmd": "uv",
+    "args": [
+     "run",
+     "--quiet"
+    ]
+   }
+  },
+  {
+   "ts": "2026-10-21T03:21:39.131Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist",
+   "type": "step.start",
+   "stepType": "agent",
+   "input": {
+    "cwd": "/usr/src/app/lab-workspace/artifacts/1792552899038",
+    "prompt": "You are the LAWYER CHECKLIST agent. You are DOCUMENT-BLIND by design: you get only the\ntask goal, the required deliverables and the source file names (for type/name only).\nBuild the exhaustive checkli…",
+    "model": "claude-opus-5"
+   }
+  },
+  {
+   "ts": "2026-10-21T03:21:41.021Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/docs",
+   "type": "step.end",
+   "stepType": "exec",
+   "output": {
+    "code": 0,
+    "stdout": "{\"documents\": [{\"filename\": \"agent-correspondence.eml\", \"ext\": \"eml\", \"bytes\": 11160, \"text_path\": \"sources/agent-correspondence.eml.txt\"}, {\"filename\": \"credit-agreement-excerpts.docx\", \"ext\": \"docx\", \"bytes\": 61972, \"text_path\": \"sources/credit-agreement-excerpts.docx.txt\"}, {\"filename\": \"q3-2024-compliance-certificate.docx\", \"ext\": \"docx\", \"bytes\": 47931, \"text_path\": \"sources/q3-2024-compliance-certificate.docx.txt\"}, {\"filename\": \"q3-2024-financial-statements.xlsx\", \"ext\": \"xlsx\", \"bytes\": 21422, \"text_path\": \"sources/q3-2024-financial-statements.xlsx.txt\"}]}"
+   },
+   "durationMs": 1890
+  },
+  {
+   "ts": "2026-10-21T03:21:41.110Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest",
+   "type": "step.start",
+   "stepType": "foreach"
+  },
+  {
+   "ts": "2026-10-21T03:21:41.111Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0",
+   "type": "step.start",
+   "stepType": "agent",
+   "iteration": 0,
+   "input": {
+    "cwd": "/usr/src/app/lab-workspace/artifacts/1792552899038",
+    "prompt": "You are the DOCUMENT INGESTION agent. Read ONE source document and write its contents\ninto the knowledge graph so later agents can query it.\n1. Read the document's text file in full (the editor tool's…",
+    "model": "claude-sonnet-5"
+   }
+  },
+  {
+   "ts": "2026-10-21T03:21:41.111Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#1",
+   "type": "step.start",
+   "stepType": "agent",
+   "iteration": 1,
+   "input": {
+    "cwd": "/usr/src/app/lab-workspace/artifacts/1792552899038",
+    "prompt": "You are the DOCUMENT INGESTION agent. Read ONE source document and write its contents\ninto the knowledge graph so later agents can query it.\n1. Read the document's text file in full (the editor tool's…",
+    "model": "claude-sonnet-5"
+   }
+  },
+  {
+   "ts": "2026-10-21T03:21:41.221Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/002-graph_graph_search",
+   "type": "step.start",
+   "stepType": "tool:graph_graph_search",
+   "input": {
+    "q": "legal document type registry drafting rules",
+    "limit": 15
+   },
+   "toolCallId": "toolu_01B1WX5erT2Eh7Mi4sEnqC9m"
+  },
+  {
+   "ts": "2026-10-21T03:21:41.221Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/001-graph_get_ontology",
+   "type": "step.start",
+   "stepType": "tool:graph_get_ontology",
+   "input": {
+    "include_edges": false,
+    "include_attributes": false
+   },
+   "toolCallId": "toolu_01VDjufpXb2HLLpeFBpiGv8T"
+  },
+  {
+   "ts": "2026-10-21T03:21:41.362Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/001-graph_get_ontology",
+   "type": "step.end",
+   "stepType": "tool:graph_get_ontology",
+   "output": "{\"domains\":[\"codeartifact\",\"content\",\"entity\",\"epistemic\",\"general\",\"hive\",\"knowledgeartifact\",\"legal\",\"scratchpad\",\"strut\",\"workflow\"],\"node_types\":{\"ungrouped\":[{\"type\":\"Thing\",\"description\":\"The highest-level node in the ontology hierarchy, representing an abstract concept with no direct individu…",
+   "durationMs": 141,
+   "toolCallId": "toolu_01VDjufpXb2HLLpeFBpiGv8T"
+  },
+  {
+   "ts": "2026-10-21T03:21:41.474Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/002-graph_graph_search",
+   "type": "step.end",
+   "stepType": "tool:graph_graph_search",
+   "output": "[{\"ref_id\":\"51442310-6f74-4862-822f-78b4e24d81f4\",\"name\":\"harvey-lab-run\",\"node_type\":\"StrutWorkflowVersion\",\"description\":\"Harvey LAB — Task Runner (strut port of stakwork 57179). One legal task in, scored deliverables + one Hive callback out. Code: normalize task → fetch/convert documents → shared…",
+   "durationMs": 253,
+   "toolCallId": "toolu_01B1WX5erT2Eh7Mi4sEnqC9m"
+  },
+  {
+   "ts": "2026-10-21T03:21:42.429Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/001-bash",
+   "type": "step.start",
+   "stepType": "tool:bash",
+   "input": {
+    "command": "cat -n /usr/src/app/lab-workspace/artifacts/1792552899038/sources/agent-correspondence.eml.txt"
+   },
+   "toolCallId": "toolu_01HXKxheMXJhxgeUQTgwT8Sk"
+  },
+  {
+   "ts": "2026-10-21T03:21:42.457Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/001-bash",
+   "type": "step.end",
+   "stepType": "tool:bash",
+   "output": "     1\tFrom: Margaret Yun <myun@pacificcoasttimber.com>\n     2\tTo: Tanya Kresh <tkresh@cascademillworks.com>\n     3\tCc: Sarah Chung <schung@ridgewaypartners.com>\n     4\tDate: Mon, 18 Nov 2024 04:47:00 -0000\n     5\tSubject: RE: Cascade Millworks — Q3 2024 Compliance Certificate\n     6\t\n     7\tTanya,\n…",
+   "durationMs": 28,
+   "toolCallId": "toolu_01HXKxheMXJhxgeUQTgwT8Sk"
+  },
+  {
+   "ts": "2026-10-21T03:21:42.549Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#1/001-bash",
+   "type": "step.start",
+   "stepType": "tool:bash",
+   "input": {
+    "command": "wc -l \"/usr/src/app/lab-workspace/artifacts/1792552899038/sources/credit-agreement-excerpts.docx.txt\""
+   },
+   "toolCallId": "toolu_014Tr4cJKhwSJqqSvDVbWeUG"
+  },
+  {
+   "ts": "2026-10-21T03:21:42.561Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#1/001-bash",
+   "type": "step.end",
+   "stepType": "tool:bash",
+   "output": "657 /usr/src/app/lab-workspace/artifacts/1792552899038/sources/credit-agreement-excerpts.docx.txt\n",
+   "durationMs": 12,
+   "toolCallId": "toolu_014Tr4cJKhwSJqqSvDVbWeUG"
+  },
+  {
+   "ts": "2026-10-21T03:21:43.925Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#1/002-str_replace_based_edit_tool",
+   "type": "step.start",
+   "stepType": "tool:str_replace_based_edit_tool",
+   "input": {
+    "command": "view",
+    "path": "/usr/src/app/lab-workspace/artifacts/1792552899038/sources/credit-agreement-excerpts.docx.txt"
+   },
+   "toolCallId": "toolu_014hYC4igPpxKiAGzmbddoPh"
+  },
+  {
+   "ts": "2026-10-21T03:21:43.927Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#1/002-str_replace_based_edit_tool",
+   "type": "step.end",
+   "stepType": "tool:str_replace_based_edit_tool",
+   "output": "1: **[CREDIT AGREEMENT]{.underline}**\n2: \n3: **dated as of March 15, 2022**\n4: \n5: **among**\n6: \n7: **CASCADE MILLWORKS, INC.,** an Oregon corporation, as the Borrower,\n8: \n9: **PACIFIC COAST TIMBER HOLDINGS, INC.,** a Delaware-chartered commercial bank, as Administrative Agent,\n10: \n11: **and**\n12:…",
+   "durationMs": 2,
+   "toolCallId": "toolu_014hYC4igPpxKiAGzmbddoPh"
+  },
+  {
+   "ts": "2026-10-21T03:21:44.155Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/002-graph_get_ontology",
+   "type": "step.start",
+   "stepType": "tool:graph_get_ontology",
+   "input": {
+    "include_edges": false,
+    "include_attributes": false
+   },
+   "toolCallId": "toolu_01RGoURqBWCjLaiB2Zu4F8s4"
+  },
+  {
+   "ts": "2026-10-21T03:21:44.223Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/002-graph_get_ontology",
+   "type": "step.end",
+   "stepType": "tool:graph_get_ontology",
+   "output": "{\"domains\":[\"codeartifact\",\"content\",\"entity\",\"epistemic\",\"general\",\"hive\",\"knowledgeartifact\",\"legal\",\"scratchpad\",\"strut\",\"workflow\"],\"node_types\":{\"ungrouped\":[{\"type\":\"Thing\",\"description\":\"The highest-level node in the ontology hierarchy, representing an abstract concept with no direct individu…",
+   "durationMs": 68,
+   "toolCallId": "toolu_01RGoURqBWCjLaiB2Zu4F8s4"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.562Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/003-graph_graph_search",
+   "type": "step.start",
+   "stepType": "tool:graph_graph_search",
+   "input": {
+    "q": "legal document type registry",
+    "type": "Concept",
+    "limit": 20
+   },
+   "toolCallId": "toolu_01URPz4dxCW3GdK9KnahXcPc"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.562Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/004-graph_graph_search",
+   "type": "step.start",
+   "stepType": "tool:graph_graph_search",
+   "input": {
+    "q": "drafting rules legal deliverable",
+    "type": "Concept",
+    "limit": 20
+   },
+   "toolCallId": "toolu_015nS4B3dioikrswmYb7kEYo"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.597Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/003-graph_get_ontology_type",
+   "type": "step.start",
+   "stepType": "tool:graph_get_ontology_type",
+   "input": {
+    "type": "Document"
+   },
+   "toolCallId": "toolu_01NzJJrGxNJNLqdbMVSEzsZz"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.598Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/004-graph_get_ontology_type",
+   "type": "step.start",
+   "stepType": "tool:graph_get_ontology_type",
+   "input": {
+    "type": "Section"
+   },
+   "toolCallId": "toolu_01DrgrFcWaErPdSM6WAQwxeX"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.598Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/005-graph_get_ontology_type",
+   "type": "step.start",
+   "stepType": "tool:graph_get_ontology_type",
+   "input": {
+    "type": "Excerpt"
+   },
+   "toolCallId": "toolu_01D2WWCz4GJDSjz9FsE86dw3"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.598Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/006-graph_get_ontology_type",
+   "type": "step.start",
+   "stepType": "tool:graph_get_ontology_type",
+   "input": {
+    "type": "Figure"
+   },
+   "toolCallId": "toolu_017J8muV5AwBLrUnGXZyZf6c"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.644Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/006-graph_get_ontology_type",
+   "type": "step.end",
+   "stepType": "tool:graph_get_ontology_type",
+   "output": "{\"attributes\":{\"extracted_by\":\"?string\",\"section\":\"?string\",\"currency\":\"?string\",\"value_as_stated\":\"string\",\"matter_slug\":\"string\",\"cell_ref\":\"?string\",\"source_ref\":\"string\",\"label\":\"string\",\"unit\":\"?string\",\"page_number\":\"?int\",\"sheet_name\":\"?string\",\"value_normalized\":\"?float\",\"locator\":\"string\",\"…",
+   "durationMs": 46,
+   "toolCallId": "toolu_017J8muV5AwBLrUnGXZyZf6c"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.670Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/003-graph_get_ontology_type",
+   "type": "step.end",
+   "stepType": "tool:graph_get_ontology_type",
+   "output": "{\"attributes\":{\"summary\":\"?string\",\"author\":\"?string\",\"title\":\"?string\",\"content_type\":\"?string\",\"status\":\"?string\",\"pubkey\":\"?string\"}}",
+   "durationMs": 73,
+   "toolCallId": "toolu_01NzJJrGxNJNLqdbMVSEzsZz"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.682Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/005-graph_get_ontology_type",
+   "type": "step.end",
+   "stepType": "tool:graph_get_ontology_type",
+   "output": "{\"attributes\":{\"is_verbatim\":\"?boolean\",\"confidence\":\"?float\",\"section\":\"?string\",\"page_number\":\"?int\",\"text\":\"string\",\"bbox_y0\":\"?float\",\"bbox_x1\":\"?float\",\"bbox_x0\":\"?float\",\"bbox_y1\":\"?float\",\"unique_source_id\":\"?string\",\"image_url\":\"?string\",\"weight\":\"?float\",\"is_muted\":\"?boolean\",\"name\":\"string…",
+   "durationMs": 84,
+   "toolCallId": "toolu_01D2WWCz4GJDSjz9FsE86dw3"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.692Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0/004-graph_get_ontology_type",
+   "type": "step.end",
+   "stepType": "tool:graph_get_ontology_type",
+   "output": "{\"attributes\":{\"summary\":\"?string\",\"text\":\"string\",\"author\":\"?string\",\"title\":\"?string\",\"content_type\":\"?string\",\"status\":\"?string\",\"pubkey\":\"?string\"}}",
+   "durationMs": 94,
+   "toolCallId": "toolu_01DrgrFcWaErPdSM6WAQwxeX"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.769Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/003-graph_graph_search",
+   "type": "step.end",
+   "stepType": "tool:graph_graph_search",
+   "output": "[{\"ref_id\":\"2d94d31f-cbbf-45a9-bab3-9e0475c01a04\",\"name\":\"Workflow Builder\",\"node_type\":\"Concept\",\"description\":\"What this workspace builds with workflows, and the convention each kind follows.\",\"edges\":{\"PROCESS\":1,\"PARENT_OF\":1}},{\"ref_id\":\"54ddd023-7000-4a50-8540-0614768838a2\",\"name\":\"Job\",\"node_…",
+   "durationMs": 207,
+   "toolCallId": "toolu_01URPz4dxCW3GdK9KnahXcPc"
+  },
+  {
+   "ts": "2026-10-21T03:21:49.773Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/004-graph_graph_search",
+   "type": "step.end",
+   "stepType": "tool:graph_graph_search",
+   "output": "[{\"ref_id\":\"4787fe02-054c-4312-b888-0776882fa2b9\",\"name\":\"Plan Mode\",\"node_type\":\"Concept\",\"description\":\"When the person asks for a plan first, or the change is big enough that they should see one before anything is built. A short HTML page to review, nothing built yet.\",\"edges\":{\"PROCESS\":1,\"PAREN…",
+   "durationMs": 211,
+   "toolCallId": "toolu_015nS4B3dioikrswmYb7kEYo"
+  },
+  {
+   "ts": "2026-10-21T03:21:54.190Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/006-graph_graph_search",
+   "type": "step.start",
+   "stepType": "tool:graph_graph_search",
+   "input": {
+    "q": "legal practice area banking finance memo draft tips",
+    "limit": 20,
+    "domains": "legal,general"
+   },
+   "toolCallId": "toolu_01T6v1uDnwGPnypMWCR7KRHx"
+  },
+  {
+   "ts": "2026-10-21T03:21:54.190Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/005-graph_graph_search",
+   "type": "step.start",
+   "stepType": "tool:graph_graph_search",
+   "input": {
+    "q": "compliance certificate covenant credit agreement leverage ratio EBITDA",
+    "limit": 20
+   },
+   "toolCallId": "toolu_01A8egmPrY6cuVNGDbG2tNDQ"
+  },
+  {
+   "ts": "2026-10-21T03:21:54.204Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/006-graph_graph_search",
+   "type": "step.end",
+   "stepType": "tool:graph_graph_search",
+   "output": "[]",
+   "durationMs": 14,
+   "toolCallId": "toolu_01T6v1uDnwGPnypMWCR7KRHx"
+  },
+  {
+   "ts": "2026-10-21T03:21:54.265Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/005-graph_graph_search",
+   "type": "step.end",
+   "stepType": "tool:graph_graph_search",
+   "output": "[{\"ref_id\":\"746de808-ed7f-4127-bf59-0592e25699bd\",\"name\":\"ISSUE_010: Confirms both covenants remain technically in compliance after corrections\",\"node_type\":\"EvalRequirement\",\"description\":\"PASS if the memo explicitly states or confirms that even after all corrections, the Total Net Leverage Ratio (…",
+   "durationMs": 75,
+   "toolCallId": "toolu_01A8egmPrY6cuVNGDbG2tNDQ"
+  },
+  {
+   "ts": "2026-10-21T03:22:04.372Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#1/003-graph_get_ontology",
+   "type": "step.start",
+   "stepType": "tool:graph_get_ontology",
+   "input": {
+    "include_edges": false,
+    "include_attributes": false
+   },
+   "toolCallId": "toolu_01YB6vW1vRigkYXeSZvL4FYn"
+  },
+  {
+   "ts": "2026-10-21T03:22:04.493Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#1/003-graph_get_ontology",
+   "type": "step.end",
+   "stepType": "tool:graph_get_ontology",
+   "output": "{\"domains\":[\"codeartifact\",\"content\",\"entity\",\"epistemic\",\"general\",\"hive\",\"knowledgeartifact\",\"legal\",\"scratchpad\",\"strut\",\"workflow\"],\"node_types\":{\"ungrouped\":[{\"type\":\"Thing\",\"description\":\"The highest-level node in the ontology hierarchy, representing an abstract concept with no direct individu…",
+   "durationMs": 121,
+   "toolCallId": "toolu_01YB6vW1vRigkYXeSZvL4FYn"
+  },
+  {
+   "ts": "2026-10-21T03:22:12.047Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/007-graph_graph_search",
+   "type": "step.start",
+   "stepType": "tool:graph_graph_search",
+   "input": {
+    "q": "memo structure issue severity recommendation deliverable schema",
+    "type": "DeliverableSchema,DocumentTypeTemplate,Concept",
+    "limit": 20
+   },
+   "toolCallId": "toolu_01Bry2T6wfgoFthfXE7J6aA5"
+  },
+  {
+   "ts": "2026-10-21T03:22:12.047Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/008-graph_graph_search",
+   "type": "step.start",
+   "stepType": "tool:graph_graph_search",
+   "input": {
+    "q": "benchmark failure cause calculation error threshold not applied",
+    "type": "BenchmarkFailureCause",
+    "limit": 20
+   },
+   "toolCallId": "toolu_0169Kk1mwkufVt5ckw6uf2yZ"
+  },
+  {
+   "ts": "2026-10-21T03:22:12.085Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/008-graph_graph_search",
+   "type": "step.end",
+   "stepType": "tool:graph_graph_search",
+   "output": "[]",
+   "durationMs": 38,
+   "toolCallId": "toolu_0169Kk1mwkufVt5ckw6uf2yZ"
+  },
+  {
+   "ts": "2026-10-21T03:22:12.181Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/007-graph_graph_search",
+   "type": "step.end",
+   "stepType": "tool:graph_graph_search",
+   "output": "[{\"ref_id\":\"3e707879-ae13-4cf8-a0c2-e792e0ddecf8\",\"name\":\"Janitor\",\"node_type\":\"Concept\",\"description\":\"Automated agents for cleaning up code, concept trees, or other data.\",\"edges\":{\"PROCESS\":1,\"PARENT_OF\":1}},{\"ref_id\":\"41b34198-dca5-4298-b4b9-08bcdd312787\",\"name\":\"Verify\",\"node_type\":\"Concept\",\"d…",
+   "durationMs": 134,
+   "toolCallId": "toolu_01Bry2T6wfgoFthfXE7J6aA5"
+  },
+  {
+   "ts": "2026-10-21T03:22:23.373Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/009-graph_graph_search",
+   "type": "step.start",
+   "stepType": "tool:graph_graph_search",
+   "input": {
+    "q": "compliance certificate",
+    "type": "DocumentTypeTemplate,Doctrine,PlaybookEntry,Policy,Regulation",
+    "limit": 20
+   },
+   "toolCallId": "toolu_01FhTfR51LPVcnp4hita7ckG"
+  },
+  {
+   "ts": "2026-10-21T03:22:23.373Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/010-graph_graph_get",
+   "type": "step.start",
+   "stepType": "tool:graph_graph_get",
+   "input": {
+    "node_type": "Concept",
+    "name": "Job",
+    "children": "PARENT_OF",
+    "required": false
+   },
+   "toolCallId": "toolu_01LZhmyogCSaGRtXbK2y3EH7"
+  },
+  {
+   "ts": "2026-10-21T03:22:23.387Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/010-graph_graph_get",
+   "type": "step.end",
+   "stepType": "tool:graph_graph_get",
+   "output": "{\"ref_id\":\"54ddd023-7000-4a50-8540-0614768838a2\",\"node_type\":\"Concept\",\"name\":\"Job\",\"properties\":{\"docs\":\"The kinds of work a job agent has a way to do here, and how to do each.\\n\\nEach child Concept of this node (PARENT_OF from here) is one KIND of\\nrequest. Its docs say how to handle it: a workflo…",
+   "durationMs": 14,
+   "toolCallId": "toolu_01LZhmyogCSaGRtXbK2y3EH7",
+   "nodes": [
+    {
+     "ref_id": "54ddd023-7000-4a50-8540-0614768838a2",
+     "node_type": "Concept",
+     "name": "Job"
+    }
+   ]
+  },
+  {
+   "ts": "2026-10-21T03:22:23.519Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist/009-graph_graph_search",
+   "type": "step.end",
+   "stepType": "tool:graph_graph_search",
+   "output": "[]",
+   "durationMs": 146,
+   "toolCallId": "toolu_01FhTfR51LPVcnp4hita7ckG"
+  },
+  {
+   "ts": "2026-10-21T03:25:55.181Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#0",
+   "type": "step.end",
+   "stepType": "agent",
+   "output": {
+    "result": "Ingested sources/agent-correspondence.eml into namespace `harvey-banking-identify-issues-compliance-cert`.\n\nNode counts written (all linked to the Document, ref_id c861298a-5292-490f-985f-ba56d52b95bd):\n- Document: 1 (agent-correspondence.eml, source_link = raw GitHub URL)\n- Agreement: 2 (Credit Agreement dated 2022-03-15; First Amendment dated 2024-01-10, linked via AMENDS)\n- ContractClause: 3 (S…",
+    "usage": {
+     "inputTokens": 35,
+     "cacheReadTokens": 793087,
+     "cacheWriteTokens": 76124,
+     "outputTokens": 27968,
+     "totalTokens": 897214
+    },
+    "cost": 0.9430160999999999
+   },
+   "durationMs": 254068,
+   "iteration": 0,
+   "modelCalls": 18,
+   "usage": {
+    "inputTokens": 35,
+    "cacheReadTokens": 793087,
+    "cacheWriteTokens": 76124,
+    "outputTokens": 27968,
+    "totalTokens": 897214
+   },
+   "cost": 0.9430160999999999,
+   "transcript": "/workflows/harvey-lab-run/runs/1792552899038/transcripts/harvey-lab-run/ingest%230"
+  },
+  {
+   "ts": "2026-10-21T03:26:37.246Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/checklist",
+   "type": "step.end",
+   "stepType": "agent",
+   "output": {
+    "result": "# SENIOR PARTNER REVIEW CHECKLIST\n## Task: Identify Issues in Borrower's Q3 2024 Compliance Certificate Under Senior Secured Credit Facility\n## Deliverable D1: `compliance-certificate-issue-memo.docx`\n*(draft: `drafts/drafter_compliance-certificate-issue-memo.docx`; final: `output/compliance-certificate-issue-memo.docx`)*\n\n---\n\n# 0. RETRIEVAL MANIFEST\n\nMandatory Concept-namespace retrieval was per…",
+    "usage": {
+     "inputTokens": 12,
+     "cacheReadTokens": 129579,
+     "cacheWriteTokens": 39417,
+     "outputTokens": 21769,
+     "totalTokens": 190777
+    },
+    "cost": 0.51325845
+   },
+   "durationMs": 298115,
+   "modelCalls": 6,
+   "usage": {
+    "inputTokens": 12,
+    "cacheReadTokens": 129579,
+    "cacheWriteTokens": 39417,
+    "outputTokens": 21769,
+    "totalTokens": 190777
+   },
+   "cost": 0.51325845,
+   "transcript": "/workflows/harvey-lab-run/runs/1792552899038/transcripts/harvey-lab-run/checklist"
+  },
+  {
+   "ts": "2026-10-21T03:33:33.682Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest#1",
+   "type": "step.end",
+   "stepType": "agent",
+   "output": {
+    "result": "Ingested sources/credit-agreement-excerpts.docx into namespace `harvey-banking-identify-issues-compliance-cert`.\n\n**Node counts written (this document):**\n- Document: 1 (ab2387d6…) — title \"credit-agreement-excerpts.docx\", source_link = GitHub raw URL\n- Agreement: 1 (Credit Agreement, Cascade Millworks/Pacific Coast Timber Holdings, effective 2022‑03‑15)\n- LegalParty: 7 (Borrower — Cascade Millwor…",
+    "usage": {
+     "inputTokens": 51,
+     "cacheReadTokens": 2686785,
+     "cacheWriteTokens": 178466,
+     "outputTokens": 79643,
+     "totalTokens": 2944945
+    },
+    "cost": 2.670081
+   },
+   "durationMs": 712568,
+   "iteration": 1,
+   "modelCalls": 26,
+   "usage": {
+    "inputTokens": 51,
+    "cacheReadTokens": 2686785,
+    "cacheWriteTokens": 178466,
+    "outputTokens": 79643,
+    "totalTokens": 2944945
+   },
+   "cost": 2.670081,
+   "transcript": "/workflows/harvey-lab-run/runs/1792552899038/transcripts/harvey-lab-run/ingest%231"
+  },
+  {
+   "ts": "2026-10-21T03:33:33.771Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/ingest",
+   "type": "step.end",
+   "stepType": "foreach",
+   "durationMs": 712661
+  },
+  {
+   "ts": "2026-10-21T03:37:17.077Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/xc_gate",
+   "type": "step.start",
+   "stepType": "if",
+   "input": {
+    "cond": true
+   }
+  },
+  {
+   "ts": "2026-10-21T03:37:17.077Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/xc_gate",
+   "type": "step.end",
+   "stepType": "if",
+   "output": true,
+   "durationMs": 0
+  },
+  {
+   "ts": "2026-10-21T04:09:36.699Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/drafter",
+   "type": "step.start",
+   "stepType": "agent",
+   "input": {
+    "cwd": "/usr/src/app/lab-workspace/artifacts/1792552899038",
+    "prompt": "You are the DRAFTER agent. Phases: plan → retrieve and extend facts.md → draft to spec →\nself-check.\nInputs: checklist.md (a COVERAGE SPEC, never evidence), facts.md, the FACTS tab,\ncase-law-research.…",
+    "model": "claude-opus-5"
+   }
+  },
+  {
+   "ts": "2026-10-21T04:09:39.939Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/drafter/001-bash",
+   "type": "step.start",
+   "stepType": "tool:bash",
+   "input": {
+    "command": "cd /usr/src/app/lab-workspace/artifacts/1792552899038 && ls -la && echo \"=== CHECKLIST ===\" && cat checklist.md && echo \"=== FACTS ===\" && cat facts.md"
+   },
+   "toolCallId": "toolu_01G71aa177R9gesnaEQSpSvw"
+  },
+  {
+   "ts": "2026-10-21T04:09:39.939Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/drafter/002-bash",
+   "type": "step.start",
+   "stepType": "tool:bash",
+   "input": {
+    "command": "cd /usr/src/app/lab-workspace/artifacts/1792552899038 && echo \"=== CASELAW ===\" && cat case-law-research.md && echo \"=== SPREADSHEET.md ===\" && cat spreadsheet.md && ls -la sources/"
+   },
+   "toolCallId": "toolu_019vnygHYczLy35xtXGfG5YD"
+  },
+  {
+   "ts": "2026-10-21T04:09:39.956Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/drafter/001-bash",
+   "type": "step.end",
+   "stepType": "tool:bash",
+   "output": "total 176\ndrwxr-xr-x  3 root root   4096 Oct 21 04:08 .\ndrwxr-xr-x 30 root root   4096 Oct 21 03:21 ..\n-rw-r--r--  1 root root  10404 Oct 21 03:54 case-law-research.md\n-rw-r--r--  1 root root 104273 Oct 21 04:09 checklist.md\n-rw-r--r--  1 root root   6510 Oct 21 03:21 exec-harvey-lab-run-docs.py\n-rw…",
+   "durationMs": 17,
+   "toolCallId": "toolu_01G71aa177R9gesnaEQSpSvw"
+  },
+  {
+   "ts": "2026-10-21T04:09:39.958Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/drafter/002-bash",
+   "type": "step.end",
+   "stepType": "tool:bash",
+   "output": "=== CASELAW ===\n# CASE-LAW RESEARCH — Identify Issues in Borrower's Q3 2024 Compliance Certificate\n## Task graph namespace: harvey-banking-identify-issues-compliance-cert | Concept namespace: default\n\n---\n\n## 0. Concept-namespace check (performed first, per instructions)\n\n`graph_graph_search` (type=…",
+   "durationMs": 19,
+   "toolCallId": "toolu_019vnygHYczLy35xtXGfG5YD"
+  },
+  {
+   "ts": "2026-10-21T04:41:06.640Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/drafter",
+   "type": "step.end",
+   "stepType": "agent",
+   "output": {
+    "result": "## Drafts written\n\n| # | Path | Format | Checklist coverage |\n|---|---|---|---|\n| D1 (draft) | `drafts/drafter_compliance-certificate-issue-memo.docx` | **docx** (real Word headings, tables, numbered lists — generated by `make_draft.py` via `uv run --with python-docx`) | **240 / 240 non-retired items covered** |\n| D1 (final) | `output/compliance-certificate-issue-memo.docx` | **docx** — byte-ident…",
+    "usage": {
+     "inputTokens": 72,
+     "cacheReadTokens": 7805237,
+     "cacheWriteTokens": 491185,
+     "outputTokens": 163986,
+     "totalTokens": 8460480
+    },
+    "cost": 6.64352085
+   },
+   "durationMs": 1889941,
+   "modelCalls": 36,
+   "usage": {
+    "inputTokens": 72,
+    "cacheReadTokens": 7805237,
+    "cacheWriteTokens": 491185,
+    "outputTokens": 163986,
+    "totalTokens": 8460480
+   },
+   "cost": 6.64352085,
+   "transcript": "/workflows/harvey-lab-run/runs/1792552899038/transcripts/harvey-lab-run/drafter"
+  },
+  {
+   "ts": "2026-10-21T04:52:51.676Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/score",
+   "type": "step.start",
+   "stepType": "exec"
+  },
+  {
+   "ts": "2026-10-21T04:53:28.816Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/score",
+   "type": "step.end",
+   "stepType": "exec",
+   "durationMs": 37140
+  },
+  {
+   "ts": "2026-10-21T04:53:30.878Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/dispute",
+   "type": "step.start",
+   "stepType": "agent",
+   "input": {
+    "cwd": "/usr/src/app/lab-workspace/artifacts/1792552899038",
+    "prompt": "You are the JUDGE-DISPUTE agent. An LLM judge failed some rubric criteria on this run's\ndeliverables. For EACH failed criterion, argue the opposing side and classify the failure.\nRead the final delive…",
+    "model": "claude-opus-5"
+   }
+  },
+  {
+   "ts": "2026-10-21T04:56:03.539Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/dispute",
+   "type": "step.end",
+   "stepType": "agent",
+   "output": {
+    "result": "{\"disputes\":[{\"id\":\"C-002\",\"flagged\":true,\"flag_basis\":\"criterion_validity\",\"contested\":true,\"llm_flag_reason\":\"**Criterion Validity** The criterion fixes a single arithmetic answer — excess = $6,100,000 − $5,000,000 = $1,100,000 — which is only correct if the clause (f) cap bites on the trailing-twelve-month test period. The Credit Agreement says the opposite: §1.01 \\\"Consolidated EBITDA\\\" cl.(f)…",
+    "object": {
+     "disputes": [
+      {
+       "id": "C-002",
+       "flagged": true,
+       "flag_basis": "criterion_validity",
+       "contested": true,
+       "llm_flag_reason": "**Criterion Validity** The criterion fixes a single arithmetic answer — excess = $6,100,000 − $5,000,000 = $1,100,000 — which is only correct if the clause (f) cap bites on the trailing-twelve-month t…",
+       "document_excerpt": "(f) restructuring charges and severance costs incurred by the Borrower and its Subsidiaries during such period, in an aggregate amount not to exceed $5,000,000 in any fiscal year;"
+      },
+      {
+       "id": "C-003",
+       "flagged": true,
+       "flag_basis": "criterion_validity",
+       "contested": true,
+       "llm_flag_reason": "**Criterion Validity** The required range ($125,400,000–$125,900,000, i.e. $126,750,000 − $1,100,000) rests on two premises, both unsupportable from the sources. First, it inherits the TTM-cap constru…",
+       "document_excerpt": "A29: Consolidated Net Income | B29: $8,200,000 | C29: $17,850,000 | D29: $27,900,000"
+      }
+     ]
+    },
+    "usage": {
+     "inputTokens": 28,
+     "cacheReadTokens": 459441,
+     "cacheWriteTokens": 49294,
+     "outputTokens": 9755,
+     "totalTokens": 518518
+    },
+    "cost": 0.46909379999999995
+   },
+   "durationMs": 152661,
+   "modelCalls": 14,
+   "usage": {
+    "inputTokens": 28,
+    "cacheReadTokens": 459441,
+    "cacheWriteTokens": 49294,
+    "outputTokens": 9755,
+    "totalTokens": 518518
+   },
+   "cost": 0.46909379999999995,
+   "transcript": "/workflows/harvey-lab-run/runs/1792552899038/transcripts/harvey-lab-run/dispute"
+  },
+  {
+   "ts": "2026-10-21T04:56:03.700Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run/post",
+   "type": "step.skipped",
+   "stepType": "http"
+  },
+  {
+   "ts": "2026-10-21T04:56:03.702Z",
+   "runId": "1792552899038",
+   "path": "harvey-lab-run",
+   "type": "run.end"
+  }
+ ],
+ "listing": [
+  "case-law-research.md",
+  "checklist.md",
+  "critiques/critique_arithmetic.md",
+  "critiques/critique_completeness.md",
+  "critiques/critique_correctness.md",
+  "critiques/critique_doctrine.md",
+  "drafts/drafter_compliance-certificate-issue-memo.docx",
+  "exec-harvey-lab-run-critiques.py",
+  "exec-harvey-lab-run-docs.py",
+  "exec-harvey-lab-run-score.py",
+  "exec-harvey-lab-run-stage.py",
+  "facts.md",
+  "make_draft.py",
+  "output/compliance-certificate-issue-memo.docx",
+  "scores.json",
+  "sources/agent-correspondence.eml",
+  "sources/agent-correspondence.eml.txt",
+  "sources/credit-agreement-excerpts.docx",
+  "sources/credit-agreement-excerpts.docx.txt",
+  "sources/q3-2024-compliance-certificate.docx",
+  "sources/q3-2024-compliance-certificate.docx.txt",
+  "sources/q3-2024-financial-statements.xlsx",
+  "sources/q3-2024-financial-statements.xlsx.txt",
+  "spreadsheet.md",
+  "work/baseline-drafter-memo-PRE-AGGREGATOR.docx",
+  "work/draft.md",
+  "work/drafter-internal-note-PRIVILEGED.md",
+  "work/internal-analysis-aggregator.md"
+ ],
+ "sources": [
+  {
+   "name": "agent-correspondence.eml",
+   "text": "From: Margaret Yun <myun@pacificcoasttimber.com>\nTo: Tanya Kresh <tkresh@cascademillworks.com>\nCc: Sarah Chung <schung@ridgewaypartners.com>\nDate: Mon, 18 Nov 2024 04:47:00 -0000\nSubject: RE: Cascade Millworks — Q3 2024 Compliance Certificate\n  • Total Net Leverage Ratio: 2.29x (covenant maximum: 4.50x)"
+  },
+  {
+   "name": "credit-agreement-excerpts.docx",
+   "text": "**[CREDIT AGREEMENT]{.underline}**\n**dated as of March 15, 2022**\n**among**\n> \\(f\\) restructuring charges and severance costs incurred by the Borrower and its Subsidiaries during such period, in an aggregate amount not to exceed \\$5,000,000 in any fiscal year;\n> \\(e\\) immediately after giving pro forma effect to such Acquisition (including any Revolving Loans drawn to finance the purchase price thereof and any letters of credit issued in connection therewith), Revolver Availability shall be not less than \\$25,000,000; and\n\\\"**Total Net Funded Debt**\\\" means, at any date of determination, Total Funded Debt minus Unrestricted Cash; provided that the amount of Unrestricted Cash netted against Total Funded Debt pursuant to this definition shall not exceed \\$25,000,000. For the avoidance of doubt, if Unrestricted Cash exceeds \\$25,000,000, only \\$25,000,000 shall be deducted from Total Funded Debt in calculating Total N\n> \\(d\\) **Investments in Non-Guarantor Subsidiaries.** Investments by the Borrower or any Guarantor in Subsidiaries that are not Guarantors, in an aggregate amount not to exceed \\$5,000,000 outstanding at any time.\n> \\(i\\) delivery to the Administrative Agent of a Permitted Acquisition Certificate, in form reasonably satisfactory to the Administrative Agent, not less than five (5) Business Days prior to the anticipated closing date of such Acquisition, together with (A) a reasonably detailed description of the target Person or assets to be acquired and the proposed terms and conditions of such Acquisition (i\n> \\(e\\) **Cross-Default.** (i) The Borrower or any Subsidiary shall fail to make any payment when due (whether by scheduled maturity, required prepayment, acceleration, demand, or otherwise) in respect of any Indebtedness or Guaranty Obligation (other than Indebtedness under the Loan Documents) having an aggregate principal amount (including undrawn committed amounts) exceeding \\$5,000,000, or (ii\n> \\(g\\) **Judgments.** One or more final, non-appealable judgments or orders for the payment of money in an aggregate amount in excess of \\$5,000,000 (to the extent not covered by independent third-party insurance as to which the insurer has been notified of such judgment or order and has not denied coverage) shall be rendered against the Borrower or any Subsidiary and the same shall remain undisc\n> \\(h\\) **ERISA.** An ERISA Event shall have occurred that, in the reasonable opinion of the Required Lenders, when taken together with all other ERISA E"
+  },
+  {
+   "name": "q3-2024-compliance-certificate.docx",
+   "text": "**COMPLIANCE CERTIFICATE**\nDelivered pursuant to Section 6.02(a) of the Credit Agreement dated as of March 15, 2022 (as amended by the First Amendment dated January 10, 2024, the \\\"Credit Agreement\\\")\nNovember 18, 2024\n  Plus: Restructuring & severance charges                             \\$6,100,000\n> \\(i\\) *Restructuring and Severance Charges.* Restructuring and severance charges of \\$6,100,000 relate to the consolidation of the Borrower\\'s Roseburg, OR sawmill operations and workforce reductions implemented in Q4 2023 and Q1 2024. The restructuring program involved the closure of one of two parallel production lines at the Roseburg facility and the associated reduction of approximately 85 f\n  Less: Unrestricted Cash and Cash Equivalents   (\\$32,500,000)\n> Unrestricted Cash and Cash Equivalents of \\$32,500,000 represents the aggregate balance of unrestricted cash, demand deposits, and money market funds held in domestic deposit accounts as of September 30, 2024. All such amounts are held in accounts subject to Control Agreements in favor of the Administrative Agent.\n> Total Net Funded Debt / Consolidated EBITDA = \\$290,625,000 / \\$126,750,000 = **2.29x**\n  Total Net Leverage Ratio (§7.11(a))       ≤ 4.50x              **2.29x**               **Compliant**"
+  },
+  {
+   "name": "q3-2024-financial-statements.xlsx",
+   "text": "=== Sheet: Consolidated Balance Sheet ===\nA1: Line Item | B1: September 30, 2024 (Unaudited) | C1: December 31, 2023 (Audited)\nA2: ASSETS\nA3: Current Assets:\nA4: Cash and Cash Equivalents (Unrestricted) | B4: $32,500,000 | C4: $28,700,000\nA10: Restructuring and Severance Charges (Note 9) | B10: $1,200,000 | C10: $5,100,000 | D10: $6,100,000\nA30:   Net Borrowings (Repayments) on Revolving Credit Facility | B30: $13,000,000 | C30: $5,000,000\nA40:   Unrestricted Cash and Cash Equivalents, End of Period | B40: $32,500,000 | C40: $28,887,500\nA2: Eugene Sawmill #1 — Maintenance | B2: $1,200,000 | C2: $1,400,000 | D2: $1,100,000 | E2: $3,700,000 | F2: $1,300,000 | G2: $5,000,000 | H2: $5,200,000 | I2: Maintenance\nA6: Longview, WA Sawmill — Maintenance | B6: $900,000 | C6: $800,000 | D6: $1,000,000 | E6: $2,700,000 | F6: $1,100,000 | G6: $3,800,000 | H6: $3,500,000 | I6: Maintenance\nA10: Note 9 | B10: Restructuring and Severance Charges | C10: During the twelve months ended September 30, 2024, the Company incurred $6,100,000 of restructuring and severance charges primarily related to the consolidation of operations at the Longview, WA sawmill facility and workforce reductions in connection with the integration of Whitfield Lumber Co. Of the total charges, $4,900,000 relates t"
+  }
+ ],
+ "workfiles": [
+  {
+   "name": "checklist.md",
+   "text": "# SENIOR PARTNER REVIEW CHECKLIST\n## Task: Identify Issues in Borrower's Q3 2024 Compliance Certificate Under Senior Secured Credit Facility\n## Deliverable D1: `compliance-certificate-issue-memo.docx`\n*(draft: `drafts/drafter_compliance-certificate-issue-memo.docx`; final: `output/compliance-certificate-issue-memo.docx`)*\n\n---\n\n# 0. RETRIEVAL MANIFEST\n\nMandatory Concept-namespace retrieval was performed before drafting this checklist. Every query and its result is recorded below.\n\n| # | Tool | Query / parameters | Returned | Usable for this checklist? |\n|---|------|--------------------|----------|-----------------------------|\n| R1 | `get_ontology` | all domains, no edges/attrs | 12 domains incl. `legal`, `general` (home of `Concept`). Legal node types available: `Agreement`, `ContractClause`, `ClauseType`, `Excerpt`, `DefinedTerm`, `Figure`, `ComputedFigure`, `FormulaComponent`, `DeliverableSchema`, `DocumentTypeTemplate`, `DataAnomalyRecord`, `Doctrine`, `PlaybookEntry`, `Deadline`, `TimelineEntry`, `LegalParty`, `Jurisdiction`, `EscalationRecord`, `BenchmarkFailureCause`. | Yes — used only as a *structural* guide to the fact types the drafter must capture (figures, defined terms, deadlines, computed figures, anomalies). No legal content. |\n| R2 | `graph_search` q=`legal document type registry drafting rules` (all types) | No legal registry. Returned only `StrutWorkflowVersion` \"harvey-lab-run\" and its agent sessions (ingestion / checklist / drafter / verifier prompts). | No substantive legal content. |\n| R3 | `graph_search` q=`legal document type registry`, type=`Concept` | 20 Concepts, all software-engineering (Workflow Builder, Job, Janitor, Pod, Pod Setup – Postgres/Redis/LiveKit/…, Code Change, Verify, Explore, Plan Mode, Onboarding). **No legal document-type registry exists in the Concept namespace.** | No. |\n| R4 | `graph_search` q=`drafting rules legal deliverable`, type=`Concept` | Same software-engineering Concept set. No drafting rules for legal documents. | No. |\n| R5 | `graph_search` q=`legal practice area banking finance memo draft tips`, domains=`legal,general` | **Empty result set.** No practice-area node, no draft-tips node, no law node. | No. |\n| R6 | `graph_search` q=`memo structure issue severity recommendation deliverable schema`, type=`DeliverableSchema,DocumentTypeTemplate,Concept` | No `DeliverableSchema` and no `DocumentTypeTemplate` nodes; only the same software-engineering Concepts. **No deliverable schema is registered for thi"
+  },
+  {
+   "name": "facts.md",
+   "text": "# FACTS — Cross-Check Agent\n## Task: Identify Issues in Borrower's Q3 2024 Compliance Certificate Under Senior Secured Credit Facility\n## Namespace: harvey-banking-identify-issues-compliance-cert\n\nAll figures below are grounded to a specific source file + locator (page/section for prose, sheet!cell for the workbook) or to a graph `ref_id`. Computed/corrected figures are **live formulas** in the shared Google Sheet (tab `FACTS`, rows 90–116) — read back and recorded here with their resolved values; the underlying formula remains auditable in the sheet. Where a figure could not be grounded, it is marked **NOT FOUND**.\n\n---\n\n## PART 1 — GENERAL FACTS\n\n### 1.1 Parties and roles (grounded to sources)\n| Party / Person | Role | Source |\n|---|---|---|\n| Cascade Millworks, Inc. (Oregon corporation, EIN 93-4817205) | Borrower | credit-agreement-excerpts.docx §1.01 \"Borrower\"; q3-2024-compliance-certificate.docx caption |\n| Pacific Coast Timber Holdings, Inc. (\"PCTH\") (Delaware-chartered commercial bank) | Administrative Agent | credit-agreement-excerpts.docx §1.01 \"Administrative Agent\" |\n| Granite Ridge Capital Partners (Delaware LP), incl. Granite Ridge Capital Fund IV, L.P. | Sponsor; majority equity holder (68% stake at Closing) | credit-agreement-excerpts.docx §1.01 \"Sponsor\"/\"Transactions\" |\n| Tanya Kresh | Chief Financial Officer of Borrower; signatory/Responsible Officer of the Certificate | q3-2024-compliance-certificate.docx Signature Block; §1(a) |\n| Derek Solheim | Chief Executive Officer of Borrower; signed First Amendment and Guarantor joinders | credit-agreement-excerpts.docx First Amendment signature pages |\n| Margaret Yun | Senior Vice President, Portfolio Monitoring Group, PCTH; signed First Amendment for Administrative Agent | agent-correspondence.eml; credit-agreement-excerpts.docx First Amendment |\n| Sarah Chung, Daniel Kowalski | Ridgeway Partners LLP — Administrative Agent's counsel | agent-correspondence.eml |\n| James Okafor | Thornbury Whitaker LLP — Borrower's counsel | agent-correspondence.eml |\n| Broadleaf Accounting Group LLP (Steven Pollard's team) | Borrower's independent auditor (annual audit) | agent-correspondence.eml; credit-agreement-excerpts.docx §6.01(a); Notes Summary Note 1 |\n| Dunlevy & Associates LLP | Independent accounting firm performing interim review of Q3 2024 unaudited statements | q3-2024-compliance-certificate.docx §1(e) |\n| Whitfield Lumber Co. (Oregon, Bend OR) | Acquisition target, acquired May 3, 2024; non-Guara"
+  },
+  {
+   "name": "critiques/critique_arithmetic.md",
+   "text": "## Overall: PASS, with one defect requiring correction\n\nI recomputed every figure, ratio, percentage, date interval and deadline in the draft (`drafts/drafter_compliance-certificate-issue-memo.docx`) against `facts.md`, the FACTS tab of the shared spreadsheet (rows 90–224), and the four source documents. The vast majority of the arithmetic is excellent: the Executive Summary table, the Key Findings, the Aggregate Magnitude table, Annex 1 Parts A–D (EBITDA build-up, Total Net Leverage Ratio, FCCR, CapEx), the Certificate-to-Source Tie-Out Schedule (Section G, all 16 rows), the Default and Cure-Period Matrix (Section H), the Negative-Covenant Basket Analysis (Section I), and Annex 2 (dates/deadlines) all foot correctly and tie to the FACTS cells cited (e.g., EBITDA build-up sums exactly to $126,750,000 certified / $113,350,000 corrected; TNLR = $301,425,000 ÷ $113,350,000 = 2.659241 ≈ 2.66x; FCCR = $63,650,000 ÷ $40,100,000 = 1.587282 ≈ 1.59x; day counts for the November 14, 2024 deadline, the 4-day delay, the July 2, 2024 joinder deadline, and the 90-/139-day overdue counts are all independently verified and correct). I found only one reconciliation defect, in the issue-direction tally at Section L.8, which is significant enough to require a fix before the memo leaves the building.\n\n---\n\n### Defect 1 — Section L.8 \"pattern of error\" miscounts the Borrower-favourable and Borrower-adverse issues; Issues 6, 10 and 15 are inconsistently tallied\n\n**Checklist items:** D1.ANA.27 (state which party each error favours), D1.CON.09 (conclusions/numbers must be internally consistent), D1.NEG.14 (no issue's text may contradict another's), D1.CALC.16 (no two stated figures may be mutually inconsistent).\n\n**Location:** Section L.8 \"The pattern of error\" (draft lines ~3568–3576):\n\n> \"Thirteen of the twenty issues run in the Borrower's favour: Issues 1, 2, 3, 4, 8, 12, 13, 14, 16, 18 and 19, together with the exclusion limb of Issue 5 and the asserted carryforward in Issue 10. Three run against the Borrower: Issue 7 … Issue 9 … and Issue 11 … The remainder are neutral.\"\n\n**What is wrong:** This tally does not reconcile with the \"Party favoured\" field the memo itself states for each individual issue:\n\n- **Issue 6** (\"Unfinanced Capital Expenditures … the revolver carve-out has been misapplied\") is expressly labelled, in its own section, **\"Party favoured: Borrower-favourable.\"** (draft, Issue 6 section). It is omitted from the list of 11 named Borrower-favourable issues in L"
+  },
+  {
+   "name": "spreadsheet.md",
+   "text": "# Shared spreadsheet\n\nspreadsheet_id: 1I_DlwW0BUQqgNtnNLOblGVO2stM1JJ06y0-ximLRhRU\nurl: https://docs.google.com/spreadsheets/d/1I_DlwW0BUQqgNtnNLOblGVO2stM1JJ06y0-ximLRhRU/edit\n\ntabs:\n- FACTS\n- SOURCE: q3-2024-financial-statements.xlsx — Consolidated Balance Sheet\n- SOURCE: q3-2024-financial-statements.xlsx — Consolidated Income Statement\n- SOURCE: q3-2024-financial-statements.xlsx — Consolidated Cash Flow Statemen\n- SOURCE: q3-2024-financial-statements.xlsx — Debt Schedule\n- SOURCE: q3-2024-financial-statements.xlsx — CapEx Schedule\n- SOURCE: q3-2024-financial-statements.xlsx — Intercompany\n- SOURCE: q3-2024-financial-statements.xlsx — Notes Summary\n- SOURCE: q3-2024-financial-statements.xlsx — Subsidiary List\n"
+  }
+ ],
+ "deliverable": {
+  "name": "compliance-certificate-issue-memo.docx",
+  "text": "PRIVILEGED & CONFIDENTIAL — ATTORNEY WORK PRODUCT — PREPARED IN ANTICIPATION OF POTENTIAL ENFORCEMENT ACTION\nMEMORANDUM\n | \nTo | Margaret Yun, Senior Vice President, Portfolio Monitoring Group, Pacific Coast Timber Holdings, Inc. (\"PCTH\"), as Administrative Agent; and, through the Administrative Agent, the Lenders party to the Credit Agreement\nFrom | Ridgeway Partners LLP (Sarah Chung; Daniel Kowalski), counsel to the Administrative Agent\nDate | 2 December 2024\nBottom line. The Certificate is materially inaccurate. Correcting the errors we have been able to quantify reduces Consolidated EBITDA from $126,750,000 to $113,350,000, increases Total Net Funded Debt from $290,625,000 to $301,425,000 and increases Fixed Charges from $37,600,000 to $40,100,000. Notwithstanding those corrections, each of the three financial covenants tested in the Certificate rema\nTotal Net Leverage Ratio (§7.11(a), as amended by First Amendment §2(b)) | ≤ 4.50:1.00 | 2.29x | 2.66x | Compliant — headroom 1.84x\n2.  $32,500,000 of cash was netted against Total Funded Debt. The definition of \"Total Net Funded Debt\" caps netting at $25,000,000 in terms. The excess is $7,500,000 (Issue 3).\nTotal Net Funded Debt | $290,625,000 | $301,425,000 | Understated by $10,800,000 | 3.58% of corrected Total Net Funded Debt (FACTS!B212)\nTotal Net Leverage Ratio | 2.29x | 2.66x | Compliance cushion overstated by 0.37x (FACTS!B102) | Headroom falls from 2.21x to 1.84x\n2 | Restructuring addback of $6,100,000 breaches the $5,000,000 per-fiscal-year cap | §1.01 \"Consolidated EBITDA\" cl.(f) | EBITDA −$100,000 | Material | Confirmed | Restate §2.1; obtain FY2023 restructuring detail\n3 | Cash netting of $32,500,000 exceeds the express $25,000,000 proviso | §1.01 \"Total Net Funded Debt\"; \"Unrestricted Cash\" | Total Net Funded Debt +$7,500,000 | Critical | Confirmed | Restate §2.2; evidence the Unrestricted Cash conditions\n16 | Annex D omits the $1,500,000 intercompany loan to Whitfield and invokes a non-existent \"reporting threshold\" | §7.04(d); §6.02(a); Form Schedule 1 | $1,500,000 against the $5,000,000 cap | Material | Confirmed | Restate §5 Annex D\nThe defect is isolated to the first line. Each of the other seven build-up lines ties exactly to the income statement: Interest Expense $21,850,000 (!D19); Income Tax Expense $14,100,000 (!D24); Depreciation & Amortization $33,600,000 (!D9); non-cash stock-based compensation $2,400,000 (!D11); restructuring and severance $6,100,000 (!D10); non-recurring charges $4,800,000 (!D12); and Permitted Acq\nIssue 2 — The $6,100,000 restructuring and severance addback exceeds the $5,000,000 per-fiscal-year cap (§1.01 \"Consolidated EBITDA\" cl.(f))\nFacts: Certificate §2.1 adds back the full trailing-twelve-month restructuring and severance charge of $6,100,000 (Consolidated Income Statement!D10). Of that amount, $5,100,000 was incurred in fiscal year 2024 through September 30, 2024 (Consolidated Income Statement!C10); the balance of $1,000,000 falls in Q4 2023 (FACTS!B216).\nProvision engaged: §1.01 \"Consolidated EBITDA\" cl.(f): \"restructuring charges and severance costs incurred by the Borrower and its Subsidiaries during such period, in an aggregate amount not to exceed $5,000,000 in any fiscal year\"; and the following sentence: \"any amounts in excess of such caps shall not be added back to Consolidated Net Income\".\nThe FY2024 component of $5,100,000 exceeds the $5,000,000 fiscal-year cap by $100,000 (FACTS!B214 allowed; FACTS!B215 disallowed). That excess \"shall not be added back\".\nThe Q4 2023 component of $1,000,000 cannot be tested on this record. Clause (f) measures against the whole of fiscal year 2023, and FY2023 full-year restructuring and severance charges do not appear in any of the four documents. If FY2023 charges exceeded $5,000,000, a further disallowance would arise. We have made no adjustment for it and flag it as an open item.\nThe reliability of the $6,100,000 figure is separately compromised by the narrative contradiction at Issue 17.\nDisclosure status: Partially disclosed — the Certificate discloses the $6,100,000 and attributes it to Q4 2023 and Q1 2024, but does not disclose the fiscal-year split against the cap or address the cap at all.\nRecommendation: Restate §2.1 to cap the addback at $5,000,000 for FY2024; require FY2023 restructuring charge detail so the Q4 2023 component can be tested (Section M, items 2 and 6).\nIssue 3 — Cash netted against Total Funded Debt of $32,500,000 exceeds the express $25,000,000 proviso (§1.01 \"Total Net Funded Debt\")\nFacts: Certificate §2.2 deducts \"Less: Unrestricted Cash and Cash Equivalents ($32,500,000)\" from Total Funded Debt to arrive at Total Net Funded Debt of $290,625,000. The $32,500,000 ties to Consolidated Balance Sheet!B4 and to Consolidated Cash Flow Statement!B40.\nProvision engaged: §1.01 \"Total Net Funded Debt\": \"Total Funded Debt minus Unrestricted Cash; provided that the amount of Unrestricted Cash netted against Total Funded Debt pursuant to this def",
+  "html": "<p>PRIVILEGED &amp; CONFIDENTIAL — ATTORNEY WORK PRODUCT — PREPARED IN ANTICIPATION OF POTENTIAL ENFORCEMENT ACTION</p>\n<p>MEMORANDUM</p>\n<p> | </p>\n<p>To | Margaret Yun, Senior Vice President, Portfolio Monitoring Group, Pacific Coast Timber Holdings, Inc. (&quot;PCTH&quot;), as Administrative Agent; and, through the Administrative Agent, the Lenders party to the Credit Agreement</p>\n<p>From | Ridgeway Partners LLP (Sarah Chung; Daniel Kowalski), counsel to the Administrative Agent</p>\n<p>Date | 2 December 2024</p>\n<p>Bottom line. The Certificate is materially inaccurate. Correcting the errors we have been able to quantify reduces Consolidated EBITDA from $126,750,000 to $113,350,000, increases Total Net Funded Debt from $290,625,000 to $301,425,000 and increases Fixed Charges from $37,600,000 to $40,100,000. Notwithstanding those corrections, each of the three financial covenants tested in the Certificate rema</p>\n<p>Total Net Leverage Ratio (§7.11(a), as amended by First Amendment §2(b)) | ≤ 4.50:1.00 | 2.29x | 2.66x | Compliant — headroom 1.84x</p>\n<p>2.  $32,500,000 of cash was netted against Total Funded Debt. The definition of &quot;Total Net Funded Debt&quot; caps netting at $25,000,000 in terms. The excess is $7,500,000 (Issue 3).</p>\n<p>Total Net Funded Debt | $290,625,000 | $301,425,000 | Understated by $10,800,000 | 3.58% of corrected Total Net Funded Debt (FACTS!B212)</p>\n<p>Total Net Leverage Ratio | 2.29x | 2.66x | Compliance cushion overstated by 0.37x (FACTS!B102) | Headroom falls from 2.21x to 1.84x</p>\n<p>2 | Restructuring addback of $6,100,000 breaches the $5,000,000 per-fiscal-year cap | §1.01 &quot;Consolidated EBITDA&quot; cl.(f) | EBITDA −$100,000 | Material | Confirmed | Restate §2.1; obtain FY2023 restructuring detail</p>\n<p>3 | Cash netting of $32,500,000 exceeds the express $25,000,000 proviso | §1.01 &quot;Total Net Funded Debt&quot;; &quot;Unrestricted Cash&quot; | Total Net Funded Debt +$7,500,000 | Critical | Confirmed | Restate §2.2; evidence the Unrestricted Cash conditions</p>\n<p>16 | Annex D omits the $1,500,000 intercompany loan to Whitfield and invokes a non-existent &quot;reporting threshold&quot; | §7.04(d); §6.02(a); Form Schedule 1 | $1,500,000 against the $5,000,000 cap | Material | Confirmed | Restate §5 Annex D</p>\n<p>The defect is isolated to the first line. Each of the other seven build-up lines ties exactly to the income statement: Interest Expense $21,850,000 (!D19); Income Tax Expense $14,100,000 (!D24); Depreciation &amp; Amortization $33,600,000 (!D9); non-cash stock-based compensation $2,400,000 (!D11); restructuring and severance $6,100,000 (!D10); non-recurring charges $4,800,000 (!D12); and Permitted Acq</p>\n<p>Issue 2 — The $6,100,000 restructuring and severance addback exceeds the $5,000,000 per-fiscal-year cap (§1.01 &quot;Consolidated EBITDA&quot; cl.(f))</p>\n<p>Facts: Certificate §2.1 adds back the full trailing-twelve-month restructuring and severance charge of $6,100,000 (Consolidated Income Statement!D10). Of that amount, $5,100,000 was incurred in fiscal year 2024 through September 30, 2024 (Consolidated Income Statement!C10); the balance of $1,000,000 falls in Q4 2023 (FACTS!B216).</p>\n<p>Provision engaged: §1.01 &quot;Consolidated EBITDA&quot; cl.(f): &quot;restructuring charges and severance costs incurred by the Borrower and its Subsidiaries during such period, in an aggregate amount not to exceed $5,000,000 in any fiscal year&quot;; and the following sentence: &quot;any amounts in excess of such caps shall not be added back to Consolidated Net Income&quot;.</p>\n<p>The FY2024 component of $5,100,000 exceeds the $5,000,000 fiscal-year cap by $100,000 (FACTS!B214 allowed; FACTS!B215 disallowed). That excess &quot;shall not be added back&quot;.</p>\n<p>The Q4 2023 component of $1,000,000 cannot be tested on this record. Clause (f) measures against the whole of fiscal year 2023, and FY2023 full-year restructuring and severance charges do not appear in any of the four documents. If FY2023 charges exceeded $5,000,000, a further disallowance would arise. We have made no adjustment for it and flag it as an open item.</p>\n<p>The reliability of the $6,100,000 figure is separately compromised by the narrative contradiction at Issue 17.</p>\n<p>Disclosure status: Partially disclosed — the Certificate discloses the $6,100,000 and attributes it to Q4 2023 and Q1 2024, but does not disclose the fiscal-year split against the cap or address the cap at all.</p>\n<p>Recommendation: Restate §2.1 to cap the addback at $5,000,000 for FY2024; require FY2023 restructuring charge detail so the Q4 2023 component can be tested (Section M, items 2 and 6).</p>\n<p>Issue 3 — Cash netted against Total Funded Debt of $32,500,000 exceeds the express $25,000,000 proviso (§1.01 &quot;Total Net Funded Debt&quot;)</p>\n<p>Facts: Certificate §2.2 deducts &quot;Less: Unrestricted Cash and Cash Equivalents ($32,500,000)&quot; from Total Funded Debt to arrive at Total Net Funded Debt of $290,625,000. The $32,500,000 ties to Consolidated Balance Sheet!B4 and to Consolidated Cash Flow Statement!B40.</p>\n<p>Provision engaged: §1.01 &quot;Total Net Funded Debt&quot;: &quot;Total Funded Debt minus Unrestricted Cash; provided that the amount of Unrestricted Cash netted against Total Funded Debt pursuant to this def</p>"
+ }
+}
