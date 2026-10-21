@@ -118,6 +118,7 @@ import {
   mapStrutArtifacts,
   parseStrutArtifacts,
   peerSwarmsFor,
+  replyPeerOf,
   pullRequestContent,
   renderJobContent,
   replyForRow,
@@ -515,6 +516,15 @@ describe("mapStrutArtifacts — a peer's deliverable (strut CALLBACKS.md §4)", 
   });
 });
 
+describe("replyPeerOf", () => {
+  it("is the reply's slug-shaped `peer`; nothing for a local build, junk, or no output", () => {
+    expect(replyPeerOf({ output: { text: "t", peer: "acme-web" } })).toBe("acme-web");
+    for (const output of [{ text: "t", peer: "" }, { text: "t" }, { peer: "../x" }, { peer: 7 }, null, "acme-web", ["acme-web"]]) {
+      expect(replyPeerOf({ output } as never)).toBeUndefined();
+    }
+  });
+});
+
 describe("peerSwarmsFor", () => {
   it("reads the swarm of each named peer among the row's org's workspaces, by slug; nothing to read without a tag", async () => {
     mockWorkspaceFindUnique.mockResolvedValue({ sourceControlOrgId: "org-1" });
@@ -590,14 +600,22 @@ describe("handleJobTurnSettled", () => {
     );
     mockWorkspaceFindUnique.mockResolvedValue({ slug: "acme", sourceControlOrgId: "org-1" });
     mockWorkspaceFindMany.mockResolvedValue([{ slug: "acme-web", swarm: { id: "swarm-peer" } }]);
-    await handleJobTurnSettled(row({ workflow: "builder" }));
+    await handleJobTurnSettled(row({ workflow: "builder", output: { text: "Built the digest workflow.", artifacts: [], peer: "acme-web" } }));
 
     expect(mockFetch.mock.calls[0][0]).toBe("https://swarm1.sphinx.chat:3355/lab/workflows/builder/runs/1790000000000/artifacts");
     const [msg] = mockTx.sharedConversation.update.mock.calls[0][0].data.messages;
-    expect(msg.source).toMatchObject({ kind: "job", jobId: JOB, workflow: "builder", status: "success" });
+    // The reply's own `peer` names the strut the build ran on: the card shows @acme-web.
+    expect(msg.source).toMatchObject({ kind: "job", jobId: JOB, workflow: "builder", status: "success", peer: "acme-web" });
     expect(msg.artifacts).toEqual([
       { id: "wf", kind: "markdown", title: "Workflow", source: { type: "graph", swarmId: "swarm-peer", key: `/jobs/peer%2F${JOB}/files/digest.yaml.md` } },
     ]);
+  });
+
+  it("a turn whose work ran here carries no peer on its source", async () => {
+    mockFetch.mockResolvedValue(json(200, artifactsBody));
+    await handleJobTurnSettled(row({ workflow: "builder", output: { text: "Built it here.", artifacts: [], peer: "" } }));
+    const [msg] = mockTx.sharedConversation.update.mock.calls[0][0].data.messages;
+    expect(msg.source).not.toHaveProperty("peer");
   });
 
   it("is idempotent: a replay finds the row and appends nothing", async () => {

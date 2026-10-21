@@ -334,6 +334,17 @@ describe("handleOrchestratorTurnSettled", () => {
     expect(mockRecorded).not.toHaveBeenCalledWith("swarm-1", "j-1");
     expect(mockJobWorkflow.mock.calls.map(([, job]) => job)).toEqual(["j-3", "j-4"]);
     expect(mockJobWorkflow).toHaveBeenCalledWith(expect.objectContaining({ id: "row-1", swarmId: "swarm-1" }), "j-3", expect.any(Number));
+    // The running card's @slug: the job/start's peer rides on its launch.
+    expect(written()[0].source).toEqual(
+      expect.objectContaining({
+        jobs: [
+          { jobId: "j-1", title: "Digest", runId: "jobrow-r-j-1", peer: "acme-web" },
+          { jobId: "j-2", title: "", runId: "jobrow-r-j-2" },
+          { jobId: "j-3", title: "", runId: "jobrow-r-j-3" },
+          { jobId: "j-4", title: "", runId: "jobrow-r-j-4" },
+        ],
+      }),
+    );
   });
 
   it("a log strut cannot serve, or a row that cannot be minted, delivers the reply without the job", async () => {

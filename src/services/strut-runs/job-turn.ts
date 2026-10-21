@@ -100,6 +100,7 @@ import {
   JOB_WORKFLOW,
   jobTitleOf,
   jobTurnInputSchema,
+  isStrutPeerId,
   jobTurnViaOrchestrator,
   parseArtifactEvent,
   parseStrutArtifactKey,
@@ -127,8 +128,6 @@ const MAX_ID_CHARS = 200;
 const MAX_TITLE_CHARS = 300;
 /** Cap on a peer's file path (the reader's own key cap). */
 const MAX_KEY_CHARS = 1_024;
-/** A peer id as hive registers one on the org strut: a workspace slug. */
-const PEER_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 /**
  * How long a turn's delivery waits on its log for the trace card. Read beside
  * the artifact list, inside the 10 s strut gives a callback.
@@ -203,7 +202,7 @@ export function parseStrutArtifacts(raw: unknown): StrutArtifact[] {
       content: entry.content,
       error: typeof entry.error === "string" ? entry.error : undefined,
       path: str(entry.path, MAX_KEY_CHARS),
-      peer: typeof entry.peer === "string" && PEER_ID.test(entry.peer) ? entry.peer : undefined,
+      peer: isStrutPeerId(entry.peer) ? entry.peer : undefined,
       job: str(entry.job, MAX_ID_CHARS),
     });
   }
@@ -473,6 +472,13 @@ export function replyForRow(row: StrutRunRow): JobTurnReply {
   return { outcome: "success", text, ...(ask ? { ask } : {}) };
 }
 
+/** The strut a turn's reply says its work ran on (a peer build's `peer`); undefined for one that ran here. */
+export function replyPeerOf(row: Pick<StrutRunRow, "output">): string | undefined {
+  const output = row.output;
+  const peer = output && typeof output === "object" && !Array.isArray(output) ? (output as Record<string, unknown>).peer : undefined;
+  return isStrutPeerId(peer) ? peer : undefined;
+}
+
 /** Row id — also the idempotency key. */
 export const jobRowId = (row: Pick<StrutRunRow, "id">): string => `job-${row.id}`;
 
@@ -500,6 +506,13 @@ export type JobRowSource = {
   status: JobTurnOutcome;
   title?: string;
   ask?: string;
+  /**
+   * The strut the turn's work ran on when it is not the row's — a workflow
+   * build on another workspace's strut (`builder` with `peer`, strut
+   * plans/builder-job.md §3): that workspace's slug, as the reply's own
+   * `peer` names it. The card shows it as `@<slug>`.
+   */
+  peer?: string;
 };
 
 /**
@@ -888,6 +901,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
   const event = parseArtifactEvent(launched.success ? launched.data.prompt : undefined);
 
   const title = jobTitleOf(row);
+  const peer = replyPeerOf(row);
   // The job's own refs, then hive's cards: its claims, its trace.
   const cards = [...refs, ...(claimsCard ? [claimsCard] : []), ...(trace ? [trace] : [])];
   const result = await appendJobRow(row, {
@@ -900,6 +914,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       status: reply.outcome,
       title,
       ...(reply.ask ? { ask: reply.ask } : {}),
+      ...(peer ? { peer } : {}),
     },
     ...(cards.length > 0 ? { artifacts: cards } : {}),
   });

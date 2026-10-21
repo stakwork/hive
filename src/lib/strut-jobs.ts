@@ -56,6 +56,14 @@ export function parseStrutArtifactKey(key: unknown): StrutArtifactKey | null {
   return rest.length > 0 ? { runId: decodeURIComponent(owner), path: rest.join("/") } : null;
 }
 
+/** A peer's id as hive registers one on the org strut (`strut-peers.ts`): a workspace slug. */
+const STRUT_PEER_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+
+/** A strut peer id — what `@<slug>` names; anything else is no tag. */
+export function isStrutPeerId(v: unknown): v is string {
+  return typeof v === "string" && STRUT_PEER_ID.test(v);
+}
+
 /**
  * The org strut's job behind a job id as a PEER holds it: a build the org
  * strut ran on another workspace's strut lives there as `peer/<job>`, under

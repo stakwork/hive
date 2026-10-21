@@ -118,8 +118,20 @@ describe("parseOrchestratorJobCalls — the jobs a turn launched, from its event
         end("o/agent/002-job_start", '{"job":"j-2","runId":"r-2","callback":true}'),
       ]),
     ).toEqual([
-      { job: "j-1", runId: "r-1", title: "Digest", workflow: "builder" },
+      { job: "j-1", runId: "r-1", title: "Digest", workflow: "builder", peer: "acme-web" },
       { job: "j-2", runId: "r-2", title: "Local", workflow: "builder" },
+    ]);
+    // A peer that is no slug is no tag; a continue names none.
+    expect(
+      parseOrchestratorJobCalls([
+        start("o/agent/001-job_start", { prompt: "p", title: "T", workflow: "builder", peer: "../x" }),
+        end("o/agent/001-job_start", { job: "j-1", runId: "r-1", callback: true }),
+        start("o/agent/002-job_continue", { job: "j-2", prompt: "p", peer: "acme-web" }, "tool:job_continue"),
+        end("o/agent/002-job_continue", { job: "j-2", runId: "r-2", callback: true }, "tool:job_continue"),
+      ]),
+    ).toEqual([
+      { job: "j-1", runId: "r-1", title: "T", workflow: "builder" },
+      { job: "j-2", runId: "r-2" },
     ]);
   });
 

@@ -19,6 +19,7 @@
 
 import { z } from "zod";
 import type { GraphEdgeEndpoint, ProposalOutput } from "@/lib/proposals/types";
+import { JOB_WORKFLOW, isStrutPeerId } from "@/lib/strut-jobs";
 
 /** `StrutRun.kind` of an orchestrator turn — the completion handler's discriminator. */
 export const ORCHESTRATOR_TURN_KIND = "orchestrator_turn";
@@ -121,6 +122,8 @@ export type OrchestratorJobLaunch = {
   title: string;
   /** The job turn's `StrutRun` id — the row minted for it before it lands. */
   runId: string;
+  /** A workflow build on another workspace's strut: that workspace's slug (`job/start`'s `peer`). */
+  peer?: string;
 };
 
 /** A `job/start` or `job/continue` call as the run's event log records it. */
@@ -135,13 +138,13 @@ export interface OrchestratorJobCall {
    * `job/continue`, which launches whatever the job's record says.
    */
   workflow?: string;
+  /** The strut a `job/start` builds on when it is another one: its `peer` input, a workspace slug. */
+  peer?: string;
 }
 
 /** The tool names strut's agent gives the two steps (`job/start` → `job_start`). */
 const JOB_START_TOOL = "tool:job_start";
 const JOB_LAUNCH_TOOLS: ReadonlySet<string> = new Set([JOB_START_TOOL, "tool:job_continue"]);
-/** What `job/start` launches when its input names no workflow. */
-const DEFAULT_JOB_WORKFLOW = "job";
 
 const parseMaybeJson = (v: unknown): unknown => {
   if (typeof v !== "string") return v;
@@ -161,7 +164,7 @@ const nonEmpty = (v: unknown): string | undefined => (typeof v === "string" && v
  * `step.end` at the same path (the step's `{ job, runId, callback }`,
  * JSON-encoded). A call that failed has no `step.end` and draws nothing; a
  * job launched twice keeps its last turn (one turn at a time per job). A
- * `job/start` carries the workflow its input named.
+ * `job/start` carries the workflow its input named, and its `peer`.
  */
 export function parseOrchestratorJobCalls(events: unknown[]): OrchestratorJobCall[] {
   const inputs = new Map<string, Record<string, unknown>>();
@@ -182,9 +185,12 @@ export function parseOrchestratorJobCalls(events: unknown[]): OrchestratorJobCal
     if (!job || !runId) continue;
     const input = inputs.get(e.path);
     const title = nonEmpty(input?.title);
-    const workflow = e.stepType === JOB_START_TOOL ? (nonEmpty(input?.workflow) ?? DEFAULT_JOB_WORKFLOW) : undefined;
+    // What `job/start` launches when its input names no workflow is strut's `job`.
+    const workflow = e.stepType === JOB_START_TOOL ? (nonEmpty(input?.workflow) ?? JOB_WORKFLOW) : undefined;
+    const named = input?.peer;
+    const peer = e.stepType === JOB_START_TOOL && isStrutPeerId(named) ? named : undefined;
     calls.delete(job);
-    calls.set(job, { job, runId, ...(title ? { title } : {}), ...(workflow ? { workflow } : {}) });
+    calls.set(job, { job, runId, ...(title ? { title } : {}), ...(workflow ? { workflow } : {}), ...(peer ? { peer } : {}) });
   }
   return [...calls.values()];
 }

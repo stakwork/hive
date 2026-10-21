@@ -212,7 +212,7 @@ export async function launchedJobTurns(row: StrutRunRow): Promise<OrchestratorJo
         title: call.title ?? null,
         ...(workflow ? { workflow } : {}),
       });
-      launches.push({ jobId: call.job, title: call.title ?? "", runId: jobRow.id });
+      launches.push({ jobId: call.job, title: call.title ?? "", runId: jobRow.id, ...(call.peer ? { peer: call.peer } : {}) });
     } catch (err) {
       logger.warn("Orchestrator turn: could not mint the row of a job it launched", LOG_TAG, {
         runId: row.id,
