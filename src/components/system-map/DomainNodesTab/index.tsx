@@ -32,8 +32,20 @@ import type {
 } from "@/types/system-map";
 import { buildEndpointBundles } from "./bundles";
 import { DomainGraph, formatValue, shortType } from "./DomainGraph";
+import { buildArchitecture, PACKAGE_TYPE } from "./architecture";
+import { buildDependencies, pullsIn } from "./dependencies";
+import { ArchitectureView } from "./ArchitectureView";
+import { DependenciesView, PackageDetails } from "./DependenciesView";
+import { NodeDetails } from "./NodeDetails";
 
 const ALL = "__all__";
+
+const VIEWS = [
+  { key: "architecture", label: "Architecture" },
+  { key: "dependencies", label: "Dependencies" },
+  { key: "raw", label: "Raw graph" },
+] as const;
+type View = (typeof VIEWS)[number]["key"];
 
 const LOAD_FAILED: SystemMapDomainNodesResponse = {
   status: "error",
@@ -64,6 +76,9 @@ export function DomainNodesTab() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>(ALL);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<View>("architecture");
+  const [archSelected, setArchSelected] = useState<string | null>(null);
+  const [pkgSelected, setPkgSelected] = useState<string | null>(null);
 
   const loadNodes = useCallback(async (slug: string) => {
     setLoading(true);
@@ -102,6 +117,8 @@ export function DomainNodesTab() {
   const reload = useCallback(
     (slug: string) => {
       setSelectedId(null);
+      setArchSelected(null);
+      setPkgSelected(null);
       void loadNodes(slug);
       void loadLinks(slug);
     },
@@ -133,15 +150,58 @@ export function DomainNodesTab() {
     );
   }, [nodes, search, typeFilter]);
 
+  const byRef = useMemo(() => new Map(nodes.map((n) => [n.refId, n])), [nodes]);
+  const architecture = useMemo(() => buildArchitecture(nodes, edges), [nodes, edges]);
+  const dependencies = useMemo(() => buildDependencies(nodes, edges), [nodes, edges]);
+  const reach = useMemo(() => {
+    const cache = new Map<string, number>();
+    return (refId: string) => pullsIn(dependencies, refId, cache);
+  }, [dependencies]);
+
+  // A node link from either panel: packages open in Dependencies, everything else in Architecture.
+  const openNode = useCallback(
+    (refId: string) => {
+      if (byRef.get(refId)?.type === PACKAGE_TYPE) {
+        setPkgSelected(refId);
+        setView("dependencies");
+      } else {
+        setArchSelected(refId);
+        setView("architecture");
+      }
+    },
+    [byRef],
+  );
+  const openPackages = useCallback(() => setView("dependencies"), []);
+
   const ready = !loading && data?.status === "ready";
+  const archNode = archSelected ? byRef.get(archSelected) : undefined;
+  const pkgRow = pkgSelected ? dependencies.byRef.get(pkgSelected) : undefined;
 
   return (
-    <div className="max-w-6xl space-y-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className={cn("space-y-4", view === "raw" && "max-w-6xl")}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Nodes in the knowledge graph&apos;s <code>systemmap</code> namespace, how they connect, and
           the endpoints between them.
         </p>
+        <div className="ml-auto flex rounded-md bg-muted p-0.5" role="tablist" data-testid="system-map-view-toggle">
+          {VIEWS.map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              role="tab"
+              aria-selected={view === v.key}
+              onClick={() => setView(v.key)}
+              className={cn(
+                "rounded px-3 py-1 text-sm text-muted-foreground",
+                view === v.key && "bg-background text-foreground shadow-sm",
+              )}
+              data-testid={`system-map-view-${v.key}`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -189,7 +249,56 @@ export function DomainNodesTab() {
         </p>
       )}
 
-      {ready && nodes.length > 0 && (
+      {ready && nodes.length > 0 && view === "architecture" && (
+        <ArchitectureView
+          model={architecture}
+          byRef={byRef}
+          selectedId={archSelected}
+          onSelect={setArchSelected}
+          onOpen={openNode}
+          onOpenPackages={openPackages}
+          panel={
+            archNode && (
+              <NodeDetails
+                node={archNode}
+                edges={edges}
+                byRef={byRef}
+                lane={architecture.cards.get(archNode.refId)?.lane}
+                duplicates={architecture.cards.get(archNode.refId)?.duplicates}
+                onOpen={openNode}
+                onOpenPackages={openPackages}
+                onClose={() => setArchSelected(null)}
+              />
+            )
+          }
+        />
+      )}
+
+      {ready && nodes.length > 0 && view === "dependencies" && (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="min-w-0">
+            <DependenciesView model={dependencies} reach={reach} selectedId={pkgSelected} onSelect={setPkgSelected} />
+          </div>
+          <aside className="h-fit rounded-lg border bg-background p-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+            {pkgRow ? (
+              <PackageDetails
+                row={pkgRow}
+                model={dependencies}
+                byRef={byRef}
+                reach={reach}
+                onOpen={openNode}
+                onClose={() => setPkgSelected(null)}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground" data-testid="system-map-detail-hint">
+                Click a package to see why it is here, what uses it and what it pulls in.
+              </p>
+            )}
+          </aside>
+        </div>
+      )}
+
+      {ready && nodes.length > 0 && view === "raw" && (
         <>
           <div className="flex flex-wrap items-center gap-3">
             <Input

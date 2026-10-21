@@ -398,12 +398,19 @@ export interface JarvisGraphNode {
   node_type: string;
   date_added_to_graph?: number;
   properties?: Record<string, unknown>;
+  /** `{EDGE_TYPE: count}`, on a `/v2/nodes` listing read with `include_edge_counts=true`. */
+  edges?: Record<string, number>;
 }
 
 export interface SearchLatestResult {
   /** False on any transport/HTTP failure — distinct from a successful empty read. */
   ok: boolean;
   nodes: JarvisGraphNode[];
+  /**
+   * `listNodesByType` only: the edges among the listed nodes, which jarvis
+   * attaches when it expands the listing (the default without a type filter).
+   */
+  edges?: JarvisGraphEdge[];
   status?: number;
   /** True when the endpoint 404s (absent on this backend). */
   endpointMissing?: boolean;
@@ -515,6 +522,12 @@ export async function searchNodesByAttributes(
  * server-side. An empty `nodeType` omits the type filter; `namespace` adds
  * jarvis' `n.namespace = $namespace` partition filter.
  *
+ * Without a type filter jarvis expands the listing and returns the edges
+ * among the listed nodes too (`edges`), capped at 20 neighbours per node
+ * (any namespace) and limited to one page. `includeEdgeCounts` adds each
+ * node's `{EDGE_TYPE: count}` (`node.edges`) — within `namespace` when one is
+ * given — so a caller can tell which nodes the cap cut short.
+ *
  * Never throws. Returns `{ ok }` so callers can distinguish a failed Jarvis
  * read from a legitimately empty result — `kgGetNodesByType` cannot.
  */
@@ -522,11 +535,12 @@ export async function listNodesByType(
   config: JarvisConnectionConfig,
   nodeType: string,
   limit = 500,
-  options: { startingAfter?: string; fields?: string[]; namespace?: string } = {},
+  options: { startingAfter?: string; fields?: string[]; namespace?: string; includeEdgeCounts?: boolean } = {},
 ): Promise<SearchLatestResult> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (nodeType) params.set("type", nodeType);
   if (options.namespace) params.set("namespace", options.namespace);
+  if (options.includeEdgeCounts) params.set("include_edge_counts", "true");
   if (options.startingAfter) params.set("starting_after", options.startingAfter);
   if (options.fields?.length) params.set("fields", options.fields.join(","));
 
@@ -548,11 +562,12 @@ export async function listNodesByType(
 
   const body = result.body as
     | JarvisGraphNode[]
-    | { nodes?: JarvisGraphNode[]; status?: string }
+    | { nodes?: JarvisGraphNode[]; edges?: JarvisGraphEdge[]; status?: string }
     | undefined;
 
   const raw = Array.isArray(body) ? body : Array.isArray(body?.nodes) ? body.nodes : [];
-  return { ok: true, nodes: raw, status: result.status };
+  const edges = !Array.isArray(body) && Array.isArray(body?.edges) ? body.edges : undefined;
+  return { ok: true, nodes: raw, ...(edges ? { edges } : {}), status: result.status };
 }
 
 export interface JarvisCallerSystem {
