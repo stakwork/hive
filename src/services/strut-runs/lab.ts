@@ -111,6 +111,30 @@ export async function fetchStrutArtifact(row: LabRow, path: string): Promise<Str
   }
 }
 
+/** Every file the run wrote, as paths relative to its artifact root; null when the lab could not answer. */
+export async function fetchStrutArtifactList(row: LabRow): Promise<string[] | null> {
+  if (!row.strutRunId) return null;
+  const lab = await labForRow(row);
+  if (!lab) return null;
+  try {
+    // No trailing slash: with one, the lab serves its UI instead of the listing.
+    const res = await fetch(`${lab.labBase}/artifacts/${encodeURIComponent(row.strutRunId)}`, {
+      headers: { "x-api-token": lab.swarmApiKey, accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(ARTIFACT_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const listing = (await res.json()) as { files?: unknown };
+    return Array.isArray(listing.files) ? listing.files.filter((f): f is string => typeof f === "string") : null;
+  } catch (err) {
+    logger.warn("Strut artifact list unavailable", STRUT_RUN_LOG_TAG, {
+      runId: row.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
 const TRANSCRIPT_TIMEOUT_MS = 30_000;
 
 /**
