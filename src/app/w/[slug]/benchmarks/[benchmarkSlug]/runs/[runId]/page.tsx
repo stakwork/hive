@@ -22,7 +22,8 @@ export default function BenchmarkRunPage({ params }: { params: Promise<{ benchma
   return (
     <div className="flex flex-col h-full overflow-auto">
       <PageHeader icon={FlaskConical} title={`${benchmark.name} run`} description={runId} />
-      <div className="p-4 space-y-3">
+      {/* A benchmark's app fills what is left of the page. */}
+      <div className={benchmark.app ? "p-4 space-y-3 flex-1 min-h-0 flex flex-col" : "p-4 space-y-3"}>
         <Link href={`/w/${workspace.slug}/benchmarks/${benchmarkSlug}`} className="text-sm underline">
           ← All runs
         </Link>

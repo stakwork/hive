@@ -5,12 +5,20 @@ import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { BenchmarkApp } from "@/components/benchmarks/BenchmarkApp";
 import { JsonTree } from "@/components/benchmarks/JsonTree";
+import { getBenchmark } from "@/lib/benchmarks/registry";
 import { BENCHMARK_RUN_VIEWS } from "@/lib/benchmarks/views";
 import type { BenchmarkRunDetail } from "@/types/benchmarks";
 
-/** The generic run view; a registered custom view replaces it. */
+/** The generic run view; a registered custom view replaces it, and a benchmark's strut app (`Benchmark.app`) replaces both. */
 export function RunDetail({ workspaceSlug, benchmarkSlug, run }: { workspaceSlug: string; benchmarkSlug: string; run: BenchmarkRunDetail }) {
+  const benchmark = getBenchmark(benchmarkSlug);
+  if (benchmark?.app) {
+    // The app opened on this run (`ui/notifications/tool-input`), by strut's own id for it.
+    const toolInput = run.strutRunId ? { runId: run.strutRunId, workflow: benchmark.runWorkflow } : undefined;
+    return <BenchmarkApp workspaceSlug={workspaceSlug} benchmarkSlug={benchmarkSlug} title={benchmark.name} toolInput={toolInput} className="flex-1 min-h-0" />;
+  }
   const Custom = BENCHMARK_RUN_VIEWS[benchmarkSlug];
   if (Custom) return <Custom workspaceSlug={workspaceSlug} benchmarkSlug={benchmarkSlug} run={run} />;
 
