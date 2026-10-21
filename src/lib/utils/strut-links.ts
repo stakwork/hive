@@ -37,7 +37,15 @@ export function strutWorkflowDeepLink(workflow: string): string {
  * the bare view.
  */
 export function strutViewPath(githubLogin: string, deepLink = ""): string {
-  const path = `/org/${encodeURIComponent(githubLogin)}/strut`;
+  return withDeepLink(`/org/${encodeURIComponent(githubLogin)}/strut`, deepLink);
+}
+
+/** The same for a workspace's OWN swarm's strut view, `/w/<slug>/strut`. */
+export function workspaceStrutViewPath(workspaceSlug: string, deepLink = ""): string {
+  return withDeepLink(`/w/${encodeURIComponent(workspaceSlug)}/strut`, deepLink);
+}
+
+function withDeepLink(path: string, deepLink: string): string {
   if (!deepLink) return path;
   return `${path}?${new URLSearchParams({ [STRUT_DEEP_LINK_PARAM]: deepLink })}`;
 }

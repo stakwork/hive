@@ -44,6 +44,13 @@ export interface Benchmark {
   taskIdKey?: string;
   /** Output keys (any depth) never shown in the JSON tree. */
   denyKeys?: string[];
+  /**
+   * A strut APP on the workspace's swarm that renders this benchmark — its
+   * runs, launches and climbs — in the app frame (`components/strut-app-frame`),
+   * on the benchmark page and a run's page, instead of the generic views and
+   * `BENCHMARK_RUN_VIEWS`. Its active version unless `version` names one.
+   */
+  app?: { name: string; version?: string };
   /** Workspace slugs allowed to see this benchmark; absent → every workspace. */
   workspaceSlugs?: readonly string[];
 }

@@ -1,0 +1,6 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Repo picker</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;margin:24px;color:#18181b}h1{font-size:20px}li{padding:8px 12px;border:1px solid #e4e4e7;border-radius:8px;margin:6px 0;list-style:none}input{padding:8px 10px;width:100%;box-sizing:border-box;border:1px solid #d4d4d8;border-radius:8px}</style>
+</head><body><h1>Pick the repos Hive watches</h1><input id="q" placeholder="Search repos"><ul id="l"></ul>
+<script>const repos=["stakwork/hive","stakwork/stakgraph","stakwork/sphinx","stakwork/jarvis-backend"];const l=document.getElementById("l");const q=document.getElementById("q");
+function draw(){l.innerHTML="";repos.filter(r=>r.includes(q.value)).forEach(r=>{const li=document.createElement("li");li.textContent=r;l.appendChild(li)})}q.oninput=draw;draw();</script>
+</body></html>

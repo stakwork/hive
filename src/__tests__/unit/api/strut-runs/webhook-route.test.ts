@@ -40,7 +40,14 @@ const { mockFindUnique, mockFindMany, mockUpdate, mockUpdateMany, mockUpsert, mo
 
 vi.mock("@/lib/db", () => ({
   db: {
-    strutRun: { findUnique: mockFindUnique, findMany: mockFindMany, update: mockUpdate, updateMany: mockUpdateMany, upsert: mockUpsert },
+    strutRun: {
+      findUnique: mockFindUnique,
+      findFirst: async () => null,
+      findMany: mockFindMany,
+      update: mockUpdate,
+      updateMany: mockUpdateMany,
+      upsert: mockUpsert,
+    },
     workspace: { findUnique: mockWorkspaceFindUnique },
   },
 }));

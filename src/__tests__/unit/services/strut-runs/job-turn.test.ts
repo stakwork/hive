@@ -56,6 +56,7 @@ const {
   mockCheckFailure,
   mockCount,
   mockTurns,
+  mockNudge,
   afterCallbacks,
 } = vi.hoisted(() => {
   const mockTx = {
@@ -80,6 +81,7 @@ const {
     mockCheckFailure: vi.fn(),
     mockCount: vi.fn(),
     mockTurns: vi.fn(),
+    mockNudge: vi.fn(),
     afterCallbacks: [] as Array<() => Promise<void>>,
   };
 });
@@ -104,6 +106,10 @@ vi.mock("@/services/strut-jobs/artifact-events", () => ({
 }));
 vi.mock("@/services/strut-jobs/check-failures", () => ({ deliverCheckFailure: mockCheckFailure }));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: mockNotify }));
+vi.mock("@/services/canvas-jobs", async (orig) => ({
+  ...(await orig<typeof import("@/services/canvas-jobs")>()),
+  nudgeCanvasCardJob: mockNudge,
+}));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
 vi.mock("@/services/strut-runs/run-graph", () => ({ countStrutRunGraph: mockCount }));
@@ -516,6 +522,53 @@ describe("mapStrutArtifacts — a peer's deliverable (strut CALLBACKS.md §4)", 
   });
 });
 
+describe("mapStrutArtifacts — a job's app (strut plans/apps.md §6)", () => {
+  // The deliverable as strut's work item 2 resolves it: the document's link, and the app's place.
+  const DOC = `/jobs/${JOB}/files/apps/tracker/dist/index.html`;
+  const app = (over: Partial<StrutArtifact>) => entry({ id: "tracker", kind: "app", title: "Visit tracker", url: DOC, app: { job: JOB, path: "apps/tracker" }, ...over });
+
+  it("parses the app's place off strut's entry, dropping what hive does not use", () => {
+    const [parsed, junk] = parseStrutArtifacts([
+      { id: "tracker", kind: "app", title: "Visit tracker", url: DOC, app: { job: JOB, path: "apps/tracker", hash: "abc", builtAt: "t" } },
+      { id: "x", kind: "app", title: "X", url: DOC, app: { job: JOB, path: "../escape" } },
+    ]);
+    expect(parsed.app).toEqual({ job: JOB, path: "apps/tracker" });
+    expect(junk.app).toBeUndefined();
+  });
+
+  it("an app is an `app` ref keyed by its document on the row's swarm — beside a page, which stays `html`", () => {
+    const { refs, dropped } = mapStrutArtifacts(
+      [app({}), entry({ id: "page", kind: "html", title: "Page", url: `/jobs/${JOB}/files/site/index.html` })],
+      "swarm-1",
+    );
+    expect(dropped).toEqual([]);
+    expect(refs).toEqual([
+      { id: "tracker", kind: "app", title: "Visit tracker", source: { type: "graph", swarmId: "swarm-1", key: DOC } },
+      { id: "page", kind: "html", title: "Page", source: { type: "graph", swarmId: "swarm-1", key: `/jobs/${JOB}/files/site/index.html` } },
+    ]);
+  });
+
+  it("built from `app: { job, path }` when strut gave no url; a peer's app on the peer's swarm", () => {
+    expect(mapStrutArtifacts([app({ url: undefined })], "swarm-1").refs[0].source).toEqual({ type: "graph", swarmId: "swarm-1", key: DOC });
+    const peer = entry({ id: "tracker", kind: "app", title: "Tracker", path: "apps/tracker", peer: "acme-web", job: "peer/build-1" });
+    expect(mapStrutArtifacts([peer], "swarm-1", new Map([["acme-web", "swarm-peer"]])).refs).toEqual([
+      { id: "tracker", kind: "app", title: "Tracker", source: { type: "graph", swarmId: "swarm-peer", key: "/jobs/peer%2Fbuild-1/files/apps/tracker/dist/index.html" } },
+    ]);
+  });
+
+  it("an app that is no job's (a run's) shows as its link; one strut could not build is dropped and named", () => {
+    const { refs, dropped } = mapStrutArtifacts(
+      [
+        app({ url: "/artifacts/1790000000000/apps/x/dist/index.html", app: undefined }),
+        app({ id: "broken", title: "Broken", url: undefined, app: undefined, error: "not built: run app/build" }),
+      ],
+      "swarm-1",
+    );
+    expect(refs).toEqual([{ id: "tracker", kind: "url", title: "Visit tracker", source: { type: "graph", swarmId: "swarm-1", key: "/artifacts/1790000000000/apps/x/dist/index.html" } }]);
+    expect(dropped).toEqual([{ title: "Broken", reason: "not built: run app/build" }]);
+  });
+});
+
 describe("replyPeerOf", () => {
   it("is the reply's slug-shaped `peer`; nothing for a local build, junk, or no output", () => {
     expect(replyPeerOf({ output: { text: "t", peer: "acme-web" } })).toBe("acme-web");
@@ -585,6 +638,14 @@ describe("handleJobTurnSettled", () => {
     expect(mockNotify).toHaveBeenCalledWith("conv-1", "job");
     expect(mockClearActiveRun).toHaveBeenCalledWith("conv-1", "row-1");
     expect(mockNotifyRunActive).toHaveBeenCalledWith("conv-1", false);
+  });
+
+  it("tells the job's canvas card it settled: done on success, failed otherwise", async () => {
+    mockFetch.mockResolvedValue(json(200, artifactsBody));
+    await handleJobTurnSettled(row());
+    expect(mockNudge).toHaveBeenCalledWith(expect.objectContaining({ id: "row-1", jobId: JOB }), "done");
+    await handleJobTurnSettled(row({ status: StrutRunStatus.ERROR, error: "boom", output: null }));
+    expect(mockNudge).toHaveBeenLastCalledWith(expect.objectContaining({ id: "row-1" }), "failed");
   });
 
   it("a builder turn reads ITS run's list; a peer's deliverable lands as a ref on the peer's swarm", async () => {

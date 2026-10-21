@@ -36,6 +36,17 @@ describe("readStrutArtifact", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  test("a job's app is its job and directory on the swarm — the app frame reads the document itself, so no fetch here", async () => {
+    const fetchImpl = vi.fn();
+    expect(await readStrutArtifact(ref("app", "/jobs/peer%2Fbuild-1/files/apps/tracker/dist/index.html"), ctx, fetchImpl)).toEqual({
+      swarmId: "swarm-1",
+      job: "peer/build-1",
+      path: "apps/tracker",
+    });
+    await expect(readStrutArtifact(ref("app", "/jobs/6f1c/files/apps/tracker/app.yaml"), ctx, fetchImpl)).rejects.toMatchObject({ reason: "unavailable" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   test("text kinds are fetched through the reader and shaped for their viewer", async () => {
     const fetchImpl = text("# Plan");
     expect(await readStrutArtifact(ref("markdown"), ctx, fetchImpl)).toEqual({ text: "# Plan" });

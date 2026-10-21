@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/config/env";
 import { mockAnthropicState } from "@/lib/mock/anthropic-state";
+import { scriptedJamieReply } from "./jamie-script";
 
 /**
  * Mock Anthropic Messages API Endpoint
@@ -177,6 +178,18 @@ export async function POST(request: NextRequest) {
       stream,
       hasTools: tools.length > 0,
       hasToolResults,
+    });
+
+    // Jamie on the infinite canvas: scripted, and starts the fake strut jobs.
+    const scripted = hasToolResults ? null : scriptedJamieReply(messages);
+    if (scripted) return stream ? streamTextResponse(model, scripted) : NextResponse.json({
+      id: mockAnthropicState.generateRequestId(),
+      type: "message",
+      role: "assistant",
+      content: [{ type: "text", text: scripted }],
+      model,
+      stop_reason: "end_turn",
+      usage: { input_tokens: 100, output_tokens: Math.floor(scripted.length / 4) },
     });
 
     // Check if this is a structured generation request (streamObject)
