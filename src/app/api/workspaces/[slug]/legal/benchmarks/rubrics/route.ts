@@ -5,6 +5,7 @@ import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchTaskRubricRoster } from "@/services/legal-benchmark-rubrics";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import type { GraphRubric } from "@/lib/harvey-lab/rubric-scoring";
+import { isLegalBenchmarksWorkspace } from "@/lib/eval-capture-slugs";
 
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
@@ -56,7 +57,7 @@ function buildMockRoster(taskSlug: string): { evalSetRefId: string; rubrics: Gra
  *    graph — callers fall back to run-local scoring
  *  - 502 when the graph is unreachable
  *
- * Gated to the `openlaw` workspace only.
+ * Gated to the legal benchmarks workspaces (`isLegalBenchmarksWorkspace`).
  * Rate-limited: 60 requests / 60 seconds per IP (the runs table fans out one
  * request per distinct task in view).
  */
@@ -70,8 +71,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { slug } = await params;
 
-    // Step 2: Openlaw-only guard
-    if (slug !== "openlaw") {
+    // Step 2: Legal benchmarks workspaces only
+    if (!isLegalBenchmarksWorkspace(slug)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 

@@ -13,6 +13,24 @@ export const STAK_TOOLKIT_SLUGS: ReadonlyArray<string> = ["stakwork", "hive"];
 export const LEGAL_SLUGS: ReadonlyArray<string> = ["openlaw"];
 
 /**
+ * Workspaces whose Legal Benchmarks run on the swarm's strut
+ * (`harvey-lab-run`, the `harvey-lab` benchmark) instead of Stakwork: the
+ * Benchmark and Runs tabs only, no recursion. Kept apart from LEGAL_SLUGS,
+ * whose routes and Stakwork flow stay `openlaw`'s.
+ */
+export const LEGAL_STRUT_SLUGS: ReadonlyArray<string> = ["openlaw-1"];
+
+/** Does the workspace run its Legal Benchmarks on strut? */
+export function isLegalStrutWorkspace(slug: string | null | undefined): boolean {
+  return !!slug && LEGAL_STRUT_SLUGS.includes(slug);
+}
+
+/** Does the workspace have the Legal Benchmarks page (either runner)? */
+export function isLegalBenchmarksWorkspace(slug: string | null | undefined): boolean {
+  return !!slug && (LEGAL_SLUGS.includes(slug) || LEGAL_STRUT_SLUGS.includes(slug));
+}
+
+/**
  * Workspaces where the OpenHealth Benchmarks section is visible.
  *
  * Gated to the `hive` workspace only — kept SEPARATE from LEGAL_SLUGS — do

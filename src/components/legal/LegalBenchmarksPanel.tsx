@@ -15,6 +15,7 @@ import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults"
 import type { HarveyTask } from "@/lib/harvey-lab-tasks";
 import { WORK_TYPE_STYLES } from "@/lib/harvey-lab-tasks";
 import { TaskDetailsModal } from "@/components/legal/TaskDetailsModal";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -72,9 +73,11 @@ interface TaskCardProps {
   onViewDetails: (task: HarveyTask) => void;
   /** True after a successful start, so the started card stays locked. */
   isStarted: boolean;
+  /** Show the Stakwork/strut toggle; false in a strut legal workspace, where every run is strut's. */
+  showRunnerToggle?: boolean;
 }
 
-function TaskCard({ task, onSelect, onViewDetails, isStarted }: TaskCardProps) {
+function TaskCard({ task, onSelect, onViewDetails, isStarted, showRunnerToggle = true }: TaskCardProps) {
   const visibleTags = task.tags.slice(0, 3);
   const overflowCount = task.tags.length - 3;
   const pathLabel = taskPathLabel(task.slug);
@@ -144,35 +147,37 @@ function TaskCard({ task, onSelect, onViewDetails, isStarted }: TaskCardProps) {
         </div>
 
         <div className="flex gap-2 flex-wrap items-center">
-          <ToggleGroup
-            type="single"
-            size="sm"
-            variant="outline"
-            value={runner}
-            // Radix clears the value when the active item is clicked again;
-            // keep the last choice instead of leaving the toggle blank.
-            onValueChange={(v) => {
-              if (v === "strut" || v === "stakwork") setRunner(v);
-            }}
-            disabled={locked}
-            aria-label="Benchmark runner"
-            data-testid={`legal-runner-toggle-${task.slug}`}
-          >
-            <ToggleGroupItem
-              value="stakwork"
-              className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
-              aria-label="Run on Stakwork"
+          {showRunnerToggle && (
+            <ToggleGroup
+              type="single"
+              size="sm"
+              variant="outline"
+              value={runner}
+              // Radix clears the value when the active item is clicked again;
+              // keep the last choice instead of leaving the toggle blank.
+              onValueChange={(v) => {
+                if (v === "strut" || v === "stakwork") setRunner(v);
+              }}
+              disabled={locked}
+              aria-label="Benchmark runner"
+              data-testid={`legal-runner-toggle-${task.slug}`}
             >
-              Stakwork
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="strut"
-              className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
-              aria-label="Run on strut"
-            >
-              strut
-            </ToggleGroupItem>
-          </ToggleGroup>
+              <ToggleGroupItem
+                value="stakwork"
+                className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+                aria-label="Run on Stakwork"
+              >
+                Stakwork
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="strut"
+                className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+                aria-label="Run on strut"
+              >
+                strut
+              </ToggleGroupItem>
+            </ToggleGroup>
+          )}
           <Button size="sm" variant="ghost" onClick={() => onViewDetails(task)} disabled={locked}>
             Details
           </Button>
@@ -201,6 +206,8 @@ function TaskCard({ task, onSelect, onViewDetails, isStarted }: TaskCardProps) {
 
 export function LegalBenchmarksPanel({ className }: { className?: string }) {
   const { slug, isSuperAdmin } = useWorkspace();
+  // A strut legal workspace runs every task as `harvey-lab-run` on its swarm.
+  const strut = isLegalStrutWorkspace(slug);
 
   const [practiceAreas, setPracticeAreas] = useState<PracticeArea[]>([]);
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
@@ -258,7 +265,19 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
         ? runnerOrOptions
         : (runnerOrOptions?.runner ?? "stakwork");
 
-    const res = await fetch(`/api/workspaces/${slug}/legal/benchmarks/run`, {
+    const res = strut
+      ? await fetch(`/api/workspaces/${slug}/legal/benchmarks/strut/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // The server builds the task input; models, when picked, override the workflow's defaults.
+          body: JSON.stringify({
+            taskSlug: task.slug,
+            ...(options?.standardModel ? { standardModel: options.standardModel } : {}),
+            ...(options?.reasoningModel ? { reasoningModel: options.reasoningModel } : {}),
+            ...(options?.judgeModel ? { judgeModel: options.judgeModel } : {}),
+          }),
+        })
+      : await fetch(`/api/workspaces/${slug}/legal/benchmarks/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -384,6 +403,7 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
                     onSelect={handleSelectTask}
                     onViewDetails={setDetailsTask}
                     isStarted={task.slug === runningTaskSlug}
+                    showRunnerToggle={!strut}
                   />
                 ))}
               </div>
@@ -404,6 +424,7 @@ export function LegalBenchmarksPanel({ className }: { className?: string }) {
           onOpenChange={(o) => { if (!o) setDetailsTask(null); }}
           task={detailsTask}
           slug={slug!}
+          strut={strut}
           onRunTask={(options) => handleSelectTask(detailsTask, options)}
         />
       )}

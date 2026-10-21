@@ -3,6 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { isLegalBenchmarksWorkspace } from "@/lib/eval-capture-slugs";
 
 type RouteParams = {
   params: Promise<{ slug: string; taskSlug: string[] }>;
@@ -30,7 +31,7 @@ function handleSwarmAccessError(error: { type: string }) {
  *
  * Returns total and per-file sizes (in bytes) for a Harvey LAB task's
  * documents folder via the GitHub Contents API.
- * Gated to the `openlaw` workspace only.
+ * Gated to the legal benchmarks workspaces (`isLegalBenchmarksWorkspace`).
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { slug, taskSlug: taskSlugParts } = await params;
 
-    if (slug !== "openlaw") {
+    if (!isLegalBenchmarksWorkspace(slug)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
