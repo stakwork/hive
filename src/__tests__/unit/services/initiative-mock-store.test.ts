@@ -62,23 +62,6 @@ describe("mock mode: a save reads back", () => {
     expect(ids).toContain("mock-s-gh-1");
   });
 
-  test("a requirement moves between milestones and back to the backlog", async () => {
-    const root = "mock-initiative-onboarding";
-    const scheduled = async () => {
-      const t = await getInitiativeTree(caller, root);
-      if (!t.ok) throw new Error(t.message);
-      return t.data.nodes.find((n) => n.ref_id === "mock-r-14")?.scheduled;
-    };
-    expect(await scheduled()).toBeUndefined();
-    await saveInitiativeChanges(caller, {
-      root,
-      ops: [{ op: "schedule", ref: "mock-r-14", milestone: "mock-m-invite" }],
-    });
-    expect(await scheduled()).toEqual(["mock-m-invite"]);
-    await saveInitiativeChanges(caller, { root, ops: [{ op: "schedule", ref: "mock-r-14", milestone: null }] });
-    expect(await scheduled()).toBeUndefined();
-  });
-
   test("choosing an answer marks it and makes its features; choosing another takes back what hadn't started", async () => {
     const root = "mock-initiative-onboarding";
     const choose = (option: string, chosen = true) =>

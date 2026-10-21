@@ -80,10 +80,9 @@ describe("the fake initiative-build job", () => {
     const req = tree.nodes.find((n) => n.type === "Requirement")!;
     expect(req.properties).toMatchObject({ status: "proposed", created_by: "strut", created_by_kind: "strut" });
     expect(String(req.properties.requirement_id)).toMatch(/^[0-9a-f-]{36}$/);
-    // Stories hang off the initiative; each requirement is scheduled into its milestone.
+    // Stories hang off the initiative.
     const story = tree.nodes.find((n) => n.type === "UserStory")!;
     expect(tree.edges).toContainEqual({ source: "mock-initiative-mobile", target: story.ref_id, type: "HAS_STORY" });
-    expect(tree.nodes.filter((n) => n.type === "Requirement").every((r) => r.scheduled?.length === 1)).toBe(true);
   });
 
   test("leaves what's planned alone and fills the gaps", () => {

@@ -12,7 +12,6 @@ import {
   followUpTo,
   kids,
   plural,
-  requirementsOf,
 } from "./board";
 import type { Work } from "./build";
 import { hand, serif } from "./fonts";
@@ -43,18 +42,14 @@ export const stop = {
 export interface NodeActions {
   ask: (id: string, anchor: DOMRect) => void;
   setStatus: (reqId: string, status: "accepted" | "dropped") => void;
-  /** A requirement typed in by hand; added inside a milestone, it's scheduled there. */
-  addRequirement: (storyId: string, text: string, milestoneId?: string) => void;
-  /** Schedule a requirement into a milestone, or back to the backlog (null). */
-  schedule: (reqId: string, milestoneId: string | null) => void;
+  /** A requirement typed in by hand. */
+  addRequirement: (storyId: string, text: string) => void;
   /** Rewrite a card's words: a container's name, a brief's, story's or requirement's text. */
   rename: (id: string, text: string) => void;
   /** Delete a story (and its requirements) or a requirement. */
   remove: (id: string) => void;
-  /** Move a milestone one place earlier (-1) or later (1) on its initiative's road. */
-  move: (id: string, by: -1 | 1) => void;
-  /** A user story on the initiative; added inside a milestone (`at`), it shows there until it has requirements. */
-  addStory: (at: string, text: string) => void;
+  /** A user story on the initiative. */
+  addStory: (initiativeId: string, text: string) => void;
   /** A feature added by hand under a milestone. */
   addFeature: (milestoneId: string, text: string) => void;
   /** Choose an answer, or un-choose it if it's already chosen. */
@@ -287,33 +282,7 @@ export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: num
           <div style={{ flex: 1 }} />
         </>
       )}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        {node.type === "milestone" ? (
-          <span style={{ display: "inline-flex", gap: 4 }} {...stop}>
-            <button
-              type="button"
-              data-move={`${node.id}:-1`}
-              title="Move earlier"
-              aria-label="Move earlier"
-              onClick={() => c.actions.move(node.id, -1)}
-              style={pill(10.5, { padding: "1px 8px" })}
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              data-move={`${node.id}:1`}
-              title="Move later"
-              aria-label="Move later"
-              onClick={() => c.actions.move(node.id, 1)}
-              style={pill(10.5, { padding: "1px 8px" })}
-            >
-              →
-            </button>
-          </span>
-        ) : (
-          <span />
-        )}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0 }}>
         <AskChip id={node.id} actions={c.actions} size={big ? 13 : 10.5} />
       </div>
     </div>
@@ -328,7 +297,7 @@ export function FrameHeader({ c, node, w, h }: { c: CardContext; node: PlanNode;
     node.type === "initiative"
       ? `${plural(kids(b, node.id, "story").length, "user story", "user stories")} · ${plural(kids(b, node.id, "milestone").length, "milestone")}`
       : node.type === "milestone"
-        ? `${plural(requirementsOf(b, node.id).length, "requirement")} in scope · ${plural(kids(b, node.id, "feature").length, "feature")}`
+        ? plural(kids(b, node.id, "feature").length, "feature")
         : (work?.line ?? "");
   return (
     <div
@@ -524,41 +493,7 @@ function AddInline({
   );
 }
 
-/** Which milestone a requirement is scheduled into: a small picker, dark text on white. */
-function SchedulePicker({ b, r, actions }: { b: Board; r: PlanNode; actions: NodeActions }) {
-  const init = r.parent ? byId(b, r.parent)?.parent : undefined;
-  const milestones = init ? kids(b, init, "milestone") : [];
-  return (
-    <select
-      data-schedule={r.id}
-      value={r.milestone ?? ""}
-      {...stop}
-      onChange={(e) => actions.schedule(r.id, e.target.value || null)}
-      title="Which milestone this ships in"
-      aria-label="Milestone"
-      style={{
-        maxWidth: "100%",
-        fontFamily: TYPE,
-        fontSize: 9.5,
-        color: r.milestone ? v("fieldInk") : v("blockedInk"),
-        background: v("field"),
-        border: `1px solid ${v("border")}`,
-        borderRadius: 99,
-        padding: "0 4px",
-        cursor: "pointer",
-      }}
-    >
-      <option value="">Not scheduled</option>
-      {milestones.map((m) => (
-        <option key={m.id} value={m.id}>
-          M{m.sequence ?? "?"} · {m.name}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-/** A requirement: proposed in pencil with Accept / Drop, accepted ticked, dropped struck and faded; and where it's scheduled. */
+/** A requirement: proposed in pencil with Accept / Drop, accepted ticked, dropped struck and faded. */
 function ReqRow({ c, r }: { c: CardContext; r: PlanNode }) {
   const dropped = r.status === "dropped";
   const proposed = !dropped && r.status !== "accepted";
@@ -599,9 +534,6 @@ function ReqRow({ c, r }: { c: CardContext; r: PlanNode }) {
             textDecoration: dropped ? "line-through" : undefined,
           }}
         />
-        <div style={{ marginTop: 2 }}>
-          <SchedulePicker b={c.board} r={r} actions={c.actions} />
-        </div>
         {proposed ? (
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }} {...stop}>
             <button
@@ -627,94 +559,14 @@ function ReqRow({ c, r }: { c: CardContext; r: PlanNode }) {
   );
 }
 
-/** A user story inside a milestone, with only the requirements scheduled there. */
-export function StoryCard({
-  c,
-  node,
-  milestone,
-  w,
-  h,
-}: {
-  c: CardContext;
-  node: PlanNode;
-  milestone: string;
-  w: number;
-  h: number;
-}) {
-  const all = kids(c.board, node.id, "requirement");
-  const reqs = all.filter((r) => r.milestone === milestone);
-  const elsewhere = all.length - reqs.length;
-  return (
-    <div
-      data-story={node.id}
-      className={c.flash === node.id ? "icb-flash" : undefined}
-      style={{
-        width: w,
-        height: h,
-        boxSizing: "border-box",
-        padding: "12px 12px 10px",
-        borderRadius: 8,
-        background: v("card"),
-        border: `1px solid ${v("border")}`,
-        boxShadow: v("shadow"),
-        color: v("ink"),
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        overflow: "hidden",
-      }}
-    >
-      <span style={label}>User story</span>
-      <EditableText
-        value={node.name}
-        onSave={(t) => c.actions.rename(node.id, t)}
-        onDelete={() => c.actions.remove(node.id)}
-        testId={node.id}
-        style={{ ...authored(node.author, 14.5), fontWeight: node.author === "strut" ? 600 : 400 }}
-      />
-      <div style={{ ...label, fontSize: 9, marginTop: 2 }}>Requirements</div>
-      <div
-        data-wheel-scroll
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: "auto",
-          borderLeft: `2px solid ${a("road", 28)}`,
-          paddingLeft: 9,
-          marginLeft: 3,
-        }}
-      >
-        {reqs.map((r) => (
-          <ReqRow key={r.id} c={c} r={r} />
-        ))}
-        <div style={{ marginTop: 6 }}>
-          <AddInline
-            what="requirement"
-            size={10.5}
-            testId={`${node.id}@${milestone}`}
-            onAdd={(t) => c.actions.addRequirement(node.id, t, milestone)}
-          />
-        </div>
-        {elsewhere ? (
-          <div style={{ fontFamily: TYPE, fontSize: 10, color: v("notStarted"), marginTop: 6 }}>
-            +{elsewhere} more in other milestones or not scheduled
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 /**
  * An initiative's user stories, the journeys, side by side with their
- * requirements. Each requirement says which milestone it's scheduled into,
- * and that's where you move it; unscheduled ones are the backlog.
+ * requirements. They live and are edited here only.
  */
 export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiative: string; w: number; h: number }) {
   const b = c.board;
   const stories = kids(b, initiative, "story");
   const reqs = stories.flatMap((st) => kids(b, st.id, "requirement"));
-  const backlog = reqs.filter((r) => !r.milestone && r.status !== "dropped").length;
   return (
     <div
       data-stories={initiative}
@@ -737,7 +589,6 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
         <span style={label}>User stories</span>
         <span style={{ fontFamily: TYPE, fontSize: 11.5, color: v("muted") }}>
           {plural(stories.length, "journey")} · {plural(reqs.length, "requirement")}
-          {backlog ? <span style={{ color: v("blockedInk") }}> · {backlog} not scheduled</span> : null}
         </span>
       </div>
       <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
@@ -791,16 +642,14 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
   );
 }
 
-/** The slot after a milestone's stories, or after its features. */
+/** The slot after a milestone's features. */
 export function AddCard({
   c,
-  what,
   milestoneId,
   w,
   h,
 }: {
   c: CardContext;
-  what: "story" | "feature";
   milestoneId: string;
   w: number;
   h: number;
@@ -821,21 +670,12 @@ export function AddCard({
         gap: 8,
       }}
     >
-      {what === "story" ? (
-        <AddInline
-          what="user story"
-          size={12}
-          testId={`story:${milestoneId}`}
-          onAdd={(t) => c.actions.addStory(milestoneId, t)}
-        />
-      ) : (
-        <AddInline
-          what="feature"
-          size={12}
-          testId={`feature:${milestoneId}`}
-          onAdd={(t) => c.actions.addFeature(milestoneId, t)}
-        />
-      )}
+      <AddInline
+        what="feature"
+        size={12}
+        testId={`feature:${milestoneId}`}
+        onAdd={(t) => c.actions.addFeature(milestoneId, t)}
+      />
     </div>
   );
 }
@@ -1065,7 +905,7 @@ export function OptionCard({
 }
 
 /** A job on a card: while it runs, what it's doing and who started it; when it settles, a tick (or "didn't finish"). */
-export function JobMarker({ job, narrow = false }: { job: CanvasJob; narrow?: boolean }) {
+export function JobMarker({ job }: { job: CanvasJob }) {
   const running = job.state === "running";
   const failed = job.state === "failed";
   const who = job.startedBy?.name;
@@ -1100,14 +940,12 @@ export function JobMarker({ job, narrow = false }: { job: CanvasJob; narrow?: bo
       )}
       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
         {running
-          ? narrow
-            ? "Working…"
-            : "Jamie is working on this…"
+          ? "Jamie is working on this…"
           : failed
             ? `Didn't finish: ${job.title}`
             : "Done"}
       </span>
-      {who && running && !narrow ? <span style={{ color: v("notStarted"), flexShrink: 0 }}>· {who}</span> : null}
+      {who && running ? <span style={{ color: v("notStarted"), flexShrink: 0 }}>· {who}</span> : null}
     </div>
   );
 }

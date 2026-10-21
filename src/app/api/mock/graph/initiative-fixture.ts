@@ -2,7 +2,7 @@
  * Mock mode (`USE_MOCKS`): the org's initiatives in the graph, for the
  * infinite canvas, in the plan's problem-before-solution shape (Jarvis
  * 133–135): seven initiatives as the canvas prototype drew them, from fully
- * planned (stories, scheduled requirements, milestones, features with an
+ * planned (stories, requirements, milestones, features with an
  * architecture and build jobs that returned pull requests, brainstorms on a
  * milestone) to a
  * brief only. Saves from the canvas (`saveInitiativeChanges`) and the fake
@@ -35,8 +35,6 @@ interface Store {
   roots: string[];
   /** Brainstorms started about a node: its ref_id → root question ref_ids. */
   brainstorms: Map<string, string[]>;
-  /** Requirements rescheduled by saves: ref_id → the milestone that INCLUDES it, or null for the backlog. */
-  scheduled: Map<string, string | null>;
   /** Nodes a choice made: ref_id → the options (`Option -RESULTED_IN->`). */
   madeBy: Map<string, string[]>;
   /** Initiatives a fake build job is writing to right now. */
@@ -52,7 +50,6 @@ const store = (): Store =>
     patches: new Map(),
     roots: [],
     brainstorms: new Map(),
-    scheduled: new Map(),
     madeBy: new Map(),
     building: new Set(),
     seq: 0,
@@ -70,7 +67,7 @@ const daysAgo = (d: number) => new Date(Date.now() - d * DAY).toISOString();
 /**
  * The plan as the canvas prototype drew it (problem before solution): each
  * initiative's brief and user stories with their requirements, its milestones
- * in order (each scheduling requirements by `INCLUDES`), and under a
+ * in order, and under a
  * milestone its features with their architecture and their build jobs
  * (read through `mockCanvasJobs`, not the graph). Ids are the prototype's, prefixed `mock-`.
  */
@@ -85,8 +82,8 @@ interface Spec {
     id: string;
     text: string;
     by?: "human" | "strut";
-    /** [id, text, status, milestone id (scheduled) or undefined (backlog), by]. */
-    reqs: Array<[string, string, string, string?, ("human" | "strut")?]>;
+    /** [id, text, status, by]. */
+    reqs: Array<[string, string, string, ("human" | "strut")?]>;
   }>;
   features?: Array<{
     id: string;
@@ -126,9 +123,9 @@ export const MOCK_INITIATIVES: Spec[] = [
         id: "mock-s-gh-1",
         text: "As a new PM, I sign in with GitHub and land in a fresh workspace",
         reqs: [
-          ["mock-r-1", "Sign-in completes in one redirect", "accepted", "mock-m-signup"],
-          ["mock-r-2", "Returning users skip workspace creation", "accepted", "mock-m-signup"],
-          ["mock-r-3", "Show which GitHub scopes we ask for, and why", "proposed", "mock-m-signup"],
+          ["mock-r-1", "Sign-in completes in one redirect", "accepted"],
+          ["mock-r-2", "Returning users skip workspace creation", "accepted"],
+          ["mock-r-3", "Show which GitHub scopes we ask for, and why", "proposed"],
           ["mock-r-14", "Orgs that enforce SSO can sign up", "proposed"],
         ],
       },
@@ -137,8 +134,8 @@ export const MOCK_INITIATIVES: Spec[] = [
         text: "As an admin, I see who signed up from my org",
         by: "human",
         reqs: [
-          ["mock-r-4", "Org admins get a weekly sign-up digest", "dropped", "mock-m-signup"],
-          ["mock-r-5", "Show the GitHub avatar next to each name", "accepted", "mock-m-signup", "human"],
+          ["mock-r-4", "Org admins get a weekly sign-up digest", "dropped"],
+          ["mock-r-5", "Show the GitHub avatar next to each name", "accepted", "human"],
         ],
       },
       {
@@ -146,23 +143,23 @@ export const MOCK_INITIATIVES: Spec[] = [
         text: "As a new PM, I pick which repos Hive watches",
         by: "human",
         reqs: [
-          ["mock-r-6", "List repos the GitHub App can see, newest first", "proposed", "mock-m-signup"],
-          ["mock-r-7", "Search by name as you type", "proposed", "mock-m-signup"],
+          ["mock-r-6", "List repos the GitHub App can see, newest first", "proposed"],
+          ["mock-r-7", "Search by name as you type", "proposed"],
         ],
       },
       {
         id: "mock-s-name",
         text: "As a new PM, I name my workspace",
         by: "human",
-        reqs: [["mock-r-13", "A name is suggested from the GitHub org", "accepted", "mock-m-signup", "human"]],
+        reqs: [["mock-r-13", "A name is suggested from the GitHub org", "accepted", "human"]],
       },
       {
         id: "mock-s-link-1",
         text: "As an owner, I share one link to invite my team",
         reqs: [
-          ["mock-r-9", "Links expire after seven days", "accepted", "mock-m-invite"],
-          ["mock-r-10", "Invitees land on the workspace they were invited to", "accepted", "mock-m-invite"],
-          ["mock-r-15", "Invite by email as well as by link", "accepted", undefined, "human"],
+          ["mock-r-9", "Links expire after seven days", "accepted"],
+          ["mock-r-10", "Invitees land on the workspace they were invited to", "accepted"],
+          ["mock-r-15", "Invite by email as well as by link", "accepted", "human"],
         ],
       },
     ],
@@ -239,8 +236,8 @@ export const MOCK_INITIATIVES: Spec[] = [
         id: "mock-s-rank-1",
         text: "As a PM, I see the riskiest finding first",
         reqs: [
-          ["mock-r-11", "Rank uses files touched in the last 30 days", "accepted", "mock-m-digest"],
-          ["mock-r-12", "Explain the rank in one line", "accepted", "mock-m-digest"],
+          ["mock-r-11", "Rank uses files touched in the last 30 days", "accepted"],
+          ["mock-r-12", "Explain the rank in one line", "accepted"],
         ],
       },
     ],
@@ -354,15 +351,8 @@ function fixtureTree(spec: Spec): Tree {
       spec.id,
       "HAS_STORY",
     ]);
-    for (const [id, text, status, milestone, by] of st.reqs)
-      add(
-        "Requirement",
-        id,
-        { requirement_id: id, text, status },
-        by ?? "strut",
-        [st.id, "HAS_REQUIREMENT"],
-        milestone ? { scheduled: [milestone] } : {},
-      );
+    for (const [id, text, status, by] of st.reqs)
+      add("Requirement", id, { requirement_id: id, text, status }, by ?? "strut", [st.id, "HAS_REQUIREMENT"]);
   }
   spec.milestones?.forEach((m, i) =>
     add(
@@ -420,10 +410,6 @@ export function mockInitiativeTree(refId: string): Tree & { building: boolean } 
   for (const [id, roots] of s.brainstorms) {
     const n = nodes.get(id);
     if (n) nodes.set(id, { ...n, brainstorms: [...(n.brainstorms ?? []), ...roots] });
-  }
-  for (const [id, milestone] of s.scheduled) {
-    const n = nodes.get(id);
-    if (n) nodes.set(id, { ...n, scheduled: milestone ? [milestone] : undefined });
   }
   for (const [id, options] of s.madeBy) {
     const n = nodes.get(id);
@@ -495,7 +481,6 @@ export function mockInitiativeWrite(root: string | null, plan: InitiativePlan): 
     if (own) own.properties = { ...own.properties, ...data };
     else s.patches.set(id, { ...s.patches.get(id), ...data });
   }
-  for (const sc of plan.schedules) s.scheduled.set(idOf(sc.requirement), sc.milestone);
   // RESULTED_IN is what a node reads back as `madeBy`; SATISFIES isn't read.
   for (const l of plan.links)
     if (l.edgeType === "RESULTED_IN") {
@@ -590,7 +575,7 @@ function planFor(name: string): PlanStep[] {
  * Fakes strut's `initiative-build` on one initiative, one node every
  * `STEP_MS`: a brief if it has none; then, if it has no user stories yet,
  * the journeys and their requirements (all `proposed`); milestones if it has
- * none, each scheduling its requirements (`INCLUDES`); and features under
+ * none; and features under
  * every milestone that has none. False when there is nothing to write or a
  * build is already running. `progress` hears each write and the end (the
  * job's marker on the canvas, `canvas-jobs.ts`).
@@ -631,19 +616,14 @@ export function startMockInitiativeBuild(
       }),
     );
   if (!of("UserStory").length)
-    plan.forEach((m, i) => {
+    plan.forEach((m) => {
       let story = "";
       steps.push(() => {
         story = strutWrite("UserStory", { text: m.story, status: "proposed" }, { id: root, edge: "HAS_STORY" });
       });
       for (const r of m.reqs)
         steps.push(() => {
-          const req = strutWrite(
-            "Requirement",
-            { text: r, status: "proposed" },
-            { id: story, edge: "HAS_REQUIREMENT" },
-          );
-          if (milestones[i]) s.scheduled.set(req, milestones[i]!);
+          strutWrite("Requirement", { text: r, status: "proposed" }, { id: story, edge: "HAS_REQUIREMENT" });
         });
     });
   plan.forEach((m, i) => {
@@ -722,7 +702,7 @@ export function startMockBrainstorm(nodeRef: string, nodeName: string, nodeType:
           option_id: `${stamp}-o${i}`,
           kind: "option",
           text: a.text,
-          makes: a.makes,
+          makes: JSON.stringify(a.makes),
           made_by: "model",
           state: "open",
         },

@@ -2,13 +2,13 @@
  * People's own edits to an initiative's plan on the canvas, written straight
  * to the graph (Jarvis ontology 133–135): rename an initiative, milestone or
  * feature, edit the brief, a story or a requirement, add a milestone, feature,
- * user story or requirement, accept or drop a requirement, reorder milestones,
- * schedule a requirement into a milestone (`HiveMilestone -INCLUDES->`), delete
- * a story or requirement (soft delete), and choose an answer in a brainstorm.
+ * user story or requirement, accept or drop a requirement, set a milestone's
+ * `sequence`, delete a story or requirement (soft delete), and choose an
+ * answer in a brainstorm.
  *
  * The plan holds the problem before the solution: an initiative has the brief
- * and the user stories (with their requirements); milestones schedule
- * requirements and hold features; features hold the build. Choosing an answer
+ * and the user stories (with their requirements); milestones hold features;
+ * a feature's build is the strut jobs started on it. Choosing an answer
  * makes the level below what the brainstorm is about (`Option -RESULTED_IN->`):
  * milestones under an initiative, features under a milestone.
  *
@@ -23,12 +23,11 @@ import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { resolveGraphJarvis } from "@/lib/ai/graphWriteAuth";
 import { notifyInitiativeUpdated } from "@/lib/pusher";
+import { makesList } from "@/lib/initiative-plan";
 import { isRunGraphRefId } from "@/lib/strut-run-graph/hydrate";
 import {
   addEdgeV2,
   addNode,
-  deleteEdge,
-  listIncomingEdges,
   updateNodeV2,
   type JarvisEdgeEndpoint,
 } from "@/services/swarm/api/nodes";
@@ -87,8 +86,6 @@ export type InitiativeOp =
   | { op: "add"; temp: string; type: InitiativeNodeType; parent: string | null; fields: Fields }
   | { op: "edit"; ref: string; fields: Fields }
   | { op: "remove"; ref: string }
-  /** Schedule a requirement (a ref, or one added earlier in the batch) into a milestone, or back to the backlog (null). */
-  | { op: "schedule"; ref: string; milestone: string | null }
   /**
    * Choose an answer in a brainstorm about this initiative or a node in it
    * (`chosen: false` takes the choice back). Alone in its batch. Saying what
@@ -114,8 +111,6 @@ export interface InitiativePlan {
   }>;
   /** Property patches for nodes already in the graph, one per node. */
   patches: Record<string, Record<string, unknown>>;
-  /** Requirements whose `INCLUDES` edges are replaced: by one from `milestone`, or none (the backlog). */
-  schedules: Array<{ requirement: Endpoint; milestone: string | null }>;
   /** Edges between nodes, beyond where a new node hangs: `RESULTED_IN`, `SATISFIES`. */
   links: Array<{ edgeType: string; source: Endpoint; target: Endpoint }>;
 }
@@ -123,7 +118,7 @@ export interface InitiativePlan {
 export type InitiativePlanResult = { ok: true; plan: InitiativePlan } | { ok: false; status: 400; message: string };
 
 const bad = (message: string): { ok: false; status: 400; message: string } => ({ ok: false, status: 400, message });
-const emptyPlan = (): InitiativePlan => ({ creates: [], patches: {}, schedules: [], links: [] });
+const emptyPlan = (): InitiativePlan => ({ creates: [], patches: {}, links: [] });
 const softDelete = (now: Date) => ({ deleted_at: now.getTime(), is_deleted: true, updated_at: now.toISOString() });
 
 function checkFields(type: InitiativeNodeType, fields: Fields): string | null {
@@ -164,7 +159,7 @@ function newNodeData(type: InitiativeNodeType, fields: Fields, userId: string, o
 /**
  * Checks `save` against `tree` (null for a new initiative) and turns it into
  * graph writes. Ops apply in order, so a new milestone and a feature under it
- * — or a new requirement and its scheduling — save in one batch. Only nodes of
+ * — or a new story and its requirements — save in one batch. Only nodes of
  * this initiative's tree can be edited or be a parent, and only its planning
  * types (strut writes the architecture).
  */
@@ -193,18 +188,6 @@ export function planInitiativeSave(
       if (!editable(type) || !REMOVABLE.includes(type)) return bad(`${where}: a ${type} can't be deleted here.`);
       // Soft delete: the reads hide the node and everything under it.
       plan.patches[op.ref] = { ...plan.patches[op.ref], ...softDelete(now) };
-      continue;
-    }
-    if (op.op === "schedule") {
-      const type = types.get(op.ref) ?? temps.get(op.ref);
-      if (type !== "Requirement") return bad(`${where}: only a requirement of this initiative can be scheduled.`);
-      if (op.milestone !== null && types.get(op.milestone) !== "HiveMilestone")
-        return bad(`${where}: that milestone isn't part of this initiative.`);
-      plan.schedules.push({
-        requirement: types.has(op.ref) ? { ref: op.ref } : { temp: op.ref },
-        milestone: op.milestone,
-      });
-      if (types.has(op.ref)) plan.patches[op.ref] = { ...plan.patches[op.ref], updated_at: at };
       continue;
     }
     if (op.op === "edit") {
@@ -265,9 +248,7 @@ export type ChoicePlanResult = { ok: true; choice: ChoicePlan } | { ok: false; s
 /** The names an option makes: strut's `makes` list when it set one (empty means nothing), else the option's own words. */
 export function makesOf(props: Record<string, unknown>): string[] {
   const own = typeof props.text === "string" ? props.text : typeof props.name === "string" ? props.name : "";
-  const list = Array.isArray(props.makes)
-    ? props.makes.filter((m): m is string => typeof m === "string" && !!m.trim())
-    : null;
+  const list = makesList(props.makes);
   return (list ?? (own.trim() ? [own] : [])).slice(0, MAX_MAKES).map((m) => m.trim().slice(0, MAX_TEXT));
 }
 
@@ -421,30 +402,6 @@ async function writePlan(
   const patched = await Promise.all(Object.entries(plan.patches).map(([id, data]) => updateNodeV2(config, id, data)));
   const badPatch = patched.find((r) => !r.success);
   if (badPatch) return { ok: false, message: badPatch.message ?? "The graph didn't take a change.", created };
-  for (const s of plan.schedules) {
-    const requirement = idOf(s.requirement);
-    // A requirement ships in one milestone: its old INCLUDES edges go (edges are deleted outright), then the new one.
-    if ("ref" in s.requirement) {
-      const old = await listIncomingEdges(config, { ref_id: requirement, edge_type: "INCLUDES" });
-      if (!old.success)
-        return { ok: false, message: old.message ?? "Couldn't read the requirement's milestone.", created };
-      for (const e of old.edges) {
-        if (s.milestone && e.source_ref_id === s.milestone) continue;
-        const del = await deleteEdge(config, e.ref_id);
-        if (!del.success && !del.notFound)
-          return { ok: false, message: del.error ?? "Couldn't unschedule it.", created };
-      }
-      if (s.milestone && old.edges.some((e) => e.source_ref_id === s.milestone)) continue;
-    }
-    if (s.milestone) {
-      const res = await addEdgeV2(config, {
-        edge: { edge_type: "INCLUDES" },
-        source: { ref_id: s.milestone },
-        target: { ref_id: requirement },
-      });
-      if (!res.success) return { ok: false, message: res.message ?? "Couldn't schedule it.", created };
-    }
-  }
   const linked = await Promise.all(
     plan.links.map((l) =>
       addEdgeV2(config, { edge: { edge_type: l.edgeType }, source: ref(l.source), target: ref(l.target) }),

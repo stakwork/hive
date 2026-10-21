@@ -9,11 +9,8 @@ import {
   IMPLEMENT,
   initiativeOf,
   initiativesByRecency,
-  milestoneMoves,
   nearestContainer,
   pips,
-  requirementsOf,
-  storiesIn,
   suggestions,
   textField,
   toBoard,
@@ -55,9 +52,8 @@ describe("toBoard", () => {
   it("hangs the problem off the initiative and the solution off its milestones", () => {
     expect(byId(board, ONB)).toMatchObject({ type: "initiative", name: "Self-serve onboarding", updatedAt: 3 });
     expect(byId(board, "mock-s-gh-1")).toMatchObject({ type: "story", parent: ONB });
-    expect(byId(board, "mock-r-1")).toMatchObject({ type: "requirement", parent: "mock-s-gh-1", milestone: SIGNUP });
+    expect(byId(board, "mock-r-1")).toMatchObject({ type: "requirement", parent: "mock-s-gh-1" });
     expect(byId(board, "mock-r-14")).toMatchObject({ type: "requirement", status: "proposed" });
-    expect(byId(board, "mock-r-14")?.milestone).toBeUndefined();
     expect(byId(board, "mock-f-gh")).toMatchObject({
       type: "feature",
       parent: SIGNUP,
@@ -131,18 +127,7 @@ describe("pips", () => {
   });
 });
 
-describe("scope and the desk", () => {
-  it("scopes requirements and stories to a milestone by scheduling", () => {
-    expect(
-      requirementsOf(board, SIGNUP)
-        .map((r) => r.id)
-        .sort(),
-    ).toEqual(["mock-r-1", "mock-r-13", "mock-r-2", "mock-r-3", "mock-r-4", "mock-r-5", "mock-r-6", "mock-r-7"].sort());
-    expect(storiesIn(board, "mock-m-invite").map((s) => s.id)).toEqual(["mock-s-link-1"]);
-    expect(storiesIn(board, "mock-m-janitor")).toEqual([]);
-    expect(storiesIn(board, "mock-m-janitor", ["mock-s-name"]).map((s) => s.id)).toEqual(["mock-s-name"]);
-  });
-
+describe("the desk", () => {
   it("orders initiatives by when they last changed", () => {
     expect(initiativesByRecency(board).map((n) => n.id)).toEqual([
       ONB,
@@ -168,7 +153,7 @@ describe("walking the board", () => {
 
   it("suggests what a card still needs", () => {
     expect(suggestions(board, SIGNUP)).toContain("Start another brainstorm on this milestone.");
-    expect(suggestions(board, "mock-m-janitor")[0]).toBe("Write the user stories and requirements for this milestone.");
+    expect(suggestions(board, "mock-m-janitor")[0]).toBe("Propose features for this milestone.");
     expect(suggestions(board, "mock-f-name")[0]).toBe("Draft the architecture for this feature.");
     expect(suggestions(board, "mock-f-gh")[0]).toBe(IMPLEMENT);
     expect(suggestions(board, "mock-initiative-mobile")[0]).toBe(
@@ -185,14 +170,5 @@ describe("editing helpers", () => {
       "text",
       "text",
     ]);
-  });
-
-  it("moves a milestone along its road, renumbering only what changed", () => {
-    expect(milestoneMoves(board, SIGNUP, 1)).toEqual([
-      { ref: "mock-m-invite", sequence: 1 },
-      { ref: SIGNUP, sequence: 2 },
-    ]);
-    expect(milestoneMoves(board, SIGNUP, -1)).toEqual([]);
-    expect(milestoneMoves(board, "mock-f-gh", 1)).toEqual([]);
   });
 });

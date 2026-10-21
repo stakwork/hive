@@ -41,27 +41,21 @@ async function post(url: string, body: unknown): Promise<{ ok: boolean; body: Re
   }
 }
 
-/** Edits, deletes and scheduling as the graph will have them, so the canvas shows them before the save returns. */
+/** Edits and deletes as the graph will have them, so the canvas shows them before the save returns. */
 export function applyLocally(tree: InitiativeTreeData, ops: PlanOp[]): InitiativeTreeData {
   const edits = new Map(ops.flatMap((o) => (o.op === "edit" ? [[o.ref, o.fields] as const] : [])));
-  const schedules = new Map(ops.flatMap((o) => (o.op === "schedule" ? [[o.ref, o.milestone] as const] : [])));
   // A deleted card hides everything under it, as the read does.
   const gone = new Set(ops.flatMap((o) => (o.op === "remove" ? [o.ref] : [])));
   for (let grew = gone.size > 0; grew; ) {
     grew = false;
     for (const e of tree.edges) if (gone.has(e.source) && !gone.has(e.target)) grew = !!gone.add(e.target);
   }
-  if (!edits.size && !gone.size && !schedules.size) return tree;
+  if (!edits.size && !gone.size) return tree;
   return {
     ...tree,
     nodes: tree.nodes
       .filter((n) => !gone.has(n.ref_id))
-      .map((n) => (edits.has(n.ref_id) ? { ...n, properties: { ...n.properties, ...edits.get(n.ref_id) } } : n))
-      .map((n) => {
-        if (!schedules.has(n.ref_id)) return n;
-        const milestone = schedules.get(n.ref_id);
-        return { ...n, scheduled: milestone ? [milestone] : undefined };
-      }),
+      .map((n) => (edits.has(n.ref_id) ? { ...n, properties: { ...n.properties, ...edits.get(n.ref_id) } } : n)),
     edges: tree.edges.filter((e) => !gone.has(e.source) && !gone.has(e.target)),
   };
 }
@@ -203,7 +197,7 @@ export function useCanvasBoard(
   }, [streaming, qc]);
 
   /**
-   * Saves edits to one initiative's plan; edits, deletes and scheduling show
+   * Saves edits to one initiative's plan; edits and deletes show
    * at once and roll back if the save fails. Resolves to the ref_id of each
    * card it created (by the op's `temp`), or null when it failed.
    */

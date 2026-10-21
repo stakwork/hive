@@ -18,7 +18,6 @@ import {
   optionKey,
   orgRect,
   panelKey,
-  storyKey,
   visibility,
   zoomAbout,
 } from "@/app/org/[githubLogin]/_components/infinite-canvas/scene";
@@ -83,24 +82,10 @@ describe("layoutScene", () => {
     expect(scene.get(panelKey("stories", ONB))?.type).toBe("stories");
   });
 
-  it("gives a milestone a copy of each story in scope, its features, and the add slots", () => {
-    expect(scene.get(storyKey("mock-s-gh-1", SIGNUP))).toMatchObject({
-      type: "story",
-      parent: SIGNUP,
-      of: "mock-s-gh-1",
-    });
-    expect(scene.has(storyKey("mock-s-link-1", SIGNUP))).toBe(false);
-    expect(scene.get(storyKey("mock-s-link-1", "mock-m-invite"))?.parent).toBe("mock-m-invite");
+  it("gives a milestone its features and the add slot, and no stories (they live on the initiative)", () => {
     expect(scene.get("mock-f-gh")?.parent).toBe(SIGNUP);
-    expect(scene.get(addKey("story", SIGNUP))?.of).toBe("story");
     expect(scene.get(addKey("feature", SIGNUP))?.of).toBe("feature");
-    // Features sit below the stories.
-    expect(scene.get("mock-f-gh")!.rect.y).toBeGreaterThan(scene.get(storyKey("mock-s-gh-1", SIGNUP))!.rect.y);
-  });
-
-  it("keeps a story added inside a milestone showing there before it has requirements", () => {
-    const s = layoutScene(board, DESK, { addedIn: { "mock-m-janitor": ["mock-s-name"] } });
-    expect(s.has(storyKey("mock-s-name", "mock-m-janitor"))).toBe(true);
+    expect([...scene.values()].some((n) => n.type === "story")).toBe(false);
   });
 
   it("gives a feature its architecture and build panels", () => {
@@ -145,7 +130,7 @@ describe("levels", () => {
   });
 
   it("finds the level a card lives at", () => {
-    expect(levelFor(scene, board, "mock-r-1")).toBe(SIGNUP);
+    expect(levelFor(scene, board, "mock-r-1")).toBe(ONB);
     expect(levelFor(scene, board, "mock-r-14")).toBe(ONB);
     expect(levelFor(scene, board, "mock-s-gh-1")).toBe(ONB);
     expect(levelFor(scene, board, `${ONB}-brief`)).toBe(ONB);

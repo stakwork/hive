@@ -19,7 +19,6 @@ import {
   initiativeOf,
   initiativesByRecency,
   kids,
-  milestoneMoves,
   nearestContainer,
   suggestions,
   textField,
@@ -38,7 +37,6 @@ import {
   OptionCard,
   QuestionCard,
   StoriesPanel,
-  StoryCard,
   TYPE,
 } from "./nodes";
 import { Palette } from "./Palette";
@@ -76,8 +74,6 @@ const FACE_W: Partial<Record<string, number>> = {
   milestone: 310,
   brief: 310,
   feature: 320,
-  story: 250,
-  add: 250,
   architecture: 760,
   build: 760,
   stories: 1500,
@@ -182,9 +178,8 @@ function writeAt(id: string) {
  * initiative → milestone → feature). The desk holds the latest few (and any
  * pulled in from the stack or ⌘K). Zooming moves the camera and never
  * changes the level; ←, the breadcrumbs and Esc go back out. An initiative
- * shows its brief, milestones and user stories; a milestone the stories and
- * requirements scheduled into it and its features; a feature its
- * architecture and tasks. Brainstorms grow to the right of whatever they're
+ * shows its brief, milestones and user stories; a milestone its features; a
+ * feature its architecture and build. Brainstorms grow to the right of whatever they're
  * about. Jamie sits in a bar at the bottom; the full chat slides in from the
  * left and the canvas narrows.
  */
@@ -275,8 +270,6 @@ export function InfiniteCanvas({
 
   /** Which brainstorm each card shows unfolded (the newest until someone picks another). */
   const [openTrees, setOpenTrees] = useState<OpenTrees>({});
-  /** Stories added inside a milestone this session, so they show there before they have requirements. */
-  const [addedIn, setAddedIn] = useState<Record<string, string[]>>({});
   const desk = useMemo(() => {
     const latest = initiativesByRecency(board)
       .slice(0, DESK_SIZE)
@@ -284,8 +277,8 @@ export function InfiniteCanvas({
     return [...latest, ...pulled.filter((id) => !latest.includes(id) && board.nodes.some((n) => n.id === id))];
   }, [board, pulled]);
   const scene = useMemo(
-    () => layoutScene(board, desk, { artifacts: counts, open: openTrees, addedIn }),
-    [board, desk, counts, openTrees, addedIn],
+    () => layoutScene(board, desk, { artifacts: counts, open: openTrees }),
+    [board, desk, counts, openTrees],
   );
   /** Zoom out as far as you like, but not past seeing the whole org small. */
   const minZ = vp ? fit(orgRect(scene), vp, 0.88, INSETS).z * 0.5 : 0;
@@ -526,29 +519,19 @@ export function InfiniteCanvas({
         const r = node(reqId);
         if (r) void save(r, [{ op: "edit", ref: reqId, fields: { status } }]);
       },
-      // A requirement added inside a milestone is scheduled there, in the same save.
-      addRequirement: (storyId, text, milestoneId) => {
+      addRequirement: (storyId, text) => {
         const st = node(storyId);
         if (st)
           void save(st, [
             { op: "add", temp: "r", type: "Requirement", parent: storyId, fields: { text, status: "accepted" } },
-            ...(milestoneId ? [{ op: "schedule" as const, ref: "r", milestone: milestoneId }] : []),
           ]);
       },
-      schedule: (reqId, milestoneId) => {
-        const r = node(reqId);
-        if (r) void save(r, [{ op: "schedule", ref: reqId, milestone: milestoneId }]);
-      },
-      // Stories live on the initiative; one added inside a milestone shows there until it has requirements.
-      addStory: (at, text) => {
-        const n = node(at);
-        const init = n?.type === "milestone" ? n.parent : at;
-        if (!n || !init) return;
-        void save(n, [
-          { op: "add", temp: "s", type: "UserStory", parent: init, fields: { text, status: "accepted" } },
-        ]).then((created) => {
-          if (created?.s && n.type === "milestone") setAddedIn((m) => ({ ...m, [at]: [...(m[at] ?? []), created.s] }));
-        });
+      addStory: (initiativeId, text) => {
+        const n = node(initiativeId);
+        if (n)
+          void save(n, [
+            { op: "add", temp: "s", type: "UserStory", parent: initiativeId, fields: { text, status: "accepted" } },
+          ]);
       },
       addFeature: (milestoneId, text) => {
         const m = node(milestoneId);
@@ -577,15 +560,6 @@ export function InfiniteCanvas({
       remove: (id) => {
         const n = node(id);
         if (n) void save(n, [{ op: "remove", ref: id }]);
-      },
-      move: (id, by) => {
-        const n = node(id);
-        const moves = milestoneMoves(latest.current.board, id, by);
-        if (n && moves.length)
-          void save(
-            n,
-            moves.map((m) => ({ op: "edit", ref: m.ref, fields: { sequence: m.sequence } })),
-          );
       },
     };
   }, []);
@@ -808,28 +782,37 @@ export function InfiniteCanvas({
               const seen = visibility(scene, n.id, open) * dim(n.id);
               const sr = toScreen(n.rect, cam, vp);
               if (seen < 0.3 || !onScreen(sr, vp)) return null;
+              // Part of the card, in its design units: it zooms with the card and sits on its top edge, inside it.
+              const designW = (open(n.id) > 0.5 ? FRAME_W[n.type] : FACE_W[n.type]) ?? FACE_W.feature!;
               return (
                 <div
                   key={`job:${n.id}`}
                   style={{
                     position: "absolute",
-                    left: Math.min(vp.w - 16, sr.x + sr.w - 10),
-                    top: Math.max(INSETS.top + 14, sr.y),
-                    transform: "translate(-100%, -50%)",
-                    // As wide as the card at most, so it never covers the next one; clicks go to the card.
-                    width: Math.max(90, sr.w - 20),
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-end",
-                    gap: 4,
+                    left: sr.x,
+                    top: sr.y,
+                    width: designW,
+                    transform: `scale(${sr.w / designW})`,
+                    transformOrigin: "0 0",
                     opacity: seen,
                     zIndex: 5,
                     pointerEvents: "none",
                   }}
                 >
-                  {list.map((j) => (
-                    <JobMarker key={j.jobId} job={j} narrow={sr.w < 260} />
-                  ))}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      gap: 4,
+                      padding: "0 10px",
+                      transform: "translateY(-50%)",
+                    }}
+                  >
+                    {list.map((j) => (
+                      <JobMarker key={j.jobId} job={j} />
+                    ))}
+                  </div>
                 </div>
               );
             })}
@@ -1106,7 +1089,7 @@ function SceneItem({
   const loose = ["add", "artifacts", "architecture", "build", "stories", "stack"].includes(n.type);
   const q = n.type === "option" ? byId(board, n.of!) : undefined;
   // A story inside a milestone is a copy: `story@milestone`, its own id in `of`.
-  const node = loose ? undefined : n.type === "option" ? q : byId(board, n.type === "story" ? n.of! : n.id);
+  const node = loose ? undefined : n.type === "option" ? q : byId(board, n.id);
   if (!loose && !node) return null;
   const grow = 0.92 + 0.08 * Math.min(1, vis * 1.5);
   const box: CSSProperties = {
@@ -1179,24 +1162,15 @@ function SceneItem({
       </div>
     );
   if (n.type === "add") {
-    // Features are cards of their own shape; the story slot is story-shaped.
-    const w = n.of === "feature" ? FACE_W.feature! : FACE_W.add!;
+    const w = FACE_W.feature!;
     return (
       <div style={box}>
         <div style={scaled(w)}>
-          <AddCard c={c} what={n.of === "feature" ? "feature" : "story"} milestoneId={n.parent} w={w} h={dh(w)} />
+          <AddCard c={c} milestoneId={n.parent} w={w} h={dh(w)} />
         </div>
       </div>
     );
   }
-  if (n.type === "story")
-    return (
-      <div style={box} data-node={n.id}>
-        <div style={scaled(FACE_W.story!)}>
-          <StoryCard c={c} node={node!} milestone={n.parent} w={FACE_W.story!} h={dh(FACE_W.story!)} />
-        </div>
-      </div>
-    );
   if (n.type === "question")
     return (
       <div

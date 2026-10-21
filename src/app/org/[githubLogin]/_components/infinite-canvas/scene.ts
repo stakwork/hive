@@ -4,8 +4,7 @@
  * Containers nest (org ⊃ initiative ⊃ milestone ⊃ feature), so a level is a
  * place: clicking a card opens it and flies there; zooming only moves the
  * camera, it never changes the level. An initiative holds the why and every
- * user journey; a milestone shows the part of them scheduled into it and its
- * features; a feature holds the build. Brainstorms grow as trees off the
+ * user journey; a milestone holds its features; a feature holds the build. Brainstorms grow as trees off the
  * right of whichever card they're about.
  */
 
@@ -17,7 +16,6 @@ import {
   byId,
   followUpTo,
   kids,
-  storiesIn,
   upOf,
 } from "./board";
 
@@ -45,7 +43,7 @@ export interface SceneNode {
   group: Rect;
   /** Scene parent: the container whose level shows this node ("org" at the top). */
   parent: string;
-  /** Answers: their question. Add slots: what they add ("story" or "feature"). Stories in a milestone: the story's own id. */
+  /** Answers: their question. Add slots: what they add ("feature"). */
   of?: string;
 }
 
@@ -90,8 +88,7 @@ const union = (a: Rect, b: Rect): Rect => {
 /** The scene id of an answer card: answers are only unique within their question. */
 export const optionKey = (questionId: string, optionId: string) => `${questionId}/${optionId}`;
 /** A story shown inside a milestone: a story can be in scope for several, so each milestone has its own copy. */
-export const storyKey = (storyId: string, milestoneId: string) => `${storyId}@${milestoneId}`;
-export const addKey = (what: "story" | "feature", milestoneId: string) => `add:${what}:${milestoneId}`;
+export const addKey = (what: "feature", milestoneId: string) => `add:${what}:${milestoneId}`;
 export const panelKey = (kind: "architecture" | "build" | "stories" | "artifacts", id: string) => `${kind}:${id}`;
 
 /**
@@ -114,8 +111,6 @@ interface Ctx {
   /** How many artifacts jobs returned on a container. */
   artifacts: (id: string) => number;
   open: OpenTrees;
-  /** Stories added inside a milestone this session, by milestone: they show there before they have requirements. */
-  addedIn: Record<string, string[]>;
 }
 
 /**
@@ -245,23 +240,11 @@ function row(
       return;
     }
     if (c.type === "milestone") {
-      // What's in scope across the top (the journeys with requirements scheduled here); its features below.
-      const stories = storiesIn(b, c.id, ctx.addedIn[c.id]).map((st) => ({
-        id: storyKey(st.id, c.id),
-        type: "story" as const,
-        of: st.id,
-      }));
+      // Its features. The stories and requirements live on the initiative.
       row(
         ctx,
         c.id,
-        { ...inner, h: inner.h * 0.6 },
-        [...stories, { id: addKey("story", c.id), type: "add", of: "story" }],
-        4,
-      );
-      row(
-        ctx,
-        c.id,
-        { ...inner, y: inner.y + inner.h * 0.62, h: inner.h * 0.38 },
+        { ...inner, y: inner.y + inner.h * 0.2, h: inner.h * 0.6 },
         [...kids(b, c.id, "feature"), { id: addKey("feature", c.id), type: "add", of: "feature" }],
         4,
       );
@@ -280,20 +263,18 @@ function row(
  * holds the initiatives in `desk` (the latest few, plus any pulled in), in a
  * row; the rest wait in a stack after them. `artifacts` counts what jobs
  * returned on a container (a strip under it); `open` says which brainstorm
- * each card shows unfolded; `addedIn` keeps stories just added inside a
- * milestone showing there.
+ * each card shows unfolded.
  */
 export function layoutScene(
   b: Board,
   desk: string[],
-  opts: { artifacts?: (id: string) => number; open?: OpenTrees; addedIn?: Record<string, string[]> } = {},
+  opts: { artifacts?: (id: string) => number; open?: OpenTrees } = {},
 ): Scene {
   const ctx: Ctx = {
     b,
     out: new Map(),
     artifacts: opts.artifacts ?? (() => 0),
     open: opts.open ?? {},
-    addedIn: opts.addedIn ?? {},
   };
   const all = b.nodes.filter((n) => n.type === "initiative");
   const islands = desk.map((id) => all.find((n) => n.id === id)).filter((n): n is PlanNode => !!n);
@@ -348,13 +329,10 @@ export function focusWeight(scene: Scene, id: string, level: string): number {
 }
 
 /**
- * Where a card lives as a level: a scheduled requirement opens its milestone;
- * anything else walks up to its container (a story or brief opens its
- * initiative, a brainstorm the card it's about).
+ * Where a card lives as a level: it walks up to its container (a story,
+ * requirement or brief opens its initiative, a brainstorm the card it's about).
  */
 export function levelFor(scene: Scene, b: Board, id: string): string {
-  const scheduled = byId(b, id)?.milestone;
-  if (scheduled && scene.has(scheduled)) return scheduled;
   let cur: string | undefined = id;
   for (let i = 0; cur && i < 20; i++) {
     const s = scene.get(cur);

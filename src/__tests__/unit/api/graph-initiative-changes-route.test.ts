@@ -57,17 +57,13 @@ describe("POST /graph/initiative-tree/changes", () => {
     expect(save).toHaveBeenCalledWith({ slug: "hive", userId: "u1" }, edit);
   });
 
-  test("takes schedule and choose ops, and refuses a malformed one", async () => {
+  test("takes a choose op, refuses a malformed one, and has no scheduling", async () => {
     save.mockResolvedValue({ ok: true, data: { root: "init", created: {} } });
-    for (const body of [
-      { root: "init", ops: [{ op: "schedule", ref: "r", milestone: "m" }] },
-      { root: "init", ops: [{ op: "schedule", ref: "r", milestone: null }] },
-      { root: "init", ops: [{ op: "choose", root: "q", option: "o", chosen: true }] },
-    ]) {
-      expect((await call(body)).status).toBe(200);
-      expect(save).toHaveBeenLastCalledWith({ slug: "hive", userId: "u1" }, body);
-    }
-    expect((await call({ root: "init", ops: [{ op: "schedule", ref: "r" }] })).status).toBe(400);
+    const body = { root: "init", ops: [{ op: "choose", root: "q", option: "o", chosen: true }] };
+    expect((await call(body)).status).toBe(200);
+    expect(save).toHaveBeenLastCalledWith({ slug: "hive", userId: "u1" }, body);
+    // Stories and requirements stay on the initiative: no op puts one into a milestone.
+    expect((await call({ root: "init", ops: [{ op: "schedule", ref: "r", milestone: "m" }] })).status).toBe(400);
     expect((await call({ root: "init", ops: [{ op: "choose", root: "q" }] })).status).toBe(400);
     expect((await call({ root: "init", ops: [{ op: "choose", root: "q", option: "o" }] })).status).toBe(400);
   });

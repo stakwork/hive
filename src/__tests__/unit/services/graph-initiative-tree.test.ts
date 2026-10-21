@@ -56,7 +56,7 @@ describe("getInitiativeTree", () => {
     expect(mockedQuery).not.toHaveBeenCalled();
   });
 
-  test("queries the plan from the focus, by label, live paths only, with scheduling and choices per node", async () => {
+  test("queries the plan from the focus, by label, live paths only, with brainstorms and choices per node", async () => {
     mockedQuery.mockResolvedValue({ ok: true, meta, data: { columns: [], rows: [] } });
     await getInitiativeTree(caller, "init-1");
     expect(mockedQuery).toHaveBeenCalledTimes(2);
@@ -72,21 +72,21 @@ describe("getInitiativeTree", () => {
       expect(q).not.toContain("node_type");
     }
     const nodesQuery = String(mockedQuery.mock.calls.find(([a]) => String(a.query).includes("AS props"))![0].query);
-    expect(nodesQuery).toContain("[i:INCLUDES]");
+    expect(nodesQuery).not.toContain("INCLUDES");
     expect(nodesQuery).not.toContain("PullRequest");
     expect(nodesQuery).toContain("(o:`Option`)-[ro:RESULTED_IN]->");
   });
 
-  test("reads each node's scheduling and the answers that made it", async () => {
+  test("reads the brainstorms about each node and the answers that made it", async () => {
     mockedQuery
       .mockResolvedValueOnce({
         ok: true,
         meta,
         data: {
-          columns: ["id", "labels", "props", "brainstorms", "scheduled", "made_by"],
+          columns: ["id", "labels", "props", "brainstorms", "made_by"],
           rows: [
-            ["req-1", ["Requirement"], [["text", "R"]], [], ["m-1"], []],
-            ["f-1", ["InitiativeFeature"], [["name", "F"]], ["q-1"], [], ["o-1"]],
+            ["req-1", ["Requirement"], [["text", "R"]], [], []],
+            ["f-1", ["InitiativeFeature"], [["name", "F"]], ["q-1"], ["o-1"]],
           ],
         },
       })
@@ -94,7 +94,6 @@ describe("getInitiativeTree", () => {
     const res = await getInitiativeTree(caller, "init-1");
     if (!res.ok) throw new Error(res.message);
     const by = Object.fromEntries(res.data.nodes.map((n) => [n.ref_id, n]));
-    expect(by["req-1"].scheduled).toEqual(["m-1"]);
     expect(by["f-1"]).toMatchObject({ brainstorms: ["q-1"], madeBy: ["o-1"] });
   });
 
@@ -146,7 +145,6 @@ describe("getInitiativeTree", () => {
     expect(res.data.nodes[0]).toMatchObject({ ref_id: "mock-initiative-onboarding", type: "HiveInitiative" });
     expect(res.data.stage).toEqual({ milestones: 3, features: 4, stories: 5, requirements: 12, unaccepted: 4 });
     expect(res.data.nodes.filter((n) => n.type === "Architecture")).toHaveLength(2);
-    expect(res.data.nodes.find((n) => n.ref_id === "mock-r-1")?.scheduled).toEqual(["mock-m-signup"]);
     const ids = new Set(res.data.nodes.map((n) => n.ref_id));
     expect(res.data.edges.every((e) => ids.has(e.source) && ids.has(e.target))).toBe(true);
   });

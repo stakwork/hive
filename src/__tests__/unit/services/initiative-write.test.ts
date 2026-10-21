@@ -7,8 +7,6 @@ vi.mock("@/services/swarm/api/nodes", () => ({
   addNode: vi.fn(),
   addEdgeV2: vi.fn(),
   updateNodeV2: vi.fn(),
-  deleteEdge: vi.fn(),
-  listIncomingEdges: vi.fn(),
 }));
 vi.mock("@/services/graph/workbench", () => ({ getInitiativeTree: vi.fn(), getChoiceTree: vi.fn() }));
 vi.mock("@/services/graph/brainstorm-write", () => ({ saveBrainstormChanges: vi.fn() }));
@@ -16,7 +14,7 @@ vi.mock("@/lib/pusher", () => ({ notifyInitiativeUpdated: vi.fn() }));
 
 import { db } from "@/lib/db";
 import { resolveGraphJarvis } from "@/lib/ai/graphWriteAuth";
-import { addEdgeV2, addNode, deleteEdge, listIncomingEdges, updateNodeV2 } from "@/services/swarm/api/nodes";
+import { addEdgeV2, addNode, updateNodeV2 } from "@/services/swarm/api/nodes";
 import { getChoiceTree, getInitiativeTree, type ChoiceTreeData } from "@/services/graph/workbench";
 import { saveBrainstormChanges } from "@/services/graph/brainstorm-write";
 import { notifyInitiativeUpdated } from "@/lib/pusher";
@@ -238,38 +236,6 @@ describe("planInitiativeSave", () => {
   });
 });
 
-describe("planInitiativeSave: scheduling", () => {
-  test("schedules a requirement into a milestone, a new one in the same batch, or back to the backlog", () => {
-    const p = ok(
-      plan({
-        root: "init",
-        ops: [
-          { op: "schedule", ref: "r", milestone: "m" },
-          { op: "add", temp: "r2", type: "Requirement", parent: "s", fields: { text: "New" } },
-          { op: "schedule", ref: "r2", milestone: "m" },
-          { op: "schedule", ref: "r", milestone: null },
-        ],
-      }),
-    );
-    expect(p.schedules).toEqual([
-      { requirement: { ref: "r" }, milestone: "m" },
-      { requirement: { temp: "r2" }, milestone: "m" },
-      { requirement: { ref: "r" }, milestone: null },
-    ]);
-    expect(p.patches.r).toEqual({ updated_at: AT });
-  });
-
-  test("only a requirement of this initiative, only into one of its milestones", () => {
-    expect(fails({ root: "init", ops: [{ op: "schedule", ref: "s", milestone: "m" }] })).toMatch(/only a requirement/);
-    expect(fails({ root: "init", ops: [{ op: "schedule", ref: "r", milestone: "f" }] })).toMatch(
-      /milestone isn't part/,
-    );
-    expect(fails({ root: "init", ops: [{ op: "schedule", ref: "elsewhere", milestone: "m" }] })).toMatch(
-      /only a requirement/,
-    );
-  });
-});
-
 /** "q-root": a question about milestone m, answers o-a (chosen, makes two), o-b, and o-legacy (an old Choice). */
 function choices(chosen = "o-a"): ChoiceTreeData {
   const option = (ref_id: string, props: Record<string, unknown>, extra = {}) => ({
@@ -401,6 +367,16 @@ describe("planChoice", () => {
     expect(makesOf({ makes: Array.from({ length: 20 }, (_, i) => `m${i}`) })).toHaveLength(12);
   });
 
+  test("makesOf: strut writes `makes` as JSON text (Jarvis 135 `?string`); text that isn't a list is ignored", () => {
+    expect(makesOf({ text: "A", makes: '["Guided workspace setup","Repo picker"]' })).toEqual([
+      "Guided workspace setup",
+      "Repo picker",
+    ]);
+    expect(makesOf({ text: "A", makes: "[]" })).toEqual([]);
+    expect(makesOf({ text: "A", makes: "Repo picker" })).toEqual(["A"]);
+    expect(makesOf({ text: "A", makes: '{"name":"x"}' })).toEqual(["A"]);
+  });
+
   test("a choice must be saved on its own", () => {
     expect(
       fails({
@@ -430,40 +406,10 @@ describe("saveInitiativeChanges", () => {
     vi.mocked(addNode).mockResolvedValue({ success: true, ref_id: "new-1" });
     vi.mocked(addEdgeV2).mockResolvedValue({ success: true } as never);
     vi.mocked(updateNodeV2).mockResolvedValue({ success: true } as never);
-    vi.mocked(listIncomingEdges).mockResolvedValue({ success: true, status: "ok", edges: [] } as never);
-    vi.mocked(deleteEdge).mockResolvedValue({ success: true });
     vi.mocked(getChoiceTree).mockResolvedValue({ ok: true, data: choices("o-b") });
     vi.mocked(saveBrainstormChanges).mockResolvedValue({ ok: true, data: { root: "q-root", created: {} } });
   });
 
-  test("scheduling replaces the requirement's INCLUDES edges", async () => {
-    vi.mocked(listIncomingEdges).mockResolvedValue({
-      success: true,
-      status: "ok",
-      edges: [{ ref_id: "e-old", source_ref_id: "m-old" }],
-    } as never);
-    const res = await saveInitiativeChanges(caller, {
-      root: "init",
-      ops: [{ op: "schedule", ref: "r", milestone: "m" }],
-    });
-    expect(res.ok).toBe(true);
-    expect(listIncomingEdges).toHaveBeenCalledWith(config, { ref_id: "r", edge_type: "INCLUDES" });
-    expect(deleteEdge).toHaveBeenCalledWith(config, "e-old");
-    expect(addEdgeV2).toHaveBeenCalledWith(config, {
-      edge: { edge_type: "INCLUDES" },
-      source: { ref_id: "m" },
-      target: { ref_id: "r" },
-    });
-    vi.mocked(addEdgeV2).mockClear();
-    vi.mocked(listIncomingEdges).mockResolvedValue({
-      success: true,
-      status: "ok",
-      edges: [{ ref_id: "e1", source_ref_id: "m" }],
-    } as never);
-    await saveInitiativeChanges(caller, { root: "init", ops: [{ op: "schedule", ref: "r", milestone: "m" }] });
-    // Already there: nothing deleted, nothing added.
-    expect(addEdgeV2).not.toHaveBeenCalled();
-  });
 
   test("a choice saves the answer's state through the brainstorm writer, then what it makes", async () => {
     vi.mocked(getChoiceTree).mockResolvedValue({ ok: true, data: choices("none") });

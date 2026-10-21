@@ -14,7 +14,6 @@ const opSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("add"), temp: id, type: z.enum(INITIATIVE_TREE_LABELS), parent: id.nullable(), fields }),
   z.object({ op: z.literal("edit"), ref: id, fields }),
   z.object({ op: z.literal("remove"), ref: id }),
-  z.object({ op: z.literal("schedule"), ref: id, milestone: id.nullable() }),
   z.object({ op: z.literal("choose"), root: id, option: id, chosen: z.boolean() }),
 ]);
 
@@ -28,8 +27,8 @@ const bodySchema = z.object({
  *
  * Saves a person's edits to one initiative's plan straight to the graph: new
  * milestones, briefs, features, stories and requirements; field edits (name,
- * text, status, a milestone's order); deleting a story or requirement;
- * scheduling a requirement into a milestone; and choosing an answer in a
+ * text, status, a milestone's order); deleting a story or requirement; and
+ * choosing an answer in a
  * brainstorm about the plan (alone in its batch), which makes the level below.
  * Each is stamped with who did it and when. `root: null` starts a new
  * initiative. Developers and above only.

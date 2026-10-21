@@ -53,7 +53,8 @@ describe("the ## Current initiative section", () => {
   it("teaches the plan problem before solution: stories on the initiative, never on a feature", () => {
     const t = text({ initiativeFocus: parseInitiativeFocus(focus, ["hive"]) });
     expect(t).toContain("HiveInitiative -HAS_BRIEF-> Brief, -HAS_STORY-> UserStory -HAS_REQUIREMENT-> Requirement");
-    expect(t).toContain("HiveMilestone -INCLUDES-> Requirement");
+    expect(t).toContain("HiveMilestone -HAS_FEATURE-> InitiativeFeature");
+    expect(t).not.toContain("INCLUDES");
     expect(t).toContain("User stories always hang off the initiative, never off a feature.");
     expect(t).not.toContain("InitiativeFeature -HAS_STORY->");
   });

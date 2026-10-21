@@ -3,8 +3,7 @@
  * the graph, problem before solution (Jarvis 133–135). An initiative holds
  * the why and the journeys: HiveInitiative -HAS_BRIEF-> Brief, -HAS_STORY->
  * UserStory -HAS_REQUIREMENT-> Requirement. It breaks into -HAS_MILESTONE->
- * HiveMilestone (by `sequence`); a milestone schedules requirements
- * (-INCLUDES->, here the requirement's `milestone`) and holds features
+ * HiveMilestone (by `sequence`); a milestone holds features
  * (-HAS_FEATURE-> InitiativeFeature), each with an architecture
  * (-HAS_ARCHITECTURE->); a feature's build is its strut jobs (`build.ts`). A brainstorm hangs off any of the three
  * (Question -ABOUT-> node); an expanded answer raises its own Question, and
@@ -12,6 +11,7 @@
  * the node's `madeBy`). Pure: no React.
  */
 
+import { makesList } from "@/lib/initiative-plan";
 import { compareChoiceIds } from "../artifacts/viewers/ChoiceTree";
 import type {
   ChoiceTreeData,
@@ -71,8 +71,6 @@ export interface PlanNode {
   sequence?: number;
   options?: Option[];
   decided?: boolean;
-  /** Requirement: the milestone it's scheduled into (`INCLUDES`); unset is the backlog. */
-  milestone?: string;
   /** The answers whose choice made it (`Option -RESULTED_IN->`). */
   madeBy?: string[];
   /** Feature: how it's built. */
@@ -148,6 +146,7 @@ export function brainstormNodes(tree: ChoiceTreeData, root: string, about: strin
       .map((c, i) => {
         const o = byId.get(c)!;
         const op = o.properties;
+        const makes = makesList(op.makes);
         return {
           id: c,
           letter: letterOf(i),
@@ -161,7 +160,7 @@ export function brainstormNodes(tree: ChoiceTreeData, root: string, about: strin
             good: e.direction === "pro",
             text: e.name,
           })),
-          ...(Array.isArray(op.makes) ? { makes: op.makes.filter((m): m is string => typeof m === "string") } : {}),
+          ...(makes ? { makes } : {}),
           chosen: op.state === "chosen",
           rejected: op.state === "rejected",
         };
@@ -249,7 +248,6 @@ export function toBoard(entries: InitiativeEntry[], brainstorms: Record<string, 
         author: authorOf(p),
         ...(text(p.status) ? { status: String(p.status) } : {}),
         ...(typeof p.sequence === "number" ? { sequence: p.sequence } : {}),
-        ...(n.scheduled?.[0] ? { milestone: n.scheduled[0] } : {}),
         ...(n.madeBy?.length ? { madeBy: n.madeBy } : {}),
         ...(type === "feature" && tree ? { architecture: architectureOf(tree, n.ref_id) } : {}),
         ...(type === "initiative" ? { updatedAt } : {}),
@@ -315,23 +313,6 @@ export function descendants(b: Board, id: string): PlanNode[] {
   return kids(b, id).flatMap((k) => [k, ...descendants(b, k.id)]);
 }
 
-/** The requirements in scope for a node, dropped ones included: an initiative's are all of them, a milestone's the ones scheduled into it. */
-export function requirementsOf(b: Board, id: string): PlanNode[] {
-  const n = byId(b, id);
-  if (n?.type === "initiative") return kids(b, id, "story").flatMap((st) => kids(b, st.id, "requirement"));
-  if (n?.type === "milestone") return b.nodes.filter((r) => r.type === "requirement" && r.milestone === id);
-  return [];
-}
-
-/** The user stories with something in scope for a milestone, plus any in `extra` (stories added there this session). */
-export const storiesIn = (b: Board, milestoneId: string, extra: readonly string[] = []) => {
-  const m = byId(b, milestoneId);
-  return m?.parent
-    ? kids(b, m.parent, "story").filter(
-        (st) => extra.includes(st.id) || kids(b, st.id, "requirement").some((r) => r.milestone === milestoneId),
-      )
-    : [];
-};
 
 /** The card a node hangs from: its HAS_* parent, the node a brainstorm is about, or the question an answer belongs to. */
 export function upOf(b: Board, n: PlanNode): string | undefined {
@@ -381,21 +362,13 @@ export function suggestions(b: Board, id: string): string[] {
         ...(stories ? ["Add more user journeys to this initiative."] : []),
       ];
     }
-    case "milestone": {
-      const reqs = requirementsOf(b, id).filter((r) => r.status !== "dropped");
+    case "milestone":
       return [
-        ...(reqs.length ? [] : ["Write the user stories and requirements for this milestone."]),
-        ...(reqs.length
-          ? [
-              brainstormsOn(b, id).length
-                ? "Start another brainstorm on this milestone."
-                : "Brainstorm how to meet these requirements.",
-            ]
-          : []),
-        ...(reqs.length && !kids(b, id, "feature").length ? ["Propose features for these requirements."] : []),
-        ...(reqs.length ? ["Add more user stories to this milestone."] : []),
+        ...(kids(b, id, "feature").length ? [] : ["Propose features for this milestone."]),
+        brainstormsOn(b, id).length
+          ? "Start another brainstorm on this milestone."
+          : "Brainstorm how to build this milestone.",
       ];
-    }
     case "feature":
       return [
         node.architecture ? IMPLEMENT : "Draft the architecture for this feature.",
@@ -415,23 +388,6 @@ export function suggestions(b: Board, id: string): string[] {
 /** The graph property holding a card's words: a name for the containers, the text for the rest. */
 export const textField = (type: NodeType): "name" | "text" =>
   type === "initiative" || type === "milestone" || type === "feature" ? "name" : "text";
-
-/**
- * Moving a milestone one place earlier (-1) or later (1) on its initiative's
- * road: the new `sequence` of every milestone whose place changed, 1-based in
- * road order. Empty when it can't move that way.
- */
-export function milestoneMoves(b: Board, id: string, by: -1 | 1): Array<{ ref: string; sequence: number }> {
-  const m = byId(b, id);
-  if (m?.type !== "milestone" || !m.parent) return [];
-  const road = kids(b, m.parent, "milestone");
-  const i = road.findIndex((x) => x.id === id);
-  const j = i + by;
-  if (i < 0 || j < 0 || j >= road.length) return [];
-  const order = [...road];
-  [order[i], order[j]] = [order[j], order[i]];
-  return order.flatMap((x, k) => (x.sequence === k + 1 ? [] : [{ ref: x.id, sequence: k + 1 }]));
-}
 
 export const SEARCHABLE: Array<{ type: NodeType; label: string }> = [
   { type: "initiative", label: "Initiatives" },

@@ -55,3 +55,21 @@ export function stageLine(s: InitiativeStage): string {
   ].filter(Boolean);
   return parts.length ? parts.join(" · ") : "Nothing planned yet";
 }
+
+/**
+ * An answer's `makes` (Jarvis 135 `Option.makes`, `?string`): strut writes
+ * it as JSON text, `["Repo picker","Guided setup"]`; an array is taken as
+ * is. The names in it, or null when it is unset or not a list (the answer
+ * then makes one thing, named after itself). An empty list makes nothing.
+ */
+export function makesList(raw: unknown): string[] | null {
+  let value = raw;
+  if (typeof raw === "string") {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  return Array.isArray(value) ? value.filter((m): m is string => typeof m === "string" && !!m.trim()) : null;
+}

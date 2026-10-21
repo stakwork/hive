@@ -547,9 +547,7 @@ export async function listBrainstormRoots(caller: Caller): Promise<WorkbenchResu
 /**
  * The edges that hang the plan together (Jarvis 133–135): an initiative's
  * brief, user stories (with their requirements) and milestones; a milestone's
- * features; a feature's architecture. `INCLUDES` (a milestone
- * scheduling a requirement) is read per requirement instead, since it isn't
- * where a requirement hangs.
+ * features; a feature's architecture.
  */
 const INITIATIVE_TREE_EDGES = [
   "HAS_BRIEF",
@@ -573,8 +571,6 @@ export interface InitiativeTreeNode {
   properties: Record<string, unknown>;
   /** The brainstorms about this node (root `Question` ref_ids, by `ABOUT`). */
   brainstorms?: string[];
-  /** On a requirement: the milestones that schedule it (`HiveMilestone -INCLUDES->`); at most one in practice. */
-  scheduled?: string[];
   /** The brainstorm options whose choice made this node (`Option -RESULTED_IN->`). */
   madeBy?: string[];
 }
@@ -592,8 +588,8 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
 
 /**
  * An initiative and everything planned under it — brief, user stories and
- * requirements, milestones (with the requirements each schedules), features
- * with their architecture — linked by the planning
+ * requirements, milestones, features with their architecture — linked by
+ * the planning
  * edges, with the edges among them and the counts a card shows. Every node
  * carries the brainstorms about it and the options whose choice made it. Read
  * by label, like `getChoiceTree`.
@@ -609,7 +605,6 @@ export async function getInitiativeTree(caller: Caller, refId: string): Promise<
     depth: INITIATIVE_TREE_DEPTH,
     extra: (n) =>
       `[(q:\`Question\`)-[a:ABOUT]->(${n}) WHERE ${edgeLive("a")} AND ${nodeLive("q")} | q.ref_id] AS brainstorms, ` +
-      `[(m:\`HiveMilestone\`)-[i:INCLUDES]->(${n}) WHERE ${edgeLive("i")} AND ${nodeLive("m")} | m.ref_id] AS scheduled, ` +
       `[(o:\`Option\`)-[ro:RESULTED_IN]->(${n}) WHERE ${edgeLive("ro")} AND ${nodeLive("o")} | o.ref_id] AS made_by`,
   });
   if (!tree.ok) return tree;
@@ -617,7 +612,6 @@ export async function getInitiativeTree(caller: Caller, refId: string): Promise<
     const type = INITIATIVE_TREE_READ_LABELS.find((l) => r.labels.includes(l));
     if (!type) return [];
     const brainstorms = strings(r.row.brainstorms);
-    const scheduled = strings(r.row.scheduled);
     const madeBy = strings(r.row.made_by);
     return [
       {
@@ -625,7 +619,6 @@ export async function getInitiativeTree(caller: Caller, refId: string): Promise<
         type,
         properties: r.properties,
         ...(brainstorms.length ? { brainstorms } : {}),
-        ...(scheduled.length ? { scheduled } : {}),
         ...(madeBy.length ? { madeBy } : {}),
       },
     ];

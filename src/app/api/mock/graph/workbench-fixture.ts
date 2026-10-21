@@ -334,7 +334,8 @@ function featureTree(root: { id: string; text: string; made_by: string; state?: 
           kind: "option",
           made_by: o.made_by ?? "model",
           state: o.state ?? "open",
-          ...(o.makes ? { makes: o.makes } : {}),
+          // As strut writes it (Jarvis 135 `Option.makes`, `?string`): JSON text.
+          ...(o.makes ? { makes: JSON.stringify(o.makes) } : {}),
         },
         effects: o.effects.map(([name, direction, impact, against], i) => ({
           ref_id: `${o.id}-fx${i + 1}`,

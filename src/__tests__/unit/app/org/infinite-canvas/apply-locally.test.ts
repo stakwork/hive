@@ -36,15 +36,3 @@ describe("applyLocally", () => {
   });
 });
 
-describe("applyLocally: scheduling", () => {
-  it("moves a requirement to a milestone, or back to the backlog", () => {
-    expect(
-      applyLocally(tree, [{ op: "schedule", ref: "r", milestone: "m" }]).nodes.find((n) => n.ref_id === "r")?.scheduled,
-    ).toEqual(["m"]);
-    const scheduled = { ...tree, nodes: tree.nodes.map((n) => (n.ref_id === "r" ? { ...n, scheduled: ["m"] } : n)) };
-    expect(
-      applyLocally(scheduled, [{ op: "schedule", ref: "r", milestone: null }]).nodes.find((n) => n.ref_id === "r")
-        ?.scheduled,
-    ).toBeUndefined();
-  });
-});
