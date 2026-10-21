@@ -20,7 +20,10 @@
  *     turns it launched (`job/start`, `job/continue`), read from the run's
  *     event log. Each gets its `job_turn` row minted PENDING here
  *     (`orchestrator-jobs.ts`), so the chat hangs a running card under the
- *     reply until the job's own `run.end` settles that row. A log strut
+ *     reply until the job's own `run.end` settles that row. The row is
+ *     recorded under the workflow the turn runs (`job` or `builder`): a
+ *     `job/start` names it, a `job/continue` runs the job's own — hive's
+ *     newest row of the job, else strut's `GET /jobs/:id`. A log strut
  *     cannot serve delivers the reply without them: the job lands whole;
  *   - ONE row per proposal, `orchestrator-<id>-proposal-<proposalId>`,
  *     `source.kind: "proposal"` — the card (`StrutProposalCard`) reads the
@@ -66,9 +69,10 @@ import {
   type StrutProposalRowSource,
 } from "@/lib/strut-orchestrator";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
-import { fetchStrutRunEvents } from "@/services/strut-runs/lab";
-import { adoptOrchestratorJobRun } from "@/services/strut-runs/orchestrator-jobs";
-import { jobTurnOutputSchema, mapStrutArtifacts, readRunArtifacts } from "@/services/strut-runs/job-turn";
+import { fetchStrutJobWorkflow, fetchStrutRunEvents } from "@/services/strut-runs/lab";
+import { nudgeCanvasCardJob } from "@/services/canvas-jobs";
+import { adoptOrchestratorJobRun, recordedJobWorkflow } from "@/services/strut-runs/orchestrator-jobs";
+import { jobTurnOutputSchema, mapStrutArtifacts, peerSwarmsFor, readRunArtifacts } from "@/services/strut-runs/job-turn";
 
 export { ORCHESTRATOR_TURN_KIND, ORCHESTRATOR_WORKFLOW };
 
@@ -198,12 +202,20 @@ export async function launchedJobTurns(row: StrutRunRow): Promise<OrchestratorJo
   const launches: OrchestratorJobLaunch[] = [];
   for (const call of parseOrchestratorJobCalls(events)) {
     try {
+      const workflow =
+        call.workflow ??
+        (await recordedJobWorkflow(row.swarmId, call.job)) ??
+        (await fetchStrutJobWorkflow(row, call.job, READ_TIMEOUT_MS)) ??
+        undefined;
       const jobRow = await adoptOrchestratorJobRun(row, {
         job: call.job,
         runId: call.runId,
         title: call.title ?? null,
+        ...(workflow ? { workflow } : {}),
       });
-      launches.push({ jobId: call.job, title: call.title ?? "", runId: jobRow.id });
+      launches.push({ jobId: call.job, title: call.title ?? "", runId: jobRow.id, ...(call.peer ? { peer: call.peer } : {}) });
+      // Its canvas card can show the job's title and starter now.
+      if (jobRow.status === StrutRunStatus.PENDING) await nudgeCanvasCardJob({ ...jobRow, jobId: call.job }, "running");
     } catch (err) {
       logger.warn("Orchestrator turn: could not mint the row of a job it launched", LOG_TAG, {
         runId: row.id,
@@ -345,7 +357,7 @@ export async function handleOrchestratorTurnSettled(row: StrutRunRow, _ctx?: Str
     ]);
     jobs = launched;
     if (artifacts.ok) {
-      ({ refs, dropped } = mapStrutArtifacts(artifacts.artifacts, row.swarmId));
+      ({ refs, dropped } = mapStrutArtifacts(artifacts.artifacts, row.swarmId, await peerSwarmsFor(row, artifacts.artifacts)));
     } else if (artifacts.permanent) {
       logger.warn("Orchestrator turn artifacts unavailable — delivering the text alone", LOG_TAG, {
         runId: row.id,

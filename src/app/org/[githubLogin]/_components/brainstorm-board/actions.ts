@@ -9,7 +9,7 @@ export const goWithDraft = (c: ChoiceItem) => draft("Go with", c);
 export const deselectDraft = (c: ChoiceItem) => draft("Deselect", c);
 export const dropDraft = (c: ChoiceItem) => draft("Drop", c);
 export const reopenDraft = (c: ChoiceItem) => draft("Reopen", c);
-export const expandDraft = (c: ChoiceItem) => draft("Expand", c);
+export const expandDraft = (c: Pick<ChoiceItem, "letter" | "name" | "id">) => draft("Expand", c);
 
 /** What the brainstorm job does for the person: drafted into Jamie's chat, applied when they send it. */
 export type BoardAction = "go-with" | "deselect" | "drop" | "reopen" | "expand";

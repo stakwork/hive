@@ -22,6 +22,7 @@
  */
 
 import { StrutRunStatus } from "@prisma/client";
+import { canvasFocusContextLine, type CanvasFocus } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
@@ -49,6 +50,12 @@ export interface OrchestratorTurnArgs {
   /** The person's IANA zone for `context.line`; UTC when unknown. */
   timeZone?: string;
   now?: Date;
+  /**
+   * The infinite-canvas card the person asked from: told to strut as text
+   * after the time, and kept on the row's input so the jobs the turn starts
+   * land on that card (`lib/canvas/canvas-jobs.ts`).
+   */
+  focus?: CanvasFocus;
   /**
    * The turn is a WAKE on a job row (`strut-orchestrator-wake.ts`), not a
    * person's message: recorded on the launch marker as its idempotency
@@ -100,12 +107,17 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
       // The workflow's input block declares exactly these: the message
       // behind the workspace line, the conversation as the session (the
       // same every turn — strut's agent remembers through it), and what the
-      // host knows about the turn.
+      // host knows about the turn — the time, and the card the person is on.
       input: {
         prompt: orchestratorPrompt(strut.workspaceSlug, message),
         session: conversationId,
-        context: { line: orchestratorContextLine(args.now ?? new Date(), args.timeZone) },
+        context: {
+          line:
+            orchestratorContextLine(args.now ?? new Date(), args.timeZone) +
+            (args.focus ? canvasFocusContextLine(args.focus) : ""),
+        },
       },
+      ...(args.focus ? { rowInput: { focus: args.focus } } : {}),
       publicBaseUrl,
       conversationId,
       // The jobs this turn starts report their live updates (shots,

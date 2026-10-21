@@ -18,7 +18,11 @@
  *     read (`validateWorkspaceAccess`), and the key must name something
  *     Hive launched there — a `StrutRun` row of this swarm with that
  *     `jobId`, or that `strutRunId` — before the swarm key is decrypted.
- *     403 / 404 otherwise.
+ *     A job a PEER holds for the org strut (`peer/<job>`: a build the org
+ *     strut ran on this swarm, strut plans/builder-job.md §3, its
+ *     deliverables tagged and mapped to this swarm by `job-turn.ts`) is
+ *     vouched for by `<job>`: a job row Hive holds for a workspace of this
+ *     org, on whichever swarm. 403 / 404 otherwise.
  *  4. `GET {lab}<key>` with the swarm's `x-api-token` (decrypted here,
  *     never sent to the browser), streamed back with strut's
  *     `content-type`, `content-security-policy` (`sandbox`: a page an
@@ -31,11 +35,12 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { MOCK_STRUT_SWARM_ID, mockStrutFile } from "@/app/api/mock/graph/strut-artifacts";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
-import { parseStrutArtifactKey } from "@/lib/strut-jobs";
+import { JOB_TURN_KIND, parseStrutArtifactKey, peerJobHome } from "@/lib/strut-jobs";
 import { strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
@@ -45,6 +50,14 @@ export const dynamic = "force-dynamic";
 const READ_TIMEOUT_MS = 30_000;
 /** The headers strut sets that the browser must see as strut set them. */
 const KEPT_HEADERS = ["content-type", "content-security-policy", "x-content-type-options", "content-length"] as const;
+
+/** A job row Hive holds for a workspace of the org: what vouches for a peer's `peer/<job>`. */
+async function peerJobOfOrg(job: string, orgId: string): Promise<{ id: string } | null> {
+  const row = await db.strutRun.findFirst({ where: { jobId: job, kind: JOB_TURN_KIND }, select: { id: true, workspaceId: true } });
+  if (!row) return null;
+  const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { sourceControlOrgId: true } });
+  return workspace?.sourceControlOrgId === orgId ? { id: row.id } : null;
+}
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ githubLogin: string }> }) {
   const context = getMiddlewareContext(request);
@@ -63,6 +76,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const orgId = await resolveAuthorizedOrgId(githubLogin, userId, false);
   if (!orgId) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  // Mock mode only: the mock strut jobs' files (`strut-artifacts.ts`), for their own swarm id and nothing else.
+  if (process.env.USE_MOCKS === "true" && swarmId === MOCK_STRUT_SWARM_ID) {
+    const file = await mockStrutFile(parsed.path);
+    if (!file) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return new NextResponse(new Uint8Array(file.body), {
+      status: 200,
+      headers: {
+        "content-type": file.contentType,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+        ...(file.contentType.startsWith("text/html") ? { "content-security-policy": "sandbox allow-scripts" } : {}),
+      },
+    });
+  }
+
   const swarm = await db.swarm.findUnique({
     where: { id: swarmId },
     select: {
@@ -77,11 +105,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const access = await validateWorkspaceAccess(swarm.workspace.slug, userId);
   if (!access.canRead) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  // Only what Hive launched on that swarm: the job, or the run, is one of ours.
-  const launched = await db.strutRun.findFirst({
-    where: { swarmId, ...("job" in parsed ? { jobId: parsed.job } : { strutRunId: parsed.runId }) },
-    select: { id: true },
-  });
+  // Only what Hive launched on that swarm: the job, or the run, is one of
+  // ours — or, for a peer's copy of a job, the org strut's job behind it.
+  const home = "job" in parsed ? peerJobHome(parsed.job) : null;
+  const launched = home
+    ? await peerJobOfOrg(home, orgId)
+    : await db.strutRun.findFirst({
+        where: { swarmId, ...("job" in parsed ? { jobId: parsed.job } : { strutRunId: parsed.runId }) },
+        select: { id: true },
+      });
   if (!launched) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   if (!swarm.swarmUrl || !swarm.swarmApiKey) {
@@ -102,7 +134,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       signal: AbortSignal.timeout(READ_TIMEOUT_MS),
     });
   } catch (err) {
-    console.warn("[strut-artifacts] swarm unreachable", { swarmId, error: err instanceof Error ? err.message : String(err) });
+    console.warn("[strut-artifacts] swarm unreachable", {
+      swarmId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: "Could not reach the swarm" }, { status: 502 });
   }
   if (upstream.status === 404) return NextResponse.json({ error: "Not found" }, { status: 404 });

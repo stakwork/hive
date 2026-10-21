@@ -155,6 +155,8 @@ export type CanvasMessageSource =
       title?: string;
       /** The agent stopped for a decision: the question, verbatim. */
       ask?: string;
+      /** A workflow build on another workspace's strut: that workspace's slug, shown as `@<slug>`. */
+      peer?: string;
     }
   | {
       /**
@@ -412,6 +414,17 @@ export interface BrainstormFocus {
   selectedLabel?: string | null;
 }
 
+/** The initiative the user is on (the infinite canvas on the Brainstorm tab) — hidden context, never in the visible message. */
+export interface InitiativeFocus {
+  workspaceSlug: string;
+  initiativeRefId: string;
+  initiativeName: string;
+  stage?: string | null;
+  selectedRefId?: string | null;
+  selectedType?: string | null;
+  selectedLabel?: string | null;
+}
+
 export interface ConversationContext {
   workspaceSlug: string | null;
   workspaceSlugs: string[];
@@ -425,6 +438,8 @@ export interface ConversationContext {
   graphFocus?: GraphFocus | null;
   /** Set while the Brainstorm board is mounted: what "this" means there. */
   brainstormFocus?: BrainstormFocus | null;
+  /** Set while an initiative is open on the infinite canvas: what "this" means there. */
+  initiativeFocus?: InitiativeFocus | null;
 }
 
 // ─── Reserved slots for canvas-bound features (filled in later PRs) ─────────
@@ -525,6 +540,8 @@ interface CanvasChatState {
    * conversation's context.
    */
   brainstormFocus: BrainstormFocus | null;
+  /** The initiative open on the infinite canvas, published like `brainstormFocus`. */
+  initiativeFocus: InitiativeFocus | null;
   pendingInputDraft: string | null;
   /**
    * Text to APPEND (on a new line) to the chat input instead of replacing
@@ -700,6 +717,7 @@ interface CanvasChatState {
    * after consumption — callers usually shouldn't need to clear).
    */
   setBrainstormFocus: (focus: BrainstormFocus | null) => void;
+  setInitiativeFocus: (focus: InitiativeFocus | null) => void;
   setPendingInputDraft: (draft: string | null) => void;
   appendPendingInputDraft: (text: string) => void;
 
@@ -761,6 +779,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       ephemeralSeedCounts: {},
       locallyAuthoredTurnIds: new Set<string>(),
       brainstormFocus: null,
+      initiativeFocus: null,
       pendingInputDraft: null,
       pendingInputAppend: null,
       pendingDeeplink: null,
@@ -1232,6 +1251,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
         ),
 
       setBrainstormFocus: (focus) => set({ brainstormFocus: focus }, false, "setBrainstormFocus"),
+      setInitiativeFocus: (focus) => set({ initiativeFocus: focus }, false, "setInitiativeFocus"),
       setPendingInputDraft: (draft) => set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
       appendPendingInputDraft: (text) =>
         set(
