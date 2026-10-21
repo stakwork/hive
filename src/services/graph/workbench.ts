@@ -9,6 +9,7 @@
 
 import { mockConnectionPage, mockHierarchy, mockNodeConnections } from "@/app/api/mock/graph/workbench-fixture";
 import { mockBrainstormListWithWrites, mockChoiceTreeWithWrites } from "@/app/api/mock/graph/brainstorm-store";
+import { mockInitiativeTree } from "@/app/api/mock/graph/initiative-fixture";
 import { fromPropertyPairs, isRunGraphRefId, propertyPairs, typeFromLabels } from "@/lib/strut-run-graph/hydrate";
 import { runWorkspaceGraphQuery, type WorkspaceGraphQueryFailure } from "./query";
 
@@ -420,5 +421,122 @@ export async function listBrainstormRoots(caller: Caller): Promise<WorkbenchResu
         ? [{ ref_id: id, text: str(r.text) ?? str(r.name) ?? id, job: str(r.job), made_by: str(r.made_by) }]
         : [];
     }),
+  };
+}
+
+// ── Initiative tree ─────────────────────────────────────────────────────────
+
+/** The planning chain under an initiative (Jarvis migration 133), top down. */
+export const INITIATIVE_TREE_LABELS = [
+  "HiveInitiative",
+  "HiveMilestone",
+  "Brief",
+  "InitiativeFeature",
+  "UserStory",
+  "Requirement",
+] as const;
+export type InitiativeNodeType = (typeof INITIATIVE_TREE_LABELS)[number];
+
+const INITIATIVE_TREE_EDGES = ["HAS_MILESTONE", "HAS_BRIEF", "HAS_FEATURE", "HAS_STORY", "HAS_REQUIREMENT"];
+
+/** Initiative → milestone → feature → story → requirement. */
+const INITIATIVE_TREE_DEPTH = 4;
+
+export interface InitiativeTreeNode {
+  ref_id: string;
+  type: InitiativeNodeType;
+  properties: Record<string, unknown>;
+}
+
+export interface InitiativeStage {
+  milestones: number;
+  features: number;
+  stories: number;
+  requirements: number;
+  /** Requirements neither accepted nor dropped. */
+  unaccepted: number;
+}
+
+export interface InitiativeTreeData {
+  nodes: InitiativeTreeNode[];
+  edges: Array<{ source: string; target: string; type: string }>;
+  stage: InitiativeStage;
+  truncated: boolean;
+}
+
+export function initiativeStage(nodes: InitiativeTreeNode[]): InitiativeStage {
+  const count = (t: InitiativeNodeType) => nodes.filter((n) => n.type === t).length;
+  return {
+    milestones: count("HiveMilestone"),
+    features: count("InitiativeFeature"),
+    stories: count("UserStory"),
+    requirements: count("Requirement"),
+    unaccepted: nodes.filter(
+      (n) => n.type === "Requirement" && n.properties.status !== "accepted" && n.properties.status !== "dropped",
+    ).length,
+  };
+}
+
+/** One line for a card: "2 milestones · 5 features · 12 requirements, 3 unaccepted". */
+export function stageLine(s: InitiativeStage): string {
+  const n = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
+  const parts = [
+    s.milestones && n(s.milestones, "milestone"),
+    s.features && n(s.features, "feature"),
+    s.requirements && n(s.requirements, "requirement") + (s.unaccepted ? `, ${s.unaccepted} unaccepted` : ""),
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "Nothing planned yet";
+}
+
+/**
+ * An initiative and everything planned under it: milestones, brief, features,
+ * stories and requirements, linked by the planning edges, with the edges among
+ * them and the counts a card shows. Read by label, like `getChoiceTree`.
+ */
+export async function getInitiativeTree(caller: Caller, refId: string): Promise<WorkbenchResult<InitiativeTreeData>> {
+  if (!isRunGraphRefId(refId)) return invalid("Invalid ref_id");
+  if (useMocks()) {
+    const data = mockInitiativeTree(refId);
+    return { ok: true, data: { ...data, stage: initiativeStage(data.nodes), truncated: false } };
+  }
+  const anyLabel = (v: string) => `(${INITIATIVE_TREE_LABELS.map((l) => `${v}:\`${l}\``).join(" OR ")})`;
+  const rels = INITIATIVE_TREE_EDGES.join("|");
+  const pathLive = `all(x IN nodes(p) WHERE ${nodeLive("x")}) AND all(e IN relationships(p) WHERE ${edgeLive("e")})`;
+  const root = `MATCH (r:\`HiveInitiative\` {ref_id: '${refId}'}) WHERE ${nodeLive("r")}`;
+  const [nodes, edges] = await Promise.all([
+    rows(
+      caller,
+      `${root} MATCH p = (r)-[:${rels}*0..${INITIATIVE_TREE_DEPTH}]->(n) WHERE ${anyLabel("n")} AND ${pathLive} ` +
+        `RETURN DISTINCT n.ref_id AS id, labels(n) AS labels, ${propertyPairs("n")} AS props`,
+      GRAPH_ROW_CAP,
+    ),
+    rows(
+      caller,
+      `${root} MATCH p = (r)-[:${rels}*1..${INITIATIVE_TREE_DEPTH}]->(n) WHERE ${anyLabel("n")} AND ${pathLive} ` +
+        `WITH last(relationships(p)) AS e RETURN DISTINCT startNode(e).ref_id AS source, endNode(e).ref_id AS target, type(e) AS type`,
+      GRAPH_ROW_CAP,
+    ),
+  ]);
+  if (!nodes.ok) return nodes;
+  if (!edges.ok) return edges;
+  const treeNodes = nodes.data.flatMap((r): InitiativeTreeNode[] => {
+    const id = str(r.id);
+    const ls = Array.isArray(r.labels) ? r.labels : [];
+    const type = INITIATIVE_TREE_LABELS.find((l) => ls.includes(l));
+    return id && type ? [{ ref_id: id, type, properties: fromPropertyPairs(r.props) }] : [];
+  });
+  return {
+    ok: true,
+    data: {
+      nodes: treeNodes,
+      edges: edges.data.flatMap((r) => {
+        const source = str(r.source);
+        const target = str(r.target);
+        const type = str(r.type);
+        return source && target && type ? [{ source, target, type }] : [];
+      }),
+      stage: initiativeStage(treeNodes),
+      truncated: nodes.data.length >= GRAPH_ROW_CAP || edges.data.length >= GRAPH_ROW_CAP,
+    },
   };
 }
