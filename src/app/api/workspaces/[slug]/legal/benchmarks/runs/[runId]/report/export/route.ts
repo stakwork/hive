@@ -26,7 +26,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { StakworkRunType } from "@prisma/client";
 import { canReadRunReport } from "@/lib/run-report/types";
-import { assembleRunExport } from "@/lib/run-report/export/assemble";
+import { assembleRunExport, enrichRunExport, type RunExportOpts } from "@/lib/run-report/export/assemble";
 import { buildContentDisposition } from "@/lib/run-report/export/content-disposition";
 import { renderRunOffline } from "@/lib/run-report/export/render-offline";
 import { assembleOfflineHtml } from "@/lib/run-report/export/offline-html";
@@ -35,6 +35,9 @@ import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchTaskRubricRoster } from "@/services/legal-benchmark-rubrics";
 import { fetchFixSnapshots } from "@/services/legal-benchmark-fix-snapshots";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
+import { findLegalStrutRunRow } from "@/services/strut-runs/legal-benchmark";
+import { loadStrutRunReport } from "@/services/strut-runs/legal-report";
 
 type RouteParams = {
   params: Promise<{ slug: string; runId: string }>;
@@ -113,46 +116,81 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // ── 5. IDOR-guarded DB fetch ───────────────────────────────────────────────
-    // id + workspaceId + type all in the WHERE clause. A cross-workspace or
-    // wrong-type runId returns null — no post-fetch ownership check needed.
-    const run = await db.stakworkRun.findFirst({
-      where: {
-        id: runId,
-        workspaceId,
-        type: {
-          in: [
-            StakworkRunType.LEGAL_BENCHMARK_RUNNER,
-            StakworkRunType.LEGAL_BENCHMARK_EVAL,
-            StakworkRunType.LEGAL_BENCHMARK_RECURSION,
-          ],
+    let run: {
+      id: string;
+      projectId: number | null;
+      taskTitle: string;
+      taskSlug: string | null;
+      assemble: (opts: RunExportOpts) => ReturnType<typeof assembleRunExport>;
+    };
+    if (isLegalStrutWorkspace(slug)) {
+      // A strut legal workspace's runs are `harvey-lab-run` StrutRun rows,
+      // scoped by workspace and kind; the report is built from the run's lab.
+      const row = await findLegalStrutRunRow(workspaceId, runId);
+      if (!row) {
+        return json({ error: "Not found" }, 404);
+      }
+      const input = (row.input ?? {}) as { task_title?: unknown; task_slug?: unknown };
+      const taskSlug = typeof input.task_slug === "string" && input.task_slug ? input.task_slug : null;
+      run = {
+        id: row.id,
+        projectId: null,
+        taskTitle: typeof input.task_title === "string" && input.task_title ? input.task_title : (taskSlug ?? "Run report"),
+        taskSlug,
+        assemble: async (opts) => enrichRunExport(row.id, await loadStrutRunReport(row), opts),
+      };
+    } else {
+      // id + workspaceId + type all in the WHERE clause. A cross-workspace or
+      // wrong-type runId returns null — no post-fetch ownership check needed.
+      const stakworkRun = await db.stakworkRun.findFirst({
+        where: {
+          id: runId,
+          workspaceId,
+          type: {
+            in: [
+              StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+              StakworkRunType.LEGAL_BENCHMARK_EVAL,
+              StakworkRunType.LEGAL_BENCHMARK_RECURSION,
+            ],
+          },
         },
-      },
-      // reportUrl IS selected (opting through the global omit) for loadRunReport.
-      // It is NEVER emitted into any artifact or log.
-      select: { id: true, result: true, reportUrl: true, projectId: true },
-    });
+        // reportUrl IS selected (opting through the global omit) for loadRunReport.
+        // It is NEVER emitted into any artifact or log.
+        select: { id: true, result: true, reportUrl: true, projectId: true },
+      });
 
-    if (!run) {
-      return json({ error: "Not found" }, 404);
+      if (!stakworkRun) {
+        return json({ error: "Not found" }, 404);
+      }
+
+      logger.info("[export/runs] Run found, assembling export", LOG_SERVICE, {
+        runId,
+        reportUrl: stakworkRun.reportUrl ? safeUrlParts(stakworkRun.reportUrl) : null,
+      });
+
+      // ── 6. Parse task metadata from result JSON ───────────────────────────────
+      let taskTitle = "Run report";
+      let taskSlug: string | null = null;
+      try {
+        const parsed = stakworkRun.result
+          ? (JSON.parse(stakworkRun.result) as { taskTitle?: string; taskSlug?: string })
+          : null;
+        if (parsed?.taskTitle) taskTitle = parsed.taskTitle;
+        if (parsed?.taskSlug) taskSlug = parsed.taskSlug;
+      } catch {
+        // Malformed result JSON — defaults are fine.
+      }
+
+      const reportUrl = stakworkRun.reportUrl;
+      run = {
+        id: stakworkRun.id,
+        projectId: stakworkRun.projectId,
+        taskTitle,
+        taskSlug,
+        assemble: (opts) => assembleRunExport(runId, reportUrl, opts),
+      };
     }
-
-    logger.info("[export/runs] Run found, assembling export", LOG_SERVICE, {
-      runId,
-      reportUrl: run.reportUrl ? safeUrlParts(run.reportUrl) : null,
-    });
-
-    // ── 6. Parse task metadata from result JSON ───────────────────────────────
-    let taskTitle = "Run report";
-    let taskSlug: string | null = null;
-    try {
-      const parsed = run.result
-        ? (JSON.parse(run.result) as { taskTitle?: string; taskSlug?: string })
-        : null;
-      if (parsed?.taskTitle) taskTitle = parsed.taskTitle;
-      if (parsed?.taskSlug) taskSlug = parsed.taskSlug;
-    } catch {
-      // Malformed result JSON — defaults are fine.
-    }
+    const { taskTitle, taskSlug } = run;
 
     // ── 7. Swarm access for peek prefetch ─────────────────────────────────────
     const swarmResult = await getWorkspaceSwarmAccess(slug, userId);
@@ -183,7 +221,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // ── 9. Assemble (loadRunReport + peek prefetch) ───────────────────────────
-    const exportPayload = await assembleRunExport(runId, run.reportUrl, {
+    const exportPayload = await run.assemble({
       swarmAccess: swarmAccess ?? {
         workspaceId,
         swarmName: "",

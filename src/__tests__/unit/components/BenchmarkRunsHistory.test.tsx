@@ -916,6 +916,34 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.queryByTestId("report-chat-link")).toBeNull();
   });
 
+  it("a strut legal workspace shows the Report column, linking each run to its report", async () => {
+    const { useWorkspace } = await import("@/hooks/useWorkspace");
+    (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
+      workspace: { id: WORKSPACE_ID, slug: "openlaw-1" },
+      isSuperAdmin: true,
+    });
+    const run = makeRun({ hasReport: true });
+    mockUseList.mockReturnValue({
+      runs: [run],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    const user = userEvent.setup();
+    render(React.createElement(BenchmarkRunsHistory));
+
+    expect(screen.getByRole("columnheader", { name: "Report" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Stakwork" })).toBeNull();
+    expect(screen.getByTestId("run-report-link").getAttribute("href")).toBe(
+      `/w/openlaw-1/legal/benchmarks/runs/${run.id}/report`,
+    );
+
+    await user.click(screen.getByText("Analyze Antitrust Strategy").closest("tr")!);
+    expect(screen.getByTestId("results-runner-1").closest("td")!.getAttribute("colspan")).toBe("9");
+  });
+
   it("shows dash (not Pending) for a FAILED run with generateJamieChat (report will never fire)", () => {
     mockUseList.mockReturnValue({
       runs: [makeRun({ status: "FAILED", generateJamieChat: true })],

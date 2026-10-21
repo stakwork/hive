@@ -59,7 +59,7 @@ export interface LegalRunWireRow {
   status: WorkflowStatus;
   projectId: null;
   result: string;
-  hasReport: false;
+  hasReport: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -94,6 +94,16 @@ const STATUS: Record<StrutRunStatus, WorkflowStatus> = {
   CANCELLED: WorkflowStatus.FAILED,
   LOST: WorkflowStatus.FAILED,
 };
+
+/**
+ * A run's report is built from what the run left in its lab (its log and
+ * files), so every run that got as far as settling has one: a failed run's
+ * report still shows how far it got. A cancelled or lost run, or one strut
+ * never started, has none.
+ */
+export function hasStrutReport(row: Pick<StrutRunRow, "status" | "strutRunId">): boolean {
+  return !!row.strutRunId && (row.status === StrutRunStatus.SUCCESS || row.status === StrutRunStatus.ERROR);
+}
 
 function errorMessageOf(row: Pick<StrutRunRow, "status" | "error">): string | undefined {
   if (row.status === StrutRunStatus.CANCELLED) return row.error ?? "The run was cancelled";
@@ -155,6 +165,8 @@ export function toLegalRunResult(row: StrutRunRow): BenchmarkRunResult {
     runner: "strut",
     ...(row.strutRunId ? { strutRunId: row.strutRunId } : {}),
     ...(errorMessage ? { errorMessage } : {}),
+    // The Runs tab's Report cell reads this as "a report is on its way".
+    ...(row.status === StrutRunStatus.PENDING ? { generateRunReport: true } : {}),
     ...(num(body.score) !== undefined ? { score: num(body.score) } : {}),
     ...(num(body.max_score) !== undefined ? { max_score: num(body.max_score) } : {}),
     ...(nPassed !== undefined ? { n_passed: nPassed } : {}),
@@ -178,7 +190,7 @@ export function toLegalRunWireRow(row: StrutRunRow): LegalRunWireRow {
     status: STATUS[row.status],
     projectId: null,
     result: JSON.stringify(toLegalRunResult(row)),
-    hasReport: false,
+    hasReport: hasStrutReport(row),
     createdAt: row.createdAt.toISOString(),
     updatedAt: (row.settledAt ?? row.createdAt).toISOString(),
   };

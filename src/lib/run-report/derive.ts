@@ -89,9 +89,18 @@ const PHASE_STEPS: Record<Exclude<WorkflowPhase, "other">, string[]> = {
   score: "foreach_fetch_deliverable assemble_output_map validate_deliverable_names build_score_rubric_attrs score_rubric format_results build_webhook_body if_no_webhook_url post_result set_output guard_all_pass".split(" "),
 };
 
+/** The same phases for strut's `harvey-lab-run` (strut legal workspaces), whose step ids are its own. */
+const STRUT_PHASE_STEPS: Record<Exclude<WorkflowPhase, "other">, string[]> = {
+  setup: "docs sheet sheet_fill ingest checklist reqs stage".split(" "),
+  context: "writer cross_check case_law".split(" "),
+  draft: "tailor drafter".split(" "),
+  verify: "verify_completeness verify_correctness verify_arithmetic verify_doctrine critiques aggregator".split(" "),
+  score: "score record dispute merged".split(" "),
+};
+
 const STEP_TO_PHASE: Record<string, WorkflowPhase> = (() => {
   const map: Record<string, WorkflowPhase> = {};
-  for (const [phase, steps] of Object.entries(PHASE_STEPS)) {
+  for (const [phase, steps] of [...Object.entries(STRUT_PHASE_STEPS), ...Object.entries(PHASE_STEPS)]) {
     for (const step of steps) map[step] = phase as WorkflowPhase;
   }
   return map;
