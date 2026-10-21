@@ -30,7 +30,7 @@ beforeEach(() => {
         },
       };
     }
-    return { ok: true, meta, data: { columns: ["target", "source"], rows: [["child-1", FOCUS]] } };
+    return { ok: true, meta, data: { columns: ["type", "target", "source"], rows: [["PARENT_OF", "child-1", FOCUS]] } };
   });
 });
 

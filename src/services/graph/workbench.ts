@@ -322,6 +322,83 @@ export interface ChoiceTreeData {
   truncated: boolean;
 }
 
+// ── Trees ───────────────────────────────────────────────────────────────────
+
+export interface TreeSpec {
+  /** A node is in the tree when it carries any of these labels. */
+  labels: readonly string[];
+  /** The edge types followed downward from the focus. */
+  edges: readonly string[];
+  /** How many edges deep from the focus. */
+  depth: number;
+  /** Extra RETURN columns per node, given the node's variable. */
+  extra?: (n: string) => string;
+}
+
+export interface TreeRow {
+  ref_id: string;
+  labels: string[];
+  properties: Record<string, unknown>;
+  /** The node's whole row, for `extra` columns. */
+  row: Record<string, unknown>;
+}
+
+export interface TreeRows {
+  nodes: TreeRow[];
+  edges: Array<{ source: string; target: string; type: string }>;
+  truncated: boolean;
+}
+
+/**
+ * The `focus` node and every node below it along `spec.edges` carrying any of
+ * `spec.labels`, with the edges among them, read by Cypher and selected by
+ * label (never `node_type`). A deleted node or edge hides everything under it.
+ */
+export async function readTree(caller: Caller, focusRefId: string, spec: TreeSpec): Promise<WorkbenchResult<TreeRows>> {
+  if (spec.labels.length === 0 || !spec.labels.every((l) => IDENT.test(l))) return invalid("Invalid label");
+  if (spec.edges.length === 0 || !spec.edges.every((e) => IDENT.test(e))) return invalid("Invalid edge type");
+  if (!isRunGraphRefId(focusRefId)) return invalid("Invalid ref_id");
+  const any = (v: string) => `(${spec.labels.map((l) => `${v}:\`${l}\``).join(" OR ")})`;
+  const rels = spec.edges.map((e) => `\`${e}\``).join("|");
+  const pathLive = `all(x IN nodes(p) WHERE ${nodeLive("x")}) AND all(e IN relationships(p) WHERE ${edgeLive("e")})`;
+  const root = `MATCH (r:Data_Bank {ref_id: '${focusRefId}'})`;
+  const [nodes, edges] = await Promise.all([
+    rows(
+      caller,
+      `${root} MATCH p = (r)-[:${rels}*0..${spec.depth}]->(n) WHERE ${any("n")} AND ${pathLive} ` +
+        `RETURN DISTINCT n.ref_id AS id, labels(n) AS labels, ${propertyPairs("n")} AS props` +
+        (spec.extra ? `, ${spec.extra("n")}` : ""),
+      GRAPH_ROW_CAP,
+    ),
+    rows(
+      caller,
+      `${root} MATCH p = (r)-[:${rels}*0..${spec.depth - 1}]->(a)-[t:${rels}]->(b) ` +
+        `WHERE ${any("a")} AND ${any("b")} AND ${pathLive} AND ${edgeLive("t")} AND ${nodeLive("b")} ` +
+        `RETURN DISTINCT a.ref_id AS source, b.ref_id AS target, type(t) AS type`,
+      GRAPH_ROW_CAP,
+    ),
+  ]);
+  if (!nodes.ok) return nodes;
+  if (!edges.ok) return edges;
+  return {
+    ok: true,
+    data: {
+      nodes: nodes.data.flatMap((r) => {
+        const id = str(r.id);
+        const labels = Array.isArray(r.labels) ? r.labels.filter((l): l is string => typeof l === "string") : [];
+        return id ? [{ ref_id: id, labels, properties: fromPropertyPairs(r.props), row: r }] : [];
+      }),
+      edges: edges.data.flatMap((r) => {
+        const source = str(r.source);
+        const target = str(r.target);
+        const type = str(r.type);
+        return source && target && type ? [{ source, target, type }] : [];
+      }),
+      truncated: nodes.data.length >= GRAPH_ROW_CAP || edges.data.length >= GRAPH_ROW_CAP,
+    },
+  };
+}
+
 export const CHOICE_TREE_LABELS = ["Question", "Option", "Choice"];
 
 /**
@@ -335,47 +412,27 @@ export async function getChoiceTree(
   focusRefId: string,
   labels: string[] = CHOICE_TREE_LABELS,
 ): Promise<WorkbenchResult<ChoiceTreeData>> {
-  if (labels.length === 0 || !labels.every((l) => IDENT.test(l))) return invalid("Invalid label");
-  if (!isRunGraphRefId(focusRefId)) return invalid("Invalid ref_id");
-  if (useMocks()) return { ok: true, data: mockChoiceTreeWithWrites(focusRefId, labels) };
-  const any = (v: string) => `(${labels.map((l) => `${v}:\`${l}\``).join(" OR ")})`;
-  const root = `MATCH (r:Data_Bank {ref_id: '${focusRefId}'})`;
-  const [nodes, edges] = await Promise.all([
-    rows(
-      caller,
-      `${root} MATCH (r)-[:PARENT_OF*0..20]->(n) WHERE ${any("n")} AND ${nodeLive("n")} ` +
-        `RETURN DISTINCT n.ref_id AS id, labels(n) AS labels, ${propertyPairs("n")} AS props, ` +
-        `[(n)-[he:HAS_EFFECT]->(x:Effect) WHERE ${edgeLive("he")} AND ${nodeLive("x")} | ` +
-        `{ref_id: x.ref_id, name: x.name, description: x.description, direction: x.direction, impact: x.impact}] AS effects`,
-      GRAPH_ROW_CAP,
-    ),
-    rows(
-      caller,
-      `${root} MATCH (r)-[:PARENT_OF*0..20]->(a)-[e:PARENT_OF]->(b) ` +
-        `WHERE ${any("a")} AND ${any("b")} AND ${edgeLive("e")} AND ${nodeLive("a")} AND ${nodeLive("b")} ` +
-        `RETURN DISTINCT a.ref_id AS source, b.ref_id AS target`,
-      GRAPH_ROW_CAP,
-    ),
-  ]);
-  if (!nodes.ok) return nodes;
-  if (!edges.ok) return edges;
+  if (useMocks() && isRunGraphRefId(focusRefId) && labels.every((l) => IDENT.test(l)))
+    return { ok: true, data: mockChoiceTreeWithWrites(focusRefId, labels) };
+  const tree = await readTree(caller, focusRefId, {
+    labels,
+    edges: ["PARENT_OF"],
+    depth: 20,
+    extra: (n) =>
+      `[(${n})-[he:HAS_EFFECT]->(x:Effect) WHERE ${edgeLive("he")} AND ${nodeLive("x")} | ` +
+      `{ref_id: x.ref_id, name: x.name, description: x.description, direction: x.direction, impact: x.impact}] AS effects`,
+  });
+  if (!tree.ok) return tree;
   return {
     ok: true,
     data: {
-      nodes: nodes.data.flatMap((r) => {
-        const id = str(r.id);
-        const ls = Array.isArray(r.labels) ? r.labels : [];
-        const type: ChoiceTreeNode["type"] = ls.includes("Question") ? "Question" : ls.includes("Option") ? "Option" : "Choice";
-        if (!id) return [];
-        const effects = type === "Option" ? toEffects(r.effects) : [];
-        return [{ ref_id: id, type, properties: fromPropertyPairs(r.props), ...(effects.length ? { effects } : {}) }];
+      nodes: tree.data.nodes.map((r) => {
+        const type: ChoiceTreeNode["type"] = r.labels.includes("Question") ? "Question" : r.labels.includes("Option") ? "Option" : "Choice";
+        const effects = type === "Option" ? toEffects(r.row.effects) : [];
+        return { ref_id: r.ref_id, type, properties: r.properties, ...(effects.length ? { effects } : {}) };
       }),
-      edges: edges.data.flatMap((r) => {
-        const source = str(r.source);
-        const target = str(r.target);
-        return source && target ? [{ source, target }] : [];
-      }),
-      truncated: nodes.data.length >= GRAPH_ROW_CAP || edges.data.length >= GRAPH_ROW_CAP,
+      edges: tree.data.edges.map(({ source, target }) => ({ source, target })),
+      truncated: tree.data.truncated,
     },
   };
 }
@@ -494,49 +551,19 @@ export function stageLine(s: InitiativeStage): string {
  * them and the counts a card shows. Read by label, like `getChoiceTree`.
  */
 export async function getInitiativeTree(caller: Caller, refId: string): Promise<WorkbenchResult<InitiativeTreeData>> {
-  if (!isRunGraphRefId(refId)) return invalid("Invalid ref_id");
-  if (useMocks()) {
+  if (useMocks() && isRunGraphRefId(refId)) {
     const data = mockInitiativeTree(refId);
     return { ok: true, data: { ...data, stage: initiativeStage(data.nodes), truncated: false } };
   }
-  const anyLabel = (v: string) => `(${INITIATIVE_TREE_LABELS.map((l) => `${v}:\`${l}\``).join(" OR ")})`;
-  const rels = INITIATIVE_TREE_EDGES.join("|");
-  const pathLive = `all(x IN nodes(p) WHERE ${nodeLive("x")}) AND all(e IN relationships(p) WHERE ${edgeLive("e")})`;
-  const root = `MATCH (r:\`HiveInitiative\` {ref_id: '${refId}'}) WHERE ${nodeLive("r")}`;
-  const [nodes, edges] = await Promise.all([
-    rows(
-      caller,
-      `${root} MATCH p = (r)-[:${rels}*0..${INITIATIVE_TREE_DEPTH}]->(n) WHERE ${anyLabel("n")} AND ${pathLive} ` +
-        `RETURN DISTINCT n.ref_id AS id, labels(n) AS labels, ${propertyPairs("n")} AS props`,
-      GRAPH_ROW_CAP,
-    ),
-    rows(
-      caller,
-      `${root} MATCH p = (r)-[:${rels}*1..${INITIATIVE_TREE_DEPTH}]->(n) WHERE ${anyLabel("n")} AND ${pathLive} ` +
-        `WITH last(relationships(p)) AS e RETURN DISTINCT startNode(e).ref_id AS source, endNode(e).ref_id AS target, type(e) AS type`,
-      GRAPH_ROW_CAP,
-    ),
-  ]);
-  if (!nodes.ok) return nodes;
-  if (!edges.ok) return edges;
-  const treeNodes = nodes.data.flatMap((r): InitiativeTreeNode[] => {
-    const id = str(r.id);
-    const ls = Array.isArray(r.labels) ? r.labels : [];
-    const type = INITIATIVE_TREE_LABELS.find((l) => ls.includes(l));
-    return id && type ? [{ ref_id: id, type, properties: fromPropertyPairs(r.props) }] : [];
+  const tree = await readTree(caller, refId, {
+    labels: INITIATIVE_TREE_LABELS,
+    edges: INITIATIVE_TREE_EDGES,
+    depth: INITIATIVE_TREE_DEPTH,
   });
-  return {
-    ok: true,
-    data: {
-      nodes: treeNodes,
-      edges: edges.data.flatMap((r) => {
-        const source = str(r.source);
-        const target = str(r.target);
-        const type = str(r.type);
-        return source && target && type ? [{ source, target, type }] : [];
-      }),
-      stage: initiativeStage(treeNodes),
-      truncated: nodes.data.length >= GRAPH_ROW_CAP || edges.data.length >= GRAPH_ROW_CAP,
-    },
-  };
+  if (!tree.ok) return tree;
+  const nodes = tree.data.nodes.flatMap((r): InitiativeTreeNode[] => {
+    const type = INITIATIVE_TREE_LABELS.find((l) => r.labels.includes(l));
+    return type ? [{ ref_id: r.ref_id, type, properties: r.properties }] : [];
+  });
+  return { ok: true, data: { nodes, edges: tree.data.edges, stage: initiativeStage(nodes), truncated: tree.data.truncated } };
 }

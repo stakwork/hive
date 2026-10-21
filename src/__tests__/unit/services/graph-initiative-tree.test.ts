@@ -50,17 +50,17 @@ describe("getInitiativeTree", () => {
     expect(mockedQuery).not.toHaveBeenCalled();
   });
 
-  test("queries the planning chain from a live initiative, by label, live paths only", async () => {
+  test("queries the planning chain from the focus, by label, live paths only", async () => {
     mockedQuery.mockResolvedValue({ ok: true, meta, data: { columns: [], rows: [] } });
     await getInitiativeTree(caller, "init-1");
     expect(mockedQuery).toHaveBeenCalledTimes(2);
     for (const [{ query }] of mockedQuery.mock.calls) {
       const q = String(query);
-      expect(q).toContain("MATCH (r:`HiveInitiative` {ref_id: 'init-1'}) WHERE r.deleted_at IS NULL");
-      expect(q).toContain("HAS_MILESTONE|HAS_BRIEF|HAS_FEATURE|HAS_STORY|HAS_REQUIREMENT");
+      expect(q).toContain("MATCH (r:Data_Bank {ref_id: 'init-1'})");
+      expect(q).toContain("`HAS_MILESTONE`|`HAS_BRIEF`|`HAS_FEATURE`|`HAS_STORY`|`HAS_REQUIREMENT`");
       expect(q).toContain("all(x IN nodes(p) WHERE x.deleted_at IS NULL");
       expect(q).toContain("all(e IN relationships(p) WHERE coalesce(e.is_muted, false) = false");
-      expect(q).toContain("n:`Requirement`");
+      expect(q).toContain(":`Requirement`");
       expect(q).not.toContain("node_type");
     }
   });
