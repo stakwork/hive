@@ -103,8 +103,23 @@ describe("parseOrchestratorJobCalls — the jobs a turn launched, from its event
         end("o/agent/002-job_continue", { job: "j-2", runId: "r-2", callback: true }, "tool:job_continue"),
       ]),
     ).toEqual([
-      { job: "j-1", runId: "r-1", title: "Flights" },
+      // A job/start that named no workflow launched strut's default; a job/continue says none.
+      { job: "j-1", runId: "r-1", title: "Flights", workflow: "job" },
       { job: "j-2", runId: "r-2" },
+    ]);
+  });
+
+  it("a job/start carries the workflow its input named — a builder job, with or without a peer", () => {
+    expect(
+      parseOrchestratorJobCalls([
+        start("o/agent/001-job_start", { prompt: "p", title: "Digest", workflow: "builder", peer: "acme-web" }),
+        end("o/agent/001-job_start", { job: "j-1", runId: "r-1", callback: true }),
+        start("o/agent/002-job_start", '{"prompt":"p","title":"Local","workflow":"builder"}'),
+        end("o/agent/002-job_start", '{"job":"j-2","runId":"r-2","callback":true}'),
+      ]),
+    ).toEqual([
+      { job: "j-1", runId: "r-1", title: "Digest", workflow: "builder" },
+      { job: "j-2", runId: "r-2", title: "Local", workflow: "builder" },
     ]);
   });
 
