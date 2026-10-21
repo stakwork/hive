@@ -41,6 +41,34 @@ export async function fetchStrutRunEvents(row: LabRow, timeoutMs = EVENTS_TIMEOU
   }
 }
 
+/**
+ * What a job IS on the row's strut: `GET {lab}/jobs/<job>`'s `workflow`, the
+ * one its newest turn ran (`job` or `builder`, strut API.md) — what
+ * `job/continue` launches. Null when the lab could not say (an older strut
+ * has no such field).
+ */
+export async function fetchStrutJobWorkflow(row: Pick<StrutRunRow, "id" | "swarmId">, job: string, timeoutMs = EVENTS_TIMEOUT_MS): Promise<string | null> {
+  const lab = await labForRow(row);
+  if (!lab) return null;
+  try {
+    const res = await fetch(`${lab.labBase}/jobs/${encodeURIComponent(job)}?threads=0`, {
+      headers: { "x-api-token": lab.swarmApiKey },
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { workflow?: unknown };
+    return typeof body.workflow === "string" && body.workflow ? body.workflow : null;
+  } catch (err) {
+    logger.warn("Strut job unavailable", STRUT_RUN_LOG_TAG, {
+      runId: row.id,
+      job,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
 export interface StrutArtifact {
   body: ArrayBuffer;
   contentType: string;

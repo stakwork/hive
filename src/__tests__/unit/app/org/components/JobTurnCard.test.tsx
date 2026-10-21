@@ -184,6 +184,19 @@ function eventRow(id: string, over: Partial<JobEventSource> & { content?: string
   };
 }
 
+describe("JobTurnCard — a build on another strut", () => {
+  test("the reply's peer is named after the title as @slug; a job that ran here names none", () => {
+    const { unmount } = render(
+      <JobTurnCard message={{ content: content("Built it.") }} source={source({ workflow: "builder", peer: "acme-web" })} />,
+    );
+    expect(screen.getByText("Dark mode plan")).toBeInTheDocument();
+    expect(screen.getByTestId("job-turn-peer")).toHaveTextContent("@acme-web");
+    unmount();
+    render(<JobTurnCard message={{ content: content("Built it.") }} source={source({ workflow: "builder" })} />);
+    expect(screen.queryByTestId("job-turn-peer")).toBeNull();
+  });
+});
+
 describe("getPendingJobTurnsFromMessages", () => {
   test("a launch strut accepted is a pending turn, anchored on the launching message", () => {
     expect(getPendingJobTurnsFromMessages([launch("m1")])).toEqual([
@@ -276,6 +289,13 @@ describe("PendingJobTurnCard", () => {
   test("a title-less turn still has a name", () => {
     render(<PendingJobTurnCard turn={{ jobId: JOB, title: "", anchorMessageId: "m1" }} />);
     expect(screen.getByText("Job")).toBeInTheDocument();
+    expect(screen.queryByTestId("job-turn-peer")).toBeNull();
+  });
+
+  test("a build on another strut names it after the title", () => {
+    render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Digest", anchorMessageId: "m1", peer: "acme-web" }} />);
+    expect(screen.getByText("Digest")).toBeInTheDocument();
+    expect(screen.getByTestId("job-turn-peer")).toHaveTextContent("@acme-web");
   });
 });
 
@@ -304,7 +324,7 @@ describe("getPendingJobTurnsFromMessages — turns an event started", () => {
 
 describe("getPendingJobTurnsFromMessages — jobs the strut orchestrator launched", () => {
   /** An orchestrator reply row (Jamie on strut) carrying the jobs its turn launched. */
-  const reply = (id: string, jobs: Array<{ jobId: string; title: string; runId: string }>): CanvasChatMessage => ({
+  const reply = (id: string, jobs: Array<{ jobId: string; title: string; runId: string; peer?: string }>): CanvasChatMessage => ({
     id,
     role: "assistant",
     content: "Started a job for that.",
@@ -327,6 +347,17 @@ describe("getPendingJobTurnsFromMessages — jobs the strut orchestrator launche
     expect(
       getPendingJobTurnsFromMessages([row("job-row-1"), reply("o1", [{ jobId: JOB, title: "", runId: "row-3" }])]),
     ).toEqual([{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "o1" }]);
+  });
+
+  test("a build on another strut carries its @slug: the launch's, else the job's last seen (a continue names none)", () => {
+    expect(getPendingJobTurnsFromMessages([reply("o1", [{ jobId: JOB, title: "Digest", runId: "row-2", peer: "acme-web" }])])).toEqual([
+      { jobId: JOB, title: "Digest", anchorMessageId: "o1", peer: "acme-web" },
+    ]);
+    expect(
+      getPendingJobTurnsFromMessages([row("job-row-1", { workflow: "builder", peer: "acme-web" }), reply("o2", [{ jobId: JOB, title: "", runId: "row-3" }])]),
+    ).toEqual([{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "o2", peer: "acme-web" }]);
+    // A job that runs here has none.
+    expect(getPendingJobTurnsFromMessages([row("job-row-1"), reply("o2", [{ jobId: JOB, title: "", runId: "row-3" }])])[0]).not.toHaveProperty("peer");
   });
 });
 

@@ -17,14 +17,20 @@
  *     its `run.end` under an `orchestrator_turn` row mints a `job_turn` row
  *     routed from that row and settles it; a replay finds the row and takes
  *     the settled path; the same payload under any other kind is a 400.
+ *     A `run.end` carrying `job` is a job turn whatever its workflow: a
+ *     `builder` job's is adopted the same way and its row records `builder`
+ *     (re-recording a PENDING row of that run minted under `job`); one
+ *     without `job` is never adopted, whatever its workflow.
  */
 
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import crypto from "crypto";
 import { NextRequest } from "next/server";
 
-const { mockFindUnique, mockUpdateMany, mockUpsert, mockWorkspaceFindUnique, mockRateLimit, mockComplete } = vi.hoisted(() => ({
+const { mockFindUnique, mockFindMany, mockUpdate, mockUpdateMany, mockUpsert, mockWorkspaceFindUnique, mockRateLimit, mockComplete } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
+  mockFindMany: vi.fn(),
+  mockUpdate: vi.fn(),
   mockUpdateMany: vi.fn(),
   mockUpsert: vi.fn(),
   mockWorkspaceFindUnique: vi.fn(),
@@ -34,7 +40,7 @@ const { mockFindUnique, mockUpdateMany, mockUpsert, mockWorkspaceFindUnique, moc
 
 vi.mock("@/lib/db", () => ({
   db: {
-    strutRun: { findUnique: mockFindUnique, updateMany: mockUpdateMany, upsert: mockUpsert },
+    strutRun: { findUnique: mockFindUnique, findMany: mockFindMany, update: mockUpdate, updateMany: mockUpdateMany, upsert: mockUpsert },
     workspace: { findUnique: mockWorkspaceFindUnique },
   },
 }));
@@ -90,6 +96,7 @@ describe("POST /api/strut-runs/webhook", () => {
     mockRateLimit.mockResolvedValue({ allowed: true });
     mockFindUnique.mockResolvedValue(row());
     mockUpdateMany.mockResolvedValue({ count: 1 });
+    mockFindMany.mockResolvedValue([]);
     mockWorkspaceFindUnique.mockResolvedValue({ slug: "acme" });
     mockComplete.mockResolvedValue("claimed");
   });
@@ -275,6 +282,56 @@ describe("POST /api/strut-runs/webhook", () => {
       expect(mockUpsert).not.toHaveBeenCalled();
       expect(mockComplete).toHaveBeenCalledWith(orchestrator({ status: "PENDING" }), expect.objectContaining({ status: "success" }), expect.anything());
       expect((await post(body({ workflow: "other" }))).status).toBe(400);
+    });
+
+    test("a builder job's run.end is a job turn too: adopted the same way, its row recording builder", async () => {
+      mockUpsert.mockResolvedValue(adopted({ workflow: "builder" }));
+      const res = await post(jobEnd({ workflow: "builder", title: "Digest workflow" }));
+      expect(res.status).toBe(200);
+
+      // Looked up by the run, whatever workflow a row of it was minted under.
+      expect(mockFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { swarmId: "swarm-1", kind: "job_turn", jobId: JOB, strutRunId: "1790000000777" } }),
+      );
+      const call = mockUpsert.mock.calls[0][0];
+      expect(call.where).toEqual({ swarmId_workflow_strutRunId: { swarmId: "swarm-1", workflow: "builder", strutRunId: "1790000000777" } });
+      expect(call.create).toMatchObject({
+        kind: "job_turn",
+        workflow: "builder",
+        jobId: JOB,
+        conversationId: "conv-1",
+        input: { prompt: "", title: "Digest workflow", workspace: "acme", via: "orchestrator", parentRunId: "row-1" },
+      });
+      expect(mockComplete).toHaveBeenCalledWith(
+        adopted({ workflow: "builder" }),
+        { status: "success", output: { text: "Shipped.", artifacts: [] }, error: null, durationMs: 4200 },
+        expect.anything(),
+      );
+    });
+
+    test("a PENDING row of that run minted under job (the turn's guess) is re-recorded under the run.end's workflow and settled", async () => {
+      mockFindMany.mockResolvedValue([adopted()]);
+      mockUpdate.mockResolvedValue(adopted({ workflow: "builder" }));
+      expect((await post(jobEnd({ workflow: "builder" }))).status).toBe(200);
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "job-row-9" }, data: { workflow: "builder" } }));
+      expect(mockUpsert).not.toHaveBeenCalled();
+      expect(mockComplete).toHaveBeenCalledWith(adopted({ workflow: "builder" }), expect.objectContaining({ status: "success" }), expect.anything());
+    });
+
+    test("a job run.end whose workflow is missing or not a name is a 400; nothing is minted", async () => {
+      expect((await post(jobEnd({ workflow: undefined }))).status).toBe(400);
+      expect((await post(jobEnd({ workflow: 42 }))).status).toBe(400);
+      expect((await post(jobEnd({ workflow: "../builder" }))).status).toBe(400);
+      expect(mockUpsert).not.toHaveBeenCalled();
+      expect(mockComplete).not.toHaveBeenCalled();
+    });
+
+    test("a run.end without job is never adopted, whatever its workflow", async () => {
+      expect((await post(jobEnd({ job: undefined, workflow: "builder" }))).status).toBe(400);
+      expect((await post(jobEnd({ job: null, workflow: "builder" }))).status).toBe(400);
+      expect(mockFindMany).not.toHaveBeenCalled();
+      expect(mockUpsert).not.toHaveBeenCalled();
+      expect(mockComplete).not.toHaveBeenCalled();
     });
 
     test("a job run.end under a job_turn row with another run id, or under any other kind, is a 400", async () => {
