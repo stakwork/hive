@@ -44,9 +44,13 @@ interface SummaryResponseEntry {
   isDefault: boolean;
 }
 
-export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionListResult {
+/**
+ * `enabled: false` fetches nothing — for a page that has no recursion (the
+ * strut legal workspaces), since both endpoints are `openlaw`'s.
+ */
+export function useLegalBenchmarkRecursionList(enabled = true): UseLegalBenchmarkRecursionListResult {
   const [entries, setEntries] = useState<RecursionEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [summaryPartial, setSummaryPartial] = useState<boolean | undefined>(undefined);
 
@@ -97,18 +101,20 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
 
   // Initial fetch of enrollment list.
   useEffect(() => {
+    if (!enabled) return;
     fetchEntries();
-  }, [fetchEntries]);
+  }, [fetchEntries, enabled]);
 
   // Always-on 30-second polling of the lightweight /recursion endpoint.
   // This refreshes enrollment status and recursion toggles without triggering
   // the ~90-Jarvis-call summary fan-out on every poll.
   useEffect(() => {
+    if (!enabled) return;
     intervalRef.current = setInterval(fetchEntries, POLL_INTERVAL_MS);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [fetchEntries]);
+  }, [fetchEntries, enabled]);
 
   // One-time summary fetch on mount. Populates rubricCount / latestRun /
   // fixChainDepth for the initial render so cards can show their score badge
@@ -116,6 +122,7 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
   // No setInterval — the summary endpoint fans out ~90 Jarvis calls and must
   // never be polled every 30 seconds per browser tab.
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     (async () => {
       try {
@@ -159,7 +166,7 @@ export function useLegalBenchmarkRecursionList(): UseLegalBenchmarkRecursionList
     return () => {
       cancelled = true;
     };
-  }, []); // Intentionally empty: one-time mount fetch only.
+  }, [enabled]); // One-time mount fetch only (enabled never changes for a page).
 
   return { entries, isLoading, error, refetch: fetchEntries, summaryPartial };
 }

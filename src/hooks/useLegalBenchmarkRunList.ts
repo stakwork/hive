@@ -5,6 +5,7 @@ import { RUN_LIST_LIMIT } from "@/lib/harvey-lab/benchmark-summary";
 import { usePusherChannel } from "@/hooks/usePusherChannel";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 
 /**
  * Display name per StakworkRun pipeline:
@@ -109,6 +110,9 @@ export function useLegalBenchmarkRunList(
 
   const { workspace } = useWorkspace();
   const workspaceSlug = workspace?.slug;
+  // A strut legal workspace lists its `harvey-lab-run` runs (same row shape)
+  // and has no eval / recursion / consolidated pipelines.
+  const strut = isLegalStrutWorkspace(workspaceSlug);
 
   const runsRef = useRef<BenchmarkRunListRow[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -133,22 +137,24 @@ export function useLegalBenchmarkRunList(
         fetch(
           `/api/stakwork/runs?type=${runType}&workspaceId=${workspaceId}&limit=${RUN_LIST_LIMIT}&includeResult=true`,
         );
-      const [res, evalRes, recursionRes, consolidatedRes] = await Promise.all([
-        fetchType(StakworkRunType.LEGAL_BENCHMARK_RUNNER),
-        fetchType(StakworkRunType.LEGAL_BENCHMARK_EVAL),
-        fetchType(StakworkRunType.LEGAL_BENCHMARK_RECURSION),
-        // CONSOLIDATED rows flow through Pusher updates so the RecursionCard
-        // can surface in-flight / completed consolidated report status after
-        // a page refresh without any new polling logic.
-        fetchType(StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED),
-      ]);
+      const [res, evalRes, recursionRes, consolidatedRes] = strut
+        ? [await fetch(`/api/workspaces/${workspaceSlug}/legal/benchmarks/strut/runs`), null, null, null]
+        : await Promise.all([
+            fetchType(StakworkRunType.LEGAL_BENCHMARK_RUNNER),
+            fetchType(StakworkRunType.LEGAL_BENCHMARK_EVAL),
+            fetchType(StakworkRunType.LEGAL_BENCHMARK_RECURSION),
+            // CONSOLIDATED rows flow through Pusher updates so the RecursionCard
+            // can surface in-flight / completed consolidated report status after
+            // a page refresh without any new polling logic.
+            fetchType(StakworkRunType.LEGAL_BENCHMARK_CONSOLIDATED),
+          ]);
       // Manual runs are the tab's backbone — fail hard when they fail. The
       // secondary pipelines degrade to empty lists rather than blanking the tab.
       if (!res.ok) throw new Error("Failed to fetch runs");
       const data = await res.json();
-      const evalData = evalRes.ok ? await evalRes.json().catch(() => null) : null;
-      const recursionData = recursionRes.ok ? await recursionRes.json().catch(() => null) : null;
-      const consolidatedData = consolidatedRes.ok ? await consolidatedRes.json().catch(() => null) : null;
+      const evalData = evalRes?.ok ? await evalRes.json().catch(() => null) : null;
+      const recursionData = recursionRes?.ok ? await recursionRes.json().catch(() => null) : null;
+      const consolidatedData = consolidatedRes?.ok ? await consolidatedRes.json().catch(() => null) : null;
 
       interface RawRunRow {
         id: string;
@@ -259,7 +265,7 @@ export function useLegalBenchmarkRunList(
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, workspaceSlug, strut]);
 
   const fetchRunRef = useRef(fetchRuns);
   useEffect(() => { fetchRunRef.current = fetchRuns; }, [fetchRuns]);

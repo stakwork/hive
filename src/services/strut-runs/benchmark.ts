@@ -49,7 +49,7 @@ const ROW_SELECT = {
   settledAt: true,
 } as const;
 
-export function toBenchmarkRun(row: StrutRunRow, benchmark: Pick<Benchmark, "input">): BenchmarkRun {
+export function toBenchmarkRun(row: StrutRunRow, benchmark: Pick<Benchmark, "input" | "taskIdKey">): BenchmarkRun {
   const input = isRecord(row.input) ? row.input : {};
   const { score, metric, officialScore } = parseHeadline(row.output);
   const raw = input[taskIdKey(benchmark)];

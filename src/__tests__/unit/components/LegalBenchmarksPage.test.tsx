@@ -225,4 +225,27 @@ describe("LegalBenchmarksPage", () => {
       expect(screen.getByTestId("recursion-list")).toBeInTheDocument();
     });
   });
+
+  it("shows only Benchmark and Runs in a strut legal workspace", async () => {
+    const { useWorkspace } = await import("@/hooks/useWorkspace");
+    const openlaw = vi.mocked(useWorkspace).getMockImplementation();
+    vi.mocked(useWorkspace).mockImplementation(
+      () =>
+        ({
+          workspace: { id: WORKSPACE_ID, slug: "openlaw-1" },
+          isSuperAdmin: false,
+        }) as unknown as ReturnType<typeof useWorkspace>,
+    );
+    try {
+      render(React.createElement(LegalBenchmarksPage));
+
+      expect(screen.getByText("Benchmark")).toBeInTheDocument();
+      expect(screen.getByText("Runs")).toBeInTheDocument();
+      expect(screen.queryByText("Recursion")).toBeNull();
+      expect(screen.queryByText(/C & H/)).toBeNull();
+      expect(screen.getByTestId("benchmarks-panel")).toBeInTheDocument();
+    } finally {
+      vi.mocked(useWorkspace).mockImplementation(openlaw!);
+    }
+  });
 });
