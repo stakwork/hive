@@ -1,5 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// job-turn's server neighbours: only its mapping is used here.
+vi.mock("@/lib/db", () => ({ db: {} }));
+vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: vi.fn(), notifyCanvasCardJob: vi.fn() }));
+vi.mock("@/services/canvas-strut-autoturn", () => ({ invokeCanvasAgentOnJobTurn: vi.fn() }));
+vi.mock("@/services/strut-orchestrator-wake", () => ({ invokeOrchestratorOnJobTurn: vi.fn() }));
+vi.mock("@/services/strut-runs", () => ({ labForRow: vi.fn() }));
+
 import { mockCanvasJobs } from "@/app/api/mock/graph/canvas-jobs";
+import { MOCK_STRUT_SWARM_ID } from "@/app/api/mock/graph/strut-artifacts";
+import { mapStrutArtifacts } from "@/services/strut-runs/job-turn";
 import { mockInitiativeTree } from "@/app/api/mock/graph/initiative-fixture";
 import type { ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { toBoard } from "@/app/org/[githubLogin]/_components/infinite-canvas/board";
@@ -117,7 +127,7 @@ describe("workOf", () => {
       ],
       {},
     );
-    const { jobs, artifactsByRef } = mockCanvasJobs(ONB);
+    const { jobs, artifactsByRef } = mockCanvasJobs(ONB, (e) => mapStrutArtifacts(e, MOCK_STRUT_SWARM_ID).refs);
     const jobsByRef: Record<string, CanvasJob[]> = {};
     for (const j of jobs) (jobsByRef[j.refId] ??= []).push(j);
     const work = workOf(board, ONB, jobsByRef, artifactsByRef);

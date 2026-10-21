@@ -18,6 +18,7 @@ import { initiativeStage } from "@/lib/initiative-plan";
 import { scriptedJamieReply } from "@/app/api/mock/anthropic/v1/messages/jamie-script";
 import { resetMockBrainstormStore, mockBrainstormListWithWrites } from "@/app/api/mock/graph/brainstorm-store";
 import { mockCanvasJobs, resetMockCanvasJobs } from "@/app/api/mock/graph/canvas-jobs";
+import { MOCK_STRUT_JOBS } from "@/app/api/mock/graph/strut-artifacts";
 
 const scope = (name: string, ref: string, selected = "") =>
   `<canvas-scope>\nThe user is on the infinite canvas, on initiative "${name}" (\`${ref}\`) in workspace \`ws\`.${selected}\n</canvas-scope>`;
@@ -160,7 +161,8 @@ describe("scripted Jamie", () => {
 });
 
 /** The jobs Jamie started in the test, without the fixture's own build jobs. */
-const asked = <T extends { jobId: string }>(jobs: T[]) => jobs.filter((j) => !j.jobId.startsWith("mock-build-"));
+const asked = <T extends { jobId: string }>(jobs: T[]) =>
+  jobs.filter((j) => !MOCK_STRUT_JOBS.some((m) => m.jobId === j.jobId));
 
 describe("the fake jobs on canvas cards", () => {
   test("a build-out is a job on the initiative's card: running as it writes, done with its plan", async () => {
@@ -212,14 +214,17 @@ describe("the fake jobs on canvas cards", () => {
     expect(asked(mockCanvasJobs("mock-initiative-onboarding").jobs)).toEqual([]);
   });
 
-  test("the fixture's features come with their build jobs and the pull requests they returned", () => {
-    const read = mockCanvasJobs("mock-initiative-onboarding");
+  test("the mock strut jobs are on their cards, with strut's run.end entries for the reader to map", () => {
+    const read = mockCanvasJobs("mock-initiative-onboarding", (e) =>
+      e.map((a) => ({
+        id: a.id,
+        kind: "markdown" as const,
+        title: a.title,
+        source: { type: "inline" as const, content: {} },
+      })),
+    );
     expect(read.jobs.find((j) => j.refId === "mock-f-gh")).toMatchObject({ title: "Implement GitHub sign-in" });
-    expect(read.artifactsByRef["mock-f-gh"].map((a) => a.kind)).toEqual([
-      "pull_request",
-      "pull_request",
-      "pull_request",
-    ]);
+    expect(read.artifactsByRef["mock-f-gh"].map((a) => a.id)).toContain("pr-hive-5601");
   });
 
   test("Implement on a feature is a job that returns a pull request", async () => {

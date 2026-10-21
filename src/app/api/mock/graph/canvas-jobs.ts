@@ -12,12 +12,15 @@ import type { CanvasJob, CanvasJobState } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { notifyCanvasCardJob } from "@/lib/pusher";
-import { mockBuildJobs } from "./initiative-fixture";
+import type { StrutArtifact } from "@/services/strut-runs/job-turn";
+import { MOCK_STRUT_JOBS } from "./strut-artifacts";
 
 interface MockJob {
   job: CanvasJob;
   workspaceSlug: string;
   artifacts: ArtifactRef[];
+  /** What strut sent at `run.end`, before Hive's mapping. */
+  strut?: StrutArtifact[];
 }
 
 const holder = globalThis as unknown as { __mockCanvasJobs?: Map<string, MockJob> };
@@ -27,8 +30,15 @@ export function resetMockCanvasJobs() {
   delete holder.__mockCanvasJobs;
 }
 
-/** What `listCanvasJobs` returns for an initiative under mocks. */
-export function mockCanvasJobs(initiativeRefId: string): {
+/**
+ * What `listCanvasJobs` returns for an initiative under mocks. `map` turns
+ * strut's `run.end` entries into refs (`mapStrutArtifacts`, passed in so this
+ * module stays free of the server's job-turn code).
+ */
+export function mockCanvasJobs(
+  initiativeRefId: string,
+  map: (entries: StrutArtifact[]) => ArtifactRef[] = () => [],
+): {
   jobs: CanvasJob[];
   artifactsByRef: Record<string, ArtifactRef[]>;
 } {
@@ -36,45 +46,33 @@ export function mockCanvasJobs(initiativeRefId: string): {
     .filter((j) => j.job.initiativeRefId === initiativeRefId)
     .sort((a, b) => b.job.updatedAt - a.job.updatedAt);
   const artifactsByRef: Record<string, ArtifactRef[]> = {};
-  for (const j of mine) if (j.artifacts.length) (artifactsByRef[j.job.refId] ??= []).push(...j.artifacts);
+  for (const j of mine) {
+    const refs = [...j.artifacts, ...map(j.strut ?? [])];
+    if (refs.length) (artifactsByRef[j.job.refId] ??= []).push(...refs);
+  }
   return { jobs: mine.map((j) => j.job), artifactsByRef };
 }
 
 const HOUR = 3_600_000;
-const SEEDED_AT = Date.now() - 3 * HOUR;
+const LOADED_AT = Date.now();
 
-/** The fixture's build jobs as canvas jobs, each with the pull requests it returned, as of a few hours ago. */
+/** The mock strut jobs on this initiative's cards (`strut-artifacts.ts`), as of a few hours ago. */
 function seededJobs(initiativeRefId: string): MockJob[] {
-  return mockBuildJobs(initiativeRefId).map(({ refId, job }, i) => ({
+  return MOCK_STRUT_JOBS.filter((j) => j.initiativeRefId === initiativeRefId).map((j) => ({
     job: {
-      jobId: `mock-build-${refId}-${i}`,
-      runId: `mock-build-${refId}-${i}`,
-      title: job.title,
-      state: job.state,
+      jobId: j.jobId,
+      runId: j.jobId,
+      title: j.title,
+      state: j.state,
       startedBy: { id: "mock-user", name: "Dev User" },
-      refId,
+      refId: j.refId,
       initiativeRefId,
-      updatedAt: SEEDED_AT - i * HOUR,
-      ...(job.error ? { error: job.error } : {}),
+      updatedAt: LOADED_AT - j.hoursAgo * HOUR,
+      ...(j.error ? { error: j.error } : {}),
     },
     workspaceSlug: "",
-    artifacts: job.prs.map(([repo, number, title, state, failing]) => ({
-      id: `pr-${repo}-${number}`,
-      kind: "pull_request",
-      title,
-      source: {
-        type: "inline",
-        content: {
-          url: `https://github.com/${repo}/pull/${number}`,
-          repo,
-          number,
-          state,
-          ...(failing?.length
-            ? { checks: [...failing.map((name) => ({ name, status: "failure" })), { name: "lint", status: "success" }] }
-            : {}),
-        },
-      },
-    })),
+    artifacts: [],
+    strut: j.artifacts,
   }));
 }
 

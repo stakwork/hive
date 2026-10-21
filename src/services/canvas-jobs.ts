@@ -14,6 +14,7 @@
 
 import { StrutRunStatus } from "@prisma/client";
 import { mockCanvasJobs } from "@/app/api/mock/graph/canvas-jobs";
+import { MOCK_STRUT_SWARM_ID } from "@/app/api/mock/graph/strut-artifacts";
 import { parseArtifactRefs, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { canvasFocusOfInput, type CanvasJob, type CanvasJobState } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
@@ -97,7 +98,12 @@ export interface CanvasJobsRead {
  * Chats stay personal; the jobs and their artifacts are the canvas's.
  */
 export async function listCanvasJobs(orgId: string, userId: string, initiativeRefId: string): Promise<CanvasJobsRead> {
-  if (useMocks()) return mockCanvasJobs(initiativeRefId);
+  if (useMocks()) {
+    // Mock jobs carry strut's own `run.end` entries; they map the way a real job's do. Imported here because
+    // job-turn imports this module (a top-level import would be circular).
+    const { mapStrutArtifacts } = await import("@/services/strut-runs/job-turn");
+    return mockCanvasJobs(initiativeRefId, (e) => mapStrutArtifacts(e, MOCK_STRUT_SWARM_ID).refs);
+  }
 
   const rows = await db.strutRun.findMany({
     where: {

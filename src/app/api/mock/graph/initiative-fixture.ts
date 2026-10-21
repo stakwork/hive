@@ -3,9 +3,8 @@
  * infinite canvas, in the plan's problem-before-solution shape (Jarvis
  * 133–135): seven initiatives as the canvas prototype drew them, from fully
  * planned (stories, requirements, milestones, features with an
- * architecture and build jobs that returned pull requests, brainstorms on a
- * milestone) to a
- * brief only. Saves from the canvas (`saveInitiativeChanges`) and the fake
+ * architecture, brainstorms on a milestone) to a brief only. Their strut
+ * jobs and artifacts are in `strut-artifacts.ts`. Saves from the canvas (`saveInitiativeChanges`) and the fake
  * strut jobs below land in an in-memory store overlaid on them, kept on
  * `globalThis` so a dev-server reload doesn't drop it.
  *
@@ -67,9 +66,8 @@ const daysAgo = (d: number) => new Date(Date.now() - d * DAY).toISOString();
 /**
  * The plan as the canvas prototype drew it (problem before solution): each
  * initiative's brief and user stories with their requirements, its milestones
- * in order, and under a
- * milestone its features with their architecture and their build jobs
- * (read through `mockCanvasJobs`, not the graph). Ids are the prototype's, prefixed `mock-`.
+ * in order, and under a milestone its features with their architecture
+ * (their jobs: `strut-artifacts.ts`). Ids are the prototype's, prefixed `mock-`.
  */
 interface Spec {
   id: string;
@@ -94,8 +92,6 @@ interface Spec {
     /** The brainstorm option whose choice made it. */
     madeBy?: string;
     architecture?: { name: string; description: string; diagram?: string };
-    /** Its strut jobs (the build), each with the pull requests it returned. */
-    jobs?: MockBuildJob[];
     brainstorms?: string[];
   }>;
   brainstorms?: string[];
@@ -176,17 +172,6 @@ export const MOCK_INITIATIVES: Spec[] = [
           diagram:
             "graph LR; A[Sign in] --> B[GitHub consent]; B --> C[Install app]; C --> D[Pick org]; D --> E[Fresh workspace]; C --> F[Owner approves]; F --> D",
         },
-        jobs: [
-          {
-            title: "Implement GitHub sign-in",
-            state: "done",
-            prs: [
-              ["stakwork/hive", 5601, "GitHub App install flow", "merged"],
-              ["stakwork/hive", 5604, "Skip workspace creation for returning users", "merged"],
-              ["stakwork/stakgraph", 412, "Read installation tokens per org", "merged"],
-            ],
-          },
-        ],
       },
       {
         id: "mock-f-repo",
@@ -197,30 +182,15 @@ export const MOCK_INITIATIVES: Spec[] = [
           name: "Cached installation repos",
           description:
             "Reads the installation's repos from the GitHub API and lists them newest first; search filters the loaded list.",
+          diagram:
+            "graph LR; A[Repo picker] --> B[Installation repos API]; B --> C[(Cache)]; A --> D[Search box]; D --> C",
         },
-        jobs: [
-          {
-            title: "Implement Repo picker",
-            state: "running",
-            prs: [
-              ["stakwork/hive", 5622, "List installation repos, newest first", "open"],
-              ["stakwork/hive", 5630, "Search repos as you type", "draft"],
-            ],
-          },
-        ],
       },
       { id: "mock-f-name", milestone: "mock-m-signup", name: "Workspace naming", by: "human" },
       {
         id: "mock-f-link",
         milestone: "mock-m-invite",
         name: "Invite by link",
-        jobs: [
-          {
-            title: "Implement Invite by link",
-            state: "done",
-            prs: [["stakwork/hive", 5640, "Invite links that expire", "open", ["unit-tests"]]],
-          },
-        ],
       },
     ],
   },
@@ -246,13 +216,6 @@ export const MOCK_INITIATIVES: Spec[] = [
         id: "mock-f-rank",
         milestone: "mock-m-digest",
         name: "Rank by blast radius",
-        jobs: [
-          {
-            title: "Implement Rank by blast radius",
-            state: "done",
-            prs: [["stakwork/hive", 5590, "Rank findings by blast radius", "merged"]],
-          },
-        ],
       },
       {
         id: "mock-f-mute",
@@ -263,14 +226,6 @@ export const MOCK_INITIATIVES: Spec[] = [
           name: "Muted findings per workspace",
           description: "A muted finding is hidden from the digest.",
         },
-        jobs: [
-          {
-            title: "Implement Mute a finding",
-            state: "failed",
-            error: "The pod ran out of disk while installing dependencies",
-            prs: [],
-          },
-        ],
       },
     ],
   },
@@ -380,20 +335,6 @@ function fixtureTree(spec: Spec): Tree {
       ]);
   }
   return { nodes, edges };
-}
-
-/** A feature's fake strut job: [repo, number, title, state, failing checks] per pull request it returned. */
-export interface MockBuildJob {
-  title: string;
-  state: "running" | "done" | "failed";
-  error?: string;
-  prs: Array<[string, number, string, "open" | "draft" | "merged" | "closed", string[]?]>;
-}
-
-/** The fixture's build jobs, by feature, for an initiative. */
-export function mockBuildJobs(initiativeRefId: string): Array<{ refId: string; job: MockBuildJob }> {
-  const spec = MOCK_INITIATIVES.find((i) => i.id === initiativeRefId);
-  return (spec?.features ?? []).flatMap((f) => (f.jobs ?? []).map((job) => ({ refId: f.id, job })));
 }
 
 // ── Reads ───────────────────────────────────────────────────────────────────
