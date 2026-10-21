@@ -32,6 +32,11 @@
  * and the update reaches only the conversation the token already opens.
  * Nothing is buffered — an event is a notification, never the record.
  *
+ * A job on an infinite-canvas card (its row's `input.focus`, or — before
+ * the row is minted — the orchestrator turn's) is also nudged to the org
+ * channel (`nudgeCanvasCardJob`), so everyone viewing that initiative sees
+ * it run, not only the chat that started it.
+ *
  * Security mirrors the run webhook: a rate limit before any lookup, the
  * bearer token in the query string (strut sends no custom headers),
  * constant-time hash compare against the row's, and the event must be
@@ -48,6 +53,7 @@ import { notifyCanvasJobUpdate, type CanvasJobUpdate } from "@/lib/pusher";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { JOB_TURN_KIND, forwardableJobUrl } from "@/lib/strut-jobs";
 import { ORCHESTRATOR_TURN_KIND } from "@/lib/strut-orchestrator";
+import { nudgeCanvasCardJob } from "@/services/canvas-jobs";
 import { firstJobTurn } from "@/services/strut-jobs";
 import { publishVerifiedVersion } from "@/services/strut-jobs/claims";
 import { hashStrutRunToken } from "@/services/strut-runs";
@@ -94,7 +100,7 @@ export async function POST(request: NextRequest) {
 
   const row = await db.strutRun.findUnique({
     where: { id },
-    select: { id: true, tokenHash: true, kind: true, jobId: true, swarmId: true, conversationId: true },
+    select: { id: true, tokenHash: true, kind: true, jobId: true, swarmId: true, conversationId: true, workspaceId: true, input: true },
   });
   if (!row) {
     timingSafeEqual(hashStrutRunToken(rawToken), "0".repeat(64)); // constant-time dummy compare
@@ -115,6 +121,8 @@ export async function POST(request: NextRequest) {
   // A job turn's token vouches for its one job; an orchestrator turn's, for
   // the jobs of its conversation. An update about another is refused (4xx:
   // strut does not retry it).
+  // The row the job's canvas card is read from: the job's own once minted.
+  let cardRow: { id?: string; input: unknown } = row;
   if (orchestrator) {
     if (!row.conversationId) return NextResponse.json({ error: "Job mismatch" }, { status: 400 });
     const turn = await orchestratorJobTurnFor(row, jobId, u.runId);
@@ -122,6 +130,7 @@ export async function POST(request: NextRequest) {
       console.warn("[strut-job-events] update about a job of another conversation refused", { id, job: jobId });
       return NextResponse.json({ error: "Job mismatch" }, { status: 400 });
     }
+    cardRow = turn ?? { input: row.input };
   } else if (jobId !== row.jobId) {
     return NextResponse.json({ error: "Job mismatch" }, { status: 400 });
   }
@@ -141,6 +150,7 @@ export async function POST(request: NextRequest) {
     ...(detail ? { detail } : {}),
   };
   if (row.conversationId) notifyCanvasJobUpdate(row.conversationId, update);
+  await nudgeCanvasCardJob({ ...cardRow, jobId, workspaceId: row.workspaceId }, "running", { kind: u.kind });
 
   // A Verify that ended: the card's next version, which a detached Verify
   // left to this moment. Awaited — the function may not outlive the response.

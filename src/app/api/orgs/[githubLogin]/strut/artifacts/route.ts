@@ -35,6 +35,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { MOCK_STRUT_SWARM_ID, mockStrutFile } from "@/app/api/mock/graph/strut-artifacts";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -74,6 +75,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const orgId = await resolveAuthorizedOrgId(githubLogin, userId, false);
   if (!orgId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Mock mode only: the mock strut jobs' files (`strut-artifacts.ts`), for their own swarm id and nothing else.
+  if (process.env.USE_MOCKS === "true" && swarmId === MOCK_STRUT_SWARM_ID) {
+    const file = await mockStrutFile(parsed.path);
+    if (!file) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return new NextResponse(new Uint8Array(file.body), {
+      status: 200,
+      headers: {
+        "content-type": file.contentType,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+        ...(file.contentType.startsWith("text/html") ? { "content-security-policy": "sandbox allow-scripts" } : {}),
+      },
+    });
+  }
 
   const swarm = await db.swarm.findUnique({
     where: { id: swarmId },
@@ -118,7 +134,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       signal: AbortSignal.timeout(READ_TIMEOUT_MS),
     });
   } catch (err) {
-    console.warn("[strut-artifacts] swarm unreachable", { swarmId, error: err instanceof Error ? err.message : String(err) });
+    console.warn("[strut-artifacts] swarm unreachable", {
+      swarmId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: "Could not reach the swarm" }, { status: 502 });
   }
   if (upstream.status === 404) return NextResponse.json({ error: "Not found" }, { status: 404 });

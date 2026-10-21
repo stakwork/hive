@@ -29,6 +29,7 @@ import { ArtifactPanel } from "./artifacts/ArtifactPanel";
 import Link from "next/link";
 import { canvasTab, orgPageView, type CanvasTab } from "./useOrgView";
 import { Desk } from "./brainstorm-board/Desk";
+import { InfiniteCanvas } from "./infinite-canvas/InfiniteCanvas";
 import { OrgInitiatives } from "../OrgInitiatives";
 import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
 
@@ -129,6 +130,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const [graphFocus, setGraphFocus] = useState<GraphFocus | null>(null);
   /** The brainstorm board in view (published by the board while mounted). */
   const brainstormFocus = useCanvasChatStore((s) => s.brainstormFocus);
+  /** The initiative open on the infinite canvas (published the same way). */
+  const initiativeFocus = useCanvasChatStore((s) => s.initiativeFocus);
   // The panel library persists every layout; a tucked-away chat (collapsed
   // to nothing) must not become the sidebar's remembered width.
   const panelStorage = useMemo(
@@ -156,11 +159,23 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const artifactOpen = useArtifactPanelOpen();
   const leftSurface = artifactOpen ? "artifact" : mode;
   const tab = canvasTab(searchParams);
+  /**
+   * The infinite canvas, Jamie in a bar on it and the full chat sliding in
+   * from its left. A brainstorm opened from a chat card (`&root=`) still
+   * lands on the brainstorm desk, beside the chat as before.
+   */
+  const brainstormTab = mode === "canvas" && leftSurface === "canvas" && tab === "brainstorm";
+  const deskLink = brainstormTab && !!searchParams.get("root");
+  const infiniteCanvas = brainstormTab && !deskLink;
   const tabHref = (next: CanvasTab) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "canvas");
     if (next === "map") params.delete("tab");
     else params.set("tab", next);
+    // A tab click leaves a brainstorm desk link (back to the canvas); the canvas's level stays only on its own tab.
+    params.delete("ws");
+    params.delete("root");
+    if (next !== tab) params.delete("at");
     return `${pathname}?${params.toString()}`;
   };
 
@@ -555,6 +570,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       selectedNodeIds: contextNodeIds,
       graphFocus,
       brainstormFocus,
+      initiativeFocus,
     });
   }, [
     conversationStarted,
@@ -568,6 +584,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     contextNodeIds,
     graphFocus,
     brainstormFocus,
+    initiativeFocus,
   ]);
 
   // Mount auto-save (write-through to `chat_conversations`). Lives at
@@ -576,14 +593,15 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   useCanvasChatAutoSave({ githubLogin });
   useGraphProposalRefresh();
 
-  const rightPanel = (onShowList?: () => void) => (
+  const rightPanel = (onShowList?: () => void, onCollapse?: () => void) => (
     <OrgRightPanel
       githubLogin={githubLogin}
       selectedNode={selectedNode}
       selectedNodes={selectedNodes}
       selectedNodesInternalEdges={selectedNodesInternalEdges}
       chatReady={chatReady && conversationStarted}
-      chatsView={mode === "chats" ? { onShowList } : undefined}
+      chatsView={mode === "chats" || infiniteCanvas ? { onShowList } : undefined}
+      onCollapse={onCollapse}
     />
   );
 
@@ -652,7 +670,16 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                     </div>
                   </div>
                 )}
-                {tab === "brainstorm" && (
+                {infiniteCanvas && (
+                  <div className="absolute bottom-0 left-0 right-0 top-11 z-10 overflow-hidden bg-background">
+                    <InfiniteCanvas
+                      githubLogin={githubLogin}
+                      workspaceSlugs={chatWorkspaceSlugs}
+                      renderChat={(onCollapse) => rightPanel(undefined, onCollapse)}
+                    />
+                  </div>
+                )}
+                {deskLink && (
                   <div className="absolute bottom-0 left-0 top-11 z-10 overflow-hidden bg-background" style={{ right: panelWidth }}>
                     <Desk githubLogin={githubLogin} workspaceSlugs={chatWorkspaceSlugs} />
                   </div>
@@ -662,7 +689,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                   role="tablist"
                   aria-label="Canvas view"
                   className="absolute left-0 top-0 z-30 flex h-11 items-stretch border-b bg-background pl-1 text-sm"
-                  style={{ right: panelWidth }}
+                  style={{ right: infiniteCanvas ? 0 : panelWidth }}
                 >
                   {(["map", "initiatives", "brainstorm"] as const).map((t) => (
                     <Link
@@ -697,6 +724,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
           ids, `useId()` generates a fresh id per mount that doesn't
           match the stored layout, the lookup throws "No group
           element found for id" and the canvas crashes. */}
+            {/* On the infinite canvas Jamie is a bar on it, the full chat sliding in from its left. */}
+            {!infiniteCanvas && (
             <div className="absolute inset-0 z-20 pointer-events-none">
               <ResizablePanelGroup
                 id="org-right-panel-group"
@@ -780,6 +809,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                 </ResizablePanel>
               </ResizablePanelGroup>
             </div>
+            )}
           </>
         )}
       </div>

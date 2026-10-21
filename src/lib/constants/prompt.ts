@@ -1,5 +1,5 @@
 import { ModelMessage } from "ai";
-import type { BrainstormFocusHint, GraphFocusHint } from "@/lib/canvas/graph-focus";
+import type { BrainstormFocusHint, GraphFocusHint, InitiativeFocusHint } from "@/lib/canvas/graph-focus";
 import { WorkspaceConfig, WorkspaceMemberInfo } from "@/lib/ai/types";
 import { shouldTrimConceptsToIds, MAX_SEEDED_CONCEPTS_PER_WORKSPACE, isConceptSeedingEnabled } from "@/lib/ai/concepts";
 import { buildPromptCategorySection } from "@/app/org/[githubLogin]/connections/canvas-categories";
@@ -1013,6 +1013,11 @@ export interface CanvasScopeHint {
    * validated by `parseBrainstormFocus`). Adds a section; the canvas scope stays.
    */
   brainstormFocus?: BrainstormFocusHint;
+  /**
+   * The initiative the user is on (the infinite canvas on the Brainstorm tab,
+   * validated by `parseInitiativeFocus`). Adds a section; the canvas scope stays.
+   */
+  initiativeFocus?: InitiativeFocusHint;
 }
 
 export function getMultiWorkspacePrefixMessages(
@@ -1131,7 +1136,23 @@ If a \`<canvas-scope>\` block appears at the end of the conversation, it is inje
 function getCanvasScopeHint(scope?: CanvasScopeHint): string {
   if (!scope) return "";
   const board = scope.brainstormFocus ? getBrainstormBoardHint(scope.brainstormFocus) : "";
-  return getCanvasRefHint(scope) + board;
+  const initiative = scope.initiativeFocus ? getInitiativeHint(scope.initiativeFocus) : "";
+  return getCanvasRefHint(scope) + initiative + board;
+}
+
+/** The "## Current initiative" section: what "this", "build it out" and "the next step" mean on the canvas. */
+function getInitiativeHint(f: InitiativeFocusHint): string {
+  const selected = f.selectedRefId
+    ? ` They have selected the ${f.selectedType ?? "card"} ${f.selectedLabel ? `"${f.selectedLabel}" ` : ""}(\`${f.selectedRefId}\`).`
+    : "";
+  return [
+    "",
+    "",
+    "## Current initiative",
+    "",
+    `The user is on the infinite canvas, on initiative "${f.initiativeName}" (\`${f.initiativeRefId}\`) in workspace \`${f.workspaceSlug}\`.${f.stage ? ` Its plan in the graph: ${f.stage}.` : ""}${selected}`,
+    `They are PROBABLY talking about this initiative, so "this", "it" and "the plan" refer to it (or to the selected card). The plan lives in the graph, problem before solution: the initiative holds the why and the journeys (HiveInitiative -HAS_BRIEF-> Brief, -HAS_STORY-> UserStory -HAS_REQUIREMENT-> Requirement); milestones hold the solution (HiveInitiative -HAS_MILESTONE-> HiveMilestone -HAS_FEATURE-> InitiativeFeature), and a feature holds how it's built (-HAS_ARCHITECTURE-> Architecture). A feature's build is the strut jobs started on it, and its pull requests are the pull_request artifacts those jobs return (one job or several, across any repos); "Implement this feature" starts one, once the feature has an architecture. User stories always hang off the initiative, never off a feature. A brainstorm (Question -ABOUT->) can be about the initiative, a milestone or a feature; each answer lists what choosing it makes one level down (\`makes\`), and the canvas writes that when the person chooses. Work from that graph state, not from chat history, and offer the next step: a brief, then user stories and requirements (written \`proposed\` for the user to accept), then milestones, then features. To build the plan out, start strut's \`initiative-build\` job naming the initiative ref_id.`,
+  ].join("\n");
 }
 
 /** The "## Current brainstorm board" section: what "this", "2A" and "go with…" mean on the board. */

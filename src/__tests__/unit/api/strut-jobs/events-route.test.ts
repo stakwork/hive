@@ -17,13 +17,17 @@
  *     not minted yet is forwarded by its id alone; a job whose row is
  *     another conversation's (or swarm's) is refused; the token is still
  *     checked first.
+ *   - A job on an infinite-canvas card (its row's `input.focus`, or the
+ *     orchestrator turn's before the job's row exists) is nudged to the
+ *     org channel as running, with the kind it reported.
  */
 
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import crypto from "crypto";
 import { NextRequest } from "next/server";
 
-const { mockFindUnique, mockFindMany, mockRateLimit, mockNotify, mockFirst, mockPublish } = vi.hoisted(() => ({
+const { mockFindUnique, mockFindMany, mockRateLimit, mockNotify, mockFirst, mockPublish, mockNudge } = vi.hoisted(() => ({
+  mockNudge: vi.fn(),
   mockFindUnique: vi.fn(),
   mockFindMany: vi.fn(),
   mockRateLimit: vi.fn(),
@@ -37,6 +41,7 @@ vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mockRateLimit, getClientIp:
 vi.mock("@/lib/encryption", () => ({ timingSafeEqual: (a: string, b: string) => a === b }));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasJobUpdate: mockNotify }));
 vi.mock("@/services/strut-jobs", () => ({ firstJobTurn: mockFirst }));
+vi.mock("@/services/canvas-jobs", () => ({ nudgeCanvasCardJob: mockNudge }));
 vi.mock("@/services/strut-jobs/claims", () => ({ publishVerifiedVersion: mockPublish }));
 vi.mock("@/services/strut-runs", () => ({
   hashStrutRunToken: (t: string) => crypto.createHash("sha256").update(t).digest("hex"),
@@ -56,8 +61,12 @@ const row = (over: Record<string, unknown> = {}) => ({
   jobId: JOB,
   swarmId: "swarm-1",
   conversationId: "conv-1",
+  workspaceId: "ws-1",
+  input: { prompt: "p" },
   ...over,
 });
+
+const FOCUS = { workspaceSlug: "acme", initiativeRefId: "init-1", initiativeName: "Onboarding", refId: "feat-1" };
 
 const update = (over: Record<string, unknown> = {}) => ({
   event: "job.update",
@@ -132,6 +141,16 @@ describe("POST /api/strut-jobs/events", () => {
       detail: { frames: 3 },
     });
     expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  test("nudges the job's canvas card from its own row, as running with the kind it reported", async () => {
+    mockFindUnique.mockResolvedValue(row({ input: { prompt: "p", focus: FOCUS } }));
+    expect((await post(update())).status).toBe(200);
+    expect(mockNudge).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "row-1", jobId: JOB, workspaceId: "ws-1", input: { prompt: "p", focus: FOCUS } }),
+      "running",
+      { kind: "walkthrough" },
+    );
   });
 
   test("keeps a pod's address; drops a link into another job, a non-http link and an oversize detail", async () => {
@@ -216,6 +235,24 @@ describe("POST /api/strut-jobs/events — under an orchestrator turn", () => {
     mockFindMany.mockResolvedValue([]);
     expect((await postToTurn(update({ kind: "image", url: `/jobs/${JOB}/files/shots/001.png` }))).status).toBe(200);
     expect(mockNotify).toHaveBeenCalledWith("conv-1", expect.objectContaining({ jobId: JOB, kind: "image", url: `/jobs/${JOB}/files/shots/001.png` }));
+  });
+
+  test("the canvas card comes from the job's row once minted, else from the turn's", async () => {
+    mockFindMany.mockResolvedValue([jobRow({ input: { focus: FOCUS } })]);
+    await postToTurn(update());
+    expect(mockNudge).toHaveBeenLastCalledWith(
+      { id: "jt-1", input: { focus: FOCUS }, jobId: JOB, workspaceId: "ws-1" },
+      "running",
+      { kind: "walkthrough" },
+    );
+    mockFindMany.mockResolvedValue([]);
+    mockFindUnique.mockResolvedValue(orchestratorRow({ input: { prompt: "@acme\nhi", focus: FOCUS } }));
+    await postToTurn(update());
+    expect(mockNudge).toHaveBeenLastCalledWith(
+      { input: { prompt: "@acme\nhi", focus: FOCUS }, jobId: JOB, workspaceId: "ws-1" },
+      "running",
+      { kind: "walkthrough" },
+    );
   });
 
   test("a job of another conversation or swarm is refused, and nothing forwarded", async () => {

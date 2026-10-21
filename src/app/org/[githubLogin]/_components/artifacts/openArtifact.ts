@@ -2,11 +2,11 @@
 
 import { useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCanvasChatStore } from "../../_state/canvasChatStore";
+import { selectActiveMessages, useCanvasChatStore } from "../../_state/canvasChatStore";
 import type { ArtifactRef } from "../../_state/canvasChatArtifacts";
 import { isTreeArtifact, treeContentOfJson } from "./viewers/ChoiceTree";
 import { brainstormBoardHref } from "./viewers/graph";
-import { artifactIdentity } from "../../_state/canvasChatArtifacts";
+import { artifactIdentity, listArtifacts } from "../../_state/canvasChatArtifacts";
 
 /**
  * Where a brainstorm tree card opens: the desk, at the card's focus. Null for
@@ -27,7 +27,8 @@ export function treeDeskHref(artifact: ArtifactRef, content: unknown, githubLogi
 
 /**
  * Opens an artifact from a card or the index: a brainstorm tree on the desk,
- * everything else on the artifact panel. On the canvas view a client
+ * everything else on the artifact panel — one the active chat doesn't hold
+ * (a job's artifact on a canvas card) as a live one. On the canvas view a client
  * navigation re-aims the desk (it follows the params) and keeps the chat;
  * from any other view the org page reads `?view=` only on mount, so that is a
  * full navigation.
@@ -40,7 +41,12 @@ export function useOpenArtifact(githubLogin: string) {
   return useCallback(
     (artifact: ArtifactRef, content: unknown) => {
       const href = treeDeskHref(artifact, content, githubLogin);
-      if (!href) return useCanvasChatStore.getState().openArtifactPanel(artifactIdentity(artifact));
+      if (!href) {
+        const store = useCanvasChatStore.getState();
+        const identity = artifactIdentity(artifact);
+        const held = listArtifacts(selectActiveMessages(store)).some((a) => artifactIdentity(a) === identity);
+        return held ? store.openArtifactPanel(identity) : store.openLiveArtifact(artifact);
+      }
       useCanvasChatStore.getState().closeArtifactPanel();
       if (onCanvas) router.push(href);
       else window.location.assign(href);

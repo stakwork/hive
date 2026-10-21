@@ -281,6 +281,7 @@ export function useSendCanvasChatMessage() {
             ...(ctx.selectedNodeIds?.length ? { selectedNodeIds: ctx.selectedNodeIds } : {}),
             ...(ctx.graphFocus ? { graphFocus: { ...ctx.graphFocus, org: ctx.githubLogin } } : {}),
             ...(ctx.brainstormFocus ? { brainstormFocus: ctx.brainstormFocus } : {}),
+            ...(ctx.initiativeFocus ? { initiativeFocus: ctx.initiativeFocus } : {}),
             ...(readSlimPromptPreference() ? { slimPrompt: true } : {}),
             // Per-browser experiment: run this turn on strut's orchestrator
             // workflow instead of Hive's agent (`strutEnginePreference.ts`).

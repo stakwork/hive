@@ -70,6 +70,7 @@ import {
 } from "@/lib/strut-orchestrator";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
 import { fetchStrutJobWorkflow, fetchStrutRunEvents } from "@/services/strut-runs/lab";
+import { nudgeCanvasCardJob } from "@/services/canvas-jobs";
 import { adoptOrchestratorJobRun, recordedJobWorkflow } from "@/services/strut-runs/orchestrator-jobs";
 import { jobTurnOutputSchema, mapStrutArtifacts, peerSwarmsFor, readRunArtifacts } from "@/services/strut-runs/job-turn";
 
@@ -213,6 +214,8 @@ export async function launchedJobTurns(row: StrutRunRow): Promise<OrchestratorJo
         ...(workflow ? { workflow } : {}),
       });
       launches.push({ jobId: call.job, title: call.title ?? "", runId: jobRow.id, ...(call.peer ? { peer: call.peer } : {}) });
+      // Its canvas card can show the job's title and starter now.
+      if (jobRow.status === StrutRunStatus.PENDING) await nudgeCanvasCardJob({ ...jobRow, jobId: call.job }, "running");
     } catch (err) {
       logger.warn("Orchestrator turn: could not mint the row of a job it launched", LOG_TAG, {
         runId: row.id,

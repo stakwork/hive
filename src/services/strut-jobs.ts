@@ -23,6 +23,7 @@
  */
 
 import { StrutRunStatus } from "@prisma/client";
+import { canvasFocusOfInput } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { JOB_TURN_KIND, JOB_WORKFLOW, jobModelOf, jobTurnViaOrchestrator } from "@/lib/strut-jobs";
@@ -133,6 +134,8 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
   // an event's, a card's: its reply wakes the orchestrator, not hive's
   // agent (`job-turn.ts`). Rides on the input like `title`; strut strips it.
   const via = first && jobTurnViaOrchestrator(first) ? { via: "orchestrator" as const } : {};
+  // The infinite-canvas card the job is on stays on every turn's row (`lib/canvas/canvas-jobs.ts`).
+  const focus = canvasFocusOfInput(first?.input);
 
   let dispatched: Awaited<ReturnType<typeof dispatchStrutRun>>;
   try {
@@ -155,6 +158,7 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
       // is validated on its own. `model` rides along like `title`, so the
       // row records what the turn ran on; strut reads `params.model`.
       input: { prompt, title, workspace: strut.workspaceSlug, ...(model ? { model } : {}), ...via },
+      ...(focus ? { rowInput: { focus } } : {}),
       job: jobId,
       title,
       ...(model ? { params: { model } } : {}),
