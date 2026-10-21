@@ -72,6 +72,7 @@ export function toBenchmarkRunDetail(row: StrutRunRow, benchmark: Benchmark): Be
   return {
     ...toBenchmarkRun(row, benchmark),
     ...parseHeadline(row.output),
+    strutRunId: row.strutRunId,
     params: Object.keys(params).length ? params : null,
     extra: buildExtra(row.output, benchmark.denyKeys),
   };
