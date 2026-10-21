@@ -104,7 +104,7 @@ describe("legal benchmark runs on strut", () => {
       type: "LEGAL_BENCHMARK_RUNNER",
       status: WorkflowStatus.COMPLETED,
       projectId: null,
-      hasReport: false,
+      hasReport: true,
       createdAt: "2026-10-21T03:21:39.000Z",
       updatedAt: "2026-10-21T04:56:03.000Z",
     });
@@ -150,13 +150,19 @@ describe("legal benchmark runs on strut", () => {
       taskTitle: input.task_title,
       runner: "strut",
       strutRunId: "1792552899038",
+      generateRunReport: true,
     });
+    expect(running.hasReport).toBe(false);
 
     const failed = toLegalRunWireRow(row({ status: StrutRunStatus.ERROR, output: null, error: "boom" }) as never);
     expect(failed.status).toBe(WorkflowStatus.FAILED);
     expect(parseBenchmarkRunResult(failed.result)?.errorMessage).toBe("boom");
+    expect(failed.hasReport).toBe(true);
+    expect(parseBenchmarkRunResult(failed.result)?.generateRunReport).toBeUndefined();
     const lost = toLegalRunWireRow(row({ status: StrutRunStatus.LOST, output: null }) as never);
     expect(parseBenchmarkRunResult(lost.result)?.errorMessage).toBe("Strut never reported this run back");
+    expect(lost.hasReport).toBe(false);
+    expect(toLegalRunWireRow(row({ status: StrutRunStatus.ERROR, strutRunId: null }) as never).hasReport).toBe(false);
   });
 
   it("keeps only deliverables inside the run's own folder", () => {

@@ -552,9 +552,9 @@ export function BenchmarkRunsHistory({
   }
 
   // colSpan: Task + Type + Started + Runner Status + Pass + Fail + Contested +
-  // Disputed + Total + Report + (Stakwork if super admin). Strut: no Type,
-  // Report or Stakwork.
-  const colSpan = strut ? 8 : isSuperAdmin ? 11 : 10;
+  // Disputed + Total + Report + (Stakwork if super admin). Strut: no Type or
+  // Stakwork.
+  const colSpan = strut ? 9 : isSuperAdmin ? 11 : 10;
 
   return (
     <div className="space-y-3">
@@ -658,7 +658,7 @@ export function BenchmarkRunsHistory({
                 </span>
               </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
-              {!strut && <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>}
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
               {isSuperAdmin && !strut && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
               )}
@@ -746,13 +746,12 @@ export function BenchmarkRunsHistory({
                   <td className="px-4 py-3">
                     <TotalCell run={run} rosters={rosters} />
                   </td>
-                  {!strut && (
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      {/* Report bundles land on recursion rows too (reportUrl
-                          column via webhook) — ReportCell self-handles absence. */}
-                      <ReportCell run={run} slug={workspace?.slug} />
-                    </td>
-                  )}
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    {/* Report bundles land on recursion rows too (reportUrl
+                        column via webhook); a strut run's report is built from
+                        its lab — ReportCell self-handles absence. */}
+                    <ReportCell run={run} slug={workspace?.slug} />
+                  </td>
                   {isSuperAdmin && !strut && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {run.projectId != null && (
