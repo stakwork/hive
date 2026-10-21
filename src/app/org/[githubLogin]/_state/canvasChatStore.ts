@@ -155,6 +155,8 @@ export type CanvasMessageSource =
       title?: string;
       /** The agent stopped for a decision: the question, verbatim. */
       ask?: string;
+      /** A workflow build on another workspace's strut: that workspace's slug, shown as `@<slug>`. */
+      peer?: string;
     }
   | {
       /**

@@ -28,6 +28,8 @@ const {
   mockNotifyRunActive,
   mockEvents,
   mockAdopt,
+  mockRecorded,
+  mockJobWorkflow,
 } = vi.hoisted(() => {
     const mockTx = {
       workspace: { findUnique: vi.fn() },
@@ -44,6 +46,8 @@ const {
       mockNotifyRunActive: vi.fn(),
       mockEvents: vi.fn(),
       mockAdopt: vi.fn(),
+      mockRecorded: vi.fn(),
+      mockJobWorkflow: vi.fn(),
     };
   });
 
@@ -55,8 +59,8 @@ vi.mock("@/services/canvas-active-runs-hooks", () => ({
   clearActiveRun: mockClearActiveRun,
   notifyRunActive: mockNotifyRunActive,
 }));
-vi.mock("@/services/strut-runs/lab", () => ({ fetchStrutRunEvents: mockEvents }));
-vi.mock("@/services/strut-runs/orchestrator-jobs", () => ({ adoptOrchestratorJobRun: mockAdopt }));
+vi.mock("@/services/strut-runs/lab", () => ({ fetchStrutRunEvents: mockEvents, fetchStrutJobWorkflow: mockJobWorkflow }));
+vi.mock("@/services/strut-runs/orchestrator-jobs", () => ({ adoptOrchestratorJobRun: mockAdopt, recordedJobWorkflow: mockRecorded }));
 // The artifact list read is the job turn's; the mapping stays real.
 vi.mock("@/services/strut-runs/job-turn", async (orig) => ({
   ...(await orig<typeof import("@/services/strut-runs/job-turn")>()),
@@ -140,6 +144,8 @@ beforeEach(() => {
   mockNotifyRunActive.mockResolvedValue(undefined);
   mockEvents.mockResolvedValue([]);
   mockAdopt.mockImplementation(async (_parent: unknown, run: { runId: string }) => ({ id: `jobrow-${run.runId}` }));
+  mockRecorded.mockResolvedValue(null);
+  mockJobWorkflow.mockResolvedValue(null);
 });
 
 describe("replyForOrchestratorRow", () => {
@@ -289,7 +295,11 @@ describe("handleOrchestratorTurnSettled", () => {
       job: "j-1",
       runId: "1790000000500",
       title: "Flights to Lisbon",
+      // job/start named none: strut's default.
+      workflow: "job",
     });
+    expect(mockRecorded).not.toHaveBeenCalled();
+    expect(mockJobWorkflow).not.toHaveBeenCalled();
     expect(written()[0]).toEqual(
       expect.objectContaining({
         id: "orchestrator-row-1",
@@ -297,6 +307,42 @@ describe("handleOrchestratorTurnSettled", () => {
           kind: "orchestrator",
           jobs: [{ jobId: "j-1", title: "Flights to Lisbon", runId: "jobrow-1790000000500" }],
         }),
+      }),
+    );
+  });
+
+  it("each job's row is minted under the workflow its turn runs: job/start's, else the job's own (hive's row, then strut's record)", async () => {
+    mockFetch.mockResolvedValue(json(200, { workflow: "orchestrator", runId: "1790000000000", proposals: [] }));
+    const call = (n: string, tool: "job_start" | "job_continue", input: Record<string, unknown>, job: string) => [
+      { type: "step.start", path: `o/agent/${n}-${tool}`, stepType: `tool:${tool}`, input },
+      { type: "step.end", path: `o/agent/${n}-${tool}`, stepType: `tool:${tool}`, output: { job, runId: `r-${job}`, callback: true } },
+    ];
+    mockEvents.mockResolvedValue([
+      ...call("001", "job_start", { prompt: "Build it", title: "Digest", workflow: "builder", peer: "acme-web" }, "j-1"),
+      ...call("002", "job_continue", { job: "j-2", prompt: "go on" }, "j-2"),
+      ...call("003", "job_continue", { job: "j-3", prompt: "go on" }, "j-3"),
+      ...call("004", "job_continue", { job: "j-4", prompt: "go on" }, "j-4"),
+    ]);
+    mockRecorded.mockImplementation(async (_swarm: string, job: string) => (job === "j-2" ? "builder" : null));
+    mockJobWorkflow.mockImplementation(async (_row: unknown, job: string) => (job === "j-3" ? "builder" : null));
+    await handleOrchestratorTurnSettled(row({ output: { text: "On it.", artifacts: [] } }));
+
+    const adopted = Object.fromEntries(mockAdopt.mock.calls.map(([, run]) => [run.job, run.workflow]));
+    expect(adopted).toEqual({ "j-1": "builder", "j-2": "builder", "j-3": "builder", "j-4": undefined });
+    // Hive's own record first, on the orchestrator row's swarm; strut is asked only when hive holds none.
+    expect(mockRecorded).toHaveBeenCalledWith("swarm-1", "j-2");
+    expect(mockRecorded).not.toHaveBeenCalledWith("swarm-1", "j-1");
+    expect(mockJobWorkflow.mock.calls.map(([, job]) => job)).toEqual(["j-3", "j-4"]);
+    expect(mockJobWorkflow).toHaveBeenCalledWith(expect.objectContaining({ id: "row-1", swarmId: "swarm-1" }), "j-3", expect.any(Number));
+    // The running card's @slug: the job/start's peer rides on its launch.
+    expect(written()[0].source).toEqual(
+      expect.objectContaining({
+        jobs: [
+          { jobId: "j-1", title: "Digest", runId: "jobrow-r-j-1", peer: "acme-web" },
+          { jobId: "j-2", title: "", runId: "jobrow-r-j-2" },
+          { jobId: "j-3", title: "", runId: "jobrow-r-j-3" },
+          { jobId: "j-4", title: "", runId: "jobrow-r-j-4" },
+        ],
       }),
     );
   });
