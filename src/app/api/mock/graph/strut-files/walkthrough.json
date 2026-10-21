@@ -1,0 +1,21 @@
+{
+  "title": "Sign-up walkthrough",
+  "status": "done",
+  "frames": [
+    {
+      "file": "onboarding-step-1.png",
+      "caption": "Sign in with GitHub",
+      "pageUrl": "https://hive.example/onboarding"
+    },
+    {
+      "file": "onboarding-step-2.png",
+      "caption": "Pick the repos",
+      "pageUrl": "https://hive.example/onboarding/repos"
+    },
+    {
+      "file": "onboarding-step-3.png",
+      "caption": "Workspace ready",
+      "pageUrl": "https://hive.example/w/stakwork"
+    }
+  ]
+}

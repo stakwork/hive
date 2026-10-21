@@ -56,6 +56,7 @@ const {
   mockCheckFailure,
   mockCount,
   mockTurns,
+  mockNudge,
   afterCallbacks,
 } = vi.hoisted(() => {
   const mockTx = {
@@ -80,6 +81,7 @@ const {
     mockCheckFailure: vi.fn(),
     mockCount: vi.fn(),
     mockTurns: vi.fn(),
+    mockNudge: vi.fn(),
     afterCallbacks: [] as Array<() => Promise<void>>,
   };
 });
@@ -104,6 +106,10 @@ vi.mock("@/services/strut-jobs/artifact-events", () => ({
 }));
 vi.mock("@/services/strut-jobs/check-failures", () => ({ deliverCheckFailure: mockCheckFailure }));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: mockNotify }));
+vi.mock("@/services/canvas-jobs", async (orig) => ({
+  ...(await orig<typeof import("@/services/canvas-jobs")>()),
+  nudgeCanvasCardJob: mockNudge,
+}));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
 vi.mock("@/services/strut-runs/run-graph", () => ({ countStrutRunGraph: mockCount }));
@@ -585,6 +591,14 @@ describe("handleJobTurnSettled", () => {
     expect(mockNotify).toHaveBeenCalledWith("conv-1", "job");
     expect(mockClearActiveRun).toHaveBeenCalledWith("conv-1", "row-1");
     expect(mockNotifyRunActive).toHaveBeenCalledWith("conv-1", false);
+  });
+
+  it("tells the job's canvas card it settled: done on success, failed otherwise", async () => {
+    mockFetch.mockResolvedValue(json(200, artifactsBody));
+    await handleJobTurnSettled(row());
+    expect(mockNudge).toHaveBeenCalledWith(expect.objectContaining({ id: "row-1", jobId: JOB }), "done");
+    await handleJobTurnSettled(row({ status: StrutRunStatus.ERROR, error: "boom", output: null }));
+    expect(mockNudge).toHaveBeenLastCalledWith(expect.objectContaining({ id: "row-1" }), "failed");
   });
 
   it("a builder turn reads ITS run's list; a peer's deliverable lands as a ref on the peer's swarm", async () => {

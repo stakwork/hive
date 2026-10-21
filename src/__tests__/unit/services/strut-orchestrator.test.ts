@@ -215,6 +215,23 @@ describe("launchOrchestratorTurn", () => {
     expect(Object.keys(body.input).sort()).toEqual(["context", "prompt", "session"]);
   });
 
+  it("a turn asked from a canvas card tells strut the card as text and keeps the focus on the row only", async () => {
+    const focus = {
+      workspaceSlug: "acme",
+      initiativeRefId: "init-1",
+      initiativeName: "Self-serve onboarding",
+      refId: "feat-1",
+      refType: "InitiativeFeature",
+      refLabel: "Repo picker",
+    };
+    await launchOrchestratorTurn({ ...args, focus });
+    const line =
+      'Mon 19 Oct, 14:02, Europe/London. On the canvas: initiative "Self-serve onboarding" (`init-1`), feature "Repo picker" (`feat-1`) in workspace `acme`. ';
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.input).toEqual({ prompt: "@acme-default\nAdd a Concept for billing retries", session: "conv-1", context: { line } });
+    expect(mockStrutRun.create.mock.calls[0][0].data.input).toEqual({ ...body.input, focus });
+  });
+
   it("a turn of the conversation still PENDING is busy — nothing is launched", async () => {
     mockStrutRun.findFirst.mockResolvedValue({ id: "row-0" });
     const out = await launchOrchestratorTurn(args);

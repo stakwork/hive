@@ -10,7 +10,9 @@
  *     was minted under, and a PENDING one minted under another is re-recorded
  *     under the caller's (the run.end's word wins), a settled one left alone;
  *   - `recordedJobWorkflow`: the job's newest row on the swarm says what its
- *     turns run.
+ *     turns run;
+ *   - the canvas `focus`: the card the job is on (the job's first turn's,
+ *     else the turn's), read from the row when the caller did not select it.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -43,13 +45,16 @@ beforeEach(() => {
   mockWorkspaceFindUnique.mockResolvedValue({ slug: "acme" });
   mockFindMany.mockResolvedValue([]);
   mockUpsert.mockResolvedValue({ id: "jt-1" });
+  mockFindFirst.mockResolvedValue(null);
 });
+
+const focus = { workspaceSlug: "acme", initiativeRefId: "init-1", initiativeName: "Onboarding", refId: "feat-1" };
 
 describe("adoptOrchestratorJobRun — liveUpdates", () => {
   it("reads the orchestrator row's flag when the caller did not select it", async () => {
     mockFindUnique.mockResolvedValue({ liveUpdates: true });
     await adoptOrchestratorJobRun(parent, run);
-    expect(mockFindUnique).toHaveBeenCalledWith({ where: { id: "orch-1" }, select: { liveUpdates: true } });
+    expect(mockFindUnique).toHaveBeenCalledWith({ where: { id: "orch-1" }, select: { liveUpdates: true, input: true } });
     expect(mockUpsert.mock.calls[0][0].create.liveUpdates).toBe(true);
 
     mockFindUnique.mockResolvedValue(null);
@@ -57,15 +62,35 @@ describe("adoptOrchestratorJobRun — liveUpdates", () => {
     expect(mockUpsert.mock.calls[1][0].create.liveUpdates).toBe(false);
   });
 
-  it("takes the caller's flag without a read", async () => {
-    await adoptOrchestratorJobRun({ ...parent, liveUpdates: false }, run);
+  it("takes the caller's flag and input without a read", async () => {
+    await adoptOrchestratorJobRun({ ...parent, liveUpdates: false, input: {} }, run);
     expect(mockFindUnique).not.toHaveBeenCalled();
     expect(mockUpsert.mock.calls[0][0].create.liveUpdates).toBe(false);
   });
 });
 
+describe("adoptOrchestratorJobRun — the canvas card", () => {
+  it("copies the turn's focus onto the job's row", async () => {
+    await adoptOrchestratorJobRun({ ...parent, liveUpdates: true, input: { prompt: "@acme\nhi", focus } }, run);
+    expect(mockUpsert.mock.calls[0][0].create.input).toMatchObject({ parentRunId: "orch-1", focus });
+  });
+
+  it("reads the turn's focus off its row when the caller (the webhook) did not select it", async () => {
+    mockFindUnique.mockResolvedValue({ liveUpdates: true, input: { focus } });
+    await adoptOrchestratorJobRun(parent, run);
+    expect(mockUpsert.mock.calls[0][0].create.input.focus).toEqual(focus);
+  });
+
+  it("keeps a continued job on the card its first turn was on", async () => {
+    const first = { ...focus, refId: "story-9" };
+    mockFindFirst.mockResolvedValue({ input: { focus: first } });
+    await adoptOrchestratorJobRun({ ...parent, liveUpdates: true, input: { focus } }, run);
+    expect(mockUpsert.mock.calls[0][0].create.input.focus).toEqual(first);
+  });
+});
+
 describe("adoptOrchestratorJobRun — the workflow", () => {
-  const lean = { ...parent, liveUpdates: false };
+  const lean = { ...parent, liveUpdates: false, input: {} };
 
   it("records the workflow the run is of — a builder job's row is a builder row; `job` when the caller cannot say", async () => {
     await adoptOrchestratorJobRun(lean, { ...run, workflow: "builder" });

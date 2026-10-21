@@ -299,6 +299,7 @@ describe("pusher.ts", () => {
         GRAPH_AGENT_RUN_UPDATED: "graph-agent-run-updated",
         RESEARCH_UPDATED: "research-updated",
         BRAINSTORM_UPDATED: "brainstorm-updated",
+        INITIATIVE_UPDATED: "initiative-updated",
         AGENT_LOG_UPDATED: "agent-log-updated",
         CANVAS_CONVERSATION_UPDATED: "canvas-conversation-updated",
         ACTIVITY_UPDATED: "activity-updated",
@@ -308,6 +309,7 @@ describe("pusher.ts", () => {
         ERROR_ISSUE_UPDATED: "error-issue-updated",
         CANVAS_PR_UPDATED: "canvas-pr-updated",
         CANVAS_JOB_UPDATE: "canvas-job-update",
+        CANVAS_CARD_JOB: "canvas-card-job",
         GITHUB_INSTALLATION_UPDATED: "github-installation-updated",
       });
     });

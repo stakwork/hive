@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { parseBrainstormFocus, parseGraphFocus } from "@/lib/canvas/graph-focus";
+import { canvasFocusOf } from "@/lib/canvas/canvas-jobs";
+import { parseBrainstormFocus, parseGraphFocus, parseInitiativeFocus } from "@/lib/canvas/graph-focus";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
 import { ModelMessage, createUIMessageStream, createUIMessageStreamResponse, toUIMessageStream } from "ai";
@@ -99,6 +100,8 @@ export async function POST(request: NextRequest) {
       graphFocus,
       // The brainstorm board in view on the canvas's Brainstorm tab.
       brainstormFocus,
+      // The initiative in view on the infinite canvas (the Brainstorm tab).
+      initiativeFocus,
       // When true, skip the post-stream `after()` enrichment block
       // (follow-up questions + provenance). Surfaces that don't render
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
@@ -538,6 +541,10 @@ export async function POST(request: NextRequest) {
     // (`services/strut-orchestrator.ts`). Without the flag everything
     // below is the default path and runs exactly as before.
     // ============================================================
+    // The infinite-canvas card the person is on: on strut, a line of the
+    // context and the card its jobs land on (`canvas-jobs.ts`); below, the
+    // prompt's "## Current initiative" section.
+    const initiativeHint = parseInitiativeFocus(initiativeFocus, slugs);
     if (orgId && userId && canvasConversationRowId && strutEngine === true) {
       console.log("[quick-ask] timing", { stage: "early-exit:strut-orchestrator", ms: Date.now() - t0, workspaces: slugs, orgId });
       return await runOrchestratorTurn({
@@ -547,6 +554,7 @@ export async function POST(request: NextRequest) {
         message: newUserContent,
         publicBaseUrl: getBaseUrl(request.headers.get("host")),
         timeZone: userTimezone,
+        focus: initiativeHint ? canvasFocusOf(initiativeHint) : undefined,
       });
     }
 
@@ -688,6 +696,7 @@ export async function POST(request: NextRequest) {
               : undefined,
             graphFocus: parseGraphFocus(graphFocus, slugs),
             brainstormFocus: parseBrainstormFocus(brainstormFocus, slugs),
+            initiativeFocus: initiativeHint,
           },
           messages: convertedMessages,
           // The validated SharedConversation.id (or null when the

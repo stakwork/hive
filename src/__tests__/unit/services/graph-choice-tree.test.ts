@@ -30,7 +30,7 @@ beforeEach(() => {
         },
       };
     }
-    return { ok: true, meta, data: { columns: ["target", "source"], rows: [["child-1", FOCUS]] } };
+    return { ok: true, meta, data: { columns: ["type", "target", "source"], rows: [["PARENT_OF", "child-1", FOCUS]] } };
   });
 });
 
@@ -151,6 +151,47 @@ describe("getChoiceTree", () => {
       expect(q).toContain("AS effects");
       expect(q).toContain("`Question`");
       expect(q).not.toContain("`Effect`");
+    });
+  });
+  describe("ratings and AGAINST", () => {
+    beforeEach(() => {
+      mockedQuery.mockImplementation(async ({ query }) => {
+        if (String(query).includes("AS props")) {
+          return {
+            ok: true,
+            meta,
+            data: {
+              columns: ["id", "labels", "props", "effects", "ratings"],
+              rows: [
+                [FOCUS, ["Question"], [["text", "Q"]], [], []],
+                [
+                  "o1",
+                  ["Option"],
+                  [["text", "A"]],
+                  [{ ref_id: "e1", name: "Fast", description: "", direction: "pro", impact: 0.5, against: ["req-1", 7] }],
+                  [{ corner: "Fast", score: 0.8 }, { corner: "Good", score: 3 }, { corner: "Cheap", score: -1 }, { corner: "Other", score: 0 }],
+                ],
+                ["o2", ["Option"], [["text", "B"]], [{ ref_id: "e2", name: "Slow", description: "", direction: "con", impact: 0.1, against: [] }], []],
+              ],
+            },
+          };
+        }
+        return { ok: true, meta, data: { columns: ["source", "target"], rows: [] } };
+      });
+    });
+
+    test("reads an option's ratings and the requirements its effects are against", async () => {
+      const res = await getChoiceTree(caller, FOCUS);
+      if (!res.ok) throw new Error("expected ok");
+      const by = Object.fromEntries(res.data.nodes.map((n) => [n.ref_id, n]));
+      expect(by.o1.ratings).toEqual({ fast: 0.8, cheap: -1 });
+      expect(by.o1.effects?.[0].against).toEqual(["req-1"]);
+      expect(by.o2.effects?.[0]).not.toHaveProperty("against");
+      expect(by.o2.ratings).toBeUndefined();
+      expect(by[FOCUS].ratings).toBeUndefined();
+      const q = mockedQuery.mock.calls.map(([a]) => String(a.query)).find((x) => x.includes("AS props"))!;
+      expect(q).toContain("AGAINST");
+      expect(q).toContain("RATED_ON");
     });
   });
 });

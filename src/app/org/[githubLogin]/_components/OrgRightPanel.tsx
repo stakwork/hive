@@ -4,7 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import type { CanvasNode } from "system-canvas";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Layers, MousePointerClick, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
+import {
+  Layers,
+  MousePointerClick,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { NodeDetail } from "./NodeDetail";
 import { MultiNodeDetail } from "./MultiNodeDetail";
@@ -39,6 +46,12 @@ interface OrgRightPanelProps {
    * `onShowList` is set while the chat list is hidden.
    */
   chatsView?: { onShowList?: () => void };
+  /**
+   * The infinite canvas's full chat: the bar reads collapse, New chat and the
+   * title, then History, Share and ⋯ (no artifacts toggle: the canvas opens
+   * its own).
+   */
+  onCollapse?: () => void;
 }
 
 /**
@@ -69,6 +82,7 @@ export function OrgRightPanel({
   selectedNodesInternalEdges,
   chatReady,
   chatsView,
+  onCollapse,
 }: OrgRightPanelProps) {
   // Default to Chat — the canvas's primary agent surface. Auto-flip
   // to Details when the user clicks a node. Manual tab clicks
@@ -114,7 +128,15 @@ export function OrgRightPanel({
       {/* One bar, the same height as the chat list's header across the divider. It is a
           container: the actions collapse (Share → icon-only) by the bar's own width. */}
       <div className="@container flex h-11 shrink-0 items-stretch overflow-hidden border-b text-sm">
-        {chatsView ? (
+        {onCollapse ? (
+          <div className="flex min-w-0 items-center gap-1 pl-2">
+            <ToolbarButton label="Back to the bar" onClick={onCollapse}>
+              <PanelLeftClose className="h-4 w-4" />
+            </ToolbarButton>
+            <NewChatButton githubLogin={githubLogin} />
+            <ChatTitle />
+          </div>
+        ) : chatsView ? (
           <div className="flex min-w-0 items-center gap-1 pl-2">
             {chatsView.onShowList && (
               <ToolbarButton label="Show chats" onClick={chatsView.onShowList}>
@@ -178,9 +200,13 @@ export function OrgRightPanel({
         <div className="ml-auto flex shrink-0 items-center gap-0 pl-1 pr-1 @[22rem]:gap-1 @[22rem]:pr-2">
           {/* Kept mounted: its activity hook fetches on mount. */}
           <div className={cn("flex items-center", activeTab !== "chat" && "hidden")}>
-            <SidebarChatActions githubLogin={githubLogin} hideHistory={!!chatsView} hideNewChat={!!chatsView} />
+            <SidebarChatActions
+              githubLogin={githubLogin}
+              hideHistory={!!chatsView && !onCollapse}
+              hideNewChat={!!chatsView || !!onCollapse}
+            />
           </div>
-          {chatsView && <ArtifactsToggle />}
+          {chatsView && !onCollapse && <ArtifactsToggle />}
         </div>
       </div>
 
