@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import {
+  AppWindow,
   AudioLines,
   BookOpenText,
   Braces,
@@ -31,6 +32,7 @@ import {
 } from "../../_state/canvasChatArtifacts";
 import { buildSharePath } from "../HtmlPageCard";
 import { webAddress } from "./address";
+import { AppPanel } from "./viewers/app";
 import { CaptchaPanel } from "./viewers/captcha";
 import { ClaimsPanel, ClaimsRowMeta } from "./viewers/claims";
 import { CodePanel } from "./viewers/code";
@@ -110,6 +112,13 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Panel: HtmlPanel,
     // A page a strut job wrote has no page of its own on Hive: the reader serves it, and serves it static.
     address: (content, githubLogin) => ("slug" in content ? buildSharePath(githubLogin, encodeURIComponent(content.slug)) : null),
+  },
+  // A job's app: live software in the app frame, beside a page (`html`), never instead of it.
+  app: {
+    label: "App",
+    Icon: AppWindow,
+    chat: { place: "row" },
+    Panel: AppPanel,
   },
   image: {
     label: "Image",

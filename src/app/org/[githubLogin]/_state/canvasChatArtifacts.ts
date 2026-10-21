@@ -35,6 +35,7 @@
 import type { Action, ActionResult, DiffContent } from "@/lib/chat";
 import { parseGraphChanges, type GraphChange } from "@/components/graph-workbench/changes";
 import { bounded } from "@/lib/strut-chat-activity";
+import { isStrutAppPath, isStrutJobId } from "@/lib/strut-apps";
 import { proposalGraphArtifacts } from "./proposalGraphArtifacts";
 
 // ─── Kinds and their content ────────────────────────────────────────────
@@ -118,6 +119,14 @@ export interface ArtifactContents {
         updatedAt?: string;
       }
     | { swarmId: string; key: string };
+  /**
+   * A strut job's APP (strut plans/apps.md §6): a built front-end in a
+   * directory of the job's, where it is on the swarm. Unlike a page, it is
+   * live software — `StrutAppFrame` reads its document through Hive and
+   * relays its calls to the swarm, so it reads and launches runs under its
+   * grants. The ref's `graph` source keys it by its document's link.
+   */
+  app: { swarmId: string; job: string; path: string };
   image: { url: string; alt?: string };
   video: { url: string; poster?: string };
   audio: { url: string };
@@ -560,6 +569,12 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
     const swarmId = bounded(raw.swarmId, MAX_ID_LENGTH);
     const key = bounded(raw.key, MAX_ID_LENGTH);
     return swarmId && key ? { swarmId, key } : null;
+  },
+  app: (raw) => {
+    const swarmId = bounded(raw.swarmId, MAX_ID_LENGTH);
+    const job = isStrutJobId(raw.job) ? raw.job : null;
+    const path = isStrutAppPath(raw.path) ? raw.path : null;
+    return swarmId && job && path ? { swarmId, job, path } : null;
   },
   image: (raw) => {
     const base = address(raw);

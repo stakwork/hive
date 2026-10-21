@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { BenchmarkApp } from "@/components/benchmarks/BenchmarkApp";
 import { ScoreChart } from "@/components/benchmarks/ScoreChart";
 import { StartRun } from "@/components/benchmarks/StartRun";
 import { useBenchmarkRuns } from "@/hooks/useBenchmarks";
@@ -16,12 +17,22 @@ import { benchmarkVisibleIn, getBenchmark } from "@/lib/benchmarks/registry";
 export default function BenchmarkPage({ params }: { params: Promise<{ benchmarkSlug: string }> }) {
   const { benchmarkSlug } = use(params);
   const { workspace, loading: workspaceLoading } = useWorkspace();
-  const slug = workspace?.slug;
+  const benchmark = getBenchmark(benchmarkSlug);
+  // A benchmark with an app lists its runs in the app, not here.
+  const slug = benchmark?.app ? undefined : workspace?.slug;
   const { runs, loading, error, reload } = useBenchmarkRuns(slug, benchmarkSlug);
 
   if (workspaceLoading) return null;
-  const benchmark = getBenchmark(benchmarkSlug);
   if (!workspace || !benchmark || !benchmarkVisibleIn(benchmark, workspace.slug)) notFound();
+
+  if (benchmark.app) {
+    return (
+      <div className="flex flex-col h-full">
+        <PageHeader icon={FlaskConical} title={benchmark.name} description={`Runs of ${benchmark.runWorkflow}`} />
+        <BenchmarkApp workspaceSlug={workspace.slug} benchmarkSlug={benchmarkSlug} title={benchmark.name} className="flex-1 min-h-0 m-4" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full overflow-auto">
