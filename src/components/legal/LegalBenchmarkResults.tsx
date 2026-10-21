@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { Loader2, AlertCircle, Copy, Download, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, AlertCircle, Copy, Download, RefreshCw, ChevronDown, ChevronUp, FileText, Sheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,7 @@ import {
 } from "@/lib/harvey-lab/rubric-scoring";
 import { contestedNotice } from "@/lib/harvey-lab/contested-copy";
 import { RubricBreakdownStrip } from "@/components/harvey-lab/RubricBreakdownStrip";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 
 /** Strip provider prefix for display, e.g. "anthropic/claude-sonnet-5" → "claude-sonnet-5" */
 function displayModelName(value: string | undefined): string {
@@ -57,15 +58,69 @@ function SpinnerMessage({ message }: { message: string }) {
   );
 }
 
+/** A strut run's deliverables (downloaded through hive) and its shared Google Sheet. */
+function StrutRunOutput({
+  slug,
+  runId,
+  deliverables,
+  spreadsheetUrl,
+}: {
+  slug: string;
+  runId: string;
+  deliverables: string[];
+  spreadsheetUrl?: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-card" data-testid="strut-run-output">
+      <div className="px-4 py-3 border-b">
+        <h3 className="font-semibold text-sm">Task Output</h3>
+      </div>
+      <div className="p-4 space-y-2">
+        {deliverables.length === 0 && (
+          <p className="text-sm text-muted-foreground">(No deliverables)</p>
+        )}
+        {deliverables.map((name) => (
+          <a
+            key={name}
+            href={`/api/workspaces/${encodeURIComponent(slug)}/legal/benchmarks/strut/runs/${encodeURIComponent(runId)}/deliverables/${encodeURIComponent(name)}`}
+            className="flex items-center gap-2 text-sm underline underline-offset-2"
+            data-testid="strut-deliverable-link"
+          >
+            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {name}
+            <Download className="h-3.5 w-3.5 text-muted-foreground" />
+          </a>
+        ))}
+        {spreadsheetUrl && (
+          <a
+            href={spreadsheetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-sm underline underline-offset-2"
+            data-testid="strut-spreadsheet-link"
+          >
+            <Sheet className="h-4 w-4 shrink-0 text-muted-foreground" />
+            Working spreadsheet (facts and calculations)
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: LegalBenchmarkResultsProps) {
   const { workspace } = useWorkspace();
   const slug = workspace?.slug ?? "";
+  // A strut legal workspace's run is `harvey-lab-run`: its deliverables are
+  // files, its trace comes from its strut log, and it has no agent logs, eval
+  // or recursion (Stakwork's).
+  const strut = isLegalStrutWorkspace(slug);
   const { run, isLoading, isStale, refetch } = useLegalBenchmarkRun(runId);
   const {
     fixes,
     isLoading: fixesLoading,
     refetch: refetchFixes,
-  } = useProposedFixes(runId);
+  } = useProposedFixes(strut ? "" : runId);
 
   const allPass = run?.runnerRun?.result?.all_pass;
   const criteriaResults = run?.runnerRun?.result?.criteria_results;
@@ -199,7 +254,13 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
       <div className="mt-6 space-y-4">
         <div className="rounded-lg border bg-card p-4">
           {renderStaleWarning()}
-          <SpinnerMessage message="Running task… (document ingestion & analysis)" />
+          <SpinnerMessage
+            message={
+              strut
+                ? "Running task on strut… (a task takes about an hour and a half)"
+                : "Running task… (document ingestion & analysis)"
+            }
+          />
           <StakworkRunLink projectId={run.runnerRun.projectId} isSuperAdmin={isSuperAdmin} />
         </div>
         {/* Live trace — rows appear as the agents work; the pill pops in once
@@ -277,33 +338,47 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
         {renderStaleWarning()}
 
         {/* Pop-in pills that expand into panels: agent sessions and the
-            session-cascade trace. Hidden entirely when a run has neither. */}
+            session-cascade trace. Hidden entirely when a run has neither.
+            A strut run's trace is read from its strut log; it has no
+            Stakwork agent logs. */}
         <div className="flex flex-wrap items-start gap-2 empty:hidden">
-          <BenchmarkRunAgentLogs runId={run.id} />
+          {!strut && <BenchmarkRunAgentLogs runId={run.id} />}
           <BenchmarkRunCascade runId={run.id} runStatus={run.runnerRun.status} />
         </div>
 
+        {/* A strut run's output is files: the deliverables and the shared sheet. */}
+        {strut && (
+          <StrutRunOutput
+            slug={slug}
+            runId={run.id}
+            deliverables={result?.deliverables ?? []}
+            spreadsheetUrl={result?.spreadsheetUrl}
+          />
+        )}
+
         {/* Output document section */}
-        <div className="rounded-lg border bg-card">
-          <div className="flex items-center justify-between px-4 py-3 border-b">
-            <h3 className="font-semibold text-sm">Task Output</h3>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={handleCopy} className="gap-1.5">
-                <Copy className="h-3.5 w-3.5" />
-                Copy
-              </Button>
-              <Button size="sm" variant="outline" onClick={handleDownload} className="gap-1.5">
-                <Download className="h-3.5 w-3.5" />
-                Download .txt
-              </Button>
+        {!strut && (
+          <div className="rounded-lg border bg-card">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h3 className="font-semibold text-sm">Task Output</h3>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={handleCopy} className="gap-1.5">
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleDownload} className="gap-1.5">
+                  <Download className="h-3.5 w-3.5" />
+                  Download .txt
+                </Button>
+              </div>
+            </div>
+            <div className="p-4">
+              <pre className="text-sm whitespace-pre-wrap font-mono bg-muted rounded-md p-4 max-h-96 overflow-y-auto">
+                {run.runnerOutputText ?? "(No output)"}
+              </pre>
             </div>
           </div>
-          <div className="p-4">
-            <pre className="text-sm whitespace-pre-wrap font-mono bg-muted rounded-md p-4 max-h-96 overflow-y-auto">
-              {run.runnerOutputText ?? "(No output)"}
-            </pre>
-          </div>
-        </div>
+        )}
 
         {/* Aggregate score summary */}
         <div className="rounded-lg border bg-card">
@@ -534,16 +609,18 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
         )}
 
         {/* Eval Runs history table — Run Eval button lives here */}
-        <EvalRunsBox
-          taskSlug={run.taskSlug}
-          runId={run.id}
-          showRunEvalButton={showRunEvalButton}
-          showRecursionButton={slug === "openlaw" && unevaluatedFailedCount > 0}
-          fixes={fixes}
-          isLoading={fixesLoading}
-          refetch={refetchFixes}
-          isSuperAdmin={isSuperAdmin}
-        />
+        {!strut && (
+          <EvalRunsBox
+            taskSlug={run.taskSlug}
+            runId={run.id}
+            showRunEvalButton={showRunEvalButton}
+            showRecursionButton={slug === "openlaw" && unevaluatedFailedCount > 0}
+            fixes={fixes}
+            isLoading={fixesLoading}
+            refetch={refetchFixes}
+            isSuperAdmin={isSuperAdmin}
+          />
+        )}
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onReset}>

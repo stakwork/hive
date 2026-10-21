@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkflowStatus } from "@prisma/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 import { usePusherChannel } from "@/hooks/usePusherChannel";
 import { getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { assembleRunCascade, mergeTurns } from "@/lib/legal-cascade/derive";
@@ -93,7 +94,12 @@ export function useRunCascade(
   enabledRef.current = enabled;
   runStatusRef.current = runStatus;
 
-  const base = slug ? `/api/workspaces/${slug}/legal/benchmarks/cascade` : null;
+  // A strut legal workspace reads the same shapes from its runs' strut logs.
+  const base = slug
+    ? isLegalStrutWorkspace(slug)
+      ? `/api/workspaces/${slug}/legal/benchmarks/strut/cascade`
+      : `/api/workspaces/${slug}/legal/benchmarks/cascade`
+    : null;
 
   const runCycle = useCallback(async () => {
     if (!base || !runId || isFetchingRef.current) return;

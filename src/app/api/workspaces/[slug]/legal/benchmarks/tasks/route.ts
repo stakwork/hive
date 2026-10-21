@@ -4,13 +4,14 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { HARVEY_LAB_TASKS, HARVEY_LAB_TOTAL } from "@/lib/harvey-lab-tasks";
 import { logger } from "@/lib/logger";
+import { isLegalBenchmarksWorkspace } from "@/lib/eval-capture-slugs";
 
 export const runtime = "nodejs";
 
 /**
  * GET /api/workspaces/[slug]/legal/benchmarks/tasks
  * Returns Harvey LAB benchmark tasks grouped by practice area.
- * Only accessible for the "openlaw" workspace.
+ * Only accessible in a legal benchmarks workspace (`isLegalBenchmarksWorkspace`).
  */
 export async function GET(
   _request: Request,
@@ -24,8 +25,8 @@ export async function GET(
 
     const { slug } = await params;
 
-    // Slug gate — Legal Benchmarks only for openlaw
-    if (slug !== "openlaw") {
+    // Slug gate — Legal Benchmarks workspaces only (openlaw, and the strut ones)
+    if (!isLegalBenchmarksWorkspace(slug)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 

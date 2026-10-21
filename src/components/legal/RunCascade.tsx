@@ -8,6 +8,7 @@ import { CascadeTrace } from "@/components/legal/CascadeTrace";
 import { DownloadReportButton } from "@/components/run-report/DownloadReportButton";
 import { useRunCascade } from "@/hooks/useRunCascade";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 
 // The pure trace lives in CascadeTrace.tsx (it is also bundled into the
 // offline HTML export); re-exported here so existing imports keep working.
@@ -82,7 +83,8 @@ export function BenchmarkRunCascade({ runId, runStatus }: BenchmarkRunCascadePro
           model={model}
           workspaceSlug={slug}
           headerAction={
-            slug ? (
+            // The HTML export reads stakgraph's sessions; a strut run has none there.
+            slug && !isLegalStrutWorkspace(slug) ? (
               <DownloadReportButton
                 exportUrl={cascadeExportUrl(slug, runId)}
                 label="Download HTML"
