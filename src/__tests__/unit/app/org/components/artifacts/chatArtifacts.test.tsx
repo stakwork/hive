@@ -118,7 +118,12 @@ describe("ChatArtifacts", () => {
   test("a thumbnail opens its image on the panel", async () => {
     renderArtifacts([shot(1)]);
     fireEvent.click((await screen.findByRole("img")).closest("button")!);
-    expect(useCanvasChatStore.getState().artifactPanel).toEqual({ identity: artifactIdentity(shot(1)), version: null });
+    // Not in the active chat (as here): it opens as a live artifact.
+    expect(useCanvasChatStore.getState().artifactPanel).toEqual({
+      identity: artifactIdentity(shot(1)),
+      version: null,
+      live: shot(1),
+    });
   });
 
   test("an image that will not load leaves its tile, without the picture", async () => {
@@ -148,7 +153,12 @@ describe("ChatArtifacts", () => {
   test("a row opens its artifact on the panel and shows it is up", () => {
     renderArtifacts([pr]);
     fireEvent.click(clickable(pr));
-    expect(useCanvasChatStore.getState().artifactPanel).toEqual({ identity: artifactIdentity(pr), version: null });
+    // Not in the active chat (as here): it opens as a live artifact.
+    expect(useCanvasChatStore.getState().artifactPanel).toEqual({
+      identity: artifactIdentity(pr),
+      version: null,
+      live: pr,
+    });
     expect(clickable(pr).getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -177,6 +187,11 @@ describe("ChatArtifacts", () => {
     renderArtifacts([graph]);
     fireEvent.click(clickable(graph));
     expect(mockRouter.push).not.toHaveBeenCalled();
-    expect(useCanvasChatStore.getState().artifactPanel).toEqual({ identity: artifactIdentity(graph), version: null });
+    // Not in the active chat (as here): it opens as a live artifact.
+    expect(useCanvasChatStore.getState().artifactPanel).toEqual({
+      identity: artifactIdentity(graph),
+      version: null,
+      live: graph,
+    });
   });
 });

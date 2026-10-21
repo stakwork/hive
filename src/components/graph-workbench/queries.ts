@@ -9,7 +9,7 @@ import type { GraphNodeTypesResponse, GraphSearchHit, GraphSearchResponse } from
  * And its one write, a concept's docs.
  */
 
-async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
+export async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((body as { error?: string }).error ?? `Request failed (${res.status})`);
