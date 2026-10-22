@@ -36,14 +36,14 @@ describe("readStrutArtifact", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  test("a job's app is its job and directory on the swarm — the app frame reads the document itself, so no fetch here", async () => {
+  test("an app is a workspace app by name on the swarm — the app frame reads the document itself, so no fetch here; a job's directory is no app", async () => {
     const fetchImpl = vi.fn();
-    expect(await readStrutArtifact(ref("app", "/jobs/peer%2Fbuild-1/files/apps/tracker/dist/index.html"), ctx, fetchImpl)).toEqual({
+    expect(await readStrutArtifact(ref("app", "/apps/visits/v2/files/dist/index.html"), ctx, fetchImpl)).toEqual({
       swarmId: "swarm-1",
-      job: "peer/build-1",
-      path: "apps/tracker",
+      app: "visits",
+      version: "v2",
     });
-    await expect(readStrutArtifact(ref("app", "/jobs/6f1c/files/apps/tracker/app.yaml"), ctx, fetchImpl)).rejects.toMatchObject({ reason: "unavailable" });
+    await expect(readStrutArtifact(ref("app", "/jobs/peer%2Fbuild-1/files/apps/tracker/dist/index.html"), ctx, fetchImpl)).rejects.toMatchObject({ reason: "unavailable" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
