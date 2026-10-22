@@ -1,29 +1,28 @@
 /**
- * Short-lived, per-browser opt-in to run Jamie on strut's `orchestrator`
- * workflow instead of Hive's canvas agent (`services/strut-orchestrator.ts`,
- * `docs/jamie-engine.md`). Toggled from the chat header's ⋯ menu beside the
- * Concept-tree prompt and sent with each canvas chat request as
+ * Per-browser switch for running Jamie on strut's `orchestrator` workflow
+ * instead of Hive's canvas agent (`services/strut-orchestrator.ts`,
+ * `docs/jamie-engine.md`). On by default: strut is the flow. Turning it off
+ * (the chat header's ⋯ menu, beside the Concept-tree prompt) is the escape
+ * hatch back to Hive's agent. Sent with each canvas chat request as
  * `strutEngine`. Server-side turns (planner wakes, automations) never
- * carry it, so they always run on Hive.
+ * carry it, so they still run on Hive.
  *
- * Kept in localStorage (not on `User` or the org) because it's an
- * experiment one person tries in one browser while the rest of the org
- * stays on Hive. Off by default; storage errors read as off.
+ * Kept in localStorage (not on `User` or the org). Only an explicit "false"
+ * turns it off; no value, or a storage error, reads as on.
  */
 const STORAGE_KEY = "hive.jamieStrutEngine";
 
 export function readStrutEnginePreference(): boolean {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === "true";
+    return window.localStorage.getItem(STORAGE_KEY) !== "false";
   } catch {
-    return false;
+    return true;
   }
 }
 
 export function writeStrutEnginePreference(enabled: boolean): void {
   try {
-    if (enabled) window.localStorage.setItem(STORAGE_KEY, "true");
-    else window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.setItem(STORAGE_KEY, enabled ? "true" : "false");
   } catch {
     /* storage unavailable — the switch just won't persist */
   }
