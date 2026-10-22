@@ -9,7 +9,8 @@
  * `orchestrator` workflow on the org's strut (`resolveStrutTarget`,
  * purpose `orchestrator`), with the conversation's row id as the
  * `session`, the message behind the workspace line the lab's agent reads,
- * and the time + the person's zone as `context.line`. The reply lands
+ * its files as the launch's `attachments`, and the time + the person's
+ * zone as `context.line`. The reply lands
  * through the strut-runs webhook; the route answers at once with an empty
  * synthetic stream, and a launch-marker row (`orchestrator-launch-<id>`)
  * carries the working card until the reply row takes its place.
@@ -33,6 +34,8 @@ import {
   orchestratorLaunchRowId,
   orchestratorPrompt,
 } from "@/lib/strut-orchestrator";
+import type { StoredAttachment } from "@/services/canvas-turn-persistence";
+import { skippedAttachmentsNote, strutAttachments } from "@/services/strut-attachments";
 import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
 import { describeStrutTargetError, resolveStrutTarget } from "@/services/strut-target";
 
@@ -46,6 +49,12 @@ export interface OrchestratorTurnArgs {
   conversationId: string;
   /** The person's message, as typed. */
   message: string;
+  /**
+   * The files on the message (S3 keys, as persisted): read and sent with
+   * the launch, so strut's agent sees them (`strut-attachments.ts`). One it
+   * cannot take is named after the message instead.
+   */
+  attachments?: StoredAttachment[];
   publicBaseUrl: string;
   /** The person's IANA zone for `context.line`; UTC when unknown. */
   timeZone?: string;
@@ -96,6 +105,11 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
   if (!resolved.ok) return { status: "error", error: describeStrutTargetError(resolved.error) };
   const strut = resolved.target;
 
+  const files = args.attachments?.length ? await strutAttachments(userId, args.attachments) : null;
+  if (files?.skipped.length) {
+    logger.warn("Orchestrator turn: files left out of the launch", LOG_TAG, { conversationId, skipped: files.skipped });
+  }
+
   let dispatched: Awaited<ReturnType<typeof dispatchStrutRun>>;
   try {
     dispatched = await dispatchStrutRun({
@@ -109,7 +123,7 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
       // same every turn — strut's agent remembers through it), and what the
       // host knows about the turn — the time, and the card the person is on.
       input: {
-        prompt: orchestratorPrompt(strut.workspaceSlug, message),
+        prompt: orchestratorPrompt(strut.workspaceSlug, message + skippedAttachmentsNote(files?.skipped ?? [])),
         session: conversationId,
         context: {
           line:
@@ -118,6 +132,7 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
         },
       },
       ...(args.focus ? { rowInput: { focus: args.focus } } : {}),
+      ...(files?.attachments.length ? { attachments: files.attachments } : {}),
       publicBaseUrl,
       conversationId,
       // The jobs this turn starts report their live updates (shots,
