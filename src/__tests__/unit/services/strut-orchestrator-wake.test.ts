@@ -11,7 +11,8 @@
  *   - busy is retried a bounded number of times with the given waits, then
  *     dropped; an error is not retried; nothing throws;
  *   - the gate: the wake runs through `runGatedAutoTurn` with the launch
- *     marker as its idempotency mark and job rows as its loop count.
+ *     marker as its idempotency mark, job rows as its loop count, and the
+ *     owner's opt-in waived.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -96,7 +97,7 @@ describe("buildOrchestratorJobWakeText", () => {
 });
 
 describe("invokeOrchestratorOnJobTurn", () => {
-  it("runs behind the gate — the launch marker as its mark, job rows as its loop count — and launches as the owner on the conversation", async () => {
+  it("runs behind the gate — the launch marker as its mark, job rows as its loop count, the opt-in waived — and launches as the owner on the conversation", async () => {
     await invokeOrchestratorOnJobTurn(args());
 
     expect(mockGate).toHaveBeenCalledTimes(1);
@@ -106,6 +107,7 @@ describe("invokeOrchestratorOnJobTurn", () => {
       conversationId: "conv-1",
       wakeId: "job-row-1",
       about: { jobId: JOB, outcome: "success" },
+      ownerOptIn: false,
     });
     expect(gate.trailingLaunches).toBe(countTrailingJobRows);
     expect(
