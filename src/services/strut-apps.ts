@@ -28,7 +28,7 @@
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { EncryptionService } from "@/lib/encryption";
-import { STRUT_APP_DOCUMENT } from "@/lib/strut-apps";
+import { isStrutAppName, STRUT_APP_DOCUMENT, type PinnedStrutApp } from "@/lib/strut-apps";
 import { strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
@@ -47,7 +47,8 @@ export interface AppSwarm {
   labBase: string;
   swarmApiKey: string;
   orgId: string;
-  workspace: { id: string; slug: string };
+  /** The workspace the swarm is (one per swarm): where its pinned apps are tabs. */
+  workspace: { id: string; slug: string; name: string };
 }
 
 /** The org, the swarm in it, the member's read access to the swarm's workspace — then the key. */
@@ -64,7 +65,7 @@ export async function authorizeAppSwarm(
     select: {
       swarmUrl: true,
       swarmApiKey: true,
-      workspace: { select: { id: true, slug: true, sourceControlOrgId: true, deleted: true } },
+      workspace: { select: { id: true, slug: true, name: true, sourceControlOrgId: true, deleted: true } },
     },
   });
   if (!swarm || swarm.workspace.deleted || swarm.workspace.sourceControlOrgId !== orgId) return fail(403, "Forbidden");
@@ -85,7 +86,7 @@ export async function authorizeAppSwarm(
       labBase: strutLabBaseUrl(swarm.swarmUrl),
       swarmApiKey,
       orgId,
-      workspace: { id: swarm.workspace.id, slug: swarm.workspace.slug },
+      workspace: { id: swarm.workspace.id, slug: swarm.workspace.slug, name: swarm.workspace.name },
     },
   };
 }
@@ -253,4 +254,70 @@ export async function relayToStrutMcp(opts: {
     if (value) out.set(name, value);
   }
   return new Response(upstream.body, { status: upstream.status, headers: out });
+}
+
+// ─── The tabs ───────────────────────────────────────────────────────────
+
+/**
+ * The apps the swarm's strut has pinned as tabs: `GET /apps`, the entries
+ * with `pinned: true`, in strut's order. The flag is the app record's, set
+ * by a person (`PUT /apps/:name/pin`) or the builder (`app/pin`); the swarm
+ * IS one workspace's, so a pinned app is a tab of that workspace.
+ */
+export async function listPinnedStrutApps(
+  swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
+): Promise<{ ok: true; apps: PinnedStrutApp[] } | AppRouteFailure> {
+  const listed = await labJson(swarm, "/apps");
+  if (!listed.ok) return listed;
+  const entries = Array.isArray(listed.body.apps) ? listed.body.apps : [];
+  const apps = entries.flatMap((entry): PinnedStrutApp[] => {
+    if (!isRecord(entry) || entry.pinned !== true || !isStrutAppName(entry.name)) return [];
+    const title = typeof entry.title === "string" && entry.title.trim() ? entry.title.trim() : entry.name;
+    return [{ name: entry.name, title }];
+  });
+  return { ok: true, apps };
+}
+
+/** Whether one app is pinned, read off `GET /apps`; 404 when the swarm's strut has no such app. */
+export async function readStrutAppPin(
+  swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
+  app: string,
+): Promise<{ ok: true; pinned: boolean } | AppRouteFailure> {
+  const listed = await labJson(swarm, "/apps");
+  if (!listed.ok) return listed;
+  const entries = Array.isArray(listed.body.apps) ? listed.body.apps : [];
+  const entry = entries.find((e) => isRecord(e) && e.name === app);
+  return entry && isRecord(entry) ? { ok: true, pinned: entry.pinned === true } : fail(404, "No such app on the swarm");
+}
+
+/**
+ * Pin the app as a tab, or unpin it: strut's `PUT /apps/:name/pin` (the
+ * name encoded whole, as the document route spells it) with the swarm key —
+ * a person's door on strut, so a peer key would not do. Strut's own 4xx and
+ * its message come back as they are; anything else is a 502.
+ */
+export async function setStrutAppPin(
+  swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
+  app: string,
+  pinned: boolean,
+): Promise<{ ok: true; pinned: boolean } | AppRouteFailure> {
+  let res: Response;
+  try {
+    res = await fetch(`${swarm.labBase}/apps/${encodeURIComponent(app)}/pin`, {
+      method: "PUT",
+      headers: { "x-api-token": swarm.swarmApiKey, "content-type": "application/json" },
+      body: JSON.stringify({ pinned }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+    });
+  } catch (err) {
+    console.warn("[strut-apps] pin: swarm unreachable", { swarmId: swarm.swarmId, error: err instanceof Error ? err.message : String(err) });
+    return fail(502, "Could not reach the swarm");
+  }
+  const body: unknown = await res.json().catch(() => null);
+  if (res.ok) return { ok: true, pinned: isRecord(body) && typeof body.pinned === "boolean" ? body.pinned : pinned };
+  const error = isRecord(body) && typeof body.error === "string" ? body.error : `The swarm answered ${res.status}`;
+  if (res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 403) return fail(res.status, error);
+  console.warn("[strut-apps] pin: swarm refused", { swarmId: swarm.swarmId, status: res.status });
+  return fail(502, error);
 }
