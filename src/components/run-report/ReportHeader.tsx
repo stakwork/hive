@@ -175,7 +175,10 @@ export function ReportHeader({
   const scoreDisplay = score ? formatBenchmarkScore(score) : null;
   const passCount = score ? score.passed : stats.passCount;
   const denominator = score ? score.denominator : stats.rubricCount;
-  const allPassed = score ? score.allPass : stats.failCount === 0 && stats.passCount !== null;
+  // A fully contested set (no passes) is never "all passed".
+  const allPassed = score
+    ? score.allPass
+    : stats.failCount === 0 && stats.passCount !== null && stats.passCount > 0;
 
   return (
     <header

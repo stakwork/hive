@@ -172,13 +172,14 @@ describe("rubricBreakdown: partition invariant pass + fail + contested === total
       crit("C-004", "pass", { contested: true }), // run-recorded, not in roster's contested set
     ];
     const score = computeBenchmarkScore({ criteriaResults: criteria, graphRubrics: graph })!;
-    // computeBenchmarkScore uses Math.max(rosterContested=0, contestedInRun=1) = 1
+    // computeBenchmarkScore uses the shared union (0 roster + 1 run-only) = 1
     // so denominator = 3, passed = 3, allPass = true
     expect(score.passed).toBe(3);
     expect(score.denominator).toBe(3);
 
     const bd = rubricBreakdown({ score, criteria, graphRubrics: graph })!;
     assertPartition(bd, "run-recorded contested not in roster");
+    expect(bd.contested).toBe(score.contested);
     // The union finds the 1 run-contested criterion (C-004) not in the roster contested set
     expect(bd.contested).toBe(1);
     expect(bd.total).toBe(4);
@@ -190,50 +191,11 @@ describe("rubricBreakdown: partition invariant pass + fail + contested === total
   });
 
   it("clamped=true when pass exceeds scorable", () => {
-    // Create a situation where the union contested is higher than what
-    // computeBenchmarkScore saw (additional run-contested criteria), making
-    // score.passed > scorable.
-    // Roster: 5 criteria, none contested. Run: 5 pass, but 2 have run-contested flags.
-    // computeBenchmarkScore: Math.max(0, 2)=2 → denominator=3, passed=3 (3 non-contested pass).
-    // rubricBreakdown union: same 2, so scorable=3, pass=min(3,3)=3 — no clamp here.
-    //
-    // To force a clamp we need score.passed > scorable from the union.
-    // Scenario: roster has 1 contested; run has 2 contested (1 extra not in roster).
-    // computeBenchmarkScore: Math.max(1, 2)=2 → denominator=3, passed=3 (C-004,C-005 pass, C-001 contested by roster, C-002 contested by run, C-003 pass).
-    // Wait, Math.max already handles the max case. Let's construct more carefully.
-    //
-    // Roster: 5 criteria, C-001 contested.
-    // Run criteria: C-001 contested(roster), C-002 pass, C-003 pass, C-004 pass, C-005 pass.
-    // computeBenchmarkScore: rosterContested=1, contestedInRun=1(C-001), Math.max=1
-    //   → denominator=4, passed=4.
-    // rubricBreakdown union: rosterContested set = {c-001}. Run-contested: C-001 — already in roster set, so no new addition. union=1.
-    //   scorable=4, pass=min(4,4)=4. No clamp.
-    //
-    // For a clamp, we need the union to add an extra contested not seen by computeBenchmarkScore.
-    // computeBenchmarkScore uses Math.max(rosterContested, contestedInRun). The union can only
-    // ADD entries. So when union > Math.max, that means there are run-contested criteria the
-    // roster doesn't know about AND the count exceeds the roster's own contested count.
-    //
-    // Example: roster has C-001 contested (rosterContested=1).
-    // Run: C-001 contested (already in roster), C-002 pass, C-003 pass, C-004 pass,
-    //      C-005 pass with {contested:true} (NOT in roster contested set).
-    // computeBenchmarkScore: rosterContested=1, contestedInRun=2, Math.max=2 → denominator=3, passed=3.
-    // rubricBreakdown union: starts at rosterContested=1. C-001 in roster contested → skip. C-005 NOT in roster contested → add. union=2.
-    // scorable=3, pass=min(3,3)=3. Still no clamp...
-    //
-    // We need score.passed > scorable from the union. That means union > Math.max from computeBenchmarkScore.
-    // But union = rosterContested + (runContested NOT in roster) and Math.max = max(rosterContested, runContested).
-    // Let's say rosterContested=1, runContested (total)=2 (1 in roster + 1 new). Math.max=2. Union=2. Same.
-    // For union > Math.max: rosterContested=3, runContested=1 (all in roster). Math.max=3. Union=3. Same.
-    //
-    // The clamp path for pass only fires when score.passed > total - union_contested.
-    // Let's force it: 5 criteria, roster contested=[C-001,C-002,C-003] (3 contested).
-    // Run: C-001,C-002,C-003 all fail (contested). C-004,C-005 pass. Plus C-006 (not in roster) with contested:true.
-    // computeBenchmarkScore: rosterContested=3, contestedInRun=4, Math.max=4 → denominator=1, passed=2.
-    // But wait, passed=2 but denominator=1 — this is the exact negative-fail case!
-    // rubricBreakdown union: rosterContested=3 (C-001,C-002,C-003 keys). C-004 pass, no contest. C-005 pass, no contest. C-006 contested:true, not in roster keys → add. union=4.
-    // But score.total = graphRubrics.length = 5 (not including C-006 since it's not in the roster).
-    // scorable = max(0, 5-4)=1, pass=min(2,1)=1 → CLAMPED!
+    // Roster: 5 criteria, C-001..C-003 contested. Run: C-004/C-005 pass, plus
+    // C-006 (not in roster) with contested:true. Both computeBenchmarkScore and
+    // rubricBreakdown use the shared union (3 roster + 1 run-only = 4), so they
+    // AGREE: scorable = 1, and score.passed (2, from the run) exceeds it, so
+    // the breakdown clamps pass to 1.
     const graph = roster(5, ["C-001", "C-002", "C-003"]);
     const criteria = [
       crit("C-001", "fail"), // roster-contested
@@ -247,6 +209,9 @@ describe("rubricBreakdown: partition invariant pass + fail + contested === total
     const bd = rubricBreakdown({ score, criteria, graphRubrics: graph })!;
 
     assertPartition(bd, "forced clamp scenario");
+    expect(score.contested).toBe(4);
+    expect(bd.contested).toBe(score.contested);
+    expect(bd.pass + bd.fail + bd.contested).toBe(bd.total);
     expect(bd.clamped).toBe(true);
     expect(bd.fail).toBeGreaterThanOrEqual(0);
   });
