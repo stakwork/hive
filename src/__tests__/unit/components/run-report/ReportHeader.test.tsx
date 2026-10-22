@@ -125,12 +125,12 @@ function renderHeader(
 
 describe("ReportHeader", () => {
   describe("breakdown path (rubricRows present)", () => {
-    it("renders no rubric-breakdown-fail chip even when rubric rows are present", () => {
+    it("renders the rubric-breakdown-fail chip when rubric rows are present", () => {
       const { queryByTestId } = renderHeader([
         makeRubricRow({ verdict: "pass" }),
         makeRubricRow({ id: "R2", verdict: "fail", passed: false }),
       ]);
-      expect(queryByTestId("rubric-breakdown-fail")).toBeNull();
+      expect(queryByTestId("rubric-breakdown-fail")).not.toBeNull();
     });
 
     it("renders the rubric-breakdown-pass chip in full variant", () => {

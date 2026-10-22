@@ -1,5 +1,5 @@
 /**
- * RubricBreakdownStrip — shared presentational strip for Pass/Contested/Disputed/Total.
+ * RubricBreakdownStrip — shared presentational strip for Pass/Fail/Contested/Disputed/Total.
  *
  * HOOK-FREE CONSTRAINT: This component must never use React hooks, "use client",
  * or Radix UI primitives. It is imported by `render-offline.tsx` which calls
@@ -13,7 +13,7 @@ import React from "react";
 import type { RubricBreakdown } from "@/lib/harvey-lab/rubric-scoring";
 
 /**
- * Renders Pass + Contested + Total chips plus the Disputed overlay tag.
+ * Renders Pass + Fail + Contested + Total chips plus the Disputed overlay tag.
  * Report surfaces only (run report header, offline export, LegalBenchmarkResults
  * score summary) — runs-history rows carry their own dedicated Contested and
  * Disputed count columns instead of this strip.
@@ -43,7 +43,7 @@ function DisputedTag({ value }: { value: number | null | undefined }) {
 export function RubricBreakdownStrip({ breakdown }: RubricBreakdownStripProps) {
   if (!breakdown) return null;
 
-  const { pass, contested, total, disputed, totalSource } = breakdown;
+  const { pass, fail, contested, total, disputed, totalSource } = breakdown;
 
   const totalTitle =
     totalSource === "run"
@@ -58,6 +58,13 @@ export function RubricBreakdownStrip({ breakdown }: RubricBreakdownStripProps) {
         title={`${pass} criteria passed (non-contested)`}
       >
         {pass} pass
+      </span>
+      <span
+        className="inline-flex items-center rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.07em] text-red-600"
+        data-testid="rubric-breakdown-fail"
+        title={`${fail} criteria failed (non-contested; contested criteria are counted separately)`}
+      >
+        {fail} fail
       </span>
       <span
         className="inline-flex items-center rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.07em] text-violet-500"
