@@ -163,8 +163,11 @@ export function useCanvasBoard(
       if (p?.workspaceSlug && p.root) void qc.invalidateQueries({ queryKey: ["choice-tree", p.workspaceSlug, p.root] });
     };
     const onPlan = (p: { workspaceSlug?: string; root?: string }) => {
-      if (!p?.workspaceSlug || !p.root) return;
-      void qc.invalidateQueries({ queryKey: treeKey(p.workspaceSlug, p.root) });
+      if (!p?.workspaceSlug) return;
+      // No root: strut wrote somewhere in that workspace's graph (a decided proposal), so read its plans again.
+      void qc.invalidateQueries({
+        queryKey: p.root ? treeKey(p.workspaceSlug, p.root) : ["initiative-tree", p.workspaceSlug],
+      });
       void qc.invalidateQueries({ queryKey: ["initiatives", p.workspaceSlug] });
     };
     channel.bind(PUSHER_EVENTS.BRAINSTORM_UPDATED, onBrainstorm);
