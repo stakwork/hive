@@ -111,17 +111,7 @@ import {
   peerJobHome,
   type ArtifactEvent,
 } from "@/lib/strut-jobs";
-import {
-  encodeStrutPath,
-  isStrutAppName,
-  isStrutAppPath,
-  isStrutAppVersion,
-  isStrutJobId,
-  jobAppOfKey,
-  STRUT_APP_DOCUMENT,
-  workspaceAppDocumentKey,
-  workspaceAppOfKey,
-} from "@/lib/strut-apps";
+import { isStrutAppName, isStrutAppVersion, workspaceAppDocumentKey, workspaceAppOfKey } from "@/lib/strut-apps";
 import { getBaseUrl } from "@/lib/utils";
 import { canvasJobStateOf, nudgeCanvasCardJob } from "@/services/canvas-jobs";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
@@ -177,11 +167,10 @@ export interface StrutArtifact {
   /**
    * An APP (`kind: "app"`, strut CALLBACKS.md §4): a WORKSPACE app by name —
    * the builder's deliverable, its version resolved by strut (absent only on
-   * a peer's entry, which strut leaves as it came) — or a JOB's app by the
-   * job and the app's directory in it (strut plans/apps.md §6). `url` is its
-   * document. `hash` is the build the document came from.
+   * a peer's entry, which strut leaves as it came). `url` is its document.
+   * `hash` is the build the document came from.
    */
-  app?: { name: string; version?: string; hash?: string; builtAt?: string } | { job: string; path: string };
+  app?: { name: string; version?: string; hash?: string; builtAt?: string };
 }
 
 const KINDS: ReadonlySet<string> = new Set<ArtifactKind>([
@@ -210,21 +199,17 @@ const str = (v: unknown, max: number): string | undefined => (typeof v === "stri
 /**
  * An app deliverable's `app`: `{ name, version?, hash?, builtAt? }` for a
  * workspace app (a version strut did not spell as one, or a name hive would
- * not put in a URL, is no app), else `{ job, path }` for a job's (extra keys
- * dropped). Undefined for neither.
+ * not put in a URL, is no app). Undefined otherwise — a job's app directory
+ * (`{ job, path }`, retired on strut's side) included.
  */
 function appOf(raw: unknown): StrutArtifact["app"] {
-  if (!isRecord(raw)) return undefined;
-  if (raw.name !== undefined) {
-    if (!isStrutAppName(raw.name) || (raw.version !== undefined && !isStrutAppVersion(raw.version))) return undefined;
-    return {
-      name: raw.name,
-      ...(raw.version !== undefined ? { version: raw.version } : {}),
-      ...(str(raw.hash, 200) ? { hash: raw.hash as string } : {}),
-      ...(str(raw.builtAt, 60) ? { builtAt: raw.builtAt as string } : {}),
-    };
-  }
-  return isStrutJobId(raw.job) && isStrutAppPath(raw.path) ? { job: raw.job, path: raw.path } : undefined;
+  if (!isRecord(raw) || !isStrutAppName(raw.name) || (raw.version !== undefined && !isStrutAppVersion(raw.version))) return undefined;
+  return {
+    name: raw.name,
+    ...(raw.version !== undefined ? { version: raw.version } : {}),
+    ...(str(raw.hash, 200) ? { hash: raw.hash as string } : {}),
+    ...(str(raw.builtAt, 60) ? { builtAt: raw.builtAt as string } : {}),
+  };
 }
 
 /** Strut's list as it comes: every entry that is whole, in order. */
@@ -407,7 +392,7 @@ function peerFileKey(entry: StrutArtifact): string | null {
  * when the entry names no workspace app, or a peer no swarm of the org is.
  */
 function workspaceAppSource(entry: StrutArtifact, swarmId: string, peers: ReadonlyMap<string, string>): { swarmId: string; key: string } | null {
-  if (!entry.app || !("name" in entry.app) || !isStrutAppName(entry.app.name)) return null;
+  if (!entry.app || !isStrutAppName(entry.app.name)) return null;
   if (entry.peer) {
     const peerSwarmId = peers.get(entry.peer);
     return peerSwarmId ? { swarmId: peerSwarmId, key: workspaceAppDocumentKey(entry.app.name, entry.app.version) } : null;
@@ -415,29 +400,6 @@ function workspaceAppSource(entry: StrutArtifact, swarmId: string, peers: Readon
   const linked = entry.url ? workspaceAppOfKey(entry.url) : null;
   const key = linked && linked.app === entry.app.name ? entry.url! : workspaceAppDocumentKey(entry.app.name, entry.app.version);
   return { swarmId, key };
-}
-
-/**
- * Where a job's app is: the swarm and its document's link
- * (`/jobs/<job>/files/<path>/dist/index.html`) — strut's `url`, else built
- * from `app: { job, path }`; for a peer's entry, the peer's file of that job
- * on the peer's swarm (`peerFileKey`), its document inside it. Null when the
- * entry names no job's app hive can read.
- */
-function jobAppSource(entry: StrutArtifact, swarmId: string, peers: ReadonlyMap<string, string>): { swarmId: string; key: string } | null {
-  const documentOf = (key: string) => (key.endsWith(`/${STRUT_APP_DOCUMENT}`) ? key : `${key.replace(/\/+$/, "")}/${STRUT_APP_DOCUMENT}`);
-  if (entry.peer) {
-    const peerSwarmId = peers.get(entry.peer);
-    const key = peerFileKey(entry);
-    return peerSwarmId && key && jobAppOfKey(documentOf(key)) ? { swarmId: peerSwarmId, key: documentOf(key) } : null;
-  }
-  const key =
-    entry.url && isStrutKey(entry.url)
-      ? entry.url
-      : entry.app && "job" in entry.app
-        ? `/jobs/${encodeURIComponent(entry.app.job)}/files/${encodeStrutPath(entry.app.path)}/${STRUT_APP_DOCUMENT}`
-        : null;
-  return key && jobAppOfKey(key) ? { swarmId, key } : null;
 }
 
 /**
@@ -461,17 +423,16 @@ export function mapStrutArtifacts(
     }
     // An APP (strut CALLBACKS.md §4): live software, rendered through the
     // app frame, keyed by its document's link on the swarm that holds it —
-    // a WORKSPACE app by name (the builder's deliverable) or a JOB's app in
-    // its directory (strut plans/apps.md §6); the peer's swarm, for a tagged
-    // entry. An `app` on no swarm hive can name (a run's, a peer the org
-    // has no swarm for) shows as the link it is, below.
+    // a WORKSPACE app by name, the builder's deliverable; the peer's swarm,
+    // for a tagged entry. An `app` on no swarm hive can name (a run's, a
+    // peer the org has no swarm for) shows as the link it is, below.
     if (entry.kind === "app") {
-      const app = workspaceAppSource(entry, swarmId, peers) ?? jobAppSource(entry, swarmId, peers);
+      const app = workspaceAppSource(entry, swarmId, peers);
       if (app) {
         refs.push({ ...base, kind: "app", source: { type: "graph", ...app } });
         continue;
       }
-      if (entry.peer && entry.app && "name" in entry.app) {
+      if (entry.peer && entry.app) {
         dropped.push({ title: entry.title, reason: `on @${entry.peer}, which is no swarm of this org` });
         continue;
       }

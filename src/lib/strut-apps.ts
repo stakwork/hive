@@ -3,24 +3,22 @@
  * addresses and the pure rules the app frame (`components/strut-app-frame`)
  * and its two routes share. Client-safe: no db, no secrets.
  *
- * An app is a built front-end document on a swarm's strut — a WORKSPACE app
- * (`/apps/<name>/<vN>`, the active version unless one is named) or a JOB's
- * app (a directory of the job's, `/jobs/<job>/files/<path>`). Hive reads its
- * document through `api/orgs/[githubLogin]/strut/apps/document` and relays
- * the page's MCP `tools/call` through `…/strut/apps/mcp`; the swarm key
- * never reaches the browser.
+ * An app is a built front-end document on a swarm's strut, a WORKSPACE app
+ * (`/apps/<name>/<vN>`, the active version unless one is named) — what the
+ * builder publishes. Hive reads its document through
+ * `api/orgs/[githubLogin]/strut/apps/document` and relays the page's MCP
+ * `tools/call` through `…/strut/apps/mcp`; the swarm key never reaches the
+ * browser. (A JOB's app, a directory in a job's, is retired on strut's side:
+ * strut plans/chained-orchestrators.md §6.)
  */
 
-/** Where an app is: its swarm, and a workspace app by name or a job's app by its directory. */
-export type StrutAppSource =
-  | { githubLogin: string; swarmId: string; app: string; version?: string }
-  | { githubLogin: string; swarmId: string; job: string; path: string };
+/** Where an app is: its swarm, and the workspace app by name (and version). */
+export type StrutAppSource = { githubLogin: string; swarmId: string; app: string; version?: string };
 
 /** The document inside an app's directory, as `app/build` writes it. */
 export const STRUT_APP_DOCUMENT = "dist/index.html";
 
 const MAX_PART = 200;
-const MAX_PATH = 1_024;
 const VERSION_RE = /^v\d{1,6}$/;
 /** Strut's app names: lowercase words, `/`-separated (`acme/hvac/invoices`). Hive only keeps them out of URL syntax. */
 const APP_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
@@ -31,56 +29,19 @@ export const isStrutAppName = (v: unknown): v is string => typeof v === "string"
 /** A version label (`v1`, `v2`, …). */
 export const isStrutAppVersion = (v: unknown): v is string => typeof v === "string" && VERSION_RE.test(v);
 
-/** A job id as strut's file routes take it (one URL segment once encoded; `peer/<job>` included). */
-export const isStrutJobId = (v: unknown): v is string =>
-  typeof v === "string" && v.length > 0 && v.length <= MAX_PART && !/[\s\\]/.test(v) && !v.split("/").includes("..");
-
-/** A directory inside a job's: relative, no `..`, no empty segment. */
-export function isStrutAppPath(v: unknown): v is string {
-  if (typeof v !== "string" || !v || v.length > MAX_PATH || /[\s\\?#%]/.test(v)) return false;
-  const segments = v.split("/");
-  return segments.every((s) => s.length > 0 && s !== "." && s !== "..");
-}
-
 /** `path` with each segment encoded, for a strut URL. */
 export const encodeStrutPath = (path: string): string => path.split("/").map(encodeURIComponent).join("/");
 
 /** Same-origin URL of the document route for an app. */
 export function strutAppDocumentUrl(source: StrutAppSource): string {
-  const query = new URLSearchParams({ swarmId: source.swarmId });
-  if ("app" in source) {
-    query.set("app", source.app);
-    if (source.version) query.set("version", source.version);
-  } else {
-    query.set("job", source.job);
-    query.set("path", source.path);
-  }
+  const query = new URLSearchParams({ swarmId: source.swarmId, app: source.app });
+  if (source.version) query.set("version", source.version);
   return `/api/orgs/${encodeURIComponent(source.githubLogin)}/strut/apps/document?${query}`;
 }
 
 /** Same-origin URL of the MCP relay for an app's swarm. The relay never needs to know which app: strut reads that off the token on each call. */
 export function strutAppRelayUrl(source: Pick<StrutAppSource, "githubLogin" | "swarmId">): string {
   return `/api/orgs/${encodeURIComponent(source.githubLogin)}/strut/apps/mcp?${new URLSearchParams({ swarmId: source.swarmId })}`;
-}
-
-/**
- * A job's app as strut links it — its deliverable's `url`,
- * `/jobs/<job, encoded>/files/<path>/dist/index.html` — back to the job and
- * the app's directory. Null for any other link.
- */
-export function jobAppOfKey(key: unknown): { job: string; path: string } | null {
-  if (typeof key !== "string") return null;
-  const match = /^\/jobs\/([^/]+)\/files\/(.+)\/dist\/index\.html$/.exec(key);
-  if (!match) return null;
-  let job: string;
-  let path: string;
-  try {
-    job = decodeURIComponent(match[1]);
-    path = match[2].split("/").map(decodeURIComponent).join("/");
-  } catch {
-    return null;
-  }
-  return isStrutJobId(job) && isStrutAppPath(path) ? { job, path } : null;
 }
 
 /**
@@ -100,7 +61,7 @@ export function workspaceAppDocumentKey(app: string, version?: string): string {
 /**
  * A workspace app's document link (`workspaceAppDocumentKey`) back to the
  * app's name and, when the link names one, its version. Null for any other
- * link — a job's app is `jobAppOfKey`. A name whose last segment is itself
+ * link. A name whose last segment is itself
  * `vN`-shaped reads as strut would spell it: that segment is the version.
  */
 export function workspaceAppOfKey(key: unknown): { app: string; version?: string } | null {
@@ -115,11 +76,6 @@ export function workspaceAppOfKey(key: unknown): { app: string; version?: string
   }
   if (!isStrutAppName(app)) return null;
   return match[2] ? { app, version: match[2] } : { app };
-}
-
-/** Either app an `app` ref's key names — a workspace app by name, or a job's by its directory — without the swarm. Null for any other link. */
-export function strutAppOfKey(key: unknown): { app: string; version?: string } | { job: string; path: string } | null {
-  return workspaceAppOfKey(key) ?? jobAppOfKey(key);
 }
 
 /** The deep-link params strut reads (its `web/src/embed.ts` vocabulary). */

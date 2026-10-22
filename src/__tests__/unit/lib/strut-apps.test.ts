@@ -1,18 +1,12 @@
 /**
- * `lib/strut-apps.ts` — the two app document links hive keys an `app` ref
- * by, and the way back from a key to which app it names: a WORKSPACE app
- * by name and version (`/apps/<name>/<vN>/files/dist/index.html`, strut
- * CALLBACKS.md §4) or a JOB's app by its directory
- * (`/jobs/<job>/files/<path>/dist/index.html`, strut plans/apps.md §6).
+ * `lib/strut-apps.ts` — the app document link hive keys an `app` ref by,
+ * and the way back from a key to which app it names: a WORKSPACE app by
+ * name and version (`/apps/<name>/<vN>/files/dist/index.html`, strut
+ * CALLBACKS.md §4). A job's app directory is no app any more (strut
+ * plans/chained-orchestrators.md §6).
  */
 import { describe, it, expect } from "vitest";
-import {
-  jobAppOfKey,
-  strutAppDocumentUrl,
-  strutAppOfKey,
-  workspaceAppDocumentKey,
-  workspaceAppOfKey,
-} from "@/lib/strut-apps";
+import { strutAppDocumentUrl, workspaceAppDocumentKey, workspaceAppOfKey } from "@/lib/strut-apps";
 
 const JOB = "6f1c0d3e-1111-4222-8333-444455556666";
 
@@ -55,28 +49,14 @@ describe("workspaceAppOfKey", () => {
   });
 });
 
-describe("strutAppOfKey", () => {
-  it("either form, without the swarm — what the loader hands the app frame", () => {
-    expect(strutAppOfKey("/apps/visits/v2/files/dist/index.html")).toEqual({ app: "visits", version: "v2" });
-    expect(strutAppOfKey(`/jobs/${JOB}/files/apps/tracker/dist/index.html`)).toEqual({
-      job: JOB,
-      path: "apps/tracker",
-    });
-    expect(strutAppOfKey("/jobs/peer%2Fbuild-1/files/apps/tracker/dist/index.html")).toEqual({
-      job: "peer/build-1",
-      path: "apps/tracker",
-    });
-    expect(strutAppOfKey("/artifacts/1790000000000/apps/x/dist/index.html")).toBeNull();
-  });
-
-  it("round-trips through the document route's address", () => {
-    const at = strutAppOfKey("/apps/visits/v2/files/dist/index.html")!;
+describe("strutAppDocumentUrl", () => {
+  it("round-trips a key through the document route's address", () => {
+    const at = workspaceAppOfKey("/apps/visits/v2/files/dist/index.html")!;
     expect(strutAppDocumentUrl({ githubLogin: "acme-org", swarmId: "swarm-1", ...at })).toBe(
       "/api/orgs/acme-org/strut/apps/document?swarmId=swarm-1&app=visits&version=v2",
     );
-    const job = jobAppOfKey(`/jobs/${JOB}/files/apps/tracker/dist/index.html`)!;
-    expect(strutAppDocumentUrl({ githubLogin: "acme-org", swarmId: "swarm-1", ...job })).toBe(
-      `/api/orgs/acme-org/strut/apps/document?swarmId=swarm-1&job=${JOB}&path=apps%2Ftracker`,
+    expect(strutAppDocumentUrl({ githubLogin: "acme-org", swarmId: "swarm-1", app: "visits" })).toBe(
+      "/api/orgs/acme-org/strut/apps/document?swarmId=swarm-1&app=visits",
     );
   });
 });
