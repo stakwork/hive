@@ -634,7 +634,7 @@ describe("LegalBenchmarkResults", () => {
 
     expect(screen.getByText(/Rubric Details/)).toBeInTheDocument();
     // passedCount = 3 total - 2 failed = 1
-    expect(screen.getByText(/1 passed \/ 3 total/)).toBeInTheDocument();
+    expect(screen.getByText(/1 passed · 2 failed · 0 contested \/ 3 total/)).toBeInTheDocument();
   });
 
   it("renders failed criteria before passing criteria in list order", () => {
@@ -1171,8 +1171,8 @@ describe("LegalBenchmarkResults", () => {
     expect(screen.getByText(/1\/3 criteria passed/)).toBeInTheDocument();
     // No rubric-scoring FAIL badge renders for a non-perfect run
     expect(screen.queryByText("FAIL")).toBeNull();
-    // Rubric header count unchanged: 1 passed / 3 total
-    expect(screen.getByText(/1 passed \/ 3 total/)).toBeInTheDocument();
+    // Rubric header count unchanged: 1 passed · 2 failed · 0 contested / 3 total
+    expect(screen.getByText(/1 passed · 2 failed · 0 contested \/ 3 total/)).toBeInTheDocument();
   });
 
   // ─── Run Eval button ──────────────────────────────────────────────────────
