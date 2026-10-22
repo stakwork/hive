@@ -552,6 +552,7 @@ export async function POST(request: NextRequest) {
         orgId,
         conversationId: canvasConversationRowId,
         message: newUserContent,
+        attachments: userAttachments,
         publicBaseUrl: getBaseUrl(request.headers.get("host")),
         timeZone: userTimezone,
         focus: initiativeHint ? canvasFocusOf(initiativeHint) : undefined,

@@ -84,6 +84,19 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/chat/response")).toBe("webhook");
     });
 
+    it("lets a strut device reach only its three pairing routes without a session", () => {
+      expect(resolveRouteAccess("/api/strut-devices/pair", "POST")).toBe("webhook");
+      expect(resolveRouteAccess("/api/strut-devices/pair/token", "POST")).toBe("webhook");
+      expect(resolveRouteAccess("/api/strut-devices/peers", "GET")).toBe("webhook");
+      // Approving, listing and revoking need the person's session.
+      expect(resolveRouteAccess("/api/strut-devices/pair/approve", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/strut-devices/pair/approve", "POST")).toBe("protected");
+      expect(resolveRouteAccess("/api/strut-devices", "GET")).toBe("protected");
+      expect(resolveRouteAccess("/api/strut-devices/dev-1", "DELETE")).toBe("protected");
+      // The approve page checks the session itself, so a signed-out visitor keeps the code through sign-in.
+      expect(resolveRouteAccess("/pair")).toBe("public");
+    });
+
     it("matches /mcp prefix for webhook routes", () => {
       expect(resolveRouteAccess("/mcp")).toBe("webhook");
       expect(resolveRouteAccess("/mcp/session/abc")).toBe("webhook");
