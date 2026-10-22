@@ -80,7 +80,7 @@ const fails = (save: InitiativeSave, t: InitiativeTreeData | null = tree()) => {
 };
 
 describe("planInitiativeSave", () => {
-  test("edits stamp updated_at and merge per node", () => {
+  test("edits merge per node and never send updated_at", () => {
     const p = ok(
       plan({
         root: "init",
@@ -93,8 +93,8 @@ describe("planInitiativeSave", () => {
     );
     expect(p.creates).toEqual([]);
     expect(p.patches).toEqual({
-      init: { name: "Renamed", description: "More", updated_at: AT },
-      b: { text: "Because.", updated_at: AT },
+      init: { name: "Renamed", description: "More" },
+      b: { text: "Because." },
     });
   });
 
@@ -109,10 +109,8 @@ describe("planInitiativeSave", () => {
       }),
     );
     expect(p.patches).toEqual({
-      s: { deleted_at: NOW.getTime(), is_deleted: true, updated_at: AT },
-      r: { deleted_at: NOW.getTime(), is_deleted: true, updated_at: AT },
-      // Any change marks the initiative updated: the desk shows the latest.
-      init: { updated_at: AT },
+      s: { deleted_at: NOW.getTime(), is_deleted: true },
+      r: { deleted_at: NOW.getTime(), is_deleted: true },
     });
     expect(fails({ root: "init", ops: [{ op: "remove", ref: "f" }] })).toMatch(/can't be deleted/);
     expect(fails({ root: "init", ops: [{ op: "remove", ref: "elsewhere" }] })).toMatch(/isn't part of this initiative/);
@@ -139,11 +137,11 @@ describe("planInitiativeSave", () => {
       name: "Billing",
       status: "proposed",
       created_at: AT,
-      updated_at: AT,
       created_by: "u1",
       created_by_kind: "human",
     });
     expect(String(data.feature_id)).toMatch(UUID);
+    expect(data).not.toHaveProperty("updated_at");
     expect(p.creates[2].data.requirement_id).not.toBe(p.creates[1].data.story_id);
   });
 
@@ -184,10 +182,7 @@ describe("planInitiativeSave", () => {
     expect(fails({ root: "init", ops: [{ op: "edit", ref: "m", fields: { sequence: "2" } }] })).toMatch(/wrong type/);
     expect(
       ok(plan({ root: "init", ops: [{ op: "edit", ref: "r", fields: { status: "accepted" } }] })).patches.r,
-    ).toEqual({
-      status: "accepted",
-      updated_at: AT,
-    });
+    ).toEqual({ status: "accepted" });
   });
 
   test("refuses wrong parents, missing required fields and misplaced initiatives", () => {
@@ -297,7 +292,7 @@ describe("planChoice", () => {
     // What the earlier choice (o-b) made goes, as nothing has started on it; f, with an architecture, stays.
     expect(r.choice.plan.patches.f2).toMatchObject({ is_deleted: true, deleted_at: NOW.getTime() });
     expect(r.choice.plan.patches.f).toBeUndefined();
-    expect(r.choice.plan.patches.init).toEqual({ updated_at: AT });
+    expect(r.choice.plan.patches.init).toBeUndefined();
   });
 
   test("taking a choice back opens it again and takes back what it made, unless work started", () => {
