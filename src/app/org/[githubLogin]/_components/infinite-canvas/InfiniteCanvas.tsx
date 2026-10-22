@@ -1032,10 +1032,8 @@ export function InfiniteCanvas({
             <JamieBar
               mode={mode}
               setMode={setMode}
-              onName={nameOf(level)}
               suggestions={level === ORG ? [] : suggestions(board, level)}
               send={talk}
-              goTo={() => go(level)}
             />
           )}
 
