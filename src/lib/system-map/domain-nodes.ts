@@ -71,6 +71,17 @@ function countedEdges(node: JarvisGraphNode): number | null {
 }
 
 /**
+ * The type names jarvis rejected, from its `UNKNOWN_NODE_TYPE` message
+ * ("Unknown node type(s): SysActor, SysProtocol"), limited to `requested`.
+ */
+export function unknownNodeTypes(error: string | undefined, requested: string[]): string[] {
+  const match = error?.match(/Unknown node type\(s\):\s*(.+)$/);
+  if (!match) return [];
+  const named = new Set(match[1].split(",").map((t) => t.trim().toLowerCase()));
+  return requested.filter((type) => named.has(type.toLowerCase()));
+}
+
+/**
  * One namespace of the workspace graph (`systemmap` unless told otherwise)
  * as a graph, read through boltwall: the nodes and the edges among them
  * from `GET /v2/nodes?namespace=<namespace>&include_edge_counts=true`
@@ -81,24 +92,49 @@ function countedEdges(node: JarvisGraphNode): number | null {
  * for it (a hub; a link across pages) — or every node, on a jarvis that
  * reports no edges or counts — has its edges read on their own
  * (`GET /v2/nodes/:ref_id?expand=edges`).
+ *
+ * `options.types` narrows the read to those node types (jarvis' `type=`
+ * allowlist): only edges among the listed types come back, and the per-node
+ * edge reads are scoped to them too, so a component's hundreds of package
+ * edges cost nothing until packages are asked for. jarvis 400s the whole
+ * listing on a type its schema does not have (an ontology type this swarm
+ * never materialized), so those are dropped and the listing retried; and
+ * it adds no edges to a typed listing unless asked, so it asks (`expand`).
  */
 export async function listSystemMapDomainNodes(
   config: JarvisConnectionConfig,
   namespace: string = SYSTEM_MAP_NAMESPACE,
+  options: { types?: string[] } = {},
 ): Promise<ListSystemMapDomainNodesResult> {
+  let allowed = options.types?.length ? [...options.types] : undefined;
   const raw: JarvisGraphNode[] = [];
   const listedEdges = new Map<string, JarvisGraphEdge>();
   let listingHasEdges = true;
   let startingAfter: string | undefined;
   let truncated = true;
   for (let page = 0; page < MAX_PAGES; page++) {
-    const result = await listNodesByType(config, "", PAGE_SIZE, {
+    const result = await listNodesByType(config, allowed ? allowed.join(",") : "", PAGE_SIZE, {
       startingAfter,
       namespace,
       includeEdgeCounts: true,
+      ...(allowed ? { expand: true } : {}),
     });
     if (!result.ok) {
-      return { ok: false, error: result.error || `Failed to read nodes from ${config.jarvisUrl}` };
+      const unknown = allowed && result.errorCode === "UNKNOWN_NODE_TYPE" ? unknownNodeTypes(result.error, allowed) : [];
+      if (unknown.length === 0) {
+        return { ok: false, error: result.error || `Failed to read nodes from ${config.jarvisUrl}` };
+      }
+      logger.info("[SystemMap] dropping node types this swarm does not have", "system-map", {
+        jarvisUrl: config.jarvisUrl,
+        unknown,
+      });
+      allowed = allowed!.filter((type) => !unknown.includes(type));
+      if (allowed.length === 0) {
+        truncated = false;
+        break;
+      }
+      page--;
+      continue;
     }
     raw.push(...result.nodes);
     if (result.edges) for (const e of result.edges) listedEdges.set(edgeKey(e), e);
@@ -131,8 +167,10 @@ export async function listSystemMapDomainNodes(
   });
 
   // Filtering to the map's own types keeps a component's hundreds of
-  // CALLS/EXPOSES edges to endpoints from using up the per-node limit.
-  const mapTypes = [...new Set(nodes.map((node) => node.type))];
+  // CALLS/EXPOSES edges to endpoints from using up the per-node limit; under
+  // an allowlist the read stays within it, so a left-out type's edges don't
+  // use it up either.
+  const mapTypes = allowed ?? [...new Set(nodes.map((node) => node.type))];
   const edgeReads = await mapWithConcurrency(short, EDGE_CONCURRENCY, (node) =>
     getNodeEdges(config, node.refId, { limit: EDGES_PER_NODE, nodeTypes: mapTypes }),
   );
@@ -161,6 +199,7 @@ export async function listSystemMapDomainNodes(
   logger.info("[SystemMap] domain graph", "system-map", {
     jarvisUrl: config.jarvisUrl,
     namespace,
+    types: allowed ?? null,
     nodes: nodes.length,
     edges: edges.size,
     listedEdges: listedEdges.size,
