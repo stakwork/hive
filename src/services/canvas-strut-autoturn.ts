@@ -37,7 +37,11 @@
  * runs. The canvas agent's wakes here run `runCanvasAgent`; the wake of a
  * job strut's orchestrator started (`strut-orchestrator-wake.ts`) runs a
  * turn of strut's orchestrator through the same gate, with its own
- * idempotency mark and its own count of the loop's rounds.
+ * idempotency mark, its own count of the loop's rounds, and the owner's
+ * opt-in WAIVED (`ownerOptIn: false`): the strut engine is a choice the
+ * person already made (the per-browser switch, docs/jamie-engine.md), and
+ * a job the orchestrator started whose reply nothing reads back is that
+ * engine not working. The kill switch still stops it.
  */
 
 import { tool, type ModelMessage, type ToolSet } from "ai";
@@ -319,12 +323,21 @@ export interface AutoTurnGate {
   alreadyHandled: (messages: StoredMessage[]) => boolean;
   /** Rounds of the loop in the transcript tail — past `MAX_CONSECUTIVE_STRUT_DISPATCHES` the wake is skipped. */
   trailingLaunches: (messages: StoredMessage[]) => number;
+  /**
+   * Whether the owner's `User.canvasAutonomousTurns` opt-in gates this
+   * wake. Left unsaid it does: the canvas agent's wakes act AS the user,
+   * with the user's tools, on a switch that defaults off. The orchestrator
+   * wake says `false` (file header): the engine itself was the person's
+   * choice, and the wake is how its jobs' replies reach the conversation.
+   */
+  ownerOptIn?: boolean;
 }
 
 /**
  * Run a wake behind the gates (file header): the master kill switch, the
  * per-conversation claim, an owner + org scoped conversation, the owner's
- * opt-in, the wake's own idempotency mark, the loop breaker. `run` is the
+ * opt-in (unless the gate waives it), the wake's own idempotency mark, the
+ * loop breaker. `run` is the
  * turn itself; whatever it throws is logged, never thrown. The claim is
  * released either way.
  */
@@ -383,7 +396,7 @@ async function loadGatedConversation(gate: AutoTurnGate): Promise<GatedConversat
     console.log(`[${tag}] conversation gone or not owner+org scoped; skipping`, { conversationId });
     return null;
   }
-  if (!conversation.user?.canvasAutonomousTurns) {
+  if (gate.ownerOptIn !== false && !conversation.user?.canvasAutonomousTurns) {
     console.log(`[${tag}] skipped (autonomous turns off)`, { conversationId });
     return null;
   }
