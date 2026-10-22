@@ -150,14 +150,14 @@ describe("LegalBenchmarkResults — RubricBreakdownStrip integration", () => {
 
     // The score-summary-breakdown testid is the wrapper div added in this feature.
     expect(screen.getByTestId("score-summary-breakdown")).toBeInTheDocument();
-    // The breakdown strip's chips should be present — with no fail chip.
+    // The breakdown strip's chips should be present, including the fail chip.
     expect(screen.getByTestId("rubric-breakdown-pass")).toBeInTheDocument();
     expect(screen.getByTestId("rubric-breakdown-contested")).toBeInTheDocument();
     expect(screen.getByTestId("rubric-breakdown-total")).toBeInTheDocument();
-    expect(screen.queryByTestId("rubric-breakdown-fail")).toBeNull();
+    expect(screen.getByTestId("rubric-breakdown-fail")).toBeInTheDocument();
   });
 
-  it("Rubric Details label shows passed/total/contested from criteriaResults rows, not roster", () => {
+  it("Rubric Details label shows passed/failed/contested buckets that sum to the roster total", () => {
     mockUseBenchmarkRubrics.mockReturnValue({
       rubrics: [
         { ref_id: "r1", id: "C-001", name: "Criterion 1", contested: false },
@@ -189,17 +189,16 @@ describe("LegalBenchmarkResults — RubricBreakdownStrip integration", () => {
 
     render(<LegalBenchmarkResults runId="run-1" onReset={vi.fn()} />);
 
-    // The Rubric Details label must count from criteriaResults (3 total), not the roster (4).
-    // Confirmed: "1 passed / 3 total" with 0 contested.
+    // The label uses the breakdown: roster total (4) with the unscored roster-only
+    // criterion counted as a failure, so 1 + 3 + 0 = 4.
     // There are multiple collapsible-trigger elements (section header + per-criterion rows).
     // The first one is the "Rubric Details (N passed / N total)" section header.
     const collapsibleTriggers = screen.getAllByTestId("collapsible-trigger");
     const rubricDetailsHeader = collapsibleTriggers[0];
     expect(rubricDetailsHeader.textContent).toMatch(/1 passed/);
-    expect(rubricDetailsHeader.textContent).toMatch(/3 total/);
-    expect(rubricDetailsHeader.textContent).not.toMatch(/failed/);
-    // No contested annotation since no criteria are contested.
-    expect(rubricDetailsHeader.textContent).not.toMatch(/contested/);
+    expect(rubricDetailsHeader.textContent).toMatch(/3 failed/);
+    expect(rubricDetailsHeader.textContent).toMatch(/0 contested/);
+    expect(rubricDetailsHeader.textContent).toMatch(/4 total/);
   });
 
   it("Run Eval button gate still keys off unevaluatedFailedCount (criteria without cause_type)", () => {
