@@ -3,7 +3,7 @@
 import React, { useCallback } from "react";
 import { toast } from "sonner";
 import { StrutAppFrame } from "@/components/strut-app-frame";
-import { STRUT_APP_DOCUMENT, encodeStrutPath } from "@/lib/strut-apps";
+import { STRUT_APP_DOCUMENT, encodeStrutPath, workspaceAppDocumentKey } from "@/lib/strut-apps";
 import { strutViewPath } from "@/lib/utils/strut-links";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { useCanvasChatStore } from "../../../_state/canvasChatStore";
@@ -23,7 +23,10 @@ export const appMessageDraft = (title: string, text: string): string => `About t
  */
 export function AppPanel({ artifact, content }: ArtifactViewerProps<"app">) {
   const githubLogin = useChatOrgLogin();
-  const documentKey = `/jobs/${encodeURIComponent(content.job)}/files/${encodeStrutPath(content.path)}/${STRUT_APP_DOCUMENT}`;
+  const documentKey =
+    "app" in content
+      ? workspaceAppDocumentKey(content.app, content.version)
+      : `/jobs/${encodeURIComponent(content.job)}/files/${encodeStrutPath(content.path)}/${STRUT_APP_DOCUMENT}`;
   const rebuilt = useLatestUpdateFor(documentKey)?.receivedAt;
   const { title } = artifact;
   const onMessage = useCallback(
@@ -36,7 +39,7 @@ export function AppPanel({ artifact, content }: ArtifactViewerProps<"app">) {
   const strutLinkHref = useCallback((deepLink: string) => strutViewPath(githubLogin, deepLink), [githubLogin]);
   return (
     <StrutAppFrame
-      source={{ githubLogin, swarmId: content.swarmId, job: content.job, path: content.path }}
+      source={{ githubLogin, ...content }}
       title={title}
       onMessage={onMessage}
       strutLinkHref={strutLinkHref}

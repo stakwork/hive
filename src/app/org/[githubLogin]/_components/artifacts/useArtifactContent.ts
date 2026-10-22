@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { jobAppOfKey } from "@/lib/strut-apps";
+import { strutAppOfKey } from "@/lib/strut-apps";
 import { strutArtifactReaderUrl } from "@/lib/strut-jobs";
 import { getOrgChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { usePusherChannel } from "@/hooks/usePusherChannel";
@@ -78,8 +78,10 @@ export async function readStrutArtifact(
     case "walkthrough":
       return { swarmId: source.swarmId, key: source.key };
     case "app": {
-      // A job's app: the frame reads its document and relays its calls itself.
-      const app = jobAppOfKey(source.key);
+      // An app — a workspace's by name, or a job's by its directory, off
+      // the key's spelling: the frame reads its document and relays its
+      // calls itself.
+      const app = strutAppOfKey(source.key);
       if (!app) throw new ArtifactLoadError("unavailable");
       return { swarmId: source.swarmId, ...app };
     }
