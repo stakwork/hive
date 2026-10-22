@@ -309,7 +309,10 @@ export interface RunReportStats {
   rubricCount: number;
   /** Null when the bundle carries no rubric verdicts at all. */
   passCount: number | null;
+  /** Non-contested failures. */
   failCount: number | null;
+  /** Contested rows; pass + fail + contested === rubricCount. Null with no rows. */
+  contestedCount: number | null;
 }
 
 // ── RubricRow (lives here so both project.ts and derive.ts share it) ─────────

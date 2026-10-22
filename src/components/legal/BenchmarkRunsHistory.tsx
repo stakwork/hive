@@ -433,13 +433,15 @@ export function BenchmarkRunsHistory({
         const bd = rubricBreakdown({ score, criteria: run.criteria_results, graphRubrics: roster });
         return {
           ...run,
-          n_passed: score.passed,
-          n_total: score.denominator,
+          // All displayed counts come from the breakdown when present so
+          // Pass + Fail + Contested sums to the roster total.
+          n_passed: bd ? bd.pass : score.passed,
+          n_total: bd ? bd.total - bd.contested : score.denominator,
           // Rewrite all_pass for runs that were actually judged — either the
           // webhook marked them (boolean present) or the graph scored them.
           all_pass:
             typeof run.all_pass === "boolean" || graphOut ? score.allPass : run.all_pass,
-          n_contested: score.contested,
+          n_contested: bd ? bd.contested : score.contested,
           roster_total: rosterTotalOf(roster, score),
           judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
           score_source: usedCriteria ? "criteria" : graphOut ? "graph" : "result",
@@ -482,11 +484,13 @@ export function BenchmarkRunsHistory({
         const bd = rubricBreakdown({ score, criteria: run.criteria_results, graphRubrics: roster });
         return {
           ...run,
-          n_passed: score.passed,
-          n_total: score.denominator,
+          // All displayed counts come from the breakdown when present so
+          // Pass + Fail + Contested sums to the roster total.
+          n_passed: bd ? bd.pass : score.passed,
+          n_total: bd ? bd.total - bd.contested : score.denominator,
           all_pass:
             typeof run.all_pass === "boolean" || graphOut ? score.allPass : run.all_pass,
-          n_contested: score.contested,
+          n_contested: bd ? bd.contested : score.contested,
           roster_total: rosterTotalOf(roster, score),
           judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
           score_source: graphOut ? "graph" : "result",
@@ -931,21 +935,11 @@ function PassCell({ run }: { run: AdjustedRun }) {
 
 /**
  * Failed-criteria count, threaded straight from `AdjustedRun.n_failed`
- * (computed once in `rubricBreakdown`, never recomputed here). Two accepted
- * divergences from neighbouring cells, left as-is deliberately:
- *  (a) The visible columns need not sum to Total. `n_failed` is
- *      `scorable − pass` against a TRUE UNION of contested criteria, while
- *      `ContestedCountCell` renders `score.contested` =
- *      `Math.max(rosterContested, contestedInRun)` — a strictly smaller set
- *      on some rows (rubric-scoring.ts). Pass + Fail + Contested can land
- *      short of Total.
- *  (b) On rows where `rubricBreakdown` clamps `pass` to `scorable`
- *      (rubric-scoring.ts), Fail shows `0` while `PassCell` renders the
- *      *unclamped* `run.n_passed` — so Pass can visibly exceed
- *      `Total − Contested`. `PassCell` is intentionally left alone here;
- *      changing what Pass renders would alter displayed scores, which is out
- *      of scope. Reconciling the two contested sets is a follow-up in
- *      rubric-scoring.ts, not part of this cell.
+ * (computed once in `rubricBreakdown`, never recomputed here). Pass, Fail and
+ * Contested all come from the same breakdown (see `adjustedRuns`), so when
+ * all three are numbers and `roster_total` is a number they sum to it:
+ * `n_passed + n_failed + n_contested === roster_total`. Disputed is an
+ * overlay inside Fail/Contested and is not a summand.
  */
 function FailCell({ run }: { run: AdjustedRun }) {
   if (!hasScoreData(run)) {

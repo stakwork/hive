@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { type CanvasChatMessage, useCanvasChatStore, type InitiativeFocus } from "../../_state/canvasChatStore";
@@ -124,12 +124,22 @@ export function JamieBar({
   const [seen, setSeen] = useState(said);
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const unread = mode === "input" && said !== seen && !!reply;
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
   useEffect(() => {
     if (isListening && transcript) setText(transcript);
   }, [isListening, transcript]);
+
+  // Grow with the text (Shift+Enter adds lines) up to the cap, then scroll; collapse when emptied or sent.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    if (text) el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    else el.style.height = "";
+  }, [text]);
 
   const submit = async (words = text) => {
     if (!words.trim() || working) return;
@@ -352,7 +362,9 @@ export function JamieBar({
             {isListening ? "Listening… " : working ? "Working… " : ""}On:{" "}
             <b style={{ color: v("ink"), fontWeight: 600 }}>{onName}</b>
           </button>
-          <input
+          <textarea
+            ref={inputRef}
+            rows={1}
             data-jamie-input
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -360,21 +372,29 @@ export function JamieBar({
             onBlur={() => setFocused(false)}
             onKeyDown={(e) => {
               e.stopPropagation();
-              if (e.key === "Enter") void submit();
-              if (e.key === "Escape") (e.target as HTMLInputElement).blur();
+              // Shift+Enter falls through to the textarea's own newline; never send mid-composition.
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                e.preventDefault();
+                void submit();
+              }
+              if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur();
             }}
             placeholder={isListening ? "Listening…" : "Talk, or type: “fill this out”, “pull up Repo picker”…"}
             style={{
               width: "100%",
               boxSizing: "border-box",
               border: `1px solid ${v("border")}`,
-              borderRadius: 99,
+              borderRadius: 18,
               background: v("field"),
               color: v("fieldInk"),
               padding: "6px 12px",
               fontFamily: TYPE,
               fontSize: 14,
               outline: "none",
+              resize: "none",
+              maxHeight: 200,
+              overflowY: "auto",
+              display: "block",
             }}
           />
         </div>
