@@ -24,10 +24,12 @@ vi.mock("sonner", () => ({ toast: { info: mockToast } }));
 globalThis.React = React;
 
 const JOB = "6f1c0d3e-1111-4222-8333-444455556666";
-const APP_KEY = `/jobs/${JOB}/files/apps/tracker/dist/index.html`;
+const APP_KEY = "/apps/tracker/v1/files/dist/index.html";
+/** A job's app directory (retired on strut's side, strut plans/chained-orchestrators.md §6): no app to hive. */
+const JOB_APP_KEY = `/jobs/${JOB}/files/apps/tracker/dist/index.html`;
 const PAGE_KEY = `/jobs/${JOB}/files/site/index.html`;
 const DOC = '<!doctype html><html><body><div id="root"></div></body></html>';
-const DOCUMENT_ROUTE = `/api/orgs/acme-org/strut/apps/document?${new URLSearchParams({ swarmId: "swarm-1", job: JOB, path: "apps/tracker" })}`;
+const DOCUMENT_ROUTE = `/api/orgs/acme-org/strut/apps/document?${new URLSearchParams({ swarmId: "swarm-1", app: "tracker", version: "v1" })}`;
 const READER = `/api/orgs/acme-org/strut/artifacts?${new URLSearchParams({ swarmId: "swarm-1", key: PAGE_KEY })}`;
 /** The builder's deliverable (strut CALLBACKS.md §4): a workspace app by name, keyed by its version's document. */
 const VISITS_KEY = "/apps/visits/v2/files/dist/index.html";
@@ -70,9 +72,8 @@ function panel(ref: ArtifactRef, content: unknown) {
 }
 
 describe("an app beside a page", () => {
-  test("the kind: its job and directory on the swarm; a row in the chat", () => {
-    expect(parseArtifactContent("app", { swarmId: "swarm-1", job: JOB, path: "apps/tracker" })).toEqual({ swarmId: "swarm-1", job: JOB, path: "apps/tracker" });
-    expect(parseArtifactContent("app", { swarmId: "swarm-1", job: JOB, path: "../x" })).toBeNull();
+  test("the kind: a row in the chat; a job's app directory is none", () => {
+    expect(parseArtifactContent("app", { swarmId: "swarm-1", job: JOB, path: "apps/tracker" })).toBeNull();
     expect(parseArtifactContent("app", { swarmId: "swarm-1", path: "apps/tracker" })).toBeNull();
     expect(artifactKind("app").label).toBe("App");
     expect(artifactKind("app").chat?.place).toBe("row");
@@ -86,10 +87,12 @@ describe("an app beside a page", () => {
     expect(parseArtifactContent("app", { app: "visits" })).toBeNull();
   });
 
-  test("the loader reads which app an `app` ref's key names: a workspace app by name and version, a job's by its directory", async () => {
+  test("the loader reads which app an `app` ref's key names: a workspace app by name and version; a job's directory is unavailable", async () => {
     const context = { githubLogin: "acme-org" };
     await expect(readStrutArtifact(visitsRef, context)).resolves.toEqual({ swarmId: "swarm-1", app: "visits", version: "v2" });
-    await expect(readStrutArtifact(appRef, context)).resolves.toEqual({ swarmId: "swarm-1", job: JOB, path: "apps/tracker" });
+    await expect(readStrutArtifact(appRef, context)).resolves.toEqual({ swarmId: "swarm-1", app: "tracker", version: "v1" });
+    const jobApp: ArtifactRef = { ...appRef, source: { type: "graph", swarmId: "swarm-1", key: JOB_APP_KEY } };
+    await expect(readStrutArtifact(jobApp, context)).rejects.toMatchObject({ reason: "unavailable" });
     const notAnApp: ArtifactRef = { ...visitsRef, source: { type: "graph", swarmId: "swarm-1", key: "/apps/visits/v2/files/dist/app.js" } };
     await expect(readStrutArtifact(notAnApp, context)).rejects.toMatchObject({ reason: "unavailable" });
   });
@@ -119,7 +122,7 @@ describe("an app beside a page", () => {
   });
 
   test("an app renders in the app frame: read through the document route, framed as srcdoc; its message goes to the chat box", async () => {
-    panel(appRef, parseArtifactContent("app", { swarmId: "swarm-1", job: JOB, path: "apps/tracker" }));
+    panel(appRef, parseArtifactContent("app", { swarmId: "swarm-1", app: "tracker", version: "v1" }));
     const frame = await waitFor(() => {
       const f = document.querySelector("iframe");
       expect(f?.getAttribute("srcdoc")).toBe(DOC);
