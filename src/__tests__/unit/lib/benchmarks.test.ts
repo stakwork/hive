@@ -12,6 +12,19 @@ describe("benchmark registry", () => {
     expect(new Set(BENCHMARKS.map((b) => b.slug)).size).toBe(BENCHMARKS.length);
     expect(benchmarkKind("openhealth")).toBe("benchmark:openhealth");
   });
+  it("registers the OpenHealth app for the openhealth workspace only, launching what openhealth launches", () => {
+    const b = getBenchmark("openhealth-app")!;
+    expect(b.app).toEqual({ name: "openhealth-benchmark" });
+    expect(benchmarkVisibleIn(b, "openhealth")).toBe(true);
+    expect(benchmarkVisibleIn(b, "hive")).toBe(false);
+    const oh = getBenchmark("openhealth")!;
+    expect({ listWorkflow: b.listWorkflow, runWorkflow: b.runWorkflow, input: b.input }).toEqual({
+      listWorkflow: oh.listWorkflow,
+      runWorkflow: oh.runWorkflow,
+      input: oh.input,
+    });
+    expect(oh.app).toBeUndefined();
+  });
   it("gates by workspace slug when listed", () => {
     const b = getBenchmark("openhealth")!;
     expect(benchmarkVisibleIn(b, "hive")).toBe(true);

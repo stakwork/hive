@@ -58,6 +58,7 @@ import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { BugReportSlideout } from "./BugReportSlideout";
 import { STAK_TOOLKIT_SLUGS, OPENHEALTH_SLUGS, isLegalBenchmarksWorkspace } from "@/lib/eval-capture-slugs";
+import { BENCHMARKS, benchmarkVisibleIn } from "@/lib/benchmarks/registry";
 
 
 
@@ -638,6 +639,17 @@ export function Sidebar({ user }: SidebarProps) {
       ]
     : [];
 
+  // A benchmark whose registry entry names a strut app is a tab of its own,
+  // in the workspaces the entry is visible in: its page renders the app,
+  // which only a member of the org can open.
+  const benchmarkAppItems: NavigationItem[] = isPublicViewer
+    ? []
+    : BENCHMARKS.filter((b) => b.app && benchmarkVisibleIn(b, workspaceSlug ?? "")).map((b) => ({
+        icon: FlaskConical,
+        label: b.name,
+        href: `/benchmarks/${b.slug}`,
+      }));
+
   const excludeLabels: string[] = [];
   if (!canAccessDefense) excludeLabels.push("Protect");
 
@@ -654,6 +666,7 @@ export function Sidebar({ user }: SidebarProps) {
     ...stakToolkitItems, // Stak Toolkit (conditionally)
     ...legalItems, // Legal (conditionally)
     ...openHealthItems, // OpenHealth (conditionally)
+    ...benchmarkAppItems, // Benchmarks with an app (conditionally)
     ...baseNavigationItems.slice(2), // Build, Protect, Context
   ];
 

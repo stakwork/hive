@@ -55,20 +55,35 @@ export interface Benchmark {
   workspaceSlugs?: readonly string[];
 }
 
+/** The OpenHealth workflows, as both OpenHealth entries launch them. */
+const OPENHEALTH_WORKFLOWS: Pick<Benchmark, "listWorkflow" | "runWorkflow" | "input"> = {
+  listWorkflow: "openhealth-list-tasks",
+  runWorkflow: "openhealth-run",
+  // Mirrors the OpenHealth runs route: { gtId, task, workdir: `gt-${gtId}` }
+  // for a task of the default (public / patient_diagnosis) catalogue.
+  input: {
+    listInput: { split: "public", task: "patient_diagnosis" },
+    fromTask: { gtId: "id", task: "task" },
+    defaults: { task: "patient_diagnosis", workdir: "gt-{id}" },
+  },
+};
+
 export const BENCHMARKS: readonly Benchmark[] = [
   {
     slug: "openhealth",
     name: "OpenHealth",
-    listWorkflow: "openhealth-list-tasks",
-    runWorkflow: "openhealth-run",
-    // Mirrors the OpenHealth runs route: { gtId, task, workdir: `gt-${gtId}` }
-    // for a task of the default (public / patient_diagnosis) catalogue.
-    input: {
-      listInput: { split: "public", task: "patient_diagnosis" },
-      fromTask: { gtId: "id", task: "task" },
-      defaults: { task: "patient_diagnosis", workdir: "gt-{id}" },
-    },
+    ...OPENHEALTH_WORKFLOWS,
     workspaceSlugs: OPENHEALTH_SLUGS,
+  },
+  {
+    // The app the builder published on the Open Health swarm (2026-10-22),
+    // over the openhealth-* workflows there. Its own entry, so the `hive`
+    // workspace keeps the generic page above.
+    slug: "openhealth-app",
+    name: "OpenHealth Benchmark",
+    ...OPENHEALTH_WORKFLOWS,
+    app: { name: "openhealth-benchmark" },
+    workspaceSlugs: ["openhealth"],
   },
   {
     slug: "harvey-lab",

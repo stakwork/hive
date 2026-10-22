@@ -95,7 +95,7 @@ describe('Sidebar - OpenHealth Section', () => {
     expect(screen.getAllByText('OpenHealth').length).toBeGreaterThan(0);
   });
 
-  it('does not render OpenHealth nav item for a non-hive workspace (including openhealth)', () => {
+  it('does not render the hand-built OpenHealth section for a non-hive workspace (including openhealth)', () => {
     vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('openhealth') as any);
     vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
 
@@ -112,6 +112,29 @@ describe('Sidebar - OpenHealth Section', () => {
 
     // Unlike Legal, OpenHealth has NO isDevelopmentMode() OR-bypass.
     expect(screen.queryByText('OpenHealth')).not.toBeInTheDocument();
+  });
+
+  it('renders the OpenHealth app tab in the openhealth workspace, linked to its benchmark page', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('openhealth') as any);
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+
+    render(<Sidebar user={mockUser} />);
+
+    const links = screen.getAllByRole('link', { name: 'OpenHealth Benchmark' });
+    expect(links.length).toBeGreaterThan(0);
+    expect(links[0]).toHaveAttribute('href', '/w/openhealth/benchmarks/openhealth-app');
+  });
+
+  it('does not render the OpenHealth app tab in the hive workspace, or for a public viewer', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('hive') as any);
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+    const { unmount } = render(<Sidebar user={mockUser} />);
+    expect(screen.queryByText('OpenHealth Benchmark')).not.toBeInTheDocument();
+    unmount();
+
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({ ...makeWorkspaceMock('openhealth'), isPublicViewer: true } as any);
+    render(<Sidebar user={mockUser} />);
+    expect(screen.queryByText('OpenHealth Benchmark')).not.toBeInTheDocument();
   });
 
   it('renders the OpenHealth Benchmarks child link when expanded', async () => {
