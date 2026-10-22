@@ -53,6 +53,7 @@
  * - **The dashboard chat's state.** `DashboardChat` keeps its own
  *   local state on purpose; we explicitly don't merge surfaces.
  */
+import type { PageContext } from "@/lib/jamie-page-context";
 import { create } from "zustand";
 import type {
   OrchestratorLaunchRowSource,
@@ -440,6 +441,8 @@ export interface ConversationContext {
   brainstormFocus?: BrainstormFocus | null;
   /** Set while an initiative is open on the infinite canvas: what "this" means there. */
   initiativeFocus?: InitiativeFocus | null;
+  /** Where the user is (breadcrumb path…), told to strut's orchestrator as a line; names and refs only. */
+  pageContext?: PageContext | null;
 }
 
 // ─── Reserved slots for canvas-bound features (filled in later PRs) ─────────

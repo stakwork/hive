@@ -22,6 +22,7 @@
  */
 
 import { StrutRunStatus } from "@prisma/client";
+import { pageContextLine, type PageContext } from "@/lib/jamie-page-context";
 import { canvasFocusContextLine, type CanvasFocus } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -56,6 +57,12 @@ export interface OrchestratorTurnArgs {
    * land on that card (`lib/canvas/canvas-jobs.ts`).
    */
   focus?: CanvasFocus;
+  /**
+   * Where the person is — the breadcrumb path, already sanitised and
+   * checked against the org (`services/jamie-page-context.ts`); told to
+   * strut as the line after the canvas line.
+   */
+  pageContext?: PageContext;
   /**
    * The turn is a WAKE on a job row (`strut-orchestrator-wake.ts`), not a
    * person's message: recorded on the launch marker as its idempotency
@@ -114,7 +121,8 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
         context: {
           line:
             orchestratorContextLine(args.now ?? new Date(), args.timeZone) +
-            (args.focus ? canvasFocusContextLine(args.focus) : ""),
+            (args.focus ? canvasFocusContextLine(args.focus) : "") +
+            pageContextLine(args.pageContext),
         },
       },
       ...(args.focus ? { rowInput: { focus: args.focus } } : {}),

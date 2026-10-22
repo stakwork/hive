@@ -52,6 +52,7 @@ import {
 } from "@/services/canvas-turn-enrichments";
 import { isOwnStoppedTurn, isValidTurnId, registerTurn, watchTurnAbort } from "@/services/canvas-turn-abort";
 import { notifyCanvasUpdated } from "@/lib/canvas/pusher";
+import { readPageContext } from "@/services/jamie-page-context";
 import { runOrchestratorTurn } from "@/services/strut-orchestrator";
 import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
 import { fanOutGraphWalkToCanvas } from "@/services/canvas-graph-walk-fanout";
@@ -102,6 +103,9 @@ export async function POST(request: NextRequest) {
       brainstormFocus,
       // The initiative in view on the infinite canvas (the Brainstorm tab).
       initiativeFocus,
+      // Where the user is (breadcrumb path etc.), published by the client;
+      // sanitised and checked against the org before strut reads it.
+      pageContext,
       // When true, skip the post-stream `after()` enrichment block
       // (follow-up questions + provenance). Surfaces that don't render
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
@@ -555,6 +559,20 @@ export async function POST(request: NextRequest) {
         publicBaseUrl: getBaseUrl(request.headers.get("host")),
         timeZone: userTimezone,
         focus: initiativeHint ? canvasFocusOf(initiativeHint) : undefined,
+        pageContext: await readPageContext(
+          pageContext,
+          orgId,
+          // Graph ref_ids the hive DB does not own: only those the
+          // focus parsers already checked against the request's workspaces.
+          new Set(
+            [
+              initiativeHint?.initiativeRefId,
+              initiativeHint?.selectedRefId,
+              parseGraphFocus(graphFocus, slugs)?.urn.split(":").pop(),
+              parseBrainstormFocus(brainstormFocus, slugs)?.rootRefId,
+            ].filter((r): r is string => !!r),
+          ),
+        ),
       });
     }
 
