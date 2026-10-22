@@ -1,16 +1,19 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ExternalLink, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { SystemMapDomainNode } from "@/types/system-map";
 import { whyChain, type DependencyModel, type PackageRow } from "./dependencies";
 import { NodeLink, PropertyList } from "./NodeDetails";
+import { severityRank, severityStyle, type PackageCveReport, type VulnerablePackage } from "./package-cves";
 
-type Filter = "all" | "direct" | "multi" | `source:${string}`;
-type SortKey = "name" | "version" | "ecosystem" | "usedBy" | "dependsOn" | "pullsIn";
+type Filter = "all" | "direct" | "multi" | "vulnerable" | `source:${string}`;
+type SortKey = "name" | "version" | "ecosystem" | "usedBy" | "dependsOn" | "pullsIn" | "severity";
+
+const SEVERITY_COLUMN: { key: SortKey; label: string; numeric?: boolean } = { key: "severity", label: "Vulnerability" };
 
 const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
   { key: "name", label: "Package" },
@@ -51,6 +54,63 @@ function Tile({
   );
 }
 
+export function SeverityBadge({ severity }: { severity: string }) {
+  return (
+    <span className={cn("rounded border px-1 text-[10px] font-medium", severityStyle(severity).badge)}>
+      {severity || "UNKNOWN"}
+    </span>
+  );
+}
+
+/** A vulnerable package's advisories, worst first. */
+function Advisories({ finding }: { finding: VulnerablePackage }) {
+  return (
+    <div className="space-y-2 rounded-md border border-red-500/30 bg-red-500/5 p-2" data-testid="deps-advisories">
+      <p className="flex flex-wrap items-center gap-1.5 font-medium">
+        <SeverityBadge severity={finding.severity} />
+        {finding.advisories.length} advisor{finding.advisories.length === 1 ? "y" : "ies"}
+        {finding.fixedIn && <span className="font-normal text-muted-foreground">· fixed in {finding.fixedIn}</span>}
+      </p>
+      {finding.advisories.map((a) => (
+        <div key={a.id} className="space-y-0.5">
+          <p className="flex flex-wrap items-center gap-1.5">
+            {a.url ? (
+              <a
+                href={a.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-0.5 font-mono text-blue-600 hover:underline dark:text-blue-400"
+              >
+                {a.id}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            ) : (
+              <span className="font-mono">{a.id}</span>
+            )}
+            {a.severity && <SeverityBadge severity={a.severity} />}
+            {a.cvssScore !== null && <span className="text-muted-foreground">CVSS {a.cvssScore}</span>}
+            {a.kind && a.kind !== "vuln" && <span className="text-muted-foreground">{a.kind}</span>}
+          </p>
+          {a.cves.length > 0 && <p className="font-mono text-[11px] text-muted-foreground">{a.cves.join(", ")}</p>}
+          {a.summary && <p>{a.summary}</p>}
+          {(a.fixedIn || a.published) && (
+            <p className="text-[11px] text-muted-foreground">
+              {a.fixedIn && `Fixed in ${a.fixedIn}`}
+              {a.fixedIn && a.published && " · "}
+              {a.published && `published ${a.published.slice(0, 10)}`}
+            </p>
+          )}
+        </div>
+      ))}
+      {finding.fetchErrors.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Some advisories could not be read: {finding.fetchErrors.join("; ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PackageList({
   ids,
   model,
@@ -82,6 +142,7 @@ export function PackageDetails({
   model,
   byRef,
   reach,
+  finding,
   onOpen,
   onClose,
 }: {
@@ -89,6 +150,8 @@ export function PackageDetails({
   model: DependencyModel;
   byRef: Map<string, SystemMapDomainNode>;
   reach: (refId: string) => number;
+  /** The package's CVE check finding, when it is vulnerable. */
+  finding?: VulnerablePackage;
   onOpen: (refId: string) => void;
   onClose: () => void;
 }) {
@@ -114,6 +177,7 @@ export function PackageDetails({
           <X className="h-4 w-4" />
         </button>
       </div>
+      {finding && <Advisories finding={finding} />}
       <div>
         <p className="mb-1 font-medium">Why is it here?</p>
         {chain ? (
@@ -171,11 +235,14 @@ export function PackageDetails({
 export function DependenciesView({
   model,
   reach,
+  cves,
   selectedId,
   onSelect,
 }: {
   model: DependencyModel;
   reach: (refId: string) => number;
+  /** The newest package CVE check, matched to the packages; null before any. */
+  cves: PackageCveReport | null;
   selectedId: string | null;
   onSelect: (refId: string) => void;
 }) {
@@ -192,19 +259,31 @@ export function DependenciesView({
       usedBy: (r) => r.usedBy.length,
       dependsOn: (r) => r.dependsOn.length,
       pullsIn: (r) => reach(r.node.refId),
+      severity: (r) => {
+        const finding = cves?.byPackage.get(r.node.refId);
+        return finding ? severityRank(finding.severity) : 99;
+      },
     };
+    const advisoryMatch = (r: PackageRow) =>
+      cves?.byPackage
+        .get(r.node.refId)
+        ?.advisories.some(
+          (a) => a.id.toLowerCase().includes(query) || a.cves.some((c) => c.toLowerCase().includes(query)),
+        ) ?? false;
     return model.packages
       .filter(
         (r) =>
           (filter === "all" ||
             (filter === "direct" && r.direct) ||
             (filter === "multi" && r.versions > 1) ||
+            (filter === "vulnerable" && !!cves?.byPackage.has(r.node.refId)) ||
             (filter.startsWith("source:") && r.source === filter.slice(7))) &&
           (!query ||
             r.node.name.toLowerCase().includes(query) ||
             String(r.node.properties.id ?? "")
               .toLowerCase()
-              .includes(query)),
+              .includes(query) ||
+            advisoryMatch(r)),
       )
       .sort((a, b) => {
         const x = value[sort.key](a);
@@ -212,7 +291,16 @@ export function DependenciesView({
         const order = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
         return order * sort.dir || a.node.name.localeCompare(b.node.name);
       });
-  }, [model.packages, filter, search, sort, reach]);
+  }, [model.packages, filter, search, sort, reach, cves]);
+
+  const severityCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const finding of cves?.byPackage.values() ?? []) {
+      counts.set(finding.severity || "UNKNOWN", (counts.get(finding.severity || "UNKNOWN") ?? 0) + 1);
+    }
+    return [...counts].sort((a, b) => severityRank(a[0]) - severityRank(b[0]));
+  }, [cves]);
+  const columns = cves ? [...COLUMNS.slice(0, 3), SEVERITY_COLUMN, ...COLUMNS.slice(3)] : COLUMNS;
 
   // A file's name, or its folder and name when two sources share the name (two Package.resolved).
   const sourceLabels = useMemo(() => {
@@ -229,7 +317,16 @@ export function DependenciesView({
 
   const toggleFilter = (next: Filter) => setFilter((current) => (current === next ? "all" : next));
   const sortBy = (key: SortKey) =>
-    setSort((current) => ({ key, dir: current.key === key ? (current.dir === 1 ? -1 : 1) : key === "name" ? 1 : -1 }));
+    setSort((current) => ({
+      key,
+      dir: current.key === key ? (current.dir === 1 ? -1 : 1) : key === "name" || key === "severity" ? 1 : -1,
+    }));
+  // The vulnerable tile also sorts the worst first.
+  const showVulnerable = () => {
+    if (filter === "vulnerable") return setFilter("all");
+    setFilter("vulnerable");
+    setSort({ key: "severity", dir: 1 });
+  };
 
   if (model.packages.length === 0) {
     return <p className="text-sm text-muted-foreground">No packages in this workspace&apos;s System Map.</p>;
@@ -244,6 +341,31 @@ export function DependenciesView({
           active={filter === "all"}
           onClick={() => setFilter("all")}
         />
+        {cves && (
+          <button
+            type="button"
+            onClick={showVulnerable}
+            className={cn(
+              "min-w-28 rounded-lg border px-3 py-2 text-left",
+              cves.byPackage.size > 0
+                ? "border-red-500/40 bg-red-500/5 hover:bg-red-500/10"
+                : "bg-background hover:bg-muted/50",
+              filter === "vulnerable" && "ring-2 ring-red-500",
+            )}
+            title={`Package CVE check, ${new Date(cves.checkedAt).toLocaleString()}`}
+            data-testid="deps-tile-vulnerable"
+          >
+            <p className="text-lg font-semibold leading-tight">{cves.byPackage.size}</p>
+            <p className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+              vulnerable
+              {severityCounts.map(([severity, count]) => (
+                <span key={severity} className={cn("rounded border px-1 text-[10px]", severityStyle(severity).badge)}>
+                  {count} {severity}
+                </span>
+              ))}
+            </p>
+          </button>
+        )}
         <Tile
           value={model.directCount}
           label="direct (nothing depends on them)"
@@ -267,11 +389,22 @@ export function DependenciesView({
           />
         ))}
       </div>
+      {cves && cves.unmatched.length > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="deps-cves-unmatched">
+          {cves.unmatched.length} vulnerable package{cves.unmatched.length === 1 ? " is" : "s are"} not in the graph as
+          loaded:{" "}
+          {cves.unmatched
+            .slice(0, 5)
+            .map((p) => `${p.name}@${p.version}`)
+            .join(", ")}
+          {cves.unmatched.length > 5 && ` +${cves.unmatched.length - 5} more`}
+        </p>
+      )}
       <div className="flex items-center gap-3">
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search packages, e.g. tokio"
+          placeholder={cves ? "Search packages or advisories, e.g. tokio, CVE-2024-…" : "Search packages, e.g. tokio"}
           className="h-8 max-w-xs text-sm"
           data-testid="deps-search"
         />
@@ -283,7 +416,7 @@ export function DependenciesView({
         <Table>
           <TableHeader className="sticky top-0 z-[1] bg-background">
             <TableRow>
-              {COLUMNS.map((c) => (
+              {columns.map((c) => (
                 <TableHead
                   key={c.key}
                   className={cn("cursor-pointer select-none whitespace-nowrap", c.numeric && "text-right")}
@@ -301,39 +434,64 @@ export function DependenciesView({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => (
-              <TableRow
-                key={r.node.refId}
-                className={cn("cursor-pointer", selectedId === r.node.refId && "bg-muted")}
-                onClick={() => onSelect(r.node.refId)}
-                data-testid="deps-row"
-              >
-                <TableCell className="py-1.5">
-                  {r.node.name}
-                  {r.direct && (
-                    <span className="ml-1.5 rounded border border-blue-500/40 px-1 text-[10px] text-blue-600 dark:text-blue-400">
-                      direct
-                    </span>
+            {rows.map((r) => {
+              const finding = cves?.byPackage.get(r.node.refId);
+              return (
+                <TableRow
+                  key={r.node.refId}
+                  className={cn(
+                    "cursor-pointer",
+                    finding && severityStyle(finding.severity).row,
+                    selectedId === r.node.refId && "bg-muted",
                   )}
-                  {r.versions > 1 && (
-                    <span className="ml-1.5 rounded border border-amber-500/50 px-1 text-[10px] text-amber-700 dark:text-amber-400">
-                      ×{r.versions}
-                    </span>
+                  onClick={() => onSelect(r.node.refId)}
+                  data-testid="deps-row"
+                  data-vulnerable={finding ? finding.severity : undefined}
+                >
+                  <TableCell className="py-1.5">
+                    {r.node.name}
+                    {r.direct && (
+                      <span className="ml-1.5 rounded border border-blue-500/40 px-1 text-[10px] text-blue-600 dark:text-blue-400">
+                        direct
+                      </span>
+                    )}
+                    {r.versions > 1 && (
+                      <span className="ml-1.5 rounded border border-amber-500/50 px-1 text-[10px] text-amber-700 dark:text-amber-400">
+                        ×{r.versions}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="py-1.5 font-mono text-xs">{r.version || "—"}</TableCell>
+                  <TableCell className="py-1.5 text-xs text-muted-foreground">{r.ecosystem || "—"}</TableCell>
+                  {cves && (
+                    <TableCell className="py-1.5 text-xs">
+                      {finding ? (
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <SeverityBadge severity={finding.severity} />
+                          <span className="text-muted-foreground">
+                            {finding.advisories.length} advisor{finding.advisories.length === 1 ? "y" : "ies"}
+                            {finding.fixedIn && ` · fix ${finding.fixedIn}`}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                   )}
-                </TableCell>
-                <TableCell className="py-1.5 font-mono text-xs">{r.version || "—"}</TableCell>
-                <TableCell className="py-1.5 text-xs text-muted-foreground">{r.ecosystem || "—"}</TableCell>
-                <TableCell className="py-1.5 text-right tabular-nums">
-                  {r.usedBy.length}
-                  <span
-                    className="ml-1.5 inline-block h-1.5 rounded bg-primary/50 align-middle"
-                    style={{ width: `${model.maxUsedBy ? Math.round((r.usedBy.length / model.maxUsedBy) * 48) : 0}px` }}
-                  />
-                </TableCell>
-                <TableCell className="py-1.5 text-right tabular-nums">{r.dependsOn.length}</TableCell>
-                <TableCell className="py-1.5 text-right tabular-nums">{reach(r.node.refId)}</TableCell>
-              </TableRow>
-            ))}
+                  <TableCell className="py-1.5 text-right tabular-nums">
+                    {r.usedBy.length}
+                    <span
+                      className="ml-1.5 inline-block h-1.5 rounded bg-primary/50 align-middle"
+                      style={{
+                        width: `${model.maxUsedBy ? Math.round((r.usedBy.length / model.maxUsedBy) * 48) : 0}px`,
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell className="py-1.5 text-right tabular-nums">{r.dependsOn.length}</TableCell>
+                  <TableCell className="py-1.5 text-right tabular-nums">{reach(r.node.refId)}</TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

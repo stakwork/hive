@@ -12,6 +12,7 @@ import { SystemMapReport } from "@/components/system-map/SystemMapReport";
 import { parseSystemMapReport } from "@/components/system-map/SystemMapReport/model";
 import { MaterializedGraph } from "@/components/system-map/MaterializedGraph";
 import { parseMaterializedGraph } from "@/components/system-map/MaterializedGraph/model";
+import { parsePackageCves, severityStyle } from "@/components/system-map/DomainNodesTab/package-cves";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import type { SystemMapRun, SystemMapRunsResponse, SystemMapWorkflowKey } from "@/types/system-map";
@@ -36,6 +37,12 @@ const COPY: Record<SystemMapWorkflowKey, { description: string; button: string; 
     button: "Check on pod",
     empty: "Not checked yet.",
     started: "Finding check started",
+  },
+  package_cves: {
+    description: "Looks this workspace's packages up in OSV and lists the ones with known vulnerabilities.",
+    button: "Check package CVEs",
+    empty: "Not checked yet. Run the check to flag vulnerable packages.",
+    started: "Package CVE check started",
   },
 };
 
@@ -92,20 +99,47 @@ function splitOutput(output: unknown): { report: string | null; data: unknown } 
   return { report: null, data: output ?? null };
 }
 
+/** A package CVE check's output: how many vulnerable packages, the worst first. */
+function PackageCvesSummary({ output }: { output: unknown }) {
+  const vulnerable = parsePackageCves(output);
+  if (!vulnerable) return null;
+  if (vulnerable.length === 0) {
+    return <p className="text-sm text-muted-foreground">No vulnerable packages found.</p>;
+  }
+  const counts = new Map<string, number>();
+  for (const p of vulnerable) counts.set(p.severity || "UNKNOWN", (counts.get(p.severity || "UNKNOWN") ?? 0) + 1);
+  return (
+    <div className="space-y-1.5 text-sm" data-testid="system-map-run-package-cves">
+      <p className="flex flex-wrap items-center gap-1.5">
+        {vulnerable.length} vulnerable package{vulnerable.length === 1 ? "" : "s"}
+        {[...counts].map(([severity, count]) => (
+          <span key={severity} className={`rounded border px-1 text-[10px] ${severityStyle(severity).badge}`}>
+            {count} {severity}
+          </span>
+        ))}
+      </p>
+      <p className="text-xs text-muted-foreground">They are highlighted in the packages table below.</p>
+    </div>
+  );
+}
+
 function RunOutput({ run, workflowKey }: { run: SystemMapRun; workflowKey: SystemMapWorkflowKey }) {
   // Each workflow has a first-choice renderer; the other is tried next so a
   // workflow that returns the other shape still gets a real view.
   const structured = useMemo(() => {
     if (run.status !== "SUCCESS") return null;
+    if (workflowKey === "package_cves" && parsePackageCves(run.output)) {
+      return <PackageCvesSummary output={run.output} />;
+    }
     const asReport = () => {
       const r = parseSystemMapReport(run.output);
-      return r ? (<SystemMapReport report={r} />) : null;
+      return r ? <SystemMapReport report={r} /> : null;
     };
     const asGraph = () => {
       const g = parseMaterializedGraph(run.output);
-      return g ? (<MaterializedGraph graph={g} />) : null;
+      return g ? <MaterializedGraph graph={g} /> : null;
     };
-    return workflowKey === "system_map" ? asGraph() ?? asReport() : asReport() ?? asGraph();
+    return workflowKey === "system_map" ? (asGraph() ?? asReport()) : (asReport() ?? asGraph());
   }, [run.output, run.status, workflowKey]);
   const { report, data } = useMemo(() => splitOutput(run.output), [run.output]);
 
@@ -178,16 +212,17 @@ export function RunCard({
           </button>
           <Badge variant={STATUS_VARIANT[run.status]}>{STATUS_LABEL[run.status]}</Badge>
           <span className="text-muted-foreground">{formatWhen(run.createdAt)}</span>
-          {run.durationMs !== null && (
-            <span className="text-muted-foreground">· {formatDuration(run.durationMs)}</span>
-          )}
+          {run.durationMs !== null && <span className="text-muted-foreground">· {formatDuration(run.durationMs)}</span>}
           {run.cweIds && (
             <span
               className="max-w-md truncate font-mono text-xs text-muted-foreground"
               title={run.cweIds.join(", ")}
               data-testid="system-map-run-cwes"
             >
-              · {run.cweIds.length > 3 ? `${run.cweIds.slice(0, 3).join(", ")} +${run.cweIds.length - 3}` : run.cweIds.join(", ")}
+              ·{" "}
+              {run.cweIds.length > 3
+                ? `${run.cweIds.slice(0, 3).join(", ")} +${run.cweIds.length - 3}`
+                : run.cweIds.join(", ")}
             </span>
           )}
           {run.components && (
@@ -196,7 +231,10 @@ export function RunCard({
               title={run.components.join(", ")}
               data-testid="system-map-run-components"
             >
-              · on {run.components.length > 2 ? `${run.components.slice(0, 2).join(", ")} +${run.components.length - 2}` : run.components.join(", ")}
+              · on{" "}
+              {run.components.length > 2
+                ? `${run.components.slice(0, 2).join(", ")} +${run.components.length - 2}`
+                : run.components.join(", ")}
             </span>
           )}
           {run.findingRefIds && run.findingRefIds.length > 1 && (
@@ -234,6 +272,7 @@ export function SystemMapRuns({
   onRunSettled,
   compact = false,
   refreshKey = 0,
+  onRuns,
 }: {
   workflowKey?: SystemMapWorkflowKey;
   /** Called when a run that was in flight finishes (any outcome). */
@@ -245,6 +284,8 @@ export function SystemMapRuns({
   compact?: boolean;
   /** Bump to re-read the runs, e.g. after the host started one. */
   refreshKey?: number;
+  /** Called with the runs each time they are read (newest first). */
+  onRuns?: (runs: SystemMapRun[]) => void;
 }) {
   const copy = COPY[workflowKey];
   const { workspace } = useWorkspace();
@@ -254,22 +295,29 @@ export function SystemMapRuns({
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const onRunsRef = useRef(onRuns);
+  onRunsRef.current = onRuns;
 
-  const load = useCallback(async (workspaceSlug: string) => {
-    try {
-      const response = await fetch(`/api/workspaces/${workspaceSlug}/system-map/runs?workflow=${workflowKey}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error("Failed to load runs");
-      setData((await response.json()) as SystemMapRunsResponse);
-    } catch (error) {
-      toast.error("Could not load system map runs", {
-        description: error instanceof Error ? error.message : "Please try again.",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [workflowKey]);
+  const load = useCallback(
+    async (workspaceSlug: string) => {
+      try {
+        const response = await fetch(`/api/workspaces/${workspaceSlug}/system-map/runs?workflow=${workflowKey}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("Failed to load runs");
+        const body = (await response.json()) as SystemMapRunsResponse;
+        setData(body);
+        onRunsRef.current?.(body.runs);
+      } catch (error) {
+        toast.error("Could not load system map runs", {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [workflowKey],
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -399,9 +447,7 @@ export function SystemMapRuns({
 
       {!loading && runs.length === 0 && (
         <Card data-testid="system-map-runs-empty">
-          <CardContent className="py-10 text-sm text-muted-foreground">
-            {copy.empty}
-          </CardContent>
+          <CardContent className="py-10 text-sm text-muted-foreground">{copy.empty}</CardContent>
         </Card>
       )}
 

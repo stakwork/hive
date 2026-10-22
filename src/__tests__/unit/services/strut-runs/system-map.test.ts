@@ -99,9 +99,7 @@ describe("launchSystemMapRun", () => {
     });
 
     expect(out.runId).toBe("run-1");
-    expect(mockWorkspace.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "ws-1" } }),
-    );
+    expect(mockWorkspace.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "ws-1" } }));
     expect(mockDispatch).toHaveBeenCalledWith({
       workspaceId: "ws-1",
       userId: "user-1",
@@ -144,34 +142,35 @@ describe("launchSystemMapRun", () => {
     );
   });
 
-  it.each([
-    ["cwe_check", ["CWE-79", "CWE-89"], { cwe_ids: ["CWE-79", "CWE-89"] }],
-  ] as const)("scopes %s to the CWEs as cwe_ids", async (key, cweIds, expected) => {
-    mockWorkspace.findUnique.mockResolvedValue({
-      swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
-    });
-    mockDispatch.mockResolvedValue({ runId: "run-5", strutRunId: "5", swarmId: "swarm-1" });
+  it.each([["cwe_check", ["CWE-79", "CWE-89"], { cwe_ids: ["CWE-79", "CWE-89"] }]] as const)(
+    "scopes %s to the CWEs as cwe_ids",
+    async (key, cweIds, expected) => {
+      mockWorkspace.findUnique.mockResolvedValue({
+        swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
+      });
+      mockDispatch.mockResolvedValue({ runId: "run-5", strutRunId: "5", swarmId: "swarm-1" });
 
-    await launchSystemMapRun({
-      workspaceId: "ws-1",
-      workspaceSlug: "acme-ws",
-      userId: "user-1",
-      publicBaseUrl: "https://hive.example",
-      key,
-      cweIds: [...cweIds],
-    });
+      await launchSystemMapRun({
+        workspaceId: "ws-1",
+        workspaceSlug: "acme-ws",
+        userId: "user-1",
+        publicBaseUrl: "https://hive.example",
+        key,
+        cweIds: [...cweIds],
+      });
 
-    expect(mockDispatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        input: {
-          workspace: "acme-ws",
-          swarm_url: "https://acme.sphinx.chat:3355",
-          swarm_secret_alias: "{{SWARM_123_API_KEY}}",
-          ...expected,
-        },
-      }),
-    );
-  });
+      expect(mockDispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: {
+            workspace: "acme-ws",
+            swarm_url: "https://acme.sphinx.chat:3355",
+            swarm_secret_alias: "{{SWARM_123_API_KEY}}",
+            ...expected,
+          },
+        }),
+      );
+    },
+  );
 
   it("scopes the CWE check to components", async () => {
     mockWorkspace.findUnique.mockResolvedValue({
@@ -232,6 +231,29 @@ describe("launchSystemMapRun", () => {
     );
   });
 
+  it("dispatches the package CVE check with the swarm URL and secret alias only", async () => {
+    mockWorkspace.findUnique.mockResolvedValue({
+      swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
+    });
+    mockDispatch.mockResolvedValue({ runId: "run-9", strutRunId: "9", swarmId: "swarm-1" });
+
+    await launchSystemMapRun({
+      workspaceId: "ws-1",
+      workspaceSlug: "acme-ws",
+      userId: "user-1",
+      publicBaseUrl: "https://hive.example",
+      key: "package_cves",
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "system_map_package_cves",
+        workflow: "swarm-systemmap-package-cves",
+        input: { swarm_url: "https://acme.sphinx.chat:3355", swarm_secret_alias: "{{SWARM_123_API_KEY}}" },
+      }),
+    );
+  });
+
   it("returns the run's strut view link when the workspace has an org", async () => {
     mockWorkspace.findUnique.mockResolvedValue({
       swarm: { swarmUrl: "https://acme.sphinx.chat/api", swarmSecretAlias: "{{SWARM_123_API_KEY}}" },
@@ -257,7 +279,12 @@ describe("launchSystemMapRun", () => {
     });
 
     await expect(
-      launchSystemMapRun({ workspaceId: "ws-1", workspaceSlug: "acme-ws", userId: "user-1", publicBaseUrl: "https://h" }),
+      launchSystemMapRun({
+        workspaceId: "ws-1",
+        workspaceSlug: "acme-ws",
+        userId: "user-1",
+        publicBaseUrl: "https://h",
+      }),
     ).rejects.toMatchObject({ code: "no_target" });
     expect(mockDispatch).not.toHaveBeenCalled();
   });
@@ -277,8 +304,15 @@ describe("parseComponents", () => {
     expect(parseComponents("cwe_check", [1])).toHaveProperty("error");
     expect(parseComponents("cwe_check", ["  "])).toHaveProperty("error");
     expect(parseComponents("cwe_check", [])).toHaveProperty("error");
-    expect(parseComponents("cwe_check", Array.from({ length: 51 }, (_, i) => `c${i}`))).toHaveProperty("error");
-    expect(parseComponents("system_map", ["stakwork/hive"])).toEqual({ error: "This workflow does not take components" });
+    expect(
+      parseComponents(
+        "cwe_check",
+        Array.from({ length: 51 }, (_, i) => `c${i}`),
+      ),
+    ).toHaveProperty("error");
+    expect(parseComponents("system_map", ["stakwork/hive"])).toEqual({
+      error: "This workflow does not take components",
+    });
   });
 });
 
@@ -297,11 +331,17 @@ describe("parseFindingInput", () => {
     expect(parseFindingInput("finding_verify", "f-1", undefined)).toHaveProperty("error");
     expect(parseFindingInput("finding_verify", ["a b"], undefined)).toHaveProperty("error");
     expect(parseFindingInput("finding_verify", [], undefined)).toHaveProperty("error");
-    expect(parseFindingInput("finding_verify", Array.from({ length: 51 }, (_, i) => `f-${i}`), undefined)).toHaveProperty(
-      "error",
-    );
+    expect(
+      parseFindingInput(
+        "finding_verify",
+        Array.from({ length: 51 }, (_, i) => `f-${i}`),
+        undefined,
+      ),
+    ).toHaveProperty("error");
     expect(parseFindingInput("finding_verify", ["f-1"], "yes")).toHaveProperty("error");
-    expect(parseFindingInput("cwe_check", ["f-1"], undefined)).toEqual({ error: "This workflow does not take findings" });
+    expect(parseFindingInput("cwe_check", ["f-1"], undefined)).toEqual({
+      error: "This workflow does not take findings",
+    });
   });
 });
 
@@ -335,7 +375,12 @@ describe("parseCweIds", () => {
     expect(parseCweIds("cwe_check", ["79"])).toHaveProperty("error");
     expect(parseCweIds("cwe_check", "CWE-79")).toHaveProperty("error");
     expect(parseCweIds("cwe_check", [])).toHaveProperty("error");
-    expect(parseCweIds("cwe_check", Array.from({ length: 51 }, (_, i) => `CWE-${i + 1}`))).toHaveProperty("error");
+    expect(
+      parseCweIds(
+        "cwe_check",
+        Array.from({ length: 51 }, (_, i) => `CWE-${i + 1}`),
+      ),
+    ).toHaveProperty("error");
     expect(parseCweIds("system_map", ["CWE-79"])).toEqual({ error: "This workflow does not take cweIds" });
   });
 });
@@ -391,7 +436,11 @@ describe("listSystemMapRuns", () => {
 
   it("lists the checks covering one finding and reads the findings and apply from their input", async () => {
     mockStrutRun.findMany.mockResolvedValue([
-      row({ status: StrutRunStatus.SUCCESS, settledAt: NOW, input: { finding_ref_ids: ["f-123", "f-9"], apply: false } }),
+      row({
+        status: StrutRunStatus.SUCCESS,
+        settledAt: NOW,
+        input: { finding_ref_ids: ["f-123", "f-9"], apply: false },
+      }),
     ]);
     const runs = await listSystemMapRuns("ws-1", "finding_verify", { now: NOW, findingRefId: "f-123" });
     expect(runs.map((r) => [r.findingRefIds, r.apply])).toEqual([[["f-123", "f-9"], false]]);
@@ -418,10 +467,11 @@ describe("listSystemMapRuns", () => {
     const pending = row();
     const settled = row({ status: StrutRunStatus.SUCCESS, output: "# Map", durationMs: 5000, settledAt: NOW });
     mockStrutRun.findMany.mockResolvedValue([pending]);
-    mockProbe.mockResolvedValue({ kind: "settled", completion: { status: "success", output: "# Map", durationMs: 5000 } });
-    mockStrutRun.findUnique
-      .mockResolvedValueOnce({ id: "run-1", tokenHash: "hash" })
-      .mockResolvedValueOnce(settled);
+    mockProbe.mockResolvedValue({
+      kind: "settled",
+      completion: { status: "success", output: "# Map", durationMs: 5000 },
+    });
+    mockStrutRun.findUnique.mockResolvedValueOnce({ id: "run-1", tokenHash: "hash" }).mockResolvedValueOnce(settled);
     mockComplete.mockResolvedValue("claimed");
 
     const runs = await listSystemMapRuns("ws-1", "system_map", { now: NOW });
