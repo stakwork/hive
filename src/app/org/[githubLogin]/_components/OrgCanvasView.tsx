@@ -157,16 +157,17 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // Beside the canvas or the graph, what has the left panel: that view, or
   // — over it — the artifact the chat has open.
   const artifactOpen = useArtifactPanelOpen();
-  const leftSurface = artifactOpen ? "artifact" : mode;
   const tab = canvasTab(searchParams);
   /**
    * The infinite canvas, Jamie in a bar on it and the full chat sliding in
-   * from its left. A brainstorm opened from a chat card (`&root=`) still
-   * lands on the brainstorm desk, beside the chat as before.
+   * from its left; it opens artifacts in its own panel on its right. A
+   * brainstorm opened from a chat card (`&root=`) still lands on the
+   * brainstorm desk, beside the chat as before.
    */
+  const infiniteCanvas = mode === "canvas" && tab === "brainstorm" && !searchParams.get("root");
+  const leftSurface = artifactOpen && !infiniteCanvas ? "artifact" : mode;
   const brainstormTab = mode === "canvas" && leftSurface === "canvas" && tab === "brainstorm";
   const deskLink = brainstormTab && !!searchParams.get("root");
-  const infiniteCanvas = brainstormTab && !deskLink;
   const tabHref = (next: CanvasTab) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "canvas");

@@ -13,8 +13,8 @@ const PANEL_LINES = 2000;
 
 /** The level word carries the colour; a debug line steps back as a whole. */
 const LEVEL_CLASS: Record<LogLevel, string> = {
-  error: "text-rose-600 [.dark_&]:text-rose-400",
-  warn: "text-amber-600 [.dark_&]:text-amber-400",
+  error: "text-rose-600 dark-app:text-rose-400",
+  warn: "text-amber-600 dark-app:text-amber-400",
   info: "text-muted-foreground",
   debug: "text-muted-foreground/60",
 };

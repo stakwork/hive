@@ -126,14 +126,14 @@ function Scrubber({ swarmId, manifest, compact }: { swarmId: string; manifest: W
         <span className="min-w-0 flex-1 truncate font-medium">{frame.caption}</span>
         {!compact && frame.pageUrl && <span className="max-w-[40%] truncate text-muted-foreground">{frame.pageUrl}</span>}
       </div>
-      {frame.failed && <p className="text-xs text-rose-600 dark:text-rose-400">{frame.failed}</p>}
+      {frame.failed && <p className="text-xs text-rose-600 dark-os:text-rose-400">{frame.failed}</p>}
       {count > 1 && (
         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
             aria-label={playing ? "Pause" : "Play"}
             onClick={togglePlay}
-            className="flex size-6 shrink-0 items-center justify-center rounded-full text-blue-600 hover:bg-muted dark:text-blue-400"
+            className="flex size-6 shrink-0 items-center justify-center rounded-full text-blue-600 hover:bg-muted dark-os:text-blue-400"
           >
             {playing ? <Pause className="size-3.5 fill-current" /> : <Play className="size-3.5 fill-current" />}
           </button>
@@ -205,7 +205,7 @@ export function WalkthroughPanel({ content }: ArtifactViewerProps<"walkthrough">
       <PanelToolbar>
         <span className="min-w-0 truncate font-medium">{manifest?.title ?? "Walkthrough"}</span>
         {manifest?.status && (
-          <span className={cn("ml-auto text-muted-foreground", manifest.status === "stopped" && "text-rose-600 dark:text-rose-400")}>
+          <span className={cn("ml-auto text-muted-foreground", manifest.status === "stopped" && "text-rose-600 dark-os:text-rose-400")}>
             {STATUS_WORDS[manifest.status] ?? manifest.status}
           </span>
         )}
@@ -214,7 +214,7 @@ export function WalkthroughPanel({ content }: ArtifactViewerProps<"walkthrough">
       {loaded.status === "failed" && <Unavailable />}
       {manifest && <Scrubber swarmId={content.swarmId} manifest={manifest} />}
       {manifest && manifest.failed.length > 0 && !manifest.frames.some((f) => f.failed) && (
-        <p className="px-3 pb-3 text-xs text-rose-600 dark:text-rose-400">{manifest.failed.join(" · ")}</p>
+        <p className="px-3 pb-3 text-xs text-rose-600 dark-os:text-rose-400">{manifest.failed.join(" · ")}</p>
       )}
     </div>
   );

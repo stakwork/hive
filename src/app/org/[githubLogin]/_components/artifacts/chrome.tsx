@@ -71,7 +71,7 @@ export function ViewerBoundary({ children }: { children: ReactNode }) {
 
 const hasMoreBelow = (el: HTMLElement) => el.scrollTop + el.clientHeight < el.scrollHeight - 2;
 
-/** Re-reads a fact about an element whenever it or its content changes size, and as it scrolls. */
+/** Re-reads a fact about an element whenever it or its content changes size or gains rows, and as it scrolls. */
 function useMeasured(ref: RefObject<HTMLElement | null>, read: (el: HTMLElement) => boolean): boolean {
   const [value, setValue] = useState(false);
 
@@ -84,14 +84,21 @@ function useMeasured(ref: RefObject<HTMLElement | null>, read: (el: HTMLElement)
     const observer = new ResizeObserver(update);
     observer.observe(el);
     if (el.firstElementChild) observer.observe(el.firstElementChild);
+    // Rows added once it is at its full height resize nothing: watch for them too.
+    const added = new MutationObserver(update);
+    added.observe(el, { childList: true, subtree: true });
     return () => {
       el.removeEventListener("scroll", update);
       observer.disconnect();
+      added.disconnect();
     };
   }, [ref, read]);
 
   return value;
 }
+
+/** Whether a scrolling element has more below what shows. */
+export const useMoreBelow = (ref: RefObject<HTMLElement | null>) => useMeasured(ref, hasMoreBelow);
 
 /** A panel body that scrolls, fading out at the bottom while there is more below. */
 export function ScrollFade({

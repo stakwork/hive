@@ -5,7 +5,10 @@ import { stageLine } from "@/lib/initiative-plan";
 import { useCanvasChatStore, type InitiativeFocus } from "../../_state/canvasChatStore";
 import type { ArtifactRef, ArtifactVersion } from "../../_state/canvasChatArtifacts";
 import { type CanvasJob, useCanvasJobs } from "../../_state/useCanvasJobs";
+import { ArtifactPanel } from "../artifacts/ArtifactPanel";
 import { ChatArtifacts } from "../artifacts/ChatArtifacts";
+import { OnPaper } from "../artifacts/onPaper";
+import { useArtifactPanelOpen } from "../artifacts/useArtifactPanel";
 import { expandDraft } from "../brainstorm-board/actions";
 import {
   type Board,
@@ -65,6 +68,7 @@ import {
   visibility,
   zoomAbout,
 } from "./scene";
+import { PAPER_CSS } from "./paper";
 import { CANVAS_THEME, a, deskStyle, themeVars, v } from "./theme";
 import { useCanvasBoard } from "./useCanvasBoard";
 
@@ -86,41 +90,10 @@ const OPTION_W = 330;
 const INSETS = { top: 70, bottom: 190 };
 /** The full chat's width when it slides in. */
 const CHAT_W = 420;
+/** The artifact panel on the right. */
+const ARTIFACT_W = 560;
 /** A settled job's tick stays on its card this long. */
 const SETTLED_MS = 6_000;
-
-/**
- * The full chat is the org page's chat (`renderChat`), worn in the canvas's
- * paper in either app theme: the app's colour tokens re-pointed at the
- * canvas's own, typeset, your messages in a white bubble and Jamie's plain.
- */
-const CHAT_PAPER = `
-[data-canvas-chat] {
-  --background: ${v("panel")}; --foreground: ${v("ink")};
-  --card: ${v("sheet")}; --card-foreground: ${v("ink")};
-  --popover: ${v("sheet")}; --popover-foreground: ${v("ink")};
-  --primary: ${v("ink")}; --primary-foreground: ${v("onInk")};
-  --secondary: ${v("field")}; --secondary-foreground: ${v("ink")};
-  --muted: ${v("field")}; --muted-foreground: ${v("muted")};
-  --accent: ${v("field")}; --accent-foreground: ${v("ink")};
-  --border: ${v("border")}; --input: ${v("borderStrong")}; --ring: ${v("borderStrong")};
-  color-scheme: light;
-  background: ${v("panel")};
-  color: ${v("ink")};
-  font-family: ${TYPE};
-}
-[data-canvas-chat] [data-chat-bubble="you"] {
-  --primary: ${v("bubble")}; --primary-foreground: ${v("ink")};
-  border: 1px solid ${v("border")};
-  border-radius: 12px;
-  box-shadow: none;
-}
-[data-canvas-chat] [data-chat-bubble="jamie"] { background: transparent; box-shadow: none; padding-left: 0; }
-[data-canvas-chat] [data-chat-bubble],
-[data-canvas-chat] [data-chat-bubble] :is(p, li) { font-size: 14.5px; line-height: 1.45; }
-/* The composer's border says it has focus; no second box around the text. */
-[data-canvas-chat] form textarea:focus-visible { outline: none; }
-`;
 
 const KEYFRAMES = `
 @keyframes icb-glow { 0%,100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ic-job) 50%, transparent), 0 0 26px 4px color-mix(in srgb, var(--ic-job) 28%, transparent) } 50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ic-job) 85%, transparent), 0 0 46px 12px color-mix(in srgb, var(--ic-job) 40%, transparent) } }
@@ -214,8 +187,13 @@ export function InfiniteCanvas({
   const [cam, setCam] = useState<Camera | null>(null);
   const [level, setLevel] = useState(ORG);
   const [trans, setTrans] = useState<Trans>({ from: [], fromLevel: ORG, u: 1 });
+  const transU = useRef(1);
+  transU.current = trans.u;
   const [ask, setAsk] = useState<{ id: string; x: number; y: number } | null>(null);
   const [mode, setMode] = useState<JamieMode>("input");
+  const artifactOpen = useArtifactPanelOpen();
+  const artifactOpenRef = useRef(artifactOpen);
+  artifactOpenRef.current = artifactOpen;
   const [chatMounted, setChatMounted] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -298,21 +276,28 @@ export function InfiniteCanvas({
     anim.current = null;
   };
   useEffect(() => () => stop(), []);
+  // An artifact open on the right belongs to the canvas: leaving it (another tab) closes it.
+  useEffect(() => () => useCanvasChatStore.getState().closeArtifactPanel(), []);
 
-  /** Fly the camera; `withLevel` also blends the opened containers over the same flight. */
+  /**
+   * Fly the camera; `withLevel` also blends the opened containers over the same flight. A flight that
+   * replaces one still opening a level (new cards re-framing it) finishes opening it from where it was.
+   */
   const flyTo = useCallback((to: Camera, withLevel = false) => {
     stop();
     const from = camRef.current;
+    const u0 = withLevel ? 0 : transU.current;
+    const blend = u0 < 1;
     if (!from || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
       setCam(to);
-      if (withLevel) setTrans((s) => ({ ...s, u: 1 }));
+      if (blend) setTrans((s) => ({ ...s, u: 1 }));
       return;
     }
     const t0 = performance.now();
     const step = (t: number) => {
       const u = Math.min(1, (t - t0) / 750);
       setCam(between(from, to, ease(u)));
-      if (withLevel) setTrans((s) => ({ ...s, u: ease(u) }));
+      if (blend) setTrans((s) => ({ ...s, u: u0 + (1 - u0) * ease(u) }));
       anim.current = u < 1 ? requestAnimationFrame(step) : null;
     };
     anim.current = requestAnimationFrame(step);
@@ -371,13 +356,13 @@ export function InfiniteCanvas({
   }, [loading, level, scene, seek, go]);
 
   useEffect(() => {
-    // The full chat narrows the canvas: once it has slid, frame the level again.
+    // The full chat or an artifact narrows the canvas: once it has slid, frame the level again.
     const t = window.setTimeout(() => {
       if (vpRef.current) flyTo(cameraFor(levelRef.current, vpRef.current));
     }, 460);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the chat opens or closes
-  }, [mode === "full"]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the chat or an artifact opens or closes
+  }, [mode === "full", artifactOpen]);
   useEffect(() => {
     if (mode === "full") setChatMounted(true);
   }, [mode]);
@@ -586,9 +571,11 @@ export function InfiniteCanvas({
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
       // Esc closes the nearest thing first: the full list, then the Ask box; then it goes up a level.
       if (e.key === "Escape") {
-        if (showAll) setShowAll(false);
-        else if (ask) setAsk(null);
-        else up();
+        // Taken here, the artifact panel leaves it alone (it skips a prevented key).
+        if (showAll) (e.preventDefault(), setShowAll(false));
+        else if (ask) (e.preventDefault(), setAsk(null));
+        // An open artifact closes next (the panel takes the key itself); then it goes up a level.
+        else if (!artifactOpenRef.current) up();
       }
       if (!vp || !camRef.current) return;
       if (e.key === "+" || e.key === "=") flyTo(zoomAbout(camRef.current, 1.8, vp.w / 2, vp.h / 2, vp));
@@ -686,365 +673,401 @@ export function InfiniteCanvas({
   const blank = !loading && !board.nodes.length;
 
   return (
-    <div
-      data-infinite-canvas
-      className="icb-root"
-      style={{
-        ...themeVars(CANVAS_THEME),
-        position: "absolute",
-        inset: 0,
-        display: "flex",
-        colorScheme: CANVAS_THEME.scheme,
-        background: v("desk"),
-      }}
-    >
-      <style>{KEYFRAMES + CHAT_PAPER}</style>
-      <aside
-        data-canvas-chat
-        data-chat-panel={mode === "full" ? "open" : "closed"}
-        aria-hidden={mode !== "full"}
-        inert={mode !== "full"}
+    <OnPaper.Provider value>
+      <div
+        data-infinite-canvas
+        // Hive's chat pieces drawn on the canvas (chips, rows, the full chat) wear its paper in either app theme.
+        data-canvas-paper=""
+        className="icb-root"
         style={{
-          width: mode === "full" ? CHAT_W : 0,
-          flexShrink: 0,
-          overflow: "hidden",
-          transition: "width .42s cubic-bezier(.2,.8,.2,1)",
-          borderRight: mode === "full" ? `1px solid ${v("chromeBorder")}` : "none",
+          ...themeVars(CANVAS_THEME),
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          colorScheme: CANVAS_THEME.scheme,
+          background: v("desk"),
         }}
       >
-        <div
+        <style>{KEYFRAMES + PAPER_CSS}</style>
+        <aside
+          data-canvas-chat
+          data-chat-panel={mode === "full" ? "open" : "closed"}
+          aria-hidden={mode !== "full"}
+          inert={mode !== "full"}
           style={{
-            width: CHAT_W,
-            height: "100%",
-            transform: mode === "full" ? "none" : "translateX(-40px)",
-            opacity: mode === "full" ? 1 : 0,
-            transition: "transform .42s cubic-bezier(.2,.8,.2,1), opacity .3s",
+            width: mode === "full" ? CHAT_W : 0,
+            flexShrink: 0,
+            overflow: "hidden",
+            transition: "width .42s cubic-bezier(.2,.8,.2,1)",
+            borderRight: mode === "full" ? `1px solid ${v("chromeBorder")}` : "none",
           }}
         >
-          {chatMounted ? renderChat(() => setMode("last")) : null}
-        </div>
-      </aside>
-      <div
-        ref={rootRef}
-        data-zoom={cam?.z.toFixed(3)}
-        data-level={level}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        // The camera is the only way to move: undo any scroll the browser makes to bring a focused card into view.
-        onScroll={(e) => e.currentTarget.scrollTo(0, 0)}
-        style={{
-          position: "relative",
-          flex: 1,
-          minWidth: 0,
-          overflow: "hidden",
-          touchAction: "none",
-          userSelect: "none",
-          color: v("ink"),
-          ...deskLook,
-        }}
-      >
-        {cam && vp ? (
-          <>
-            <Links scene={scene} board={board} cam={cam} vp={vp} open={open} dim={dim} />
-            {ordered.map((n) => (
-              <SceneItem
-                key={n.id}
-                n={n}
-                c={ctx}
-                cam={cam}
-                vp={vp}
-                vis={visibility(scene, n.id, open) * dim(n.id)}
-                open={CONTAINERS.includes(n.type) ? open(n.id) : 0}
-                here={n.id === level}
-                quiet={["milestone", "feature"].includes(scene.get(level)?.type ?? "") && n.id !== level}
-                desk={desk}
-                busy={turnRunning}
-                artifacts={
-                  n.type === "artifacts"
-                    ? (artifactsAt[n.parent] ?? [])
-                    : n.type === "build"
-                      ? (artifactsByRef[n.parent] ?? []).filter((x) => x.kind === "pull_request")
-                      : undefined
-                }
-                folded={
-                  n.type === "question" &&
-                  !!byId(board, n.id)?.about &&
-                  openTree(board, byId(board, n.id)!.about!, openTrees) !== n.id
-                }
-                onClick={clickNode(n)}
-              />
-            ))}
-            {ordered.map((n) => {
-              const list = markers(n);
-              if (!list.length) return null;
-              const seen = visibility(scene, n.id, open) * dim(n.id);
-              const sr = toScreen(n.rect, cam, vp);
-              if (seen < 0.3 || !onScreen(sr, vp)) return null;
-              // Part of the card, in its design units: it zooms with the card and sits on its top edge, inside it.
-              const designW = (open(n.id) > 0.5 ? FRAME_W[n.type] : FACE_W[n.type]) ?? FACE_W.feature!;
-              return (
-                <div
-                  key={`job:${n.id}`}
-                  style={{
-                    position: "absolute",
-                    left: sr.x,
-                    top: sr.y,
-                    width: designW,
-                    transform: `scale(${sr.w / designW})`,
-                    transformOrigin: "0 0",
-                    opacity: seen,
-                    zIndex: 5,
-                    pointerEvents: "none",
-                  }}
-                >
+          <div
+            style={{
+              width: CHAT_W,
+              height: "100%",
+              transform: mode === "full" ? "none" : "translateX(-40px)",
+              opacity: mode === "full" ? 1 : 0,
+              transition: "transform .42s cubic-bezier(.2,.8,.2,1), opacity .3s",
+            }}
+          >
+            {chatMounted ? renderChat(() => setMode("last")) : null}
+          </div>
+        </aside>
+        <div
+          ref={rootRef}
+          data-zoom={cam?.z.toFixed(3)}
+          data-level={level}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          // The camera is the only way to move: undo any scroll the browser makes to bring a focused card into view.
+          onScroll={(e) => e.currentTarget.scrollTo(0, 0)}
+          style={{
+            position: "relative",
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            touchAction: "none",
+            userSelect: "none",
+            color: v("ink"),
+            ...deskLook,
+          }}
+        >
+          {cam && vp ? (
+            <>
+              <Links scene={scene} board={board} cam={cam} vp={vp} open={open} dim={dim} />
+              {ordered.map((n) => (
+                <SceneItem
+                  key={n.id}
+                  n={n}
+                  c={ctx}
+                  cam={cam}
+                  vp={vp}
+                  vis={visibility(scene, n.id, open) * dim(n.id)}
+                  open={CONTAINERS.includes(n.type) ? open(n.id) : 0}
+                  here={n.id === level}
+                  quiet={["milestone", "feature"].includes(scene.get(level)?.type ?? "") && n.id !== level}
+                  desk={desk}
+                  busy={turnRunning}
+                  artifacts={
+                    n.type === "artifacts"
+                      ? (artifactsAt[n.parent] ?? [])
+                      : n.type === "build"
+                        ? (artifactsByRef[n.parent] ?? []).filter((x) => x.kind === "pull_request")
+                        : undefined
+                  }
+                  folded={
+                    n.type === "question" &&
+                    !!byId(board, n.id)?.about &&
+                    openTree(board, byId(board, n.id)!.about!, openTrees) !== n.id
+                  }
+                  onClick={clickNode(n)}
+                />
+              ))}
+              {ordered.map((n) => {
+                const list = markers(n);
+                if (!list.length) return null;
+                const seen = visibility(scene, n.id, open) * dim(n.id);
+                const sr = toScreen(n.rect, cam, vp);
+                if (seen < 0.3 || !onScreen(sr, vp)) return null;
+                // Part of the card, in its design units: it zooms with the card and sits on its top edge, inside it.
+                const designW = (open(n.id) > 0.5 ? FRAME_W[n.type] : FACE_W[n.type]) ?? FACE_W.feature!;
+                return (
                   <div
+                    key={`job:${n.id}`}
                     style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-end",
-                      gap: 4,
-                      padding: "0 10px",
-                      transform: "translateY(-50%)",
+                      position: "absolute",
+                      left: sr.x,
+                      top: sr.y,
+                      width: designW,
+                      transform: `scale(${sr.w / designW})`,
+                      transformOrigin: "0 0",
+                      opacity: seen,
+                      zIndex: 5,
+                      pointerEvents: "none",
                     }}
                   >
-                    {list.map((j) => (
-                      <JobMarker key={j.jobId} job={j} />
-                    ))}
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-end",
+                        gap: 4,
+                        padding: "0 10px",
+                        transform: "translateY(-50%)",
+                      }}
+                    >
+                      {list.map((j) => (
+                        <JobMarker key={j.jobId} job={j} />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </>
-        ) : null}
+                );
+              })}
+            </>
+          ) : null}
 
-        {blank || loading || failed ? (
+          {blank || loading || failed ? (
+            <div
+              data-canvas-empty
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "grid",
+                placeItems: "center",
+                pointerEvents: "none",
+                fontFamily: TYPE,
+                fontSize: 18,
+                color: v("muted"),
+                fontStyle: "italic",
+                textAlign: "center",
+                padding: 24,
+              }}
+            >
+              {failed
+                ? "Couldn't read the plan from the graph. It will try again in a minute."
+                : loading
+                  ? "Reading the plan…"
+                  : "No initiatives yet. Tell Jamie what you want to build, and it starts one here."}
+            </div>
+          ) : null}
+
           <div
-            data-canvas-empty
+            data-canvas-chrome
+            onPointerDown={(e) => e.stopPropagation()}
             style={{
               position: "absolute",
-              inset: 0,
-              display: "grid",
-              placeItems: "center",
-              pointerEvents: "none",
-              fontFamily: TYPE,
-              fontSize: 18,
-              color: v("muted"),
-              fontStyle: "italic",
-              textAlign: "center",
-              padding: 24,
-            }}
-          >
-            {failed
-              ? "Couldn't read the plan from the graph. It will try again in a minute."
-              : loading
-                ? "Reading the plan…"
-                : "No initiatives yet. Tell Jamie what you want to build, and it starts one here."}
-          </div>
-        ) : null}
-
-        <div
-          data-canvas-chrome
-          onPointerDown={(e) => e.stopPropagation()}
-          style={{
-            position: "absolute",
-            left: 16,
-            top: 16,
-            right: 16,
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-            flexWrap: "wrap",
-            pointerEvents: "none",
-            zIndex: 20,
-          }}
-        >
-          <button
-            type="button"
-            data-back
-            aria-label="Back out a level (Esc)"
-            title="Back out a level (Esc)"
-            onClick={up}
-            disabled={level === ORG}
-            style={{
-              ...topBtn,
-              width: 34,
-              cursor: level === ORG ? "default" : "pointer",
-              opacity: level === ORG ? 0.45 : 1,
-              fontSize: 16,
-            }}
-          >
-            ←
-          </button>
-          <nav
-            data-crumbs
-            style={{
-              ...topBtn,
+              left: 16,
+              top: 16,
+              right: 16,
               display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "0 12px",
-              maxWidth: "100%",
-              overflow: "hidden",
-            }}
-          >
-            {[ORG, ...crumbs].map((id, i, all) => (
-              <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-                {i ? <span style={{ color: v("faint") }}>›</span> : null}
-                <button
-                  type="button"
-                  data-crumb={id}
-                  onClick={() => go(id)}
-                  style={{
-                    border: "none",
-                    background: "none",
-                    padding: "0 2px",
-                    cursor: "pointer",
-                    fontFamily: TYPE,
-                    fontSize: 13.5,
-                    color: i === all.length - 1 ? v("ink") : v("muted"),
-                    fontWeight: i === all.length - 1 ? 600 : 400,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: 240,
-                  }}
-                >
-                  {nameOf(id)}
-                </button>
-              </span>
-            ))}
-          </nav>
-          <button
-            type="button"
-            data-search
-            onClick={() => setPalette(true)}
-            style={{
-              ...topBtn,
-              display: "inline-flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               gap: 10,
-              padding: "0 12px",
-              cursor: "pointer",
-              color: v("muted"),
+              flexWrap: "wrap",
+              pointerEvents: "none",
+              zIndex: 20,
             }}
           >
-            ⌕ Search
-            <kbd
+            <button
+              type="button"
+              data-back
+              aria-label="Back out a level (Esc)"
+              title="Back out a level (Esc)"
+              onClick={up}
+              disabled={level === ORG}
               style={{
-                fontFamily: TYPE,
-                fontSize: 11,
-                padding: "1px 6px",
-                borderRadius: 5,
-                border: `1px solid ${v("chromeBorder")}`,
-                background: v("field"),
+                ...topBtn,
+                width: 34,
+                cursor: level === ORG ? "default" : "pointer",
+                opacity: level === ORG ? 0.45 : 1,
+                fontSize: 16,
+              }}
+            >
+              ←
+            </button>
+            <nav
+              data-crumbs
+              style={{
+                ...topBtn,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "0 12px",
+                maxWidth: "100%",
+                overflow: "hidden",
+              }}
+            >
+              {[ORG, ...crumbs].map((id, i, all) => (
+                <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+                  {i ? <span style={{ color: v("faint") }}>›</span> : null}
+                  <button
+                    type="button"
+                    data-crumb={id}
+                    onClick={() => go(id)}
+                    style={{
+                      border: "none",
+                      background: "none",
+                      padding: "0 2px",
+                      cursor: "pointer",
+                      fontFamily: TYPE,
+                      fontSize: 13.5,
+                      color: i === all.length - 1 ? v("ink") : v("muted"),
+                      fontWeight: i === all.length - 1 ? 600 : 400,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      maxWidth: 240,
+                    }}
+                  >
+                    {nameOf(id)}
+                  </button>
+                </span>
+              ))}
+            </nav>
+            <button
+              type="button"
+              data-search
+              onClick={() => setPalette(true)}
+              style={{
+                ...topBtn,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "0 12px",
+                cursor: "pointer",
                 color: v("muted"),
               }}
             >
-              ⌘K
-            </kbd>
-          </button>
-        </div>
+              ⌕ Search
+              <kbd
+                style={{
+                  fontFamily: TYPE,
+                  fontSize: 11,
+                  padding: "1px 6px",
+                  borderRadius: 5,
+                  border: `1px solid ${v("chromeBorder")}`,
+                  background: v("field"),
+                  color: v("muted"),
+                }}
+              >
+                ⌘K
+              </kbd>
+            </button>
+          </div>
 
-        <div
-          data-canvas-chrome
-          onPointerDown={(e) => e.stopPropagation()}
+          <div
+            data-canvas-chrome
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              right: 16,
+              bottom: 24,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              zIndex: 20,
+            }}
+          >
+            {[
+              {
+                label: "+",
+                title: "Zoom in",
+                go: () => cam && vp && flyTo(zoomAbout(cam, 1.8, vp.w / 2, vp.h / 2, vp)),
+              },
+              {
+                label: "−",
+                title: "Zoom out",
+                go: () => cam && vp && flyTo(zoomAbout(cam, 1 / 1.8, vp.w / 2, vp.h / 2, vp, minZ)),
+              },
+              { label: "⤢", title: "Frame this level", go: () => go(level) },
+            ].map((b) => (
+              <button
+                key={b.label}
+                type="button"
+                title={b.title}
+                aria-label={b.title}
+                onClick={() => {
+                  userMoved.current = b.label !== "⤢";
+                  b.go();
+                }}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: `1px solid ${v("chromeBorder")}`,
+                  background: v("chrome"),
+                  color: v("ink"),
+                  fontSize: 17,
+                  cursor: "pointer",
+                  boxShadow: v("shadow"),
+                }}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+
+          {mode === "full" ? null : (
+            <JamieBar
+              mode={mode}
+              setMode={setMode}
+              onName={nameOf(level)}
+              suggestions={level === ORG ? [] : suggestions(board, level)}
+              send={talk}
+              goTo={() => go(level)}
+            />
+          )}
+
+          {palette ? (
+            <Palette
+              board={board}
+              left={16}
+              close={() => setPalette(false)}
+              pick={(id) => {
+                setPalette(false);
+                reach(id);
+              }}
+            />
+          ) : null}
+
+          {showAll && cam && vp && scene.get(STACK) ? (
+            <AllInitiatives
+              board={board}
+              desk={desk}
+              anchor={toScreen(scene.get(STACK)!.rect, cam, vp)}
+              vp={vp}
+              close={() => setShowAll(false)}
+              pick={(id) => {
+                setShowAll(false);
+                reach(id);
+              }}
+            />
+          ) : null}
+
+          {ask && byId(board, ask.id) ? (
+            <AskBox
+              node={byId(board, ask.id)!}
+              x={Math.min(ask.x, (vp?.w ?? 800) - 380)}
+              y={Math.min(ask.y, (vp?.h ?? 600) - 260)}
+              options={suggestions(board, ask.id)}
+              busy={turnRunning}
+              close={() => setAsk(null)}
+              send={(t) => void send(ask.id, t)}
+            />
+          ) : null}
+        </div>
+        {/* An artifact opened from a card (or the full chat) slides in on the right, as on the chats page; the
+          canvas narrows. Its own close button and Esc close it. */}
+        <aside
+          data-artifact-aside={artifactOpen ? "open" : "closed"}
+          aria-hidden={!artifactOpen}
+          inert={!artifactOpen}
           style={{
-            position: "absolute",
-            right: 16,
-            bottom: 24,
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-            zIndex: 20,
+            width: artifactOpen ? ARTIFACT_W : 0,
+            flexShrink: 0,
+            overflow: "hidden",
+            transition: "width .42s cubic-bezier(.2,.8,.2,1)",
+            borderLeft: artifactOpen ? `1px solid ${v("chromeBorder")}` : "none",
+            background: v("panel"),
           }}
         >
-          {[
-            { label: "+", title: "Zoom in", go: () => cam && vp && flyTo(zoomAbout(cam, 1.8, vp.w / 2, vp.h / 2, vp)) },
-            {
-              label: "−",
-              title: "Zoom out",
-              go: () => cam && vp && flyTo(zoomAbout(cam, 1 / 1.8, vp.w / 2, vp.h / 2, vp, minZ)),
-            },
-            { label: "⤢", title: "Frame this level", go: () => go(level) },
-          ].map((b) => (
-            <button
-              key={b.label}
-              type="button"
-              title={b.title}
-              aria-label={b.title}
-              onClick={() => {
-                userMoved.current = b.label !== "⤢";
-                b.go();
-              }}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                border: `1px solid ${v("chromeBorder")}`,
-                background: v("chrome"),
-                color: v("ink"),
-                fontSize: 17,
-                cursor: "pointer",
-                boxShadow: v("shadow"),
-              }}
-            >
-              {b.label}
-            </button>
-          ))}
-        </div>
-
-        {mode === "full" ? null : (
-          <JamieBar
-            mode={mode}
-            setMode={setMode}
-            onName={nameOf(level)}
-            suggestions={level === ORG ? [] : suggestions(board, level)}
-            send={talk}
-            goTo={() => go(level)}
-          />
-        )}
-
-        {palette ? (
-          <Palette
-            board={board}
-            left={16}
-            close={() => setPalette(false)}
-            pick={(id) => {
-              setPalette(false);
-              reach(id);
+          <div
+            className="bg-background text-foreground"
+            style={{
+              width: ARTIFACT_W,
+              height: "100%",
+              transform: artifactOpen ? "none" : "translateX(40px)",
+              opacity: artifactOpen ? 1 : 0,
+              transition: "transform .42s cubic-bezier(.2,.8,.2,1), opacity .3s",
             }}
-          />
-        ) : null}
-
-        {showAll && cam && vp && scene.get(STACK) ? (
-          <AllInitiatives
-            board={board}
-            desk={desk}
-            anchor={toScreen(scene.get(STACK)!.rect, cam, vp)}
-            vp={vp}
-            close={() => setShowAll(false)}
-            pick={(id) => {
-              setShowAll(false);
-              reach(id);
-            }}
-          />
-        ) : null}
-
-        {ask && byId(board, ask.id) ? (
-          <AskBox
-            node={byId(board, ask.id)!}
-            x={Math.min(ask.x, (vp?.w ?? 800) - 380)}
-            y={Math.min(ask.y, (vp?.h ?? 600) - 260)}
-            options={suggestions(board, ask.id)}
-            busy={turnRunning}
-            close={() => setAsk(null)}
-            send={(t) => void send(ask.id, t)}
-          />
-        ) : null}
+          >
+            <ArtifactPanel />
+          </div>
+        </aside>
       </div>
-    </div>
+    </OnPaper.Provider>
   );
 }
 

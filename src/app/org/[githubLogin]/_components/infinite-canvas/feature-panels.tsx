@@ -1,10 +1,11 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { type CSSProperties, useRef } from "react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import type { ArtifactRef, ArtifactVersion } from "../../_state/canvasChatArtifacts";
 import type { CanvasJob } from "../../_state/useCanvasJobs";
 import { ChatArtifacts } from "../artifacts/ChatArtifacts";
+import { useMoreBelow } from "../artifacts/chrome";
 import type { PlanNode } from "./board";
 import { type CardContext, TYPE, label, pill, stop } from "./nodes";
 import { a, v } from "./theme";
@@ -105,16 +106,28 @@ export function BuildCard({
 }) {
   const jobs = c.jobs[f.id] ?? [];
   const canImplement = !!f.architecture && !busy;
+  const list = useRef<HTMLDivElement>(null);
+  const more = useMoreBelow(list);
   return (
-    <div data-build={f.id} style={panel(w, h)}>
+    // As tall as what it holds, up to its slot: no empty band under the last row.
+    <div data-build={f.id} style={{ ...panel(w, h), height: "auto", maxHeight: h }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span style={label}>Build</span>
         <span style={{ fontFamily: TYPE, fontSize: 11.5, color: v("muted") }}>{c.work(f.id)?.line}</span>
       </div>
       {jobs.length || prs.length ? (
         <div
+          ref={list}
           data-wheel-scroll
-          style={{ display: "flex", flexDirection: "column", gap: 2, overflowY: "auto", minHeight: 0 }}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+            overflowY: "auto",
+            minHeight: 0,
+            // More below: the last rows fade out.
+            ...(more ? { maskImage: "linear-gradient(to bottom, black calc(100% - 36px), transparent)" } : {}),
+          }}
         >
           {jobs.map((j) => (
             <div

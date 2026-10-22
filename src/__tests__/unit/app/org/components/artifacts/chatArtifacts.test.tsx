@@ -147,7 +147,12 @@ describe("ChatArtifacts", () => {
     const line = screen.getByTestId("folded-artifacts");
     expect(within(line).getByText("1 more")).toBeTruthy();
     fireEvent.click(within(line).getByText("Logs"));
-    expect(useCanvasChatStore.getState().artifactPanel).toEqual({ identity: artifactIdentity(log), version: null });
+    // Not in the active chat (as here): it opens as a live artifact.
+    expect(useCanvasChatStore.getState().artifactPanel).toEqual({
+      identity: artifactIdentity(log),
+      version: null,
+      live: log,
+    });
   });
 
   test("a row opens its artifact on the panel and shows it is up", () => {
