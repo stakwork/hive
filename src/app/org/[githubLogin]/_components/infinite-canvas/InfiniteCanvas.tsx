@@ -1182,7 +1182,8 @@ function SceneItem({
     return (
       <div style={box} data-artifacts={n.parent}>
         <div
-          style={scaled(w, 1, { overflow: "hidden", colorScheme: CANVAS_THEME.scheme })}
+          data-wheel-scroll
+          style={scaled(w, 1, { overflowY: "auto", overflowX: "hidden", colorScheme: CANVAS_THEME.scheme })}
           className="bg-transparent text-[var(--ic-ink)]"
         >
           <ChatArtifacts artifacts={artifacts ?? []} versions={NO_VERSIONS} />

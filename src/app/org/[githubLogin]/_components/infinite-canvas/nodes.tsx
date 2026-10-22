@@ -312,7 +312,7 @@ export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: num
     >
       <div style={label}>{kicker(node)}</div>
       {node.type === "brief" ? (
-        <div style={{ flex: 1, overflow: "hidden" }}>
+        <div data-wheel-scroll style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           {node.pencilEdit ? (
             <div style={authored(node.author, 14)}>
               <PencilDiff was={node.name} now={node.pencilEdit.name} />
@@ -322,6 +322,7 @@ export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: num
               value={node.name}
               onSave={(t) => c.actions.rename(node.id, t)}
               testId={node.id}
+              maxRows={12}
               style={authored(node.author, 14)}
             />
           )}
@@ -440,12 +441,15 @@ function EditableText({
   onDelete,
   style,
   testId,
+  maxRows = 4,
 }: {
   value: string;
   onSave: (text: string) => void;
   onDelete?: () => void;
   style: CSSProperties;
   testId: string;
+  /** The most rows the field grows to before it scrolls. */
+  maxRows?: number;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(value);
@@ -481,7 +485,7 @@ function EditableText({
     <span style={{ display: "flex", gap: 6, alignItems: "flex-start", width: "100%" }} {...stop}>
       <textarea
         autoFocus
-        rows={Math.min(4, Math.max(1, Math.ceil(text.length / 28)))}
+        rows={Math.min(maxRows, Math.max(1, Math.ceil(text.length / 28)))}
         data-edit-input={testId}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -507,6 +511,7 @@ function EditableText({
           fontWeight: style.fontWeight,
           outline: "none",
           resize: "none",
+          overflowY: "auto",
           lineHeight: 1.3,
         }}
       />
@@ -677,6 +682,8 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
   const stories = kids(b, initiative, "story");
   const reqs = stories.flatMap((st) => kids(b, st.id, "requirement"));
   const unread = byId(b, initiative)?.unread;
+  // A journey is pending (muted) until every requirement under it is accepted or dropped.
+  const pending = (id: string) => kids(b, id, "requirement").some((r) => r.status !== "accepted" && r.status !== "dropped");
   return (
     <div
       data-stories={initiative}
@@ -722,7 +729,9 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
             {st.pencil ? (
               // Proposed: its words and Accept / Reject; nothing to edit until it's real.
               <>
-                <div style={{ ...authored(st.author, 12.5), fontWeight: 600, color: v("proposedInk") }}>{st.name}</div>
+                <div style={{ ...authored(st.author, 12.5), flexShrink: 0, fontWeight: 400, color: v("proposedInk") }}>
+                  {st.name}
+                </div>
                 <PencilBar c={c} pencil={st.pencil} size={10} />
               </>
             ) : st.pencilEdit ? (
@@ -738,7 +747,11 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
                 onSave={(t) => c.actions.rename(st.id, t)}
                 onDelete={() => c.actions.remove(st.id)}
                 testId={st.id}
-                style={{ ...authored(st.author, 12.5), fontWeight: st.author === "strut" ? 600 : 400 }}
+                style={{
+                  ...authored(st.author, 12.5),
+                  flexShrink: 0,
+                  ...(pending(st.id) ? { fontWeight: 400, color: v("muted") } : { fontWeight: 600 }),
+                }}
               />
             )}
             {kids(b, st.id, "requirement").map((r) => (
