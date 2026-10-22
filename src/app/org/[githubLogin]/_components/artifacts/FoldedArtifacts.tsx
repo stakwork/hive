@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import { artifactIdentity, type ArtifactRef } from "../../_state/canvasChatArtifacts";
 import { plural } from "./lines";
+import { useOnPaper } from "./onPaper";
+import { useOpenArtifact } from "./openArtifact";
+import { useChatOrgLogin } from "./useArtifactPanel";
 import { artifactKind } from "./registry";
 
 /**
@@ -23,7 +26,10 @@ export const FoldedArtifacts = React.memo(function FoldedArtifacts({
   afterOthers: boolean;
 }) {
   const onPanel = useCanvasChatStore((s) => s.artifactPanel?.identity ?? null);
-  const { openArtifactPanel, openArtifactIndex } = useCanvasChatStore.getState();
+  const { openArtifactIndex } = useCanvasChatStore.getState();
+  // As every card opens one: from the chat, or live when the chat doesn't hold it (a job's, on a canvas card).
+  const open = useOpenArtifact(useChatOrgLogin());
+  const onPaper = useOnPaper();
   const count = artifacts.length;
 
   return (
@@ -32,9 +38,14 @@ export const FoldedArtifacts = React.memo(function FoldedArtifacts({
       className="flex min-w-0 items-center gap-1.5 px-1 text-xs text-muted-foreground"
     >
       <Layers aria-hidden className="h-3.5 w-3.5 shrink-0" />
-      <button type="button" onClick={openArtifactIndex} className="shrink-0 transition-colors hover:text-foreground">
-        {afterOthers ? `${count} more` : plural(count, "artifact")}
-      </button>
+      {onPaper ? (
+        // On a canvas card the index would list the chat's artifacts, not the card's: the count is just a count.
+        <span className="shrink-0">{afterOthers ? `${count} more` : plural(count, "artifact")}</span>
+      ) : (
+        <button type="button" onClick={openArtifactIndex} className="shrink-0 transition-colors hover:text-foreground">
+          {afterOthers ? `${count} more` : plural(count, "artifact")}
+        </button>
+      )}
       <span aria-hidden>·</span>
       <span className="min-w-0 truncate">
         {artifacts.map((artifact, i) => {
@@ -45,7 +56,7 @@ export const FoldedArtifacts = React.memo(function FoldedArtifacts({
               <button
                 type="button"
                 title={artifact.title}
-                onClick={() => openArtifactPanel(identity)}
+                onClick={() => open(artifact, undefined)}
                 aria-pressed={onPanel === identity}
                 className={cn("transition-colors hover:text-foreground", onPanel === identity && "text-foreground")}
               >
