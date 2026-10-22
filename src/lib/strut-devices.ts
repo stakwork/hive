@@ -220,9 +220,8 @@ export async function validateDeviceCredential(
     select: { id: true, userId: true, revokedAt: true, user: { select: { deleted: true } } },
   });
   if (!device || device.revokedAt || device.user.deleted) return null;
-  db.strutDevice.update({ where: { id: device.id }, data: { lastUsedAt: new Date() } }).catch(() => {
-    // Non-critical
-  });
+  // Awaited: the settings card reads it back, and a renewal is one call a day.
+  await db.strutDevice.update({ where: { id: device.id }, data: { lastUsedAt: new Date() } });
   return { deviceId: device.id, userId: device.userId };
 }
 
