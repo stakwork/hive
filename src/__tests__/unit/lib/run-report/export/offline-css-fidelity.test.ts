@@ -89,9 +89,10 @@ describe("dark-mode compilation (offline bundle)", () => {
     expect(entry).toMatch(/@custom-variant\s+dark\s*\(&:where\(\.dark,\s*\.dark \*\)\)/);
 
     // Must NOT be present in the live globals.css — this override is scoped
-    // to the offline bundle only.
+    // to the offline bundle only. Only a variant named exactly `dark` counts:
+    // differently named ones (`dark-app`, `dark-os`) don't redefine it.
     const globals = readFileSync(join(ROOT, "src/app/globals.css"), "utf8");
-    expect(globals).not.toMatch(/@custom-variant\s+dark/);
+    expect(globals).not.toMatch(/@custom-variant\s+dark\s*[({]/);
   });
 });
 
