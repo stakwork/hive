@@ -7,7 +7,8 @@
  *   - the target is the org default for THIS user (purpose `orchestrator`);
  *     the launch carries `x-api-token` + `x-strut-actor`; the body is
  *     exactly `{ input: { prompt (workspace line + message), session (the
- *     conversation), context: { line } }, callback: { url }, jobCallback:
+ *     person's thread with the org, `<actor>/<org slug>`), context: { line } },
+ *     callback: { url }, jobCallback:
  *     { url } }` — no job, no title, no params; the jobCallback is the
  *     row's job-events URL, which the jobs the turn starts inherit (strut
  *     CALLBACKS.md §5), and an older strut's 400 to it relaunches without;
@@ -117,7 +118,7 @@ beforeEach(() => {
 });
 
 describe("launchOrchestratorTurn", () => {
-  it("POSTs exactly the orchestrator's input with the conversation as the session, as this user, with a callback", async () => {
+  it("POSTs exactly the orchestrator's input on the person's thread with the org, as this user, with a callback", async () => {
     const out = await launchOrchestratorTurn(args);
     expect(out).toEqual({ status: "started", runId: "row-1", strutRunId: "1790000000001" });
 
@@ -140,7 +141,7 @@ describe("launchOrchestratorTurn", () => {
           conversationId: "conv-1",
           input: {
             prompt: "@acme-default\nAdd a Concept for billing retries",
-            session: "conv-1",
+            session: "alice-user-1/acme-default",
             context: { line: "Mon 19 Oct, 14:02, Europe/London. " },
           },
         }),
@@ -162,7 +163,7 @@ describe("launchOrchestratorTurn", () => {
     expect(Object.keys(body).sort()).toEqual(["callback", "input", "jobCallback"]);
     expect(body.input).toEqual({
       prompt: "@acme-default\nAdd a Concept for billing retries",
-      session: "conv-1",
+      session: "alice-user-1/acme-default",
       context: { line: "Mon 19 Oct, 14:02, Europe/London. " },
     });
     expect(body.callback.url).toMatch(
@@ -185,6 +186,16 @@ describe("launchOrchestratorTurn", () => {
       { workspaceId: "ws-default", userId: "user-1", conversationId: "conv-1" },
       [{ id: "orchestrator-launch-row-1", content: "", source: { kind: "orchestrator_launch", runId: "row-1" } }],
     );
+  });
+
+  it("every conversation of the person in this org launches on the same thread; another person gets their own", async () => {
+    mockFetch.mockImplementation(async () => json(202, { runId: "1790000000001", callback: true }));
+    expect((await launchOrchestratorTurn(args)).status).toBe("started");
+    expect((await launchOrchestratorTurn({ ...args, conversationId: "conv-2" })).status).toBe("started");
+    mockResolveStrutTarget.mockResolvedValueOnce({ ok: true, target: { ...TARGET, actor: "bob-user-2" } });
+    expect((await launchOrchestratorTurn({ ...args, userId: "user-2", conversationId: "conv-3" })).status).toBe("started");
+    const sessions = mockFetch.mock.calls.map((c) => JSON.parse((c[1] as RequestInit).body as string).input.session);
+    expect(sessions).toEqual(["alice-user-1/acme-default", "alice-user-1/acme-default", "bob-user-2/acme-default"]);
   });
 
   it("strut honoring the jobCallback marks the row; an older strut's 400 to it is a launch without, not a failed turn", async () => {
@@ -228,7 +239,11 @@ describe("launchOrchestratorTurn", () => {
     const line =
       'Mon 19 Oct, 14:02, Europe/London. On the canvas: initiative "Self-serve onboarding" (`init-1`), feature "Repo picker" (`feat-1`) in workspace `acme`. ';
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
-    expect(body.input).toEqual({ prompt: "@acme-default\nAdd a Concept for billing retries", session: "conv-1", context: { line } });
+    expect(body.input).toEqual({
+      prompt: "@acme-default\nAdd a Concept for billing retries",
+      session: "alice-user-1/acme-default",
+      context: { line },
+    });
     expect(mockStrutRun.create.mock.calls[0][0].data.input).toEqual({ ...body.input, focus });
   });
 
@@ -246,7 +261,7 @@ describe("launchOrchestratorTurn", () => {
 
   it("strut refusing the launch with session_busy (or a 409) is busy, not an error; no marker row", async () => {
     mockFetch.mockResolvedValue(
-      json(409, { error: 'session_busy: session "conv-1" is in use by run 1 (orchestrator/turn)' }),
+      json(409, { error: 'session_busy: session "alice-user-1/acme-default" is in use by run 1 (orchestrator/turn)' }),
     );
     expect(await launchOrchestratorTurn(args)).toEqual({
       status: "busy",

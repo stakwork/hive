@@ -127,6 +127,8 @@ model User {
   stakworkRuns             StakworkRun[]
   featurePresence          UserFeaturePresence[]
   voiceCorrectionLearnings VoiceCorrectionLearning[]
+  strutDevices             StrutDevice[]
+  strutDevicePairings      StrutDevicePairing[]
 
   @@index([createdAt])
   @@index([deleted])
@@ -246,6 +248,48 @@ model OrgApiKey {
   @@index([sourceControlOrgId])
   @@index([createdById])
   @@map("org_api_keys")
+}
+
+// A person's device paired for strut (a desktop strut — strut
+// `plans/chained-orchestrators.md` §4). The credential is the device's own,
+// long-lived: it renews the short per-org `lab:peer` tokens through
+// `GET /api/strut-devices/peers`. Only its SHA-256 hash is stored; revoking
+// the device stops the renewal, and the tokens it holds age out.
+model StrutDevice {
+  id               String    @id @default(cuid())
+  userId           String    @map("user_id")
+  name             String
+  credentialPrefix String    @map("credential_prefix")
+  credentialHash   String    @unique @map("credential_hash")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  lastUsedAt       DateTime? @map("last_used_at")
+  revokedAt        DateTime? @map("revoked_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("strut_devices")
+}
+
+// A pairing in flight, the OAuth device flow (RFC 8628): the device holds
+// the device code (only its hash is here) and polls with it; the person
+// types or follows the user code and approves while signed in. One poll
+// after approval consumes it and creates the StrutDevice. Short-lived.
+model StrutDevicePairing {
+  id             String    @id @default(cuid())
+  deviceCodeHash String    @unique @map("device_code_hash")
+  userCode       String    @unique @map("user_code")
+  deviceName     String    @map("device_name")
+  expiresAt      DateTime  @map("expires_at")
+  // Who approved or denied it.
+  userId         String?   @map("user_id")
+  approvedAt     DateTime? @map("approved_at")
+  deniedAt       DateTime? @map("denied_at")
+  consumedAt     DateTime? @map("consumed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("strut_device_pairings")
 }
 
 // External MCP server registered for an org's canvas agent (Jamie).

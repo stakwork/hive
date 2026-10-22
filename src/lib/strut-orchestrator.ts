@@ -8,9 +8,9 @@
  *
  * A browser with the "Strut orchestrator" switch on (the chat's ⋯ menu,
  * `_state/strutEnginePreference.ts`, sent as `strutEngine: true`) sends
- * each canvas-chat message as ONE run of the workflow, with the
- * conversation's row id as the `session`: strut's agent remembers the
- * conversation itself, so nothing is replayed to it. Its reply comes back
+ * each canvas-chat message as ONE run of the workflow, on the person's
+ * thread with that org (`orchestratorSessionId`): strut's agent remembers
+ * the conversation itself, so nothing is replayed to it. Its reply comes back
  * through the strut-runs webhook in the job turn's shape — `{ text,
  * artifacts, ask?, cost, session }` — plus `proposals[]`: the gated graph
  * writes it asked for, recorded on strut rather than run, which a person
@@ -42,6 +42,22 @@ export const orchestratorTurnInputSchema = z
  */
 export function orchestratorPrompt(workspaceSlug: string, message: string): string {
   return `@${workspaceSlug}\n${message}`;
+}
+
+/**
+ * The strut session a person's orchestrator turns run on: `<actor>/<org
+ * default slug>` — ONE thread per person per org, whichever hive
+ * conversation the message comes from, and the same one the person's
+ * paired laptop strut opens when it calls this org's orchestrator (strut
+ * `plans/chained-orchestrators.md` §2: a `peer:person` credential opens
+ * `<actor>/…` as it is, and hive's launches use the swarm key, so the id is
+ * opened as it is here too). `actor` is the person's strut actor
+ * (`resolveStrutActor`), the `sub` of the tokens a pairing mints
+ * (`services/strut-device-peers.ts`); `orgSlug` is the strut target's
+ * workspace slug, the id that laptop gives this org's peer record.
+ */
+export function orchestratorSessionId(actor: string, orgSlug: string): string {
+  return `${actor}/${orgSlug}`;
 }
 
 /**

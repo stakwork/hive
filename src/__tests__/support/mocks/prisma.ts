@@ -85,6 +85,8 @@ function createDbMock() {
     strutRun: model(),
     strutJobArtifact: model(),
     workspaceApiKey: model(),
+    strutDevice: model(),
+    strutDevicePairing: model(),
     $transaction,
     $queryRaw,
     $executeRaw,
