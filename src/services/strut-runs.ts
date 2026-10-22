@@ -7,7 +7,7 @@
  *   dispatchStrutRun   resolve the target (ONE policy — `strut-target.ts`)
  *                      → PENDING row with the target's `swarmId`
  *                      → push the user's delegation + actor secrets to it
- *                      → POST {lab}/workflows/<name>/run { input, callback, job?, title?, jobCallback? }
+ *                      → POST {lab}/workflows/<name>/run { input, callback, job?, title?, jobCallback?, attachments? }
  *                      → refuse a 202 without `callback: true`
  *                      → store `strutRunId`.
  *   completeStrutRun   the token-gated, idempotent claim PENDING → terminal
@@ -42,6 +42,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { STRUT_ACTOR_HEADER, ensureStrutDelegation, strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
 import { ensureStrutActorSecrets } from "@/services/strut-actor-secret";
+import type { StrutAttachment } from "@/services/strut-attachments";
 import { describeStrutTargetError, resolveStrutTarget, type StrutPurpose } from "@/services/strut-target";
 
 export const STRUT_RUN_LOG_TAG = "STRUT_RUN";
@@ -253,6 +254,13 @@ export interface DispatchStrutRunArgs {
   /** Launch-level `params` (e.g. `{ model }`), a sibling of `input`; sent only when non-empty. */
   params?: Record<string, unknown>;
   /**
+   * Files for the run's agents (`POST …/run { attachments }`, read by
+   * `strut-attachments.ts`): a sibling of `input`, sent only when non-empty
+   * and never on the row — strut keeps them as the run's files and records
+   * only their names on `run.start`.
+   */
+  attachments?: StrutAttachment[];
+  /**
    * Per-actor secrets pushed to the target before the launch
    * (`PUT /actors/:actor/secrets/:name`) — the user's `GITHUB_TOKEN` for a
    * clone. Never logged, never in `input`, never on the row.
@@ -300,7 +308,7 @@ async function failRow(id: string, error: string): Promise<void> {
  * if created, is marked ERROR with the reason).
  */
 export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<DispatchStrutRunResult> {
-  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title, params, inheritJobCallback } = args;
+  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title, params, inheritJobCallback, attachments } = args;
   if (!handlerFor(kind)) throw new Error(`No strut-run handler for kind "${kind}"`);
 
   const resolved = await resolveStrutTarget({ purpose, userId, workspaceId });
@@ -374,6 +382,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
         ...(job ? { job, ...(title ? { title } : {}) } : {}),
         ...(jobCallback ? { jobCallback: { url: jobCallback } } : {}),
         ...(params && Object.keys(params).length ? { params } : {}),
+        ...(attachments?.length ? { attachments } : {}),
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(LAUNCH_TIMEOUT_MS),
@@ -429,7 +438,12 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
     throw new StrutDispatchError("strut_http", detail || `Strut returned HTTP ${res.status}.`);
   }
 
-  const accepted = (await res.json().catch(() => ({}))) as { runId?: unknown; callback?: unknown; jobCallback?: unknown };
+  const accepted = (await res.json().catch(() => ({}))) as {
+    runId?: unknown;
+    callback?: unknown;
+    jobCallback?: unknown;
+    attachments?: unknown;
+  };
   const strutRunId = typeof accepted.runId === "string" && accepted.runId ? accepted.runId : null;
 
   if (accepted.callback !== true) {
@@ -447,6 +461,17 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
   if (!strutRunId) {
     await failRow(row.id, "no_run_id");
     throw new StrutDispatchError("no_run_id", "Strut accepted the launch but returned no run id.");
+  }
+
+  if (attachments?.length && accepted.attachments !== true) {
+    // A strut before run attachments ignores the field: the run goes on
+    // without the files.
+    logger.warn("Strut predates run attachments — the run has no files", STRUT_RUN_LOG_TAG, {
+      runId: row.id,
+      workflow,
+      swarmId: target.swarmId,
+      files: attachments.length,
+    });
   }
 
   await db.strutRun.update({ where: { id: row.id }, data: { strutRunId, ...(jobCallbackUrl && accepted.jobCallback === true ? { liveUpdates: true } : {}) } });
