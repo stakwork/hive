@@ -98,22 +98,18 @@ const small = {
 /**
  * The bar on the canvas: Jamie's last reply above the input, folded away or
  * opened into the full chat. Mic first: speak, and stopping sends what was
- * heard. "On: …" says what Jamie will work on; clicking it flies there.
+ * heard.
  */
 export function JamieBar({
   mode,
   setMode,
-  onName,
   suggestions,
   send,
-  goTo,
 }: {
   mode: Exclude<JamieMode, "full">;
   setMode: (m: JamieMode) => void;
-  onName: string;
   suggestions: string[];
   send: (text: string) => Promise<boolean> | boolean;
-  goTo: () => void;
 }) {
   const { key, reply, launch, jobs, working } = useJamieTurn();
   // Strut has the turn: from the send (before its marker has synced) until its reply lands.
@@ -297,6 +293,7 @@ export function JamieBar({
           gap: 12,
           padding: "8px 10px 8px 8px",
           borderRadius: 99,
+          overflow: "hidden",
           background: v("chrome"),
           border: `1px solid ${v("chromeBorder")}`,
           boxShadow: v("shadowBig"),
@@ -340,28 +337,6 @@ export function JamieBar({
           </svg>
         </button>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
-          <button
-            type="button"
-            onClick={goTo}
-            data-on
-            style={{
-              alignSelf: "flex-start",
-              maxWidth: "100%",
-              border: "none",
-              background: "none",
-              padding: 0,
-              cursor: "pointer",
-              fontFamily: TYPE,
-              fontSize: 12,
-              color: v("muted"),
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {isListening ? "Listening… " : working ? "Working… " : ""}On:{" "}
-            <b style={{ color: v("ink"), fontWeight: 600 }}>{onName}</b>
-          </button>
           <textarea
             ref={inputRef}
             rows={1}
@@ -379,12 +354,12 @@ export function JamieBar({
               }
               if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur();
             }}
-            placeholder={isListening ? "Listening…" : "Talk, or type: “fill this out”, “pull up Repo picker”…"}
+            placeholder=""
             style={{
               width: "100%",
               boxSizing: "border-box",
               border: `1px solid ${v("border")}`,
-              borderRadius: 18,
+              borderRadius: 23,
               background: v("field"),
               color: v("fieldInk"),
               padding: "6px 12px",
