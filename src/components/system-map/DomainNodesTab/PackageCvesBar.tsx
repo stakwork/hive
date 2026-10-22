@@ -29,7 +29,7 @@ function latestResult(runs: SystemMapRun[]): PackageCvesResult | null {
 }
 
 /**
- * Runs `swarm-systemmap-package-cves` on the workspace's swarm and lists its
+ * Runs `swarm-package-cve-findings` on the workspace's swarm and lists its
  * runs; hands the newest successful run's findings to the Dependencies view.
  */
 export function PackageCvesBar({ onResult }: { onResult: (result: PackageCvesResult | null) => void }) {
