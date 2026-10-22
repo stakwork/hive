@@ -35,7 +35,7 @@
 import type { Action, ActionResult, DiffContent } from "@/lib/chat";
 import { parseGraphChanges, type GraphChange } from "@/components/graph-workbench/changes";
 import { bounded } from "@/lib/strut-chat-activity";
-import { isStrutAppName, isStrutAppPath, isStrutAppVersion, isStrutJobId } from "@/lib/strut-apps";
+import { isStrutAppName, isStrutAppVersion } from "@/lib/strut-apps";
 import { proposalGraphArtifacts } from "./proposalGraphArtifacts";
 
 // ─── Kinds and their content ────────────────────────────────────────────
@@ -122,13 +122,12 @@ export interface ArtifactContents {
   /**
    * A strut APP, where it is on the swarm: a WORKSPACE app by name (the
    * builder's deliverable, strut CALLBACKS.md §4 — the active version unless
-   * one is named) or a JOB's app, a built front-end in a directory of the
-   * job's (strut plans/apps.md §6). Unlike a page, it is live software —
+   * one is named). Unlike a page, it is live software —
    * `StrutAppFrame` reads its document through Hive and relays its calls
    * to the swarm, so it reads and launches runs under its grants. The ref's
    * `graph` source keys it by its document's link.
    */
-  app: { swarmId: string; app: string; version?: string } | { swarmId: string; job: string; path: string };
+  app: { swarmId: string; app: string; version?: string };
   image: { url: string; alt?: string };
   video: { url: string; poster?: string };
   audio: { url: string };
@@ -574,14 +573,8 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
   },
   app: (raw) => {
     const swarmId = bounded(raw.swarmId, MAX_ID_LENGTH);
-    if (!swarmId) return null;
-    if (raw.app !== undefined) {
-      if (!isStrutAppName(raw.app) || (raw.version !== undefined && !isStrutAppVersion(raw.version))) return null;
-      return { swarmId, app: raw.app, ...(raw.version !== undefined ? { version: raw.version } : {}) };
-    }
-    const job = isStrutJobId(raw.job) ? raw.job : null;
-    const path = isStrutAppPath(raw.path) ? raw.path : null;
-    return job && path ? { swarmId, job, path } : null;
+    if (!swarmId || !isStrutAppName(raw.app) || (raw.version !== undefined && !isStrutAppVersion(raw.version))) return null;
+    return { swarmId, app: raw.app, ...(raw.version !== undefined ? { version: raw.version } : {}) };
   },
   image: (raw) => {
     const base = address(raw);

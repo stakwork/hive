@@ -8,8 +8,8 @@
  *   never the public viewer — before the swarm key is decrypted. The key
  *   stays on the server.
  * - **The document** (`fetchStrutAppDocument`): list the app's files with
- *   the key, which mints the app's FILE TOKEN (`app:<name>@<vN>`, or a job's
- *   token narrowed to the app's directory), then read `dist/index.html?t=`
+ *   the key, which mints the app's FILE TOKEN (`app:<name>@<vN>`), then
+ *   read `dist/index.html?t=`
  *   — strut writes that token into the document's
  *   `<meta name="strut-app-token">` as it serves it. That token is worth
  *   that app's files and nothing else, and is the app's identity to
@@ -28,8 +28,7 @@
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { EncryptionService } from "@/lib/encryption";
-import { JOB_TURN_KIND, peerJobHome } from "@/lib/strut-jobs";
-import { encodeStrutPath, STRUT_APP_DOCUMENT } from "@/lib/strut-apps";
+import { STRUT_APP_DOCUMENT } from "@/lib/strut-apps";
 import { strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
@@ -91,22 +90,8 @@ export async function authorizeAppSwarm(
   };
 }
 
-/**
- * A job's app is read only for a job hive launched on that swarm — or, for a
- * peer's copy (`peer/<job>`), a job hive holds for a workspace of the org —
- * the artifact reader's rule (`api/orgs/[githubLogin]/strut/artifacts`).
- */
-export async function jobLaunchedOn(swarmId: string, job: string, orgId: string): Promise<boolean> {
-  const home = peerJobHome(job);
-  if (!home) return !!(await db.strutRun.findFirst({ where: { swarmId, jobId: job }, select: { id: true } }));
-  const row = await db.strutRun.findFirst({ where: { jobId: home, kind: JOB_TURN_KIND }, select: { workspaceId: true } });
-  if (!row) return false;
-  const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { sourceControlOrgId: true } });
-  return workspace?.sourceControlOrgId === orgId;
-}
-
-/** Which app: a workspace app (its active version unless `version` names one), or a job's by its directory. */
-export type StrutAppAddress = { app: string; version?: string } | { job: string; path: string };
+/** Which app: a workspace app, its active version unless `version` names one. */
+export type StrutAppAddress = { app: string; version?: string };
 
 type LabRead = { ok: true; res: Response } | AppRouteFailure;
 
@@ -145,24 +130,16 @@ export async function fetchStrutAppDocument(
   swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
   at: StrutAppAddress,
 ): Promise<{ ok: true; html: string } | AppRouteFailure> {
-  let dir: string;
-  let listing: string;
-  if ("app" in at) {
-    const name = encodeURIComponent(at.app);
-    let version = at.version;
-    if (!version) {
-      const versions = await labJson(swarm, `/apps/${name}/versions`);
-      if (!versions.ok) return versions;
-      if (typeof versions.body.active !== "string" || !versions.body.active) return fail(404, `App "${at.app}" has no active version`);
-      version = versions.body.active;
-    }
-    dir = `/apps/${name}/${encodeURIComponent(version)}/files`;
-    listing = dir;
-  } else {
-    dir = `/jobs/${encodeURIComponent(at.job)}/files/${encodeStrutPath(at.path)}`;
-    listing = `/jobs/${encodeURIComponent(at.job)}/files?${new URLSearchParams({ path: at.path })}`;
+  const name = encodeURIComponent(at.app);
+  let version = at.version;
+  if (!version) {
+    const versions = await labJson(swarm, `/apps/${name}/versions`);
+    if (!versions.ok) return versions;
+    if (typeof versions.body.active !== "string" || !versions.body.active) return fail(404, `App "${at.app}" has no active version`);
+    version = versions.body.active;
   }
-  const files = await labJson(swarm, listing);
+  const dir = `/apps/${name}/${encodeURIComponent(version)}/files`;
+  const files = await labJson(swarm, dir);
   if (!files.ok) return files;
   const token = typeof files.body.token === "string" && files.body.token ? files.body.token : null;
   const doc = await labGet(swarm, `${dir}/${STRUT_APP_DOCUMENT}${token ? `?${new URLSearchParams({ t: token })}` : ""}`);
