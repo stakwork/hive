@@ -283,7 +283,7 @@ export function useSendCanvasChatMessage() {
             ...(ctx.brainstormFocus ? { brainstormFocus: ctx.brainstormFocus } : {}),
             ...(ctx.initiativeFocus ? { initiativeFocus: ctx.initiativeFocus } : {}),
             ...(readSlimPromptPreference() ? { slimPrompt: true } : {}),
-            // Per-browser experiment: run this turn on strut's orchestrator
+            // Per-browser, on by default: run this turn on strut's orchestrator
             // workflow instead of Hive's agent (`strutEnginePreference.ts`).
             ...(readStrutEnginePreference() ? { strutEngine: true } : {}),
             // Sidebar chat doesn't render follow-ups or provenance;
