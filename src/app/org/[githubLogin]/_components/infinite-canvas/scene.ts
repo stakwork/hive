@@ -8,16 +8,7 @@
  * right of whichever card they're about.
  */
 
-import {
-  type Board,
-  type NodeType,
-  type PlanNode,
-  brainstormsOn,
-  byId,
-  followUpTo,
-  kids,
-  upOf,
-} from "./board";
+import { type Board, type NodeType, type PlanNode, brainstormsOn, byId, followUpTo, kids, upOf } from "./board";
 
 export interface Rect {
   x: number;
