@@ -11,6 +11,7 @@ import React from "react";
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { artifactKind } from "@/app/org/[githubLogin]/_components/artifacts/registry";
+import { readStrutArtifact } from "@/app/org/[githubLogin]/_components/artifacts/useArtifactContent";
 import { parseArtifactContent, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { useCanvasChatStore } from "@/app/org/[githubLogin]/_state/canvasChatStore";
 
@@ -28,6 +29,9 @@ const PAGE_KEY = `/jobs/${JOB}/files/site/index.html`;
 const DOC = '<!doctype html><html><body><div id="root"></div></body></html>';
 const DOCUMENT_ROUTE = `/api/orgs/acme-org/strut/apps/document?${new URLSearchParams({ swarmId: "swarm-1", job: JOB, path: "apps/tracker" })}`;
 const READER = `/api/orgs/acme-org/strut/artifacts?${new URLSearchParams({ swarmId: "swarm-1", key: PAGE_KEY })}`;
+/** The builder's deliverable (strut CALLBACKS.md §4): a workspace app by name, keyed by its version's document. */
+const VISITS_KEY = "/apps/visits/v2/files/dist/index.html";
+const VISITS_DOCUMENT_ROUTE = `/api/orgs/acme-org/strut/apps/document?${new URLSearchParams({ swarmId: "swarm-1", app: "visits", version: "v2" })}`;
 
 const mockFetch = vi.fn();
 beforeEach(() => {
@@ -39,7 +43,7 @@ beforeEach(() => {
   mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost:3000");
     const at = `${url.pathname}${url.search}`;
-    if (at === DOCUMENT_ROUTE || at === READER) return new Response(DOC, { status: 200 });
+    if (at === DOCUMENT_ROUTE || at === VISITS_DOCUMENT_ROUTE || at === READER) return new Response(DOC, { status: 200 });
     if (url.pathname.endsWith("/strut/apps/mcp") && init?.method === "POST") {
       const message = JSON.parse(String(init.body)) as { id?: number; method: string; params?: { protocolVersion?: string } };
       if (message.method !== "initialize") return new Response(null, { status: 202 });
@@ -57,6 +61,7 @@ afterEach(() => {
 });
 
 const appRef: ArtifactRef = { id: "tracker", kind: "app", title: "Visit tracker", source: { type: "graph", swarmId: "swarm-1", key: APP_KEY } };
+const visitsRef: ArtifactRef = { id: "visits", kind: "app", title: "Visits", source: { type: "graph", swarmId: "swarm-1", key: VISITS_KEY } };
 const pageRef: ArtifactRef = { id: "page", kind: "html", title: "Page", source: { type: "graph", swarmId: "swarm-1", key: PAGE_KEY } };
 
 function panel(ref: ArtifactRef, content: unknown) {
@@ -71,6 +76,34 @@ describe("an app beside a page", () => {
     expect(parseArtifactContent("app", { swarmId: "swarm-1", path: "apps/tracker" })).toBeNull();
     expect(artifactKind("app").label).toBe("App");
     expect(artifactKind("app").chat?.place).toBe("row");
+  });
+
+  test("the kind, a workspace app: its name and version on the swarm; a bad name or version is none", () => {
+    expect(parseArtifactContent("app", { swarmId: "swarm-1", app: "visits", version: "v2" })).toEqual({ swarmId: "swarm-1", app: "visits", version: "v2" });
+    expect(parseArtifactContent("app", { swarmId: "swarm-1", app: "acme/hvac/visits" })).toEqual({ swarmId: "swarm-1", app: "acme/hvac/visits" });
+    expect(parseArtifactContent("app", { swarmId: "swarm-1", app: "../x" })).toBeNull();
+    expect(parseArtifactContent("app", { swarmId: "swarm-1", app: "visits", version: "latest" })).toBeNull();
+    expect(parseArtifactContent("app", { app: "visits" })).toBeNull();
+  });
+
+  test("the loader reads which app an `app` ref's key names: a workspace app by name and version, a job's by its directory", async () => {
+    const context = { githubLogin: "acme-org" };
+    await expect(readStrutArtifact(visitsRef, context)).resolves.toEqual({ swarmId: "swarm-1", app: "visits", version: "v2" });
+    await expect(readStrutArtifact(appRef, context)).resolves.toEqual({ swarmId: "swarm-1", job: JOB, path: "apps/tracker" });
+    const notAnApp: ArtifactRef = { ...visitsRef, source: { type: "graph", swarmId: "swarm-1", key: "/apps/visits/v2/files/dist/app.js" } };
+    await expect(readStrutArtifact(notAnApp, context)).rejects.toMatchObject({ reason: "unavailable" });
+  });
+
+  test("a workspace app renders in the app frame through the document route, by name and version, as srcdoc", async () => {
+    panel(visitsRef, parseArtifactContent("app", { swarmId: "swarm-1", app: "visits", version: "v2" }));
+    const frame = await waitFor(() => {
+      const f = document.querySelector("iframe");
+      expect(f?.getAttribute("srcdoc")).toBe(DOC);
+      return f!;
+    });
+    expect(mockFetch.mock.calls[0][0]).toBe(VISITS_DOCUMENT_ROUTE);
+    expect(frame.hasAttribute("src")).toBe(false);
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
   });
 
   test("a page still renders in HtmlArtifactFrame: read through the reader, framed from a blob, never srcdoc", async () => {

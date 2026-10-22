@@ -229,6 +229,8 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
 
   // Real heights, reported by the nodes; the layout uses them over its estimates.
   const [measured, setMeasured] = useState<Record<string, number>>({});
+  /** Where each brainstorm's cards were last placed (and its origin): cards already placed stay put. */
+  const placed = useRef<Record<string, { origin: XY; pos: Record<string, XY> }>>({});
   const pendingSizes = useRef<Record<string, number>>({});
   const frame = useRef(0);
   const onSize = useCallback((id: string, height: number) => {
@@ -280,6 +282,7 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
       const draftId = adding ? "draft" : null;
       const extra = [...slots.map((s) => ({ item: placeholder(s.id), parent: s.question, h: SLOT_H }))];
       if (adding) extra.push({ item: placeholder("draft"), parent: adding.parent!, h: DRAFT_H });
+      const before = placed.current[key];
       const laid = layoutBoard(
         {
           items: [...tree.items, ...extra.map((e) => e.item)],
@@ -293,12 +296,22 @@ function DeskSurface({ githubLogin, workspaceSlugs }: { githubLogin: string; wor
             tree.items.map((i) => i.id),
           ),
         },
+        before?.pos,
+        (id) => id === "draft" || id.startsWith("slot:"),
       );
       const now = Date.now();
       const at = pencil[key]?.ops.length ? now : latestAdded(raw?.nodes);
       const ids = Object.keys(laid.positions);
-      const minX = Math.min(...ids.map((id) => laid.positions[id].x));
-      const minY = Math.min(...ids.map((id) => laid.positions[id].y));
+      // The block's origin is fixed by its first layout, so a card never moves when others come or go.
+      const origin = before?.origin ?? {
+        x: Math.min(...ids.map((id) => laid.positions[id].x)),
+        y: Math.min(...ids.map((id) => laid.positions[id].y)),
+      };
+      const [minX, minY] = [origin.x, origin.y];
+      placed.current[key] = {
+        origin,
+        pos: Object.fromEntries(tree.items.map((i) => [i.id, laid.positions[i.id]])),
+      };
       const positions = Object.fromEntries(
         ids.map((id) => [id, { x: laid.positions[id].x - minX, y: laid.positions[id].y - minY }]),
       );

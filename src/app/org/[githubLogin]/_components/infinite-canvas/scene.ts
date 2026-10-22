@@ -138,14 +138,15 @@ function brainstorms(ctx: Ctx, f: Rect, id: string, scale: number): Rect {
   let tree: Rect = f;
   const place = (q: PlanNode, x: number, top: number, min: number, depth: number) => {
     const h = treeH(q, min);
-    const qr = { x, y: top + h / 2 - qh / 2, w: qw, h: qh };
+    // Top-aligned: a card is placed from its parent's top, so answers arriving or a branch opening never move it.
+    const qr = { x, y: top, w: qw, h: qh };
     out.set(q.id, { id: q.id, type: "question", rect: qr, group: qr, parent: id });
     if (depth === 0) group = union(group, qr);
     tree = union(tree, qr);
     let y = top;
     for (const o of q.options ?? []) {
       const band = optH(o.id);
-      const r = { x: x + qw + gx, y: y + band / 2 - oh / 2, w: ow, h: oh };
+      const r = { x: x + qw + gx, y, w: ow, h: oh };
       const key = optionKey(q.id, o.id);
       out.set(key, { id: key, type: "option", rect: r, group: r, parent: id, of: q.id });
       if (depth === 0) group = union(group, r);
@@ -158,8 +159,8 @@ function brainstorms(ctx: Ctx, f: Rect, id: string, scale: number): Rect {
   };
   const gap = u.h * 0.08;
   const height = (q: PlanNode) => (q.id === openId ? treeH(q, 3) : qh);
-  const total = roots.reduce((acc, q) => acc + height(q), 0) + (roots.length - 1) * gap;
-  let y = f.y + f.h / 2 - total / 2;
+  // The first tree starts at a fixed place (centred on room for three answers), whatever is open or answered.
+  let y = f.y + f.h / 2 - (3 * (oh + og) - og) / 2;
   for (const q of roots) {
     tree = { x: f.x + f.w + gx, y, w: 1, h: 1 };
     if (q.id === openId) place(q, f.x + f.w + gx, y, 3, 0);
@@ -180,7 +181,8 @@ function brainstorms(ctx: Ctx, f: Rect, id: string, scale: number): Rect {
 /** What jobs returned for a container, in a strip just under it. */
 function strip(out: Scene, f: Rect, id: string, artifacts: number): Rect {
   if (!artifacts) return f;
-  const r = { x: f.x, y: f.y + f.h + f.h * 0.04, w: f.w, h: f.h * 0.22 };
+  // Grows with the artifacts (about two to a screenful) so none is cut off; it scrolls past that.
+  const r = { x: f.x, y: f.y + f.h + f.h * 0.04, w: f.w, h: f.h * 0.22 * Math.max(1, artifacts / 2) };
   const key = panelKey("artifacts", id);
   out.set(key, { id: key, type: "artifacts", rect: r, group: r, parent: id });
   return union(f, r);
