@@ -337,7 +337,7 @@ export function notifyCanvasCardJob(githubLogin: string, nudge: CanvasCardJobNud
 function notifyTreeUpdated(
   event: string,
   githubLogin: string,
-  payload: { workspaceSlug: string; root: string },
+  payload: { workspaceSlug: string; root?: string },
 ): void {
   try {
     void pusherServer
@@ -362,9 +362,10 @@ export const notifyBrainstormUpdated = (
 
 /**
  * Tell the org's open canvases an initiative's plan changed, so they read it
- * again: `{ workspaceSlug, root }` names the initiative. Fire-and-forget.
+ * again: `{ workspaceSlug, root }` names the initiative; without `root`, any
+ * plan in that workspace may have (strut wrote it). Fire-and-forget.
  */
 export const notifyInitiativeUpdated = (
   githubLogin: string,
-  payload: { workspaceSlug: string; root: string },
+  payload: { workspaceSlug: string; root?: string },
 ) => notifyTreeUpdated(PUSHER_EVENTS.INITIATIVE_UPDATED, githubLogin, payload);

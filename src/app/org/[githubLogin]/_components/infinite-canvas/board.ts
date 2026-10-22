@@ -13,6 +13,7 @@
 
 import { makesList } from "@/lib/initiative-plan";
 import { compareChoiceIds } from "../artifacts/viewers/ChoiceTree";
+import type { Pencil } from "./proposals";
 import type {
   ChoiceTreeData,
   InitiativeSummary,
@@ -77,6 +78,12 @@ export interface PlanNode {
   architecture?: { name: string; description: string; diagram?: string };
   /** Initiative: when anything in it last changed, ms. The desk shows the latest. */
   updatedAt?: number;
+  /** Initiative: its plan hasn't been read yet (only its summary is known), so "nothing in it" isn't known either. */
+  unread?: boolean;
+  /** A card strut has proposed and nobody has decided (`proposals.ts`): drawn in pencil with Accept / Reject. */
+  pencil?: Pencil;
+  /** A change strut has proposed to this card: its new words, with Accept / Reject. */
+  pencilEdit?: Pencil & { name: string };
 }
 
 export interface Board {
@@ -228,6 +235,7 @@ export function toBoard(entries: InitiativeEntry[], brainstorms: Record<string, 
         author: summary.created_by_kind === "human" ? "person" : "strut",
         status: summary.status ?? undefined,
         updatedAt,
+        ...(tree ? {} : { unread: true }),
       });
     }
     for (const n of graphNodes) {
@@ -312,7 +320,6 @@ export const followUpTo = (b: Board, optionId: string) =>
 export function descendants(b: Board, id: string): PlanNode[] {
   return kids(b, id).flatMap((k) => [k, ...descendants(b, k.id)]);
 }
-
 
 /** The card a node hangs from: its HAS_* parent, the node a brainstorm is about, or the question an answer belongs to. */
 export function upOf(b: Board, n: PlanNode): string | undefined {
