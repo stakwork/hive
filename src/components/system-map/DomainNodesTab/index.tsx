@@ -8,21 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type {
@@ -37,6 +24,8 @@ import { buildDependencies, pullsIn } from "./dependencies";
 import { ArchitectureView } from "./ArchitectureView";
 import { DependenciesView, PackageDetails } from "./DependenciesView";
 import { NodeDetails } from "./NodeDetails";
+import { matchPackageCves } from "./package-cves";
+import { PackageCvesBar, type PackageCvesResult } from "./PackageCvesBar";
 
 const ALL = "__all__";
 
@@ -79,6 +68,7 @@ export function DomainNodesTab() {
   const [view, setView] = useState<View>("architecture");
   const [archSelected, setArchSelected] = useState<string | null>(null);
   const [pkgSelected, setPkgSelected] = useState<string | null>(null);
+  const [cveResult, setCveResult] = useState<PackageCvesResult | null>(null);
 
   const loadNodes = useCallback(async (slug: string) => {
     setLoading(true);
@@ -133,10 +123,7 @@ export function DomainNodesTab() {
   const edges = useMemo(() => (data?.status === "ready" ? data.edges : []), [data]);
   const types = useMemo(() => (data?.status === "ready" ? data.types : []), [data]);
 
-  const bundles = useMemo(
-    () => (links.status === "ready" ? buildEndpointBundles(links.links) : []),
-    [links],
-  );
+  const bundles = useMemo(() => (links.status === "ready" ? buildEndpointBundles(links.links) : []), [links]);
   const endpointsById = useMemo(
     () => new Map((links.status === "ready" ? links.endpoints : []).map((endpoint) => [endpoint.refId, endpoint])),
     [links],
@@ -145,14 +132,17 @@ export function DomainNodesTab() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return nodes.filter(
-      (node) =>
-        (typeFilter === ALL || node.type === typeFilter) && (!query || matchesSearch(node, query)),
+      (node) => (typeFilter === ALL || node.type === typeFilter) && (!query || matchesSearch(node, query)),
     );
   }, [nodes, search, typeFilter]);
 
   const byRef = useMemo(() => new Map(nodes.map((n) => [n.refId, n])), [nodes]);
   const architecture = useMemo(() => buildArchitecture(nodes, edges), [nodes, edges]);
   const dependencies = useMemo(() => buildDependencies(nodes, edges), [nodes, edges]);
+  const cves = useMemo(
+    () => (cveResult ? matchPackageCves(cveResult.vulnerable, dependencies.packages, cveResult.checkedAt) : null),
+    [cveResult, dependencies.packages],
+  );
   const reach = useMemo(() => {
     const cache = new Map<string, number>();
     return (refId: string) => pullsIn(dependencies, refId, cache);
@@ -181,8 +171,8 @@ export function DomainNodesTab() {
     <div className={cn("space-y-4", view === "raw" && "max-w-6xl")}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Nodes in the knowledge graph&apos;s <code>systemmap</code> namespace, how they connect, and
-          the endpoints between them.
+          Nodes in the knowledge graph&apos;s <code>systemmap</code> namespace, how they connect, and the endpoints
+          between them.
         </p>
         <div className="ml-auto flex rounded-md bg-muted p-0.5" role="tablist" data-testid="system-map-view-toggle">
           {VIEWS.map((v) => (
@@ -234,8 +224,7 @@ export function DomainNodesTab() {
       {ready && nodes.length === 0 && (
         <Card data-testid="system-map-nodes-empty">
           <CardContent className="py-10 text-sm text-muted-foreground">
-            No nodes in the <code>systemmap</code> namespace yet. Run the Materialize workflow
-            to write them.
+            No nodes in the <code>systemmap</code> namespace yet. Run the Materialize workflow to write them.
           </CardContent>
         </Card>
       )}
@@ -276,8 +265,15 @@ export function DomainNodesTab() {
 
       {ready && nodes.length > 0 && view === "dependencies" && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="min-w-0">
-            <DependenciesView model={dependencies} reach={reach} selectedId={pkgSelected} onSelect={setPkgSelected} />
+          <div className="min-w-0 space-y-3">
+            <PackageCvesBar onResult={setCveResult} />
+            <DependenciesView
+              model={dependencies}
+              reach={reach}
+              cves={cves}
+              selectedId={pkgSelected}
+              onSelect={setPkgSelected}
+            />
           </div>
           <aside className="h-fit rounded-lg border bg-background p-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
             {pkgRow ? (
@@ -286,6 +282,7 @@ export function DomainNodesTab() {
                 model={dependencies}
                 byRef={byRef}
                 reach={reach}
+                finding={cves?.byPackage.get(pkgRow.node.refId)}
                 onOpen={openNode}
                 onClose={() => setPkgSelected(null)}
               />

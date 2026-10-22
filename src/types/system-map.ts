@@ -24,7 +24,7 @@ export interface SystemMapRun {
   apply: boolean | null;
 }
 
-export type SystemMapWorkflowKey = "system_map" | "cwe_check" | "finding_verify";
+export type SystemMapWorkflowKey = "system_map" | "cwe_check" | "finding_verify" | "package_cves";
 
 export interface SystemMapRunsResponse {
   /** Which workflow these runs belong to. */
