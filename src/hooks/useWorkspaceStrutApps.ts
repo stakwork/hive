@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { PinnedStrutApp } from "@/lib/strut-apps";
+import { STRUT_APPS_CHANGED_EVENT, type PinnedStrutApp } from "@/lib/strut-apps";
 
 /** The workspace's pinned strut apps, and where they are (`GET /api/workspaces/:slug/strut/apps`). */
 export interface WorkspaceStrutApps {
@@ -12,9 +12,11 @@ export interface WorkspaceStrutApps {
 }
 
 /**
- * The apps the workspace's swarm has pinned as tabs. Read once per slug;
- * `null` slug reads nothing (a public viewer, no workspace yet). A failure
- * is `error`, never a throw: the sidebar shows no tabs, the app page says why.
+ * The apps the workspace's swarm has pinned as tabs. Read once per slug,
+ * and again when a pin on that swarm says it changed them
+ * (`STRUT_APPS_CHANGED_EVENT`, the app card's button); `null` slug reads
+ * nothing (a public viewer, no workspace yet). A failure is `error`, never a
+ * throw: the sidebar shows no tabs, the app page says why.
  */
 export function useWorkspaceStrutApps(slug: string | null | undefined): {
   data: WorkspaceStrutApps | null;
@@ -26,6 +28,18 @@ export function useWorkspaceStrutApps(slug: string | null | undefined): {
     loading: !!slug,
     error: null,
   });
+
+  const [reads, setReads] = useState(0);
+  const swarmId = state.data?.swarmId;
+
+  useEffect(() => {
+    if (!swarmId) return;
+    const onChanged = (e: Event) => {
+      if ((e as CustomEvent<{ swarmId?: string }>).detail?.swarmId === swarmId) setReads((n) => n + 1);
+    };
+    window.addEventListener(STRUT_APPS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(STRUT_APPS_CHANGED_EVENT, onChanged);
+  }, [swarmId]);
 
   useEffect(() => {
     if (!slug) {
@@ -45,7 +59,7 @@ export function useWorkspaceStrutApps(slug: string | null | undefined): {
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, reads]);
 
   return state;
 }

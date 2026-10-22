@@ -24,6 +24,12 @@ export interface PinnedStrutApp {
   title: string;
 }
 
+/**
+ * The window event a pin or unpin dispatches (`detail: { swarmId }`), so a
+ * sidebar showing that swarm's workspace reads its tabs again.
+ */
+export const STRUT_APPS_CHANGED_EVENT = "strut-apps:changed";
+
 /** The document inside an app's directory, as `app/build` writes it. */
 export const STRUT_APP_DOCUMENT = "dist/index.html";
 
