@@ -113,6 +113,29 @@ describe("layoutScene", () => {
     expect(other.has(optionKey("mock-brainstorm-repo", "mock-brainstorm-repo-picker"))).toBe(false);
   });
 
+  it("keeps a brainstorm's cards where they are when a branch is expanded", () => {
+    const q = "mock-brainstorm-repo";
+    const before = layoutScene(board, DESK);
+    const opt = board.nodes.find((n) => n.id === q)!.options!;
+    const first = opt.find((o) => !board.nodes.some((n) => n.follows === o.id))!;
+    const grown = {
+      nodes: board.nodes.concat({
+        id: "fu",
+        ws: "ws",
+        type: "question" as const,
+        name: "Follow-up",
+        author: "strut" as const,
+        about: SIGNUP,
+        follows: first.id,
+        options: [1, 2, 3].map((i) => ({ ...first, id: `fu-${i}`, letter: "ABC"[i - 1], chosen: false, rejected: false })),
+      }),
+    };
+    const after = layoutScene(grown, DESK);
+    for (const id of [q, optionKey(q, first.id)]) expect(after.get(id)!.rect).toEqual(before.get(id)!.rect);
+    expect(after.get("fu")!.rect.x).toBeGreaterThan(before.get(optionKey(q, first.id))!.rect.x);
+    expect(after.get("fu")!.rect.y).toBeCloseTo(before.get(optionKey(q, first.id))!.rect.y);
+  });
+
   it("is deterministic, and puts a strip under a container with artifacts", () => {
     expect(layoutScene(board, DESK).get("mock-f-gh")).toEqual(scene.get("mock-f-gh"));
     const s = layoutScene(board, DESK, { artifacts: (id) => (id === SIGNUP ? 2 : 0) });
