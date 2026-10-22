@@ -1473,6 +1473,15 @@ function AskBox({
   send: (t: string) => void;
 }) {
   const [text, setText] = useState(options[0] ?? "");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Grow with the text (Shift+Enter adds lines) up to the cap, then scroll.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    if (text) el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    else el.style.height = "";
+  }, [text]);
   return (
     <div
       data-askbox
@@ -1519,14 +1528,19 @@ function AskBox({
         </button>
       </div>
       <div style={{ display: "flex", gap: 6 }}>
-        <input
+        <textarea
+          ref={inputRef}
+          rows={1}
           autoFocus
           data-ask-input
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             e.stopPropagation();
-            if (e.key === "Enter" && text.trim() && !busy) send(text.trim());
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+              e.preventDefault();
+              if (text.trim() && !busy) send(text.trim());
+            }
             if (e.key === "Escape") close();
           }}
           placeholder="What should Jamie do here?"
@@ -1541,6 +1555,9 @@ function AskBox({
             fontFamily: TYPE,
             fontSize: 14,
             outline: "none",
+            resize: "none",
+            maxHeight: 200,
+            overflowY: "auto",
           }}
         />
         <button

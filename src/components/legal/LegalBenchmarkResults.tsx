@@ -313,10 +313,26 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
       score && (hasCriteriaResults || score.source === "graph" || score.contested > 0)
         ? score.allPass
         : allPass;
-    const failedCount =
-      criteriaResults?.filter((c) => criterionStatus(c, contestedIndex) === "FAIL").length ?? 0;
-    const passedCount = (criteriaResults?.length ?? 0) - failedCount;
-    const contestedCount = score?.contested ?? 0;
+    // Header buckets come from ONE source so they sum to the printed total:
+    // the breakdown when available, else a per-criterion tri-state count.
+    // Contested is never folded into passed.
+    let passedCount = 0;
+    let failedCount = 0;
+    let contestedCount = 0;
+    let headerTotal = criteriaResults?.length ?? 0;
+    if (scoreBd) {
+      passedCount = scoreBd.pass;
+      failedCount = scoreBd.fail;
+      contestedCount = scoreBd.contested;
+      headerTotal = scoreBd.total;
+    } else {
+      for (const c of criteriaResults ?? []) {
+        const st = criterionStatus(c, contestedIndex);
+        if (st === "PASS") passedCount += 1;
+        else if (st === "CONTESTED") contestedCount += 1;
+        else failedCount += 1;
+      }
+    }
 
     // Unified model display precedence
     const execModel = displayModelName(result?.requestedModel ?? result?.model);
@@ -469,8 +485,8 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
                 <CollapsibleTrigger asChild>
                   <button className="flex items-center justify-between flex-1 px-4 py-3 text-left hover:bg-muted/40 transition-colors">
                     <span className="font-semibold text-sm">
-                      Rubric Details ({passedCount} passed / {criteriaResults!.length} total
-                      {contestedCount > 0 ? ` · ${contestedCount} contested` : ""})
+                      Rubric Details ({passedCount} passed · {failedCount} failed · {contestedCount}{" "}
+                      contested / {headerTotal} total)
                     </span>
                     {isOpen ? (
                       <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />

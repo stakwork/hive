@@ -4,7 +4,7 @@
  * Key acceptance criteria:
  * - renderToStaticMarkup succeeds (proves component stays hook-free)
  * - "—" renders for both null and undefined disputed
- * - Pass/Contested/Total/Disputed testids present, no fail chip
+ * - Pass/Fail/Contested/Total/Disputed testids present (Fail chip rendered)
  * - null breakdown renders nothing
  * - every class emitted is present in the generated offline-report.css bundle
  *   (self-building smoke test — see the "offline report CSS fidelity" describe
@@ -50,30 +50,32 @@ describe("RubricBreakdownStrip", () => {
   });
 
   describe("chips", () => {
-    it("renders pass/contested/total chips and the disputed tag, and no fail chip", () => {
-      const { queryByTestId } = render(
+    it("renders pass/fail/contested/total chips and the disputed tag", () => {
+      render(
         <RubricBreakdownStrip breakdown={makeBreakdown({ pass: 3, fail: 2, contested: 1, total: 6, disputed: 1 })} />
       );
       expect(screen.getByTestId("rubric-breakdown-pass")).toBeDefined();
       expect(screen.getByTestId("rubric-breakdown-contested")).toBeDefined();
       expect(screen.getByTestId("rubric-breakdown-total")).toBeDefined();
       expect(screen.getByTestId("rubric-breakdown-disputed")).toBeDefined();
-      expect(queryByTestId("rubric-breakdown-fail")).toBeNull();
+      expect(screen.getByTestId("rubric-breakdown-fail")).toBeDefined();
     });
 
     it("shows correct count values", () => {
       render(<RubricBreakdownStrip breakdown={makeBreakdown({ pass: 5, fail: 3, contested: 2, total: 10, disputed: 1 })} />);
       expect(screen.getByTestId("rubric-breakdown-pass").textContent).toContain("5");
+      expect(screen.getByTestId("rubric-breakdown-fail").textContent).toContain("3");
       expect(screen.getByTestId("rubric-breakdown-contested").textContent).toContain("2");
       expect(screen.getByTestId("rubric-breakdown-total").textContent).toContain("10");
       expect(screen.getByTestId("rubric-breakdown-disputed").textContent).toContain("1");
     });
 
-    it("emits no fail/failed text or destructive styling anywhere in the markup", () => {
+    it("renders the fail chip with red-500 styling and no destructive class", () => {
       const markup = renderToStaticMarkup(
         <RubricBreakdownStrip breakdown={makeBreakdown({ pass: 3, fail: 2, contested: 1, total: 6, disputed: 1 })} />
       );
-      expect(markup.toLowerCase()).not.toContain("fail");
+      expect(markup).toContain('data-testid="rubric-breakdown-fail"');
+      expect(markup.replace(/<!-- -->/g, "")).toContain("2 fail");
       expect(markup).not.toContain("destructive");
     });
 

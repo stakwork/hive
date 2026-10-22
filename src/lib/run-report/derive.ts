@@ -15,6 +15,7 @@ import type {
   AgentSummary,
   ConceptSynthesis,
 } from "./types";
+import { resolveContested } from "@/lib/harvey-lab/eval-normalizers";
 
 // ── Timestamps ───────────────────────────────────────────────────────────────
 
@@ -552,6 +553,10 @@ export function computeStats(input: {
 }): RunReportStats {
   const { rubricRows } = input;
   const hasRubrics = rubricRows.length > 0;
+  // Tri-state partition: a contested row is never pass or fail, so
+  // pass + fail + contested === rubricCount.
+  const isContested = (r: RubricRow) => resolveContested({ contested: r.criterionContested });
+  const contestedCount = hasRubrics ? rubricRows.filter(isContested).length : null;
 
   return {
     sourceDocCount: input.sourceDocs.length,
@@ -561,8 +566,9 @@ export function computeStats(input: {
     stepCount: input.timeline.length,
     agentCount: input.agents.length,
     rubricCount: rubricRows.length,
-    passCount: hasRubrics ? rubricRows.filter((r) => r.passed).length : null,
-    failCount: hasRubrics ? rubricRows.filter((r) => !r.passed).length : null,
+    passCount: hasRubrics ? rubricRows.filter((r) => !isContested(r) && r.passed).length : null,
+    failCount: hasRubrics ? rubricRows.filter((r) => !isContested(r) && !r.passed).length : null,
+    contestedCount,
   };
 }
 

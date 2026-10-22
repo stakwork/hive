@@ -206,6 +206,18 @@ describe("computeBenchmarkScore", () => {
     expect(score).toMatchObject({ passed: 0, denominator: 0, contested: 2, allPass: false });
   });
 
+  it("contested is the true union: a run-only contested criterion is added even when roster contested >= run contested", () => {
+    const graph = roster(5, ["C-001", "C-002"]);
+    const criteria = [
+      criterion("C-001", "fail"),
+      criterion("C-003", "pass"),
+      criterion("C-004", "pass"),
+      criterion("C-005", "fail", { contested: true }), // run-only; roster has 2, run has 2
+    ];
+    const score = computeBenchmarkScore({ criteriaResults: criteria, graphRubrics: graph });
+    expect(score).toMatchObject({ contested: 3, denominator: 2, total: 5 });
+  });
+
   it("formatBenchmarkScore omits the annotation when nothing is contested", () => {
     const score = computeBenchmarkScore({ nPassed: 3, nTotal: 4 })!;
     expect(formatBenchmarkScore(score)).toEqual({ headline: "3/4", annotation: null });

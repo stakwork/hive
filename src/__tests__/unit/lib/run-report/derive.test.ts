@@ -354,6 +354,21 @@ describe("computeStats", () => {
     const stats = computeStats({ ...base, rubricRows: [] });
     expect(stats.passCount).toBeNull();
     expect(stats.failCount).toBeNull();
+    expect(stats.contestedCount).toBeNull();
+  });
+
+  it("contested rows are their own bucket: never pass or fail, and the three sum to rubricCount", () => {
+    const stats = computeStats({
+      ...base,
+      rubricRows: [
+        { id: "R1", title: "", passed: true, verdict: "pass", reasoning: "" },
+        { id: "R2", title: "", passed: false, verdict: "fail", reasoning: "" },
+        { id: "R3", title: "", passed: true, verdict: "pass", reasoning: "", criterionContested: true },
+        { id: "R4", title: "", passed: false, verdict: "fail", reasoning: "", criterionContested: true },
+      ],
+    });
+    expect(stats).toMatchObject({ rubricCount: 4, passCount: 1, failCount: 1, contestedCount: 2 });
+    expect(stats.passCount! + stats.failCount! + stats.contestedCount!).toBe(stats.rubricCount);
   });
 
   it("stepCount is timeline.length, noteCount is branches.length, agentCount is agents.length", () => {
