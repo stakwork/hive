@@ -4,6 +4,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
+  AppWindow,
   BarChart3,
   Blocks,
   BookOpen,
@@ -51,6 +52,7 @@ import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { useUnresolvedErrorCount } from "@/hooks/useUnresolvedErrorCount";
+import { useWorkspaceStrutApps } from "@/hooks/useWorkspaceStrutApps";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { isDevelopmentMode } from "@/lib/runtime";
@@ -58,6 +60,7 @@ import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { BugReportSlideout } from "./BugReportSlideout";
 import { STAK_TOOLKIT_SLUGS, OPENHEALTH_SLUGS, isLegalBenchmarksWorkspace } from "@/lib/eval-capture-slugs";
+import { encodeStrutPath } from "@/lib/strut-apps";
 
 
 
@@ -638,6 +641,15 @@ export function Sidebar({ user }: SidebarProps) {
       ]
     : [];
 
+  // An app the workspace's swarm has pinned as a tab (strut's app/pin) is a
+  // tab of its own, framed by `/apps/<name>`. Only a member can open one.
+  const { data: strutApps } = useWorkspaceStrutApps(isPublicViewer ? null : workspaceSlug);
+  const pinnedAppItems: NavigationItem[] = (strutApps?.apps ?? []).map((app) => ({
+    icon: AppWindow,
+    label: app.title,
+    href: `/apps/${encodeStrutPath(app.name)}`,
+  }));
+
   const excludeLabels: string[] = [];
   if (!canAccessDefense) excludeLabels.push("Protect");
 
@@ -654,6 +666,7 @@ export function Sidebar({ user }: SidebarProps) {
     ...stakToolkitItems, // Stak Toolkit (conditionally)
     ...legalItems, // Legal (conditionally)
     ...openHealthItems, // OpenHealth (conditionally)
+    ...pinnedAppItems, // Strut apps pinned as tabs
     ...baseNavigationItems.slice(2), // Build, Protect, Context
   ];
 
