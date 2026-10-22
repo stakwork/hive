@@ -15,6 +15,21 @@
 /** Where an app is: its swarm, and the workspace app by name (and version). */
 export type StrutAppSource = { githubLogin: string; swarmId: string; app: string; version?: string };
 
+/**
+ * A workspace app pinned as a TAB (strut `PUT /apps/:name/pin`, the builder's
+ * `app/pin`): what strut's `GET /apps` says of it, as the sidebar lists it.
+ */
+export interface PinnedStrutApp {
+  name: string;
+  title: string;
+}
+
+/**
+ * The window event a pin or unpin dispatches (`detail: { swarmId }`), so a
+ * sidebar showing that swarm's workspace reads its tabs again.
+ */
+export const STRUT_APPS_CHANGED_EVENT = "strut-apps:changed";
+
 /** The document inside an app's directory, as `app/build` writes it. */
 export const STRUT_APP_DOCUMENT = "dist/index.html";
 

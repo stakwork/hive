@@ -32,6 +32,7 @@ import {
 import { buildSharePath } from "../HtmlPageCard";
 import { webAddress } from "./address";
 import { AppPanel } from "./viewers/app";
+import { AppPinAction } from "./viewers/appPin";
 import { CaptchaPanel } from "./viewers/captcha";
 import { ClaimsPanel, ClaimsRowMeta } from "./viewers/claims";
 import { CodePanel } from "./viewers/code";
@@ -84,6 +85,8 @@ export interface ArtifactKindSpec<K extends ArtifactKind> {
   chat?: ChatPlacement<K>;
   /** The full view on the artifact panel. */
   Panel: ComponentType<ArtifactViewerProps<K>>;
+  /** The kind's own actions in the panel's header, beside copy and open — the app's "Pin as a tab". */
+  Actions?: ComponentType<ArtifactViewerProps<K>>;
   /** The content as text, for the panel's copy button. */
   copyText?: (content: ArtifactContents[K]) => string;
   /** Where the artifact itself lives, as its content gives it; null when this one has nowhere of its own. A link gets it only through `artifactHref`. */
@@ -117,6 +120,7 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Icon: AppWindow,
     chat: { place: "row" },
     Panel: AppPanel,
+    Actions: AppPinAction,
   },
   image: {
     label: "Image",

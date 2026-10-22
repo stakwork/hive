@@ -151,6 +151,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
   const content = state.status === "ready" ? state.content : null;
   const href = content && artifactHref(artifact.kind, content, githubLogin);
   const copyText = useMemo(() => content && spec.copyText?.(content), [spec, content]);
+  const { Actions } = spec;
   const { openArtifactPanel, closeArtifactPanel } = useCanvasChatStore.getState();
   // The newest version is followed rather than pinned, so a later revision shows as it lands.
   const showVersion = (next: number) => openArtifactPanel(identity, next === versions.length - 1 ? null : next);
@@ -225,6 +226,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
+          {content && Actions && <Actions artifact={artifact} content={content} jobId={jobId} />}
           {typeof copyText === "string" && (
             <CopyButton value={copyText} className="rounded p-1.5 hover:bg-muted [&_svg]:h-4 [&_svg]:w-4" />
           )}

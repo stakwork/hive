@@ -147,7 +147,7 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_climb: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
-  // Generic benchmarks: `benchmark:<slug>` (see `lib/benchmarks/registry`).
+  // Benchmarks: `benchmark:<slug>` (see `lib/benchmarks/registry`).
   benchmark: async () => (await import("./strut-runs/benchmark")).handleBenchmarkRunSettled,
   job_turn: async () => (await import("./strut-runs/job-turn")).handleJobTurnSettled,
   orchestrator_turn: async () => (await import("./strut-runs/orchestrator-turn")).handleOrchestratorTurnSettled,
