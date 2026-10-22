@@ -36,15 +36,28 @@ export function pendingOrchestratorLaunchIds(
   return pending;
 }
 
-export function PendingOrchestratorTurnCard({ source }: { source: OrchestratorLaunchSource }) {
+/**
+ * `source` is the launch marker; without one (the canvas bar, before the marker has synced) it's the same card.
+ * `detail` is a short note after the title (the canvas bar: what the turn's jobs are).
+ */
+export function PendingOrchestratorTurnCard({
+  source,
+  detail,
+}: {
+  source?: OrchestratorLaunchSource;
+  detail?: string;
+}) {
   return (
     <div
       data-testid="orchestrator-turn-pending-card"
-      data-run-id={source.runId}
+      data-run-id={source?.runId}
       className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2.5 text-card-foreground"
     >
       <Bot className="h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark-os:text-amber-400" aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">{jamieName} is working on it</span>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+        {jamieName} is working on it
+        {detail ? <span className="font-normal text-muted-foreground"> · {detail}</span> : null}
+      </span>
       <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-sky-700 ring-1 ring-inset ring-sky-500/20 dark-os:text-sky-300">
         <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
         Running
