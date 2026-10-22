@@ -115,7 +115,7 @@ export function VideoPanel({ content }: ArtifactViewerProps<"video">) {
 // ─── Audio ──────────────────────────────────────────────────────────────
 
 /** The browser draws its own player; this has it follow the app's theme rather than the system's. */
-const PLAYER_THEME = "[color-scheme:light] [.dark_&]:[color-scheme:dark]";
+const PLAYER_THEME = "[color-scheme:light] dark-app:[color-scheme:dark]";
 
 /** Sound has nothing to show, so the panel is the same player with room around it. */
 export function AudioPanel({ content }: ArtifactViewerProps<"audio">) {

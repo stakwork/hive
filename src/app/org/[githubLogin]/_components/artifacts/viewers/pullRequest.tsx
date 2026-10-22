@@ -133,7 +133,7 @@ function FixButton({ jobId, event }: { jobId: string; event: NonNullable<ReturnT
   return (
     <span className="ml-auto flex items-baseline gap-2 normal-case tracking-normal">
       {state.status === "busy" && <span className="text-xs">{state.note}</span>}
-      {state.status === "failed" && <span className="text-xs text-amber-600 [.dark_&]:text-amber-400">Could not send: {state.error}</span>}
+      {state.status === "failed" && <span className="text-xs text-amber-600 dark-app:text-amber-400">Could not send: {state.error}</span>}
       <button
         type="button"
         data-testid="pr-fix"
@@ -190,7 +190,7 @@ function MergeButton({ repo, number, onMerged }: { repo: string; number: number;
   if (state.status === "merged") return null;
   return (
     <span className="ml-auto flex items-baseline gap-2">
-      {state.status === "failed" && <span className="text-xs text-amber-600 [.dark_&]:text-amber-400">Could not merge: {state.error}</span>}
+      {state.status === "failed" && <span className="text-xs text-amber-600 dark-app:text-amber-400">Could not merge: {state.error}</span>}
       <button
         type="button"
         data-testid="pr-merge"
@@ -282,7 +282,7 @@ export function PullRequestPanel({ artifact, content: inlineContent, jobId }: Ar
                 <span
                   className={cn(
                     "pl-6 text-xs",
-                    check.status === "failure" ? "text-amber-600 [.dark_&]:text-amber-400" : "text-muted-foreground",
+                    check.status === "failure" ? "text-amber-600 dark-app:text-amber-400" : "text-muted-foreground",
                   )}
                 >
                   {CHECK_WORD[check.status]}
