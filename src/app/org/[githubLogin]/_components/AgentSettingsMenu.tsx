@@ -16,10 +16,10 @@ import { readStrutEnginePreference, writeStrutEnginePreference } from "../_state
  *     see `slimPromptPreference.ts`): the canvas agent gets the shorter
  *     capability sections and relies on the concept tree for how-to
  *     detail. Off = the full sections. Toggling keeps the menu open.
- *   - **Strut orchestrator** — experimental, per-browser (localStorage,
+ *   - **Strut orchestrator** — per-browser (localStorage,
  *     see `strutEnginePreference.ts`): each message runs strut's
  *     `orchestrator` workflow instead of Hive's canvas agent
- *     (`docs/jamie-engine.md`). Off = Hive, as today.
+ *     (`docs/jamie-engine.md`). On by default; off = Hive's agent.
  *   - **Automations** — opens `AutomationsDialog` (the list and add form
  *     are too big for a menu).
  *
@@ -28,7 +28,7 @@ import { readStrutEnginePreference, writeStrutEnginePreference } from "../_state
  */
 export function AgentSettingsMenuItems({ onOpenAutomations }: { onOpenAutomations: () => void }) {
   const [slimPrompt, setSlimPrompt] = useState(false);
-  const [strutEngine, setStrutEngine] = useState(false);
+  const [strutEngine, setStrutEngine] = useState(true);
 
   useEffect(() => {
     setSlimPrompt(readSlimPromptPreference());
@@ -74,7 +74,7 @@ export function AgentSettingsMenuItems({ onOpenAutomations }: { onOpenAutomation
           e.preventDefault();
           handleStrutToggle(!strutEngine);
         }}
-        title="Experimental, this browser only. Answer each message with the swarm strut's orchestrator workflow instead of Hive's agent. Start a fresh chat after switching."
+        title="On by default, this browser only. Answers each message with the swarm strut's orchestrator workflow; turn off to use Hive's agent. Start a fresh chat after switching."
       >
         <Workflow className="w-4 h-4" />
         Strut orchestrator

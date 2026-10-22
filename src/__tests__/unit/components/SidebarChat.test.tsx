@@ -1587,14 +1587,14 @@ describe("SidebarChat — header & composer layout", () => {
     await user.click(toggle);
     expect(screen.getByRole("menuitemcheckbox", { name: /Concept-tree prompt/ }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("menuitem", { name: /Fork into my copy/ })).toBeTruthy();
-    // The Strut orchestrator switch: same shape, its own localStorage key.
+    // The Strut orchestrator switch: same shape, its own localStorage key, on by default.
     const strut = screen.getByRole("menuitemcheckbox", { name: /Strut orchestrator/ });
-    expect(strut.getAttribute("aria-checked")).toBe("false");
+    expect(strut.getAttribute("aria-checked")).toBe("true");
     await user.click(strut);
-    expect(screen.getByRole("menuitemcheckbox", { name: /Strut orchestrator/ }).getAttribute("aria-checked")).toBe("true");
-    expect(window.localStorage.getItem("hive.jamieStrutEngine")).toBe("true");
+    expect(screen.getByRole("menuitemcheckbox", { name: /Strut orchestrator/ }).getAttribute("aria-checked")).toBe("false");
+    expect(window.localStorage.getItem("hive.jamieStrutEngine")).toBe("false");
     await user.click(screen.getByRole("menuitemcheckbox", { name: /Strut orchestrator/ }));
-    expect(window.localStorage.getItem("hive.jamieStrutEngine")).toBeNull();
+    expect(window.localStorage.getItem("hive.jamieStrutEngine")).toBe("true");
     await user.click(screen.getByRole("menuitem", { name: /^Automations$/ }));
     expect(await screen.findByTestId("automations-section")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/Auto-respond/i);
