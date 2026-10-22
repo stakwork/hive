@@ -17,7 +17,8 @@ nothing about the org, the user or the conversation records the choice.
 - A **Strut orchestrator** switch in the chat header's ⋯ menu (and the
   mobile chat actions sheet), next to the Concept-tree prompt, which it
   mirrors: `localStorage` only (`src/app/org/[githubLogin]/_state/strutEnginePreference.ts`,
-  key `hive.jamieStrutEngine`), off by default, storage errors read as off.
+  key `hive.jamieStrutEngine`), on by default; only an explicit `"false"`
+  turns it off, and storage errors read as on.
   Any org member can flip it for their own browser; the rest of the org is
   untouched.
 - Sent with each canvas chat request as `strutEngine: true`
