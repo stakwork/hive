@@ -15,6 +15,7 @@ import { SphinxLinkSettings } from "@/components/settings/SphinxLinkSettings";
 import { VoiceSignatureSettings } from "@/components/settings/VoiceSignatureSettings";
 import { VoiceLearningSettings } from "@/components/settings/VoiceLearningSettings";
 import { DailyRecapSettings } from "@/components/settings/DailyRecapSettings";
+import { StrutDevicesSettings } from "@/components/settings/StrutDevicesSettings";
 import { Github } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 
@@ -72,6 +73,8 @@ export default async function UserSettingsPage() {
           <VoiceLearningSettings />
 
           <DailyRecapSettings />
+
+          <StrutDevicesSettings />
 
           <Card>
             <CardHeader>
