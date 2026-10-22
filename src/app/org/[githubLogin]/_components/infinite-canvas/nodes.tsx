@@ -14,6 +14,7 @@ import {
   plural,
 } from "./board";
 import type { Work } from "./build";
+import type { Pencil } from "./proposals";
 import { hand, serif } from "./fonts";
 import { a, v } from "./theme";
 
@@ -71,6 +72,8 @@ export interface CardContext {
   flash: string | null;
   /** Where the build is, for the cards of the initiative you're in (its jobs are read); unknown elsewhere. */
   work: (id: string) => Work | undefined;
+  /** Accept or reject one of strut's proposals (a pencil card, or a pencil edit on a card). Resolves to whether it went through. */
+  decide: (p: Pencil, action: "accept" | "reject") => Promise<boolean>;
 }
 
 export const pill = (size: number, extra?: CSSProperties): CSSProperties => ({
@@ -168,6 +171,8 @@ function ChildList({ c, node, size, max }: { c: CardContext; node: PlanNode; siz
   const b = c.board;
   const what = node.type === "initiative" ? "milestone" : "feature";
   const list = kids(b, node.id, what);
+  // Not read yet: what's in it isn't known, so say nothing rather than "none".
+  if (!list.length && node.unread) return null;
   if (!list.length)
     return <div style={{ fontFamily: TYPE, fontSize: size, color: v("notStarted") }}>No {what}s yet</div>;
   return (
@@ -212,11 +217,75 @@ function ChildList({ c, node, size, max }: { c: CardContext; node: PlanNode; siz
 }
 
 const kicker = (n: PlanNode) =>
-  n.type === "milestone"
+  (n.pencil ? "Proposed · " : "") +
+  (n.type === "milestone"
     ? `Milestone ${n.sequence ?? ""}`
-    : ({ initiative: "Initiative", feature: "Feature", brief: "Brief" }[n.type as string] ?? n.type);
+    : ({ initiative: "Initiative", feature: "Feature", brief: "Brief" }[n.type as string] ?? n.type));
 
 /** A closed container or a brief, as it looks from one level up: its name, its status, and one level down. */
+/** Pencil: a card or change strut has proposed, waiting on a person. */
+const PENCIL_BORDER = `1.5px dashed ${v("fork")}`;
+
+/**
+ * One of strut's proposals on a card: what it is (said from what it does),
+ * why, and Accept / Reject through the same decide route as the chat's card.
+ */
+export function PencilBar({ c, pencil, size = 11 }: { c: CardContext; pencil: Pencil; size?: number }) {
+  const [deciding, setDeciding] = useState<"accept" | "reject" | null>(null);
+  const decide = async (action: "accept" | "reject") => {
+    setDeciding(action);
+    if (!(await c.decide(pencil, action))) setDeciding(null);
+  };
+  return (
+    <div
+      data-pencil={pencil.proposalId}
+      style={{ display: "flex", flexDirection: "column", gap: size * 0.4, flexShrink: 0 }}
+      {...stop}
+    >
+      <div style={{ fontFamily: TYPE, fontSize: size, color: v("fork"), lineHeight: 1.3 }}>
+        ✎ {pencil.title}
+        {pencil.rationale ? (
+          <span style={{ display: "block", color: v("muted"), fontSize: size * 0.92 }}>{pencil.rationale}</span>
+        ) : null}
+      </div>
+      <div style={{ display: "flex", gap: size * 0.45 }}>
+        <button
+          type="button"
+          data-pencil-accept={pencil.proposalId}
+          disabled={!!deciding}
+          onClick={() => void decide("accept")}
+          style={pill(size, {
+            background: v("ink"),
+            color: v("onInk"),
+            borderColor: v("ink"),
+            opacity: deciding ? 0.6 : 1,
+          })}
+        >
+          {deciding === "accept" ? "Accepting…" : "Accept"}
+        </button>
+        <button
+          type="button"
+          data-pencil-reject={pencil.proposalId}
+          disabled={!!deciding}
+          onClick={() => void decide("reject")}
+          style={pill(size, { opacity: deciding ? 0.6 : 1 })}
+        >
+          {deciding === "reject" ? "Rejecting…" : "Reject"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** A proposed edit as a pencil diff: the words now, struck through, and strut's words after them. */
+function PencilDiff({ was, now }: { was: string; now: string }) {
+  return (
+    <span data-pencil-diff>
+      <s style={{ color: v("muted"), fontWeight: 400 }}>{was}</s> <span style={{ color: v("fork") }}>{now}</span>
+    </span>
+  );
+}
+
 export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: number; h: number }) {
   const big = node.type === "initiative";
   const work = c.work(node.id);
@@ -231,25 +300,31 @@ export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: num
         padding: big ? "18px 22px" : 14,
         borderRadius: big ? 26 : 10,
         background: big ? v("cardInitiative") : v("card"),
-        border: big ? `1px solid ${a("road", 25)}` : `1px solid ${v("border")}`,
-        boxShadow: big ? v("shadowBig") : v("shadow"),
+        border: node.pencil ? PENCIL_BORDER : big ? `1px solid ${a("road", 25)}` : `1px solid ${v("border")}`,
+        boxShadow: node.pencil ? "none" : big ? v("shadowBig") : v("shadow"),
         display: "flex",
         flexDirection: "column",
         gap: 7,
         color: v("ink"),
         overflow: "hidden",
-        cursor: node.type === "brief" ? "default" : "pointer",
+        cursor: node.type === "brief" || node.pencil ? "default" : "pointer",
       }}
     >
       <div style={label}>{kicker(node)}</div>
       {node.type === "brief" ? (
         <div style={{ flex: 1, overflow: "hidden" }}>
-          <EditableText
-            value={node.name}
-            onSave={(t) => c.actions.rename(node.id, t)}
-            testId={node.id}
-            style={authored(node.author, 14)}
-          />
+          {node.pencilEdit ? (
+            <div style={authored(node.author, 14)}>
+              <PencilDiff was={node.name} now={node.pencilEdit.name} />
+            </div>
+          ) : (
+            <EditableText
+              value={node.name}
+              onSave={(t) => c.actions.rename(node.id, t)}
+              testId={node.id}
+              style={authored(node.author, 14)}
+            />
+          )}
         </div>
       ) : (
         <>
@@ -270,21 +345,31 @@ export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: num
                 lineHeight: 1.15,
               }}
             >
-              {node.name || "Untitled"}
+              {node.pencilEdit ? (
+                <PencilDiff was={node.name || "Untitled"} now={node.pencilEdit.name} />
+              ) : (
+                node.name || "Untitled"
+              )}
             </div>
             {node.type === "feature" && work ? <StatusPill state={work.state} size={11} /> : null}
           </div>
           {node.type === "feature" ? (
             <div style={{ fontFamily: TYPE, fontSize: 11.5, color: v("muted") }}>{work?.line}</div>
           ) : (
-            <ChildList c={c} node={node} size={big ? 13 : 11.5} max={3} />
+            <div style={{ minHeight: 0, overflow: "hidden" }}>
+              <ChildList c={c} node={node} size={big ? 13 : 11.5} max={3} />
+            </div>
           )}
           <div style={{ flex: 1 }} />
         </>
       )}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0 }}>
-        <AskChip id={node.id} actions={c.actions} size={big ? 13 : 10.5} />
-      </div>
+      {node.pencil || node.pencilEdit ? (
+        <PencilBar c={c} pencil={(node.pencil ?? node.pencilEdit)!} size={big ? 13 : 10.5} />
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0 }}>
+          <AskChip id={node.id} actions={c.actions} size={big ? 13 : 10.5} />
+        </div>
+      )}
     </div>
   );
 }
@@ -292,9 +377,11 @@ export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: num
 /** The header band of an open container: its name (click to rename), its status, and Ask Jamie. */
 export function FrameHeader({ c, node, w, h }: { c: CardContext; node: PlanNode; w: number; h: number }) {
   const b = c.board;
-  const work = c.work(node.id);
-  const what =
-    node.type === "initiative"
+  // Not read yet: no counts or status, rather than "0 milestones".
+  const work = node.unread ? undefined : c.work(node.id);
+  const what = node.unread
+    ? ""
+    : node.type === "initiative"
       ? `${plural(kids(b, node.id, "story").length, "user story", "user stories")} · ${plural(kids(b, node.id, "milestone").length, "milestone")}`
       : node.type === "milestone"
         ? plural(kids(b, node.id, "feature").length, "feature")
@@ -316,17 +403,29 @@ export function FrameHeader({ c, node, w, h }: { c: CardContext; node: PlanNode;
       <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={label}>{kicker(node)}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-          <EditableText
-            value={node.name || "Untitled"}
-            onSave={(t) => c.actions.rename(node.id, t)}
-            testId={node.id}
-            style={{ fontFamily: TYPE, fontSize: 26, fontWeight: 600, whiteSpace: "nowrap" }}
-          />
+          {node.pencilEdit ? (
+            <span style={{ fontFamily: TYPE, fontSize: 26, fontWeight: 600, whiteSpace: "nowrap" }}>
+              <PencilDiff was={node.name || "Untitled"} now={node.pencilEdit.name} />
+            </span>
+          ) : (
+            <EditableText
+              value={node.name || "Untitled"}
+              onSave={(t) => c.actions.rename(node.id, t)}
+              testId={node.id}
+              style={{ fontFamily: TYPE, fontSize: 26, fontWeight: 600, whiteSpace: "nowrap" }}
+            />
+          )}
           {work ? <StatusPill state={work.state} size={13} /> : null}
           <span style={{ fontFamily: TYPE, fontSize: 13, color: v("muted"), whiteSpace: "nowrap" }}>{what}</span>
         </div>
       </div>
-      <AskChip id={node.id} actions={c.actions} size={13} />
+      {node.pencil || node.pencilEdit ? (
+        <div style={{ maxWidth: 360 }}>
+          <PencilBar c={c} pencil={(node.pencil ?? node.pencilEdit)!} size={13} />
+        </div>
+      ) : (
+        <AskChip id={node.id} actions={c.actions} size={13} />
+      )}
     </div>
   );
 }
@@ -523,18 +622,28 @@ function ReqRow({ c, r }: { c: CardContext; r: PlanNode }) {
         {r.status === "accepted" ? "✓" : dropped ? "–" : ""}
       </span>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <EditableText
-          value={r.name}
-          onSave={(t) => c.actions.rename(r.id, t)}
-          onDelete={() => c.actions.remove(r.id)}
-          testId={r.id}
-          style={{
-            ...authored(r.author, 12.5),
-            color: proposed ? v("proposedInk") : v("ink"),
-            textDecoration: dropped ? "line-through" : undefined,
-          }}
-        />
-        {proposed ? (
+        {r.pencilEdit ? (
+          <div style={authored(r.author, 12.5)}>
+            <PencilDiff was={r.name} now={r.pencilEdit.name} />
+          </div>
+        ) : (
+          <EditableText
+            value={r.name}
+            onSave={(t) => c.actions.rename(r.id, t)}
+            onDelete={() => c.actions.remove(r.id)}
+            testId={r.id}
+            style={{
+              ...authored(r.author, 12.5),
+              color: proposed ? v("proposedInk") : v("ink"),
+              textDecoration: dropped ? "line-through" : undefined,
+            }}
+          />
+        )}
+        {r.pencil || r.pencilEdit ? (
+          <div style={{ marginTop: 3 }}>
+            <PencilBar c={c} pencil={(r.pencil ?? r.pencilEdit)!} size={9.5} />
+          </div>
+        ) : proposed ? (
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }} {...stop}>
             <button
               type="button"
@@ -567,6 +676,7 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
   const b = c.board;
   const stories = kids(b, initiative, "story");
   const reqs = stories.flatMap((st) => kids(b, st.id, "requirement"));
+  const unread = byId(b, initiative)?.unread;
   return (
     <div
       data-stories={initiative}
@@ -587,7 +697,7 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
         <span style={label}>User stories</span>
-        <span style={{ fontFamily: TYPE, fontSize: 11.5, color: v("muted") }}>
+        <span hidden={unread} style={{ fontFamily: TYPE, fontSize: 11.5, color: v("muted") }}>
           {plural(stories.length, "journey")} · {plural(reqs.length, "requirement")}
         </span>
       </div>
@@ -604,22 +714,37 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
               display: "flex",
               flexDirection: "column",
               gap: 4,
-              borderLeft: `2px solid ${a("road", 28)}`,
+              borderLeft: st.pencil ? PENCIL_BORDER : `2px solid ${a("road", 28)}`,
               paddingLeft: 9,
               overflowY: "auto",
             }}
           >
-            <EditableText
-              value={st.name}
-              onSave={(t) => c.actions.rename(st.id, t)}
-              onDelete={() => c.actions.remove(st.id)}
-              testId={st.id}
-              style={{ ...authored(st.author, 12.5), fontWeight: st.author === "strut" ? 600 : 400 }}
-            />
+            {st.pencil ? (
+              // Proposed: its words and Accept / Reject; nothing to edit until it's real.
+              <>
+                <div style={{ ...authored(st.author, 12.5), fontWeight: 600, color: v("proposedInk") }}>{st.name}</div>
+                <PencilBar c={c} pencil={st.pencil} size={10} />
+              </>
+            ) : st.pencilEdit ? (
+              <>
+                <div style={authored(st.author, 12.5)}>
+                  <PencilDiff was={st.name} now={st.pencilEdit.name} />
+                </div>
+                <PencilBar c={c} pencil={st.pencilEdit} size={10} />
+              </>
+            ) : (
+              <EditableText
+                value={st.name}
+                onSave={(t) => c.actions.rename(st.id, t)}
+                onDelete={() => c.actions.remove(st.id)}
+                testId={st.id}
+                style={{ ...authored(st.author, 12.5), fontWeight: st.author === "strut" ? 600 : 400 }}
+              />
+            )}
             {kids(b, st.id, "requirement").map((r) => (
               <ReqRow key={r.id} c={c} r={r} />
             ))}
-            <div>
+            <div hidden={!!st.pencil}>
               <AddInline
                 what="requirement"
                 size={10}

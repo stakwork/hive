@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { notifyInitiativeUpdated } from "@/lib/pusher";
 import {
   StrutProposalError,
   appendProposalResultRow,
@@ -61,6 +62,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
     if (outcome.status === 200) {
       await appendProposalResultRow(row, outcome.proposal);
+      // An accepted step wrote the graph: open canvases on that workspace read its plans again.
+      if (action === "accept" && outcome.proposal.workspaceSlug)
+        notifyInitiativeUpdated(githubLogin, { workspaceSlug: outcome.proposal.workspaceSlug });
       return NextResponse.json({ proposal: outcome.proposal });
     }
     if (outcome.status === 409)

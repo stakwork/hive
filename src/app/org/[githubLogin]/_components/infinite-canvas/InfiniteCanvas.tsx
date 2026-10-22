@@ -70,7 +70,9 @@ import {
 } from "./scene";
 import { PAPER_CSS } from "./paper";
 import { CANVAS_THEME, a, deskStyle, themeVars, v } from "./theme";
+import { type Pencil, withProposals } from "./proposals";
 import { useCanvasBoard } from "./useCanvasBoard";
+import { useCanvasProposals } from "./useCanvasProposals";
 
 /** Design widths: each card is laid out at this width, then scaled to its screen size. */
 const FACE_W: Partial<Record<string, number>> = {
@@ -171,16 +173,29 @@ export function InfiniteCanvas({
   const [pulled, setPulled] = useState<string[]>([]);
   const [showAll, setShowAll] = useState(false);
   const [palette, setPalette] = useState(false);
+  /** A card being brought onto the desk to go to (`reach`): it goes there once it's laid out. */
+  const [pendingGo, setPendingGo] = useState<string | null>(null);
   /** Looking for a card that may be under an initiative off the desk: the level in the URL, or a "pull up …". */
   const [seek, setSeek] = useState<Seek | null>(() => {
     const at = readAt();
     return at ? { at } : null;
   });
-  const { board, entries, loading, reading, failed, savePlan, choose } = useCanvasBoard(githubLogin, workspaceSlugs, {
+  const {
+    board: graphBoard,
+    entries,
+    loading,
+    reading,
+    failed,
+    savePlan,
+    choose,
+  } = useCanvasBoard(githubLogin, workspaceSlugs, {
     // Plans are read for what's on the desk; all of them while ⌘K or the full list is open, or while seeking.
     read: (ids) => (palette || showAll || seek ? ids : [...new Set([...ids.slice(0, DESK_SIZE), ...pulled])]),
     openInitiative: initiative,
   });
+  // Strut's pending proposals, drawn in where they'd go (pencil cards).
+  const { pending: pendingProposals, decide: decideProposal } = useCanvasProposals(githubLogin);
+  const board = useMemo(() => withProposals(graphBoard, pendingProposals), [graphBoard, pendingProposals]);
   const { jobsByRef, artifactsByRef } = useCanvasJobs(githubLogin, initiative);
 
   const [vp, setVp] = useState<Viewport | null>(null);
@@ -318,11 +333,21 @@ export function InfiniteCanvas({
     [scene],
   );
 
+  /**
+   * Wherever you go or move the camera, a navigation still waiting on slow reads (a link, ⌘K, "pull up")
+   * is dropped: it must not land later and pull you somewhere you've left.
+   */
+  const dropPending = useCallback(() => {
+    setSeek(null);
+    setPendingGo(null);
+  }, []);
+
   /** Click into a level (or out to one): open it and fly there. Zooming never calls this. */
   const go = useCallback(
     (id: string, instant = false) => {
       if (!vp) return;
       if (id !== ORG && !scene.get(id)) return;
+      dropPending();
       setTrans({ from: openAt(scene, levelRef.current), fromLevel: levelRef.current, u: instant ? 1 : 0 });
       setLevel(id);
       levelRef.current = id;
@@ -333,13 +358,13 @@ export function InfiniteCanvas({
       if (instant) setCam(cameraFor(id, vp));
       else flyTo(cameraFor(id, vp), true);
     },
-    [scene, vp, board, flyTo, frameOf, cameraFor],
+    [scene, vp, board, flyTo, frameOf, cameraFor, dropPending],
   );
 
-  // First frame (after a level from the URL is found), and new cards (a job writing, a brainstorm read)
-  // re-framing the level — unless the person has moved the camera since.
+  // First frame (the org, even while a level from the URL is still being found), and new cards (a job
+  // writing, a brainstorm read) re-framing the level — unless the person has moved the camera since.
   useEffect(() => {
-    if (!vp || (seek && "at" in seek)) return;
+    if (!vp) return;
     if (!camRef.current) {
       framed.current = frameOf(ORG);
       setCam(fit(orgRect(scene), vp, 0.88, INSETS));
@@ -349,7 +374,7 @@ export function InfiniteCanvas({
     if (userMoved.current || sameRect(rect, framed.current)) return;
     framed.current = rect;
     flyTo(cameraFor(levelRef.current, vp));
-  }, [scene, vp, seek, go, flyTo, frameOf, cameraFor]);
+  }, [scene, vp, flyTo, frameOf, cameraFor]);
   // A level that left the graph (or the latest few) goes back to the org.
   useEffect(() => {
     if (!loading && level !== ORG && !scene.has(level) && !seek) go(ORG);
@@ -376,7 +401,6 @@ export function InfiniteCanvas({
   const up = useCallback(() => go(crumbs.length > 1 ? crumbs[crumbs.length - 2] : ORG), [crumbs, go]);
 
   /** Go to any card, even under an initiative not on the desk: pull that onto the desk first, then fly there. */
-  const [pendingGo, setPendingGo] = useState<string | null>(null);
   const reach = (id: string) => {
     const init = initiativeOf(board, id) ?? (byId(board, id)?.type === "initiative" ? byId(board, id) : undefined);
     if (init && !desk.includes(init.id)) {
@@ -471,10 +495,11 @@ export function InfiniteCanvas({
     setAsk(null);
     const lvl = levelFor(scene, board, id);
     if (lvl !== levelRef.current) go(lvl);
+    // Show the turn at once (Jamie working, then the reply) above the bar.
+    setMode((m) => (m === "full" ? m : "last"));
     const sent = await askJamie(text, focusFor(id));
     // The card was the focus for that message only: Jamie goes back to hearing about the level.
     useCanvasChatStore.getState().setInitiativeFocus(focusRef.current);
-    if (sent) setMode((m) => (m === "full" ? m : "last"));
     return sent;
   };
 
@@ -554,8 +579,15 @@ export function InfiniteCanvas({
     return !!c?.activeTurn;
   });
   const ctx: CardContext = useMemo(
-    () => ({ board, jobs: jobsByRef, actions, flash, work: (id: string) => work.get(id) }),
-    [board, jobsByRef, actions, flash, work],
+    () => ({
+      board,
+      jobs: jobsByRef,
+      actions,
+      flash,
+      work: (id: string) => work.get(id),
+      decide: (p: Pencil, action: "accept" | "reject") => decideProposal(p.proposalId, p.runId, action),
+    }),
+    [board, jobsByRef, actions, flash, work, decideProposal],
   );
 
   // ── Input ─────────────────────────────────────────────────────────────────
@@ -597,6 +629,7 @@ export function InfiniteCanvas({
       if (!vp || !camRef.current) return;
       stop();
       userMoved.current = true;
+      dropPending();
       setTrans((s) => (s.u < 1 ? { ...s, u: 1 } : s));
       const r = el.getBoundingClientRect();
       const k = e.ctrlKey ? 0.012 : 0.0018;
@@ -604,7 +637,7 @@ export function InfiniteCanvas({
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [vp, minZ]);
+  }, [vp, minZ, dropPending]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button,input,textarea,a,[data-canvas-chrome]")) return;
@@ -622,6 +655,7 @@ export function InfiniteCanvas({
     if (moved.current > 4) {
       stop();
       userMoved.current = true;
+      dropPending();
       setTrans((s) => (s.u < 1 ? { ...s, u: 1 } : s));
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
       const c = camRef.current;
@@ -643,9 +677,11 @@ export function InfiniteCanvas({
         return;
       }
       userMoved.current = true;
+      dropPending();
       return flyTo(diveTo(n, vp, INSETS));
     }
-    if (CONTAINERS.includes(n.type)) go(n.id);
+    // A pencil card is only a proposal: nothing to go into until it's accepted.
+    if (CONTAINERS.includes(n.type) && !byId(board, n.id)?.pencil) go(n.id);
   };
 
   const nameOf = (id: string) => {
@@ -809,7 +845,8 @@ export function InfiniteCanvas({
             </>
           ) : null}
 
-          {blank || loading || failed ? (
+          {/* Only once the reads have come back with nothing to show; while reading, the spinner by the crumbs says so. */}
+          {!board.nodes.length && !loading && (blank || failed) ? (
             <div
               data-canvas-empty
               style={{
@@ -828,9 +865,7 @@ export function InfiniteCanvas({
             >
               {failed
                 ? "Couldn't read the plan from the graph. It will try again in a minute."
-                : loading
-                  ? "Reading the plan…"
-                  : "No initiatives yet. Tell Jamie what you want to build, and it starts one here."}
+                : "No initiatives yet. Tell Jamie what you want to build, and it starts one here."}
             </div>
           ) : null}
 
@@ -905,6 +940,10 @@ export function InfiniteCanvas({
                   </button>
                 </span>
               ))}
+              {/* Reading: a quiet spinner here, never text over the cards. */}
+              {loading || reading || seek ? (
+                <span data-reading title="Reading the plan…" className="icb-spin" style={{ marginLeft: 6 }} />
+              ) : null}
             </nav>
             <button
               type="button"
@@ -954,12 +993,12 @@ export function InfiniteCanvas({
               {
                 label: "+",
                 title: "Zoom in",
-                go: () => cam && vp && flyTo(zoomAbout(cam, 1.8, vp.w / 2, vp.h / 2, vp)),
+                go: () => cam && vp && (dropPending(), flyTo(zoomAbout(cam, 1.8, vp.w / 2, vp.h / 2, vp))),
               },
               {
                 label: "−",
                 title: "Zoom out",
-                go: () => cam && vp && flyTo(zoomAbout(cam, 1 / 1.8, vp.w / 2, vp.h / 2, vp, minZ)),
+                go: () => cam && vp && (dropPending(), flyTo(zoomAbout(cam, 1 / 1.8, vp.w / 2, vp.h / 2, vp, minZ))),
               },
               { label: "⤢", title: "Frame this level", go: () => go(level) },
             ].map((b) => (
@@ -1002,7 +1041,8 @@ export function InfiniteCanvas({
 
           {palette ? (
             <Palette
-              board={board}
+              // Search finds what's in the plan, not what's proposed for it.
+              board={graphBoard}
               left={16}
               close={() => setPalette(false)}
               pick={(id) => {
@@ -1244,7 +1284,10 @@ function SceneItem({
             <div onClick={onClick} style={scaled(frameW, quiet ? 0 : 1, { height: (frameW * sr.h * HEADER) / sr.w })}>
               <FrameHeader c={c} node={node!} w={frameW} h={(frameW * sr.h * HEADER) / sr.w} />
             </div>
-            {n.type !== "feature" && kids(board, n.id).length === 0 ? <EmptyHint node={node!} sr={sr} /> : null}
+            {/* Only once its plan has come back empty, never while it's being read. */}
+            {n.type !== "feature" && !node!.unread && kids(board, n.id).length === 0 ? (
+              <EmptyHint node={node!} sr={sr} />
+            ) : null}
           </div>
         ) : null}
         {open < 1 ? (
