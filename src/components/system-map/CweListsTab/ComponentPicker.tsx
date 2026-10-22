@@ -43,7 +43,10 @@ export function ComponentPicker({
     const controller = new AbortController();
     setNames(null);
     setError(null);
-    fetch(`/api/workspaces/${slug}/system-map/nodes`, { cache: "no-store", signal: controller.signal })
+    fetch(`/api/workspaces/${slug}/system-map/nodes?types=SysComponent`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const body = (await response.json()) as SystemMapDomainNodesResponse;

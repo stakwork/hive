@@ -1,5 +1,5 @@
 /**
- * The `swarm-systemmap-package-cves` output, matched to the Dependencies
+ * The `swarm-package-cve-findings` output, matched to the Dependencies
  * view's packages: `{ vulnerable_packages: [{ name, version, ecosystem,
  * purl, ref_id, source_path, severity, fixed_in, advisories, fetch_errors }] }`.
  *
