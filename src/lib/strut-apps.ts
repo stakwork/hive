@@ -15,6 +15,15 @@
 /** Where an app is: its swarm, and the workspace app by name (and version). */
 export type StrutAppSource = { githubLogin: string; swarmId: string; app: string; version?: string };
 
+/**
+ * A workspace app pinned as a TAB (strut `PUT /apps/:name/pin`, the builder's
+ * `app/pin`): what strut's `GET /apps` says of it, as the sidebar lists it.
+ */
+export interface PinnedStrutApp {
+  name: string;
+  title: string;
+}
+
 /** The document inside an app's directory, as `app/build` writes it. */
 export const STRUT_APP_DOCUMENT = "dist/index.html";
 

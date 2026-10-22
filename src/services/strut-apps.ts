@@ -28,7 +28,7 @@
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { EncryptionService } from "@/lib/encryption";
-import { STRUT_APP_DOCUMENT } from "@/lib/strut-apps";
+import { isStrutAppName, STRUT_APP_DOCUMENT, type PinnedStrutApp } from "@/lib/strut-apps";
 import { strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
@@ -253,4 +253,26 @@ export async function relayToStrutMcp(opts: {
     if (value) out.set(name, value);
   }
   return new Response(upstream.body, { status: upstream.status, headers: out });
+}
+
+// ─── The tabs ───────────────────────────────────────────────────────────
+
+/**
+ * The apps the swarm's strut has pinned as tabs: `GET /apps`, the entries
+ * with `pinned: true`, in strut's order. The flag is the app record's, set
+ * by a person (`PUT /apps/:name/pin`) or the builder (`app/pin`); the swarm
+ * IS one workspace's, so a pinned app is a tab of that workspace.
+ */
+export async function listPinnedStrutApps(
+  swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
+): Promise<{ ok: true; apps: PinnedStrutApp[] } | AppRouteFailure> {
+  const listed = await labJson(swarm, "/apps");
+  if (!listed.ok) return listed;
+  const entries = Array.isArray(listed.body.apps) ? listed.body.apps : [];
+  const apps = entries.flatMap((entry): PinnedStrutApp[] => {
+    if (!isRecord(entry) || entry.pinned !== true || !isStrutAppName(entry.name)) return [];
+    const title = typeof entry.title === "string" && entry.title.trim() ? entry.title.trim() : entry.name;
+    return [{ name: entry.name, title }];
+  });
+  return { ok: true, apps };
 }
