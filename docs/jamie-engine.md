@@ -131,12 +131,17 @@ and its resolved artifacts.
    default), continue through its own `job/continue`, or stay silent. The
    reply lands as a normal orchestrator row. The wake runs behind the same
    gates as hive's own (`runGatedAutoTurn` in `canvas-strut-autoturn.ts`):
-   the master kill switch, the per-conversation claim, the owner's
-   `canvasAutonomousTurns` opt-in, idempotency — the launch marker row
-   carries the job row's id as `wakeId` — and a loop breaker that counts
-   job rows since the last human message (`countTrailingJobRows`, cap
-   `MAX_CONSECUTIVE_STRUT_DISPATCHES`), since continue → land → wake →
-   continue could otherwise cycle.
+   the master kill switch, the per-conversation claim, idempotency — the
+   launch marker row carries the job row's id as `wakeId` — and a loop
+   breaker that counts job rows since the last human message
+   (`countTrailingJobRows`, cap `MAX_CONSECUTIVE_STRUT_DISPATCHES`), since
+   continue → land → wake → continue could otherwise cycle. One gate is
+   waived: the owner's `canvasAutonomousTurns` opt-in (`ownerOptIn: false`),
+   which guards the canvas agent acting on its own and has no UI any more.
+   The engine switch was the person's own choice, so a job the orchestrator
+   started always gets its wake; otherwise the orchestrator never sees the
+   job's reply, and "ok, do it" after its question reaches an agent that
+   never saw it.
 
    - **Silence** is a text convention: the orchestrator answers with
      exactly `[silent]` (`ORCHESTRATOR_SILENT_MARKER`) and the handler

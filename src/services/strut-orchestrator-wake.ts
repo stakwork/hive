@@ -23,12 +23,19 @@
  * `ORCHESTRATOR_SILENT_MARKER`, since the orchestrator has no tool hive
  * could watch (the handler turns it into a `silent` row the chat hides).
  *
- * Gated exactly as hive's own wakes are, through `runGatedAutoTurn`
- * (`canvas-strut-autoturn.ts`): kill switch, claim, owner opt-in,
- * idempotency — here the launch marker that carries this wake's id —
- * and the loop breaker, which here counts job rows since the last human
- * message (`countTrailingJobRows`): continue → the job lands → wake →
- * continue → … stops at `MAX_CONSECUTIVE_STRUT_DISPATCHES` rounds.
+ * Gated through `runGatedAutoTurn` (`canvas-strut-autoturn.ts`) like
+ * hive's own wakes — kill switch, claim, idempotency (here the launch
+ * marker that carries this wake's id) and the loop breaker, which here
+ * counts job rows since the last human message (`countTrailingJobRows`):
+ * continue → the job lands → wake → continue → … stops at
+ * `MAX_CONSECUTIVE_STRUT_DISPATCHES` rounds — with ONE gate waived, the
+ * owner's `canvasAutonomousTurns` opt-in (`ownerOptIn: false`). That
+ * switch guards the canvas agent acting as the user on its own; it
+ * defaults off and no UI sets it any more. The strut engine is a choice
+ * the person made themselves (the per-browser switch, docs/jamie-engine.md),
+ * a job the orchestrator started is one they asked for, and without the
+ * wake the orchestrator never sees the job's reply or its question: the
+ * person's "ok, do it" would reach an agent that never saw what was asked.
  *
  * Busy is "not yet", never a notice. The session takes one turn at a time
  * — a person's message in flight, or the orchestrator turn that started
@@ -193,6 +200,9 @@ export async function invokeOrchestratorOnJobTurn(
       conversationId,
       wakeId,
       about: { jobId, outcome: args.outcome },
+      // The engine was the person's choice; the wake is not theirs to opt
+      // into a second time (file header).
+      ownerOptIn: false,
       // The launch marker of a wake carries its id: once it is there, the
       // orchestrator has (or had) the turn, whatever became of the reply.
       alreadyHandled: (messages) =>

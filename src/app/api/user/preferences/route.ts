@@ -9,7 +9,9 @@ import { healUserChatAgentModel } from "@/lib/ai/resolve-model";
 /**
  * Authenticated user's UI preferences. Currently:
  * - `canvasAutonomousTurns` — the per-user opt-in for the autonomous
- *   canvas-agent turns (see `src/services/canvas-agent-autoturn.ts`).
+ *   canvas-agent turns (see `src/services/canvas-agent-autoturn.ts`). The
+ *   strut orchestrator's job wake does not read it
+ *   (`canvas-strut-autoturn.ts`, `ownerOptIn: false`).
  * - `chatAgentModel` — the per-user default model for the canvas Agent
  *   chat, in `getModelValue()` "provider/name" form. Null = inherit the
  *   admin-configured default.
