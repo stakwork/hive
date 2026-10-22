@@ -2,6 +2,21 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
+/*
+ * Dark rules for components that also appear on the infinite canvas's paper
+ * (`[data-canvas-paper]`), which stays light in either app theme. Outside the
+ * canvas they match exactly what they replace: `dark-app:` is `[.dark_&]:`
+ * (the app's own theme switch), `dark-os:` is `dark:` (the OS setting).
+ */
+@custom-variant dark-app (&:is(.dark *):not(:is([data-canvas-paper] *)));
+@custom-variant dark-os {
+  @media (prefers-color-scheme: dark) {
+    &:not(:is([data-canvas-paper] *)) {
+      @slot;
+    }
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

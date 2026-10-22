@@ -49,10 +49,10 @@ export type JobEventSource = Extract<NonNullable<CanvasChatMessage["source"]>, {
 type Tone = "running" | "ok" | "attention" | "failed" | "muted";
 
 const TONE_PILL_CLASSES: Record<Tone, string> = {
-  running: "bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-500/20",
-  ok: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
-  attention: "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/20",
-  failed: "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/20",
+  running: "bg-sky-500/10 text-sky-700 dark-os:text-sky-300 ring-1 ring-inset ring-sky-500/20",
+  ok: "bg-emerald-500/10 text-emerald-700 dark-os:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
+  attention: "bg-amber-500/10 text-amber-700 dark-os:text-amber-300 ring-1 ring-inset ring-amber-500/20",
+  failed: "bg-rose-500/10 text-rose-700 dark-os:text-rose-300 ring-1 ring-inset ring-rose-500/20",
   muted: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
 };
 
@@ -192,7 +192,7 @@ export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): P
 // ─── Cards ──────────────────────────────────────────────────────────────
 
 function JobIcon() {
-  return <Bot className="h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />;
+  return <Bot className="h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark-os:text-amber-400" aria-hidden="true" />;
 }
 
 /** The disclosure chevron, or an empty slot of its width so titles line up down the column. */

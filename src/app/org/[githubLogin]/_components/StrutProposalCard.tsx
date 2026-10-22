@@ -45,9 +45,9 @@ const STATUS: Record<StrutProposalStatus, { label: string; tone: Tone }> = {
 };
 
 const TONE_CLASSES: Record<Tone, string> = {
-  pending: "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/20",
-  ok: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
-  failed: "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/20",
+  pending: "bg-amber-500/10 text-amber-700 dark-os:text-amber-300 ring-1 ring-inset ring-amber-500/20",
+  ok: "bg-emerald-500/10 text-emerald-700 dark-os:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
+  failed: "bg-rose-500/10 text-rose-700 dark-os:text-rose-300 ring-1 ring-inset ring-rose-500/20",
   muted: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
 };
 
@@ -94,14 +94,14 @@ function EditNodeBody({ input }: { input: unknown }) {
         <div className="mt-1 rounded border border-border/50 bg-muted/30 px-2 py-1 text-[11px] font-mono space-y-0.5">
           {patch.map(([k, v]) => (
             <div key={k} className="flex gap-1">
-              <span className="shrink-0 text-emerald-600 dark:text-emerald-400">+</span>
+              <span className="shrink-0 text-emerald-600 dark-os:text-emerald-400">+</span>
               <span className="text-muted-foreground shrink-0">{k}:</span>
               <span className="break-all whitespace-pre-wrap">{typeof v === "string" ? v : JSON.stringify(v)}</span>
             </div>
           ))}
           {deleted.map((k) => (
             <div key={`del-${k}`} className="flex gap-1">
-              <span className="shrink-0 text-rose-600 dark:text-rose-400">−</span>
+              <span className="shrink-0 text-rose-600 dark-os:text-rose-400">−</span>
               <span className="text-muted-foreground line-through">{k}</span>
             </div>
           ))}
@@ -266,7 +266,7 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
             </div>
           )}
           {load.state === "error" && (
-            <div className="mt-1 text-[11px] text-rose-700 dark:text-rose-300">{load.error}</div>
+            <div className="mt-1 text-[11px] text-rose-700 dark-os:text-rose-300">{load.error}</div>
           )}
           {proposal && (
             <StrutProposalBody step={proposal.step} input={proposal.input} workspaceSlug={proposal.workspaceSlug} />
@@ -276,11 +276,11 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
             <p className="mt-1 text-[11px] text-muted-foreground">Reason: {proposal.decision.reason}</p>
           )}
           {proposal?.result?.error && (
-            <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-300" data-testid="strut-proposal-error">
+            <p className="mt-1 text-[11px] text-rose-700 dark-os:text-rose-300" data-testid="strut-proposal-error">
               {proposal.result.error}
             </p>
           )}
-          {notice && <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-300">{notice}</p>}
+          {notice && <p className="mt-1 text-[11px] text-amber-800 dark-os:text-amber-300">{notice}</p>}
           {(canDecide || graphArtifact) && (
             <div className="mt-1 flex items-center justify-end gap-1">
               {graphArtifact && (
@@ -303,7 +303,7 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
                     disabled={deciding !== null}
                     title={status === "failed" ? "Accept again" : "Approve"}
                     aria-label={status === "failed" ? "Accept again" : "Approve"}
-                    className="flex h-6 items-center justify-center gap-1 rounded px-1 text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
+                    className="flex h-6 items-center justify-center gap-1 rounded px-1 text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark-os:text-emerald-400"
                   >
                     {deciding === "accept" ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -321,7 +321,7 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
                       disabled={deciding !== null}
                       title="Reject"
                       aria-label="Reject"
-                      className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
+                      className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark-os:text-rose-400"
                     >
                       {deciding === "reject" ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />

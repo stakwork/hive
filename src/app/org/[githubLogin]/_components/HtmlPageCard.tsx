@@ -96,11 +96,11 @@ export function getHtmlPagesFromMessages(
 
 const TONE_PILL_CLASSES: Record<HtmlPageRun["status"], string> = {
   saving:
-    "bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-500/20",
+    "bg-sky-500/10 text-sky-700 dark-os:text-sky-300 ring-1 ring-inset ring-sky-500/20",
   ready:
-    "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
+    "bg-emerald-500/10 text-emerald-700 dark-os:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
   failed:
-    "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/20",
+    "bg-rose-500/10 text-rose-700 dark-os:text-rose-300 ring-1 ring-inset ring-rose-500/20",
 };
 
 function StatusPill({ status }: { status: HtmlPageRun["status"] }) {
