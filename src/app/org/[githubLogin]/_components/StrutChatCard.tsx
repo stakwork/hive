@@ -95,16 +95,16 @@ export function getStrutChatsFromMessages(messages: CanvasChatMessage[]): StrutC
 type Tone = "running" | "ok" | "failed" | "muted";
 
 const TONE_PILL_CLASSES: Record<Tone, string> = {
-  running: "bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-500/20",
-  ok: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
-  failed: "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/20",
+  running: "bg-sky-500/10 text-sky-700 dark-os:text-sky-300 ring-1 ring-inset ring-sky-500/20",
+  ok: "bg-emerald-500/10 text-emerald-700 dark-os:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
+  failed: "bg-rose-500/10 text-rose-700 dark-os:text-rose-300 ring-1 ring-inset ring-rose-500/20",
   muted: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
 };
 
 const TONE_TEXT_CLASSES: Record<Tone, string> = {
-  running: "text-sky-600 dark:text-sky-400",
-  ok: "text-emerald-600 dark:text-emerald-400",
-  failed: "text-rose-600 dark:text-rose-400",
+  running: "text-sky-600 dark-os:text-sky-400",
+  ok: "text-emerald-600 dark-os:text-emerald-400",
+  failed: "text-rose-600 dark-os:text-rose-400",
   muted: "text-muted-foreground",
 };
 

@@ -36,11 +36,11 @@ type ClaimsContent = ArtifactContents["claims"];
 type Pill = JobClaim["status"] | "needs a look";
 
 const PILL_CLASSES: Record<Pill, string> = {
-  supported: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-500/20",
-  refuted: "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-rose-500/20",
-  stale: "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/20",
+  supported: "bg-emerald-500/10 text-emerald-700 dark-os:text-emerald-300 ring-emerald-500/20",
+  refuted: "bg-rose-500/10 text-rose-700 dark-os:text-rose-300 ring-rose-500/20",
+  stale: "bg-amber-500/10 text-amber-700 dark-os:text-amber-300 ring-amber-500/20",
   unknown: "bg-muted text-muted-foreground ring-border",
-  "needs a look": "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/20",
+  "needs a look": "bg-amber-500/10 text-amber-700 dark-os:text-amber-300 ring-amber-500/20",
 };
 
 const PILL_HINT: Record<Pill, string> = {
@@ -183,7 +183,7 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
             </span>
           )}
           {state.status === "done" && <span data-testid="claims-note">{state.note}</span>}
-          {state.status === "failed" && <span className="text-amber-600 dark:text-amber-400">{state.error}</span>}
+          {state.status === "failed" && <span className="text-amber-600 dark-os:text-amber-400">{state.error}</span>}
           <button
             type="button"
             data-testid="claims-verify"
@@ -202,7 +202,7 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
           <ul data-testid="claims-live" className="space-y-0.5 rounded-lg border border-dashed p-2 text-xs text-muted-foreground">
             {verdicts.map((v) => (
               <li key={v.key} className="truncate">
-                <span className={cn("font-semibold uppercase", v.state === "supported" && "text-emerald-700 dark:text-emerald-300", v.state === "refuted" && "text-rose-700 dark:text-rose-300")}>
+                <span className={cn("font-semibold uppercase", v.state === "supported" && "text-emerald-700 dark-os:text-emerald-300", v.state === "refuted" && "text-rose-700 dark-os:text-rose-300")}>
                   {v.state ?? "evidence"}
                 </span>{" "}
                 {v.title}
@@ -226,7 +226,7 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
             >
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <StatusPill pill={pillOf(claim)} />
-                {claim.assertedOnly && <span className="text-amber-700 dark:text-amber-300">asserted only</span>}
+                {claim.assertedOnly && <span className="text-amber-700 dark-os:text-amber-300">asserted only</span>}
                 {claim.unverified > 0 && claim.status !== "unknown" && !look && <span className="text-muted-foreground">{claim.unverified} unverified</span>}
                 {speakerWords(claim.speaker) && <span className="text-muted-foreground">by {speakerWords(claim.speaker)}</span>}
               </div>
@@ -300,7 +300,7 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
                           }
                           className={cn(
                             "rounded-md border px-2 py-0.5 text-xs font-medium transition-colors disabled:opacity-60",
-                            supports ? "border-emerald-600/40 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300" : "border-rose-600/40 text-rose-700 hover:bg-rose-500/10 dark:text-rose-300",
+                            supports ? "border-emerald-600/40 text-emerald-700 hover:bg-emerald-500/10 dark-os:text-emerald-300" : "border-rose-600/40 text-rose-700 hover:bg-rose-500/10 dark-os:text-rose-300",
                           )}
                         >
                           {supports ? "Accept" : "Reject"}

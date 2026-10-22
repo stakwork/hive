@@ -1410,7 +1410,7 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
               onPaste={handlePaste}
               isUploading={isUploading}
               rows={1}
-              className="field-sizing-content max-h-[200px] min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-1.5 text-sm max-md:text-base shadow-none placeholder:text-muted-foreground/60 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed md:text-sm dark:bg-transparent"
+              className="field-sizing-content max-h-[200px] min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-1.5 text-sm max-md:text-base shadow-none placeholder:text-muted-foreground/60 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed md:text-sm dark-os:bg-transparent"
             />
           </div>
 

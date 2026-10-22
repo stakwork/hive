@@ -265,10 +265,10 @@ const STATE_STYLE: Record<ChoiceState, string> = {
 };
 const BADGE: Record<ChoiceState, string> = {
   open: "bg-muted text-muted-foreground",
-  chosen: "bg-green-500/20 text-green-700 dark:text-green-400",
+  chosen: "bg-green-500/20 text-green-700 dark-os:text-green-400",
   rejected: "bg-muted text-muted-foreground line-through",
-  simulated: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
-  decided: "bg-green-500/20 text-green-700 dark:text-green-400",
+  simulated: "bg-sky-500/15 text-sky-700 dark-os:text-sky-400",
+  decided: "bg-green-500/20 text-green-700 dark-os:text-green-400",
 };
 
 const DOT: Record<ChoiceState, string> = {
@@ -284,7 +284,7 @@ function EffectsSummary({ effects }: { effects: ChoiceEffect[] }) {
   const { pros, cons } = effectCounts(effects);
   return (
     <span className="mt-0.5 flex shrink-0 gap-1 text-[10px] font-medium leading-4" data-effects-summary title={`${pros} pro${pros === 1 ? "" : "s"}, ${cons} con${cons === 1 ? "" : "s"}`}>
-      {pros > 0 && <span className="text-green-700 dark:text-green-400">+{pros}</span>}
+      {pros > 0 && <span className="text-green-700 dark-os:text-green-400">+{pros}</span>}
       {cons > 0 && <span className="text-destructive">−{cons}</span>}
     </span>
   );
@@ -300,7 +300,7 @@ function EffectsList({ effects }: { effects: ChoiceEffect[] }) {
         const pro = dir === "pro";
         return (
           <div key={dir} className="flex flex-col gap-0.5">
-            <div className={cn("text-[10px] font-semibold uppercase leading-[14px]", pro ? "text-green-700 dark:text-green-400" : "text-destructive")}>{pro ? "Pros" : "Cons"}</div>
+            <div className={cn("text-[10px] font-semibold uppercase leading-[14px]", pro ? "text-green-700 dark-os:text-green-400" : "text-destructive")}>{pro ? "Pros" : "Cons"}</div>
             {list.map((e) => (
               <div key={e.ref_id || e.name} data-effect data-direction={dir} title={e.description || e.name}>
                 <div className="flex items-center gap-1 text-[11px] leading-4">
@@ -362,7 +362,7 @@ const ChoiceNode = memo(function ChoiceNode({ data }: NodeProps<Node<ChoiceNodeD
           {c.name}
         </span>
         {isQuestion && c.state === "decided" && (
-          <span className="mt-0.5 shrink-0 rounded bg-green-500/20 px-1 text-[10px] font-normal text-green-700 dark:text-green-400">decided</span>
+          <span className="mt-0.5 shrink-0 rounded bg-green-500/20 px-1 text-[10px] font-normal text-green-700 dark-os:text-green-400">decided</span>
         )}
         {!selected && !isQuestion && effects.length > 0 && <EffectsSummary effects={effects} />}
         {!selected && by && (

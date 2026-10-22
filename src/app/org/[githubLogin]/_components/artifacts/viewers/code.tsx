@@ -5,6 +5,7 @@ import { WrapText } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "@/hooks/use-theme";
+import { useOnPaper } from "../onPaper";
 import { getLanguageFromFile } from "@/lib/syntax-utils";
 import type { ArtifactContents, ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { PanelToolbar, ScrollFade, ToolbarButton } from "../chrome";
@@ -61,7 +62,8 @@ const Highlighted = React.memo(function Highlighted({
 /** Highlighted code on the surface it sits on — the theme colours the tokens, not the background. */
 function CodeBlock(props: CodeBlockProps) {
   const { resolvedTheme } = useTheme();
-  return <Highlighted {...props} dark={resolvedTheme === "dark"} />;
+  const onPaper = useOnPaper();
+  return <Highlighted {...props} dark={resolvedTheme === "dark" && !onPaper} />;
 }
 
 export function CodePanel({ content }: ArtifactViewerProps<"code">) {
