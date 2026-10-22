@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
-import { useCanvasChatStore, type InitiativeFocus } from "../../_state/canvasChatStore";
+import { type CanvasChatMessage, useCanvasChatStore, type InitiativeFocus } from "../../_state/canvasChatStore";
 import { useSendCanvasChatMessage } from "../../_state/useSendCanvasChatMessage";
+import { getPendingJobTurnsFromMessages } from "../JobTurnCard";
+import { PendingOrchestratorTurnCard, pendingOrchestratorLaunchIds } from "../OrchestratorTurnCard";
 import { TYPE } from "./nodes";
 import { v } from "./theme";
 
@@ -34,18 +36,42 @@ export function useAskJamie() {
   );
 }
 
-/** The active conversation's latest reply, and whether a turn is running. Selected as primitives, so streaming doesn't re-render the canvas. */
+const NO_MESSAGES: CanvasChatMessage[] = [];
+
+/**
+ * The turn after your latest message, picked the way the chat picks it:
+ * whether strut still has it (a launch with no reply,
+ * `pendingOrchestratorLaunchIds`), the jobs it has running
+ * (`getPendingJobTurnsFromMessages`), and the latest reply. The detail
+ * (job cards, proposals) lives in the full chat.
+ */
 function useJamieTurn() {
-  const reply = useCanvasChatStore((s) => {
-    const c = s.activeConversationId ? s.conversations[s.activeConversationId] : undefined;
-    const m = c?.messages.findLast((x) => x.role === "assistant" && x.content.trim());
-    return m?.content ?? "";
-  });
+  const messages = useCanvasChatStore((s) =>
+    s.activeConversationId ? (s.conversations[s.activeConversationId]?.messages ?? NO_MESSAGES) : NO_MESSAGES,
+  );
   const working = useCanvasChatStore((s) => {
     const c = s.activeConversationId ? s.conversations[s.activeConversationId] : undefined;
     return !!(c?.isLoading || c?.isStreaming || c?.activeTurn);
   });
-  return { reply, working };
+  const turn = useMemo(() => {
+    const since = messages.findLastIndex((m) => m.role === "user");
+    const rows = since === -1 ? [] : messages.slice(since + 1);
+    const inTurn = new Set(rows.map((m) => m.id));
+    const pending = pendingOrchestratorLaunchIds(messages);
+    const launch = rows.findLast((m) => m.source?.kind === "orchestrator_launch" && pending.has(m.id))?.source;
+    const jobs = getPendingJobTurnsFromMessages(messages).filter((t) => inTurn.has(t.anchorMessageId));
+    const reply =
+      rows.findLast(
+        (m) => m.role === "assistant" && (!m.source || m.source.kind === "orchestrator") && m.content.trim(),
+      )?.content ?? "";
+    return {
+      key: since === -1 ? "" : messages[since].id,
+      launch: launch?.kind === "orchestrator_launch" ? launch : undefined,
+      jobs,
+      reply,
+    };
+  }, [messages]);
+  return { ...turn, working };
 }
 
 const chip = {
@@ -89,11 +115,16 @@ export function JamieBar({
   send: (text: string) => Promise<boolean> | boolean;
   goTo: () => void;
 }) {
-  const { reply, working } = useJamieTurn();
-  const [seen, setSeen] = useState(reply);
+  const { key, reply, launch, jobs, working } = useJamieTurn();
+  // Strut has the turn: from the send (before its marker has synced) until its reply lands.
+  const busy = !!launch || (working && !reply);
+  const jobsNote = jobs.length === 1 ? jobs[0].title || "1 job" : jobs.length > 1 ? `${jobs.length} jobs` : undefined;
+  // What Jamie has said this turn: new since you folded the bar is unread.
+  const said = `${key}\u0000${reply}`;
+  const [seen, setSeen] = useState(said);
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
-  const unread = mode === "input" && reply !== seen;
+  const unread = mode === "input" && said !== seen && !!reply;
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
   useEffect(() => {
@@ -103,7 +134,9 @@ export function JamieBar({
   const submit = async (words = text) => {
     if (!words.trim() || working) return;
     setText("");
-    if (await send(words.trim())) setMode("last");
+    // Show the turn at once: Jamie working, then the reply as it streams.
+    setMode("last");
+    if (!(await send(words.trim()))) setMode("input");
   };
   const toggleMic = () => {
     if (!isListening) {
@@ -133,9 +166,31 @@ export function JamieBar({
         zIndex: 20,
       }}
     >
-      {mode === "last" && (reply || working) ? (
+      {busy ? (
+        // Working: the chat's own card, just above the bar; the detail (jobs, proposals) is in the full chat.
+        <button
+          type="button"
+          data-working
+          title="Open the full chat"
+          onClick={() => setMode("full")}
+          style={{
+            alignSelf: "center",
+            width: "min(460px, 100%)",
+            padding: 0,
+            border: "none",
+            background: "none",
+            borderRadius: 10,
+            boxShadow: v("shadow"),
+            cursor: "pointer",
+            textAlign: "left",
+            fontFamily: TYPE,
+          }}
+        >
+          <PendingOrchestratorTurnCard source={launch} detail={jobsNote} />
+        </button>
+      ) : mode === "last" && reply ? (
         <div
-          key={reply ? reply.slice(0, 40) : "working"}
+          key={key || "idle"}
           className="icb-bloom"
           data-reply
           style={{
@@ -156,14 +211,14 @@ export function JamieBar({
         >
           <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
             <span style={{ fontSize: 11, color: v("job"), letterSpacing: ".08em", paddingTop: 3 }}>JAMIE</span>
-            <div style={{ maxHeight: "26vh", overflowY: "auto", minWidth: 0 }} className="[&_*]:!text-[var(--ic-ink)]">
-              {working && !reply ? (
-                <span className="icb-pulse">Working on it…</span>
-              ) : (
-                <MarkdownRenderer variant="assistant" size="compact">
-                  {reply}
-                </MarkdownRenderer>
-              )}
+            <div
+              data-turn
+              style={{ maxHeight: "26vh", overflowY: "auto", minWidth: 0 }}
+              className="[&_*]:!text-[var(--ic-ink)]"
+            >
+              <MarkdownRenderer variant="assistant" size="compact">
+                {reply}
+              </MarkdownRenderer>
             </div>
           </div>
           <button
@@ -183,7 +238,7 @@ export function JamieBar({
             data-fold
             onClick={() => {
               setMode("input");
-              setSeen(reply);
+              setSeen(said);
             }}
             style={small}
           >

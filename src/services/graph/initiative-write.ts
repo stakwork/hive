@@ -16,7 +16,8 @@
  * it against the tree as it is now and turns it into graph writes (pure, no
  * I/O); `planChoice` does the same for a choice; `saveInitiativeChanges` reads,
  * plans and writes through Jarvis (or the mock store). Every new node gets a
- * fresh UUID key and `created_*` provenance; every write stamps `updated_at`.
+ * fresh UUID key and `created_*` provenance. `updated_at` is never sent: the
+ * graph writer stamps it on every change.
  */
 
 import { randomUUID } from "crypto";
@@ -119,7 +120,7 @@ export type InitiativePlanResult = { ok: true; plan: InitiativePlan } | { ok: fa
 
 const bad = (message: string): { ok: false; status: 400; message: string } => ({ ok: false, status: 400, message });
 const emptyPlan = (): InitiativePlan => ({ creates: [], patches: {}, links: [] });
-const softDelete = (now: Date) => ({ deleted_at: now.getTime(), is_deleted: true, updated_at: now.toISOString() });
+const softDelete = (now: Date) => ({ deleted_at: now.getTime(), is_deleted: true });
 
 function checkFields(type: InitiativeNodeType, fields: Fields): string | null {
   for (const [k, v] of Object.entries(fields)) {
@@ -135,11 +136,6 @@ function checkFields(type: InitiativeNodeType, fields: Fields): string | null {
   return null;
 }
 
-/** Any change to the plan marks the initiative updated: the canvas's desk shows the latest. */
-function touch(plan: InitiativePlan, root: string | null, at: string) {
-  if (root) plan.patches[root] = { ...plan.patches[root], updated_at: at };
-}
-
 const editable = (t: InitiativeTreeType | undefined): t is InitiativeNodeType => !!t && t in FIELDS;
 
 /** A new node's data: its fields, a fresh key, and provenance. */
@@ -150,7 +146,6 @@ function newNodeData(type: InitiativeNodeType, fields: Fields, userId: string, o
     ...fields,
     [FIELDS[type].key]: randomUUID(),
     created_at: at,
-    updated_at: at,
     created_by: userId,
     created_by_kind: "human",
   };
@@ -196,7 +191,7 @@ export function planInitiativeSave(
       if (!editable(type)) return bad(`${where}: a ${type} isn't edited here.`);
       const problem = checkFields(type, op.fields);
       if (problem) return bad(`${where}: ${problem}`);
-      plan.patches[op.ref] = { ...plan.patches[op.ref], ...op.fields, updated_at: at };
+      plan.patches[op.ref] = { ...plan.patches[op.ref], ...op.fields };
       continue;
     }
 
@@ -231,7 +226,6 @@ export function planInitiativeSave(
     });
     temps.set(op.temp, op.type);
   }
-  touch(plan, save.root, at);
   return { ok: true, plan };
 }
 
@@ -353,8 +347,6 @@ export function planChoice(
           for (const r of meets) plan.links.push({ edgeType: "SATISFIES", source: { temp }, target: { ref: r } });
       });
   }
-  const root = tree.nodes.find((n) => n.type === "HiveInitiative")?.ref_id ?? null;
-  touch(plan, root, now.toISOString());
   return { ok: true, choice: { brainstormOps, plan, undo } };
 }
 

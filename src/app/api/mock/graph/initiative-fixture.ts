@@ -410,17 +410,19 @@ export function mockInitiativeWrite(root: string | null, plan: InitiativePlan): 
   const s = store();
   const created: Record<string, string> = {};
   const idOf = (e: { ref: string } | { temp: string }) => ("ref" in e ? e.ref : created[e.temp]);
+  // The stamp the graph writer sets on every create and change.
+  const updated_at = new Date().toISOString();
   for (const c of plan.creates) {
     const id = `mock-plan-${++s.seq}`;
     created[c.temp] = id;
-    s.nodes.set(id, { ref_id: id, type: c.nodeType, properties: { ...c.data } });
+    s.nodes.set(id, { ref_id: id, type: c.nodeType, properties: { ...c.data, updated_at } });
     if (c.nodeType === "HiveInitiative" && root === null) s.roots.unshift(id);
     if (c.parent && c.edgeType) s.edges.push({ source: idOf(c.parent), target: id, type: c.edgeType });
   }
   for (const [id, data] of Object.entries(plan.patches)) {
     const own = s.nodes.get(id);
-    if (own) own.properties = { ...own.properties, ...data };
-    else s.patches.set(id, { ...s.patches.get(id), ...data });
+    if (own) own.properties = { ...own.properties, ...data, updated_at };
+    else s.patches.set(id, { ...s.patches.get(id), ...data, updated_at });
   }
   // RESULTED_IN is what a node reads back as `madeBy`; SATISFIES isn't read.
   for (const l of plan.links)

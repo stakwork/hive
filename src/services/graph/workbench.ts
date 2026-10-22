@@ -9,12 +9,13 @@
 
 import { mockConnectionPage, mockHierarchy, mockNodeConnections } from "@/app/api/mock/graph/workbench-fixture";
 import { mockBrainstormListWithWrites, mockChoiceTreeWithWrites } from "@/app/api/mock/graph/brainstorm-store";
+import { mockLatency } from "@/app/api/mock/graph/latency";
 import {
   mockInitiativeList,
   mockInitiativesBuilding,
   mockInitiativeTree,
 } from "@/app/api/mock/graph/initiative-fixture";
-import { graphEpochToMs } from "@/app/org/[githubLogin]/_components/brainstorm-board/desk-layout";
+import { graphEpochToMs, graphTimeToMs } from "@/app/org/[githubLogin]/_components/brainstorm-board/desk-layout";
 import { fromPropertyPairs, isRunGraphRefId, propertyPairs, typeFromLabels } from "@/lib/strut-run-graph/hydrate";
 import {
   INITIATIVE_TREE_READ_LABELS,
@@ -458,8 +459,10 @@ export async function getChoiceTree(
   focusRefId: string,
   labels: string[] = CHOICE_TREE_LABELS,
 ): Promise<WorkbenchResult<ChoiceTreeData>> {
-  if (useMocks() && isRunGraphRefId(focusRefId) && labels.every((l) => IDENT.test(l)))
+  if (useMocks() && isRunGraphRefId(focusRefId) && labels.every((l) => IDENT.test(l))) {
+    await mockLatency();
     return { ok: true, data: mockChoiceTreeWithWrites(focusRefId, labels) };
+  }
   const tree = await readTree(caller, focusRefId, {
     labels,
     edges: ["PARENT_OF"],
@@ -596,6 +599,7 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
  */
 export async function getInitiativeTree(caller: Caller, refId: string): Promise<WorkbenchResult<InitiativeTreeData>> {
   if (useMocks() && isRunGraphRefId(refId)) {
+    await mockLatency();
     const data = mockInitiativeTree(refId);
     return { ok: true, data: { ...data, stage: initiativeStage(data.nodes), truncated: false } };
   }
@@ -635,9 +639,12 @@ export interface InitiativeSummary {
   ref_id: string;
   name: string;
   status: string | null;
-  /** When it was made, ms: `created_at`, else when it reached the graph, else `updated_at`. */
+  /** When it was made, ms: when it reached the graph (`date_added_to_graph`), else `created_at`, else `updated_at`. */
   created_at: number | null;
-  /** When anything in it last changed, ms (`updated_at`, else when it was made). The canvas's desk shows the latest. */
+  /**
+   * How recent it is, ms: the later of reaching the graph and `updated_at` (capped at now), so a date a model
+   * wrote can't file a new initiative as old. The canvas's desk shows the latest.
+   */
   updated_at: number | null;
   created_by: string | null;
   created_by_kind: string | null;
@@ -657,11 +664,13 @@ export async function listInitiatives(
   caller: Caller,
   limit = 5,
 ): Promise<WorkbenchResult<{ initiatives: InitiativeSummary[]; building: boolean }>> {
-  if (useMocks())
+  if (useMocks()) {
+    await mockLatency();
     return {
       ok: true,
       data: { initiatives: mockInitiativeList().slice(0, limit), building: mockInitiativesBuilding() },
     };
+  }
   const result = await rows(
     caller,
     `MATCH (n:\`HiveInitiative\`) WHERE ${nodeLive("n")} ` +
@@ -671,19 +680,25 @@ export async function listInitiatives(
     INITIATIVE_SCAN_CAP,
   );
   if (!result.ok) return result;
-  const when = (v: unknown) => (typeof v === "string" && Number.isFinite(Date.parse(v)) ? Date.parse(v) : null);
+  const when = (v: unknown) => graphTimeToMs(v) ?? null;
+  const now = Date.now();
   const initiatives = result.data
     .flatMap((r): InitiativeSummary[] => {
       const id = str(r.id);
       if (!id) return [];
-      const created = when(r.created_at) ?? graphEpochToMs(r.added) ?? when(r.updated_at);
+      // The graph's own stamp first: `created_at`/`updated_at` may be what a model wrote (a year off, say).
+      const added = graphEpochToMs(r.added);
+      const created = added ?? when(r.created_at) ?? when(r.updated_at);
+      // Recency is the later of reaching the graph and the last change, never in the future.
+      const changed = when(r.updated_at);
+      const updated = Math.max(added ?? 0, changed !== null ? Math.min(changed, now) : 0) || created;
       return [
         {
           ref_id: id,
           name: str(r.name) ?? id,
           status: str(r.status),
           created_at: created,
-          updated_at: when(r.updated_at) ?? created,
+          updated_at: updated,
           created_by: str(r.created_by),
           created_by_kind: str(r.created_by_kind),
           assignee_id: str(r.assignee_id),

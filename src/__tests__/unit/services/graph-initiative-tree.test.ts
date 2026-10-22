@@ -188,6 +188,107 @@ describe("listInitiatives", () => {
     expect(q).not.toContain("node_type");
   });
 
+  test("updated_at in any format (ISO, epoch ms, legacy float seconds, numeric strings, missing) orders the same", async () => {
+    const t = (iso: string) => Date.parse(iso);
+    const c = "2026-01-01T00:00:00Z";
+    mockedQuery.mockResolvedValue({
+      ok: true,
+      meta,
+      data: {
+        columns: [
+          "id",
+          "name",
+          "status",
+          "created_at",
+          "added",
+          "updated_at",
+          "created_by",
+          "created_by_kind",
+          "assignee_id",
+        ],
+        rows: [
+          ["iso", "Iso", null, c, null, "2026-02-01T00:00:00Z", null, null, null],
+          ["ms", "Ms", null, c, null, t("2026-05-01T00:00:00Z"), null, null, null],
+          ["sec", "Sec", null, c, null, t("2026-04-01T00:00:00Z") / 1000 + 0.5, null, null, null],
+          ["msstr", "Msstr", null, c, null, String(t("2026-03-01T00:00:00Z")), null, null, null],
+          ["secstr", "Secstr", null, c, null, String(t("2026-06-01T00:00:00Z") / 1000), null, null, null],
+          ["missing", "Missing", null, "2026-01-15T00:00:00Z", null, null, null, null, null],
+          ["junk", "Junk", null, "2026-01-10T00:00:00Z", null, "not a date", null, null, null],
+        ],
+      },
+    });
+    const res = await listInitiatives(caller, 10);
+    const list = res.ok ? res.data.initiatives : [];
+    expect(list.map((i) => i.ref_id)).toEqual(["secstr", "ms", "sec", "msstr", "iso", "missing", "junk"]);
+    expect(list.find((i) => i.ref_id === "ms")?.updated_at).toBe(t("2026-05-01T00:00:00Z"));
+    expect(list.find((i) => i.ref_id === "missing")?.updated_at).toBe(t("2026-01-15T00:00:00Z"));
+  });
+
+  test("the graph's own stamp beats a date a model wrote: a new initiative is new, a future date is now", async () => {
+    const added = Date.now() - 60_000;
+    mockedQuery.mockResolvedValue({
+      ok: true,
+      meta,
+      data: {
+        columns: [
+          "id",
+          "name",
+          "status",
+          "created_at",
+          "added",
+          "updated_at",
+          "created_by",
+          "created_by_kind",
+          "assignee_id",
+        ],
+        rows: [
+          [
+            "older",
+            "Edited last month",
+            null,
+            null,
+            Date.now() - 40 * 86_400_000,
+            new Date(Date.now() - 30 * 86_400_000).toISOString(),
+            null,
+            null,
+            null,
+          ],
+          // strut's model wrote a year-old date; the node reached the graph a minute ago.
+          [
+            "fresh",
+            "infinite canvas",
+            "draft",
+            "2025-10-22T08:16:00Z",
+            added / 1000,
+            "2025-10-22T08:16:00Z",
+            null,
+            "jamie",
+            null,
+          ],
+          [
+            "future",
+            "From the future",
+            null,
+            null,
+            Date.now() - 50 * 86_400_000,
+            "2099-01-01T00:00:00Z",
+            null,
+            null,
+            null,
+          ],
+        ],
+      },
+    });
+    const res = await listInitiatives(caller, 5);
+    if (!res.ok) throw new Error(res.message);
+    expect(res.data.initiatives.map((i) => i.ref_id)).toEqual(["future", "fresh", "older"]);
+    const fresh = res.data.initiatives.find((i) => i.ref_id === "fresh")!;
+    expect(fresh.created_at).toBe(added);
+    expect(fresh.updated_at).toBe(added);
+    // Capped at now, not 2099.
+    expect(res.data.initiatives[0].updated_at!).toBeLessThanOrEqual(Date.now());
+  });
+
   test("USE_MOCKS: the fixture's, most recently updated first, capped", async () => {
     vi.stubEnv("USE_MOCKS", "true");
     const res = await listInitiatives(caller, 50);

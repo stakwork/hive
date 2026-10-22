@@ -5,6 +5,7 @@ import {
   placeDesk,
   latestAdded,
   graphEpochToMs,
+  graphTimeToMs,
   COLUMN_GAP,
   HEADING_ABOVE,
   MIN_COLUMN,
@@ -226,5 +227,17 @@ describe("auto-save trigger", () => {
   it("never sends an empty-text card", () => {
     expect(savableKeys(mk("   "))).toEqual([]);
     expect(shouldAutoSave(mk(""), false)).toBe(false);
+  });
+});
+
+describe("graphTimeToMs", () => {
+  const ms = Date.parse("2026-05-01T00:00:00Z");
+  it("reads ISO, epoch ms, legacy float seconds and numeric strings; else undefined", () => {
+    expect(graphTimeToMs("2026-05-01T00:00:00Z")).toBe(ms);
+    expect(graphTimeToMs(ms)).toBe(ms);
+    expect(graphTimeToMs(String(ms))).toBe(ms);
+    expect(graphTimeToMs(ms / 1000)).toBe(ms);
+    expect(graphTimeToMs(`${ms / 1000}`)).toBe(ms);
+    for (const bad of [null, undefined, "", "nope", 0, -5, {}, NaN]) expect(graphTimeToMs(bad)).toBeUndefined();
   });
 });
