@@ -569,6 +569,75 @@ describe("mapStrutArtifacts — a job's app (strut plans/apps.md §6)", () => {
   });
 });
 
+describe("mapStrutArtifacts — a workspace app by name (strut CALLBACKS.md §4, the builder's deliverable)", () => {
+  // The entry as strut resolves it since 2026-10-22: the version's document, with the app's name and version beside it.
+  const DOC = "/apps/visits/v2/files/dist/index.html";
+  const visits = (over: Partial<StrutArtifact>) =>
+    entry({ id: "visits", kind: "app", title: "Visits", url: DOC, app: { name: "visits", version: "v2" }, ...over });
+
+  it("parses the app's name, version and build off strut's entry; a name or version hive would not put in a URL is no app", () => {
+    const [full, badName, badVersion, unpinned] = parseStrutArtifacts([
+      { id: "visits", kind: "app", title: "Visits", url: DOC, app: { name: "visits", version: "v2", hash: "9f2c", builtAt: "2026-10-22T10:04:11.201Z" } },
+      { id: "x", kind: "app", title: "X", url: DOC, app: { name: "../escape", version: "v2" } },
+      { id: "y", kind: "app", title: "Y", url: DOC, app: { name: "visits", version: "latest" } },
+      { id: "z", kind: "app", title: "Z", app: { name: "acme/hvac/visits" }, peer: "acme-web" },
+    ]);
+    expect(full.app).toEqual({ name: "visits", version: "v2", hash: "9f2c", builtAt: "2026-10-22T10:04:11.201Z" });
+    expect(badName.app).toBeUndefined();
+    expect(badVersion.app).toBeUndefined();
+    expect(unpinned.app).toEqual({ name: "acme/hvac/visits" });
+  });
+
+  it("the builder's run.end entry is an `app` ref keyed by the version's document on the row's swarm", () => {
+    const { refs, dropped } = mapStrutArtifacts(
+      [entry({ id: "visits", kind: "app", title: "Visits", app: { name: "visits", version: "v2" }, url: DOC })],
+      "swarm-1",
+    );
+    expect(dropped).toEqual([]);
+    expect(refs).toEqual([{ id: "visits", kind: "app", title: "Visits", source: { type: "graph", swarmId: "swarm-1", key: DOC } }]);
+  });
+
+  it("a pinned version: the key is built from `app` when strut gave no url, or a url naming another app; a name with `/` is encoded whole, as strut links it", () => {
+    expect(mapStrutArtifacts([visits({ url: undefined })], "swarm-1").refs[0].source).toEqual({ type: "graph", swarmId: "swarm-1", key: DOC });
+    expect(mapStrutArtifacts([visits({ url: "/apps/other/v1/files/dist/index.html" })], "swarm-1").refs[0].source).toEqual({
+      type: "graph",
+      swarmId: "swarm-1",
+      key: DOC,
+    });
+    const nested = visits({ url: "/apps/acme%2Fhvac%2Fvisits/v3/files/dist/index.html", app: { name: "acme/hvac/visits", version: "v3" } });
+    expect(mapStrutArtifacts([nested], "swarm-1").refs[0].source).toEqual({
+      type: "graph",
+      swarmId: "swarm-1",
+      key: "/apps/acme%2Fhvac%2Fvisits/v3/files/dist/index.html",
+    });
+  });
+
+  it("a peer's entry: the app on the PEER's swarm, by name — its active version unless pinned; a peer the org has no swarm for is dropped and named", () => {
+    const peers = new Map([["acme-web", "swarm-peer"]]);
+    const unpinned = entry({ id: "visits", kind: "app", title: "Visits", app: { name: "visits" }, peer: "acme-web", job: "peer/build-1" });
+    const pinned = entry({ id: "visits", kind: "app", title: "Visits", app: { name: "visits", version: "v2" }, peer: "acme-web", job: "peer/build-1" });
+    expect(mapStrutArtifacts([unpinned, pinned], "swarm-1", peers).refs).toEqual([
+      { id: "visits", kind: "app", title: "Visits", source: { type: "graph", swarmId: "swarm-peer", key: "/apps/visits/files/dist/index.html" } },
+      { id: "visits", kind: "app", title: "Visits", source: { type: "graph", swarmId: "swarm-peer", key: DOC } },
+    ]);
+    const { refs, dropped } = mapStrutArtifacts([unpinned], "swarm-1");
+    expect(refs).toEqual([]);
+    expect(dropped).toEqual([{ title: "Visits", reason: "on @acme-web, which is no swarm of this org" }]);
+  });
+
+  it("a bad name is no app: the entry is the link it carries, which hive's reader does not serve, so it is dropped as today", () => {
+    const entries = parseStrutArtifacts([
+      { id: "visits", kind: "app", title: "Visits", url: "/apps/bad%20name/v2/files/dist/index.html", app: { name: "bad name", version: "v2" } },
+    ]);
+    expect(entries[0].app).toBeUndefined();
+    const { refs, dropped } = mapStrutArtifacts(entries, "swarm-1");
+    expect(refs).toEqual([]);
+    expect(dropped).toEqual([{ title: "Visits", reason: "bad url" }]);
+    // The mapper holds the same line on an entry handed to it unparsed.
+    expect(mapStrutArtifacts([visits({ url: undefined, app: { name: "bad name", version: "v2" } })], "swarm-1").dropped).toEqual([{ title: "Visits", reason: "nothing to show" }]);
+  });
+});
+
 describe("replyPeerOf", () => {
   it("is the reply's slug-shaped `peer`; nothing for a local build, junk, or no output", () => {
     expect(replyPeerOf({ output: { text: "t", peer: "acme-web" } })).toBe("acme-web");

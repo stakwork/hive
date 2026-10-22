@@ -27,9 +27,11 @@
  * `url` becomes a `graph` source (`{ swarmId, key: <that url> }`) that the
  * reader route serves from the swarm; an absolute `url` and inline
  * `content` become `inline` sources; an entry strut could not resolve
- * (`error`) is dropped from the refs and named in the content. A job's
- * `app` (strut plans/apps.md §6) becomes an `app` ref keyed by its
- * document's link, which `StrutAppFrame` renders and relays. An entry
+ * (`error`) is dropped from the refs and named in the content. An `app`
+ * (strut CALLBACKS.md §4) — a WORKSPACE app by name, what the `builder`
+ * hands over, or a job's app in its directory (strut plans/apps.md §6) —
+ * becomes an `app` ref keyed by its document's link, which `StrutAppFrame`
+ * renders and relays. An entry
  * from ANOTHER strut — a build the turn ran on a peer (`builder` with
  * `peer`, strut plans/builder-job.md §3) — comes tagged `{ path, peer, job }`
  * and unresolved (strut CALLBACKS.md §4): it becomes a `graph` source on the
@@ -109,7 +111,17 @@ import {
   peerJobHome,
   type ArtifactEvent,
 } from "@/lib/strut-jobs";
-import { encodeStrutPath, isStrutAppPath, isStrutJobId, jobAppOfKey, STRUT_APP_DOCUMENT } from "@/lib/strut-apps";
+import {
+  encodeStrutPath,
+  isStrutAppName,
+  isStrutAppPath,
+  isStrutAppVersion,
+  isStrutJobId,
+  jobAppOfKey,
+  STRUT_APP_DOCUMENT,
+  workspaceAppDocumentKey,
+  workspaceAppOfKey,
+} from "@/lib/strut-apps";
 import { getBaseUrl } from "@/lib/utils";
 import { canvasJobStateOf, nudgeCanvasCardJob } from "@/services/canvas-jobs";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
@@ -162,8 +174,14 @@ export interface StrutArtifact {
   peer?: string;
   /** With `peer`: the job its files are under THERE (`peer/<job>`). */
   job?: string;
-  /** A job's APP (`kind: "app"`, strut plans/apps.md §6): the job and the app's directory in it; `url` is its document. */
-  app?: { job: string; path: string };
+  /**
+   * An APP (`kind: "app"`, strut CALLBACKS.md §4): a WORKSPACE app by name —
+   * the builder's deliverable, its version resolved by strut (absent only on
+   * a peer's entry, which strut leaves as it came) — or a JOB's app by the
+   * job and the app's directory in it (strut plans/apps.md §6). `url` is its
+   * document. `hash` is the build the document came from.
+   */
+  app?: { name: string; version?: string; hash?: string; builtAt?: string } | { job: string; path: string };
 }
 
 const KINDS: ReadonlySet<string> = new Set<ArtifactKind>([
@@ -189,9 +207,23 @@ const ADDRESS_KINDS: ReadonlySet<string> = new Set<ArtifactKind>(["image", "vide
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown, max: number): string | undefined => (typeof v === "string" && v.length > 0 && v.length <= max ? v : undefined);
 
-/** An app deliverable's `app: { job, path }` (extra keys — `hash`, `builtAt` — dropped). */
+/**
+ * An app deliverable's `app`: `{ name, version?, hash?, builtAt? }` for a
+ * workspace app (a version strut did not spell as one, or a name hive would
+ * not put in a URL, is no app), else `{ job, path }` for a job's (extra keys
+ * dropped). Undefined for neither.
+ */
 function appOf(raw: unknown): StrutArtifact["app"] {
   if (!isRecord(raw)) return undefined;
+  if (raw.name !== undefined) {
+    if (!isStrutAppName(raw.name) || (raw.version !== undefined && !isStrutAppVersion(raw.version))) return undefined;
+    return {
+      name: raw.name,
+      ...(raw.version !== undefined ? { version: raw.version } : {}),
+      ...(str(raw.hash, 200) ? { hash: raw.hash as string } : {}),
+      ...(str(raw.builtAt, 60) ? { builtAt: raw.builtAt as string } : {}),
+    };
+  }
   return isStrutJobId(raw.job) && isStrutAppPath(raw.path) ? { job: raw.job, path: raw.path } : undefined;
 }
 
@@ -366,6 +398,26 @@ function peerFileKey(entry: StrutArtifact): string | null {
 }
 
 /**
+ * Where a WORKSPACE app is (strut CALLBACKS.md §4, the builder's
+ * deliverable): its swarm and its document's link
+ * (`/apps/<name>/<vN>/files/dist/index.html`, `workspaceAppDocumentKey`) —
+ * strut's `url` when it is that link, else built from `app: { name,
+ * version }`. A peer's entry names the app on the PEER's swarm, unresolved:
+ * its name and, when pinned, its version, read there when looked at. Null
+ * when the entry names no workspace app, or a peer no swarm of the org is.
+ */
+function workspaceAppSource(entry: StrutArtifact, swarmId: string, peers: ReadonlyMap<string, string>): { swarmId: string; key: string } | null {
+  if (!entry.app || !("name" in entry.app) || !isStrutAppName(entry.app.name)) return null;
+  if (entry.peer) {
+    const peerSwarmId = peers.get(entry.peer);
+    return peerSwarmId ? { swarmId: peerSwarmId, key: workspaceAppDocumentKey(entry.app.name, entry.app.version) } : null;
+  }
+  const linked = entry.url ? workspaceAppOfKey(entry.url) : null;
+  const key = linked && linked.app === entry.app.name ? entry.url! : workspaceAppDocumentKey(entry.app.name, entry.app.version);
+  return { swarmId, key };
+}
+
+/**
  * Where a job's app is: the swarm and its document's link
  * (`/jobs/<job>/files/<path>/dist/index.html`) — strut's `url`, else built
  * from `app: { job, path }`; for a peer's entry, the peer's file of that job
@@ -382,7 +434,7 @@ function jobAppSource(entry: StrutArtifact, swarmId: string, peers: ReadonlyMap<
   const key =
     entry.url && isStrutKey(entry.url)
       ? entry.url
-      : entry.app
+      : entry.app && "job" in entry.app
         ? `/jobs/${encodeURIComponent(entry.app.job)}/files/${encodeStrutPath(entry.app.path)}/${STRUT_APP_DOCUMENT}`
         : null;
   return key && jobAppOfKey(key) ? { swarmId, key } : null;
@@ -407,14 +459,20 @@ export function mapStrutArtifacts(
       dropped.push({ title: entry.title, reason: entry.error });
       continue;
     }
-    // A job's APP (strut plans/apps.md §6): live software, rendered through
-    // the app frame, keyed by its document's link on the swarm that holds
-    // the job — the peer's, for a tagged entry. An `app` that is no job's
-    // (a run's) shows as the link it is, below.
+    // An APP (strut CALLBACKS.md §4): live software, rendered through the
+    // app frame, keyed by its document's link on the swarm that holds it —
+    // a WORKSPACE app by name (the builder's deliverable) or a JOB's app in
+    // its directory (strut plans/apps.md §6); the peer's swarm, for a tagged
+    // entry. An `app` on no swarm hive can name (a run's, a peer the org
+    // has no swarm for) shows as the link it is, below.
     if (entry.kind === "app") {
-      const app = jobAppSource(entry, swarmId, peers);
+      const app = workspaceAppSource(entry, swarmId, peers) ?? jobAppSource(entry, swarmId, peers);
       if (app) {
         refs.push({ ...base, kind: "app", source: { type: "graph", ...app } });
+        continue;
+      }
+      if (entry.peer && entry.app && "name" in entry.app) {
+        dropped.push({ title: entry.title, reason: `on @${entry.peer}, which is no swarm of this org` });
         continue;
       }
     }

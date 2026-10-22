@@ -46,13 +46,48 @@ export interface BoardLayout {
  * (`buildChoiceTree`'s item order, dagre). `measured` heights, when known,
  * replace the estimates.
  */
-export function layoutBoard(tree: BoardTree, selectedId: string | null = null, measured: Record<string, number> = {}): BoardLayout {
+export function layoutBoard(
+  tree: BoardTree,
+  selectedId: string | null = null,
+  measured: Record<string, number> = {},
+  prev: Record<string, { x: number; y: number }> = {},
+  /** Ids that are never remembered (slots, the draft): they always take their fresh place. */
+  transient: (id: string) => boolean = () => false,
+): BoardLayout {
   const heights = Object.fromEntries(tree.items.map((i) => [i.id, measured[i.id] ?? boardCardHeight(i, i.id === selectedId)]));
-  const positions = layoutTree(
+  const fresh = layoutTree(
     tree.items.map((i) => i.id),
     tree.links,
     heights,
     { nodesep: NODE_SEP, ranksep: RANK_SEP },
   );
-  return { positions, heights };
+  return { positions: keepPlaced(tree, fresh, prev, transient), heights };
+}
+
+/**
+ * A card already placed keeps its place, so selecting, expanding or answering
+ * never moves what is on the board. A new card takes its fresh place shifted
+ * by how far its parent was moved from the fresh layout, so it sits beside
+ * its siblings and next to its parent. Parents come before children in
+ * `tree.items`. With nothing placed yet this is the fresh layout.
+ */
+export function keepPlaced(
+  tree: BoardTree,
+  fresh: Record<string, { x: number; y: number }>,
+  prev: Record<string, { x: number; y: number }>,
+  transient: (id: string) => boolean = () => false,
+): Record<string, { x: number; y: number }> {
+  const parent = new Map(tree.links.map((l) => [l.target, l.source]));
+  const out: Record<string, { x: number; y: number }> = {};
+  for (const { id } of tree.items) {
+    const old = transient(id) ? undefined : prev[id];
+    if (old) {
+      out[id] = old;
+      continue;
+    }
+    const p = parent.get(id);
+    const shift = p && out[p] && fresh[p] ? { x: out[p].x - fresh[p].x, y: out[p].y - fresh[p].y } : { x: 0, y: 0 };
+    out[id] = { x: fresh[id].x + shift.x, y: fresh[id].y + shift.y };
+  }
+  return out;
 }

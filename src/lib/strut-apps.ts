@@ -83,6 +83,45 @@ export function jobAppOfKey(key: unknown): { job: string; path: string } | null 
   return isStrutJobId(job) && isStrutAppPath(path) ? { job, path } : null;
 }
 
+/**
+ * A workspace app's document as strut links it (strut CALLBACKS.md §4, the
+ * builder's deliverable): `/apps/<name, encoded>/<vN>/files/dist/index.html`.
+ * Hive keys an app ref by this link, spelled as strut spells it (the name
+ * encoded whole, `/` included), so strut's `url` and a key hive builds are
+ * one identity. With no version — `/apps/<name>/files/dist/index.html`, a
+ * spelling strut never serves — the active version: what a peer's unpinned
+ * entry names (`app: { name }`, read against the peer's swarm when it is
+ * looked at, never resolved here).
+ */
+export function workspaceAppDocumentKey(app: string, version?: string): string {
+  return `/apps/${encodeURIComponent(app)}/${version ? `${version}/` : ""}files/${STRUT_APP_DOCUMENT}`;
+}
+
+/**
+ * A workspace app's document link (`workspaceAppDocumentKey`) back to the
+ * app's name and, when the link names one, its version. Null for any other
+ * link — a job's app is `jobAppOfKey`. A name whose last segment is itself
+ * `vN`-shaped reads as strut would spell it: that segment is the version.
+ */
+export function workspaceAppOfKey(key: unknown): { app: string; version?: string } | null {
+  if (typeof key !== "string") return null;
+  const match = /^\/apps\/(.+?)(?:\/(v\d{1,6}))?\/files\/dist\/index\.html$/.exec(key);
+  if (!match) return null;
+  let app: string;
+  try {
+    app = match[1].split("/").map(decodeURIComponent).join("/");
+  } catch {
+    return null;
+  }
+  if (!isStrutAppName(app)) return null;
+  return match[2] ? { app, version: match[2] } : { app };
+}
+
+/** Either app an `app` ref's key names — a workspace app by name, or a job's by its directory — without the swarm. Null for any other link. */
+export function strutAppOfKey(key: unknown): { app: string; version?: string } | { job: string; path: string } | null {
+  return workspaceAppOfKey(key) ?? jobAppOfKey(key);
+}
+
 /** The deep-link params strut reads (its `web/src/embed.ts` vocabulary). */
 const STRUT_LINK_PARAMS = new Set(["wf", "run", "v", "job", "app", "chat"]);
 const MAX_LINK_VALUE = 512;
