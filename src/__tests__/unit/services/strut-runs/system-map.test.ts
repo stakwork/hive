@@ -248,7 +248,7 @@ describe("launchSystemMapRun", () => {
     expect(mockDispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "system_map_package_cves",
-        workflow: "swarm-systemmap-package-cves",
+        workflow: "swarm-package-cve-findings",
         input: { swarm_url: "https://acme.sphinx.chat:3355", swarm_secret_alias: "{{SWARM_123_API_KEY}}" },
       }),
     );
