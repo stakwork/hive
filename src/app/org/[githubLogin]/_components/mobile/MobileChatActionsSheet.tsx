@@ -54,7 +54,7 @@ export function MobileChatActionsSheet({ githubLogin, open, onOpenChange }: Mobi
     .flatMap((group) => group.items)
     .find((item) => item.id === serverConversationId);
   const [slimPrompt, setSlimPrompt] = useState(false);
-  const [strutEngine, setStrutEngine] = useState(false);
+  const [strutEngine, setStrutEngine] = useState(true);
   const [automationsOpen, setAutomationsOpen] = useState(false);
 
   useEffect(() => {
