@@ -16,8 +16,9 @@
  * sends as `x-strut-actor` on its own launches. Since stakgraph#1811 the lab
  * maps a `lab:peer` JWT with a `sub` to strut's `peer:person` scope: it may
  * launch the `orchestrator` (`peer: person`), open sessions under `<actor>/…`
- * as they are (`<actor>/<peer id>` is the thread Jamie uses too,
- * `orchestratorSessionId`), and join the person's room at `/lab/rooms`.
+ * as they are (`<actor>/<peer id>` is the laptop's own thread with the org —
+ * one more conversation beside the person's Jamie conversations, each on
+ * its own session), and join the person's room at `/lab/rooms`.
  * A swarm whose mcp answers without the `sub` gets no record: a token
  * without one is a strut's, never a person's.
  *

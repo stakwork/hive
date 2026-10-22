@@ -24,7 +24,6 @@ import { createPostRequest, createRequestWithHeaders } from "@/__tests__/support
 import { createTestRepository, createTestSwarm, createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import { hashApiKey } from "@/lib/api-keys";
 import { db } from "@/lib/db";
-import { orchestratorSessionId } from "@/lib/strut-orchestrator";
 
 let installationIdCounter = 940000;
 const BASE = "http://localhost:3000/api/strut-devices";
@@ -169,8 +168,6 @@ describe("strut device pairing", () => {
       key: "acme-central-key",
       body: { scope: "lab:peer", sub: actor, expires_in: "7d" },
     });
-    // The peer id is the `<org>` of the person's thread with it, the one Jamie's launches use.
-    expect(orchestratorSessionId(paired.actor, homeA.slug)).toBe(`${actor}/${homeA.slug}`);
 
     // 6. The code is spent: the credential is handed out once.
     expect(await (await poll(started.deviceCode)).json()).toEqual({ error: "expired_token" });

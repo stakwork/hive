@@ -7,11 +7,9 @@
  * orchestrator" switch in the chat's ⋯ menu — the route hands the
  * message here instead of to `runCanvasAgent`: one launch of strut's
  * `orchestrator` workflow on the org's strut (`resolveStrutTarget`,
- * purpose `orchestrator`), on the person's thread with the org
- * (`orchestratorSessionId`: `<actor>/<org slug>`, shared by every
- * conversation of theirs there and by their paired laptop strut), the
- * message behind the workspace line the lab's agent reads, and the time +
- * the person's zone as `context.line`. The reply lands
+ * purpose `orchestrator`), with the conversation's row id as the
+ * `session`, the message behind the workspace line the lab's agent reads,
+ * and the time + the person's zone as `context.line`. The reply lands
  * through the strut-runs webhook; the route answers at once with an empty
  * synthetic stream, and a launch-marker row (`orchestrator-launch-<id>`)
  * carries the working card until the reply row takes its place.
@@ -20,8 +18,7 @@
  * still on the first is "still working on your last message", not an
  * error — refused here before the launch when hive has a PENDING row for
  * the conversation, and read off strut's `session_busy:` when the two
- * race, or when the thread's turn in flight is another conversation's or
- * the laptop's (hive sees neither).
+ * race.
  */
 
 import { StrutRunStatus } from "@prisma/client";
@@ -35,7 +32,6 @@ import {
   orchestratorContextLine,
   orchestratorLaunchRowId,
   orchestratorPrompt,
-  orchestratorSessionId,
 } from "@/lib/strut-orchestrator";
 import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
 import { describeStrutTargetError, resolveStrutTarget } from "@/services/strut-target";
@@ -83,8 +79,8 @@ export async function orchestratorHasLiveTurn(conversationId: string): Promise<b
 }
 
 /**
- * One turn: launch the `orchestrator` workflow on the person's thread with
- * the org, register it for the Stop button, write the launch marker,
+ * One turn: launch the `orchestrator` workflow with the conversation as
+ * its session, register it for the Stop button, write the launch marker,
  * and return at once — the reply lands through the `orchestrator_turn`
  * handler. Never throws for a refused launch.
  */
@@ -109,13 +105,12 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
       workflow: ORCHESTRATOR_WORKFLOW,
       purpose: "orchestrator",
       // The workflow's input block declares exactly these: the message
-      // behind the workspace line, the person's thread with the org as the
-      // session (the same every turn, from every conversation of theirs and
-      // from their laptop — strut's agent remembers through it), and what
-      // the host knows about the turn — the time, and the card the person is on.
+      // behind the workspace line, the conversation as the session (the
+      // same every turn — strut's agent remembers through it), and what the
+      // host knows about the turn — the time, and the card the person is on.
       input: {
         prompt: orchestratorPrompt(strut.workspaceSlug, message),
-        session: orchestratorSessionId(strut.actor, strut.workspaceSlug),
+        session: conversationId,
         context: {
           line:
             orchestratorContextLine(args.now ?? new Date(), args.timeZone) +
