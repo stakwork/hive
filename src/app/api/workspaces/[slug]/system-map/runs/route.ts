@@ -1,5 +1,5 @@
 /**
- * GET  /api/workspaces/:slug/system-map/runs?workflow=system_map|cwe_check|finding_verify[&findingRefId=]
+ * GET  /api/workspaces/:slug/system-map/runs?workflow=system_map|cwe_check|finding_verify|package_cves[&findingRefId=]
  *      — the workspace's runs of that System Map workflow (the finding checks
  *      covering one finding, with `findingRefId`), newest first (PENDING ones settled from strut
  *      when the run is over there and the callback never arrived). Default `schema`.
