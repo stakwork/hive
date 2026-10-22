@@ -31,7 +31,8 @@ function extractS3Key(value: unknown): string | null {
 
 // Same membership rule as `GET /api/upload/presigned-url`: the file's
 // contents end up in the reply, so the caller must be able to read the key.
-async function canReadKey(key: string, userId: string): Promise<boolean> {
+// Also the rule for the files a strut launch carries (`strut-attachments.ts`).
+export async function canReadKey(key: string, userId: string): Promise<boolean> {
   const info = extractS3KeyInfo(key);
   if (!info?.id) return false;
   if (info.type === "org") {
