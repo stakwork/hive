@@ -15,7 +15,7 @@ import {
   mockInitiativesBuilding,
   mockInitiativeTree,
 } from "@/app/api/mock/graph/initiative-fixture";
-import { graphEpochToMs } from "@/app/org/[githubLogin]/_components/brainstorm-board/desk-layout";
+import { graphEpochToMs, graphTimeToMs } from "@/app/org/[githubLogin]/_components/brainstorm-board/desk-layout";
 import { fromPropertyPairs, isRunGraphRefId, propertyPairs, typeFromLabels } from "@/lib/strut-run-graph/hydrate";
 import {
   INITIATIVE_TREE_READ_LABELS,
@@ -680,7 +680,7 @@ export async function listInitiatives(
     INITIATIVE_SCAN_CAP,
   );
   if (!result.ok) return result;
-  const when = (v: unknown) => (typeof v === "string" && Number.isFinite(Date.parse(v)) ? Date.parse(v) : null);
+  const when = (v: unknown) => graphTimeToMs(v) ?? null;
   const now = Date.now();
   const initiatives = result.data
     .flatMap((r): InitiativeSummary[] => {
