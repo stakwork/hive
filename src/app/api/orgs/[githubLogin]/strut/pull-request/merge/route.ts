@@ -31,10 +31,29 @@ export const dynamic = "force-dynamic";
 /** `owner/name` in the characters GitHub allows in each. */
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
+type MergeMethod = "merge" | "squash" | "rebase";
+
+const NOT_ALLOWED_RE = /(merge commits|squash merges|rebase merges|merge method).*not allowed|not allowed.*merge/i;
+
+function githubMessage(err: unknown): string | undefined {
+  return (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+}
+
+/** Another method the repo allows (prefer squash, then rebase, then merge). */
+async function pickAllowedMethod(octokit: Octokit, owner: string, repo: string, tried: MergeMethod) {
+  const { data } = await octokit.repos.get({ owner, repo });
+  const allowed: [MergeMethod, boolean | undefined][] = [
+    ["squash", data.allow_squash_merge],
+    ["rebase", data.allow_rebase_merge],
+    ["merge", data.allow_merge_commit],
+  ];
+  return allowed.find(([m, ok]) => ok && m !== tried)?.[0];
+}
+
 const bodySchema = z.object({
   repo: z.string().regex(REPO_RE, "repo must be owner/name"),
   number: z.number().int().positive(),
-  mergeMethod: z.enum(["merge", "squash", "rebase"]).default("merge"),
+  mergeMethod: z.enum(["merge", "squash", "rebase"]).default("squash"),
   conversationId: z.string().optional(),
 });
 
@@ -95,12 +114,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Pull request has merge conflicts" }, { status: 409 });
     }
 
-    const { data: merge } = await octokit.pulls.merge({
-      owner,
-      repo: name,
-      pull_number: number,
-      merge_method: mergeMethod,
-    });
+    const doMerge = (method: MergeMethod) =>
+      octokit.pulls.merge({
+        owner,
+        repo: name,
+        pull_number: number,
+        merge_method: method,
+        sha: pull.head.sha,
+      });
+    let merge;
+    try {
+      ({ data: merge } = await doMerge(mergeMethod));
+    } catch (err) {
+      const msg = githubMessage(err);
+      if ((err as { status?: number }).status !== 405 || !msg || !NOT_ALLOWED_RE.test(msg)) throw err;
+      const alt = await pickAllowedMethod(octokit, owner, name, mergeMethod);
+      if (!alt) throw err;
+      ({ data: merge } = await doMerge(alt));
+    }
 
     await reconcile();
     return NextResponse.json({ success: true, merged: true, sha: merge.sha });
@@ -108,12 +139,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const status = (err as { status?: number }).status;
     if (status === 405) {
       return NextResponse.json(
-        { error: "Pull request is not mergeable (checks failing, conflicts, or branch protection)" },
+        {
+          error:
+            githubMessage(err) ??
+            (err as Error).message ??
+            "Pull request is not mergeable (checks failing, conflicts, or branch protection)",
+        },
         { status: 409 },
       );
     }
     if (status === 409) {
-      return NextResponse.json({ error: "Head branch was modified — refresh and try again" }, { status: 409 });
+      return NextResponse.json({ error: githubMessage(err) ?? "Head branch was modified — refresh and try again" }, { status: 409 });
     }
     if (status === 403 || status === 404) {
       return NextResponse.json({ error: "No permission to merge this pull request" }, { status: 403 });
