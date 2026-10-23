@@ -8,16 +8,16 @@ import { healUserChatAgentModel } from "@/lib/ai/resolve-model";
 
 /**
  * Authenticated user's UI preferences. Currently:
- * - `canvasAutonomousTurns` — the per-user opt-in for the autonomous
- *   canvas-agent turns (see `src/services/canvas-agent-autoturn.ts`). The
- *   strut orchestrator's job wake does not read it
- *   (`canvas-strut-autoturn.ts`, `ownerOptIn: false`).
+ * - `canvasAutonomousTurns` — the per-user opt-in for Hive's canvas agent
+ *   acting on its own. Nothing reads it since Jamie moved to strut's
+ *   orchestrator (`docs/jamie-engine.md`), whose job wake has no opt-in
+ *   (`canvas-strut-autoturn.ts`); kept for the API's shape.
  * - `chatAgentModel` — the per-user default model for the canvas Agent
  *   chat, in `getModelValue()` "provider/name" form. Null = inherit the
  *   admin-configured default.
  * `chatAgentModel` is edited from the model picker in the canvas Agent
- * composer. No UI edits `canvasAutonomousTurns` any more; the field and its
- * runtime gate remain.
+ * composer, and the orchestrator runs on it (`params.model`). No UI edits
+ * `canvasAutonomousTurns` any more.
  */
 
 /** GET /api/user/preferences — read the current user's preferences. */

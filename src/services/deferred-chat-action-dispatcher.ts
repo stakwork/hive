@@ -4,27 +4,26 @@
  * Called by the per-minute cron at `/api/cron/deferred-chat-actions`.
  * For each PENDING action whose `fireAt` has passed, the dispatcher:
  *   1. Claims it via SELECT FOR UPDATE SKIP LOCKED (concurrent-safe)
- *   2. Re-runs the original query via `runCanvasAgent`
- *   3. Prepends "Checking back as requested…" to the response
- *   4. Appends the result to the originating `SharedConversation`
- *   5. Patches `deferredCheck.status` → "FIRED" in the messages JSON
- *   6. Marks the `DeferredChatAction` row as FIRED
- *   7. Notifies open browser tabs via Pusher
+ *   2. Launches one turn of strut's `orchestrator` — Jamie's engine
+ *      (`docs/jamie-engine.md`) — on the originating `SharedConversation`,
+ *      with the original query as a check-back message; the reply lands
+ *      later through the strut-runs webhook, like a person's message
+ *   3. Patches `deferredCheck.status` → "FIRED" in the messages JSON
+ *   4. Marks the `DeferredChatAction` row as FIRED
+ *   5. Notifies open browser tabs via Pusher
  *
- * Errors on individual actions are caught, logged, and status is set to
- * FAILED — remaining actions continue processing.
+ * The conversation busy with another turn puts the action back to PENDING
+ * for the next sweep. A refused launch is written into the conversation as
+ * the reply and the action set FAILED; other errors are caught, logged,
+ * and set FAILED too — remaining actions continue processing.
  */
 
 import { db } from "@/lib/db";
-import { type ModelMessage } from "ai";
-import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
-import { toModelMessages } from "@/lib/ai/conversationHelpers";
-import {
-  messagesFromSteps,
-  appendTurnMessages,
-  type StoredMessage,
-} from "@/services/canvas-turn-persistence";
+import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
+import { getBaseUrl } from "@/lib/utils";
+import { appendTurnMessages } from "@/services/canvas-turn-persistence";
 import { updateDeferredCheckStatus } from "@/services/deferred-check";
+import { launchOrchestratorTurn } from "@/services/strut-orchestrator";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
 
 const LOG_PREFIX = "[DeferredChatActions]";
@@ -36,26 +35,13 @@ export interface DeferredDispatchResult {
   errors: string[];
 }
 
-function hasConcepts(c: CachedConcepts): boolean {
-  if (Array.isArray(c.concepts)) return c.concepts.length > 0;
-  if (c.conceptsByWorkspace) {
-    return Object.values(c.conceptsByWorkspace).some(
-      (list) => Array.isArray(list) && list.length > 0,
-    );
-  }
-  return false;
-}
-
-async function persistPromptConcepts(
-  conversationId: string,
-  concepts: CachedConcepts,
-): Promise<void> {
-  const patch = JSON.stringify({ promptConcepts: concepts });
-  await db.$executeRaw`
-    UPDATE shared_conversations
-    SET settings = COALESCE(settings, '{}'::jsonb) || ${patch}::jsonb
-    WHERE id = ${conversationId}
-  `;
+/** What the orchestrator is sent when a check-back comes due. */
+export function deferredCheckMessage(query: string): string {
+  return (
+    "[Check-back] Earlier in this conversation a check-back was scheduled for now. " +
+    'Look into it again and start your reply with "Checking back as requested…". The request:\n\n' +
+    query
+  );
 }
 
 /**
@@ -89,17 +75,12 @@ export async function dispatchDueActions(): Promise<DeferredDispatchResult> {
     );
 
     try {
-      // Load the conversation to get workspaceSlugs + cachedConcepts,
-      // mirroring the same resolution logic as runAutoTurn.
       const conversation = await db.sharedConversation.findUnique({
         where: { id: action.conversationId },
         select: {
           id: true,
           userId: true,
           sourceControlOrgId: true,
-          messages: true,
-          settings: true,
-          workspace: { select: { slug: true } },
         },
       });
 
@@ -128,27 +109,6 @@ export async function dispatchDueActions(): Promise<DeferredDispatchResult> {
           `DeferredChatAction ${action.id} ownership mismatch: ` +
             `action.userId=${action.userId} conversation.userId=${conversation.userId}, ` +
             `action.orgId=${action.orgId} conversation.orgId=${conversation.sourceControlOrgId}`,
-        );
-      }
-
-      // Resolve workspace slugs (mirrors runAutoTurn logic).
-      const settings = (conversation.settings ?? {}) as {
-        extraWorkspaceSlugs?: unknown;
-        promptConcepts?: unknown;
-      };
-      const extraSlugs = Array.isArray(settings.extraWorkspaceSlugs)
-        ? settings.extraWorkspaceSlugs.filter(
-            (s): s is string => typeof s === "string",
-          )
-        : [];
-      const slugSet = new Set<string>();
-      if (conversation.workspace?.slug) slugSet.add(conversation.workspace.slug);
-      for (const s of extraSlugs) slugSet.add(s);
-      const workspaceSlugs = Array.from(slugSet).slice(0, 20);
-
-      if (workspaceSlugs.length === 0) {
-        throw new Error(
-          `No workspace slugs resolved for conversation ${action.conversationId}`,
         );
       }
 
@@ -182,86 +142,49 @@ export async function dispatchDueActions(): Promise<DeferredDispatchResult> {
         continue;
       }
 
-      // Build the model messages from stored conversation history.
-      const storedMessages = Array.isArray(conversation.messages)
-        ? (conversation.messages as unknown as StoredMessage[])
-        : [];
-      const historyMessages = toModelMessages(storedMessages);
-
-      // Append the synthetic deferred-check user message.
-      const syntheticUserMessage: ModelMessage = {
-        role: "user",
-        content: `[Deferred check — do not mention this prefix to the user]\n\n${action.query}`,
-      };
-      const modelMessages: ModelMessage[] = [
-        ...historyMessages,
-        syntheticUserMessage,
-      ];
-
-      // Reuse cached concepts to avoid slow swarm round-trips.
-      const cachedConcepts =
-        settings.promptConcepts &&
-        typeof settings.promptConcepts === "object"
-          ? (settings.promptConcepts as CachedConcepts)
-          : null;
-
-      const idPrefix = `deferred-${action.id}-`;
-
-      const { result: agentResult, cacheableConcepts, cacheHit } =
-        await runCanvasAgent({
-          userId: conversation.userId,
-          orgId: conversation.sourceControlOrgId,
-          workspaceSlugs,
-          messages: modelMessages,
-          cachedConcepts,
-          silentPusher: true,
-          currentCanvasConversationId: action.conversationId,
-        });
-
-      // Self-heal concept cache (mirrors autoturn logic).
-      if (!cacheHit && hasConcepts(cacheableConcepts)) {
-        void persistPromptConcepts(action.conversationId, cacheableConcepts).catch((e) =>
-          console.error(`${LOG_PREFIX} prompt-cache persist failed:`, e),
-        );
-      }
-
-      // Consume the stream to completion.
-      await agentResult.text;
-      const steps = await agentResult.steps;
-
-      // Build rows from steps, then prepend "Checking back as requested…"
-      // to the first text row.
-      const rows = messagesFromSteps(
-        steps as Parameters<typeof messagesFromSteps>[0],
-        idPrefix,
-      );
-
-      // Prepend the "Checking back as requested…" header to the first
-      // assistant text message.
-      const HEADER = "Checking back as requested…\n\n";
-      for (const row of rows) {
-        if (row.role === "assistant" && row.content.trim()) {
-          row.content = HEADER + row.content;
-          break;
-        }
-      }
-
-      // If the agent produced no text rows at all, synthesise a minimal one.
-      if (rows.every((r) => !r.content.trim())) {
-        rows.unshift({
-          id: `${idPrefix}header`,
-          role: "assistant",
-          content: HEADER,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      await appendTurnMessages({
+      const userId = conversation.userId;
+      const orgId = conversation.sourceControlOrgId;
+      const model = await loadUserChatAgentModel(userId);
+      const user = await db.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+      const launched = await launchOrchestratorTurn({
+        userId,
+        orgId,
         conversationId: action.conversationId,
-        rows,
-        idPrefix,
-        reason: "deferred-check-fired",
+        message: deferredCheckMessage(action.query),
+        publicBaseUrl: getBaseUrl(null),
+        timeZone: user?.timezone ?? undefined,
+        ...(model ? { model } : {}),
       });
+
+      if (launched.status === "busy") {
+        // A turn is still running on the conversation: the next sweep tries again.
+        await db.deferredChatAction.update({
+          where: { id: action.id },
+          data: { status: "PENDING", firedAt: null },
+        });
+        console.log(`${LOG_PREFIX} deferredActionId=${action.id} conversation busy — back to PENDING`);
+        continue;
+      }
+
+      if (launched.status === "error") {
+        // No browser is there for a notice: the person reads it in the chat.
+        const idPrefix = `deferred-${action.id}-`;
+        await appendTurnMessages({
+          conversationId: action.conversationId,
+          rows: [
+            {
+              id: `${idPrefix}header`,
+              role: "assistant",
+              content: `Checking back as requested… but the check could not be sent to strut: ${launched.error}`,
+              timestamp: new Date().toISOString(),
+            },
+          ],
+          idPrefix,
+          reason: "deferred-check-fired",
+        });
+        await updateDeferredCheckStatus(action.conversationId, action.id, "FAILED");
+        throw new Error(launched.error);
+      }
 
       // Patch deferredCheck.status → FIRED in the conversation JSON and
       // update the DB row status (already set to FIRED in the transaction

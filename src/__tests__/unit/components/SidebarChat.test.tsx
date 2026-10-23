@@ -1574,27 +1574,17 @@ describe("SidebarChat — header & composer layout", () => {
     expect(screen.queryByLabelText("Agent settings")).toBeNull();
   });
 
-  it("⋯ menu holds Fork, Concept-tree prompt, Strut orchestrator and Automations; no Auto-respond anywhere", async () => {
+  it("⋯ menu holds Fork and Automations — no engine or prompt switch, no Auto-respond anywhere", async () => {
     mockStoreState = conv();
     const { container } = await renderSidebarChatActions();
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("More actions"));
     expect(await screen.findByRole("menuitem", { name: /Fork into my copy/ })).toBeTruthy();
-    const toggle = screen.getByRole("menuitemcheckbox", { name: /Concept-tree prompt/ });
-    expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(screen.queryByText("Agent settings")).toBeNull();
-    // Toggling keeps the menu open and flips the state.
-    await user.click(toggle);
-    expect(screen.getByRole("menuitemcheckbox", { name: /Concept-tree prompt/ }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("menuitem", { name: /Fork into my copy/ })).toBeTruthy();
-    // The Strut orchestrator switch: same shape, its own localStorage key, on by default.
-    const strut = screen.getByRole("menuitemcheckbox", { name: /Strut orchestrator/ });
-    expect(strut.getAttribute("aria-checked")).toBe("true");
-    await user.click(strut);
-    expect(screen.getByRole("menuitemcheckbox", { name: /Strut orchestrator/ }).getAttribute("aria-checked")).toBe("false");
-    expect(window.localStorage.getItem("hive.jamieStrutEngine")).toBe("false");
-    await user.click(screen.getByRole("menuitemcheckbox", { name: /Strut orchestrator/ }));
-    expect(window.localStorage.getItem("hive.jamieStrutEngine")).toBe("true");
+    // Jamie runs on strut for everyone: nothing to switch.
+    expect(screen.queryAllByRole("menuitemcheckbox")).toHaveLength(0);
+    expect(screen.queryByText(/Strut orchestrator/)).toBeNull();
+    expect(screen.queryByText(/Concept-tree prompt/)).toBeNull();
     await user.click(screen.getByRole("menuitem", { name: /^Automations$/ }));
     expect(await screen.findByTestId("automations-section")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/Auto-respond/i);
