@@ -48,9 +48,25 @@ describe("classifyFinding", () => {
   it("detects code issues", () => {
     expect(classifyFinding(cwe())).toBe("code_issue");
   });
-  it("returns null for other kinds", () => {
+  it("classifies code findings leniently", () => {
+    expect(classifyFinding(finding({ file: "a.ts" }))).toBe("code_issue");
+    expect(classifyFinding(finding({ cweId: "CWE-1" }))).toBe("code_issue");
+    expect(classifyFinding(finding({}, { category: "SAST" }))).toBe("code_issue");
+    expect(classifyFinding(finding({}, { file_path: "x.py" }))).toBe("code_issue");
+  });
+  it("uses weaker package hints", () => {
+    for (const k of ["ecosystem", "installed_version", "affected_versions", "package_version"]) {
+      expect(classifyFinding(finding({}, { [k]: "1.0.0" }))).toBe("package_cve");
+    }
+  });
+  it("does not treat a 'source' like semgrep as a package", () => {
+    expect(classifyFinding(finding({ file: "a.ts" }, { source: "semgrep" }))).toBe("code_issue");
+    expect(classifyFinding(cwe({ source: "semgrep" }))).toBe("code_issue");
+    expect(classifyFinding(finding({}, { source: "semgrep" }))).toBeNull();
+  });
+  it("returns null when nothing identifies a kind", () => {
     expect(classifyFinding(finding())).toBeNull();
-    expect(classifyFinding(finding({ cweId: "CWE-1" }))).toBeNull();
+    expect(classifyFinding(finding({}, { finding_status: "confirmed", note: "x" }))).toBeNull();
   });
 });
 
@@ -59,12 +75,11 @@ describe("getFixEligibility", () => {
     expect(getFixEligibility(cwe())).toEqual({ eligible: true, kind: "code_issue" });
     expect(getFixEligibility(pkg())).toEqual({ eligible: true, kind: "package_cve" });
   });
-  it("refuses unconfirmed", () => {
-    for (const v of [undefined, "disconfirmed", ""]) {
-      const r = getFixEligibility(cwe({ finding_status: v }));
-      expect(r.eligible).toBe(false);
+  it("accepts every verdict", () => {
+    for (const v of [undefined, "confirmed", "unverified", "disconfirmed", ""]) {
+      expect(getFixEligibility(cwe({ finding_status: v }))).toEqual({ eligible: true, kind: "code_issue" });
+      expect(getFixEligibility(pkg({ finding_status: v })).eligible).toBe(true);
     }
-    expect(getFixEligibility(cwe({ finding_status: " Confirmed " })).eligible).toBe(true);
   });
   it("refuses unsupported kinds with a reason", () => {
     const r = getFixEligibility(finding());
@@ -104,11 +119,11 @@ describe("bulk cap and planning", () => {
       ["ok", { ...cwe(), refId: "ok" }],
       ["busy", { ...cwe(), refId: "busy" }],
       ["bad", { ...finding(), refId: "bad" }],
-      ["unv", { ...cwe({ finding_status: "disconfirmed" }), refId: "unv" }],
+      ["dis", { ...cwe({ finding_status: "disconfirmed" }), refId: "dis" }],
     ]);
-    const { accepted, refused } = planFixes(["ok", "busy", "bad", "unv", "gone"], map, new Set(["busy"]));
-    expect(accepted.map((a) => a.finding.refId)).toEqual(["ok"]);
-    expect(refused.map((r) => r.refId)).toEqual(["busy", "bad", "unv", "gone"]);
+    const { accepted, refused } = planFixes(["ok", "busy", "bad", "dis", "gone"], map, new Set(["busy"]));
+    expect(accepted.map((a) => a.finding.refId)).toEqual(["ok", "dis"]);
+    expect(refused.map((r) => r.refId)).toEqual(["busy", "bad", "gone"]);
     expect(refused[0].reason).toMatch(/already in progress/);
   });
 });
@@ -184,6 +199,15 @@ describe("buildFindingFixSeed", () => {
     expect(seed).toContain("CWE-79");
     expect(seed).toContain("a/b.ts");
     expect(seed).not.toContain("s3cret");
+    expect(seed).toContain("a single Infosec security finding");
+    expect(seed).not.toMatch(/confirmed Infosec/);
+    expect(seed).toContain("Verdict: confirmed");
+    expect(seed).toMatch(/false positive/);
+  });
+  it("labels a missing verdict unverified", () => {
+    expect(buildFindingFixSeed("code_issue", cwe({ finding_status: undefined }), "ws", "r")).toContain(
+      "Verdict: unverified",
+    );
   });
   it("asks for the fixed version for package CVEs", () => {
     expect(buildFindingFixSeed("package_cve", pkg({ fixed_in: "2.0.0" }), "ws", "r")).toMatch(/fixed version/);
