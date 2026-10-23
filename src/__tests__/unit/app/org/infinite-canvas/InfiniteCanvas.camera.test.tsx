@@ -1,9 +1,14 @@
 import React, { Profiler } from "react";
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockInitiativeTree, MOCK_INITIATIVES } from "@/app/api/mock/graph/initiative-fixture";
-import { toBoard, type InitiativeEntry } from "@/app/org/[githubLogin]/_components/infinite-canvas/board";
+import {
+  initiativesByRecency,
+  kids,
+  toBoard,
+  type InitiativeEntry,
+} from "@/app/org/[githubLogin]/_components/infinite-canvas/board";
 import { InfiniteCanvas } from "@/app/org/[githubLogin]/_components/infinite-canvas/InfiniteCanvas";
 import { initiativeStage } from "@/services/graph/workbench";
 
@@ -46,7 +51,7 @@ vi.mock("@/app/org/[githubLogin]/_components/infinite-canvas/useCanvasBoard", ()
   }),
 }));
 vi.mock("@/app/org/[githubLogin]/_components/infinite-canvas/useCanvasProposals", () => ({
-  useCanvasProposals: () => ({ pending: [], decide: vi.fn() }),
+  useCanvasProposals: () => ({ pending: [], deciding: {}, decide: vi.fn() }),
 }));
 vi.mock("@/app/org/[githubLogin]/_state/useCanvasJobs", () => ({
   useCanvasJobs: () => ({ jobsByRef: {}, artifactsByRef: {} }),
@@ -54,6 +59,16 @@ vi.mock("@/app/org/[githubLogin]/_state/useCanvasJobs", () => ({
 vi.mock("@/app/org/[githubLogin]/_components/infinite-canvas/JamieBar", () => ({
   JamieBar: () => null,
   useAskJamie: () => vi.fn(),
+}));
+// jsdom has no layout for the panel library to measure: plain boxes stand in for the artifact pane.
+vi.mock("@/components/ui/resizable", () => ({
+  RESIZABLE_PANEL_TRANSITION: "",
+  ResizablePanelGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  ResizablePanel: React.forwardRef(function MockPanel({ children }: { children: React.ReactNode }, ref) {
+    React.useImperativeHandle(ref, () => ({ isCollapsed: () => true, collapse() {}, expand() {} }));
+    return <div>{children}</div>;
+  }),
+  ResizableHandle: () => null,
 }));
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/ArtifactPanel", () => ({ ArtifactPanel: () => null }));
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/ChatArtifacts", () => ({ ChatArtifacts: () => null }));
@@ -67,6 +82,13 @@ class FakeResizeObserver {
 }
 const size = (prop: "clientWidth" | "clientHeight", px: number) =>
   Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => px });
+
+const canvas = () =>
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <InfiniteCanvas githubLogin="org" workspaceSlugs={["ws"]} renderChat={() => null} />
+    </QueryClientProvider>,
+  );
 
 describe("InfiniteCanvas camera", () => {
   beforeAll(() => {
@@ -104,5 +126,98 @@ describe("InfiniteCanvas camera", () => {
     expect(world.style.transform).not.toBe(before);
     expect(root.dataset.zoom).toBeDefined();
     expect(commits.mock.calls.length).toBe(rendered);
+  });
+});
+
+describe("InfiniteCanvas cards keep their state", () => {
+  // Each test starts at the org, not at the level the last one left in the URL.
+  beforeEach(() => window.history.replaceState(null, "", "/"));
+  beforeAll(() => {
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    // Flights land at once.
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") }));
+    size("clientWidth", 1200);
+    size("clientHeight", 800);
+  });
+  afterAll(() => {
+    vi.unstubAllGlobals();
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  });
+
+  const initiative = initiativesByRecency(board)[0]!.id;
+  const milestone = kids(board, initiative, "milestone")[0]!.id;
+  const card = (c: HTMLElement, id: string) => c.querySelector<HTMLElement>(`[data-node="${id}"]`);
+  const enter = (c: HTMLElement, id: string) => fireEvent.click(card(c, id)!.querySelector("[data-part=face]")!);
+  const draft = (c: HTMLElement, id: string) => c.querySelector<HTMLTextAreaElement>(`[data-edit-input="${id}"]`);
+  const startRename = (c: HTMLElement, id: string, text: string) => {
+    act(() => fireEvent.click(c.querySelector(`[data-edit="${id}"]`)!));
+    act(() => fireEvent.change(draft(c, id)!, { target: { value: text } }));
+  };
+  /** Drag the desk by `dx` screen px, then let the camera settle. */
+  const pan = async (c: HTMLElement, dx: number) => {
+    const root = c.querySelector<HTMLElement>("[data-level]")!;
+    const at = (type: string, x: number) =>
+      root.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: 400, bubbles: true }));
+    act(() => {
+      at("pointerdown", 600);
+      for (let i = 1; i <= 20; i++) at("pointermove", 600 + (dx * i) / 20);
+      at("pointerup", 600 + dx);
+    });
+    await act(() => new Promise((r) => setTimeout(r, 200)));
+  };
+
+  it("keeps a rename draft while its card is panned out of view and back", async () => {
+    const { container } = canvas();
+    await act(async () => {});
+    act(() => enter(container, initiative));
+    act(() => enter(container, milestone));
+    startRename(container, milestone, "Renamed mid-pan");
+
+    await pan(container, 20_000);
+    expect(card(container, milestone)!.style.display).toBe("none");
+    expect(draft(container, milestone)!.value).toBe("Renamed mid-pan");
+
+    await pan(container, -20_000);
+    expect(card(container, milestone)!.style.display).toBe("");
+    expect(draft(container, milestone)!.value).toBe("Renamed mid-pan");
+  });
+
+  it("keeps a rename draft across a level change away and back", async () => {
+    const { container } = canvas();
+    await act(async () => {});
+    act(() => enter(container, initiative));
+    act(() => enter(container, milestone));
+    startRename(container, milestone, "Renamed mid-flight");
+
+    const escape = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    act(escape);
+    act(escape);
+    expect(container.querySelector("[data-level]")!.getAttribute("data-level")).not.toBe(milestone);
+    expect(card(container, milestone)!.style.display).toBe("none");
+    expect(draft(container, milestone)!.value).toBe("Renamed mid-flight");
+
+    act(() => enter(container, initiative));
+    act(() => enter(container, milestone));
+    expect(card(container, milestone)!.style.display).toBe("");
+    expect(draft(container, milestone)!.value).toBe("Renamed mid-flight");
+  });
+
+  it("doesn't save a draft when its field blurs because the card was hidden", async () => {
+    const { container } = canvas();
+    await act(async () => {});
+    act(() => enter(container, initiative));
+    act(() => enter(container, milestone));
+    startRename(container, milestone, "Half typed");
+    const field = draft(container, milestone)!;
+    field.checkVisibility = () => false;
+    act(() => fireEvent.blur(field));
+    expect(draft(container, milestone)!.value).toBe("Half typed");
+  });
+
+  it("mounts no card it has never shown", async () => {
+    const { container } = canvas();
+    await act(async () => {});
+    expect(card(container, milestone)).toBeNull();
   });
 });
