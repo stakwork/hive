@@ -38,6 +38,8 @@ const VISITS_DOCUMENT_ROUTE = `/api/orgs/acme-org/strut/apps/document?${new URLS
 
 /** The live version of each app on swarm-1, as the versions route reads it; an app not here fails to read. */
 let live: Record<string, string> = {};
+/** The live release of each app held at one (strut with releases); an app not here follows latest. */
+let held: Record<string, { release: string; releases: Array<{ id: string; version: string; lock: unknown }> }> = {};
 const documentRoute = (app: string, version: string) =>
   `/api/orgs/acme-org/strut/apps/document?${new URLSearchParams({ swarmId: "swarm-1", app, version })}`;
 const documentCalls = () => mockFetch.mock.calls.map(([u]) => String(u)).filter((u) => u.includes("/strut/apps/document"));
@@ -45,6 +47,7 @@ const documentCalls = () => mockFetch.mock.calls.map(([u]) => String(u)).filter(
 const mockFetch = vi.fn();
 beforeEach(() => {
   live = { visits: "v2", tracker: "v1" };
+  held = {};
   useAppVersionsStore.setState({ byApp: {}, failed: {}, viewing: {} });
   vi.clearAllMocks();
   vi.stubGlobal("fetch", mockFetch);
@@ -56,8 +59,10 @@ beforeEach(() => {
     const at = `${url.pathname}${url.search}`;
     if (url.pathname.endsWith("/strut/apps/versions")) {
       const version = live[url.searchParams.get("app") ?? ""];
+      const hold = held[url.searchParams.get("app") ?? ""];
+      const body = { live: version, versions: [{ version }], canSetLive: true, ...(hold ? { holdable: true, behind: [], ...hold } : {}) };
       return version
-        ? new Response(JSON.stringify({ live: version, versions: [{ version }], canSetLive: true }), { status: 200, headers: { "content-type": "application/json" } })
+        ? new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })
         : new Response(JSON.stringify({ error: "No such app on the swarm" }), { status: 404 });
     }
     if (url.pathname.endsWith("/strut/apps/document") || at === READER) return new Response(DOC, { status: 200 });
@@ -174,7 +179,21 @@ describe("an app beside a page", () => {
     const nextTurn: ArtifactRef = { ...visitsRef, source: { type: "graph", swarmId: "swarm-1", key: "/apps/visits/v3/files/dist/index.html" } };
     rerender(<Panel artifact={nextTurn} content={parseArtifactContent("app", { swarmId: "swarm-1", app: "visits", version: "v3" }) as never} />);
     await waitFor(() => expect(documentCalls()).toEqual([VISITS_DOCUMENT_ROUTE, documentRoute("visits", "v3")]));
-    expect(mockToast).toHaveBeenCalledWith('"Visits" is now v3');
+    expect(mockToast).toHaveBeenCalledWith('"Visits" is now v3', expect.anything());
+  });
+
+  test("held at a release, a turn that delivers a draft shows the draft and says what is live", async () => {
+    held.visits = { release: "r1", releases: [{ id: "r1", version: "v2", lock: { workflows: {}, steps: {}, floating: [] } }] };
+    const { rerender } = panel(visitsRef, parseArtifactContent("app", { swarmId: "swarm-1", app: "visits", version: "v2" }));
+    await waitFor(() => expect(documentCalls()).toEqual([VISITS_DOCUMENT_ROUTE]));
+
+    // The builder's next turn published v3 as a draft: the live version stays v2.
+    const { Panel } = artifactKind("app");
+    const nextTurn: ArtifactRef = { ...visitsRef, source: { type: "graph", swarmId: "swarm-1", key: "/apps/visits/v3/files/dist/index.html" } };
+    rerender(<Panel artifact={nextTurn} content={parseArtifactContent("app", { swarmId: "swarm-1", app: "visits", version: "v3" }) as never} />);
+    await waitFor(() => expect(documentCalls()).toEqual([VISITS_DOCUMENT_ROUTE, documentRoute("visits", "v3")]));
+    expect(mockToast).toHaveBeenCalledWith('"Visits": v3 is a draft — v2 is live', expect.anything());
+    expect(mockToast).not.toHaveBeenCalledWith('"Visits" is now v3', expect.anything());
   });
 
   test("a version the reader picked stays when the live one moves", async () => {
