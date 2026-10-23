@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import type { CanvasJob } from "../../_state/useCanvasJobs";
 import {
   type Author,
@@ -734,7 +734,7 @@ function ReqRow({ c, r, onDelete }: { c: CardContext; r: PlanNode; onDelete: (r:
  * An initiative's user stories, the journeys, as a full-height bullet list
  * with their requirements indented beneath. They live and are edited here only.
  */
-export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiative: string; w: number; h: number }) {
+export function StoriesPanel({ c, initiative, w }: { c: CardContext; initiative: string; w: number; h: number }) {
   const b = c.board;
   const stories = kids(b, initiative, "story");
   const reqs = stories.flatMap((st) => kids(b, st.id, "requirement"));
@@ -753,14 +753,38 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
   // A journey is pending (muted) until every requirement under it is accepted or dropped.
   const pending = (id: string) =>
     kids(b, id, "requirement").some((r) => r.status !== "accepted" && r.status !== "dropped");
+  // The panel fills its slot on the card and its list scrolls; track whether more is below the fold.
+  const listRef = useRef<HTMLDivElement>(null);
+  const [below, setBelow] = useState({ more: false, stories: 0 });
+  const measure = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const more = el.scrollHeight - el.scrollTop - el.clientHeight > 4;
+    const bottom = el.getBoundingClientRect().bottom;
+    const hidden = more
+      ? Array.from(el.querySelectorAll("[data-story]")).filter((li) => li.getBoundingClientRect().top >= bottom - 4)
+          .length
+      : 0;
+    setBelow((p) => (p.more === more && p.stories === hidden ? p : { more, stories: hidden }));
+  }, []);
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [measure, stories.length, reqs.length]);
   return (
     <div
       data-stories={initiative}
       style={{
         width: w,
-        minHeight: h,
+        height: "100%",
         boxSizing: "border-box",
         overflow: "hidden",
+        position: "relative",
         padding: "12px 16px",
         borderRadius: 10,
         background: a("card", 85),
@@ -776,119 +800,147 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
         <span hidden={unread} style={{ fontFamily: TYPE, fontSize: 11.5, color: v("muted") }}>
           {plural(stories.length, "journey")} · {plural(reqs.length, "requirement")}
         </span>
+        <span
+          hidden={!below.more}
+          data-stories-hint={initiative}
+          style={{ marginLeft: "auto", fontFamily: TYPE, fontSize: 11, color: v("muted") }}
+        >
+          {below.stories ? `↓ ${plural(below.stories, "more story", "more stories")}` : "↓ scroll for more"}
+        </span>
       </div>
-      <ul
-        style={{
-          listStyle: "disc",
-          margin: 0,
-          padding: "0 0 0 18px",
-          minWidth: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
+      <div
+        ref={listRef}
+        data-wheel-scroll
+        data-stories-scroll={initiative}
+        onScroll={measure}
+        style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}
       >
-        {stories.map((st, i) => (
-          <li
-            key={st.id}
-            data-story={st.id}
-            className={c.flash === st.id ? "icb-flash" : undefined}
-            style={{
-              borderLeft: st.pencil ? PENCIL_BORDER : undefined,
-              paddingLeft: st.pencil ? 9 : 0,
-              color: v("road"),
-              minWidth: 0,
-            }}
-          >
-            <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
-              <span style={{ flexShrink: 0, fontFamily: TYPE, fontSize: 11.5, fontWeight: 600, color: v("road") }}>
-                [{i + 1}]
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {st.pencil ? (
-                  // Proposed: its words and Accept / Reject; nothing to edit until it's real.
-                  <>
-                    <div
+        <ul
+          style={{
+            listStyle: "disc",
+            margin: 0,
+            padding: "0 0 0 18px",
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          {stories.map((st, i) => (
+            <li
+              key={st.id}
+              data-story={st.id}
+              className={c.flash === st.id ? "icb-flash" : undefined}
+              style={{
+                borderLeft: st.pencil ? PENCIL_BORDER : undefined,
+                paddingLeft: st.pencil ? 9 : 0,
+                color: v("road"),
+                minWidth: 0,
+              }}
+            >
+              <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
+                <span style={{ flexShrink: 0, fontFamily: TYPE, fontSize: 11.5, fontWeight: 600, color: v("road") }}>
+                  [{i + 1}]
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {st.pencil ? (
+                    // Proposed: its words and Accept / Reject; nothing to edit until it's real.
+                    <>
+                      <div
+                        style={{
+                          ...authored(st.author, 12.5),
+                          fontWeight: 400,
+                          color: v("proposedInk"),
+                          whiteSpace: "pre-wrap",
+                          overflowWrap: "anywhere",
+                        }}
+                      >
+                        {st.name}
+                      </div>
+                      <PencilBar c={c} pencil={st.pencil} size={10} />
+                    </>
+                  ) : st.pencilEdit ? (
+                    <>
+                      <div style={{ ...authored(st.author, 12.5), whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                        <PencilDiff was={st.name} now={st.pencilEdit.name} />
+                      </div>
+                      <PencilBar c={c} pencil={st.pencilEdit} size={10} />
+                    </>
+                  ) : (
+                    <EditableText
+                      wrap
+                      value={st.name}
+                      onSave={(t) => c.actions.rename(st.id, t)}
+                      onDelete={() => c.actions.remove(st.id)}
+                      testId={st.id}
                       style={{
                         ...authored(st.author, 12.5),
-                        fontWeight: 400,
-                        color: v("proposedInk"),
-                        whiteSpace: "pre-wrap",
-                        overflowWrap: "anywhere",
+                        ...(pending(st.id) ? { fontWeight: 400, color: v("muted") } : { fontWeight: 600 }),
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+              <div
+                style={{ marginLeft: 12, marginTop: 4, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}
+              >
+                {kids(b, st.id, "requirement").map((r) => (
+                  <ReqRow key={r.id} c={c} r={r} onDelete={delReq(st.id)} />
+                ))}
+                {undo?.storyId === st.id ? (
+                  <div
+                    data-undo={st.id}
+                    {...stop}
+                    style={{ fontFamily: TYPE, fontSize: 11, color: v("muted"), display: "flex", gap: 6 }}
+                  >
+                    <span>Requirement deleted.</span>
+                    <button
+                      type="button"
+                      data-undo-btn={st.id}
+                      style={actBtn}
+                      onClick={() => {
+                        c.actions.addRequirement(st.id, undo.text);
+                        setUndo(null);
                       }}
                     >
-                      {st.name}
-                    </div>
-                    <PencilBar c={c} pencil={st.pencil} size={10} />
-                  </>
-                ) : st.pencilEdit ? (
-                  <>
-                    <div style={{ ...authored(st.author, 12.5), whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                      <PencilDiff was={st.name} now={st.pencilEdit.name} />
-                    </div>
-                    <PencilBar c={c} pencil={st.pencilEdit} size={10} />
-                  </>
-                ) : (
-                  <EditableText
-                    wrap
-                    value={st.name}
-                    onSave={(t) => c.actions.rename(st.id, t)}
-                    onDelete={() => c.actions.remove(st.id)}
+                      Undo
+                    </button>
+                  </div>
+                ) : null}
+                <div hidden={!!st.pencil} style={{ marginTop: 2 }}>
+                  <AddInline
+                    what="requirement"
+                    size={10}
                     testId={st.id}
-                    style={{
-                      ...authored(st.author, 12.5),
-                      ...(pending(st.id) ? { fontWeight: 400, color: v("muted") } : { fontWeight: 600 }),
-                    }}
+                    onAdd={(t) => c.actions.addRequirement(st.id, t)}
                   />
-                )}
-              </div>
-            </div>
-            <div
-              style={{ marginLeft: 12, marginTop: 4, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}
-            >
-              {kids(b, st.id, "requirement").map((r) => (
-                <ReqRow key={r.id} c={c} r={r} onDelete={delReq(st.id)} />
-              ))}
-              {undo?.storyId === st.id ? (
-                <div
-                  data-undo={st.id}
-                  {...stop}
-                  style={{ fontFamily: TYPE, fontSize: 11, color: v("muted"), display: "flex", gap: 6 }}
-                >
-                  <span>Requirement deleted.</span>
-                  <button
-                    type="button"
-                    data-undo-btn={st.id}
-                    style={actBtn}
-                    onClick={() => {
-                      c.actions.addRequirement(st.id, undo.text);
-                      setUndo(null);
-                    }}
-                  >
-                    Undo
-                  </button>
                 </div>
-              ) : null}
-              <div hidden={!!st.pencil} style={{ marginTop: 2 }}>
-                <AddInline
-                  what="requirement"
-                  size={10}
-                  testId={st.id}
-                  onAdd={(t) => c.actions.addRequirement(st.id, t)}
-                />
               </div>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <div style={{ marginTop: 4 }}>
-        <AddInline
-          what="user story"
-          size={11}
-          testId={`story:${initiative}`}
-          onAdd={(t) => c.actions.addStory(initiative, t)}
-        />
+            </li>
+          ))}
+        </ul>
+        <div style={{ marginTop: 4 }}>
+          <AddInline
+            what="user story"
+            size={11}
+            testId={`story:${initiative}`}
+            onAdd={(t) => c.actions.addStory(initiative, t)}
+          />
+        </div>
       </div>
+      <div
+        hidden={!below.more}
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 56,
+          pointerEvents: "none",
+          background: `linear-gradient(to bottom, transparent, ${a("card", 95)})`,
+        }}
+      />
     </div>
   );
 }

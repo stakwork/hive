@@ -67,7 +67,6 @@ import {
   type OpenTrees,
   optionKey,
   orgRect,
-  STORIES_W,
   toScreen,
   visibility,
   zoomAbout,
@@ -86,7 +85,7 @@ const FACE_W: Partial<Record<string, number>> = {
   feature: 320,
   architecture: 760,
   build: 760,
-  stories: STORIES_W,
+  stories: 1500,
   stack: 220,
 };
 const FRAME_W: Partial<Record<string, number>> = { initiative: 1200, milestone: 820, feature: 820 };
@@ -1266,7 +1265,7 @@ function SceneItem({
   if (n.type === "stories")
     return (
       <div style={box}>
-        <div style={scaled(FACE_W.stories!, 1, { height: "auto", minHeight: dh(FACE_W.stories!) })}>
+        <div style={scaled(FACE_W.stories!)}>
           <StoriesPanel c={c} initiative={n.parent} w={FACE_W.stories!} h={dh(FACE_W.stories!)} />
         </div>
       </div>
