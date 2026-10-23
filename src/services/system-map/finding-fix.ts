@@ -218,7 +218,7 @@ async function writeMark(config: JarvisConnectionConfig, refId: string, properti
 async function readFinding(config: JarvisConnectionConfig, refId: string): Promise<SystemMapFinding | null> {
   const node = await readNodeByRef(config, refId);
   if (!node.success) return null;
-  return parseFinding({ ref_id: refId, node_type: node.node_type, properties: node.properties ?? {} });
+  return parseFinding({ ref_id: refId, node_type: node.node_type ?? "Finding", properties: node.properties ?? {} });
 }
 
 /**
