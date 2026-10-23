@@ -97,6 +97,9 @@ interface Spec {
   brainstorms?: string[];
 }
 
+/** A plan the size of a real one in production (`causationSpec`), for profiling the canvas. */
+export const MOCK_LARGE_INITIATIVE = "mock-initiative-causation";
+
 export const MOCK_INITIATIVES: Spec[] = [
   {
     id: "mock-initiative-onboarding",
@@ -259,7 +262,54 @@ export const MOCK_INITIATIVES: Spec[] = [
     brief: "Pass the SOC 2 Type II audit so enterprise deals stop stalling at security review.",
   },
   { id: "mock-initiative-market", name: "Janitor marketplace", updatedDaysAgo: 68, by: "strut" },
+  causationSpec(),
 ];
+
+/**
+ * A large, fully planned initiative the size of a real one: 18 user stories with 40 requirements, five
+ * milestones of features, and six brainstorms on the initiative. Its jobs and artifacts are in
+ * `strut-artifacts.ts`. Last updated long ago, so it sits in the stack and the desk stays as it was.
+ */
+function causationSpec(): Spec {
+  const id = MOCK_LARGE_INITIATIVE;
+  const milestones = ["Cause node in the graph", "Write causes from jobs", "Read causes", "Benchmarks", "Rollout"];
+  const stories = Array.from({ length: 18 }, (_, i) => ({
+    id: `mock-cause-s${i + 1}`,
+    text: `As a researcher, I trace effect ${i + 1} back to the cause that produced it`,
+    by: i % 3 ? ("strut" as const) : ("human" as const),
+    reqs: Array.from({ length: i % 3 === 0 ? 3 : 2 }, (_, k): [string, string, string] => [
+      `mock-cause-s${i + 1}-r${k + 1}`,
+      `Cause ${i + 1}.${k + 1} is stored with its evidence and the job that wrote it`,
+      ["accepted", "proposed", "accepted"][k],
+    ]),
+  }));
+  return {
+    id,
+    name: "Causation primitive",
+    updatedDaysAgo: 90,
+    by: "human",
+    brief:
+      "A Cause node in the graph links what happened to why, so Jamie and the janitors can explain an outcome instead of guessing.",
+    milestones: milestones.map((name, i) => ({ id: `mock-cause-m${i + 1}`, name })),
+    stories,
+    features: milestones.flatMap((_, m) =>
+      Array.from({ length: 3 }, (_, k) => ({
+        id: `mock-cause-m${m + 1}-f${k + 1}`,
+        milestone: `mock-cause-m${m + 1}`,
+        name: `Cause step ${m + 1}.${k + 1}`,
+        ...(k === 0
+          ? {
+              architecture: {
+                name: `Cause store ${m + 1}`,
+                description: "Cause nodes hang off the effect they explain; each carries its evidence as edges.",
+              },
+            }
+          : {}),
+      })),
+    ),
+    brainstorms: Array.from({ length: 6 }, (_, i) => `mock-brainstorm-cause-${i + 1}`),
+  };
+}
 
 function fixtureTree(spec: Spec): Tree {
   const nodes: InitiativeTreeNode[] = [];

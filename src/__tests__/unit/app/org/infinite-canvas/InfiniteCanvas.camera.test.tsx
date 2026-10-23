@@ -14,6 +14,9 @@ import { initiativeStage } from "@/services/graph/workbench";
 
 globalThis.React = React;
 
+// A job running on the most recent initiative, as the read returns it: the same objects every render.
+const jobs = vi.hoisted(() => ({ jobsByRef: {} as Record<string, unknown[]>, artifactsByRef: {} }));
+
 const entry = (id: string, name: string, updated: number): InitiativeEntry => {
   const t = mockInitiativeTree(id);
   return {
@@ -33,6 +36,19 @@ const entry = (id: string, name: string, updated: number): InitiativeEntry => {
 };
 const entries = MOCK_INITIATIVES.map((s, i) => entry(s.id, s.name, 100 - i));
 const board = toBoard(entries, {});
+const busy = initiativesByRecency(board)[0]!.id;
+jobs.jobsByRef[busy] = [
+  {
+    jobId: "job-1",
+    runId: "job-1",
+    title: "Build it out",
+    state: "running",
+    startedBy: null,
+    refId: busy,
+    initiativeRefId: busy,
+    updatedAt: Date.now(),
+  },
+];
 
 vi.mock("next/font/google", () => ({
   Patrick_Hand: () => ({ style: { fontFamily: "hand" } }),
@@ -53,9 +69,7 @@ vi.mock("@/app/org/[githubLogin]/_components/infinite-canvas/useCanvasBoard", ()
 vi.mock("@/app/org/[githubLogin]/_components/infinite-canvas/useCanvasProposals", () => ({
   useCanvasProposals: () => ({ pending: [], deciding: {}, decide: vi.fn() }),
 }));
-vi.mock("@/app/org/[githubLogin]/_state/useCanvasJobs", () => ({
-  useCanvasJobs: () => ({ jobsByRef: {}, artifactsByRef: {} }),
-}));
+vi.mock("@/app/org/[githubLogin]/_state/useCanvasJobs", () => ({ useCanvasJobs: () => jobs }));
 vi.mock("@/app/org/[githubLogin]/_components/infinite-canvas/JamieBar", () => ({
   JamieBar: () => null,
   useAskJamie: () => vi.fn(),
@@ -126,6 +140,43 @@ describe("InfiniteCanvas camera", () => {
     expect(world.style.transform).not.toBe(before);
     expect(root.dataset.zoom).toBeDefined();
     expect(commits.mock.calls.length).toBe(rendered);
+  });
+});
+
+describe("InfiniteCanvas at rest", () => {
+  beforeEach(() => window.history.replaceState(null, "", "/"));
+  beforeAll(() => {
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") }));
+    size("clientWidth", 1200);
+    size("clientHeight", 800);
+  });
+  afterAll(() => {
+    vi.unstubAllGlobals();
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  });
+
+  it("renders nothing while a job runs and nothing moves", async () => {
+    const commits = vi.fn();
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <Profiler id="canvas" onRender={commits}>
+          <InfiniteCanvas githubLogin="org" workspaceSlugs={["ws"]} renderChat={() => null} />
+        </Profiler>
+      </QueryClientProvider>,
+    );
+    await act(async () => {});
+    act(() => {
+      fireEvent.click(container.querySelector(`[data-node="${busy}"] [data-part=face]`)!);
+    });
+    // Arrived, settled, and past the one re-frame the canvas does once its view has slid into place.
+    await act(() => new Promise((r) => setTimeout(r, 700)));
+    expect(container.querySelector(`[data-node="${busy}"] .icb-glow`)).not.toBeNull();
+    const settled = commits.mock.calls.length;
+
+    await act(() => new Promise((r) => setTimeout(r, 1500)));
+    expect(commits.mock.calls.length).toBe(settled);
   });
 });
 

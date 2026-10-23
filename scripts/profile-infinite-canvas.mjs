@@ -2,23 +2,28 @@
  * Profiles the org page's Brainstorm tab (the infinite canvas) against a
  * local dev server with USE_MOCKS=true and mock sign-in (POD_URL set):
  *
- *   node scripts/profile-infinite-canvas.mjs [--base http://localhost:3000] [--runs 3] [--out <dir>]
+ *   node scripts/profile-infinite-canvas.mjs [--base http://localhost:3000] [--runs 3] [--out <dir>] [--only large]
  *
  * 1. Signs in as the mock user and grows the mock plan to a realistic size
  *    through the app's own write endpoints (in-memory mock store: once per
  *    dev-server start; reruns see it's there and skip).
  * 2. For each gesture — a 2 s wheel zoom and a 2 s drag pan at the org and
- *    inside an initiative, and the flight org → initiative — runs it `runs`
- *    times in two modes on a fresh page load:
+ *    inside an initiative, the flight org → initiative, and on the large
+ *    mock initiative (`MOCK_LARGE_INITIATIVE`, a running job on it) 3 s of
+ *    no input and a 2 s drag pan — runs it `runs` times in two modes on a
+ *    fresh page load:
  *      - plain: frames (rAF), long tasks, long animation frames, React
  *        commits and their render ms (HostRoot `actualDuration`), and
  *        main-thread busy time (CDP `Performance.getMetrics`);
  *      - fibers: the same commits, also walking each committed tree to count
  *        which components rendered (`SceneItem` in particular). The walk
  *        costs time, so its frame numbers aren't reported.
+ *    The commits in the 400 ms after a gesture (the camera settling) are
+ *    reported apart and kept out of the gesture's own numbers.
  *    Medians across runs are printed. One more plain run per gesture records
- *    a DevTools trace (`<out>/*.trace.json`); tracing slows the page, so that
- *    run isn't in the medians.
+ *    a DevTools trace (`<out>/*.trace.json`), read for paint, raster and
+ *    style time per frame; tracing slows the page, so that run isn't in the
+ *    medians.
  * 3. Counts /api requests for: the tab's first load, opening ⌘K, and a deep
  *    link `?at=` to a feature under an initiative that isn't on the desk.
  *
@@ -32,7 +37,7 @@
  * display's rate; the default software GL caps it near 11 fps.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
@@ -44,9 +49,13 @@ const BASE = arg("base", "http://localhost:3000");
 const RUNS = Number(arg("runs", 3));
 const OUT = arg("out", join(process.cwd(), "canvas-profile"));
 const LOGIN = arg("login", "dev-user");
+/** Only the scenarios whose name contains one of these (comma-separated), e.g. `--only large`. */
+const ONLY = arg("only", "").split(",").filter(Boolean);
 const WS = arg("workspace", "mock-stakgraph");
 const CANVAS = `/org/${LOGIN}?view=canvas&tab=brainstorm`;
 const INITIATIVE = "mock-initiative-onboarding";
+/** The fixture's initiative the size of a real one (`initiative-fixture.ts`), with a job running on it. */
+const LARGE = "mock-initiative-causation";
 const VIEWPORT = { width: 1440, height: 900 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -328,6 +337,11 @@ const GESTURES = {
     await sleep(2000);
     return 2000;
   },
+  /** 3 s with no input at all: nothing should commit unless the data changes. */
+  idle: async () => {
+    await sleep(3000);
+    return 3000;
+  },
 };
 
 const SCENARIOS = [
@@ -336,12 +350,14 @@ const SCENARIOS = [
   { name: `zoom @ initiative`, gesture: "zoom", at: INITIATIVE },
   { name: `pan @ initiative`, gesture: "pan", at: INITIATIVE },
   { name: "flight org → initiative", gesture: "flight", at: null },
+  { name: "idle @ large initiative, job running", gesture: "idle", at: LARGE },
+  { name: "pan @ large initiative", gesture: "pan", at: LARGE },
 ];
 
 /** Loads the tab (at a level) and waits until its reads and layout have settled. */
 async function open(page, at) {
   await page.goto(`${BASE}${CANVAS}${at ? `&at=${encodeURIComponent(at)}` : ""}`);
-  await page.locator("[data-infinite-canvas] [data-node]").first().waitFor({ timeout: 60_000 });
+  await page.locator("[data-infinite-canvas] [data-node]").first().waitFor({ state: "attached", timeout: 60_000 });
   await page
     .waitForFunction(
       (lvl) => document.querySelector("[data-infinite-canvas] [data-zoom]")?.dataset.level === lvl,
@@ -382,15 +398,23 @@ async function measure(context, scenario, fibers, tracePath) {
   const ms = await GESTURES[scenario.gesture](page, cdp);
   // Let the last frame land.
   await sleep(100);
-  const p = await page.evaluate(() => {
+  await page.evaluate(() => (window.__prof.t1 = performance.now()));
+  const b1 = await busy();
+  // The camera settles `SETTLE_MS` after the last input: its commit, apart from the gesture's.
+  await sleep(400);
+  const all = await page.evaluate(() => {
     window.__prof.on = false;
-    window.__prof.t1 = performance.now();
     return window.__prof;
   });
-  const b1 = await busy();
   if (tracePath) await context.browser().stopTracing();
   await page.close();
 
+  const p = {
+    ...all,
+    commits: all.commits.filter((c) => c.t <= all.t1),
+    frames: all.frames.filter((t) => t <= all.t1),
+  };
+  const settled = all.commits.filter((c) => c.t > all.t1);
   const secs = (p.t1 - p.t0) / 1000;
   const gaps = p.frames.slice(1).map((t, i) => t - p.frames[i]);
   const dropped = gaps.reduce((n, d) => n + Math.max(0, Math.round(d / period) - 1), 0);
@@ -422,6 +446,26 @@ async function measure(context, scenario, fibers, tracePath) {
     loafs: p.loafs.length,
     loafBlockingMs: p.loafs.reduce((a, b) => a + b.block, 0),
     mainThreadBusyPct: ((b1.task - b0.task) / (secs * 1000)) * 100,
+    settleCommits: settled.length,
+    settleMs: settled.reduce((a, c) => a + (Number.isFinite(c.renderMs) ? c.renderMs : 0), 0),
+    settleComponents: settled.reduce((a, c) => a + (c.total ?? 0), 0),
+  };
+}
+
+/** Paint, raster and style time per frame in a recorded trace (the page's renderer; raster on any of its threads). */
+function tracePerFrame(path) {
+  const raw = JSON.parse(readFileSync(path, "utf8"));
+  const events = Array.isArray(raw) ? raw : raw.traceEvents;
+  const main = events.find((e) => e.name === "thread_name" && e.args?.name === "CrRendererMain");
+  const pid = main?.pid;
+  const sum = (pred) => events.reduce((a, e) => (e.ph === "X" && e.pid === pid && pred(e) ? a + e.dur / 1000 : a), 0);
+  const onMain = (e) => e.tid === main?.tid;
+  const frames = events.filter((e) => e.pid === pid && onMain(e) && e.name === "BeginMainThreadFrame").length || 1;
+  return {
+    frames,
+    paintMsPerFrame: sum((e) => onMain(e) && e.name === "Paint") / frames,
+    rasterMsPerFrame: sum((e) => e.name === "RasterTask") / frames,
+    styleMsPerFrame: sum((e) => onMain(e) && e.name === "UpdateLayoutTree") / frames,
   };
 }
 
@@ -477,14 +521,16 @@ console.log(`seeded; deep link target ${deepRef}`);
 }
 
 const results = {};
-for (const s of SCENARIOS) {
+for (const s of SCENARIOS.filter((x) => !ONLY.length || ONLY.some((o) => x.name.includes(o)))) {
   const plain = [];
   const fib = [];
   for (let i = 0; i < RUNS; i++) {
     plain.push(await measure(context, s, false, null));
     fib.push(await measure(context, s, true, null));
   }
-  await measure(context, s, false, join(OUT, `${s.gesture}-${s.at ? "initiative" : "org"}.trace.json`));
+  const tracePath = join(OUT, `${s.gesture}-${s.at === LARGE ? "large" : s.at ? "initiative" : "org"}.trace.json`);
+  await measure(context, s, false, tracePath);
+  const perFrame = tracePerFrame(tracePath);
   const med = (k, from = plain) => +median(from.map((r) => r[k])).toFixed(1);
   results[s.name] = {
     "refresh (Hz)": +(1000 / plain[0].period).toFixed(0),
@@ -503,6 +549,12 @@ for (const s of SCENARIOS) {
     "long animation frames (n)": med("loafs"),
     "LoAF blocking (ms)": med("loafBlockingMs"),
     "main thread busy (%)": med("mainThreadBusyPct"),
+    "settle commits after the gesture": med("settleCommits"),
+    "settle render ms": med("settleMs"),
+    "settle components rendered": med("settleComponents", fib),
+    "paint ms / frame (traced run)": +perFrame.paintMsPerFrame.toFixed(2),
+    "raster ms / frame (traced run)": +perFrame.rasterMsPerFrame.toFixed(2),
+    "style recalc ms / frame (traced run)": +perFrame.styleMsPerFrame.toFixed(2),
     "most rendered / commit (fibers run 1)": fib[0].top.map(([k, v]) => `${k} ${v}`).join(", "),
     runs: { plain, fibers: fib.map(({ top, ...r }) => r) },
   };
