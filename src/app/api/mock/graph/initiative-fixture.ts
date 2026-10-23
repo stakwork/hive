@@ -614,6 +614,17 @@ const BRAINSTORM_ANSWERS: Record<string, Array<{ text: string; makes: string[] }
   ],
 };
 
+/** The plan card a brainstorm root is about (the graph's Question -ABOUT->): in the fixtures or started by a fake job. */
+export function mockBrainstormAbout(root: string): string | undefined {
+  for (const [id, roots] of store().brainstorms) if (roots.includes(root)) return id;
+  for (const spec of MOCK_INITIATIVES) {
+    if (spec.brainstorms?.includes(root)) return spec.id;
+    const card = [...(spec.milestones ?? []), ...(spec.features ?? [])].find((n) => n.brainstorms?.includes(root));
+    if (card) return card.id;
+  }
+  return undefined;
+}
+
 /**
  * Fakes strut's `brainstorm` on one card (an initiative, milestone or
  * feature): a root question about it with three answers, each listing what

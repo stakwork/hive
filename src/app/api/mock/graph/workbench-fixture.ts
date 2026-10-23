@@ -9,7 +9,6 @@
 import type {
   ConnectionGroup,
   ConnectionItem,
-  BrainstormRoot,
   ChoiceEffect,
   ChoiceTreeData,
   ConnectionPageArgs,
@@ -534,7 +533,7 @@ function mockChoiceTreeUndated(focus: string, labels: string[]): ChoiceTreeData 
 
 /** The root of the brainstorm board mock (`mockBoardTree`). */
 export const MOCK_BOARD_ROOT = "mock-brainstorm-board";
-/** The root of the large, production-shaped board mock (`mockLargeTree`); the first of `mockBrainstormList`. */
+/** The root of the large, production-shaped board mock (`mockLargeTree`). */
 export const MOCK_LARGE_ROOT = "mock-brainstorm-large";
 
 /** `data` cut down to `focus` and its descendants. */
@@ -545,18 +544,6 @@ function subtreeOf(data: ChoiceTreeData, focus: string): ChoiceTreeData {
     for (const e of data.edges) if (keep.has(e.source) && !keep.has(e.target)) keep.add(e.target), (grew = true);
   }
   return { ...data, nodes: data.nodes.filter((n) => keep.has(n.ref_id)), edges: data.edges.filter((e) => keep.has(e.source) && keep.has(e.target)) };
-}
-
-/** The brainstorm roots, newest first; the first is the large board mock. */
-export function mockBrainstormList(): BrainstormRoot[] {
-  return [
-    { ref_id: MOCK_LARGE_ROOT, text: "ASSUMED GOAL: catch changes that weaken security before they merge, without slowing every PR down", job: "job-mock-large", made_by: "user" },
-    { ref_id: MOCK_BOARD_ROOT, text: "How should teams share brainstorm boards?", job: "job-mock-board", made_by: "user" },
-    { ref_id: "mock-brainstorm-pricing", text: "What should the pricing page lead with?", job: "job-mock-pricing", made_by: "model" },
-    { ref_id: "mock-brainstorm-onboarding", text: "How do we shorten onboarding?", job: null, made_by: "user" },
-    { ref_id: "mock-brainstorm-repo", text: "How do people choose what Hive watches?", job: "job-mock-repo", made_by: "model" },
-    { ref_id: "mock-brainstorm-auth", text: "GitHub App or OAuth app?", job: null, made_by: "user" },
-  ];
 }
 
 /**

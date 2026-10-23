@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import type { CanvasJob } from "../../_state/useCanvasJobs";
 import {
   type Author,
@@ -42,7 +42,7 @@ export const stop = {
 
 export interface NodeActions {
   ask: (id: string, anchor: DOMRect) => void;
-  setStatus: (reqId: string, status: "accepted" | "dropped") => void;
+  setStatus: (reqId: string, status: "accepted" | "dropped" | "proposed") => void;
   /** A requirement typed in by hand. */
   addRequirement: (storyId: string, text: string) => void;
   /** Rewrite a card's words: a container's name, a brief's, story's or requirement's text. */
@@ -355,7 +355,10 @@ export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: num
             {node.type === "feature" && work ? <StatusPill state={work.state} size={11} /> : null}
           </div>
           {node.type === "feature" ? (
-            <div style={{ fontFamily: TYPE, fontSize: 11.5, color: v("muted") }}>{work?.line}</div>
+            <>
+              <div style={{ fontFamily: TYPE, fontSize: 11.5, color: v("muted") }}>{work?.line}</div>
+              <RepoChips id={node.id} repos={work?.repos ?? []} />
+            </>
           ) : (
             <div style={{ minHeight: 0, overflow: "hidden" }}>
               <ChildList c={c} node={node} size={big ? 13 : 11.5} max={3} />
@@ -442,6 +445,7 @@ function EditableText({
   style,
   testId,
   maxRows = 4,
+  wrap = false,
 }: {
   value: string;
   onSave: (text: string) => void;
@@ -450,6 +454,8 @@ function EditableText({
   testId: string;
   /** The most rows the field grows to before it scrolls. */
   maxRows?: number;
+  /** Wrap full-width text instead of ellipsizing; the field auto-grows. */
+  wrap?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(value);
@@ -470,8 +476,9 @@ function EditableText({
           display: "block",
           cursor: "text",
           borderRadius: 4,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
+          ...(wrap
+            ? { whiteSpace: "pre-wrap", overflowWrap: "anywhere" }
+            : { overflow: "hidden", textOverflow: "ellipsis" }),
         }}
       >
         {value}
@@ -485,10 +492,26 @@ function EditableText({
     <span style={{ display: "flex", gap: 6, alignItems: "flex-start", width: "100%" }} {...stop}>
       <textarea
         autoFocus
-        rows={Math.min(maxRows, Math.max(1, Math.ceil(text.length / 28)))}
+        rows={wrap ? 1 : Math.min(maxRows, Math.max(1, Math.ceil(text.length / 28)))}
+        ref={
+          wrap
+            ? (el) => {
+                if (el) {
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                }
+              }
+            : undefined
+        }
         data-edit-input={testId}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          if (wrap) {
+            e.target.style.height = "auto";
+            e.target.style.height = `${e.target.scrollHeight}px`;
+          }
+        }}
         onBlur={save}
         onKeyDown={(e) => {
           e.stopPropagation();
@@ -511,7 +534,7 @@ function EditableText({
           fontWeight: style.fontWeight,
           outline: "none",
           resize: "none",
-          overflowY: "auto",
+          overflowY: wrap ? "hidden" : "auto",
           lineHeight: 1.3,
         }}
       />
@@ -597,24 +620,46 @@ function AddInline({
   );
 }
 
-/** A requirement: proposed in pencil with Accept / Drop, accepted ticked, dropped struck and faded. */
-function ReqRow({ c, r }: { c: CardContext; r: PlanNode }) {
+const actBtn: CSSProperties = {
+  background: "none",
+  border: "none",
+  padding: "0 2px",
+  cursor: "pointer",
+  fontFamily: TYPE,
+  fontSize: 10.5,
+  color: "var(--ic-road)",
+  textDecoration: "underline",
+};
+
+/** A requirement: dashed when proposed, ticked when accepted, struck and faded when dropped. Actions appear on hover/focus. */
+function ReqRow({ c, r, onDelete }: { c: CardContext; r: PlanNode; onDelete: (r: PlanNode) => void }) {
   const dropped = r.status === "dropped";
-  const proposed = !dropped && r.status !== "accepted";
+  const accepted = r.status === "accepted";
+  const proposed = !dropped && !accepted;
+  const toggleAccept = () => c.actions.setStatus(r.id, accepted ? "proposed" : "accepted");
   return (
     <div
       data-req={r.id}
       data-status={proposed ? "proposed" : r.status}
-      className={c.flash === r.id ? "icb-flash" : undefined}
-      style={{ display: "flex", gap: 7, padding: "5px 6px 5px 0", opacity: dropped ? 0.45 : 1, borderRadius: 5 }}
+      className={`icb-req${c.flash === r.id ? " icb-flash" : ""}`}
+      style={{ display: "flex", gap: 7, padding: "3px 6px 3px 0", borderRadius: 5 }}
     >
       <span
+        role="checkbox"
+        aria-checked={accepted}
+        title={accepted ? "Unaccept" : "Accept"}
+        {...stop}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!dropped) toggleAccept();
+        }}
         style={{
           flexShrink: 0,
           width: 14,
           height: 14,
           marginTop: 2,
           borderRadius: 4,
+          cursor: dropped ? "default" : "pointer",
           border: proposed ? `1.3px dashed ${v("notStarted")}` : `1.3px solid ${dropped ? v("dropped") : v("done")}`,
           color: dropped ? v("dropped") : v("done"),
           fontSize: 10.5,
@@ -624,18 +669,18 @@ function ReqRow({ c, r }: { c: CardContext; r: PlanNode }) {
           background: v("field"),
         }}
       >
-        {r.status === "accepted" ? "✓" : dropped ? "–" : ""}
+        {accepted ? "✓" : dropped ? "–" : ""}
       </span>
-      <div style={{ minWidth: 0, flex: 1 }}>
+      <div style={{ minWidth: 0, flex: 1, opacity: dropped ? 0.55 : 1 }}>
         {r.pencilEdit ? (
           <div style={authored(r.author, 12.5)}>
             <PencilDiff was={r.name} now={r.pencilEdit.name} />
           </div>
         ) : (
           <EditableText
+            wrap
             value={r.name}
             onSave={(t) => c.actions.rename(r.id, t)}
-            onDelete={() => c.actions.remove(r.id)}
             testId={r.id}
             style={{
               ...authored(r.author, 12.5),
@@ -648,48 +693,72 @@ function ReqRow({ c, r }: { c: CardContext; r: PlanNode }) {
           <div style={{ marginTop: 3 }}>
             <PencilBar c={c} pencil={(r.pencil ?? r.pencilEdit)!} size={9.5} />
           </div>
-        ) : proposed ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }} {...stop}>
-            <button
-              type="button"
-              data-accept={r.id}
-              style={pill(9.5, { padding: "0 7px", background: v("ink"), color: v("onInk"), borderColor: v("ink") })}
-              onClick={() => c.actions.setStatus(r.id, "accepted")}
-            >
-              Accept
-            </button>
-            <button
-              type="button"
-              data-drop={r.id}
-              style={pill(9.5, { padding: "0 7px" })}
-              onClick={() => c.actions.setStatus(r.id, "dropped")}
-            >
-              Drop
-            </button>
-          </div>
         ) : null}
       </div>
+      {r.pencil || r.pencilEdit ? null : (
+        <div className="icb-act" style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "flex-start" }} {...stop}>
+          {dropped ? (
+            <button
+              type="button"
+              data-restore={r.id}
+              style={actBtn}
+              onClick={() => c.actions.setStatus(r.id, "proposed")}
+            >
+              Restore
+            </button>
+          ) : (
+            <>
+              <button type="button" data-accept={r.id} style={actBtn} onClick={toggleAccept}>
+                {accepted ? "Unaccept" : "Accept"}
+              </button>
+              <button
+                type="button"
+                data-drop={r.id}
+                style={actBtn}
+                onClick={() => c.actions.setStatus(r.id, "dropped")}
+              >
+                Drop
+              </button>
+            </>
+          )}
+          <button type="button" data-delete={r.id} style={actBtn} onClick={() => onDelete(r)}>
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * An initiative's user stories, the journeys, side by side with their
- * requirements. They live and are edited here only.
+ * An initiative's user stories, the journeys, as a full-height bullet list
+ * with their requirements indented beneath. They live and are edited here only.
  */
 export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiative: string; w: number; h: number }) {
   const b = c.board;
   const stories = kids(b, initiative, "story");
   const reqs = stories.flatMap((st) => kids(b, st.id, "requirement"));
   const unread = byId(b, initiative)?.unread;
+  // The last deleted requirement, offered back for ~8s under its story.
+  const [undo, setUndo] = useState<{ storyId: string; text: string } | null>(null);
+  useEffect(() => {
+    if (!undo) return;
+    const t = setTimeout(() => setUndo(null), 8000);
+    return () => clearTimeout(t);
+  }, [undo]);
+  const delReq = (storyId: string) => (r: PlanNode) => {
+    c.actions.remove(r.id);
+    setUndo({ storyId, text: r.name });
+  };
   // A journey is pending (muted) until every requirement under it is accepted or dropped.
-  const pending = (id: string) => kids(b, id, "requirement").some((r) => r.status !== "accepted" && r.status !== "dropped");
+  const pending = (id: string) =>
+    kids(b, id, "requirement").some((r) => r.status !== "accepted" && r.status !== "dropped");
   return (
     <div
       data-stories={initiative}
       style={{
         width: w,
-        height: h,
+        minHeight: h,
         boxSizing: "border-box",
         padding: "12px 16px",
         borderRadius: 10,
@@ -699,7 +768,6 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
         display: "flex",
         flexDirection: "column",
         gap: 8,
-        overflow: "hidden",
       }}
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
@@ -708,90 +776,112 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
           {plural(stories.length, "journey")} · {plural(reqs.length, "requirement")}
         </span>
       </div>
-      <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
-        {stories.map((st) => (
-          <div
+      <ul
+        style={{
+          listStyle: "disc",
+          margin: 0,
+          padding: "0 0 0 18px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        {stories.map((st, i) => (
+          <li
             key={st.id}
             data-story={st.id}
-            data-wheel-scroll
             className={c.flash === st.id ? "icb-flash" : undefined}
             style={{
-              flex: "1 1 0",
-              minWidth: 0,
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-              borderLeft: st.pencil ? PENCIL_BORDER : `2px solid ${a("road", 28)}`,
-              paddingLeft: 9,
-              overflowY: "auto",
+              borderLeft: st.pencil ? PENCIL_BORDER : undefined,
+              paddingLeft: st.pencil ? 9 : 0,
+              color: v("road"),
             }}
           >
-            {st.pencil ? (
-              // Proposed: its words and Accept / Reject; nothing to edit until it's real.
-              <>
-                <div style={{ ...authored(st.author, 12.5), flexShrink: 0, fontWeight: 400, color: v("proposedInk") }}>
-                  {st.name}
-                </div>
-                <PencilBar c={c} pencil={st.pencil} size={10} />
-              </>
-            ) : st.pencilEdit ? (
-              <>
-                <div style={authored(st.author, 12.5)}>
-                  <PencilDiff was={st.name} now={st.pencilEdit.name} />
-                </div>
-                <PencilBar c={c} pencil={st.pencilEdit} size={10} />
-              </>
-            ) : (
-              <EditableText
-                value={st.name}
-                onSave={(t) => c.actions.rename(st.id, t)}
-                onDelete={() => c.actions.remove(st.id)}
-                testId={st.id}
-                style={{
-                  ...authored(st.author, 12.5),
-                  flexShrink: 0,
-                  ...(pending(st.id) ? { fontWeight: 400, color: v("muted") } : { fontWeight: 600 }),
-                }}
-              />
-            )}
-            {kids(b, st.id, "requirement").map((r) => (
-              <ReqRow key={r.id} c={c} r={r} />
-            ))}
-            <div hidden={!!st.pencil}>
-              <AddInline
-                what="requirement"
-                size={10}
-                testId={st.id}
-                onAdd={(t) => c.actions.addRequirement(st.id, t)}
-              />
+            <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
+              <span style={{ flexShrink: 0, fontFamily: TYPE, fontSize: 11.5, fontWeight: 600, color: v("road") }}>
+                [{i + 1}]
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {st.pencil ? (
+                  // Proposed: its words and Accept / Reject; nothing to edit until it's real.
+                  <>
+                    <div style={{ ...authored(st.author, 12.5), fontWeight: 400, color: v("proposedInk") }}>
+                      {st.name}
+                    </div>
+                    <PencilBar c={c} pencil={st.pencil} size={10} />
+                  </>
+                ) : st.pencilEdit ? (
+                  <>
+                    <div style={authored(st.author, 12.5)}>
+                      <PencilDiff was={st.name} now={st.pencilEdit.name} />
+                    </div>
+                    <PencilBar c={c} pencil={st.pencilEdit} size={10} />
+                  </>
+                ) : (
+                  <EditableText
+                    wrap
+                    value={st.name}
+                    onSave={(t) => c.actions.rename(st.id, t)}
+                    onDelete={() => c.actions.remove(st.id)}
+                    testId={st.id}
+                    style={{
+                      ...authored(st.author, 12.5),
+                      ...(pending(st.id) ? { fontWeight: 400, color: v("muted") } : { fontWeight: 600 }),
+                    }}
+                  />
+                )}
+              </div>
             </div>
-          </div>
+            <div style={{ marginLeft: 12, marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
+              {kids(b, st.id, "requirement").map((r) => (
+                <ReqRow key={r.id} c={c} r={r} onDelete={delReq(st.id)} />
+              ))}
+              {undo?.storyId === st.id ? (
+                <div
+                  data-undo={st.id}
+                  {...stop}
+                  style={{ fontFamily: TYPE, fontSize: 11, color: v("muted"), display: "flex", gap: 6 }}
+                >
+                  <span>Requirement deleted.</span>
+                  <button
+                    type="button"
+                    data-undo-btn={st.id}
+                    style={actBtn}
+                    onClick={() => {
+                      c.actions.addRequirement(st.id, undo.text);
+                      setUndo(null);
+                    }}
+                  >
+                    Undo
+                  </button>
+                </div>
+              ) : null}
+              <div hidden={!!st.pencil} style={{ marginTop: 2 }}>
+                <AddInline
+                  what="requirement"
+                  size={10}
+                  testId={st.id}
+                  onAdd={(t) => c.actions.addRequirement(st.id, t)}
+                />
+              </div>
+            </div>
+          </li>
         ))}
-        <div style={{ flex: "0 0 150px", display: "flex", alignItems: "flex-start" }}>
-          <AddInline
-            what="user story"
-            size={11}
-            testId={`story:${initiative}`}
-            onAdd={(t) => c.actions.addStory(initiative, t)}
-          />
-        </div>
+      </ul>
+      <div style={{ marginTop: 4 }}>
+        <AddInline
+          what="user story"
+          size={11}
+          testId={`story:${initiative}`}
+          onAdd={(t) => c.actions.addStory(initiative, t)}
+        />
       </div>
     </div>
   );
 }
 
 /** The slot after a milestone's features. */
-export function AddCard({
-  c,
-  milestoneId,
-  w,
-  h,
-}: {
-  c: CardContext;
-  milestoneId: string;
-  w: number;
-  h: number;
-}) {
+export function AddCard({ c, milestoneId, w, h }: { c: CardContext; milestoneId: string; w: number; h: number }) {
   return (
     <div
       style={{
@@ -1077,13 +1167,38 @@ export function JobMarker({ job }: { job: CanvasJob }) {
         <span style={{ color: failed ? v("blocked") : v("done") }}>{failed ? "!" : "✓"}</span>
       )}
       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-        {running
-          ? "Jamie is working on this…"
-          : failed
-            ? `Didn't finish: ${job.title}`
-            : "Done"}
+        {running ? "Jamie is working on this…" : failed ? `Didn't finish: ${job.title}` : "Done"}
       </span>
       {who && running ? <span style={{ color: v("notStarted"), flexShrink: 0 }}>· {who}</span> : null}
+    </div>
+  );
+}
+
+/** The repos a feature's pull requests touch, as small chips by short name: the first three, then "+N". Nothing when there are none. */
+export function RepoChips({ id, repos }: { id: string; repos: readonly string[] }) {
+  if (!repos.length) return null;
+  const chip = {
+    fontFamily: TYPE,
+    fontSize: 10.5,
+    lineHeight: 1.2,
+    color: v("muted"),
+    border: `1px solid ${v("border")}`,
+    borderRadius: 999,
+    padding: "1px 7px",
+    whiteSpace: "nowrap",
+  } as const;
+  return (
+    <div data-testid={`feature-repos:${id}`} style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+      {repos.slice(0, 3).map((r) => (
+        <span key={r} title={r} style={chip}>
+          {r.split("/").pop()}
+        </span>
+      ))}
+      {repos.length > 3 ? (
+        <span title={repos.slice(3).join(", ")} style={chip}>
+          +{repos.length - 3}
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -23,6 +23,8 @@ export interface Work {
   state: WorkState;
   /** One line under the name: why it's blocked, else how far it is. */
   line: string;
+  /** Repos ("owner/name") the card's pull requests touch; a milestone or initiative lists its features' union. */
+  repos: string[];
 }
 
 /** The pull requests among a card's artifacts. */
@@ -43,17 +45,44 @@ export function prsOf(artifacts: readonly ArtifactRef[] | undefined): BuildPr[] 
 }
 
 /**
+ * The distinct repos ("owner/name") a feature's pull requests are in, in the
+ * order first seen. Case-insensitive, keeping the first casing. Closed pull
+ * requests count (they show where work was tried); ones whose content can't
+ * be read or has no repo are skipped.
+ */
+export function reposOf(prs: readonly BuildPr[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const { artifact } of prs) {
+    if (artifact.source.type !== "inline") continue;
+    const repo = parseArtifactContent("pull_request", artifact.source.content)?.repo?.trim();
+    if (!repo || seen.has(repo.toLowerCase())) continue;
+    seen.add(repo.toLowerCase());
+    out.push(repo);
+  }
+  return out;
+}
+
+/** The union of several repo lists, same rules as `reposOf`. */
+function unionRepos(lists: readonly string[][]): string[] {
+  const seen = new Set<string>();
+  return lists.flat().filter((r) => !seen.has(r.toLowerCase()) && seen.add(r.toLowerCase()));
+}
+
+/**
  * A feature from its jobs (newest first) and their pull requests. Blocked
  * when its newest job failed or a pull request's CI fails, saying which; not
  * started with no jobs; done once every pull request that wasn't closed is
  * merged and no job is running; else in progress.
  */
 export function featureWork(jobs: readonly CanvasJob[], prs: readonly BuildPr[]): Work {
+  const repos = reposOf(prs);
   const failed = jobs[0]?.state === "failed" ? jobs[0] : undefined;
-  if (failed) return { state: "blocked", line: `${failed.title} failed${failed.error ? `: ${failed.error}` : ""}` };
+  if (failed)
+    return { state: "blocked", line: `${failed.title} failed${failed.error ? `: ${failed.error}` : ""}`, repos };
   const red = prs.find((p) => p.failing.length);
-  if (red) return { state: "blocked", line: `CI failing on ${red.artifact.title}: ${red.failing.join(", ")}` };
-  if (!jobs.length && !prs.length) return { state: "not-started", line: "Not built yet" };
+  if (red) return { state: "blocked", line: `CI failing on ${red.artifact.title}: ${red.failing.join(", ")}`, repos };
+  if (!jobs.length && !prs.length) return { state: "not-started", line: "Not built yet", repos };
   const live = prs.filter((p) => p.state !== "closed");
   const merged = live.filter((p) => p.state === "merged").length;
   const running = jobs.filter((j) => j.state === "running").length;
@@ -62,7 +91,7 @@ export function featureWork(jobs: readonly CanvasJob[], prs: readonly BuildPr[])
     : running
       ? `${plural(running, "job")} running`
       : "No pull requests yet";
-  return { state: live.length && merged === live.length && !running ? "done" : "in-progress", line };
+  return { state: live.length && merged === live.length && !running ? "done" : "in-progress", line, repos };
 }
 
 /** A milestone or initiative from its parts: all done is done; any moving or done, in progress; else blocked if one is. */
@@ -86,12 +115,17 @@ export function workOf(
     const features = kids(b, m.id, "feature").map((f) => {
       const w = featureWork(jobsByRef[f.id] ?? [], prsOf(artifactsByRef[f.id]));
       out.set(f.id, w);
-      return w.state;
+      return w;
     });
-    const state = rollUp(features);
-    out.set(m.id, { state, line: plural(features.length, "feature") });
-    return state;
+    const state = rollUp(features.map((w) => w.state));
+    const repos = unionRepos(features.map((w) => w.repos));
+    out.set(m.id, { state, line: plural(features.length, "feature"), repos });
+    return { state, repos };
   });
-  out.set(initiativeId, { state: rollUp(milestones), line: plural(milestones.length, "milestone") });
+  out.set(initiativeId, {
+    state: rollUp(milestones.map((m) => m.state)),
+    line: plural(milestones.length, "milestone"),
+    repos: unionRepos(milestones.map((m) => m.repos)),
+  });
   return out;
 }
