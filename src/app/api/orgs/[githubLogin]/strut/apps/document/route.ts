@@ -21,13 +21,17 @@
  * cookie-authenticated HTML response on Hive's origin would be stored XSS
  * the moment something navigated to it. The frame fetches them and frames
  * them as `srcdoc` in a sandbox with scripts only.
+ *
+ * With an ETag and `Cache-Control: private, no-cache`: the browser keeps the
+ * megabytes and asks again on every open with `If-None-Match`, which is
+ * passed on to the swarm — an unchanged document is a 304 on both hops.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { isStrutAppName, isStrutAppVersion } from "@/lib/strut-apps";
 import { htmlBodyProxyHeaders } from "@/lib/utils/html-body-proxy";
-import { authorizeAppSwarm, fetchStrutAppDocument, type StrutAppAddress } from "@/services/strut-apps";
+import { authorizeAppSwarm, etagMatches, fetchStrutAppDocument, type StrutAppAddress } from "@/services/strut-apps";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,8 +60,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!authorized.ok) return NextResponse.json({ error: authorized.error }, { status: authorized.status });
   const { swarm } = authorized;
 
-  const doc = await fetchStrutAppDocument(swarm, at);
+  const ifNoneMatch = request.headers.get("if-none-match");
+  const doc = await fetchStrutAppDocument(swarm, at, { ifNoneMatch });
   if (!doc.ok) return NextResponse.json({ error: doc.error }, { status: doc.status });
   const stem = at.app.split("/").pop()!;
-  return new NextResponse(doc.html, { status: 200, headers: htmlBodyProxyHeaders(stem) });
+  // Kept by the browser, asked again every time (`no-cache`): an open
+  // document changes only when a version is published, rebuilt or made live.
+  const headers = { ...htmlBodyProxyHeaders(stem), "Cache-Control": "private, no-cache", ETag: doc.etag };
+  if (doc.notModified || etagMatches(ifNoneMatch, doc.etag)) return new NextResponse(null, { status: 304, headers });
+  return new NextResponse(doc.html, { status: 200, headers });
 }

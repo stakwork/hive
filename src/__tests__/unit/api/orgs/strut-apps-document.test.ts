@@ -161,6 +161,58 @@ describe("GET /api/orgs/[githubLogin]/strut/apps/document", () => {
     expect((await res.json()).error).toMatch(/not been built/);
   });
 
+  it("an ETag on every document, kept by the browser and asked again (private, no-cache)", async () => {
+    const res = await GET(request({ swarmId: "swarm-1", app: "bench" }), params);
+    expect(res.headers.get("cache-control")).toBe("private, no-cache");
+    const etag = res.headers.get("etag");
+    expect(etag).toMatch(/^"[0-9a-f]{32}"$/);
+    // The same bytes, the same tag: a version's document is served identically every time.
+    expect((await GET(request({ swarmId: "swarm-1", app: "bench" }), params)).headers.get("etag")).toBe(etag);
+  });
+
+  it("the browser's copy is current: a 304 with no body, the ETag and the cache rule on it", async () => {
+    const etag = (await GET(request({ swarmId: "swarm-1", app: "bench" }), params)).headers.get("etag")!;
+    const req = request({ swarmId: "swarm-1", app: "bench" });
+    req.headers.set("if-none-match", `W/${etag}`);
+    const res = await GET(req, params);
+    expect(res.status).toBe(304);
+    expect(await res.text()).toBe("");
+    expect(res.headers.get("etag")).toBe(etag);
+    expect(res.headers.get("cache-control")).toBe("private, no-cache");
+
+    const stale = request({ swarmId: "swarm-1", app: "bench" });
+    stale.headers.set("if-none-match", '"0000"');
+    const fresh = await GET(stale, params);
+    expect(fresh.status).toBe(200);
+    expect(await fresh.text()).toBe(DOC);
+  });
+
+  it("strut's own ETag wins, If-None-Match goes to the document read only, and strut's 304 sends nothing on", async () => {
+    const real = mockFetch.getMockImplementation()!;
+    mockFetch.mockImplementation(async (url: string, init: RequestInit) => {
+      if (!url.includes("/dist/index.html")) return real(url, init);
+      const asked = (init.headers as Record<string, string>)["if-none-match"];
+      return asked === '"strut-v3"'
+        ? new Response(null, { status: 304, headers: { etag: '"strut-v3"' } })
+        : new Response(DOC, { status: 200, headers: { etag: '"strut-v3"' } });
+    });
+
+    expect((await GET(request({ swarmId: "swarm-1", app: "bench" }), params)).headers.get("etag")).toBe('"strut-v3"');
+
+    mockFetch.mockClear();
+    const req = request({ swarmId: "swarm-1", app: "bench" });
+    req.headers.set("if-none-match", '"strut-v3"');
+    const res = await GET(req, params);
+    expect(res.status).toBe(304);
+    expect(res.headers.get("etag")).toBe('"strut-v3"');
+    const asked = calls().map((c) => ({ path: c.path, inm: c.headers["if-none-match"] }));
+    expect(asked).toEqual([
+      { path: "/apps/bench/versions", inm: undefined },
+      { path: "/apps/bench/v3/files", inm: undefined },
+      { path: "/apps/bench/v3/files/dist/index.html?t=tok", inm: '"strut-v3"' },
+    ]);
+  });
+
   it("a swarm that cannot be reached or answers 5xx is a 502", async () => {
     mockFetch.mockRejectedValue(new Error("ECONNREFUSED"));
     expect((await GET(request({ swarmId: "swarm-1", app: "bench" }), params)).status).toBe(502);
