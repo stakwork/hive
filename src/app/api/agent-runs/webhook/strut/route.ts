@@ -12,7 +12,9 @@
  *
  * Each post is fanned into the owning canvas conversation. `settled: true`
  * is the terminal one: it claims the `AgentRun` row (PENDING →
- * DELIVERED_WEBHOOK / FAILED) and schedules the canvas agent's wake.
+ * DELIVERED_WEBHOOK / FAILED). No agent is woken on it: Hive's canvas
+ * agent no longer answers Jamie (`docs/jamie-engine.md`), and a workspace
+ * chat was never woken.
  *
  * Security mirrors `/api/agent-runs/webhook` (covered by the same
  * `ROUTE_POLICIES` prefix entry): rate limit before any lookup, bearer token
@@ -25,22 +27,19 @@
  * NEVER log the raw token or the full callback URL.
  */
 
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { AgentRunStatus } from "@prisma/client";
 import { timingSafeEqual } from "@/lib/encryption";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { hardenContent } from "@/services/canvas-agent-run-fanout";
-import { fanOutStrutToCanvas, strutRowId } from "@/services/canvas-strut-fanout";
+import { fanOutStrutToCanvas } from "@/services/canvas-strut-fanout";
 import { readStrutChatActivity } from "@/services/strut-chat-activity";
 import { STRUT_AGENT_KIND } from "@/lib/ai/strutTools";
-import { getBaseUrl } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// The wake turn runs in `after()` and is a full canvas-agent turn.
-export const maxDuration = 800;
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -163,7 +162,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // ── Terminal: token-gated claim, then wake the canvas agent ─────────────
+  // ── Terminal: the token-gated claim ─────────────────────────────────────
   const failed = fanOut.status === "error";
   const { count } = await db.agentRun.updateMany({
     where: { id: runId, tokenHash: row.tokenHash, status: AgentRunStatus.PENDING },
@@ -175,32 +174,6 @@ export async function POST(request: NextRequest) {
     },
   });
   console.log("[strut-webhook] settled", { runId, turn, event, status: fanOut.status, claimed: count > 0 });
-
-  // The claim is the exactly-once gate (a retry that re-delivers a settled
-  // post finds the row already claimed above, or loses this updateMany).
-  if (count > 0) {
-    const conversationId = row.conversationId;
-    const workspaceSlug = row.workspaceSlug;
-    // Strut reached us here, so this host is swarm-reachable — a follow-up
-    // dispatch on the wake turn builds its callback URL from it.
-    const publicBaseUrl = getBaseUrl(request.headers.get("host"));
-    after(async () => {
-      try {
-        const { invokeCanvasAgentOnStrutSettled } = await import("@/services/canvas-strut-autoturn");
-        await invokeCanvasAgentOnStrutSettled({
-          conversationId,
-          wakeId: strutRowId(fanOut),
-          workspaceSlug,
-          chatId,
-          title: row.title,
-          failed,
-          publicBaseUrl,
-        });
-      } catch (e) {
-        console.error("[strut-webhook] canvas auto-turn (after) failed (non-fatal):", e);
-      }
-    });
-  }
 
   return NextResponse.json({ ok: true });
 }
