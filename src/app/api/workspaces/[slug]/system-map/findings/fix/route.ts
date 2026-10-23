@@ -1,6 +1,6 @@
 /**
  * GET  /api/workspaces/:slug/system-map/findings/fix
- *       — the latest automated fix per finding; status and PR read from its strut runs.
+ *       — the fixes tracked on Finding nodes; status and PR read from their strut runs.
  * POST /api/workspaces/:slug/system-map/findings/fix  { refIds: string[] }
  *       — for each confirmed, fixable finding, seed an org-canvas chat and
  *       launch the orchestrator strut (as Protect's Jamie does), which starts
@@ -18,7 +18,7 @@ import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getBaseUrl } from "@/lib/utils";
 import { isFindingRefId } from "@/lib/system-map/findings";
-import { FindingFixError, listLatestFixes, startFindingFixes } from "@/services/system-map/finding-fix";
+import { FindingFixError, listFixes, startFindingFixes } from "@/services/system-map/finding-fix";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { slug } = await params;
     const member = await authorize(request, slug);
     if (member instanceof NextResponse) return member;
-    return NextResponse.json({ fixes: await listLatestFixes(member.workspaceId) });
+    return NextResponse.json({ fixes: await listFixes(member.workspaceId) });
   } catch (error) {
     console.error("[SystemMap] finding fix GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

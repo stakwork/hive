@@ -391,7 +391,6 @@ model Workspace {
   janitorRecommendations  JanitorRecommendation[]
   protectReviewRepos      ProtectReviewRepo[]
   protectReviewRuns       ProtectReviewRun[]
-  findingFixes            FindingFix[]
   repositories            Repository[]
   screenshots             Screenshot[]
   scorerDigests           ScorerDigest[]
@@ -2778,23 +2777,3 @@ enum StrutRunStatus {
 }
 
 
-
-/// One automated fix attempt for an Infosec `Finding` graph node. Like the
-/// Protect "Jamie" action it is an org-canvas conversation seeded with the
-/// finding, on which the orchestrator strut is launched; the status and PR are
-/// read back from that conversation's strut runs and rows (nothing is stored).
-model FindingFix {
-  id             String    @id @default(cuid())
-  workspaceId    String    @map("workspace_id")
-  findingRefId   String    @map("finding_ref_id")
-  kind           String
-  repositoryUrl  String    @map("repository_url")
-  conversationId String    @map("conversation_id")
-  createdById    String?   @map("created_by_id")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId, findingRefId])
-  @@index([conversationId])
-  @@map("finding_fixes")
-}

@@ -18,11 +18,11 @@ vi.mock("@/services/system-map/finding-fix", async () => {
       super(message);
     }
   }
-  return { FindingFixError, listLatestFixes: vi.fn(), startFindingFixes: vi.fn() };
+  return { FindingFixError, listFixes: vi.fn(), startFindingFixes: vi.fn() };
 });
 
 import { requireProtectMemberAccess } from "@/lib/protect/access";
-import { FindingFixError, listLatestFixes, startFindingFixes } from "@/services/system-map/finding-fix";
+import { FindingFixError, listFixes, startFindingFixes } from "@/services/system-map/finding-fix";
 import { GET, POST } from "@/app/api/workspaces/[slug]/system-map/findings/fix/route";
 
 const params = { params: Promise.resolve({ slug: "ws" }) };
@@ -89,7 +89,7 @@ describe("findings/fix route", () => {
   });
 
   it("GET lists fixes", async () => {
-    vi.mocked(listLatestFixes).mockResolvedValue([{ id: "x" } as never]);
+    vi.mocked(listFixes).mockResolvedValue([{ id: "x" } as never]);
     const res = await GET(post({}), params);
     expect(await res.json()).toEqual({ fixes: [{ id: "x" }] });
   });
