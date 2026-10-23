@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, memo, useCallback, useEffect, useRef, useState } from "react";
 import type { CanvasJob } from "../../_state/useCanvasJobs";
 import {
   type Author,
@@ -286,7 +286,7 @@ function PencilDiff({ was, now }: { was: string; now: string }) {
   );
 }
 
-export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: number; h: number }) {
+export const Face = memo(function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: number; h: number }) {
   const big = node.type === "initiative";
   const work = c.work(node.id);
   const running = (c.jobs[node.id] ?? []).some((j) => j.state === "running");
@@ -376,10 +376,20 @@ export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: num
       )}
     </div>
   );
-}
+});
 
 /** The header band of an open container: its name (click to rename), its status, and Ask Jamie. */
-export function FrameHeader({ c, node, w, h }: { c: CardContext; node: PlanNode; w: number; h: number }) {
+export const FrameHeader = memo(function FrameHeader({
+  c,
+  node,
+  w,
+  h,
+}: {
+  c: CardContext;
+  node: PlanNode;
+  w: number;
+  h: number;
+}) {
   const b = c.board;
   // Not read yet: no counts or status, rather than "0 milestones".
   const work = node.unread ? undefined : c.work(node.id);
@@ -432,7 +442,7 @@ export function FrameHeader({ c, node, w, h }: { c: CardContext; node: PlanNode;
       )}
     </div>
   );
-}
+});
 
 /**
  * Words you click to edit in place: dark on white while editing, Enter saves,
@@ -734,7 +744,16 @@ function ReqRow({ c, r, onDelete }: { c: CardContext; r: PlanNode; onDelete: (r:
  * An initiative's user stories, the journeys, as a full-height bullet list
  * with their requirements indented beneath. They live and are edited here only.
  */
-export function StoriesPanel({ c, initiative, w }: { c: CardContext; initiative: string; w: number; h: number }) {
+export const StoriesPanel = memo(function StoriesPanel({
+  c,
+  initiative,
+  w,
+}: {
+  c: CardContext;
+  initiative: string;
+  w: number;
+  h: number;
+}) {
   const b = c.board;
   const stories = kids(b, initiative, "story");
   const reqs = stories.flatMap((st) => kids(b, st.id, "requirement"));
@@ -943,10 +962,20 @@ export function StoriesPanel({ c, initiative, w }: { c: CardContext; initiative:
       />
     </div>
   );
-}
+});
 
 /** The slot after a milestone's features. */
-export function AddCard({ c, milestoneId, w, h }: { c: CardContext; milestoneId: string; w: number; h: number }) {
+export const AddCard = memo(function AddCard({
+  c,
+  milestoneId,
+  w,
+  h,
+}: {
+  c: CardContext;
+  milestoneId: string;
+  w: number;
+  h: number;
+}) {
   return (
     <div
       style={{
@@ -971,7 +1000,7 @@ export function AddCard({ c, milestoneId, w, h }: { c: CardContext; milestoneId:
       />
     </div>
   );
-}
+});
 
 function Pips({ o }: { o: Option }) {
   const rated = (["fast", "good", "cheap"] as const).filter((k) => o[k] !== undefined);
@@ -1003,7 +1032,7 @@ function Pips({ o }: { o: Option }) {
 }
 
 /** A brainstorm question: the root of a tree off a card, or the question an expanded answer raised. */
-export function QuestionCard({
+export const QuestionCard = memo(function QuestionCard({
   c,
   node,
   w,
@@ -1076,7 +1105,7 @@ export function QuestionCard({
       </div>
     </div>
   );
-}
+});
 
 /** What choosing an answer makes, by what its brainstorm is about. */
 const MAKES_WHAT: Record<string, string> = { initiative: "milestones", milestone: "features" };
@@ -1086,7 +1115,7 @@ const MAKES_WHAT: Record<string, string> = { initiative: "milestones", milestone
  * fast / good / cheap, with what choosing it makes. Choose it (click again
  * to undo), or expand it to see the question it raises.
  */
-export function OptionCard({
+export const OptionCard = memo(function OptionCard({
   c,
   q,
   o,
@@ -1195,7 +1224,7 @@ export function OptionCard({
       </div>
     </div>
   );
-}
+});
 
 /** A job on a card: while it runs, what it's doing and who started it; when it settles, a tick (or "didn't finish"). */
 export function JobMarker({ job }: { job: CanvasJob }) {

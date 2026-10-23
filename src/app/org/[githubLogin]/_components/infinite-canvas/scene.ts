@@ -70,7 +70,7 @@ export const HEADER = 0.2;
 const GAP = 0.04;
 const ISLAND_W = 2400;
 
-const union = (a: Rect, b: Rect): Rect => {
+export const union = (a: Rect, b: Rect): Rect => {
   const x = Math.min(a.x, b.x);
   const y = Math.min(a.y, b.y);
   return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
@@ -324,6 +324,29 @@ export function focusWeight(scene: Scene, id: string, level: string): number {
 }
 
 /**
+ * A flight between two levels, as a blend: how open each container is and how
+ * present each node is at `u` (0 where it left, 1 arrived).
+ */
+export function levelBlend(
+  scene: Scene,
+  from: { open: string[]; level: string },
+  to: { open: string[]; level: string },
+) {
+  const open = (id: string, u: number) => {
+    const a = from.open.includes(id) ? 1 : 0;
+    const b = to.open.includes(id) ? 1 : 0;
+    return a + (b - a) * u;
+  };
+  const vis = (id: string, u: number) => {
+    const a = focusWeight(scene, id, from.level);
+    const b = focusWeight(scene, id, to.level);
+    return visibility(scene, id, (p) => open(p, u)) * (a + (b - a) * u);
+  };
+  return { open, vis };
+}
+export type Blend = ReturnType<typeof levelBlend>;
+
+/**
  * Where a card lives as a level: it walks up to its container (a story,
  * requirement or brief opens its initiative, a brainstorm the card it's about).
  */
@@ -350,6 +373,22 @@ export const toWorld = (sx: number, sy: number, cam: Camera, vp: Viewport) => ({
   y: (sy - vp.h / 2) / cam.z + cam.cy,
 });
 
+/** The part of the world in view, grown by `margin` of its size on every side. */
+export function inView(cam: Camera, vp: Viewport, margin = 0): Rect {
+  const w = vp.w / cam.z;
+  const h = vp.h / cam.z;
+  return {
+    x: cam.cx - w / 2 - w * margin,
+    y: cam.cy - h / 2 - h * margin,
+    w: w * (1 + 2 * margin),
+    h: h * (1 + 2 * margin),
+  };
+}
+
+export const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+export const contains = (outer: Rect, r: Rect) =>
+  r.x >= outer.x && r.y >= outer.y && r.x + r.w <= outer.x + outer.w && r.y + r.h <= outer.y + outer.h;
+
 /** Screen space the canvas chrome covers (breadcrumb on top, Jamie below). */
 export interface Insets {
   top: number;
@@ -359,7 +398,9 @@ const NONE: Insets = { top: 0, bottom: 0 };
 
 /** Frame a rect with a margin, in the part of the view the chrome leaves free. */
 export function fit(r: Rect, vp: Viewport, margin = 0.9, inset: Insets = NONE): Camera {
-  const z = Math.min((vp.w * margin) / r.w, ((vp.h - inset.top - inset.bottom) * margin) / r.h);
+  // A view shorter than its chrome still frames (a negative zoom would make every flight NaN).
+  const free = Math.max(1, vp.h - inset.top - inset.bottom);
+  const z = Math.min((vp.w * margin) / r.w, (free * margin) / r.h);
   return { cx: r.x + r.w / 2, cy: r.y + r.h / 2 - (inset.top - inset.bottom) / 2 / z, z };
 }
 
