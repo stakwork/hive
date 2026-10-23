@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useRef } from "react";
+import { type CSSProperties, memo, useRef } from "react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import type { ArtifactRef, ArtifactVersion } from "../../_state/canvasChatArtifacts";
 import type { CanvasJob } from "../../_state/useCanvasJobs";
@@ -30,7 +30,7 @@ const panel = (w: number, h: number): CSSProperties => ({
 const prose = "[&_*]:!text-[var(--ic-ink-soft)] [&_*]:![font-family:inherit]";
 
 /** How the feature is built (`HAS_ARCHITECTURE`): its summary and diagram, or an empty state that says who writes it. */
-export function ArchitectureCard({ f, w, h }: { f: PlanNode; w: number; h: number }) {
+export const ArchitectureCard = memo(function ArchitectureCard({ f, w, h }: { f: PlanNode; w: number; h: number }) {
   const arch = f.architecture;
   return (
     <div data-architecture={f.id} style={panel(w, h)}>
@@ -74,7 +74,7 @@ export function ArchitectureCard({ f, w, h }: { f: PlanNode; w: number; h: numbe
       )}
     </div>
   );
-}
+});
 
 const JOB: Record<CanvasJob["state"], { label: string; color: string }> = {
   running: { label: "Running", color: v("job") },
@@ -89,7 +89,7 @@ const NO_VERSIONS = new Map<ArtifactRef, ArtifactVersion>();
  * they returned (any number, across repos), which open on the artifact
  * panel. With no jobs yet, Implement starts one once there's an architecture.
  */
-export function BuildCard({
+export const BuildCard = memo(function BuildCard({
   c,
   f,
   prs,
@@ -200,4 +200,4 @@ export function BuildCard({
       )}
     </div>
   );
-}
+});

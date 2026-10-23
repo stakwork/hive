@@ -70,7 +70,7 @@ describe("findings/fix route", () => {
     );
   });
 
-  it("returns 409 when nothing could start (unconfirmed / already fixing)", async () => {
+  it("returns 409 when nothing could start (already fixing)", async () => {
     vi.mocked(startFindingFixes).mockResolvedValue({
       started: [],
       refused: [{ refId: "a", reason: "A fix for this finding is already in progress" }],

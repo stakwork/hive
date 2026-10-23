@@ -1,7 +1,13 @@
-import { getNodeEdges, listNodesByType, type JarvisGraphNode } from "@/services/swarm/api/nodes";
+import {
+  getNodeAncestors,
+  getNodeEdges,
+  listNodesByType,
+  type JarvisAncestor,
+  type JarvisGraphNode,
+} from "@/services/swarm/api/nodes";
 import { parseFixTracking } from "@/lib/system-map/finding-fix";
 import type { JarvisConnectionConfig } from "@/types/jarvis";
-import type { SystemMapFinding, SystemMapFindingRelated } from "@/types/system-map";
+import type { SystemMapFinding, SystemMapFindingPathStep, SystemMapFindingRelated } from "@/types/system-map";
 
 /** The security workflows write their findings as `Finding` nodes in the workspace graph's `infosec` namespace. */
 export const FINDING_NODE_TYPE = "Finding";
@@ -145,4 +151,102 @@ export async function loadFindingRelated(
   }
   related.sort((a, b) => a.nodeType.localeCompare(b.nodeType) || a.name.localeCompare(b.name));
   return { ok: true, related, truncated: read.edges.length >= FINDING_RELATED_MAX };
+}
+
+// ── a vulnerable package's way in ───────────────────────────────────────────
+
+const PACKAGE_NODE_TYPE = "SysPackage";
+const COMPONENT_NODE_TYPE = "SysComponent";
+const DEPENDENCY_EDGE = "DEPENDS_ON";
+/** Packages per finding walked up, paths kept, hops walked. */
+const MAX_PATH_PACKAGES = 3;
+export const MAX_FINDING_PATHS = 3;
+const MAX_PATH_DEPTH = 10;
+
+function pathStep(refId: string, nodeType: string, name: string | null, properties: Record<string, unknown> = {}) {
+  return {
+    refId,
+    nodeType,
+    name: pick(properties, ["name"]) ?? name ?? refId,
+    version: pick(properties, ["version"]),
+  } satisfies SystemMapFindingPathStep;
+}
+
+/**
+ * The shortest way from each component down to `start`, rebuilt from its
+ * `DEPENDS_ON` ancestors (component → direct package → … → `start`), one path
+ * per component, nearest components first. The walk stops at a component.
+ */
+export function buildDependencyPaths(
+  start: SystemMapFindingPathStep,
+  ancestors: JarvisAncestor[],
+  max = MAX_FINDING_PATHS,
+): SystemMapFindingPathStep[][] {
+  const byRef = new Map(ancestors.map((a) => [a.ref_id, a]));
+  const byName = (a: string, b: string) => (byRef.get(a)?.name ?? a).localeCompare(byRef.get(b)?.name ?? b);
+  const parentsOf = (id: string) =>
+    (id === start.refId ? ancestors.filter((a) => a.depth === 1).map((a) => a.ref_id) : (byRef.get(id)?.parents ?? []))
+      .filter((p) => byRef.has(p))
+      .sort(byName);
+
+  // Breadth-first up from `start`; `below` points each node back toward it.
+  const below = new Map<string, string>();
+  const components: string[] = [];
+  const queue = [start.refId];
+  const seen = new Set(queue);
+  while (queue.length && components.length < max) {
+    const id = queue.shift()!;
+    for (const parent of parentsOf(id)) {
+      if (seen.has(parent)) continue;
+      seen.add(parent);
+      below.set(parent, id);
+      if (byRef.get(parent)!.node_type === COMPONENT_NODE_TYPE) components.push(parent);
+      else queue.push(parent);
+    }
+  }
+
+  return components.slice(0, max).map((component) => {
+    const path: SystemMapFindingPathStep[] = [];
+    for (let id: string | undefined = component; id && id !== start.refId; id = below.get(id)) {
+      const a = byRef.get(id)!;
+      path.push(pathStep(a.ref_id, a.node_type, a.name, a.properties));
+    }
+    return [...path, start];
+  });
+}
+
+export interface FindingPathsResult {
+  paths: SystemMapFindingPathStep[][];
+  /** Why a package could not be walked (an older jarvis has no `ancestors`). */
+  errors: string[];
+}
+
+/** For each package a finding is about: its way in from the components, one `ancestors` read per package. */
+export async function loadFindingPaths(
+  config: JarvisConnectionConfig,
+  related: SystemMapFindingRelated[],
+): Promise<FindingPathsResult> {
+  const packages = related.filter((r) => r.nodeType === PACKAGE_NODE_TYPE).slice(0, MAX_PATH_PACKAGES);
+  const reads = await Promise.all(
+    packages.map((pkg) =>
+      getNodeAncestors(config, pkg.refId, {
+        edgeType: DEPENDENCY_EDGE,
+        direction: "in",
+        maxDepth: MAX_PATH_DEPTH,
+        includeProperties: true,
+      }),
+    ),
+  );
+  const paths: SystemMapFindingPathStep[][] = [];
+  const errors: string[] = [];
+  reads.forEach((read, i) => {
+    const pkg = packages[i];
+    if (!read.ok) {
+      errors.push(`${pkg.refId}: ${read.endpointMissing ? "ancestors endpoint missing" : (read.error ?? "failed")}`);
+      return;
+    }
+    paths.push(...buildDependencyPaths(pathStep(pkg.refId, pkg.nodeType, pkg.name, pkg.properties), read.ancestors));
+  });
+  paths.sort((a, b) => a.length - b.length);
+  return { paths: paths.slice(0, MAX_FINDING_PATHS), errors };
 }

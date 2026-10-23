@@ -224,6 +224,20 @@ export interface SystemMapFindingRelated {
   properties: Record<string, unknown>;
 }
 
+/** One node on a vulnerable package's way into the system. */
+export interface SystemMapFindingPathStep {
+  refId: string;
+  nodeType: string;
+  name: string;
+  version: string | null;
+}
+
 export type SystemMapFindingRelatedResponse =
-  | { status: "ready"; related: SystemMapFindingRelated[]; truncated: boolean }
+  | {
+      status: "ready";
+      related: SystemMapFindingRelated[];
+      truncated: boolean;
+      /** For a finding about a package: component first, the vulnerable package last, shortest first. */
+      paths: SystemMapFindingPathStep[][];
+    }
   | { status: "error"; error: string };

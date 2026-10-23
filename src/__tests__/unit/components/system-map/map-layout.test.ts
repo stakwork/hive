@@ -234,6 +234,13 @@ describe("buildMapLayout", () => {
     expect([...model.chips.values()].some((c) => c.hub)).toBe(false);
   });
 
+  it("keeps whose package each chip is, from the component → package edges it does not draw", () => {
+    expect(model.chips.get("top")?.usedBy).toEqual(["app"]);
+    expect(model.chips.get("leaf2")?.usedBy).toEqual([]);
+    expect([...(model.packagesOf.get("app") ?? [])].sort()).toEqual(["leaf1", "mid", "top"]);
+    expect(model.wires.some((w) => w.target === "top")).toBe(false);
+  });
+
   it("walks the package graph", () => {
     expect(model.pathsToRoots("leaf1")).toEqual([["top", "mid", "leaf1"]]);
     expect(model.pathsToRoots("top")).toEqual([["top"]]);
