@@ -180,6 +180,20 @@ export interface SystemMapFinding {
   properties: Record<string, unknown>;
 }
 
+export type SystemMapFindingFixStatus = "QUEUED" | "RUNNING" | "PR_OPENED" | "FAILED";
+
+/** The latest automated fix attempt for a finding. */
+export interface SystemMapFindingFix {
+  id: string;
+  findingRefId: string;
+  kind: string;
+  status: SystemMapFindingFixStatus;
+  prUrl: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type SystemMapFindingsResponse =
   | { status: "ready"; findings: SystemMapFinding[]; truncated: boolean }
   | { status: "error"; error: string };

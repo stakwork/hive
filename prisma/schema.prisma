@@ -391,6 +391,7 @@ model Workspace {
   janitorRecommendations  JanitorRecommendation[]
   protectReviewRepos      ProtectReviewRepo[]
   protectReviewRuns       ProtectReviewRun[]
+  findingFixes            FindingFix[]
   repositories            Repository[]
   screenshots             Screenshot[]
   scorerDigests           ScorerDigest[]
@@ -2777,3 +2778,32 @@ enum StrutRunStatus {
 }
 
 
+
+enum FindingFixStatus {
+  QUEUED
+  RUNNING
+  PR_OPENED
+  FAILED
+}
+
+/// One automated fix attempt for an Infosec `Finding` graph node: a coding
+/// agent (Stakwork workflow) opens a PR; the webhook records the outcome.
+model FindingFix {
+  id                String           @id @default(cuid())
+  workspaceId       String           @map("workspace_id")
+  findingRefId      String           @map("finding_ref_id")
+  kind              String
+  status            FindingFixStatus @default(QUEUED)
+  repositoryUrl     String           @map("repository_url")
+  prUrl             String?          @map("pr_url")
+  error             String?
+  stakworkProjectId Int?             @map("stakwork_project_id")
+  createdById       String?          @map("created_by_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  workspace         Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, findingRefId])
+  @@index([workspaceId, status])
+  @@map("finding_fixes")
+}
