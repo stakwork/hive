@@ -1,9 +1,10 @@
 /**
  * GET  /api/workspaces/:slug/system-map/findings/fix
- *       — the latest automated fix (status, PR link) per finding.
+ *       — the latest automated fix per finding; status and PR read from its strut runs.
  * POST /api/workspaces/:slug/system-map/findings/fix  { refIds: string[] }
- *       — start a coding-agent fix (opens a PR) for each confirmed, fixable
- *       finding; up to MAX_FIX_BATCH. DEVELOPER and up. Ineligible or
+ *       — for each confirmed, fixable finding, seed an org-canvas chat and
+ *       launch the orchestrator strut (as Protect's Jamie does), which starts
+ *       a job that opens a PR; up to MAX_FIX_BATCH. DEVELOPER and up. Ineligible or
  *       already-fixing findings are returned in `refused`; 409 when
  *       nothing could be started.
  */
@@ -15,6 +16,7 @@ import { WorkspaceRole } from "@/lib/auth/roles";
 import { WORKSPACE_PERMISSION_LEVELS } from "@/lib/constants";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getBaseUrl } from "@/lib/utils";
 import { isFindingRefId } from "@/lib/system-map/findings";
 import { FindingFixError, listLatestFixes, startFindingFixes } from "@/services/system-map/finding-fix";
 
@@ -77,6 +79,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       workspaceSlug: member.slug,
       userId: member.userId,
       refIds: payload.refIds,
+      publicBaseUrl: getBaseUrl(request.headers.get("host")),
     });
     if (result.started.length === 0) {
       return NextResponse.json({ error: result.refused[0]?.reason ?? "Nothing to fix", ...result }, { status: 409 });

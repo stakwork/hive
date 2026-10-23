@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   MAX_FIX_BATCH,
-  canTransition,
+  buildFindingFixSeed,
+  deriveFixStatus,
+  extractPrUrl,
   classifyFinding,
   fixDisabledReason,
   getFixEligibility,
   isGithubPrUrl,
-  mapWebhookStatus,
   planFixes,
   resolveFixRepository,
   validateFixBatch,
@@ -74,7 +75,7 @@ describe("fixDisabledReason", () => {
     prUrl: null,
     error: null,
     createdAt: "",
-    updatedAt: "",
+    chatPath: null,
   });
   it("blocks while queued/running only", () => {
     expect(fixDisabledReason(cwe(), fix("QUEUED"))).toMatch(/in progress/);
@@ -120,28 +121,65 @@ describe("resolveFixRepository", () => {
   });
 });
 
-describe("mapWebhookStatus", () => {
-  it("maps statuses", () => {
-    expect(mapWebhookStatus("running", null)).toBe("RUNNING");
-    expect(mapWebhookStatus("in_progress", undefined)).toBe("RUNNING");
-    expect(mapWebhookStatus("queued", null)).toBe("QUEUED");
-    expect(mapWebhookStatus("failed", null)).toBe("FAILED");
-    expect(mapWebhookStatus("error", "https://github.com/a/b/pull/1")).toBe("FAILED");
+describe("deriveFixStatus", () => {
+  const run = (kind: string, status: string, error?: string) => ({ kind, status: status as never, error });
+  it("is PR_OPENED whenever a PR exists", () => {
+    expect(deriveFixStatus([run("job_turn", "PENDING")], "https://github.com/a/b/pull/1").status).toBe("PR_OPENED");
   });
-  it("a PR URL means PR_OPENED; completed without one fails", () => {
-    expect(mapWebhookStatus("running", "https://github.com/a/b/pull/1")).toBe("PR_OPENED");
-    expect(mapWebhookStatus(undefined, "https://github.com/a/b/pull/1")).toBe("PR_OPENED");
-    expect(mapWebhookStatus("completed", null)).toBe("FAILED");
-    expect(mapWebhookStatus("bogus", null)).toBeNull();
-    expect(mapWebhookStatus(undefined, null)).toBeNull();
+  it("is QUEUED until a job starts, then RUNNING", () => {
+    expect(deriveFixStatus([], null).status).toBe("QUEUED");
+    expect(deriveFixStatus([run("orchestrator_turn", "PENDING")], null).status).toBe("QUEUED");
+    expect(deriveFixStatus([run("orchestrator_turn", "SUCCESS"), run("job_turn", "PENDING")], null).status).toBe(
+      "RUNNING",
+    );
+    // the orchestrator woken after the job still counts as running
+    expect(deriveFixStatus([run("job_turn", "SUCCESS"), run("orchestrator_turn", "PENDING")], null).status).toBe(
+      "RUNNING",
+    );
   });
-  it("validates PR urls and transitions", () => {
-    expect(isGithubPrUrl("https://github.com/a/b/pull/12")).toBe(true);
-    expect(isGithubPrUrl("javascript:alert(1)")).toBe(false);
+  it("fails on error/lost/cancelled and on a clean end without a PR", () => {
+    expect(deriveFixStatus([run("job_turn", "ERROR", "boom")], null)).toEqual({ status: "FAILED", error: "boom" });
+    expect(deriveFixStatus([run("orchestrator_turn", "LOST")], null).status).toBe("FAILED");
+    expect(deriveFixStatus([run("job_turn", "CANCELLED")], null).error).toMatch(/stopped/);
+    expect(deriveFixStatus([run("orchestrator_turn", "SUCCESS"), run("job_turn", "SUCCESS")], null).error).toMatch(
+      /without opening a pull request/,
+    );
+  });
+});
+
+describe("extractPrUrl / isGithubPrUrl", () => {
+  const pr = (url: unknown) => ({
+    id: "job-1",
+    artifacts: [{ kind: "pull_request", source: { type: "inline", content: { url } } }],
+  });
+  it("reads the job's pull_request card", () => {
+    expect(extractPrUrl([{ id: "u" }, pr("https://github.com/a/b/pull/7")])).toBe("https://github.com/a/b/pull/7");
+  });
+  it("ignores other kinds, bad urls and bad input", () => {
+    expect(extractPrUrl([pr("javascript:alert(1)")])).toBeNull();
+    expect(
+      extractPrUrl([{ artifacts: [{ kind: "diff", source: { content: { url: "https://github.com/a/b/pull/1" } } }] }]),
+    ).toBeNull();
+    expect(extractPrUrl(null)).toBeNull();
     expect(isGithubPrUrl("https://evil.com/a/b/pull/1")).toBe(false);
-    expect(canTransition("QUEUED", "RUNNING")).toBe(true);
-    expect(canTransition("RUNNING", "QUEUED")).toBe(false);
-    expect(canTransition("PR_OPENED", "FAILED")).toBe(false);
-    expect(canTransition("FAILED", "RUNNING")).toBe(false);
+  });
+});
+
+describe("buildFindingFixSeed", () => {
+  it("tells the orchestrator to start a job that opens a PR on the repo", () => {
+    const seed = buildFindingFixSeed(
+      "code_issue",
+      cwe({ api_token: "s3cret", evidence: "x" }),
+      "ws",
+      "https://github.com/acme/api",
+    );
+    expect(seed).toContain('start_job tool with workspace "ws"');
+    expect(seed).toContain("https://github.com/acme/api");
+    expect(seed).toContain("CWE-79");
+    expect(seed).toContain("a/b.ts");
+    expect(seed).not.toContain("s3cret");
+  });
+  it("asks for the fixed version for package CVEs", () => {
+    expect(buildFindingFixSeed("package_cve", pkg({ fixed_in: "2.0.0" }), "ws", "r")).toMatch(/fixed version/);
   });
 });

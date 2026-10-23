@@ -8,6 +8,7 @@ vi.mock("@/lib/feature-flags", () => ({
   FEATURE_FLAGS: { CODEBASE_RECOMMENDATION: "x" },
 }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: vi.fn(async () => ({ allowed: true })) }));
+
 vi.mock("@/services/system-map/finding-fix", async () => {
   class FindingFixError extends Error {
     constructor(

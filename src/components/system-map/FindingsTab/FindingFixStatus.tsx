@@ -39,6 +39,17 @@ export function FixBadge({ fix }: { fix: SystemMapFindingFix }) {
           View PR <ExternalLink className="h-3 w-3" />
         </a>
       )}
+      {fix.chatPath && (
+        <a
+          href={fix.chatPath}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-muted-foreground hover:underline"
+          data-testid="finding-fix-chat-link"
+        >
+          Open chat
+        </a>
+      )}
     </span>
   );
 }

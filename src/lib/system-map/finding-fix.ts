@@ -5,18 +5,14 @@
  * `services/system-map/finding-fix.ts` for the dispatch.
  */
 
-import type { FindingFixStatus } from "@prisma/client";
-import type { SystemMapFinding, SystemMapFindingFix } from "@/types/system-map";
+import type { SystemMapFinding, SystemMapFindingFix, SystemMapFindingFixStatus } from "@/types/system-map";
 
 /** Most findings one bulk Fix request takes. */
 export const MAX_FIX_BATCH = 10;
 
 export type FindingFixKind = "package_cve" | "code_issue";
 
-/** Fix states that block a new run for the same finding. */
-export const ACTIVE_FIX_STATUSES: readonly FindingFixStatus[] = ["QUEUED", "RUNNING"];
-
-export function isActiveFixStatus(status: FindingFixStatus | string | null | undefined): boolean {
+export function isActiveFixStatus(status: SystemMapFindingFixStatus | string | null | undefined): boolean {
   return status === "QUEUED" || status === "RUNNING";
 }
 
@@ -153,65 +149,104 @@ export function resolveFixRepository<T extends { repositoryUrl: string }>(
   return repositories.length === 1 ? repositories[0] : null;
 }
 
-/** Statuses a callback may report, mapped onto the stored status. */
-const WEBHOOK_STATUS_MAP: Record<string, FindingFixStatus> = {
-  queued: "QUEUED",
-  pending: "QUEUED",
-  running: "RUNNING",
-  in_progress: "RUNNING",
-  started: "RUNNING",
-  pr_opened: "PR_OPENED",
-  pr_created: "PR_OPENED",
-  completed: "PR_OPENED",
-  complete: "PR_OPENED",
-  success: "PR_OPENED",
-  failed: "FAILED",
-  error: "FAILED",
-};
-
-/**
- * Maps a callback payload to the stored status. A PR URL means PR_OPENED
- * whatever the status says; "completed" without one is a failure (nothing
- * to review). Null for an unrecognised status.
- */
-export function mapWebhookStatus(
-  status: string | undefined,
-  prUrl: string | undefined | null,
-): FindingFixStatus | null {
-  if (prUrl) return status && WEBHOOK_STATUS_MAP[status.toLowerCase()] === "FAILED" ? "FAILED" : "PR_OPENED";
-  if (!status) return null;
-  const mapped = WEBHOOK_STATUS_MAP[status.toLowerCase()];
-  if (!mapped) return null;
-  return mapped === "PR_OPENED" ? "FAILED" : mapped;
-}
-
 /** Only https GitHub PR URLs are stored and linked. */
 export function isGithubPrUrl(url: string): boolean {
   return /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+/.test(url);
 }
 
-/** Terminal states don't move again, except QUEUED → anything. */
-export function canTransition(from: FindingFixStatus, to: FindingFixStatus): boolean {
-  if (from === to) return false;
-  if (from === "PR_OPENED" || from === "FAILED") return false;
-  if (from === "RUNNING" && to === "QUEUED") return false;
-  return true;
+/** The strut runs of a fix's conversation, as far as its status goes. */
+export interface FixRunState {
+  /** `orchestrator_turn` or `job_turn` (the `StrutRun.kind`). */
+  kind: string;
+  status: "PENDING" | "SUCCESS" | "ERROR" | "CANCELLED" | "LOST";
+  error?: string | null;
 }
 
-export function buildFixPrompt(kind: FindingFixKind, finding: SystemMapFinding): string {
-  const where = finding.file ? `${finding.file}${finding.line ? `:${finding.line}` : ""}` : "unknown location";
-  const head =
+/**
+ * The first PR the job reported: a `pull_request` artifact on a conversation
+ * row (`job-turn.ts` appends the job's cards to its `job-<id>` row as
+ * `{ kind: "pull_request", source: { type: "inline", content: { url } } }`).
+ */
+export function extractPrUrl(messages: unknown): string | null {
+  if (!Array.isArray(messages)) return null;
+  for (const message of messages) {
+    const artifacts = (message as { artifacts?: unknown } | null)?.artifacts;
+    if (!Array.isArray(artifacts)) continue;
+    for (const artifact of artifacts) {
+      const a = artifact as { kind?: unknown; source?: { content?: { url?: unknown } } } | null;
+      const url = a?.kind === "pull_request" ? a.source?.content?.url : undefined;
+      if (typeof url === "string" && isGithubPrUrl(url)) return url;
+    }
+  }
+  return null;
+}
+
+/**
+ * A fix's status from what strut reported for its conversation:
+ *   - a PR on a row → PR_OPENED, whatever else runs;
+ *   - a run still PENDING → RUNNING once a job has been started, else QUEUED
+ *     (the orchestrator turn is deciding / starting it);
+ *   - nothing pending: an errored, stopped or lost run → FAILED with its
+ *     error; a clean end without a PR → FAILED (nothing to review).
+ */
+export function deriveFixStatus(
+  runs: FixRunState[],
+  prUrl: string | null,
+): { status: SystemMapFindingFixStatus; error: string | null } {
+  if (prUrl) return { status: "PR_OPENED", error: null };
+  if (runs.some((r) => r.status === "PENDING")) {
+    return { status: runs.some((r) => r.kind === "job_turn") ? "RUNNING" : "QUEUED", error: null };
+  }
+  if (runs.length === 0) return { status: "QUEUED", error: null };
+  const bad = runs.find((r) => r.status !== "SUCCESS");
+  if (bad) {
+    const reason = bad.error || (bad.status === "CANCELLED" ? "The run was stopped" : "The run failed");
+    return { status: "FAILED", error: reason };
+  }
+  return { status: "FAILED", error: "The agent finished without opening a pull request" };
+}
+
+/** Keys left out of the seed, as Jamie redacts secret-category evidence. */
+const SENSITIVE_KEY_RE = /secret|token|password|credential|evidence/i;
+
+/**
+ * The message the orchestrator strut is launched with — the Protect Jamie
+ * seed (`buildProtectJamieSeed`, `start_job` flavour) for an Infosec finding.
+ */
+export function buildFindingFixSeed(
+  kind: FindingFixKind,
+  finding: SystemMapFinding,
+  workspaceSlug: string,
+  repositoryUrl: string,
+): string {
+  const where = finding.file ? `${finding.file}${finding.line ? `:${finding.line}` : ""}` : "(unknown)";
+  const task =
     kind === "package_cve"
-      ? "Fix this vulnerable dependency: upgrade to the fixed version (or the smallest safe change), update lockfiles, keep the build and tests passing."
-      : `Fix this security issue${finding.cweId ? ` (${finding.cweId})` : ""} with the smallest safe code change, adding or updating a test where practical.`;
+      ? "This is a vulnerable package (CVE). Bump it to the fixed version (the advisory's fixed_in, else the smallest safe upgrade), update the lockfile, keep the build and tests passing, and open a pull request."
+      : `This is a code issue${finding.cweId ? ` (${finding.cweId})` : ""} at ${where}. Fix it with the smallest safe code change, add or update a test where practical, and open a pull request.`;
+  const details = Object.entries(finding.properties)
+    .filter(([key]) => key !== "description" && !SENSITIVE_KEY_RE.test(key))
+    .map(([key, value]) => `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`)
+    .join("\n")
+    .slice(0, 4000);
   return [
-    head,
+    "You are helping a workspace member act on a single confirmed Infosec security finding.",
+    "Work on this finding only. Do not batch other findings.",
+    `Fix it as a job: use the start_job tool with workspace "${workspaceSlug}", and name the repository ${repositoryUrl} in the job's prompt. The job must open a pull request against that repository (never push to the default branch) and report the PR.`,
+    task,
+    "",
     `Title: ${finding.title}`,
     `Severity: ${finding.severity ?? "unrated"}`,
-    `Location: ${where}`,
-    finding.description ? `Details: ${finding.description}` : null,
-    "Open a pull request with the change; do not push to the default branch.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+    `CWE: ${finding.cweId ?? "(none)"}`,
+    `Workspace: ${workspaceSlug}`,
+    `Repository: ${repositoryUrl}`,
+    `File: ${finding.file ?? "(none)"}`,
+    `Line: ${finding.line ?? "(unknown)"}`,
+    "",
+    "Description:",
+    finding.description || "(none)",
+    "",
+    "Finding properties:",
+    details || "(none)",
+  ].join("\n");
 }

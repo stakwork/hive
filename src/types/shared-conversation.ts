@@ -6,6 +6,9 @@ export interface ConversationSettings {
   protectFindingRefId?: string;
   protectTool?: string;
   protectWorkspaceSlug?: string;
+  // Infosec finding Fix: the finding the conversation fixes.
+  infosecFindingRefId?: string;
+  infosecWorkspaceSlug?: string;
   // Set to "llm" after a successful generateConversationTitle write.
   // Once present, later turns must not overwrite SharedConversation.title.
   titleSource?: "llm";
