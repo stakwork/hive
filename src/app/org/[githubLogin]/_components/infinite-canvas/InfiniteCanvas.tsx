@@ -1,6 +1,8 @@
 "use client";
 
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { stageLine } from "@/lib/initiative-plan";
 import { useCanvasChatStore, type InitiativeFocus } from "../../_state/canvasChatStore";
 import type { ArtifactRef, ArtifactVersion } from "../../_state/canvasChatArtifacts";
@@ -8,8 +10,8 @@ import { type CanvasJob, useCanvasJobs } from "../../_state/useCanvasJobs";
 import { ArtifactPanel } from "../artifacts/ArtifactPanel";
 import { ChatArtifacts } from "../artifacts/ChatArtifacts";
 import { OnPaper } from "../artifacts/onPaper";
+import { findBrainstormCard } from "../artifacts/openArtifact";
 import { useArtifactPanelOpen } from "../artifacts/useArtifactPanel";
-import { expandDraft } from "../brainstorm-board/actions";
 import {
   type Board,
   type PlanNode,
@@ -19,6 +21,7 @@ import {
   NAVIGATE,
   bestMatch,
   byId,
+  expandDraft,
   initiativeOf,
   initiativesByRecency,
   kids,
@@ -140,11 +143,13 @@ function readAt(): string | null {
   if (typeof window === "undefined") return null;
   return new URLSearchParams(window.location.search).get("at");
 }
-function writeAt(id: string) {
+function replaceParams(edit: (params: URLSearchParams) => void) {
   const params = new URLSearchParams(window.location.search);
-  if (id === ORG) params.delete("at");
-  else params.set("at", id);
+  edit(params);
   window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params.toString()}`);
+}
+function writeAt(id: string) {
+  replaceParams((p) => (id === ORG ? p.delete("at") : p.set("at", id)));
 }
 
 /**
@@ -263,6 +268,53 @@ export function InfiniteCanvas({
 
   /** Which brainstorm each card shows unfolded (the newest until someone picks another). */
   const [openTrees, setOpenTrees] = useState<OpenTrees>({});
+  /** Go to the card a brainstorm is about with that tree unfolded; the URL keeps the card as `at`. */
+  const openBrainstorm = useCallback((card: string, root: string) => {
+    setOpenTrees((o) => ({ ...o, [card]: root }));
+    setSeek({ at: card });
+    replaceParams((p) => {
+      for (const k of ["tree", "ws", "root", "node"]) p.delete(k);
+      p.set("at", card);
+    });
+  }, []);
+  // A brainstorm link (`?at=<card>&tree=<root>`, a chat card or the panel's link).
+  const searchParams = useSearchParams();
+  const linkAt = searchParams.get("at");
+  const linkTree = searchParams.get("tree");
+  useEffect(() => {
+    if (linkAt && linkTree) openBrainstorm(linkAt, linkTree);
+  }, [linkAt, linkTree, openBrainstorm]);
+  // A brainstorm by ref (`?ws=&root=`, links made without reading the tree and the old desk's): find the card it's
+  // about and go there; one about no card opens in the panel.
+  const qc = useQueryClient();
+  const linkWs = searchParams.get("ws");
+  const linkRoot = searchParams.get("root");
+  const [offCard, setOffCard] = useState<{ workspace: string; focus: string } | null>(null);
+  useEffect(() => {
+    if (!linkWs || !linkRoot) return;
+    let live = true;
+    void findBrainstormCard(qc, linkWs, linkRoot).then((at) => {
+      if (!live) return;
+      if (at) return openBrainstorm(at.card, at.root);
+      replaceParams((p) => ["ws", "root", "node"].forEach((k) => p.delete(k)));
+      setOffCard({ workspace: linkWs, focus: linkRoot });
+    });
+    return () => {
+      live = false;
+    };
+  }, [qc, linkWs, linkRoot, openBrainstorm]);
+  // Starting the page's chat clears the panel, so a brainstorm about no card opens there once the chat is up.
+  const chatUp = useCanvasChatStore((s) => !!s.activeConversationId);
+  useEffect(() => {
+    if (!offCard || !chatUp) return;
+    useCanvasChatStore.getState().openLiveArtifact({
+      id: `brainstorm:${offCard.focus}`,
+      kind: "graph",
+      title: "Brainstorm",
+      source: { type: "inline", content: { ...offCard, layout: "tree" } },
+    });
+    setOffCard(null);
+  }, [offCard, chatUp]);
   const desk = useMemo(() => {
     const latest = initiativesByRecency(board)
       .slice(0, DESK_SIZE)

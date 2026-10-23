@@ -270,7 +270,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
   );
 }
 
-/** One line of the index. A brainstorm tree opens on the desk, anything else on the panel. */
+/** One line of the index. A brainstorm tree opens on the canvas at its card, anything else on the panel. */
 function IndexRow({ artifact }: { artifact: ArtifactRef }) {
   const spec = artifactKind(artifact.kind);
   const open = useOpenArtifact(useChatOrgLogin());

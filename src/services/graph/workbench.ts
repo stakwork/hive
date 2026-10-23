@@ -8,14 +8,15 @@
  */
 
 import { mockConnectionPage, mockHierarchy, mockNodeConnections } from "@/app/api/mock/graph/workbench-fixture";
-import { mockBrainstormListWithWrites, mockChoiceTreeWithWrites } from "@/app/api/mock/graph/brainstorm-store";
+import { mockChoiceTreeWithWrites } from "@/app/api/mock/graph/brainstorm-store";
 import { mockLatency } from "@/app/api/mock/graph/latency";
 import {
+  mockBrainstormAbout,
   mockInitiativeList,
   mockInitiativesBuilding,
   mockInitiativeTree,
 } from "@/app/api/mock/graph/initiative-fixture";
-import { graphEpochToMs, graphTimeToMs } from "@/app/org/[githubLogin]/_components/brainstorm-board/desk-layout";
+import { graphEpochToMs, graphTimeToMs } from "@/lib/graph-time";
 import { fromPropertyPairs, isRunGraphRefId, propertyPairs, typeFromLabels } from "@/lib/strut-run-graph/hydrate";
 import {
   INITIATIVE_TREE_READ_LABELS,
@@ -305,7 +306,14 @@ export interface ChoiceTreeNode {
   effects?: ChoiceEffect[];
   /** Options only: `RATED_ON` scores (-1..1) on the Fast / Good / Cheap corners it was rated on. Absent when unrated. */
   ratings?: Partial<Record<FgcCorner, number>>;
+  /** Questions only: the plan card (initiative, milestone or feature) the brainstorm is `ABOUT`. Absent when none. */
+  about?: string;
 }
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+
+/** What a brainstorm can be about: the plan cards the canvas shows it on. */
+const BRAINSTORM_ABOUT_LABELS = ["HiveInitiative", "HiveMilestone", "InitiativeFeature"];
 
 export const FGC_CORNERS = ["fast", "good", "cheap"] as const;
 export type FgcCorner = (typeof FGC_CORNERS)[number];
@@ -461,7 +469,12 @@ export async function getChoiceTree(
 ): Promise<WorkbenchResult<ChoiceTreeData>> {
   if (useMocks() && isRunGraphRefId(focusRefId) && labels.every((l) => IDENT.test(l))) {
     await mockLatency();
-    return { ok: true, data: mockChoiceTreeWithWrites(focusRefId, labels) };
+    const data = mockChoiceTreeWithWrites(focusRefId, labels);
+    const nodes = data.nodes.map((n) => {
+      const about = n.type === "Question" ? mockBrainstormAbout(n.ref_id) : undefined;
+      return about ? { ...n, about } : n;
+    });
+    return { ok: true, data: { ...data, nodes } };
   }
   const tree = await readTree(caller, focusRefId, {
     labels,
@@ -472,7 +485,9 @@ export async function getChoiceTree(
       `{ref_id: x.ref_id, name: x.name, description: x.description, direction: x.direction, impact: x.impact, ` +
       `against: [(x)-[ag:AGAINST]->(rq:Requirement) WHERE ${edgeLive("ag")} AND ${nodeLive("rq")} | rq.ref_id]}] AS effects, ` +
       `[(${n})-[ro:RATED_ON]->(c) WHERE (c:Fast OR c:Good OR c:Cheap) AND ${edgeLive("ro")} | ` +
-      `{corner: head([l IN labels(c) WHERE l IN ['Fast', 'Good', 'Cheap']]), score: ro.score}] AS ratings`,
+      `{corner: head([l IN labels(c) WHERE l IN ['Fast', 'Good', 'Cheap']]), score: ro.score}] AS ratings, ` +
+      `[(${n})-[ab:ABOUT]->(c) WHERE (${BRAINSTORM_ABOUT_LABELS.map((l) => `c:\`${l}\``).join(" OR ")}) ` +
+      `AND ${edgeLive("ab")} AND ${nodeLive("c")} | c.ref_id] AS about`,
   });
   if (!tree.ok) return tree;
   return {
@@ -487,61 +502,19 @@ export async function getChoiceTree(
         const option = type === "Option";
         const effects = option ? toEffects(r.row.effects) : [];
         const ratings = option ? toRatings(r.row.ratings) : {};
+        const about = type === "Question" ? strings(r.row.about)[0] : undefined;
         return {
           ref_id: r.ref_id,
           type,
           properties: r.properties,
           ...(effects.length ? { effects } : {}),
           ...(Object.keys(ratings).length ? { ratings } : {}),
+          ...(about ? { about } : {}),
         };
       }),
       edges: tree.data.edges.map(({ source, target }) => ({ source, target })),
       truncated: tree.data.truncated,
     },
-  };
-}
-
-// ── Brainstorm roots ────────────────────────────────────────────────────────
-
-export interface BrainstormRoot {
-  ref_id: string;
-  /** The root question's `text`, else its `name`, else its ref_id. */
-  text: string;
-  /** The strut job that wrote it, when it says. */
-  job: string | null;
-  made_by: string | null;
-}
-
-/** Brainstorms listed at most (newest first). */
-export const BRAINSTORM_LIST_CAP = 50;
-
-/**
- * The brainstorms of a workspace: `Question` nodes (and legacy `Choice` nodes
- * with `kind: "question"`) that no live `PARENT_OF` edge from a question,
- * option or choice points at — the roots. Newest first by `date_added_to_graph`
- * (when the node has it), then by ref_id; at most `BRAINSTORM_LIST_CAP`.
- */
-export async function listBrainstormRoots(caller: Caller): Promise<WorkbenchResult<BrainstormRoot[]>> {
-  if (useMocks()) return { ok: true, data: mockBrainstormListWithWrites() };
-  const isParent = CHOICE_TREE_LABELS.map((l) => `p:\`${l}\``).join(" OR ");
-  const result = await rows(
-    caller,
-    `MATCH (n) WHERE (n:\`Question\` OR (n:\`Choice\` AND n.kind = 'question')) AND ${nodeLive("n")} ` +
-      `OPTIONAL MATCH (p)-[e:PARENT_OF]->(n) WHERE (${isParent}) AND ${edgeLive("e")} AND ${nodeLive("p")} ` +
-      `WITH n, count(p) AS parents WHERE parents = 0 ` +
-      `RETURN n.ref_id AS id, n.text AS text, n.name AS name, n.job AS job, n.made_by AS made_by ` +
-      `ORDER BY coalesce(n.date_added_to_graph, 0) DESC, n.ref_id DESC LIMIT ${BRAINSTORM_LIST_CAP}`,
-    BRAINSTORM_LIST_CAP,
-  );
-  if (!result.ok) return result;
-  return {
-    ok: true,
-    data: result.data.slice(0, BRAINSTORM_LIST_CAP).flatMap((r) => {
-      const id = str(r.id);
-      return id && isRunGraphRefId(id)
-        ? [{ ref_id: id, text: str(r.text) ?? str(r.name) ?? id, job: str(r.job), made_by: str(r.made_by) }]
-        : [];
-    }),
   };
 }
 
@@ -586,8 +559,6 @@ export interface InitiativeTreeData {
   /** A build job is writing to this initiative right now (mock mode only, for now). */
   building?: boolean;
 }
-
-const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 
 /**
  * An initiative and everything planned under it — brief, user stories and

@@ -351,6 +351,10 @@ export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n ==
 /** The ask that starts a feature's build: a job whose pull requests show on the card. Offered once it has an architecture. */
 export const IMPLEMENT = "Implement this feature.";
 
+/** Asks the brainstorm job for more on a card: `Expand B: "<text>" (<ref_id>)`; no label for a question. */
+export const expandDraft = (c: { id: string; name: string; letter?: string }) =>
+  `Expand ${c.letter ? `${c.letter}: ` : ""}"${c.name}" (${c.id})`;
+
 /** What the Ask Jamie box offers on a node, most useful first. */
 export function suggestions(b: Board, id: string): string[] {
   const node = byId(b, id);

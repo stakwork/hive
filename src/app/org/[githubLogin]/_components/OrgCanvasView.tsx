@@ -29,7 +29,6 @@ import { ArtifactPanel } from "./artifacts/ArtifactPanel";
 import Link from "next/link";
 import { buildPageContextPath, type PageContext } from "@/lib/jamie-page-context";
 import { canvasTab, orgPageView, type CanvasTab } from "./useOrgView";
-import { Desk } from "./brainstorm-board/Desk";
 import { InfiniteCanvas } from "./infinite-canvas/InfiniteCanvas";
 import { OrgInitiatives } from "../OrgInitiatives";
 import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
@@ -161,22 +160,16 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   const tab = canvasTab(searchParams);
   /**
    * The infinite canvas, Jamie in a bar on it and the full chat sliding in
-   * from its left; it opens artifacts in its own panel on its right. A
-   * brainstorm opened from a chat card (`&root=`) still lands on the
-   * brainstorm desk, beside the chat as before.
+   * from its left; it opens artifacts in its own panel on its right.
    */
-  const infiniteCanvas = mode === "canvas" && tab === "brainstorm" && !searchParams.get("root");
+  const infiniteCanvas = mode === "canvas" && tab === "brainstorm";
   const leftSurface = artifactOpen && !infiniteCanvas ? "artifact" : mode;
-  const brainstormTab = mode === "canvas" && leftSurface === "canvas" && tab === "brainstorm";
-  const deskLink = brainstormTab && !!searchParams.get("root");
   const tabHref = (next: CanvasTab) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "canvas");
     if (next === "map") params.delete("tab");
     else params.set("tab", next);
-    // A tab click leaves a brainstorm desk link (back to the canvas); the canvas's level stays only on its own tab.
-    params.delete("ws");
-    params.delete("root");
+    // The canvas's level stays only on its own tab.
     if (next !== tab) params.delete("at");
     return `${pathname}?${params.toString()}`;
   };
@@ -715,11 +708,6 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
                       workspaceSlugs={chatWorkspaceSlugs}
                       renderChat={(onCollapse) => rightPanel(undefined, onCollapse)}
                     />
-                  </div>
-                )}
-                {deskLink && (
-                  <div className="absolute bottom-0 left-0 top-11 z-10 overflow-hidden bg-background" style={{ right: panelWidth }}>
-                    <Desk githubLogin={githubLogin} workspaceSlugs={chatWorkspaceSlugs} />
                   </div>
                 )}
                 {/* The tab bar lines up with the chat panel's header across the divider. */}
