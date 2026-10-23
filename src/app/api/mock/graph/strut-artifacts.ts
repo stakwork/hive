@@ -51,6 +51,22 @@ const pr = (
 
 const ONB = "mock-initiative-onboarding";
 const JANITOR = "mock-initiative-janitor";
+const CAUSE = "mock-initiative-causation";
+
+/** A graph thumbnail on the large initiative: the workspace's graph around one of its cards. */
+const causeGraph = (n: number, focus: string): StrutArtifact => ({
+  id: `cause-graph-${n}`,
+  kind: "graph",
+  title: `Causes around ${focus}`,
+  content: JSON.stringify({ workspace: "mock-stakgraph", focus }),
+});
+/** Notes long enough that rendering them as markdown costs something. */
+const causeNotes = (n: number): string =>
+  Array.from(
+    { length: 12 },
+    (_, i) =>
+      `## Finding ${n}.${i + 1}\n\nThe **effect** traced back to its cause in ${i + 2} hops; see \`cause-${i}\` and [the run](https://example.com/run/${i}).\n\n- evidence: ${i + 3} edges\n- confidence: ${(0.5 + i / 30).toFixed(2)}`,
+  ).join("\n\n");
 
 export const MOCK_STRUT_JOBS: MockStrutJob[] = [
   {
@@ -254,6 +270,51 @@ export const MOCK_STRUT_JOBS: MockStrutJob[] = [
           "npm ERR! code ENOSPC\nnpm ERR! syscall write\nnpm ERR! errno -28\nnpm ERR! nospc ENOSPC: no space left on device",
       },
       { id: "mute-shot", kind: "image", title: "Settings page", error: "screenshot failed: page did not load" },
+    ],
+  },
+  {
+    jobId: "mock-job-cause-build",
+    initiativeRefId: CAUSE,
+    refId: CAUSE,
+    title: "Build out Causation primitive",
+    state: "running",
+    hoursAgo: 0,
+    artifacts: [],
+  },
+  {
+    jobId: "mock-job-cause-benchmarks",
+    initiativeRefId: CAUSE,
+    refId: CAUSE,
+    title: "Benchmark the causation primitive",
+    state: "done",
+    hoursAgo: 3,
+    artifacts: [
+      {
+        id: "cause-benchmarks-app",
+        kind: "app",
+        title: "Causation Benchmarks",
+        app: { name: "causation-benchmarks", version: "v1" },
+      },
+      {
+        id: "pr-hive-5650",
+        kind: "pull_request",
+        title: "Cause node and its evidence edges",
+        content: pr("stakwork/hive", 5650, "open", "pending", "cause-node"),
+      },
+      { id: "cause-pod", kind: "url", title: "Pod", label: "Pod", url: "https://pod-cause.example.com" },
+      { id: "cause-ide", kind: "url", title: "IDE", label: "IDE", url: "https://ide-cause.example.com" },
+      causeGraph(1, CAUSE),
+      causeGraph(2, "mock-cause-m1"),
+      causeGraph(3, "mock-cause-m2"),
+      causeGraph(4, "mock-cause-s1"),
+      { id: "cause-notes-1", kind: "markdown", title: "Notes", label: "Notes", content: causeNotes(1) },
+      {
+        id: "cause-notes-2",
+        kind: "markdown",
+        title: "Notes on the benchmarks",
+        label: "Notes",
+        content: causeNotes(2),
+      },
     ],
   },
 ];

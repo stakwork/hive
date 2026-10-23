@@ -38,7 +38,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("the fixture", () => {
-  test("seven initiatives, most recently updated first, each read back as its own tree", () => {
+  test("eight initiatives, most recently updated first, each read back as its own tree", () => {
     const list = mockInitiativeList();
     expect(list.map((i) => i.name)).toEqual([
       "Self-serve onboarding",
@@ -48,6 +48,7 @@ describe("the fixture", () => {
       "Mobile review app",
       "SOC 2 Type II",
       "Janitor marketplace",
+      "Causation primitive",
     ]);
     expect(list.every((i, k) => k === 0 || (list[k - 1].updated_at ?? 0) >= (i.updated_at ?? 0))).toBe(true);
     expect(initiativeStage(mockInitiativeTree("mock-initiative-mobile").nodes)).toMatchObject({
