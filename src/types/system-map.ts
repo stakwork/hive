@@ -190,8 +190,9 @@ export interface SystemMapFindingFix {
   status: SystemMapFindingFixStatus;
   prUrl: string | null;
   error: string | null;
+  /** The org-canvas chat the fix runs in (where the orchestrator can be talked to). */
+  chatPath: string | null;
   createdAt: string;
-  updatedAt: string;
 }
 
 export type SystemMapFindingsResponse =

@@ -166,7 +166,6 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/graph/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/janitors/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/protect/webhook", strategy: "prefix", access: "webhook" },
-  { path: "/api/system-map/finding-fix/webhook", strategy: "exact", access: "webhook" }, // fix agent callback; x-api-token checked in the handler
   { path: "/api/lingo/extraction/collect", strategy: "exact", access: "webhook" },
   { path: "/api/lingo/extraction/upsert", strategy: "exact", access: "webhook" },
   { path: "/api/swarm/stakgraph/webhook", strategy: "prefix", access: "webhook" },
