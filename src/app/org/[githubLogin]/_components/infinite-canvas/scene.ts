@@ -158,7 +158,9 @@ function brainstorms(ctx: Ctx, f: Rect, id: string, scale: number): Rect {
     if (depth === 0) group = union(group, { x, y: top, w: 1, h });
   };
   const gap = u.h * 0.08;
-  const height = (q: PlanNode) => (q.id === openId ? treeH(q, 3) : qh);
+  // Every root takes the same slot (room for three answers), open or folded, so opening one never moves another.
+  // A taller open tree just spills down to the right of the roots below it; their cards sit in the question column.
+  const slot = 3 * (oh + og) - og;
   // The first tree starts at a fixed place (centred on room for three answers), whatever is open or answered.
   let y = f.y + f.h / 2 - (3 * (oh + og) - og) / 2;
   for (const q of roots) {
@@ -173,7 +175,7 @@ function brainstorms(ctx: Ctx, f: Rect, id: string, scale: number): Rect {
     }
     const root = out.get(q.id)!;
     out.set(q.id, { ...root, group: tree });
-    y += height(q) + gap;
+    y += slot + gap;
   }
   return group;
 }
