@@ -229,3 +229,26 @@ No `will-change`: it doubled the flight's dropped frames.
 | Flight org → initiative | 73 → 11.6 | 87 → 16.6 | 37 → 18 | 61% → 22% |
 
 The ~1 commit/s left during zoom and pan comes from the attention panel's polling, outside the canvas. The baseline was rerun on master just before this change, so its "before" numbers differ slightly from Step 0.
+
+### Step 2: cards keep their state when culled
+
+- A card that has been shown stays mounted when culled, `display: none`, frozen at the props it last showed with (`SceneItem` keeps them, so `SceneCard`'s memo skips every commit while it's hidden). It leaves `boxes`, so the blend painted each frame skips it. A card never shown is still not mounted.
+- A container's frame and face, once drawn, both stay; the level hides whichever it doesn't show. A rename in an open frame survives going up a level.
+- `display: none`, not `visibility: hidden`: a hidden subtree costs no layout or paint, and is out of tab order, the accessibility tree and hit testing either way.
+- Chrome blurs a focused field when its card is hidden, and blur saves. A blur on a field that's no longer visible (`checkVisibility()`) doesn't save, so the draft waits in the field.
+- An accept/reject in flight is held in `useCanvasProposals` (`deciding`), not in `PencilBar`.
+
+**DOM:** 94 canvas nodes on a fresh org load. After visiting all 32 levels of the mock board and coming back to the org: 1,663 (87 hidden cards, 1,542 nodes). No cap: hidden subtrees don't render, lay out or paint.
+
+Before is master `0b56149c1` (Step 1), rerun in the same session; medians of 5 runs.
+
+| Gesture | Commits/s | `SceneItem`/commit | Dropped frames | Main thread busy |
+|---|---|---|---|---|
+| Zoom, org | 0.9 → 0.9 | 0 → 0 | 0 → 0 | 5.7% → 5.7% |
+| Zoom, initiative | 1.0 → 1.0 | 0 → 0 | 0 → 0 | 9.5% → 9.3% |
+| Pan, org | 0.9 → 0.9 | 0 → 0 | 5 → 5 | 8.2% → 8.1% |
+| Pan, initiative | 0.9 → 0.9 | 0 → 0 | 5 → 5 | 10.6% → 11.8% |
+| Flight org → initiative | 11.7 → 10.9 | 17.3 → 15.9 | 11 → 14 | 18% → 21% |
+
+- The flight's dropped frames are within run-to-run noise. Over 10 more runs each: before 12–34 (median 13, mean 17.3), after 9–20 (median 16, mean 15.9).
+- Inside an initiative opened by deep link, the page starts with 362 canvas nodes instead of 328: org cards from the first frame stay mounted, hidden.
