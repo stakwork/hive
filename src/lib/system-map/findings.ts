@@ -1,4 +1,5 @@
 import { getNodeEdges, listNodesByType, type JarvisGraphNode } from "@/services/swarm/api/nodes";
+import { parseFixTracking } from "@/lib/system-map/finding-fix";
 import type { JarvisConnectionConfig } from "@/types/jarvis";
 import type { SystemMapFinding, SystemMapFindingRelated } from "@/types/system-map";
 
@@ -38,6 +39,7 @@ export function parseFinding(node: JarvisGraphNode): SystemMapFinding | null {
     line: line ? Number(line) || null : null,
     description: pick(p, ["description", "details", "body"]),
     dateAdded: Number.parseFloat(String(node.date_added_to_graph ?? "")) || null,
+    fix: parseFixTracking(p),
     properties: p,
   };
 }
@@ -112,7 +114,10 @@ export type LoadFindingRelatedResult =
  * infosec, systemmap and default namespaces at once — but it strips
  * `namespace` from what it returns, so neighbours are told apart by type.
  */
-export async function loadFindingRelated(config: JarvisConnectionConfig, refId: string): Promise<LoadFindingRelatedResult> {
+export async function loadFindingRelated(
+  config: JarvisConnectionConfig,
+  refId: string,
+): Promise<LoadFindingRelatedResult> {
   const read = await getNodeEdges(config, refId, { limit: FINDING_RELATED_MAX });
   if (!read.ok) return { ok: false, error: read.error || `Failed to read related nodes from ${config.jarvisUrl}` };
 
