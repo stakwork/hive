@@ -1,6 +1,6 @@
 /**
  * Hive's server side of strut APPS (strut `plans/apps.md` §7.2, §7.4): what
- * the two routes under `api/orgs/[githubLogin]/strut/apps` do once a
+ * the routes under `api/orgs/[githubLogin]/strut/apps` do once a
  * member is signed in.
  *
  * - **The swarm** (`authorizeAppSwarm`): the caller must belong to the org,
@@ -28,7 +28,7 @@
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { EncryptionService } from "@/lib/encryption";
-import { isStrutAppName, STRUT_APP_DOCUMENT, type PinnedStrutApp } from "@/lib/strut-apps";
+import { isStrutAppName, isStrutAppVersion, STRUT_APP_DOCUMENT, type PinnedStrutApp } from "@/lib/strut-apps";
 import { strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
@@ -291,33 +291,91 @@ export async function readStrutAppPin(
 }
 
 /**
- * Pin the app as a tab, or unpin it: strut's `PUT /apps/:name/pin` (the
- * name encoded whole, as the document route spells it) with the swarm key —
- * a person's door on strut, so a peer key would not do. Strut's own 4xx and
- * its message come back as they are; anything else is a 502.
+ * A `PUT` to a person's door on strut (`/apps/:name/pin`, `/apps/:name/active`)
+ * with the swarm key — a peer key would not do. Strut's own 4xx and its
+ * message come back as they are; anything else is a 502.
  */
+async function labPut(
+  swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
+  path: string,
+  body: Record<string, unknown>,
+  what: string,
+): Promise<{ ok: true; body: Record<string, unknown> } | AppRouteFailure> {
+  let res: Response;
+  try {
+    res = await fetch(`${swarm.labBase}${path}`, {
+      method: "PUT",
+      headers: { "x-api-token": swarm.swarmApiKey, "content-type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+    });
+  } catch (err) {
+    console.warn(`[strut-apps] ${what}: swarm unreachable`, { swarmId: swarm.swarmId, error: err instanceof Error ? err.message : String(err) });
+    return fail(502, "Could not reach the swarm");
+  }
+  const answer: unknown = await res.json().catch(() => null);
+  if (res.ok) return { ok: true, body: isRecord(answer) ? answer : {} };
+  const error = isRecord(answer) && typeof answer.error === "string" ? answer.error : `The swarm answered ${res.status}`;
+  if (res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 403) return fail(res.status, error);
+  console.warn(`[strut-apps] ${what}: swarm refused`, { swarmId: swarm.swarmId, status: res.status });
+  return fail(502, error);
+}
+
+/** Pin the app as a tab, or unpin it: strut's `PUT /apps/:name/pin` (the name encoded whole, as the document route spells it). */
 export async function setStrutAppPin(
   swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
   app: string,
   pinned: boolean,
 ): Promise<{ ok: true; pinned: boolean } | AppRouteFailure> {
-  let res: Response;
-  try {
-    res = await fetch(`${swarm.labBase}/apps/${encodeURIComponent(app)}/pin`, {
-      method: "PUT",
-      headers: { "x-api-token": swarm.swarmApiKey, "content-type": "application/json" },
-      body: JSON.stringify({ pinned }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
-    });
-  } catch (err) {
-    console.warn("[strut-apps] pin: swarm unreachable", { swarmId: swarm.swarmId, error: err instanceof Error ? err.message : String(err) });
-    return fail(502, "Could not reach the swarm");
-  }
-  const body: unknown = await res.json().catch(() => null);
-  if (res.ok) return { ok: true, pinned: isRecord(body) && typeof body.pinned === "boolean" ? body.pinned : pinned };
-  const error = isRecord(body) && typeof body.error === "string" ? body.error : `The swarm answered ${res.status}`;
-  if (res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 403) return fail(res.status, error);
-  console.warn("[strut-apps] pin: swarm refused", { swarmId: swarm.swarmId, status: res.status });
-  return fail(502, error);
+  const put = await labPut(swarm, `/apps/${encodeURIComponent(app)}/pin`, { pinned }, "pin");
+  if (!put.ok) return put;
+  return { ok: true, pinned: typeof put.body.pinned === "boolean" ? put.body.pinned : pinned };
+}
+
+// ─── The versions ───────────────────────────────────────────────────────
+
+/** One published version of an app, as the version picker lists it. */
+export interface StrutAppVersion {
+  /** `v1`, `v2`, … */
+  version: string;
+  createdAt?: string;
+}
+
+const versionNumber = (label: string): number => Number(label.slice(1));
+
+/**
+ * The app's versions, newest first, and the LIVE one — the version strut
+ * serves when none is named (its active version): strut's
+ * `GET /apps/:name/versions`, the record only, no files read.
+ */
+export async function readStrutAppVersions(
+  swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
+  app: string,
+): Promise<{ ok: true; live: string; versions: StrutAppVersion[] } | AppRouteFailure> {
+  const read = await labJson(swarm, `/apps/${encodeURIComponent(app)}/versions`);
+  if (!read.ok) return read;
+  const { active, versions } = read.body;
+  if (!isStrutAppVersion(active)) return fail(404, `App "${app}" has no live version`);
+  const listed = Object.entries(isRecord(versions) ? versions : {}).flatMap(([version, info]): StrutAppVersion[] => {
+    if (!isStrutAppVersion(version)) return [];
+    const createdAt = isRecord(info) && typeof info.createdAt === "string" ? info.createdAt : undefined;
+    return [{ version, ...(createdAt ? { createdAt } : {}) }];
+  });
+  listed.sort((a, b) => versionNumber(b.version) - versionNumber(a.version));
+  return { ok: true, live: active, versions: listed };
+}
+
+/**
+ * Make `version` the app's live one, for everyone who opens it: strut's
+ * `PUT /apps/:name/active` — a rollback (or forward), never a publish.
+ */
+export async function setStrutAppLive(
+  swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
+  app: string,
+  version: string,
+): Promise<{ ok: true; live: string } | AppRouteFailure> {
+  const put = await labPut(swarm, `/apps/${encodeURIComponent(app)}/active`, { version }, "set live");
+  if (!put.ok) return put;
+  return { ok: true, live: isStrutAppVersion(put.body.active) ? put.body.active : version };
 }
