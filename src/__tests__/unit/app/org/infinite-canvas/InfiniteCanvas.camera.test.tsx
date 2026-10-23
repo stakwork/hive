@@ -55,6 +55,16 @@ vi.mock("@/app/org/[githubLogin]/_components/infinite-canvas/JamieBar", () => ({
   JamieBar: () => null,
   useAskJamie: () => vi.fn(),
 }));
+// jsdom has no layout for the panel library to measure: plain boxes stand in for the artifact pane.
+vi.mock("@/components/ui/resizable", () => ({
+  RESIZABLE_PANEL_TRANSITION: "",
+  ResizablePanelGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  ResizablePanel: React.forwardRef(function MockPanel({ children }: { children: React.ReactNode }, ref) {
+    React.useImperativeHandle(ref, () => ({ isCollapsed: () => true, collapse() {}, expand() {} }));
+    return <div>{children}</div>;
+  }),
+  ResizableHandle: () => null,
+}));
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/ArtifactPanel", () => ({ ArtifactPanel: () => null }));
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/ChatArtifacts", () => ({ ChatArtifacts: () => null }));
 

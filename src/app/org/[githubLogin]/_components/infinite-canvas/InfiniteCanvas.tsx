@@ -22,10 +22,12 @@ import { useCanvasChatStore, type InitiativeFocus } from "../../_state/canvasCha
 import type { ArtifactRef, ArtifactVersion } from "../../_state/canvasChatArtifacts";
 import { type CanvasJob, useCanvasJobs } from "../../_state/useCanvasJobs";
 import { ArtifactPanel } from "../artifacts/ArtifactPanel";
+import { useCollapsibleArtifactPanel } from "../artifacts/useCollapsibleArtifactPanel";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { cn } from "@/lib/utils";
 import { ChatArtifacts } from "../artifacts/ChatArtifacts";
 import { OnPaper } from "../artifacts/onPaper";
 import { findBrainstormCard } from "../artifacts/openArtifact";
-import { useArtifactPanelOpen } from "../artifacts/useArtifactPanel";
 import {
   type Board,
   type PlanNode,
@@ -113,8 +115,6 @@ const OPTION_W = 330;
 const INSETS = { top: 70, bottom: 190 };
 /** The full chat's width when it slides in. */
 const CHAT_W = 420;
-/** The artifact panel on the right. */
-const ARTIFACT_W = 560;
 /** A settled job's tick stays on its card this long. */
 const SETTLED_MS = 6_000;
 
@@ -245,7 +245,8 @@ export function InfiniteCanvas({
   const transU = useRef(1);
   const [ask, setAsk] = useState<{ id: string; x: number; y: number } | null>(null);
   const [mode, setMode] = useState<JamieMode>("input");
-  const artifactOpen = useArtifactPanelOpen();
+  const artifact = useCollapsibleArtifactPanel();
+  const artifactOpen = artifact.artifactOpen;
   const artifactOpenRef = useRef(artifactOpen);
   artifactOpenRef.current = artifactOpen;
   const [chatMounted, setChatMounted] = useState(false);
@@ -1014,334 +1015,331 @@ export function InfiniteCanvas({
             {chatMounted ? renderChat(() => setMode("last")) : null}
           </div>
         </aside>
-        <div
-          ref={rootRef}
-          data-level={level}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          // The camera is the only way to move: undo any scroll the browser makes to bring a focused card into view.
-          onScroll={(e) => e.currentTarget.scrollTo(0, 0)}
-          style={{
-            position: "relative",
-            flex: 1,
-            minWidth: 0,
-            overflow: "hidden",
-            touchAction: "none",
-            userSelect: "none",
-            color: v("ink"),
-            // The texture follows the camera, set with it.
-            ...deskStyle(CANVAS_THEME, null, null),
-          }}
+        <ResizablePanelGroup
+          id="org-brainstorm-group"
+          direction="horizontal"
+          autoSaveId="org-brainstorm"
+          className="min-w-0 flex-1"
         >
-          {framedOnce && vp ? (
-            <Links lines={lines} blend={blend} u={u} camRef={camRef} vp={vp} drawRef={drawLinks} />
-          ) : null}
-          {/* The world: every card at its place in world units, moved and scaled by the camera as one. */}
-          <div
-            ref={worldRef}
-            data-world
-            onClick={onWorldClick}
-            style={{ position: "absolute", left: 0, top: 0, width: 0, height: 0, transformOrigin: "0 0" }}
-          >
-            <SettledZoom.Provider value={settledZoom}>
-              {framedOnce && cull
-                ? ordered.map((n) => {
-                    const container = CONTAINERS.includes(n.type);
-                    const vis = blend.vis(n.id, u);
-                    const open = container ? blend.open(n.id, u) : 0;
-                    const q = n.type === "question" ? byId(board, n.id) : undefined;
-                    return (
-                      <SceneItem
-                        key={n.id}
-                        n={n}
-                        c={ctx}
-                        vis={vis}
-                        open={open}
-                        // Both while a flight blends between them.
-                        frame={container && Math.max(open, blend.open(n.id, 1)) > 0}
-                        face={container && Math.min(open, blend.open(n.id, 1)) < 1}
-                        culled={!overlaps(n.rect, cull) || peak((x) => blend.vis(n.id, x), u) < 0.01}
-                        here={n.id === level}
-                        quiet={["milestone", "feature"].includes(scene.get(level)?.type ?? "") && n.id !== level}
-                        desk={desk}
-                        busy={turnRunning}
-                        artifacts={
-                          n.type === "artifacts"
-                            ? (artifactsAt[n.parent] ?? NO_ARTIFACTS)
-                            : n.type === "build"
-                              ? (prsOf.get(n.parent) ?? NO_ARTIFACTS)
-                              : undefined
-                        }
-                        folded={!!q?.about && !q.follows && openTree(board, q.about, openTrees) !== n.id}
-                        jobs={markersOf.get(n.id)}
-                        register={register}
-                      />
-                    );
-                  })
-                : null}
-            </SettledZoom.Provider>
-          </div>
+          <ResizablePanel id="org-brainstorm-canvas" order={1} minSize={30} className={artifact.transition}>
+            <div style={{ display: "flex", height: "100%", width: "100%" }}>
+              <div
+                ref={rootRef}
+                data-level={level}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+                // The camera is the only way to move: undo any scroll the browser makes to bring a focused card into view.
+                onScroll={(e) => e.currentTarget.scrollTo(0, 0)}
+                style={{
+                  position: "relative",
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  touchAction: "none",
+                  userSelect: "none",
+                  color: v("ink"),
+                  // The texture follows the camera, set with it.
+                  ...deskStyle(CANVAS_THEME, null, null),
+                }}
+              >
+                {framedOnce && vp ? (
+                  <Links lines={lines} blend={blend} u={u} camRef={camRef} vp={vp} drawRef={drawLinks} />
+                ) : null}
+                {/* The world: every card at its place in world units, moved and scaled by the camera as one. */}
+                <div
+                  ref={worldRef}
+                  data-world
+                  onClick={onWorldClick}
+                  style={{ position: "absolute", left: 0, top: 0, width: 0, height: 0, transformOrigin: "0 0" }}
+                >
+                  <SettledZoom.Provider value={settledZoom}>
+                    {framedOnce && cull
+                      ? ordered.map((n) => {
+                          const container = CONTAINERS.includes(n.type);
+                          const vis = blend.vis(n.id, u);
+                          const open = container ? blend.open(n.id, u) : 0;
+                          const q = n.type === "question" ? byId(board, n.id) : undefined;
+                          return (
+                            <SceneItem
+                              key={n.id}
+                              n={n}
+                              c={ctx}
+                              vis={vis}
+                              open={open}
+                              // Both while a flight blends between them.
+                              frame={container && Math.max(open, blend.open(n.id, 1)) > 0}
+                              face={container && Math.min(open, blend.open(n.id, 1)) < 1}
+                              culled={!overlaps(n.rect, cull) || peak((x) => blend.vis(n.id, x), u) < 0.01}
+                              here={n.id === level}
+                              quiet={["milestone", "feature"].includes(scene.get(level)?.type ?? "") && n.id !== level}
+                              desk={desk}
+                              busy={turnRunning}
+                              artifacts={
+                                n.type === "artifacts"
+                                  ? (artifactsAt[n.parent] ?? NO_ARTIFACTS)
+                                  : n.type === "build"
+                                    ? (prsOf.get(n.parent) ?? NO_ARTIFACTS)
+                                    : undefined
+                              }
+                              folded={!!q?.about && !q.follows && openTree(board, q.about, openTrees) !== n.id}
+                              jobs={markersOf.get(n.id)}
+                              register={register}
+                            />
+                          );
+                        })
+                      : null}
+                  </SettledZoom.Provider>
+                </div>
 
-          {/* Only once the reads have come back with nothing to show; while reading, the spinner by the crumbs says so. */}
-          {!board.nodes.length && !loading && (blank || failed) ? (
-            <div
-              data-canvas-empty
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "grid",
-                placeItems: "center",
-                pointerEvents: "none",
-                fontFamily: TYPE,
-                fontSize: 18,
-                color: v("muted"),
-                fontStyle: "italic",
-                textAlign: "center",
-                padding: 24,
-              }}
-            >
-              {failed
-                ? "Couldn't read the plan from the graph. It will try again in a minute."
-                : "No initiatives yet. Tell Jamie what you want to build, and it starts one here."}
-            </div>
-          ) : null}
-
-          <div
-            data-canvas-chrome
-            onPointerDown={(e) => e.stopPropagation()}
-            style={{
-              position: "absolute",
-              left: 16,
-              top: 16,
-              right: 16,
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 10,
-              flexWrap: "wrap",
-              pointerEvents: "none",
-              zIndex: 20,
-            }}
-          >
-            <button
-              type="button"
-              data-back
-              aria-label="Back out a level (Esc)"
-              title="Back out a level (Esc)"
-              onClick={up}
-              disabled={level === ORG}
-              style={{
-                ...topBtn,
-                width: 34,
-                cursor: level === ORG ? "default" : "pointer",
-                opacity: level === ORG ? 0.45 : 1,
-                fontSize: 16,
-              }}
-            >
-              ←
-            </button>
-            <nav
-              data-crumbs
-              style={{
-                ...topBtn,
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                padding: "0 12px",
-                maxWidth: "100%",
-                overflow: "hidden",
-              }}
-            >
-              {[ORG, ...crumbs].map((id, i, all) => (
-                <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-                  {i ? <span style={{ color: v("faint") }}>›</span> : null}
-                  <button
-                    type="button"
-                    data-crumb={id}
-                    onClick={() => go(id)}
+                {/* Only once the reads have come back with nothing to show; while reading, the spinner by the crumbs says so. */}
+                {!board.nodes.length && !loading && (blank || failed) ? (
+                  <div
+                    data-canvas-empty
                     style={{
-                      border: "none",
-                      background: "none",
-                      padding: "0 2px",
-                      cursor: "pointer",
+                      position: "absolute",
+                      inset: 0,
+                      display: "grid",
+                      placeItems: "center",
+                      pointerEvents: "none",
                       fontFamily: TYPE,
-                      fontSize: 13.5,
-                      color: i === all.length - 1 ? v("ink") : v("muted"),
-                      fontWeight: i === all.length - 1 ? 600 : 400,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      maxWidth: 240,
+                      fontSize: 18,
+                      color: v("muted"),
+                      fontStyle: "italic",
+                      textAlign: "center",
+                      padding: 24,
                     }}
                   >
-                    {nameOf(id)}
+                    {failed
+                      ? "Couldn't read the plan from the graph. It will try again in a minute."
+                      : "No initiatives yet. Tell Jamie what you want to build, and it starts one here."}
+                  </div>
+                ) : null}
+
+                <div
+                  data-canvas-chrome
+                  onPointerDown={(e) => e.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    left: 16,
+                    top: 16,
+                    right: 16,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    pointerEvents: "none",
+                    zIndex: 20,
+                  }}
+                >
+                  <button
+                    type="button"
+                    data-back
+                    aria-label="Back out a level (Esc)"
+                    title="Back out a level (Esc)"
+                    onClick={up}
+                    disabled={level === ORG}
+                    style={{
+                      ...topBtn,
+                      width: 34,
+                      cursor: level === ORG ? "default" : "pointer",
+                      opacity: level === ORG ? 0.45 : 1,
+                      fontSize: 16,
+                    }}
+                  >
+                    ←
                   </button>
-                </span>
-              ))}
-              {/* Reading: a quiet spinner here, never text over the cards. */}
-              {loading || reading || seek ? (
-                <span data-reading title="Reading the plan…" className="icb-spin" style={{ marginLeft: 6 }} />
-              ) : null}
-            </nav>
-            <button
-              type="button"
-              data-search
-              onClick={() => setPalette(true)}
-              style={{
-                ...topBtn,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "0 12px",
-                cursor: "pointer",
-                color: v("muted"),
-              }}
+                  <nav
+                    data-crumbs
+                    style={{
+                      ...topBtn,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "0 12px",
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {[ORG, ...crumbs].map((id, i, all) => (
+                      <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+                        {i ? <span style={{ color: v("faint") }}>›</span> : null}
+                        <button
+                          type="button"
+                          data-crumb={id}
+                          onClick={() => go(id)}
+                          style={{
+                            border: "none",
+                            background: "none",
+                            padding: "0 2px",
+                            cursor: "pointer",
+                            fontFamily: TYPE,
+                            fontSize: 13.5,
+                            color: i === all.length - 1 ? v("ink") : v("muted"),
+                            fontWeight: i === all.length - 1 ? 600 : 400,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            maxWidth: 240,
+                          }}
+                        >
+                          {nameOf(id)}
+                        </button>
+                      </span>
+                    ))}
+                    {/* Reading: a quiet spinner here, never text over the cards. */}
+                    {loading || reading || seek ? (
+                      <span data-reading title="Reading the plan…" className="icb-spin" style={{ marginLeft: 6 }} />
+                    ) : null}
+                  </nav>
+                  <button
+                    type="button"
+                    data-search
+                    onClick={() => setPalette(true)}
+                    style={{
+                      ...topBtn,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "0 12px",
+                      cursor: "pointer",
+                      color: v("muted"),
+                    }}
+                  >
+                    ⌕ Search
+                    <kbd
+                      style={{
+                        fontFamily: TYPE,
+                        fontSize: 11,
+                        padding: "1px 6px",
+                        borderRadius: 5,
+                        border: `1px solid ${v("chromeBorder")}`,
+                        background: v("field"),
+                        color: v("muted"),
+                      }}
+                    >
+                      ⌘K
+                    </kbd>
+                  </button>
+                </div>
+
+                <div
+                  data-canvas-chrome
+                  onPointerDown={(e) => e.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    right: 16,
+                    bottom: 24,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    zIndex: 20,
+                  }}
+                >
+                  {[
+                    {
+                      label: "+",
+                      title: "Zoom in",
+                      go: () =>
+                        camRef.current &&
+                        vp &&
+                        (dropPending(), flyTo(zoomAbout(camRef.current, 1.8, vp.w / 2, vp.h / 2, vp))),
+                    },
+                    {
+                      label: "−",
+                      title: "Zoom out",
+                      go: () =>
+                        camRef.current &&
+                        vp &&
+                        (dropPending(), flyTo(zoomAbout(camRef.current, 1 / 1.8, vp.w / 2, vp.h / 2, vp, minZ))),
+                    },
+                    { label: "⤢", title: "Frame this level", go: () => go(level) },
+                  ].map((b) => (
+                    <button
+                      key={b.label}
+                      type="button"
+                      title={b.title}
+                      aria-label={b.title}
+                      onClick={() => {
+                        userMoved.current = b.label !== "⤢";
+                        b.go();
+                      }}
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        border: `1px solid ${v("chromeBorder")}`,
+                        background: v("chrome"),
+                        color: v("ink"),
+                        fontSize: 17,
+                        cursor: "pointer",
+                        boxShadow: v("shadow"),
+                      }}
+                    >
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+
+                {mode === "full" ? null : <JamieBar mode={mode} setMode={setMode} send={talk} />}
+
+                {palette ? (
+                  <Palette
+                    // Search finds what's in the plan, not what's proposed for it.
+                    board={graphBoard}
+                    left={16}
+                    close={() => setPalette(false)}
+                    pick={(id) => {
+                      setPalette(false);
+                      reach(id);
+                    }}
+                  />
+                ) : null}
+
+                {showAll && camRef.current && vp && scene.get(STACK) ? (
+                  <AllInitiatives
+                    board={board}
+                    desk={desk}
+                    anchor={toScreen(scene.get(STACK)!.rect, camRef.current, vp)}
+                    vp={vp}
+                    close={() => setShowAll(false)}
+                    pick={(id) => {
+                      setShowAll(false);
+                      reach(id);
+                    }}
+                  />
+                ) : null}
+
+                {ask && byId(board, ask.id) ? (
+                  <AskBox
+                    node={byId(board, ask.id)!}
+                    x={Math.min(ask.x, (vp?.w ?? 800) - 380)}
+                    y={Math.min(ask.y, (vp?.h ?? 600) - 260)}
+                    options={suggestions(board, ask.id)}
+                    busy={turnRunning}
+                    close={() => setAsk(null)}
+                    send={(t) => void send(ask.id, t)}
+                  />
+                ) : null}
+              </div>
+            </div>
+          </ResizablePanel>
+          {/* An artifact opened from a card (or the full chat) opens on the right exactly as on the chats page:
+          a resizable pane, the divider draggable and the width remembered. Its own close button and Esc close it. */}
+          <ResizableHandle withHandle className={cn(!artifact.mounted && "hidden")} {...artifact.handleProps} />
+          <ResizablePanel {...artifact.panelProps} id="org-brainstorm-artifact" order={2} defaultSize={40} minSize={25}>
+            <div
+              data-artifact-aside={artifactOpen ? "open" : "closed"}
+              aria-hidden={!artifactOpen}
+              inert={!artifactOpen}
+              className="h-full bg-background text-foreground"
+              style={{ borderLeft: `1px solid ${v("chromeBorder")}` }}
             >
-              ⌕ Search
-              <kbd
-                style={{
-                  fontFamily: TYPE,
-                  fontSize: 11,
-                  padding: "1px 6px",
-                  borderRadius: 5,
-                  border: `1px solid ${v("chromeBorder")}`,
-                  background: v("field"),
-                  color: v("muted"),
-                }}
-              >
-                ⌘K
-              </kbd>
-            </button>
-          </div>
-
-          <div
-            data-canvas-chrome
-            onPointerDown={(e) => e.stopPropagation()}
-            style={{
-              position: "absolute",
-              right: 16,
-              bottom: 24,
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              zIndex: 20,
-            }}
-          >
-            {[
-              {
-                label: "+",
-                title: "Zoom in",
-                go: () =>
-                  camRef.current &&
-                  vp &&
-                  (dropPending(), flyTo(zoomAbout(camRef.current, 1.8, vp.w / 2, vp.h / 2, vp))),
-              },
-              {
-                label: "−",
-                title: "Zoom out",
-                go: () =>
-                  camRef.current &&
-                  vp &&
-                  (dropPending(), flyTo(zoomAbout(camRef.current, 1 / 1.8, vp.w / 2, vp.h / 2, vp, minZ))),
-              },
-              { label: "⤢", title: "Frame this level", go: () => go(level) },
-            ].map((b) => (
-              <button
-                key={b.label}
-                type="button"
-                title={b.title}
-                aria-label={b.title}
-                onClick={() => {
-                  userMoved.current = b.label !== "⤢";
-                  b.go();
-                }}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  border: `1px solid ${v("chromeBorder")}`,
-                  background: v("chrome"),
-                  color: v("ink"),
-                  fontSize: 17,
-                  cursor: "pointer",
-                  boxShadow: v("shadow"),
-                }}
-              >
-                {b.label}
-              </button>
-            ))}
-          </div>
-
-          {mode === "full" ? null : <JamieBar mode={mode} setMode={setMode} send={talk} />}
-
-          {palette ? (
-            <Palette
-              // Search finds what's in the plan, not what's proposed for it.
-              board={graphBoard}
-              left={16}
-              close={() => setPalette(false)}
-              pick={(id) => {
-                setPalette(false);
-                reach(id);
-              }}
-            />
-          ) : null}
-
-          {showAll && camRef.current && vp && scene.get(STACK) ? (
-            <AllInitiatives
-              board={board}
-              desk={desk}
-              anchor={toScreen(scene.get(STACK)!.rect, camRef.current, vp)}
-              vp={vp}
-              close={() => setShowAll(false)}
-              pick={(id) => {
-                setShowAll(false);
-                reach(id);
-              }}
-            />
-          ) : null}
-
-          {ask && byId(board, ask.id) ? (
-            <AskBox
-              node={byId(board, ask.id)!}
-              x={Math.min(ask.x, (vp?.w ?? 800) - 380)}
-              y={Math.min(ask.y, (vp?.h ?? 600) - 260)}
-              options={suggestions(board, ask.id)}
-              busy={turnRunning}
-              close={() => setAsk(null)}
-              send={(t) => void send(ask.id, t)}
-            />
-          ) : null}
-        </div>
-        {/* An artifact opened from a card (or the full chat) slides in on the right, as on the chats page; the
-          canvas narrows. Its own close button and Esc close it. */}
-        <aside
-          data-artifact-aside={artifactOpen ? "open" : "closed"}
-          aria-hidden={!artifactOpen}
-          inert={!artifactOpen}
-          style={{
-            width: artifactOpen ? ARTIFACT_W : 0,
-            flexShrink: 0,
-            overflow: "hidden",
-            transition: "width .42s cubic-bezier(.2,.8,.2,1)",
-            borderLeft: artifactOpen ? `1px solid ${v("chromeBorder")}` : "none",
-            background: v("panel"),
-          }}
-        >
-          <div
-            className="bg-background text-foreground"
-            style={{
-              width: ARTIFACT_W,
-              height: "100%",
-              transform: artifactOpen ? "none" : "translateX(40px)",
-              opacity: artifactOpen ? 1 : 0,
-              transition: "transform .42s cubic-bezier(.2,.8,.2,1), opacity .3s",
-            }}
-          >
-            <ArtifactPanel />
-          </div>
-        </aside>
+              {artifact.mounted && <ArtifactPanel />}
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </OnPaper.Provider>
   );
