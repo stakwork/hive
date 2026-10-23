@@ -179,21 +179,14 @@ describe("startFindingFixes", () => {
     expect((await startFindingFixes({ ...args, refIds: [REF] })).started).toHaveLength(1);
   });
 
-  it("refuses unconfirmed findings server-side, including a verdict changed since the list", async () => {
-    const unconfirmed = { ...baseProps, finding_status: "disconfirmed" };
-    vi.mocked(listFindings).mockResolvedValue({
-      ok: true,
-      findings: [finding({}, unconfirmed)],
-      truncated: false,
-    } as never);
-    fakeNode(unconfirmed);
-    expect((await startFindingFixes({ ...args, refIds: [REF] })).refused[0].reason).toMatch(/confirmed/);
-
-    fakeNode(unconfirmed); // list says confirmed, node says otherwise
-    vi.mocked(listFindings).mockResolvedValue({ ok: true, findings: [finding()], truncated: false } as never);
-    expect((await startFindingFixes({ ...args, refIds: [REF] })).refused[0].reason).toMatch(/confirmed/);
-    expect(launchOrchestratorTurn).not.toHaveBeenCalled();
-    expect(db.sharedConversation.create).not.toHaveBeenCalled();
+  it.each(["disconfirmed", "unverified", "confirmed"])("starts a fix whatever the verdict (%s)", async (verdict) => {
+    const props = { ...baseProps, finding_status: verdict };
+    vi.mocked(listFindings).mockResolvedValue({ ok: true, findings: [finding({}, props)], truncated: false } as never);
+    fakeNode(props);
+    vi.mocked(launchOrchestratorTurn).mockResolvedValue({ status: "started", runId: "r", strutRunId: "sr" });
+    const res = await startFindingFixes({ ...args, refIds: [REF] });
+    expect(res.started).toHaveLength(1);
+    expect(res.refused).toHaveLength(0);
   });
 });
 

@@ -61,7 +61,8 @@ export function useCanvasJobs(
 
   // Nudges since the page opened this initiative.
   const [live, setLive] = useState<Record<string, CanvasCardJobNudge>>({});
-  useEffect(() => setLive({}), [initiativeRefId]);
+  // Kept when already empty: a new object re-renders every card for nothing.
+  useEffect(() => setLive((prev) => (Object.keys(prev).length ? {} : prev)), [initiativeRefId]);
 
   // The read as the handler sees it, without re-binding on every read.
   const read = useRef<CanvasJobsResponse | undefined>(data);

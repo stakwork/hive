@@ -1255,6 +1255,56 @@ export async function getNodeEdges(
   };
 }
 
+/** One node above another along an edge type, from `GET /v2/nodes/:ref_id/ancestors`. */
+export interface JarvisAncestor {
+  ref_id: string;
+  name: string | null;
+  node_type: string;
+  /** Shortest hop count from the start node; 1 = a direct parent. */
+  depth: number;
+  /** This ancestor's own parents along the same edge, so the DAG can be rebuilt. */
+  parents: string[];
+  /** Only with `includeProperties` (and a jarvis that supports it). */
+  properties?: Record<string, unknown>;
+}
+
+export interface NodeAncestorsResult {
+  ok: boolean;
+  ancestors: JarvisAncestor[];
+  status?: number;
+  endpointMissing?: boolean;
+  error?: string;
+}
+
+/**
+ * Every node above `refId` along one edge type, in one query:
+ * `GET /v2/nodes/:ref_id/ancestors?edge_type=&direction=&max_depth=`.
+ * `direction: "in"` walks edges that point at the node — for `DEPENDS_ON`,
+ * everything that depends on it, directly or not. Never throws.
+ */
+export async function getNodeAncestors(
+  config: JarvisConnectionConfig,
+  refId: string,
+  options: { edgeType: string; direction?: "in" | "out"; maxDepth?: number; includeProperties?: boolean },
+): Promise<NodeAncestorsResult> {
+  if (!isSafeRefId(refId)) {
+    return { ok: false, ancestors: [], error: `Invalid ref_id: ${JSON.stringify(refId)}` };
+  }
+  const params = new URLSearchParams({ edge_type: options.edgeType, direction: options.direction ?? "in" });
+  if (options.maxDepth) params.set("max_depth", String(options.maxDepth));
+  if (options.includeProperties) params.set("include_properties", "true");
+  const result = await jarvisRequest({
+    config,
+    endpoint: `/v2/nodes/${encodeURIComponent(refId)}/ancestors?${params.toString()}`,
+    method: "GET",
+  });
+  if (!result.ok) {
+    return { ok: false, ancestors: [], status: result.status, endpointMissing: result.notFound, error: result.error };
+  }
+  const body = result.body as { ancestors?: JarvisAncestor[] } | undefined;
+  return { ok: true, ancestors: Array.isArray(body?.ancestors) ? body!.ancestors : [], status: result.status };
+}
+
 // ── Error-impact centrality helpers ──────────────────────────────────────────
 
 export interface CentralityNode {

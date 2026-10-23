@@ -1,6 +1,20 @@
 "use client";
 
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { stageLine } from "@/lib/initiative-plan";
@@ -47,6 +61,7 @@ import {
 } from "./nodes";
 import { Palette } from "./Palette";
 import {
+  type Blend,
   type Camera,
   CONTAINERS,
   HEADER,
@@ -57,18 +72,21 @@ import {
   type SceneNode,
   type Viewport,
   between,
+  contains,
   diveTo,
   fit,
-  focusWeight,
+  inView,
   layoutScene,
+  levelBlend,
   levelFor,
   openAt,
   openTree,
   type OpenTrees,
   optionKey,
   orgRect,
+  overlaps,
   toScreen,
-  visibility,
+  union,
   zoomAbout,
 } from "./scene";
 import { PAPER_CSS } from "./paper";
@@ -122,9 +140,19 @@ const KEYFRAMES = `
 `;
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-const onScreen = (r: Rect, vp: Viewport) =>
-  r.x < vp.w + 200 && r.y < vp.h + 200 && r.x + r.w > -200 && r.y + r.h > -200;
+/** Cards are mounted this far past the view (a share of it on each side), so panning doesn't pop them in. */
+const CULL_MARGIN = 0.5;
+/** Wheel or drag quiet this long: the camera has settled. */
+const SETTLE_MS = 150;
 const FORK_KINDS = ["question", "option"];
+const NO_ARTIFACTS: ArtifactRef[] = [];
+/** A card's grow-in as it appears. */
+const grow = (vis: number) => 0.92 + 0.08 * Math.min(1, vis * 1.5);
+/** The largest a blended value gets over the rest of a flight (from `u` to arrival). */
+const peak = (f: (u: number) => number, u: number) => (u < 1 ? Math.max(f(u), f((u + 1) / 2), f(1)) : f(1));
+/** The camera's zoom, coarsely (quarter steps of a doubling), for the little that is sized on screen. */
+const zoomBucket = (z: number) => Math.pow(2, Math.round(Math.log2(z) * 4) / 4);
+const SettledZoom = createContext(1);
 /** Overlays the wheel scrolls rather than zooming the canvas under them. */
 const WHEEL_OWN = "[data-canvas-chrome],[data-palette],[data-jamie-bar]";
 const sameRect = (a?: Rect, b?: Rect) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
@@ -206,11 +234,15 @@ export function InfiniteCanvas({
   const { jobsByRef, artifactsByRef } = useCanvasJobs(githubLogin, initiative);
 
   const [vp, setVp] = useState<Viewport | null>(null);
-  const [cam, setCam] = useState<Camera | null>(null);
+  // The camera is not state: it moves the world layer directly. React hears only when it has settled.
+  const [framedOnce, setFramedOnce] = useState(false);
+  /** The part of the world whose cards are mounted, recomputed when the camera settles or leaves it. */
+  const [cull, setCull] = useState<Rect | null>(null);
+  const [settledZoom, setSettledZoom] = useState(1);
   const [level, setLevel] = useState(ORG);
   const [trans, setTrans] = useState<Trans>({ from: [], fromLevel: ORG, u: 1 });
+  /** Where the flight is in the level blend, painted frame by frame; `trans.u` only records where it ends. */
   const transU = useRef(1);
-  transU.current = trans.u;
   const [ask, setAsk] = useState<{ id: string; x: number; y: number } | null>(null);
   const [mode, setMode] = useState<JamieMode>("input");
   const artifactOpen = useArtifactPanelOpen();
@@ -220,6 +252,14 @@ export function InfiniteCanvas({
   const [flash, setFlash] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const rootRef = useRef<HTMLDivElement>(null);
+  const worldRef = useRef<HTMLDivElement>(null);
+  /** Each mounted card's box, for painting a level blend without rendering. */
+  const boxes = useRef(new Map<string, HTMLElement>());
+  /** Redraws the links for a camera and blend point (set by `Links`). */
+  const drawLinks = useRef<((cam: Camera, vp: Viewport, u: number) => void) | null>(null);
+  const cullRef = useRef<Rect | null>(null);
+  const settleTimer = useRef<number | null>(null);
+  const deskLook = useRef<CSSProperties>({});
   const camRef = useRef<Camera | null>(null);
   const vpRef = useRef<Viewport | null>(null);
   const levelRef = useRef(ORG);
@@ -329,13 +369,30 @@ export function InfiniteCanvas({
   );
   /** Zoom out as far as you like, but not past seeing the whole org small. */
   const minZ = vp ? fit(orgRect(scene), vp, 0.88, INSETS).z * 0.5 : 0;
-  camRef.current = cam;
+  const minZRef = useRef(minZ);
+  minZRef.current = minZ;
   vpRef.current = vp;
   levelRef.current = level;
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
+  const crumbs = openAt(scene, level);
+  const blend = useMemo(
+    () => levelBlend(scene, { open: trans.from, level: trans.fromLevel }, { open: openAt(scene, level), level }),
+    [scene, trans.from, trans.fromLevel, level],
+  );
+  const blendRef = useRef(blend);
+  blendRef.current = blend;
+  /** While the list of every initiative is open it sits beside the stack, so it follows the camera. */
+  const [, setCamTick] = useState(0);
+  const followCam = useRef(false);
+  followCam.current = showAll;
 
   useEffect(() => {
     const el = rootRef.current!;
-    const ro = new ResizeObserver(() => setVp({ w: el.clientWidth, h: el.clientHeight }));
+    // A hidden or squeezed-to-nothing canvas has no view to frame (a zero zoom makes flights NaN).
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth > 0 && el.clientHeight > 0) setVp({ w: el.clientWidth, h: el.clientHeight });
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -344,7 +401,109 @@ export function InfiniteCanvas({
     if (anim.current) cancelAnimationFrame(anim.current);
     anim.current = null;
   };
-  useEffect(() => () => stop(), []);
+  useEffect(
+    () => () => {
+      stop();
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    },
+    [],
+  );
+
+  /**
+   * Mount the cards in view (and a margin round it). Mid-move it only acts once the view has left what's
+   * mounted; `tight` (the camera settled) fits it to the view again. Renders only if that changes which cards.
+   */
+  const recull = useCallback((tight: boolean) => {
+    const c = camRef.current;
+    const v = vpRef.current;
+    if (!c || !v) return;
+    const cur = cullRef.current;
+    if (!tight && cur && contains(cur, inView(c, v))) return;
+    const want = inView(c, v, CULL_MARGIN);
+    if (cur && [...sceneRef.current.values()].every((n) => overlaps(n.rect, cur) === overlaps(n.rect, want))) return;
+    cullRef.current = want;
+    setCull(want);
+  }, []);
+  /** A flight mounts everything along its way up front, so it doesn't render mid-air. */
+  const cover = useCallback((a: Camera, b: Camera) => {
+    const v = vpRef.current;
+    if (!v) return;
+    const way = union(inView(a, v), inView(b, v));
+    if (cullRef.current && contains(cullRef.current, way)) return;
+    const want = union(way, inView(b, v, CULL_MARGIN));
+    cullRef.current = want;
+    setCull(want);
+  }, []);
+
+  /** Move the camera: the world layer, the desk's texture and the links, with no render. */
+  const setCamera = useCallback(
+    (c: Camera) => {
+      const v = vpRef.current;
+      const root = rootRef.current;
+      const world = worldRef.current;
+      if (!v || !root || !world || !(c.z > 0) || !Number.isFinite(c.z + c.cx + c.cy)) return;
+      camRef.current = c;
+      world.style.transform = `translate(${v.w / 2 - c.cx * c.z}px, ${v.h / 2 - c.cy * c.z}px) scale(${c.z})`;
+      // Only what changed: setting the texture's image again every frame repaints it.
+      const look = deskStyle(CANVAS_THEME, c, v);
+      const was = deskLook.current as Record<string, unknown>;
+      Object.assign(root.style, Object.fromEntries(Object.entries(look).filter(([k, val]) => was[k] !== val)));
+      deskLook.current = look;
+      root.dataset.zoom = c.z.toFixed(3);
+      drawLinks.current?.(c, v, transU.current);
+      recull(false);
+      if (followCam.current) setCamTick((t) => t + 1);
+    },
+    [recull],
+  );
+  /** Paint the level blend at `u` straight onto the mounted cards (and links). */
+  const paintBlend = useCallback((u: number) => {
+    const b = blendRef.current;
+    for (const [id, el] of boxes.current) {
+      const vis = b.vis(id, u);
+      el.style.opacity = String(vis);
+      el.style.transform = `scale(${grow(vis)})`;
+      el.style.pointerEvents = vis > 0.3 ? "auto" : "none";
+      if (el.dataset.open === undefined) continue;
+      const o = b.open(id, u);
+      el.dataset.open = o.toFixed(2);
+      for (const part of el.children) {
+        const s = (part as HTMLElement).style;
+        if ((part as HTMLElement).dataset.part === "frame") s.opacity = String(o);
+        if ((part as HTMLElement).dataset.part === "face") {
+          s.opacity = String(1 - o);
+          s.pointerEvents = 1 - o > 0.5 ? "auto" : "none";
+        }
+      }
+    }
+    if (camRef.current && vpRef.current) drawLinks.current?.(camRef.current, vpRef.current, u);
+  }, []);
+  /** The camera came to rest: mount what's now in view. */
+  const settle = useCallback(() => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = null;
+    recull(true);
+    if (camRef.current) setSettledZoom(zoomBucket(camRef.current.z));
+  }, [recull]);
+  /**
+   * The camera is moving (wheel or drag): settle once it stops. No `will-change`: measured, a composited
+   * world layer re-rasters at every new scale and drops more frames than painting it.
+   */
+  const nudge = useCallback(() => {
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = window.setTimeout(settle, SETTLE_MS);
+  }, [settle]);
+  /** A gesture cuts a level flight short: it lands at once. */
+  const finishBlend = useCallback(() => {
+    if (transU.current >= 1) return;
+    transU.current = 1;
+    paintBlend(1);
+    setTrans((s) => ({ ...s, u: 1 }));
+  }, [paintBlend]);
+  // A new size (the chat or an artifact sliding in) moves the centre of the view.
+  useLayoutEffect(() => {
+    if (camRef.current) setCamera(camRef.current);
+  }, [vp, setCamera]);
   // An artifact open on the right belongs to the canvas: leaving it (another tab) closes it.
   useEffect(() => () => useCanvasChatStore.getState().closeArtifactPanel(), []);
 
@@ -352,25 +511,37 @@ export function InfiniteCanvas({
    * Fly the camera; `withLevel` also blends the opened containers over the same flight. A flight that
    * replaces one still opening a level (new cards re-framing it) finishes opening it from where it was.
    */
-  const flyTo = useCallback((to: Camera, withLevel = false) => {
-    stop();
-    const from = camRef.current;
-    const u0 = withLevel ? 0 : transU.current;
-    const blend = u0 < 1;
-    if (!from || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-      setCam(to);
-      if (blend) setTrans((s) => ({ ...s, u: 1 }));
-      return;
-    }
-    const t0 = performance.now();
-    const step = (t: number) => {
-      const u = Math.min(1, (t - t0) / 750);
-      setCam(between(from, to, ease(u)));
-      if (blend) setTrans((s) => ({ ...s, u: u0 + (1 - u0) * ease(u) }));
-      anim.current = u < 1 ? requestAnimationFrame(step) : null;
-    };
-    anim.current = requestAnimationFrame(step);
-  }, []);
+  const flyTo = useCallback(
+    (to: Camera, withLevel = false) => {
+      stop();
+      const from = camRef.current;
+      const u0 = withLevel ? 0 : transU.current;
+      const blending = u0 < 1;
+      transU.current = u0;
+      if (!from || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+        if (blending) finishBlend();
+        setCamera(to);
+        settle();
+        return;
+      }
+      cover(from, to);
+      const t0 = performance.now();
+      const step = (t: number) => {
+        const u = Math.min(1, (t - t0) / 750);
+        if (blending) {
+          transU.current = u0 + (1 - u0) * ease(u);
+          paintBlend(transU.current);
+        }
+        setCamera(between(from, to, ease(u)));
+        anim.current = u < 1 ? requestAnimationFrame(step) : null;
+        if (u < 1) return;
+        if (blending) setTrans((s) => ({ ...s, u: 1 }));
+        settle();
+      };
+      anim.current = requestAnimationFrame(step);
+    },
+    [cover, finishBlend, paintBlend, setCamera, settle],
+  );
 
   const frameOf = useCallback(
     (id: string, s: Scene = scene) => {
@@ -391,7 +562,11 @@ export function InfiniteCanvas({
    * Wherever you go or move the camera, a navigation still waiting on slow reads (a link, ⌘K, "pull up")
    * is dropped: it must not land later and pull you somewhere you've left.
    */
+  const pendingNav = useRef(false);
+  pendingNav.current = !!seek || !!pendingGo;
   const dropPending = useCallback(() => {
+    if (!pendingNav.current) return;
+    pendingNav.current = false;
     setSeek(null);
     setPendingGo(null);
   }, []);
@@ -402,17 +577,28 @@ export function InfiniteCanvas({
       if (!vp) return;
       if (id !== ORG && !scene.get(id)) return;
       dropPending();
-      setTrans({ from: openAt(scene, levelRef.current), fromLevel: levelRef.current, u: instant ? 1 : 0 });
+      const from = openAt(scene, levelRef.current);
+      // The flight paints this blend from its first frame, even before the render that records it.
+      blendRef.current = levelBlend(
+        scene,
+        { open: from, level: levelRef.current },
+        { open: openAt(scene, id), level: id },
+      );
+      setTrans({ from, fromLevel: levelRef.current, u: instant ? 1 : 0 });
+      transU.current = instant ? 1 : 0;
       setLevel(id);
       levelRef.current = id;
       setInitiative(id === ORG ? null : (initiativeOf(board, id)?.id ?? null));
       userMoved.current = false;
       framed.current = frameOf(id);
       writeAt(id);
-      if (instant) setCam(cameraFor(id, vp));
-      else flyTo(cameraFor(id, vp), true);
+      if (instant) {
+        stop();
+        setCamera(cameraFor(id, vp));
+        settle();
+      } else flyTo(cameraFor(id, vp), true);
     },
-    [scene, vp, board, flyTo, frameOf, cameraFor, dropPending],
+    [scene, vp, board, flyTo, frameOf, cameraFor, dropPending, setCamera, settle],
   );
 
   // First frame (the org, even while a level from the URL is still being found), and new cards (a job
@@ -421,14 +607,16 @@ export function InfiniteCanvas({
     if (!vp) return;
     if (!camRef.current) {
       framed.current = frameOf(ORG);
-      setCam(fit(orgRect(scene), vp, 0.88, INSETS));
+      setCamera(fit(orgRect(scene), vp, 0.88, INSETS));
+      settle();
+      setFramedOnce(true);
       return;
     }
     const rect = frameOf(levelRef.current);
     if (userMoved.current || sameRect(rect, framed.current)) return;
     framed.current = rect;
     flyTo(cameraFor(levelRef.current, vp));
-  }, [scene, vp, flyTo, frameOf, cameraFor]);
+  }, [scene, vp, flyTo, frameOf, cameraFor, setCamera, settle]);
   // A level that left the graph (or the latest few) goes back to the org.
   useEffect(() => {
     if (!loading && level !== ORG && !scene.has(level) && !seek) go(ORG);
@@ -451,7 +639,6 @@ export function InfiniteCanvas({
     if (pendingDraft) setMode("full");
   }, [pendingDraft]);
 
-  const crumbs = openAt(scene, level);
   const up = useCallback(() => go(crumbs.length > 1 ? crumbs[crumbs.length - 2] : ORG), [crumbs, go]);
 
   /** Go to any card, even under an initiative not on the desk: pull that onto the desk first, then fly there. */
@@ -494,17 +681,6 @@ export function InfiniteCanvas({
     else void askJamie(seek.text, focusRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `reach` reads this render's board and desk
   }, [seek, vp, scene, board, desk, loading, reading, go, askJamie]);
-
-  const open = (id: string) => {
-    const a = trans.from.includes(id) ? 1 : 0;
-    const b = crumbs.includes(id) ? 1 : 0;
-    return a + (b - a) * trans.u;
-  };
-  const dim = (id: string) => {
-    const a = focusWeight(scene, id, trans.fromLevel);
-    const b = focusWeight(scene, id, level);
-    return a + (b - a) * trans.u;
-  };
 
   // ── What Jamie is pointed at ──────────────────────────────────────────────
   const focusFor = useCallback(
@@ -680,18 +856,22 @@ export function InfiniteCanvas({
       // Overlays over the canvas (⌘K, the lists, the Ask box, Jamie's reply) scroll themselves; only the canvas zooms.
       if ((e.target as HTMLElement).closest?.(WHEEL_OWN)) return;
       e.preventDefault();
+      const vp = vpRef.current;
       if (!vp || !camRef.current) return;
       stop();
       userMoved.current = true;
       dropPending();
-      setTrans((s) => (s.u < 1 ? { ...s, u: 1 } : s));
+      finishBlend();
+      nudge();
       const r = el.getBoundingClientRect();
       const k = e.ctrlKey ? 0.012 : 0.0018;
-      setCam(zoomAbout(camRef.current, Math.exp(-e.deltaY * k), e.clientX - r.left, e.clientY - r.top, vp, minZ));
+      setCamera(
+        zoomAbout(camRef.current, Math.exp(-e.deltaY * k), e.clientX - r.left, e.clientY - r.top, vp, minZRef.current),
+      );
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [vp, minZ, dropPending]);
+  }, [dropPending, finishBlend, nudge, setCamera]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button,input,textarea,a,[data-canvas-chrome]")) return;
@@ -710,23 +890,25 @@ export function InfiniteCanvas({
       stop();
       userMoved.current = true;
       dropPending();
-      setTrans((s) => (s.u < 1 ? { ...s, u: 1 } : s));
+      finishBlend();
+      nudge();
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
       const c = camRef.current;
-      setCam({ ...c, cx: c.cx - dx / c.z, cy: c.cy - dy / c.z });
+      setCamera({ ...c, cx: c.cx - dx / c.z, cy: c.cy - dy / c.z });
     }
   };
   const onPointerUp = () => {
     drag.current = null;
   };
   /** Clicking a container steps into it; clicking anything else never changes the level. */
-  const clickNode = (n: SceneNode) => () => {
+  const clickNode = (n: SceneNode) => {
     if (moved.current > 4) return;
     if (n.type === "stack") return setShowAll(true);
     // A folded brainstorm opens (the level re-frames around it); an open one frames its whole tree. The level stays.
     if (n.type === "question" && vp) {
       const q = byId(board, n.id);
-      if (q?.about && openTree(board, q.about, openTrees) !== q.id) {
+      // Only a root folds; a follow-up question is part of the open tree and must never change which tree is open.
+      if (q?.about && !q.follows && openTree(board, q.about, openTrees) !== q.id) {
         setOpenTrees((o) => ({ ...o, [q.about!]: q.id }));
         return;
       }
@@ -737,16 +919,46 @@ export function InfiniteCanvas({
     // A pencil card is only a proposal: nothing to go into until it's accepted.
     if (CONTAINERS.includes(n.type) && !byId(board, n.id)?.pencil) go(n.id);
   };
+  /** One handler for every card: the nearest `data-hit` under the click says which. */
+  const onWorldClick = (e: MouseEvent) => {
+    const hit = (e.target as HTMLElement).closest<HTMLElement>("[data-hit]")?.dataset.hit;
+    const n = hit ? scene.get(hit) : undefined;
+    if (n) clickNode(n);
+  };
 
   const nameOf = (id: string) => {
     const name = id === ORG ? "Org" : byId(board, id)?.name || "Untitled";
     return name.length > 56 ? `${name.slice(0, 54)}…` : name;
   };
 
-  const deskLook: CSSProperties = deskStyle(CANVAS_THEME, cam, vp);
-  const ordered = [...scene.values()].sort(
-    (a, b) => Number(FORK_KINDS.includes(a.type)) - Number(FORK_KINDS.includes(b.type)),
+  const ordered = useMemo(
+    () => [...scene.values()].sort((a, b) => Number(FORK_KINDS.includes(a.type)) - Number(FORK_KINDS.includes(b.type))),
+    [scene],
   );
+  const lines = useMemo(() => linesOf(scene, board), [scene, board]);
+  const register = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) boxes.current.set(id, el);
+    else boxes.current.delete(id);
+  }, []);
+  /** A feature's pull requests, for its build panel. */
+  const prsOf = useMemo(() => {
+    const out = new Map<string, ArtifactRef[]>();
+    for (const [ref, list] of Object.entries(artifactsByRef)) {
+      const prs = list.filter((x) => x.kind === "pull_request");
+      if (prs.length) out.set(ref, prs);
+    }
+    return out;
+  }, [artifactsByRef]);
+  /** The latest job on each card while it runs, and for a while after it settles. */
+  const markersOf = useMemo(() => {
+    const out = new Map<string, CanvasJob[]>();
+    for (const [ref, js] of Object.entries(jobsByRef)) {
+      const list = js.filter((j) => j.state === "running" || now - j.updatedAt < SETTLED_MS).slice(-1);
+      if (list.length) out.set(ref, list);
+    }
+    return out;
+  }, [jobsByRef, now]);
+  const u = transU.current;
   const topBtn: CSSProperties = {
     pointerEvents: "auto",
     height: 34,
@@ -758,8 +970,6 @@ export function InfiniteCanvas({
     fontSize: 13.5,
     color: v("ink"),
   };
-  const markers = (n: SceneNode): CanvasJob[] =>
-    (jobsByRef[n.id] ?? []).filter((j) => j.state === "running" || now - j.updatedAt < SETTLED_MS).slice(-1);
   const blank = !loading && !board.nodes.length;
 
   return (
@@ -806,7 +1016,6 @@ export function InfiniteCanvas({
         </aside>
         <div
           ref={rootRef}
-          data-zoom={cam?.z.toFixed(3)}
           data-level={level}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -822,82 +1031,58 @@ export function InfiniteCanvas({
             touchAction: "none",
             userSelect: "none",
             color: v("ink"),
-            ...deskLook,
+            // The texture follows the camera, set with it.
+            ...deskStyle(CANVAS_THEME, null, null),
           }}
         >
-          {cam && vp ? (
-            <>
-              <Links scene={scene} board={board} cam={cam} vp={vp} open={open} dim={dim} />
-              {ordered.map((n) => (
-                <SceneItem
-                  key={n.id}
-                  n={n}
-                  c={ctx}
-                  cam={cam}
-                  vp={vp}
-                  vis={visibility(scene, n.id, open) * dim(n.id)}
-                  open={CONTAINERS.includes(n.type) ? open(n.id) : 0}
-                  here={n.id === level}
-                  quiet={["milestone", "feature"].includes(scene.get(level)?.type ?? "") && n.id !== level}
-                  desk={desk}
-                  busy={turnRunning}
-                  artifacts={
-                    n.type === "artifacts"
-                      ? (artifactsAt[n.parent] ?? [])
-                      : n.type === "build"
-                        ? (artifactsByRef[n.parent] ?? []).filter((x) => x.kind === "pull_request")
-                        : undefined
-                  }
-                  folded={
-                    n.type === "question" &&
-                    !!byId(board, n.id)?.about &&
-                    openTree(board, byId(board, n.id)!.about!, openTrees) !== n.id
-                  }
-                  onClick={clickNode(n)}
-                />
-              ))}
-              {ordered.map((n) => {
-                const list = markers(n);
-                if (!list.length) return null;
-                const seen = visibility(scene, n.id, open) * dim(n.id);
-                const sr = toScreen(n.rect, cam, vp);
-                if (seen < 0.3 || !onScreen(sr, vp)) return null;
-                // Part of the card, in its design units: it zooms with the card and sits on its top edge, inside it.
-                const designW = (open(n.id) > 0.5 ? FRAME_W[n.type] : FACE_W[n.type]) ?? FACE_W.feature!;
-                return (
-                  <div
-                    key={`job:${n.id}`}
-                    style={{
-                      position: "absolute",
-                      left: sr.x,
-                      top: sr.y,
-                      width: designW,
-                      transform: `scale(${sr.w / designW})`,
-                      transformOrigin: "0 0",
-                      opacity: seen,
-                      zIndex: 5,
-                      pointerEvents: "none",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "flex-end",
-                        gap: 4,
-                        padding: "0 10px",
-                        transform: "translateY(-50%)",
-                      }}
-                    >
-                      {list.map((j) => (
-                        <JobMarker key={j.jobId} job={j} />
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </>
+          {framedOnce && vp ? (
+            <Links lines={lines} blend={blend} u={u} camRef={camRef} vp={vp} drawRef={drawLinks} />
           ) : null}
+          {/* The world: every card at its place in world units, moved and scaled by the camera as one. */}
+          <div
+            ref={worldRef}
+            data-world
+            onClick={onWorldClick}
+            style={{ position: "absolute", left: 0, top: 0, width: 0, height: 0, transformOrigin: "0 0" }}
+          >
+            <SettledZoom.Provider value={settledZoom}>
+              {framedOnce && cull
+                ? ordered.map((n) => {
+                    const container = CONTAINERS.includes(n.type);
+                    const vis = blend.vis(n.id, u);
+                    const open = container ? blend.open(n.id, u) : 0;
+                    const q = n.type === "question" ? byId(board, n.id) : undefined;
+                    return (
+                      <SceneItem
+                        key={n.id}
+                        n={n}
+                        c={ctx}
+                        vis={vis}
+                        open={open}
+                        // Both while a flight blends between them.
+                        frame={container && Math.max(open, blend.open(n.id, 1)) > 0}
+                        face={container && Math.min(open, blend.open(n.id, 1)) < 1}
+                        culled={!overlaps(n.rect, cull) || peak((x) => blend.vis(n.id, x), u) < 0.01}
+                        here={n.id === level}
+                        quiet={["milestone", "feature"].includes(scene.get(level)?.type ?? "") && n.id !== level}
+                        desk={desk}
+                        busy={turnRunning}
+                        artifacts={
+                          n.type === "artifacts"
+                            ? (artifactsAt[n.parent] ?? NO_ARTIFACTS)
+                            : n.type === "build"
+                              ? (prsOf.get(n.parent) ?? NO_ARTIFACTS)
+                              : undefined
+                        }
+                        folded={!!q?.about && !q.follows && openTree(board, q.about, openTrees) !== n.id}
+                        jobs={markersOf.get(n.id)}
+                        register={register}
+                      />
+                    );
+                  })
+                : null}
+            </SettledZoom.Provider>
+          </div>
 
           {/* Only once the reads have come back with nothing to show; while reading, the spinner by the crumbs says so. */}
           {!board.nodes.length && !loading && (blank || failed) ? (
@@ -1047,12 +1232,18 @@ export function InfiniteCanvas({
               {
                 label: "+",
                 title: "Zoom in",
-                go: () => cam && vp && (dropPending(), flyTo(zoomAbout(cam, 1.8, vp.w / 2, vp.h / 2, vp))),
+                go: () =>
+                  camRef.current &&
+                  vp &&
+                  (dropPending(), flyTo(zoomAbout(camRef.current, 1.8, vp.w / 2, vp.h / 2, vp))),
               },
               {
                 label: "−",
                 title: "Zoom out",
-                go: () => cam && vp && (dropPending(), flyTo(zoomAbout(cam, 1 / 1.8, vp.w / 2, vp.h / 2, vp, minZ))),
+                go: () =>
+                  camRef.current &&
+                  vp &&
+                  (dropPending(), flyTo(zoomAbout(camRef.current, 1 / 1.8, vp.w / 2, vp.h / 2, vp, minZ))),
               },
               { label: "⤢", title: "Frame this level", go: () => go(level) },
             ].map((b) => (
@@ -1082,13 +1273,7 @@ export function InfiniteCanvas({
             ))}
           </div>
 
-          {mode === "full" ? null : (
-            <JamieBar
-              mode={mode}
-              setMode={setMode}
-              send={talk}
-            />
-          )}
+          {mode === "full" ? null : <JamieBar mode={mode} setMode={setMode} send={talk} />}
 
           {palette ? (
             <Palette
@@ -1103,11 +1288,11 @@ export function InfiniteCanvas({
             />
           ) : null}
 
-          {showAll && cam && vp && scene.get(STACK) ? (
+          {showAll && camRef.current && vp && scene.get(STACK) ? (
             <AllInitiatives
               board={board}
               desk={desk}
-              anchor={toScreen(scene.get(STACK)!.rect, cam, vp)}
+              anchor={toScreen(scene.get(STACK)!.rect, camRef.current, vp)}
               vp={vp}
               close={() => setShowAll(false)}
               pick={(id) => {
@@ -1162,28 +1347,36 @@ export function InfiniteCanvas({
   );
 }
 
-/** One scene node at its screen size: face or open frame, story, add slot, panel, artifact strip, or brainstorm card. */
-function SceneItem({
+/**
+ * One scene node at its place in the world: face or open frame, story, add slot, panel, artifact strip, or
+ * brainstorm card. Drawn at its design width and scaled once to its rect; the camera moves it with the world.
+ */
+const SceneItem = memo(function SceneItem({
   n,
   c,
-  cam,
-  vp,
   vis,
   open,
+  frame,
+  face,
+  culled,
   here,
   quiet,
   busy,
   artifacts,
   folded,
   desk,
-  onClick,
+  jobs,
+  register,
 }: {
   n: SceneNode;
   c: CardContext;
-  cam: Camera;
-  vp: Viewport;
   vis: number;
   open: number;
+  /** A container draws its open frame, its face, or both while a flight blends them. */
+  frame: boolean;
+  face: boolean;
+  /** Out of view, or gone at this level for the rest of any flight. */
+  culled: boolean;
   /** The level you're in: its frame gets the paper; the ones around it are just an outline. */
   here: boolean;
   /** Inside a milestone or feature the headers above it hide, and the frames around it go. */
@@ -1195,129 +1388,107 @@ function SceneItem({
   folded?: boolean;
   /** The initiatives on the desk, for the stack. */
   desk: string[];
-  onClick: () => void;
+  /** A job on this card, running or just settled. */
+  jobs?: CanvasJob[];
+  register: (id: string, el: HTMLElement | null) => void;
 }) {
-  const sr = toScreen(n.rect, cam, vp);
-  if (vis < 0.01 || !onScreen(sr, vp)) return null;
+  if (culled) return null;
   const board = c.board;
+  const r = n.rect;
   const loose = ["add", "artifacts", "architecture", "build", "stories", "stack"].includes(n.type);
   const q = n.type === "option" ? byId(board, n.of!) : undefined;
   // A story inside a milestone is a copy: `story@milestone`, its own id in `of`.
   const node = loose ? undefined : n.type === "option" ? q : byId(board, n.id);
   if (!loose && !node) return null;
-  const grow = 0.92 + 0.08 * Math.min(1, vis * 1.5);
-  const box: CSSProperties = {
-    position: "absolute",
-    left: sr.x,
-    top: sr.y,
-    width: sr.w,
-    height: sr.h,
-    opacity: vis,
-    transform: `scale(${grow})`,
-    pointerEvents: vis > 0.3 ? "auto" : "none",
-  };
+  const dh = (w: number) => (w * r.h) / r.w;
   const scaled = (designW: number, opacity = 1, extra?: CSSProperties): CSSProperties => ({
     position: "absolute",
     left: 0,
     top: 0,
     width: designW,
-    height: (designW * sr.h) / sr.w,
-    transform: `scale(${sr.w / designW})`,
+    height: dh(designW),
+    transform: `scale(${r.w / designW})`,
     transformOrigin: "0 0",
     opacity,
     pointerEvents: opacity > 0.5 ? "auto" : "none",
     ...extra,
   });
-  const dh = (w: number) => (w * sr.h) / sr.w;
 
+  let body: ReactNode;
+  let extra: CSSProperties | undefined;
+  let attrs: Record<string, string | undefined> = {};
   if (n.type === "artifacts") {
-    const w = FRAME_W[board.nodes.find((x) => x.id === n.parent)?.type ?? "feature"] ?? 820;
-    return (
-      <div style={box} data-artifacts={n.parent}>
-        <div
-          data-wheel-scroll
-          style={scaled(w, 1, { overflowY: "auto", overflowX: "hidden", colorScheme: CANVAS_THEME.scheme })}
-          className="bg-transparent text-[var(--ic-ink)]"
-        >
-          <ChatArtifacts artifacts={artifacts ?? []} versions={NO_VERSIONS} />
-        </div>
+    const w = FRAME_W[byId(board, n.parent)?.type ?? "feature"] ?? 820;
+    attrs = { "data-artifacts": n.parent };
+    body = (
+      <div
+        data-wheel-scroll
+        style={scaled(w, 1, { overflowY: "auto", overflowX: "hidden", colorScheme: CANVAS_THEME.scheme })}
+        className="bg-transparent text-[var(--ic-ink)]"
+      >
+        <ChatArtifacts artifacts={artifacts ?? NO_ARTIFACTS} versions={NO_VERSIONS} />
       </div>
     );
-  }
-  if (n.type === "architecture" || n.type === "build") {
+  } else if (n.type === "architecture" || n.type === "build") {
     const f = byId(board, n.parent);
     if (!f) return null;
     const w = FACE_W[n.type]!;
-    return (
-      <div style={box}>
-        <div style={scaled(w)}>
-          {n.type === "architecture" ? (
-            <ArchitectureCard f={f} w={w} h={dh(w)} />
-          ) : (
-            <BuildCard c={c} f={f} prs={artifacts ?? []} busy={busy} w={w} h={dh(w)} />
-          )}
-        </div>
+    body = (
+      <div style={scaled(w)}>
+        {n.type === "architecture" ? (
+          <ArchitectureCard f={f} w={w} h={dh(w)} />
+        ) : (
+          <BuildCard c={c} f={f} prs={artifacts ?? NO_ARTIFACTS} busy={busy} w={w} h={dh(w)} />
+        )}
       </div>
     );
-  }
-  if (n.type === "stack")
-    return (
-      <div style={{ ...box, cursor: "pointer" }} data-node={STACK} onClick={onClick}>
-        <div style={scaled(FACE_W.stack!)}>
-          <StackCard b={board} desk={desk} w={FACE_W.stack!} h={dh(FACE_W.stack!)} />
-        </div>
+  } else if (n.type === "stack") {
+    extra = { cursor: "pointer" };
+    attrs = { "data-node": STACK, "data-hit": STACK };
+    body = (
+      <div style={scaled(FACE_W.stack!)}>
+        <StackCard b={board} desk={desk} w={FACE_W.stack!} h={dh(FACE_W.stack!)} />
       </div>
     );
-  if (n.type === "stories")
-    return (
-      <div style={box}>
-        <div style={scaled(FACE_W.stories!, 1, { height: "auto", minHeight: dh(FACE_W.stories!) })}>
-          <StoriesPanel c={c} initiative={n.parent} w={FACE_W.stories!} h={dh(FACE_W.stories!)} />
-        </div>
+  } else if (n.type === "stories") {
+    body = (
+      <div style={scaled(FACE_W.stories!)}>
+        <StoriesPanel c={c} initiative={n.parent} w={FACE_W.stories!} h={dh(FACE_W.stories!)} />
       </div>
     );
-  if (n.type === "add") {
+  } else if (n.type === "add") {
     const w = FACE_W.feature!;
-    return (
-      <div style={box}>
-        <div style={scaled(w)}>
-          <AddCard c={c} milestoneId={n.parent} w={w} h={dh(w)} />
-        </div>
+    body = (
+      <div style={scaled(w)}>
+        <AddCard c={c} milestoneId={n.parent} w={w} h={dh(w)} />
       </div>
     );
-  }
-  if (n.type === "question")
-    return (
-      <div
-        style={{ ...box, cursor: folded ? "pointer" : "zoom-in" }}
-        data-node={n.id}
-        onClick={onClick}
-        title={folded ? "Open this brainstorm" : "See the whole tree"}
-      >
-        <div style={scaled(QUESTION_W)}>
-          <QuestionCard c={c} node={node!} w={QUESTION_W} h={dh(QUESTION_W)} busy={busy} folded={!!folded} />
-        </div>
+  } else if (n.type === "question") {
+    extra = { cursor: folded ? "pointer" : "zoom-in" };
+    attrs = { "data-node": n.id, "data-hit": n.id, title: folded ? "Open this brainstorm" : "See the whole tree" };
+    body = (
+      <div style={scaled(QUESTION_W)}>
+        <QuestionCard c={c} node={node!} w={QUESTION_W} h={dh(QUESTION_W)} busy={busy} folded={!!folded} />
       </div>
     );
-  if (n.type === "option") {
+  } else if (n.type === "option") {
     const o = q!.options!.find((x) => optionKey(q!.id, x.id) === n.id)!;
-    return (
-      <div style={box} data-node={n.id}>
-        <div style={scaled(OPTION_W)}>
-          <OptionCard c={c} q={q!} o={o} w={OPTION_W} h={dh(OPTION_W)} busy={busy} />
-        </div>
+    attrs = { "data-node": n.id };
+    body = (
+      <div style={scaled(OPTION_W)}>
+        <OptionCard c={c} q={q!} o={o} w={OPTION_W} h={dh(OPTION_W)} busy={busy} />
       </div>
     );
-  }
-
-  const faceW = FACE_W[n.type] ?? 300;
-  const frameW = FRAME_W[n.type] ?? 820;
-  const glowing = (c.jobs[n.id] ?? []).some((j) => j.state === "running");
-  return (
-    <div style={box} data-node={n.id} data-open={open.toFixed(2)}>
-      <div style={{ position: "absolute", inset: 0 }}>
-        {open > 0 ? (
+  } else {
+    const faceW = FACE_W[n.type] ?? 300;
+    const frameW = FRAME_W[n.type] ?? 820;
+    const glowing = (c.jobs[n.id] ?? []).some((j) => j.state === "running");
+    attrs = { "data-node": n.id, "data-open": open.toFixed(2) };
+    body = (
+      <>
+        {frame ? (
           <div
+            data-part="frame"
             className={glowing ? "icb-glow" : undefined}
             style={{
               position: "absolute",
@@ -1333,26 +1504,81 @@ function SceneItem({
               pointerEvents: "none",
             }}
           >
-            <div onClick={onClick} style={scaled(frameW, quiet ? 0 : 1, { height: (frameW * sr.h * HEADER) / sr.w })}>
-              <FrameHeader c={c} node={node!} w={frameW} h={(frameW * sr.h * HEADER) / sr.w} />
+            <div data-hit={n.id} style={scaled(frameW, quiet ? 0 : 1, { height: dh(frameW) * HEADER })}>
+              <FrameHeader c={c} node={node!} w={frameW} h={dh(frameW) * HEADER} />
             </div>
             {/* Only once its plan has come back empty, never while it's being read. */}
             {n.type !== "feature" && !node!.unread && kids(board, n.id).length === 0 ? (
-              <EmptyHint node={node!} sr={sr} />
+              <EmptyHint node={node!} rect={r} />
             ) : null}
           </div>
         ) : null}
-        {open < 1 ? (
-          <div onClick={onClick} style={scaled(faceW, 1 - open)}>
+        {face ? (
+          <div data-part="face" data-hit={n.id} style={scaled(faceW, 1 - open)}>
             <Face c={c} node={node!} w={faceW} h={dh(faceW)} />
           </div>
         ) : null}
-      </div>
+      </>
+    );
+  }
+
+  // Part of the card, in its design units: it zooms with the card and sits on its top edge.
+  const markerW = (open > 0.5 ? FRAME_W[n.type] : FACE_W[n.type]) ?? FACE_W.feature!;
+  return (
+    <div
+      ref={(el) => {
+        register(n.id, el);
+      }}
+      {...attrs}
+      style={{
+        position: "absolute",
+        left: r.x,
+        top: r.y,
+        width: r.w,
+        height: r.h,
+        opacity: vis,
+        transform: `scale(${grow(vis)})`,
+        pointerEvents: vis > 0.3 ? "auto" : "none",
+        ...extra,
+      }}
+    >
+      {body}
+      {jobs && vis >= 0.3 ? (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: markerW,
+            transform: `scale(${r.w / markerW})`,
+            transformOrigin: "0 0",
+            zIndex: 5,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: 4,
+              padding: "0 10px",
+              transform: "translateY(-50%)",
+            }}
+          >
+            {jobs.map((j) => (
+              <JobMarker key={j.jobId} job={j} />
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
-}
+});
 
-function EmptyHint({ node, sr }: { node: PlanNode; sr: Rect }) {
+/** In world units like its frame; its type is held between 11 and 22 px on screen (at the settled zoom). */
+function EmptyHint({ node, rect }: { node: PlanNode; rect: Rect }) {
+  const z = useContext(SettledZoom);
   const what = node.type === "initiative" ? "milestones" : "features";
   return (
     <div
@@ -1360,12 +1586,12 @@ function EmptyHint({ node, sr }: { node: PlanNode; sr: Rect }) {
         position: "absolute",
         left: 0,
         right: 0,
-        top: sr.h * HEADER,
+        top: rect.h * HEADER,
         bottom: 0,
         display: "grid",
         placeItems: "center",
         fontFamily: TYPE,
-        fontSize: Math.max(11, Math.min(22, sr.w / 50)),
+        fontSize: Math.max(11, Math.min(22, (rect.w * z) / 50)) / z,
         color: v("faint"),
         fontStyle: "italic",
       }}
@@ -1375,102 +1601,135 @@ function EmptyHint({ node, sr }: { node: PlanNode; sr: Rect }) {
   );
 }
 
+/** One road or branch, kept in world units; drawn on screen for the camera (strokes and arrows stay in pixels). */
+interface Line {
+  id: string;
+  kind: "road" | "branch" | "made";
+  from: Rect;
+  to: Rect;
+  /** Whose presence it fades with: the faintest of them. */
+  of: string[];
+  k: number;
+  style: { stroke: string; width: number; dash?: string; arrow?: boolean };
+}
+
 /** Road arrows between an initiative's brief and milestones, and the branches of each brainstorm tree. */
-function Links({
-  scene,
-  board,
-  cam,
-  vp,
-  open,
-  dim,
-}: {
-  scene: Scene;
-  board: Board;
-  cam: Camera;
-  vp: Viewport;
-  open: (id: string) => number;
-  dim: (id: string) => number;
-}) {
-  type Line = {
-    id: string;
-    d: string;
-    o: number;
-    style: { stroke: string; width: number; dash?: string; arrow?: boolean };
-  };
+function linesOf(scene: Scene, board: Board): Line[] {
   const lines: Line[] = [];
-  const seen = (id: string) => visibility(scene, id, open) * dim(id);
   const road = { stroke: v("road"), width: 1.5, arrow: true };
   for (const init of board.nodes.filter((n) => n.type === "initiative")) {
     const stops = [...kids(board, init.id, "brief"), ...kids(board, init.id, "milestone")];
     stops.slice(1).forEach((m, i) => {
       const a = scene.get(stops[i].id);
       const b = scene.get(m.id);
-      if (!a || !b) return;
-      const ra = toScreen(a.rect, cam, vp);
-      const rb = toScreen(b.rect, cam, vp);
       // Both ends must be in view: a road from a neighbour that faded out goes with it.
-      const o = Math.min(seen(a.id), seen(b.id)) * 0.55;
-      if (o > 0.02)
+      if (a && b)
         lines.push({
           id: `${a.id}>${b.id}`,
-          d: `M${ra.x + ra.w + 4} ${ra.y + ra.h / 2} L${rb.x - 6} ${rb.y + rb.h / 2}`,
-          o,
+          kind: "road",
+          from: a.rect,
+          to: b.rect,
+          of: [a.id, b.id],
+          k: 0.55,
           style: { ...road, dash: stops[i].type === "brief" ? "4 5" : undefined },
         });
     });
   }
-  const curve = (x1: number, y1: number, x2: number, y2: number) => {
-    const k = (x2 - x1) * 0.5;
-    return `M${x1} ${y1} C${x1 + k} ${y1} ${x2 - k} ${y2} ${x2} ${y2}`;
-  };
   // A brainstorm tree: feature → question, question → each option, an expanded option → the question it raised.
+  const questionOf = new Map<string, PlanNode>();
+  const madeBy = new Map<string, PlanNode[]>();
+  for (const n of board.nodes) {
+    for (const o of n.options ?? []) questionOf.set(o.id, n);
+    for (const o of n.madeBy ?? []) madeBy.set(o, [...(madeBy.get(o) ?? []), n]);
+  }
   const optionScene = (optionId: string) => {
-    const owner = board.nodes.find((n) => n.options?.some((o) => o.id === optionId));
+    const owner = questionOf.get(optionId);
     return owner ? scene.get(optionKey(owner.id, optionId)) : undefined;
   };
   for (const q of board.nodes.filter((n) => n.type === "question")) {
     const sq = scene.get(q.id);
     const from = q.follows ? optionScene(q.follows) : q.about ? scene.get(q.about) : undefined;
     if (!sq || !from) continue;
-    const o = seen(q.id);
-    if (o < 0.02) continue;
-    const rq = toScreen(sq.rect, cam, vp);
-    const rf = toScreen(from.rect, cam, vp);
-    lines.push({
-      id: `q-${q.id}`,
-      d: curve(rf.x + rf.w, rf.y + rf.h / 2, rq.x, rq.y + rq.h / 2),
-      o,
-      style: { stroke: v("fork"), width: 1.8, dash: "3 5" },
-    });
+    const fork = { stroke: v("fork"), width: 1.8, dash: "3 5" };
+    lines.push({ id: `q-${q.id}`, kind: "branch", from: from.rect, to: sq.rect, of: [q.id], k: 1, style: fork });
     for (const opt of q.options ?? []) {
       const so = scene.get(optionKey(q.id, opt.id));
       if (!so) continue;
-      const ro = toScreen(so.rect, cam, vp);
       lines.push({
         id: `o-${q.id}-${opt.id}`,
-        d: curve(rq.x + rq.w, rq.y + rq.h / 2, ro.x, ro.y + ro.h / 2),
-        o: o * (q.decided && !opt.chosen ? 0.5 : 1),
-        style: opt.chosen ? { stroke: v("fork"), width: 3 } : { stroke: v("fork"), width: 1.8, dash: "3 5" },
+        kind: "branch",
+        from: sq.rect,
+        to: so.rect,
+        of: [q.id],
+        k: q.decided && !opt.chosen ? 0.5 : 1,
+        style: opt.chosen ? { stroke: v("fork"), width: 3 } : fork,
       });
       // Option -RESULTED_IN-> what choosing it made: from the chosen answer back to each card it made.
       if (!opt.chosen) continue;
-      for (const made of board.nodes.filter((x) => x.madeBy?.includes(opt.id))) {
+      for (const made of madeBy.get(opt.id) ?? []) {
         const sm = scene.get(made.id);
-        if (!sm || seen(made.id) < 0.02) continue;
-        const rm = toScreen(sm.rect, cam, vp);
-        const x1 = ro.x;
-        const y1 = ro.y + ro.h * 0.7;
-        const x2 = rm.x + rm.w;
-        const y2 = rm.y + rm.h / 2;
-        lines.push({
-          id: `r-${opt.id}-${made.id}`,
-          d: `M${x1} ${y1} C${x1 - 80} ${y1 + 40} ${x2 + 80} ${y2} ${x2 + 4} ${y2}`,
-          o: Math.min(o, seen(made.id)) * 0.8,
-          style: { stroke: v("fork"), width: 2, dash: "8 5", arrow: true },
-        });
+        if (sm)
+          lines.push({
+            id: `r-${opt.id}-${made.id}`,
+            kind: "made",
+            from: so.rect,
+            to: sm.rect,
+            of: [q.id, made.id],
+            k: 0.8,
+            style: { stroke: v("fork"), width: 2, dash: "8 5", arrow: true },
+          });
       }
     }
   }
+  return lines;
+}
+
+function pathOf(l: Line, cam: Camera, vp: Viewport): string {
+  const a = toScreen(l.from, cam, vp);
+  const b = toScreen(l.to, cam, vp);
+  if (l.kind === "road") return `M${a.x + a.w + 4} ${a.y + a.h / 2} L${b.x - 6} ${b.y + b.h / 2}`;
+  if (l.kind === "branch") {
+    const [x1, y1, x2, y2] = [a.x + a.w, a.y + a.h / 2, b.x, b.y + b.h / 2];
+    const k = (x2 - x1) * 0.5;
+    return `M${x1} ${y1} C${x1 + k} ${y1} ${x2 - k} ${y2} ${x2} ${y2}`;
+  }
+  const [x1, y1, x2, y2] = [a.x, a.y + a.h * 0.7, b.x + b.w, b.y + b.h / 2];
+  return `M${x1} ${y1} C${x1 - 80} ${y1 + 40} ${x2 + 80} ${y2} ${x2 + 4} ${y2}`;
+}
+
+/**
+ * The links, on screen over the desk and under the cards. They render when the scene or the level changes;
+ * the camera and a flight's blend redraw them through `drawRef`.
+ */
+const Links = memo(function Links({
+  lines,
+  blend,
+  u,
+  camRef,
+  vp,
+  drawRef,
+}: {
+  lines: Line[];
+  blend: Blend;
+  u: number;
+  camRef: RefObject<Camera | null>;
+  vp: Viewport;
+  drawRef: RefObject<((cam: Camera, vp: Viewport, u: number) => void) | null>;
+}) {
+  const els = useRef(new Map<string, SVGPathElement>());
+  const seen = useCallback((l: Line, x: number) => Math.min(...l.of.map((id) => blend.vis(id, x))) * l.k, [blend]);
+  const shown = useMemo(() => lines.filter((l) => peak((x) => seen(l, x), u) > 0.02), [lines, seen, u]);
+  useLayoutEffect(() => {
+    drawRef.current = (cam, view, x) => {
+      for (const l of shown) {
+        const el = els.current.get(l.id);
+        el?.setAttribute("d", pathOf(l, cam, view));
+        el?.setAttribute("stroke-opacity", String(seen(l, x)));
+      }
+    };
+  }, [shown, seen, drawRef]);
+  const cam = camRef.current;
+  if (!cam) return null;
   return (
     <svg
       style={{
@@ -1490,13 +1749,17 @@ function Links({
           <path d="M0 0 L10 5 L0 10 z" fill={v("fork")} />
         </marker>
       </defs>
-      {lines.map((l) => (
+      {shown.map((l) => (
         <path
           key={l.id}
-          d={l.d}
+          ref={(el) => {
+            if (el) els.current.set(l.id, el);
+            else els.current.delete(l.id);
+          }}
+          d={pathOf(l, cam, vp)}
           fill="none"
           stroke={l.style.stroke}
-          strokeOpacity={l.o}
+          strokeOpacity={seen(l, u)}
           strokeWidth={l.style.width}
           strokeDasharray={l.style.dash}
           markerEnd={l.style.arrow ? (l.style.stroke === v("fork") ? "url(#icb-fork)" : "url(#icb-arrow)") : undefined}
@@ -1504,7 +1767,7 @@ function Links({
       ))}
     </svg>
   );
-}
+});
 
 /** Ask Jamie about one card: opens next to the card's chip, with suggestions for that card. */
 function AskBox({

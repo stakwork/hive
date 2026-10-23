@@ -95,8 +95,12 @@ const PACKAGE_KEYS = [
   "package_name",
   "fixed_in",
 ];
+/** Weaker package hints (a version alone does not make a code finding a package one). */
+const PACKAGE_HINT_KEYS = ["ecosystem", "installed_version", "affected_versions", "package_version"];
 const KIND_KEYS = ["finding_type", "type", "kind", "category", "source"];
 const PACKAGE_KIND_RE = /cve|package|dependenc|vulnerable[_ -]?pkg|advisory/i;
+const CODE_KIND_RE = /code|sast|cwe|injection|xss|secret|crypto|vulnerability in/i;
+const CODE_KEYS = ["file", "file_path", "path", "filename", "cwe", "cwe_id", "line", "start_line", "code_snippet"];
 
 function hasValue(value: unknown): boolean {
   if (Array.isArray(value)) return value.length > 0;
@@ -104,34 +108,42 @@ function hasValue(value: unknown): boolean {
   return value !== null && value !== undefined;
 }
 
-/** `package_cve` / `code_issue`, or null for kinds the fixer does not handle yet. */
+/**
+ * `package_cve` / `code_issue`, or null when nothing identifies either kind
+ * (no package hints, no file, no CWE, no code-ish hint).
+ */
 export function classifyFinding(finding: SystemMapFinding): FindingFixKind | null {
   const p = finding.properties;
   const kindText = KIND_KEYS.map((k) => p[k]).filter((v): v is string => typeof v === "string");
-  if (PACKAGE_KEYS.some((k) => hasValue(p[k])) || kindText.some((v) => PACKAGE_KIND_RE.test(v))) {
+  if (
+    PACKAGE_KEYS.some((k) => hasValue(p[k])) ||
+    hasPackageHint(p) ||
+    kindText.some((v) => PACKAGE_KIND_RE.test(v))
+  ) {
     return "package_cve";
   }
-  if (finding.cweId && finding.file) return "code_issue";
+  if (
+    finding.file ||
+    finding.cweId ||
+    CODE_KEYS.some((k) => hasValue(p[k])) ||
+    kindText.some((v) => CODE_KIND_RE.test(v))
+  ) {
+    return "code_issue";
+  }
   return null;
 }
 
-/** The verdict `finding_verify` wrote (`finding_status`), lower-cased. */
-export function findingVerdict(finding: SystemMapFinding): string | null {
-  const v = finding.properties.finding_status;
-  return typeof v === "string" && v.trim() ? v.trim().toLowerCase() : null;
+function hasPackageHint(p: Record<string, unknown>): boolean {
+  return PACKAGE_HINT_KEYS.some((k) => hasValue(p[k]));
 }
 
 export type FixEligibility = { eligible: true; kind: FindingFixKind } | { eligible: false; reason: string };
 
-/** Can this finding be auto-fixed? The reason is shown in the UI and returned by the API. */
+/** Can this finding be auto-fixed (any verdict)? The reason is shown in the UI and returned by the API. */
 export function getFixEligibility(finding: SystemMapFinding): FixEligibility {
-  const verdict = findingVerdict(finding);
-  if (verdict !== "confirmed") {
-    return { eligible: false, reason: "Only confirmed findings can be fixed — run a check and write verdicts first" };
-  }
   const kind = classifyFinding(finding);
   if (!kind) {
-    return { eligible: false, reason: "Automated fixes cover vulnerable packages and code issues (CWE) only" };
+    return { eligible: false, reason: "Automated fixes cover vulnerable packages and code issues only — this finding has no package, file or CWE to act on" };
   }
   return { eligible: true, kind };
 }
@@ -288,6 +300,8 @@ export function buildFindingFixSeed(
   repositoryUrl: string,
 ): string {
   const where = finding.file ? `${finding.file}${finding.line ? `:${finding.line}` : ""}` : "(unknown)";
+  const rawVerdict = finding.properties.finding_status;
+  const verdict = typeof rawVerdict === "string" && rawVerdict.trim() ? rawVerdict.trim() : "unverified";
   const task =
     kind === "package_cve"
       ? "This is a vulnerable package (CVE). Bump it to the fixed version (the advisory's fixed_in, else the smallest safe upgrade), update the lockfile, keep the build and tests passing, and open a pull request."
@@ -298,8 +312,9 @@ export function buildFindingFixSeed(
     .join("\n")
     .slice(0, 4000);
   return [
-    "You are helping a workspace member act on a single confirmed Infosec security finding.",
+    "You are helping a workspace member act on a single Infosec security finding.",
     "Work on this finding only. Do not batch other findings.",
+    `Verdict: ${verdict}. In the job's prompt, tell it to first check in the code that the finding is real; if it is a false positive, say so and do not open a pull request.`,
     `Fix it as a job: use the start_job tool with workspace "${workspaceSlug}", and name the repository ${repositoryUrl} in the job's prompt. The job must open a pull request against that repository (never push to the default branch) and report the PR.`,
     task,
     "",
