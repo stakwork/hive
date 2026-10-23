@@ -229,7 +229,7 @@ export function InfiniteCanvas({
     openInitiative: initiative,
   });
   // Strut's pending proposals, drawn in where they'd go (pencil cards).
-  const { pending: pendingProposals, decide: decideProposal } = useCanvasProposals(githubLogin);
+  const { pending: pendingProposals, deciding, decide: decideProposal } = useCanvasProposals(githubLogin);
   const board = useMemo(() => withProposals(graphBoard, pendingProposals), [graphBoard, pendingProposals]);
   const { jobsByRef, artifactsByRef } = useCanvasJobs(githubLogin, initiative);
 
@@ -816,8 +816,9 @@ export function InfiniteCanvas({
       flash,
       work: (id: string) => work.get(id),
       decide: (p: Pencil, action: "accept" | "reject") => decideProposal(p.proposalId, p.runId, action),
+      deciding,
     }),
-    [board, jobsByRef, actions, flash, work, decideProposal],
+    [board, jobsByRef, actions, flash, work, decideProposal, deciding],
   );
 
   // ── Input ─────────────────────────────────────────────────────────────────
@@ -1347,27 +1348,7 @@ export function InfiniteCanvas({
   );
 }
 
-/**
- * One scene node at its place in the world: face or open frame, story, add slot, panel, artifact strip, or
- * brainstorm card. Drawn at its design width and scaled once to its rect; the camera moves it with the world.
- */
-const SceneItem = memo(function SceneItem({
-  n,
-  c,
-  vis,
-  open,
-  frame,
-  face,
-  culled,
-  here,
-  quiet,
-  busy,
-  artifacts,
-  folded,
-  desk,
-  jobs,
-  register,
-}: {
+type SceneItemProps = {
   n: SceneNode;
   c: CardContext;
   vis: number;
@@ -1375,8 +1356,6 @@ const SceneItem = memo(function SceneItem({
   /** A container draws its open frame, its face, or both while a flight blends them. */
   frame: boolean;
   face: boolean;
-  /** Out of view, or gone at this level for the rest of any flight. */
-  culled: boolean;
   /** The level you're in: its frame gets the paper; the ones around it are just an outline. */
   here: boolean;
   /** Inside a milestone or feature the headers above it hide, and the frames around it go. */
@@ -1391,8 +1370,45 @@ const SceneItem = memo(function SceneItem({
   /** A job on this card, running or just settled. */
   jobs?: CanvasJob[];
   register: (id: string, el: HTMLElement | null) => void;
-}) {
-  if (culled) return null;
+};
+
+/**
+ * One scene node, mounted once it has been in view. Culled after that (out of view, or gone at this level for
+ * the rest of any flight), it stays mounted but hidden and frozen as it last was: what's typed in it survives
+ * panning away and other levels, and it costs no render or paint until it's back.
+ */
+const SceneItem = memo(function SceneItem({ culled, ...props }: SceneItemProps & { culled: boolean }) {
+  const shown = useRef<SceneItemProps | null>(null);
+  if (!culled) shown.current = props;
+  return shown.current ? <SceneCard {...shown.current} hidden={culled} /> : null;
+});
+
+/**
+ * One scene node at its place in the world: face or open frame, story, add slot, panel, artifact strip, or
+ * brainstorm card. Drawn at its design width and scaled once to its rect; the camera moves it with the world.
+ */
+const SceneCard = memo(function SceneCard({
+  n,
+  c,
+  vis,
+  open,
+  frame,
+  face,
+  hidden,
+  here,
+  quiet,
+  busy,
+  artifacts,
+  folded,
+  desk,
+  jobs,
+  register,
+}: SceneItemProps & { hidden: boolean }) {
+  // A frame or face once drawn stays, hidden, while the level shows the other.
+  const drewFrame = useRef(false);
+  const drewFace = useRef(false);
+  drewFrame.current ||= frame;
+  drewFace.current ||= face;
   const board = c.board;
   const r = n.rect;
   const loose = ["add", "artifacts", "architecture", "build", "stories", "stack"].includes(n.type);
@@ -1486,11 +1502,12 @@ const SceneItem = memo(function SceneItem({
     attrs = { "data-node": n.id, "data-open": open.toFixed(2) };
     body = (
       <>
-        {frame ? (
+        {drewFrame.current ? (
           <div
             data-part="frame"
             className={glowing ? "icb-glow" : undefined}
             style={{
+              display: frame ? undefined : "none",
               position: "absolute",
               inset: 0,
               opacity: open,
@@ -1513,8 +1530,8 @@ const SceneItem = memo(function SceneItem({
             ) : null}
           </div>
         ) : null}
-        {face ? (
-          <div data-part="face" data-hit={n.id} style={scaled(faceW, 1 - open)}>
+        {drewFace.current ? (
+          <div data-part="face" data-hit={n.id} style={scaled(faceW, 1 - open, face ? undefined : { display: "none" })}>
             <Face c={c} node={node!} w={faceW} h={dh(faceW)} />
           </div>
         ) : null}
@@ -1526,11 +1543,13 @@ const SceneItem = memo(function SceneItem({
   const markerW = (open > 0.5 ? FRAME_W[n.type] : FACE_W[n.type]) ?? FACE_W.feature!;
   return (
     <div
+      // A hidden card is left out of the blend painted each frame.
       ref={(el) => {
-        register(n.id, el);
+        register(n.id, hidden ? null : el);
       }}
       {...attrs}
       style={{
+        display: hidden ? "none" : undefined,
         position: "absolute",
         left: r.x,
         top: r.y,
