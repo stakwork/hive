@@ -18,7 +18,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Command, CommandItem, CommandList } from "@/components/ui/command";
+import { MentionPopup } from "@/components/mention/MentionPopup";
+import { useWorkspaceMention } from "@/hooks/useWorkspaceMention";
 import { ArrowUp, Mic, MicOff, Loader2, Sparkles, ImageIcon, Upload, X, Code2 } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
@@ -79,21 +80,9 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repositories]);
 
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [mentionIndex, setMentionIndex] = useState(0);
-
   // File attachment state
   const [selectedFiles, setSelectedFiles] = useState<{ file: File; previewUrl: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const filteredWorkspaces =
-    mentionQuery !== null
-      ? workspaces.filter(
-          (ws) =>
-            ws.slug !== workspace?.slug &&
-            ws.slug.toLowerCase().includes(mentionQuery.toLowerCase()),
-        )
-      : [];
 
   // Unified target selection: either a repo or a workflow
   const [selectedTarget, setSelectedTarget] = useState<TargetSelection | null>(
@@ -189,26 +178,20 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
     enabled: isSupported && !isLoading,
   });
 
-  const insertMention = useCallback(
-    (slug: string) => {
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-      const cursor = textarea.selectionStart ?? value.length;
-      const before = value.slice(0, cursor);
-      const after = value.slice(cursor);
-      const replaced = before.replace(/\B@[\w-]*$/, `@${slug}`);
-      const newValue = replaced + ' ' + after;
-      setValue(newValue);
-      setMentionQuery(null);
-      setMentionIndex(0);
+  const mention = useWorkspaceMention({
+    workspaces,
+    excludeSlug: workspace?.slug,
+    enabled: !isLoading,
+    onInsert: ({ text, caret }) => {
+      setValue(text);
       requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
         textarea.focus();
-        const pos = replaced.length + 1;
-        textarea.setSelectionRange(pos, pos);
+        textarea.setSelectionRange(caret, caret);
       });
     },
-    [value],
-  );
+  });
 
   // File validation and attachment
   const handleFiles = useCallback((files: FileList | File[]) => {
@@ -295,33 +278,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!isLoading && mentionQuery !== null && filteredWorkspaces.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setMentionIndex((i) => (i + 1) % filteredWorkspaces.length);
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setMentionIndex((i) => (i - 1 + filteredWorkspaces.length) % filteredWorkspaces.length);
-        return;
-      }
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        insertMention(filteredWorkspaces[mentionIndex].slug);
-        return;
-      }
-      if (e.key === "Tab") {
-        e.preventDefault();
-        insertMention(filteredWorkspaces[mentionIndex].slug);
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setMentionQuery(null);
-        return;
-      }
-    }
+    if (mention.handleKeyDown(e, value, e.currentTarget.selectionStart ?? value.length)) return;
 
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -346,30 +303,14 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
             transition={{ duration: 0.15 }}
           >
             <div className="relative">
-              {!isLoading && mentionQuery !== null && filteredWorkspaces.length > 0 && (
-                <div className="absolute bottom-full left-0 right-0 mb-1 z-20">
-                  <Command className="rounded-lg border shadow-md bg-popover">
-                    <CommandList>
-                      {filteredWorkspaces.map((ws, idx) => (
-                        <CommandItem
-                          key={ws.slug}
-                          value={ws.slug}
-                          onSelect={() => insertMention(ws.slug)}
-                          className={cn(
-                            "cursor-pointer px-3 py-2 text-sm",
-                            idx === mentionIndex && "bg-accent text-accent-foreground",
-                          )}
-                          data-testid={`mention-item-${ws.slug}`}
-                        >
-                          <span className="font-medium">@{ws.slug}</span>
-                          {ws.name && ws.name !== ws.slug && (
-                            <span className="ml-2 text-muted-foreground">{ws.name}</span>
-                          )}
-                        </CommandItem>
-                      ))}
-                    </CommandList>
-                  </Command>
-                </div>
+              {mention.isOpen && (
+                <MentionPopup
+                  workspaces={mention.matches}
+                  activeIndex={mention.activeIndex}
+                  onSelect={(slug) =>
+                    mention.select(slug, value, textareaRef.current?.selectionStart ?? value.length)
+                  }
+                />
               )}
               <Textarea
                 ref={textareaRef}
@@ -377,15 +318,7 @@ export function PlanStartInput({ onSubmit, isLoading = false, loadingStatus, ini
                 value={value}
                 onChange={(e) => {
                   setValue(e.target.value);
-                  const cursor = e.target.selectionStart ?? e.target.value.length;
-                  const before = e.target.value.slice(0, cursor);
-                  const match = before.match(/\B@([\w-]*)$/);
-                  if (match) {
-                    setMentionQuery(match[1]);
-                    setMentionIndex(0);
-                  } else {
-                    setMentionQuery(null);
-                  }
+                  mention.update(e.target.value, e.target.selectionStart ?? e.target.value.length);
                 }}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
