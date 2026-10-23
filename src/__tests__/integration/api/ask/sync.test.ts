@@ -88,6 +88,18 @@ vi.mock('@/lib/pusher', async (importOriginal) => {
   };
 });
 
+// A live turn runs on strut's orchestrator (docs/jamie-engine.md): the
+// launch and the wait for its reply rows are the strut side, mocked here;
+// a dry run still runs Hive's canvas agent on the mocked `streamText`.
+const { mockLaunch, mockAwaitReply } = vi.hoisted(() => ({
+  mockLaunch: vi.fn(),
+  mockAwaitReply: vi.fn(),
+}));
+vi.mock('@/services/strut-orchestrator', () => ({
+  launchOrchestratorTurn: mockLaunch,
+  awaitOrchestratorReply: mockAwaitReply,
+}));
+
 import { streamText } from 'ai';
 import { getModel } from '@/lib/ai/provider';
 
@@ -253,105 +265,107 @@ describe('POST /api/ask/sync', () => {
     });
   });
 
-  describe('Turn lifecycle', () => {
-    it('creates a conversation, persists user + assistant rows, returns JSON', async () => {
-      const { owner, workspace } = await setupOrgWorkspace();
+  describe('Turn lifecycle (live: strut\'s orchestrator)', () => {
+    const reply = (content: string) => [
+      { id: 'orchestrator-orch-row-1', role: 'assistant', content, source: { kind: 'orchestrator' } },
+    ];
 
-      vi.mocked(streamText).mockReturnValue(
-        mockFinishedStream([
-          { text: 'The answer is 42.', toolCalls: [], toolResults: [] },
-        ]) as any,
+    beforeEach(() => {
+      mockLaunch.mockResolvedValue({ status: 'started', runId: 'orch-row-1', strutRunId: '1790000000001' });
+      mockAwaitReply.mockResolvedValue(reply('The answer is 42.'));
+    });
+
+    it('creates a conversation, persists the user row, launches one orchestrator turn and returns its reply rows', async () => {
+      const { owner, org, workspace } = await setupOrgWorkspace();
+
+      const response = await POST(
+        createAuthenticatedPostRequest(
+          '/api/ask/sync',
+          { message: 'What is the answer?', workspaceSlug: workspace.slug },
+          owner,
+        ),
       );
-
-      const request = createAuthenticatedPostRequest(
-        '/api/ask/sync',
-        { message: 'What is the answer?', workspaceSlug: workspace.slug },
-        owner,
-      );
-
-      const response = await POST(request);
       expect(response.status).toBe(200);
 
       const data = await response.json();
       expect(typeof data.conversationId).toBe('string');
-      expect(Array.isArray(data.messages)).toBe(true);
-      expect(data.messages).toHaveLength(1);
-      expect(data.messages[0]).toMatchObject({
-        role: 'assistant',
-        content: 'The answer is 42.',
-      });
+      expect(data.messages).toEqual(reply('The answer is 42.'));
+      expect(data).not.toHaveProperty('pending');
 
-      // The assistant rows AND the user row land on the SharedConversation.
+      // The user row lands on the SharedConversation; the reply is strut's
+      // to write (the strut-runs webhook), never Hive's agent.
       const row = await db.sharedConversation.findUnique({
         where: { id: data.conversationId },
-        select: { messages: true, sourceControlOrgId: true, userId: true },
+        select: { messages: true, userId: true },
       });
       expect(row?.userId).toBe(owner.id);
       const stored = row?.messages as Array<{ id: string; role: string; content: string }>;
       expect(stored.some((m) => m.role === 'user' && m.content === 'What is the answer?')).toBe(true);
-      expect(stored.some((m) => m.role === 'assistant' && m.content === 'The answer is 42.')).toBe(true);
+
+      expect(mockLaunch).toHaveBeenCalledTimes(1);
+      expect(mockLaunch.mock.calls[0][0]).toMatchObject({
+        userId: owner.id,
+        orgId: org.id,
+        conversationId: data.conversationId,
+        message: 'What is the answer?',
+      });
+      expect(mockAwaitReply).toHaveBeenCalledWith({ conversationId: data.conversationId, runId: 'orch-row-1' });
+      expect(streamText).not.toHaveBeenCalled();
     });
 
-    it('continues an existing conversation by id (history reconstruction)', async () => {
+    it('a reply that does not land in time answers pending, with no rows', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+      mockAwaitReply.mockResolvedValue(null);
+      const response = await POST(
+        createAuthenticatedPostRequest('/api/ask/sync', { message: 'slow one', workspaceSlug: workspace.slug }, owner),
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toMatchObject({ messages: [], pending: true });
+    });
+
+    it('busy is a 409; a refused launch is an error naming strut', async () => {
+      const { owner, workspace } = await setupOrgWorkspace();
+      mockLaunch.mockResolvedValueOnce({ status: 'busy', note: 'Still working on your last message.' });
+      const busy = await POST(
+        createAuthenticatedPostRequest('/api/ask/sync', { message: 'again', workspaceSlug: workspace.slug }, owner),
+      );
+      expect(busy.status).toBe(409);
+
+      mockLaunch.mockResolvedValueOnce({ status: 'error', error: 'no orchestrator workflow' });
+      const refused = await POST(
+        createAuthenticatedPostRequest('/api/ask/sync', { message: 'again', workspaceSlug: workspace.slug }, owner),
+      );
+      expect(refused.status).toBe(500);
+      expect((await refused.json()).error).toContain('no orchestrator workflow');
+      expect(mockAwaitReply).not.toHaveBeenCalled();
+    });
+
+    it('continues an existing conversation by id: the same session on strut, nothing replayed', async () => {
       const { owner, workspace } = await setupOrgWorkspace();
 
-      // Turn 1
-      vi.mocked(streamText).mockReturnValue(
-        mockFinishedStream([
-          { text: 'First answer.', toolCalls: [], toolResults: [] },
-        ]) as any,
-      );
       const first = await POST(
-        createAuthenticatedPostRequest(
-          '/api/ask/sync',
-          { message: 'First question', workspaceSlug: workspace.slug },
-          owner,
-        ),
+        createAuthenticatedPostRequest('/api/ask/sync', { message: 'First question', workspaceSlug: workspace.slug }, owner),
       );
       const { conversationId } = await first.json();
 
-      // Turn 2 — same conversationId; the agent should see prior turns.
-      vi.mocked(streamText).mockReturnValue(
-        mockFinishedStream([
-          { text: 'Second answer.', toolCalls: [], toolResults: [] },
-        ]) as any,
-      );
       const second = await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
-          {
-            message: 'Second question',
-            conversationId,
-            workspaceSlug: workspace.slug,
-          },
+          { message: 'Second question', conversationId, workspaceSlug: workspace.slug },
           owner,
         ),
       );
       expect(second.status).toBe(200);
-      const secondData = await second.json();
-      expect(secondData.conversationId).toBe(conversationId);
-
-      // The model messages on turn 2 include the reconstructed history.
-      const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
-      const contents = (callArgs.messages ?? []).map((m: any) => m.content);
-      expect(contents).toContain('First question');
-      expect(contents).toContain('First answer.');
-      expect(contents).toContain('Second question');
+      expect((await second.json()).conversationId).toBe(conversationId);
+      expect(mockLaunch.mock.calls[1][0]).toMatchObject({ conversationId, message: 'Second question' });
     });
 
     it('a cross-member conversationId joins the same shared room (org-canvas rows are shared by default)', async () => {
-      const { owner: creator, org, workspace } = await setupOrgWorkspace();
+      const { owner: creator, workspace } = await setupOrgWorkspace();
 
-      // Creator's conversation with some content.
-      vi.mocked(streamText).mockReturnValue(
-        mockFinishedStream([{ text: 'secret', toolCalls: [], toolResults: [] }]) as any,
-      );
       const creatorTurn = await POST(
-        createAuthenticatedPostRequest(
-          '/api/ask/sync',
-          { message: 'creator secret', workspaceSlug: workspace.slug },
-          creator,
-        ),
+        createAuthenticatedPostRequest('/api/ask/sync', { message: 'creator secret', workspaceSlug: workspace.slug }, creator),
       );
       const creatorConvId = (await creatorTurn.json()).conversationId;
 
@@ -363,47 +377,21 @@ describe('POST /api/ask/sync', () => {
       await db.workspaceMember.create({
         data: { userId: member.id, workspaceId: workspace.id, role: 'DEVELOPER' },
       });
-      // Give the member their own org PAT so credential resolution
-      // succeeds and the test isolates the shared-room (join) behavior.
-      const memberToken = encryptionService.encryptField(
-        'source_control_token',
-        'github_pat_member_token',
-      );
-      await db.sourceControlToken.create({
-        data: {
-          userId: member.id,
-          sourceControlOrgId: org.id,
-          token: JSON.stringify(memberToken),
-          scopes: ['repo'],
-        },
-      });
 
-      vi.mocked(streamText).mockReturnValue(
-        mockFinishedStream([{ text: 'ok', toolCalls: [], toolResults: [] }]) as any,
-      );
       const memberTurn = await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
-          {
-            message: 'give me the secret',
-            conversationId: creatorConvId,
-            workspaceSlug: workspace.slug,
-          },
+          { message: 'give me the secret', conversationId: creatorConvId, workspaceSlug: workspace.slug },
           member,
         ),
       );
       expect(memberTurn.status).toBe(200);
-      const memberData = await memberTurn.json();
 
       // Org-canvas conversations are shared rooms by default (`isShared`),
       // so the member JOINS the SAME row rather than forking a private
-      // copy: same conversation id, and the reconstructed history includes
-      // the creator's prior messages. Access is gated by org membership
-      // (validated upstream), not per-row ownership.
-      expect(memberData.conversationId).toBe(creatorConvId);
-      const callArgs = vi.mocked(streamText).mock.calls.at(-1)![0];
-      const contents = (callArgs.messages ?? []).map((m: any) => m.content);
-      expect(contents).toContain('creator secret');
+      // copy, and the turn runs as the member.
+      expect((await memberTurn.json()).conversationId).toBe(creatorConvId);
+      expect(mockLaunch.mock.calls[1][0]).toMatchObject({ userId: member.id, conversationId: creatorConvId });
     });
   });
 
@@ -411,11 +399,8 @@ describe('POST /api/ask/sync', () => {
     it('accepts a valid x-api-token and acts as the workspace owner', async () => {
       const { owner, workspace } = await setupOrgWorkspace();
 
-      vi.mocked(streamText).mockReturnValue(
-        mockFinishedStream([
-          { text: 'eval response', toolCalls: [], toolResults: [] },
-        ]) as any,
-      );
+      mockLaunch.mockResolvedValue({ status: 'started', runId: 'orch-row-1', strutRunId: '1790000000001' });
+      mockAwaitReply.mockResolvedValue([{ id: 'orchestrator-orch-row-1', role: 'assistant', content: 'eval response' }]);
 
       const request = createRequestWithHeaders(
         '/api/ask/sync',
@@ -438,6 +423,7 @@ describe('POST /api/ask/sync', () => {
         select: { userId: true },
       });
       expect(row?.userId).toBe(owner.id);
+      expect(mockLaunch.mock.calls[0][0]).toMatchObject({ userId: owner.id });
     });
 
     it('rejects an invalid x-api-token with no session (401)', async () => {
@@ -604,11 +590,12 @@ describe('POST /api/ask/sync', () => {
       );
 
       // Without maxTurns: the default conditions only (end-marker +
-      // user-cancellation).
+      // user-cancellation). A dry run: a live turn runs on strut, where
+      // maxTurns has no meaning.
       await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
-          { message: 'no cap', workspaceSlug: workspace.slug },
+          { message: 'no cap', workspaceSlug: workspace.slug, dryRun: true },
           owner,
         ),
       );
@@ -619,7 +606,7 @@ describe('POST /api/ask/sync', () => {
       await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
-          { message: 'capped', workspaceSlug: workspace.slug, maxTurns: 1 },
+          { message: 'capped', workspaceSlug: workspace.slug, maxTurns: 1, dryRun: true },
           owner,
         ),
       );
@@ -668,8 +655,8 @@ describe('POST /api/ask/sync', () => {
   });
 
   describe('Org toolset for single-workspace orgs', () => {
-    it('a live single-workspace turn merges the org toolset (not only dryRun)', async () => {
-      // The live branch used to gate `orgId` on `slugs.length > 1`, so a
+    it('a single-workspace dry run merges the org toolset', async () => {
+      // The branch used to gate `orgId` on `slugs.length > 1`, so a
       // one-workspace org's turn ran with no `propose_initiative` at all.
       const { owner, workspace } = await setupOrgWorkspace();
 
@@ -680,7 +667,7 @@ describe('POST /api/ask/sync', () => {
       const response = await POST(
         createAuthenticatedPostRequest(
           '/api/ask/sync',
-          { message: 'create a milestone for arm64 support', workspaceSlug: workspace.slug },
+          { message: 'create a milestone for arm64 support', workspaceSlug: workspace.slug, dryRun: true },
           owner,
         ),
       );
@@ -690,10 +677,9 @@ describe('POST /api/ask/sync', () => {
       const toolNames = Object.keys(callArgs.tools ?? {});
       expect(toolNames).toContain('propose_initiative');
       expect(toolNames).toContain('read_canvas');
-      // Live (non-dryRun): mutators are present too; planner tools are gone.
-      expect(toolNames).toContain('assign_feature_to_initiative');
       expect(toolNames).not.toContain('propose_feature');
       expect(toolNames).not.toContain('send_to_feature_planner');
+      expect(mockLaunch).not.toHaveBeenCalled();
     });
   });
 });

@@ -8,7 +8,8 @@
  *     the launch carries `x-api-token` + `x-strut-actor`; the body is
  *     exactly `{ input: { prompt (workspace line + message), session (the
  *     conversation), context: { line } }, callback: { url }, jobCallback:
- *     { url } }` — no job, no title, no params; the jobCallback is the
+ *     { url } }` — no job, no title, and `params` only for the person's
+ *     model pick (`params.model`); the jobCallback is the
  *     row's job-events URL, which the jobs the turn starts inherit (strut
  *     CALLBACKS.md §5), and an older strut's 400 to it relaunches without;
  *   - the message's files ride as `attachments` (read from S3 as this
@@ -20,7 +21,10 @@
  *   - refusals: no `orchestrator` workflow on the swarm, no target;
  *   - the route's answer: a UI-message stream with no text for a launch,
  *     the notice as text for busy / refused, the conversation id on the
- *     header.
+ *     header;
+ *   - the wait of a caller that answers in-request (the sync route): the
+ *     reply and its proposal rows once strut reported the run, never the
+ *     launch marker; `null` past the deadline or for a run that is gone.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -37,6 +41,7 @@ const {
   mockHandler,
   mockCanReadKey,
   mockGetObject,
+  mockConversationFindUnique,
 } = vi.hoisted(() => ({
   mockStrutRun: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
   mockOrgFindUnique: vi.fn(),
@@ -49,10 +54,16 @@ const {
   mockHandler: vi.fn(),
   mockCanReadKey: vi.fn(),
   mockGetObject: vi.fn(),
+  mockConversationFindUnique: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
-  db: { strutRun: mockStrutRun, sourceControlOrg: { findUnique: mockOrgFindUnique }, swarm: { findUnique: vi.fn() } },
+  db: {
+    strutRun: mockStrutRun,
+    sourceControlOrg: { findUnique: mockOrgFindUnique },
+    swarm: { findUnique: vi.fn() },
+    sharedConversation: { findUnique: mockConversationFindUnique },
+  },
 }));
 vi.mock("@/services/strut-target", () => ({
   resolveStrutTarget: mockResolveStrutTarget,
@@ -80,7 +91,7 @@ vi.mock("@/lib/ai/resolveMessageAttachments", () => ({ canReadKey: mockCanReadKe
 vi.mock("@/services/s3", () => ({ getS3Service: () => ({ getObject: mockGetObject }) }));
 
 import { logger } from "@/lib/logger";
-import { launchOrchestratorTurn, runOrchestratorTurn } from "@/services/strut-orchestrator";
+import { awaitOrchestratorReply, launchOrchestratorTurn, runOrchestratorTurn } from "@/services/strut-orchestrator";
 
 const TARGET = {
   swarmId: "swarm-1",
@@ -195,6 +206,13 @@ describe("launchOrchestratorTurn", () => {
       { workspaceId: "ws-default", userId: "user-1", conversationId: "conv-1" },
       [{ id: "orchestrator-launch-row-1", content: "", source: { kind: "orchestrator_launch", runId: "row-1" } }],
     );
+  });
+
+  it("the person's model pick goes to strut as params.model, beside the input", async () => {
+    await launchOrchestratorTurn({ ...args, model: "anthropic/claude-sonnet-5-5" });
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.params).toEqual({ model: "anthropic/claude-sonnet-5-5" });
+    expect(body.input).not.toHaveProperty("model");
   });
 
   it("strut honoring the jobCallback marks the row; an older strut's 400 to it is a launch without, not a failed turn", async () => {
@@ -351,5 +369,43 @@ describe("runOrchestratorTurn — the route's answer", () => {
     const text = await readStream(await runOrchestratorTurn(args));
     expect(text).toContain('"type":"text-delta"');
     expect(text).toContain("Still working on your last message");
+  });
+});
+
+describe("awaitOrchestratorReply", () => {
+  const reply = { id: "orchestrator-row-1", role: "assistant", content: "Done.", source: { kind: "orchestrator" } };
+  const proposal = { id: "orchestrator-row-1-proposal-p1", role: "assistant", content: "", source: { kind: "proposal" } };
+  const marker = { id: "orchestrator-launch-row-1", role: "assistant", content: "", source: { kind: "orchestrator_launch" } };
+  const other = { id: "orchestrator-row-10", role: "assistant", content: "another turn" };
+  const clock = () => {
+    let t = 0;
+    return { now: () => t, sleep: async (ms: number) => void (t += ms) };
+  };
+
+  it("waits while the run is PENDING, then returns the reply and its proposals — never the marker or another turn's row", async () => {
+    mockStrutRun.findUnique
+      .mockResolvedValueOnce({ status: "PENDING" })
+      .mockResolvedValueOnce({ status: "PENDING" })
+      .mockResolvedValue({ status: "SUCCESS" });
+    mockConversationFindUnique.mockResolvedValue({ messages: [{ id: "u", role: "user", content: "hi" }, marker, reply, proposal, other] });
+    const rows = await awaitOrchestratorReply({ conversationId: "conv-1", runId: "row-1" }, clock());
+    expect(rows).toEqual([reply, proposal]);
+    expect(mockStrutRun.findUnique).toHaveBeenCalledTimes(3);
+    expect(mockConversationFindUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("a settled run whose rows have not landed yet is read again", async () => {
+    mockStrutRun.findUnique.mockResolvedValue({ status: "SUCCESS" });
+    mockConversationFindUnique.mockResolvedValueOnce({ messages: [marker] }).mockResolvedValue({ messages: [marker, reply] });
+    expect(await awaitOrchestratorReply({ conversationId: "conv-1", runId: "row-1" }, clock())).toEqual([reply]);
+  });
+
+  it("null past the deadline, or for a run that is gone", async () => {
+    mockStrutRun.findUnique.mockResolvedValue({ status: "PENDING" });
+    expect(await awaitOrchestratorReply({ conversationId: "conv-1", runId: "row-1", timeoutMs: 10_000 }, clock())).toBeNull();
+    expect(mockConversationFindUnique).not.toHaveBeenCalled();
+
+    mockStrutRun.findUnique.mockResolvedValue(null);
+    expect(await awaitOrchestratorReply({ conversationId: "conv-1", runId: "row-1" }, clock())).toBeNull();
   });
 });

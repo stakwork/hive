@@ -44,6 +44,7 @@ const args = (over: Partial<OrchestratorJobWakeArgs> = {}): OrchestratorJobWakeA
   text: "Wrote the plan to plan.md.",
   artifacts: [{ title: "Plan", kind: "markdown", label: "plan" }],
   publicBaseUrl: "https://hive.example.com",
+  startedByOrchestrator: true,
   ...over,
 });
 
@@ -69,6 +70,13 @@ describe("buildOrchestratorJobWakeText", () => {
     expect(text).toContain(`call job/continue with job \`${JOB}\``);
     expect(text).toContain("reply with exactly `[silent]` and nothing else");
     expect(text).toContain("job/get");
+  });
+
+  it("a job hive started (a card, an older conversation) is not called the orchestrator's own", () => {
+    const text = buildOrchestratorJobWakeText(args({ startedByOrchestrator: false }));
+    expect(text).toContain("which was started from this conversation");
+    expect(text).not.toContain("which you started");
+    expect(text).toContain(`call job/continue with job \`${JOB}\``);
   });
 
   it("says how the turn ended; an empty reply and no cards are said so; the reply is capped", () => {
@@ -97,7 +105,7 @@ describe("buildOrchestratorJobWakeText", () => {
 });
 
 describe("invokeOrchestratorOnJobTurn", () => {
-  it("runs behind the gate — the launch marker as its mark, job rows as its loop count, the opt-in waived — and launches as the owner on the conversation", async () => {
+  it("runs behind the gate — the launch marker as its mark, job rows as its loop count — and launches as the owner on the conversation", async () => {
     await invokeOrchestratorOnJobTurn(args());
 
     expect(mockGate).toHaveBeenCalledTimes(1);
@@ -107,8 +115,8 @@ describe("invokeOrchestratorOnJobTurn", () => {
       conversationId: "conv-1",
       wakeId: "job-row-1",
       about: { jobId: JOB, outcome: "success" },
-      ownerOptIn: false,
     });
+    expect(gate).not.toHaveProperty("ownerOptIn");
     expect(gate.trailingLaunches).toBe(countTrailingJobRows);
     expect(
       gate.alreadyHandled([

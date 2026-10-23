@@ -9,7 +9,11 @@
  *   2. Resolves the org's workspace slugs (org-canvas spans all workspaces).
  *   3. Creates a brand-new org-canvas `SharedConversation` seeded with the
  *      automation's prompt as the first user message.
- *   4. Runs `runCanvasAgent` and appends the assistant turn.
+ *   4. Launches one turn of strut's `orchestrator` on it — Jamie's engine
+ *      (`docs/jamie-engine.md`), as the automation's owner, with their
+ *      model pick and the automation's time zone. The reply lands later
+ *      through the strut-runs webhook, like a person's message; a refused
+ *      launch is written into the conversation as the reply.
  *   5. Records the new conversation on `lastRunConversationId` with
  *      `lastRunSeenAt = null` so the canvas page can auto-open it.
  *
@@ -19,14 +23,11 @@
  */
 
 import { db } from "@/lib/db";
-import { type ModelMessage } from "ai";
-import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
-import {
-  messagesFromSteps,
-  appendTurnMessages,
-  type StoredMessage,
-} from "@/services/canvas-turn-persistence";
+import { appendTurnMessages, type StoredMessage } from "@/services/canvas-turn-persistence";
 import { generateTitle } from "@/lib/ai/conversationHelpers";
+import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
+import { getBaseUrl } from "@/lib/utils";
+import { launchOrchestratorTurn } from "@/services/strut-orchestrator";
 import { computeNextRunAt } from "@/lib/automations/schedule";
 import { isApiError } from "@/types/errors";
 
@@ -67,10 +68,10 @@ export interface AutomationDispatchResult {
  *   (a) is accessible to the automation's user (owner or active member),
  *   (b) has a configured swarm with a swarmUrl, and
  *   (c) has at least one repository.
- * Passing a slug that fails any of these makes `runCanvasAgent` throw
- * inside the tool-assembly path, which would abort the whole org
- * automation. Filtering at the source keeps the run robust against
- * half-configured workspaces (e.g. a "testing" workspace with no swarm).
+ * The list is the conversation's workspace scope
+ * (`settings.extraWorkspaceSlugs`), what the chat's tools and readout
+ * reach. Filtering at the source keeps it free of half-configured
+ * workspaces (e.g. a "testing" workspace with no swarm).
  */
 export async function resolveOrgWorkspaceSlugs(
   sourceControlOrgId: string,
@@ -253,53 +254,43 @@ export async function dispatchDueAutomations(): Promise<AutomationDispatchResult
         select: { id: true },
       });
       console.log(
-        `${LOG_PREFIX} automationId=${automation.id} created conversationId=${conversation.id}; running agent…`,
+        `${LOG_PREFIX} automationId=${automation.id} created conversationId=${conversation.id}; launching the orchestrator…`,
       );
 
-      // ── Run the agent ────────────────────────────────────────────────
-      const messages: ModelMessage[] = [
-        { role: "user", content: automation.prompt },
-      ];
-
-      const { result: agentResult } = await runCanvasAgent({
+      // ── Launch the turn on strut ─────────────────────────────────────
+      const model = await loadUserChatAgentModel(automation.userId);
+      const launched = await launchOrchestratorTurn({
         userId: automation.userId,
         orgId: automation.sourceControlOrgId,
-        workspaceSlugs,
-        messages,
-        cachedConcepts: null as CachedConcepts | null,
-        silentPusher: true,
-        currentCanvasConversationId: conversation.id,
+        conversationId: conversation.id,
+        message: automation.prompt,
+        publicBaseUrl: getBaseUrl(null),
+        timeZone: automation.timezone,
+        ...(model ? { model } : {}),
       });
-
-      await agentResult.text;
-      const steps = await agentResult.steps;
-      console.log(
-        `${LOG_PREFIX} automationId=${automation.id} agent finished — ${steps.length} step(s)`,
-      );
-
-      const assistantPrefix = `${idPrefix}a`;
-      const rows = messagesFromSteps(
-        steps as Parameters<typeof messagesFromSteps>[0],
-        assistantPrefix,
-      );
-
-      if (rows.length === 0) {
-        rows.push({
-          id: `${assistantPrefix}0`,
-          role: "assistant",
-          content: "(No response generated.)",
-          timestamp: new Date().toISOString(),
+      if (launched.status !== "started") {
+        // No browser is there for a notice: the person reads it in the chat.
+        const assistantPrefix = `${idPrefix}a`;
+        await appendTurnMessages({
+          conversationId: conversation.id,
+          rows: [
+            {
+              id: `${assistantPrefix}0`,
+              role: "assistant",
+              content:
+                launched.status === "error"
+                  ? `The automation could not be sent to strut: ${launched.error}`
+                  : launched.note,
+              timestamp: new Date().toISOString(),
+            },
+          ],
+          idPrefix: assistantPrefix,
+          reason: "automation",
         });
       }
-
-      await appendTurnMessages({
-        conversationId: conversation.id,
-        rows,
-        idPrefix: assistantPrefix,
-        reason: "automation",
-      });
       console.log(
-        `${LOG_PREFIX} automationId=${automation.id} appended ${rows.length} message row(s) to conversationId=${conversation.id}`,
+        `${LOG_PREFIX} automationId=${automation.id} orchestrator turn ${launched.status} conversationId=${conversation.id}` +
+          (launched.status === "started" ? ` runId=${launched.runId}` : ""),
       );
 
       // ── Mark the run available for auto-open ─────────────────────────
@@ -308,6 +299,10 @@ export async function dispatchDueAutomations(): Promise<AutomationDispatchResult
         data: { lastRunConversationId: conversation.id, lastRunSeenAt: null },
       });
 
+      if (launched.status === "error") {
+        // The conversation says why; the sweep counts it as failed.
+        throw new Error(launched.error);
+      }
       console.log(
         `${LOG_PREFIX} Fired automationId=${automation.id} conversationId=${conversation.id}`,
       );

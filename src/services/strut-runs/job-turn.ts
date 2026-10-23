@@ -70,20 +70,16 @@
  * The row is the record, not the reply the user reads: the chat shows it
  * collapsed (`JobTurnCard`), since a job's text is written in detail (a
  * code change lists files, functions and line numbers). Once the row has
- * landed — exactly once, on `appended` — the handler wakes the canvas
- * agent (`invokeCanvasAgentOnJobTurn`, `canvas-strut-autoturn.ts`) to
- * summarize it, relay the job's question, or continue the job; the wake
+ * landed — exactly once, on `appended` — the handler wakes strut's
+ * orchestrator, the engine behind Jamie (`invokeOrchestratorOnJobTurn`,
+ * `strut-orchestrator-wake.ts`), to summarize it, relay the job's
+ * question, or continue the job — whoever started the job: the
+ * orchestrator (`via: "orchestrator"` on the input — the webhook adopted
+ * its first turn, `api/strut-runs/webhook`, and every later turn carries
+ * the mark) or hive (a card, an event, an older conversation). The wake
  * runs in `after()` so the callback answers at once, and is gated there
- * (owner opt-in, master kill switch, loop breaker). Stored rows also reach
- * the model as text on the next human message. A turn of a job strut's
- * ORCHESTRATOR started (`via: "orchestrator"` on the input — the webhook
- * adopted its first turn, `api/strut-runs/webhook`, and every later turn
- * carries the mark) wakes the ORCHESTRATOR instead
- * (`invokeOrchestratorOnJobTurn`, `strut-orchestrator-wake.ts`): hive's
- * canvas agent is not in that conversation, and the agent that asked for
- * the job is the one to summarize it. Same gates, same after-response
- * scheduling; the reply text rides on the wake since strut's agent cannot
- * read hive's rows.
+ * (master kill switch, claim, loop breaker); the reply text rides on it
+ * since strut's agent cannot read hive's rows.
  *
  * Retry contract (`completeStrutRun`): a transient failure reading the
  * artifacts list throws, so the webhook answers 5xx and strut re-posts;
@@ -859,26 +855,16 @@ export interface JobWake {
 }
 
 /**
- * Wake the canvas agent on the row that just landed, after the response:
- * the turn is a full LLM turn and must not hold strut's callback (or make
- * it retry). Outside a request (no `after`), it runs detached. Never
- * throws — the row is delivered either way.
+ * Wake strut's orchestrator — the engine behind Jamie — on the row that
+ * just landed, after the response: the turn must not hold strut's
+ * callback (or make it retry). Outside a request (no `after`), it runs
+ * detached. Never throws — the row is delivered either way. The job's
+ * reply text rides inline: the orchestrator cannot read hive's rows.
  */
-function scheduleJobWake(row: Pick<StrutRunRow, "id" | "workspaceId">, wake: JobWake): void {
-  afterResponse("Job turn wake", row, async () => {
-    const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
-    if (!workspace) return;
-    const { invokeCanvasAgentOnJobTurn } = await import("@/services/canvas-strut-autoturn");
-    await invokeCanvasAgentOnJobTurn({ ...wake, workspaceSlug: workspace.slug });
-  });
-}
-
-/**
- * The wake of a job the orchestrator started: strut's orchestrator, on the
- * same conversation, with the job's reply text inline (it cannot read
- * hive's rows). Same scheduling as `scheduleJobWake`.
- */
-function scheduleOrchestratorWake(row: Pick<StrutRunRow, "id" | "workspaceId">, wake: JobWake & { text: string }): void {
+function scheduleOrchestratorWake(
+  row: Pick<StrutRunRow, "id" | "workspaceId">,
+  wake: JobWake & { text: string; startedByOrchestrator: boolean },
+): void {
   afterResponse("Orchestrator wake", row, async () => {
     const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
     if (!workspace) return;
@@ -1002,10 +988,8 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
   // sees it settle and reads the card's tree and artifacts again.
   await nudgeCanvasCardJob(row, canvasJobStateOf(row.status));
 
-  // The row landed (once): an agent's turn is the reply the user reads —
-  // hive's canvas agent, or, for a job the orchestrator started inside
-  // strut, the orchestrator itself (that conversation runs on strut's
-  // engine, so no hive agent is woken into it).
+  // The row landed (once): the orchestrator's turn is the reply the user
+  // reads, whoever started the job.
   if (result === "appended" && row.conversationId) {
     const wake: JobWake = {
       conversationId: row.conversationId,
@@ -1018,8 +1002,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       publicBaseUrl: ctx?.publicBaseUrl ?? getBaseUrl(null),
       ...(event ? { event } : {}),
     };
-    if (jobTurnViaOrchestrator(row)) scheduleOrchestratorWake(row, { ...wake, text: reply.text });
-    else scheduleJobWake(row, wake);
+    scheduleOrchestratorWake(row, { ...wake, text: reply.text, startedByOrchestrator: jobTurnViaOrchestrator(row) });
   }
 
   // Events that arrived while this turn ran go now, as the next turn, one

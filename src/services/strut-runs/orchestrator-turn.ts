@@ -1,7 +1,7 @@
 /**
  * Completion handler for `kind: "orchestrator_turn"` — one turn of strut's
- * `orchestrator` workflow behind Jamie for a browser with the "Strut
- * orchestrator" switch on (the launch in `services/strut-orchestrator.ts`).
+ * `orchestrator` workflow, the engine behind Jamie (the launch in
+ * `services/strut-orchestrator.ts`).
  *
  * The turn's run settled; this is where its reply reaches the canvas chat.
  * The workflow answers in the job turn's shape — `{ text, artifacts, ask?,
@@ -36,9 +36,9 @@
  * which the chat hides: the working card still needs the row to land.
  *
  * No hive auto-turn: strut's agent remembers the conversation through its
- * session, and hive's Jamie is not in this loop. The one wake in it goes
- * the other way — a job the orchestrator started lands and wakes the
- * orchestrator (`strut-orchestrator-wake.ts`). The append
+ * session. The one wake in it goes the other way — a job's turn lands in
+ * the conversation and wakes the orchestrator (`strut-orchestrator-wake.ts`).
+ * The append
  * has `job-turn.ts`'s discipline — `FOR UPDATE`, ownership re-checked
  * against hive's rows (never the payload), idempotent by row id — and
  * never throws for a missing target. A transient failure reading strut

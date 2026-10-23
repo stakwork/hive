@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse, after } from "next/server";
 import { canvasFocusOf } from "@/lib/canvas/canvas-jobs";
 import { parseBrainstormFocus, parseGraphFocus, parseInitiativeFocus } from "@/lib/canvas/graph-focus";
@@ -53,7 +54,7 @@ import {
 import { isOwnStoppedTurn, isValidTurnId, registerTurn, watchTurnAbort } from "@/services/canvas-turn-abort";
 import { notifyCanvasUpdated } from "@/lib/canvas/pusher";
 import { readPageContext } from "@/services/jamie-page-context";
-import { runOrchestratorTurn } from "@/services/strut-orchestrator";
+import { runOrchestratorTurn, syntheticTurnResponse } from "@/services/strut-orchestrator";
 import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
 import { fanOutGraphWalkToCanvas } from "@/services/canvas-graph-walk-fanout";
 import type { PartialStep } from "@/lib/ai/runCanvasAgent";
@@ -111,13 +112,6 @@ export async function POST(request: NextRequest) {
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
       // and avoid an unnecessary stakgraph round-trip.
       skipEnrichments,
-      // Per-browser opt-in to the slim prompt (concept-tree mode), sent by
-      // the canvas SidebarChat when its settings switch is on.
-      slimPrompt,
-      // Per-browser opt-in to run the turn on strut's `orchestrator`
-      // workflow instead of `runCanvasAgent`, sent the same way
-      // (`strutEnginePreference.ts`, `docs/jamie-engine.md`).
-      strutEngine,
       // Agent-proposal flow (see `src/lib/proposals/`). Set on the
       // user's send when they click Approve / Reject in a
       // `<ProposalCard>`. The route runs the side effect synchronously
@@ -477,8 +471,15 @@ export async function POST(request: NextRequest) {
     // client filters server rows by the `${turnId}-` prefix in its
     // live-sync merge so the authoring tab never double-renders.
     // ============================================================
+    // An org-canvas turn always has one: a client that sends none (the
+    // native app's server-history mode) gets one minted here, so its
+    // message is persisted and reaches strut like the web chat's.
     const turnIdStr: string | null =
-      typeof turnId === "string" && turnId.length > 0 ? turnId : null;
+      typeof turnId === "string" && turnId.length > 0
+        ? turnId
+        : orgId && userId
+          ? randomUUID()
+          : null;
     // The latest user turn's text. With an image attachment the content is
     // a multi-part array (`{type:"text"} + {type:"image"}`), so pull the
     // text part out — otherwise a string content collapses to "" and the
@@ -537,19 +538,19 @@ export async function POST(request: NextRequest) {
     console.log("[quick-ask] timing", { stage: "persistCanvasUserMessage", ms: Date.now() - tPersist, workspaces: slugs, orgId: orgId ?? null });
 
     // ============================================================
-    // Strut orchestrator (`docs/jamie-engine.md`). A persisted org-canvas
-    // turn whose request carries `strutEngine: true` — the per-browser
-    // switch in the chat's ⋯ menu — goes to strut's `orchestrator`
-    // workflow instead of `runCanvasAgent`: the user's row is written
-    // above, the reply lands later as rows through the strut-runs webhook
-    // (`services/strut-orchestrator.ts`). Without the flag everything
-    // below is the default path and runs exactly as before.
+    // Jamie runs on strut (`docs/jamie-engine.md`). Every org-canvas turn
+    // goes to the swarm strut's `orchestrator` workflow: the user's row is
+    // written above, the reply lands later as rows through the strut-runs
+    // webhook (`services/strut-orchestrator.ts`). Nothing below this
+    // branch runs for an org request; it serves the workspace dashboard
+    // chat and public viewers.
     // ============================================================
-    // The infinite-canvas card the person is on: on strut, a line of the
-    // context and the card its jobs land on (`canvas-jobs.ts`); below, the
-    // prompt's "## Current initiative" section.
+    // The infinite-canvas card the person is on: a line of the context and
+    // the card its jobs land on (`canvas-jobs.ts`).
     const initiativeHint = parseInitiativeFocus(initiativeFocus, slugs);
-    if (orgId && userId && canvasConversationRowId && strutEngine === true) {
+    if (orgId && userId) {
+      // Nothing to send: no text and no file.
+      if (!canvasConversationRowId) return syntheticTurnResponse(null);
       console.log("[quick-ask] timing", { stage: "early-exit:strut-orchestrator", ms: Date.now() - t0, workspaces: slugs, orgId });
       return await runOrchestratorTurn({
         userId,
@@ -557,6 +558,7 @@ export async function POST(request: NextRequest) {
         conversationId: canvasConversationRowId,
         message: newUserContent,
         attachments: userAttachments,
+        ...(chatAgentModel ? { model: chatAgentModel } : {}),
         publicBaseUrl: getBaseUrl(request.headers.get("host")),
         timeZone: userTimezone,
         focus: initiativeHint ? canvasFocusOf(initiativeHint) : undefined,
@@ -691,7 +693,6 @@ export async function POST(request: NextRequest) {
           orgId: orgId || undefined,
           workspaceSlugs: slugs,
           modelName: chatAgentModel,
-          slimPrompt: slimPrompt === true,
           // Reuse cached concepts (skips the swarm `listConcepts` call)
           // when we have them for this org-canvas conversation. The prefix
           // is still rebuilt fresh each turn for an accurate scope hint.

@@ -1,8 +1,8 @@
 /**
  * Post-run Jamie chat generation for legal benchmark runs.
  *
- * This is the Jamie chat — an org-canvas conversation written by the canvas
- * agent — and is a DIFFERENT artifact from the run report bundle, which is
+ * This is the Jamie chat — an org-canvas conversation answered by strut's
+ * `orchestrator`, Jamie's engine (`docs/jamie-engine.md`) — and is a DIFFERENT artifact from the run report bundle, which is
  * fetched from S3 at webhook ingest and lives in `reportUrl`/`reportBundle` on
  * the StakworkRun row. The two share nothing but the word "report" in prose.
  *
@@ -14,21 +14,21 @@
  *      result JSON) so duplicate webhook deliveries can't spawn two chats.
  *   2. Creates a fresh org-canvas `SharedConversation` seeded with the review
  *      prompt (same shape as `automation-dispatcher`).
- *   3. Runs `runCanvasAgent` and appends the assistant turn.
- *   4. Merges `jamieChatConversationId` / `jamieChatPath` back into the run's
+ *   3. Merges `jamieChatConversationId` / `jamieChatPath` back into the run's
  *      result JSON and broadcasts STAKWORK_RUN_UPDATE so the Runs table
  *      picks up the link.
+ *   4. Launches one orchestrator turn on it as the run's user. The reply
+ *      lands later through the strut-runs webhook, so `jamieChatStatus`
+ *      is `completed` once strut has the turn; a refused launch is written
+ *      into the chat as the reply and the status is `failed`.
  */
 
 import { db } from "@/lib/db";
-import { type ModelMessage } from "ai";
-import { runCanvasAgent, type CachedConcepts } from "@/lib/ai/runCanvasAgent";
-import {
-  messagesFromSteps,
-  appendTurnMessages,
-  type StoredMessage,
-} from "@/services/canvas-turn-persistence";
+import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
+import { getBaseUrl } from "@/lib/utils";
+import { appendTurnMessages, type StoredMessage } from "@/services/canvas-turn-persistence";
 import { resolveOrgWorkspaceSlugs } from "@/services/automation-dispatcher";
+import { launchOrchestratorTurn } from "@/services/strut-orchestrator";
 import {
   pusherServer,
   getWorkspaceChannelName,
@@ -164,7 +164,7 @@ What were the main reasons this workflow was not as effective as it could have b
 
 Context: this was a legal benchmark run of the Harvey LAB task "${parsed.taskTitle ?? "unknown"}" (${parsed.taskSlug ?? "unknown"}).${scoreLine}
 
-At the end of the report, please use the graph walker to find the "Law" Concept node. Then find its neighbors, and propose an update to a sub Concept that includes some learnings from this run, so that next time, the agents will have better information and instructions.`;
+At the end of the report, please find the "Law" Concept node in the knowledge graph. Then find its neighbors, and propose an update to a sub Concept that includes some learnings from this run, so that next time, the agents will have better information and instructions.`;
 
     const now = new Date();
     const idPrefix = `benchmark-jamie-chat-${runId}-${now.getTime().toString(36)}-`;
@@ -195,8 +195,8 @@ At the end of the report, please use the graph walker to find the "Law" Concept 
       select: { id: true },
     });
 
-    // Persist the link before the (slow) agent run so the Runs table can
-    // surface it while the chat is still being written.
+    // Persist the link before the launch so the Runs table can surface it
+    // while the chat is still being written.
     const jamieChatPath = `/org/${githubLogin}?chat=${conversation.id}`;
     await mergeIntoRunResult(runId, {
       jamieChatConversationId: conversation.id,
@@ -204,54 +204,47 @@ At the end of the report, please use the graph walker to find the "Law" Concept 
     });
     await broadcastRunUpdate(run.workspace.slug, runId, run.type, run.featureId);
 
-    logger.info("[jamie-chat] Running canvas agent", LOG_SERVICE, {
+    logger.info("[jamie-chat] Launching the orchestrator", LOG_SERVICE, {
       runId,
       conversationId: conversation.id,
       projectId: run.projectId,
     });
 
-    const messages: ModelMessage[] = [{ role: "user", content: prompt }];
-    const { result: agentResult } = await runCanvasAgent({
+    const model = await loadUserChatAgentModel(userId);
+    const launched = await launchOrchestratorTurn({
       userId,
       orgId,
-      workspaceSlugs,
-      messages,
-      cachedConcepts: null as CachedConcepts | null,
-      silentPusher: true,
-      currentCanvasConversationId: conversation.id,
-    });
-
-    await agentResult.text;
-    const steps = await agentResult.steps;
-
-    const assistantPrefix = `${idPrefix}a`;
-    const rows = messagesFromSteps(
-      steps as Parameters<typeof messagesFromSteps>[0],
-      assistantPrefix,
-    );
-    if (rows.length === 0) {
-      rows.push({
-        id: `${assistantPrefix}0`,
-        role: "assistant",
-        content: "(No response generated.)",
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    await appendTurnMessages({
       conversationId: conversation.id,
-      rows,
-      idPrefix: assistantPrefix,
-      reason: "benchmark-jamie-chat",
+      message: prompt,
+      publicBaseUrl: getBaseUrl(null),
+      ...(model ? { model } : {}),
     });
+    if (launched.status !== "started") {
+      // The chat is what the operator opens: it says why.
+      const assistantPrefix = `${idPrefix}a`;
+      await appendTurnMessages({
+        conversationId: conversation.id,
+        rows: [
+          {
+            id: `${assistantPrefix}0`,
+            role: "assistant",
+            content: `The review could not be sent to strut: ${launched.status === "error" ? launched.error : launched.note}`,
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        idPrefix: assistantPrefix,
+        reason: "benchmark-jamie-chat",
+      });
+      throw new Error(`orchestrator launch ${launched.status}`);
+    }
 
     await mergeIntoRunResult(runId, { jamieChatStatus: "completed" });
     await broadcastRunUpdate(run.workspace.slug, runId, run.type, run.featureId);
 
-    logger.info("[jamie-chat] Jamie chat generated", LOG_SERVICE, {
+    logger.info("[jamie-chat] Jamie chat launched", LOG_SERVICE, {
       runId,
       conversationId: conversation.id,
-      messageRows: rows.length,
+      orchestratorRunId: launched.runId,
     });
   } catch (err) {
     await mergeIntoRunResult(runId, { jamieChatStatus: "failed" }).catch(() => {});

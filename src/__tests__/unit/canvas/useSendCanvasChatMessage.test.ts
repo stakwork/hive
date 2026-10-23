@@ -23,11 +23,6 @@ let mockTimeline: unknown[] = [];
 // Optional usage data to emit on the final (isStreaming=false) onUpdate call.
 let mockFinalUsage: Record<string, number> | undefined = undefined;
 
-const { mockReadStrutEnginePreference } = vi.hoisted(() => ({ mockReadStrutEnginePreference: vi.fn(() => false) }));
-vi.mock("@/app/org/[githubLogin]/_state/strutEnginePreference", () => ({
-  readStrutEnginePreference: mockReadStrutEnginePreference,
-}));
-
 vi.mock("@/lib/streaming", () => ({
   useStreamProcessor: () => ({
     processStream: vi.fn(
@@ -273,25 +268,21 @@ describe("useSendCanvasChatMessage — attachments forwarding", () => {
     expect(body).not.toHaveProperty("attachments");
   });
 
-  it("sends strutEngine: true only when the browser's Strut orchestrator switch is on", async () => {
-    const send = async () => {
-      const fakeFetch = buildOkFetch();
-      global.fetch = fakeFetch;
-      resolveStream();
-      const { result } = renderHook(() => useSendCanvasChatMessage());
-      await act(async () => {
-        await result.current({ conversationId: "conv-1", content: "hi" });
-      });
-      const [, fetchInit] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      return JSON.parse(fetchInit.body);
-    };
-
-    mockReadStrutEnginePreference.mockReturnValue(false);
-    expect(await send()).not.toHaveProperty("strutEngine");
-
-    mockReadStrutEnginePreference.mockReturnValue(true);
-    expect((await send()).strutEngine).toBe(true);
-    mockReadStrutEnginePreference.mockReturnValue(false);
+  it("sends no engine or prompt switch: the server sends every org turn to strut", async () => {
+    window.localStorage.setItem("hive.jamieStrutEngine", "false");
+    window.localStorage.setItem("hive.jamieSlimPrompt", "true");
+    const fakeFetch = buildOkFetch();
+    global.fetch = fakeFetch;
+    resolveStream();
+    const { result } = renderHook(() => useSendCanvasChatMessage());
+    await act(async () => {
+      await result.current({ conversationId: "conv-1", content: "hi" });
+    });
+    const [, fetchInit] = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(fetchInit.body);
+    expect(body).not.toHaveProperty("strutEngine");
+    expect(body).not.toHaveProperty("slimPrompt");
+    window.localStorage.clear();
   });
 });
 
