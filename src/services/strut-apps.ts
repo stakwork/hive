@@ -25,6 +25,7 @@
  *   never reach anything else through hive's credential.
  */
 
+import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { EncryptionService } from "@/lib/encryption";
@@ -96,11 +97,11 @@ export type StrutAppAddress = { app: string; version?: string };
 
 type LabRead = { ok: true; res: Response } | AppRouteFailure;
 
-async function labGet(swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">, path: string): Promise<LabRead> {
+async function labGet(swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">, path: string, headers: Record<string, string> = {}): Promise<LabRead> {
   let res: Response;
   try {
     res = await fetch(`${swarm.labBase}${path}`, {
-      headers: { "x-api-token": swarm.swarmApiKey },
+      headers: { ...headers, "x-api-token": swarm.swarmApiKey },
       cache: "no-store",
       signal: AbortSignal.timeout(READ_TIMEOUT_MS),
     });
@@ -108,6 +109,8 @@ async function labGet(swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId
     console.warn("[strut-apps] swarm unreachable", { swarmId: swarm.swarmId, error: err instanceof Error ? err.message : String(err) });
     return fail(502, "Could not reach the swarm");
   }
+  // Only a conditional read (`If-None-Match`) can be answered 304.
+  if (res.status === 304) return { ok: true, res };
   if (res.status === 404) return fail(404, "No such app on the swarm");
   if (!res.ok) {
     console.warn("[strut-apps] swarm refused", { swarmId: swarm.swarmId, status: res.status });
@@ -123,14 +126,36 @@ async function labJson(swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmI
   return body && typeof body === "object" && !Array.isArray(body) ? { ok: true, body: body as Record<string, unknown> } : fail(502, "The swarm answered something hive cannot read");
 }
 
+/** Does an `If-None-Match` header name this ETag? (`*`, a list, weak or strong.) */
+export function etagMatches(ifNoneMatch: string | null | undefined, etag: string): boolean {
+  if (!ifNoneMatch) return false;
+  const bare = (t: string) => t.trim().replace(/^W\//, "");
+  return ifNoneMatch.split(",").some((t) => t.trim() === "*" || bare(t) === bare(etag));
+}
+
+/** An ETag for a document strut sent without one: its bytes' hash. */
+const etagOf = (html: string): string => `"${createHash("sha256").update(html).digest("hex").slice(0, 32)}"`;
+
+export type StrutAppDocument =
+  | { ok: true; notModified: true; etag: string }
+  | { ok: true; notModified: false; html: string; etag: string };
+
 /**
  * The app's document, as strut serves it under the app's file token: list
  * the files (which mints the token), then read `dist/index.html?t=<token>`.
+ *
+ * A version's document is the same bytes every time it is served (its
+ * token is a signature of the version, not a nonce), so it carries an
+ * ETag: strut's when strut sends one, else the hash of the bytes.
+ * `ifNoneMatch` (the browser's) is passed on to strut, which answers 304
+ * without sending the megabytes; an older strut ignores it, and the hash
+ * still spares the browser the download.
  */
 export async function fetchStrutAppDocument(
   swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
   at: StrutAppAddress,
-): Promise<{ ok: true; html: string } | AppRouteFailure> {
+  opts: { ifNoneMatch?: string | null } = {},
+): Promise<StrutAppDocument | AppRouteFailure> {
   const name = encodeURIComponent(at.app);
   let version = at.version;
   if (!version) {
@@ -143,13 +168,19 @@ export async function fetchStrutAppDocument(
   const files = await labJson(swarm, dir);
   if (!files.ok) return files;
   const token = typeof files.body.token === "string" && files.body.token ? files.body.token : null;
-  const doc = await labGet(swarm, `${dir}/${STRUT_APP_DOCUMENT}${token ? `?${new URLSearchParams({ t: token })}` : ""}`);
+  const conditional: Record<string, string> = opts.ifNoneMatch ? { "if-none-match": opts.ifNoneMatch } : {};
+  const doc = await labGet(swarm, `${dir}/${STRUT_APP_DOCUMENT}${token ? `?${new URLSearchParams({ t: token })}` : ""}`, conditional);
   if (!doc.ok) return doc.status === 404 ? fail(404, "The app has not been built (no dist/index.html)") : doc;
+  const strutEtag = doc.res.headers.get("etag");
+  if (doc.res.status === 304) {
+    if (strutEtag) return { ok: true, notModified: true, etag: strutEtag };
+    return fail(502, "The swarm answered 304 without an ETag");
+  }
   const declared = Number(doc.res.headers.get("content-length"));
   if (declared > MAX_DOCUMENT_BYTES) return fail(502, "The app's document is too large");
   const html = await doc.res.text();
   if (html.length > MAX_DOCUMENT_BYTES) return fail(502, "The app's document is too large");
-  return { ok: true, html };
+  return { ok: true, notModified: false, html, etag: strutEtag ?? etagOf(html) };
 }
 
 // ─── The relay ──────────────────────────────────────────────────────────
