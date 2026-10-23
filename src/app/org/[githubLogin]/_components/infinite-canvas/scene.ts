@@ -222,13 +222,15 @@ function row(
     const panel = (kind: "architecture" | "build" | "stories", r: Rect) =>
       out.set(panelKey(kind, c.id), { id: panelKey(kind, c.id), type: kind, rect: r, group: r, parent: c.id });
     if (c.type === "initiative") {
-      // The road across the top (brief, then milestones in order); every user journey and its requirements below.
-      row(ctx, c.id, { ...inner, h: inner.h * 0.6 }, [...kids(b, c.id, "brief"), ...kids(b, c.id, "milestone")], 4);
+      // The road across the top (brief, then milestones in order), inset so every card, up to six or more, sits well
+      // inside the frame; every user journey and its requirements below, in the room that leaves.
+      const road = { x: inner.x + inner.w * 0.03, y: inner.y, w: inner.w * 0.94, h: inner.h * 0.36 };
+      row(ctx, c.id, road, [...kids(b, c.id, "brief"), ...kids(b, c.id, "milestone")], 4);
       panel("stories", {
-        x: inner.x + inner.w * 0.01,
-        y: inner.y + inner.h * 0.54,
-        w: inner.w * 0.98,
-        h: inner.h * 0.44,
+        x: inner.x + inner.w * 0.03,
+        y: inner.y + inner.h * 0.4,
+        w: inner.w * 0.94,
+        h: inner.h * 0.58,
       });
       return;
     }

@@ -82,6 +82,39 @@ describe("layoutScene", () => {
     expect(scene.get(panelKey("stories", ONB))?.type).toBe("stories");
   });
 
+  it("keeps an initiative's brief, five milestones and stories panel inside its frame, clear of each other", () => {
+    const ms = [1, 2, 3, 4, 5].map((i) => ({ id: `fit-m${i}`, name: `Milestone number ${i} with a fairly long name` }));
+    MOCK_INITIATIVES.push({
+      id: "fit-init",
+      name: "Fit",
+      updatedDaysAgo: 0,
+      by: "human",
+      brief: "A brief.",
+      milestones: ms,
+      stories: [{ id: "fit-s", text: "A story", reqs: [["fit-r", "A requirement", "proposed"]] }],
+    });
+    try {
+      const fit5 = layoutScene(toBoard([entry("fit-init", "Fit", 1)], {}), ["fit-init"]);
+      const frame = fit5.get("fit-init")!.rect;
+      const road = ["fit-init-brief", ...ms.map((m) => m.id)].map((id) => fit5.get(id)!.rect);
+      const panel = fit5.get(panelKey("stories", "fit-init"))!.rect;
+      expect(road).toHaveLength(6);
+      for (const r of [...road, panel]) {
+        expect(inside(r, frame)).toBe(true);
+        // Margin: at least 2% of the frame's width at the sides, and its bottom margin below the panel.
+        expect(r.x - frame.x).toBeGreaterThanOrEqual(frame.w * 0.02);
+        expect(frame.x + frame.w - (r.x + r.w)).toBeGreaterThanOrEqual(frame.w * 0.02);
+      }
+      expect(frame.y + frame.h - (panel.y + panel.h)).toBeGreaterThanOrEqual(frame.h * 0.02);
+      // The road ends above the panel, and the cards don't overlap one another.
+      expect(Math.max(...road.map((r) => r.y + r.h))).toBeLessThan(panel.y);
+      const xs = [...road].sort((p, q) => p.x - q.x);
+      xs.slice(1).forEach((r, i) => expect(r.x).toBeGreaterThanOrEqual(xs[i].x + xs[i].w));
+    } finally {
+      MOCK_INITIATIVES.pop();
+    }
+  });
+
   it("gives a milestone its features and the add slot, and no stories (they live on the initiative)", () => {
     expect(scene.get("mock-f-gh")?.parent).toBe(SIGNUP);
     expect(scene.get(addKey("feature", SIGNUP))?.of).toBe("feature");
@@ -127,7 +160,13 @@ describe("layoutScene", () => {
         author: "strut" as const,
         about: SIGNUP,
         follows: first.id,
-        options: [1, 2, 3].map((i) => ({ ...first, id: `fu-${i}`, letter: "ABC"[i - 1], chosen: false, rejected: false })),
+        options: [1, 2, 3].map((i) => ({
+          ...first,
+          id: `fu-${i}`,
+          letter: "ABC"[i - 1],
+          chosen: false,
+          rejected: false,
+        })),
       }),
     };
     const after = layoutScene(grown, DESK);
