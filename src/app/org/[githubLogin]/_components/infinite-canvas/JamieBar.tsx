@@ -103,12 +103,10 @@ const small = {
 export function JamieBar({
   mode,
   setMode,
-  suggestions,
   send,
 }: {
   mode: Exclude<JamieMode, "full">;
   setMode: (m: JamieMode) => void;
-  suggestions: string[];
   send: (text: string) => Promise<boolean> | boolean;
 }) {
   const { key, reply, launch, jobs, working } = useJamieTurn();
@@ -119,7 +117,6 @@ export function JamieBar({
   const said = `${key}\u0000${reply}`;
   const [seen, setSeen] = useState(said);
   const [text, setText] = useState("");
-  const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const unread = mode === "input" && said !== seen && !!reply;
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
@@ -270,22 +267,6 @@ export function JamieBar({
         </div>
       )}
 
-      {(focused || isListening) && suggestions.length ? (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
-          {suggestions.map((s) => (
-            <button
-              key={s}
-              type="button"
-              data-bar-suggestion={s}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => void submit(s)}
-              style={chip}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      ) : null}
       <div
         style={{
           display: "flex",
@@ -343,8 +324,6 @@ export function JamieBar({
             data-jamie-input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
             onKeyDown={(e) => {
               e.stopPropagation();
               // Shift+Enter falls through to the textarea's own newline; never send mid-composition.
