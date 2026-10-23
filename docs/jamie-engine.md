@@ -186,3 +186,38 @@ Known gaps:
   gating the writes as proposals — stakwork/stakgraph#1799 — and on a strut
   with proposals (stakwork/strut#222). Without the workflow the launch
   fails with a clear "no `orchestrator` workflow yet" notice.
+
+## Where the user is (`context.line`)
+
+`context.line` is built from three parts, in order: the time line
+(`orchestratorContextLine`), the canvas line (`On the canvas: …`, only on the
+Brainstorm tab with an initiative open; unchanged), and a generic
+**where-the-user-is** line built from the user's breadcrumb path:
+
+```
+Where the user is: Org › Workspace "hive" (`ws:…`) › Initiative "Self-serve onboarding" (`ref`) › Feature "Guided setup" (`ref`) [view: Canvas / Brainstorm]. 
+```
+
+The last path step is what "this" / "here" mean. Optional tags: `selected: …`
+(graph node), `open question: …` (brainstorm board).
+
+- **Client** (`OrgCanvasView`): publishes `pageContext` `{ surface, view, tab,
+  path: [{ kind, name, ref }], selected?, question? }` into the chat
+  conversation's context and `useSendCanvasChatMessage` sends it to
+  `/api/ask/quick`. The path reuses the canvas library's breadcrumb trail
+  (labels + refs), topped up with the open initiative / selected card from
+  `initiativeFocus` (`buildPageContextPath`); nothing is tracked twice.
+- **Server**: `sanitizePageContext` (`src/lib/jamie-page-context.ts`) keeps
+  names and refs only — control characters, quotes, backticks and markdown
+  are stripped, names cap at 80 chars, the path at 8 steps (root + deepest
+  kept), selections at 5, malformed refs drop their step, and the kind comes
+  from the ref prefix. `verifyPageContextRefs`
+  (`src/services/jamie-page-context.ts`) then checks `ws:` / `initiative:` /
+  `feature:` / `milestone:` refs belong to the user's org, and accepts graph
+  ref_ids only when the existing focus parsers already vetted them against
+  the request's workspaces; the path is cut at the first step that fails.
+- **Surfaces**: only the org page's Jamie chat (chats, canvas Map /
+  Initiatives / Brainstorm, graph views) reaches the orchestrator — the
+  strut path needs a persisted org-canvas turn (`orgId` + `strutEngine`).
+  Workspace, task, plan and agent-logs pages use `DashboardChat`, which does
+  not send `orgId`/`strutEngine`, so they never reach it and are unchanged.

@@ -194,7 +194,7 @@ interface OrgCanvasBackgroundProps {
    * entries. If/when we support multi-level drill-in, we'll need to
    * track the parent stack here — see the TODO in `handleBreadcrumbClick`.
    */
-  onCanvasBreadcrumbChange?: (breadcrumb: string) => void;
+  onCanvasBreadcrumbChange?: (breadcrumb: string, entries?: { label: string; ref?: string }[]) => void;
   /**
    * Fires whenever the set of connection ids referenced by at least
    * one edge (across root + every loaded sub-canvas) changes. The
@@ -534,7 +534,10 @@ export function OrgCanvasBackground({
       if (currentRefRef.current !== deepest) {
         writeCanvasUrlParam(deepest);
       }
-      onCanvasBreadcrumbChange?.(entries.map((e) => e.label).join(" › "));
+      onCanvasBreadcrumbChange?.(
+        entries.map((e) => e.label).join(" › "),
+        entries.map((e) => ({ label: e.label, ref: e.ref })),
+      );
     },
     [writeCanvasUrlParam, onCanvasBreadcrumbChange],
   );
