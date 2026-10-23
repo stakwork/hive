@@ -779,12 +779,13 @@ export function InfiniteCanvas({
             { op: "add", temp: "r", type: "Requirement", parent: storyId, fields: { text, status: "accepted" } },
           ]);
       },
-      addStory: (initiativeId, text) => {
+      addStory: async (initiativeId, text) => {
         const n = node(initiativeId);
-        if (n)
-          void save(n, [
-            { op: "add", temp: "s", type: "UserStory", parent: initiativeId, fields: { text, status: "accepted" } },
-          ]);
+        if (!n) return false;
+        const saved = await save(n, [
+          { op: "add", temp: "s", type: "UserStory", parent: initiativeId, fields: { text, status: "accepted" } },
+        ]);
+        return !!saved;
       },
       addFeature: (milestoneId, text) => {
         const m = node(milestoneId);
@@ -810,9 +811,10 @@ export function InfiniteCanvas({
         const n = node(id);
         if (n) void save(n, [{ op: "edit", ref: id, fields: { [textField(n.type)]: text } }]);
       },
-      remove: (id) => {
+      remove: async (id) => {
         const n = node(id);
-        if (n) void save(n, [{ op: "remove", ref: id }]);
+        if (!n) return false;
+        return !!(await save(n, [{ op: "remove", ref: id }]));
       },
     };
   }, []);
