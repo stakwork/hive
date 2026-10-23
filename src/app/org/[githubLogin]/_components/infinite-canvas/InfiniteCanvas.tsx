@@ -726,7 +726,8 @@ export function InfiniteCanvas({
     // A folded brainstorm opens (the level re-frames around it); an open one frames its whole tree. The level stays.
     if (n.type === "question" && vp) {
       const q = byId(board, n.id);
-      if (q?.about && openTree(board, q.about, openTrees) !== q.id) {
+      // Only a root folds; a follow-up question is part of the open tree and must never change which tree is open.
+      if (q?.about && !q.follows && openTree(board, q.about, openTrees) !== q.id) {
         setOpenTrees((o) => ({ ...o, [q.about!]: q.id }));
         return;
       }
@@ -851,6 +852,7 @@ export function InfiniteCanvas({
                   folded={
                     n.type === "question" &&
                     !!byId(board, n.id)?.about &&
+                    !byId(board, n.id)?.follows &&
                     openTree(board, byId(board, n.id)!.about!, openTrees) !== n.id
                   }
                   onClick={clickNode(n)}
@@ -1082,13 +1084,7 @@ export function InfiniteCanvas({
             ))}
           </div>
 
-          {mode === "full" ? null : (
-            <JamieBar
-              mode={mode}
-              setMode={setMode}
-              send={talk}
-            />
-          )}
+          {mode === "full" ? null : <JamieBar mode={mode} setMode={setMode} send={talk} />}
 
           {palette ? (
             <Palette
@@ -1271,7 +1267,7 @@ function SceneItem({
   if (n.type === "stories")
     return (
       <div style={box}>
-        <div style={scaled(FACE_W.stories!, 1, { height: "auto", minHeight: dh(FACE_W.stories!) })}>
+        <div style={scaled(FACE_W.stories!)}>
           <StoriesPanel c={c} initiative={n.parent} w={FACE_W.stories!} h={dh(FACE_W.stories!)} />
         </div>
       </div>

@@ -2,7 +2,7 @@
  * GET  /api/workspaces/:slug/system-map/findings/fix
  *       — the fixes tracked on Finding nodes; status and PR read from their strut runs.
  * POST /api/workspaces/:slug/system-map/findings/fix  { refIds: string[] }
- *       — for each confirmed, fixable finding, seed an org-canvas chat and
+ *       — for each fixable finding, seed an org-canvas chat and
  *       launch the orchestrator strut (as Protect's Jamie does), which starts
  *       a job that opens a PR; up to MAX_FIX_BATCH. DEVELOPER and up. Ineligible or
  *       already-fixing findings are returned in `refused`; 409 when
