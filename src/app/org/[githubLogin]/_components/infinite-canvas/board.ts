@@ -293,6 +293,10 @@ function indexOf(b: Board): Index {
   return idx;
 }
 
+/** A card still saving has a client temp id the graph doesn't know; it can't be edited, deleted or be a parent yet. */
+export const PENDING_PREFIX = "pending:";
+export const isPendingId = (id: string) => id.startsWith(PENDING_PREFIX);
+
 export const byId = (b: Board, id: string) => indexOf(b).byId.get(id);
 
 /** Every initiative, most recently updated first. */

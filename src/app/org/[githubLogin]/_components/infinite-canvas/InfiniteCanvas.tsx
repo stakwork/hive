@@ -811,9 +811,10 @@ export function InfiniteCanvas({
         const n = node(id);
         if (n) void save(n, [{ op: "edit", ref: id, fields: { [textField(n.type)]: text } }]);
       },
-      remove: (id) => {
+      remove: async (id) => {
         const n = node(id);
-        if (n) void save(n, [{ op: "remove", ref: id }]);
+        if (!n) return false;
+        return !!(await save(n, [{ op: "remove", ref: id }]));
       },
     };
   }, []);

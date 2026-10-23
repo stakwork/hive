@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyLocally } from "@/app/org/[githubLogin]/_components/infinite-canvas/useCanvasBoard";
+import { applyLocally, pendingRefIn } from "@/app/org/[githubLogin]/_components/infinite-canvas/useCanvasBoard";
 import type { InitiativeTreeData } from "@/services/graph/workbench";
 
 const tree: InitiativeTreeData = {
@@ -44,5 +44,34 @@ describe("applyLocally", () => {
     const ops = [{ op: "add" as const, temp: "x", type: "InitiativeFeature" as const, parent: "f", fields: { name: "N" } }];
     expect(applyLocally(tree, ops)).toBe(tree);
   });
+
+  it("removing a story leaves the other stories of its parent in order, with no edges to the removed one", () => {
+    const t = applyLocally(tree, [{ op: "remove", ref: "s" }]);
+    const stories = t.edges.filter((e) => e.source === "f" && e.type === "HAS_STORY").map((e) => e.target);
+    expect(stories).toEqual(["s2"]);
+    expect(t.edges.some((e) => e.source === "s" || e.target === "s" || e.target === "r")).toBe(false);
+  });
+
+  it("removing a story just added (temp id) takes it and its edge out; the rest keep their order", () => {
+    const added = applyLocally(tree, [
+      { op: "add", temp: "x", type: "UserStory", parent: "f", fields: { text: "New" } },
+    ]);
+    const pendingId = added.nodes.find((n) => n.properties.text === "New")!.ref_id;
+    const t = applyLocally(added, [{ op: "remove", ref: "s" }]);
+    expect(t.edges.filter((e) => e.type === "HAS_STORY").map((e) => e.target)).toEqual(["s2", pendingId]);
+  });
 });
 
+describe("pendingRefIn", () => {
+  it("finds an edit, delete or parent that points at a card still saving", () => {
+    expect(pendingRefIn([{ op: "remove", ref: "pending:s:1:0" }])).toBe("pending:s:1:0");
+    expect(pendingRefIn([{ op: "edit", ref: "pending:s:1:0", fields: { text: "x" } }])).toBe("pending:s:1:0");
+    expect(
+      pendingRefIn([{ op: "add", temp: "r", type: "Requirement", parent: "pending:s:1:0", fields: { text: "x" } }]),
+    ).toBe("pending:s:1:0");
+  });
+
+  it("is null for saved cards", () => {
+    expect(pendingRefIn([{ op: "remove", ref: "s" }, { op: "edit", ref: "r", fields: { text: "x" } }])).toBeNull();
+  });
+});
