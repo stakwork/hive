@@ -355,7 +355,10 @@ export function Face({ c, node, w, h }: { c: CardContext; node: PlanNode; w: num
             {node.type === "feature" && work ? <StatusPill state={work.state} size={11} /> : null}
           </div>
           {node.type === "feature" ? (
-            <div style={{ fontFamily: TYPE, fontSize: 11.5, color: v("muted") }}>{work?.line}</div>
+            <>
+              <div style={{ fontFamily: TYPE, fontSize: 11.5, color: v("muted") }}>{work?.line}</div>
+              <RepoChips id={node.id} repos={work?.repos ?? []} />
+            </>
           ) : (
             <div style={{ minHeight: 0, overflow: "hidden" }}>
               <ChildList c={c} node={node} size={big ? 13 : 11.5} max={3} />
@@ -695,7 +698,12 @@ function ReqRow({ c, r, onDelete }: { c: CardContext; r: PlanNode; onDelete: (r:
       {r.pencil || r.pencilEdit ? null : (
         <div className="icb-act" style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "flex-start" }} {...stop}>
           {dropped ? (
-            <button type="button" data-restore={r.id} style={actBtn} onClick={() => c.actions.setStatus(r.id, "proposed")}>
+            <button
+              type="button"
+              data-restore={r.id}
+              style={actBtn}
+              onClick={() => c.actions.setStatus(r.id, "proposed")}
+            >
               Restore
             </button>
           ) : (
@@ -703,7 +711,12 @@ function ReqRow({ c, r, onDelete }: { c: CardContext; r: PlanNode; onDelete: (r:
               <button type="button" data-accept={r.id} style={actBtn} onClick={toggleAccept}>
                 {accepted ? "Unaccept" : "Accept"}
               </button>
-              <button type="button" data-drop={r.id} style={actBtn} onClick={() => c.actions.setStatus(r.id, "dropped")}>
+              <button
+                type="button"
+                data-drop={r.id}
+                style={actBtn}
+                onClick={() => c.actions.setStatus(r.id, "dropped")}
+              >
                 Drop
               </button>
             </>
@@ -738,7 +751,8 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
     setUndo({ storyId, text: r.name });
   };
   // A journey is pending (muted) until every requirement under it is accepted or dropped.
-  const pending = (id: string) => kids(b, id, "requirement").some((r) => r.status !== "accepted" && r.status !== "dropped");
+  const pending = (id: string) =>
+    kids(b, id, "requirement").some((r) => r.status !== "accepted" && r.status !== "dropped");
   return (
     <div
       data-stories={initiative}
@@ -762,7 +776,16 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
           {plural(stories.length, "journey")} · {plural(reqs.length, "requirement")}
         </span>
       </div>
-      <ul style={{ listStyle: "disc", margin: 0, padding: "0 0 0 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <ul
+        style={{
+          listStyle: "disc",
+          margin: 0,
+          padding: "0 0 0 18px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
         {stories.map((st, i) => (
           <li
             key={st.id}
@@ -782,7 +805,9 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
                 {st.pencil ? (
                   // Proposed: its words and Accept / Reject; nothing to edit until it's real.
                   <>
-                    <div style={{ ...authored(st.author, 12.5), fontWeight: 400, color: v("proposedInk") }}>{st.name}</div>
+                    <div style={{ ...authored(st.author, 12.5), fontWeight: 400, color: v("proposedInk") }}>
+                      {st.name}
+                    </div>
                     <PencilBar c={c} pencil={st.pencil} size={10} />
                   </>
                 ) : st.pencilEdit ? (
@@ -856,17 +881,7 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
 }
 
 /** The slot after a milestone's features. */
-export function AddCard({
-  c,
-  milestoneId,
-  w,
-  h,
-}: {
-  c: CardContext;
-  milestoneId: string;
-  w: number;
-  h: number;
-}) {
+export function AddCard({ c, milestoneId, w, h }: { c: CardContext; milestoneId: string; w: number; h: number }) {
   return (
     <div
       style={{
@@ -1152,13 +1167,38 @@ export function JobMarker({ job }: { job: CanvasJob }) {
         <span style={{ color: failed ? v("blocked") : v("done") }}>{failed ? "!" : "✓"}</span>
       )}
       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-        {running
-          ? "Jamie is working on this…"
-          : failed
-            ? `Didn't finish: ${job.title}`
-            : "Done"}
+        {running ? "Jamie is working on this…" : failed ? `Didn't finish: ${job.title}` : "Done"}
       </span>
       {who && running ? <span style={{ color: v("notStarted"), flexShrink: 0 }}>· {who}</span> : null}
+    </div>
+  );
+}
+
+/** The repos a feature's pull requests touch, as small chips by short name: the first three, then "+N". Nothing when there are none. */
+export function RepoChips({ id, repos }: { id: string; repos: readonly string[] }) {
+  if (!repos.length) return null;
+  const chip = {
+    fontFamily: TYPE,
+    fontSize: 10.5,
+    lineHeight: 1.2,
+    color: v("muted"),
+    border: `1px solid ${v("border")}`,
+    borderRadius: 999,
+    padding: "1px 7px",
+    whiteSpace: "nowrap",
+  } as const;
+  return (
+    <div data-testid={`feature-repos:${id}`} style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+      {repos.slice(0, 3).map((r) => (
+        <span key={r} title={r} style={chip}>
+          {r.split("/").pop()}
+        </span>
+      ))}
+      {repos.length > 3 ? (
+        <span title={repos.slice(3).join(", ")} style={chip}>
+          +{repos.length - 3}
+        </span>
+      ) : null}
     </div>
   );
 }
