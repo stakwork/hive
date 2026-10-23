@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Download, RefreshCw, X } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import {
   DropdownMenu,
@@ -152,6 +152,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
   const href = content && artifactHref(artifact.kind, content, githubLogin);
   const copyText = useMemo(() => content && spec.copyText?.(content), [spec, content]);
   const { Actions } = spec;
+  const download = content ? downloadOf(artifact, content, copyText) : null;
   // Bumped by Refresh: remounts the viewer, so an app's frame fetches its document afresh.
   const [reloads, setReloads] = useState(0);
   const { openArtifactPanel, closeArtifactPanel } = useCanvasChatStore.getState();
@@ -237,6 +238,11 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
           {typeof copyText === "string" && (
             <CopyButton value={copyText} className="rounded p-1.5 hover:bg-muted [&_svg]:h-4 [&_svg]:w-4" />
           )}
+          {download && (
+            <ToolbarButton label="Download" onClick={() => saveFile(download)}>
+              <Download className="h-4 w-4" />
+            </ToolbarButton>
+          )}
           {href && (
             <ActionTip label="Open in new tab">
               <a
@@ -268,6 +274,41 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
       </div>
     </section>
   );
+}
+
+interface FileDownload {
+  filename: string;
+  /** An address to fetch the bytes from, or the text to save as they are. */
+  url?: string;
+  text?: string;
+}
+
+const TEXT_EXTENSIONS: Partial<Record<ArtifactKind, string>> = { markdown: "md", log: "log", json: "json", diff: "patch" };
+
+/** What can be saved from an artifact: a file at an address, or text that is held inline. Null for the rest (a PR, a link, a graph). */
+function downloadOf(artifact: ArtifactRef, content: object, copyText: unknown): FileDownload | null {
+  const keyName = artifact.source.type === "graph" ? artifact.source.key.split("/").pop() : undefined;
+  const url = "url" in content && typeof content.url === "string" ? content.url : undefined;
+  if (["image", "video", "audio", "pdf"].includes(artifact.kind) && url)
+    return { url, filename: keyName || url.split("?")[0].split("/").pop() || artifact.title };
+  if (typeof copyText === "string") {
+    const ext = TEXT_EXTENSIONS[artifact.kind];
+    const title = artifact.title.replace(/[\\/:*?"<>|]+/g, "-").trim() || "artifact";
+    return { text: copyText, filename: keyName || (ext && !title.includes(".") ? `${title}.${ext}` : title) };
+  }
+  return null;
+}
+
+/** Saves through a same-origin anchor, so `download` is honored; text goes via a blob URL that is revoked after. */
+function saveFile({ filename, url, text }: FileDownload) {
+  const blobUrl = text !== undefined ? URL.createObjectURL(new Blob([text], { type: "text/plain" })) : null;
+  const a = document.createElement("a");
+  a.href = blobUrl ?? url ?? "";
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  if (blobUrl) setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
 }
 
 /** One line of the index. A brainstorm tree opens on the canvas at its card, anything else on the panel. */
