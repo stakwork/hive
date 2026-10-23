@@ -29,7 +29,7 @@ import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { EncryptionService } from "@/lib/encryption";
-import { isStrutAppName, isStrutAppVersion, STRUT_APP_DOCUMENT, type PinnedStrutApp } from "@/lib/strut-apps";
+import { isStrutAppName, isStrutAppRelease, isStrutAppVersion, STRUT_APP_DOCUMENT, type PinnedStrutApp } from "@/lib/strut-apps";
 import { strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
@@ -331,12 +331,13 @@ async function labPut(
   path: string,
   body: Record<string, unknown>,
   what: string,
+  headers: Record<string, string> = {},
 ): Promise<{ ok: true; body: Record<string, unknown> } | AppRouteFailure> {
   let res: Response;
   try {
     res = await fetch(`${swarm.labBase}${path}`, {
       method: "PUT",
-      headers: { "x-api-token": swarm.swarmApiKey, "content-type": "application/json" },
+      headers: { ...headers, "x-api-token": swarm.swarmApiKey, "content-type": "application/json" },
       body: JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(READ_TIMEOUT_MS),
@@ -373,20 +374,92 @@ export interface StrutAppVersion {
   createdAt?: string;
 }
 
+/**
+ * A RELEASE (strut `plans/app-releases.md` §1): a page version a person made
+ * live, with the versions of the workflows and custom steps it calls as
+ * they were then. Hive keeps the lock's labels only, by name.
+ */
+export interface StrutAppRelease {
+  /** `r1`, `r2`, … */
+  id: string;
+  version: string;
+  createdAt?: string;
+  /** The actor who made it live. */
+  by?: string;
+  lock: { workflows: Record<string, string>; steps: Record<string, string>; floating: string[] };
+}
+
+/** A workflow or step the live release locked that has moved on since (`current: null`: gone). */
+export interface StrutAppDrift {
+  kind: "workflow" | "step";
+  name: string;
+  locked: string;
+  current: string | null;
+}
+
+/** What `GET /apps/:name/versions` says of an app, as hive reads it. */
+export interface StrutAppVersions {
+  /** The version everyone opens (strut's `active`). */
+  live: string;
+  /** Newest first. */
+  versions: StrutAppVersion[];
+  /** Strut reported the app's mode (`live`): it has releases, so it can be held. False on a strut without them. */
+  holdable: boolean;
+  /** The live release's id; null while the app follows latest. */
+  release: string | null;
+  /** Oldest first. */
+  releases: StrutAppRelease[];
+  /** What the live release's lock names that has moved on since. */
+  behind: StrutAppDrift[];
+}
+
 const versionNumber = (label: string): number => Number(label.slice(1));
 
+/** A lock's `{ name: { version, hash? } }`, as `{ name: version }`. */
+const lockLabels = (entries: unknown): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(isRecord(entries) ? entries : {}).flatMap(([name, at]) =>
+      isRecord(at) && typeof at.version === "string" ? [[name, at.version]] : [],
+    ),
+  );
+
+function readRelease(entry: unknown): StrutAppRelease[] {
+  if (!isRecord(entry) || !isStrutAppRelease(entry.id) || !isStrutAppVersion(entry.version)) return [];
+  const lock = isRecord(entry.lock) ? entry.lock : {};
+  return [
+    {
+      id: entry.id,
+      version: entry.version,
+      ...(typeof entry.createdAt === "string" ? { createdAt: entry.createdAt } : {}),
+      ...(typeof entry.by === "string" && entry.by ? { by: entry.by } : {}),
+      lock: {
+        workflows: lockLabels(lock.workflows),
+        steps: lockLabels(lock.steps),
+        floating: Array.isArray(lock.floating) ? lock.floating.filter((f): f is string => typeof f === "string") : [],
+      },
+    },
+  ];
+}
+
+function readDrift(entry: unknown): StrutAppDrift[] {
+  if (!isRecord(entry) || (entry.kind !== "workflow" && entry.kind !== "step") || typeof entry.name !== "string" || typeof entry.locked !== "string") return [];
+  return [{ kind: entry.kind, name: entry.name, locked: entry.locked, current: typeof entry.current === "string" ? entry.current : null }];
+}
+
 /**
- * The app's versions, newest first, and the LIVE one — the version strut
- * serves when none is named (its active version): strut's
- * `GET /apps/:name/versions`, the record only, no files read.
+ * The app's versions, newest first, the LIVE one — the version strut
+ * serves when none is named (its active version) — and its releases:
+ * strut's `GET /apps/:name/versions`, the record only, no files read. A
+ * strut without releases sends no `live`: the app follows latest and
+ * cannot be held (`holdable: false`).
  */
 export async function readStrutAppVersions(
   swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
   app: string,
-): Promise<{ ok: true; live: string; versions: StrutAppVersion[] } | AppRouteFailure> {
+): Promise<({ ok: true } & StrutAppVersions) | AppRouteFailure> {
   const read = await labJson(swarm, `/apps/${encodeURIComponent(app)}/versions`);
   if (!read.ok) return read;
-  const { active, versions } = read.body;
+  const { active, versions, live, releases, behind } = read.body;
   if (!isStrutAppVersion(active)) return fail(404, `App "${app}" has no live version`);
   const listed = Object.entries(isRecord(versions) ? versions : {}).flatMap(([version, info]): StrutAppVersion[] => {
     if (!isStrutAppVersion(version)) return [];
@@ -394,19 +467,42 @@ export async function readStrutAppVersions(
     return [{ version, ...(createdAt ? { createdAt } : {}) }];
   });
   listed.sort((a, b) => versionNumber(b.version) - versionNumber(a.version));
-  return { ok: true, live: active, versions: listed };
+  const holdable = typeof live === "string";
+  return {
+    ok: true,
+    live: active,
+    versions: listed,
+    holdable,
+    release: isStrutAppRelease(live) ? live : null,
+    releases: holdable && Array.isArray(releases) ? releases.flatMap(readRelease) : [],
+    behind: holdable && Array.isArray(behind) ? behind.flatMap(readDrift) : [],
+  };
 }
 
 /**
- * Make `version` the app's live one, for everyone who opens it: strut's
- * `PUT /apps/:name/active` — a rollback (or forward), never a publish.
+ * What a person makes live (strut's `PUT /apps/:name/active`):
+ * `{ version: "vN" }` PROMOTES — a new release of it with a lock on what it
+ * calls taken now, made live, the app held (on the live version itself, a
+ * fresh lock); `{ release: "rN" }` rolls back (or forward) to a release;
+ * `{ version: "latest" }` follows the newest publish again.
+ */
+export type StrutAppLiveTarget = { version: string } | { release: string };
+
+/**
+ * Make `target` live, for everyone who opens the app, as `actor` (strut
+ * records them as the release's `by`). Answers the live version and the
+ * live release (null while following latest).
  */
 export async function setStrutAppLive(
   swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
   app: string,
-  version: string,
-): Promise<{ ok: true; live: string } | AppRouteFailure> {
-  const put = await labPut(swarm, `/apps/${encodeURIComponent(app)}/active`, { version }, "set live");
+  target: StrutAppLiveTarget,
+  opts: { actor?: string } = {},
+): Promise<{ ok: true; live: string; release: string | null } | AppRouteFailure> {
+  const put = await labPut(swarm, `/apps/${encodeURIComponent(app)}/active`, target, "set live", opts.actor ? { "x-strut-actor": opts.actor } : {});
   if (!put.ok) return put;
-  return { ok: true, live: isStrutAppVersion(put.body.active) ? put.body.active : version };
+  const asked = "version" in target && isStrutAppVersion(target.version) ? target.version : undefined;
+  const live = isStrutAppVersion(put.body.active) ? put.body.active : asked;
+  if (!live) return fail(502, "The swarm did not say which version is live");
+  return { ok: true, live, release: isStrutAppRelease(put.body.live) ? put.body.live : null };
 }
