@@ -1,58 +1,62 @@
-import { describe, it, expect } from "vitest";
-import { treeDeskHref } from "@/app/org/[githubLogin]/_components/artifacts/openArtifact";
-import { brainstormBoardHref } from "@/app/org/[githubLogin]/_components/artifacts/viewers/graph";
-import { openingFocus } from "@/app/org/[githubLogin]/_components/brainstorm-board/opening";
+import { describe, it, expect, vi } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
+import { findBrainstormCard, treeOf } from "@/app/org/[githubLogin]/_components/artifacts/openArtifact";
+import { brainstormCardHref, brainstormHref } from "@/app/org/[githubLogin]/_components/artifacts/viewers/graph";
 
 const ref = (kind: string, id: string) => ({ kind, id }) as never;
 
-describe("brainstormBoardHref", () => {
-  it("names the workspace and root", () => {
-    expect(brainstormBoardHref("acme", "ws1", "r1")).toBe("/org/acme?view=canvas&tab=brainstorm&ws=ws1&root=r1");
+describe("brainstorm hrefs", () => {
+  it("names a brainstorm by workspace and root", () => {
+    expect(brainstormHref("acme", "ws1", "r1")).toBe("/org/acme?view=canvas&tab=brainstorm&ws=ws1&root=r1");
   });
-  it("adds node when given", () => {
-    expect(brainstormBoardHref("acme", "ws1", "r1", "n1")).toBe(
-      "/org/acme?view=canvas&tab=brainstorm&ws=ws1&root=r1&node=n1",
-    );
+  it("opens the card a brainstorm is about, with the tree unfolded", () => {
+    expect(brainstormCardHref("acme", "f1", "r1")).toBe("/org/acme?view=canvas&tab=brainstorm&at=f1&tree=r1");
   });
 });
 
-describe("treeDeskHref", () => {
-  it("sends a tree card to the desk", () => {
-    expect(treeDeskHref(ref("graph", "a"), { workspace: "w", focus: "f", layout: "tree" }, "acme")).toBe(
-      brainstormBoardHref("acme", "w", "f"),
-    );
-    expect(treeDeskHref(ref("graph", "job:brainstorm-tree"), { workspace: "w", focus: "f" }, "acme")).not.toBeNull();
+describe("treeOf", () => {
+  it("reads a tree card's workspace and focus", () => {
+    expect(treeOf(ref("graph", "a"), { workspace: "w", focus: "f", layout: "tree" })).toEqual({
+      workspace: "w",
+      focus: "f",
+    });
+    expect(treeOf(ref("graph", "job:brainstorm-tree"), { workspace: "w", focus: "f" })).not.toBeNull();
   });
-  it("sends a json tree to the desk", () => {
+  it("reads a json tree", () => {
     const value = { workspace: "w", focus: "f", layout: "tree" };
-    expect(treeDeskHref(ref("json", "x"), { value }, "acme")).toBe(brainstormBoardHref("acme", "w", "f"));
+    expect(treeOf(ref("json", "x"), { value })).toEqual({ workspace: "w", focus: "f" });
   });
-  it("leaves non-tree graphs and other kinds to the panel", () => {
-    expect(treeDeskHref(ref("graph", "g"), { workspace: "w", focus: "f" }, "acme")).toBeNull();
-    expect(treeDeskHref(ref("markdown", "brainstorm"), { text: "x" }, "acme")).toBeNull();
-  });
-  it("falls back to the panel without content, focus or login", () => {
-    expect(treeDeskHref(ref("graph", "brainstorm-tree"), null, "acme")).toBeNull();
-    expect(treeDeskHref(ref("graph", "g"), { workspace: "w", layout: "tree" }, "acme")).toBeNull();
-    expect(treeDeskHref(ref("graph", "g"), { workspace: "w", focus: "f", layout: "tree" }, "")).toBeNull();
+  it("leaves non-tree graphs, other kinds and unread content to the panel", () => {
+    expect(treeOf(ref("graph", "g"), { workspace: "w", focus: "f" })).toBeNull();
+    expect(treeOf(ref("markdown", "brainstorm"), { text: "x" })).toBeNull();
+    expect(treeOf(ref("graph", "brainstorm-tree"), null)).toBeNull();
+    expect(treeOf(ref("graph", "g"), { workspace: "w", layout: "tree" })).toBeNull();
   });
 });
 
-describe("openingFocus", () => {
-  const blocks = new Set(["b1"]);
-  const isBlock = (k: string) => blocks.has(k);
-  const blockOf = (id: string) => (id === "c1" || id === "b1" ? "b1" : undefined);
-  it("focuses a root", () => {
-    expect(openingFocus("b1", null, isBlock, blockOf)).toEqual({ kind: "block", key: "b1" });
+describe("findBrainstormCard", () => {
+  const respond = (body: unknown, ok = true) =>
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok, status: ok ? 200 : 502, json: async () => body })),
+    );
+
+  it("finds the card the root question is about", async () => {
+    respond({
+      nodes: [
+        { ref_id: "r1", type: "Question", about: "f1" },
+        { ref_id: "o1", type: "Option" },
+      ],
+      edges: [],
+    });
+    expect(await findBrainstormCard(new QueryClient(), "w", "r1")).toEqual({ card: "f1", root: "r1" });
   });
-  it("points at a node of the root", () => {
-    expect(openingFocus("b1", "c1", isBlock, blockOf)).toEqual({ kind: "block", key: "b1", card: "c1" });
-  });
-  it("focuses the block of a card given as root", () => {
-    expect(openingFocus("c1", null, isBlock, blockOf)).toEqual({ kind: "block", key: "b1", card: "c1" });
-  });
-  it("fits for unknown or missing", () => {
-    expect(openingFocus("zzz", null, isBlock, blockOf)).toEqual({ kind: "fit" });
-    expect(openingFocus(null, null, isBlock, blockOf)).toEqual({ kind: "fit" });
+  it("is null for a brainstorm about no card, or a failed read", async () => {
+    respond({ nodes: [{ ref_id: "r1", type: "Question" }], edges: [] });
+    expect(await findBrainstormCard(new QueryClient(), "w", "r1")).toBeNull();
+    respond({}, false);
+    expect(
+      await findBrainstormCard(new QueryClient({ defaultOptions: { queries: { retry: false } } }), "w", "r1"),
+    ).toBeNull();
   });
 });

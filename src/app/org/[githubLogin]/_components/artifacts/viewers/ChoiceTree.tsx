@@ -101,6 +101,8 @@ interface RawNode {
   /** `Question`, `Option` or `Choice`, from the node's labels. */
   type?: string;
   effects?: unknown;
+  /** Questions: the plan card the brainstorm is about. */
+  about?: string;
 }
 interface RawEdge {
   source: string;
@@ -410,15 +412,26 @@ interface TreeResponse {
   edges?: RawEdge[];
 }
 
+/** The `choice-tree` read under `focus`; every reader of a tree shares its React Query key. */
+export const choiceTreeQuery = (workspace: string, focus: string, label?: string) => ({
+  queryKey: ["choice-tree", workspace, focus, label ?? ""],
+  queryFn: async (): Promise<TreeResponse> => {
+    const res = await fetch(`/api/workspaces/${encodeURIComponent(workspace)}/graph/choice-tree?focus=${encodeURIComponent(focus)}${label ? `&label=${encodeURIComponent(label)}` : ""}`);
+    if (!res.ok) throw new Error(`Request failed (${res.status})`);
+    return (await res.json()) as TreeResponse;
+  },
+});
+
+/** Where the canvas shows a read tree: the plan card its brainstorm is about, and its root question. Null when it's about none. */
+export function brainstormCardOf(tree: TreeResponse | undefined): { card: string; root: string } | null {
+  const q = tree?.nodes?.find((n) => n.about);
+  return q?.about ? { card: q.about, root: q.ref_id } : null;
+}
+
 /** Polled while open and on window focus, so children Jamie adds appear. */
 function useChoices(workspace: string, focus: string, label?: string) {
   return useQuery({
-    queryKey: ["choice-tree", workspace, focus, label ?? ""],
-    queryFn: async () => {
-      const res = await fetch(`/api/workspaces/${encodeURIComponent(workspace)}/graph/choice-tree?focus=${encodeURIComponent(focus)}${label ? `&label=${encodeURIComponent(label)}` : ""}`);
-      if (!res.ok) throw new Error(`Request failed (${res.status})`);
-      return (await res.json()) as TreeResponse;
-    },
+    ...choiceTreeQuery(workspace, focus, label),
     refetchInterval: REFETCH_MS,
     refetchOnWindowFocus: true,
   });
