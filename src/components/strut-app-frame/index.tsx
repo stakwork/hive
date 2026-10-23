@@ -59,7 +59,9 @@ export interface StrutAppFrameProps {
 type FrameState = { status: "loading" } | { status: "ready" } | { status: "error"; error: string };
 
 async function fetchDocument(url: string): Promise<string> {
-  const res = await fetch(url, { credentials: "include", cache: "no-store" });
+  // `no-cache`: the browser's copy is used only after the route says it is
+  // current (a 304 against its ETag), so reopening an app downloads nothing.
+  const res = await fetch(url, { credentials: "include", cache: "no-cache" });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
     const reason = typeof body?.error === "string" ? body.error : null;

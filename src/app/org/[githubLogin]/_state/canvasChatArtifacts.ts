@@ -35,7 +35,7 @@
 import type { Action, ActionResult, DiffContent } from "@/lib/chat";
 import { parseGraphChanges, type GraphChange } from "@/components/graph-workbench/changes";
 import { bounded } from "@/lib/strut-chat-activity";
-import { isStrutAppName, isStrutAppVersion } from "@/lib/strut-apps";
+import { isStrutAppName, isStrutAppVersion, workspaceAppOfKey } from "@/lib/strut-apps";
 import { proposalGraphArtifacts } from "./proposalGraphArtifacts";
 
 // ─── Kinds and their content ────────────────────────────────────────────
@@ -732,13 +732,18 @@ const ADDRESS_KINDS: ReadonlySet<ArtifactKind> = new Set<ArtifactKind>(["image",
 /**
  * Where a ref's content is read from, when every ref that reads from there
  * shows the same thing: a file on a swarm by its key (a job's `plan.md` is
- * read fresh each time, so the turn that re-reports it adds nothing), a
+ * read fresh each time, so the turn that re-reports it adds nothing), an
+ * app by its swarm and name (every version of it is one card), a
  * pull request by repo and number (its state is read live), a stored page
  * by its slug, an address by its URL. Null for content frozen on the
  * message, where each ref is its own snapshot.
  */
 function liveSourceKey({ kind, source }: ArtifactRef): string | null {
-  if (source.type === "graph") return `graph:${source.swarmId}:${source.key}`;
+  if (source.type === "graph") {
+    // An app is the app, whichever version a turn's link names: its card picks the version.
+    const app = kind === "app" ? workspaceAppOfKey(source.key) : null;
+    return app ? `app:${source.swarmId}:${app.app}` : `graph:${source.swarmId}:${source.key}`;
+  }
   const { content } = source;
   switch (kind) {
     case "pull_request": {

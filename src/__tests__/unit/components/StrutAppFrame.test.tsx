@@ -116,7 +116,7 @@ describe("StrutAppFrame", () => {
     render(<StrutAppFrame source={SOURCE} title="Bench" />);
     const frame = await connected();
     expect(mockFetch.mock.calls[0][0]).toBe(DOCUMENT_URL);
-    expect(mockFetch.mock.calls[0][1]).toMatchObject({ credentials: "include", cache: "no-store" });
+    expect(mockFetch.mock.calls[0][1]).toMatchObject({ credentials: "include", cache: "no-cache" });
     expect(frame.getAttribute("sandbox")).toBe(STRUT_APP_FRAME_SANDBOX);
     expect(STRUT_APP_FRAME_SANDBOX).toBe("allow-scripts");
     expect(frame.getAttribute("sandbox")).not.toContain("allow-same-origin");

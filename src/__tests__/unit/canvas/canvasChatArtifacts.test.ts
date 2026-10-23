@@ -345,6 +345,19 @@ describe("identity and versions", () => {
     expect(artifactIdentity(bare)).toBe("id:x");
   });
 
+  test("an app is one artifact whichever version a turn's link names; another app or swarm is another", () => {
+    const app = (swarmId: string, key: string): ArtifactRef => ({ id: "app", kind: "app", title: "App", source: { type: "graph", swarmId, key } });
+    const v2 = app("swarm-1", "/apps/acme%2Fbench/v2/files/dist/index.html");
+    const v3 = app("swarm-1", "/apps/acme%2Fbench/v3/files/dist/index.html");
+    const live = app("swarm-1", "/apps/acme%2Fbench/files/dist/index.html");
+    expect(artifactIdentity(v2)).toBe("app:swarm-1:acme/bench");
+    expect(artifactIdentity(v3)).toBe(artifactIdentity(v2));
+    expect(artifactIdentity(live)).toBe(artifactIdentity(v2));
+    expect(artifactIdentity(app("swarm-2", "/apps/acme%2Fbench/v2/files/dist/index.html"))).not.toBe(artifactIdentity(v2));
+    expect(artifactIdentity(app("swarm-1", "/apps/other/v2/files/dist/index.html"))).not.toBe(artifactIdentity(v2));
+    expect(resolveArtifactPanel([v2, v3], { identity: artifactIdentity(v2), version: null })?.artifact).toBe(v3);
+  });
+
   test("each artifact gets one card, on its newest ref, with its versions counted", () => {
     const cards = indexArtifactCards(all);
     expect([...cards.keys()]).toEqual([planT4, shotT1, noteT4, prT4, shotT4]);
