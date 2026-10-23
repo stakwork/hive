@@ -110,6 +110,8 @@ const KEYFRAMES = `
 .icb-listen { animation: icb-listen 1.1s ease-out infinite }
 @keyframes icb-flash { 0%,60% { background-color: var(--ic-flash) } 100% { background-color: transparent } }
 .icb-flash { animation: icb-flash 2.2s ease-out both }
+.icb-req .icb-act { opacity: 0; transition: opacity .12s }
+.icb-req:hover .icb-act, .icb-req:focus-within .icb-act { opacity: 1 }
 .icb-editable:hover { background: color-mix(in srgb, var(--ic-road) 10%, transparent) }
 .icb-root :focus-visible { outline: 2px solid var(--ic-focus); outline-offset: 2px }
 .icb-root ::placeholder { color: var(--ic-faint) }
@@ -1217,7 +1219,7 @@ function SceneItem({
   if (n.type === "stories")
     return (
       <div style={box}>
-        <div style={scaled(FACE_W.stories!)}>
+        <div style={scaled(FACE_W.stories!, 1, { height: "auto", minHeight: dh(FACE_W.stories!) })}>
           <StoriesPanel c={c} initiative={n.parent} w={FACE_W.stories!} h={dh(FACE_W.stories!)} />
         </div>
       </div>
