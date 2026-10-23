@@ -33,6 +33,7 @@ import { Desk } from "./brainstorm-board/Desk";
 import { InfiniteCanvas } from "./infinite-canvas/InfiniteCanvas";
 import { OrgInitiatives } from "../OrgInitiatives";
 import { useArtifactPanelOpen } from "./artifacts/useArtifactPanel";
+import { useArtifactUrlParam } from "@/hooks/useArtifactUrlParam";
 
 /** Sidebar layout sizes (percent of container width). */
 const SIDEBAR_DEFAULT_SIZE = 24;
@@ -489,6 +490,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
   // The panel is this page's: the store outlives the page, and an
   // artifact left open must not be the first thing the next visit shows.
   useEffect(() => () => useCanvasChatStore.getState().closeArtifactPanel(), []);
+  useArtifactUrlParam();
 
   // ─── Canvas chat conversation lifecycle ─────────────────────────────
   // Start the active conversation once everything we need is loaded.
