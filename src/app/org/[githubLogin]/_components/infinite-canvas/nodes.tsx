@@ -1074,7 +1074,13 @@ export const QuestionCard = memo(function QuestionCard({
       <div style={{ ...label, color: v("fork") }}>
         {follow ? "Expanded" : "Brainstorm"} · {node.decided ? "decided" : "open"}
       </div>
-      <div style={{ ...authored(node.author, follow ? 15 : 17), overflow: "hidden" }}>{node.name}</div>
+      <div
+        data-wheel-scroll
+        {...stop}
+        style={{ ...authored(node.author, follow ? 15 : 17), overflowY: "auto", minHeight: 0, flex: "0 1 auto" }}
+      >
+        {node.name}
+      </div>
       <div style={{ flex: 1 }} />
       {folded ? (
         <div data-folded style={{ fontFamily: TYPE, fontSize: 11, color: v("muted") }}>
