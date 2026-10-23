@@ -5,6 +5,7 @@ import { Pin, PinOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { STRUT_APPS_CHANGED_EVENT } from "@/lib/strut-apps";
+import { useAppVersionsStore } from "../../../_state/appVersionsStore";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { useChatOrgLogin } from "../useArtifactPanel";
 
@@ -61,6 +62,8 @@ export function AppPinAction({ content }: ArtifactViewerProps<"app">) {
       const body = (await res.json().catch(() => ({}))) as { pinned?: boolean; error?: string };
       if (!res.ok || typeof body.pinned !== "boolean") throw new Error(body.error ?? `Could not change the tab (${res.status})`);
       setState({ ...state, pinned: body.pinned });
+      // Pinning an app that follows latest also holds it at the version it shows.
+      void useAppVersionsStore.getState().refresh(githubLogin, swarmId, app, { fresh: true });
       window.dispatchEvent(new CustomEvent(STRUT_APPS_CHANGED_EVENT, { detail: { swarmId } }));
       toast.success(body.pinned ? `Pinned as a tab in ${workspace.name}` : `Unpinned from ${workspace.name}`);
     } catch (e) {
