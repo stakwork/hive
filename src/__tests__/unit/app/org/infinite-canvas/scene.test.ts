@@ -11,12 +11,15 @@ import {
   diveTo,
   fit,
   focusWeight,
+  inView,
   layoutScene,
+  levelBlend,
   levelFor,
   openAt,
   openTree,
   optionKey,
   orgRect,
+  overlaps,
   panelKey,
   visibility,
   zoomAbout,
@@ -154,7 +157,13 @@ describe("layoutScene", () => {
         author: "strut" as const,
         about: SIGNUP,
         follows: first.id,
-        options: [1, 2, 3].map((i) => ({ ...first, id: `fu-${i}`, letter: "ABC"[i - 1], chosen: false, rejected: false })),
+        options: [1, 2, 3].map((i) => ({
+          ...first,
+          id: `fu-${i}`,
+          letter: "ABC"[i - 1],
+          chosen: false,
+          rejected: false,
+        })),
       }),
     };
     const after = layoutScene(grown, DESK);
@@ -202,6 +211,20 @@ describe("levels", () => {
   });
 });
 
+describe("level blend", () => {
+  const blend = levelBlend(scene, { open: [], level: ORG }, { open: openAt(scene, ONB), level: ONB });
+
+  it("opens the new level and clears its neighbours over the flight", () => {
+    expect(blend.open(ONB, 0)).toBe(0);
+    expect(blend.open(ONB, 0.5)).toBe(0.5);
+    expect(blend.open(ONB, 1)).toBe(1);
+    expect(blend.vis(SIGNUP, 0)).toBe(0);
+    expect(blend.vis(SIGNUP, 1)).toBe(1);
+    expect(blend.vis("mock-initiative-janitor", 0)).toBe(1);
+    expect(blend.vis("mock-initiative-janitor", 1)).toBe(0);
+  });
+});
+
 describe("camera", () => {
   const vp = { w: 1200, h: 800 };
   it("frames a level in the space the chrome leaves", () => {
@@ -218,5 +241,28 @@ describe("camera", () => {
     expect(z).toEqual({ cx: 0, cy: 0, z: 2 });
     expect(between({ cx: 0, cy: 0, z: 1 }, { cx: 100, cy: 0, z: 4 }, 0.5).z).toBeCloseTo(2);
     expect(between(cam, z, 1)).toEqual(expect.objectContaining({ z: 2 }));
+  });
+});
+
+describe("short views", () => {
+  it("frames a view shorter than its chrome without a negative zoom", () => {
+    const cam = fit(orgRect(scene), { w: 800, h: 120 }, 0.88, { top: 70, bottom: 190 });
+    expect(cam.z).toBeGreaterThan(0);
+    const mid = between(cam, fit(orgRect(scene), { w: 800, h: 600 }), 0.5);
+    expect(Number.isFinite(mid.cx + mid.cy + mid.z)).toBe(true);
+  });
+});
+
+describe("culling", () => {
+  it("covers the view, and a margin round it", () => {
+    const vp = { w: 1200, h: 800 };
+    const cam = fit(orgRect(scene), vp);
+    const view = inView(cam, vp);
+    expect(view.w * cam.z).toBeCloseTo(1200);
+    expect(view.x + view.w / 2).toBeCloseTo(cam.cx);
+    const wide = inView(cam, vp, 0.5);
+    expect(wide.w).toBeCloseTo(view.w * 2);
+    expect(overlaps(scene.get(ONB)!.rect, view)).toBe(true);
+    expect(overlaps(scene.get(ONB)!.rect, { x: -1e6, y: -1e6, w: 10, h: 10 })).toBe(false);
   });
 });

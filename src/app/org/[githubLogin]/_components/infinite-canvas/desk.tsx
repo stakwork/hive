@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, memo, useState } from "react";
 import { formatAge } from "@/lib/date-utils";
 import { type Board, initiativesByRecency, plural } from "./board";
 import { TYPE, label } from "./nodes";
@@ -8,7 +8,17 @@ import type { Rect, Viewport } from "./scene";
 import { a, v } from "./theme";
 
 /** The pile of initiatives not on the desk: the top few names, and how many more. */
-export function StackCard({ b, desk, w, h }: { b: Board; desk: string[]; w: number; h: number }) {
+export const StackCard = memo(function StackCard({
+  b,
+  desk,
+  w,
+  h,
+}: {
+  b: Board;
+  desk: string[];
+  w: number;
+  h: number;
+}) {
   const rest = initiativesByRecency(b).filter((n) => !desk.includes(n.id));
   const sheet = (i: number): CSSProperties => ({
     position: "absolute",
@@ -57,7 +67,7 @@ export function StackCard({ b, desk, w, h }: { b: Board; desk: string[]; w: numb
       </div>
     </div>
   );
-}
+});
 
 /** Every initiative, most recently updated first, next to the stack: filter by name, pick one to bring it onto the desk. */
 export function AllInitiatives({
