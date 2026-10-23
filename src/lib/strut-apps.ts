@@ -44,6 +44,10 @@ export const isStrutAppName = (v: unknown): v is string => typeof v === "string"
 /** A version label (`v1`, `v2`, …). */
 export const isStrutAppVersion = (v: unknown): v is string => typeof v === "string" && VERSION_RE.test(v);
 
+const RELEASE_RE = /^r\d{1,6}$/;
+/** A release id (`r1`, `r2`, …): a version made live with a lock on what it calls (strut `plans/app-releases.md`). */
+export const isStrutAppRelease = (v: unknown): v is string => typeof v === "string" && RELEASE_RE.test(v);
+
 /** `path` with each segment encoded, for a strut URL. */
 export const encodeStrutPath = (path: string): string => path.split("/").map(encodeURIComponent).join("/");
 
