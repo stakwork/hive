@@ -7,6 +7,7 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/pusher", () => ({ notifyCanvasCardJob: mockNotifyCardJob }));
 
 import {
+  mockBrainstormAbout,
   mockCreateInitiative,
   mockInitiativeList,
   mockInitiativeTree,
@@ -16,7 +17,7 @@ import {
 } from "@/app/api/mock/graph/initiative-fixture";
 import { initiativeStage } from "@/lib/initiative-plan";
 import { scriptedJamieReply } from "@/app/api/mock/anthropic/v1/messages/jamie-script";
-import { resetMockBrainstormStore, mockBrainstormListWithWrites } from "@/app/api/mock/graph/brainstorm-store";
+import { resetMockBrainstormStore, mockChoiceTreeWithWrites } from "@/app/api/mock/graph/brainstorm-store";
 import { mockCanvasJobs, resetMockCanvasJobs } from "@/app/api/mock/graph/canvas-jobs";
 import { MOCK_STRUT_JOBS } from "@/app/api/mock/graph/strut-artifacts";
 
@@ -136,7 +137,11 @@ describe("scripted Jamie", () => {
     expect(reply).toContain("How should we build Repo picker?");
     const feature = mockInitiativeTree("mock-initiative-onboarding").nodes.find((n) => n.ref_id === "mock-f-repo");
     expect(feature?.brainstorms).toEqual([expect.stringMatching(/^mock-bs-/)]);
-    expect(mockBrainstormListWithWrites()[0].text).toBe("How should we build Repo picker?");
+    const root = feature!.brainstorms![0];
+    expect(mockChoiceTreeWithWrites(root, ["Question"]).nodes[0].properties.text).toBe(
+      "How should we build Repo picker?",
+    );
+    expect(mockBrainstormAbout(root)).toBe("mock-f-repo");
   });
 
   test("brainstorms the initiative when nothing is selected, and says what's next from the graph", () => {

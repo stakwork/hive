@@ -194,4 +194,49 @@ describe("getChoiceTree", () => {
       expect(q).toContain("RATED_ON");
     });
   });
+  describe("about", () => {
+    beforeEach(() => {
+      mockedQuery.mockImplementation(async ({ query }) => {
+        if (String(query).includes("AS props")) {
+          return {
+            ok: true,
+            meta,
+            data: {
+              columns: ["id", "labels", "props", "about"],
+              rows: [
+                [FOCUS, ["Question"], [["text", "Q"]], ["feature-1", 7]],
+                ["o1", ["Option"], [["text", "A"]], ["feature-2"]],
+                ["q2", ["Question"], [["text", "Q2"]], []],
+              ],
+            },
+          };
+        }
+        return { ok: true, meta, data: { columns: ["source", "target"], rows: [] } };
+      });
+    });
+
+    test("reads the plan card a question is about, on questions only", async () => {
+      const res = await getChoiceTree(caller, FOCUS);
+      if (!res.ok) throw new Error("expected ok");
+      const by = Object.fromEntries(res.data.nodes.map((n) => [n.ref_id, n]));
+      expect(by[FOCUS].about).toBe("feature-1");
+      expect(by.o1).not.toHaveProperty("about");
+      expect(by.q2).not.toHaveProperty("about");
+      const q = mockedQuery.mock.calls.map(([a]) => String(a.query)).find((x) => x.includes("AS props"))!;
+      expect(q).toContain("ABOUT");
+      for (const label of ["HiveInitiative", "HiveMilestone", "InitiativeFeature"]) expect(q).toContain(`\`${label}\``);
+    });
+
+    test("mock mode: a brainstorm on a card says which, one on no card says nothing", async () => {
+      vi.stubEnv("USE_MOCKS", "true");
+      const auth = await getChoiceTree(caller, "mock-brainstorm-auth");
+      expect(auth.ok && auth.data.nodes.find((n) => n.ref_id === "mock-brainstorm-auth")?.about).toBe("mock-m-signup");
+      const board = await getChoiceTree(caller, "mock-brainstorm-board");
+      expect(board.ok && board.data.nodes.some((n) => n.about)).toBe(false);
+      expect(board.ok && board.data.nodes.map((n) => n.properties.state)).toEqual(
+        expect.arrayContaining(["decided", "chosen", "rejected", "open", "simulated"]),
+      );
+      expect(mockedQuery).not.toHaveBeenCalled();
+    });
+  });
 });

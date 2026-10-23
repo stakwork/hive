@@ -13,7 +13,7 @@ import { mapStrutArtifacts } from "@/services/strut-runs/job-turn";
 import { mockInitiativeTree } from "@/app/api/mock/graph/initiative-fixture";
 import type { ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { toBoard } from "@/app/org/[githubLogin]/_components/infinite-canvas/board";
-import { featureWork, prsOf, workOf } from "@/app/org/[githubLogin]/_components/infinite-canvas/build";
+import { featureWork, prsOf, reposOf, workOf } from "@/app/org/[githubLogin]/_components/infinite-canvas/build";
 import type { CanvasJob } from "@/lib/canvas/canvas-jobs";
 import { initiativeStage } from "@/services/graph/workbench";
 
@@ -69,16 +69,50 @@ describe("prsOf", () => {
   });
 });
 
+const prIn = (repo: unknown, n = 1): ArtifactRef => ({
+  ...pr(n, "open"),
+  source: { type: "inline", content: { url: `https://github.com/x/y/pull/${n}`, repo, number: n, state: "open" } },
+});
+
+describe("reposOf", () => {
+  it("is empty with no pull requests", () => {
+    expect(reposOf([])).toEqual([]);
+  });
+
+  it("lists one repo", () => {
+    expect(reposOf(prsOf([pr(1, "merged")]))).toEqual(["o/r"]);
+  });
+
+  it("keeps several repos in first-seen order, closed ones too", () => {
+    expect(reposOf(prsOf([prIn("a/one"), pr(2, "closed"), prIn("b/two", 3)]))).toEqual(["a/one", "o/r", "b/two"]);
+  });
+
+  it("dedupes case-insensitively, keeping the first casing", () => {
+    expect(reposOf(prsOf([prIn("Acme/Web"), prIn("acme/web", 2), prIn("ACME/WEB", 3)]))).toEqual(["Acme/Web"]);
+  });
+
+  it("skips pull requests that can't be read or have no repo", () => {
+    const graph: ArtifactRef = {
+      id: "g",
+      kind: "pull_request",
+      title: "PR",
+      source: { type: "graph", swarmId: "s", key: "k" },
+    };
+    expect(reposOf(prsOf([graph, prIn(undefined), prIn(42, 2), prIn("a/b", 3)]))).toEqual(["a/b"]);
+  });
+});
+
 describe("featureWork", () => {
   it("is not started with no jobs", () => {
-    expect(featureWork([], [])).toEqual({ state: "not-started", line: "Not built yet" });
+    expect(featureWork([], [])).toEqual({ state: "not-started", line: "Not built yet", repos: [] });
   });
 
   it("is in progress while a job runs or a pull request is open or in draft", () => {
-    expect(featureWork([job("running")], [])).toEqual({ state: "in-progress", line: "1 job running" });
+    expect(featureWork([job("running")], [])).toEqual({ state: "in-progress", line: "1 job running", repos: [] });
     expect(featureWork([job("done")], prsOf([pr(1, "merged"), pr(2, "draft")]))).toEqual({
       state: "in-progress",
       line: "1 of 2 pull requests merged",
+      repos: ["o/r"],
     });
     expect(featureWork([job("running")], prsOf([pr(1, "merged")])).state).toBe("in-progress");
   });
@@ -87,6 +121,7 @@ describe("featureWork", () => {
     expect(featureWork([job("done")], prsOf([pr(1, "merged"), pr(2, "merged"), pr(3, "closed")]))).toEqual({
       state: "done",
       line: "2 of 2 pull requests merged",
+      repos: ["o/r"],
     });
   });
 
@@ -94,10 +129,12 @@ describe("featureWork", () => {
     expect(featureWork([job("failed", { error: "Pod out of disk" })], [])).toEqual({
       state: "blocked",
       line: "Implement it failed: Pod out of disk",
+      repos: [],
     });
     expect(featureWork([job("done")], prsOf([pr(4, "open", ["unit", "e2e"])]))).toEqual({
       state: "blocked",
       line: "CI failing on PR 4: unit, e2e",
+      repos: ["o/r"],
     });
     // A retry after a failure clears it.
     expect(featureWork([job("running", { jobId: "b" }), job("failed")], []).state).toBe("in-progress");
@@ -131,7 +168,15 @@ describe("workOf", () => {
     const jobsByRef: Record<string, CanvasJob[]> = {};
     for (const j of jobs) (jobsByRef[j.refId] ??= []).push(j);
     const work = workOf(board, ONB, jobsByRef, artifactsByRef);
-    expect(work.get("mock-f-gh")).toEqual({ state: "done", line: "3 of 3 pull requests merged" });
+    expect(work.get("mock-f-gh")).toEqual(
+      expect.objectContaining({ state: "done", line: "3 of 3 pull requests merged" }),
+    );
+    expect(work.get("mock-f-gh")?.repos.length).toBeGreaterThan(0);
+    expect(work.get("mock-f-name")?.repos).toEqual([]);
+    const ms = work.get("mock-m-signup")!;
+    for (const f of ["mock-f-gh", "mock-f-repo"]) {
+      for (const r of work.get(f)!.repos) expect(ms.repos).toContain(r);
+    }
     expect(work.get("mock-f-repo")?.state).toBe("in-progress");
     expect(work.get("mock-f-name")?.state).toBe("not-started");
     expect(work.get("mock-f-link")?.state).toBe("blocked");

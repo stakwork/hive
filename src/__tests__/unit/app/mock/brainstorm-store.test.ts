@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import {
-  mockBrainstormListWithWrites,
   mockBrainstormWrite,
   mockChoiceTreeWithWrites,
   resetMockBrainstormStore,
@@ -55,7 +54,7 @@ describe("mock brainstorm store", () => {
     expect(ids).not.toContain(parent);
   });
 
-  test("a new brainstorm leads the list and opens as its own tree", () => {
+  test("a new brainstorm opens as its own tree", () => {
     const created = mockBrainstormWrite({
       creates: [
         { temp: "q", nodeType: "Question", data: { text: "Fresh?", state: "open" }, parent: null },
@@ -63,12 +62,6 @@ describe("mock brainstorm store", () => {
       ],
       patches: {},
       links: [],
-    });
-    expect(mockBrainstormListWithWrites()[0]).toEqual({
-      ref_id: created.q,
-      text: "Fresh?",
-      job: null,
-      made_by: "user",
     });
     const tree = mockChoiceTreeWithWrites(created.q, LABELS);
     expect(tree.nodes.map((n) => n.ref_id).sort()).toEqual([created.q, created.o].sort());
