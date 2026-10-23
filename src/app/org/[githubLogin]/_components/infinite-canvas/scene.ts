@@ -228,9 +228,9 @@ function row(
       row(ctx, c.id, { ...inner, h: inner.h * 0.6 }, [...kids(b, c.id, "brief"), ...kids(b, c.id, "milestone")], 4);
       panel("stories", {
         x: inner.x + inner.w * 0.01,
-        y: inner.y + inner.h * 0.62,
+        y: inner.y + inner.h * 0.54,
         w: inner.w * 0.98,
-        h: inner.h * 0.36,
+        h: inner.h * 0.44,
       });
       return;
     }

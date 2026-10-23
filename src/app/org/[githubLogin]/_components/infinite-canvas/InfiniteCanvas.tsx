@@ -1084,13 +1084,7 @@ export function InfiniteCanvas({
             ))}
           </div>
 
-          {mode === "full" ? null : (
-            <JamieBar
-              mode={mode}
-              setMode={setMode}
-              send={talk}
-            />
-          )}
+          {mode === "full" ? null : <JamieBar mode={mode} setMode={setMode} send={talk} />}
 
           {palette ? (
             <Palette
@@ -1273,7 +1267,7 @@ function SceneItem({
   if (n.type === "stories")
     return (
       <div style={box}>
-        <div style={scaled(FACE_W.stories!, 1, { height: "auto", minHeight: dh(FACE_W.stories!) })}>
+        <div style={scaled(FACE_W.stories!)}>
           <StoriesPanel c={c} initiative={n.parent} w={FACE_W.stories!} h={dh(FACE_W.stories!)} />
         </div>
       </div>
