@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import ReactMarkdown, { Components } from "react-markdown";
 import { MermaidDiagram } from "@/components/features/ClarifyingQuestionsPreview/artifacts/MermaidDiagram";
 import remarkGfm from "remark-gfm";
@@ -371,12 +371,20 @@ const createComponents = (
   },
 });
 
-export function MarkdownRenderer({
+const INLINE_ICON_PATTERN = /svg-icons/;
+const REMARK_PLUGINS = [remarkGfm, remarkFrontmatter, remarkBreaks];
+const REHYPE_PLUGINS: [] = [];
+
+/**
+ * Memoised on its props, and its output on the text: a parent re-rendering with the same text neither
+ * re-parses it nor remounts what it drew (fresh `components` would make every element a new type).
+ */
+export const MarkdownRenderer = React.memo(function MarkdownRenderer({
   children,
   className,
   variant = "assistant",
   size = "default",
-  inlineIconPattern = /svg-icons/,
+  inlineIconPattern = INLINE_ICON_PATTERN,
   extraComponents,
 }: MarkdownRendererProps) {
   const isUser = variant === "user";
@@ -385,7 +393,11 @@ export function MarkdownRenderer({
   const isDarkTheme = resolvedTheme === "dark";
   const codeInlineClass = isDarkTheme ? "bg-zinc-600/70" : "bg-zinc-300/60";
   const styleConfig = size === "compact" ? compactStyles : baseStyles;
-  const components = { ...createComponents(styles, styleConfig, codeInlineClass, inlineIconPattern), ...extraComponents };
+  const components = useMemo(
+    () => ({ ...createComponents(styles, styleConfig, codeInlineClass, inlineIconPattern), ...extraComponents }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `styles` and `styleConfig` follow from `isUser` and `size`
+    [isUser, size, codeInlineClass, inlineIconPattern, extraComponents],
+  );
 
   const processedContent =
     typeof children === "string"
@@ -426,18 +438,18 @@ export function MarkdownRenderer({
   //   - rehypeFormat is excluded: it injects whitespace <div> nodes inside
   //     <p> elements, causing React hydration warnings and truncated
   //     textContent.
-  const remarkPluginList = [remarkGfm, remarkFrontmatter, remarkBreaks];
-  const rehypePluginList: [] = [];
+  const rendered = useMemo(
+    () => (
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={components}>
+        {processedContent}
+      </ReactMarkdown>
+    ),
+    [processedContent, components],
+  );
 
   return (
     <div className={cn("prose dark:prose-invert max-w-full break-words overflow-x-hidden prose-pre:overflow-x-auto", className)}>
-      <ReactMarkdown
-        remarkPlugins={remarkPluginList}
-        rehypePlugins={rehypePluginList}
-        components={components}
-      >
-        {processedContent}
-      </ReactMarkdown>
+      {rendered}
     </div>
   );
-}
+});

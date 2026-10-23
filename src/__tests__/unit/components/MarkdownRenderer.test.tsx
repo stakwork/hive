@@ -384,3 +384,29 @@ Install dependencies:
     });
   });
 });
+
+describe('MarkdownRenderer — re-renders', () => {
+  function Parent({ text, tick }: { text: string; tick: number }) {
+    return (
+      <div data-tick={tick}>
+        <MarkdownRenderer>{text}</MarkdownRenderer>
+      </div>
+    );
+  }
+
+  it('keeps what it drew when its parent re-renders with the same text', () => {
+    const { container, rerender } = render(<Parent text={'First line\n\n- one\n- two'} tick={0} />);
+    const p = container.querySelector('p');
+    const li = container.querySelector('li');
+    rerender(<Parent text={'First line\n\n- one\n- two'} tick={1} />);
+    expect(container.querySelector('p')).toBe(p);
+    expect(container.querySelector('li')).toBe(li);
+  });
+
+  it('draws new text when the text changes', () => {
+    const { container, rerender } = render(<Parent text="Before" tick={0} />);
+    rerender(<Parent text="After" tick={1} />);
+    expect(container.textContent).toContain('After');
+    expect(container.textContent).not.toContain('Before');
+  });
+});
