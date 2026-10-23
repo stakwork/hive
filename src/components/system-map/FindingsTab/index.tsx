@@ -10,7 +10,10 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
-import type { SystemMapFinding, SystemMapFindingsResponse } from "@/types/system-map";
+import { toast } from "sonner";
+import { fixDisabledReason, isActiveFixStatus, MAX_FIX_BATCH } from "@/lib/system-map/finding-fix";
+import type { SystemMapFinding, SystemMapFindingFix, SystemMapFindingsResponse } from "@/types/system-map";
+import { FixBadge, FixButton } from "./FindingFixStatus";
 import { RelatedNodes } from "./RelatedNodes";
 import { FindingVerify } from "./FindingVerify";
 import { BatchVerifyBar, MAX_BATCH } from "./BatchVerifyBar";
@@ -53,12 +56,20 @@ function FindingCard({
   onSelect,
   checksVersion,
   onVerdict,
+  fix,
+  canFix,
+  fixing,
+  onFix,
 }: {
   finding: SystemMapFinding;
   selected: boolean;
   onSelect: (selected: boolean) => void;
   checksVersion: number;
   onVerdict: () => void;
+  fix: SystemMapFindingFix | undefined;
+  canFix: boolean;
+  fixing: boolean;
+  onFix: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const location = finding.file ? `${finding.file}${finding.line ? `:${finding.line}` : ""}` : null;
@@ -96,8 +107,20 @@ function FindingCard({
               {!open && finding.description && (
                 <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{finding.description}</p>
               )}
+              {fix && (
+                <div className="mt-1">
+                  <FixBadge fix={fix} />
+                </div>
+              )}
             </div>
           </button>
+          <div className="mr-3 mt-2">
+            <FixButton
+              disabledReason={canFix ? fixDisabledReason(finding, fix) : "Developer access required"}
+              busy={fixing}
+              onClick={onFix}
+            />
+          </div>
         </div>
         {open && (
           <div className="space-y-3 border-t px-3 py-3" data-testid="finding-detail">
@@ -138,6 +161,8 @@ export function FindingsTab() {
   const [search, setSearch] = useState("");
   const [severity, setSeverity] = useState<string | null>(null);
   const { canWrite } = useWorkspaceAccess();
+  const [fixes, setFixes] = useState<Map<string, SystemMapFindingFix>>(() => new Map());
+  const [fixingRefs, setFixingRefs] = useState<Set<string>>(() => new Set());
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   // Bumped when a batch check starts, so the open cards' check lists re-read.
   const [checksVersion, setChecksVersion] = useState(0);
@@ -171,6 +196,64 @@ export function FindingsTab() {
     if (slug) void load(slug, undefined, true);
   }, [slug, load]);
 
+  const loadFixes = useCallback(async (workspaceSlug: string) => {
+    try {
+      const response = await fetch(`/api/workspaces/${workspaceSlug}/system-map/findings/fix`, { cache: "no-store" });
+      if (!response.ok) return;
+      const body = (await response.json()) as { fixes: SystemMapFindingFix[] };
+      setFixes(new Map(body.fixes.map((f) => [f.findingRefId, f])));
+    } catch {
+      // Fix status is secondary; the list still works without it.
+    }
+  }, []);
+
+  const anyActiveFix = useMemo(() => [...fixes.values()].some((f) => isActiveFixStatus(f.status)), [fixes]);
+  useEffect(() => {
+    if (slug) void loadFixes(slug);
+  }, [slug, loadFixes]);
+  useEffect(() => {
+    if (!slug || !anyActiveFix) return;
+    const timer = setInterval(() => void loadFixes(slug), 10_000);
+    return () => clearInterval(timer);
+  }, [slug, anyActiveFix, loadFixes]);
+
+  const startFixes = useCallback(
+    async (refIds: string[]) => {
+      if (!slug) return;
+      setFixingRefs((prev) => new Set([...prev, ...refIds]));
+      try {
+        const response = await fetch(`/api/workspaces/${slug}/system-map/findings/fix`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refIds }),
+        });
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          started?: unknown[];
+          refused?: { reason: string }[];
+        };
+        if (!response.ok) throw new Error(body.error || "Could not start the fix");
+        const refused = body.refused?.length ?? 0;
+        toast.success(`Started ${body.started?.length ?? 0} fix${body.started?.length === 1 ? "" : "es"}`, {
+          description: refused ? `${refused} skipped: ${body.refused?.[0]?.reason}` : undefined,
+        });
+        setSelected(new Set());
+      } catch (error) {
+        toast.error("Could not start the fix", {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setFixingRefs((prev) => {
+          const next = new Set(prev);
+          refIds.forEach((id) => next.delete(id));
+          return next;
+        });
+        await loadFixes(slug);
+      }
+    },
+    [slug, loadFixes],
+  );
+
   const findings = useMemo(() => (data?.status === "ready" ? data.findings : []), [data]);
 
   const counts = useMemo(() => {
@@ -194,6 +277,18 @@ export function FindingsTab() {
       return next;
     });
   }, []);
+  const selectedList = useMemo(() => [...selected], [selected]);
+  const fixBatchReason = useMemo(() => {
+    if (!canWrite) return "Developer access required";
+    if (selectedList.length > MAX_FIX_BATCH) return `At most ${MAX_FIX_BATCH} findings can be fixed at once`;
+    const byRef = new Map(findings.map((f) => [f.refId, f]));
+    for (const id of selectedList) {
+      const finding = byRef.get(id);
+      const reason = finding ? fixDisabledReason(finding, fixes.get(id)) : "Finding not found";
+      if (reason) return `${finding?.title ?? id}: ${reason}`;
+    }
+    return null;
+  }, [canWrite, selectedList, findings, fixes]);
   const allShownSelected = visible.length > 0 && visible.every((f) => selected.has(f.refId));
   const toggleShown = () =>
     setSelected(allShownSelected ? new Set() : new Set(visible.slice(0, MAX_BATCH).map((f) => f.refId)));
@@ -271,6 +366,9 @@ export function FindingsTab() {
           canWrite={canWrite}
           onClear={() => setSelected(new Set())}
           onStarted={() => setChecksVersion((v) => v + 1)}
+          fixDisabledReason={fixBatchReason}
+          fixing={selectedList.some((id) => fixingRefs.has(id))}
+          onFix={() => void startFixes(selectedList)}
         />
       )}
 
@@ -303,6 +401,10 @@ export function FindingsTab() {
               onSelect={(on) => select(finding.refId, on)}
               checksVersion={checksVersion}
               onVerdict={reload}
+              fix={fixes.get(finding.refId)}
+              canFix={canWrite}
+              fixing={fixingRefs.has(finding.refId)}
+              onFix={() => void startFixes([finding.refId])}
             />
           ))}
           {findings.length === 0 && (

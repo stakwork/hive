@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,12 +19,19 @@ export function BatchVerifyBar({
   canWrite,
   onClear,
   onStarted,
+  fixDisabledReason,
+  fixing,
+  onFix,
 }: {
   slug: string | undefined;
   selected: string[];
   canWrite: boolean;
   onClear: () => void;
   onStarted: () => void;
+  /** Why Fix is unavailable for this selection; null when it can run. */
+  fixDisabledReason: string | null;
+  fixing: boolean;
+  onFix: () => void;
 }) {
   const [apply, setApply] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -70,6 +77,23 @@ export function BatchVerifyBar({
         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onClear}>
           Clear
         </Button>
+        <span title={fixDisabledReason ?? "Open a pull request for each selected finding"}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            disabled={!slug || !!fixDisabledReason || fixing}
+            onClick={onFix}
+            data-testid="findings-batch-fix"
+          >
+            {fixing ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Wrench className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Fix
+          </Button>
+        </span>
         <Button
           size="sm"
           className="h-7 text-xs"
