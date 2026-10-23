@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   MAX_FIX_BATCH,
+  FIX_CLEAR_MARK,
+  FIX_LAUNCH_STALE_MS,
   buildFindingFixSeed,
+  isLaunching,
+  launchedMark,
+  launchingMark,
+  parseFixTracking,
   deriveFixStatus,
   extractPrUrl,
   classifyFinding,
@@ -25,6 +31,7 @@ function finding(over: Partial<SystemMapFinding> = {}, props: Record<string, unk
     line: null,
     description: null,
     dateAdded: null,
+    fix: null,
     ...over,
     properties: { finding_status: "confirmed", ...props },
   };
@@ -68,7 +75,6 @@ describe("getFixEligibility", () => {
 
 describe("fixDisabledReason", () => {
   const fix = (status: SystemMapFindingFix["status"]): SystemMapFindingFix => ({
-    id: "x",
     findingRefId: "f1",
     kind: "code_issue",
     status,
@@ -181,5 +187,43 @@ describe("buildFindingFixSeed", () => {
   });
   it("asks for the fixed version for package CVEs", () => {
     expect(buildFindingFixSeed("package_cve", pkg({ fixed_in: "2.0.0" }), "ws", "r")).toMatch(/fixed version/);
+  });
+});
+
+describe("fix tracking on the node", () => {
+  const mark = launchingMark({
+    kind: "code_issue",
+    repo: "acme/api",
+    startedAt: "2026-10-23T09:00:00.000Z",
+    startedBy: "u1",
+  });
+  const at = (offsetMs: number) => Date.parse("2026-10-23T09:00:00.000Z") + offsetMs;
+
+  it("parses launching and launched marks", () => {
+    expect(parseFixTracking(mark)).toEqual({
+      conversationId: null,
+      kind: "code_issue",
+      repo: "acme/api",
+      state: "launching",
+      startedAt: "2026-10-23T09:00:00.000Z",
+      startedBy: "u1",
+    });
+    expect(parseFixTracking({ ...mark, ...launchedMark("c1") })).toMatchObject({
+      state: "launched",
+      conversationId: "c1",
+    });
+  });
+  it("treats cleared marks and untouched nodes as no tracking", () => {
+    expect(parseFixTracking({ ...mark, ...FIX_CLEAR_MARK })).toBeNull();
+    expect(parseFixTracking({})).toBeNull();
+    expect(parseFixTracking({ fix_state: "bogus" })).toBeNull();
+  });
+  it("a launching mark blocks until it goes stale", () => {
+    const t = parseFixTracking(mark);
+    expect(isLaunching(t, at(1000))).toBe(true);
+    expect(isLaunching(t, at(FIX_LAUNCH_STALE_MS + 1))).toBe(false);
+    expect(isLaunching(parseFixTracking({ ...mark, ...launchedMark("c1") }), at(1000))).toBe(false);
+    expect(isLaunching(null)).toBe(false);
+    expect(isLaunching(parseFixTracking({ ...mark, fix_started_at: "garbage" }), at(0))).toBe(false);
   });
 });

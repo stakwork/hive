@@ -5,10 +5,78 @@
  * `services/system-map/finding-fix.ts` for the dispatch.
  */
 
-import type { SystemMapFinding, SystemMapFindingFix, SystemMapFindingFixStatus } from "@/types/system-map";
+import type {
+  SystemMapFinding,
+  SystemMapFindingFix,
+  SystemMapFindingFixStatus,
+  SystemMapFindingFixTracking,
+} from "@/types/system-map";
 
 /** Most findings one bulk Fix request takes. */
 export const MAX_FIX_BATCH = 10;
+
+// ── tracking on the Finding node ────────────────────────────────────────────
+
+/** The `fix_*` properties a Fix writes on the Finding node. */
+export const FIX_PROPERTY = {
+  conversationId: "fix_conversation_id",
+  kind: "fix_kind",
+  repo: "fix_repo",
+  state: "fix_state",
+  startedAt: "fix_started_at",
+  startedBy: "fix_started_by",
+} as const;
+
+/** A `launching` mark older than this is expired: its launch died without clearing it. */
+export const FIX_LAUNCH_STALE_MS = 5 * 60_000;
+
+function text(properties: Record<string, unknown>, key: string): string | null {
+  const v = properties[key];
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+/** The node's fix tracking; null when it carries none (cleared marks are empty strings). */
+export function parseFixTracking(properties: Record<string, unknown>): SystemMapFindingFixTracking | null {
+  const state = text(properties, FIX_PROPERTY.state);
+  const tracking: SystemMapFindingFixTracking = {
+    conversationId: text(properties, FIX_PROPERTY.conversationId),
+    kind: text(properties, FIX_PROPERTY.kind),
+    repo: text(properties, FIX_PROPERTY.repo),
+    state: state === "launching" || state === "launched" ? state : null,
+    startedAt: text(properties, FIX_PROPERTY.startedAt),
+    startedBy: text(properties, FIX_PROPERTY.startedBy),
+  };
+  return tracking.conversationId || tracking.state ? tracking : null;
+}
+
+/** Properties that mark a launch in progress (no conversation yet). */
+export function launchingMark(args: { kind: string; repo: string; startedAt: string; startedBy: string }) {
+  return {
+    [FIX_PROPERTY.state]: "launching",
+    [FIX_PROPERTY.kind]: args.kind,
+    [FIX_PROPERTY.repo]: args.repo,
+    [FIX_PROPERTY.startedAt]: args.startedAt,
+    [FIX_PROPERTY.startedBy]: args.startedBy,
+    [FIX_PROPERTY.conversationId]: "",
+  };
+}
+
+/** Properties that record the running conversation. */
+export function launchedMark(conversationId: string) {
+  return { [FIX_PROPERTY.state]: "launched", [FIX_PROPERTY.conversationId]: conversationId };
+}
+
+/** Properties that undo a `launching` mark. */
+export const FIX_CLEAR_MARK: Record<string, string> = Object.fromEntries(
+  Object.values(FIX_PROPERTY).map((key) => [key, ""]),
+);
+
+/** Is a launch in progress on this node (a fresh `launching` mark without a conversation)? */
+export function isLaunching(tracking: SystemMapFindingFixTracking | null, now: number = Date.now()): boolean {
+  if (!tracking || tracking.state !== "launching" || tracking.conversationId) return false;
+  const started = tracking.startedAt ? Date.parse(tracking.startedAt) : NaN;
+  return Number.isFinite(started) && now - started < FIX_LAUNCH_STALE_MS;
+}
 
 export type FindingFixKind = "package_cve" | "code_issue";
 

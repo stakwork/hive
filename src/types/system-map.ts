@@ -74,7 +74,6 @@ export type SystemMapDomainNodesResponse =
       error: string;
     };
 
-
 /** One System Map node ↔ Endpoint link (CALLS, EXPOSES, …). */
 export interface SystemMapEndpointLink {
   node: string;
@@ -177,14 +176,28 @@ export interface SystemMapFinding {
   description: string | null;
   /** Unix seconds. */
   dateAdded: number | null;
+  /** Fix tracking written on the node; null when no fix was ever started. */
+  fix: SystemMapFindingFixTracking | null;
   properties: Record<string, unknown>;
 }
 
 export type SystemMapFindingFixStatus = "QUEUED" | "RUNNING" | "PR_OPENED" | "FAILED";
 
-/** The latest automated fix attempt for a finding. */
+/** What a Fix writes onto the Finding node (`fix_*` properties). */
+export interface SystemMapFindingFixTracking {
+  /** The org-canvas chat the orchestrator strut runs in; null while `launching`. */
+  conversationId: string | null;
+  kind: string | null;
+  repo: string | null;
+  /** `launching`: marked, strut not launched yet; `launched`: the conversation is running. */
+  state: "launching" | "launched" | null;
+  /** ISO time of the mark. */
+  startedAt: string | null;
+  startedBy: string | null;
+}
+
+/** The latest automated fix attempt for a finding, its status read from strut. */
 export interface SystemMapFindingFix {
-  id: string;
   findingRefId: string;
   kind: string;
   status: SystemMapFindingFixStatus;
