@@ -6,6 +6,7 @@ import {
   serverError,
   forbiddenError,
   notFoundError,
+  conflictError,
   isApiError,
 } from "@/types/errors";
 import {
@@ -33,6 +34,7 @@ import {
   type StoredAttachment,
 } from "@/services/canvas-turn-persistence";
 import { buildDeferredCheckTools } from "@/lib/ai/deferredCheckTools";
+import { awaitOrchestratorReply, launchOrchestratorTurn } from "@/services/strut-orchestrator";
 import {
   persistCanvasUserMessage,
   loadOrgCanvasPromptCache,
@@ -47,16 +49,21 @@ import {
 } from "@/lib/proposals/types";
 
 /**
- * Synchronous (non-streaming) canvas-agent turn. See
+ * Synchronous (non-streaming) org-canvas turn. See
  * `docs/plans/ask-sync-endpoint.md`.
  *
- * Same engine, same persistence, different transport: this is the
- * `/api/ask/quick` org-canvas turn with the streaming response swapped
- * for an awaited JSON one. We `await result.steps` in-request (rather
- * than deferring the persist to `after()`), serialize the finished turn
- * to `StoredMessage[]`, and return it. Built for native-mobile /
- * agent-as-tool callers that want the canvas agent as a plain function,
- * and for external eval workflows (authenticated via `x-api-token`).
+ * A LIVE turn is the `/api/ask/quick` org-canvas turn with the streaming
+ * response swapped for an awaited JSON one: the message goes to strut's
+ * `orchestrator`, Jamie's engine (`docs/jamie-engine.md`), and the route
+ * waits for its reply rows to land (`awaitOrchestratorReply`, bounded)
+ * and returns them — `pending: true` with no rows when they did not land
+ * in time. Built for native-mobile / agent-as-tool callers that want Jamie
+ * as a plain function.
+ *
+ * A DRY RUN still runs Hive's canvas agent in-request: external eval
+ * workflows (authenticated via `x-api-token`) score that agent's replies
+ * and proposals without writing anything, which strut cannot do. Everything
+ * below about the agentic loop is the dry run's.
  *
  * ## Input modes
  *
@@ -328,9 +335,43 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Per-user canvas-chat model preference (set from the Agent settings
-    // gear). Null/absent → aieo default.
+    // Per-user canvas-chat model preference (the composer's model picker).
+    // Null/absent → the default.
     const chatAgentModel = await loadUserChatAgentModel(userId);
+
+    // ── A live turn runs on strut (`docs/jamie-engine.md`) ───────────
+    // One orchestrator turn on the conversation, as in the chat route,
+    // awaited here so the caller still gets the reply in the response.
+    // `maxTurns` has no meaning there. A dry run still runs Hive's canvas
+    // agent: it scores that agent's output without writing anything, and
+    // strut has no side-effect-free turn.
+    if (!dryRun && rowId) {
+      const user = await db.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+      const launched = await launchOrchestratorTurn({
+        userId,
+        orgId,
+        conversationId: rowId,
+        message: userText,
+        attachments: userAttachments,
+        publicBaseUrl: getBaseUrl(request.headers.get("host")),
+        timeZone: user?.timezone ?? undefined,
+        ...(chatAgentModel ? { model: chatAgentModel } : {}),
+      });
+      if (launched.status === "busy") throw conflictError(launched.note);
+      if (launched.status === "error") throw serverError(`The message could not be sent to strut: ${launched.error}`);
+      const rows = await awaitOrchestratorReply({ conversationId: rowId, runId: launched.runId });
+      const title =
+        (await db.sharedConversation.findUnique({ where: { id: rowId }, select: { title: true } }))?.title ??
+        undefined;
+      return NextResponse.json({
+        conversationId: rowId,
+        messages: rows ?? [],
+        ...(title ? { title } : {}),
+        // Strut has the turn but its reply did not land in time: it lands
+        // in the conversation later, and a reload shows it.
+        ...(rows ? {} : { pending: true }),
+      });
+    }
 
     try {
       const learnedConceptIds = new Set<string>();

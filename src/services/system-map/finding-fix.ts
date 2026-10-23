@@ -3,8 +3,8 @@
  * for the user:
  *   1. an org-canvas `SharedConversation` seeded with the finding (as
  *      `protect/findings/[refId]/chat` does for Jamie), then
- *   2. `launchOrchestratorTurn` — the call `/api/ask/quick` makes for a chat
- *      with the "Strut orchestrator" switch on — which launches strut's
+ *   2. `launchOrchestratorTurn` — the call `/api/ask/quick` makes for every
+ *      org chat message — which launches strut's
  *      `orchestrator` workflow; the orchestrator starts a `job` that opens
  *      the PR.
  * Nothing new comes back: the orchestrator turn and the job settle through

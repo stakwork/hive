@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 // job-turn's server neighbours, not under test here.
 vi.mock("@/lib/db", () => ({ db: {} }));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: vi.fn(), notifyCanvasCardJob: vi.fn() }));
-vi.mock("@/services/canvas-strut-autoturn", () => ({ invokeCanvasAgentOnJobTurn: vi.fn() }));
 vi.mock("@/services/strut-orchestrator-wake", () => ({ invokeOrchestratorOnJobTurn: vi.fn() }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: vi.fn() }));
 
