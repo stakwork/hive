@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { ChatsLayout } from "./ChatsLayout";
 import { ArtifactPanel } from "./artifacts/ArtifactPanel";
 import Link from "next/link";
+import { buildPageContextPath, type PageContext } from "@/lib/jamie-page-context";
 import { canvasTab, orgPageView, type CanvasTab } from "./useOrgView";
 import { Desk } from "./brainstorm-board/Desk";
 import { InfiniteCanvas } from "./infinite-canvas/InfiniteCanvas";
@@ -227,6 +228,8 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
    * scope by name in replies.
    */
   const [currentCanvasBreadcrumb, setCurrentCanvasBreadcrumb] = useState("");
+  /** The same trail with refs — the path of the orchestrator's "where the user is" line. */
+  const [canvasTrail, setCanvasTrail] = useState<{ label: string; ref?: string }[]>([]);
 
   // Optional `?chat=<conversationId>` preload. The URL tracks the live
   // conversation row (set on row creation, and what "copy share link"
@@ -462,8 +465,9 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     [searchParams.get("r")],
   );
 
-  const handleCanvasBreadcrumbChange = useCallback((breadcrumb: string) => {
+  const handleCanvasBreadcrumbChange = useCallback((breadcrumb: string, entries?: { label: string; ref?: string }[]) => {
     setCurrentCanvasBreadcrumb(breadcrumb);
+    setCanvasTrail(entries ?? []);
   }, []);
 
   // On the graph view the chat waits, collapsed, until asked for — before
@@ -504,6 +508,36 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     [mode, selectedNodes],
   );
 
+  // Where the user is, for the Strut orchestrator's context line: the
+  // existing breadcrumb trail (canvas) topped up with the open initiative.
+  const pageContext = useMemo<PageContext>(() => {
+    const ws = initiativeFocus ? workspaces.find((w) => w.slug === initiativeFocus.workspaceSlug) : undefined;
+    return {
+      surface: "org",
+      view: mode,
+      ...(mode === "canvas" ? { tab } : {}),
+      path: buildPageContextPath({
+        orgName: orgName ?? githubLogin,
+        entries: mode === "canvas" ? canvasTrail : [],
+        workspace: ws ? { slug: ws.slug, name: ws.name, ref: `ws:${ws.id}` } : null,
+        initiative:
+          mode === "canvas" && initiativeFocus
+            ? {
+                ref: initiativeFocus.initiativeRefId,
+                name: initiativeFocus.initiativeName,
+                selectedRef: initiativeFocus.selectedRefId,
+                selectedType: initiativeFocus.selectedType,
+                selectedLabel: initiativeFocus.selectedLabel,
+              }
+            : null,
+      }),
+      ...(mode === "graph" && graphFocus ? { selected: [{ ref: graphFocus.refId, name: graphFocus.name, type: graphFocus.type }] } : {}),
+      ...(brainstormFocus && mode === "canvas"
+        ? { question: { ref: brainstormFocus.rootRefId, text: brainstormFocus.rootText } }
+        : {}),
+    };
+  }, [mode, tab, canvasTrail, workspaces, initiativeFocus, brainstormFocus, graphFocus, orgName, githubLogin]);
+
   useEffect(() => {
     if (!chatReady || conversationStarted) return;
 
@@ -541,6 +575,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
         selectedNodeId: contextNodeId,
         selectedNodeIds: contextNodeIds,
         graphFocus,
+        pageContext,
       },
       seedMessages,
       sharedChatId ?? undefined,
@@ -572,6 +607,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
       graphFocus,
       brainstormFocus,
       initiativeFocus,
+      pageContext,
     });
   }, [
     conversationStarted,
@@ -586,6 +622,7 @@ export function OrgCanvasView({ githubLogin, orgId, orgName }: OrgCanvasViewProp
     graphFocus,
     brainstormFocus,
     initiativeFocus,
+    pageContext,
   ]);
 
   // Mount auto-save (write-through to `chat_conversations`). Lives at
