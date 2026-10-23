@@ -122,8 +122,20 @@ describe("layoutScene", () => {
 
   it("keeps the open tree when a follow-up is picked", () => {
     const q = "mock-brainstorm-repo";
-    const first = board.nodes.find((n) => n.id === q)!.options![0]!;
-    const grown = { nodes: board.nodes.concat({ id: "fu", ws: "ws", type: "question" as const, name: "Follow-up", author: "strut" as const, about: SIGNUP, follows: first.id, options: [] }) };
+    const opt = board.nodes.find((n) => n.id === q)!.options!;
+    const first = opt.find((o) => !board.nodes.some((n) => n.follows === o.id))!;
+    const grown = {
+      nodes: board.nodes.concat({
+        id: "fu",
+        ws: "ws",
+        type: "question" as const,
+        name: "Follow-up",
+        author: "strut" as const,
+        about: SIGNUP,
+        follows: first.id,
+        options: [1, 2, 3].map((i) => ({ ...first, id: `fu-${i}`, letter: "ABC"[i - 1], chosen: false, rejected: false })),
+      }),
+    };
     expect(openTree(grown, SIGNUP, { [SIGNUP]: "fu" })).toBe(q);
     expect(layoutScene(grown, DESK, { open: { [SIGNUP]: q } }).has("fu")).toBe(true);
   });
