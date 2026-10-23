@@ -6,9 +6,8 @@
  * card in `_components/StrutProposalCard.tsx`). Pure: no server or client
  * imports, so both sides can use it.
  *
- * A browser with the "Strut orchestrator" switch on (the chat's ⋯ menu,
- * `_state/strutEnginePreference.ts`, sent as `strutEngine: true`) sends
- * each canvas-chat message as ONE run of the workflow, with the
+ * Jamie runs on it (`docs/jamie-engine.md`): each turn of an org
+ * conversation is ONE run of the workflow, with the
  * conversation's row id as the `session`: strut's agent remembers the
  * conversation itself, so nothing is replayed to it. Its reply comes back
  * through the strut-runs webhook in the job turn's shape — `{ text,

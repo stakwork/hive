@@ -1,17 +1,14 @@
 "use client";
 
 import React from "react";
-import { useEffect, useState, type ReactNode } from "react";
-import { Archive, Clock, ListTree, Share2, Split, Workflow } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Archive, Clock, Share2, Split } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { AutomationsDialog } from "../AgentSettingsMenu";
 import { useChatShareFork } from "../SidebarChat";
 import { startNewOrgConversation } from "../../_state/openOrgConversation";
 import { useMobileOrg } from "./MobileOrgContext";
-import { readSlimPromptPreference, writeSlimPromptPreference } from "../../_state/slimPromptPreference";
-import { readStrutEnginePreference, writeStrutEnginePreference } from "../../_state/strutEnginePreference";
 
 const ROW =
   "flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-base transition-colors active:bg-muted disabled:opacity-40";
@@ -44,7 +41,7 @@ interface MobileChatActionsSheetProps {
 /**
  * What the desktop header's Share and ⋯ menu do, as a bottom sheet: Share,
  * Fork, and the agent settings. The handlers are the desktop's own
- * (`useChatShareFork`, the slim-prompt preference, `AutomationsDialog`).
+ * (`useChatShareFork`, `AutomationsDialog`).
  */
 export function MobileChatActionsSheet({ githubLogin, open, onOpenChange }: MobileChatActionsSheetProps) {
   const { serverConversationId, isStreaming, isForking, handleShare, handleFork } = useChatShareFork(githubLogin);
@@ -53,28 +50,7 @@ export function MobileChatActionsSheet({ githubLogin, open, onOpenChange }: Mobi
   const activeItem = chatList?.groups
     .flatMap((group) => group.items)
     .find((item) => item.id === serverConversationId);
-  const [slimPrompt, setSlimPrompt] = useState(false);
-  const [strutEngine, setStrutEngine] = useState(true);
   const [automationsOpen, setAutomationsOpen] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setSlimPrompt(readSlimPromptPreference());
-      setStrutEngine(readStrutEnginePreference());
-    }
-  }, [open]);
-
-  const toggleSlimPrompt = () => {
-    const next = !slimPrompt;
-    setSlimPrompt(next);
-    writeSlimPromptPreference(next);
-  };
-
-  const toggleStrutEngine = () => {
-    const next = !strutEngine;
-    setStrutEngine(next);
-    writeStrutEnginePreference(next);
-  };
 
   return (
     <>
@@ -123,37 +99,6 @@ export function MobileChatActionsSheet({ githubLogin, open, onOpenChange }: Mobi
           <p className="px-3 pb-1 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Agent settings
           </p>
-          {/* The whole row toggles; the switch is the control a screen reader gets. */}
-          <div className={ROW} onClick={toggleSlimPrompt}>
-            <span className="text-muted-foreground [&_svg]:h-5 [&_svg]:w-5">
-              <ListTree />
-            </span>
-            <span className="flex-1">Concept-tree prompt</span>
-            <Switch
-              checked={slimPrompt}
-              aria-label="Concept-tree prompt"
-              onClick={(e) => e.stopPropagation()}
-              onCheckedChange={(next) => {
-                setSlimPrompt(next);
-                writeSlimPromptPreference(next);
-              }}
-            />
-          </div>
-          <div className={ROW} onClick={toggleStrutEngine}>
-            <span className="text-muted-foreground [&_svg]:h-5 [&_svg]:w-5">
-              <Workflow />
-            </span>
-            <span className="flex-1">Strut orchestrator</span>
-            <Switch
-              checked={strutEngine}
-              aria-label="Strut orchestrator"
-              onClick={(e) => e.stopPropagation()}
-              onCheckedChange={(next) => {
-                setStrutEngine(next);
-                writeStrutEnginePreference(next);
-              }}
-            />
-          </div>
           <Row
             icon={<Clock />}
             onClick={() => {

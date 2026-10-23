@@ -1,18 +1,19 @@
 /**
- * The wake of a job strut's ORCHESTRATOR started — hive wakes the
- * orchestrator, not its own canvas agent.
+ * The wake of a job turn — hive wakes strut's orchestrator, the engine
+ * behind Jamie (`docs/jamie-engine.md`), on the conversation the job
+ * replies into.
  *
- * A conversation on the strut engine (`docs/jamie-engine.md`) has strut's
- * `orchestrator` answering; when it starts a job inside strut
- * (`job/start`), the job's `run.end` reaches hive under the orchestrator
- * turn's callback and the strut-runs webhook adopts it as a `job_turn`
- * row (`via: "orchestrator"` on its input). That row lands in the
- * conversation like any job's — the collapsed record with its cards — and
- * this is where the readable part comes from: one turn of the orchestrator
- * on the same conversation and session, launched by `launchOrchestratorTurn`
- * with a wake prompt in place of a person's message, so the agent that
- * remembers what it asked the job for writes the summary. Its reply lands
- * as a normal orchestrator row.
+ * A job reaches a conversation two ways: the orchestrator started it
+ * inside strut (`job/start`), and the job's `run.end` reaches hive under
+ * the orchestrator turn's callback, where the strut-runs webhook adopts it
+ * as a `job_turn` row (`via: "orchestrator"` on its input); or hive
+ * launched the turn itself — a card's action, an event about an artifact
+ * the job reported, a job an older conversation started. Either way the
+ * row lands in the conversation as the collapsed record with its cards,
+ * and this is where the readable part comes from: one turn of the
+ * orchestrator on the same conversation and session, launched by
+ * `launchOrchestratorTurn` with a wake prompt in place of a person's
+ * message. Its reply lands as a normal orchestrator row.
  *
  * The prompt carries the job's reply INLINE: the orchestrator sees only
  * its own session, never hive's rows, so the text it is reacting to (capped),
@@ -23,19 +24,14 @@
  * `ORCHESTRATOR_SILENT_MARKER`, since the orchestrator has no tool hive
  * could watch (the handler turns it into a `silent` row the chat hides).
  *
- * Gated through `runGatedAutoTurn` (`canvas-strut-autoturn.ts`) like
- * hive's own wakes — kill switch, claim, idempotency (here the launch
- * marker that carries this wake's id) and the loop breaker, which here
- * counts job rows since the last human message (`countTrailingJobRows`):
- * continue → the job lands → wake → continue → … stops at
- * `MAX_CONSECUTIVE_STRUT_DISPATCHES` rounds — with ONE gate waived, the
- * owner's `canvasAutonomousTurns` opt-in (`ownerOptIn: false`). That
- * switch guards the canvas agent acting as the user on its own; it
- * defaults off and no UI sets it any more. The strut engine is a choice
- * the person made themselves (the per-browser switch, docs/jamie-engine.md),
- * a job the orchestrator started is one they asked for, and without the
- * wake the orchestrator never sees the job's reply or its question: the
- * person's "ok, do it" would reach an agent that never saw what was asked.
+ * Gated through `runGatedAutoTurn` (`canvas-strut-autoturn.ts`): kill
+ * switch, claim, idempotency (here the launch marker that carries this
+ * wake's id) and the loop breaker, which here counts job rows since the
+ * last human message (`countTrailingJobRows`): continue → the job lands →
+ * wake → continue → … stops at `MAX_CONSECUTIVE_STRUT_DISPATCHES` rounds.
+ * No opt-in: without the wake the orchestrator never sees the job's reply
+ * or its question, and the person's "ok, do it" would reach an agent that
+ * never saw what was asked.
  *
  * Busy is "not yet", never a notice. The session takes one turn at a time
  * — a person's message in flight, or the orchestrator turn that started
@@ -85,6 +81,12 @@ export interface OrchestratorJobWakeArgs {
   publicBaseUrl: string;
   /** The turn was started by hive for an event about an artifact the job reported — not by the orchestrator, not by the user. */
   event?: ArtifactEvent;
+  /**
+   * The orchestrator started the job (`via: "orchestrator"` on the row).
+   * Otherwise hive did — a card, or a conversation from before Jamie ran
+   * on strut — and the prompt does not say "which you started".
+   */
+  startedByOrchestrator: boolean;
 }
 
 /** What the wake launches with — injectable so the retry is testable without the clock. */
@@ -145,7 +147,7 @@ export function buildOrchestratorJobWakeText(args: OrchestratorJobWakeArgs): str
   if (args.event) return buildEventWakeText(args, args.event);
   return (
     `You were invoked because job \`${args.jobId}\` ("${args.title}") on workspace \`${args.workspaceSlug}\` ` +
-    `— which you started with job/start — has ${describeOutcome(args)}. ` +
+    `— ${args.startedByOrchestrator ? "which you started with job/start" : "which was started from this conversation"} — has ${describeOutcome(args)}. ` +
     "Hive has already written the job's entry into this conversation for the user, COLLAPSED: it is written in detail " +
     "(a code change lists files, functions and line numbers) and the user expands it only to check. Your reply is what they read. " +
     `${renderJobReply(args)}\n` +
@@ -200,9 +202,6 @@ export async function invokeOrchestratorOnJobTurn(
       conversationId,
       wakeId,
       about: { jobId, outcome: args.outcome },
-      // The engine was the person's choice; the wake is not theirs to opt
-      // into a second time (file header).
-      ownerOptIn: false,
       // The launch marker of a wake carries its id: once it is there, the
       // orchestrator has (or had) the turn, whatever became of the reply.
       alreadyHandled: (messages) =>

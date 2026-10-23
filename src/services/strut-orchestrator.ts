@@ -1,16 +1,16 @@
 /**
  * Jamie on strut — the launch (`lib/strut-orchestrator.ts` for the
  * contract; the completion handler in `strut-runs/orchestrator-turn.ts`;
- * the per-browser switch in `_state/strutEnginePreference.ts`).
+ * `docs/jamie-engine.md` for every way a turn starts).
  *
- * When a canvas chat request carries `strutEngine: true` — the "Strut
- * orchestrator" switch in the chat's ⋯ menu — the route hands the
- * message here instead of to `runCanvasAgent`: one launch of strut's
- * `orchestrator` workflow on the org's strut (`resolveStrutTarget`,
- * purpose `orchestrator`), with the conversation's row id as the
- * `session`, the message behind the workspace line the lab's agent reads,
- * its files as the launch's `attachments`, and the time + the person's
- * zone as `context.line`. The reply lands
+ * Every turn of an org conversation comes here — a person's message (the
+ * chat route, the sync route), an automation, a check-back, a job's wake:
+ * one launch of strut's `orchestrator` workflow on the org's strut
+ * (`resolveStrutTarget`, purpose `orchestrator`), with the conversation's
+ * row id as the `session`, the message behind the workspace line the lab's
+ * agent reads, its files as the launch's `attachments`, the person's model
+ * pick as `params.model`, and the time + the person's zone as
+ * `context.line`. The reply lands
  * through the strut-runs webhook; the route answers at once with an empty
  * synthetic stream, and a launch-marker row (`orchestrator-launch-<id>`)
  * carries the working card until the reply row takes its place.
@@ -34,8 +34,9 @@ import {
   orchestratorContextLine,
   orchestratorLaunchRowId,
   orchestratorPrompt,
+  orchestratorRowId,
 } from "@/lib/strut-orchestrator";
-import type { StoredAttachment } from "@/services/canvas-turn-persistence";
+import type { StoredAttachment, StoredMessage } from "@/services/canvas-turn-persistence";
 import { skippedAttachmentsNote, strutAttachments } from "@/services/strut-attachments";
 import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
 import { describeStrutTargetError, resolveStrutTarget } from "@/services/strut-target";
@@ -72,6 +73,11 @@ export interface OrchestratorTurnArgs {
    * strut as the line after the canvas line.
    */
   pageContext?: PageContext;
+  /**
+   * The person's model pick (`User.chatAgentModel`, the composer's model
+   * picker), sent as `params.model`; omitted → the workflow's own default.
+   */
+  model?: string;
   /**
    * The turn is a WAKE on a job row (`strut-orchestrator-wake.ts`), not a
    * person's message: recorded on the launch marker as its idempotency
@@ -140,6 +146,7 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
         },
       },
       ...(args.focus ? { rowInput: { focus: args.focus } } : {}),
+      ...(args.model ? { params: { model: args.model } } : {}),
       ...(files?.attachments.length ? { attachments: files.attachments } : {}),
       publicBaseUrl,
       conversationId,
@@ -160,7 +167,7 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
         status: "error",
         error:
           err.code === "workflow_missing"
-            ? "This swarm's strut has no `orchestrator` workflow yet (its lab is not on a build that seeds it). Turn the Strut orchestrator switch off, or update the swarm."
+            ? "This swarm's strut has no `orchestrator` workflow yet (its lab is not on a build that seeds it). Update the swarm."
             : err.message,
       };
     }
@@ -227,6 +234,55 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
     ...(args.wakeId ? { wakeId: args.wakeId } : {}),
   });
   return { status: "started", runId: dispatched.runId, strutRunId: dispatched.strutRunId };
+}
+
+// ─── Waiting for the reply ───────────────────────────────────────────────
+
+/** How long a caller that answers in-request waits for the reply (under the sync route's 800 s). */
+export const ORCHESTRATOR_REPLY_WAIT_MS = 600_000;
+const ORCHESTRATOR_REPLY_POLL_MS = 1_500;
+
+export interface OrchestratorReplyWaitDeps {
+  sleep: (ms: number) => Promise<void>;
+  now: () => number;
+}
+
+const defaultWaitDeps: OrchestratorReplyWaitDeps = {
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now: () => Date.now(),
+};
+
+/**
+ * For a caller that must answer in-request (the sync route): wait until
+ * the turn's reply rows have landed in the conversation, and return them —
+ * the reply (`orchestrator-<runId>`) and its proposal rows, which the
+ * handler appends in one transaction. Polls the run's status (cheap) until
+ * strut reported it, then the conversation. `null` when nothing landed
+ * within `timeoutMs`; the rows still land later and the conversation shows
+ * them.
+ */
+export async function awaitOrchestratorReply(
+  args: { conversationId: string; runId: string; timeoutMs?: number },
+  deps: Partial<OrchestratorReplyWaitDeps> = {},
+): Promise<StoredMessage[] | null> {
+  const { sleep, now } = { ...defaultWaitDeps, ...deps };
+  const deadline = now() + (args.timeoutMs ?? ORCHESTRATOR_REPLY_WAIT_MS);
+  const replyId = orchestratorRowId(args.runId);
+  for (;;) {
+    const run = await db.strutRun.findUnique({ where: { id: args.runId }, select: { status: true } });
+    if (!run) return null;
+    if (run.status !== StrutRunStatus.PENDING) {
+      const conversation = await db.sharedConversation.findUnique({
+        where: { id: args.conversationId },
+        select: { messages: true },
+      });
+      const messages = Array.isArray(conversation?.messages) ? (conversation.messages as unknown as StoredMessage[]) : [];
+      const rows = messages.filter((m) => m.id === replyId || m.id.startsWith(`${replyId}-`));
+      if (rows.some((m) => m.id === replyId)) return rows;
+    }
+    if (now() >= deadline) return null;
+    await sleep(ORCHESTRATOR_REPLY_POLL_MS);
+  }
 }
 
 // ─── The route's answer ──────────────────────────────────────────────────

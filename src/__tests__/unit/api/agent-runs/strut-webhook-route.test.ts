@@ -5,9 +5,10 @@
  *   - Auth: missing id / token, unknown row, a non-strut row, wrong token, rate limit.
  *   - A spent row (settled / superseded) is a 200 no-op — strut must not retry.
  *   - Malformed payloads and a chat id that does not match the row → 400.
- *   - Unsettled turn: fanned out, row stays PENDING (token still good), no wake.
- *   - Settled turn: fanned out, row claimed DELIVERED_WEBHOOK, wake scheduled once.
- *   - Settled error turn → FAILED. A lost claim schedules no wake.
+ *   - Unsettled turn: fanned out, row stays PENDING (token still good).
+ *   - Settled turn: fanned out, row claimed DELIVERED_WEBHOOK; no agent is
+ *     woken (Hive's canvas agent no longer answers Jamie).
+ *   - Settled error turn → FAILED.
  *   - Fan-out failure → 500 and nothing claimed (strut retries).
  *   - Delivery target comes from the row, never the payload.
  *   - The chat's activity is read for the row's chat as the row's user, and
@@ -18,13 +19,12 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 import crypto from "crypto";
 import { NextRequest } from "next/server";
 
-const { mockFindUnique, mockUpdateMany, mockRateLimit, mockFanOut, mockWake, mockActivity, afterCallbacks } =
+const { mockFindUnique, mockUpdateMany, mockRateLimit, mockFanOut, mockActivity, afterCallbacks } =
   vi.hoisted(() => ({
     mockFindUnique: vi.fn(),
     mockUpdateMany: vi.fn(),
     mockRateLimit: vi.fn(),
     mockFanOut: vi.fn(),
-    mockWake: vi.fn(),
     mockActivity: vi.fn(),
     afterCallbacks: [] as Array<() => Promise<void>>,
   }));
@@ -45,7 +45,6 @@ vi.mock("@/services/canvas-strut-fanout", () => ({
 }));
 vi.mock("@/services/strut-chat-activity", () => ({ readStrutChatActivity: mockActivity }));
 vi.mock("@/lib/ai/strutTools", () => ({ STRUT_AGENT_KIND: "strut_chat" }));
-vi.mock("@/services/canvas-strut-autoturn", () => ({ invokeCanvasAgentOnStrutSettled: mockWake }));
 
 import { POST } from "@/app/api/agent-runs/webhook/strut/route";
 
@@ -153,24 +152,14 @@ describe("POST /api/agent-runs/webhook/strut", () => {
     });
   });
 
-  test("a settled turn claims the row and schedules the wake", async () => {
+  test("a settled turn claims the row and wakes no agent", async () => {
     const res = await post(body());
     expect(res.status).toBe(200);
     expect(mockUpdateMany).toHaveBeenCalledWith({
       where: { id: "run-1", tokenHash: HASH, status: "PENDING" },
       data: { status: "DELIVERED_WEBHOOK", sessionId: "chat-9", result: "Published clipper v1." },
     });
-    expect(afterCallbacks).toHaveLength(1);
-    await afterCallbacks[0]();
-    expect(mockWake).toHaveBeenCalledWith({
-      conversationId: "conv-1",
-      wakeId: "strut-run-1-0-turn.end",
-      workspaceSlug: "acme",
-      chatId: "chat-9",
-      title: "Build clipper",
-      failed: false,
-      publicBaseUrl: expect.stringContaining("hive.example.com"),
-    });
+    expect(afterCallbacks).toHaveLength(0);
   });
 
   test("a settled error turn is FAILED; an oversized reply is demoted to an error", async () => {
@@ -205,10 +194,9 @@ describe("POST /api/agent-runs/webhook/strut", () => {
     expect(mockActivity).not.toHaveBeenCalled();
   });
 
-  test("a lost claim schedules no wake", async () => {
+  test("a lost claim is still a 200", async () => {
     mockUpdateMany.mockResolvedValue({ count: 0 });
     expect((await post(body())).status).toBe(200);
-    expect(afterCallbacks).toHaveLength(0);
   });
 
   test("a failed fan-out is a 500 and claims nothing", async () => {

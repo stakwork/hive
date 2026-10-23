@@ -54,8 +54,8 @@ describe("MobileChatScreen", () => {
     expect(await screen.findByTestId("mobile-chat-actions-sheet")).toBeInTheDocument();
     expect(screen.getByText("Share link")).toBeInTheDocument();
     expect(screen.getByText("Fork into my copy")).toBeInTheDocument();
-    expect(screen.getByText("Concept-tree prompt")).toBeInTheDocument();
-    expect(screen.getByText("Strut orchestrator")).toBeInTheDocument();
+    expect(screen.queryByText("Concept-tree prompt")).toBeNull();
+    expect(screen.queryByText("Strut orchestrator")).toBeNull();
     expect(screen.getByText("Automations")).toBeInTheDocument();
     // No list row for this chat in the test shell, so there is nothing to archive.
     expect(screen.getByRole("button", { name: /Archive chat/ })).toBeDisabled();

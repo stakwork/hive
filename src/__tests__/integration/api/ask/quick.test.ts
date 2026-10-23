@@ -113,11 +113,21 @@ vi.mock('@/lib/pusher', () => ({
   pusherServer: {
     trigger: vi.fn(),
   },
+  notifyCanvasConversationUpdated: vi.fn(),
 }));
+
+// An org-canvas turn runs on strut's orchestrator (docs/jamie-engine.md):
+// the launch is mocked, the route's empty synthetic stream is real.
+const { mockRunOrchestratorTurn } = vi.hoisted(() => ({ mockRunOrchestratorTurn: vi.fn() }));
+vi.mock('@/services/strut-orchestrator', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/strut-orchestrator')>();
+  return { ...actual, runOrchestratorTurn: mockRunOrchestratorTurn };
+});
 
 import { streamText } from 'ai';
 import { getModel } from '@/lib/ai/provider';
 import { getQuickAskPrefixMessages } from '@/lib/constants/prompt';
+import { syntheticTurnResponse } from '@/services/strut-orchestrator';
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -1164,7 +1174,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       expect(response.status).toBe(401);
     });
 
-    it('org-canvas second turn succeeds via fallback lookup (happy path)', async () => {
+    it('org-canvas second turn succeeds via fallback lookup, on strut (happy path)', async () => {
       // Create user, org, workspace, swarm so validateUserBelongsToOrg passes
       const user = await createTestUser({
         email: generateUniqueId('user') + '@example.com',
@@ -1220,10 +1230,7 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
         },
       });
 
-      const mockStream = {
-        fullStream: new ReadableStream({ start: (c) => c.close() }),
-      };
-      vi.mocked(streamText).mockReturnValue(mockStream as any);
+      mockRunOrchestratorTurn.mockResolvedValue(syntheticTurnResponse(null));
 
       const request = createAuthenticatedPostRequest(
         '/api/ask/quick',
@@ -1237,16 +1244,22 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       );
 
       const response = await POST(request);
-      expect(response.status).not.toBe(400);
-      expect(streamText).toHaveBeenCalledWith(
-        expect.objectContaining({
-          messages: expect.arrayContaining([
-            expect.objectContaining({ role: 'user', content: 'First org question' }),
-            expect.objectContaining({ role: 'assistant', content: 'First org answer' }),
-            expect.objectContaining({ role: 'user', content: 'Second org question from mobile' }),
-          ]),
-        })
-      );
+      expect(response.status).toBe(200);
+      // A client that sends no turn id gets one minted: the message is
+      // persisted on the conversation and the turn goes to strut, whose
+      // session holds the history — nothing is replayed, no Hive agent runs.
+      expect(streamText).not.toHaveBeenCalled();
+      expect(mockRunOrchestratorTurn).toHaveBeenCalledTimes(1);
+      expect(mockRunOrchestratorTurn.mock.calls[0][0]).toMatchObject({
+        userId: user.id,
+        orgId: org.id,
+        conversationId: conversation.id,
+        message: 'Second org question from mobile',
+      });
+      const row = await db.sharedConversation.findUnique({ where: { id: conversation.id }, select: { messages: true } });
+      const stored = row?.messages as Array<{ id: string; role: string; content: string }>;
+      const sent = stored.find((m) => m.role === 'user' && m.content === 'Second org question from mobile');
+      expect(sent?.id).toMatch(/^[0-9a-f-]{36}-u$/);
     });
 
     it('returns 400 for org-canvas conversation owned by a different user (IDOR guard)', async () => {
@@ -1568,12 +1581,10 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
     });
   });
 
-  describe('Org toolset for single-workspace orgs', () => {
-    // Regression guard. The route used to hand `orgId` to the agent only
-    // when the request carried MORE than one workspace slug, so every org
-    // with exactly one workspace ran its org canvas chat as the plain
-    // per-workspace agent — no `propose_initiative`, no `read_canvas`, no
-    // capability prompt suffix. Many orgs have a single workspace.
+  describe('Org turns run on strut', () => {
+    // Every org-canvas turn goes to strut's `orchestrator`, whatever the
+    // request says and however many workspaces the org has; a request
+    // with no orgId (the workspace dashboard chat) still runs Hive's agent.
     async function setupSingleWorkspaceOrg() {
       const owner = await createTestUser({
         email: generateUniqueId('owner') + '@example.com',
@@ -1628,9 +1639,9 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
       return Object.keys(callArgs.tools ?? {});
     }
 
-    it('merges the org toolset (propose_initiative, read_canvas) for a one-workspace org', async () => {
+    it('an org turn runs on strut, as the user — never Hive\'s agent', async () => {
       const { owner, org, workspace } = await setupSingleWorkspaceOrg();
-      mockStream();
+      mockRunOrchestratorTurn.mockResolvedValue(syntheticTurnResponse(null, { 'X-Conversation-Id': 'conv' }));
 
       const response = await POST(
         createAuthenticatedPostRequest(
@@ -1639,45 +1650,40 @@ describe('POST /api/ask/quick - Quick Ask Integration Tests', () => {
             messages: [{ role: 'user', content: 'create a milestone for arm64 support' }],
             workspaceSlugs: [workspace.slug],
             orgId: org.id,
+            turnId: '6f1c0d3e-1111-4222-8333-444455556666',
+            // An old tab's switch is ignored: there is no other engine.
+            strutEngine: false,
           },
           owner,
         ),
       );
       expect(response.status).toBe(200);
-
-      const toolNames = lastToolNames();
-      expect(toolNames).not.toContain('propose_feature');
-      expect(toolNames).toContain('propose_milestone');
-      expect(toolNames).toContain('propose_initiative');
-      expect(toolNames).toContain('read_canvas');
-      expect(toolNames).not.toContain('send_to_feature_planner');
+      expect(streamText).not.toHaveBeenCalled();
+      expect(mockRunOrchestratorTurn).toHaveBeenCalledTimes(1);
+      expect(mockRunOrchestratorTurn.mock.calls[0][0]).toMatchObject({
+        userId: owner.id,
+        orgId: org.id,
+        message: 'create a milestone for arm64 support',
+      });
     });
 
-    it('names the bound workspace in the single-workspace org prompt overlay', async () => {
+    it('an org request with nothing to send launches nothing', async () => {
       const { owner, org, workspace } = await setupSingleWorkspaceOrg();
-      mockStream();
-
-      await POST(
+      const response = await POST(
         createAuthenticatedPostRequest(
           '/api/ask/quick',
           {
-            messages: [{ role: 'user', content: 'hi' }],
-            workspaceSlug: workspace.slug,
+            messages: [{ role: 'user', content: '   ' }],
+            workspaceSlugs: [workspace.slug],
             orgId: org.id,
+            turnId: '6f1c0d3e-1111-4222-8333-444455556667',
           },
           owner,
         ),
       );
-
-      // 6th positional arg of getQuickAskPrefixMessages is the org overlay
-      // context; the roadmap tools need the slug it carries.
-      const prefixCall = vi.mocked(getQuickAskPrefixMessages).mock.calls.at(-1)!;
-      expect(prefixCall[5]).toEqual(
-        expect.objectContaining({
-          orgId: org.id,
-          workspace: expect.objectContaining({ slug: workspace.slug }),
-        }),
-      );
+      expect(response.status).toBe(200);
+      expect(streamText).not.toHaveBeenCalled();
+      expect(mockRunOrchestratorTurn).not.toHaveBeenCalled();
     });
 
     it('still runs the plain per-workspace agent when no orgId is sent (dashboard chat)', async () => {

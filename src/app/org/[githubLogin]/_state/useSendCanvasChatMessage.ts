@@ -41,8 +41,6 @@ import {
   type CanvasChatMessage,
   type ToolCall,
 } from "./canvasChatStore";
-import { readSlimPromptPreference } from "./slimPromptPreference";
-import { readStrutEnginePreference } from "./strutEnginePreference";
 
 /**
  * Scan a rebuilt assistant-side timeline for a completed `schedule_check`
@@ -283,10 +281,6 @@ export function useSendCanvasChatMessage() {
             ...(ctx.brainstormFocus ? { brainstormFocus: ctx.brainstormFocus } : {}),
             ...(ctx.initiativeFocus ? { initiativeFocus: ctx.initiativeFocus } : {}),
             ...(ctx.pageContext ? { pageContext: ctx.pageContext } : {}),
-            ...(readSlimPromptPreference() ? { slimPrompt: true } : {}),
-            // Per-browser, on by default: run this turn on strut's orchestrator
-            // workflow instead of Hive's agent (`strutEnginePreference.ts`).
-            ...(readStrutEnginePreference() ? { strutEngine: true } : {}),
             // Sidebar chat doesn't render follow-ups or provenance;
             // skip the server-side enrichment block to save tokens
             // and a stakgraph round-trip per turn.
