@@ -24,7 +24,9 @@ import { buildArchitecture, PACKAGE_TYPE } from "./architecture";
 import { buildDependencies, pullsIn } from "./dependencies";
 import { ArchitectureView } from "./ArchitectureView";
 import { buildMapLayout } from "./map-layout";
-import { MapView } from "./MapView";
+import { MapView, type MapBadge, type MapHighlight } from "./MapView";
+import { buildMapFindingIndex, findingColor, findingHighlight, findingPackagePaths } from "./map-findings";
+import { MapFindingDetails, MapFindingsList, useFindingRelated, useMapFindings } from "./MapFindings";
 import { DependenciesView, PackageDetails } from "./DependenciesView";
 import { NodeDetails } from "./NodeDetails";
 import { matchPackageCves } from "./package-cves";
@@ -85,6 +87,9 @@ export function DomainNodesTab() {
   const [view, setView] = useState<View>("architecture");
   const [archSelected, setArchSelected] = useState<string | null>(null);
   const [mapSelected, setMapSelected] = useState<string | null>(null);
+  const [mapFinding, setMapFinding] = useState<string | null>(null);
+  const [findingComponent, setFindingComponent] = useState<string | null>(null);
+  const [mapPeek, setMapPeek] = useState<string | null>(null);
   const [pkgSelected, setPkgSelected] = useState<string | null>(null);
   const [cveResult, setCveResult] = useState<PackageCvesResult | null>(null);
 
@@ -165,6 +170,11 @@ export function DomainNodesTab() {
 
   const nodes = useMemo(() => (data?.status === "ready" ? data.nodes : []), [data]);
   const edges = useMemo(() => (data?.status === "ready" ? data.edges : []), [data]);
+  // Findings on the Map: read once the Map is opened; one related read per finding picked.
+  const findingsState = useMapFindings(workspace?.slug, view === "map");
+  const findings = useMemo(() => (findingsState.status === "ready" ? findingsState.findings : []), [findingsState]);
+  const finding = mapFinding ? findings.find((f) => f.refId === mapFinding) : undefined;
+  const findingRelated = useFindingRelated(workspace?.slug, finding ? finding.refId : null);
   const typeCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const n of nodes) counts.set(n.type, (counts.get(n.type) ?? 0) + 1);
@@ -190,6 +200,57 @@ export function DomainNodesTab() {
   const architecture = useMemo(() => buildArchitecture(nodes, edges), [nodes, edges]);
   const dependencies = useMemo(() => buildDependencies(nodes, edges), [nodes, edges]);
   const mapModel = useMemo(() => buildMapLayout(nodes, edges), [nodes, edges]);
+  const findingIndex = useMemo(() => buildMapFindingIndex(findings, mapModel), [findings, mapModel]);
+  const lit = useMemo(
+    () =>
+      finding
+        ? findingHighlight(
+            finding,
+            findingIndex,
+            mapModel,
+            findingRelated?.status === "ready" ? findingRelated.related : null,
+          )
+        : null,
+    [finding, findingIndex, mapModel, findingRelated],
+  );
+  const findingPaths = useMemo(
+    () =>
+      finding
+        ? findingPackagePaths(
+            finding,
+            findingIndex,
+            mapModel,
+            findingRelated?.status === "ready" ? findingRelated.related : null,
+            findingRelated?.status === "ready" ? findingRelated.paths : [],
+          )
+        : [],
+    [finding, findingIndex, mapModel, findingRelated],
+  );
+  const highlight = useMemo<MapHighlight | null>(
+    () => (finding && lit ? { ids: lit.ids, color: findingColor(finding.severity), key: finding.refId } : null),
+    [finding, lit],
+  );
+  const findingBadges = useMemo(() => {
+    const badges = new Map<string, MapBadge>();
+    for (const [id, list] of findingIndex.byComponent) {
+      badges.set(id, {
+        count: list.length,
+        color: findingColor(list[0]?.severity),
+        title: `${list.length} finding${list.length === 1 ? "" : "s"}, worst ${list[0]?.severity ?? "unrated"} — click to list them`,
+      });
+    }
+    return badges;
+  }, [findingIndex]);
+  const pickFinding = useCallback((refId: string | null) => {
+    setMapFinding(refId);
+    setMapSelected(null);
+    setMapPeek(null);
+  }, []);
+  const clearFinding = useCallback(() => {
+    setMapFinding(null);
+    setMapPeek(null);
+  }, []);
+
   const cves = useMemo(
     () => (cveResult ? matchPackageCves(cveResult.vulnerable, dependencies.packages, cveResult.checkedAt) : null),
     [cveResult, dependencies.packages],
@@ -359,6 +420,22 @@ export function DomainNodesTab() {
           cves={cves}
           selectedId={mapSelected}
           onSelect={setMapSelected}
+          highlight={highlight}
+          onClearHighlight={clearFinding}
+          badges={findingBadges}
+          onBadge={setFindingComponent}
+          peekId={mapPeek}
+          sidePanel={
+            <MapFindingsList
+              state={findingsState}
+              index={findingIndex}
+              model={mapModel}
+              selectedId={mapFinding}
+              onSelect={pickFinding}
+              component={findingComponent}
+              onComponent={setFindingComponent}
+            />
+          }
           panel={
             mapPkg ? (
               <PackageDetails
@@ -371,7 +448,7 @@ export function DomainNodesTab() {
                 onClose={() => setMapSelected(null)}
               />
             ) : (
-              mapNode && (
+              (mapNode && (
                 <NodeDetails
                   node={mapNode}
                   edges={edges}
@@ -382,7 +459,28 @@ export function DomainNodesTab() {
                   onOpenPackages={openPackages}
                   onClose={() => setMapSelected(null)}
                 />
-              )
+              )) ||
+              (finding && lit ? (
+                <MapFindingDetails
+                  finding={finding}
+                  highlight={lit}
+                  related={findingRelated}
+                  model={mapModel}
+                  paths={findingPaths}
+                  // A path walked in jarvis is whole already; only the local fallback needs the packages.
+                  onLoadPackages={
+                    findingRelated?.status === "ready" && findingRelated.paths.length
+                      ? undefined
+                      : () => want(PACKAGE_TYPE)
+                  }
+                  onOpen={(refId) => {
+                    setMapPeek(null);
+                    setMapSelected(refId);
+                  }}
+                  onHover={setMapPeek}
+                  onClose={clearFinding}
+                />
+              ) : null)
             )
           }
         />
