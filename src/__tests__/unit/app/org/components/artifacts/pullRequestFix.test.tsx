@@ -132,7 +132,7 @@ describe("PullRequestPanel — Merge", () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe("/api/orgs/acme-org/strut/pull-request/merge");
     expect(init).toMatchObject({ method: "POST", credentials: "same-origin" });
-    expect(JSON.parse(init.body)).toMatchObject({ repo: "acme/app", number: 12, mergeMethod: "merge" });
+    expect(JSON.parse(init.body)).toMatchObject({ repo: "acme/app", number: 12, mergeMethod: "squash" });
     expect(screen.getByText("Merged")).toBeInTheDocument();
     expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["canvas-pr-live", "acme-org", "acme/app", 12] });
   });

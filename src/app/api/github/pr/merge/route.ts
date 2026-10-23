@@ -10,9 +10,28 @@ import { validateWorkspaceAccess } from "@/services/workspace";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type MergeMethod = "merge" | "squash" | "rebase";
+
+const NOT_ALLOWED_RE = /(merge commits|squash merges|rebase merges|merge method).*not allowed|not allowed.*merge/i;
+
+function githubMessage(err: unknown): string | undefined {
+  return (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+}
+
+/** Another method the repo allows (prefer squash, then rebase, then merge). */
+async function pickAllowedMethod(octokit: Octokit, owner: string, repo: string, tried: MergeMethod) {
+  const { data } = await octokit.repos.get({ owner, repo });
+  const allowed: [MergeMethod, boolean | undefined][] = [
+    ["squash", data.allow_squash_merge],
+    ["rebase", data.allow_rebase_merge],
+    ["merge", data.allow_merge_commit],
+  ];
+  return allowed.find(([m, ok]) => ok && m !== tried)?.[0];
+}
+
 const bodySchema = z.object({
   artifactId: z.string().min(1),
-  mergeMethod: z.enum(["merge", "squash", "rebase"]).default("merge"),
+  mergeMethod: z.enum(["merge", "squash", "rebase"]).default("squash"),
 });
 
 function parsePrUrl(url: unknown): { owner: string; repo: string; number: number } | null {
@@ -101,7 +120,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: result } = await octokit.pulls.merge({ ...ref, merge_method: body.mergeMethod });
+    const doMerge = (method: MergeMethod) =>
+      octokit.pulls.merge({ ...ref, merge_method: method, sha: pull.head.sha });
+    let result;
+    try {
+      ({ data: result } = await doMerge(body.mergeMethod));
+    } catch (err) {
+      const msg = githubMessage(err);
+      if ((err as { status?: number }).status !== 405 || !msg || !NOT_ALLOWED_RE.test(msg)) throw err;
+      const alt = await pickAllowedMethod(octokit, pr.owner, pr.repo, body.mergeMethod);
+      if (!alt) throw err;
+      ({ data: result } = await doMerge(alt));
+    }
     await markMerged();
     return NextResponse.json({ success: true, merged: true, sha: result.sha });
   } catch (error) {
@@ -109,13 +139,18 @@ export async function POST(request: NextRequest) {
     console.error("[GithubPrMerge] merge failed", { artifactId: artifact.id, status });
     if (status === 405) {
       return NextResponse.json(
-        { error: "Pull request is not mergeable (checks failing, conflicts, or branch protection)" },
+        {
+          error:
+            githubMessage(error) ??
+            (error as Error).message ??
+            "Pull request is not mergeable (checks failing, conflicts, or branch protection)",
+        },
         { status: 409 },
       );
     }
     if (status === 409) {
       return NextResponse.json(
-        { error: "Pull request head branch was modified. Refresh and try again." },
+        { error: githubMessage(error) ?? "Pull request head branch was modified. Refresh and try again." },
         { status: 409 },
       );
     }

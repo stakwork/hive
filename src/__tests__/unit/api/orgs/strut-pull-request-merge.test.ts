@@ -6,16 +6,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
-const { mockResolveAuthorizedOrgId, mockGetUserAppTokens, mockReconcile, mockGet, mockMerge } = vi.hoisted(() => ({
+const { mockResolveAuthorizedOrgId, mockGetUserAppTokens, mockReconcile, mockGet, mockMerge, mockRepoGet } = vi.hoisted(() => ({
   mockReconcile: vi.fn(),
   mockResolveAuthorizedOrgId: vi.fn(),
   mockGetUserAppTokens: vi.fn(),
   mockGet: vi.fn(),
   mockMerge: vi.fn(),
+  mockRepoGet: vi.fn(),
 }));
 
 class FakeOctokit {
   pulls = { get: mockGet, merge: mockMerge };
+  repos = { get: mockRepoGet };
   constructor(readonly options: { auth: string }) {}
 }
 
@@ -50,7 +52,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockResolveAuthorizedOrgId.mockResolvedValue("org-1");
   mockGetUserAppTokens.mockResolvedValue({ accessToken: "tok-viewer" });
-  mockGet.mockResolvedValue({ data: { merged: false, state: "open", draft: false, mergeable: true } });
+  mockGet.mockResolvedValue({ data: { merged: false, state: "open", draft: false, mergeable: true, head: { sha: "headsha" } } });
   mockMerge.mockResolvedValue({ data: { merged: true, sha: "deadbeef" } });
   mockReconcile.mockResolvedValue({ updated: 1 });
 });
@@ -84,12 +86,17 @@ describe("POST /api/orgs/[githubLogin]/strut/pull-request/merge", () => {
     expect(mockGet).not.toHaveBeenCalled();
   });
 
-  it("merges, defaulting to the merge method, and reconciles as merged", async () => {
+  it("merges, defaulting to squash, and reconciles as merged", async () => {
     const res = await POST(request({ ...GOOD, conversationId: "conv-1" }), params);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true, merged: true, sha: "deadbeef" });
     expect(mockGetUserAppTokens).toHaveBeenCalledWith("user-1", "acme");
-    expect(mockMerge).toHaveBeenCalledWith({ owner: "acme", repo: "app", pull_number: 7, merge_method: "merge" });
+    expect(mockMerge).toHaveBeenCalledWith({
+      owner: "acme",
+      repo: "app", pull_number: 7,
+      merge_method: "squash",
+      sha: "headsha",
+    });
     expect(mockReconcile).toHaveBeenCalledWith({
       conversationId: "conv-1",
       orgId: "org-1",
@@ -101,8 +108,8 @@ describe("POST /api/orgs/[githubLogin]/strut/pull-request/merge", () => {
   });
 
   it("passes the requested merge method", async () => {
-    await POST(request({ ...GOOD, mergeMethod: "squash" }), params);
-    expect(mockMerge).toHaveBeenCalledWith(expect.objectContaining({ merge_method: "squash" }));
+    await POST(request({ ...GOOD, mergeMethod: "rebase" }), params);
+    expect(mockMerge).toHaveBeenCalledWith(expect.objectContaining({ merge_method: "rebase" }));
     expect(mockReconcile).not.toHaveBeenCalled();
   });
 
@@ -134,6 +141,29 @@ describe("POST /api/orgs/[githubLogin]/strut/pull-request/merge", () => {
     expect((await POST(request(GOOD), params)).status).toBe(403);
     mockMerge.mockRejectedValue(Object.assign(new Error("x"), { status: 500 }));
     expect((await POST(request(GOOD), params)).status).toBe(502);
+  });
+
+  it("surfaces GitHub's 405 message", async () => {
+    mockMerge.mockRejectedValue(
+      Object.assign(new Error("x"), { status: 405, response: { data: { message: "Required status check is expected." } } }),
+    );
+    const res = await POST(request(GOOD), params);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("Required status check is expected.");
+    expect(mockRepoGet).not.toHaveBeenCalled();
+  });
+
+  it("retries once with an allowed method when the method is not allowed", async () => {
+    mockMerge
+      .mockRejectedValueOnce(
+        Object.assign(new Error("x"), { status: 405, response: { data: { message: "Squash merges are not allowed on this repository." } } }),
+      )
+      .mockResolvedValueOnce({ data: { merged: true, sha: "beef" } });
+    mockRepoGet.mockResolvedValue({ data: { allow_squash_merge: false, allow_rebase_merge: true, allow_merge_commit: true } });
+    const res = await POST(request(GOOD), params);
+    expect(res.status).toBe(200);
+    expect(mockMerge).toHaveBeenCalledTimes(2);
+    expect(mockMerge).toHaveBeenLastCalledWith(expect.objectContaining({ merge_method: "rebase", sha: "headsha" }));
   });
 
   it("a throwing reconcile still returns 200", async () => {
