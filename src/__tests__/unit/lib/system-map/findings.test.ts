@@ -1,8 +1,18 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { listFindings, loadFindingRelated, parseFinding } from "@/lib/system-map/findings";
+import {
+  buildDependencyPaths,
+  listFindings,
+  loadFindingPaths,
+  loadFindingRelated,
+  parseFinding,
+} from "@/lib/system-map/findings";
 import * as nodes from "@/services/swarm/api/nodes";
 
-vi.mock("@/services/swarm/api/nodes", () => ({ listNodesByType: vi.fn(), getNodeEdges: vi.fn() }));
+vi.mock("@/services/swarm/api/nodes", () => ({
+  listNodesByType: vi.fn(),
+  getNodeEdges: vi.fn(),
+  getNodeAncestors: vi.fn(),
+}));
 
 const CONFIG = { jarvisUrl: "https://jarvis.test", apiKey: "key" };
 
@@ -153,5 +163,100 @@ describe("loadFindingRelated", () => {
     vi.mocked(nodes.getNodeEdges).mockResolvedValue({ ok: false, nodes: [], edges: [], error: "502 Bad Gateway" });
 
     expect(await loadFindingRelated(CONFIG, "f-1")).toEqual({ ok: false, error: "502 Bad Gateway" });
+  });
+});
+
+function ancestor(refId: string, nodeType: string, depth: number, parents: string[], version?: string) {
+  return {
+    ref_id: refId,
+    name: refId,
+    node_type: nodeType,
+    depth,
+    parents,
+    properties: version ? { name: refId, version } : undefined,
+  };
+}
+
+// peel → sphinx-memes → aws-creds → quick-xml; brain → quick-xml directly; aws-creds also used by staklink.
+const ANCESTORS = [
+  ancestor("aws-creds", "SysPackage", 1, ["sphinx-memes", "staklink"], "0.36.0"),
+  ancestor("brain", "SysComponent", 1, []),
+  ancestor("sphinx-memes", "SysPackage", 2, ["peel"], "0.1.0"),
+  ancestor("staklink", "SysComponent", 2, []),
+  ancestor("peel", "SysComponent", 3, []),
+];
+const QUICK_XML = { refId: "quick-xml", nodeType: "SysPackage", name: "quick-xml", version: "0.30.0" };
+const names = (paths: { name: string; version: string | null }[][]) =>
+  paths.map((path) => path.map((s) => (s.version ? `${s.name}@${s.version}` : s.name)).join(" → "));
+
+describe("buildDependencyPaths", () => {
+  it("runs from each component down to the package, nearest components first", () => {
+    expect(names(buildDependencyPaths(QUICK_XML, ANCESTORS))).toEqual([
+      "brain → quick-xml@0.30.0",
+      "staklink → aws-creds@0.36.0 → quick-xml@0.30.0",
+      "peel → sphinx-memes@0.1.0 → aws-creds@0.36.0 → quick-xml@0.30.0",
+    ]);
+  });
+
+  it("keeps at most `max` paths", () => {
+    expect(names(buildDependencyPaths(QUICK_XML, ANCESTORS, 2))).toEqual([
+      "brain → quick-xml@0.30.0",
+      "staklink → aws-creds@0.36.0 → quick-xml@0.30.0",
+    ]);
+  });
+
+  it("does not walk past a component", () => {
+    const withParent = [
+      ancestor("brain", "SysComponent", 1, ["monorepo"]),
+      ancestor("monorepo", "SysComponent", 2, []),
+    ];
+    expect(names(buildDependencyPaths(QUICK_XML, withParent))).toEqual(["brain → quick-xml@0.30.0"]);
+  });
+
+  it("is empty when nothing above the package is a component", () => {
+    expect(buildDependencyPaths(QUICK_XML, [ancestor("aws-creds", "SysPackage", 1, [])])).toEqual([]);
+  });
+});
+
+describe("loadFindingPaths", () => {
+  beforeEach(() => vi.clearAllMocks());
+  const related = (refId: string, nodeType: string) => ({
+    refId,
+    nodeType,
+    edgeType: "AFFECTS",
+    direction: "out" as const,
+    name: refId,
+    file: null,
+    properties: { name: refId, version: "0.30.0" },
+  });
+
+  it("walks DEPENDS_ON up from each related package with its properties", async () => {
+    vi.mocked(nodes.getNodeAncestors).mockResolvedValue({ ok: true, ancestors: ANCESTORS });
+
+    const result = await loadFindingPaths(CONFIG, [related("cwe-1", "CWE"), related("quick-xml", "SysPackage")]);
+
+    expect(nodes.getNodeAncestors).toHaveBeenCalledTimes(1);
+    expect(nodes.getNodeAncestors).toHaveBeenCalledWith(CONFIG, "quick-xml", {
+      edgeType: "DEPENDS_ON",
+      direction: "in",
+      maxDepth: 10,
+      includeProperties: true,
+    });
+    expect(names(result.paths)[0]).toBe("brain → quick-xml@0.30.0");
+    expect(result.errors).toEqual([]);
+  });
+
+  it("reports a jarvis without the ancestors endpoint and returns no paths", async () => {
+    vi.mocked(nodes.getNodeAncestors).mockResolvedValue({
+      ok: false,
+      ancestors: [],
+      status: 404,
+      endpointMissing: true,
+    });
+
+    expect(await loadFindingPaths(CONFIG, [related("quick-xml", "SysPackage")])).toEqual({
+      paths: [],
+      errors: ["quick-xml: ancestors endpoint missing"],
+    });
   });
 });

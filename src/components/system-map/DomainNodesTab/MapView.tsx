@@ -318,12 +318,32 @@ interface Label {
  * dependency board to the right. Drag to pan, ⌘/Ctrl + scroll (or pinch)
  * to zoom, scroll to move. `selectedId` may be any node or package.
  */
+export interface MapHighlight {
+  /** Map nodes and package chips to light; everything else dims. The camera fits them when this changes. */
+  ids: Set<string>;
+  color: string;
+  /** Changes when the highlight is a new one (another finding), so the camera fits once per highlight. */
+  key: string;
+}
+
+export interface MapBadge {
+  count: number;
+  color: string;
+  title: string;
+}
+
 export function MapView({
   model,
   cves,
   selectedId,
   onSelect,
   panel,
+  sidePanel,
+  highlight = null,
+  onClearHighlight,
+  badges,
+  onBadge,
+  peekId = null,
 }: {
   model: MapModel;
   /** The package CVE check, when one has run: colours the chips. */
@@ -332,15 +352,29 @@ export function MapView({
   onSelect: (refId: string | null) => void;
   /** The detail panel, floated over the canvas. */
   panel?: React.ReactNode;
+  /** A second floating panel on the left (the findings list). */
+  sidePanel?: React.ReactNode;
+  /** Nodes lit from outside the map (a finding's related nodes); a hover or selection still wins. */
+  highlight?: MapHighlight | null;
+  /** Escape clears the highlight too. */
+  onClearHighlight?: () => void;
+  /** A count badge on a node (findings in a component). */
+  badges?: Map<string, MapBadge>;
+  onBadge?: (refId: string) => void;
+  /** A node hovered outside the map (a step of a finding's path): lit as if hovered here. */
+  peekId?: string | null;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const sidePanelRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>({ x: 0, y: TOP, k: 4 });
   const viewRef = useRef(view);
   viewRef.current = view;
   const [tier, setTier] = useState<Tier>("map");
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [focusZone, setFocusZone] = useState<string | null>(null);
+  /** The component whose packages the board is lit for (opened from that component). */
+  const [boardOwner, setBoardOwner] = useState<string | null>(null);
   const [show, setShow] = useState({ flow: true, reach: true, guard: true, struct: false, labels: false });
   const [widths, setWidths] = useState<Map<string, [number, number]>>(() => new Map());
   const labelEls = useRef(new Map<string, HTMLElement>());
@@ -356,9 +390,11 @@ export function MapView({
   // ---- camera ----
   const insets = useCallback(() => {
     const vp = viewportRef.current;
-    const right = panel && vp && vp.clientWidth > 900 ? (panelRef.current?.offsetWidth ?? 320) + 24 : 0;
-    return { top: TOP, right, bottom: 16, left: 16 };
-  }, [panel]);
+    const wide = !!vp && vp.clientWidth > 900;
+    const right = panel && wide ? (panelRef.current?.offsetWidth ?? 320) + 24 : 0;
+    const left = sidePanel && wide ? (sidePanelRef.current?.offsetWidth ?? 288) + 24 : 16;
+    return { top: TOP, right, bottom: 16, left };
+  }, [panel, sidePanel]);
   const fitBox = useCallback(
     (box: Box, pad = 1.06) => {
       const vp = viewportRef.current;
@@ -402,7 +438,9 @@ export function MapView({
     const vp = viewportRef.current;
     if (!vp) return;
     const onWheel = (event: WheelEvent) => {
-      if (panelRef.current?.contains(event.target as Node)) return;
+      if (panelRef.current?.contains(event.target as Node) || sidePanelRef.current?.contains(event.target as Node)) {
+        return;
+      }
       event.preventDefault();
       if (event.ctrlKey || event.metaKey) {
         const rect = vp.getBoundingClientRect();
@@ -419,7 +457,14 @@ export function MapView({
   const [dragging, setDragging] = useState(false);
   const onPointerDown = (event: React.PointerEvent) => {
     const target = event.target as HTMLElement;
-    if (event.button !== 0 || target.closest("[data-interactive]") || panelRef.current?.contains(target)) return;
+    if (
+      event.button !== 0 ||
+      target.closest("[data-interactive]") ||
+      panelRef.current?.contains(target) ||
+      sidePanelRef.current?.contains(target)
+    ) {
+      return;
+    }
     drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, vx: view.x, vy: view.y, moved: false };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   };
@@ -442,13 +487,18 @@ export function MapView({
   };
 
   // ---- tiers ----
-  const enterBoard = useCallback(() => {
-    setTier("board");
-    setFocusZone(null);
-    onSelect(null);
-    fitBox(boardBox, 1.04);
-  }, [fitBox, boardBox, onSelect]);
+  const enterBoard = useCallback(
+    (owner: string | null = null) => {
+      setBoardOwner(owner);
+      setTier("board");
+      setFocusZone(null);
+      onSelect(null);
+      fitBox(boardBox, 1.04);
+    },
+    [fitBox, boardBox, onSelect],
+  );
   const leaveBoard = useCallback(() => {
+    setBoardOwner(null);
     setTier("map");
     onSelect(null);
     fitBox(mapBox);
@@ -482,10 +532,31 @@ export function MapView({
       if (event.key !== "Escape") return;
       onSelect(null);
       setFocusZone(null);
+      setBoardOwner(null);
+      onClearHighlight?.();
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [onSelect]);
+  }, [onSelect, onClearHighlight]);
+
+  // Fit a new highlight's map nodes. Packages stay on the board unless it is opened.
+  const highlightKey = highlight ? `${highlight.key}:${highlight.ids.size}` : null;
+  const prevHighlight = useRef<string | null>(null);
+  useEffect(() => {
+    if (highlightKey === prevHighlight.current) return;
+    prevHighlight.current = highlightKey;
+    if (!highlight || highlight.ids.size === 0) return;
+    const pts = [...highlight.ids].map((id) => model.nodes.get(id)).filter((n): n is MapNode => !!n);
+    if (!pts.length) return;
+    setFocusZone(null);
+    setTier("map");
+    const box = union(pts.map((q) => ({ x0: q.x - q.w / 2, y0: q.y - q.h / 2, x1: q.x + q.w / 2, y1: q.y + q.h / 2 })));
+    const cx = (box.x0 + box.x1) / 2;
+    const cy = (box.y0 + box.y1) / 2;
+    const hw = Math.max((box.x1 - box.x0) / 2 + 8, 30);
+    const hh = Math.max((box.y1 - box.y0) / 2 + 8, 18);
+    fitBox({ x0: cx - hw, y0: cy - hh, x1: cx + hw, y1: cy + hh }, 1.05);
+  }, [highlightKey, highlight, model, fitBox]);
 
   // Bring a selection made elsewhere (a link in the panel) on screen.
   const prevSelected = useRef<string | null>(null);
@@ -519,7 +590,7 @@ export function MapView({
   }, [selectedId, model, tier, fitBox, insets]);
 
   // ---- emphasis ----
-  const focusId = hoverId ?? selectedId;
+  const focusId = hoverId ?? peekId ?? selectedId;
   const emphasis = useMemo(() => {
     const focusNode = focusId && model.nodes.has(focusId) ? focusId : null;
     const focusChip = focusId && model.chips.has(focusId) ? focusId : null;
@@ -533,6 +604,10 @@ export function MapView({
       const ids = new Set(r?.ids ?? []);
       litNodes = ids;
       litWires = (w) => ids.has(w.source) || ids.has(w.target);
+    } else if (highlight && !focusChip) {
+      const ids = highlight.ids;
+      litNodes = ids;
+      litWires = (w) => ids.has(w.source) && ids.has(w.target);
     }
     let chain: Set<string> | null = null;
     let down: Set<string> | null = null;
@@ -540,8 +615,10 @@ export function MapView({
       chain = new Set([focusChip, ...ancestors(model, focusChip)]);
       down = descendants(model, focusChip);
     }
-    return { focusNode, focusChip, litNodes, litWires, chain, down };
-  }, [focusId, focusZone, model]);
+    const ownerChips = boardOwner ? new Set(model.packagesOf.get(boardOwner) ?? []) : null;
+    const litChips = focusChip || focusNode ? null : ((highlight ?? null)?.ids ?? ownerChips);
+    return { focusNode, focusChip, litNodes, litWires, chain, down, litChips };
+  }, [focusId, focusZone, model, highlight, boardOwner]);
 
   // ---- wires (geometry is per model; styling per emphasis) ----
   const wires = useMemo(
@@ -672,6 +749,7 @@ export function MapView({
     const forced = new Set<string>();
     if (emphasis.litNodes && emphasis.focusNode) for (const id of emphasis.litNodes) forced.add(id);
     if (emphasis.chain) for (const id of emphasis.chain) forced.add(id);
+    if (highlight && !emphasis.focusNode && !emphasis.chain) for (const id of highlight.ids) forced.add(id);
     const near = k > 9;
     const placed: Box[] = [];
     const out = new Map<string, { x: number; y: number }>();
@@ -693,14 +771,14 @@ export function MapView({
       out.set(L.id, plate ? { x, y } : { x: x - w / 2, y: y - 4 - h });
     }
     return out;
-  }, [labels, widths, view, show.labels, emphasis, model, mapBox]);
+  }, [labels, widths, view, show.labels, emphasis, model, mapBox, highlight]);
 
   const dimNode = (id: string) => {
     if (emphasis.chain || emphasis.down) return false;
     return !!emphasis.litNodes && !emphasis.litNodes.has(id);
   };
   const dimChip = (id: string) => {
-    if (!emphasis.chain) return false;
+    if (!emphasis.chain) return !!emphasis.litChips && !emphasis.litChips.has(id);
     return !emphasis.chain.has(id) && !emphasis.down!.has(id);
   };
   const dimWire = (w: MapWire) => !!emphasis.litWires && !emphasis.litWires(w);
@@ -745,6 +823,8 @@ export function MapView({
   );
 
   const sign = model.regions.length ? signBox(model) : null;
+  // A selected component with packages: the board button opens the board lit for them.
+  const ownerForBoard = selectedId && model.packagesOf.get(selectedId)?.length ? selectedId : null;
   const showGroup = (kind: WireKind) => (kind === "cross" ? show.flow : show[kind]);
 
   return (
@@ -904,7 +984,7 @@ export function MapView({
               const color = n.secret ? GOLD : (TYPE_COLOR[n.node.type] ?? "#8a93a2");
               const id = n.node.refId;
               const selected = selectedId === id;
-              const scale = selected || hoverId === id ? 1.1 : 1;
+              const scale = selected || hoverId === id || peekId === id ? 1.1 : 1;
               const d = silhouette(n.glyph);
               return (
                 <g
@@ -934,8 +1014,46 @@ export function MapView({
                     strokeLinejoin="round"
                   />
                   <GlyphDetail glyph={n.glyph} color={color} />
+                  {highlight?.ids.has(id) && !selected && (
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke={highlight.color}
+                      strokeWidth={OL * 1.6}
+                      strokeDasharray="1 0.6"
+                      transform="scale(1.18)"
+                      data-testid="map-node-highlight"
+                    />
+                  )}
                   {selected && (
                     <path d={d} fill="none" className="stroke-primary" strokeWidth={OL * 1.6} transform="scale(1.12)" />
+                  )}
+                  {badges?.get(id) && (
+                    <g
+                      transform={`translate(${n.w / 2 - 0.6} ${-n.h / 2 + 0.4})`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBadge?.(id);
+                      }}
+                      data-testid="map-node-badge"
+                    >
+                      <title>{badges.get(id)!.title}</title>
+                      <circle
+                        r={1.5}
+                        fill={badges.get(id)!.color}
+                        className="stroke-background"
+                        strokeWidth={OL * 1.2}
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize={badges.get(id)!.count > 99 ? 1.1 : 1.5}
+                        fontWeight={700}
+                        fill="#fff"
+                      >
+                        {badges.get(id)!.count > 999 ? "1k+" : badges.get(id)!.count}
+                      </text>
+                    </g>
                   )}
                 </g>
               );
@@ -949,7 +1067,7 @@ export function MapView({
                 tabIndex={0}
                 className="cursor-pointer"
                 transform={`translate(${(sign.x0 + sign.x1) / 2} ${(sign.y0 + sign.y1) / 2 - 3})`}
-                onClick={enterBoard}
+                onClick={() => enterBoard()}
                 onKeyDown={(e) => e.key === "Enter" && enterBoard()}
               >
                 <title>Open the package board</title>
@@ -1048,7 +1166,7 @@ export function MapView({
               const id = c.node.refId;
               const color = chipColor(c);
               const selected = selectedId === id;
-              const scale = selected || hoverId === id ? 1.18 : 1;
+              const scale = selected || hoverId === id || peekId === id ? 1.18 : 1;
               return (
                 <g
                   key={id}
@@ -1089,6 +1207,15 @@ export function MapView({
                     className="fill-foreground"
                     fillOpacity={0.7}
                   />
+                  {highlight?.ids.has(id) && !selected && (
+                    <path
+                      d={rr(c.w, c.h, 0.3)}
+                      fill="none"
+                      stroke={highlight.color}
+                      strokeWidth={OL * 1.4}
+                      transform="scale(1.25)"
+                    />
+                  )}
                   {selected && (
                     <path
                       d={rr(c.w, c.h, 0.3)}
@@ -1228,7 +1355,7 @@ export function MapView({
               variant={tier === "board" ? "secondary" : "default"}
               size="sm"
               className="h-6 px-2 text-xs"
-              onClick={tier === "board" ? leaveBoard : enterBoard}
+              onClick={tier === "board" ? leaveBoard : () => enterBoard(ownerForBoard)}
               data-testid="map-board-toggle"
             >
               {tier === "board" ? (
@@ -1237,7 +1364,9 @@ export function MapView({
                 </>
               ) : (
                 <>
-                  {model.stats.packages} packages
+                  {ownerForBoard
+                    ? `${model.packagesOf.get(ownerForBoard)!.length} packages of ${model.nodes.get(ownerForBoard)?.label ?? "it"}`
+                    : `${model.stats.packages} packages`}
                   {vulnerableCount > 0 && (
                     <span className="ml-1 rounded-full bg-red-600 px-1.5 text-[10px] text-white">
                       {vulnerableCount}
@@ -1249,6 +1378,18 @@ export function MapView({
             </Button>
           )}
         </div>
+
+        {sidePanel && (
+          <div
+            ref={sidePanelRef}
+            data-interactive
+            className="absolute left-3 top-14 z-10 w-72 max-w-[calc(100%-1.5rem)] cursor-auto overflow-y-auto overscroll-contain rounded-lg border bg-background/95 p-3 shadow-md backdrop-blur"
+            style={{ maxHeight: "calc(100% - 4.5rem)" }}
+            data-testid="map-side-panel"
+          >
+            {sidePanel}
+          </div>
+        )}
 
         {panel && (
           <div
@@ -1263,9 +1404,11 @@ export function MapView({
         )}
 
         <p className="pointer-events-none absolute bottom-2 left-3 text-[11px] text-muted-foreground">
-          {tier === "board"
-            ? "Bottom row: what the repo declares directly; each row up is one dependency hop deeper. Click a chip for the chain that pulls it in."
-            : "Plates are trust zones; a red wire is a flow that crosses one. Hover to light a node's links, click for details. Drag to move, ⌘/Ctrl + scroll to zoom."}
+          {tier === "board" && boardOwner
+            ? `Lit: the ${model.packagesOf.get(boardOwner)?.length ?? 0} packages ${model.nodes.get(boardOwner)?.label ?? "the component"} depends on. Click a chip for its chain, Esc to clear.`
+            : tier === "board"
+              ? "Bottom row: what the repo declares directly; each row up is one dependency hop deeper. Click a chip for the chain that pulls it in."
+              : "Plates are trust zones; a red wire is a flow that crosses one. Hover to light a node's links, click for details. Drag to move, ⌘/Ctrl + scroll to zoom."}
         </p>
       </div>
 
@@ -1274,7 +1417,7 @@ export function MapView({
         {model.boards.length > 0 && (
           <button
             type="button"
-            onClick={enterBoard}
+            onClick={() => enterBoard()}
             className={cn(
               "relative flex w-52 shrink-0 items-center gap-2.5 rounded-lg border bg-background px-3 py-2 text-left hover:bg-muted/50",
               tier === "board" && "ring-2 ring-primary",

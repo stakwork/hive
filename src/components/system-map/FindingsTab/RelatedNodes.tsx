@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { SystemMapFindingRelated, SystemMapFindingRelatedResponse } from "@/types/system-map";
+import { FindingPaths } from "./FindingPaths";
 
 function RelatedRow({ node }: { node: SystemMapFindingRelated }) {
   const [open, setOpen] = useState(false);
@@ -40,7 +41,11 @@ function RelatedRow({ node }: { node: SystemMapFindingRelated }) {
   );
 }
 
-/** A finding's neighbours from every namespace, grouped by node type, read when the finding is first opened. */
+/**
+ * A finding's neighbours from every namespace, grouped by node type, read when
+ * the finding is first opened — with, for a finding about a package, the way
+ * that package gets in from the components.
+ */
 export function RelatedNodes({ refId }: { refId: string }) {
   const { workspace } = useWorkspace();
   const slug = workspace?.slug;
@@ -58,10 +63,12 @@ export function RelatedNodes({ refId }: { refId: string }) {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return (await response.json()) as SystemMapFindingRelatedResponse;
       })
-      .catch((error: unknown): SystemMapFindingRelatedResponse => ({
-        status: "error",
-        error: error instanceof Error ? error.message : "Request failed",
-      }))
+      .catch(
+        (error: unknown): SystemMapFindingRelatedResponse => ({
+          status: "error",
+          error: error instanceof Error ? error.message : "Request failed",
+        }),
+      )
       .then((data) => {
         if (!controller.signal.aborted) setState({ refId, data });
       });
@@ -88,25 +95,34 @@ export function RelatedNodes({ refId }: { refId: string }) {
   if (groups.length === 0) {
     return <p className="text-xs text-muted-foreground/80">No related nodes.</p>;
   }
+  const paths = state.data.paths ?? [];
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" data-testid="finding-related">
-      {groups.map(({ nodeType, nodes }) => (
-        <div key={nodeType}>
-          <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            {nodeType} <span className="normal-case tracking-normal">· {nodes.length}</span>
-          </p>
-          <ul className="flex flex-col gap-1">
-            {nodes.map((node) => (
-              <RelatedRow key={`${node.refId}-${node.edgeType}-${node.direction}`} node={node} />
-            ))}
-          </ul>
+    <div className="space-y-3">
+      {paths.length > 0 && (
+        <div>
+          <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">How it gets in</p>
+          <FindingPaths paths={paths} />
         </div>
-      ))}
-      {state.data.truncated && (
-        <p className="text-[11px] text-muted-foreground md:col-span-2 xl:col-span-3">
-          Showing the first {state.data.related.length} related nodes.
-        </p>
       )}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" data-testid="finding-related">
+        {groups.map(({ nodeType, nodes }) => (
+          <div key={nodeType}>
+            <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              {nodeType} <span className="normal-case tracking-normal">· {nodes.length}</span>
+            </p>
+            <ul className="flex flex-col gap-1">
+              {nodes.map((node) => (
+                <RelatedRow key={`${node.refId}-${node.edgeType}-${node.direction}`} node={node} />
+              ))}
+            </ul>
+          </div>
+        ))}
+        {state.data.truncated && (
+          <p className="text-[11px] text-muted-foreground md:col-span-2 xl:col-span-3">
+            Showing the first {state.data.related.length} related nodes.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
