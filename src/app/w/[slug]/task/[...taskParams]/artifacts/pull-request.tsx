@@ -38,7 +38,7 @@ export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
       const res = await fetch("/api/github/pr/merge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artifactId: artifact.id, mergeMethod: "merge" }),
+        body: JSON.stringify({ artifactId: artifact.id, mergeMethod: "squash" }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
