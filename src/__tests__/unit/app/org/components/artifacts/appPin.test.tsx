@@ -54,6 +54,8 @@ describe("AppPinAction", () => {
     expect(screen.getByRole("button", { name: "Pinned in Open Health · Unpin" })).toBeInTheDocument();
     expect(changed).toHaveBeenCalledTimes(1);
     expect((changed.mock.calls[0][0] as CustomEvent).detail).toEqual({ swarmId: "swarm-oh" });
+    // Pinning an app that follows latest holds it: its versions are read again.
+    expect(mockFetch.mock.calls[2][0]).toBe("/api/orgs/stakwork/strut/apps/versions?swarmId=swarm-oh&app=acme%2Fbench");
     window.removeEventListener(STRUT_APPS_CHANGED_EVENT, changed);
   });
 
