@@ -13,8 +13,13 @@
  *     what a person types as `@slug`:
  *
  *         POST {its mcp}/mint-token        { scope: "lab:peer" }
- *         PUT  {org lab}/peers/{slug}       { baseUrl: {its lab}, token, label }
+ *         PUT  {org lab}/peers/{slug}       { baseUrl: {its lab}, token, label,
+ *                                            description?, repos? }
  *
+ *     `description` and `repos` (the workspace's repository URLs) are what
+ *     `strut/list-peers` shows an agent choosing a peer: the code a question
+ *     is about tells it which workspace to ask. A strut older than that
+ *     ignores both.
  *     No `sub`: the org strut forwards each run's person as `x-strut-actor`.
  *     Re-minted every pass — a token lives 60 days and strut reveals nothing
  *     about one it holds. A swarm whose mcp answers without
@@ -29,6 +34,11 @@
  *     handed the org strut. Pushed when missing or inside the renew window,
  *     and never recorded on the member row (`record: false`) — that row is
  *     the org strut's own desired state.
+ *
+ * Every ACTIVE workspace swarm in the org, the org strut included, also gets
+ * its own **self record**: `PUT {its lab}/self { id: slug, label: name,
+ * description?, repos? }`, authenticated with that swarm's own key. A strut
+ * without `/self` (404/405/501) is skipped; a failure never blocks the above.
  *
  * Nothing here runs on a request: a job turn, a builder dispatch and the
  * embed only use what the last pass left. A new swarm, or a person's first
@@ -72,6 +82,12 @@ export interface StrutPeersReconcileResult {
   peersUnsupported: number;
   /** Delegations put on a peer's strut. */
   delegationsPushed: number;
+  /** Self records put on a workspace's own strut. */
+  selfPushed: number;
+  /** Struts with no `/self` route yet (404, 405 or 501). */
+  selfUnsupported: number;
+  /** Self pushes that failed (also listed in `errors`). */
+  selfFailed: number;
   errors: StrutPeersReconcileError[];
   timestamp: Date;
 }
@@ -88,6 +104,8 @@ interface StrutSwarm {
   workspaceId: string;
   slug: string;
   name: string;
+  description?: string;
+  repos: string[];
   swarmId: string;
   swarmUrl: string;
   mcpBase: string;
@@ -104,6 +122,8 @@ type SwarmRow = {
   id: string;
   slug: string;
   name: string;
+  description?: string | null;
+  repositories?: { repositoryUrl: string }[];
   swarm: { id: string; swarmUrl: string | null; swarmApiKey: string | null } | null;
 };
 
@@ -118,6 +138,9 @@ export async function runStrutPeersReconcile(options: StrutPeersReconcileOptions
     peersPushed: 0,
     peersUnsupported: 0,
     delegationsPushed: 0,
+    selfPushed: 0,
+    selfUnsupported: 0,
+    selfFailed: 0,
     errors: [],
     timestamp: now,
   };
@@ -130,7 +153,15 @@ export async function runStrutPeersReconcile(options: StrutPeersReconcileOptions
     select: {
       id: true,
       githubLogin: true,
-      defaultWorkspace: { select: { id: true, slug: true, name: true, swarm: { select: SWARM_SELECT } } },
+      defaultWorkspace: { select: {
+          id: true,
+          slug: true,
+          name: true,
+          description: true,
+          repositories: { select: { repositoryUrl: true }, orderBy: { createdAt: "asc" } },
+          swarm: { select: SWARM_SELECT },
+        },
+      },
     },
   });
 
@@ -148,6 +179,9 @@ export async function runStrutPeersReconcile(options: StrutPeersReconcileOptions
     peersPushed: result.peersPushed,
     peersUnsupported: result.peersUnsupported,
     delegationsPushed: result.delegationsPushed,
+    selfPushed: result.selfPushed,
+    selfUnsupported: result.selfUnsupported,
+    selfFailed: result.selfFailed,
     errors: result.errors.length,
   });
   return result;
@@ -165,17 +199,28 @@ async function reconcileOrg(
   }
   const peers = await otherSwarms(org.id, home, org.githubLogin, result);
   result.orgsProcessed++;
-  if (peers.length === 0) return;
 
-  // 1. The peer records, every pass.
-  await Promise.all(
-    peers.map(async (peer) => {
+  // 1. The peer records and every workspace's self record, every pass.
+  const pushSelf = async (ws: StrutSwarm) => {
+    const pushed = await pushSelfRecord(ws);
+    if (pushed.status === "pushed") result.selfPushed++;
+    else if (pushed.status === "unsupported") result.selfUnsupported++;
+    else {
+      result.selfFailed++;
+      result.errors.push({ org: org.githubLogin, peer: ws.slug, error: pushed.error });
+    }
+  };
+  await Promise.all([
+    pushSelf(home),
+    ...peers.map(pushSelf),
+    ...peers.map(async (peer) => {
       const pushed = await pushPeerRecord(home, peer);
       if (pushed.status === "pushed") result.peersPushed++;
       else if (pushed.status === "unsupported") result.peersUnsupported++;
       else result.errors.push({ org: org.githubLogin, peer: peer.slug, error: pushed.error });
     }),
-  );
+  ]);
+  if (peers.length === 0) return;
 
   // 2. The users' delegations, through the org strut's gateway — behind the
   // ORG workspace's gates, the one gateway that bills these calls.
@@ -193,6 +238,8 @@ function toStrutSwarm(ws: SwarmRow): StrutSwarm | null {
     workspaceId: ws.id,
     slug: ws.slug,
     name: ws.name,
+    ...(ws.description?.trim() ? { description: ws.description.trim() } : {}),
+    repos: (ws.repositories ?? []).map((r) => r.repositoryUrl),
     swarmId: ws.swarm.id,
     swarmUrl: ws.swarm.swarmUrl,
     mcpBase,
@@ -209,7 +256,14 @@ async function otherSwarms(
 ): Promise<StrutSwarm[]> {
   const workspaces = await db.workspace.findMany({
     where: { sourceControlOrgId: orgId, deleted: false, swarm: { is: { status: "ACTIVE" } } },
-    select: { id: true, slug: true, name: true, swarm: { select: SWARM_SELECT } },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      description: true,
+      repositories: { select: { repositoryUrl: true }, orderBy: { createdAt: "asc" } },
+      swarm: { select: SWARM_SELECT },
+    },
   });
   const seen = new Set([home.swarmId]);
   const swarms: StrutSwarm[] = [];
@@ -269,7 +323,13 @@ async function pushPeerRecord(
         "x-api-token": home.lab.swarmApiKey,
         Authorization: `Bearer ${home.lab.swarmApiKey}`,
       },
-      body: JSON.stringify({ baseUrl: peer.lab.labBase, token: body.token, label: peer.name }),
+      body: JSON.stringify({
+        baseUrl: peer.lab.labBase,
+        token: body.token,
+        label: peer.name,
+        ...(peer.description ? { description: peer.description } : {}),
+        ...(peer.repos.length ? { repos: peer.repos } : {}),
+      }),
       cache: "no-store",
       signal: AbortSignal.timeout(STRUT_DELEGATION_HTTP_TIMEOUT_MS),
     });
@@ -278,6 +338,38 @@ async function pushPeerRecord(
       return { status: "unsupported" };
     }
     if (!put.ok) return { status: "failed", error: `PUT /peers/${peer.slug} returned ${put.status}` };
+    return { status: "pushed" };
+  } catch (err) {
+    return { status: "failed", error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Put a workspace's own identity (its self record) on its own strut. */
+async function pushSelfRecord(
+  ws: StrutSwarm,
+): Promise<{ status: "pushed" } | { status: "unsupported" } | { status: "failed"; error: string }> {
+  try {
+    const put = await fetch(`${ws.lab.labBase}/self`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-token": ws.lab.swarmApiKey,
+        Authorization: `Bearer ${ws.lab.swarmApiKey}`,
+      },
+      body: JSON.stringify({
+        id: ws.slug,
+        label: ws.name,
+        ...(ws.description ? { description: ws.description } : {}),
+        ...(ws.repos.length ? { repos: ws.repos } : {}),
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(STRUT_DELEGATION_HTTP_TIMEOUT_MS),
+    });
+    if (put.status === 404 || put.status === 405 || put.status === 501) {
+      logger.info("Strut has no /self route yet; no self record", LOG_TAG, { workspace: ws.slug });
+      return { status: "unsupported" };
+    }
+    if (!put.ok) return { status: "failed", error: `PUT /self on ${ws.slug} returned ${put.status}` };
     return { status: "pushed" };
   } catch (err) {
     return { status: "failed", error: err instanceof Error ? err.message : String(err) };

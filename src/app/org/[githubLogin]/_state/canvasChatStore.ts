@@ -53,7 +53,14 @@
  * - **The dashboard chat's state.** `DashboardChat` keeps its own
  *   local state on purpose; we explicitly don't merge surfaces.
  */
+import type { PageContext } from "@/lib/jamie-page-context";
 import { create } from "zustand";
+import type {
+  OrchestratorLaunchRowSource,
+  OrchestratorRowSource,
+  StrutProposalResultRowSource,
+  StrutProposalRowSource,
+} from "@/lib/strut-orchestrator";
 import { devtools } from "zustand/middleware";
 import { STOPPED_TURN_TEXT } from "@/lib/ai/conversationHelpers";
 import type { ApprovalIntent, ApprovalResult, RejectionIntent } from "@/lib/proposals/types";
@@ -149,6 +156,8 @@ export type CanvasMessageSource =
       title?: string;
       /** The agent stopped for a decision: the question, verbatim. */
       ask?: string;
+      /** A workflow build on another workspace's strut: that workspace's slug, shown as `@<slug>`. */
+      peer?: string;
     }
   | {
       /**
@@ -186,7 +195,18 @@ export type CanvasMessageSource =
        * as a notice from the user (`toModelMessages`).
        */
       kind: "stopped";
-    };
+    }
+  /**
+   * Jamie on strut (`lib/strut-orchestrator.ts`; the chat's per-browser "Strut orchestrator"
+   * setting): the reply of an orchestrator turn (a plain bubble with its
+   * artifacts), the launch marker its working card hangs on, one row per
+   * proposal the turn made (`StrutProposalCard`), and a person's decision
+   * on one (a quiet line).
+   */
+  | OrchestratorRowSource
+  | OrchestratorLaunchRowSource
+  | StrutProposalRowSource
+  | StrutProposalResultRowSource;
 
 export interface CanvasChatMessage {
   id: string;
@@ -395,6 +415,17 @@ export interface BrainstormFocus {
   selectedLabel?: string | null;
 }
 
+/** The initiative the user is on (the infinite canvas on the Brainstorm tab) — hidden context, never in the visible message. */
+export interface InitiativeFocus {
+  workspaceSlug: string;
+  initiativeRefId: string;
+  initiativeName: string;
+  stage?: string | null;
+  selectedRefId?: string | null;
+  selectedType?: string | null;
+  selectedLabel?: string | null;
+}
+
 export interface ConversationContext {
   workspaceSlug: string | null;
   workspaceSlugs: string[];
@@ -408,6 +439,10 @@ export interface ConversationContext {
   graphFocus?: GraphFocus | null;
   /** Set while the Brainstorm board is mounted: what "this" means there. */
   brainstormFocus?: BrainstormFocus | null;
+  /** Set while an initiative is open on the infinite canvas: what "this" means there. */
+  initiativeFocus?: InitiativeFocus | null;
+  /** Where the user is (breadcrumb path…), told to strut's orchestrator as a line; names and refs only. */
+  pageContext?: PageContext | null;
 }
 
 // ─── Reserved slots for canvas-bound features (filled in later PRs) ─────────
@@ -508,6 +543,8 @@ interface CanvasChatState {
    * conversation's context.
    */
   brainstormFocus: BrainstormFocus | null;
+  /** The initiative open on the infinite canvas, published like `brainstormFocus`. */
+  initiativeFocus: InitiativeFocus | null;
   pendingInputDraft: string | null;
   /**
    * Text to APPEND (on a new line) to the chat input instead of replacing
@@ -683,6 +720,7 @@ interface CanvasChatState {
    * after consumption — callers usually shouldn't need to clear).
    */
   setBrainstormFocus: (focus: BrainstormFocus | null) => void;
+  setInitiativeFocus: (focus: InitiativeFocus | null) => void;
   setPendingInputDraft: (draft: string | null) => void;
   appendPendingInputDraft: (text: string) => void;
 
@@ -737,6 +775,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       ephemeralSeedCounts: {},
       locallyAuthoredTurnIds: new Set<string>(),
       brainstormFocus: null,
+      initiativeFocus: null,
       pendingInputDraft: null,
       pendingInputAppend: null,
       pendingDeeplink: null,
@@ -1189,6 +1228,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
         ),
 
       setBrainstormFocus: (focus) => set({ brainstormFocus: focus }, false, "setBrainstormFocus"),
+      setInitiativeFocus: (focus) => set({ initiativeFocus: focus }, false, "setInitiativeFocus"),
       setPendingInputDraft: (draft) => set({ pendingInputDraft: draft }, false, "setPendingInputDraft"),
       appendPendingInputDraft: (text) =>
         set(

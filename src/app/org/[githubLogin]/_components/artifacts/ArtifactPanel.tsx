@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef } from "react";
-import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import {
   DropdownMenu,
@@ -114,7 +114,7 @@ function ArtifactIndex({ artifacts }: { artifacts: ArtifactRef[] }) {
             <h3
               className={cn(
                 "flex items-center gap-1.5 px-2 pb-1 text-xs",
-                group.key === "waiting" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+                group.key === "waiting" ? "text-amber-600 dark-os:text-amber-400" : "text-muted-foreground",
               )}
             >
               <span className="truncate">{group.label}</span>
@@ -151,6 +151,9 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
   const content = state.status === "ready" ? state.content : null;
   const href = content && artifactHref(artifact.kind, content, githubLogin);
   const copyText = useMemo(() => content && spec.copyText?.(content), [spec, content]);
+  const { Actions } = spec;
+  // Bumped by Refresh: remounts the viewer, so an app's frame fetches its document afresh.
+  const [reloads, setReloads] = useState(0);
   const { openArtifactPanel, closeArtifactPanel } = useCanvasChatStore.getState();
   // The newest version is followed rather than pinned, so a later revision shows as it lands.
   const showVersion = (next: number) => openArtifactPanel(identity, next === versions.length - 1 ? null : next);
@@ -225,6 +228,12 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
+          {content && Actions && <Actions artifact={artifact} content={content} jobId={jobId} />}
+          {artifact.kind === "app" && (
+            <ToolbarButton label="Refresh" onClick={() => setReloads((n) => n + 1)}>
+              <RefreshCw className="h-4 w-4" />
+            </ToolbarButton>
+          )}
           {typeof copyText === "string" && (
             <CopyButton value={copyText} className="rounded p-1.5 hover:bg-muted [&_svg]:h-4 [&_svg]:w-4" />
           )}
@@ -250,7 +259,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
       <div className="min-h-0 flex-1">
         {state.status === "ready" ? (
           // Keyed so a viewer's own state — zoom, a filter, where it has browsed to — starts over with each artifact.
-          <ViewerBoundary key={`${identity}:${index}`}>
+          <ViewerBoundary key={`${identity}:${index}:${reloads}`}>
             <Viewer artifact={artifact} content={state.content} jobId={jobId} />
           </ViewerBoundary>
         ) : (
@@ -261,7 +270,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
   );
 }
 
-/** One line of the index. A brainstorm tree opens on the desk, anything else on the panel. */
+/** One line of the index. A brainstorm tree opens on the canvas at its card, anything else on the panel. */
 function IndexRow({ artifact }: { artifact: ArtifactRef }) {
   const spec = artifactKind(artifact.kind);
   const open = useOpenArtifact(useChatOrgLogin());

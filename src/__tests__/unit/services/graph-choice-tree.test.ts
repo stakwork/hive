@@ -30,7 +30,7 @@ beforeEach(() => {
         },
       };
     }
-    return { ok: true, meta, data: { columns: ["target", "source"], rows: [["child-1", FOCUS]] } };
+    return { ok: true, meta, data: { columns: ["type", "target", "source"], rows: [["PARENT_OF", "child-1", FOCUS]] } };
   });
 });
 
@@ -103,5 +103,140 @@ describe("getChoiceTree", () => {
   test("passes a query failure through", async () => {
     mockedQuery.mockResolvedValue({ ok: false, status: 503, message: "down" });
     expect(await getChoiceTree(caller, FOCUS)).toMatchObject({ ok: false, status: 503 });
+  });
+
+  describe("effects", () => {
+    const effectRows = [
+      { ref_id: "e1", name: "Low", description: "d", direction: "pro", impact: 0.2 },
+      { ref_id: "e2", name: "High", description: "d", direction: "con", impact: 1.7 },
+      { ref_id: "e3", name: "", description: "", direction: "pro", impact: 0.5 },
+      { ref_id: "e4", name: "Bad dir", direction: "meh", impact: 0.5 },
+      { ref_id: "e5", name: "No impact", direction: "pro", impact: "x" },
+    ];
+    beforeEach(() => {
+      mockedQuery.mockImplementation(async ({ query }) => {
+        if (String(query).includes("AS props")) {
+          return {
+            ok: true,
+            meta,
+            data: {
+              columns: ["effects", "props", "labels", "id"],
+              rows: [
+                [[], [["text", "Q"]], ["Question"], FOCUS],
+                [effectRows, [["text", "A"]], ["Option"], "o1"],
+                [effectRows, [["text", "Q2"]], ["Question"], "q2"],
+                [[], [["text", "B"]], ["Option"], "o2"],
+              ],
+            },
+          };
+        }
+        return { ok: true, meta, data: { columns: ["source", "target"], rows: [] } };
+      });
+    });
+
+    test("maps, sanitizes and sorts effects on options only; keeps them out of the tree walk", async () => {
+      const res = await getChoiceTree(caller, FOCUS);
+      if (!res.ok) throw new Error("expected ok");
+      const by = Object.fromEntries(res.data.nodes.map((n) => [n.ref_id, n]));
+      expect(by.o1.effects).toEqual([
+        { ref_id: "e2", name: "High", description: "d", direction: "con", impact: 1 },
+        { ref_id: "e1", name: "Low", description: "d", direction: "pro", impact: 0.2 },
+        { ref_id: "e5", name: "No impact", description: "", direction: "pro", impact: null },
+      ]);
+      expect(by.q2.effects).toBeUndefined();
+      expect(by[FOCUS].effects).toBeUndefined();
+      expect(by.o2.effects).toBeUndefined();
+      const q = mockedQuery.mock.calls.map(([a]) => String(a.query)).find((x) => x.includes("AS props"))!;
+      expect(q).toContain("HAS_EFFECT");
+      expect(q).toContain("AS effects");
+      expect(q).toContain("`Question`");
+      expect(q).not.toContain("`Effect`");
+    });
+  });
+  describe("ratings and AGAINST", () => {
+    beforeEach(() => {
+      mockedQuery.mockImplementation(async ({ query }) => {
+        if (String(query).includes("AS props")) {
+          return {
+            ok: true,
+            meta,
+            data: {
+              columns: ["id", "labels", "props", "effects", "ratings"],
+              rows: [
+                [FOCUS, ["Question"], [["text", "Q"]], [], []],
+                [
+                  "o1",
+                  ["Option"],
+                  [["text", "A"]],
+                  [{ ref_id: "e1", name: "Fast", description: "", direction: "pro", impact: 0.5, against: ["req-1", 7] }],
+                  [{ corner: "Fast", score: 0.8 }, { corner: "Good", score: 3 }, { corner: "Cheap", score: -1 }, { corner: "Other", score: 0 }],
+                ],
+                ["o2", ["Option"], [["text", "B"]], [{ ref_id: "e2", name: "Slow", description: "", direction: "con", impact: 0.1, against: [] }], []],
+              ],
+            },
+          };
+        }
+        return { ok: true, meta, data: { columns: ["source", "target"], rows: [] } };
+      });
+    });
+
+    test("reads an option's ratings and the requirements its effects are against", async () => {
+      const res = await getChoiceTree(caller, FOCUS);
+      if (!res.ok) throw new Error("expected ok");
+      const by = Object.fromEntries(res.data.nodes.map((n) => [n.ref_id, n]));
+      expect(by.o1.ratings).toEqual({ fast: 0.8, cheap: -1 });
+      expect(by.o1.effects?.[0].against).toEqual(["req-1"]);
+      expect(by.o2.effects?.[0]).not.toHaveProperty("against");
+      expect(by.o2.ratings).toBeUndefined();
+      expect(by[FOCUS].ratings).toBeUndefined();
+      const q = mockedQuery.mock.calls.map(([a]) => String(a.query)).find((x) => x.includes("AS props"))!;
+      expect(q).toContain("AGAINST");
+      expect(q).toContain("RATED_ON");
+    });
+  });
+  describe("about", () => {
+    beforeEach(() => {
+      mockedQuery.mockImplementation(async ({ query }) => {
+        if (String(query).includes("AS props")) {
+          return {
+            ok: true,
+            meta,
+            data: {
+              columns: ["id", "labels", "props", "about"],
+              rows: [
+                [FOCUS, ["Question"], [["text", "Q"]], ["feature-1", 7]],
+                ["o1", ["Option"], [["text", "A"]], ["feature-2"]],
+                ["q2", ["Question"], [["text", "Q2"]], []],
+              ],
+            },
+          };
+        }
+        return { ok: true, meta, data: { columns: ["source", "target"], rows: [] } };
+      });
+    });
+
+    test("reads the plan card a question is about, on questions only", async () => {
+      const res = await getChoiceTree(caller, FOCUS);
+      if (!res.ok) throw new Error("expected ok");
+      const by = Object.fromEntries(res.data.nodes.map((n) => [n.ref_id, n]));
+      expect(by[FOCUS].about).toBe("feature-1");
+      expect(by.o1).not.toHaveProperty("about");
+      expect(by.q2).not.toHaveProperty("about");
+      const q = mockedQuery.mock.calls.map(([a]) => String(a.query)).find((x) => x.includes("AS props"))!;
+      expect(q).toContain("ABOUT");
+      for (const label of ["HiveInitiative", "HiveMilestone", "InitiativeFeature"]) expect(q).toContain(`\`${label}\``);
+    });
+
+    test("mock mode: a brainstorm on a card says which, one on no card says nothing", async () => {
+      vi.stubEnv("USE_MOCKS", "true");
+      const auth = await getChoiceTree(caller, "mock-brainstorm-auth");
+      expect(auth.ok && auth.data.nodes.find((n) => n.ref_id === "mock-brainstorm-auth")?.about).toBe("mock-m-signup");
+      const board = await getChoiceTree(caller, "mock-brainstorm-board");
+      expect(board.ok && board.data.nodes.some((n) => n.about)).toBe(false);
+      expect(board.ok && board.data.nodes.map((n) => n.properties.state)).toEqual(
+        expect.arrayContaining(["decided", "chosen", "rejected", "open", "simulated"]),
+      );
+      expect(mockedQuery).not.toHaveBeenCalled();
+    });
   });
 });

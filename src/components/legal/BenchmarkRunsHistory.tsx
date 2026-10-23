@@ -43,6 +43,7 @@ import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults"
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
 import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 import { WorkflowStatus } from "@prisma/client";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
 
@@ -210,6 +211,9 @@ export function BenchmarkRunsHistory({
   const { workspace, isSuperAdmin } = useWorkspace();
   const workspaceId = workspace?.id;
   const workspaceSlug = workspace?.slug;
+  // A strut legal workspace: manual `harvey-lab-run` runs only — no recursion,
+  // no report bundles, no Stakwork projects, and the workflow scores itself.
+  const strut = isLegalStrutWorkspace(workspaceSlug);
 
   // When a runList prop is supplied, pass undefined to the hook so it never
   // fetches, polls, or binds Pusher — all state comes from the prop.
@@ -222,7 +226,7 @@ export function BenchmarkRunsHistory({
   // Recursion-enrolled task slugs — same source the Recursion tab renders
   // from, so the badge and that tab can never disagree. Non-openlaw
   // workspaces 404 the endpoint, the set stays empty, and no badges render.
-  const { entries: recursionEntries } = useLegalBenchmarkRecursionList();
+  const { entries: recursionEntries } = useLegalBenchmarkRecursionList(!strut);
   const recursionSlugs = useMemo(
     () => new Map(recursionEntries.map((e) => [e.id, e.reason])),
     [recursionEntries],
@@ -379,6 +383,7 @@ export function BenchmarkRunsHistory({
   // evalTriggerRef (manual triggers hang off an EvalRequirement, which the
   // EvalSet expand cannot reach — the row ref is the direct path).
   const graphScoreRequests = useMemo<GraphScoreRequest[]>(() => {
+    if (strut) return [];
     const byTask = new Map<string, { triggerRefs: Set<string>; outputRefs: Set<string> }>();
     for (const run of [...visibleRuns, ...secondaryRows]) {
       if (!run.taskSlug) continue;
@@ -394,7 +399,7 @@ export function BenchmarkRunsHistory({
       triggerRefs: [...refs.triggerRefs],
       outputRefs: [...refs.outputRefs],
     }));
-  }, [visibleRuns, secondaryRows]);
+  }, [visibleRuns, secondaryRows, strut]);
   const graphOutputs = useBenchmarkGraphScoresMap(graphScoreRequests);
 
   const adjustedRuns = useMemo<AdjustedRun[]>(
@@ -428,13 +433,15 @@ export function BenchmarkRunsHistory({
         const bd = rubricBreakdown({ score, criteria: run.criteria_results, graphRubrics: roster });
         return {
           ...run,
-          n_passed: score.passed,
-          n_total: score.denominator,
+          // All displayed counts come from the breakdown when present so
+          // Pass + Fail + Contested sums to the roster total.
+          n_passed: bd ? bd.pass : score.passed,
+          n_total: bd ? bd.total - bd.contested : score.denominator,
           // Rewrite all_pass for runs that were actually judged — either the
           // webhook marked them (boolean present) or the graph scored them.
           all_pass:
             typeof run.all_pass === "boolean" || graphOut ? score.allPass : run.all_pass,
-          n_contested: score.contested,
+          n_contested: bd ? bd.contested : score.contested,
           roster_total: rosterTotalOf(roster, score),
           judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
           score_source: usedCriteria ? "criteria" : graphOut ? "graph" : "result",
@@ -477,11 +484,13 @@ export function BenchmarkRunsHistory({
         const bd = rubricBreakdown({ score, criteria: run.criteria_results, graphRubrics: roster });
         return {
           ...run,
-          n_passed: score.passed,
-          n_total: score.denominator,
+          // All displayed counts come from the breakdown when present so
+          // Pass + Fail + Contested sums to the roster total.
+          n_passed: bd ? bd.pass : score.passed,
+          n_total: bd ? bd.total - bd.contested : score.denominator,
           all_pass:
             typeof run.all_pass === "boolean" || graphOut ? score.allPass : run.all_pass,
-          n_contested: score.contested,
+          n_contested: bd ? bd.contested : score.contested,
           roster_total: rosterTotalOf(roster, score),
           judgeNotes: run.judgeNotes ?? graphOut?.judge_notes,
           score_source: graphOut ? "graph" : "result",
@@ -547,8 +556,9 @@ export function BenchmarkRunsHistory({
   }
 
   // colSpan: Task + Type + Started + Runner Status + Pass + Fail + Contested +
-  // Disputed + Total + Report + (Stakwork if super admin)
-  const colSpan = isSuperAdmin ? 11 : 10;
+  // Disputed + Total + Report + (Stakwork if super admin). Strut: no Type or
+  // Stakwork.
+  const colSpan = strut ? 9 : isSuperAdmin ? 11 : 10;
 
   return (
     <div className="space-y-3">
@@ -606,22 +616,24 @@ export function BenchmarkRunsHistory({
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Task</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground">
-                {/* Column-header micro-filter: a native select keeps the header
-                    one line tall and dodges portal/overlay complexity inside a
-                    table head. Default "all" shows every pipeline merged. */}
-                <select
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value as "all" | "manual" | "recursion")}
-                  className="bg-transparent font-medium text-muted-foreground text-sm cursor-pointer focus:outline-none hover:text-foreground [&>option]:bg-popover [&>option]:text-popover-foreground"
-                  aria-label="Filter by run type"
-                  data-testid="type-filter"
-                >
-                  <option value="all">All types</option>
-                  <option value="manual">Manual</option>
-                  <option value="recursion">Recursion</option>
-                </select>
-              </th>
+              {!strut && (
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">
+                  {/* Column-header micro-filter: a native select keeps the header
+                      one line tall and dodges portal/overlay complexity inside a
+                      table head. Default "all" shows every pipeline merged. */}
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value as "all" | "manual" | "recursion")}
+                    className="bg-transparent font-medium text-muted-foreground text-sm cursor-pointer focus:outline-none hover:text-foreground [&>option]:bg-popover [&>option]:text-popover-foreground"
+                    aria-label="Filter by run type"
+                    data-testid="type-filter"
+                  >
+                    <option value="all">All types</option>
+                    <option value="manual">Manual</option>
+                    <option value="recursion">Recursion</option>
+                  </select>
+                </th>
+              )}
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Started</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Runner Status</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Pass</th>
@@ -651,7 +663,7 @@ export function BenchmarkRunsHistory({
               </th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Total</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Report</th>
-              {isSuperAdmin && (
+              {isSuperAdmin && !strut && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
               )}
             </tr>
@@ -704,9 +716,11 @@ export function BenchmarkRunsHistory({
                       );
                     })()}
                   </td>
-                  <td className="px-4 py-3">
-                    <RunTypeBadge runType={run.runType} />
-                  </td>
+                  {!strut && (
+                    <td className="px-4 py-3">
+                      <RunTypeBadge runType={run.runType} />
+                    </td>
+                  )}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span
                       title={new Date(run.createdAt).toISOString()}
@@ -738,10 +752,11 @@ export function BenchmarkRunsHistory({
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     {/* Report bundles land on recursion rows too (reportUrl
-                        column via webhook) — ReportCell self-handles absence. */}
+                        column via webhook); a strut run's report is built from
+                        its lab — ReportCell self-handles absence. */}
                     <ReportCell run={run} slug={workspace?.slug} />
                   </td>
-                  {isSuperAdmin && (
+                  {isSuperAdmin && !strut && (
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       {run.projectId != null && (
                         <a
@@ -920,21 +935,11 @@ function PassCell({ run }: { run: AdjustedRun }) {
 
 /**
  * Failed-criteria count, threaded straight from `AdjustedRun.n_failed`
- * (computed once in `rubricBreakdown`, never recomputed here). Two accepted
- * divergences from neighbouring cells, left as-is deliberately:
- *  (a) The visible columns need not sum to Total. `n_failed` is
- *      `scorable − pass` against a TRUE UNION of contested criteria, while
- *      `ContestedCountCell` renders `score.contested` =
- *      `Math.max(rosterContested, contestedInRun)` — a strictly smaller set
- *      on some rows (rubric-scoring.ts). Pass + Fail + Contested can land
- *      short of Total.
- *  (b) On rows where `rubricBreakdown` clamps `pass` to `scorable`
- *      (rubric-scoring.ts), Fail shows `0` while `PassCell` renders the
- *      *unclamped* `run.n_passed` — so Pass can visibly exceed
- *      `Total − Contested`. `PassCell` is intentionally left alone here;
- *      changing what Pass renders would alter displayed scores, which is out
- *      of scope. Reconciling the two contested sets is a follow-up in
- *      rubric-scoring.ts, not part of this cell.
+ * (computed once in `rubricBreakdown`, never recomputed here). Pass, Fail and
+ * Contested all come from the same breakdown (see `adjustedRuns`), so when
+ * all three are numbers and `roster_total` is a number they sum to it:
+ * `n_passed + n_failed + n_contested === roster_total`. Disputed is an
+ * overlay inside Fail/Contested and is not a summand.
  */
 function FailCell({ run }: { run: AdjustedRun }) {
   if (!hasScoreData(run)) {

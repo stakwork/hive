@@ -15,6 +15,10 @@ import type { CanvasChatMessage } from "../_state/canvasChatStore";
  * lists files, functions and line numbers — and the canvas agent is woken
  * to summarize it (`canvas-strut-autoturn.ts`). So the card is the header
  * line (title, how the turn ended) and opens on click to the full reply.
+ * A workflow build on another workspace's strut (`builder` with `peer`,
+ * strut plans/builder-job.md §3) names that workspace after the title, as
+ * `@<slug>` — the reply's `peer` on the settled card; on the pending one,
+ * the launch's, else the job's last seen.
  * The chevron leads the row, and what opens is indented under the title
  * on a guide line, so the job's report reads apart from the chat's own
  * text.
@@ -45,10 +49,10 @@ export type JobEventSource = Extract<NonNullable<CanvasChatMessage["source"]>, {
 type Tone = "running" | "ok" | "attention" | "failed" | "muted";
 
 const TONE_PILL_CLASSES: Record<Tone, string> = {
-  running: "bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-500/20",
-  ok: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
-  attention: "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/20",
-  failed: "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-500/20",
+  running: "bg-sky-500/10 text-sky-700 dark-os:text-sky-300 ring-1 ring-inset ring-sky-500/20",
+  ok: "bg-emerald-500/10 text-emerald-700 dark-os:text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
+  attention: "bg-amber-500/10 text-amber-700 dark-os:text-amber-300 ring-1 ring-inset ring-amber-500/20",
+  failed: "bg-rose-500/10 text-rose-700 dark-os:text-rose-300 ring-1 ring-inset ring-rose-500/20",
   muted: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
 };
 
@@ -97,6 +101,8 @@ export interface PendingJobTurn {
   title: string;
   /** The message whose tool call launched the turn — the card hangs under it. */
   anchorMessageId: string;
+  /** The workspace whose strut the job builds on, when it is another one (a slug). */
+  peer?: string;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
@@ -119,19 +125,27 @@ const str = (v: unknown): string | undefined => (typeof v === "string" && v.leng
  * row never waits on a turn that did not start — and the job row that
  * follows settles it. Its run is named (`runId`), so a job row that landed
  * BEFORE the origin was written (the write is after the dispatch) is seen
- * for what it is and the event draws nothing.
+ * for what it is and the event draws nothing. An orchestrator reply (Jamie
+ * on strut) is a launch the same way, one per job in its `jobs`.
  */
 export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): PendingJobTurn[] {
   const pending = new Map<string, PendingJobTurn>();
   /** The last title seen for each job, for a launch whose call carries none. */
   const titles = new Map<string, string>();
+  /** The last peer seen for each job — a `job/continue` names none, and a job keeps its strut. */
+  const peers = new Map<string, string>();
+  const turn = (jobId: string, title: string, anchorMessageId: string): PendingJobTurn => {
+    const peer = peers.get(jobId);
+    return { jobId, title, anchorMessageId, ...(peer ? { peer } : {}) };
+  };
   /** Every job row's id (`job-<StrutRun.id>`), for an event row whose turn has already settled. */
   const rows = new Set(messages.filter((m) => m.source?.kind === "job").map((m) => m.id));
 
   for (const message of messages) {
     if (message.source?.kind === "job") {
-      const { jobId, title } = message.source;
+      const { jobId, title, peer } = message.source;
       if (title) titles.set(jobId, title);
+      if (peer) peers.set(jobId, peer);
       pending.delete(jobId);
       continue;
     }
@@ -139,7 +153,21 @@ export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): P
       const { jobId, title, runId } = message.source;
       if (title) titles.set(jobId, title);
       if (!rows.has(`job-${runId}`)) {
-        pending.set(jobId, { jobId, title: title ?? titles.get(jobId) ?? "", anchorMessageId: message.id });
+        pending.set(jobId, turn(jobId, title ?? titles.get(jobId) ?? "", message.id));
+      }
+      continue;
+    }
+    // Jamie on strut: the jobs an orchestrator turn launched inside strut,
+    // read off its run when the reply landed, each with the row minted for
+    // it — so a job that ended before the reply did draws nothing.
+    if (message.source?.kind === "orchestrator") {
+      for (const launch of message.source.jobs ?? []) {
+        const title = launch.title || titles.get(launch.jobId) || "";
+        if (title) titles.set(launch.jobId, title);
+        if (launch.peer) peers.set(launch.jobId, launch.peer);
+        if (!rows.has(`job-${launch.runId}`)) {
+          pending.set(launch.jobId, turn(launch.jobId, title, message.id));
+        }
       }
       continue;
     }
@@ -154,7 +182,7 @@ export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): P
       if (!jobId) continue;
       const title = str(output.title) ?? str(input.title) ?? titles.get(jobId) ?? "";
       if (title) titles.set(jobId, title);
-      pending.set(jobId, { jobId, title, anchorMessageId: message.id });
+      pending.set(jobId, turn(jobId, title, message.id));
     }
   }
 
@@ -164,7 +192,7 @@ export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): P
 // ─── Cards ──────────────────────────────────────────────────────────────
 
 function JobIcon() {
-  return <Bot className="h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />;
+  return <Bot className="h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark-os:text-amber-400" aria-hidden="true" />;
 }
 
 /** The disclosure chevron, or an empty slot of its width so titles line up down the column. */
@@ -179,6 +207,20 @@ function Disclosure({ open }: { open?: boolean }) {
 }
 
 const HEADER_CLASSES = "flex items-center gap-2 py-2.5 pl-2 pr-3";
+
+/** The job's title, then the workspace whose strut it builds on when that is another one. */
+function JobTitle({ title, peer }: { title: string; peer?: string }) {
+  return (
+    <span className="flex min-w-0 flex-1 items-baseline gap-1.5 text-left">
+      <span className="min-w-0 truncate text-sm font-medium">{title}</span>
+      {peer && (
+        <span data-testid="job-turn-peer" title={`Built on @${peer}`} className="flex-shrink-0 text-xs text-muted-foreground">
+          @{peer}
+        </span>
+      )}
+    </span>
+  );
+}
 /** Under the title: the guide line hangs from the chevron's center, the text starts at the title's edge. */
 const INDENTED_CLASSES = "mb-2.5 ml-[15px] mr-3 border-l-2 pl-[37px]";
 
@@ -244,7 +286,7 @@ export function PendingJobTurnCard({ turn }: { turn: PendingJobTurn }) {
       <div className={HEADER_CLASSES}>
         <Disclosure />
         <JobIcon />
-        <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">{turn.title || "Job"}</span>
+        <JobTitle title={turn.title || "Job"} peer={turn.peer} />
         <StatusPill look={RUNNING_LOOK} />
       </div>
       <JobLiveStrip jobId={turn.jobId} since={since} />
@@ -271,7 +313,7 @@ export function JobTurnCard({
     <>
       <Disclosure open={collapsible ? open : undefined} />
       <JobIcon />
-      <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">{title}</span>
+      <JobTitle title={title} peer={source.peer} />
       <StatusPill look={look} />
     </>
   );

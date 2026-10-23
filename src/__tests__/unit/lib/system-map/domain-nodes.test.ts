@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { listSystemMapDomainNodes } from "@/lib/system-map/domain-nodes";
+import { listSystemMapDomainNodes, unknownNodeTypes } from "@/lib/system-map/domain-nodes";
 import * as nodes from "@/services/swarm/api/nodes";
 
 vi.mock("@/services/swarm/api/nodes", () => ({
@@ -9,8 +9,19 @@ vi.mock("@/services/swarm/api/nodes", () => ({
 
 const CONFIG = { jarvisUrl: "https://jarvis.test", apiKey: "key" };
 
-function node(refId: string, type: string, name?: string, properties: Record<string, unknown> = {}) {
-  return { ref_id: refId, node_type: type, properties: { ...properties, ...(name ? { name } : {}) } };
+function node(
+  refId: string,
+  type: string,
+  name?: string,
+  properties: Record<string, unknown> = {},
+  edges?: Record<string, number>,
+) {
+  return {
+    ref_id: refId,
+    node_type: type,
+    properties: { ...properties, ...(name ? { name } : {}) },
+    ...(edges ? { edges } : {}),
+  };
 }
 
 function edge(source: string, target: string, edgeType: string) {
@@ -31,7 +42,11 @@ describe("listSystemMapDomainNodes", () => {
 
     const result = await listSystemMapDomainNodes(CONFIG);
 
-    expect(nodes.listNodesByType).toHaveBeenCalledWith(CONFIG, "", 500, { startingAfter: undefined, namespace: "systemmap" });
+    expect(nodes.listNodesByType).toHaveBeenCalledWith(CONFIG, "", 1000, {
+      startingAfter: undefined,
+      namespace: "systemmap",
+      includeEdgeCounts: true,
+    });
     expect(result.ok && result.nodes.map((n) => n.name)).toEqual(["stakwork/hive", "stakwork/stakgraph/mcp"]);
     expect(result.ok && result.types).toEqual([{ type: "SysComponent", count: 2 }]);
   });
@@ -45,6 +60,64 @@ describe("listSystemMapDomainNodes", () => {
     const result = await listSystemMapDomainNodes(CONFIG);
 
     expect(result.ok && result.nodes.map((n) => n.name)).toEqual(["kept"]);
+  });
+
+  it("takes the edges from the listing and reads none per node when every count is met", async () => {
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: true,
+      nodes: [
+        node("a", "SysComponent", "a", {}, { USES: 1 }),
+        node("b", "SysTechnology", "b", {}, { USES: 1 }),
+        node("c", "Actor", "c", {}, {}),
+      ],
+      edges: [edge("a", "b", "USES")],
+    });
+
+    const result = await listSystemMapDomainNodes(CONFIG);
+
+    expect(result.ok && result.edges).toEqual([{ source: "a", target: "b", edgeType: "USES" }]);
+    expect(result.ok && result.edgeReads).toBe(0);
+    expect(nodes.getNodeEdges).not.toHaveBeenCalled();
+  });
+
+  it("reads per node only the nodes the listing came back short for (the 20-neighbour cap)", async () => {
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: true,
+      nodes: [
+        node("hub", "SysComponent", "hub", {}, { DEPENDS_ON: 3 }),
+        node("p1", "SysPackage", "p1", {}, { DEPENDS_ON: 1 }),
+        node("p2", "SysPackage", "p2", {}, { DEPENDS_ON: 1 }),
+        node("p3", "SysPackage", "p3", {}, { DEPENDS_ON: 1 }),
+      ],
+      edges: [edge("hub", "p1", "DEPENDS_ON"), edge("hub", "p2", "DEPENDS_ON")],
+    });
+    vi.mocked(nodes.getNodeEdges).mockImplementation(async (_config, refId) => ({
+      ok: true,
+      nodes: [],
+      edges: refId === "hub" || refId === "p3" ? [edge("hub", "p3", "DEPENDS_ON")] : [],
+    }));
+
+    const result = await listSystemMapDomainNodes(CONFIG);
+
+    expect(
+      vi
+        .mocked(nodes.getNodeEdges)
+        .mock.calls.map((c) => c[1])
+        .sort(),
+    ).toEqual(["hub", "p3"]);
+    expect(result.ok && result.edgeReads).toBe(2);
+    expect(result.ok && result.edges.map((e) => e.target).sort()).toEqual(["p1", "p2", "p3"]);
+  });
+
+  it("reads every node per node when the listing carries no edges (an older jarvis)", async () => {
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: true,
+      nodes: [node("a", "SysComponent", "a", {}, { USES: 1 }), node("b", "SysTechnology", "b", {}, { USES: 1 })],
+    });
+
+    const result = await listSystemMapDomainNodes(CONFIG);
+
+    expect(result.ok && result.edgeReads).toBe(2);
   });
 
   it("keeps edges between System Map nodes only, deduplicated", async () => {
@@ -82,8 +155,88 @@ describe("listSystemMapDomainNodes", () => {
 
     const result = await listSystemMapDomainNodes(CONFIG, "infosec");
 
-    expect(nodes.listNodesByType).toHaveBeenCalledWith(CONFIG, "", 500, { startingAfter: undefined, namespace: "infosec" });
+    expect(nodes.listNodesByType).toHaveBeenCalledWith(CONFIG, "", 1000, {
+      startingAfter: undefined,
+      namespace: "infosec",
+      includeEdgeCounts: true,
+    });
     expect(result.ok && result.nodes.map((n) => n.name)).toEqual(["kept"]);
+  });
+
+  it("passes a type allowlist to jarvis as a comma list and scopes the edge reads to it", async () => {
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: true,
+      nodes: [node("a", "SysComponent", "a", {}, { DEPENDS_ON: 400 }), node("z", "SysTrustZone", "z")],
+      edges: [],
+    });
+
+    const result = await listSystemMapDomainNodes(CONFIG, "systemmap", {
+      types: ["SysComponent", "SysTrustZone", "SysArtifact"],
+    });
+
+    expect(nodes.listNodesByType).toHaveBeenCalledWith(CONFIG, "SysComponent,SysTrustZone,SysArtifact", 1000, {
+      startingAfter: undefined,
+      namespace: "systemmap",
+      includeEdgeCounts: true,
+      expand: true,
+    });
+    // The component's 400 counted edges (packages, left out) make it "short": its read stays
+    // within the allowlist rather than the types that happened to come back.
+    expect(nodes.getNodeEdges).toHaveBeenCalledWith(CONFIG, "a", {
+      limit: 200,
+      nodeTypes: ["SysComponent", "SysTrustZone", "SysArtifact"],
+    });
+    expect(result.ok && result.nodes.map((n) => n.type)).toEqual(["SysComponent", "SysTrustZone"]);
+  });
+
+  it("drops the types jarvis does not know and retries the listing without them", async () => {
+    vi.mocked(nodes.listNodesByType)
+      .mockResolvedValueOnce({
+        ok: false,
+        nodes: [],
+        status: 400,
+        errorCode: "UNKNOWN_NODE_TYPE",
+        error: "Request failed with status 400: Unknown node type(s): sysactor, SysProtocol",
+      })
+      .mockResolvedValueOnce({ ok: true, nodes: [node("z", "SysTrustZone", "z", {}, {})], edges: [] });
+
+    const result = await listSystemMapDomainNodes(CONFIG, "systemmap", {
+      types: ["SysTrustZone", "SysActor", "SysProtocol"],
+    });
+
+    expect(nodes.listNodesByType).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(nodes.listNodesByType).mock.calls[1][1]).toBe("SysTrustZone");
+    expect(result.ok && result.nodes.map((n) => n.refId)).toEqual(["z"]);
+  });
+
+  it("reads nothing when jarvis knows none of the types", async () => {
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: false,
+      nodes: [],
+      status: 400,
+      errorCode: "UNKNOWN_NODE_TYPE",
+      error: "Request failed with status 400: Unknown node type(s): SysActor",
+    });
+
+    const result = await listSystemMapDomainNodes(CONFIG, "systemmap", { types: ["SysActor"] });
+
+    expect(nodes.listNodesByType).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ ok: true, nodes: [], edges: [], truncated: false });
+  });
+
+  it("fails with jarvis' message on any other 400", async () => {
+    vi.mocked(nodes.listNodesByType).mockResolvedValue({
+      ok: false,
+      nodes: [],
+      status: 400,
+      errorCode: "INVALID_CURSOR",
+      error: "Request failed with status 400: starting_after ref_id not found",
+    });
+
+    const result = await listSystemMapDomainNodes(CONFIG, "systemmap", { types: ["SysTrustZone"] });
+
+    expect(nodes.listNodesByType).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: false, error: "Request failed with status 400: starting_after ref_id not found" });
   });
 
   it("counts nodes whose edges failed to load instead of failing the read", async () => {
@@ -98,13 +251,17 @@ describe("listSystemMapDomainNodes", () => {
 
   it("pages with the last ref id", async () => {
     vi.mocked(nodes.listNodesByType)
-      .mockResolvedValueOnce({ ok: true, nodes: Array.from({ length: 500 }, (_, i) => node(`n${i}`, "SysComponent")) })
+      .mockResolvedValueOnce({ ok: true, nodes: Array.from({ length: 1000 }, (_, i) => node(`n${i}`, "SysComponent")) })
       .mockResolvedValueOnce({ ok: true, nodes: [node("last", "SysComponent")] });
 
     const result = await listSystemMapDomainNodes(CONFIG);
 
-    expect(vi.mocked(nodes.listNodesByType).mock.calls[1][3]).toEqual({ startingAfter: "n499", namespace: "systemmap" });
-    expect(result.ok && result.nodes).toHaveLength(501);
+    expect(vi.mocked(nodes.listNodesByType).mock.calls[1][3]).toEqual({
+      startingAfter: "n999",
+      namespace: "systemmap",
+      includeEdgeCounts: true,
+    });
+    expect(result.ok && result.nodes).toHaveLength(1001);
     expect(result.ok && result.truncated).toBe(false);
   });
 
@@ -115,3 +272,15 @@ describe("listSystemMapDomainNodes", () => {
   });
 });
 
+describe("unknownNodeTypes", () => {
+  it("reads the rejected names from jarvis' message, case-insensitively, limited to the request", () => {
+    expect(
+      unknownNodeTypes("Request failed with status 400: Unknown node type(s): sysactor, Other", [
+        "SysActor",
+        "SysComponent",
+      ]),
+    ).toEqual(["SysActor"]);
+    expect(unknownNodeTypes("Request failed with status 400", ["SysActor"])).toEqual([]);
+    expect(unknownNodeTypes(undefined, ["SysActor"])).toEqual([]);
+  });
+});

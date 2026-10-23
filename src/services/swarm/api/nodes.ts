@@ -1,7 +1,4 @@
-import type {
-  JarvisConnectionConfig,
-  UpdateNodeRequest,
-} from "@/types/jarvis";
+import type { JarvisConnectionConfig, UpdateNodeRequest } from "@/types/jarvis";
 
 interface JarvisApiResponse {
   ok: boolean;
@@ -58,11 +55,18 @@ async function jarvisRequest({
       // Include method + URL: a bare status is undebuggable across 17
       // workspaces × N endpoints (a quiet 404 hid a dead swarm for weeks).
       console.error("[Jarvis Nodes] Request failed:", method, url, response.status, responseText);
+      let errorBody: unknown;
+      try {
+        errorBody = JSON.parse(responseText);
+      } catch {
+        // Not every error is JSON
+      }
       return {
         ok: false,
         status: response.status,
         notFound: response.status === 404,
         error: `Request failed with status ${response.status}`,
+        body: errorBody,
       };
     }
 
@@ -97,18 +101,12 @@ async function jarvisRequest({
  */
 const MAX_FAILURE_DETAIL_LEN = 500;
 
-function describeJarvisFailure(
-  fallback: string,
-  body?: { message?: string; status_messages?: string[] },
-): string {
+function describeJarvisFailure(fallback: string, body?: { message?: string; status_messages?: string[] }): string {
   const detail = [body?.message, ...(body?.status_messages ?? [])]
     .filter((m): m is string => typeof m === "string" && m.length > 0)
     .join("; ");
   if (!detail) return fallback;
-  const truncated =
-    detail.length > MAX_FAILURE_DETAIL_LEN
-      ? `${detail.slice(0, MAX_FAILURE_DETAIL_LEN)}…`
-      : detail;
+  const truncated = detail.length > MAX_FAILURE_DETAIL_LEN ? `${detail.slice(0, MAX_FAILURE_DETAIL_LEN)}…` : detail;
   return `${fallback}: ${truncated}`;
 }
 
@@ -144,14 +142,11 @@ export async function addNode(
     | undefined;
 
   // Treat "already exists" warnings as success
-  const isAlreadyExists = body?.status_messages?.some((m) =>
-    m.toLowerCase().includes("already exists"),
-  );
+  const isAlreadyExists = body?.status_messages?.some((m) => m.toLowerCase().includes("already exists"));
 
   // Jarvis returns status "Warning" with ref_id in body.data
   // when status_messages is empty and duplicate info is only in body.message
-  const isWarningWithRef =
-    body?.status?.toLowerCase() === "warning" && !!body?.data?.ref_id;
+  const isWarningWithRef = body?.status?.toLowerCase() === "warning" && !!body?.data?.ref_id;
 
   const ref_id = body?.data?.ref_id ?? body?.nodes?.[0]?.ref_id;
 
@@ -175,9 +170,7 @@ export async function addNode(
  * node by its schema node_key. The node_key path lets callers wire edges
  * purely from stable identifiers (e.g. a Postgres id) without tracking ref_ids.
  */
-export type JarvisEdgeEndpoint =
-  | { ref_id: string }
-  | { node_type: string; node_data: Record<string, unknown> };
+export type JarvisEdgeEndpoint = { ref_id: string } | { node_type: string; node_data: Record<string, unknown> };
 
 export async function addEdge(
   config: JarvisConnectionConfig,
@@ -201,13 +194,9 @@ export async function addEdge(
     };
   }
 
-  const body = result.body as
-    | { status?: string; status_messages?: string[] }
-    | undefined;
+  const body = result.body as { status?: string; status_messages?: string[] } | undefined;
 
-  const isAlreadyExists = body?.status_messages?.some((m) =>
-    m.toLowerCase().includes("already exists"),
-  );
+  const isAlreadyExists = body?.status_messages?.some((m) => m.toLowerCase().includes("already exists"));
 
   if (body?.status?.toLowerCase() === "success" || isAlreadyExists) {
     return { success: true };
@@ -239,13 +228,9 @@ async function executeBulkEdgeRequest(
     };
   }
 
-  const body = result.body as
-    | { status?: string; status_messages?: string[]; edges?: unknown[] }
-    | undefined;
+  const body = result.body as { status?: string; status_messages?: string[]; edges?: unknown[] } | undefined;
 
-  const errors = (body?.status_messages ?? []).filter((m) =>
-    m.toLowerCase().startsWith("error"),
-  );
+  const errors = (body?.status_messages ?? []).filter((m) => m.toLowerCase().startsWith("error"));
 
   // Jarvis error bodies set status "Error" but the detail in status_messages
   // need not start with "error" — without this guard such a response falls
@@ -347,9 +332,7 @@ export async function addNodeBulk(
 ): Promise<{ success: boolean; errors: string[]; endpointMissing?: boolean }> {
   if (nodes.length === 0) return { success: true, errors: [] };
 
-  const nodeList = opts?.reprocess
-    ? nodes.map((n) => ({ ...n, reprocess: true }))
-    : nodes;
+  const nodeList = opts?.reprocess ? nodes.map((n) => ({ ...n, reprocess: true })) : nodes;
 
   const result = await jarvisRequest({
     config,
@@ -366,13 +349,9 @@ export async function addNodeBulk(
     };
   }
 
-  const body = result.body as
-    | { status?: string; status_messages?: string[] }
-    | undefined;
+  const body = result.body as { status?: string; status_messages?: string[] } | undefined;
 
-  const errors = (body?.status_messages ?? []).filter((m) =>
-    m.toLowerCase().startsWith("error"),
-  );
+  const errors = (body?.status_messages ?? []).filter((m) => m.toLowerCase().startsWith("error"));
 
   // Same "Error"-status gap as executeBulkEdgeRequest: surface the body's
   // detail instead of silently succeeding.
@@ -398,16 +377,25 @@ export interface JarvisGraphNode {
   node_type: string;
   date_added_to_graph?: number;
   properties?: Record<string, unknown>;
+  /** `{EDGE_TYPE: count}`, on a `/v2/nodes` listing read with `include_edge_counts=true`. */
+  edges?: Record<string, number>;
 }
 
 export interface SearchLatestResult {
   /** False on any transport/HTTP failure — distinct from a successful empty read. */
   ok: boolean;
   nodes: JarvisGraphNode[];
+  /**
+   * `listNodesByType` only: the edges among the listed nodes, which jarvis
+   * attaches when it expands the listing (the default without a type filter).
+   */
+  edges?: JarvisGraphEdge[];
   status?: number;
   /** True when the endpoint 404s (absent on this backend). */
   endpointMissing?: boolean;
   error?: string;
+  /** `listNodesByType` only: jarvis' `errorCode` on a failure (`UNKNOWN_NODE_TYPE`, …). */
+  errorCode?: string;
 }
 
 /**
@@ -515,6 +503,12 @@ export async function searchNodesByAttributes(
  * server-side. An empty `nodeType` omits the type filter; `namespace` adds
  * jarvis' `n.namespace = $namespace` partition filter.
  *
+ * Without a type filter jarvis expands the listing and returns the edges
+ * among the listed nodes too (`edges`), capped at 20 neighbours per node
+ * (any namespace) and limited to one page. `includeEdgeCounts` adds each
+ * node's `{EDGE_TYPE: count}` (`node.edges`) — within `namespace` when one is
+ * given — so a caller can tell which nodes the cap cut short.
+ *
  * Never throws. Returns `{ ok }` so callers can distinguish a failed Jarvis
  * read from a legitimately empty result — `kgGetNodesByType` cannot.
  */
@@ -522,11 +516,20 @@ export async function listNodesByType(
   config: JarvisConnectionConfig,
   nodeType: string,
   limit = 500,
-  options: { startingAfter?: string; fields?: string[]; namespace?: string } = {},
+  options: {
+    startingAfter?: string;
+    fields?: string[];
+    namespace?: string;
+    includeEdgeCounts?: boolean;
+    /** Ask for the edges among the listed nodes; jarvis only adds them unasked without a type filter. */
+    expand?: boolean;
+  } = {},
 ): Promise<SearchLatestResult> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (nodeType) params.set("type", nodeType);
+  if (options.expand) params.set("expand", "true");
   if (options.namespace) params.set("namespace", options.namespace);
+  if (options.includeEdgeCounts) params.set("include_edge_counts", "true");
   if (options.startingAfter) params.set("starting_after", options.startingAfter);
   if (options.fields?.length) params.set("fields", options.fields.join(","));
 
@@ -537,22 +540,25 @@ export async function listNodesByType(
   });
 
   if (!result.ok) {
+    const errorBody = result.body as { errorCode?: unknown; message?: string } | undefined;
     return {
       ok: false,
       nodes: [],
       status: result.status,
       endpointMissing: result.notFound,
-      error: result.error,
+      error: describeJarvisFailure(result.error ?? "Request failed", errorBody),
+      ...(typeof errorBody?.errorCode === "string" ? { errorCode: errorBody.errorCode } : {}),
     };
   }
 
   const body = result.body as
     | JarvisGraphNode[]
-    | { nodes?: JarvisGraphNode[]; status?: string }
+    | { nodes?: JarvisGraphNode[]; edges?: JarvisGraphEdge[]; status?: string }
     | undefined;
 
   const raw = Array.isArray(body) ? body : Array.isArray(body?.nodes) ? body.nodes : [];
-  return { ok: true, nodes: raw, status: result.status };
+  const edges = !Array.isArray(body) && Array.isArray(body?.edges) ? body.edges : undefined;
+  return { ok: true, nodes: raw, ...(edges ? { edges } : {}), status: result.status };
 }
 
 export interface JarvisCallerSystem {
@@ -674,7 +680,7 @@ export async function deleteNode(
       };
     }
 
-    const body = await response.json().catch(() => ({})) as { status?: string };
+    const body = (await response.json().catch(() => ({}))) as { status?: string };
     if (body?.status === "success") {
       return { success: true };
     }
@@ -714,14 +720,9 @@ export async function deleteEdge(
     };
   }
 
-  const body = result.body as
-    | { status?: string; status_messages?: string[] }
-    | undefined;
+  const body = result.body as { status?: string; status_messages?: string[] } | undefined;
   const status = (body?.status ?? "").toLowerCase();
-  if (
-    status === "warning" &&
-    (body?.status_messages ?? []).some((m) => /no edge found/i.test(m))
-  ) {
+  if (status === "warning" && (body?.status_messages ?? []).some((m) => /no edge found/i.test(m))) {
     return {
       success: false,
       notFound: true,
@@ -786,7 +787,7 @@ export async function deleteSingleNode(
   }
 
   const body = result.body as
-    | { ref_id?: string; deleted_edge_count?: number; muted_edge_count?: number } & Record<string, unknown>
+    | ({ ref_id?: string; deleted_edge_count?: number; muted_edge_count?: number } & Record<string, unknown>)
     | undefined;
   if (body?.ref_id !== refId || !isDeletedNode(body)) {
     return {
@@ -889,9 +890,7 @@ export async function updateNodeV2(
     };
   }
 
-  const body = result.body as
-    | { status?: string; message?: string; status_messages?: string[] }
-    | undefined;
+  const body = result.body as { status?: string; message?: string; status_messages?: string[] } | undefined;
 
   // Jarvis `update_node` returns 200 + { status: "fail", message } on failure
   if (body?.status === "success") {
@@ -983,9 +982,7 @@ export async function addEdgeV2(
 export async function readNodeByRef(
   config: JarvisConnectionConfig,
   ref_id: string,
-): Promise<
-  JarvisV2Result & { properties?: Record<string, unknown>; node_type?: string; namespace?: string }
-> {
+): Promise<JarvisV2Result & { properties?: Record<string, unknown>; node_type?: string; namespace?: string }> {
   if (!isSafeRefId(ref_id)) {
     return {
       success: false,
@@ -1026,9 +1023,7 @@ export async function readNodeByRef(
 
   // Deployed Jarvis wraps the node in `{ nodes, edges, status }`; some builds
   // return the node directly. Handle both shapes (mirrors stakgraph's graph_get).
-  const node = Array.isArray(body?.nodes)
-    ? body!.nodes!.find((n) => n?.ref_id === ref_id) ?? body!.nodes![0]
-    : body;
+  const node = Array.isArray(body?.nodes) ? (body!.nodes!.find((n) => n?.ref_id === ref_id) ?? body!.nodes![0]) : body;
   const resolvedRefId = node?.ref_id ?? ref_id;
   // Jarvis removes `namespace` from `properties` through GENERIC_NODE_PROPERTIES
   // and returns it as a top-level field; fall back to `properties` for older shapes.
@@ -1067,7 +1062,9 @@ async function readEdgesOfType(
   config: JarvisConnectionConfig,
   ref_id: string,
   edge_type: string,
-): Promise<{ ok: true; edges: ExpandedEdge[]; names: Map<string, string> } | { ok: false; status?: string; message: string }> {
+): Promise<
+  { ok: true; edges: ExpandedEdge[]; names: Map<string, string> } | { ok: false; status?: string; message: string }
+> {
   if (!isSafeRefId(ref_id)) {
     return { ok: false, message: `Invalid ref_id: must match [A-Za-z0-9_\\-.:@]+ (got ${JSON.stringify(ref_id)})` };
   }
@@ -1343,10 +1340,10 @@ export async function getReferencedNodeCentrality(
       const p = node.properties ?? {};
       const pagerank = typeof p.pagerank === "number" ? p.pagerank : undefined;
       if (pagerank === undefined) {
-        console.debug(
-          "[Jarvis Nodes] node has no numeric pagerank — impact score will be 0 for this node",
-          { ref_id: node.ref_id, node_type: node.node_type },
-        );
+        console.debug("[Jarvis Nodes] node has no numeric pagerank — impact score will be 0 for this node", {
+          ref_id: node.ref_id,
+          node_type: node.node_type,
+        });
       }
       referencedNodes.push({
         ref_id: node.ref_id,

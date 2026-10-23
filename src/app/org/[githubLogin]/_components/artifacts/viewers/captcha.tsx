@@ -203,9 +203,9 @@ export function CaptchaPanel({ content, jobId }: ArtifactViewerProps<"captcha">)
           </div>
         )}
 
-        {expired && <p data-testid="captcha-expired" className="text-xs text-amber-700 dark:text-amber-300">This captcha expired — nothing to tap.</p>}
-        {done && <p data-testid="captcha-sent" className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Sent</p>}
-        {state === "failed" && <p className="text-xs text-rose-700 dark:text-rose-300">The job could not get past it.</p>}
+        {expired && <p data-testid="captcha-expired" className="text-xs text-amber-700 dark-os:text-amber-300">This captcha expired — nothing to tap.</p>}
+        {done && <p data-testid="captcha-sent" className="text-xs font-medium text-emerald-700 dark-os:text-emerald-300">Sent</p>}
+        {state === "failed" && <p className="text-xs text-rose-700 dark-os:text-rose-300">The job could not get past it.</p>}
         {!canAnswer && access.status === "ready" && waiting && !done && (
           <p className="text-xs text-muted-foreground">Only the person who started this job can answer it.</p>
         )}
@@ -228,7 +228,7 @@ export function CaptchaPanel({ content, jobId }: ArtifactViewerProps<"captcha">)
               />
             )}
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {sent.status === "failed" && <span className="mr-auto text-xs text-amber-600 dark:text-amber-400">{sent.error}</span>}
+              {sent.status === "failed" && <span className="mr-auto text-xs text-amber-600 dark-os:text-amber-400">{sent.error}</span>}
               {showTaps && (
                 <button
                   type="button"

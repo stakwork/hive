@@ -22,7 +22,7 @@ vi.mock("@xyflow/react", () => ({
   ),
 }));
 
-import { estimateNodeHeight, buildChoiceTree, compareChoiceIds, layoutTree, isTreeArtifact, treeContentOfJson, ChoiceTree } from "@/app/org/[githubLogin]/_components/artifacts/viewers/ChoiceTree";
+import { estimateNodeHeight, buildChoiceTree, compareChoiceIds, layoutTree, isTreeArtifact, treeContentOfJson, ChoiceTree, impactLevel } from "@/app/org/[githubLogin]/_components/artifacts/viewers/ChoiceTree";
 
 // The choice-tree route returns label-filtered nodes with no node_type.
 const n = (ref_id: string, props: Record<string, unknown>) => ({ ref_id, properties: props });
@@ -114,6 +114,36 @@ describe("buildChoiceTree / layoutTree", () => {
 
   it("is empty when the focus is not among the nodes", () => {
     expect(buildChoiceTree(nodes, edges, "missing").items).toEqual([]);
+  });
+});
+
+describe("effects", () => {
+  const effects = [
+    { ref_id: "e1", name: "Fast", description: "Ships soon, and a long description that wraps over more than one line of the card", direction: "pro", impact: 0.8 },
+    { ref_id: "e2", name: "Risky", description: "", direction: "con", impact: 0.3 },
+    { ref_id: "e3", name: "bad", direction: "other", impact: 0.3 },
+  ];
+  it("buildChoiceTree maps effects onto options only", () => {
+    const { items } = buildChoiceTree(
+      [
+        { ref_id: "r", type: "Question", properties: { text: "Q" }, effects },
+        { ref_id: "a", type: "Option", properties: { text: "A", option_id: 1 }, effects },
+        { ref_id: "b", type: "Option", properties: { text: "B", option_id: 2 } },
+      ],
+      [{ source: "r", target: "a" }, { source: "r", target: "b" }],
+      "r",
+    );
+    const by = Object.fromEntries(items.map((i) => [i.id, i]));
+    expect(by.a.effects?.map((e) => e.name)).toEqual(["Fast", "Risky"]);
+    expect(by.r.effects).toBeUndefined();
+    expect(by.b.effects).toBeUndefined();
+  });
+  it("estimateNodeHeight grows with effects when selected, unchanged otherwise", () => {
+    const base = { name: "Opt", quote: undefined };
+    const withFx = { ...base, effects: effects.slice(0, 2) as never };
+    expect(estimateNodeHeight(withFx, true)).toBeGreaterThan(estimateNodeHeight(base, true));
+    expect(estimateNodeHeight(withFx, false)).toBe(estimateNodeHeight(base, false));
+    expect(estimateNodeHeight({ ...base, effects: [] }, true)).toBe(estimateNodeHeight(base, true));
   });
 });
 
@@ -413,5 +443,20 @@ describe("treeContentOfJson — a json card that is really a brainstorm tree", (
     expect(treeContentOfJson({ id: "brainstorm-tree" }, { value: { focus: "f1" } })).toBeNull();
     expect(treeContentOfJson({ id: "x" }, { value: [1] })).toBeNull();
     expect(treeContentOfJson({ id: "x" }, { value: "s" })).toBeNull();
+  });
+});
+
+describe("impactLevel", () => {
+  it.each([
+    [0, "low"],
+    [0.39, "low"],
+    [0.4, "medium"],
+    [0.55, "medium"],
+    [0.7, "medium"],
+    [0.71, "high"],
+    [1, "high"],
+    [null, null],
+  ])("maps %s to %s", (impact, level) => {
+    expect(impactLevel(impact)).toBe(level);
   });
 });

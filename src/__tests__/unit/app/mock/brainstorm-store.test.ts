@@ -1,6 +1,5 @@
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, vi } from "vitest";
 import {
-  mockBrainstormListWithWrites,
   mockBrainstormWrite,
   mockChoiceTreeWithWrites,
   resetMockBrainstormStore,
@@ -12,8 +11,19 @@ const LABELS = ["Question", "Option", "Choice"];
 beforeEach(() => resetMockBrainstormStore());
 
 describe("mock brainstorm store", () => {
-  test("with no saves the tree is the fixture", () => {
-    expect(mockChoiceTreeWithWrites(MOCK_BOARD_ROOT, LABELS)).toEqual(mockBoardTree(LABELS));
+  test("with no saves the tree is the fixture, stamped with when it was added", () => {
+    vi.useFakeTimers({ now: new Date("2026-10-19T12:00:00Z") });
+    try {
+      const at = Date.now() - 86400000 - 3600000; // the board mock is a day old
+      const fixture = mockBoardTree(LABELS);
+      const tree = mockChoiceTreeWithWrites(MOCK_BOARD_ROOT, LABELS);
+      expect(tree).toEqual({
+        ...fixture,
+        nodes: fixture.nodes.map((n) => ({ ...n, properties: { date_added_to_graph: at, ...n.properties } })),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("a saved card reads back under its parent, and a saved change applies to a fixture card", () => {
@@ -44,7 +54,7 @@ describe("mock brainstorm store", () => {
     expect(ids).not.toContain(parent);
   });
 
-  test("a new brainstorm leads the list and opens as its own tree", () => {
+  test("a new brainstorm opens as its own tree", () => {
     const created = mockBrainstormWrite({
       creates: [
         { temp: "q", nodeType: "Question", data: { text: "Fresh?", state: "open" }, parent: null },
@@ -52,12 +62,6 @@ describe("mock brainstorm store", () => {
       ],
       patches: {},
       links: [],
-    });
-    expect(mockBrainstormListWithWrites()[0]).toEqual({
-      ref_id: created.q,
-      text: "Fresh?",
-      job: null,
-      made_by: "user",
     });
     const tree = mockChoiceTreeWithWrites(created.q, LABELS);
     expect(tree.nodes.map((n) => n.ref_id).sort()).toEqual([created.q, created.o].sort());

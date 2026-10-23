@@ -8,7 +8,11 @@
  *     the reader serves (html kept as `html`, a diff file as `code`); an
  *     absolute url → inline `{ url }` (kind kept for media, `url` for the
  *     rest); inline content per kind (markdown / log / code / json / a
- *     diff string as code); an entry with `error` dropped and named;
+ *     diff string as code); an entry with `error` dropped and named; a
+ *     PEER's entry (`{ path, peer, job }`, strut CALLBACKS.md §4) → a
+ *     `graph` ref on the swarm hive registered as that peer, keyed
+ *     `/jobs/<job, percent-encoded>/files/<path>`, never resolved against
+ *     the row's swarm — named instead when hive cannot place it;
  *   - what a settled row says: success text + `ask`, error (and the
  *     `job_busy:` wording), cancelled, LOST, an output not in shape;
  *   - delivery: ONE assistant row per turn, `job-<row.id>`, header the
@@ -18,7 +22,9 @@
  *     an error row appends without reading strut;
  *   - the wake: once the row is appended (not on a replay, not without a
  *     conversation) the canvas agent is woken after the response with the
- *     outcome, the question, the cards and the callback's host;
+ *     outcome, the question, the cards and the callback's host; a turn of
+ *     a job the orchestrator started (`via: "orchestrator"`) wakes the
+ *     orchestrator instead, with the reply text, and never hive's agent;
  *   - the trace card: a successful turn that touched the graph carries a
  *     `run_graph` ref after the job's own, one id per job, counted from the
  *     run's log within a bounded read — never indexed, never named to the
@@ -41,13 +47,16 @@ const {
   mockClearActiveRun,
   mockNotifyRunActive,
   mockWorkspaceFindUnique,
+  mockWorkspaceFindMany,
   mockWake,
+  mockOrchestratorWake,
   mockIndex,
   mockPending,
   mockRequeue,
   mockCheckFailure,
   mockCount,
   mockTurns,
+  mockNudge,
   afterCallbacks,
 } = vi.hoisted(() => {
   const mockTx = {
@@ -63,13 +72,16 @@ const {
     mockClearActiveRun: vi.fn(),
     mockNotifyRunActive: vi.fn(),
     mockWorkspaceFindUnique: vi.fn(),
+    mockWorkspaceFindMany: vi.fn(),
     mockWake: vi.fn(),
+    mockOrchestratorWake: vi.fn(),
     mockIndex: vi.fn(),
     mockPending: vi.fn(),
     mockRequeue: vi.fn(),
     mockCheckFailure: vi.fn(),
     mockCount: vi.fn(),
     mockTurns: vi.fn(),
+    mockNudge: vi.fn(),
     afterCallbacks: [] as Array<() => Promise<void>>,
   };
 });
@@ -79,9 +91,14 @@ vi.mock("next/server", async (orig) => ({
   after: (fn: () => Promise<void>) => void afterCallbacks.push(fn),
 }));
 vi.mock("@/lib/db", () => ({
-  db: { $transaction: mockTransaction, workspace: { findUnique: mockWorkspaceFindUnique }, strutRun: { findMany: mockTurns } },
+  db: {
+    $transaction: mockTransaction,
+    workspace: { findUnique: mockWorkspaceFindUnique, findMany: mockWorkspaceFindMany },
+    strutRun: { findMany: mockTurns },
+  },
 }));
 vi.mock("@/services/canvas-strut-autoturn", () => ({ invokeCanvasAgentOnJobTurn: mockWake }));
+vi.mock("@/services/strut-orchestrator-wake", () => ({ invokeOrchestratorOnJobTurn: mockOrchestratorWake }));
 vi.mock("@/services/strut-jobs/artifact-events", () => ({
   indexJobArtifacts: mockIndex,
   launchPendingArtifactEvents: mockPending,
@@ -89,6 +106,10 @@ vi.mock("@/services/strut-jobs/artifact-events", () => ({
 }));
 vi.mock("@/services/strut-jobs/check-failures", () => ({ deliverCheckFailure: mockCheckFailure }));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: mockNotify }));
+vi.mock("@/services/canvas-jobs", async (orig) => ({
+  ...(await orig<typeof import("@/services/canvas-jobs")>()),
+  nudgeCanvasCardJob: mockNudge,
+}));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
 vi.mock("@/services/strut-runs/run-graph", () => ({ countStrutRunGraph: mockCount }));
@@ -102,6 +123,8 @@ import {
   jobRowId,
   mapStrutArtifacts,
   parseStrutArtifacts,
+  peerSwarmsFor,
+  replyPeerOf,
   pullRequestContent,
   renderJobContent,
   replyForRow,
@@ -153,7 +176,9 @@ beforeEach(() => {
   mockClearActiveRun.mockResolvedValue({ wasLast: true });
   mockNotifyRunActive.mockResolvedValue(undefined);
   mockWorkspaceFindUnique.mockResolvedValue({ slug: "acme" });
+  mockWorkspaceFindMany.mockResolvedValue([]);
   mockWake.mockResolvedValue(undefined);
+  mockOrchestratorWake.mockResolvedValue(undefined);
   mockIndex.mockResolvedValue(0);
   mockPending.mockResolvedValue("none");
   mockRequeue.mockResolvedValue(false);
@@ -182,6 +207,15 @@ describe("parseStrutArtifacts", () => {
       { id: "x", kind: "url", title: "no kind → url", label: undefined, summary: undefined, url: undefined, content: undefined, error: undefined },
     ]);
     expect(parseStrutArtifacts(undefined)).toEqual([]);
+  });
+
+  it("keeps a peer's tag and path as strut delivered them; a peer id that is no slug is not a tag", () => {
+    const [tagged, junk] = parseStrutArtifacts([
+      { id: "plan", kind: "markdown", title: "Plan", path: "plan.md", peer: "acme-web", job: "peer/build-1" },
+      { id: "x", kind: "markdown", title: "X", path: "x.md", peer: "../evil", job: "peer/build-1" },
+    ]);
+    expect(tagged).toMatchObject({ path: "plan.md", peer: "acme-web", job: "peer/build-1" });
+    expect(junk.peer).toBeUndefined();
   });
 });
 
@@ -421,6 +455,199 @@ describe("renderJobContent", () => {
   });
 });
 
+describe("mapStrutArtifacts — a peer's deliverable (strut CALLBACKS.md §4)", () => {
+  const PEERS = new Map([["acme-web", "swarm-peer"]]);
+  const tagged = (over: Partial<StrutArtifact>) => entry({ id: "plan", title: "Plan", path: "plan.md", peer: "acme-web", job: "peer/build-1", ...over });
+
+  it("a tagged path is a graph ref on the PEER's swarm, keyed /jobs/<job, percent-encoded>/files/<path>", () => {
+    const { refs, dropped } = mapStrutArtifacts(
+      [
+        tagged({ label: "Plan", summary: "Two steps." }),
+        tagged({ id: "page", kind: "html", title: "Page", path: "/site/index.html" }),
+        // A strut-relative url naming a file of that same job is a link on the peer too.
+        tagged({ id: "shot", kind: "image", title: "Shot", path: undefined, url: "/jobs/peer%2Fbuild-1/files/shots/1.png" }),
+      ],
+      "swarm-1",
+      PEERS,
+    );
+    expect(dropped).toEqual([]);
+    expect(refs).toEqual([
+      { id: "plan", kind: "markdown", title: "Plan", label: "Plan", summary: "Two steps.", source: { type: "graph", swarmId: "swarm-peer", key: "/jobs/peer%2Fbuild-1/files/plan.md" } },
+      { id: "page", kind: "html", title: "Page", source: { type: "graph", swarmId: "swarm-peer", key: "/jobs/peer%2Fbuild-1/files/site/index.html" } },
+      { id: "shot", kind: "image", title: "Shot", source: { type: "graph", swarmId: "swarm-peer", key: "/jobs/peer%2Fbuild-1/files/shots/1.png" } },
+    ]);
+  });
+
+  it("an absolute url or inline content on a peer's entry is what it is anywhere", () => {
+    const { refs } = mapStrutArtifacts(
+      [
+        tagged({ id: "pr", kind: "pull_request", title: "PR", path: undefined, url: "https://github.com/a/b/pull/7" }),
+        tagged({ id: "notes", kind: "markdown", title: "Notes", path: undefined, content: "# Notes" }),
+      ],
+      "swarm-1",
+      PEERS,
+    );
+    expect(refs.map((r) => [r.id, r.source])).toEqual([
+      ["pr", { type: "inline", content: { url: "https://github.com/a/b/pull/7", repo: "a/b", number: 7, state: "open" } }],
+      ["notes", { type: "inline", content: { text: "# Notes" } }],
+    ]);
+  });
+
+  it("never resolved against the row's swarm: a peer hive cannot place, or a file it cannot name there, is named instead", () => {
+    const { refs, dropped } = mapStrutArtifacts(
+      [
+        tagged({ title: "Unknown peer", peer: "elsewhere" }),
+        tagged({ title: "No job", job: undefined }),
+        tagged({ title: "Not ours", job: "build-1" }),
+        tagged({ title: "A run's file", path: undefined, url: "/artifacts/1790000000000/x.md" }),
+        tagged({ title: "Another job's file", path: undefined, url: "/jobs/peer%2Fother/files/x.md" }),
+        tagged({ title: "Escape", path: "../../secrets" }),
+      ],
+      "swarm-1",
+      PEERS,
+    );
+    expect(refs).toEqual([]);
+    expect(dropped).toEqual([
+      { title: "Unknown peer", reason: "on @elsewhere, which is no swarm of this org" },
+      ...["No job", "Not ours", "A run's file", "Another job's file", "Escape"].map((title) => ({ title, reason: "on @acme-web, not a file hive can name there" })),
+    ]);
+    // Without the peers read, the same entry is still never this swarm's.
+    expect(mapStrutArtifacts([tagged({})], "swarm-1").refs).toEqual([]);
+  });
+
+  it("an untagged entry stays as it was — its url on the row's swarm, whatever peers are known", () => {
+    const local = entry({ id: "plan", title: "Plan", path: "plan.md", url: `/jobs/${JOB}/files/plan.md` });
+    expect(mapStrutArtifacts([local], "swarm-1", PEERS)).toEqual(mapStrutArtifacts([local], "swarm-1"));
+    expect(mapStrutArtifacts([local], "swarm-1", PEERS).refs[0].source).toEqual({ type: "graph", swarmId: "swarm-1", key: `/jobs/${JOB}/files/plan.md` });
+  });
+});
+
+describe("mapStrutArtifacts — a job's app directory is no app (retired, strut plans/chained-orchestrators.md §6)", () => {
+  const DOC = `/jobs/${JOB}/files/apps/tracker/dist/index.html`;
+
+  it("parses no `app` off an entry that names a job's directory", () => {
+    const [parsed] = parseStrutArtifacts([{ id: "tracker", kind: "app", title: "Visit tracker", url: DOC, app: { job: JOB, path: "apps/tracker" } }]);
+    expect(parsed.app).toBeUndefined();
+  });
+
+  it("an `app` entry that names no workspace app is never an app ref — its link, or dropped as strut named it", () => {
+    const { refs, dropped } = mapStrutArtifacts(
+      [
+        entry({ id: "tracker", kind: "app", title: "Visit tracker", url: DOC }),
+        entry({ id: "broken", kind: "app", title: "Broken", error: "an app is handed over by name once published" }),
+      ],
+      "swarm-1",
+    );
+    expect(refs.every((r) => r.kind !== "app")).toBe(true);
+    expect(dropped).toEqual([{ title: "Broken", reason: "an app is handed over by name once published" }]);
+  });
+});
+
+describe("mapStrutArtifacts — a workspace app by name (strut CALLBACKS.md §4, the builder's deliverable)", () => {
+  // The entry as strut resolves it since 2026-10-22: the version's document, with the app's name and version beside it.
+  const DOC = "/apps/visits/v2/files/dist/index.html";
+  const visits = (over: Partial<StrutArtifact>) =>
+    entry({ id: "visits", kind: "app", title: "Visits", url: DOC, app: { name: "visits", version: "v2" }, ...over });
+
+  it("parses the app's name, version and build off strut's entry; a name or version hive would not put in a URL is no app", () => {
+    const [full, badName, badVersion, unpinned] = parseStrutArtifacts([
+      { id: "visits", kind: "app", title: "Visits", url: DOC, app: { name: "visits", version: "v2", hash: "9f2c", builtAt: "2026-10-22T10:04:11.201Z" } },
+      { id: "x", kind: "app", title: "X", url: DOC, app: { name: "../escape", version: "v2" } },
+      { id: "y", kind: "app", title: "Y", url: DOC, app: { name: "visits", version: "latest" } },
+      { id: "z", kind: "app", title: "Z", app: { name: "acme/hvac/visits" }, peer: "acme-web" },
+    ]);
+    expect(full.app).toEqual({ name: "visits", version: "v2", hash: "9f2c", builtAt: "2026-10-22T10:04:11.201Z" });
+    expect(badName.app).toBeUndefined();
+    expect(badVersion.app).toBeUndefined();
+    expect(unpinned.app).toEqual({ name: "acme/hvac/visits" });
+  });
+
+  it("the builder's run.end entry is an `app` ref keyed by the version's document on the row's swarm", () => {
+    const { refs, dropped } = mapStrutArtifacts(
+      [entry({ id: "visits", kind: "app", title: "Visits", app: { name: "visits", version: "v2" }, url: DOC })],
+      "swarm-1",
+    );
+    expect(dropped).toEqual([]);
+    expect(refs).toEqual([{ id: "visits", kind: "app", title: "Visits", source: { type: "graph", swarmId: "swarm-1", key: DOC } }]);
+  });
+
+  it("a pinned version: the key is built from `app` when strut gave no url, or a url naming another app; a name with `/` is encoded whole, as strut links it", () => {
+    expect(mapStrutArtifacts([visits({ url: undefined })], "swarm-1").refs[0].source).toEqual({ type: "graph", swarmId: "swarm-1", key: DOC });
+    expect(mapStrutArtifacts([visits({ url: "/apps/other/v1/files/dist/index.html" })], "swarm-1").refs[0].source).toEqual({
+      type: "graph",
+      swarmId: "swarm-1",
+      key: DOC,
+    });
+    const nested = visits({ url: "/apps/acme%2Fhvac%2Fvisits/v3/files/dist/index.html", app: { name: "acme/hvac/visits", version: "v3" } });
+    expect(mapStrutArtifacts([nested], "swarm-1").refs[0].source).toEqual({
+      type: "graph",
+      swarmId: "swarm-1",
+      key: "/apps/acme%2Fhvac%2Fvisits/v3/files/dist/index.html",
+    });
+  });
+
+  it("a peer's entry: the app on the PEER's swarm, by name — its active version unless pinned; a peer the org has no swarm for is dropped and named", () => {
+    const peers = new Map([["acme-web", "swarm-peer"]]);
+    const unpinned = entry({ id: "visits", kind: "app", title: "Visits", app: { name: "visits" }, peer: "acme-web", job: "peer/build-1" });
+    const pinned = entry({ id: "visits", kind: "app", title: "Visits", app: { name: "visits", version: "v2" }, peer: "acme-web", job: "peer/build-1" });
+    expect(mapStrutArtifacts([unpinned, pinned], "swarm-1", peers).refs).toEqual([
+      { id: "visits", kind: "app", title: "Visits", source: { type: "graph", swarmId: "swarm-peer", key: "/apps/visits/files/dist/index.html" } },
+      { id: "visits", kind: "app", title: "Visits", source: { type: "graph", swarmId: "swarm-peer", key: DOC } },
+    ]);
+    const { refs, dropped } = mapStrutArtifacts([unpinned], "swarm-1");
+    expect(refs).toEqual([]);
+    expect(dropped).toEqual([{ title: "Visits", reason: "on @acme-web, which is no swarm of this org" }]);
+  });
+
+  it("a bad name is no app: the entry is the link it carries, which hive's reader does not serve, so it is dropped as today", () => {
+    const entries = parseStrutArtifacts([
+      { id: "visits", kind: "app", title: "Visits", url: "/apps/bad%20name/v2/files/dist/index.html", app: { name: "bad name", version: "v2" } },
+    ]);
+    expect(entries[0].app).toBeUndefined();
+    const { refs, dropped } = mapStrutArtifacts(entries, "swarm-1");
+    expect(refs).toEqual([]);
+    expect(dropped).toEqual([{ title: "Visits", reason: "bad url" }]);
+    // The mapper holds the same line on an entry handed to it unparsed.
+    expect(mapStrutArtifacts([visits({ url: undefined, app: { name: "bad name", version: "v2" } })], "swarm-1").dropped).toEqual([{ title: "Visits", reason: "nothing to show" }]);
+  });
+});
+
+describe("replyPeerOf", () => {
+  it("is the reply's slug-shaped `peer`; nothing for a local build, junk, or no output", () => {
+    expect(replyPeerOf({ output: { text: "t", peer: "acme-web" } })).toBe("acme-web");
+    for (const output of [{ text: "t", peer: "" }, { text: "t" }, { peer: "../x" }, { peer: 7 }, null, "acme-web", ["acme-web"]]) {
+      expect(replyPeerOf({ output } as never)).toBeUndefined();
+    }
+  });
+});
+
+describe("peerSwarmsFor", () => {
+  it("reads the swarm of each named peer among the row's org's workspaces, by slug; nothing to read without a tag", async () => {
+    mockWorkspaceFindUnique.mockResolvedValue({ sourceControlOrgId: "org-1" });
+    mockWorkspaceFindMany.mockResolvedValue([
+      { slug: "acme-web", swarm: { id: "swarm-peer" } },
+      { slug: "no-swarm", swarm: null },
+    ]);
+    const peers = await peerSwarmsFor(row(), [
+      entry({ peer: "acme-web" }),
+      entry({ peer: "acme-web" }),
+      entry({ peer: "no-swarm" }),
+      entry({}),
+    ]);
+    expect([...peers]).toEqual([["acme-web", "swarm-peer"]]);
+    expect(mockWorkspaceFindUnique).toHaveBeenCalledWith({ where: { id: "ws-1" }, select: { sourceControlOrgId: true } });
+    expect(mockWorkspaceFindMany).toHaveBeenCalledWith({
+      where: { slug: { in: ["acme-web", "no-swarm"] }, sourceControlOrgId: "org-1", deleted: false },
+      select: { slug: true, swarm: { select: { id: true } } },
+    });
+
+    vi.clearAllMocks();
+    expect([...(await peerSwarmsFor(row(), [entry({})]))]).toEqual([]);
+    expect(mockWorkspaceFindUnique).not.toHaveBeenCalled();
+    expect(mockWorkspaceFindMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("handleJobTurnSettled", () => {
   const artifactsBody = {
     workflow: "job",
@@ -454,6 +681,45 @@ describe("handleJobTurnSettled", () => {
     expect(mockNotify).toHaveBeenCalledWith("conv-1", "job");
     expect(mockClearActiveRun).toHaveBeenCalledWith("conv-1", "row-1");
     expect(mockNotifyRunActive).toHaveBeenCalledWith("conv-1", false);
+  });
+
+  it("tells the job's canvas card it settled: done on success, failed otherwise", async () => {
+    mockFetch.mockResolvedValue(json(200, artifactsBody));
+    await handleJobTurnSettled(row());
+    expect(mockNudge).toHaveBeenCalledWith(expect.objectContaining({ id: "row-1", jobId: JOB }), "done");
+    await handleJobTurnSettled(row({ status: StrutRunStatus.ERROR, error: "boom", output: null }));
+    expect(mockNudge).toHaveBeenLastCalledWith(expect.objectContaining({ id: "row-1" }), "failed");
+  });
+
+  it("a builder turn reads ITS run's list; a peer's deliverable lands as a ref on the peer's swarm", async () => {
+    mockFetch.mockImplementation(async (url: string) =>
+      url.endsWith("/artifacts")
+        ? json(200, {
+            workflow: "builder",
+            runId: "1790000000000",
+            job: JOB,
+            artifacts: [{ id: "wf", kind: "markdown", title: "Workflow", path: "digest.yaml.md", peer: "acme-web", job: `peer/${JOB}` }],
+          })
+        : json(404, {}),
+    );
+    mockWorkspaceFindUnique.mockResolvedValue({ slug: "acme", sourceControlOrgId: "org-1" });
+    mockWorkspaceFindMany.mockResolvedValue([{ slug: "acme-web", swarm: { id: "swarm-peer" } }]);
+    await handleJobTurnSettled(row({ workflow: "builder", output: { text: "Built the digest workflow.", artifacts: [], peer: "acme-web" } }));
+
+    expect(mockFetch.mock.calls[0][0]).toBe("https://swarm1.sphinx.chat:3355/lab/workflows/builder/runs/1790000000000/artifacts");
+    const [msg] = mockTx.sharedConversation.update.mock.calls[0][0].data.messages;
+    // The reply's own `peer` names the strut the build ran on: the card shows @acme-web.
+    expect(msg.source).toMatchObject({ kind: "job", jobId: JOB, workflow: "builder", status: "success", peer: "acme-web" });
+    expect(msg.artifacts).toEqual([
+      { id: "wf", kind: "markdown", title: "Workflow", source: { type: "graph", swarmId: "swarm-peer", key: `/jobs/peer%2F${JOB}/files/digest.yaml.md` } },
+    ]);
+  });
+
+  it("a turn whose work ran here carries no peer on its source", async () => {
+    mockFetch.mockResolvedValue(json(200, artifactsBody));
+    await handleJobTurnSettled(row({ workflow: "builder", output: { text: "Built it here.", artifacts: [], peer: "" } }));
+    const [msg] = mockTx.sharedConversation.update.mock.calls[0][0].data.messages;
+    expect(msg.source).not.toHaveProperty("peer");
   });
 
   it("is idempotent: a replay finds the row and appends nothing", async () => {
@@ -604,6 +870,66 @@ describe("handleJobTurnSettled — the wake", () => {
     await handleJobTurnSettled(row({ id: "row-3" }));
     await flushAfter();
     expect(mockWake).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleJobTurnSettled — the wake of a job the orchestrator started", () => {
+  const adopted = (over: Record<string, unknown> = {}) =>
+    row({ input: { prompt: "", title: "Dark mode", workspace: "acme", via: "orchestrator", parentRunId: "orch-row" }, ...over });
+
+  it("wakes the orchestrator after the response, with the reply text inline, and never hive's agent", async () => {
+    mockFetch.mockResolvedValue(json(200, { artifacts: [{ id: "plan", kind: "markdown", title: "Plan", url: `/jobs/${JOB}/files/plan.md` }] }));
+    await handleJobTurnSettled(adopted({ output: { text: "Wrote the plan.", ask: { message: "Which repo?" } } }), { publicBaseUrl: "https://hive.example.com" });
+    expect(mockOrchestratorWake).not.toHaveBeenCalled();
+    await flushAfter();
+    expect(mockWake).not.toHaveBeenCalled();
+    expect(mockOrchestratorWake).toHaveBeenCalledTimes(1);
+    expect(mockOrchestratorWake).toHaveBeenCalledWith({
+      conversationId: "conv-1",
+      wakeId: "job-row-1",
+      workspaceSlug: "acme",
+      jobId: JOB,
+      title: "Dark mode",
+      outcome: "success",
+      ask: "Which repo?",
+      text: "Wrote the plan.",
+      artifacts: [{ title: "Plan", kind: "markdown" }],
+      publicBaseUrl: "https://hive.example.com",
+    });
+    // The row itself landed like any job's.
+    const messages = (mockTx.sharedConversation.update.mock.calls[0][0] as { data: { messages: Array<Record<string, unknown>> } }).data.messages;
+    expect(messages[0]).toMatchObject({ id: "job-row-1", source: { kind: "job", jobId: JOB, status: "success" } });
+  });
+
+  it("a failed turn and an event's turn reach the orchestrator too; a replay wakes nothing", async () => {
+    await handleJobTurnSettled(adopted({ id: "row-2", status: StrutRunStatus.ERROR, output: null, error: "boom" }));
+    await flushAfter();
+    expect(mockOrchestratorWake.mock.calls[0][0]).toMatchObject({ wakeId: "job-row-2", outcome: "error", text: expect.stringContaining("boom") });
+
+    mockOrchestratorWake.mockClear();
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    const line = "[artifact-event] pull_request https://github.com/acme/app/pull/7 merged";
+    await handleJobTurnSettled(adopted({ id: "row-3", input: { prompt: line, title: "Dark mode", via: "orchestrator" } }));
+    await flushAfter();
+    expect(mockOrchestratorWake.mock.calls[0][0]).toMatchObject({
+      wakeId: "job-row-3",
+      event: { kind: "pull_request", url: "https://github.com/acme/app/pull/7", what: "merged" },
+    });
+
+    mockOrchestratorWake.mockClear();
+    mockTx.$queryRaw.mockResolvedValue([{ messages: [{ id: "job-row-1", role: "assistant", content: "earlier" }] }]);
+    await handleJobTurnSettled(adopted());
+    await flushAfter();
+    expect(mockOrchestratorWake).not.toHaveBeenCalled();
+    expect(mockWake).not.toHaveBeenCalled();
+  });
+
+  it("a hive-launched job still wakes hive's agent, never the orchestrator", async () => {
+    mockFetch.mockImplementation(async () => json(200, { artifacts: [] }));
+    await handleJobTurnSettled(row());
+    await flushAfter();
+    expect(mockWake).toHaveBeenCalledTimes(1);
+    expect(mockOrchestratorWake).not.toHaveBeenCalled();
   });
 });
 

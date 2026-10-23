@@ -299,6 +299,41 @@ export interface BenchmarkScore {
   source: "graph" | "run";
 }
 
+/**
+ * Shared contested union: the roster's contested count plus run-recorded
+ * contested criteria whose id AND title both miss the roster's contested set.
+ * Uncapped; callers cap at total. Used by computeBenchmarkScore and
+ * rubricBreakdown so they cannot drift.
+ */
+export function contestedUnionCount(
+  graphRubrics: GraphRubric[] | null | undefined,
+  criteria: ScorableCriterion[] | null | undefined,
+): number {
+  const hasRoster = Array.isArray(graphRubrics) && graphRubrics.length > 0;
+  const rosterIds = new Set<string>();
+  const rosterTitles = new Set<string>();
+  let count = 0;
+  if (hasRoster) {
+    for (const r of graphRubrics!) {
+      if (!r.contested) continue;
+      count += 1;
+      const ik = normKey(r.id);
+      const nk = normKey(r.name);
+      if (ik) rosterIds.add(ik);
+      if (nk) rosterTitles.add(nk);
+    }
+  }
+  if (Array.isArray(criteria)) {
+    for (const c of criteria) {
+      if (!resolveContested(c)) continue;
+      if (!rosterIds.has(normKey(c.id)) && !rosterTitles.has(normKey(c.title))) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
 export interface ComputeBenchmarkScoreInput {
   /** Per-criterion results from the run, when the run carries them. */
   criteriaResults?: ScorableCriterion[] | null;
@@ -351,13 +386,10 @@ export function computeBenchmarkScore(
   let contested: number;
   if (hasRoster) {
     total = graphRubrics!.length;
-    // The roster's own contested count is authoritative; a run-recorded
-    // contest on a criterion missing from the roster still gets excluded.
-    const rosterContested = graphRubrics!.filter((r) => r.contested).length;
-    contested = Math.max(rosterContested, contestedInRun);
+    contested = Math.min(contestedUnionCount(graphRubrics, criteriaResults), total);
   } else {
     total = hasFlatCounts ? nTotal! : criteriaResults!.length;
-    contested = contestedInRun;
+    contested = Math.min(contestedInRun, total);
   }
 
   const denominator = Math.max(0, total - contested);
@@ -450,9 +482,8 @@ export interface RubricBreakdownInput {
  *
  * 1. `total`     = score.total  (graph roster size when available).
  * 2. `contested` = TRUE UNION of roster-contested + run-recorded-contested,
- *                  capped at total. This is NOT Math.max (which computeBenchmarkScore
- *                  uses internally and which can lose run-recorded contested criteria
- *                  missing from the roster's contested set).
+ *                  capped at total. computeBenchmarkScore uses the
+ *                  same helper (contestedUnionCount), so both agree.
  * 3. `scorable`  = max(0, total − contested)
  * 4. `pass`      = min(score.passed, scorable)   — clamped so it never exceeds scorable.
  * 5. `fail`      = scorable − pass               — always >= 0 by construction.
@@ -483,38 +514,7 @@ export function rubricBreakdown(input: RubricBreakdownInput): RubricBreakdown | 
   const totalSource = score.source;
 
   // ── Step 2: true union of contested ──────────────────────────────────────
-  // Build the roster's contested key set (id + name, normalized).
-  const rosterContestedIds = new Set<string>();
-  const rosterContestedTitles = new Set<string>();
-  if (hasRoster) {
-    for (const r of graphRubrics!) {
-      if (!r.contested) continue;
-      const ik = normKey(r.id);
-      const nk = normKey(r.name);
-      if (ik) rosterContestedIds.add(ik);
-      if (nk) rosterContestedTitles.add(nk);
-    }
-  }
-
-  // Count roster-contested entries (the authoritative set).
-  const rosterContested = hasRoster ? graphRubrics!.filter((r) => r.contested).length : 0;
-
-  // Union: start from the roster count, then add run-recorded criteria whose
-  // contested flag is set but whose id/title do NOT appear in the roster's
-  // contested set (they would be double-counted if they do).
-  let unionContested = rosterContested;
-  if (hasCriteria) {
-    for (const c of criteria!) {
-      if (!resolveContested(c)) continue;
-      // Check if this criterion is already covered by the roster's contested set.
-      const idHit = rosterContestedIds.has(normKey(c.id));
-      const titleHit = rosterContestedTitles.has(normKey(c.title));
-      if (!idHit && !titleHit) {
-        // Truly new contested criterion not in the roster — add to union.
-        unionContested += 1;
-      }
-    }
-  }
+  const unionContested = contestedUnionCount(graphRubrics, criteria);
 
   // Cap at total and record clamping.
   let clamped = false;

@@ -255,7 +255,9 @@ function OfflineRunReportDocument({
   const denominator = score ? score.denominator : runProjection.stats.rubricCount;
   const allPassed = score
     ? score.allPass
-    : runProjection.stats.failCount === 0 && runProjection.stats.passCount !== null;
+    : runProjection.stats.failCount === 0 &&
+      runProjection.stats.passCount !== null &&
+      runProjection.stats.passCount > 0;
 
   const cfg = runProjection.pageData.config as Record<string, unknown>;
   const slug = typeof cfg.task_slug === "string" ? cfg.task_slug : "—";

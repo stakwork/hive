@@ -13,6 +13,10 @@ import { DownloadReportButton } from "@/components/run-report/DownloadReportButt
 import { StakworkRunType } from "@prisma/client";
 import { canReadRunReport } from "@/lib/run-report/types";
 import { loadRunReport } from "@/lib/run-report/load";
+import type { RunReportPayload } from "@/lib/run-report/types";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
+import { findLegalStrutRunRow } from "@/services/strut-runs/legal-benchmark";
+import { loadStrutRunReport } from "@/services/strut-runs/legal-report";
 import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
 import { fetchTaskRubricRoster } from "@/services/legal-benchmark-rubrics";
 import { fetchFixSnapshots } from "@/services/legal-benchmark-fix-snapshots";
@@ -64,43 +68,64 @@ export default async function RunReportPage({ params }: PageProps) {
   if (!canReadRunReport(member.role)) notFound();
   const workspaceId = member.workspaceId;
 
-  // IDOR guard in the WHERE clause — id, workspaceId AND type — so a
-  // cross-workspace or wrong-type runId 404s with no post-fetch check.
-  // EVAL and RECURSION are allowlisted alongside RUNNER: the recursion
-  // pipeline's re-runs deliver report bundles onto those rows too.
-  const run = await db.stakworkRun.findFirst({
-    where: {
-      id: runId,
-      workspaceId,
-      type: {
-        in: [
-          StakworkRunType.LEGAL_BENCHMARK_RUNNER,
-          StakworkRunType.LEGAL_BENCHMARK_EVAL,
-          StakworkRunType.LEGAL_BENCHMARK_RECURSION,
-        ],
+  let report: { id: string; projectId: number | null; payload: RunReportPayload; taskTitle: string; taskSlug: string | null };
+  if (isLegalStrutWorkspace(slug)) {
+    // A strut legal workspace's runs are `harvey-lab-run` StrutRun rows; the
+    // report is built from what the run left in its lab. The row lookup is
+    // scoped by workspace and kind, so another workspace's run 404s.
+    const row = await findLegalStrutRunRow(workspaceId, runId);
+    if (!row) notFound();
+    const input = (row.input ?? {}) as { task_title?: unknown; task_slug?: unknown };
+    const taskSlug = typeof input.task_slug === "string" && input.task_slug ? input.task_slug : null;
+    report = {
+      id: row.id,
+      projectId: null,
+      payload: await loadStrutRunReport(row),
+      taskTitle: typeof input.task_title === "string" && input.task_title ? input.task_title : (taskSlug ?? "Run report"),
+      taskSlug,
+    };
+  } else {
+    // IDOR guard in the WHERE clause — id, workspaceId AND type — so a
+    // cross-workspace or wrong-type runId 404s with no post-fetch check.
+    // EVAL and RECURSION are allowlisted alongside RUNNER: the recursion
+    // pipeline's re-runs deliver report bundles onto those rows too.
+    const run = await db.stakworkRun.findFirst({
+      where: {
+        id: runId,
+        workspaceId,
+        type: {
+          in: [
+            StakworkRunType.LEGAL_BENCHMARK_RUNNER,
+            StakworkRunType.LEGAL_BENCHMARK_EVAL,
+            StakworkRunType.LEGAL_BENCHMARK_RECURSION,
+          ],
+        },
       },
-    },
-    // reportUrl IS selected (opting through the global omit) so the server can
-    // fetch the bundle. It never enters the RSC payload or any client prop.
-    // projectId feeds fix-snapshot run attribution (unique_source_id match).
-    select: { id: true, result: true, reportUrl: true, projectId: true },
-  });
+      // reportUrl IS selected (opting through the global omit) so the server can
+      // fetch the bundle. It never enters the RSC payload or any client prop.
+      // projectId feeds fix-snapshot run attribution (unique_source_id match).
+      select: { id: true, result: true, reportUrl: true, projectId: true },
+    });
 
-  if (!run) notFound();
+    if (!run) notFound();
 
-  const payload = await loadRunReport(run.id, run.reportUrl);
+    const payload = await loadRunReport(run.id, run.reportUrl);
 
-  let taskTitle = "Run report";
-  let taskSlug: string | null = null;
-  try {
-    const parsed = run.result
-      ? (JSON.parse(run.result) as { taskTitle?: string; taskSlug?: string })
-      : null;
-    if (parsed?.taskTitle) taskTitle = parsed.taskTitle;
-    if (parsed?.taskSlug) taskSlug = parsed.taskSlug;
-  } catch {
-    // Malformed result JSON — the default title is fine.
+    let taskTitle = "Run report";
+    let taskSlug: string | null = null;
+    try {
+      const parsed = run.result
+        ? (JSON.parse(run.result) as { taskTitle?: string; taskSlug?: string })
+        : null;
+      if (parsed?.taskTitle) taskTitle = parsed.taskTitle;
+      if (parsed?.taskSlug) taskSlug = parsed.taskSlug;
+    } catch {
+      // Malformed result JSON — the default title is fine.
+    }
+
+    report = { id: run.id, projectId: run.projectId, payload, taskTitle, taskSlug };
   }
+  const { payload, taskTitle, taskSlug } = report;
 
   // Graph rubric roster for the task (EvalSet → EvalRequirement) — drives the
   // graph-first score denominator and contested exclusions in the header and
@@ -123,8 +148,8 @@ export default async function RunReportPage({ params }: PageProps) {
       // Called even without a jarvisConfig: the helper's USE_MOCKS branch
       // doesn't need one, and it returns [] (never throws) otherwise.
       const snapshots = await fetchFixSnapshots(jarvisConfig, taskSlug, {
-        runId: run.id,
-        projectId: run.projectId,
+        runId: report.id,
+        projectId: report.projectId,
       });
       fixSnapshots = snapshots.length > 0 ? snapshots : null;
     } catch {
@@ -147,7 +172,7 @@ export default async function RunReportPage({ params }: PageProps) {
             Legal Benchmarks
           </Link>
           <DownloadReportButton
-            exportUrl={`/api/workspaces/${slug}/legal/benchmarks/runs/${run.id}/report/export`}
+            exportUrl={`/api/workspaces/${slug}/legal/benchmarks/runs/${report.id}/report/export`}
           />
         </div>
         <RunReportView

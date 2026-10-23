@@ -18,7 +18,12 @@ import { z } from "zod";
 
 /** `StrutRun.kind` of a job turn — the completion handler's discriminator. */
 export const JOB_TURN_KIND = "job_turn";
-/** The seeded strut workflow (stakgraph mcp `src/lab/job/`). */
+/**
+ * The seeded strut workflow (stakgraph mcp `src/lab/job/`) — what hive
+ * launches. A job strut's orchestrator starts may run another job-shaped
+ * workflow (`builder`, strut plans/builder-job.md §2): its row records that
+ * one, and the reply is the same shape.
+ */
 export const JOB_WORKFLOW = "job";
 
 /** Cap on a key the reader accepts (a path on the swarm). */
@@ -51,6 +56,24 @@ export function parseStrutArtifactKey(key: unknown): StrutArtifactKey | null {
   return rest.length > 0 ? { runId: decodeURIComponent(owner), path: rest.join("/") } : null;
 }
 
+/** A peer's id as hive registers one on the org strut (`strut-peers.ts`): a workspace slug. */
+const STRUT_PEER_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+
+/** A strut peer id — what `@<slug>` names; anything else is no tag. */
+export function isStrutPeerId(v: unknown): v is string {
+  return typeof v === "string" && STRUT_PEER_ID.test(v);
+}
+
+/**
+ * The org strut's job behind a job id as a PEER holds it: a build the org
+ * strut ran on another workspace's strut lives there as `peer/<job>`, under
+ * the org strut's own id (strut plans/builder-job.md §3). Null for any
+ * other id.
+ */
+export function peerJobHome(job: string): string | null {
+  return job.startsWith("peer/") && job.length > "peer/".length ? job.slice("peer/".length) : null;
+}
+
 /**
  * Where a job's live update may point, as the browser will use it (strut
  * plans/live-artifacts.md): a file of THIS job or of a run — strut's two
@@ -74,8 +97,36 @@ export function strutArtifactReaderUrl(githubLogin: string, swarmId: string, key
   return `/api/orgs/${encodeURIComponent(githubLogin)}/strut/artifacts?${new URLSearchParams({ swarmId, key })}`;
 }
 
-/** The workflow `input` a job turn is launched with: the prompt, the job's title riding along for the reply's header (strut ignores it), the workspace the job belongs to — the hive workspace id a pod is claimed for (strut's `job` v6 declares it; an older one strips it) — and the model the turn ran on, riding along like the title so the row records it (strut reads `params.model`). */
-export const jobTurnInputSchema = z.object({ prompt: z.string(), title: z.string().optional(), workspace: z.string().optional(), model: z.string().optional() }).passthrough();
+/**
+ * The workflow `input` a job turn is launched with: the prompt, the job's
+ * title riding along for the reply's header (strut ignores it), the
+ * workspace the job belongs to — the hive workspace id a pod is claimed for
+ * (strut's `job` v6 declares it; an older one strips it) — and the model the
+ * turn ran on, riding along like the title so the row records it (strut
+ * reads `params.model`).
+ *
+ * A turn hive did not launch — a job strut's orchestrator started inside
+ * strut, adopted by the strut-runs webhook — carries `via: "orchestrator"`
+ * (an empty prompt: the orchestrator's agent wrote the job's brief on strut)
+ * and the orchestrator turn's `StrutRun.id` as `parentRunId`. The
+ * completion handler wakes no canvas agent for such a turn.
+ */
+export const jobTurnInputSchema = z
+  .object({
+    prompt: z.string(),
+    title: z.string().optional(),
+    workspace: z.string().optional(),
+    model: z.string().optional(),
+    via: z.literal("orchestrator").optional(),
+    parentRunId: z.string().optional(),
+  })
+  .passthrough();
+
+/** The turn was adopted from strut's orchestrator, not launched by hive. */
+export function jobTurnViaOrchestrator(row: { input: unknown }): boolean {
+  const input = jobTurnInputSchema.safeParse(row.input);
+  return input.success && input.data.via === "orchestrator";
+}
 
 /** The title `start_job` put on the launch, carried on every turn's input. */
 export function jobTitleOf(row: { input: unknown }): string {

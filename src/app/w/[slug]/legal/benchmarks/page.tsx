@@ -11,15 +11,19 @@ import { CnhMattersPanel } from "@/components/legal/CnhMattersPanel";
 import { useLegalBenchmarkRecursionList } from "@/hooks/useLegalBenchmarkRecursionList";
 import { useLegalBenchmarkRunList } from "@/hooks/useLegalBenchmarkRunList";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 type TabValue = "benchmark" | "runs" | "recursion" | "cnh";
 
 const TAB_VALUES: readonly TabValue[] = ["benchmark", "runs", "recursion", "cnh"];
 
+/** A strut legal workspace (`harvey-lab-run`) has no recursion and no C & H tasks. */
+const STRUT_TAB_VALUES: readonly TabValue[] = ["benchmark", "runs"];
+
 /** Parse `?tab=` into a valid tab; anything unrecognised lands on Benchmark. */
-function parseTab(value: string | null): TabValue {
-  return (TAB_VALUES as readonly string[]).includes(value ?? "")
+function parseTab(value: string | null, tabs: readonly TabValue[] = TAB_VALUES): TabValue {
+  return (tabs as readonly string[]).includes(value ?? "")
     ? (value as TabValue)
     : "benchmark";
 }
@@ -42,22 +46,29 @@ function RecursionTab() {
 
 export default function LegalBenchmarksPage() {
   const searchParams = useSearchParams();
+  const { workspace } = useWorkspace();
+  const strut = isLegalStrutWorkspace(workspace?.slug);
+  const tabs = strut ? STRUT_TAB_VALUES : TAB_VALUES;
   const [activeTab, setActiveTab] = useState<TabValue>(() =>
-    parseTab(searchParams?.get("tab") ?? null),
+    parseTab(searchParams?.get("tab") ?? null, tabs),
   );
 
   // Follow ?tab= changes after mount — in-page links (e.g. the Runs tab's
   // recursion badge) navigate by query param rather than lifting tab state.
   useEffect(() => {
-    setActiveTab(parseTab(searchParams?.get("tab") ?? null));
-  }, [searchParams]);
+    setActiveTab(parseTab(searchParams?.get("tab") ?? null, tabs));
+  }, [searchParams, tabs]);
 
   return (
     <div className="flex flex-col h-full">
       <PageHeader
         icon={Scale}
         title="Legal Benchmarks"
-        description="Harvey LAB — 1,749 real legal tasks across 25 practice areas"
+        description={
+          strut
+            ? "Harvey LAB — 1,749 real legal tasks across 25 practice areas, run on this workspace's strut"
+            : "Harvey LAB — 1,749 real legal tasks across 25 practice areas"
+        }
       />
       <Tabs
         value={activeTab}
@@ -68,8 +79,8 @@ export default function LegalBenchmarksPage() {
           <TabsList>
             <TabsTrigger value="benchmark">Benchmark</TabsTrigger>
             <TabsTrigger value="runs">Runs</TabsTrigger>
-            <TabsTrigger value="recursion">Recursion</TabsTrigger>
-            <TabsTrigger value="cnh">C &amp; H Law Firm Tasks</TabsTrigger>
+            {!strut && <TabsTrigger value="recursion">Recursion</TabsTrigger>}
+            {!strut && <TabsTrigger value="cnh">C &amp; H Law Firm Tasks</TabsTrigger>}
           </TabsList>
         </div>
         <TabsContent value="benchmark" className="flex-1 min-h-0 pt-2">
@@ -78,12 +89,16 @@ export default function LegalBenchmarksPage() {
         <TabsContent value="runs" className="flex-1 min-h-0 overflow-auto p-4">
           <BenchmarkRunsHistory />
         </TabsContent>
-        <TabsContent value="recursion" className="flex-1 min-h-0 overflow-auto p-4">
-          <RecursionTab />
-        </TabsContent>
-        <TabsContent value="cnh" className="flex-1 min-h-0 overflow-hidden">
-          <CnhMattersPanel />
-        </TabsContent>
+        {!strut && (
+          <TabsContent value="recursion" className="flex-1 min-h-0 overflow-auto p-4">
+            <RecursionTab />
+          </TabsContent>
+        )}
+        {!strut && (
+          <TabsContent value="cnh" className="flex-1 min-h-0 overflow-hidden">
+            <CnhMattersPanel />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

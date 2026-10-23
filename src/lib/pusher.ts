@@ -1,5 +1,6 @@
 import Pusher from "pusher";
 import PusherClient from "pusher-js";
+import type { CanvasCardJobNudge } from "@/lib/canvas/canvas-jobs";
 
 // Server-side Pusher instance for triggering events
 export const pusherServer = new Pusher({
@@ -83,6 +84,8 @@ export const PUSHER_EVENTS = {
   RESEARCH_UPDATED: "research-updated",
   // A person saved changes to a brainstorm tree; open desks refetch that one tree.
   BRAINSTORM_UPDATED: "brainstorm-updated",
+  // A person saved a change to an initiative's plan (the infinite canvas): open canvases re-read that plan.
+  INITIATIVE_UPDATED: "initiative-updated",
   // Canvas events (system-canvas document on the org)
   CANVAS_UPDATED: "canvas-updated",
   // Canvas presence events (ephemeral — not persisted)
@@ -128,6 +131,13 @@ export const PUSHER_EVENTS = {
   // (`CanvasJobUpdate`), small by construction — links, never bytes. A
   // notification, not the record: the client re-reads what it points at.
   CANVAS_JOB_UPDATE: "canvas-job-update",
+  // A strut job on an infinite-canvas card ran, reported something, or
+  // settled (`lib/canvas/canvas-jobs.ts`). Fired on the org channel so
+  // everyone viewing the initiative sees it, not only the starter's chat;
+  // the payload is a nudge (`CanvasCardJobNudge`: ids, state, the kind of
+  // thing reported) — titles, people and links are read through
+  // `/api/orgs/[githubLogin]/strut/canvas-jobs`.
+  CANVAS_CARD_JOB: "canvas-card-job",
   // The workspace's GitHub App installation changed (repos added/removed,
   // permissions accepted, suspended…) — open setup screens re-check access.
   GITHUB_INSTALLATION_UPDATED: "github-installation-updated",
@@ -172,7 +182,10 @@ export type CanvasConversationUpdateReason =
   | "strut"
   // A strut JOB turn settled and its reply (text + artifact refs) was
   // appended to the conversation (`services/strut-runs/job-turn.ts`).
-  | "job";
+  | "job"
+  // Jamie on strut: an orchestrator turn launched, settled, or a person
+  // decided one of its proposals (`services/strut-runs/orchestrator-turn.ts`).
+  | "orchestrator";
 
 /**
  * Fire-and-forget broadcast that a canvas conversation's `messages` JSON
@@ -319,25 +332,50 @@ export function notifyCanvasJobUpdate(conversationId: string, update: CanvasJobU
   }
 }
 
-/**
- * Fire-and-forget nudge that one brainstorm tree changed in the graph (a
- * person saved edits on the desk). Carries no tree data: every open desk
- * refetches that tree through its own read. Never throws.
- */
-export function notifyBrainstormUpdated(
+/** Fire-and-forget nudge about a job on an infinite-canvas card, to the org channel. Never throws. */
+export function notifyCanvasCardJob(githubLogin: string, nudge: CanvasCardJobNudge): void {
+  try {
+    void pusherServer.trigger(getOrgChannelName(githubLogin), PUSHER_EVENTS.CANVAS_CARD_JOB, nudge).catch((err) => {
+      console.error("[pusher] notifyCanvasCardJob failed (non-fatal):", err);
+    });
+  } catch (err) {
+    console.error("[pusher] notifyCanvasCardJob threw (non-fatal):", err);
+  }
+}
+
+/** A graph tree changed: `{ workspaceSlug, root }` on the org channel, no tree data. Never throws. */
+function notifyTreeUpdated(
+  event: string,
   githubLogin: string,
-  payload: { workspaceSlug: string; root: string },
+  payload: { workspaceSlug: string; root?: string },
 ): void {
   try {
     void pusherServer
-      .trigger(getOrgChannelName(githubLogin), PUSHER_EVENTS.BRAINSTORM_UPDATED, {
-        ...payload,
-        at: Date.now(),
-      })
+      .trigger(getOrgChannelName(githubLogin), event, { ...payload, at: Date.now() })
       .catch((err) => {
-        console.error("[pusher] notifyBrainstormUpdated failed (non-fatal):", err);
+        console.error(`[pusher] ${event} failed (non-fatal):`, err);
       });
   } catch (err) {
-    console.error("[pusher] notifyBrainstormUpdated threw (non-fatal):", err);
+    console.error(`[pusher] ${event} threw (non-fatal):`, err);
   }
 }
+
+/**
+ * Fire-and-forget nudge that one brainstorm tree changed in the graph (a
+ * person saved edits on the desk). Every open desk refetches that tree
+ * through its own read.
+ */
+export const notifyBrainstormUpdated = (
+  githubLogin: string,
+  payload: { workspaceSlug: string; root: string },
+) => notifyTreeUpdated(PUSHER_EVENTS.BRAINSTORM_UPDATED, githubLogin, payload);
+
+/**
+ * Tell the org's open canvases an initiative's plan changed, so they read it
+ * again: `{ workspaceSlug, root }` names the initiative; without `root`, any
+ * plan in that workspace may have (strut wrote it). Fire-and-forget.
+ */
+export const notifyInitiativeUpdated = (
+  githubLogin: string,
+  payload: { workspaceSlug: string; root?: string },
+) => notifyTreeUpdated(PUSHER_EVENTS.INITIATIVE_UPDATED, githubLogin, payload);

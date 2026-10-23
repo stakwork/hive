@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { workspaceAppOfKey } from "@/lib/strut-apps";
 import { strutArtifactReaderUrl } from "@/lib/strut-jobs";
 import { getOrgChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { usePusherChannel } from "@/hooks/usePusherChannel";
@@ -76,6 +77,13 @@ export async function readStrutArtifact(
     case "html":
     case "walkthrough":
       return { swarmId: source.swarmId, key: source.key };
+    case "app": {
+      // An app — a workspace's by name, off the key's spelling: the frame
+      // reads its document and relays its calls itself.
+      const app = workspaceAppOfKey(source.key);
+      if (!app) throw new ArtifactLoadError("unavailable");
+      return { swarmId: source.swarmId, ...app };
+    }
     case "captcha":
       return { manifest: { swarmId: source.swarmId, key: source.key } };
     case "markdown":
@@ -158,7 +166,7 @@ function prLiveTarget(
 }
 
 /** Query key the chat and the panel share — one poll, one live-nudge target, serves both. */
-const prLiveQueryKey = (githubLogin: string, repo: string, number: number) =>
+export const prLiveQueryKey = (githubLogin: string, repo: string, number: number) =>
   ["canvas-pr-live", githubLogin, repo, number] as const;
 
 /** Whether a PR state is terminal — no more polling needed. */

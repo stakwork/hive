@@ -41,6 +41,34 @@ export async function fetchStrutRunEvents(row: LabRow, timeoutMs = EVENTS_TIMEOU
   }
 }
 
+/**
+ * What a job IS on the row's strut: `GET {lab}/jobs/<job>`'s `workflow`, the
+ * one its newest turn ran (`job` or `builder`, strut API.md) — what
+ * `job/continue` launches. Null when the lab could not say (an older strut
+ * has no such field).
+ */
+export async function fetchStrutJobWorkflow(row: Pick<StrutRunRow, "id" | "swarmId">, job: string, timeoutMs = EVENTS_TIMEOUT_MS): Promise<string | null> {
+  const lab = await labForRow(row);
+  if (!lab) return null;
+  try {
+    const res = await fetch(`${lab.labBase}/jobs/${encodeURIComponent(job)}?threads=0`, {
+      headers: { "x-api-token": lab.swarmApiKey },
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { workflow?: unknown };
+    return typeof body.workflow === "string" && body.workflow ? body.workflow : null;
+  } catch (err) {
+    logger.warn("Strut job unavailable", STRUT_RUN_LOG_TAG, {
+      runId: row.id,
+      job,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
 export interface StrutArtifact {
   body: ArrayBuffer;
   contentType: string;
@@ -68,6 +96,62 @@ export async function fetchStrutArtifact(row: LabRow, path: string): Promise<Str
     };
   } catch (err) {
     logger.warn("Strut artifact unavailable", STRUT_RUN_LOG_TAG, {
+      runId: row.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+/** Every file the run wrote, as paths relative to its artifact root; null when the lab could not answer. */
+export async function fetchStrutArtifactList(row: LabRow): Promise<string[] | null> {
+  if (!row.strutRunId) return null;
+  const lab = await labForRow(row);
+  if (!lab) return null;
+  try {
+    // No trailing slash: with one, the lab serves its UI instead of the listing.
+    const res = await fetch(`${lab.labBase}/artifacts/${encodeURIComponent(row.strutRunId)}`, {
+      headers: { "x-api-token": lab.swarmApiKey, accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(ARTIFACT_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const listing = (await res.json()) as { files?: unknown };
+    return Array.isArray(listing.files) ? listing.files.filter((f): f is string => typeof f === "string") : null;
+  } catch (err) {
+    logger.warn("Strut artifact list unavailable", STRUT_RUN_LOG_TAG, {
+      runId: row.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+const TRANSCRIPT_TIMEOUT_MS = 30_000;
+
+/**
+ * One agent's transcript (its model messages), by the link strut put on
+ * the agent's `step.end` (`/workflows/<wf>/runs/<id>/transcripts/<path>`).
+ * Only a link under THIS row's run is followed; null otherwise, or when the
+ * lab could not answer.
+ */
+export async function fetchStrutTranscript(row: LabRow, link: string): Promise<unknown[] | null> {
+  if (!row.strutRunId) return null;
+  const scope = `/workflows/${encodeURIComponent(row.workflow)}/runs/${encodeURIComponent(row.strutRunId)}/transcripts/`;
+  if (!link.startsWith(scope) || link.includes("..")) return null;
+  const lab = await labForRow(row);
+  if (!lab) return null;
+  try {
+    const res = await fetch(`${lab.labBase}${link}`, {
+      headers: { "x-api-token": lab.swarmApiKey },
+      cache: "no-store",
+      signal: AbortSignal.timeout(TRANSCRIPT_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const messages = (await res.json()) as unknown;
+    return Array.isArray(messages) ? messages : null;
+  } catch (err) {
+    logger.warn("Strut transcript unavailable", STRUT_RUN_LOG_TAG, {
       runId: row.id,
       error: err instanceof Error ? err.message : String(err),
     });

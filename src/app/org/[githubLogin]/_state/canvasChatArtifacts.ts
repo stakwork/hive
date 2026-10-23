@@ -35,6 +35,7 @@
 import type { Action, ActionResult, DiffContent } from "@/lib/chat";
 import { parseGraphChanges, type GraphChange } from "@/components/graph-workbench/changes";
 import { bounded } from "@/lib/strut-chat-activity";
+import { isStrutAppName, isStrutAppVersion, workspaceAppOfKey } from "@/lib/strut-apps";
 import { proposalGraphArtifacts } from "./proposalGraphArtifacts";
 
 // ─── Kinds and their content ────────────────────────────────────────────
@@ -118,6 +119,15 @@ export interface ArtifactContents {
         updatedAt?: string;
       }
     | { swarmId: string; key: string };
+  /**
+   * A strut APP, where it is on the swarm: a WORKSPACE app by name (the
+   * builder's deliverable, strut CALLBACKS.md §4 — the active version unless
+   * one is named). Unlike a page, it is live software —
+   * `StrutAppFrame` reads its document through Hive and relays its calls
+   * to the swarm, so it reads and launches runs under its grants. The ref's
+   * `graph` source keys it by its document's link.
+   */
+  app: { swarmId: string; app: string; version?: string };
   image: { url: string; alt?: string };
   video: { url: string; poster?: string };
   audio: { url: string };
@@ -466,6 +476,11 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
     const key = bounded(raw.key, MAX_ID_LENGTH);
     return swarmId && key ? { swarmId, key } : null;
   },
+  app: (raw) => {
+    const swarmId = bounded(raw.swarmId, MAX_ID_LENGTH);
+    if (!swarmId || !isStrutAppName(raw.app) || (raw.version !== undefined && !isStrutAppVersion(raw.version))) return null;
+    return { swarmId, app: raw.app, ...(raw.version !== undefined ? { version: raw.version } : {}) };
+  },
   image: (raw) => {
     const base = address(raw);
     return base && { ...base, alt: optional(raw.alt) };
@@ -613,13 +628,18 @@ const ADDRESS_KINDS: ReadonlySet<ArtifactKind> = new Set<ArtifactKind>(["image",
 /**
  * Where a ref's content is read from, when every ref that reads from there
  * shows the same thing: a file on a swarm by its key (a job's `plan.md` is
- * read fresh each time, so the turn that re-reports it adds nothing), a
+ * read fresh each time, so the turn that re-reports it adds nothing), an
+ * app by its swarm and name (every version of it is one card), a
  * pull request by repo and number (its state is read live), a stored page
  * by its slug, an address by its URL. Null for content frozen on the
  * message, where each ref is its own snapshot.
  */
 function liveSourceKey({ kind, source }: ArtifactRef): string | null {
-  if (source.type === "graph") return `graph:${source.swarmId}:${source.key}`;
+  if (source.type === "graph") {
+    // An app is the app, whichever version a turn's link names: its card picks the version.
+    const app = kind === "app" ? workspaceAppOfKey(source.key) : null;
+    return app ? `app:${source.swarmId}:${app.app}` : `graph:${source.swarmId}:${source.key}`;
+  }
   const { content } = source;
   switch (kind) {
     case "pull_request": {

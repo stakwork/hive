@@ -27,8 +27,18 @@
  * `url` becomes a `graph` source (`{ swarmId, key: <that url> }`) that the
  * reader route serves from the swarm; an absolute `url` and inline
  * `content` become `inline` sources; an entry strut could not resolve
- * (`error`) is dropped from the refs and named in the content. The
- * append has `canvas-strut-fanout.ts`'s discipline — `FOR UPDATE`,
+ * (`error`) is dropped from the refs and named in the content. An `app`
+ * (strut CALLBACKS.md §4) — a WORKSPACE app by name, what the `builder`
+ * hands over, or a job's app in its directory (strut plans/apps.md §6) —
+ * becomes an `app` ref keyed by its document's link, which `StrutAppFrame`
+ * renders and relays. An entry
+ * from ANOTHER strut — a build the turn ran on a peer (`builder` with
+ * `peer`, strut plans/builder-job.md §3) — comes tagged `{ path, peer, job }`
+ * and unresolved (strut CALLBACKS.md §4): it becomes a `graph` source on the
+ * swarm hive registered as that peer (`peerSwarmsFor`: the slug of a
+ * workspace in the row's org), keyed `/jobs/<job, percent-encoded>/files/
+ * <path>` there, so the reader reads it from THAT swarm with its own key.
+ * The append has `canvas-strut-fanout.ts`'s discipline — `FOR UPDATE`,
  * ownership re-checked against hive's rows (never the payload), idempotent
  * by row id `job-<StrutRun.id>` — and never throws for a missing target.
  * `error` / `cancelled` / LOST rows append a row saying so.
@@ -65,7 +75,15 @@
  * summarize it, relay the job's question, or continue the job; the wake
  * runs in `after()` so the callback answers at once, and is gated there
  * (owner opt-in, master kill switch, loop breaker). Stored rows also reach
- * the model as text on the next human message.
+ * the model as text on the next human message. A turn of a job strut's
+ * ORCHESTRATOR started (`via: "orchestrator"` on the input — the webhook
+ * adopted its first turn, `api/strut-runs/webhook`, and every later turn
+ * carries the mark) wakes the ORCHESTRATOR instead
+ * (`invokeOrchestratorOnJobTurn`, `strut-orchestrator-wake.ts`): hive's
+ * canvas agent is not in that conversation, and the agent that asked for
+ * the job is the one to summarize it. Same gates, same after-response
+ * scheduling; the reply text rides on the wake since strut's agent cannot
+ * read hive's rows.
  *
  * Retry contract (`completeStrutRun`): a transient failure reading the
  * artifacts list throws, so the webhook answers 5xx and strut re-posts;
@@ -81,8 +99,21 @@ import { parseArtifactContent, type ArtifactKind, type ArtifactRef } from "@/app
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { notifyCanvasConversationUpdated } from "@/lib/pusher";
-import { JOB_TURN_KIND, JOB_WORKFLOW, jobTitleOf, jobTurnInputSchema, parseArtifactEvent, parseStrutArtifactKey, type ArtifactEvent } from "@/lib/strut-jobs";
+import {
+  JOB_TURN_KIND,
+  JOB_WORKFLOW,
+  jobTitleOf,
+  jobTurnInputSchema,
+  isStrutPeerId,
+  jobTurnViaOrchestrator,
+  parseArtifactEvent,
+  parseStrutArtifactKey,
+  peerJobHome,
+  type ArtifactEvent,
+} from "@/lib/strut-jobs";
+import { isStrutAppName, isStrutAppVersion, workspaceAppDocumentKey, workspaceAppOfKey } from "@/lib/strut-apps";
 import { getBaseUrl } from "@/lib/utils";
+import { canvasJobStateOf, nudgeCanvasCardJob } from "@/services/canvas-jobs";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
 import { countStrutRunGraph } from "@/services/strut-runs/run-graph";
 import { fetchStrutRunEvents } from "@/services/strut-runs/lab";
@@ -101,6 +132,8 @@ const MAX_INLINE_CHARS = 50_000;
 /** What `parseArtifactRefs` will keep — the rest is dropped here, not repaired later. */
 const MAX_ID_CHARS = 200;
 const MAX_TITLE_CHARS = 300;
+/** Cap on a peer's file path (the reader's own key cap). */
+const MAX_KEY_CHARS = 1_024;
 /**
  * How long a turn's delivery waits on its log for the trace card. Read beside
  * the artifact list, inside the 10 s strut gives a callback.
@@ -125,6 +158,19 @@ export interface StrutArtifact {
   url?: string;
   content?: unknown;
   error?: string;
+  /** A file relative to the job's directory — on the PEER, for a tagged entry (strut resolves its own to `url`). */
+  path?: string;
+  /** Another strut's deliverable: the peer's id as the org strut names it — a workspace slug. */
+  peer?: string;
+  /** With `peer`: the job its files are under THERE (`peer/<job>`). */
+  job?: string;
+  /**
+   * An APP (`kind: "app"`, strut CALLBACKS.md §4): a WORKSPACE app by name —
+   * the builder's deliverable, its version resolved by strut (absent only on
+   * a peer's entry, which strut leaves as it came). `url` is its document.
+   * `hash` is the build the document came from.
+   */
+  app?: { name: string; version?: string; hash?: string; builtAt?: string };
 }
 
 const KINDS: ReadonlySet<string> = new Set<ArtifactKind>([
@@ -150,6 +196,22 @@ const ADDRESS_KINDS: ReadonlySet<string> = new Set<ArtifactKind>(["image", "vide
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown, max: number): string | undefined => (typeof v === "string" && v.length > 0 && v.length <= max ? v : undefined);
 
+/**
+ * An app deliverable's `app`: `{ name, version?, hash?, builtAt? }` for a
+ * workspace app (a version strut did not spell as one, or a name hive would
+ * not put in a URL, is no app). Undefined otherwise — a job's app directory
+ * (`{ job, path }`, retired on strut's side) included.
+ */
+function appOf(raw: unknown): StrutArtifact["app"] {
+  if (!isRecord(raw) || !isStrutAppName(raw.name) || (raw.version !== undefined && !isStrutAppVersion(raw.version))) return undefined;
+  return {
+    name: raw.name,
+    ...(raw.version !== undefined ? { version: raw.version } : {}),
+    ...(str(raw.hash, 200) ? { hash: raw.hash as string } : {}),
+    ...(str(raw.builtAt, 60) ? { builtAt: raw.builtAt as string } : {}),
+  };
+}
+
 /** Strut's list as it comes: every entry that is whole, in order. */
 export function parseStrutArtifacts(raw: unknown): StrutArtifact[] {
   if (!Array.isArray(raw)) return [];
@@ -168,6 +230,10 @@ export function parseStrutArtifacts(raw: unknown): StrutArtifact[] {
       url: typeof entry.url === "string" ? entry.url : undefined,
       content: entry.content,
       error: typeof entry.error === "string" ? entry.error : undefined,
+      path: str(entry.path, MAX_KEY_CHARS),
+      peer: isStrutPeerId(entry.peer) ? entry.peer : undefined,
+      job: str(entry.job, MAX_ID_CHARS),
+      app: appOf(entry.app),
     });
   }
   return out;
@@ -291,13 +357,61 @@ function treeCardContent(entry: StrutArtifact): { content: Record<string, unknow
 const basename = (key: string): string => key.split("?")[0].split("/").pop() ?? key;
 
 /**
+ * The kind a file served through the reader shows as. A page strut wrote
+ * stays `html`: its viewer reads the bytes through the reader and renders
+ * them in `HtmlArtifactFrame` — a sandboxed frame, scripts on, never a
+ * navigation to the reader. A diff file or a pull request cannot be read
+ * off bytes, so as code.
+ */
+const readerKind = (kind: string): ArtifactKind =>
+  !KINDS.has(kind) || kind === "graph" ? "url" : kind === "diff" || kind === "pull_request" ? "code" : (kind as ArtifactKind);
+
+/**
+ * A peer's file as the reader names it on that peer's swarm:
+ * `/jobs/<job, percent-encoded>/files/<path>` (`job` is the peer's own id
+ * for the work, `peer/<job>` — hive adds no prefix), or a strut-relative
+ * `url` naming a file of that same job. Null for anything else: a file
+ * under a peer's RUN, or a job the peer did not take from the org strut,
+ * which the reader has no row of hive's to vouch for.
+ */
+function peerFileKey(entry: StrutArtifact): string | null {
+  if (!entry.job || !peerJobHome(entry.job)) return null;
+  const key = entry.path !== undefined ? `/jobs/${encodeURIComponent(entry.job)}/files/${entry.path.replace(/^\/+/, "")}` : entry.url;
+  if (!key) return null;
+  const parsed = parseStrutArtifactKey(key);
+  return parsed && "job" in parsed && parsed.job === entry.job ? key : null;
+}
+
+/**
+ * Where a WORKSPACE app is (strut CALLBACKS.md §4, the builder's
+ * deliverable): its swarm and its document's link
+ * (`/apps/<name>/<vN>/files/dist/index.html`, `workspaceAppDocumentKey`) —
+ * strut's `url` when it is that link, else built from `app: { name,
+ * version }`. A peer's entry names the app on the PEER's swarm, unresolved:
+ * its name and, when pinned, its version, read there when looked at. Null
+ * when the entry names no workspace app, or a peer no swarm of the org is.
+ */
+function workspaceAppSource(entry: StrutArtifact, swarmId: string, peers: ReadonlyMap<string, string>): { swarmId: string; key: string } | null {
+  if (!entry.app || !isStrutAppName(entry.app.name)) return null;
+  if (entry.peer) {
+    const peerSwarmId = peers.get(entry.peer);
+    return peerSwarmId ? { swarmId: peerSwarmId, key: workspaceAppDocumentKey(entry.app.name, entry.app.version) } : null;
+  }
+  const linked = entry.url ? workspaceAppOfKey(entry.url) : null;
+  const key = linked && linked.app === entry.app.name ? entry.url! : workspaceAppDocumentKey(entry.app.name, entry.app.version);
+  return { swarmId, key };
+}
+
+/**
  * Strut's resolved entries → hive's refs. Pure. `dropped` names the entries
  * that became no ref — unresolved on strut's side, or a shape hive cannot
- * show — for the content to mention.
+ * show — for the content to mention. `peers` is the swarm behind each peer
+ * the entries name (`peerSwarmsFor`); a peer's file is read from that swarm.
  */
 export function mapStrutArtifacts(
   entries: StrutArtifact[],
   swarmId: string,
+  peers: ReadonlyMap<string, string> = new Map(),
 ): { refs: ArtifactRef[]; dropped: Array<{ title: string; reason: string }> } {
   const refs: ArtifactRef[] = [];
   const dropped: Array<{ title: string; reason: string }> = [];
@@ -305,6 +419,34 @@ export function mapStrutArtifacts(
     const base = { id: entry.id, title: entry.title, ...(entry.label ? { label: entry.label } : {}), ...(entry.summary ? { summary: entry.summary } : {}) };
     if (entry.error) {
       dropped.push({ title: entry.title, reason: entry.error });
+      continue;
+    }
+    // An APP (strut CALLBACKS.md §4): live software, rendered through the
+    // app frame, keyed by its document's link on the swarm that holds it —
+    // a WORKSPACE app by name, the builder's deliverable; the peer's swarm,
+    // for a tagged entry. An `app` on no swarm hive can name (a run's, a
+    // peer the org has no swarm for) shows as the link it is, below.
+    if (entry.kind === "app") {
+      const app = workspaceAppSource(entry, swarmId, peers);
+      if (app) {
+        refs.push({ ...base, kind: "app", source: { type: "graph", ...app } });
+        continue;
+      }
+      if (entry.peer && entry.app) {
+        dropped.push({ title: entry.title, reason: `on @${entry.peer}, which is no swarm of this org` });
+        continue;
+      }
+    }
+    // Another strut's deliverable (strut CALLBACKS.md §4): a `path`, or a
+    // strut-relative `url`, is a file on the swarm hive registered as that
+    // peer, read there with its own key through the same reader — never
+    // resolved against this row's swarm. An absolute `url` and inline
+    // `content` are what they are anywhere (below).
+    if (entry.peer && (entry.path !== undefined || (entry.url !== undefined && !isAbsolute(entry.url)))) {
+      const key = peerFileKey(entry);
+      const peerSwarmId = peers.get(entry.peer);
+      if (key && peerSwarmId) refs.push({ ...base, kind: readerKind(entry.kind), source: { type: "graph", swarmId: peerSwarmId, key } });
+      else dropped.push({ title: entry.title, reason: `on @${entry.peer}, ${key ? "which is no swarm of this org" : "not a file hive can name there"}` });
       continue;
     }
     // A tree card is a `graph` whatever kind the agent gave it. A url keeps
@@ -318,17 +460,8 @@ export function mapStrutArtifacts(
     }
     if (typeof entry.url === "string" && entry.url.length > 0) {
       if (isStrutKey(entry.url)) {
-        // Served through the reader route from the swarm. A page strut
-        // wrote stays `html`: its viewer reads the bytes through the reader
-        // and renders them in `HtmlArtifactFrame` — a sandboxed frame,
-        // scripts on, never a navigation to the reader. A diff file or a
-        // pull request cannot be read off bytes, so as code.
-        const kind: ArtifactKind = !KINDS.has(entry.kind) || entry.kind === "graph"
-          ? "url"
-          : entry.kind === "diff" || entry.kind === "pull_request"
-            ? "code"
-            : (entry.kind as ArtifactKind);
-        refs.push({ ...base, kind, source: { type: "graph", swarmId, key: entry.url } });
+        // Served through the reader route from the swarm (`readerKind`).
+        refs.push({ ...base, kind: readerKind(entry.kind), source: { type: "graph", swarmId, key: entry.url } });
         continue;
       }
       const pr = entry.kind === "pull_request" ? pullRequestContent(entry.url) : null;
@@ -405,6 +538,13 @@ export function replyForRow(row: StrutRunRow): JobTurnReply {
   return { outcome: "success", text, ...(ask ? { ask } : {}) };
 }
 
+/** The strut a turn's reply says its work ran on (a peer build's `peer`); undefined for one that ran here. */
+export function replyPeerOf(row: Pick<StrutRunRow, "output">): string | undefined {
+  const output = row.output;
+  const peer = output && typeof output === "object" && !Array.isArray(output) ? (output as Record<string, unknown>).peer : undefined;
+  return isStrutPeerId(peer) ? peer : undefined;
+}
+
 /** Row id — also the idempotency key. */
 export const jobRowId = (row: Pick<StrutRunRow, "id">): string => `job-${row.id}`;
 
@@ -432,6 +572,13 @@ export type JobRowSource = {
   status: JobTurnOutcome;
   title?: string;
   ask?: string;
+  /**
+   * The strut the turn's work ran on when it is not the row's — a workflow
+   * build on another workspace's strut (`builder` with `peer`, strut
+   * plans/builder-job.md §3): that workspace's slug, as the reply's own
+   * `peer` names it. The card shows it as `@<slug>`.
+   */
+  peer?: string;
 };
 
 /**
@@ -477,7 +624,7 @@ export type ArtifactsRead =
   /** Transient (unreachable, 5xx): throw so strut re-posts. */
   | { ok: false; permanent: false; reason: string };
 
-/** `GET {lab}/workflows/job/runs/<runId>/artifacts` on the ROW's swarm. Never throws. */
+/** `GET {lab}/workflows/<workflow>/runs/<runId>/artifacts` on the ROW's swarm (`job`, `builder`). Never throws. */
 export async function readRunArtifacts(row: StrutRunRow): Promise<ArtifactsRead> {
   if (!row.strutRunId) return { ok: false, permanent: true, reason: "no strut run id" };
   const lab = await labForRow(row);
@@ -494,6 +641,24 @@ export async function readRunArtifacts(row: StrutRunRow): Promise<ArtifactsRead>
   } catch (err) {
     return { ok: false, permanent: false, reason: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * The swarm behind each peer the entries name: the workspace hive registered
+ * as that peer on the org strut — a workspace of the row's org, by slug
+ * (`strut-peers.ts`) — and its swarm. A slug that names none is left out,
+ * so its entries are named, not read. Throws on a database failure.
+ */
+export async function peerSwarmsFor(row: Pick<StrutRunRow, "workspaceId">, entries: StrutArtifact[]): Promise<Map<string, string>> {
+  const slugs = [...new Set(entries.flatMap((e) => (e.peer ? [e.peer] : [])))];
+  if (slugs.length === 0) return new Map();
+  const home = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { sourceControlOrgId: true } });
+  if (!home?.sourceControlOrgId) return new Map();
+  const workspaces = await db.workspace.findMany({
+    where: { slug: { in: slugs }, sourceControlOrgId: home.sourceControlOrgId, deleted: false },
+    select: { slug: true, swarm: { select: { id: true } } },
+  });
+  return new Map(workspaces.flatMap((w): Array<[string, string]> => (w.swarm ? [[w.slug, w.swarm.id]] : [])));
 }
 
 // ─── The brainstorm card ──────────────────────────────────────────────────
@@ -708,6 +873,20 @@ function scheduleJobWake(row: Pick<StrutRunRow, "id" | "workspaceId">, wake: Job
   });
 }
 
+/**
+ * The wake of a job the orchestrator started: strut's orchestrator, on the
+ * same conversation, with the job's reply text inline (it cannot read
+ * hive's rows). Same scheduling as `scheduleJobWake`.
+ */
+function scheduleOrchestratorWake(row: Pick<StrutRunRow, "id" | "workspaceId">, wake: JobWake & { text: string }): void {
+  afterResponse("Orchestrator wake", row, async () => {
+    const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
+    if (!workspace) return;
+    const { invokeOrchestratorOnJobTurn } = await import("@/services/strut-orchestrator-wake");
+    await invokeOrchestratorOnJobTurn({ ...wake, workspaceSlug: workspace.slug });
+  });
+}
+
 /** Run after the response (`after`), or detached outside a request (the reconcile path). Never throws. */
 function afterResponse(what: string, row: Pick<StrutRunRow, "id">, fn: () => Promise<void>): void {
   const run = async () => {
@@ -750,7 +929,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
     trace = turnTrace;
     claimsCard = claims;
     if (read.ok) {
-      ({ refs, dropped } = mapStrutArtifacts(read.artifacts, row.swarmId));
+      ({ refs, dropped } = mapStrutArtifacts(read.artifacts, row.swarmId, await peerSwarmsFor(row, read.artifacts)));
     } else if (read.permanent) {
       logger.warn("Job turn artifacts unavailable — delivering the text alone", LOG_TAG, { runId: row.id, reason: read.reason });
       dropped = [{ title: "the turn's artifacts", reason: read.reason }];
@@ -788,6 +967,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
   const event = parseArtifactEvent(launched.success ? launched.data.prompt : undefined);
 
   const title = jobTitleOf(row);
+  const peer = replyPeerOf(row);
   // The job's own refs, then hive's cards: its claims, its trace.
   const cards = [...refs, ...(claimsCard ? [claimsCard] : []), ...(trace ? [trace] : [])];
   const result = await appendJobRow(row, {
@@ -800,6 +980,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       status: reply.outcome,
       title,
       ...(reply.ask ? { ask: reply.ask } : {}),
+      ...(peer ? { peer } : {}),
     },
     ...(cards.length > 0 ? { artifacts: cards } : {}),
   });
@@ -817,9 +998,16 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
     result,
   });
 
-  // The row landed (once): the agent's turn is the reply the user reads.
+  // A job on an infinite-canvas card: every open canvas of the initiative
+  // sees it settle and reads the card's tree and artifacts again.
+  await nudgeCanvasCardJob(row, canvasJobStateOf(row.status));
+
+  // The row landed (once): an agent's turn is the reply the user reads —
+  // hive's canvas agent, or, for a job the orchestrator started inside
+  // strut, the orchestrator itself (that conversation runs on strut's
+  // engine, so no hive agent is woken into it).
   if (result === "appended" && row.conversationId) {
-    scheduleJobWake(row, {
+    const wake: JobWake = {
       conversationId: row.conversationId,
       wakeId: jobRowId(row),
       jobId,
@@ -829,7 +1017,9 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       artifacts: refs.map((r) => ({ title: r.title, kind: r.kind, ...(r.label ? { label: r.label } : {}) })),
       publicBaseUrl: ctx?.publicBaseUrl ?? getBaseUrl(null),
       ...(event ? { event } : {}),
-    });
+    };
+    if (jobTurnViaOrchestrator(row)) scheduleOrchestratorWake(row, { ...wake, text: reply.text });
+    else scheduleJobWake(row, wake);
   }
 
   // Events that arrived while this turn ran go now, as the next turn, one

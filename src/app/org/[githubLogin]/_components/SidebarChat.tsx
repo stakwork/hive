@@ -47,6 +47,8 @@ import { ResearchRunCard, getResearchRunsFromMessages } from "./ResearchRunCard"
 import { HtmlPageCard, getHtmlPagesFromMessages } from "./HtmlPageCard";
 import { StrutChatCard, getStrutChatsFromMessages } from "./StrutChatCard";
 import { JobEventRow, JobTurnCard, PendingJobTurnCard, getPendingJobTurnsFromMessages } from "./JobTurnCard";
+import { PendingOrchestratorTurnCard, StrutProposalResultRow, pendingOrchestratorLaunchIds } from "./OrchestratorTurnCard";
+import { StrutProposalCard } from "./StrutProposalCard";
 import { DeferredCheckCard } from "./DeferredCheckCard";
 import { ChatArtifacts } from "./artifacts/ChatArtifacts";
 import { DailyRecapCard } from "@/components/daily-recap/DailyRecapCard";
@@ -73,6 +75,8 @@ import { forkCanvasConversation } from "../_state/forkCanvasConversation";
 import { startNewOrgConversation } from "../_state/openOrgConversation";
 import { ActionTip } from "./ActionTip";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceMention } from "@/hooks/useWorkspaceMention";
+import { MentionPopup } from "@/components/mention/MentionPopup";
 import { jamieName } from "@/lib/constants/jamie";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
@@ -297,6 +301,10 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
     return byAnchor;
   }, [messages]);
 
+  // Jamie on strut: a turn strut is still working on shows a card on its
+  // launch marker until the reply row lands (`OrchestratorTurnCard`).
+  const pendingOrchestratorLaunches = useMemo(() => pendingOrchestratorLaunchIds(messages), [messages]);
+
   // Where each artifact shows — under its newest ref, with its versions
   // counted so it can say "v2". An earlier report of the same artifact
   // shows nothing, so a plan re-reported every turn shows once.
@@ -407,6 +415,44 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                       <MessageArtifacts artifacts={message.artifacts} cards={artifactCards} />
                     </div>
                   );
+                }
+
+                // Jamie on strut (`lib/strut-orchestrator.ts`): the launch
+                // marker carries the working card until the reply row lands;
+                // a proposal row is its card; a decision is a quiet line. The
+                // reply row itself falls through to the plain bubble below.
+                if (message.source?.kind === "orchestrator_launch") {
+                  if (!pendingOrchestratorLaunches.has(message.id)) return null;
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      <PendingOrchestratorTurnCard source={message.source} />
+                    </div>
+                  );
+                }
+                if (message.source?.kind === "proposal") {
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      <StrutProposalCard source={message.source} githubLogin={githubLogin} />
+                    </div>
+                  );
+                }
+                if (message.source?.kind === "proposal_result") {
+                  return (
+                    <div key={message.id} className="space-y-1.5">
+                      <StrutProposalResultRow message={message} source={message.source} />
+                    </div>
+                  );
+                }
+                // A wake the orchestrator answered with the silent marker:
+                // the row is there (the working card hangs on it) and shows
+                // nothing — unless the turn still produced cards or started a job.
+                if (
+                  message.source?.kind === "orchestrator" &&
+                  message.source.status === "silent" &&
+                  !message.artifacts?.length &&
+                  !pendingJobTurns?.length
+                ) {
+                  return null;
                 }
 
                 // Rows persisted by the retired planner fan-out stay in old
@@ -938,6 +984,21 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // ─── "@" workspace-mention menu ─────────────────────────────────────
+  const { workspaces } = useWorkspace();
+  const mention = useWorkspaceMention({
+    workspaces,
+    onInsert: ({ text, caret }) => {
+      setInput(text);
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(caret, caret);
+      });
+    },
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ─── "/" concept-mention menu ───────────────────────────────────────
@@ -1186,6 +1247,7 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mention.handleKeyDown(e, input, e.currentTarget.selectionStart ?? input.length)) return;
     // The "/" concept menu takes priority over send-on-Enter so picking a
     // concept doesn't accidentally submit the message.
     if (slashMenuOpen) {
@@ -1233,6 +1295,7 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
     const trigger = detectSlashTrigger(newValue, cursor);
     setSlashTrigger(trigger);
     setSlashActiveIndex(0);
+    mention.update(newValue, cursor);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1322,6 +1385,13 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
 
       {/* ── Composer ──────────────────────────────────────────────────── */}
       <div className="relative">
+        {mention.isOpen && (
+          <MentionPopup
+            workspaces={mention.matches}
+            activeIndex={mention.activeIndex}
+            onSelect={(slug) => mention.select(slug, input, inputRef.current?.selectionStart ?? input.length)}
+          />
+        )}
         {/* "/" concept-mention menu */}
         {slashMenuOpen && (
           <div className="absolute bottom-full left-0 right-0 mb-1 z-20" data-testid="slash-concept-menu">
@@ -1370,7 +1440,7 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
               onPaste={handlePaste}
               isUploading={isUploading}
               rows={1}
-              className="field-sizing-content max-h-[200px] min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-1.5 text-sm max-md:text-base shadow-none placeholder:text-muted-foreground/60 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed md:text-sm dark:bg-transparent"
+              className="field-sizing-content max-h-[200px] min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-1.5 text-sm max-md:text-base shadow-none placeholder:text-muted-foreground/60 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed md:text-sm dark-os:bg-transparent"
             />
           </div>
 

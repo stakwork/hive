@@ -641,7 +641,7 @@ export function ProposalCard({
             </div>
           )}
           {isApproved && approvedSubtext && (
-            <div className="mt-1.5 flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+            <div className="mt-1.5 flex items-center gap-1 text-xs text-emerald-700 dark-os:text-emerald-400">
               <Check className="h-3 w-3" />
               <span>{approvedSubtext.text}</span>
               {approvedSubtext.deepLink && (
@@ -787,7 +787,7 @@ export function ProposalCard({
                             ? "Select at least one repository"
                             : "Approve"
                       }
-                      className="flex h-6 w-6 items-center justify-center rounded text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-400"
+                      className="flex h-6 w-6 items-center justify-center rounded text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark-os:text-emerald-400"
                     >
                       {isInFlight ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -800,7 +800,7 @@ export function ProposalCard({
                     onClick={handleReject}
                     disabled={!isPending || isInFlight || turnRunning}
                     title={turnRunning ? `Waiting for ${jamieName} to finish` : "Reject"}
-                    className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400"
+                    className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark-os:text-rose-400"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -906,7 +906,7 @@ function ProposalDetailsDialog({
             {"description" in proposal.payload && proposal.payload.description && (
               <div className="space-y-1">
                 <div className={SECTION_LABEL_CLASS}>Description</div>
-                <div className="prose prose-sm dark:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words">
+                <div className="prose prose-sm dark-os:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words">
                   <ReactMarkdown>{proposal.payload.description}</ReactMarkdown>
                 </div>
               </div>
@@ -950,7 +950,7 @@ function ProposalDetailsDialog({
             {proposal.kind === "conceptCreate" && proposal.payload.documentation && (
               <div className="space-y-1">
                 <div className={SECTION_LABEL_CLASS}>Documentation</div>
-                <div className="prose prose-sm dark:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words">
+                <div className="prose prose-sm dark-os:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words">
                   <ReactMarkdown>{proposal.payload.documentation}</ReactMarkdown>
                 </div>
               </div>
@@ -963,7 +963,7 @@ function ProposalDetailsDialog({
                 {proposal.payload.initialMessage && (
                   <div className="space-y-1">
                     <div className={SECTION_LABEL_CLASS}>Planning seed</div>
-                    <div className="prose prose-sm dark:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words">
+                    <div className="prose prose-sm dark-os:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] prose-pre:whitespace-pre-wrap prose-pre:break-words">
                       <ReactMarkdown>
                         {proposal.payload.initialMessage}
                       </ReactMarkdown>
@@ -1254,7 +1254,7 @@ function MilestoneMeta({
             })}
           </ul>
           {reassignCount > 0 && (
-            <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+            <div className="mt-1 text-[10px] text-amber-600 dark-os:text-amber-400">
               Will reassign {reassignCount} feature
               {reassignCount === 1 ? "" : "s"} from another milestone.
             </div>
@@ -1372,10 +1372,10 @@ function PromptUpdateMeta({
       ) : (
         <>
           <span className="font-mono">
-            <span className="text-emerald-600 dark:text-emerald-400">
+            <span className="text-emerald-600 dark-os:text-emerald-400">
               +{diff.added}
             </span>{" "}
-            <span className="text-rose-600 dark:text-rose-400">
+            <span className="text-rose-600 dark-os:text-rose-400">
               −{diff.removed}
             </span>
           </span>
@@ -1435,10 +1435,10 @@ function PromptDiffDialog({
             )}
           </DialogTitle>
           <div className="mt-0.5 font-mono text-xs">
-            <span className="text-emerald-600 dark:text-emerald-400">
+            <span className="text-emerald-600 dark-os:text-emerald-400">
               +{diff.added}
             </span>{" "}
-            <span className="text-rose-600 dark:text-rose-400">
+            <span className="text-rose-600 dark-os:text-rose-400">
               −{diff.removed}
             </span>
           </div>
@@ -1522,10 +1522,10 @@ function ConceptUpdateMeta({
       ) : (
         <>
           <span className="font-mono">
-            <span className="text-emerald-600 dark:text-emerald-400">
+            <span className="text-emerald-600 dark-os:text-emerald-400">
               +{diff.added}
             </span>{" "}
-            <span className="text-rose-600 dark:text-rose-400">
+            <span className="text-rose-600 dark-os:text-rose-400">
               −{diff.removed}
             </span>
           </span>
@@ -1641,7 +1641,7 @@ function CodeChangeMeta({
 // ─── Graph write proposal meta components ─────────────────────────────────
 
 /** Compact body for a create-node proposal: workspace, type, and node_data. */
-function GraphNodeCreateMeta({
+export function GraphNodeCreateMeta({
   proposal,
 }: {
   proposal: Extract<ProposalOutput, { kind: "graphNodeCreate" }>;
@@ -1692,7 +1692,7 @@ function GraphNodeEditMeta({
         <div className="text-[11px] text-muted-foreground font-mono">
           {payload.ref_id}
         </div>
-        <div className="mt-1 flex items-start gap-1 rounded border border-amber-400/40 bg-amber-50/30 dark:bg-amber-900/10 px-2 py-1 text-[11px] text-amber-800 dark:text-amber-300">
+        <div className="mt-1 flex items-start gap-1 rounded border border-amber-400/40 bg-amber-50/30 dark-os:bg-amber-900/10 px-2 py-1 text-[11px] text-amber-800 dark-os:text-amber-300">
           <span>⚠</span>
           <span>{meta.refusedReason}</span>
         </div>
@@ -1708,8 +1708,8 @@ function GraphNodeEditMeta({
         {!diff.unchanged && (
           <>
             <span className="font-mono">
-              <span className="text-emerald-600 dark:text-emerald-400">+{diff.added}</span>{" "}
-              <span className="text-rose-600 dark:text-rose-400">−{diff.removed}</span>
+              <span className="text-emerald-600 dark-os:text-emerald-400">+{diff.added}</span>{" "}
+              <span className="text-rose-600 dark-os:text-rose-400">−{diff.removed}</span>
             </span>
             <button
               type="button"
@@ -1742,7 +1742,7 @@ function GraphNodeEditMeta({
 }
 
 /** Compact body for a single triplet proposal: source —EDGE→ target. */
-function GraphTripletCreateMeta({
+export function GraphTripletCreateMeta({
   proposal,
 }: {
   proposal: Extract<ProposalOutput, { kind: "graphTripletCreate" }>;
@@ -1777,7 +1777,7 @@ function GraphTripletCreateMeta({
  * When approval items are present (post-approval), shows per-row
  * created / already-existed / failed state (partial-success).
  */
-function GraphBatchTripletCreateMeta({
+export function GraphBatchTripletCreateMeta({
   proposal,
   approvalItems,
 }: {
@@ -1808,8 +1808,8 @@ function GraphBatchTripletCreateMeta({
                   className={cn(
                     "mt-0.5 shrink-0",
                     item.ok
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-rose-600 dark:text-rose-400",
+                      ? "text-emerald-600 dark-os:text-emerald-400"
+                      : "text-rose-600 dark-os:text-rose-400",
                   )}
                 >
                   {item.ok ? "✓" : "✗"}
@@ -1821,7 +1821,7 @@ function GraphBatchTripletCreateMeta({
                 <span className="text-muted-foreground">—{t.edge_type}→</span>{" "}
                 {targetLabel}
                 {item?.error && (
-                  <span className="block text-rose-600 dark:text-rose-400 text-[10px]">
+                  <span className="block text-rose-600 dark-os:text-rose-400 text-[10px]">
                     {item.error}
                   </span>
                 )}
@@ -1837,7 +1837,7 @@ function GraphBatchTripletCreateMeta({
 /** A refusal from the propose tool, rendered as the card's disabled-with-reason state. */
 function GraphRefusedNote({ reason }: { reason: string }) {
   return (
-    <div className="mt-1 flex items-start gap-1 rounded border border-amber-400/40 bg-amber-50/30 dark:bg-amber-900/10 px-2 py-1 text-[11px] text-amber-800 dark:text-amber-300">
+    <div className="mt-1 flex items-start gap-1 rounded border border-amber-400/40 bg-amber-50/30 dark-os:bg-amber-900/10 px-2 py-1 text-[11px] text-amber-800 dark-os:text-amber-300">
       <span>⚠</span>
       <span>{reason}</span>
     </div>
@@ -1857,7 +1857,7 @@ function GraphNodeLabel({ name, refId }: { name?: string; refId: string }) {
 }
 
 /** Compact body for an edge-delete proposal: source —EDGE→ target, struck through. */
-function GraphEdgeDeleteMeta({
+export function GraphEdgeDeleteMeta({
   proposal,
 }: {
   proposal: Extract<ProposalOutput, { kind: "graphEdgeDelete" }>;
@@ -1870,7 +1870,7 @@ function GraphEdgeDeleteMeta({
       </div>
       <div className="mt-1 flex items-center gap-1 font-mono text-[11px] break-all">
         <GraphNodeLabel name={meta.source_name} refId={payload.source_ref_id} />
-        <span className="shrink-0 text-rose-600 dark:text-rose-400 line-through">
+        <span className="shrink-0 text-rose-600 dark-os:text-rose-400 line-through">
           —{payload.edge_type}→
         </span>
         <GraphNodeLabel name={meta.target_name} refId={payload.target_ref_id} />
@@ -1881,7 +1881,7 @@ function GraphEdgeDeleteMeta({
 }
 
 /** Compact body for a node-move proposal: the node, the parent it leaves, the parent it joins. */
-function GraphNodeMoveMeta({
+export function GraphNodeMoveMeta({
   proposal,
 }: {
   proposal: Extract<ProposalOutput, { kind: "graphNodeMove" }>;
@@ -1896,12 +1896,12 @@ function GraphNodeMoveMeta({
       </div>
       <div className="mt-1 space-y-0.5 font-mono text-[11px] break-all">
         <div className="flex items-center gap-1">
-          <span className="shrink-0 text-rose-600 dark:text-rose-400">−</span>
+          <span className="shrink-0 text-rose-600 dark-os:text-rose-400">−</span>
           <GraphNodeLabel name={meta.from_name} refId={payload.from_ref_id} />
           <span className="shrink-0 text-muted-foreground line-through">—{payload.edge_type}→</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="shrink-0 text-emerald-600 dark:text-emerald-400">+</span>
+          <span className="shrink-0 text-emerald-600 dark-os:text-emerald-400">+</span>
           <GraphNodeLabel name={meta.to_name} refId={payload.to_ref_id} />
           <span className="shrink-0 text-muted-foreground">—{payload.edge_type}→</span>
         </div>
@@ -1939,7 +1939,7 @@ function GraphNodeDeleteMeta({
         <div className="mt-1 space-y-0.5 font-mono text-[11px] break-all">
           {edges.map((e, i) => (
             <div key={`${e.edge_type}-${e.direction}-${e.other_ref_id}-${i}`} className="flex items-center gap-1">
-              <span className="shrink-0 text-rose-600 dark:text-rose-400">−</span>
+              <span className="shrink-0 text-rose-600 dark-os:text-rose-400">−</span>
               {e.direction === "in" && <GraphNodeLabel name={e.other_name} refId={e.other_ref_id} />}
               <span className="shrink-0 text-muted-foreground line-through">—{e.edge_type}→</span>
               {e.direction === "out" && <GraphNodeLabel name={e.other_name} refId={e.other_ref_id} />}

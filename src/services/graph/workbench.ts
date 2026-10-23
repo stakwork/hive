@@ -8,9 +8,32 @@
  */
 
 import { mockConnectionPage, mockHierarchy, mockNodeConnections } from "@/app/api/mock/graph/workbench-fixture";
-import { mockBrainstormListWithWrites, mockChoiceTreeWithWrites } from "@/app/api/mock/graph/brainstorm-store";
+import { mockChoiceTreeWithWrites } from "@/app/api/mock/graph/brainstorm-store";
+import { mockLatency } from "@/app/api/mock/graph/latency";
+import {
+  mockBrainstormAbout,
+  mockInitiativeList,
+  mockInitiativesBuilding,
+  mockInitiativeTree,
+} from "@/app/api/mock/graph/initiative-fixture";
+import { graphEpochToMs, graphTimeToMs } from "@/lib/graph-time";
 import { fromPropertyPairs, isRunGraphRefId, propertyPairs, typeFromLabels } from "@/lib/strut-run-graph/hydrate";
+import {
+  INITIATIVE_TREE_READ_LABELS,
+  initiativeStage,
+  type InitiativeStage,
+  type InitiativeTreeType,
+} from "@/lib/initiative-plan";
 import { runWorkspaceGraphQuery, type WorkspaceGraphQueryFailure } from "./query";
+
+export {
+  INITIATIVE_TREE_LABELS,
+  initiativeStage,
+  stageLine,
+  type InitiativeNodeType,
+  type InitiativeStage,
+  type InitiativeTreeType,
+} from "@/lib/initiative-plan";
 
 /** A label or relationship type, placed inside backticks. */
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
@@ -279,6 +302,71 @@ export interface ChoiceTreeNode {
   /** `Question` when the node's labels include it, else `Option` when they include that, else `Choice`. */
   type: "Question" | "Option" | "Choice";
   properties: Record<string, unknown>;
+  /** Options only: live `HAS_EFFECT` effects, highest impact first. Absent when there are none. */
+  effects?: ChoiceEffect[];
+  /** Options only: `RATED_ON` scores (-1..1) on the Fast / Good / Cheap corners it was rated on. Absent when unrated. */
+  ratings?: Partial<Record<FgcCorner, number>>;
+  /** Questions only: the plan card (initiative, milestone or feature) the brainstorm is `ABOUT`. Absent when none. */
+  about?: string;
+}
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+
+/** What a brainstorm can be about: the plan cards the canvas shows it on. */
+const BRAINSTORM_ABOUT_LABELS = ["HiveInitiative", "HiveMilestone", "InitiativeFeature"];
+
+export const FGC_CORNERS = ["fast", "good", "cheap"] as const;
+export type FgcCorner = (typeof FGC_CORNERS)[number];
+
+/** A pro or con of an option, from `(Option)-[:HAS_EFFECT]->(Effect)`. Read-only. */
+export interface ChoiceEffect {
+  ref_id: string;
+  name: string;
+  description: string;
+  direction: "pro" | "con";
+  /** 0–1, or null when missing/not numeric. */
+  impact: number | null;
+  /** The requirements it is weighed `AGAINST` (ref_ids). Absent when none. */
+  against?: string[];
+}
+
+/** `{corner, score}` rows into scores by corner; a score outside -1..1 or not a number is left out. */
+function toRatings(raw: unknown): Partial<Record<FgcCorner, number>> {
+  const out: Partial<Record<FgcCorner, number>> = {};
+  if (!Array.isArray(raw)) return out;
+  for (const r of raw) {
+    const { corner, score } = (r ?? {}) as Record<string, unknown>;
+    const c = typeof corner === "string" ? (corner.toLowerCase() as FgcCorner) : null;
+    if (c && FGC_CORNERS.includes(c) && typeof score === "number" && score >= -1 && score <= 1) out[c] = score;
+  }
+  return out;
+}
+
+function toEffects(raw: unknown): ChoiceEffect[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ChoiceEffect[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== "object") continue;
+    const r = e as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name.trim() : "";
+    if (!name || (r.direction !== "pro" && r.direction !== "con")) continue;
+    const n =
+      typeof r.impact === "number"
+        ? r.impact
+        : typeof r.impact === "string" && r.impact.trim()
+          ? Number(r.impact)
+          : NaN;
+    const against = Array.isArray(r.against) ? r.against.filter((a): a is string => typeof a === "string") : [];
+    out.push({
+      ref_id: str(r.ref_id) ?? "",
+      name,
+      description: str(r.description) ?? "",
+      direction: r.direction,
+      impact: Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : null,
+      ...(against.length ? { against } : {}),
+    });
+  }
+  return out.sort((a, b) => (b.impact ?? -1) - (a.impact ?? -1));
 }
 
 export interface ChoiceTreeData {
@@ -287,6 +375,83 @@ export interface ChoiceTreeData {
   edges: Array<{ source: string; target: string }>;
   /** True when upstream's row cap may have cut the node or edge list short. */
   truncated: boolean;
+}
+
+// ── Trees ───────────────────────────────────────────────────────────────────
+
+export interface TreeSpec {
+  /** A node is in the tree when it carries any of these labels. */
+  labels: readonly string[];
+  /** The edge types followed downward from the focus. */
+  edges: readonly string[];
+  /** How many edges deep from the focus. */
+  depth: number;
+  /** Extra RETURN columns per node, given the node's variable. */
+  extra?: (n: string) => string;
+}
+
+export interface TreeRow {
+  ref_id: string;
+  labels: string[];
+  properties: Record<string, unknown>;
+  /** The node's whole row, for `extra` columns. */
+  row: Record<string, unknown>;
+}
+
+export interface TreeRows {
+  nodes: TreeRow[];
+  edges: Array<{ source: string; target: string; type: string }>;
+  truncated: boolean;
+}
+
+/**
+ * The `focus` node and every node below it along `spec.edges` carrying any of
+ * `spec.labels`, with the edges among them, read by Cypher and selected by
+ * label (never `node_type`). A deleted node or edge hides everything under it.
+ */
+export async function readTree(caller: Caller, focusRefId: string, spec: TreeSpec): Promise<WorkbenchResult<TreeRows>> {
+  if (spec.labels.length === 0 || !spec.labels.every((l) => IDENT.test(l))) return invalid("Invalid label");
+  if (spec.edges.length === 0 || !spec.edges.every((e) => IDENT.test(e))) return invalid("Invalid edge type");
+  if (!isRunGraphRefId(focusRefId)) return invalid("Invalid ref_id");
+  const any = (v: string) => `(${spec.labels.map((l) => `${v}:\`${l}\``).join(" OR ")})`;
+  const rels = spec.edges.map((e) => `\`${e}\``).join("|");
+  const pathLive = `all(x IN nodes(p) WHERE ${nodeLive("x")}) AND all(e IN relationships(p) WHERE ${edgeLive("e")})`;
+  const root = `MATCH (r:Data_Bank {ref_id: '${focusRefId}'})`;
+  const [nodes, edges] = await Promise.all([
+    rows(
+      caller,
+      `${root} MATCH p = (r)-[:${rels}*0..${spec.depth}]->(n) WHERE ${any("n")} AND ${pathLive} ` +
+        `RETURN DISTINCT n.ref_id AS id, labels(n) AS labels, ${propertyPairs("n")} AS props` +
+        (spec.extra ? `, ${spec.extra("n")}` : ""),
+      GRAPH_ROW_CAP,
+    ),
+    rows(
+      caller,
+      `${root} MATCH p = (r)-[:${rels}*0..${spec.depth - 1}]->(a)-[t:${rels}]->(b) ` +
+        `WHERE ${any("a")} AND ${any("b")} AND ${pathLive} AND ${edgeLive("t")} AND ${nodeLive("b")} ` +
+        `RETURN DISTINCT a.ref_id AS source, b.ref_id AS target, type(t) AS type`,
+      GRAPH_ROW_CAP,
+    ),
+  ]);
+  if (!nodes.ok) return nodes;
+  if (!edges.ok) return edges;
+  return {
+    ok: true,
+    data: {
+      nodes: nodes.data.flatMap((r) => {
+        const id = str(r.id);
+        const labels = Array.isArray(r.labels) ? r.labels.filter((l): l is string => typeof l === "string") : [];
+        return id ? [{ ref_id: id, labels, properties: fromPropertyPairs(r.props), row: r }] : [];
+      }),
+      edges: edges.data.flatMap((r) => {
+        const source = str(r.source);
+        const target = str(r.target);
+        const type = str(r.type);
+        return source && target && type ? [{ source, target, type }] : [];
+      }),
+      truncated: nodes.data.length >= GRAPH_ROW_CAP || edges.data.length >= GRAPH_ROW_CAP,
+    },
+  };
 }
 
 export const CHOICE_TREE_LABELS = ["Question", "Option", "Choice"];
@@ -302,87 +467,216 @@ export async function getChoiceTree(
   focusRefId: string,
   labels: string[] = CHOICE_TREE_LABELS,
 ): Promise<WorkbenchResult<ChoiceTreeData>> {
-  if (labels.length === 0 || !labels.every((l) => IDENT.test(l))) return invalid("Invalid label");
-  if (!isRunGraphRefId(focusRefId)) return invalid("Invalid ref_id");
-  if (useMocks()) return { ok: true, data: mockChoiceTreeWithWrites(focusRefId, labels) };
-  const any = (v: string) => `(${labels.map((l) => `${v}:\`${l}\``).join(" OR ")})`;
-  const root = `MATCH (r:Data_Bank {ref_id: '${focusRefId}'})`;
-  const [nodes, edges] = await Promise.all([
-    rows(
-      caller,
-      `${root} MATCH (r)-[:PARENT_OF*0..20]->(n) WHERE ${any("n")} AND ${nodeLive("n")} ` +
-        `RETURN DISTINCT n.ref_id AS id, labels(n) AS labels, ${propertyPairs("n")} AS props`,
-      GRAPH_ROW_CAP,
-    ),
-    rows(
-      caller,
-      `${root} MATCH (r)-[:PARENT_OF*0..20]->(a)-[e:PARENT_OF]->(b) ` +
-        `WHERE ${any("a")} AND ${any("b")} AND ${edgeLive("e")} AND ${nodeLive("a")} AND ${nodeLive("b")} ` +
-        `RETURN DISTINCT a.ref_id AS source, b.ref_id AS target`,
-      GRAPH_ROW_CAP,
-    ),
-  ]);
-  if (!nodes.ok) return nodes;
-  if (!edges.ok) return edges;
+  if (useMocks() && isRunGraphRefId(focusRefId) && labels.every((l) => IDENT.test(l))) {
+    await mockLatency();
+    const data = mockChoiceTreeWithWrites(focusRefId, labels);
+    const nodes = data.nodes.map((n) => {
+      const about = n.type === "Question" ? mockBrainstormAbout(n.ref_id) : undefined;
+      return about ? { ...n, about } : n;
+    });
+    return { ok: true, data: { ...data, nodes } };
+  }
+  const tree = await readTree(caller, focusRefId, {
+    labels,
+    edges: ["PARENT_OF"],
+    depth: 20,
+    extra: (n) =>
+      `[(${n})-[he:HAS_EFFECT]->(x:Effect) WHERE ${edgeLive("he")} AND ${nodeLive("x")} | ` +
+      `{ref_id: x.ref_id, name: x.name, description: x.description, direction: x.direction, impact: x.impact, ` +
+      `against: [(x)-[ag:AGAINST]->(rq:Requirement) WHERE ${edgeLive("ag")} AND ${nodeLive("rq")} | rq.ref_id]}] AS effects, ` +
+      `[(${n})-[ro:RATED_ON]->(c) WHERE (c:Fast OR c:Good OR c:Cheap) AND ${edgeLive("ro")} | ` +
+      `{corner: head([l IN labels(c) WHERE l IN ['Fast', 'Good', 'Cheap']]), score: ro.score}] AS ratings, ` +
+      `[(${n})-[ab:ABOUT]->(c) WHERE (${BRAINSTORM_ABOUT_LABELS.map((l) => `c:\`${l}\``).join(" OR ")}) ` +
+      `AND ${edgeLive("ab")} AND ${nodeLive("c")} | c.ref_id] AS about`,
+  });
+  if (!tree.ok) return tree;
   return {
     ok: true,
     data: {
-      nodes: nodes.data.flatMap((r) => {
-        const id = str(r.id);
-        const ls = Array.isArray(r.labels) ? r.labels : [];
-        const type: ChoiceTreeNode["type"] = ls.includes("Question") ? "Question" : ls.includes("Option") ? "Option" : "Choice";
-        return id ? [{ ref_id: id, type, properties: fromPropertyPairs(r.props) }] : [];
+      nodes: tree.data.nodes.map((r) => {
+        const type: ChoiceTreeNode["type"] = r.labels.includes("Question")
+          ? "Question"
+          : r.labels.includes("Option")
+            ? "Option"
+            : "Choice";
+        const option = type === "Option";
+        const effects = option ? toEffects(r.row.effects) : [];
+        const ratings = option ? toRatings(r.row.ratings) : {};
+        const about = type === "Question" ? strings(r.row.about)[0] : undefined;
+        return {
+          ref_id: r.ref_id,
+          type,
+          properties: r.properties,
+          ...(effects.length ? { effects } : {}),
+          ...(Object.keys(ratings).length ? { ratings } : {}),
+          ...(about ? { about } : {}),
+        };
       }),
-      edges: edges.data.flatMap((r) => {
-        const source = str(r.source);
-        const target = str(r.target);
-        return source && target ? [{ source, target }] : [];
-      }),
-      truncated: nodes.data.length >= GRAPH_ROW_CAP || edges.data.length >= GRAPH_ROW_CAP,
+      edges: tree.data.edges.map(({ source, target }) => ({ source, target })),
+      truncated: tree.data.truncated,
     },
   };
 }
 
-// ── Brainstorm roots ────────────────────────────────────────────────────────
-
-export interface BrainstormRoot {
-  ref_id: string;
-  /** The root question's `text`, else its `name`, else its ref_id. */
-  text: string;
-  /** The strut job that wrote it, when it says. */
-  job: string | null;
-  made_by: string | null;
-}
-
-/** Brainstorms listed at most (newest first). */
-export const BRAINSTORM_LIST_CAP = 50;
+// ── Initiative tree ─────────────────────────────────────────────────────────
 
 /**
- * The brainstorms of a workspace: `Question` nodes (and legacy `Choice` nodes
- * with `kind: "question"`) that no live `PARENT_OF` edge from a question,
- * option or choice points at — the roots. Newest first by `date_added_to_graph`
- * (when the node has it), then by ref_id; at most `BRAINSTORM_LIST_CAP`.
+ * The edges that hang the plan together (Jarvis 133–135): an initiative's
+ * brief, user stories (with their requirements) and milestones; a milestone's
+ * features; a feature's architecture.
  */
-export async function listBrainstormRoots(caller: Caller): Promise<WorkbenchResult<BrainstormRoot[]>> {
-  if (useMocks()) return { ok: true, data: mockBrainstormListWithWrites() };
-  const isParent = CHOICE_TREE_LABELS.map((l) => `p:\`${l}\``).join(" OR ");
-  const result = await rows(
-    caller,
-    `MATCH (n) WHERE (n:\`Question\` OR (n:\`Choice\` AND n.kind = 'question')) AND ${nodeLive("n")} ` +
-      `OPTIONAL MATCH (p)-[e:PARENT_OF]->(n) WHERE (${isParent}) AND ${edgeLive("e")} AND ${nodeLive("p")} ` +
-      `WITH n, count(p) AS parents WHERE parents = 0 ` +
-      `RETURN n.ref_id AS id, n.text AS text, n.name AS name, n.job AS job, n.made_by AS made_by ` +
-      `ORDER BY coalesce(n.date_added_to_graph, 0) DESC, n.ref_id DESC LIMIT ${BRAINSTORM_LIST_CAP}`,
-    BRAINSTORM_LIST_CAP,
-  );
-  if (!result.ok) return result;
+const INITIATIVE_TREE_EDGES = [
+  "HAS_BRIEF",
+  "HAS_STORY",
+  "HAS_REQUIREMENT",
+  "HAS_MILESTONE",
+  "HAS_FEATURE",
+  "HAS_ARCHITECTURE",
+];
+
+/**
+ * Initiative → milestone → feature → architecture is the deepest chain, and
+ * reaches the requirements of plans written before 135, whose stories hang
+ * off features (feature → story → requirement).
+ */
+const INITIATIVE_TREE_DEPTH = 4;
+
+export interface InitiativeTreeNode {
+  ref_id: string;
+  type: InitiativeTreeType;
+  properties: Record<string, unknown>;
+  /** The brainstorms about this node (root `Question` ref_ids, by `ABOUT`). */
+  brainstorms?: string[];
+  /** The brainstorm options whose choice made this node (`Option -RESULTED_IN->`). */
+  madeBy?: string[];
+}
+
+export interface InitiativeTreeData {
+  nodes: InitiativeTreeNode[];
+  edges: Array<{ source: string; target: string; type: string }>;
+  stage: InitiativeStage;
+  truncated: boolean;
+  /** A build job is writing to this initiative right now (mock mode only, for now). */
+  building?: boolean;
+}
+
+/**
+ * An initiative and everything planned under it — brief, user stories and
+ * requirements, milestones, features with their architecture — linked by
+ * the planning
+ * edges, with the edges among them and the counts a card shows. Every node
+ * carries the brainstorms about it and the options whose choice made it. Read
+ * by label, like `getChoiceTree`.
+ */
+export async function getInitiativeTree(caller: Caller, refId: string): Promise<WorkbenchResult<InitiativeTreeData>> {
+  if (useMocks() && isRunGraphRefId(refId)) {
+    await mockLatency();
+    const data = mockInitiativeTree(refId);
+    return { ok: true, data: { ...data, stage: initiativeStage(data.nodes), truncated: false } };
+  }
+  const tree = await readTree(caller, refId, {
+    labels: INITIATIVE_TREE_READ_LABELS,
+    edges: INITIATIVE_TREE_EDGES,
+    depth: INITIATIVE_TREE_DEPTH,
+    extra: (n) =>
+      `[(q:\`Question\`)-[a:ABOUT]->(${n}) WHERE ${edgeLive("a")} AND ${nodeLive("q")} | q.ref_id] AS brainstorms, ` +
+      `[(o:\`Option\`)-[ro:RESULTED_IN]->(${n}) WHERE ${edgeLive("ro")} AND ${nodeLive("o")} | o.ref_id] AS made_by`,
+  });
+  if (!tree.ok) return tree;
+  const nodes = tree.data.nodes.flatMap((r): InitiativeTreeNode[] => {
+    const type = INITIATIVE_TREE_READ_LABELS.find((l) => r.labels.includes(l));
+    if (!type) return [];
+    const brainstorms = strings(r.row.brainstorms);
+    const madeBy = strings(r.row.made_by);
+    return [
+      {
+        ref_id: r.ref_id,
+        type,
+        properties: r.properties,
+        ...(brainstorms.length ? { brainstorms } : {}),
+        ...(madeBy.length ? { madeBy } : {}),
+      },
+    ];
+  });
   return {
     ok: true,
-    data: result.data.slice(0, BRAINSTORM_LIST_CAP).flatMap((r) => {
-      const id = str(r.id);
-      return id && isRunGraphRefId(id)
-        ? [{ ref_id: id, text: str(r.text) ?? str(r.name) ?? id, job: str(r.job), made_by: str(r.made_by) }]
-        : [];
-    }),
+    data: { nodes, edges: tree.data.edges, stage: initiativeStage(nodes), truncated: tree.data.truncated },
   };
+}
+
+// ── Initiatives ─────────────────────────────────────────────────────────────
+
+export interface InitiativeSummary {
+  ref_id: string;
+  name: string;
+  status: string | null;
+  /** When it was made, ms: when it reached the graph (`date_added_to_graph`), else `created_at`, else `updated_at`. */
+  created_at: number | null;
+  /**
+   * How recent it is, ms: the later of reaching the graph and `updated_at` (capped at now), so a date a model
+   * wrote can't file a new initiative as old. The canvas's desk shows the latest.
+   */
+  updated_at: number | null;
+  created_by: string | null;
+  created_by_kind: string | null;
+  assignee_id: string | null;
+}
+
+/** Initiatives read at most, before sorting by recency. */
+const INITIATIVE_SCAN_CAP = 500;
+
+/**
+ * The workspace's `HiveInitiative` nodes, most recently updated first
+ * (`updated_at`, falling back to when it was made: `created_at`, then
+ * `date_added_to_graph`), at most `limit`. `building` is true while a build
+ * job writes to any of them.
+ */
+export async function listInitiatives(
+  caller: Caller,
+  limit = 5,
+): Promise<WorkbenchResult<{ initiatives: InitiativeSummary[]; building: boolean }>> {
+  if (useMocks()) {
+    await mockLatency();
+    return {
+      ok: true,
+      data: { initiatives: mockInitiativeList().slice(0, limit), building: mockInitiativesBuilding() },
+    };
+  }
+  const result = await rows(
+    caller,
+    `MATCH (n:\`HiveInitiative\`) WHERE ${nodeLive("n")} ` +
+      `RETURN n.ref_id AS id, n.name AS name, n.status AS status, n.created_at AS created_at, ` +
+      `n.date_added_to_graph AS added, n.updated_at AS updated_at, n.created_by AS created_by, ` +
+      `n.created_by_kind AS created_by_kind, n.assignee_id AS assignee_id LIMIT ${INITIATIVE_SCAN_CAP}`,
+    INITIATIVE_SCAN_CAP,
+  );
+  if (!result.ok) return result;
+  const when = (v: unknown) => graphTimeToMs(v) ?? null;
+  const now = Date.now();
+  const initiatives = result.data
+    .flatMap((r): InitiativeSummary[] => {
+      const id = str(r.id);
+      if (!id) return [];
+      // The graph's own stamp first: `created_at`/`updated_at` may be what a model wrote (a year off, say).
+      const added = graphEpochToMs(r.added);
+      const created = added ?? when(r.created_at) ?? when(r.updated_at);
+      // Recency is the later of reaching the graph and the last change, never in the future.
+      const changed = when(r.updated_at);
+      const updated = Math.max(added ?? 0, changed !== null ? Math.min(changed, now) : 0) || created;
+      return [
+        {
+          ref_id: id,
+          name: str(r.name) ?? id,
+          status: str(r.status),
+          created_at: created,
+          updated_at: updated,
+          created_by: str(r.created_by),
+          created_by_kind: str(r.created_by_kind),
+          assignee_id: str(r.assignee_id),
+        },
+      ];
+    })
+    .sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0) || b.ref_id.localeCompare(a.ref_id))
+    .slice(0, limit);
+  return { ok: true, data: { initiatives, building: false } };
 }

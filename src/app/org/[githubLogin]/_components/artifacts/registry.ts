@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import {
+  AppWindow,
   AudioLines,
   BookOpenText,
   Braces,
@@ -30,11 +31,13 @@ import {
 } from "../../_state/canvasChatArtifacts";
 import { buildSharePath } from "../HtmlPageCard";
 import { webAddress } from "./address";
+import { AppPanel } from "./viewers/app";
+import { AppActions } from "./viewers/appVersions";
 import { CaptchaPanel } from "./viewers/captcha";
 import { ClaimsPanel, ClaimsRowMeta } from "./viewers/claims";
 import { CodePanel } from "./viewers/code";
 import { DiffPanel, diffPatchText } from "./viewers/diff";
-import { brainstormBoardHref, GraphPanel, GraphThumb } from "./viewers/graph";
+import { brainstormHref, GraphPanel, GraphThumb } from "./viewers/graph";
 import { HtmlPanel } from "./viewers/html";
 import { JsonPanel } from "./viewers/json";
 import { LogPanel } from "./viewers/log";
@@ -83,6 +86,8 @@ export interface ArtifactKindSpec<K extends ArtifactKind> {
   chat?: ChatPlacement<K>;
   /** The full view on the artifact panel. */
   Panel: ComponentType<ArtifactViewerProps<K>>;
+  /** The kind's own actions in the panel's header, beside copy and open — the app's "Pin as a tab". */
+  Actions?: ComponentType<ArtifactViewerProps<K>>;
   /** The content as text, for the panel's copy button. */
   copyText?: (content: ArtifactContents[K]) => string;
   /** Where the artifact itself lives, as its content gives it; null when this one has nowhere of its own. A link gets it only through `artifactHref`. */
@@ -109,6 +114,14 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Panel: HtmlPanel,
     // A page a strut job wrote has no page of its own on Hive: the reader serves it, and serves it static.
     address: (content, githubLogin) => ("slug" in content ? buildSharePath(githubLogin, encodeURIComponent(content.slug)) : null),
+  },
+  // A job's app: live software in the app frame, beside a page (`html`), never instead of it.
+  app: {
+    label: "App",
+    Icon: AppWindow,
+    chat: { place: "row" },
+    Panel: AppPanel,
+    Actions: AppActions,
   },
   image: {
     label: "Image",
@@ -177,10 +190,10 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Icon: Network,
     chat: { place: "media", Thumb: GraphThumb },
     Panel: GraphPanel,
-    // The org page's graph view, on the same workspace and node; a brainstorm tree opens on the desk.
+    // The org page's graph view on the same workspace and node; a brainstorm tree opens on the Brainstorm tab.
     address: (content, githubLogin) =>
       content.layout === "tree" && content.focus
-        ? brainstormBoardHref(githubLogin, content.workspace, content.focus)
+        ? brainstormHref(githubLogin, content.workspace, content.focus)
         : orgGraphHref(githubLogin, { workspace: content.workspace, refId: content.focus }),
   },
   run_graph: {

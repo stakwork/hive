@@ -38,7 +38,7 @@
  */
 
 import { streamText, ModelMessage, ToolSet, NoSuchToolError } from "ai";
-import type { BrainstormFocusHint, GraphFocusHint } from "@/lib/canvas/graph-focus";
+import type { BrainstormFocusHint, GraphFocusHint, InitiativeFocusHint } from "@/lib/canvas/graph-focus";
 import type {
   StreamTextResult,
   OutputInterface,
@@ -340,6 +340,7 @@ export interface RunCanvasAgentOptions {
     selectedNodeId?: string;
     graphFocus?: GraphFocusHint;
     brainstormFocus?: BrainstormFocusHint;
+    initiativeFocus?: InitiativeFocusHint;
   };
   /** User-visible chat messages, in AI SDK ModelMessage[] form. */
   messages: ModelMessage[];
@@ -1813,6 +1814,7 @@ export function buildScopeHint(
       linkedWorkspaces.length > 0 ? linkedWorkspaces : undefined,
     graphFocus: scope?.graphFocus,
     brainstormFocus: scope?.brainstormFocus,
+    initiativeFocus: scope?.initiativeFocus,
   };
 }
 

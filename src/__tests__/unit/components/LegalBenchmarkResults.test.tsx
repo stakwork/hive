@@ -634,7 +634,7 @@ describe("LegalBenchmarkResults", () => {
 
     expect(screen.getByText(/Rubric Details/)).toBeInTheDocument();
     // passedCount = 3 total - 2 failed = 1
-    expect(screen.getByText(/1 passed \/ 3 total/)).toBeInTheDocument();
+    expect(screen.getByText(/1 passed · 2 failed · 0 contested \/ 3 total/)).toBeInTheDocument();
   });
 
   it("renders failed criteria before passing criteria in list order", () => {
@@ -1171,8 +1171,8 @@ describe("LegalBenchmarkResults", () => {
     expect(screen.getByText(/1\/3 criteria passed/)).toBeInTheDocument();
     // No rubric-scoring FAIL badge renders for a non-perfect run
     expect(screen.queryByText("FAIL")).toBeNull();
-    // Rubric header count unchanged: 1 passed / 3 total
-    expect(screen.getByText(/1 passed \/ 3 total/)).toBeInTheDocument();
+    // Rubric header count unchanged: 1 passed · 2 failed · 0 contested / 3 total
+    expect(screen.getByText(/1 passed · 2 failed · 0 contested \/ 3 total/)).toBeInTheDocument();
   });
 
   // ─── Run Eval button ──────────────────────────────────────────────────────
@@ -1874,5 +1874,59 @@ describe("LegalBenchmarkResults — contested origin chips", () => {
     expect(screen.getByText("Completeness")).toBeInTheDocument();
     // Accuracy (non-contested) should not be shown
     expect(screen.queryByText("Accuracy")).toBeNull();
+  });
+});
+
+// ─── A strut legal workspace (openlaw-1): harvey-lab-run's runs ───────────────
+
+describe("LegalBenchmarkResults in a strut legal workspace", () => {
+  const onReset = vi.fn();
+  const complete = (result: Record<string, unknown>) =>
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "complete",
+        runnerRun: makeRunnerRow({
+          status: "COMPLETED",
+          result: { taskSlug: "banking/x", taskTitle: "Compliance", runner: "strut", n_passed: 7, n_total: 8, all_pass: false, ...result },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWorkspaceSlug.value = "openlaw-1";
+    mockUseProposedFixes.mockReturnValue({ fixes: [], isLoading: false, error: null, refetch: vi.fn() });
+  });
+
+  it("offers the deliverables and the shared sheet instead of a text output", () => {
+    complete({ deliverables: ["memo v2.docx"], spreadsheetUrl: "https://docs.google.com/spreadsheets/d/abc" });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+
+    const link = screen.getByTestId("strut-deliverable-link");
+    expect(link).toHaveAttribute(
+      "href",
+      "/api/workspaces/openlaw-1/legal/benchmarks/strut/runs/run-abc/deliverables/memo%20v2.docx",
+    );
+    expect(link).toHaveTextContent("memo v2.docx");
+    expect(screen.getByTestId("strut-spreadsheet-link")).toHaveAttribute("href", "https://docs.google.com/spreadsheets/d/abc");
+    expect(screen.queryByText("Download .txt")).toBeNull();
+    expect(screen.getByText("Score Summary")).toBeInTheDocument();
+  });
+
+  it("has no eval, recursion or proposed fixes (Stakwork's)", () => {
+    complete({ deliverables: [] });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("(No deliverables)")).toBeInTheDocument();
+    expect(screen.queryByText("Eval Runs")).toBeNull();
+    expect(mockUseProposedFixes).toHaveBeenCalledWith("");
+  });
+
+  it("says a running task takes a while", () => {
+    mockUseLegalBenchmarkRun.mockReturnValue({ run: makeMockRun(), isLoading: false, isStale: false, refetch: vi.fn() });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText(/Running task on strut/)).toBeInTheDocument();
   });
 });

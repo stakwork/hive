@@ -11,25 +11,37 @@
  *     `detail` is dropped; no conversation → nothing forwarded, still 200.
  *   - `verify / done` publishes the claims card's next version as the job's
  *     owner; a failure there is not the caller's (200).
+ *   - Under an ORCHESTRATOR turn (one URL its jobs inherit, strut
+ *     CALLBACKS.md §5): routed by the payload — `job` + `runId` to that
+ *     run's row, else the job's newest PENDING row, else its newest; a job
+ *     not minted yet is forwarded by its id alone; a job whose row is
+ *     another conversation's (or swarm's) is refused; the token is still
+ *     checked first.
+ *   - A job on an infinite-canvas card (its row's `input.focus`, or the
+ *     orchestrator turn's before the job's row exists) is nudged to the
+ *     org channel as running, with the kind it reported.
  */
 
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import crypto from "crypto";
 import { NextRequest } from "next/server";
 
-const { mockFindUnique, mockRateLimit, mockNotify, mockFirst, mockPublish } = vi.hoisted(() => ({
+const { mockFindUnique, mockFindMany, mockRateLimit, mockNotify, mockFirst, mockPublish, mockNudge } = vi.hoisted(() => ({
+  mockNudge: vi.fn(),
   mockFindUnique: vi.fn(),
+  mockFindMany: vi.fn(),
   mockRateLimit: vi.fn(),
   mockNotify: vi.fn(),
   mockFirst: vi.fn(),
   mockPublish: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({ db: { strutRun: { findUnique: mockFindUnique } } }));
+vi.mock("@/lib/db", () => ({ db: { strutRun: { findUnique: mockFindUnique, findMany: mockFindMany } } }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mockRateLimit, getClientIp: () => "1.2.3.4" }));
 vi.mock("@/lib/encryption", () => ({ timingSafeEqual: (a: string, b: string) => a === b }));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasJobUpdate: mockNotify }));
 vi.mock("@/services/strut-jobs", () => ({ firstJobTurn: mockFirst }));
+vi.mock("@/services/canvas-jobs", () => ({ nudgeCanvasCardJob: mockNudge }));
 vi.mock("@/services/strut-jobs/claims", () => ({ publishVerifiedVersion: mockPublish }));
 vi.mock("@/services/strut-runs", () => ({
   hashStrutRunToken: (t: string) => crypto.createHash("sha256").update(t).digest("hex"),
@@ -49,8 +61,12 @@ const row = (over: Record<string, unknown> = {}) => ({
   jobId: JOB,
   swarmId: "swarm-1",
   conversationId: "conv-1",
+  workspaceId: "ws-1",
+  input: { prompt: "p" },
   ...over,
 });
+
+const FOCUS = { workspaceSlug: "acme", initiativeRefId: "init-1", initiativeName: "Onboarding", refId: "feat-1" };
 
 const update = (over: Record<string, unknown> = {}) => ({
   event: "job.update",
@@ -127,6 +143,16 @@ describe("POST /api/strut-jobs/events", () => {
     expect(mockPublish).not.toHaveBeenCalled();
   });
 
+  test("nudges the job's canvas card from its own row, as running with the kind it reported", async () => {
+    mockFindUnique.mockResolvedValue(row({ input: { prompt: "p", focus: FOCUS } }));
+    expect((await post(update())).status).toBe(200);
+    expect(mockNudge).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "row-1", jobId: JOB, workspaceId: "ws-1", input: { prompt: "p", focus: FOCUS } }),
+      "running",
+      { kind: "walkthrough" },
+    );
+  });
+
   test("keeps a pod's address; drops a link into another job, a non-http link and an oversize detail", async () => {
     await post(update({ kind: "pod", url: "https://pod-7.example.com", state: "held", id: "pod-7", detail: undefined }));
     expect(mockNotify.mock.calls[0][1]).toMatchObject({ kind: "pod", url: "https://pod-7.example.com", id: "pod-7" });
@@ -151,5 +177,113 @@ describe("POST /api/strut-jobs/events", () => {
     expect(mockPublish).toHaveBeenCalledWith({ id: "row-0", userId: "u-1" }, JOB, "1790000000000");
     mockPublish.mockRejectedValueOnce(new Error("swarm down"));
     expect((await post(done)).status).toBe(200);
+  });
+});
+
+describe("POST /api/strut-jobs/events — under an orchestrator turn", () => {
+  const orchestratorRow = (over: Record<string, unknown> = {}) =>
+    row({ id: "orch-1", kind: "orchestrator_turn", jobId: null, ...over });
+  const jobRow = (over: Record<string, unknown> = {}) => ({
+    id: "jt-1",
+    swarmId: "swarm-1",
+    conversationId: "conv-1",
+    strutRunId: "1790000000000",
+    status: "PENDING",
+    ...over,
+  });
+  const postToTurn = (payload: unknown) => post(payload, `id=orch-1&token=${TOKEN}`);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRateLimit.mockResolvedValue({ allowed: true });
+    mockFindUnique.mockResolvedValue(orchestratorRow());
+    mockFindMany.mockResolvedValue([jobRow()]);
+    mockFirst.mockResolvedValue({ id: "jt-0", userId: "u-1" });
+    mockPublish.mockResolvedValue(null);
+  });
+
+  test("routes by the payload's job and runId: forwarded to the turn's conversation under the job's id", async () => {
+    const res = await postToTurn(update());
+    expect(res.status).toBe(200);
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { jobId: JOB, kind: JOB_TURN_KIND } }));
+    expect(mockNotify).toHaveBeenCalledWith("conv-1", expect.objectContaining({ jobId: JOB, swarmId: "swarm-1", runId: "1790000000000", kind: "walkthrough", url: `/jobs/${JOB}/files/walkthroughs/004/walkthrough.json` }));
+  });
+
+  test("the run's row decides, whatever the job's other rows say", async () => {
+    mockFindMany.mockResolvedValue([
+      jobRow({ id: "jt-3", strutRunId: "1790000000003", status: "PENDING", conversationId: "conv-other" }),
+      jobRow({ id: "jt-1", strutRunId: "1790000000000", status: "SUCCESS" }),
+    ]);
+    expect((await postToTurn(update())).status).toBe(200);
+    expect((await postToTurn(update({ runId: "1790000000003" }))).status).toBe(400);
+  });
+
+  test("no runId, or a run not minted yet: the job's newest PENDING row, else its newest", async () => {
+    mockFindMany.mockResolvedValue([
+      jobRow({ id: "jt-2", strutRunId: "1790000000002", status: "SUCCESS", conversationId: "conv-other" }),
+      jobRow({ id: "jt-1", strutRunId: "1790000000001", status: "PENDING" }),
+    ]);
+    // A hold let go by the idle sweep names no run.
+    expect((await postToTurn(update({ runId: undefined, kind: "pod", state: "released", url: undefined }))).status).toBe(200);
+    expect((await postToTurn(update({ runId: "1790000000009" }))).status).toBe(200);
+    mockFindMany.mockResolvedValue([jobRow({ id: "jt-2", status: "SUCCESS", conversationId: "conv-other" }), jobRow({ id: "jt-1", status: "SUCCESS" })]);
+    expect((await postToTurn(update({ runId: "1790000000009" }))).status).toBe(400);
+    expect(mockNotify).toHaveBeenCalledTimes(2);
+  });
+
+  test("a job with no row yet (the orchestrator's run has not settled) is forwarded by its id alone", async () => {
+    mockFindMany.mockResolvedValue([]);
+    expect((await postToTurn(update({ kind: "image", url: `/jobs/${JOB}/files/shots/001.png` }))).status).toBe(200);
+    expect(mockNotify).toHaveBeenCalledWith("conv-1", expect.objectContaining({ jobId: JOB, kind: "image", url: `/jobs/${JOB}/files/shots/001.png` }));
+  });
+
+  test("the canvas card comes from the job's row once minted, else from the turn's", async () => {
+    mockFindMany.mockResolvedValue([jobRow({ input: { focus: FOCUS } })]);
+    await postToTurn(update());
+    expect(mockNudge).toHaveBeenLastCalledWith(
+      { id: "jt-1", input: { focus: FOCUS }, jobId: JOB, workspaceId: "ws-1" },
+      "running",
+      { kind: "walkthrough" },
+    );
+    mockFindMany.mockResolvedValue([]);
+    mockFindUnique.mockResolvedValue(orchestratorRow({ input: { prompt: "@acme\nhi", focus: FOCUS } }));
+    await postToTurn(update());
+    expect(mockNudge).toHaveBeenLastCalledWith(
+      { input: { prompt: "@acme\nhi", focus: FOCUS }, jobId: JOB, workspaceId: "ws-1" },
+      "running",
+      { kind: "walkthrough" },
+    );
+  });
+
+  test("a job of another conversation or swarm is refused, and nothing forwarded", async () => {
+    mockFindMany.mockResolvedValueOnce([jobRow({ conversationId: "conv-other" })]);
+    const other = await postToTurn(update());
+    expect(other.status).toBe(400);
+    expect(await other.json()).toEqual({ error: "Job mismatch" });
+    mockFindMany.mockResolvedValueOnce([jobRow({ swarmId: "swarm-other" })]);
+    expect((await postToTurn(update())).status).toBe(400);
+    expect(mockNotify).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  test("the token still authenticates the turn's row before any routing", async () => {
+    expect((await post(update(), "id=orch-1&token=nope")).status).toBe(401);
+    mockFindUnique.mockResolvedValueOnce(null);
+    expect((await postToTurn(update())).status).toBe(404);
+    expect(mockFindMany).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  test("a direct job turn's URL is still its one job's: no routing lookup", async () => {
+    mockFindUnique.mockResolvedValueOnce(row());
+    expect((await post(update({ job: "j-other" }))).status).toBe(400);
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
+  test("verify / done of an orchestrator-started job publishes the claims card from the job's first row", async () => {
+    const done = update({ kind: "verify", state: "done", url: undefined, title: undefined, detail: { evidence: 1, slots: 0, claims: [] } });
+    expect((await postToTurn(done)).status).toBe(200);
+    expect(mockFirst).toHaveBeenCalledWith(JOB);
+    expect(mockPublish).toHaveBeenCalledWith({ id: "jt-0", userId: "u-1" }, JOB, "1790000000000");
   });
 });

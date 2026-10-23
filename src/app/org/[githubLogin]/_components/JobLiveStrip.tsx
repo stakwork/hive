@@ -192,7 +192,7 @@ function Tile({
         )}
       </span>
       <span className="min-w-0 flex-1 text-xs">
-        <span className={cn("block truncate font-medium", stopped && "text-rose-600 dark:text-rose-400")}>{label}</span>
+        <span className={cn("block truncate font-medium", stopped && "text-rose-600 dark-os:text-rose-400")}>{label}</span>
         {caption && <span className="block truncate text-muted-foreground">{caption}</span>}
       </span>
     </button>

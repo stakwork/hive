@@ -375,7 +375,7 @@ export function PublishPromptSlot({
   if (publishState.kind === "published") {
     const showSyncWarning = lastSyncOutcome === "PUSH_FAILED";
     return (
-      <div className="mt-1.5 flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+      <div className="mt-1.5 flex items-center gap-1 text-xs text-emerald-700 dark-os:text-emerald-400">
         <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
         <span>Published ✓</span>
         <a
@@ -388,7 +388,7 @@ export function PublishPromptSlot({
           <ExternalLink className="ml-0.5 h-3 w-3" />
         </a>
         {showSyncWarning && (
-          <span className="text-amber-600 dark:text-amber-400">
+          <span className="text-amber-600 dark-os:text-amber-400">
             — sync to Stakwork pending retry
           </span>
         )}
@@ -402,19 +402,19 @@ export function PublishPromptSlot({
   return (
     <div className="mt-1.5 space-y-1">
       {isSuperseded && (
-        <div className="text-xs text-amber-600 dark:text-amber-500">
+        <div className="text-xs text-amber-600 dark-os:text-amber-500">
           A newer draft (v{publishState.latestVersionNumber}) exists —
           publishing this version will make it live
         </div>
       )}
       {publishError === "stale" && (
-        <div className="text-xs text-amber-600 dark:text-amber-500">
+        <div className="text-xs text-amber-600 dark-os:text-amber-500">
           The prompt changed while you were viewing this card. Refreshed state
           — check and try again.
         </div>
       )}
       {publishError === "error" && (
-        <div className="text-xs text-rose-600 dark:text-rose-400">
+        <div className="text-xs text-rose-600 dark-os:text-rose-400">
           Publish failed. Please try again.
         </div>
       )}

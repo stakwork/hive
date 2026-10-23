@@ -10,7 +10,7 @@
  */
 
 import React from "react";
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatArtifacts } from "@/app/org/[githubLogin]/_components/artifacts/ChatArtifacts";
@@ -118,7 +118,12 @@ describe("ChatArtifacts", () => {
   test("a thumbnail opens its image on the panel", async () => {
     renderArtifacts([shot(1)]);
     fireEvent.click((await screen.findByRole("img")).closest("button")!);
-    expect(useCanvasChatStore.getState().artifactPanel).toEqual({ identity: artifactIdentity(shot(1)), version: null });
+    // Not in the active chat (as here): it opens as a live artifact.
+    expect(useCanvasChatStore.getState().artifactPanel).toEqual({
+      identity: artifactIdentity(shot(1)),
+      version: null,
+      live: shot(1),
+    });
   });
 
   test("an image that will not load leaves its tile, without the picture", async () => {
@@ -142,28 +147,74 @@ describe("ChatArtifacts", () => {
     const line = screen.getByTestId("folded-artifacts");
     expect(within(line).getByText("1 more")).toBeTruthy();
     fireEvent.click(within(line).getByText("Logs"));
-    expect(useCanvasChatStore.getState().artifactPanel).toEqual({ identity: artifactIdentity(log), version: null });
+    // Not in the active chat (as here): it opens as a live artifact.
+    expect(useCanvasChatStore.getState().artifactPanel).toEqual({
+      identity: artifactIdentity(log),
+      version: null,
+      live: log,
+    });
   });
 
   test("a row opens its artifact on the panel and shows it is up", () => {
     renderArtifacts([pr]);
     fireEvent.click(clickable(pr));
-    expect(useCanvasChatStore.getState().artifactPanel).toEqual({ identity: artifactIdentity(pr), version: null });
+    // Not in the active chat (as here): it opens as a live artifact.
+    expect(useCanvasChatStore.getState().artifactPanel).toEqual({
+      identity: artifactIdentity(pr),
+      version: null,
+      live: pr,
+    });
     expect(clickable(pr).getAttribute("aria-pressed")).toBe("true");
   });
 
-  test("a brainstorm tree card opens the desk, not the panel", () => {
-    nav.search = "view=canvas";
+  describe("a brainstorm tree card", () => {
     const tree: ArtifactRef = {
       id: "brainstorm-tree",
       kind: "graph",
       title: "Brainstorm",
       source: inline({ workspace: "hive", focus: "root-1", layout: "tree" }),
     };
-    renderArtifacts([tree]);
-    fireEvent.click(clickable(tree));
-    expect(mockRouter.push).toHaveBeenCalledWith("/org/acme-org?view=canvas&tab=brainstorm&ws=hive&root=root-1");
-    expect(useCanvasChatStore.getState().artifactPanel).toBeNull();
+    const respond = (about?: string) =>
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            nodes: [{ ref_id: "root-1", type: "Question", ...(about ? { about } : {}) }],
+            edges: [],
+          }),
+        })),
+      );
+    afterEach(() => vi.unstubAllGlobals());
+
+    test("opens the canvas at the card it's about, with the tree unfolded, not the panel", async () => {
+      nav.search = "view=canvas";
+      respond("feature-1");
+      renderArtifacts([tree]);
+      fireEvent.click(clickable(tree));
+      await waitFor(() =>
+        expect(mockRouter.push).toHaveBeenCalledWith(
+          "/org/acme-org?view=canvas&tab=brainstorm&at=feature-1&tree=root-1",
+        ),
+      );
+      expect(useCanvasChatStore.getState().artifactPanel).toBeNull();
+    });
+
+    test("about no card, it opens on the panel without navigating", async () => {
+      nav.search = "view=canvas";
+      respond();
+      renderArtifacts([tree]);
+      fireEvent.click(clickable(tree));
+      await waitFor(() =>
+        expect(useCanvasChatStore.getState().artifactPanel).toEqual({
+          identity: artifactIdentity(tree),
+          version: null,
+          live: tree,
+        }),
+      );
+      expect(mockRouter.push).not.toHaveBeenCalled();
+    });
   });
 
   test("a graph that is not a tree opens on the panel, without navigating", () => {
@@ -177,6 +228,11 @@ describe("ChatArtifacts", () => {
     renderArtifacts([graph]);
     fireEvent.click(clickable(graph));
     expect(mockRouter.push).not.toHaveBeenCalled();
-    expect(useCanvasChatStore.getState().artifactPanel).toEqual({ identity: artifactIdentity(graph), version: null });
+    // Not in the active chat (as here): it opens as a live artifact.
+    expect(useCanvasChatStore.getState().artifactPanel).toEqual({
+      identity: artifactIdentity(graph),
+      version: null,
+      live: graph,
+    });
   });
 });

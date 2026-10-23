@@ -61,6 +61,7 @@ export const SYSTEM_MAP_WORKFLOWS = {
   system_map: { kind: "system_map", workflow: "swarm-systemmap", label: "System map" },
   cwe_check: { kind: "system_map_cwe_check", workflow: "swarm-systemmap-cwe-check-templates", label: "CWE check" },
   finding_verify: { kind: "system_map_finding_verify", workflow: "finding-verify-pod-batch", label: "Finding check" },
+  package_cves: { kind: "system_map_package_cves", workflow: "swarm-package-cve-findings", label: "Package CVEs" },
 } as const;
 export type SystemMapWorkflowKey = keyof typeof SYSTEM_MAP_WORKFLOWS;
 
@@ -366,8 +367,10 @@ export async function launchSystemMapRun(
     workflow,
     purpose: "system_map",
     input: {
-      // `swarm-systemmap` reads the swarm alone; the CWE workflows still take the slug.
-      ...(key === "system_map" || FINDING_WORKFLOWS[key] ? {} : { workspace: args.workspaceSlug }),
+      // `swarm-systemmap` and the package CVE check read the swarm alone; the CWE workflows still take the slug.
+      ...(key === "system_map" || key === "package_cves" || FINDING_WORKFLOWS[key]
+        ? {}
+        : { workspace: args.workspaceSlug }),
       ...(FINDING_WORKFLOWS[key] && args.findings
         ? { finding_ref_ids: args.findings.findingRefIds, workspace_id: args.workspaceId, apply: args.findings.apply }
         : {}),

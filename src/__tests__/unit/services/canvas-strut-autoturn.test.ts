@@ -4,7 +4,8 @@
  * Coverage: the gates that decide whether a settled strut chat — or a job
  * turn's reply — costs an LLM turn: master kill switch, per-message claim,
  * owner opt-in, idempotency, and the launch loop breaker; plus each wake's
- * runCanvasAgent args and what its wake message tells the agent.
+ * runCanvasAgent args and what its wake message tells the agent; and the
+ * gate on its own with the opt-in waived, as the orchestrator wake runs it.
  */
 
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
@@ -46,7 +47,9 @@ import {
   invokeCanvasAgentOnJobTurn,
   invokeCanvasAgentOnStrutSettled,
   countTrailingStrutDispatches,
+  runGatedAutoTurn,
   MAX_CONSECUTIVE_STRUT_DISPATCHES,
+  type AutoTurnGate,
   type JobAutoTurnArgs,
 } from "@/services/canvas-strut-autoturn";
 import type { StoredMessage } from "@/services/canvas-turn-persistence";
@@ -313,5 +316,63 @@ describe("invokeCanvasAgentOnJobTurn", () => {
     expect(text).not.toContain("**Continue:**");
     expect(text).not.toContain("**Summarize**");
     expect(Object.keys(mockRunCanvasAgent.mock.calls[0][0].additionalTools)).toEqual(["stay_silent"]);
+  });
+});
+
+describe("runGatedAutoTurn with the owner's opt-in waived (how the orchestrator wake runs it)", () => {
+  const gate = (over: Partial<AutoTurnGate> = {}): AutoTurnGate => ({
+    tag: "t",
+    conversationId: "conv-1",
+    wakeId: "job-row-1",
+    about: {},
+    alreadyHandled: () => false,
+    trailingLaunches: () => 0,
+    ownerOptIn: false,
+    ...over,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClaim.mockResolvedValue(true);
+    mockRelease.mockResolvedValue(undefined);
+    mockConversationFindUnique.mockResolvedValue(conversation({ user: { canvasAutonomousTurns: false } }));
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  test("runs for an owner who never opted in — or has no record of it — as that owner, and releases the claim", async () => {
+    const run = vi.fn().mockResolvedValue(undefined);
+    await runGatedAutoTurn(gate(), run);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0][0]).toMatchObject({ userId: "user-1", orgId: "org-1", workspaceSlug: "home" });
+    expect(mockClaim).toHaveBeenCalledWith("conv-1", "job-row-1");
+    expect(mockRelease).toHaveBeenCalledWith("conv-1", "job-row-1");
+
+    mockConversationFindUnique.mockResolvedValueOnce(conversation({ user: null }));
+    await runGatedAutoTurn(gate(), run);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  test("the other gates hold: the kill switch, a lost claim, an already-handled wake, the loop breaker", async () => {
+    const run = vi.fn().mockResolvedValue(undefined);
+    vi.stubEnv("CANVAS_AUTONOMOUS_TURNS_ENABLED", "false");
+    await runGatedAutoTurn(gate(), run);
+    expect(mockClaim).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+
+    mockClaim.mockResolvedValueOnce(false);
+    await runGatedAutoTurn(gate(), run);
+    expect(mockRelease).not.toHaveBeenCalled();
+
+    await runGatedAutoTurn(gate({ alreadyHandled: () => true }), run);
+    await runGatedAutoTurn(gate({ trailingLaunches: () => MAX_CONSECUTIVE_STRUT_DISPATCHES }), run);
+    expect(run).not.toHaveBeenCalled();
+    expect(mockRelease).toHaveBeenCalledTimes(2);
+  });
+
+  test("left unsaid, the opt-in is required as before", async () => {
+    const run = vi.fn().mockResolvedValue(undefined);
+    await runGatedAutoTurn(gate({ ownerOptIn: undefined }), run);
+    expect(run).not.toHaveBeenCalled();
+    expect(mockRelease).toHaveBeenCalledWith("conv-1", "job-row-1");
   });
 });

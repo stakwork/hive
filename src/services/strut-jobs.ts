@@ -23,9 +23,10 @@
  */
 
 import { StrutRunStatus } from "@prisma/client";
+import { canvasFocusOfInput } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { JOB_TURN_KIND, JOB_WORKFLOW, jobModelOf } from "@/lib/strut-jobs";
+import { JOB_TURN_KIND, JOB_WORKFLOW, jobModelOf, jobTurnViaOrchestrator } from "@/lib/strut-jobs";
 import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
 import { describeStrutTargetError, resolveStrutTarget } from "@/services/strut-target";
 
@@ -65,7 +66,7 @@ export async function firstJobTurn(jobId: string) {
   return db.strutRun.findFirst({
     where: { jobId, kind: JOB_TURN_KIND },
     orderBy: { createdAt: "asc" },
-    select: { id: true, workspaceId: true, swarmId: true, userId: true, conversationId: true, input: true },
+    select: { id: true, workspaceId: true, swarmId: true, userId: true, conversationId: true, input: true, workflow: true },
   });
 }
 
@@ -87,6 +88,19 @@ export async function jobHasLiveTurn(jobId: string): Promise<boolean> {
 export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch): Promise<JobLaunchResult> {
   const { userId, workspaceId, conversationId, publicBaseUrl } = target;
   const { jobId, title, prompt, started } = turn;
+
+  const first = started ? null : await firstJobTurn(jobId);
+  // A job of another workflow — a workflow build strut's orchestrator
+  // started (`builder`, strut plans/builder-job.md §2) — is never continued
+  // as a `job`: that would hand its thread a shell and drop the strut it
+  // builds on. Its next turn is the orchestrator's `job/continue`, which
+  // follows the job's record.
+  if (first?.workflow && first.workflow !== JOB_WORKFLOW) {
+    return {
+      status: "error",
+      error: `This is a ${first.workflow} job, which hive does not continue directly. Ask for the change in the conversation and the orchestrator will continue it.`,
+    };
+  }
 
   // Where the job runs — the one policy (`strut-target.ts`), for THIS user:
   // an owner who has lost the workspace launches nothing.
@@ -114,7 +128,14 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
   // back from its first turn's input. Not strut's default: the job's agent
   // thread keeps its first turn's provider (strut `session_mismatch:`), so
   // a job started on another provider could not take the turn at all.
-  const model = turn.model || (started ? undefined : jobModelOf(await firstJobTurn(jobId)));
+  const model = turn.model || jobModelOf(first);
+  // A job strut's orchestrator started (its first turn adopted by the
+  // strut-runs webhook) stays the orchestrator's for every later turn —
+  // an event's, a card's: its reply wakes the orchestrator, not hive's
+  // agent (`job-turn.ts`). Rides on the input like `title`; strut strips it.
+  const via = first && jobTurnViaOrchestrator(first) ? { via: "orchestrator" as const } : {};
+  // The infinite-canvas card the job is on stays on every turn's row (`lib/canvas/canvas-jobs.ts`).
+  const focus = canvasFocusOfInput(first?.input);
 
   let dispatched: Awaited<ReturnType<typeof dispatchStrutRun>>;
   try {
@@ -136,7 +157,8 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
       // pod routes take a slug or an id). Every turn, since every launch
       // is validated on its own. `model` rides along like `title`, so the
       // row records what the turn ran on; strut reads `params.model`.
-      input: { prompt, title, workspace: strut.workspaceSlug, ...(model ? { model } : {}) },
+      input: { prompt, title, workspace: strut.workspaceSlug, ...(model ? { model } : {}), ...via },
+      ...(focus ? { rowInput: { focus } } : {}),
       job: jobId,
       title,
       ...(model ? { params: { model } } : {}),

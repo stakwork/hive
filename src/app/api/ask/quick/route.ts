@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { parseBrainstormFocus, parseGraphFocus } from "@/lib/canvas/graph-focus";
+import { canvasFocusOf } from "@/lib/canvas/canvas-jobs";
+import { parseBrainstormFocus, parseGraphFocus, parseInitiativeFocus } from "@/lib/canvas/graph-focus";
 import { validationError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { validateUserBelongsToOrg, validateWorkspaceAccess } from "@/services/workspace";
 import { ModelMessage, createUIMessageStream, createUIMessageStreamResponse, toUIMessageStream } from "ai";
@@ -51,6 +52,8 @@ import {
 } from "@/services/canvas-turn-enrichments";
 import { isOwnStoppedTurn, isValidTurnId, registerTurn, watchTurnAbort } from "@/services/canvas-turn-abort";
 import { notifyCanvasUpdated } from "@/lib/canvas/pusher";
+import { readPageContext } from "@/services/jamie-page-context";
+import { runOrchestratorTurn } from "@/services/strut-orchestrator";
 import { fanOutResearchToCanvas } from "@/services/canvas-research-fanout";
 import { fanOutGraphWalkToCanvas } from "@/services/canvas-graph-walk-fanout";
 import type { PartialStep } from "@/lib/ai/runCanvasAgent";
@@ -98,6 +101,11 @@ export async function POST(request: NextRequest) {
       graphFocus,
       // The brainstorm board in view on the canvas's Brainstorm tab.
       brainstormFocus,
+      // The initiative in view on the infinite canvas (the Brainstorm tab).
+      initiativeFocus,
+      // Where the user is (breadcrumb path etc.), published by the client;
+      // sanitised and checked against the org before strut reads it.
+      pageContext,
       // When true, skip the post-stream `after()` enrichment block
       // (follow-up questions + provenance). Surfaces that don't render
       // either (e.g. the org-canvas SidebarChat) opt in to save tokens
@@ -106,6 +114,10 @@ export async function POST(request: NextRequest) {
       // Per-browser opt-in to the slim prompt (concept-tree mode), sent by
       // the canvas SidebarChat when its settings switch is on.
       slimPrompt,
+      // Per-browser opt-in to run the turn on strut's `orchestrator`
+      // workflow instead of `runCanvasAgent`, sent the same way
+      // (`strutEnginePreference.ts`, `docs/jamie-engine.md`).
+      strutEngine,
       // Agent-proposal flow (see `src/lib/proposals/`). Set on the
       // user's send when they click Approve / Reject in a
       // `<ProposalCard>`. The route runs the side effect synchronously
@@ -525,6 +537,47 @@ export async function POST(request: NextRequest) {
     console.log("[quick-ask] timing", { stage: "persistCanvasUserMessage", ms: Date.now() - tPersist, workspaces: slugs, orgId: orgId ?? null });
 
     // ============================================================
+    // Strut orchestrator (`docs/jamie-engine.md`). A persisted org-canvas
+    // turn whose request carries `strutEngine: true` — the per-browser
+    // switch in the chat's ⋯ menu — goes to strut's `orchestrator`
+    // workflow instead of `runCanvasAgent`: the user's row is written
+    // above, the reply lands later as rows through the strut-runs webhook
+    // (`services/strut-orchestrator.ts`). Without the flag everything
+    // below is the default path and runs exactly as before.
+    // ============================================================
+    // The infinite-canvas card the person is on: on strut, a line of the
+    // context and the card its jobs land on (`canvas-jobs.ts`); below, the
+    // prompt's "## Current initiative" section.
+    const initiativeHint = parseInitiativeFocus(initiativeFocus, slugs);
+    if (orgId && userId && canvasConversationRowId && strutEngine === true) {
+      console.log("[quick-ask] timing", { stage: "early-exit:strut-orchestrator", ms: Date.now() - t0, workspaces: slugs, orgId });
+      return await runOrchestratorTurn({
+        userId,
+        orgId,
+        conversationId: canvasConversationRowId,
+        message: newUserContent,
+        attachments: userAttachments,
+        publicBaseUrl: getBaseUrl(request.headers.get("host")),
+        timeZone: userTimezone,
+        focus: initiativeHint ? canvasFocusOf(initiativeHint) : undefined,
+        pageContext: await readPageContext(
+          pageContext,
+          orgId,
+          // Graph ref_ids the hive DB does not own: only those the
+          // focus parsers already checked against the request's workspaces.
+          new Set(
+            [
+              initiativeHint?.initiativeRefId,
+              initiativeHint?.selectedRefId,
+              parseGraphFocus(graphFocus, slugs)?.urn.split(":").pop(),
+              parseBrainstormFocus(brainstormFocus, slugs)?.rootRefId,
+            ].filter((r): r is string => !!r),
+          ),
+        ),
+      });
+    }
+
+    // ============================================================
     // Per-turn Stop control (the composer's Stop button). Only for a
     // persisted org-canvas turn with a valid client-minted turnId —
     // public-viewer, non-UUID and dashboard-chat turns run as before.
@@ -662,6 +715,7 @@ export async function POST(request: NextRequest) {
               : undefined,
             graphFocus: parseGraphFocus(graphFocus, slugs),
             brainstormFocus: parseBrainstormFocus(brainstormFocus, slugs),
+            initiativeFocus: initiativeHint,
           },
           messages: convertedMessages,
           // The validated SharedConversation.id (or null when the

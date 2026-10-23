@@ -15,6 +15,7 @@ import type {
   AgentSummary,
   ConceptSynthesis,
 } from "./types";
+import { resolveContested } from "@/lib/harvey-lab/eval-normalizers";
 
 // ── Timestamps ───────────────────────────────────────────────────────────────
 
@@ -89,9 +90,18 @@ const PHASE_STEPS: Record<Exclude<WorkflowPhase, "other">, string[]> = {
   score: "foreach_fetch_deliverable assemble_output_map validate_deliverable_names build_score_rubric_attrs score_rubric format_results build_webhook_body if_no_webhook_url post_result set_output guard_all_pass".split(" "),
 };
 
+/** The same phases for strut's `harvey-lab-run` (strut legal workspaces), whose step ids are its own. */
+const STRUT_PHASE_STEPS: Record<Exclude<WorkflowPhase, "other">, string[]> = {
+  setup: "docs sheet sheet_fill ingest checklist reqs stage".split(" "),
+  context: "writer cross_check case_law".split(" "),
+  draft: "tailor drafter".split(" "),
+  verify: "verify_completeness verify_correctness verify_arithmetic verify_doctrine critiques aggregator".split(" "),
+  score: "score record dispute merged".split(" "),
+};
+
 const STEP_TO_PHASE: Record<string, WorkflowPhase> = (() => {
   const map: Record<string, WorkflowPhase> = {};
-  for (const [phase, steps] of Object.entries(PHASE_STEPS)) {
+  for (const [phase, steps] of [...Object.entries(STRUT_PHASE_STEPS), ...Object.entries(PHASE_STEPS)]) {
     for (const step of steps) map[step] = phase as WorkflowPhase;
   }
   return map;
@@ -543,6 +553,10 @@ export function computeStats(input: {
 }): RunReportStats {
   const { rubricRows } = input;
   const hasRubrics = rubricRows.length > 0;
+  // Tri-state partition: a contested row is never pass or fail, so
+  // pass + fail + contested === rubricCount.
+  const isContested = (r: RubricRow) => resolveContested({ contested: r.criterionContested });
+  const contestedCount = hasRubrics ? rubricRows.filter(isContested).length : null;
 
   return {
     sourceDocCount: input.sourceDocs.length,
@@ -552,8 +566,9 @@ export function computeStats(input: {
     stepCount: input.timeline.length,
     agentCount: input.agents.length,
     rubricCount: rubricRows.length,
-    passCount: hasRubrics ? rubricRows.filter((r) => r.passed).length : null,
-    failCount: hasRubrics ? rubricRows.filter((r) => !r.passed).length : null,
+    passCount: hasRubrics ? rubricRows.filter((r) => !isContested(r) && r.passed).length : null,
+    failCount: hasRubrics ? rubricRows.filter((r) => !isContested(r) && !r.passed).length : null,
+    contestedCount,
   };
 }
 

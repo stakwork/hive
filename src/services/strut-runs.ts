@@ -7,7 +7,7 @@
  *   dispatchStrutRun   resolve the target (ONE policy — `strut-target.ts`)
  *                      → PENDING row with the target's `swarmId`
  *                      → push the user's delegation + actor secrets to it
- *                      → POST {lab}/workflows/<name>/run { input, callback, job?, title? }
+ *                      → POST {lab}/workflows/<name>/run { input, callback, job?, title?, jobCallback?, attachments? }
  *                      → refuse a 202 without `callback: true`
  *                      → store `strutRunId`.
  *   completeStrutRun   the token-gated, idempotent claim PENDING → terminal
@@ -42,6 +42,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { STRUT_ACTOR_HEADER, ensureStrutDelegation, strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
 import { ensureStrutActorSecrets } from "@/services/strut-actor-secret";
+import type { StrutAttachment } from "@/services/strut-attachments";
 import { describeStrutTargetError, resolveStrutTarget, type StrutPurpose } from "@/services/strut-target";
 
 export const STRUT_RUN_LOG_TAG = "STRUT_RUN";
@@ -140,13 +141,22 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   system_map_materialize: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_cwe_check: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_finding_verify: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
+  system_map_package_cves: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_cloud_links: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   system_map_security_review: async () => (await import("./strut-runs/system-map")).handleSystemMapSettled,
   openhealth_benchmark: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_improve: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
   openhealth_climb: async () => (await import("./strut-runs/openhealth")).handleOpenHealthRunSettled,
+  // Benchmarks: `benchmark:<slug>` (see `lib/benchmarks/registry`).
+  benchmark: async () => (await import("./strut-runs/benchmark")).handleBenchmarkRunSettled,
   job_turn: async () => (await import("./strut-runs/job-turn")).handleJobTurnSettled,
+  orchestrator_turn: async () => (await import("./strut-runs/orchestrator-turn")).handleOrchestratorTurnSettled,
 };
+
+/** A kind's loader. `kind:detail` (e.g. `benchmark:openhealth`) resolves to the `kind` entry. */
+function handlerFor(kind: string): (() => Promise<StrutRunHandler>) | undefined {
+  return HANDLERS[kind] ?? HANDLERS[kind.split(":")[0]];
+}
 
 export function hashStrutRunToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -207,6 +217,11 @@ export interface DispatchStrutRunArgs {
    * that must name this attempt (a branch unique per `StrutRun`).
    */
   input: Record<string, unknown> | ((runId: string) => Record<string, unknown>);
+  /**
+   * Kept on the row's `input` beside what strut receives, and never sent:
+   * what hive alone reads back (an orchestrator turn's canvas `focus`).
+   */
+  rowInput?: Record<string, unknown>;
   purpose: StrutPurpose;
   /** Swarm-reachable base URL of THIS hive, captured from the request host. */
   publicBaseUrl: string;
@@ -228,8 +243,23 @@ export interface DispatchStrutRunArgs {
    * names the job.
    */
   title?: string;
+  /**
+   * Register this host's job-events URL on a launch with no `job` (strut
+   * CALLBACKS.md §5): every job the run starts (`job/start`,
+   * `job/continue`) inherits it, so an orchestrator turn hears all of its
+   * jobs at ONE URL, under this row and its token, each event naming its
+   * `job` and `runId`. A launch with `job` always carries its own.
+   */
+  inheritJobCallback?: boolean;
   /** Launch-level `params` (e.g. `{ model }`), a sibling of `input`; sent only when non-empty. */
   params?: Record<string, unknown>;
+  /**
+   * Files for the run's agents (`POST …/run { attachments }`, read by
+   * `strut-attachments.ts`): a sibling of `input`, sent only when non-empty
+   * and never on the row — strut keeps them as the run's files and records
+   * only their names on `run.start`.
+   */
+  attachments?: StrutAttachment[];
   /**
    * Per-actor secrets pushed to the target before the launch
    * (`PUT /actors/:actor/secrets/:name`) — the user's `GITHUB_TOKEN` for a
@@ -253,6 +283,11 @@ export interface DispatchStrutRunResult {
   swarmId: string;
 }
 
+/** A refused launch's `error`, when strut said one. */
+async function errorOf(res: Response): Promise<string | undefined> {
+  return ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
+}
+
 async function failRow(id: string, error: string): Promise<void> {
   await db.strutRun
     .updateMany({
@@ -273,8 +308,8 @@ async function failRow(id: string, error: string): Promise<void> {
  * if created, is marked ERROR with the reason).
  */
 export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<DispatchStrutRunResult> {
-  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title, params } = args;
-  if (!HANDLERS[kind]) throw new Error(`No strut-run handler for kind "${kind}"`);
+  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title, params, inheritJobCallback, attachments } = args;
+  if (!handlerFor(kind)) throw new Error(`No strut-run handler for kind "${kind}"`);
 
   const resolved = await resolveStrutTarget({ purpose, userId, workspaceId });
   if (!resolved.ok) {
@@ -291,7 +326,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
       userId,
       kind,
       workflow,
-      input: typeof args.input === "function" ? Prisma.DbNull : toJson(args.input),
+      input: typeof args.input === "function" ? Prisma.DbNull : toJson({ ...args.input, ...args.rowInput }),
       ...(conversationId ? { conversationId } : {}),
       ...(proposalId ? { proposalId } : {}),
       ...(job ? { jobId: job } : {}),
@@ -303,7 +338,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
   let input: Record<string, unknown>;
   if (typeof args.input === "function") {
     input = args.input(row.id);
-    await db.strutRun.update({ where: { id: row.id }, data: { input: toJson(input) } });
+    await db.strutRun.update({ where: { id: row.id }, data: { input: toJson({ ...input, ...args.rowInput }) } });
   } else {
     input = args.input;
   }
@@ -329,11 +364,12 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
   // plans/live-artifacts.md §1): kept on the job, the latest launch wins, so
   // every later update — this turn's shots, a Verify days later — comes
   // under this row and its token. A strut that predates it ignores the field.
-  const jobCallbackUrl = job ? `${publicBaseUrl}/api/strut-jobs/events?id=${row.id}&token=${rawToken}` : null;
+  // A launch with no job (`inheritJobCallback`, an orchestrator turn) hands
+  // the URL on to every job its run starts (strut CALLBACKS.md §5).
+  let jobCallbackUrl = job || inheritJobCallback ? `${publicBaseUrl}/api/strut-jobs/events?id=${row.id}&token=${rawToken}` : null;
 
-  let res: Response;
-  try {
-    res = await fetch(`${target.labBase}/workflows/${encodeURIComponent(workflow)}/run`, {
+  const launch = (jobCallback: string | null) =>
+    fetch(`${target.labBase}/workflows/${encodeURIComponent(workflow)}/run`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -344,12 +380,35 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
         input,
         callback: { url: callbackUrl },
         ...(job ? { job, ...(title ? { title } : {}) } : {}),
-        ...(jobCallbackUrl ? { jobCallback: { url: jobCallbackUrl } } : {}),
+        ...(jobCallback ? { jobCallback: { url: jobCallback } } : {}),
         ...(params && Object.keys(params).length ? { params } : {}),
+        ...(attachments?.length ? { attachments } : {}),
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(LAUNCH_TIMEOUT_MS),
     });
+
+  let res: Response;
+  /** A 400's `error`, when it was read before the generic handling below. */
+  let refusal: string | undefined;
+  try {
+    res = await launch(jobCallbackUrl);
+    if (res.status === 400 && !job && jobCallbackUrl) {
+      // A strut before inherited job callbacks refuses a jobless
+      // `jobCallback` ("belongs to a job") and starts nothing: launch again
+      // without it — the run works, its jobs just report no live updates.
+      refusal = await errorOf(res);
+      if (/jobCallback/.test(refusal ?? "")) {
+        logger.info("Strut predates inherited job callbacks — launching without one", STRUT_RUN_LOG_TAG, {
+          runId: row.id,
+          workflow,
+          swarmId: target.swarmId,
+        });
+        jobCallbackUrl = null;
+        refusal = undefined;
+        res = await launch(null);
+      }
+    }
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     await failRow(row.id, `initiation_failed: ${detail}`);
@@ -358,7 +417,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
   }
 
   if (!res.ok) {
-    const detail = ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
+    const detail = refusal ?? (await errorOf(res));
     await failRow(row.id, `strut_http_${res.status}${detail ? `: ${detail}` : ""}`);
     if (res.status === 404) {
       throw new StrutDispatchError(
@@ -379,7 +438,12 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
     throw new StrutDispatchError("strut_http", detail || `Strut returned HTTP ${res.status}.`);
   }
 
-  const accepted = (await res.json().catch(() => ({}))) as { runId?: unknown; callback?: unknown; jobCallback?: unknown };
+  const accepted = (await res.json().catch(() => ({}))) as {
+    runId?: unknown;
+    callback?: unknown;
+    jobCallback?: unknown;
+    attachments?: unknown;
+  };
   const strutRunId = typeof accepted.runId === "string" && accepted.runId ? accepted.runId : null;
 
   if (accepted.callback !== true) {
@@ -397,6 +461,17 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
   if (!strutRunId) {
     await failRow(row.id, "no_run_id");
     throw new StrutDispatchError("no_run_id", "Strut accepted the launch but returned no run id.");
+  }
+
+  if (attachments?.length && accepted.attachments !== true) {
+    // A strut before run attachments ignores the field: the run goes on
+    // without the files.
+    logger.warn("Strut predates run attachments — the run has no files", STRUT_RUN_LOG_TAG, {
+      runId: row.id,
+      workflow,
+      swarmId: target.swarmId,
+      files: attachments.length,
+    });
   }
 
   await db.strutRun.update({ where: { id: row.id }, data: { strutRunId, ...(jobCallbackUrl && accepted.jobCallback === true ? { liveUpdates: true } : {}) } });
@@ -566,7 +641,7 @@ export async function completeStrutRun(
 
 /** Run a settled row's kind handler. `false` = it threw (retry). */
 export async function runHandler(row: StrutRunRow, ctx?: StrutRunHandlerContext): Promise<boolean> {
-  const load = HANDLERS[row.kind];
+  const load = handlerFor(row.kind);
   if (!load) {
     logger.error("No handler for a settled strut run", STRUT_RUN_LOG_TAG, { runId: row.id, kind: row.kind });
     return true; // nothing to retry into

@@ -9,7 +9,7 @@
 import type {
   ConnectionGroup,
   ConnectionItem,
-  BrainstormRoot,
+  ChoiceEffect,
   ChoiceTreeData,
   ConnectionPageArgs,
   Hierarchy,
@@ -223,8 +223,267 @@ export function mockConnectionPage({ refId, edge, outgoing, limit }: ConnectionP
     .slice(0, limit);
 }
 
+
+const fx = (id: string, direction: "pro" | "con", name: string, description: string, impact: number | null): ChoiceEffect =>
+  ({ ref_id: id, direction, name, description, impact });
+
+/** Mock effects by option id; every option not listed has none. */
+const MOCK_EFFECTS: Record<string, ChoiceEffect[]> = {
+  "mock-bb-1a": [
+    fx("fx-bb-1a-1", "pro", "Reuses canvas chrome", "Filters, workspace switcher and auth come for free.", 0.7),
+    fx("fx-bb-1a-2", "pro", "One click from chat", "The tab sits next to the chat that started the job.", 0.5),
+    fx("fx-bb-1a-3", "con", "Crowds the canvas tabs", "Another tab competes for space on small screens.", 0.25),
+  ],
+  "mock-bb-1b": [fx("fx-bb-1b-1", "con", "New route to maintain", "A page of its own needs navigation, auth and tests.", 0.6)],
+  "mock-bb-fqa": [
+    fx("fx-bb-fqa-1", "pro", "No gatekeeping", "Anyone can fix a wrong branch right away.", 0.65),
+    fx("fx-bb-fqa-2", "con", "Accidental deletions", "A teammate may remove a branch someone still needs.", 0.8),
+  ],
+  "mock-bb-fqc": [fx("fx-bb-fqc-1", "pro", "Clear accountability", "One person answers for the tree.", 0.55)],
+  "mock-bl-q2-b": [
+    fx("fx-bl-q2-b-1", "pro", "Low noise", "Developers only see comments on code that matters.", 0.8),
+    fx("fx-bl-q2-b-2", "pro", "Never blocks a merge", "Advisory only, so urgent PRs are not slowed down.", 0.45),
+    fx("fx-bl-q2-b-3", "con", "Tagging upkeep", "Someone must keep the sensitive-path tags current.", 0.2),
+  ],
+  "mock-bl-q2-a": [
+    fx("fx-bl-q2-a-1", "pro", "Covers every push", "Nothing slips past because a path was untagged.", 0.7),
+    fx("fx-bl-q2-a-2", "con", "Adds CI minutes", "Every push waits on one more required job.", 0.6),
+    fx("fx-bl-q2-a-3", "con", "Comment fatigue", "A summary on every PR gets ignored over time.", 0.35),
+  ],
+  "mock-bl-q4-b": [
+    fx("fx-bl-q4-b-1", "pro", "Understands intent", "Catches weakening changes no static rule describes.", 0.75),
+    fx("fx-bl-q4-b-2", "con", "Verdicts can be wrong", "False alarms erode trust in the check.", 0.65),
+  ],
+  "mock-bl-q4-c": [fx("fx-bl-q4-c-1", "pro", "Grounded in real incidents", "Patterns come from fixes we already made.", 0.6)],
+  "mock-bl-q5-c": [
+    fx("fx-bl-q5-c-1", "pro", "One weekly view", "Speed and misses read side by side.", 0.7),
+    fx("fx-bl-q5-c-2", "con", "Needs a dashboard", "Someone has to build and own it.", null),
+  ],
+};
+
+function withMockEffects<T extends { ref_id: string; effects?: ChoiceEffect[] }>(nodes: T[], extra: Record<string, ChoiceEffect[]> = {}): T[] {
+  const all = { ...MOCK_EFFECTS, ...extra };
+  return nodes.map((n) => (all[n.ref_id] ? { ...n, effects: all[n.ref_id] } : n));
+}
+
 /** A small brainstorm tree under `focus`: a root question with sub-questions 1 and 2, options 1A, 1B, 2A, and under 1A a follow-up question with options 1AA and 1AB. */
 export function mockChoiceTree(focus: string, labels: string[] = ["Question", "Option", "Choice"]): ChoiceTreeData {
+  const data = mockChoiceTreeUndated(focus, labels);
+  const days = MOCK_DAYS_AGO[focus] ?? mockDaysAgoOf(focus);
+  const ms = Date.now() - days * 86400000 - 3600000;
+  // The live graph stamps `date_added_to_graph` in epoch milliseconds; older nodes used seconds,
+  // so the legacy mock brainstorm keeps seconds. The desk's timeline reads either.
+  const at = days >= LEGACY_SECONDS_DAYS_AGO ? Math.floor(ms / 1000) : ms;
+  return {
+    ...data,
+    nodes: data.nodes.map((n) => ({ ...n, properties: { date_added_to_graph: at, ...n.properties } })),
+  };
+}
+
+/** How many days ago each mock brainstorm was added, for the desk's timeline. */
+const MOCK_DAYS_AGO: Record<string, number> = {
+  "mock-brainstorm-large": 0,
+  "mock-brainstorm-board": 1,
+  "mock-brainstorm-pricing": 1, // same day as the board, so that day's heading reads "2 brainstorms"
+  "mock-brainstorm-onboarding": 30,
+  "mock-brainstorm-repo": 3,
+  "mock-brainstorm-auth": 4,
+};
+
+/** Mock brainstorms at least this old are stamped in epoch seconds (legacy format). */
+const LEGACY_SECONDS_DAYS_AGO = 30;
+
+/** A node inside a board mock is as old as its board. */
+function mockDaysAgoOf(id: string): number {
+  if (mockLargeTree().nodes.some((n) => n.ref_id === id)) return MOCK_DAYS_AGO[MOCK_LARGE_ROOT];
+  if (mockBoardTree().nodes.some((n) => n.ref_id === id)) return MOCK_DAYS_AGO[MOCK_BOARD_ROOT];
+  return 2;
+}
+
+/** A brainstorm option as strut writes it: its effects AGAINST the feature's requirements, and its fast / good / cheap ratings. */
+interface FeatureOption {
+  id: string;
+  text: string;
+  state?: string;
+  made_by?: string;
+  effects: Array<[name: string, direction: "pro" | "con", impact: number, against?: string]>;
+  ratings: Partial<Record<"fast" | "good" | "cheap", number>>;
+  /** What choosing it makes (strut's `makes`); unset: the answer's own words. */
+  makes?: string[];
+  /** A follow-up question under this option, with its own options. */
+  followUp?: { id: string; text: string; state?: string; options: FeatureOption[] };
+}
+
+/** A brainstorm tree about a plan node: a root question, its options, and follow-ups under any of them. */
+function featureTree(root: { id: string; text: string; made_by: string; state?: string }, options: FeatureOption[], labels: string[]): ChoiceTreeData {
+  type Node = ChoiceTreeData["nodes"][number];
+  const nodes: Node[] = [
+    { ref_id: root.id, type: "Question", properties: { question_id: 1, text: root.text, made_by: root.made_by, state: root.state ?? "open" } },
+  ];
+  const edges: ChoiceTreeData["edges"] = [];
+  let seq = 1;
+  const addOptions = (parent: string, list: FeatureOption[]) => {
+    for (const o of list) {
+      nodes.push({
+        ref_id: o.id,
+        type: "Option",
+        properties: {
+          option_id: ++seq,
+          text: o.text,
+          kind: "option",
+          made_by: o.made_by ?? "model",
+          state: o.state ?? "open",
+          // As strut writes it (Jarvis 135 `Option.makes`, `?string`): JSON text.
+          ...(o.makes ? { makes: JSON.stringify(o.makes) } : {}),
+        },
+        effects: o.effects.map(([name, direction, impact, against], i) => ({
+          ref_id: `${o.id}-fx${i + 1}`,
+          name,
+          description: "",
+          direction,
+          impact,
+          ...(against ? { against: [against] } : {}),
+        })),
+        ratings: o.ratings,
+      });
+      edges.push({ source: parent, target: o.id });
+      if (o.followUp) {
+        nodes.push({
+          ref_id: o.followUp.id,
+          type: "Question",
+          properties: { question_id: ++seq, text: o.followUp.text, made_by: "model", state: o.followUp.state ?? "open" },
+        });
+        edges.push({ source: o.id, target: o.followUp.id });
+        addOptions(o.followUp.id, o.followUp.options);
+      }
+    }
+  };
+  addOptions(root.id, options);
+  const kept = nodes.filter((n) => labels.includes(n.type));
+  const ids = new Set(kept.map((n) => n.ref_id));
+  return { nodes: kept, edges: edges.filter((e) => ids.has(e.source) && ids.has(e.target)), truncated: false };
+}
+
+/** Requirement ref_ids of the initiative fixture (`initiative-fixture.ts`), which the effects point AGAINST. */
+const R = (n: number) => `mock-r-${n}`;
+
+/** The brainstorm about "Guided workspace setup", from before the plan moved onto milestones (the desk still lists it). */
+function mockOnboardingTree(labels: string[]): ChoiceTreeData {
+  const Q = "mock-brainstorm-onboarding";
+  return featureTree({ id: Q, text: "How do we shorten onboarding?", made_by: "user" }, [
+    {
+      id: `${Q}-a`,
+      text: "A four-step wizard with skip and resume",
+      effects: [["Exactly four steps", "pro", 0.8], ["Two weeks of front-end work", "con", 0.4]],
+      ratings: { fast: -0.2, good: 0.8, cheap: 0 },
+    },
+    {
+      id: `${Q}-b`,
+      text: "Let Jamie set the workspace up from one sentence",
+      effects: [["Fewest steps of all", "pro", 0.9], ["Hard to resume halfway", "con", 0.5]],
+      ratings: { fast: 0.2, good: 0.3, cheap: -0.6 },
+    },
+  ], labels);
+}
+
+/** "GitHub App or OAuth app?" on milestone 1 of Self-serve onboarding: decided, with a follow-up under the chosen answer. */
+function mockAuthTree(labels: string[]): ChoiceTreeData {
+  const Q = "mock-brainstorm-auth";
+  return featureTree({ id: Q, text: "GitHub App or OAuth app?", made_by: "user", state: "decided" }, [
+    {
+      id: `${Q}-app`,
+      text: "GitHub App, installed per org",
+      state: "chosen",
+      effects: [
+        ["One install per org, so returning users skip it", "pro", 0.7, R(2)],
+        ["An org owner has to approve the first time", "con", 0.5, R(1)],
+      ],
+      ratings: { fast: 0.25, good: 1, cheap: 0.25 },
+      makes: ["GitHub sign-in"],
+      followUp: {
+        id: `${Q}-approve`,
+        text: "Who approves the install when the PM isn't an org owner?",
+        options: [
+          {
+            id: `${Q}-owner`,
+            text: "The owner approves in GitHub",
+            effects: [["The PM waits on someone else, outside Hive", "con", 0.6, R(1)]],
+            ratings: { fast: 1, good: -0.5, cheap: 1 },
+            makes: [],
+          },
+          {
+            id: `${Q}-invite`,
+            text: "Invite the owner from inside Hive",
+            effects: [
+              ["The owner lands straight on the approval", "pro", 0.6, R(2)],
+              ["One more screen for the PM", "con", 0.3, R(1)],
+            ],
+            ratings: { fast: 0.25, good: 1, cheap: 0.25 },
+            makes: ["Invite your org owner"],
+          },
+        ],
+      },
+    },
+    {
+      id: `${Q}-oauth`,
+      text: "OAuth app per user",
+      effects: [
+        ["Nothing between the redirect and the workspace", "pro", 0.6, R(1)],
+        ["Admins can't see personal sign-ups", "con", 0.5, R(5)],
+      ],
+      ratings: { fast: 1, good: -0.5, cheap: 1 },
+      makes: ["OAuth sign-in"],
+    },
+  ], labels);
+}
+
+/** "How do people choose what Hive watches?" on the same milestone: decided, with an open follow-up. */
+function mockRepoTree(labels: string[]): ChoiceTreeData {
+  const Q = "mock-brainstorm-repo";
+  return featureTree({ id: Q, text: "How do people choose what Hive watches?", made_by: "model", state: "decided" }, [
+    {
+      id: `${Q}-picker`,
+      text: "A repo picker on a cached repo list",
+      state: "chosen",
+      effects: [
+        ["Instant, refreshed by webhook", "pro", 0.8, R(6)],
+        ["Search filters the loaded list", "pro", 0.6, R(7)],
+      ],
+      ratings: { fast: 1, good: 0.25, cheap: 0.25 },
+      makes: ["Repo picker"],
+      followUp: {
+        id: `${Q}-fresh`,
+        text: "How does the cached list stay fresh?",
+        options: [
+          {
+            id: `${Q}-hook`,
+            text: "Installation webhook",
+            effects: [["New repos show within seconds", "pro", 0.7, R(6)]],
+            ratings: { fast: 0.25, good: 1, cheap: 1 },
+            makes: ["Repo list webhook"],
+          },
+          {
+            id: `${Q}-poll`,
+            text: "Refresh every ten minutes",
+            effects: [["A new repo can be missing for ten minutes", "con", 0.5, R(6)]],
+            ratings: { fast: 1, good: -0.5, cheap: 0.25 },
+          },
+        ],
+      },
+    },
+    {
+      id: `${Q}-all`,
+      text: "Watch every repo the app can see",
+      effects: [["Big orgs get hundreds of repos they don't care about", "con", 0.7, R(6)]],
+      ratings: { fast: 1, good: -0.5, cheap: 1 },
+    },
+  ], labels);
+}
+
+function mockChoiceTreeUndated(focus: string, labels: string[]): ChoiceTreeData {
+  if (focus === "mock-brainstorm-onboarding") return mockOnboardingTree(labels);
+  if (focus === "mock-brainstorm-auth") return mockAuthTree(labels);
+  if (focus === "mock-brainstorm-repo") return mockRepoTree(labels);
   // Any node of a board mock opens its own subtree (the board's "Start here").
   for (const build of [mockLargeTree, mockBoardTree]) {
     const tree = build(labels);
@@ -259,12 +518,22 @@ export function mockChoiceTree(focus: string, labels: string[] = ["Question", "O
   ]
     .map(([source, target]) => ({ source, target }))
     .filter((e) => ids.has(e.source) && ids.has(e.target));
-  return { nodes, edges, truncated: false };
+  return {
+    nodes: withMockEffects(nodes, {
+      [kid("1a")]: [
+        fx("fx-1a-1", "pro", "Simple to build", "Small change, easy to review.", 0.8),
+        fx("fx-1a-2", "con", "Limited reach", "Only covers the common case.", 0.3),
+      ],
+      [kid("2a")]: [fx("fx-2a-1", "pro", "Fast", "Ships this week.", 0.5)],
+    }),
+    edges,
+    truncated: false,
+  };
 }
 
 /** The root of the brainstorm board mock (`mockBoardTree`). */
 export const MOCK_BOARD_ROOT = "mock-brainstorm-board";
-/** The root of the large, production-shaped board mock (`mockLargeTree`); the first of `mockBrainstormList`. */
+/** The root of the large, production-shaped board mock (`mockLargeTree`). */
 export const MOCK_LARGE_ROOT = "mock-brainstorm-large";
 
 /** `data` cut down to `focus` and its descendants. */
@@ -275,16 +544,6 @@ function subtreeOf(data: ChoiceTreeData, focus: string): ChoiceTreeData {
     for (const e of data.edges) if (keep.has(e.source) && !keep.has(e.target)) keep.add(e.target), (grew = true);
   }
   return { ...data, nodes: data.nodes.filter((n) => keep.has(n.ref_id)), edges: data.edges.filter((e) => keep.has(e.source) && keep.has(e.target)) };
-}
-
-/** Four brainstorm roots, newest first; the first is the large board mock. */
-export function mockBrainstormList(): BrainstormRoot[] {
-  return [
-    { ref_id: MOCK_LARGE_ROOT, text: "ASSUMED GOAL: catch changes that weaken security before they merge, without slowing every PR down", job: "job-mock-large", made_by: "user" },
-    { ref_id: MOCK_BOARD_ROOT, text: "How should teams share brainstorm boards?", job: "job-mock-board", made_by: "user" },
-    { ref_id: "mock-brainstorm-pricing", text: "What should the pricing page lead with?", job: "job-mock-pricing", made_by: "model" },
-    { ref_id: "mock-brainstorm-onboarding", text: "How do we shorten onboarding?", job: null, made_by: "user" },
-  ];
 }
 
 /**
@@ -346,7 +605,7 @@ export function mockBoardTree(labels: string[] = ["Question", "Option", "Choice"
   ]
     .map(([source, target]) => ({ source, target }))
     .filter((e) => ids.has(e.source) && ids.has(e.target));
-  return { nodes, edges, truncated: false };
+  return { nodes: withMockEffects(nodes), edges, truncated: false };
 }
 
 /**
@@ -419,7 +678,7 @@ export function mockLargeTree(labels: string[] = ["Question", "Option", "Choice"
   o("mock-bl-q5-b", "mock-bl-q5", "Count weakening changes found by later audits that the check had let through", "model");
   o("mock-bl-q5-c", "mock-bl-q5", "Both numbers on one weekly dashboard, with a budget of two extra minutes per PR", "Bob Dev", "chosen");
 
-  const kept = nodes.filter((n) => labels.includes(n.type));
+  const kept = withMockEffects(nodes).filter((n) => labels.includes(n.type));
   const ids = new Set(kept.map((n) => n.ref_id));
   return { nodes: kept, edges: edges.filter((e) => ids.has(e.source) && ids.has(e.target)), truncated: false };
 }

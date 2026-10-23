@@ -55,7 +55,24 @@ type MessageSource = {
   topic?: string;
   title?: string;
   status?: string;
+  // strut proposal variants (`lib/strut-orchestrator.ts`)
+  proposalId?: string;
+  step?: string;
 };
+
+/**
+ * A strut proposal row (Jamie on strut, `lib/strut-orchestrator.ts`) with
+ * its latest status: the decision row that followed it in the transcript,
+ * else the status the turn delivered it with.
+ */
+function strutProposalLine(messages: StoredMessage[], source: MessageSource): string {
+  let status = source.status ?? "pending";
+  for (const m of messages) {
+    const src = (m.source ?? {}) as MessageSource;
+    if (src.kind === "proposal_result" && src.proposalId === source.proposalId && src.status) status = src.status;
+  }
+  return `  • Proposed ${source.step ?? "change"} "${source.title ?? "(untitled)"}" — ${status}`;
+}
 
 /** Title shown on a proposal card: `title` for features, `name` otherwise. */
 function proposalTitle(output: ProposalOutput): string {
@@ -193,6 +210,14 @@ export async function buildOrgConversationReadout(args: {
           (m as { rejection?: unknown }).rejection !== undefined);
       if (text && !isIntentOnly) lines.push(`User: ${text}`);
     } else {
+      const src = (m.source ?? {}) as MessageSource;
+      if (src.kind === "proposal") {
+        lines.push(strutProposalLine(messages, src));
+        continue;
+      }
+      // A decision's own row is folded into the proposal's line above; the
+      // launch marker has nothing to say.
+      if (src.kind === "proposal_result" || src.kind === "orchestrator_launch") continue;
       if (text) lines.push(`Jamie: ${text}`);
       // Proposals + their decision, inline where they were made.
       for (const p of proposalsOnMessage(m)) {

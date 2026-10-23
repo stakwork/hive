@@ -29,6 +29,9 @@ const mockGetWorkspaceSwarmAccess = vi.hoisted(() => vi.fn());
 const mockGetJarvisConfigForWorkspace = vi.hoisted(() => vi.fn());
 const mockFetchTaskRubricRoster = vi.hoisted(() => vi.fn());
 const mockFetchFixSnapshots = vi.hoisted(() => vi.fn());
+const mockEnrichRunExport = vi.hoisted(() => vi.fn());
+const mockFindLegalStrutRunRow = vi.hoisted(() => vi.fn());
+const mockLoadStrutRunReport = vi.hoisted(() => vi.fn());
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -58,6 +61,15 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("@/lib/run-report/export/assemble", () => ({
   assembleRunExport: mockAssembleRunExport,
+  enrichRunExport: mockEnrichRunExport,
+}));
+
+vi.mock("@/services/strut-runs/legal-benchmark", () => ({
+  findLegalStrutRunRow: mockFindLegalStrutRunRow,
+}));
+
+vi.mock("@/services/strut-runs/legal-report", () => ({
+  loadStrutRunReport: mockLoadStrutRunReport,
 }));
 
 vi.mock("@/lib/run-report/export/render-offline", () => ({
@@ -391,5 +403,49 @@ describe("GET .../runs/[runId]/report/export", () => {
         expect.any(String), // title
       );
     });
+  });
+});
+
+// ── A strut legal workspace (openlaw-1): harvey-lab-run's StrutRun rows ────────
+
+describe("GET .../runs/[runId]/report/export in a strut legal workspace", () => {
+  const STRUT_SLUG = "openlaw-1";
+  const STRUT_ROW = {
+    id: "strut-row-1",
+    input: { task_slug: "harvey-banking-x", task_title: "Compliance certificate" },
+  };
+  const STRUT_REPORT = { runId: "strut-row-1", hasReport: true, projection: null };
+
+  beforeEach(() => {
+    mockFindLegalStrutRunRow.mockResolvedValue(STRUT_ROW);
+    mockLoadStrutRunReport.mockResolvedValue(STRUT_REPORT);
+    mockEnrichRunExport.mockResolvedValue({ ...MOCK_EXPORT_PAYLOAD, report: STRUT_REPORT });
+  });
+
+  test("exports the report built from the run's lab, scoped to the workspace", async () => {
+    const res = await GET(makeRequest(STRUT_SLUG, "strut-row-1"), makeParams(STRUT_SLUG, "strut-row-1"));
+    expect(res.status).toBe(200);
+    expect(mockFindLegalStrutRunRow).toHaveBeenCalledWith(WORKSPACE_ID, "strut-row-1");
+    expect(mockLoadStrutRunReport).toHaveBeenCalledWith(STRUT_ROW);
+    expect(mockEnrichRunExport).toHaveBeenCalledWith("strut-row-1", STRUT_REPORT, expect.any(Object));
+    expect(mockRenderRunOffline).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: STRUT_REPORT, taskTitle: "Compliance certificate" }),
+    );
+    expect(mockDbFindFirst).not.toHaveBeenCalled();
+    expect(mockAssembleRunExport).not.toHaveBeenCalled();
+  });
+
+  test("returns 404 for a run that is not this workspace's", async () => {
+    mockFindLegalStrutRunRow.mockResolvedValue(null);
+    const res = await GET(makeRequest(STRUT_SLUG, "other"), makeParams(STRUT_SLUG, "other"));
+    expect(res.status).toBe(404);
+    expect(mockLoadStrutRunReport).not.toHaveBeenCalled();
+  });
+
+  test("keeps the same role gate", async () => {
+    mockResolveWorkspaceAccess.mockResolvedValue(memberAccess(WorkspaceRole.VIEWER));
+    const res = await GET(makeRequest(STRUT_SLUG, "strut-row-1"), makeParams(STRUT_SLUG, "strut-row-1"));
+    expect(res.status).toBe(404);
+    expect(mockFindLegalStrutRunRow).not.toHaveBeenCalled();
   });
 });

@@ -186,6 +186,15 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/agent-runs/webhook", strategy: "prefix", access: "webhook" }, // session-less swarm callback; has its own token auth
   { path: "/api/strut-runs/webhook", strategy: "prefix", access: "webhook" }, // strut run.end callback; token in the query string, checked in the handler
   { path: "/api/strut-jobs/events", strategy: "prefix", access: "webhook" }, // strut job.update (live artifacts); a job turn's row token in the query string, checked in the handler
+  // Strut device pairing (`lib/strut-devices.ts`): the device has no session.
+  // Starting a pairing needs nothing, the poll its device code, the renewal
+  // its device credential — each checked in the handler. Approving, listing
+  // and revoking stay session-only (the protected default).
+  { path: "/api/strut-devices/pair", strategy: "exact", access: "webhook", methods: ["POST"] },
+  { path: "/api/strut-devices/pair/token", strategy: "exact", access: "webhook", methods: ["POST"] },
+  { path: "/api/strut-devices/peers", strategy: "exact", access: "webhook", methods: ["GET"] },
+  // The approve page: public so a signed-out visitor is sent to sign-in with the code kept (the page checks the session).
+  { path: "/pair", strategy: "exact", access: "public" },
   { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },
   { path: "/api/webhook/agent-trace", strategy: "prefix", access: "webhook" },
   { path: "/api/webhook/errors", strategy: "prefix", access: "webhook" }, // has its own key-based auth

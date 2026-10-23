@@ -1,13 +1,13 @@
 /**
  * Mock mode (`USE_MOCKS`): brainstorm saves land here instead of Jarvis, and
- * the brainstorm reads (`getChoiceTree`, `listBrainstormRoots`) overlay them
- * on the fixtures, so a save on the desk reads back. In memory only, kept on
+ * the brainstorm read (`getChoiceTree`) overlays them on the fixtures, so a
+ * save reads back. In memory only, kept on
  * `globalThis` so a dev-server reload doesn't drop it.
  */
 
 import type { SavePlan } from "@/services/graph/brainstorm-write";
-import type { BrainstormRoot, ChoiceTreeData, ChoiceTreeNode } from "@/services/graph/workbench";
-import { mockBrainstormList, mockChoiceTree } from "./workbench-fixture";
+import type { ChoiceTreeData, ChoiceTreeNode } from "@/services/graph/workbench";
+import { mockChoiceTree } from "./workbench-fixture";
 
 interface Store {
   /** Cards created by saves. */
@@ -15,14 +15,12 @@ interface Store {
   edges: Array<{ source: string; target: string }>;
   /** Saved changes to fixture cards, by ref_id. */
   patches: Map<string, Record<string, unknown>>;
-  /** New brainstorms, newest first. */
-  roots: string[];
   seq: number;
 }
 
 const holder = globalThis as unknown as { __mockBrainstormStore?: Store };
 const store = (): Store =>
-  (holder.__mockBrainstormStore ??= { nodes: new Map(), edges: [], patches: new Map(), roots: [], seq: 0 });
+  (holder.__mockBrainstormStore ??= { nodes: new Map(), edges: [], patches: new Map(), seq: 0 });
 
 export function resetMockBrainstormStore() {
   delete holder.__mockBrainstormStore;
@@ -38,9 +36,8 @@ export function mockBrainstormWrite(plan: SavePlan): Record<string, string> {
   for (const c of plan.creates) {
     const id = `mock-bs-${++s.seq}`;
     created[c.temp] = id;
-    s.nodes.set(id, { ref_id: id, type: c.nodeType, properties: { ...c.data } });
+    s.nodes.set(id, { ref_id: id, type: c.nodeType, properties: { date_added_to_graph: Date.now(), ...c.data } });
     if (c.parent) s.edges.push({ source: ref(c.parent), target: id });
-    else s.roots.unshift(id);
   }
   for (const [id, data] of Object.entries(plan.patches)) {
     const own = s.nodes.get(id);
@@ -73,19 +70,4 @@ export function mockChoiceTreeWithWrites(focus: string, labels: string[]): Choic
     edges: edges.filter((e) => keep.has(e.source) && keep.has(e.target)),
     truncated: false,
   };
-}
-
-/** The fixture brainstorm list with saved new brainstorms first. */
-export function mockBrainstormListWithWrites(): BrainstormRoot[] {
-  const s = store();
-  const added = s.roots
-    .map((id) => s.nodes.get(id)!)
-    .filter((n) => !isDeleted(n.properties))
-    .map((n) => ({
-      ref_id: n.ref_id,
-      text: typeof n.properties.text === "string" ? n.properties.text : n.ref_id,
-      job: null,
-      made_by: "user",
-    }));
-  return [...added, ...mockBrainstormList()];
 }
