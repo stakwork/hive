@@ -67,6 +67,7 @@ import {
   type OpenTrees,
   optionKey,
   orgRect,
+  STORIES_W,
   toScreen,
   visibility,
   zoomAbout,
@@ -85,7 +86,7 @@ const FACE_W: Partial<Record<string, number>> = {
   feature: 320,
   architecture: 760,
   build: 760,
-  stories: 1500,
+  stories: STORIES_W,
   stack: 220,
 };
 const FRAME_W: Partial<Record<string, number>> = { initiative: 1200, milestone: 820, feature: 820 };
@@ -1082,13 +1083,7 @@ export function InfiniteCanvas({
             ))}
           </div>
 
-          {mode === "full" ? null : (
-            <JamieBar
-              mode={mode}
-              setMode={setMode}
-              send={talk}
-            />
-          )}
+          {mode === "full" ? null : <JamieBar mode={mode} setMode={setMode} send={talk} />}
 
           {palette ? (
             <Palette

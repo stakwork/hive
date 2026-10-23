@@ -69,6 +69,23 @@ const ASPECT: Partial<Record<SceneKind, number>> = {
 export const HEADER = 0.2;
 const GAP = 0.04;
 const ISLAND_W = 2400;
+/** Width the user stories panel is laid out at before it is scaled to its place on the card. */
+export const STORIES_W = 1500;
+
+/**
+ * The height (at `STORIES_W`) an initiative's user stories panel needs: its chrome, then each story's wrapped lines
+ * and each requirement's. Generous on characters per line, so the card's frame is never shorter than the panel.
+ */
+function storiesHeight(b: Board, initiative: string): number {
+  const LINE = 18;
+  const lines = (text: string, perLine: number) => Math.max(1, Math.ceil(text.length / perLine));
+  let h = 24 + 16 + 8 + 4 + 22 + 8; // padding, header, gaps, the "add user story" row
+  for (const st of kids(b, initiative, "story")) {
+    h += lines(st.name, 160) * LINE + 4 + 22 + 2 + 12; // text, gap, the "add requirement" row, list gap
+    for (const r of kids(b, st.id, "requirement")) h += lines(r.name, 135) * LINE + 6 + 2;
+  }
+  return h;
+}
 
 const union = (a: Rect, b: Rect): Rect => {
   const x = Math.min(a.x, b.x);
@@ -215,21 +232,27 @@ function row(
     // Set first so a container is drawn before (under) what hangs off it.
     out.set(c.id, { id: c.id, type: c.type, rect, group: rect, parent, ...(c.of ? { of: c.of } : {}) });
     if (!CONTAINERS.includes(c.type)) return;
-    const trees = brainstorms(ctx, rect, c.id, c.type === "initiative" ? 0.3 : 1);
-    const group = union(trees, strip(out, rect, c.id, ctx.artifacts(c.id)));
-    out.set(c.id, { id: c.id, type: c.type, rect, group, parent });
     const inner = { x: rect.x + w * 0.02, y: rect.y + h * HEADER, w: w * 0.96, h: h * (1 - HEADER) - h * 0.03 };
+    // An initiative's frame grows down to hold its whole stories panel, however many stories and lines there are.
+    const storiesRect =
+      c.type === "initiative"
+        ? {
+            x: inner.x + inner.w * 0.01,
+            y: inner.y + inner.h * 0.62,
+            w: inner.w * 0.98,
+            h: Math.max(inner.h * 0.36, (storiesHeight(b, c.id) * inner.w * 0.98) / STORIES_W),
+          }
+        : undefined;
+    const frame = storiesRect ? { ...rect, h: Math.max(h, storiesRect.y + storiesRect.h + h * 0.03 - rect.y) } : rect;
+    const trees = brainstorms(ctx, rect, c.id, c.type === "initiative" ? 0.3 : 1);
+    const group = union(union(trees, frame), strip(out, frame, c.id, ctx.artifacts(c.id)));
+    out.set(c.id, { id: c.id, type: c.type, rect: frame, group, parent });
     const panel = (kind: "architecture" | "build" | "stories", r: Rect) =>
       out.set(panelKey(kind, c.id), { id: panelKey(kind, c.id), type: kind, rect: r, group: r, parent: c.id });
     if (c.type === "initiative") {
       // The road across the top (brief, then milestones in order); every user journey and its requirements below.
       row(ctx, c.id, { ...inner, h: inner.h * 0.6 }, [...kids(b, c.id, "brief"), ...kids(b, c.id, "milestone")], 4);
-      panel("stories", {
-        x: inner.x + inner.w * 0.01,
-        y: inner.y + inner.h * 0.62,
-        w: inner.w * 0.98,
-        h: inner.h * 0.36,
-      });
+      panel("stories", storiesRect!);
       return;
     }
     if (c.type === "milestone") {
