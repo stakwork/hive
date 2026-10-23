@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { StrutAppFrame } from "@/components/strut-app-frame";
 import { strutViewPath } from "@/lib/utils/strut-links";
-import { appVersionsKey, shownVersion, useAppVersionsStore } from "../../../_state/appVersionsStore";
+import { appVersionToastId, appVersionsKey, isDraftVersion, shownVersion, useAppVersionsStore } from "../../../_state/appVersionsStore";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { useCanvasChatStore } from "../../../_state/canvasChatStore";
 import { useChatOrgLogin } from "../useArtifactPanel";
@@ -21,10 +21,12 @@ export const appMessageDraft = (title: string, text: string): string => `About t
  * strut deep link opens in the org's strut view, where the job runs.
  *
  * The frame shows the app's LIVE version unless the reader picked another
- * (`appVersionsStore`, the picker in the bar). The versions are read when
- * the app is opened and again whenever a turn delivers it — a turn that
- * changed the app published a new version — so an open frame following the
- * live version reloads on the new one.
+ * (`appVersionsStore`, the picker in the bar) — or, while the app is held
+ * at a release, the DRAFT the card names (a builder turn's publish nobody
+ * else sees yet). The versions are read when the app is opened and again
+ * whenever a turn delivers it — a turn that changed the app published a
+ * new version — so an open frame following the live version reloads on the
+ * new one, and one on a draft moves to the next draft.
  */
 export function AppPanel({ artifact, content }: ArtifactViewerProps<"app">) {
   const githubLogin = useChatOrgLogin();
@@ -41,13 +43,16 @@ export function AppPanel({ artifact, content }: ArtifactViewerProps<"app">) {
     if (githubLogin) void useAppVersionsStore.getState().refresh(githubLogin, swarmId, app);
   }, [artifact, githubLogin, swarmId, app]);
 
-  // Following the live version, a new one replaces the frame: say so.
-  const lastLive = useRef(read?.live);
+  // Unpicked, the frame follows the live version or the card's draft: when it moves, say to which.
+  const followed = read ? shownVersion(read, undefined, content.version) : undefined;
+  const lastFollowed = useRef(followed);
   useEffect(() => {
-    const live = read?.live;
-    if (live && lastLive.current && live !== lastLive.current && !viewing) toast.info(`"${title}" is now ${live}`);
-    lastLive.current = live;
-  }, [read?.live, viewing, title]);
+    const was = lastFollowed.current;
+    lastFollowed.current = followed;
+    if (!read || !followed || !was || followed === was || viewing) return;
+    const said = isDraftVersion(read, followed) ? `"${title}": ${followed} is a draft — ${read.live} is live` : `"${title}" is now ${followed}`;
+    toast.info(said, { id: appVersionToastId(key) });
+  }, [read, followed, viewing, title, key]);
 
   const onMessage = useCallback(
     (text: string) => {
