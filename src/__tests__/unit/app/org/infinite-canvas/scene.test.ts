@@ -113,6 +113,21 @@ describe("layoutScene", () => {
     expect(other.has(optionKey("mock-brainstorm-repo", "mock-brainstorm-repo-picker"))).toBe(false);
   });
 
+  it("keeps every root brainstorm where it is whichever tree is open", () => {
+    const roots = ["mock-brainstorm-auth", "mock-brainstorm-repo"];
+    const a = layoutScene(board, DESK, { open: { [SIGNUP]: roots[0]! } });
+    const b = layoutScene(board, DESK, { open: { [SIGNUP]: roots[1]! } });
+    for (const r of roots) expect(a.get(r)!.rect).toEqual(b.get(r)!.rect);
+  });
+
+  it("keeps the open tree when a follow-up is picked", () => {
+    const q = "mock-brainstorm-repo";
+    const first = board.nodes.find((n) => n.id === q)!.options![0]!;
+    const grown = { nodes: board.nodes.concat({ id: "fu", ws: "ws", type: "question" as const, name: "Follow-up", author: "strut" as const, about: SIGNUP, follows: first.id, options: [] }) };
+    expect(openTree(grown, SIGNUP, { [SIGNUP]: "fu" })).toBe(q);
+    expect(layoutScene(grown, DESK, { open: { [SIGNUP]: q } }).has("fu")).toBe(true);
+  });
+
   it("keeps a brainstorm's cards where they are when a branch is expanded", () => {
     const q = "mock-brainstorm-repo";
     const before = layoutScene(board, DESK);

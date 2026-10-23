@@ -726,7 +726,8 @@ export function InfiniteCanvas({
     // A folded brainstorm opens (the level re-frames around it); an open one frames its whole tree. The level stays.
     if (n.type === "question" && vp) {
       const q = byId(board, n.id);
-      if (q?.about && openTree(board, q.about, openTrees) !== q.id) {
+      // Only a root folds; a follow-up question is part of the open tree and must never change which tree is open.
+      if (q?.about && !q.follows && openTree(board, q.about, openTrees) !== q.id) {
         setOpenTrees((o) => ({ ...o, [q.about!]: q.id }));
         return;
       }
@@ -851,6 +852,7 @@ export function InfiniteCanvas({
                   folded={
                     n.type === "question" &&
                     !!byId(board, n.id)?.about &&
+                    !byId(board, n.id)?.follows &&
                     openTree(board, byId(board, n.id)!.about!, openTrees) !== n.id
                   }
                   onClick={clickNode(n)}
