@@ -631,11 +631,12 @@ const actBtn: CSSProperties = {
   textDecoration: "underline",
 };
 
-/** A requirement: dashed when proposed, ticked when accepted, struck and faded when dropped. Actions appear on hover/focus. */
+/** A requirement: dashed when proposed, ticked only when satisfied (delivered), hollow circle when accepted, struck and faded when dropped. Actions appear on hover/focus. */
 function ReqRow({ c, r, onDelete }: { c: CardContext; r: PlanNode; onDelete: (r: PlanNode) => void }) {
   const dropped = r.status === "dropped";
   const accepted = r.status === "accepted";
-  const proposed = !dropped && !accepted;
+  const satisfied = r.status === "satisfied";
+  const proposed = !dropped && !accepted && !satisfied;
   const toggleAccept = () => c.actions.setStatus(r.id, accepted ? "proposed" : "accepted");
   return (
     <div
@@ -646,12 +647,20 @@ function ReqRow({ c, r, onDelete }: { c: CardContext; r: PlanNode; onDelete: (r:
     >
       <span
         role="checkbox"
-        aria-checked={accepted}
-        title={accepted ? "Unaccept" : "Accept"}
+        aria-checked={satisfied}
+        title={
+          satisfied
+            ? "Satisfied (delivered)"
+            : dropped
+              ? "Dropped"
+              : accepted
+                ? "Accepted, not yet delivered. Click to unaccept"
+                : "Proposed. Click to accept"
+        }
         {...stop}
         onClick={(e) => {
           e.stopPropagation();
-          if (!dropped) toggleAccept();
+          if (!dropped && !satisfied) toggleAccept();
         }}
         style={{
           flexShrink: 0,
@@ -669,7 +678,7 @@ function ReqRow({ c, r, onDelete }: { c: CardContext; r: PlanNode; onDelete: (r:
           background: v("field"),
         }}
       >
-        {accepted ? "✓" : dropped ? "–" : ""}
+        {satisfied ? "✓" : dropped ? "–" : accepted ? "○" : "·"}
       </span>
       <div style={{ minWidth: 0, flex: 1, opacity: dropped ? 0.55 : 1 }}>
         {r.pencilEdit ? (

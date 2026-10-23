@@ -57,6 +57,20 @@ describe("StoriesPanel", () => {
     expect(actions.setStatus).toHaveBeenCalledWith(r.id, "dropped");
   });
 
+  it("ticks only satisfied requirements; accepted and proposed get non-tick markers", () => {
+    const { reqs, view } = setup((rs) => {
+      rs[0].status = "satisfied";
+      rs[1].status = "accepted";
+      rs[2].status = "proposed";
+    });
+    const box = (id: string) => view.container.querySelector(`[data-req="${id}"] [role="checkbox"]`)!;
+    expect(box(reqs[0].id).textContent).toBe("✓");
+    expect(box(reqs[1].id).textContent).toBe("○");
+    expect(box(reqs[1].id).getAttribute("title")).toMatch(/not yet delivered/);
+    expect(box(reqs[2].id).textContent).toBe("·");
+    expect(box(reqs[2].id).getAttribute("title")).toMatch(/Proposed/);
+  });
+
   it("delete shows an Undo bar that re-adds the requirement", () => {
     const { reqs, stories, actions, view } = setup();
     const r = reqs.find((x) => !x.pencil)!;
