@@ -74,6 +74,8 @@ import { forkCanvasConversation } from "../_state/forkCanvasConversation";
 import { startNewOrgConversation } from "../_state/openOrgConversation";
 import { ActionTip } from "./ActionTip";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceMention } from "@/hooks/useWorkspaceMention";
+import { MentionPopup } from "@/components/mention/MentionPopup";
 import { jamieName } from "@/lib/constants/jamie";
 import { useCanvasAgentActivity } from "@/hooks/useCanvasAgentActivity";
 import { uploadFileToS3 } from "@/lib/upload-image-to-s3";
@@ -981,6 +983,21 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // ─── "@" workspace-mention menu ─────────────────────────────────────
+  const { workspaces } = useWorkspace();
+  const mention = useWorkspaceMention({
+    workspaces,
+    onInsert: ({ text, caret }) => {
+      setInput(text);
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(caret, caret);
+      });
+    },
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ─── "/" concept-mention menu ───────────────────────────────────────
@@ -1229,6 +1246,7 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mention.handleKeyDown(e, input, e.currentTarget.selectionStart ?? input.length)) return;
     // The "/" concept menu takes priority over send-on-Enter so picking a
     // concept doesn't accidentally submit the message.
     if (slashMenuOpen) {
@@ -1276,6 +1294,7 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
     const trigger = detectSlashTrigger(newValue, cursor);
     setSlashTrigger(trigger);
     setSlashActiveIndex(0);
+    mention.update(newValue, cursor);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1362,6 +1381,13 @@ const SidebarChatInput = forwardRef<SidebarChatInputHandle, SidebarChatInputProp
 
       {/* ── Composer ──────────────────────────────────────────────────── */}
       <div className="relative">
+        {mention.isOpen && (
+          <MentionPopup
+            workspaces={mention.matches}
+            activeIndex={mention.activeIndex}
+            onSelect={(slug) => mention.select(slug, input, inputRef.current?.selectionStart ?? input.length)}
+          />
+        )}
         {/* "/" concept-mention menu */}
         {slashMenuOpen && (
           <div className="absolute bottom-full left-0 right-0 mb-1 z-20" data-testid="slash-concept-menu">

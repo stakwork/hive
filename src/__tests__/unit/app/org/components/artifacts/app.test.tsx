@@ -14,6 +14,7 @@ import { artifactKind } from "@/app/org/[githubLogin]/_components/artifacts/regi
 import { readStrutArtifact } from "@/app/org/[githubLogin]/_components/artifacts/useArtifactContent";
 import { parseArtifactContent, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { useCanvasChatStore } from "@/app/org/[githubLogin]/_state/canvasChatStore";
+import { appVersionsKey, useAppVersionsStore } from "@/app/org/[githubLogin]/_state/appVersionsStore";
 
 const { mockToast } = vi.hoisted(() => ({ mockToast: vi.fn() }));
 vi.mock("@/app/org/[githubLogin]/_components/artifacts/useArtifactPanel", () => ({ useChatOrgLogin: () => "acme-org" }));
@@ -35,8 +36,16 @@ const READER = `/api/orgs/acme-org/strut/artifacts?${new URLSearchParams({ swarm
 const VISITS_KEY = "/apps/visits/v2/files/dist/index.html";
 const VISITS_DOCUMENT_ROUTE = `/api/orgs/acme-org/strut/apps/document?${new URLSearchParams({ swarmId: "swarm-1", app: "visits", version: "v2" })}`;
 
+/** The live version of each app on swarm-1, as the versions route reads it; an app not here fails to read. */
+let live: Record<string, string> = {};
+const documentRoute = (app: string, version: string) =>
+  `/api/orgs/acme-org/strut/apps/document?${new URLSearchParams({ swarmId: "swarm-1", app, version })}`;
+const documentCalls = () => mockFetch.mock.calls.map(([u]) => String(u)).filter((u) => u.includes("/strut/apps/document"));
+
 const mockFetch = vi.fn();
 beforeEach(() => {
+  live = { visits: "v2", tracker: "v1" };
+  useAppVersionsStore.setState({ byApp: {}, failed: {}, viewing: {} });
   vi.clearAllMocks();
   vi.stubGlobal("fetch", mockFetch);
   URL.createObjectURL = vi.fn(() => "blob:http://localhost/page") as unknown as typeof URL.createObjectURL;
@@ -45,7 +54,13 @@ beforeEach(() => {
   mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost:3000");
     const at = `${url.pathname}${url.search}`;
-    if (at === DOCUMENT_ROUTE || at === VISITS_DOCUMENT_ROUTE || at === READER) return new Response(DOC, { status: 200 });
+    if (url.pathname.endsWith("/strut/apps/versions")) {
+      const version = live[url.searchParams.get("app") ?? ""];
+      return version
+        ? new Response(JSON.stringify({ live: version, versions: [{ version }], canSetLive: true }), { status: 200, headers: { "content-type": "application/json" } })
+        : new Response(JSON.stringify({ error: "No such app on the swarm" }), { status: 404 });
+    }
+    if (url.pathname.endsWith("/strut/apps/document") || at === READER) return new Response(DOC, { status: 200 });
     if (url.pathname.endsWith("/strut/apps/mcp") && init?.method === "POST") {
       const message = JSON.parse(String(init.body)) as { id?: number; method: string; params?: { protocolVersion?: string } };
       if (message.method !== "initialize") return new Response(null, { status: 202 });
@@ -104,7 +119,7 @@ describe("an app beside a page", () => {
       expect(f?.getAttribute("srcdoc")).toBe(DOC);
       return f!;
     });
-    expect(mockFetch.mock.calls[0][0]).toBe(VISITS_DOCUMENT_ROUTE);
+    expect(documentCalls()).toEqual([VISITS_DOCUMENT_ROUTE]);
     expect(frame.hasAttribute("src")).toBe(false);
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
   });
@@ -128,7 +143,7 @@ describe("an app beside a page", () => {
       expect(f?.getAttribute("srcdoc")).toBe(DOC);
       return f!;
     });
-    expect(mockFetch.mock.calls[0][0]).toBe(DOCUMENT_ROUTE);
+    expect(documentCalls()).toEqual([DOCUMENT_ROUTE]);
     expect(frame.hasAttribute("src")).toBe(false);
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
 
@@ -146,5 +161,31 @@ describe("an app beside a page", () => {
 
     expect(useCanvasChatStore.getState().pendingInputAppend).toBe('About the app "Visit tracker": add a column for the technician');
     expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+
+  test("the frame follows the live version: a turn that delivers the app again re-reads it, and a new version reloads the frame", async () => {
+    const { rerender } = panel(visitsRef, parseArtifactContent("app", { swarmId: "swarm-1", app: "visits", version: "v2" }));
+    await waitFor(() => expect(document.querySelector("iframe")?.getAttribute("srcdoc")).toBe(DOC));
+    expect(documentCalls()).toEqual([VISITS_DOCUMENT_ROUTE]);
+
+    // The builder's next turn published v3 and delivered the app again: a new ref of it.
+    live.visits = "v3";
+    const { Panel } = artifactKind("app");
+    const nextTurn: ArtifactRef = { ...visitsRef, source: { type: "graph", swarmId: "swarm-1", key: "/apps/visits/v3/files/dist/index.html" } };
+    rerender(<Panel artifact={nextTurn} content={parseArtifactContent("app", { swarmId: "swarm-1", app: "visits", version: "v3" }) as never} />);
+    await waitFor(() => expect(documentCalls()).toEqual([VISITS_DOCUMENT_ROUTE, documentRoute("visits", "v3")]));
+    expect(mockToast).toHaveBeenCalledWith('"Visits" is now v3');
+  });
+
+  test("a version the reader picked stays when the live one moves", async () => {
+    useAppVersionsStore.setState({ viewing: { [appVersionsKey("swarm-1", "visits")]: "v1" } });
+    panel(visitsRef, parseArtifactContent("app", { swarmId: "swarm-1", app: "visits", version: "v2" }));
+    await waitFor(() => expect(documentCalls()).toEqual([documentRoute("visits", "v1")]));
+  });
+
+  test("versions that cannot be read: the frame shows what the card named", async () => {
+    delete live.visits;
+    panel(visitsRef, parseArtifactContent("app", { swarmId: "swarm-1", app: "visits", version: "v2" }));
+    await waitFor(() => expect(documentCalls()).toEqual([VISITS_DOCUMENT_ROUTE]));
   });
 });

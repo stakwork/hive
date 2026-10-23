@@ -32,7 +32,7 @@ import {
 import { buildSharePath } from "../HtmlPageCard";
 import { webAddress } from "./address";
 import { AppPanel } from "./viewers/app";
-import { AppPinAction } from "./viewers/appPin";
+import { AppActions } from "./viewers/appVersions";
 import { CaptchaPanel } from "./viewers/captcha";
 import { ClaimsPanel, ClaimsRowMeta } from "./viewers/claims";
 import { CodePanel } from "./viewers/code";
@@ -120,7 +120,7 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Icon: AppWindow,
     chat: { place: "row" },
     Panel: AppPanel,
-    Actions: AppPinAction,
+    Actions: AppActions,
   },
   image: {
     label: "Image",
