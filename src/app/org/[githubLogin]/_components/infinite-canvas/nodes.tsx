@@ -1152,7 +1152,7 @@ export const QuestionCard = memo(function QuestionCard({
       className={c.flash === node.id ? "icb-flash" : undefined}
       style={{
         width: w,
-        height: h,
+        minHeight: h,
         boxSizing: "border-box",
         padding: "12px 14px",
         borderRadius: 8,
@@ -1163,16 +1163,33 @@ export const QuestionCard = memo(function QuestionCard({
         display: "flex",
         flexDirection: "column",
         gap: 6,
-        overflow: "hidden",
       }}
     >
-      <div style={{ ...label, color: v("fork") }}>
-        {follow ? "Expanded" : "Brainstorm"} · {node.decided ? "decided" : "open"}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ ...label, color: v("fork") }}>
+          {follow ? "Expanded" : "Brainstorm"} · {node.decided ? "decided" : "open"}
+        </div>
+        <div {...stop} style={{ display: folded ? "none" : undefined }}>
+          <button
+            type="button"
+            data-more={node.id}
+            disabled={busy}
+            onClick={() => c.actions.moreOptions(node.id)}
+            style={pill(11, {
+              borderColor: v("fork"),
+              color: v("fork"),
+              background: a("field", 70),
+              opacity: busy ? 0.5 : 1,
+            })}
+          >
+            + More options
+          </button>
+        </div>
       </div>
       <div
         data-wheel-scroll
         {...stop}
-        style={{ ...authored(node.author, follow ? 15 : 17), overflowY: "auto", minHeight: 0, flex: "0 1 auto" }}
+        style={{ ...authored(node.author, follow ? 15 : 17), flex: "0 0 auto" }}
       >
         {node.name}
       </div>
@@ -1188,22 +1205,6 @@ export const QuestionCard = memo(function QuestionCard({
           about {byId(c.board, node.about ?? "")?.name}
         </div>
       )}
-      <div {...stop} style={{ display: folded ? "none" : undefined }}>
-        <button
-          type="button"
-          data-more={node.id}
-          disabled={busy}
-          onClick={() => c.actions.moreOptions(node.id)}
-          style={pill(11, {
-            borderColor: v("fork"),
-            color: v("fork"),
-            background: a("field", 70),
-            opacity: busy ? 0.5 : 1,
-          })}
-        >
-          + More options
-        </button>
-      </div>
     </div>
   );
 });
