@@ -116,8 +116,8 @@ function brainstorms(ctx: Ctx, f: Rect, id: string, scale: number): Rect {
   if (!roots.length) return f;
   const openId = openTree(b, id, ctx.open);
   const u = { w: f.w * scale, h: (f.w * scale) / 1.6 };
-  const qw = u.w * 0.28;
-  const qh = u.h * 0.28;
+  const qw = u.w * 0.34;
+  const qh = u.h * 0.42;
   const ow = u.w * 0.34;
   const oh = u.h * 0.3;
   const og = u.h * 0.04;
