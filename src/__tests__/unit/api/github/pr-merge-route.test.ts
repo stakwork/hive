@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getPat: vi.fn(),
   get: vi.fn(),
   merge: vi.fn(),
+  repoGet: vi.fn(),
 }));
 
 vi.mock("next-auth/next", () => ({ getServerSession: mocks.getServerSession }));
@@ -19,7 +20,7 @@ vi.mock("@/lib/auth/nextauth", () => ({
 }));
 vi.mock("@/services/workspace", () => ({ validateWorkspaceAccess: mocks.validate }));
 vi.mock("@octokit/rest", () => ({
-  Octokit: vi.fn().mockImplementation(() => ({ pulls: { get: mocks.get, merge: mocks.merge } })),
+  Octokit: vi.fn().mockImplementation(() => ({ pulls: { get: mocks.get, merge: mocks.merge }, repos: { get: mocks.repoGet } })),
 }));
 
 import { POST } from "@/app/api/github/pr/merge/route";
@@ -38,7 +39,9 @@ describe("POST /api/github/pr/merge", () => {
     });
     mocks.validate.mockResolvedValue({ hasAccess: true, canWrite: true });
     mocks.getPat.mockResolvedValue({ username: "x", token: "tok" });
-    mocks.get.mockResolvedValue({ data: { merged: false, state: "open", draft: false, mergeable: true } });
+    mocks.get.mockResolvedValue({
+      data: { merged: false, state: "open", draft: false, mergeable: true, head: { sha: "headsha" } },
+    });
   });
 
   it("401 without session", async () => {
@@ -76,12 +79,33 @@ describe("POST /api/github/pr/merge", () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
+  it("surfaces GitHub's 405 message", async () => {
+    mocks.merge.mockRejectedValue({ status: 405, response: { data: { message: "Required status check is expected." } } });
+    const res = await POST(req({ artifactId: "a1" }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("Required status check is expected.");
+    expect(mocks.repoGet).not.toHaveBeenCalled();
+  });
+
+  it("retries once with an allowed method when the method is not allowed", async () => {
+    mocks.merge
+      .mockRejectedValueOnce({ status: 405, response: { data: { message: "Squash merges are not allowed on this repository." } } })
+      .mockResolvedValueOnce({ data: { sha: "abc" } });
+    mocks.repoGet.mockResolvedValue({ data: { allow_squash_merge: false, allow_rebase_merge: true, allow_merge_commit: true } });
+    const res = await POST(req({ artifactId: "a1" }));
+    expect(res.status).toBe(200);
+    expect(mocks.merge).toHaveBeenLastCalledWith(expect.objectContaining({ merge_method: "rebase" }));
+  });
+
   it("merges and updates artifact preserving content", async () => {
     mocks.merge.mockResolvedValue({ data: { sha: "abc" } });
     const res = await POST(req({ artifactId: "a1" }));
     expect(await res.json()).toEqual({ success: true, merged: true, sha: "abc" });
     expect(mocks.merge).toHaveBeenCalledWith(
-      expect.objectContaining({ owner: "org", repo: "repo", pull_number: 42, merge_method: "merge" }),
+      expect.objectContaining({ owner: "org", repo: "repo", pull_number: 42,
+        merge_method: "squash",
+        sha: "headsha",
+      }),
     );
     expect(mocks.update).toHaveBeenCalledWith({
       where: { id: "a1" },
