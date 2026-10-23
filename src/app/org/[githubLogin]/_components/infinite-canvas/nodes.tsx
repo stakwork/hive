@@ -642,7 +642,7 @@ function ReqRow({ c, r, onDelete }: { c: CardContext; r: PlanNode; onDelete: (r:
       data-req={r.id}
       data-status={proposed ? "proposed" : r.status}
       className={`icb-req${c.flash === r.id ? " icb-flash" : ""}`}
-      style={{ display: "flex", gap: 7, padding: "3px 6px 3px 0", borderRadius: 5 }}
+      style={{ display: "flex", gap: 7, padding: "3px 6px 3px 0", borderRadius: 5, minWidth: 0 }}
     >
       <span
         role="checkbox"
@@ -673,7 +673,7 @@ function ReqRow({ c, r, onDelete }: { c: CardContext; r: PlanNode; onDelete: (r:
       </span>
       <div style={{ minWidth: 0, flex: 1, opacity: dropped ? 0.55 : 1 }}>
         {r.pencilEdit ? (
-          <div style={authored(r.author, 12.5)}>
+          <div style={{ ...authored(r.author, 12.5), whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
             <PencilDiff was={r.name} now={r.pencilEdit.name} />
           </div>
         ) : (
@@ -760,6 +760,7 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
         width: w,
         minHeight: h,
         boxSizing: "border-box",
+        overflow: "hidden",
         padding: "12px 16px",
         borderRadius: 10,
         background: a("card", 85),
@@ -781,6 +782,7 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
           listStyle: "disc",
           margin: 0,
           padding: "0 0 0 18px",
+          minWidth: 0,
           display: "flex",
           flexDirection: "column",
           gap: 12,
@@ -795,6 +797,7 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
               borderLeft: st.pencil ? PENCIL_BORDER : undefined,
               paddingLeft: st.pencil ? 9 : 0,
               color: v("road"),
+              minWidth: 0,
             }}
           >
             <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
@@ -805,14 +808,22 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
                 {st.pencil ? (
                   // Proposed: its words and Accept / Reject; nothing to edit until it's real.
                   <>
-                    <div style={{ ...authored(st.author, 12.5), fontWeight: 400, color: v("proposedInk") }}>
+                    <div
+                      style={{
+                        ...authored(st.author, 12.5),
+                        fontWeight: 400,
+                        color: v("proposedInk"),
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere",
+                      }}
+                    >
                       {st.name}
                     </div>
                     <PencilBar c={c} pencil={st.pencil} size={10} />
                   </>
                 ) : st.pencilEdit ? (
                   <>
-                    <div style={authored(st.author, 12.5)}>
+                    <div style={{ ...authored(st.author, 12.5), whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
                       <PencilDiff was={st.name} now={st.pencilEdit.name} />
                     </div>
                     <PencilBar c={c} pencil={st.pencilEdit} size={10} />
@@ -832,7 +843,9 @@ export function StoriesPanel({ c, initiative, w, h }: { c: CardContext; initiati
                 )}
               </div>
             </div>
-            <div style={{ marginLeft: 12, marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
+            <div
+              style={{ marginLeft: 12, marginTop: 4, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}
+            >
               {kids(b, st.id, "requirement").map((r) => (
                 <ReqRow key={r.id} c={c} r={r} onDelete={delReq(st.id)} />
               ))}
