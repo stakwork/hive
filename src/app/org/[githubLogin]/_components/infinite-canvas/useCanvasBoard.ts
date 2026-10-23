@@ -9,7 +9,7 @@ import { getJson } from "@/components/graph-workbench/queries";
 import type { InitiativeOp } from "@/services/graph/initiative-write";
 import type { ChoiceTreeData, InitiativeSummary, InitiativeTreeData } from "@/services/graph/workbench";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
-import { type Board, type InitiativeEntry, type PlanNode, toBoard } from "./board";
+import { type Board, type InitiativeEntry, type PlanNode, PENDING_PREFIX, isPendingId, toBoard } from "./board";
 
 /** Initiatives listed per workspace (the desk shows the latest few; the stack and its list, the rest). */
 export const LISTED_INITIATIVES = 50;
@@ -41,8 +41,45 @@ async function post(url: string, body: unknown): Promise<{ ok: boolean; body: Re
   }
 }
 
-/** Edits and deletes as the graph will have them, so the canvas shows them before the save returns. */
+/** The edge a new card hangs from its parent by, for the cards that show at once (stories and requirements). */
+const ADD_EDGE: Partial<Record<string, string>> = { UserStory: "HAS_STORY", Requirement: "HAS_REQUIREMENT" };
+let tempSeq = 0;
+
+/** The temp id of the first op that points at a card that hasn't saved yet (an edit, a delete or a parent), if any. */
+export function pendingRefIn(ops: PlanOp[]): string | null {
+  for (const o of ops) {
+    const refs = o.op === "edit" || o.op === "remove" ? [o.ref] : o.op === "add" && o.parent ? [o.parent] : [];
+    const hit = refs.find(isPendingId);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Edits, deletes and added stories/requirements as the graph will have them, so the canvas shows them before the
+ * save returns. An added card has a client temp ref_id; the re-read after the save replaces the whole tree, so the
+ * real card takes its place and it can't show twice.
+ */
 export function applyLocally(tree: InitiativeTreeData, ops: PlanOp[]): InitiativeTreeData {
+  const added = ops.flatMap((o) => (o.op === "add" && o.parent && ADD_EDGE[o.type] ? [o] : []));
+  if (added.length) {
+    const next: InitiativeTreeData = {
+      ...tree,
+      nodes: [
+        ...tree.nodes,
+        ...added.map((o, i) => ({
+          ref_id: `${PENDING_PREFIX}${o.temp}:${++tempSeq}:${i}`,
+          type: o.type as InitiativeTreeData["nodes"][number]["type"],
+          properties: { ...o.fields },
+        })),
+      ],
+      edges: [...tree.edges],
+    };
+    added.forEach((o, i) =>
+      next.edges.push({ source: o.parent!, target: next.nodes[tree.nodes.length + i].ref_id, type: ADD_EDGE[o.type]! }),
+    );
+    return applyLocally(next, ops.filter((o) => o.op !== "add"));
+  }
   const edits = new Map(ops.flatMap((o) => (o.op === "edit" ? [[o.ref, o.fields] as const] : [])));
   // A deleted card hides everything under it, as the read does.
   const gone = new Set(ops.flatMap((o) => (o.op === "remove" ? [o.ref] : [])));
@@ -206,6 +243,11 @@ export function useCanvasBoard(
    */
   const savePlan = useCallback(
     async (node: PlanNode, ops: PlanOp[]): Promise<Record<string, string> | null> => {
+      // A card still saving isn't in the graph yet: its temp id must never reach the server.
+      if (pendingRefIn(ops)) {
+        toast.error("That card is still saving. Try again in a moment.");
+        return null;
+      }
       // A brainstorm question isn't in the plan's tree: it belongs to whichever plan holds the card it's about.
       const ref = node.type === "question" ? node.about : node.id;
       const owner = entries.find((e) => e.summary.ref_id === ref || e.tree?.nodes.some((n) => n.ref_id === ref));
