@@ -109,7 +109,7 @@ const FACE_W: Partial<Record<string, number>> = {
   stack: 220,
 };
 const FRAME_W: Partial<Record<string, number>> = { initiative: 1200, milestone: 820, feature: 820 };
-const QUESTION_W = 240;
+const QUESTION_W = 320;
 const OPTION_W = 330;
 /** Chrome over the canvas: breadcrumb row on top, Jamie's reply and bar below. */
 const INSETS = { top: 70, bottom: 190 };

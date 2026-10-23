@@ -171,7 +171,7 @@ function MergeButton({ repo, number, onMerged }: { repo: string; number: number;
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo, number, mergeMethod: "merge", ...(conversationId ? { conversationId } : {}) }),
+        body: JSON.stringify({ repo, number, mergeMethod: "squash", ...(conversationId ? { conversationId } : {}) }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
