@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { type CSSProperties, memo, useCallback, useEffect, useRef, useState } from "react";
 import type { CanvasJob } from "../../_state/useCanvasJobs";
 import {
@@ -10,6 +11,7 @@ import {
   type WorkState,
   byId,
   followUpTo,
+  isPendingId,
   kids,
   plural,
 } from "./board";
@@ -53,9 +55,10 @@ export interface NodeActions {
   /** Rewrite a card's words: a container's name, a brief's, story's or requirement's text. */
   rename: (id: string, text: string) => void;
   /** Delete a story (and its requirements) or a requirement. */
-  remove: (id: string) => void;
+  remove: (id: string) => Promise<boolean>;
   /** A user story on the initiative. */
-  addStory: (initiativeId: string, text: string) => void;
+  /** Resolves true once saved; false when it failed (the story is rolled back). */
+  addStory: (initiativeId: string, text: string) => Promise<boolean>;
   /** A feature added by hand under a milestone. */
   addFeature: (milestoneId: string, text: string) => void;
   /** Choose an answer, or un-choose it if it's already chosen. */
@@ -456,12 +459,15 @@ function EditableText({
   value,
   onSave,
   onDelete,
+  disabled = false,
   style,
   testId,
   maxRows = 4,
   wrap = false,
 }: {
   value: string;
+  /** Not editable yet (the card is still saving). */
+  disabled?: boolean;
   onSave: (text: string) => void;
   onDelete?: () => void;
   style: CSSProperties;
@@ -477,10 +483,11 @@ function EditableText({
     return (
       <span
         data-edit={testId}
-        title="Click to edit"
+        title={disabled ? "Saving…" : "Click to edit"}
         {...stop}
         onClick={(e) => {
           e.stopPropagation();
+          if (disabled) return;
           setText(value);
           setEditing(true);
         }}
@@ -488,7 +495,7 @@ function EditableText({
         style={{
           ...style,
           display: "block",
-          cursor: "text",
+          cursor: disabled ? "default" : "text",
           borderRadius: 4,
           ...(wrap
             ? { whiteSpace: "pre-wrap", overflowWrap: "anywhere" }
@@ -578,14 +585,31 @@ function AddInline({
   testId,
 }: {
   what: string;
-  onAdd: (text: string) => void;
+  /** May return whether it was saved: a failure puts the text back in the field. */
+  onAdd: (text: string) => void | Promise<boolean>;
   size?: number;
   testId: string;
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  useEffect(() => {
+    if (status !== "saved") return;
+    const t = setTimeout(() => setStatus("idle"), 1500);
+    return () => clearTimeout(t);
+  }, [status]);
   if (!open)
     return (
+      <>
+      {status === "idle" ? null : (
+        <div
+          role="status"
+          data-add-status={testId}
+          style={{ fontFamily: TYPE, fontSize: size, color: v("muted"), marginBottom: 4 }}
+        >
+          {status === "saving" ? "Saving…" : "Saved"}
+        </div>
+      )}
       <button
         type="button"
         data-add={testId}
@@ -598,9 +622,23 @@ function AddInline({
       >
         + Add {what}
       </button>
+      </>
     );
   const save = () => {
-    if (text.trim()) onAdd(text.trim());
+    const entered = text.trim();
+    if (entered) {
+      const result = onAdd(entered);
+      if (result) {
+        setStatus("saving");
+        void result.then((ok) => {
+          if (ok) return setStatus("saved");
+          // Not saved: the text goes back in the field so it isn't lost.
+          setStatus("idle");
+          setText(entered);
+          setOpen(true);
+        });
+      }
+    }
     setText("");
     setOpen(false);
   };
@@ -770,8 +808,21 @@ export const StoriesPanel = memo(function StoriesPanel({
     return () => clearTimeout(t);
   }, [undo]);
   const delReq = (storyId: string) => (r: PlanNode) => {
-    c.actions.remove(r.id);
+    void c.actions.remove(r.id);
     setUndo({ storyId, text: r.name });
+  };
+  // A story waiting on its delete confirmation, and how its save is going.
+  const [confirmDel, setConfirmDel] = useState<PlanNode | null>(null);
+  const [delStatus, setDelStatus] = useState<"idle" | "saving" | "saved">("idle");
+  useEffect(() => {
+    if (delStatus !== "saved") return;
+    const t = setTimeout(() => setDelStatus("idle"), 1500);
+    return () => clearTimeout(t);
+  }, [delStatus]);
+  const delStory = (st: PlanNode) => {
+    // The remaining stories renumber at once (the number is the place in the list); a failure restores them.
+    setDelStatus("saving");
+    void c.actions.remove(st.id).then((ok) => setDelStatus(ok ? "saved" : "idle"));
   };
   // A journey is pending (muted) until every requirement under it is accepted or dropped.
   const pending = (id: string) =>
@@ -894,7 +945,8 @@ export const StoriesPanel = memo(function StoriesPanel({
                       wrap
                       value={st.name}
                       onSave={(t) => c.actions.rename(st.id, t)}
-                      onDelete={() => c.actions.remove(st.id)}
+                      onDelete={() => setConfirmDel(st)}
+                      disabled={isPendingId(st.id)}
                       testId={st.id}
                       style={{
                         ...authored(st.author, 12.5),
@@ -903,6 +955,22 @@ export const StoriesPanel = memo(function StoriesPanel({
                     />
                   )}
                 </div>
+                {st.pencil || st.pencilEdit ? null : (
+                  <button
+                    type="button"
+                    data-delete-story={st.id}
+                    disabled={isPendingId(st.id)}
+                    title={isPendingId(st.id) ? "Saving…" : "Delete this story"}
+                    {...stop}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDel(st);
+                    }}
+                    style={{ ...actBtn, ...(isPendingId(st.id) ? { opacity: 0.4, cursor: "default" } : null) }}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
               <div
                 style={{ marginLeft: 12, marginTop: 4, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}
@@ -942,6 +1010,15 @@ export const StoriesPanel = memo(function StoriesPanel({
             </li>
           ))}
         </ul>
+        {delStatus === "idle" ? null : (
+          <div
+            role="status"
+            data-delete-status={initiative}
+            style={{ fontFamily: TYPE, fontSize: 11, color: v("muted"), marginTop: 4 }}
+          >
+            {delStatus === "saving" ? "Saving…" : "Saved"}
+          </div>
+        )}
         <div style={{ marginTop: 4 }}>
           <AddInline
             what="user story"
@@ -951,6 +1028,20 @@ export const StoriesPanel = memo(function StoriesPanel({
           />
         </div>
       </div>
+      <ConfirmDialog
+        open={!!confirmDel}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDel(null);
+        }}
+        title="Delete this user story?"
+        description="This also deletes its requirements. The remaining stories are renumbered."
+        confirmText="Delete"
+        variant="destructive"
+        testId="delete-story-dialog"
+        onConfirm={() => {
+          if (confirmDel) delStory(confirmDel);
+        }}
+      />
       <div
         hidden={!below.more}
         aria-hidden
