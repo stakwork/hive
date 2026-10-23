@@ -116,6 +116,12 @@ describe("planInitiativeSave", () => {
     expect(fails({ root: "init", ops: [{ op: "remove", ref: "elsewhere" }] })).toMatch(/isn't part of this initiative/);
   });
 
+  test("removing a story patches only that story: a story's number is its place in the list, so siblings need no write", () => {
+    const p = ok(plan({ root: "init", ops: [{ op: "remove", ref: "s" }] }));
+    expect(Object.keys(p.patches)).toEqual(["s"]);
+    expect(p.creates).toEqual([]);
+  });
+
   test("a new node gets a UUID key, provenance, proposed status, and the right edge to its parent", () => {
     const p = ok(
       plan({
