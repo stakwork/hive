@@ -11,10 +11,27 @@ function finding(refId: string, properties: Record<string, unknown>, dateAdded?:
 }
 
 describe("parseFinding", () => {
+  it("reads the fix tracking written on the node", () => {
+    const parsed = parseFinding(
+      finding("f9", {
+        title: "t",
+        fix_state: "launched",
+        fix_conversation_id: "c1",
+        fix_kind: "code_issue",
+        fix_started_by: "u1",
+      }),
+    );
+    expect(parsed?.fix).toMatchObject({ state: "launched", conversationId: "c1", kind: "code_issue", startedBy: "u1" });
+  });
+
   it("reads the common fields under their usual names and keeps every property", () => {
     expect(
       parseFinding(
-        finding("f1", { name: "XSS in search", severity: "HIGH", cwe: "CWE-79", file_path: "src/a.ts", line: 12 }, 1700000000.5),
+        finding(
+          "f1",
+          { name: "XSS in search", severity: "HIGH", cwe: "CWE-79", file_path: "src/a.ts", line: 12 },
+          1700000000.5,
+        ),
       ),
     ).toEqual({
       refId: "f1",
@@ -24,6 +41,7 @@ describe("parseFinding", () => {
       cweId: "CWE-79",
       file: "src/a.ts",
       line: 12,
+      fix: null,
       description: null,
       dateAdded: 1700000000.5,
       properties: { name: "XSS in search", severity: "HIGH", cwe: "CWE-79", file_path: "src/a.ts", line: 12 },
@@ -52,7 +70,10 @@ describe("listFindings", () => {
 
     const result = await listFindings(CONFIG);
 
-    expect(nodes.listNodesByType).toHaveBeenCalledWith(CONFIG, "Finding", 500, { startingAfter: undefined, namespace: "infosec" });
+    expect(nodes.listNodesByType).toHaveBeenCalledWith(CONFIG, "Finding", 500, {
+      startingAfter: undefined,
+      namespace: "infosec",
+    });
     expect(result.ok && result.findings.map((f) => f.refId)).toEqual(["crit", "high-new", "high-old", "low", "none"]);
     expect(result.ok && result.truncated).toBe(false);
   });
@@ -66,7 +87,10 @@ describe("listFindings", () => {
 
     const result = await listFindings(CONFIG);
 
-    expect(nodes.listNodesByType).toHaveBeenLastCalledWith(CONFIG, "Finding", 500, { startingAfter: "f499", namespace: "infosec" });
+    expect(nodes.listNodesByType).toHaveBeenLastCalledWith(CONFIG, "Finding", 500, {
+      startingAfter: "f499",
+      namespace: "infosec",
+    });
     expect(result.ok && result.findings).toHaveLength(510);
   });
 
