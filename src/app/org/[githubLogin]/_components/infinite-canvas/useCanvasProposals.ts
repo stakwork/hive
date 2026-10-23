@@ -37,6 +37,8 @@ export function useCanvasProposals(githubLogin: string) {
   const rows = useMemo(() => pendingProposalRows(messages), [messages]);
   // Decided here: gone at once, before the conversation's result row arrives.
   const [decided, setDecided] = useState<ReadonlySet<string>>(() => new Set());
+  /** Decisions on their way to strut, by proposal: the card shows them whether or not it stays mounted. */
+  const [deciding, setDeciding] = useState<Readonly<Record<string, "accept" | "reject">>>({});
   const base = (id: string) => `/api/orgs/${encodeURIComponent(githubLogin)}/strut/proposals/${encodeURIComponent(id)}`;
   const records = useQueries({
     queries: rows.map((r) => ({
@@ -59,6 +61,7 @@ export function useCanvasProposals(githubLogin: string) {
 
   const decide = useCallback(
     async (proposalId: string, runId: string, action: "accept" | "reject") => {
+      setDeciding((d) => ({ ...d, [proposalId]: action }));
       try {
         const res = await fetch(`${base(proposalId)}/decide`, {
           method: "POST",
@@ -80,11 +83,13 @@ export function useCanvasProposals(githubLogin: string) {
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err));
         return false;
+      } finally {
+        setDeciding(({ [proposalId]: _, ...rest }) => rest);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `base` only reads githubLogin
     [githubLogin, qc],
   );
 
-  return { pending, decide };
+  return { pending, deciding, decide };
 }

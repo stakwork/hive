@@ -40,6 +40,11 @@ export const stop = {
   onClick: (e: React.MouseEvent) => e.stopPropagation(),
 };
 
+/** A blur that saves, unless the field lost focus because its card was hidden (culled): the draft waits there. */
+const saveOnBlur = (save: () => void) => (e: React.FocusEvent<HTMLElement>) => {
+  if (e.currentTarget.checkVisibility?.() !== false) save();
+};
+
 export interface NodeActions {
   ask: (id: string, anchor: DOMRect) => void;
   setStatus: (reqId: string, status: "accepted" | "dropped" | "proposed") => void;
@@ -74,6 +79,8 @@ export interface CardContext {
   work: (id: string) => Work | undefined;
   /** Accept or reject one of strut's proposals (a pencil card, or a pencil edit on a card). Resolves to whether it went through. */
   decide: (p: Pencil, action: "accept" | "reject") => Promise<boolean>;
+  /** Decisions still on their way, by proposal. */
+  deciding: Readonly<Record<string, "accept" | "reject">>;
 }
 
 export const pill = (size: number, extra?: CSSProperties): CSSProperties => ({
@@ -231,11 +238,8 @@ const PENCIL_BORDER = `1.5px dashed ${v("fork")}`;
  * why, and Accept / Reject through the same decide route as the chat's card.
  */
 export function PencilBar({ c, pencil, size = 11 }: { c: CardContext; pencil: Pencil; size?: number }) {
-  const [deciding, setDeciding] = useState<"accept" | "reject" | null>(null);
-  const decide = async (action: "accept" | "reject") => {
-    setDeciding(action);
-    if (!(await c.decide(pencil, action))) setDeciding(null);
-  };
+  const deciding = c.deciding[pencil.proposalId];
+  const decide = (action: "accept" | "reject") => c.decide(pencil, action);
   return (
     <div
       data-pencil={pencil.proposalId}
@@ -522,7 +526,7 @@ function EditableText({
             e.target.style.height = `${e.target.scrollHeight}px`;
           }
         }}
-        onBlur={save}
+        onBlur={saveOnBlur(save)}
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === "Enter" && !e.shiftKey) {
@@ -607,7 +611,7 @@ function AddInline({
       value={text}
       placeholder={`New ${what}…`}
       onChange={(e) => setText(e.target.value)}
-      onBlur={save}
+      onBlur={saveOnBlur(save)}
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === "Enter") save();
