@@ -27,13 +27,21 @@ describe("readStrutArtifact", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  test("a page is where it is on the swarm — the frame reads it through the reader itself, so no fetch here", async () => {
-    const fetchImpl = vi.fn();
+  test("a page is where it is on the swarm, versioned by the reader's last-modified stamp", async () => {
+    const stamp = "Wed, 21 Oct 2026 07:28:00 GMT";
+    const fetchImpl = vi.fn(async () => new Response("<html></html>", { headers: { "last-modified": stamp } }));
     expect(await readStrutArtifact(ref("html", "/jobs/6f1c/files/plan.html"), ctx, fetchImpl)).toEqual({
       swarmId: "swarm-1",
       key: "/jobs/6f1c/files/plan.html",
+      updatedAt: stamp,
     });
-    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test("a page the reader gives no stamp for (or cannot be read) is unversioned", async () => {
+    const key = "/jobs/6f1c/files/plan.html";
+    const bare = { swarmId: "swarm-1", key };
+    expect(await readStrutArtifact(ref("html", key), ctx, vi.fn(async () => new Response("x")))).toEqual(bare);
+    expect(await readStrutArtifact(ref("html", key), ctx, vi.fn(async () => Promise.reject(new Error("down"))))).toEqual(bare);
   });
 
   test("an app is a workspace app by name on the swarm — the app frame reads the document itself, so no fetch here; a job's directory is no app", async () => {

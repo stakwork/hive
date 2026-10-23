@@ -205,6 +205,7 @@ describe("save_html", () => {
     (db.htmlPage.create as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "page-1",
       slug: SLUG,
+      updatedAt: new Date("2024-05-01T00:00:00.000Z"),
     });
   });
 
@@ -239,7 +240,7 @@ describe("save_html", () => {
       "acme",
       [ROOT_REF],
       "html-created",
-      { slug: SLUG, htmlPageId: "page-1" },
+      { slug: SLUG, htmlPageId: "page-1", updatedAt: "2024-05-01T00:00:00.000Z" },
     );
     expect(result).toEqual({
       slug: SLUG,
@@ -358,7 +359,7 @@ describe("update_html", () => {
       "acme",
       [ROOT_REF],
       "html-updated",
-      { slug: SLUG, htmlPageId: "page-1" },
+      { slug: SLUG, htmlPageId: "page-1", updatedAt: "2024-06-01T00:00:00.000Z" },
     );
     expect(result).toEqual({
       slug: SLUG,

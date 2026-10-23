@@ -4,6 +4,7 @@ import React from "react";
 import { Check, ExternalLink, FileCode2, Loader2, XCircle } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { HtmlArtifactFrame } from "@/components/html-artifact/HtmlArtifactFrame";
+import { useHtmlPageStamp } from "./artifacts/useHtmlPageStamp";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 
 export interface HtmlPageRun {
@@ -156,6 +157,7 @@ export function HtmlPageCard({
   page: HtmlPageRun;
   githubLogin: string;
 }) {
+  const updatedAt = useHtmlPageStamp(githubLogin, page.slug, page.updatedAt);
   return (
     <div
       data-html-page-slug={page.slug}
@@ -193,7 +195,7 @@ export function HtmlPageCard({
                 <HtmlArtifactFrame
                   source={{ githubLogin, slug: page.slug }}
                   title={page.title}
-                  updatedAt={page.updatedAt}
+                  updatedAt={updatedAt}
                   className="h-full w-full"
                 />
               </div>

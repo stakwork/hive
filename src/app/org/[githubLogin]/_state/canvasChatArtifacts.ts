@@ -118,7 +118,12 @@ export interface ArtifactContents {
         /** Changes when the page is rewritten, so an open frame refetches it. */
         updatedAt?: string;
       }
-    | { swarmId: string; key: string };
+    | {
+        swarmId: string;
+        key: string;
+        /** The file's last-modified stamp on the swarm, when the reader reports one: a rewrite changes it. */
+        updatedAt?: string;
+      };
   /**
    * A strut APP, where it is on the swarm: a WORKSPACE app by name (the
    * builder's deliverable, strut CALLBACKS.md §4 — the active version unless
@@ -474,7 +479,7 @@ const CONTENT_PARSERS: { [K in ArtifactKind]: (raw: Record<string, unknown>) => 
     if (slug) return { slug, updatedAt: optional(raw.updatedAt) };
     const swarmId = bounded(raw.swarmId, MAX_ID_LENGTH);
     const key = bounded(raw.key, MAX_ID_LENGTH);
-    return swarmId && key ? { swarmId, key } : null;
+    return swarmId && key ? { swarmId, key, updatedAt: optional(raw.updatedAt) } : null;
   },
   app: (raw) => {
     const swarmId = bounded(raw.swarmId, MAX_ID_LENGTH);

@@ -48,6 +48,17 @@ export type ArtifactLoader = (artifact: ArtifactRef, context: ArtifactLoadContex
 /** The file's name, for a `code` ref's highlighting. */
 const basename = (key: string): string => key.split("/").pop() ?? key;
 
+/** The reader's last-modified stamp for a swarm file, if it reports one. */
+async function lastModifiedOf(url: string, fetchImpl: typeof fetch): Promise<string | undefined> {
+  try {
+    const res = await fetchImpl(url, { credentials: "same-origin", cache: "no-store" });
+    const stamp = res?.headers?.get?.("last-modified");
+    return stamp || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * A `graph` ref: something on a swarm's strut — a file in a job's
  * directory or in a run's artifacts (`key` is strut's own link) — read
@@ -74,7 +85,12 @@ export async function readStrutArtifact(
     case "pdf":
     case "url":
       return { url };
-    case "html":
+    case "html": {
+      // A page on a swarm is rewritten in place; the reader's last-modified stamp is its version.
+      // Best effort: no stamp (or a failed read) leaves the page unversioned, as before.
+      const updatedAt = await lastModifiedOf(url, fetchImpl);
+      return { swarmId: source.swarmId, key: source.key, ...(updatedAt ? { updatedAt } : {}) };
+    }
     case "walkthrough":
       return { swarmId: source.swarmId, key: source.key };
     case "app": {
