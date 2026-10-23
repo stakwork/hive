@@ -119,8 +119,11 @@ const CHAT_W = 420;
 const SETTLED_MS = 6_000;
 
 const KEYFRAMES = `
-@keyframes icb-glow { 0%,100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ic-job) 50%, transparent), 0 0 26px 4px color-mix(in srgb, var(--ic-job) 28%, transparent) } 50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ic-job) 85%, transparent), 0 0 46px 12px color-mix(in srgb, var(--ic-job) 40%, transparent) } }
-.icb-glow { animation: icb-glow 1.8s ease-in-out infinite }
+.icb-glow::before, .icb-glow::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none }
+.icb-glow::before { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ic-job) 50%, transparent), 0 0 26px 4px color-mix(in srgb, var(--ic-job) 28%, transparent) }
+/* The glow swells by fading a brighter shadow in and out over it: only that layer's opacity animates, so nothing repaints. */
+@keyframes icb-glow { 0%,100% { opacity: 0 } 50% { opacity: 1 } }
+.icb-glow::after { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ic-job) 85%, transparent), 0 0 46px 12px color-mix(in srgb, var(--ic-job) 40%, transparent); will-change: opacity; animation: icb-glow 1.8s ease-in-out infinite }
 @keyframes icb-pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 .icb-pulse { animation: icb-pulse 1.2s ease-in-out infinite }
 @keyframes icb-spin { to { transform: rotate(360deg) } }
@@ -136,7 +139,7 @@ const KEYFRAMES = `
 .icb-editable:hover { background: color-mix(in srgb, var(--ic-road) 10%, transparent) }
 .icb-root :focus-visible { outline: 2px solid var(--ic-focus); outline-offset: 2px }
 .icb-root ::placeholder { color: var(--ic-faint) }
-@media (prefers-reduced-motion: reduce) { .icb-glow, .icb-pulse, .icb-bloom, .icb-listen { animation: none } }
+@media (prefers-reduced-motion: reduce) { .icb-glow::after { opacity: 0 } .icb-glow::after, .icb-pulse, .icb-bloom, .icb-listen { animation: none } }
 `;
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -153,6 +156,9 @@ const peak = (f: (u: number) => number, u: number) => (u < 1 ? Math.max(f(u), f(
 /** The camera's zoom, coarsely (quarter steps of a doubling), for the little that is sized on screen. */
 const zoomBucket = (z: number) => Math.pow(2, Math.round(Math.log2(z) * 4) / 4);
 const SettledZoom = createContext(1);
+/** The bar and the panel read their own state: the canvas's renders (the camera settling, culling) pass them by. */
+const Bar = memo(JamieBar);
+const Panel = memo(ArtifactPanel);
 /** Overlays the wheel scrolls rather than zooming the canvas under them. */
 const WHEEL_OWN = "[data-canvas-chrome],[data-palette],[data-jamie-bar]";
 const sameRect = (a?: Rect, b?: Rect) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
@@ -634,6 +640,9 @@ export function InfiniteCanvas({
   useEffect(() => {
     if (mode === "full") setChatMounted(true);
   }, [mode]);
+  const collapseChat = useCallback(() => setMode("last"), []);
+  // Drawn again when the page gives a new chat, not on the canvas's own renders (the camera settling, a job's step).
+  const chat = useMemo(() => (chatMounted ? renderChat(collapseChat) : null), [chatMounted, renderChat, collapseChat]);
   // Something drafted a message for the chat (a brainstorm card in it, a proposal): show the chat it lands in.
   const pendingDraft = useCanvasChatStore((s) => s.pendingInputDraft !== null || s.pendingInputAppend !== null);
   useEffect(() => {
@@ -735,15 +744,18 @@ export function InfiniteCanvas({
   };
 
   /** What you say in the bar: "pull up …" goes there; anything else goes to Jamie about the level you're in. */
-  const talk = async (text: string) => {
-    const nav = text.match(NAVIGATE);
-    if (nav) {
-      // The best match may be under an initiative whose plan isn't read yet: read them all, then look.
-      setSeek({ name: nav[1], text });
-      return true;
-    }
-    return askJamie(text, levelFocus);
-  };
+  const talk = useCallback(
+    async (text: string) => {
+      const nav = text.match(NAVIGATE);
+      if (nav) {
+        // The best match may be under an initiative whose plan isn't read yet: read them all, then look.
+        setSeek({ name: nav[1], text });
+        return true;
+      }
+      return askJamie(text, focusRef.current);
+    },
+    [askJamie],
+  );
 
   // Stable actions for the cards, reading the latest closures through a ref.
   const latest = useRef({ board, savePlan, choose, send });
@@ -1013,7 +1025,7 @@ export function InfiniteCanvas({
               transition: "transform .42s cubic-bezier(.2,.8,.2,1), opacity .3s",
             }}
           >
-            {chatMounted ? renderChat(() => setMode("last")) : null}
+            {chat}
           </div>
         </aside>
         <ResizablePanelGroup
@@ -1283,7 +1295,7 @@ export function InfiniteCanvas({
                   ))}
                 </div>
 
-                {mode === "full" ? null : <JamieBar mode={mode} setMode={setMode} send={talk} />}
+                {mode === "full" ? null : <Bar mode={mode} setMode={setMode} send={talk} />}
 
                 {palette ? (
                   <Palette
@@ -1337,7 +1349,7 @@ export function InfiniteCanvas({
               className="h-full bg-background text-foreground"
               style={{ borderLeft: `1px solid ${v("chromeBorder")}` }}
             >
-              {artifact.mounted && <ArtifactPanel />}
+              {artifact.mounted && <Panel />}
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>

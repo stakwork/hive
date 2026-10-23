@@ -480,7 +480,32 @@ function mockRepoTree(labels: string[]): ChoiceTreeData {
   ], labels);
 }
 
+/** The six open brainstorms on the large initiative (`causationSpec`): three answers each, the first with a follow-up. */
+function mockCauseTree(focus: string, labels: string[]): ChoiceTreeData {
+  const n = focus.slice(CAUSE_TREE.length);
+  const option = (k: string, text: string): FeatureOption => ({
+    id: `${focus}-${k}`,
+    text,
+    effects: [[`Answer ${n}${k} keeps the cause next to its effect`, "pro", 0.6]],
+    ratings: { fast: 0.25, good: 0.5, cheap: 0.25 },
+  });
+  return featureTree({ id: focus, text: `How should cause ${n} be recorded?`, made_by: "model" }, [
+    {
+      ...option("a", "One Cause node per effect, evidence as edges"),
+      followUp: {
+        id: `${focus}-why`,
+        text: "Who writes the evidence edges?",
+        options: [option("a1", "The job that saw it"), option("a2", "A janitor, after the fact")],
+      },
+    },
+    option("b", "A cause property on the effect itself"),
+    option("c", "A separate causes table, linked by ref_id"),
+  ], labels);
+}
+const CAUSE_TREE = "mock-brainstorm-cause-";
+
 function mockChoiceTreeUndated(focus: string, labels: string[]): ChoiceTreeData {
+  if (focus.startsWith(CAUSE_TREE)) return mockCauseTree(focus, labels);
   if (focus === "mock-brainstorm-onboarding") return mockOnboardingTree(labels);
   if (focus === "mock-brainstorm-auth") return mockAuthTree(labels);
   if (focus === "mock-brainstorm-repo") return mockRepoTree(labels);

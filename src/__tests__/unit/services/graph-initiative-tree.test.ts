@@ -297,7 +297,7 @@ describe("listInitiatives", () => {
       "mock-initiative-janitor",
       "mock-initiative-voice",
     ]);
-    expect(res.ok && res.data.initiatives).toHaveLength(7);
+    expect(res.ok && res.data.initiatives).toHaveLength(8);
     const two = await listInitiatives(caller, 2);
     expect(two.ok && two.data.initiatives).toHaveLength(2);
     expect(mockedQuery).not.toHaveBeenCalled();
