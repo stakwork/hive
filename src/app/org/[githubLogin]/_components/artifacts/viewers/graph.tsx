@@ -7,7 +7,7 @@ import { GraphWorkbench } from "@/components/graph-workbench";
 import { connectionsQuery } from "@/components/graph-workbench/queries";
 import { getProposalStatus } from "@/lib/proposals/types";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
-import { ChoiceTree, isTreeArtifact } from "./ChoiceTree";
+import { brainstormCardOf, ChoiceTree, choiceTreeQuery, isTreeArtifact } from "./ChoiceTree";
 import { selectActiveMessages, useCanvasChatStore } from "../../../_state/canvasChatStore";
 import { MiniGraph, type MiniGraphEdge, type MiniGraphNode } from "./miniGraph";
 
@@ -28,29 +28,29 @@ function useProposalDecision(content: ArtifactViewerProps<"graph">["content"]) {
 }
 
 /**
- * The org page's Brainstorm tab (the desk) on this tree: `root` is the brainstorm, or a card inside one;
- * `node` points at a card of `root`'s brainstorm. The desk follows `ws`/`root`/`node` as they change.
+ * A brainstorm by ref_id (`root` is its root question or a card inside it): the Brainstorm tab looks up the card it's
+ * about and goes there (`brainstormCardHref`). For links made without reading the tree.
  */
-export const brainstormBoardHref = (githubLogin: string, workspace: string, root: string, node?: string) =>
-  `/org/${encodeURIComponent(githubLogin)}?${new URLSearchParams({
-    view: "canvas",
-    tab: "brainstorm",
-    ws: workspace,
-    root,
-    ...(node ? { node } : {}),
-  })}`;
+export const brainstormHref = (githubLogin: string, workspace: string, root: string) =>
+  `/org/${encodeURIComponent(githubLogin)}?${new URLSearchParams({ view: "canvas", tab: "brainstorm", ws: workspace, root })}`;
 
-function TreeWithBoardLink({ workspace, focus, label }: { workspace: string; focus: string; label?: string }) {
+/** The Brainstorm tab at the card a brainstorm is about, with that brainstorm (`root`) unfolded. */
+export const brainstormCardHref = (githubLogin: string, card: string, root: string) =>
+  `/org/${encodeURIComponent(githubLogin)}?${new URLSearchParams({ view: "canvas", tab: "brainstorm", at: card, tree: root })}`;
+
+/** The tree, with a link to it on the canvas when it's about a card there. */
+function TreeWithCanvasLink({ workspace, focus, label }: { workspace: string; focus: string; label?: string }) {
   const login = useParams<{ githubLogin?: string }>()?.githubLogin;
+  const at = brainstormCardOf(useQuery(choiceTreeQuery(workspace, focus, label)).data);
   return (
     <div className="relative h-full">
       <ChoiceTree workspace={workspace} focus={focus} label={label} />
-      {login && (
+      {login && at && (
         <a
-          href={brainstormBoardHref(login, workspace, focus)}
+          href={brainstormCardHref(login, at.card, at.root)}
           className="absolute right-2 top-2 z-10 rounded border bg-background/90 px-2 py-0.5 text-xs font-medium hover:bg-accent"
         >
-          Open board
+          Open on canvas
         </a>
       )}
     </div>
@@ -68,7 +68,7 @@ export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) 
   const created = content.changes?.find((c) => c.kind === "node")?.name;
   // An approval lands on what it created, else where the proposal was centred.
   const approvedFocus = [created, content.focus].filter((ref): ref is string => !!ref);
-  if (tree) return content.focus ? <TreeWithBoardLink workspace={content.workspace} focus={content.focus} label={content.label} /> : <NoRoot />;
+  if (tree) return content.focus ? <TreeWithCanvasLink workspace={content.workspace} focus={content.focus} label={content.label} /> : <NoRoot />;
   return (
     <div className="h-full">
       <GraphWorkbench
