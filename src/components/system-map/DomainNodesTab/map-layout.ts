@@ -108,6 +108,8 @@ export interface MapChip {
   hub: boolean;
   dependents: string[];
   dependsOn: string[];
+  /** Map nodes (components) that `DEPENDS_ON` it: whose package it is. */
+  usedBy: string[];
 }
 
 export interface MapBoard {
@@ -129,6 +131,8 @@ export interface MapModel {
   boards: MapBoard[];
   /** Package → package it depends on. */
   depEdges: [string, string][];
+  /** Map node (a component) → the packages it `DEPENDS_ON`. */
+  packagesOf: Map<string, string[]>;
   /** Shortest chain from each direct package down to `refId` (direct first). */
   pathsToRoots: (refId: string) => string[][];
   stats: {
@@ -641,6 +645,14 @@ export function buildMapLayout(nodes: SystemMapDomainNode[], edges: SystemMapDom
     dependsOn.set(l.s, [...(dependsOn.get(l.s) ?? []), l.t]);
     dependents.set(l.t, [...(dependents.get(l.t) ?? []), l.s]);
   }
+  // Component → package edges are not drawn (the board is beside the map); they say whose package a chip is.
+  const usedBy = new Map<string, string[]>();
+  const packagesOf = new Map<string, string[]>();
+  for (const l of links) {
+    if (l.v !== "DEPENDS_ON" || !pkgIds.has(l.t) || pkgIds.has(l.s) || !mapNodes.has(l.s)) continue;
+    usedBy.set(l.t, [...(usedBy.get(l.t) ?? []), l.s]);
+    packagesOf.set(l.s, [...(packagesOf.get(l.s) ?? []), l.t]);
+  }
   // Depth = longest chain from a direct package (one no package depends on); cycles stop at the first repeat.
   const depth = new Map<string, number>();
   const visiting = new Set<string>();
@@ -735,6 +747,7 @@ export function buildMapLayout(nodes: SystemMapDomainNode[], edges: SystemMapDom
         hub,
         dependents: ups,
         dependsOn: dependsOn.get(p.refId) ?? [],
+        usedBy: usedBy.get(p.refId) ?? [],
       });
     }
   }
@@ -771,6 +784,7 @@ export function buildMapLayout(nodes: SystemMapDomainNode[], edges: SystemMapDom
     chips,
     boards,
     depEdges,
+    packagesOf,
     pathsToRoots,
     stats: {
       drawn: mapNodes.size,
