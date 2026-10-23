@@ -41,8 +41,35 @@ async function post(url: string, body: unknown): Promise<{ ok: boolean; body: Re
   }
 }
 
-/** Edits and deletes as the graph will have them, so the canvas shows them before the save returns. */
+/** The edge a new card hangs from its parent by, for the cards that show at once (stories and requirements). */
+const ADD_EDGE: Partial<Record<string, string>> = { UserStory: "HAS_STORY", Requirement: "HAS_REQUIREMENT" };
+let tempSeq = 0;
+
+/**
+ * Edits, deletes and added stories/requirements as the graph will have them, so the canvas shows them before the
+ * save returns. An added card has a client temp ref_id; the re-read after the save replaces the whole tree, so the
+ * real card takes its place and it can't show twice.
+ */
 export function applyLocally(tree: InitiativeTreeData, ops: PlanOp[]): InitiativeTreeData {
+  const added = ops.flatMap((o) => (o.op === "add" && o.parent && ADD_EDGE[o.type] ? [o] : []));
+  if (added.length) {
+    const next: InitiativeTreeData = {
+      ...tree,
+      nodes: [
+        ...tree.nodes,
+        ...added.map((o, i) => ({
+          ref_id: `pending:${o.temp}:${++tempSeq}:${i}`,
+          type: o.type as InitiativeTreeData["nodes"][number]["type"],
+          properties: { ...o.fields },
+        })),
+      ],
+      edges: [...tree.edges],
+    };
+    added.forEach((o, i) =>
+      next.edges.push({ source: o.parent!, target: next.nodes[tree.nodes.length + i].ref_id, type: ADD_EDGE[o.type]! }),
+    );
+    return applyLocally(next, ops.filter((o) => o.op !== "add"));
+  }
   const edits = new Map(ops.flatMap((o) => (o.op === "edit" ? [[o.ref, o.fields] as const] : [])));
   // A deleted card hides everything under it, as the read does.
   const gone = new Set(ops.flatMap((o) => (o.op === "remove" ? [o.ref] : [])));

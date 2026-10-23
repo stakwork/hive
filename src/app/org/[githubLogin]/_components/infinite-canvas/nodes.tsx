@@ -55,7 +55,8 @@ export interface NodeActions {
   /** Delete a story (and its requirements) or a requirement. */
   remove: (id: string) => void;
   /** A user story on the initiative. */
-  addStory: (initiativeId: string, text: string) => void;
+  /** Resolves true once saved; false when it failed (the story is rolled back). */
+  addStory: (initiativeId: string, text: string) => Promise<boolean>;
   /** A feature added by hand under a milestone. */
   addFeature: (milestoneId: string, text: string) => void;
   /** Choose an answer, or un-choose it if it's already chosen. */
@@ -578,14 +579,31 @@ function AddInline({
   testId,
 }: {
   what: string;
-  onAdd: (text: string) => void;
+  /** May return whether it was saved: a failure puts the text back in the field. */
+  onAdd: (text: string) => void | Promise<boolean>;
   size?: number;
   testId: string;
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  useEffect(() => {
+    if (status !== "saved") return;
+    const t = setTimeout(() => setStatus("idle"), 1500);
+    return () => clearTimeout(t);
+  }, [status]);
   if (!open)
     return (
+      <>
+      {status === "idle" ? null : (
+        <div
+          role="status"
+          data-add-status={testId}
+          style={{ fontFamily: TYPE, fontSize: size, color: v("muted"), marginBottom: 4 }}
+        >
+          {status === "saving" ? "Saving…" : "Saved"}
+        </div>
+      )}
       <button
         type="button"
         data-add={testId}
@@ -598,9 +616,23 @@ function AddInline({
       >
         + Add {what}
       </button>
+      </>
     );
   const save = () => {
-    if (text.trim()) onAdd(text.trim());
+    const entered = text.trim();
+    if (entered) {
+      const result = onAdd(entered);
+      if (result) {
+        setStatus("saving");
+        void result.then((ok) => {
+          if (ok) return setStatus("saved");
+          // Not saved: the text goes back in the field so it isn't lost.
+          setStatus("idle");
+          setText(entered);
+          setOpen(true);
+        });
+      }
+    }
     setText("");
     setOpen(false);
   };

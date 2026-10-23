@@ -30,8 +30,18 @@ describe("applyLocally", () => {
     expect(t.edges).toEqual([{ source: "f", target: "s2", type: "HAS_STORY" }]);
   });
 
-  it("leaves the tree alone for adds", () => {
+  it("shows an added story at once under its parent", () => {
     const ops = [{ op: "add" as const, temp: "x", type: "UserStory" as const, parent: "f", fields: { text: "New" } }];
+    const t = applyLocally(tree, ops);
+    const added = t.nodes.find((n) => n.properties.text === "New");
+    expect(added?.type).toBe("UserStory");
+    expect(added?.ref_id).toMatch(/^pending:/);
+    expect(t.edges).toContainEqual({ source: "f", target: added!.ref_id, type: "HAS_STORY" });
+    expect(tree.nodes).toHaveLength(4);
+  });
+
+  it("leaves the tree alone for adds it doesn't show early", () => {
+    const ops = [{ op: "add" as const, temp: "x", type: "InitiativeFeature" as const, parent: "f", fields: { name: "N" } }];
     expect(applyLocally(tree, ops)).toBe(tree);
   });
 });
