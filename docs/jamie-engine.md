@@ -1,37 +1,50 @@
-# Jamie engine — Hive or the strut orchestrator
+# Jamie engine — the strut orchestrator
 
-A per-browser experiment that picks which engine answers the org canvas chat
-(Jamie, `/org/<githubLogin>?chat=<id>`). Two values:
+Jamie — the org canvas chat (`/org/<githubLogin>?chat=<id>`) — runs on the
+swarm strut's `orchestrator` workflow, for every user in every org. Each
+turn of an org conversation is one run of it (`src/services/strut-orchestrator.ts`);
+the reply lands later as rows through the strut-runs webhook. Hive's own
+canvas agent (`src/lib/ai/runCanvasAgent.ts`) no longer answers Jamie.
+There is no switch: the server decides, and nothing about the org, the user
+or the conversation records a choice.
 
-| Switch | What answers a message                                                                                   |
-| ------ | -------------------------------------------------------------------------------------------------------- |
-| off    | Today's canvas agent (`src/lib/ai/runCanvasAgent.ts`) with its tools, cards and approval flow. **Default.** |
-| on     | One run of the swarm strut's `orchestrator` workflow per message (`src/services/strut-orchestrator.ts`). |
+## Where a turn starts
 
-The strut path is an **option** beside the default, never a replacement:
-with the switch off every existing code path runs exactly as before, and
-nothing about the org, the user or the conversation records the choice.
+Every path that writes a Jamie reply into an org conversation launches an
+orchestrator turn through `launchOrchestratorTurn`:
 
-## Where it lives
+| Path | What starts the turn |
+| ---- | -------------------- |
+| `/api/ask/quick` | A person's message in the chat (web, and the native app's server-history mode — a turn id is minted when the client sends none). Answers an empty UI-message stream at once. |
+| `/api/ask/sync` | A live (non-dry-run) message from a synchronous caller (the native app): the route waits for the reply rows (`awaitOrchestratorReply`, up to `ORCHESTRATOR_REPLY_WAIT_MS`) and returns them, or `pending: true` with none. |
+| `strut-runs/job-turn.ts` | A job's turn landed in the conversation — whoever started the job (`strut-orchestrator-wake.ts`). |
+| `automation-dispatcher.ts` | A scheduled automation: a fresh conversation with its prompt, the turn as its owner. |
+| `deferred-chat-action-dispatcher.ts` | A check-back scheduled in an older conversation comes due; a conversation still busy puts it back for the next sweep. |
+| `legal-benchmark-jamie-chat.ts` | A benchmark run asked for a review chat. |
+| `system-map/finding-fix.ts` | An Infosec finding's automated fix. |
 
-- A **Strut orchestrator** switch in the chat header's ⋯ menu (and the
-  mobile chat actions sheet), next to the Concept-tree prompt, which it
-  mirrors: `localStorage` only (`src/app/org/[githubLogin]/_state/strutEnginePreference.ts`,
-  key `hive.jamieStrutEngine`), on by default; only an explicit `"false"`
-  turns it off, and storage errors read as on.
-  Any org member can flip it for their own browser; the rest of the org is
-  untouched.
-- Sent with each canvas chat request as `strutEngine: true`
-  (`useSendCanvasChatMessage`), exactly like `slimPrompt`. The route
-  (`/api/ask/quick`) reads the flag off the body; nothing is looked up.
-- Server-side turns — planner wakes, automations, anything not sent from a
-  browser — never carry the flag, so they always run on Hive.
+Each turn carries the person's model pick (`User.chatAgentModel`, the
+composer's model picker) as `params.model`; none → the workflow's default.
+A turn hive starts with nobody watching (an automation, a check-back, a
+benchmark review) writes a refused launch into the conversation as the
+reply, since no browser is there to show the notice.
+
+What still runs Hive's canvas agent, and is not Jamie:
+
+- `/api/ask/sync` **dry runs** (the eval harness): they score that agent's
+  replies and proposals without writing anything, which strut cannot do.
+- The workspace dashboard chat (`DashboardChat`) and public viewers on
+  `/api/ask/quick` — no `orgId`.
+- The org MCP's `org_agent` tool (`src/lib/mcp/orgMcpTools.ts`), its
+  research and graph-walk sub-agents, and the plan-mode org-context scout.
+- Approve / reject on a Hive proposal card in a conversation from before
+  the move (`approvalIntent` on `/api/ask/quick`): the side effect runs, no
+  agent turn follows.
 
 ## The strut path, turn by turn
 
-1. **Launch** — `/api/ask/quick` persists the user's row as today, then
-   (`strutEngine: true`) hands the turn to `runOrchestratorTurn` instead of
-   `runCanvasAgent`. That dispatches a `StrutRun` of kind `orchestrator_turn`
+1. **Launch** — `/api/ask/quick` persists the user's row, then hands the
+   turn to `runOrchestratorTurn`. That dispatches a `StrutRun` of kind `orchestrator_turn`
    through `dispatchStrutRun` (purpose `orchestrator` → the org default
    swarm, like `chat` and `job`):
 
@@ -40,6 +53,7 @@ nothing about the org, the user or the conversation records the choice.
    x-api-token: <swarm key>   x-strut-actor: <the user's actor>
    { "input": { "prompt": "@<slug>\n<message>", "session": "<SharedConversation.id>",
                 "context": { "line": "Mon 19 Oct, 14:02, Europe/London. " } },
+     "params": { "model": "<the person's pick, when they made one>" },
      "callback": { "url": ".../api/strut-runs/webhook?id=<row>&token=…" } }
    ```
 
@@ -122,27 +136,24 @@ and its resolved artifacts.
    so a job that beat the reply draws nothing. A log strut cannot serve
    delivers the reply without the card.
 
-2. **The wake goes to the orchestrator** (`src/services/strut-orchestrator-wake.ts`).
-   Where a hive-launched job's row wakes the canvas agent to summarize it,
-   a row marked `via: "orchestrator"` launches one turn of strut's
-   orchestrator on the same conversation and session, with a wake prompt
-   modeled on the canvas agent's: the job's outcome, its reply text
-   **inline** (strut's agent cannot read hive's rows; capped), its question,
-   the cards the user already sees, and three choices — summarize (the
-   default), continue through its own `job/continue`, or stay silent. The
-   reply lands as a normal orchestrator row. The wake runs behind the same
-   gates as hive's own (`runGatedAutoTurn` in `canvas-strut-autoturn.ts`):
-   the master kill switch, the per-conversation claim, idempotency — the
-   launch marker row carries the job row's id as `wakeId` — and a loop
-   breaker that counts job rows since the last human message
-   (`countTrailingJobRows`, cap `MAX_CONSECUTIVE_STRUT_DISPATCHES`), since
-   continue → land → wake → continue could otherwise cycle. One gate is
-   waived: the owner's `canvasAutonomousTurns` opt-in (`ownerOptIn: false`),
-   which guards the canvas agent acting on its own and has no UI any more.
-   The engine switch was the person's own choice, so a job the orchestrator
-   started always gets its wake; otherwise the orchestrator never sees the
-   job's reply, and "ok, do it" after its question reaches an agent that
-   never saw it.
+2. **Every job turn wakes the orchestrator** (`src/services/strut-orchestrator-wake.ts`).
+   A job row landing in a conversation — one the orchestrator started
+   (`via: "orchestrator"`), or one hive launched (a card, an event about an
+   artifact, a job from a conversation older than the move) — launches one
+   turn of strut's orchestrator on the same conversation and session, with
+   a wake prompt: the job's outcome, its reply text **inline** (strut's
+   agent cannot read hive's rows; capped), its question, the cards the user
+   already sees, and three choices — summarize (the default), continue
+   through its own `job/continue`, or stay silent. The reply lands as a
+   normal orchestrator row. The wake runs behind `runGatedAutoTurn` in
+   `canvas-strut-autoturn.ts`: the master kill switch, the
+   per-conversation claim, idempotency — the launch marker row carries the
+   job row's id as `wakeId` — and a loop breaker that counts job rows
+   since the last human message (`countTrailingJobRows`, cap
+   `MAX_CONSECUTIVE_STRUT_DISPATCHES`), since continue → land → wake →
+   continue could otherwise cycle. There is no per-user opt-in: without the
+   wake the orchestrator never sees the job's reply, and "ok, do it" after
+   its question reaches an agent that never saw it.
 
    - **Silence** is a text convention: the orchestrator answers with
      exactly `[silent]` (`ORCHESTRATOR_SILENT_MARKER`) and the handler
@@ -169,23 +180,18 @@ Known gaps:
   strut's deployment token, not the user. Later turns hive launches (an
   event's) push the token as usual.
 
-## What the strut path cannot do yet
+## What it cannot do yet
 
 - Hive-owned proposal kinds — initiatives, milestones, prompts — have no
   strut step, so the orchestrator cannot propose them. Features, research
-  and the other Hive-engine tools are likewise not on this path.
-- Attachments on a message are not forwarded to strut (text only).
-- Flipping the switch mid-conversation starts a **cold** strut session (the
-  session is new to strut, and hive replays nothing), and flipping it back
-  leaves Hive's agent without strut's turns in its history. Start a fresh
-  conversation after switching.
-- The switch is per browser, so two people in one shared conversation can be
-  on different engines. Each engine only sees the rows the other appended,
-  not its memory.
+  and Hive's other canvas-agent tools are likewise not on this path.
+- A conversation from before the move has Hive's turns in its rows but not
+  in strut's session: the orchestrator starts that conversation cold.
+  `job/get` and the job index still reach what its jobs did.
 - Depends on the swarm's lab seeding the orchestrator's graph tools and
   gating the writes as proposals — stakwork/stakgraph#1799 — and on a strut
-  with proposals (stakwork/strut#222). Without the workflow the launch
-  fails with a clear "no `orchestrator` workflow yet" notice.
+  with proposals (stakwork/strut#222). Without the workflow a launch fails
+  with a clear "no `orchestrator` workflow yet" notice.
 
 ## Where the user is (`context.line`)
 
@@ -217,7 +223,6 @@ The last path step is what "this" / "here" mean. Optional tags: `selected: …`
   ref_ids only when the existing focus parsers already vetted them against
   the request's workspaces; the path is cut at the first step that fails.
 - **Surfaces**: only the org page's Jamie chat (chats, canvas Map /
-  Initiatives / Brainstorm, graph views) reaches the orchestrator — the
-  strut path needs a persisted org-canvas turn (`orgId` + `strutEngine`).
-  Workspace, task, plan and agent-logs pages use `DashboardChat`, which does
-  not send `orgId`/`strutEngine`, so they never reach it and are unchanged.
+  Initiatives / Brainstorm, graph views) publishes it. Workspace, task,
+  plan and agent-logs pages use `DashboardChat`, which sends no `orgId`, so
+  they never reach the orchestrator and are unchanged.
