@@ -33,7 +33,7 @@ function setup(mutate?: (reqs: PlanNode[]) => void) {
   const reqs = stories.flatMap((s) => kids(board, s.id, "requirement"));
   mutate?.(reqs);
   const actions = {
-    setStatus: vi.fn(), remove: vi.fn(), addRequirement: vi.fn(), rename: vi.fn(), addStory: vi.fn(),
+    setStatus: vi.fn(), remove: vi.fn(async () => true), addRequirement: vi.fn(), rename: vi.fn(), addStory: vi.fn(),
   };
   const c = { board, jobs: {}, actions, flash: null, work: () => undefined, decide: async () => true } as unknown as CardContext;
   const view = render(<StoriesPanel c={c} initiative={ONB} w={1500} h={400} />);
@@ -66,5 +66,21 @@ describe("StoriesPanel", () => {
     fireEvent.click(screen.getByText("Undo"));
     const story = stories.find((s) => kids(board, s.id, "requirement").some((x) => x.id === r.id))!;
     expect(actions.addRequirement).toHaveBeenCalledWith(story.id, r.name);
+  });
+
+  it("asks before deleting a story, then removes it and shows Saving…", async () => {
+    const { stories, actions, view } = setup();
+    fireEvent.click(view.container.querySelector(`[data-delete-story="${stories[0].id}"]`)!);
+    expect(actions.remove).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId("delete-story-dialog-confirm"));
+    expect(actions.remove).toHaveBeenCalledWith(stories[0].id);
+    expect(await screen.findByText("Saving…")).toBeTruthy();
+  });
+
+  it("cancelling the confirmation deletes nothing", async () => {
+    const { stories, actions, view } = setup();
+    fireEvent.click(view.container.querySelector(`[data-delete-story="${stories[0].id}"]`)!);
+    fireEvent.click(await screen.findByTestId("delete-story-dialog-cancel"));
+    expect(actions.remove).not.toHaveBeenCalled();
   });
 });
