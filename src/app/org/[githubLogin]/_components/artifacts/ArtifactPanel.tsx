@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import {
@@ -154,6 +155,13 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
   const { Actions } = spec;
   // Bumped by Refresh: remounts the viewer, so an app's frame fetches its document afresh.
   const [reloads, setReloads] = useState(0);
+  const queryClient = useQueryClient();
+  const refresh = () => {
+    // A page on a swarm is versioned by what the reader last said: ask again, then remount.
+    if (artifact.kind === "html") void queryClient.invalidateQueries({ queryKey: ["canvas-artifact", "html"] });
+    setReloads((n) => n + 1);
+  };
+  const version = content && "updatedAt" in content ? (content.updatedAt ?? "") : "";
   const { openArtifactPanel, closeArtifactPanel } = useCanvasChatStore.getState();
   // The newest version is followed rather than pinned, so a later revision shows as it lands.
   const showVersion = (next: number) => openArtifactPanel(identity, next === versions.length - 1 ? null : next);
@@ -229,8 +237,8 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {content && Actions && <Actions artifact={artifact} content={content} jobId={jobId} />}
-          {artifact.kind === "app" && (
-            <ToolbarButton label="Refresh" onClick={() => setReloads((n) => n + 1)}>
+          {(artifact.kind === "app" || artifact.kind === "html") && (
+            <ToolbarButton label="Refresh" onClick={refresh}>
               <RefreshCw className="h-4 w-4" />
             </ToolbarButton>
           )}
@@ -259,7 +267,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
       <div className="min-h-0 flex-1">
         {state.status === "ready" ? (
           // Keyed so a viewer's own state — zoom, a filter, where it has browsed to — starts over with each artifact.
-          <ViewerBoundary key={`${identity}:${index}:${reloads}`}>
+          <ViewerBoundary key={`${identity}:${index}:${version}:${reloads}`}>
             <Viewer artifact={artifact} content={state.content} jobId={jobId} />
           </ViewerBoundary>
         ) : (

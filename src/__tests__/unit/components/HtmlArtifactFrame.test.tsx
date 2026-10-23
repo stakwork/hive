@@ -298,4 +298,16 @@ describe("HtmlArtifactFrame", () => {
       expect(mockPush).not.toHaveBeenCalled();
     });
   });
+
+  test("re-rendering with a new updatedAt fetches the page again; the same one does not", async () => {
+    const { rerender } = render(<HtmlArtifactFrame source={ORG_SOURCE} title="t" updatedAt="2024-01-01T00:00:00.000Z" />);
+    await findIframe();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    rerender(<HtmlArtifactFrame source={ORG_SOURCE} title="t" updatedAt="2024-01-01T00:00:00.000Z" />);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    rerender(<HtmlArtifactFrame source={ORG_SOURCE} title="t" updatedAt="2024-02-01T00:00:00.000Z" />);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+  });
 });

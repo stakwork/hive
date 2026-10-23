@@ -219,7 +219,7 @@ export function buildHtmlArtifactTools(orgId: string, userId: string): ToolSet {
               orgId,
               createdBy: userId,
             },
-            select: { id: true, slug: true },
+            select: { id: true, slug: true, updatedAt: true },
           });
 
           logHtmlToolCall("save_html", {
@@ -238,7 +238,11 @@ export function buildHtmlArtifactTools(orgId: string, userId: string): ToolSet {
             githubLogin,
             [ROOT_REF],
             "html-created",
-            { slug: page.slug, htmlPageId: page.id },
+            {
+              slug: page.slug,
+              htmlPageId: page.id,
+              updatedAt: page.updatedAt.toISOString(),
+            },
           );
 
           return {
@@ -509,7 +513,11 @@ export function buildHtmlArtifactTools(orgId: string, userId: string): ToolSet {
               githubLogin,
               [ROOT_REF],
               "html-updated",
-              { slug: page.slug, htmlPageId: page.id },
+              {
+                slug: page.slug,
+                htmlPageId: page.id,
+                updatedAt: updated.updatedAt.toISOString(),
+              },
             );
           }
 

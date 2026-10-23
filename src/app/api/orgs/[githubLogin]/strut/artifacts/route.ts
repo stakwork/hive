@@ -49,7 +49,7 @@ export const dynamic = "force-dynamic";
 
 const READ_TIMEOUT_MS = 30_000;
 /** The headers strut sets that the browser must see as strut set them. */
-const KEPT_HEADERS = ["content-type", "content-security-policy", "x-content-type-options", "content-length"] as const;
+const KEPT_HEADERS = ["content-type", "content-security-policy", "x-content-type-options", "content-length", "last-modified"] as const;
 
 /** A job row Hive holds for a workspace of the org: what vouches for a peer's `peer/<job>`. */
 async function peerJobOfOrg(job: string, orgId: string): Promise<{ id: string } | null> {
