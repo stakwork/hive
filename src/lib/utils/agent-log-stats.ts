@@ -49,6 +49,14 @@ export interface ParsedMessage {
    * round-trip like `graphWalkTrace`.
    */
   isError?: boolean;
+  /**
+   * True for the row ending a turn the user stopped
+   * (`source.kind === "stopped"`). The detail view renders this as a
+   * quiet neutral marker, not an error bubble — mirrors the live canvas
+   * chat's "Stopped" row. Survives the `JSON.stringify` →
+   * `parseAgentLogStats` round-trip like `isError`/`graphWalkTrace`.
+   */
+  isStopped?: boolean;
 }
 
 export interface AgentLogStats {
