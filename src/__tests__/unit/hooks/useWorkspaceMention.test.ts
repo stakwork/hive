@@ -29,6 +29,63 @@ describe("mention helpers", () => {
     expect(filterMentionWorkspaces(workspaces, "", "self").map((w) => w.slug)).toEqual(["alpha", "beta"]);
   });
 
+  const slugs = (list: { slug: string }[]) => list.map((w) => w.slug);
+
+  it("ranks @h with hive first and keeps the rest in input order", () => {
+    const list = ["graphmindset", "sphinx-apps", "openhealth", "sphinx-android-v2", "hive", "sphinx-server"].map(
+      (slug) => ({ slug, name: slug }),
+    );
+    expect(slugs(filterMentionWorkspaces(list, "h"))).toEqual([
+      "hive",
+      "graphmindset",
+      "sphinx-apps",
+      "openhealth",
+      "sphinx-android-v2",
+      "sphinx-server",
+    ]);
+  });
+
+  it("orders each rank tier", () => {
+    const list = [
+      { slug: "xxappxx", name: "Nothing" }, // 4 slug contains
+      { slug: "zzz", name: "Has app inside" }, // 3 name word prefix
+      { slug: "yy", name: "Mapp" }, // 5 name contains
+      { slug: "my-app", name: "My" }, // 3 slug word prefix
+      { slug: "application", name: "X" }, // 2 slug prefix
+      { slug: "app", name: "X" }, // 1 exact
+    ];
+    expect(slugs(filterMentionWorkspaces(list, "APP"))).toEqual([
+      "app",
+      "application",
+      "zzz",
+      "my-app",
+      "xxappxx",
+      "yy",
+    ]);
+  });
+
+  it("name prefix ranks in tier 3 and exact beats prefix", () => {
+    const list = [
+      { slug: "apple", name: "A" },
+      { slug: "zed", name: "App Zed" },
+      { slug: "app", name: "B" },
+    ];
+    expect(slugs(filterMentionWorkspaces(list, "app"))).toEqual(["app", "apple", "zed"]);
+  });
+
+  it("keeps order for empty query, honors excludeSlug, and does not mutate", () => {
+    const list = [
+      { slug: "b", name: "B" },
+      { slug: "a", name: "A" },
+      { slug: "c", name: "C" },
+    ];
+    const copy = [...list];
+    expect(slugs(filterMentionWorkspaces(list, ""))).toEqual(["b", "a", "c"]);
+    expect(slugs(filterMentionWorkspaces(list, "", "a"))).toEqual(["b", "c"]);
+    filterMentionWorkspaces(list, "a");
+    expect(list).toEqual(copy);
+  });
+
   it("replaces the query with the slug and a trailing space", () => {
     expect(applyMention("hi @al rest", 6, "alpha")).toEqual({ text: "hi @alpha  rest", caret: 10 });
     expect(applyMention("@", 1, "beta")).toEqual({ text: "@beta ", caret: 6 });

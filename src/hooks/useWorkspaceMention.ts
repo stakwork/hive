@@ -25,17 +25,41 @@ export function applyMention(text: string, caret: number, slug: string): Mention
   return { text: `${before} ${after}`, caret: before.length + 1 };
 }
 
+const WORD_SPLIT_RE = /[\s\-_.]+/;
+
+function mentionRank(ws: MentionWorkspace, q: string): number {
+  const slug = ws.slug.toLowerCase();
+  const name = (ws.name ?? "").toLowerCase();
+  if (slug === q) return 1;
+  if (slug.startsWith(q)) return 2;
+  if (
+    slug.split(WORD_SPLIT_RE).some((w) => w.startsWith(q)) ||
+    name.startsWith(q) ||
+    name.split(WORD_SPLIT_RE).some((w) => w.startsWith(q))
+  ) {
+    return 3;
+  }
+  if (slug.includes(q)) return 4;
+  return 5;
+}
+
+/** Filters workspaces by substring and sorts by relevance (stable; input order kept on ties). */
 export function filterMentionWorkspaces<T extends MentionWorkspace>(
   workspaces: T[],
   query: string,
   excludeSlug?: string,
 ): T[] {
   const q = query.toLowerCase();
-  return workspaces.filter(
+  const filtered = workspaces.filter(
     (ws) =>
       ws.slug !== excludeSlug &&
       (ws.slug.toLowerCase().includes(q) || (ws.name ?? "").toLowerCase().includes(q)),
   );
+  if (!q) return filtered;
+  return filtered
+    .map((ws, i) => ({ ws, i, rank: mentionRank(ws, q) }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map(({ ws }) => ws);
 }
 
 interface Options<T extends MentionWorkspace> {
