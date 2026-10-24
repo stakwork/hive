@@ -10,7 +10,7 @@ import {
   IGNORED_PROCESSES,
   STAKLINK_PROXY_PROCESS,
 } from "@/types/pod-repair";
-import { config } from "@/config/env";
+import { config, isPodMothershipBudgetEnabled } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
 import {
   getPodDetails,
@@ -209,17 +209,36 @@ async function updatePodState(swarmId: string, podState: PodState): Promise<void
 }
 
 /**
+ * Pod budget (POD_MOTHERSHIP_BUDGET_ENABLED, off by default): the gateway
+ * credential (agent `pod-repair-agent`, $-capped) the repair workflow and
+ * frontend validation use INSTEAD of the direct Anthropic / EXA keys.
+ * Charged to the workspace owner (the repair is cron-triggered; no
+ * individual triggered it). Returns undefined when the flag is off for the
+ * workspace; throws when on and no credential can be obtained.
+ */
+async function getRepairGatewayCredential(workspaceId: string, workspaceSlug: string, runId: string) {
+  if (!isPodMothershipBudgetEnabled(workspaceSlug)) return undefined;
+  const ws = await db.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true } });
+  const { acquirePodRepairGatewayCredential } = await import("@/services/bifrost/pod-budget");
+  return acquirePodRepairGatewayCredential({ workspaceId, workspaceSlug, userId: ws?.ownerId }, runId);
+}
+
+/**
  * Validate frontend via the pod's /validate_frontend endpoint
  * Returns { ok, message } indicating validation result
  */
 async function validateFrontend(
   podId: string,
-  password: string
+  password: string,
+  gateway?: { apiKey: string; baseUrl: string; headers: Record<string, string> }
 ): Promise<{ ok: boolean; message: string }> {
   const validateUrl = `https://${podId}-15552.workspaces.sphinx.chat/validate_frontend`;
 
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    // With a gateway credential (pod budget on) the pod gets that, never the
+    // direct Anthropic key. baseUrl/headers ride beside apiKey like the
+    // `/session` body; the pod's /validate_frontend must read them.
+    const apiKey = gateway ? gateway.apiKey : process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return { ok: false, message: "ANTHROPIC_API_KEY not configured" };
     }
@@ -230,7 +249,9 @@ async function validateFrontend(
         "Content-Type": "application/json",
         Authorization: `Bearer ${password}`,
       },
-      body: JSON.stringify({ apiKey }),
+      body: JSON.stringify(
+        gateway ? { apiKey, baseUrl: gateway.baseUrl, headers: gateway.headers } : { apiKey },
+      ),
       signal: AbortSignal.timeout(60000), // 60s timeout for AI validation
     });
 
@@ -403,6 +424,8 @@ export async function triggerPodRepair(
   }
 
   try {
+    // Pod budget: gateway credential in place of direct keys (flag off: undefined).
+    const gateway = await getRepairGatewayCredential(workspaceId, workspaceSlug, run.id);
     const stakworkPayload = {
       name: `pod-repair-${workspaceSlug}-${Date.now()}`,
       workflow_id: parseInt(workflowId, 10),
@@ -422,7 +445,9 @@ export async function triggerPodRepair(
               failedServices,
               message: enhancedMessage || null,
               description: description || null,
-              searchApiKey: process.env.EXA_API_KEY,
+              // Omitted (undefined) when the pod budget is on: no direct EXA key to a pod.
+              searchApiKey: gateway ? undefined : process.env.EXA_API_KEY,
+              ...(gateway && { apiKey: gateway.apiKey, baseUrl: gateway.baseUrl, headers: gateway.headers }),
               containerFiles: containerConfig?.containerFiles || null,
               excludedRepos: excludedRepos.length > 0 ? excludedRepos : null,
               tokenReference: getStakworkTokenReference(),
@@ -743,7 +768,13 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
         await updatePodState(workspace.swarm.id, PodState.VALIDATING);
         result.validationsTriggered++;
 
-        const validationResult = await validateFrontend(pod.subdomain, pod.password || "");
+        let validationResult: { ok: boolean; message: string };
+        try {
+          const gateway = await getRepairGatewayCredential(workspace.id, workspace.slug, `validate-${pod.subdomain}-${Date.now()}`);
+          validationResult = await validateFrontend(pod.subdomain, pod.password || "", gateway);
+        } catch (err) {
+          validationResult = { ok: false, message: err instanceof Error ? err.message : String(err) };
+        }
 
         if (validationResult.ok) {
           console.log(

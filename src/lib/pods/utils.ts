@@ -4,6 +4,8 @@ import { JlistProcess } from "@/types/pod-repair";
 import type { Pod } from "@prisma/client";
 import { claimAvailablePod, getPodDetails, releasePodById, getPodUsageStatus, buildPodUrl } from "./queries";
 import { markPodAsUsed } from "./karpenter";
+import { isPodMothershipBudgetEnabled } from "@/config/env";
+import type { PodBudgetPrincipal } from "@/services/bifrost/pod-budget";
 
 // Re-export constants for external use
 export { POD_PORTS, PROCESS_NAMES } from "./constants";
@@ -139,6 +141,7 @@ export async function claimPodAndGetFrontend(
   services?: ServiceInfo[],
   reason?: string,
   createdAfter?: Date,
+  budget?: PodBudgetPrincipal,
 ): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
   // Fetch swarm once upfront for both attempts
   const swarm = await db.swarm.findUnique({
@@ -176,6 +179,15 @@ export async function claimPodAndGetFrontend(
   console.log(">>> claimed pod", pod.podId);
 
   try {
+    // Pod budget (flag off: skipped). Mint the per-claim permission now so a
+    // gateway that cannot enforce, or a missing credential, refuses the
+    // claim here (the catch below releases the pod, which revokes it).
+    // Never falls back to a direct provider key.
+    if (budget && isPodMothershipBudgetEnabled(budget.workspaceSlug)) {
+      const { acquirePodGatewayCredential } = await import("@/services/bifrost/pod-budget");
+      await acquirePodGatewayCredential(budget, pod.podId);
+    }
+
     // Password is already decrypted from the database
     if (!pod.password) {
       throw new Error("Pod password not found");

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { Priority, TaskStatus, TaskSourceType, WorkflowStatus, JanitorType } from "@prisma/client";
-import { config } from "@/config/env";
+import { config, isPodMothershipBudgetEnabled } from "@/config/env";
 import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { buildFeatureContext } from "@/services/task-coordinator";
@@ -803,10 +803,16 @@ export async function callStakworkAPI(params: {
     // does no reshaping in the middle.
     vars.mcpServers = mcpServers;
   }
-  if (process.env.EXA_API_KEY) {
+  // Pod budget (POD_MOTHERSHIP_BUDGET_ENABLED, off by default). For a
+  // pod-bound dispatch the workflow gets the per-claim gateway credential
+  // (agent `pod-agent`) and NEVER a direct provider key: no apiKey from
+  // `getApiKeyForModel`, no EXA searchApiKey, no Anthropic summaryApiKey.
+  // If the credential cannot be obtained this throws (no fallback).
+  const podBudgetOn = !!podId && isPodMothershipBudgetEnabled(workspaceSlug);
+  if (!podBudgetOn && process.env.EXA_API_KEY) {
     vars.searchApiKey = process.env.EXA_API_KEY;
   }
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (!podBudgetOn && process.env.ANTHROPIC_API_KEY) {
     vars.summaryApiKey = process.env.ANTHROPIC_API_KEY;
   }
   if (mode === "plan_mode" && process.env.PLAN_MODE_MODEL) {
@@ -847,7 +853,7 @@ export async function callStakworkAPI(params: {
   if (effectiveModel) {
     vars.model = effectiveModel;
     const resolvedApiKey = getApiKeyForModel(effectiveModel);
-    if (resolvedApiKey) vars.apiKey = resolvedApiKey;
+    if (resolvedApiKey && !podBudgetOn) vars.apiKey = resolvedApiKey;
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -878,17 +884,23 @@ export async function callStakworkAPI(params: {
   // inside the orchestrator: it returns `undefined` when the VK has no
   // grant for that provider, so `vars.apiKey` stays the direct key
   // resolved above for that call.
-  const bifrost = await getBifrostForLLM(
-    { workspaceId, workspaceSlug, userId },
-    {
-      agentName: mode === "plan_mode" ? "plan-agent" : "coding-agent",
-      // Pass the selected model so the Bifrost VK reconciler resolves
-      // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
-      // for google/* models). Without this it defaults to anthropic
-      // and Google/OpenAI models get routed to the wrong provider.
-      model: effectiveModel ?? undefined,
-    },
-  );
+  const bifrost = podBudgetOn
+    ? await (
+        await import("@/services/bifrost/pod-budget")
+      ).acquirePodGatewayCredential({ workspaceId, workspaceSlug, userId }, podId!, {
+        model: effectiveModel ?? undefined,
+      })
+    : await getBifrostForLLM(
+        { workspaceId, workspaceSlug, userId },
+        {
+          agentName: mode === "plan_mode" ? "plan-agent" : "coding-agent",
+          // Pass the selected model so the Bifrost VK reconciler resolves
+          // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
+          // for google/* models). Without this it defaults to anthropic
+          // and Google/OpenAI models get routed to the wrong provider.
+          model: effectiveModel ?? undefined,
+        },
+      );
   if (bifrost) {
     vars.apiKey = bifrost.apiKey;
     vars.baseUrl = bifrost.baseUrl;

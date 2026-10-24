@@ -24,6 +24,7 @@ vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_POD_REPAIR_WORKFLOW_ID: "9999",
   },
+  isPodMothershipBudgetEnabled: () => false,
 }));
 
 vi.mock("@/lib/encryption", () => ({

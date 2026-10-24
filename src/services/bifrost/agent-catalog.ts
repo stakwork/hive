@@ -142,6 +142,14 @@ export const DEFAULT_AGENT_SPECS: Record<BifrostAgentName, DefaultAgentSpec> = {
     displayName: "Strut Assistant",
     description: "Strut's workflow-authoring chat (the AI builder).",
   },
+  "pod-agent": {
+    displayName: "Pod Agent",
+    description: "Agent sessions running on a claimed pod, under a per-claim budget.",
+  },
+  "pod-repair-agent": {
+    displayName: "Pod Repair Agent",
+    description: "Pod repair cron and frontend validation, under a per-run budget.",
+  },
 };
 
 /**

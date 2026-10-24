@@ -66,6 +66,7 @@ import { ChatRole, ChatStatus, ArtifactType, LlmProvider } from "@prisma/client"
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { isValidModel, getApiKeyForModel, PROVIDER_API_KEY_ENV_VARS } from "@/lib/ai/models";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
+import { isPodMothershipBudgetEnabled } from "@/config/env";
 import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS, releasePodById } from "@/lib/pods";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
@@ -190,7 +191,7 @@ async function getChatHistoryContext(taskId: string): Promise<string | null> {
  * Claim a pod for a task and store credentials
  * Returns pod URLs for frontend artifacts
  */
-async function claimPodForTask(taskId: string, workspaceId: string): Promise<PodClaimResult> {
+async function claimPodForTask(taskId: string, workspaceId: string, userId: string): Promise<PodClaimResult> {
   // Load workspace with swarm configuration
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
@@ -208,7 +209,15 @@ async function claimPodForTask(taskId: string, workspaceId: string): Promise<Pod
   const swarmId = workspace.swarm.id as string;
 
   // Claim pod from pool
-  const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(swarmId, taskId, services || undefined);
+  const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
+    swarmId,
+    taskId,
+    services || undefined,
+    undefined,
+    undefined,
+    // Pod budget (flag off: ignored): charged to the user who triggered the claim.
+    isPodMothershipBudgetEnabled(workspace.slug) ? { workspaceId, workspaceSlug: workspace.slug, userId } : undefined,
+  );
 
   try {
     const controlUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
@@ -332,6 +341,7 @@ async function createAgentSession(
   webhookUrl: string,
   effectiveModel: string | undefined,
   bifrostAuth: { workspaceId: string; workspaceSlug: string; userId: string },
+  podId: string | null,
 ): Promise<string> {
   const sessionUrl = agentUrl.replace(/\/$/, "") + "/session";
 
@@ -371,20 +381,34 @@ async function createAgentSession(
   // swarm's gateway, which the orchestrator checks — falls back to the
   // model-resolved key (unchanged). Every provider rides Bifrost here,
   // xai included; src/services/task-workflow.ts has the same wiring.
-  const bifrost = await getBifrostForLLM(bifrostAuth, {
-    agentName: "coding-agent",
-    // Pass the selected model so the Bifrost VK reconciler resolves
-    // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
-    // for google/* models). Without this it defaults to anthropic.
-    model: effectiveModel,
-  });
+  // Pod budget (POD_MOTHERSHIP_BUDGET_ENABLED, off by default): the pod gets
+  // the per-claim gateway credential (agent `pod-agent`, $-capped, charged to
+  // the triggering user) and NEVER a direct provider key or the EXA search
+  // key; failure to obtain it throws (no fallback). Flag off: the unchanged
+  // path below.
+  const podBudgetOn = isPodMothershipBudgetEnabled(bifrostAuth.workspaceSlug);
+  const bifrost = podBudgetOn
+    ? await (async () => {
+        if (!podId) throw new Error("Pod budget (Mothership): no pod claim to charge");
+        const { acquirePodGatewayCredential } = await import("@/services/bifrost/pod-budget");
+        return acquirePodGatewayCredential(bifrostAuth, podId, { model: effectiveModel });
+      })()
+    : await getBifrostForLLM(bifrostAuth, {
+        agentName: "coding-agent",
+        // Pass the selected model so the Bifrost VK reconciler resolves
+        // the correct provider suffix on `baseUrl` (e.g. `/genai/v1beta`
+        // for google/* models). Without this it defaults to anthropic.
+        model: effectiveModel,
+      });
 
   const sessionPayload: Record<string, unknown> = {
     sessionId: taskId,
     webhookUrl,
     apiKey: bifrost?.apiKey ?? apiKey,
-    searchApiKey: process.env.EXA_API_KEY,
   };
+  if (!podBudgetOn) {
+    sessionPayload.searchApiKey = process.env.EXA_API_KEY;
+  }
   if (bifrost) {
     sessionPayload.baseUrl = bifrost.baseUrl;
     if (Object.keys(bifrost.headers).length > 0) {
@@ -568,7 +592,7 @@ export async function POST(request: NextRequest) {
     console.log("[Agent] No pod assigned to task, claiming new pod...");
 
     try {
-      const claimResult = await claimPodForTask(taskId, task.workspaceId);
+      const claimResult = await claimPodForTask(taskId, task.workspaceId, userId);
       agentCredentials = claimResult.credentials;
       podUrls = {
         podId: claimResult.podId,
@@ -583,6 +607,9 @@ export async function POST(request: NextRequest) {
       }
     } catch (claimError) {
       console.error("[Agent] Failed to claim pod:", claimError);
+      if (claimError instanceof Error && claimError.name === "PodBudgetError") {
+        return NextResponse.json({ error: claimError.message }, { status: 503 });
+      }
       return NextResponse.json({ error: "No pods available" }, { status: 503 });
     }
   } else if (!task.podId && isUsingCustomUrl) {
@@ -664,6 +691,7 @@ export async function POST(request: NextRequest) {
         workspaceSlug: task.workspace.slug,
         userId,
       },
+      podUrls?.podId ?? task.podId,
     );
   } catch (error) {
     console.error("[Agent] Error creating session:", error);
