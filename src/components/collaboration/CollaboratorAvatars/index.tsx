@@ -8,7 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
+import type { CollaboratorInfo } from "@/types/collaboration";
 import { cn } from "@/lib/utils";
 
 interface CollaboratorAvatarsProps {

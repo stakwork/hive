@@ -3,7 +3,7 @@ import { pusherServer, getFeatureChannelName, PUSHER_EVENTS } from "@/lib/pusher
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { validateWorkspaceAccessById } from "@/services/workspace";
-import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
+import type { CollaboratorInfo } from "@/types/collaboration";
 
 type PresencePayload =
   | { type: "join"; user: CollaboratorInfo; rebroadcast?: boolean }

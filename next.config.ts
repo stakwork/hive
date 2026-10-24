@@ -9,7 +9,6 @@ const nextConfig: NextConfig = {
       "@sentry/nextjs",
       "@aws-sdk/client-s3",
       "@aws-sdk/s3-request-presigner",
-      "@excalidraw/excalidraw",
       "ai",
       "d3",
       "react-syntax-highlighter",
