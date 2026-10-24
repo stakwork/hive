@@ -147,6 +147,15 @@ export const optionalEnvVars = {
   // Callers MUST go through `isBifrostEnabledForAgent(agentName)` —
   // direct equality checks on this raw string are a bug.
   BIFROST_ENABLED_AGENTS: process.env.BIFROST_ENABLED_AGENTS || "",
+  // Pod budget through Mothership/Bifrost gate. Default OFF. Same shapes
+  // as `BIFROST_ENABLED` ("true"/"all"/"*" = every workspace, CSV of
+  // workspace slugs, unset/""/"false" = off). When on for a workspace, a
+  // pod claim mints a short-lived, $-capped per-claim permission charged
+  // to the triggering user, a pod never receives a direct provider key
+  // (hive's, the repair Anthropic key, or the EXA search key), and the
+  // permission is revoked on release. Independent of `BIFROST_ENABLED`.
+  // Callers MUST go through `isPodMothershipBudgetEnabled(slug)`.
+  POD_MOTHERSHIP_BUDGET_ENABLED: process.env.POD_MOTHERSHIP_BUDGET_ENABLED || "",
   // Externally-reachable Hive origin pushed to the Bifrost gateway as
   // the callback base URL during agent-catalog reconciliation. Must be
   // set to the public URL (e.g. "https://hive.example.com") — NOT a
@@ -256,6 +265,39 @@ export function isBifrostEnabledForWorkspace(
     .map((s) => s.trim())
     .filter(Boolean);
   return allowList.includes(slug);
+}
+
+/**
+ * Decide whether the pod-budget-through-Mothership gate
+ * (`POD_MOTHERSHIP_BUDGET_ENABLED`) is open for a workspace. Same grammar
+ * as {@link isBifrostEnabledForWorkspace}: "true"/"all"/"*" -> every
+ * workspace, "slug1,slug2" -> allow-list, unset/""/"false" -> off. An
+ * empty/missing slug only matches the all-workspaces shapes.
+ */
+export function isPodMothershipBudgetEnabled(
+  workspaceSlug?: string | null,
+): boolean {
+  const raw = (process.env.POD_MOTHERSHIP_BUDGET_ENABLED || "").trim().toLowerCase();
+  if (!raw || raw === "false") return false;
+  if (raw === "true" || raw === "all" || raw === "*") return true;
+  const slug = (workspaceSlug ?? "").trim().toLowerCase();
+  if (!slug) return false;
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .includes(slug);
+}
+
+/**
+ * Cheap "is the pod-budget flag set to anything but off" probe, for hot
+ * paths (pod release) that must skip all work, including DB lookups, when
+ * the flag is off. The per-workspace decision is still
+ * {@link isPodMothershipBudgetEnabled}.
+ */
+export function isPodMothershipBudgetConfigured(): boolean {
+  const raw = (process.env.POD_MOTHERSHIP_BUDGET_ENABLED || "").trim().toLowerCase();
+  return !!raw && raw !== "false";
 }
 
 /**
