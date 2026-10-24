@@ -21,6 +21,8 @@ import { hashApiKey } from "@/lib/api-keys";
 import { db } from "@/lib/db";
 
 vi.mock("@/config/env", () => ({
+  isPodMothershipBudgetEnabled: () => false,
+  isPodMothershipBudgetConfigured: () => false,
   config: {
     POOL_MANAGER_BASE_URL: "https://pool-manager.test.com",
   },
