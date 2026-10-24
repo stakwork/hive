@@ -37,11 +37,11 @@ describe("mention helpers", () => {
     );
     expect(slugs(filterMentionWorkspaces(list, "h"))).toEqual([
       "hive",
-      "sphinx-server",
-      "sphinx-apps",
-      "sphinx-android-v2",
       "graphmindset",
+      "sphinx-apps",
       "openhealth",
+      "sphinx-android-v2",
+      "sphinx-server",
     ]);
   });
 
