@@ -206,10 +206,10 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/lightning/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/vercel/log-drain", strategy: "prefix", access: "webhook" },
   { path: "/api/members", strategy: "prefix", access: "webhook" },
-  // Call token exchange — public so the Jamie voice agent (no session) can
-  // swap a short opaque callKey for the real hiveToken. The random 24-char
-  // hex key is the only secret; no additional auth check is needed.
-  { path: "/api/calls/exchange-token", strategy: "exact", access: "public", methods: ["GET"] },
+  // Call token exchange — machine-to-machine: the Jamie voice agent (no
+  // session) swaps the callKey from its dispatch metadata for the hiveToken.
+  // The route checks the agent's own VOICE_AGENT_API_KEY.
+  { path: "/api/calls/exchange-token", strategy: "exact", access: "webhook" },
   { path: "/api/workers", strategy: "prefix", access: "webhook" }, // machine-to-machine; each worker validates INTERNAL_WORKER_SECRET
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
   { path: "/api/features/*/title", strategy: "pattern", access: "webhook" },

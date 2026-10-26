@@ -1,26 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { redis } from "@/lib/redis";
+import { carriesVoiceAgentKey, readCallToken } from "@/lib/calls/callAgent";
 
-// Public endpoint — no session required.
-// The opaque callKey (24-char cryptographically random hex) acts as the
-// bearer secret; possessing it is sufficient authorisation to fetch the
-// corresponding hiveToken. Uses GET (not GETDEL) so Jamie can re-exchange
-// on rejoin during the same call session.
-export async function GET(request: NextRequest) {
-  const callKey = request.nextUrl.searchParams.get("callKey");
+// Machine-to-machine — no session. Jamie (sphinx-voice) trades the callKey
+// it got in its LiveKit dispatch metadata for the Hive token behind it
+// (`lib/calls/callAgent.ts`). The callKey alone is not enough: the caller
+// must also present the voice agent's own key, so a callKey that leaks
+// (a room admin can list a room's dispatches) cannot be traded by anyone
+// else. POST, so the callKey stays out of URLs and request logs. Not
+// GETDEL: Jamie re-exchanges when it rejoins during the same call.
+export async function POST(request: NextRequest) {
+  if (!process.env.VOICE_AGENT_API_KEY) {
+    console.error("[exchange-token] VOICE_AGENT_API_KEY is not configured");
+    return NextResponse.json({ error: "Call token exchange is not configured" }, { status: 503 });
+  }
+  if (!carriesVoiceAgentKey(request.headers.get("authorization"))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  if (!callKey || callKey.trim() === "") {
+  const body = (await request.json().catch(() => null)) as { callKey?: unknown } | null;
+  const callKey = typeof body?.callKey === "string" ? body.callKey.trim() : "";
+  if (!callKey) {
     return NextResponse.json({ error: "callKey is required" }, { status: 400 });
   }
 
-  const hiveToken = await redis.get("call-token:" + callKey);
-
+  const hiveToken = await readCallToken(callKey);
   if (!hiveToken) {
-    console.warn("[exchange-token] Cache miss or expired for callKey:", callKey);
-    return NextResponse.json(
-      { error: "Token not found or expired" },
-      { status: 401 },
-    );
+    console.warn("[exchange-token] callKey not found or expired");
+    return NextResponse.json({ error: "Token not found or expired" }, { status: 401 });
   }
 
   return NextResponse.json({ hiveToken }, { status: 200 });
