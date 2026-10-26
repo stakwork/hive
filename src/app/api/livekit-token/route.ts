@@ -1,6 +1,7 @@
 import { AccessToken } from "livekit-server-sdk";
 import jwt from "jsonwebtoken";
 import { NextRequest, NextResponse } from "next/server";
+import { dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
@@ -61,17 +62,23 @@ export async function POST(req: NextRequest) {
     { expiresIn: "4h" },
   );
 
-  // Pass MCP server config via participant metadata so the agent can make
-  // authenticated MCP calls on behalf of this user's workspace.
-  at.metadata = JSON.stringify({
-    mcpServers: [
-      {
-        name: "hive",
-        url: process.env.HIVE_MCP_URL || "https://hive.sphinx.chat/mcp",
-        token: hiveToken,
-      },
-    ],
-  });
+  // Hand the token to Jamie, never to the room: participant metadata is
+  // readable by every participant. It is stored behind an opaque callKey
+  // that rides in Jamie's dispatch metadata (`lib/calls/callAgent.ts`).
+  let callKey: string;
+  try {
+    callKey = await storeCallToken(hiveToken);
+  } catch (err) {
+    console.error("[livekit-token] Redis write failed:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+  try {
+    await dispatchCallAgent(roomName, callKey);
+  } catch (err) {
+    console.error("[livekit-token] Jamie dispatch failed:", err);
+    await dropCallToken(callKey).catch(() => undefined);
+    return NextResponse.json({ error: "Could not start the voice agent" }, { status: 502 });
+  }
 
   const token = await at.toJwt();
   return NextResponse.json({ token, roomName });
