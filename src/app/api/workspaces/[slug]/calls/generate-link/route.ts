@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { config, optionalEnvVars } from "@/config/env";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
 import { callRoomName, dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
+import { dropCallRecord, storeCallRecord } from "@/lib/calls/callRecord";
 import jwt from "jsonwebtoken";
 
 export async function POST(
@@ -176,21 +177,29 @@ export async function POST(
     // The token never goes in the URL: the link is pasted to whoever is
     // invited. It is stored behind an opaque callKey, and Jamie is
     // dispatched into the link's room with that key in its dispatch
-    // metadata (`lib/calls/callAgent.ts`). Mock mode has no LiveKit to
-    // dispatch to.
+    // metadata (`lib/calls/callAgent.ts`). The same key names the call's
+    // record, which the call endpoints act on (`lib/calls/callRecord.ts`):
+    // its turns run as this user. Mock mode has no LiveKit to dispatch to.
     if (!config.USE_MOCKS) {
+      const roomName = callRoomName(callUrl);
       let callKey: string;
       try {
         callKey = await storeCallToken(hiveToken);
+        await storeCallRecord(callKey, {
+          userId: userOrResponse.id,
+          orgId: workspace.sourceControlOrgId ?? null,
+          workspaceSlug: slug,
+          roomName,
+        });
       } catch (err) {
         console.error("[generate-link] Redis write failed:", err);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
       }
       try {
-        await dispatchCallAgent(callRoomName(callUrl), callKey);
+        await dispatchCallAgent(roomName, callKey);
       } catch (err) {
         console.error("[generate-link] Jamie dispatch failed:", err);
-        await dropCallToken(callKey).catch(() => undefined);
+        await Promise.all([dropCallToken(callKey), dropCallRecord(callKey)]).catch(() => undefined);
         return NextResponse.json({ error: "Could not start Jamie for the call" }, { status: 502 });
       }
     }

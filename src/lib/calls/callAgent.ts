@@ -17,6 +17,10 @@
  *      (`VOICE_AGENT_API_KEY`). A callKey on its own is worth nothing, so
  *      a dispatch listing read with a room-admin token leaks nothing usable.
  *
+ * The same callKey also names the call's record (`callRecord.ts`): who the
+ * call acts as and its conversation, for the endpoints through which Jamie
+ * talks to strut's orchestrator (`/api/calls/turn`, `messages`, `cancel`).
+ *
  * The agent must be registered with the same agent name
  * (`LIVEKIT_AGENT_NAME`, default "jamie"); with an agent name set, LiveKit
  * no longer auto-dispatches it into every room.

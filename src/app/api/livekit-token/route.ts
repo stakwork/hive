@@ -2,6 +2,8 @@ import { AccessToken } from "livekit-server-sdk";
 import jwt from "jsonwebtoken";
 import { NextRequest, NextResponse } from "next/server";
 import { dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
+import { dropCallRecord, storeCallRecord } from "@/lib/calls/callRecord";
+import { db } from "@/lib/db";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
@@ -65,9 +67,22 @@ export async function POST(req: NextRequest) {
   // Hand the token to Jamie, never to the room: participant metadata is
   // readable by every participant. It is stored behind an opaque callKey
   // that rides in Jamie's dispatch metadata (`lib/calls/callAgent.ts`).
+  // The same key names the call's record, which the call endpoints act on
+  // (`lib/calls/callRecord.ts`): its turns run as this user, in the
+  // workspace's org.
+  const workspace = await db.workspace.findFirst({
+    where: { slug, deleted: false },
+    select: { sourceControlOrgId: true },
+  });
   let callKey: string;
   try {
     callKey = await storeCallToken(hiveToken);
+    await storeCallRecord(callKey, {
+      userId: userOrResponse.id,
+      orgId: workspace?.sourceControlOrgId ?? null,
+      workspaceSlug: slug,
+      roomName,
+    });
   } catch (err) {
     console.error("[livekit-token] Redis write failed:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -76,7 +91,7 @@ export async function POST(req: NextRequest) {
     await dispatchCallAgent(roomName, callKey);
   } catch (err) {
     console.error("[livekit-token] Jamie dispatch failed:", err);
-    await dropCallToken(callKey).catch(() => undefined);
+    await Promise.all([dropCallToken(callKey), dropCallRecord(callKey)]).catch(() => undefined);
     return NextResponse.json({ error: "Could not start the voice agent" }, { status: 502 });
   }
 
