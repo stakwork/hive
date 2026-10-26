@@ -9,6 +9,9 @@ import {
   IMPLEMENT,
   initiativeOf,
   initiativesByRecency,
+  kids,
+  milestoneNumber,
+  SYNC,
   nearestContainer,
   pips,
   suggestions,
@@ -170,5 +173,91 @@ describe("editing helpers", () => {
       "text",
       "text",
     ]);
+  });
+});
+
+describe("initiative brief", () => {
+  const read = (nodes: InitiativeTreeData["nodes"], edges: InitiativeTreeData["edges"]) =>
+    toBoard(
+      [{ summary: summary("i", "I"), ws: "ws", tree: { nodes, edges, stage: initiativeStage([]), truncated: false } }],
+      {},
+    );
+  const init = { ref_id: "i", type: "HiveInitiative", properties: { name: "I" } } as const;
+
+  it("shows the brief's text under its initiative", () => {
+    const b = read(
+      [init, { ref_id: "b", type: "Brief", properties: { text: "Why this" } }],
+      [{ source: "i", target: "b", type: "HAS_BRIEF" }],
+    );
+    expect(kids(b, "i", "brief").map((n) => n.name)).toEqual(["Why this"]);
+  });
+
+  it("keeps a brief whose edge is missing, or was met from another node first, on its initiative", () => {
+    const b = read(
+      [
+        init,
+        { ref_id: "m", type: "HiveMilestone", properties: { name: "M" } },
+        { ref_id: "b", type: "Brief", properties: { text: "Why this" } },
+        { ref_id: "b2", type: "Brief", properties: { text: "And this" } },
+      ],
+      [
+        { source: "i", target: "m", type: "HAS_MILESTONE" },
+        { source: "m", target: "b", type: "HAS_BRIEF" },
+      ],
+    );
+    expect(kids(b, "i", "brief").map((n) => n.name).sort()).toEqual(["And this", "Why this"]);
+  });
+
+  it("reads the brief from its other text fields when `text` is empty", () => {
+    const b = read(
+      [init, { ref_id: "b", type: "Brief", properties: { text: " ", description: "From description" } }],
+      [{ source: "i", target: "b", type: "HAS_BRIEF" }],
+    );
+    expect(byId(b, "b")?.name).toBe("From description");
+  });
+});
+
+describe("milestoneNumber", () => {
+  const withSequences = (seqs: Array<number | undefined>) =>
+    toBoard(
+      [
+        {
+          summary: summary("i", "I"),
+          ws: "ws",
+          tree: {
+            nodes: [
+              { ref_id: "i", type: "HiveInitiative", properties: { name: "I" } },
+              ...seqs.map((s, k) => ({
+                ref_id: `m${k}`,
+                type: "HiveMilestone" as const,
+                properties: { name: `M${k}`, ...(s === undefined ? {} : { sequence: s }) },
+              })),
+            ],
+            edges: seqs.map((_, k) => ({ source: "i", target: `m${k}`, type: "HAS_MILESTONE" })),
+            stage: initiativeStage([]),
+            truncated: false,
+          },
+        },
+      ],
+      {},
+    );
+
+  it("counts 0-based sequences from 1", () => {
+    const b = withSequences([0, 1, 2]);
+    expect([0, 1, 2].map((k) => milestoneNumber(b, byId(b, `m${k}`)!))).toEqual([1, 2, 3]);
+  });
+
+  it("keeps 1-based sequences as they are", () => {
+    const b = withSequences([1, 2, 3]);
+    expect([0, 1, 2].map((k) => milestoneNumber(b, byId(b, `m${k}`)!))).toEqual([1, 2, 3]);
+  });
+
+  it("falls back on order when there is no sequence", () => {
+    const b = withSequences([undefined, undefined]);
+    expect([0, 1].map((k) => milestoneNumber(b, byId(b, `m${k}`)!))).toEqual([1, 2]);
+  });
+
+  it("asks Jamie to run canvas-sync", () => {
+    expect(SYNC).toContain("canvas-sync");
   });
 });

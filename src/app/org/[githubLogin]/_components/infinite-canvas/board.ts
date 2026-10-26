@@ -112,6 +112,9 @@ export const GRAPH_LABEL = Object.fromEntries(Object.entries(TYPES).map(([label,
 >;
 
 const text = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
+/** A brief's words: its `text`, else the other fields a writer may have put them in (`description`, `content`, `body`), else its title. */
+const briefText = (p: Record<string, unknown>) =>
+  text(p.text) ?? text(p.description) ?? text(p.content) ?? text(p.body) ?? text(p.title) ?? text(p.name);
 /** A person wrote it when the graph says human (or a person's brainstorm card); strut, Jamie and unmarked nodes are typeset. */
 const authorOf = (p: Record<string, unknown>): Author =>
   p.created_by_kind === "human" || (p.made_by !== undefined && p.made_by !== "model") ? "person" : "strut";
@@ -225,6 +228,8 @@ export function toBoard(entries: InitiativeEntry[], brainstorms: Record<string, 
       const legacyStory = typeOf.get(e.target) === "UserStory" && typeOf.get(e.source) === "InitiativeFeature";
       parentOf.set(e.target, legacyStory ? summary.ref_id : e.source);
     }
+    // A brief only ever hangs off its initiative (HAS_BRIEF), whichever edge into it the read met first.
+    for (const n of graphNodes) if (n.type === "Brief") parentOf.set(n.ref_id, summary.ref_id);
     if (!graphNodes.some((n) => n.ref_id === summary.ref_id)) {
       seen.add(summary.ref_id);
       nodes.push({
@@ -249,10 +254,11 @@ export function toBoard(entries: InitiativeEntry[], brainstorms: Record<string, 
         type,
         ...(n.ref_id !== summary.ref_id && parentOf.has(n.ref_id) ? { parent: parentOf.get(n.ref_id) } : {}),
         name:
-          (type === "brief" || type === "story" || type === "requirement" ? text(p.text) : text(p.name)) ??
-          text(p.name) ??
-          text(p.title) ??
-          "",
+          (type === "brief"
+            ? briefText(p)
+            : (type === "story" || type === "requirement" ? text(p.text) : text(p.name)) ??
+              text(p.name) ??
+              text(p.title)) ?? "",
         author: authorOf(p),
         ...(text(p.status) ? { status: String(p.status) } : {}),
         ...(typeof p.sequence === "number" ? { sequence: p.sequence } : {}),
@@ -312,6 +318,17 @@ export function kids(b: Board, id: string, type?: NodeType): PlanNode[] {
   return type ? all.filter((n) => n.type === type) : all;
 }
 
+/**
+ * The number a milestone is labelled with. Milestones are ordered by `sequence`, which some were stored
+ * 0-based: when any sibling has sequence 0 (or the sequence is missing) the label counts from its place
+ * in the order, so it never reads "Milestone 0".
+ */
+export function milestoneNumber(b: Board, m: PlanNode): number {
+  const siblings = m.parent ? kids(b, m.parent, "milestone") : [m];
+  if (m.sequence !== undefined && !siblings.some((s) => s.sequence === 0)) return m.sequence;
+  return Math.max(0, siblings.findIndex((s) => s.id === m.id)) + 1;
+}
+
 /** A node's brainstorms: the questions at the root of each tree. */
 export const brainstormsOn = (b: Board, id: string) =>
   b.nodes.filter((n) => n.type === "question" && n.about === id && !n.follows);
@@ -354,6 +371,12 @@ export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n ==
 
 /** The ask that starts a feature's build: a job whose pull requests show on the card. Offered once it has an architecture. */
 export const IMPLEMENT = "Implement this feature.";
+
+/**
+ * The ask behind an initiative's Sync button. Hive starts strut jobs only through Jamie (`start_job` /
+ * `job/start`), so Sync is a message to Jamie about the initiative, which runs strut's `canvas-sync` workflow.
+ */
+export const SYNC = "Sync this initiative with the graph (run canvas-sync)";
 
 /** Asks the brainstorm job for more on a card: `Expand B: "<text>" (<ref_id>)`; no label for a question. */
 export const expandDraft = (c: { id: string; name: string; letter?: string }) =>
