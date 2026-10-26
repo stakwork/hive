@@ -540,6 +540,65 @@ describe("Generate Call Link API - Integration Tests", () => {
           7200,
         );
       });
+
+      test("writes the call record under the same callKey: the creator, the org, the workspace, the room", async () => {
+        const { owner, workspace, org } = await createOrgWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm42" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        const data = await expectSuccess(response, 200);
+        const callKey = dispatchedCallKey(data.url);
+        const [roomName] = mockCreateDispatch.mock.calls[0];
+
+        const { redis } = await import("@/lib/redis");
+        const write = vi.mocked(redis.set).mock.calls.find(([key]) => key === `call:${callKey}`);
+        expect(write).toBeDefined();
+        const [, value, ex, ttl] = write!;
+        expect([ex, ttl]).toEqual(["EX", 4 * 3600]);
+        const record = JSON.parse(value as string);
+        expect(record).toMatchObject({
+          userId: owner.id,
+          orgId: org.id,
+          workspaceSlug: workspace.slug,
+          roomName,
+          conversationId: null,
+        });
+        expect(Date.parse(record.createdAt)).toBeGreaterThan(Date.now() - 60_000);
+      });
+
+      test("a workspace-scope call on a workspace with no org records no org", async () => {
+        const { owner, workspace } = await createTestWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm42" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link?scope=workspace`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        const data = await expectSuccess(response, 200);
+        const callKey = dispatchedCallKey(data.url);
+        const { redis } = await import("@/lib/redis");
+        const write = vi.mocked(redis.set).mock.calls.find(([key]) => key === `call:${callKey}`);
+        expect(JSON.parse(write![1] as string)).toMatchObject({ userId: owner.id, orgId: null });
+      });
     });
 
     describe("Jamie dispatch failure", () => {
@@ -565,6 +624,9 @@ describe("Generate Call Link API - Integration Tests", () => {
         const { redis } = await import("@/lib/redis");
         const storedKey = vi.mocked(redis.set).mock.calls[0][0];
         expect(vi.mocked(redis.del)).toHaveBeenCalledWith(storedKey);
+        // …and the call record beside it.
+        const callKey = (storedKey as string).replace(/^call-token:/, "");
+        expect(vi.mocked(redis.del)).toHaveBeenCalledWith(`call:${callKey}`);
       });
 
       test("returns 502 when LiveKit is not configured", async () => {
