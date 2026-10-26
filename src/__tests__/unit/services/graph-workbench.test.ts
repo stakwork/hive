@@ -1,6 +1,12 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { runWorkspaceGraphQuery } from "@/services/graph/query";
-import { GRAPH_ROW_CAP, getConnectionPage, getHierarchy, getNodeConnections } from "@/services/graph/workbench";
+import {
+  GRAPH_ROW_CAP,
+  HIERARCHY_MAX_PAGES,
+  getConnectionPage,
+  getHierarchy,
+  getNodeConnections,
+} from "@/services/graph/workbench";
 
 vi.mock("@/services/graph/query", () => ({
   runWorkspaceGraphQuery: vi.fn(),
@@ -79,7 +85,39 @@ describe("getHierarchy", () => {
     expect(queries().find((q) => q.includes(HIERARCHY_EDGES))).toContain(`WHERE ${LIVE_EDGE}`);
   });
 
-  test("flags a result that hit upstream's row cap", async () => {
+  test("reads past upstream's row cap a page at a time, in a total order", async () => {
+    // Upstream answers at most GRAPH_ROW_CAP rows a call: serve each read's rows by its SKIP.
+    const nodeRows = Array.from({ length: GRAPH_ROW_CAP + 3 }, (_, i) => [`c-${i}`, `C ${i}`]);
+    const edgeRows = Array.from({ length: GRAPH_ROW_CAP + 40 }, (_, i) => ["PARENT_OF", "root", `c-${i}`]);
+    mockedQuery.mockImplementation(async ({ query }) => {
+      const q = String(query);
+      const skip = Number(/ SKIP (\d+)$/.exec(q)?.[1] ?? NaN);
+      const page = (all: unknown[][]) => all.slice(skip, skip + GRAPH_ROW_CAP);
+      if (q.includes(HIERARCHY_NODES))
+        return { ok: true, data: { columns: ["id", "name"], rows: page(nodeRows) }, meta };
+      return { ok: true, data: { columns: ["type", "source", "target"], rows: page(edgeRows) }, meta };
+    });
+
+    const result = await getHierarchy(caller, "Concept");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.nodes).toHaveLength(GRAPH_ROW_CAP + 3);
+    expect(result.data.edges).toHaveLength(GRAPH_ROW_CAP + 40);
+    expect(result.data.edges.at(-1)).toEqual({ type: "PARENT_OF", source: "root", target: `c-${GRAPH_ROW_CAP + 39}` });
+    expect(result.data.truncated).toBe(false);
+    // Two pages each, the second starting where the first ended; no third read after a short page.
+    const nodeReads = queries().filter((q) => q.includes(HIERARCHY_NODES));
+    const edgeReads = queries().filter((q) => q.includes(HIERARCHY_EDGES));
+    expect(nodeReads.map((q) => / SKIP (\d+)$/.exec(q)?.[1])).toEqual(["0", String(GRAPH_ROW_CAP)]);
+    expect(edgeReads.map((q) => / SKIP (\d+)$/.exec(q)?.[1])).toEqual(["0", String(GRAPH_ROW_CAP)]);
+    expect(nodeReads[0]).toContain("ORDER BY id SKIP");
+    expect(edgeReads[0]).toContain("RETURN DISTINCT type(r) AS type");
+    expect(edgeReads[0]).toContain("ORDER BY source, target, type SKIP");
+    expect(mockedQuery.mock.calls.every(([args]) => args.limit === GRAPH_ROW_CAP)).toBe(true);
+  });
+
+  test("flags a read still full after its last page, and stops there", async () => {
     answer({
       [HIERARCHY_NODES]: {
         columns: ["id", "name"],
@@ -90,6 +128,19 @@ describe("getHierarchy", () => {
     const result = await getHierarchy(caller, "Concept");
 
     expect(result.ok && result.data.truncated).toBe(true);
+    expect(queries().filter((q) => q.includes(HIERARCHY_NODES))).toHaveLength(HIERARCHY_MAX_PAGES);
+  });
+
+  test("a page that fails fails the read", async () => {
+    mockedQuery.mockImplementation(async ({ query }) => {
+      if (String(query).endsWith(` SKIP ${GRAPH_ROW_CAP}`)) return { ok: false, status: 504, message: "timed out" };
+      const rows = String(query).includes(HIERARCHY_NODES)
+        ? Array.from({ length: GRAPH_ROW_CAP }, (_, i) => [`c-${i}`])
+        : [];
+      return { ok: true, data: { columns: ["id"], rows }, meta };
+    });
+
+    expect(await getHierarchy(caller, "Concept")).toEqual({ ok: false, status: 504, message: "timed out" });
   });
 
   test("passes the membership gate's refusal through", async () => {
