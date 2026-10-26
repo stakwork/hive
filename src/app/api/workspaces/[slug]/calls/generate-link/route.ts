@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
-import { optionalEnvVars } from "@/config/env";
+import { config, optionalEnvVars } from "@/config/env";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
-import { redis } from "@/lib/redis";
+import { callRoomName, dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
 import jwt from "jsonwebtoken";
 
 export async function POST(
@@ -171,19 +170,30 @@ export async function POST(
       hiveToken = outcome.token;
     }
 
-    // Store the minted token in Redis behind a short opaque key so the
-    // shareable URL carries a compact callKey instead of the full JWT.
-    const callKey = randomBytes(12).toString("hex"); // 24-char hex
-    try {
-      await redis.set("call-token:" + callKey, hiveToken, "EX", 7200);
-    } catch (err) {
-      console.error("[generate-link] Redis write failed:", err);
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-    }
-
-    // Generate call URL with short callKey
     const timestamp = Math.floor(Date.now() / 1000);
-    const callUrl = `${liveKitBaseUrl}${workspace.swarm.name}.sphinx.chat-.${timestamp}?callKey=${callKey}`;
+    const callUrl = `${liveKitBaseUrl}${workspace.swarm.name}.sphinx.chat-.${timestamp}`;
+
+    // The token never goes in the URL: the link is pasted to whoever is
+    // invited. It is stored behind an opaque callKey, and Jamie is
+    // dispatched into the link's room with that key in its dispatch
+    // metadata (`lib/calls/callAgent.ts`). Mock mode has no LiveKit to
+    // dispatch to.
+    if (!config.USE_MOCKS) {
+      let callKey: string;
+      try {
+        callKey = await storeCallToken(hiveToken);
+      } catch (err) {
+        console.error("[generate-link] Redis write failed:", err);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+      }
+      try {
+        await dispatchCallAgent(callRoomName(callUrl), callKey);
+      } catch (err) {
+        console.error("[generate-link] Jamie dispatch failed:", err);
+        await dropCallToken(callKey).catch(() => undefined);
+        return NextResponse.json({ error: "Could not start Jamie for the call" }, { status: 502 });
+      }
+    }
 
     return NextResponse.json({ url: callUrl });
   } catch (error) {
