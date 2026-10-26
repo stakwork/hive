@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Download, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Download, RefreshCw, Share2, X } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import {
   DropdownMenu,
@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCanvasChatStore } from "../../_state/canvasChatStore";
 import {
@@ -26,6 +27,7 @@ import { ICON_BUTTON_CLASS, MissingContentPanel, ToolbarButton, ViewerBoundary }
 import { artifactAsks, artifactHref, artifactKind } from "./registry";
 import { useArtifactContent } from "./useArtifactContent";
 import { useOpenArtifact } from "./openArtifact";
+import { artifactShareUrl } from "./shareLink";
 import { useActiveArtifacts, useArtifactJobId, useArtifactJobs, useChatOrgLogin } from "./useArtifactPanel";
 
 /**
@@ -157,6 +159,13 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
   const [reloads, setReloads] = useState(0);
   const { openArtifactPanel, closeArtifactPanel } = useCanvasChatStore.getState();
   // The newest version is followed rather than pinned, so a later revision shows as it lands.
+  const share = () => {
+    const link = artifactShareUrl(window.location.href, identity);
+    navigator.clipboard?.writeText(link).then(
+      () => toast.success("Link copied"),
+      () => toast.error("Couldn't copy the link"),
+    );
+  };
   const showVersion = (next: number) => openArtifactPanel(identity, next === versions.length - 1 ? null : next);
 
   return (
@@ -243,6 +252,9 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
               <Download className="h-4 w-4" />
             </ToolbarButton>
           )}
+          <ToolbarButton label="Share" onClick={share}>
+            <Share2 className="h-4 w-4" />
+          </ToolbarButton>
           {href && (
             <ActionTip label="Open in new tab">
               <a
