@@ -1,5 +1,6 @@
 "use client";
 
+import { toast } from "sonner";
 import {
   type CSSProperties,
   type MouseEvent,
@@ -34,6 +35,7 @@ import {
   DESK_SIZE,
   GRAPH_LABEL,
   IMPLEMENT,
+  SYNC,
   NAVIGATE,
   bestMatch,
   byId,
@@ -757,6 +759,27 @@ export function InfiniteCanvas({
     [askJamie],
   );
 
+  // Initiatives whose Sync is starting or failed to start; a second press while busy does nothing.
+  const [syncing, setSyncing] = useState<Record<string, "busy" | "error">>({});
+  const syncingRef = useRef(syncing);
+  syncingRef.current = syncing;
+  const sync = useCallback(async (id: string) => {
+    if (syncingRef.current[id] === "busy") return false;
+    setSyncing((m) => ({ ...m, [id]: "busy" }));
+    let started = false;
+    try {
+      started = await latest.current.send(id, SYNC);
+    } catch {
+      started = false;
+    }
+    setSyncing((m) => {
+      const { [id]: _done, ...rest } = m;
+      return started ? rest : { ...rest, [id]: "error" };
+    });
+    if (!started) toast.error("Couldn't start the sync. Jamie may be busy; try again in a moment.");
+    return started;
+  }, []);
+
   // Stable actions for the cards, reading the latest closures through a ref.
   const latest = useRef({ board, savePlan, choose, send });
   latest.current = { board, savePlan, choose, send };
@@ -803,6 +826,7 @@ export function InfiniteCanvas({
         if (o) void latest.current.send(qid, expandDraft({ id: o.id, name: o.title, letter: o.letter }));
       },
       implement: (id) => void latest.current.send(id, IMPLEMENT),
+      sync,
       moreOptions: (qid) => {
         const q = node(qid);
         if (q) void latest.current.send(qid, expandDraft({ id: q.id, name: q.name }));
@@ -817,7 +841,7 @@ export function InfiniteCanvas({
         return !!(await save(n, [{ op: "remove", ref: id }]));
       },
     };
-  }, []);
+  }, [sync]);
 
   const turnRunning = useCanvasChatStore((s) => {
     const c = s.activeConversationId ? s.conversations[s.activeConversationId] : undefined;
@@ -832,8 +856,9 @@ export function InfiniteCanvas({
       work: (id: string) => work.get(id),
       decide: (p: Pencil, action: "accept" | "reject") => decideProposal(p.proposalId, p.runId, action),
       deciding,
+      syncing,
     }),
-    [board, jobsByRef, actions, flash, work, decideProposal, deciding],
+    [board, jobsByRef, actions, flash, work, decideProposal, deciding, syncing],
   );
 
   // ── Input ─────────────────────────────────────────────────────────────────
