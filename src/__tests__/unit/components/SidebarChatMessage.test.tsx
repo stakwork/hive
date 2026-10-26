@@ -10,8 +10,8 @@
  */
 
 import React from "react";
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 // ── Next.js navigation mocks ──────────────────────────────────────────────────
 vi.mock("next/navigation", () => ({
@@ -311,5 +311,67 @@ describe("SidebarChatMessage — link renderer", () => {
     const qs = new URLSearchParams(href.slice(1));
     expect(qs.has("canvas") && qs.has("node")).toBe(true);
     expect(qs.get("canvas")).toBe("");
+  });
+});
+
+describe("SidebarChatMessage — text attachments open in place", () => {
+  const transcript = {
+    path: "uploads/ws-1/canvas/1793047587113_bpdfbe47e1w_transcript-1.txt",
+    filename: "transcript-1.txt",
+    mimeType: "text/plain",
+    size: 120,
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a text attachment as a button, not a download link", () => {
+    render(<SidebarChatMessage message={{ ...baseMessage, attachments: [transcript] }} />);
+
+    const chip = screen.getByTestId("attachment-text-transcript-1.txt");
+    expect(chip.tagName).toBe("BUTTON");
+    expect(chip.closest("a")).toBeNull();
+    expect(screen.queryByTestId("text-attachment-dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens the text from Hive's own origin, shown as plain text", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ text: "Call transcript\n[14:03] Alice: <b>blue</b>", truncated: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SidebarChatMessage message={{ ...baseMessage, attachments: [transcript] }} />);
+    fireEvent.click(screen.getByTestId("attachment-text-transcript-1.txt"));
+
+    const dialog = await screen.findByTestId("text-attachment-dialog");
+    expect(fetchMock).toHaveBeenCalledWith(`/api/upload/text?s3Key=${encodeURIComponent(transcript.path)}`);
+    const pre = await waitFor(() => {
+      const el = dialog.querySelector("pre");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    // Text, never markup.
+    expect(pre.textContent).toBe("Call transcript\n[14:03] Alice: <b>blue</b>");
+    expect(pre.querySelector("b")).toBeNull();
+    // Download stays available, through the existing link.
+    const download = screen.getByText("Download").closest("a") as HTMLAnchorElement;
+    expect(download.download).toBe("transcript-1.txt");
+    expect(download.href).toContain(encodeURIComponent(transcript.path));
+  });
+
+  it("says when the file cannot be opened", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: "Workspace not found or access denied" }), { status: 404 })),
+    );
+
+    render(<SidebarChatMessage message={{ ...baseMessage, attachments: [transcript] }} />);
+    fireEvent.click(screen.getByTestId("attachment-text-transcript-1.txt"));
+
+    expect(await screen.findByText("Workspace not found or access denied")).toBeInTheDocument();
   });
 });
