@@ -69,7 +69,7 @@ function Body({
       {truncated && (
         <p className="flex items-center gap-1.5 border-b px-4 py-1.5 text-xs text-muted-foreground">
           <AlertCircle className="h-3.5 w-3.5" />
-          This graph is bigger than one read returns, so some {lens.type} nodes or links may be missing.
+          This graph is too big to read in full, so some {lens.type} nodes or links may be missing.
         </p>
       )}
       {status ?? (
