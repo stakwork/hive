@@ -3,7 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { config, optionalEnvVars } from "@/config/env";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
-import { dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
+import { callRoomName, dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
 import jwt from "jsonwebtoken";
 
 export async function POST(
@@ -171,12 +171,13 @@ export async function POST(
     }
 
     const timestamp = Math.floor(Date.now() / 1000);
-    const roomName = `${workspace.swarm.name}.sphinx.chat-.${timestamp}`;
+    const callUrl = `${liveKitBaseUrl}${workspace.swarm.name}.sphinx.chat-.${timestamp}`;
 
     // The token never goes in the URL: the link is pasted to whoever is
     // invited. It is stored behind an opaque callKey, and Jamie is
-    // dispatched into the room with that key in its dispatch metadata
-    // (`lib/calls/callAgent.ts`). Mock mode has no LiveKit to dispatch to.
+    // dispatched into the link's room with that key in its dispatch
+    // metadata (`lib/calls/callAgent.ts`). Mock mode has no LiveKit to
+    // dispatch to.
     if (!config.USE_MOCKS) {
       let callKey: string;
       try {
@@ -186,7 +187,7 @@ export async function POST(
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
       }
       try {
-        await dispatchCallAgent(roomName, callKey);
+        await dispatchCallAgent(callRoomName(callUrl), callKey);
       } catch (err) {
         console.error("[generate-link] Jamie dispatch failed:", err);
         await dropCallToken(callKey).catch(() => undefined);
@@ -194,7 +195,7 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ url: `${liveKitBaseUrl}${roomName}` });
+    return NextResponse.json({ url: callUrl });
   } catch (error) {
     console.error("Error generating call link:", error);
     return NextResponse.json(
