@@ -52,11 +52,28 @@ async function createOrgWorkspaceScenario(
   return { ...scenario, org };
 }
 
-/** Extract the callKey from a call URL and return it as a string. */
-function extractCallKey(url: string): string {
-  const match = url.match(/\?callKey=([0-9a-f]{24})$/);
-  if (!match) throw new Error(`No valid callKey in URL: ${url}`);
-  return match[1];
+// Jamie is dispatched into the room through LiveKit's agent dispatch API;
+// record the dispatches instead of calling LiveKit.
+const { mockCreateDispatch } = vi.hoisted(() => ({
+  mockCreateDispatch: vi.fn().mockResolvedValue({}),
+}));
+vi.mock("livekit-server-sdk", () => ({
+  AgentDispatchClient: vi.fn().mockImplementation(() => ({ createDispatch: mockCreateDispatch })),
+}));
+
+/**
+ * The callKey Jamie was dispatched with — the only place it may appear —
+ * after checking that the URL carries no credential.
+ */
+function dispatchedCallKey(url: string): string {
+  expect(url).not.toContain("?");
+  expect(mockCreateDispatch).toHaveBeenCalledTimes(1);
+  const [roomName, agentName, options] = mockCreateDispatch.mock.calls[0];
+  expect(url.endsWith(roomName)).toBe(true);
+  expect(agentName).toBe("jamie");
+  const { callKey } = JSON.parse(options.metadata);
+  expect(callKey).toMatch(/^[0-9a-f]{24}$/);
+  return callKey;
 }
 
 describe("Generate Call Link API - Integration Tests", () => {
@@ -68,9 +85,14 @@ describe("Generate Call Link API - Integration Tests", () => {
     // Reset redis.set to default OK behaviour before each test
     const { redis } = await import("@/lib/redis");
     vi.mocked(redis.set).mockResolvedValue("OK");
+    mockCreateDispatch.mockResolvedValue({});
 
     // Set default LiveKit URL for tests
     process.env.LIVEKIT_CALL_BASE_URL = "https://call.livekit.io/";
+    // The LiveKit project Jamie is dispatched on
+    process.env.LIVEKIT_URL = "wss://test.livekit.cloud";
+    process.env.LIVEKIT_API_KEY = "test-livekit-key";
+    process.env.LIVEKIT_API_SECRET = "test-livekit-secret";
     // JWT_SECRET is required by generate-link to mint a short-lived token
     process.env.JWT_SECRET = process.env.JWT_SECRET || "test-jwt-secret";
   });
@@ -151,9 +173,8 @@ describe("Generate Call Link API - Integration Tests", () => {
         expect(data.url).toBeDefined();
         expect(typeof data.url).toBe("string");
 
-        // URL should carry callKey, not hiveToken
-        const callKey = extractCallKey(data.url);
-        expect(callKey).toMatch(/^[0-9a-f]{24}$/);
+        // The URL carries no credential; Jamie's dispatch carries the callKey
+        const callKey = dispatchedCallKey(data.url);
 
         // Verify redis.set was called with the correct args
         const { redis } = await import("@/lib/redis");
@@ -193,7 +214,7 @@ describe("Generate Call Link API - Integration Tests", () => {
         expect(response.status).toBe(200);
         const data = await response.json();
         expect(data.url).toBeDefined();
-        extractCallKey(data.url); // validates format
+        dispatchedCallKey(data.url); // validates format
       });
 
       test("allows workspace PM to generate call link", async () => {
@@ -267,9 +288,8 @@ describe("Generate Call Link API - Integration Tests", () => {
         const data = await response.json();
         expect(data.url).toBeDefined();
 
-        // URL should carry callKey (not hiveToken)
-        const callKey = extractCallKey(data.url);
-        expect(callKey).toMatch(/^[0-9a-f]{24}$/);
+        // The URL carries no credential; Jamie's dispatch carries the callKey
+        dispatchedCallKey(data.url);
 
         // A viewer is a member, so they get a read-only org token (no write).
         const { redis } = await import("@/lib/redis");
@@ -413,9 +433,13 @@ describe("Generate Call Link API - Integration Tests", () => {
 
         const data = await expectSuccess(response, 200);
 
-        // Verify URL format: ${baseUrl}${swarmName}.sphinx.chat-.${timestamp}?callKey=<24hexchars>
-        expect(data.url).toContain("swarm42.sphinx.chat-.");
-        expect(data.url).toMatch(/\.\d+\?callKey=[0-9a-f]{24}$/);
+        // Verify URL format: ${baseUrl}${swarmName}.sphinx.chat-.${timestamp}, nothing after it
+        expect(data.url).toMatch(/swarm42\.sphinx\.chat-\.\d+$/);
+        expect(data.url).not.toContain("?");
+        // Jamie is dispatched into that same room
+        const roomName = mockCreateDispatch.mock.calls[0][0];
+        expect(roomName).toMatch(/^swarm42\.sphinx\.chat-\.\d+$/);
+        expect(data.url.endsWith(roomName)).toBe(true);
       });
 
       test("timestamp in URL is recent", async () => {
@@ -440,8 +464,8 @@ describe("Generate Call Link API - Integration Tests", () => {
 
         const data = await expectSuccess(response, 200);
 
-        // Extract timestamp from URL (now followed by ?callKey=)
-        const match = data.url.match(/\.(\d+)\?callKey=/);
+        // Extract timestamp from the end of the URL
+        const match = data.url.match(/\.(\d+)$/);
         expect(match).not.toBeNull();
 
         const urlTimestamp = parseInt(match![1], 10);
@@ -489,7 +513,7 @@ describe("Generate Call Link API - Integration Tests", () => {
         });
 
         const data = await expectSuccess(response, 200);
-        const callKey = extractCallKey(data.url);
+        const callKey = dispatchedCallKey(data.url);
 
         const { redis } = await import("@/lib/redis");
         expect(vi.mocked(redis.set)).toHaveBeenCalledWith(
@@ -498,6 +522,55 @@ describe("Generate Call Link API - Integration Tests", () => {
           "EX",
           7200,
         );
+      });
+    });
+
+    describe("Jamie dispatch failure", () => {
+      test("returns 502 and drops the callKey when LiveKit refuses the dispatch", async () => {
+        mockCreateDispatch.mockRejectedValueOnce(new Error("twirp error: unauthenticated"));
+
+        const { owner, workspace } = await createOrgWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm42" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectError(response, "Could not start Jamie for the call", 502);
+        const { redis } = await import("@/lib/redis");
+        const storedKey = vi.mocked(redis.set).mock.calls[0][0];
+        expect(vi.mocked(redis.del)).toHaveBeenCalledWith(storedKey);
+      });
+
+      test("returns 502 when LiveKit is not configured", async () => {
+        delete process.env.LIVEKIT_URL;
+        delete process.env.NEXT_PUBLIC_LIVEKIT_URL;
+
+        const { owner, workspace } = await createOrgWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm42" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectError(response, "Could not start Jamie for the call", 502);
+        expect(mockCreateDispatch).not.toHaveBeenCalled();
       });
     });
 
