@@ -260,6 +260,21 @@ describe("launchOrchestratorTurn", () => {
     expect(mockStrutRun.create.mock.calls[0][0].data.input).toEqual({ ...body.input, focus });
   });
 
+  it("a turn asked on a voice call ends the context line with the call line; the input is otherwise the same", async () => {
+    await launchOrchestratorTurn({ ...args, message: "Alice: what are we working on?", call: true });
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.input).toEqual({
+      prompt: "@acme-default\nAlice: what are we working on?",
+      session: "conv-1",
+      context: {
+        line:
+          "Mon 19 Oct, 14:02, Europe/London. On a voice call. Your reply goes to the call's chat and may be read aloud: " +
+          "say it the way you would out loud, short, with what matters first; links and detail belong in artifacts. " +
+          "Names before a message are what the call shows, not verified. ",
+      },
+    });
+  });
+
   it("a turn of the conversation still PENDING is busy — nothing is launched", async () => {
     mockStrutRun.findFirst.mockResolvedValue({ id: "row-0" });
     const out = await launchOrchestratorTurn(args);
