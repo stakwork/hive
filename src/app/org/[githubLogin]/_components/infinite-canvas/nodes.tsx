@@ -13,6 +13,7 @@ import {
   followUpTo,
   isPendingId,
   kids,
+  milestoneNumber,
   plural,
 } from "./board";
 import type { Work } from "./build";
@@ -67,6 +68,8 @@ export interface NodeActions {
   expand: (questionId: string, optionId: string) => void;
   /** Jamie suggests more answers to a question. */
   moreOptions: (questionId: string) => void;
+  /** Sync an initiative with the graph (Jamie runs `canvas-sync` on it). Resolves true once Jamie took it; false when it couldn't start. */
+  sync: (initiativeId: string) => Promise<boolean>;
   /** Start a feature's build: a job on it, whose pull requests come back to the card. */
   implement: (featureId: string) => void;
 }
@@ -84,6 +87,8 @@ export interface CardContext {
   decide: (p: Pencil, action: "accept" | "reject") => Promise<boolean>;
   /** Decisions still on their way, by proposal. */
   deciding: Readonly<Record<string, "accept" | "reject">>;
+  /** Initiatives whose Sync is starting (`busy`) or failed to start (`error`). */
+  syncing: Readonly<Record<string, "busy" | "error">>;
 }
 
 export const pill = (size: number, extra?: CSSProperties): CSSProperties => ({
@@ -113,6 +118,33 @@ function AskChip({ id, actions, size = 12 }: { id: string; actions: NodeActions;
       style={pill(size, { background: v("chrome") })}
     >
       ✦ Ask Jamie
+    </button>
+  );
+}
+
+function SyncChip({ id, c, size = 12 }: { id: string; c: CardContext; size?: number }) {
+  const state = c.syncing[id];
+  const busy = state === "busy";
+  return (
+    <button
+      type="button"
+      data-sync={id}
+      data-sync-state={state}
+      disabled={busy}
+      title={state === "error" ? "Couldn't start the sync. Try again." : "Sync this initiative with the graph"}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!busy) void c.actions.sync(id);
+      }}
+      style={pill(size, {
+        background: v("chrome"),
+        opacity: busy ? 0.6 : 1,
+        cursor: busy ? "default" : "pointer",
+        ...(state === "error" ? { borderColor: v("blocked"), color: v("blockedInk") } : {}),
+      })}
+    >
+      {busy ? "Syncing…" : state === "error" ? "Sync failed · Retry" : "⟳ Sync"}
     </button>
   );
 }
@@ -226,10 +258,10 @@ function ChildList({ c, node, size, max }: { c: CardContext; node: PlanNode; siz
   );
 }
 
-const kicker = (n: PlanNode) =>
+const kicker = (n: PlanNode, b: Board) =>
   (n.pencil ? "Proposed · " : "") +
   (n.type === "milestone"
-    ? `Milestone ${n.sequence ?? ""}`
+    ? `Milestone ${milestoneNumber(b, n)}`
     : ({ initiative: "Initiative", feature: "Feature", brief: "Brief" }[n.type as string] ?? n.type));
 
 /** A closed container or a brief, as it looks from one level up: its name, its status, and one level down. */
@@ -317,7 +349,7 @@ export const Face = memo(function Face({ c, node, w, h }: { c: CardContext; node
         cursor: node.type === "brief" || node.pencil ? "default" : "pointer",
       }}
     >
-      <div style={label}>{kicker(node)}</div>
+      <div style={label}>{kicker(node, c.board)}</div>
       {node.type === "brief" ? (
         <div data-wheel-scroll style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           {node.pencilEdit ? (
@@ -422,7 +454,7 @@ export const FrameHeader = memo(function FrameHeader({
       }}
     >
       <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={label}>{kicker(node)}</div>
+        <div style={label}>{kicker(node, c.board)}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
           {node.pencilEdit ? (
             <span style={{ fontFamily: TYPE, fontSize: 26, fontWeight: 600, whiteSpace: "nowrap" }}>
@@ -445,7 +477,10 @@ export const FrameHeader = memo(function FrameHeader({
           <PencilBar c={c} pencil={(node.pencil ?? node.pencilEdit)!} size={13} />
         </div>
       ) : (
-        <AskChip id={node.id} actions={c.actions} size={13} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {node.type === "initiative" ? <SyncChip id={node.id} c={c} size={13} /> : null}
+          <AskChip id={node.id} actions={c.actions} size={13} />
+        </div>
       )}
     </div>
   );
