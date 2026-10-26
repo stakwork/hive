@@ -50,6 +50,9 @@ const nodeLive = (v: string) => `${v}.deleted_at IS NULL AND coalesce(${v}.is_de
 /** Upstream returns at most this many rows whatever limit is asked for. */
 export const GRAPH_ROW_CAP = 1000;
 
+/** Pages of `GRAPH_ROW_CAP` one hierarchy read takes before it calls itself truncated. */
+export const HIERARCHY_MAX_PAGES = 10;
+
 /** Neighbours returned per edge group when a node is expanded. */
 const CONNECTION_SAMPLE = 8;
 
@@ -82,6 +85,27 @@ async function rows(caller: Caller, query: string, limit: number): Promise<Workb
       Object.fromEntries(columns.map((c, i) => [String(c), Array.isArray(row) ? row[i] : undefined])),
     ),
   };
+}
+
+/**
+ * Every row of a read, one upstream page at a time, until a page comes back short.
+ * `query` must end in an `ORDER BY` that orders its rows totally: SKIP over a
+ * loose order repeats some rows and drops others. `truncated` when the last of
+ * `maxPages` pages was still full.
+ */
+async function pagedRows(
+  caller: Caller,
+  query: string,
+  maxPages: number,
+): Promise<WorkbenchResult<{ rows: Record<string, unknown>[]; truncated: boolean }>> {
+  const all: Record<string, unknown>[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    const result = await rows(caller, `${query} SKIP ${page * GRAPH_ROW_CAP}`, GRAPH_ROW_CAP);
+    if (!result.ok) return result;
+    all.push(...result.data);
+    if (result.data.length < GRAPH_ROW_CAP) return { ok: true, data: { rows: all, truncated: false } };
+  }
+  return { ok: true, data: { rows: all, truncated: true } };
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
@@ -119,28 +143,34 @@ export interface Hierarchy {
   nodes: HierarchyNode[];
   /** Every edge between two nodes of the label — the client picks which type is structure. */
   edges: HierarchyEdge[];
-  /** True when upstream's row cap may have cut the node or edge list short. */
+  /** True when the node or edge list ran past `HIERARCHY_MAX_PAGES` pages and may be cut short. */
   truncated: boolean;
 }
 
-/** Every node of one label with the edges among them: enough to draw its trees. */
+/**
+ * Every node of one label with the edges among them: enough to draw its trees.
+ * Both lists are read a page at a time (`pagedRows`), so a tree whose links land
+ * past upstream's row cap is still drawn whole.
+ */
 export async function getHierarchy(caller: Caller, label: string): Promise<WorkbenchResult<Hierarchy>> {
   if (!IDENT.test(label)) return invalid("Invalid label");
   if (useMocks()) return { ok: true, data: mockHierarchy(label) };
   const L = `\`${label}\``;
   const [nodes, edges] = await Promise.all([
-    rows(
+    pagedRows(
       caller,
-      `MATCH (n:${L}) WHERE ${nodeLive("n")} RETURN n.ref_id AS id, n.id AS key, n.name AS name, ` +
-        `n.description AS description, n.docs AS docs, n.repo AS repo, ` +
-        `size([(n)<-[:ACCESSED|READ_CONCEPT]-() | 1]) AS reads, [(n)<-[:APPROVED]-(m) | m.name] AS approvers`,
-      GRAPH_ROW_CAP,
+      `MATCH (n:${L}) WHERE ${nodeLive("n")} AND n.ref_id IS NOT NULL RETURN n.ref_id AS id, n.id AS key, ` +
+        `n.name AS name, n.description AS description, n.docs AS docs, n.repo AS repo, ` +
+        `size([(n)<-[:ACCESSED|READ_CONCEPT]-() | 1]) AS reads, [(n)<-[:APPROVED]-(m) | m.name] AS approvers ` +
+        `ORDER BY id`,
+      HIERARCHY_MAX_PAGES,
     ),
-    rows(
+    // DISTINCT makes the order total: two edges of one type between the same pair are one row to the client anyway.
+    pagedRows(
       caller,
       `MATCH (a:${L})-[r]->(b:${L}) WHERE ${edgeLive("r")} AND ${nodeLive("a")} AND ${nodeLive("b")} ` +
-        `RETURN type(r) AS type, a.ref_id AS source, b.ref_id AS target`,
-      GRAPH_ROW_CAP,
+        `RETURN DISTINCT type(r) AS type, a.ref_id AS source, b.ref_id AS target ORDER BY source, target, type`,
+      HIERARCHY_MAX_PAGES,
     ),
   ]);
   if (!nodes.ok) return nodes;
@@ -148,7 +178,7 @@ export async function getHierarchy(caller: Caller, label: string): Promise<Workb
   return {
     ok: true,
     data: {
-      nodes: nodes.data.flatMap((r) => {
+      nodes: nodes.data.rows.flatMap((r) => {
         const id = str(r.id);
         if (!id) return [];
         return [
@@ -164,13 +194,13 @@ export async function getHierarchy(caller: Caller, label: string): Promise<Workb
           },
         ];
       }),
-      edges: edges.data.flatMap((r) => {
+      edges: edges.data.rows.flatMap((r) => {
         const type = str(r.type);
         const source = str(r.source);
         const target = str(r.target);
         return type && source && target ? [{ type, source, target }] : [];
       }),
-      truncated: nodes.data.length >= GRAPH_ROW_CAP || edges.data.length >= GRAPH_ROW_CAP,
+      truncated: nodes.data.truncated || edges.data.truncated,
     },
   };
 }
