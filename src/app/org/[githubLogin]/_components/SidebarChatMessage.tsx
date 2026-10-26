@@ -7,8 +7,10 @@ import { type Components } from "react-markdown";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { FileIcon } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
+import { isTextAttachment } from "@/lib/ai/attachmentParts";
 import type { CanvasAttachment } from "../_state/canvasChatStore";
 import { CanvasDeeplinkChip } from "./CanvasDeeplinkChip";
+import { TextAttachmentDialog } from "./TextAttachmentDialog";
 
 /**
  * Sidebar-flavored chat bubble. Forked from
@@ -66,6 +68,8 @@ export function SidebarChatMessage({
     url: string;
     alt: string;
   } | null>(null);
+  // The text attachment open in the viewer (`TextAttachmentDialog`)
+  const [openText, setOpenText] = useState<CanvasAttachment | null>(null);
 
   /**
    * Markdown link interceptor. Recognizes hrefs that are pure
@@ -250,6 +254,22 @@ export function SidebarChatMessage({
                   </div>
                 );
               }
+              if (isTextAttachment(att)) {
+                // Read in place: the S3 link, opened as a page, trips
+                // Chrome's lookalike-domain warning.
+                return (
+                  <button
+                    key={att.path}
+                    type="button"
+                    onClick={() => setOpenText(att)}
+                    className="flex items-center gap-2 rounded-lg border p-2.5 text-left text-xs text-muted-foreground hover:bg-muted"
+                    data-testid={`attachment-text-${att.filename}`}
+                  >
+                    <FileIcon className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{att.filename}</span>
+                  </button>
+                );
+              }
               return (
                 <div
                   key={att.path}
@@ -270,6 +290,8 @@ export function SidebarChatMessage({
           </div>
         )}
       </motion.div>
+
+      <TextAttachmentDialog attachment={openText} onClose={() => setOpenText(null)} />
 
       {/* Click-to-enlarge dialog */}
       {enlargedImage && (
