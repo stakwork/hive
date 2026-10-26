@@ -56,6 +56,7 @@ import {
   ORCHESTRATOR_TURN_KIND,
   ORCHESTRATOR_WORKFLOW,
   isOrchestratorSilentReply,
+  orchestratorAskLine,
   orchestratorRowId,
   parseOrchestratorJobCalls,
   parseStrutProposalBriefs,
@@ -135,7 +136,7 @@ export function renderOrchestratorContent(
   dropped: Array<{ title: string; reason: string }>,
 ): string {
   const parts = reply.text ? [reply.text] : [];
-  if (reply.ask) parts.push(`**Question for you:** ${reply.ask}`);
+  if (reply.ask) parts.push(orchestratorAskLine(reply.ask));
   if (dropped.length > 0) parts.push(dropped.map((d) => `_Unavailable: ${d.title} (${d.reason})_`).join("\n"));
   return parts.join("\n\n");
 }

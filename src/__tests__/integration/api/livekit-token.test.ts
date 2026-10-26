@@ -152,6 +152,49 @@ describe("POST /api/livekit-token", () => {
     expect(payload).toMatchObject({ slug: workspace.slug, userId: owner.id });
   });
 
+  it("writes the call record under the same callKey: the voice user, the room, no org for a workspace without one", async () => {
+    const { owner, workspace } = await createOwnerAndWorkspace();
+
+    const res = await POST(
+      createAuthenticatedPostRequest("http://localhost:3000/api/livekit-token", owner, { slug: workspace.slug }),
+    );
+    expect(res.status).toBe(200);
+    const { roomName } = await res.json();
+    const { callKey } = JSON.parse(mockCreateDispatch.mock.calls[0][2].metadata);
+
+    const { redis } = await import("@/lib/redis");
+    const write = vi.mocked(redis.set).mock.calls.find(([key]) => key === `call:${callKey}`);
+    expect(write).toBeDefined();
+    expect([write![2], write![3]]).toEqual(["EX", 4 * 3600]);
+    expect(JSON.parse(write![1] as string)).toMatchObject({
+      userId: owner.id,
+      orgId: null,
+      workspaceSlug: workspace.slug,
+      roomName,
+      conversationId: null,
+    });
+  });
+
+  it("the call record names the workspace's org when it has one", async () => {
+    const { owner, workspace } = await createOwnerAndWorkspace();
+    const org = await db.sourceControlOrg.create({
+      data: {
+        id: generateUniqueId("lk-org"),
+        githubLogin: `lk-org-${generateUniqueId()}`,
+        githubInstallationId: Math.floor(Math.random() * 1_000_000_000),
+        type: "ORG",
+      },
+    });
+    await db.workspace.update({ where: { id: workspace.id }, data: { sourceControlOrgId: org.id } });
+
+    await POST(createAuthenticatedPostRequest("http://localhost:3000/api/livekit-token", owner, { slug: workspace.slug }));
+    const { callKey } = JSON.parse(mockCreateDispatch.mock.calls[0][2].metadata);
+
+    const { redis } = await import("@/lib/redis");
+    const write = vi.mocked(redis.set).mock.calls.find(([key]) => key === `call:${callKey}`);
+    expect(JSON.parse(write![1] as string)).toMatchObject({ userId: owner.id, orgId: org.id });
+  });
+
   it("returns 502 and drops the callKey when the dispatch fails", async () => {
     mockCreateDispatch.mockRejectedValueOnce(new Error("twirp error: unavailable"));
     const { owner, workspace } = await createOwnerAndWorkspace();
@@ -167,7 +210,9 @@ describe("POST /api/livekit-token", () => {
     expect(res.status).toBe(502);
     expect(mockToJwt).not.toHaveBeenCalled();
     const { redis } = await import("@/lib/redis");
-    expect(vi.mocked(redis.del)).toHaveBeenCalledWith(vi.mocked(redis.set).mock.calls[0][0]);
+    const tokenKey = vi.mocked(redis.set).mock.calls[0][0] as string;
+    expect(vi.mocked(redis.del)).toHaveBeenCalledWith(tokenKey);
+    expect(vi.mocked(redis.del)).toHaveBeenCalledWith(tokenKey.replace(/^call-token:/, "call:"));
   });
 
   describe("IDOR hardening", () => {
