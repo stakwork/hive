@@ -52,6 +52,20 @@ async function createOrgWorkspaceScenario(
   return { ...scenario, org };
 }
 
+// The call base as production sets it: meet's `/rooms/` path plus the room
+// prefix, so the LiveKit room is `sphinx.call.-<swarm>.sphinx.chat-.<ts>`.
+// Pinned here because `optionalEnvVars` is read once at import.
+const { CALL_BASE } = vi.hoisted(() => ({
+  CALL_BASE: "https://call.example.com/rooms/sphinx.call.-",
+}));
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return {
+    ...actual,
+    optionalEnvVars: { ...actual.optionalEnvVars, LIVEKIT_CALL_BASE_URL: CALL_BASE },
+  };
+});
+
 // Jamie is dispatched into the room through LiveKit's agent dispatch API;
 // record the dispatches instead of calling LiveKit.
 const { mockCreateDispatch } = vi.hoisted(() => ({
@@ -69,7 +83,8 @@ function dispatchedCallKey(url: string): string {
   expect(url).not.toContain("?");
   expect(mockCreateDispatch).toHaveBeenCalledTimes(1);
   const [roomName, agentName, options] = mockCreateDispatch.mock.calls[0];
-  expect(url.endsWith(roomName)).toBe(true);
+  // The room meet opens for the link: its whole last path segment
+  expect(url).toBe(`https://call.example.com/rooms/${roomName}`);
   expect(agentName).toBe("jamie");
   const { callKey } = JSON.parse(options.metadata);
   expect(callKey).toMatch(/^[0-9a-f]{24}$/);
@@ -434,12 +449,14 @@ describe("Generate Call Link API - Integration Tests", () => {
         const data = await expectSuccess(response, 200);
 
         // Verify URL format: ${baseUrl}${swarmName}.sphinx.chat-.${timestamp}, nothing after it
-        expect(data.url).toMatch(/swarm42\.sphinx\.chat-\.\d+$/);
-        expect(data.url).not.toContain("?");
-        // Jamie is dispatched into that same room
+        expect(data.url).toMatch(
+          /^https:\/\/call\.example\.com\/rooms\/sphinx\.call\.-swarm42\.sphinx\.chat-\.\d+$/,
+        );
+        // Jamie is dispatched into the room meet opens for that link — the
+        // whole last path segment, the base's prefix included
         const roomName = mockCreateDispatch.mock.calls[0][0];
-        expect(roomName).toMatch(/^swarm42\.sphinx\.chat-\.\d+$/);
-        expect(data.url.endsWith(roomName)).toBe(true);
+        expect(roomName).toMatch(/^sphinx\.call\.-swarm42\.sphinx\.chat-\.\d+$/);
+        expect(data.url).toBe(`https://call.example.com/rooms/${roomName}`);
       });
 
       test("timestamp in URL is recent", async () => {

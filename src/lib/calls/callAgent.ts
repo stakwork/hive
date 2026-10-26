@@ -54,11 +54,22 @@ export async function dropCallToken(callKey: string): Promise<void> {
 }
 
 /**
+ * The LiveKit room a call link opens: meet serves `/rooms/<room>` and joins
+ * the room its last path segment names. `LIVEKIT_CALL_BASE_URL` ends with a
+ * room prefix (`…/rooms/sphinx.call.-`), so the room is read off the
+ * finished link, never the part a route appends to the base.
+ */
+export function callRoomName(callUrl: string): string {
+  return decodeURIComponent(new URL(callUrl).pathname.split("/").pop() ?? "");
+}
+
+/**
  * Dispatch Jamie into `roomName` with the callKey in the dispatch
  * metadata. LiveKit creates the room if it does not exist yet. Throws when
  * LiveKit is not configured or refuses the dispatch.
  */
 export async function dispatchCallAgent(roomName: string, callKey: string): Promise<void> {
+  if (!roomName) throw new Error("No room to dispatch Jamie into");
   // The server-side URL of the LiveKit project the calls run on — the one
   // sphinx-voice registers with. The SDK turns a ws(s) URL into http(s).
   const host = process.env.LIVEKIT_URL || process.env.NEXT_PUBLIC_LIVEKIT_URL;
