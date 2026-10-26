@@ -29,6 +29,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
   ORCHESTRATOR_BUSY_NOTE,
+  ORCHESTRATOR_CALL_LINE,
   ORCHESTRATOR_TURN_KIND,
   ORCHESTRATOR_WORKFLOW,
   orchestratorContextLine,
@@ -84,6 +85,11 @@ export interface OrchestratorTurnArgs {
    * mark. The input strut receives is the same either way.
    */
   wakeId?: string;
+  /**
+   * Asked on a voice call (`/api/calls/turn`): the call line
+   * (`ORCHESTRATOR_CALL_LINE`) ends `context.line`.
+   */
+  call?: boolean;
 }
 
 export type OrchestratorLaunchResult =
@@ -142,7 +148,8 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
           line:
             orchestratorContextLine(args.now ?? new Date(), args.timeZone) +
             (args.focus ? canvasFocusContextLine(args.focus) : "") +
-            pageContextLine(args.pageContext),
+            pageContextLine(args.pageContext) +
+            (args.call ? ORCHESTRATOR_CALL_LINE : ""),
         },
       },
       ...(args.focus ? { rowInput: { focus: args.focus } } : {}),
