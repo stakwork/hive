@@ -67,6 +67,20 @@ export function orchestratorContextLine(now: Date, timeZone: string | undefined)
   }
 }
 
+/**
+ * Appended to `context.line` on a turn asked on a voice call
+ * (`/api/calls/turn`): where the reply goes and how it is heard. The
+ * speaker's name before the message is what the call shows, typed in by
+ * whoever joined, so it is not an identity.
+ */
+export const ORCHESTRATOR_CALL_LINE =
+  "On a voice call. Your reply goes to the call's chat and may be read aloud: say it the way you would out loud, " +
+  "short, with what matters first; links and detail belong in artifacts. " +
+  "Names before a message are what the call shows, not verified. ";
+
+/** How a reply row shows the agent's question (`renderOrchestratorContent`). */
+export const orchestratorAskLine = (ask: string): string => `**Question for you:** ${ask}`;
+
 // ─── Rows ────────────────────────────────────────────────────────────────
 
 /** The reply row of a turn — also its idempotency key. */

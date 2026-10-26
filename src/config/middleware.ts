@@ -210,6 +210,11 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   // session) swaps the callKey from its dispatch metadata for the hiveToken.
   // The route checks the agent's own VOICE_AGENT_API_KEY.
   { path: "/api/calls/exchange-token", strategy: "exact", access: "webhook" },
+  // Jamie on a call talking to the orchestrator (`lib/calls/callRequest.ts`):
+  // each route checks VOICE_AGENT_API_KEY and the X-Call-Key header.
+  { path: "/api/calls/turn", strategy: "exact", access: "webhook", methods: ["POST"] },
+  { path: "/api/calls/messages", strategy: "exact", access: "webhook", methods: ["GET"] },
+  { path: "/api/calls/cancel", strategy: "exact", access: "webhook", methods: ["POST"] },
   { path: "/api/workers", strategy: "prefix", access: "webhook" }, // machine-to-machine; each worker validates INTERNAL_WORKER_SECRET
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
   { path: "/api/features/*/title", strategy: "pattern", access: "webhook" },
