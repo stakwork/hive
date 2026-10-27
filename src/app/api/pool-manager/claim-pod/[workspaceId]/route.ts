@@ -6,6 +6,7 @@ import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/
 import { POD_BASE_DOMAIN, jobClaimant, releasePodById } from "@/lib/pods/queries";
 import { resolvePodCaller } from "@/lib/auth/pod-access";
 import { podGeneration } from "@/lib/pods/rollout";
+import { isPodMothershipBudgetEnabled } from "@/config/env";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -161,12 +162,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const userInfo = taskId || (job ? jobClaimant(job) : undefined);
 
+    // Pod budget (flag off: undefined, nothing extra runs). Charged to the
+    // person who triggered the claim; a system-token task claim falls back
+    // to the task's creator.
+    let budget: { workspaceId: string; workspaceSlug: string; userId?: string | null } | undefined;
+    if (isPodMothershipBudgetEnabled(workspace.slug)) {
+      const userId =
+        caller.kind === "user"
+          ? caller.userId
+          : caller.kind === "org"
+            ? caller.actingUserId
+            : taskId
+              ? (await db.task.findUnique({ where: { id: taskId }, select: { createdById: true } }))?.createdById
+              : undefined;
+      budget = { workspaceId, workspaceSlug: workspace.slug, userId };
+    }
+
     const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
       swarmId,
       userInfo,
       services || undefined,
       run || undefined,
       createdAfter,
+      budget,
     );
     claimedPodId = podWorkspace.id;
 
@@ -249,6 +267,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       } catch (releaseError) {
         console.error(`Failed to release pod ${claimedPodId}:`, releaseError);
       }
+    }
+
+    // Pod budget refused the claim (gateway not enforcing / no credential):
+    // say so; never a silent success without a budget.
+    if (error instanceof Error && error.name === "PodBudgetError") {
+      return NextResponse.json({ success: false, error: error.message }, { status: 503 });
     }
 
     // No pods available — capacity issue, not a server error. For a new

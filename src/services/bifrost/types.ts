@@ -241,6 +241,17 @@ export interface TrustStatusResponse {
 }
 
 /**
+ * GET /_plugin/enforcement/status response body. EXPECTED shape (not yet
+ * served by the gateway): all three must be `true` before hive hands a
+ * pod a gateway credential in place of a direct provider key.
+ */
+export interface EnforcementStatusResponse {
+  macaroon_enforcement: boolean;
+  budget_enforcement: boolean;
+  redis_healthy: boolean;
+}
+
+/**
  * PUT /_plugin/trust/realm_id request body. Sending an empty string
  * clears the swarm's self-identity (back to single-swarm mode).
  */
