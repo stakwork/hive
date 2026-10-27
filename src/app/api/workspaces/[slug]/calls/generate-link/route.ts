@@ -3,7 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { config, optionalEnvVars } from "@/config/env";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
-import { callRoomName, dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
+import { callRoomName, callTranscriptWanted, dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
 import { dropCallRecord, storeCallRecord } from "@/lib/calls/callRecord";
 import jwt from "jsonwebtoken";
 
@@ -196,7 +196,9 @@ export async function POST(
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
       }
       try {
-        await dispatchCallAgent(roomName, callKey);
+        await dispatchCallAgent(roomName, callKey, {
+          transcript: callTranscriptWanted(workspace.sourceControlOrgId),
+        });
       } catch (err) {
         console.error("[generate-link] Jamie dispatch failed:", err);
         await Promise.all([dropCallToken(callKey), dropCallRecord(callKey)]).catch(() => undefined);
