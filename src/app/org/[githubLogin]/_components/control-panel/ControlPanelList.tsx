@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  Pencil,
   MoreHorizontal,
   PanelLeftClose,
   Search,
@@ -66,9 +67,12 @@ export interface ControlPanelListProps {
   onToggleArchived: () => void;
   onArchive: (item: ControlPanelItem) => void;
   onRestore: (item: ControlPanelItem) => void;
+  onRename: (item: ControlPanelItem, title: string) => void;
   onNewChat: () => void;
   onHide: () => void;
 }
+
+const MAX_CHAT_TITLE_LENGTH = 200;
 
 const SUBTLE_ROW = "w-full rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:text-foreground";
 
@@ -100,6 +104,7 @@ export function ControlPanelList({
   onToggleArchived,
   onArchive,
   onRestore,
+  onRename,
   onNewChat,
   onHide,
 }: ControlPanelListProps) {
@@ -108,7 +113,7 @@ export function ControlPanelList({
     onQueryChange("");
     setSearching(false);
   };
-  const rowProps = { cursorId, activeId, onOpen, onOpenJob, onOpenPullRequest };
+  const rowProps = { cursorId, activeId, onOpen, onOpenJob, onOpenPullRequest, onRename };
   const empty = groups.length === 0;
 
   return (
@@ -169,7 +174,10 @@ export function ControlPanelList({
                 key={item.id}
                 item={item}
                 {...rowProps}
-                menu={{ label: "Archive", Icon: Archive, onSelect: onArchive }}
+                actions={[
+                  { label: "Rename", Icon: Pencil, onSelect: "rename" },
+                  { label: "Archive", Icon: Archive, onSelect: onArchive },
+                ]}
               />
             ))}
           </DayGroup>
@@ -188,7 +196,10 @@ export function ControlPanelList({
                 key={item.id}
                 item={item}
                 {...rowProps}
-                menu={{ label: "Restore", Icon: ArchiveRestore, onSelect: onRestore }}
+                actions={[
+                  { label: "Rename", Icon: Pencil, onSelect: "rename" },
+                  { label: "Restore", Icon: ArchiveRestore, onSelect: onRestore },
+                ]}
               />
             ))}
           </DayGroup>
@@ -238,6 +249,7 @@ interface RowProps {
   onOpen: (item: ControlPanelItem) => void;
   onOpenJob: (item: ControlPanelItem, job: ControlPanelJob) => void;
   onOpenPullRequest: (item: ControlPanelItem, pr: ControlPanelPullRequest) => void;
+  onRename: (item: ControlPanelItem, title: string) => void;
 }
 
 /** A chat, and the jobs it started under a guide line: the newest one, the rest behind "N more". */
@@ -248,11 +260,13 @@ function ChatRow({
   onOpen,
   onOpenJob,
   onOpenPullRequest,
-  menu,
+  onRename,
+  actions,
 }: RowProps & {
   item: ControlPanelItem;
-  menu: { label: string; Icon: typeof Archive; onSelect: (item: ControlPanelItem) => void };
+  actions: { label: string; Icon: typeof Archive; onSelect: "rename" | ((item: ControlPanelItem) => void) }[];
 }) {
+  const [editing, setEditing] = useState(false);
   const [jobsExpanded, setJobsExpanded] = useState(false);
   const jobs = jobsExpanded ? item.jobs : item.jobs.slice(0, 1);
   const hiddenJobs = item.jobs.length - jobs.length;
@@ -262,6 +276,11 @@ function ChatRow({
     <div data-testid="chat-list-item" data-chat-id={item.id}>
       <Row
         title={item.title}
+        editing={editing}
+        onRename={(next) => {
+          setEditing(false);
+          if (next !== null && next !== item.title) onRename(item, next);
+        }}
         active={item.id === activeId}
         cursor={item.id === cursorId}
         working={item.working}
@@ -280,10 +299,15 @@ function ChatRow({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => menu.onSelect(item)}>
-                <menu.Icon />
-                {menu.label}
-              </DropdownMenuItem>
+              {actions.map((action) => (
+                <DropdownMenuItem
+                  key={action.label}
+                  onSelect={() => (action.onSelect === "rename" ? setEditing(true) : action.onSelect(item))}
+                >
+                  <action.Icon />
+                  {action.label}
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
         }
@@ -320,8 +344,12 @@ function Row({
   onOpen,
   onOpenPullRequest,
   menu,
+  editing = false,
+  onRename,
 }: {
   title: string;
+  editing?: boolean;
+  onRename?: (title: string | null) => void;
   active?: boolean;
   cursor?: boolean;
   working: boolean;
@@ -347,14 +375,19 @@ function Row({
           : cn("text-foreground/80 hover:bg-muted/60 hover:text-foreground", cursor && "bg-muted/40"),
       )}
     >
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-current={active ? "page" : undefined}
-        className="min-w-0 flex-1 truncate text-left outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-1 focus-visible:after:ring-ring"
-      >
-        {title}
-      </button>
+      {editing && onRename ? (
+        <RenameInput initial={title} onDone={onRename} />
+      ) : (
+        <button
+          type="button"
+          title={title}
+          onClick={onOpen}
+          aria-current={active ? "page" : undefined}
+          className="min-w-0 flex-1 truncate text-left outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-1 focus-visible:after:ring-ring"
+        >
+          {title}
+        </button>
+      )}
       {/* Two fixed slots, so nothing on the right ever moves: the PRs, then
         the status — Jamie working, else empty — which turns into the menu
         on hover. */}
@@ -379,6 +412,40 @@ function Row({
         )}
       </span>
     </div>
+  );
+}
+
+/** Inline title editor: Enter / blur save, Escape cancels, a blank title cancels. */
+function RenameInput({ initial, onDone }: { initial: string; onDone: (title: string | null) => void }) {
+  const [value, setValue] = useState(initial);
+  const doneRef = useRef(false);
+  const finish = (save: boolean) => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    const trimmed = value.trim();
+    onDone(save && trimmed ? trimmed.slice(0, MAX_CHAT_TITLE_LENGTH) : null);
+  };
+  return (
+    <input
+      autoFocus
+      aria-label="Chat title"
+      value={value}
+      maxLength={MAX_CHAT_TITLE_LENGTH}
+      onChange={(e) => setValue(e.target.value)}
+      onFocus={(e) => e.currentTarget.select()}
+      onBlur={() => finish(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          finish(true);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          finish(false);
+        }
+        e.stopPropagation();
+      }}
+      className="relative z-10 min-w-0 flex-1 rounded border bg-background px-1 text-sm outline-none focus:ring-1 focus:ring-ring"
+    />
   );
 }
 

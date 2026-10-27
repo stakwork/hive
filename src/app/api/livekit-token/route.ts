@@ -1,7 +1,7 @@
 import { AccessToken } from "livekit-server-sdk";
 import jwt from "jsonwebtoken";
 import { NextRequest, NextResponse } from "next/server";
-import { dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
+import { callTranscriptWanted, dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
 import { dropCallRecord, storeCallRecord } from "@/lib/calls/callRecord";
 import { db } from "@/lib/db";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
@@ -88,7 +88,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
   try {
-    await dispatchCallAgent(roomName, callKey);
+    await dispatchCallAgent(roomName, callKey, {
+      transcript: callTranscriptWanted(workspace?.sourceControlOrgId),
+    });
   } catch (err) {
     console.error("[livekit-token] Jamie dispatch failed:", err);
     await Promise.all([dropCallToken(callKey), dropCallRecord(callKey)]).catch(() => undefined);
