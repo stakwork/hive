@@ -150,6 +150,7 @@ const HANDLERS: Record<string, () => Promise<StrutRunHandler>> = {
   // Benchmarks: `benchmark:<slug>` (see `lib/benchmarks/registry`).
   benchmark: async () => (await import("./strut-runs/benchmark")).handleBenchmarkRunSettled,
   job_turn: async () => (await import("./strut-runs/job-turn")).handleJobTurnSettled,
+  call_transcript: async () => (await import("./strut-runs/call-transcript")).handleCallTranscriptSettled,
   orchestrator_turn: async () => (await import("./strut-runs/orchestrator-turn")).handleOrchestratorTurnSettled,
 };
 
