@@ -79,6 +79,7 @@ function props(overrides: Partial<ControlPanelListProps> = {}): ControlPanelList
     onToggleArchived: vi.fn(),
     onArchive: vi.fn(),
     onRestore: vi.fn(),
+    onRename: vi.fn(),
     onNewChat: vi.fn(),
     onHide: vi.fn(),
     ...overrides,
@@ -168,6 +169,38 @@ describe("ControlPanelList", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Restore/ }));
     expect(onRestore).toHaveBeenCalledWith(archived);
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  test("rename: Enter saves the trimmed title, Escape and blank cancel", () => {
+    const onRename = vi.fn();
+    const chat = item("a", { title: "Old title" });
+    render(<ControlPanelList {...props({ groups: group(chat), totalCount: 1, onRename })} />);
+    const edit = () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: /Rename/ }));
+      return screen.getByLabelText("Chat title");
+    };
+
+    let input = edit();
+    fireEvent.change(input, { target: { value: "  New title  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onRename).toHaveBeenCalledWith(chat, "New title");
+    expect(screen.queryByLabelText("Chat title")).toBeNull();
+
+    onRename.mockClear();
+    input = edit();
+    fireEvent.change(input, { target: { value: "Nope" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onRename).not.toHaveBeenCalled();
+
+    input = edit();
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.blur(input);
+    expect(onRename).not.toHaveBeenCalled();
+
+    input = edit();
+    fireEvent.change(input, { target: { value: "Blur save" } });
+    fireEvent.blur(input);
+    expect(onRename).toHaveBeenCalledWith(chat, "Blur save");
   });
 
   test("empty states: loading, nothing yet, no match; Show more only when there are more", () => {
