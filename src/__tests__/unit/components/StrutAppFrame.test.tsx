@@ -18,7 +18,11 @@
  *   - `ui/message` goes to `onMessage`, and with none it is shown as
  *     unavailable and answered with an error — never dropped silently;
  *   - `ui/open-link` opens a strut deep link in Hive's own view;
- *   - tool input is handed over once the page is initialized.
+ *   - tool input is handed over once the page is initialized, and again in
+ *     place when it changes;
+ *   - an app deep link (strut plans/apps.md §7.1): to the page itself, its
+ *     input now (resent even when unchanged) with the address replaced; to
+ *     another app, that app's page, else the strut view.
  * The HTML artifact frame keeps its own suite (`HtmlArtifactFrame.test.tsx`),
  * unchanged; the panel registry test below shows a page still renders there.
  */
@@ -29,7 +33,8 @@ import { StrutAppFrame, STRUT_APP_FRAME_SANDBOX } from "@/components/strut-app-f
 import { hostStyleVariables } from "@/components/strut-app-frame/host-context";
 
 const mockPush = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
+const mockReplace = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush, replace: mockReplace }) }));
 vi.mock("@/hooks/use-theme", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
 
 globalThis.React = React;
@@ -208,6 +213,60 @@ describe("StrutAppFrame", () => {
     await waitFor(() =>
       expect(app.received.find((m) => m.method === "ui/notifications/tool-input")).toMatchObject({ params: { arguments: { runId: "r-9", workflow: "wfbench-run" } } }),
     );
+  });
+
+  test("a new tool input reaches the open page in place, with no reload", async () => {
+    const { rerender } = render(<StrutAppFrame source={SOURCE} title="Bench" toolInput={{ view: "/runs" }} />);
+    const app = playApp(await connected());
+    await initialize(app);
+    const inputs = () => app.received.filter((m) => m.method === "ui/notifications/tool-input").map((m) => (m.params as { arguments: unknown }).arguments);
+    await waitFor(() => expect(inputs()).toEqual([{ view: "/runs" }]));
+    rerender(<StrutAppFrame source={SOURCE} title="Bench" toolInput={{ view: "/settings" }} />);
+    await waitFor(() => expect(inputs()).toEqual([{ view: "/runs" }, { view: "/settings" }]));
+    // The same input again is not sent twice, and the document was fetched once.
+    rerender(<StrutAppFrame source={SOURCE} title="Bench" toolInput={{ view: "/settings" }} />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(inputs()).toHaveLength(2);
+    expect(mockFetch.mock.calls.filter(([u]) => String(u) === DOCUMENT_URL)).toHaveLength(1);
+  });
+
+  test("a deep link to the page itself is its input now, resent even when unchanged, with the address replaced", async () => {
+    const appLinkHref = vi.fn((app: string, input?: string) => `/w/acme/apps/${app}${input ? `?${new URLSearchParams({ input })}` : ""}`);
+    render(<StrutAppFrame source={SOURCE} title="Bench" appLinkHref={appLinkHref} />);
+    const app = playApp(await connected());
+    await initialize(app);
+    const link = `?${new URLSearchParams({ app: "bench", input: "view=%2Fruns&run=12" })}`;
+    const inputs = () => app.received.filter((m) => m.method === "ui/notifications/tool-input").map((m) => (m.params as { arguments: unknown }).arguments);
+
+    await app.post({ id: 8, method: "ui/open-link", params: { url: link } });
+    expect((await app.answer(8)).result).not.toHaveProperty("isError");
+    await waitFor(() => expect(inputs()).toEqual([{ view: "/runs", run: "12" }]));
+    expect(mockReplace).toHaveBeenCalledWith(`/w/acme/apps/bench?${new URLSearchParams({ input: "view=%2Fruns&run=12" })}`, { scroll: false });
+
+    // The page may have moved since: the same link is sent again.
+    await app.post({ id: 9, method: "ui/open-link", params: { url: link } });
+    await app.answer(9);
+    await waitFor(() => expect(inputs()).toHaveLength(2));
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  test("a deep link to another app opens that app's page; with none here, the strut view", async () => {
+    const appLinkHref = vi.fn((app: string) => (app === "invoices" ? "/w/acme/apps/invoices?input=view%3D%252Funpaid" : null));
+    const strutLinkHref = vi.fn((q: string) => `/w/acme/strut?strut=${encodeURIComponent(q)}`);
+    render(<StrutAppFrame source={SOURCE} title="Bench" appLinkHref={appLinkHref} strutLinkHref={strutLinkHref} />);
+    const app = playApp(await connected());
+    await initialize(app);
+
+    await app.post({ id: 10, method: "ui/open-link", params: { url: "?app=invoices&input=view%3D%252Funpaid" } });
+    await app.answer(10);
+    expect(appLinkHref).toHaveBeenCalledWith("invoices", "view=%2Funpaid");
+    expect(mockPush).toHaveBeenLastCalledWith("/w/acme/apps/invoices?input=view%3D%252Funpaid");
+
+    await app.post({ id: 11, method: "ui/open-link", params: { url: "?app=unpinned" } });
+    await app.answer(11);
+    expect(strutLinkHref).toHaveBeenCalledWith("app=unpinned");
+    expect(mockPush).toHaveBeenLastCalledWith(`/w/acme/strut?strut=${encodeURIComponent("app=unpinned")}`);
+    expect(app.received.filter((m) => m.method === "ui/notifications/tool-input")).toHaveLength(0);
   });
 
   test("a document the route refuses shows its error, and the relay is never opened", async () => {
