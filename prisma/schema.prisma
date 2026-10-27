@@ -2500,6 +2500,14 @@ model ErrorIssue {
   impactScoredAt  DateTime? @map("impact_scored_at")
   /// Small breakdown: top contributing node name/type, its pagerank, in_degree.
   impactMeta      Json?     @map("impact_meta")
+  /// "Fix" dispatch: a strut job that investigates this issue and opens a PR.
+  /// fixStatus null = never dispatched. Claimed with a conditional update so
+  /// only one dispatch is ever live; retry is allowed only from FAILED.
+  fixStatus         ErrorFixStatus? @map("fix_status")
+  fixJobId          String?   @map("fix_job_id")
+  fixPrUrl          String?   @map("fix_pr_url")
+  fixDispatchedAt   DateTime? @map("fix_dispatched_at")
+  fixDispatchedById String?   @map("fix_dispatched_by_id")
   workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   repository     Repository?      @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
   events         ErrorEvent[]
@@ -2511,6 +2519,13 @@ model ErrorIssue {
   @@index([lastSeenAt])
   @@index([impactScore])
   @@map("error_issues")
+}
+
+enum ErrorFixStatus {
+  DISPATCHING
+  IN_PROGRESS
+  PR_OPENED
+  FAILED
 }
 
 /// Individual occurrence of an error linked to its grouped ErrorIssue.
