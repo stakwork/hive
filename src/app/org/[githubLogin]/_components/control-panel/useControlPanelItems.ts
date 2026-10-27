@@ -28,6 +28,8 @@ export function useControlPanelItems(githubLogin: string): {
   showMore: () => void;
   archiveConversation: (id: string) => Promise<void>;
   restoreConversation: (id: string) => Promise<void>;
+  /** Resolves true when the rename persisted. */
+  renameConversation: (id: string, title: string) => Promise<boolean>;
 } {
   const [items, setItems] = useState<ControlPanelItem[]>([]);
   const [archivedItems, setArchivedItems] = useState<ControlPanelItem[]>([]);
@@ -122,9 +124,41 @@ export function useControlPanelItems(githubLogin: string): {
   const archiveConversation = useCallback((id: string) => postArchive(id, true), [postArchive]);
   const restoreConversation = useCallback((id: string) => postArchive(id, false), [postArchive]);
 
+  const renameConversation = useCallback(
+    async (id: string, title: string): Promise<boolean> => {
+      const prevItems = itemsRef.current;
+      const prevArchived = archivedItemsRef.current;
+      const apply = (list: ControlPanelItem[]) => list.map((i) => (i.id === id ? { ...i, title } : i));
+      // Invalidate any in-flight poll so stale data cannot clobber the new title.
+      genRef.current += 1;
+      inFlightRef.current = false;
+      setItems(apply(prevItems));
+      setArchivedItems(apply(prevArchived));
+      try {
+        const res = await fetch(`/api/orgs/${githubLogin}/chat/conversations/${id}/rename`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title }),
+        });
+        if (!res.ok) throw new Error("Failed to rename chat");
+        await refetch();
+        return true;
+      } catch (error) {
+        setItems(prevItems);
+        setArchivedItems(prevArchived);
+        toast.error("Failed to rename chat", {
+          description: error instanceof Error ? error.message : "Unknown error",
+        });
+        return false;
+      }
+    },
+    [githubLogin, refetch],
+  );
+
   return {
     items,
     archivedItems,
+    renameConversation,
     remaining,
     loading,
     refetch,
