@@ -20,6 +20,14 @@ export const maxDuration = 60;
 
 const MAX_NAME_CHARS = 200;
 const MAX_TEXT_BYTES = 4 * 1024 * 1024;
+/**
+ * How long an attempt holds its id as "pending": longer than `maxDuration`,
+ * so a launch that died mid-way (the function killed, a deploy) frees the id
+ * for voice's retry instead of answering 503 until the call record expires.
+ */
+const PENDING_TTL_SECONDS = 120;
+/** How a line got into the transcript: spoken, typed in the call's chat, or said by Jamie. */
+const SOURCES = ["voice", "chat", "jamie"];
 
 interface TranscriptBody {
   id: string;
@@ -28,6 +36,7 @@ interface TranscriptBody {
   name: string;
   text: string;
   lines: number;
+  /** Who spoke or typed, in order of first line. Never Jamie. */
   speakers: string[];
 }
 
@@ -71,8 +80,9 @@ function parseBody(raw: unknown): TranscriptBody | string {
     for (const f of ["at", "speaker", "source", "text"]) {
       if (typeof l[f] !== "string") return `text line ${i + 1}: ${f} must be a string`;
     }
+    if (!SOURCES.includes(l.source as string)) return `text line ${i + 1}: source must be one of ${SOURCES.join(", ")}`;
     lines++;
-    if (!speakers.includes(l.speaker as string)) speakers.push(l.speaker as string);
+    if (l.source !== "jamie" && !speakers.includes(l.speaker as string)) speakers.push(l.speaker as string);
   }
   return { id: b.id, startedAt: b.startedAt, endedAt: b.endedAt, name, text, lines, speakers };
 }
@@ -96,7 +106,7 @@ export async function POST(request: NextRequest) {
   const key = `call-transcript:${callKey}:${body.id}`;
   const ttl = Math.max(1, callRecordTtl(record));
   try {
-    const claimed = await redis.set(key, "pending", "EX", ttl, "NX");
+    const claimed = await redis.set(key, "pending", "EX", Math.min(PENDING_TTL_SECONDS, ttl), "NX");
     if (claimed === null) {
       const existing = await redis.get(key);
       if (!existing || existing === "pending") {

@@ -24,6 +24,7 @@ vi.mock("@/services/strut-runs", async (importOriginal) => ({
 
 import { POST } from "@/app/api/calls/transcript/route";
 import { storeCallRecord, setCallConversation, peekCallRecord } from "@/lib/calls/callRecord";
+import { redis } from "@/lib/redis";
 import { StrutDispatchError, type StrutDispatchFailureCode } from "@/services/strut-runs";
 
 const VOICE_KEY = "test-voice-agent-key";
@@ -32,7 +33,7 @@ const WORKFLOW = "call-transcript";
 
 const line = (n: number, speaker = "Ann", extra: Record<string, unknown> = {}) =>
   JSON.stringify({ n, at: "2026-01-01T00:00:00Z", speaker, source: "voice", text: "hi", ...extra });
-const TEXT = [line(1, "Ann"), line(2, "Jamie"), "", line(3, "Ann")].join("\n");
+const TEXT = [line(1, "Ann"), line(2, "Jamie", { source: "jamie" }), "", line(3, "Bob", { source: "chat" })].join("\n");
 
 const goodBody = (over: Record<string, unknown> = {}) => ({
   id: "job-1",
@@ -122,6 +123,7 @@ describe("POST /api/calls/transcript", () => {
       ["array line", () => goodBody({ text: "[1,2]" })],
       ["missing field", () => goodBody({ text: JSON.stringify({ n: 1, at: "x", speaker: "A", source: "voice" }) })],
       ["non-numeric n", () => goodBody({ text: line(1, "Ann", { n: "1" }) })],
+      ["unknown source", () => goodBody({ text: line(1, "Ann", { source: "phone" }) })],
       ["array body", () => []],
       ["null body", () => null],
     ];
@@ -163,7 +165,7 @@ describe("POST /api/calls/transcript", () => {
         startedAt: "2026-01-01T00:00:00Z",
         endedAt: "2026-01-01T00:10:00Z",
         lines: 3,
-        speakers: ["Ann", "Jamie"],
+        speakers: ["Ann", "Bob"],
         file: "call.ndjson",
       },
     });
@@ -193,6 +195,16 @@ describe("POST /api/calls/transcript", () => {
     expect(other.status).toBe(202);
     expect(await other.json()).toEqual({ run: "run-2" });
     expect(mockDispatch).toHaveBeenCalledTimes(2);
+  });
+
+  it("holds the id as pending briefly, and the response for the call's life", async () => {
+    await makeCall();
+    await send(goodBody());
+    const key = `call-transcript:${CALL_KEY}:job-1`;
+    const sets = vi.mocked(redis.set).mock.calls.filter(([k]) => k === key);
+    expect(sets[0]).toEqual([key, "pending", "EX", 120, "NX"]);
+    expect(sets[1][1]).toBe(JSON.stringify({ run: "run-1" }));
+    expect(sets[1][3]).toBeGreaterThan(3600);
   });
 
   it("503 while the first attempt is still pending", async () => {
