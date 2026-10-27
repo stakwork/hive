@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ErrorStatusBadge } from "./ErrorStatusBadge";
 import { TriageActions } from "./TriageActions";
+import { FixAction } from "./FixAction";
 import { GitPullRequest, HelpCircle } from "lucide-react";
 import type { ErrorIssueRecord, ErrorIssueStatus } from "@/types/error-issues";
 import { IMPACT_EXPLANATION } from "@/lib/utils/impact-tier";
@@ -186,6 +187,9 @@ export function ErrorIssuesTable({
                   status={issue.status}
                   onStatusChange={(newStatus) => onStatusChange?.(issue.id, newStatus)}
                 />
+                <div className="mt-2">
+                  <FixAction issueId={issue.id} fixStatus={issue.fixStatus} fixPrUrl={issue.fixPrUrl} />
+                </div>
               </TableCell>
             </TableRow>
           ))}
