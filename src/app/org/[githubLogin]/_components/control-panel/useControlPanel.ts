@@ -41,8 +41,17 @@ function revealJob(jobId: string) {
  * list, the search, the keyboard cursor and what opening a row does.
  */
 export function useControlPanel(githubLogin: string): Omit<ControlPanelListProps, "onHide"> {
-  const { items, archivedItems, remaining, loading, refetch, showMore, archiveConversation, restoreConversation } =
-    useControlPanelItems(githubLogin);
+  const {
+    items,
+    archivedItems,
+    remaining,
+    loading,
+    refetch,
+    showMore,
+    archiveConversation,
+    restoreConversation,
+    renameConversation,
+  } = useControlPanelItems(githubLogin);
 
   const [query, setQuery] = useState("");
   const [cursorId, setCursorId] = useState<string | null>(null);
@@ -238,6 +247,19 @@ export function useControlPanel(githubLogin: string): Omit<ControlPanelListProps
     [archiveConversation],
   );
   const onRestore = useCallback((item: ControlPanelItem) => void restoreConversation(item.id), [restoreConversation]);
+  const onRename = useCallback(
+    (item: ControlPanelItem, title: string) => {
+      // The active chat's row reads the store's title first; keep it in step.
+      const store = useCanvasChatStore.getState();
+      const local = Object.values(store.conversations).find((c) => c.serverConversationId === item.id);
+      const prevTitle = local?.title ?? null;
+      if (local) store.setConversationTitle(local.id, title);
+      void renameConversation(item.id, title).then((ok) => {
+        if (!ok && local) useCanvasChatStore.getState().setConversationTitle(local.id, prevTitle);
+      });
+    },
+    [renameConversation],
+  );
   const onNewChat = useCallback(() => startNewOrgConversation(githubLogin), [githubLogin]);
 
   return {
@@ -258,6 +280,7 @@ export function useControlPanel(githubLogin: string): Omit<ControlPanelListProps
     onToggleArchived,
     onArchive,
     onRestore,
+    onRename,
     onNewChat,
   };
 }
