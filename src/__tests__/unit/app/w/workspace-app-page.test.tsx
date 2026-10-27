@@ -7,7 +7,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import React, { Suspense } from "react";
 
-const { frame } = vi.hoisted(() => ({ frame: vi.fn() }));
+const { frame, search } = vi.hoisted(() => ({ frame: vi.fn(), search: { value: "" } }));
+
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(search.value) }));
 
 vi.mock("@/hooks/useWorkspace", () => ({ useWorkspace: vi.fn() }));
 vi.mock("@/hooks/useWorkspaceStrutApps", () => ({ useWorkspaceStrutApps: vi.fn() }));
@@ -39,6 +41,7 @@ async function open(segments: string[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  search.value = "";
   vi.mocked(useWorkspace).mockReturnValue({ workspace: { slug: "openhealth" } } as never);
   vi.mocked(useWorkspaceStrutApps).mockReturnValue({ data: pinned, loading: false, error: null });
 });
@@ -50,6 +53,27 @@ describe("WorkspaceAppPage", () => {
     expect(frame.mock.calls[0][0]).toMatchObject({ source: { githubLogin: "stakwork", swarmId: "swarm-oh", app: "acme/invoices" }, title: "Invoices" });
     expect(screen.getByRole("heading")).toHaveTextContent("Invoices");
     expect(useWorkspaceStrutApps).toHaveBeenCalledWith("openhealth");
+  });
+
+  it("opens the app with a deep link's ?input= as its tool input; with none, it has none", async () => {
+    search.value = `?${new URLSearchParams({ input: "view=%2Funpaid&run=12" })}`;
+    await open(["acme", "invoices"]);
+    await screen.findByTestId("app-frame");
+    expect(frame.mock.calls[0][0].toolInput).toEqual({ view: "/unpaid", run: "12" });
+
+    search.value = "";
+    frame.mockClear();
+    await open(["acme", "invoices"]);
+    expect(frame.mock.calls[0][0]).not.toHaveProperty("toolInput");
+  });
+
+  it("routes a link to a pinned app to its page here, and leaves any other to the strut view", async () => {
+    await open(["acme", "invoices"]);
+    await screen.findByTestId("app-frame");
+    const { appLinkHref } = frame.mock.calls[0][0] as { appLinkHref: (app: string, input?: string) => string | null };
+    expect(appLinkHref("acme/invoices", "view=%2Funpaid")).toBe(`/w/openhealth/apps/acme/invoices?${new URLSearchParams({ input: "view=%2Funpaid" })}`);
+    expect(appLinkHref("acme/invoices")).toBe("/w/openhealth/apps/acme/invoices");
+    expect(appLinkHref("not-pinned")).toBeNull();
   });
 
   it("says so for an app that is not pinned, and frames nothing", async () => {
