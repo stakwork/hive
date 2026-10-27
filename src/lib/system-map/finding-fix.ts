@@ -97,7 +97,7 @@ const PACKAGE_KEYS = [
 ];
 /** Weaker package hints (a version alone does not make a code finding a package one). */
 const PACKAGE_HINT_KEYS = ["ecosystem", "installed_version", "affected_versions", "package_version"];
-const KIND_KEYS = ["finding_type", "type", "kind", "category", "source"];
+const KIND_KEYS = ["source_role", "finding_type", "type", "kind", "category", "source"];
 const PACKAGE_KIND_RE = /cve|package|dependenc|vulnerable[_ -]?pkg|advisory/i;
 const CODE_KIND_RE = /code|sast|cwe|injection|xss|secret|crypto|vulnerability in/i;
 const CODE_KEYS = ["file", "file_path", "path", "filename", "cwe", "cwe_id", "line", "start_line", "code_snippet"];

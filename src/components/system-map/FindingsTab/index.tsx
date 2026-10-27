@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
@@ -17,6 +18,7 @@ import { FixBadge, FixButton } from "./FindingFixStatus";
 import { RelatedNodes } from "./RelatedNodes";
 import { FindingVerify } from "./FindingVerify";
 import { BatchVerifyBar, MAX_BATCH } from "./BatchVerifyBar";
+import { CHECK_LABEL, summarizeFinding, type FindingCheck, type FindingSummary } from "./finding-kind";
 
 const SEVERITY_CLASS: Record<string, string> = {
   critical: "border-red-500/50 bg-red-500/15 text-red-700 dark:text-red-300",
@@ -31,10 +33,19 @@ function severityOf(finding: SystemMapFinding): string {
   return finding.severity ?? NO_SEVERITY;
 }
 
-function matches(finding: SystemMapFinding, query: string): boolean {
-  return [finding.title, finding.cweId, finding.file, finding.status, finding.description, finding.refId].some((v) =>
-    v?.toLowerCase().includes(query),
-  );
+const MAX_IDS_SHOWN = 3;
+
+function matches(finding: SystemMapFinding, summary: FindingSummary, query: string): boolean {
+  return [
+    finding.title,
+    finding.cweId,
+    finding.file,
+    finding.status,
+    finding.description,
+    finding.refId,
+    summary.pkg,
+    ...summary.ids,
+  ].some((v) => v?.toLowerCase().includes(query));
 }
 
 function formatValue(value: unknown): string {
@@ -52,6 +63,7 @@ function SeverityBadge({ severity }: { severity: string }) {
 
 function FindingCard({
   finding,
+  summary,
   selected,
   onSelect,
   checksVersion,
@@ -62,6 +74,7 @@ function FindingCard({
   onFix,
 }: {
   finding: SystemMapFinding;
+  summary: FindingSummary;
   selected: boolean;
   onSelect: (selected: boolean) => void;
   checksVersion: number;
@@ -74,6 +87,8 @@ function FindingCard({
   const [open, setOpen] = useState(false);
   const location = finding.file ? `${finding.file}${finding.line ? `:${finding.line}` : ""}` : null;
   const Chevron = open ? ChevronDown : ChevronRight;
+  const isCve = summary.check === "cve";
+  const extraIds = summary.ids.length - MAX_IDS_SHOWN;
 
   return (
     <Card data-testid="finding-row">
@@ -95,15 +110,29 @@ function FindingCard({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <SeverityBadge severity={severityOf(finding)} />
-                {finding.cweId && (
-                  <Badge variant="secondary" className="font-mono text-[11px]">
-                    {finding.cweId}
+                {summary.ids.slice(0, MAX_IDS_SHOWN).map((id) => (
+                  <Badge key={id} variant="secondary" className="font-mono text-[11px]">
+                    {id}
                   </Badge>
-                )}
+                ))}
+                {extraIds > 0 && <span className="text-[11px] text-muted-foreground">+{extraIds}</span>}
                 <span className="text-sm font-medium">{finding.title}</span>
                 {finding.status && <span className="text-xs text-muted-foreground">· {finding.status}</span>}
               </div>
-              {location && <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">{location}</p>}
+              {isCve && summary.pkg ? (
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground" data-testid="finding-package">
+                  <span className="font-mono text-foreground/80">{summary.pkg}</span>
+                  {summary.fixedIn && (
+                    <>
+                      {" "}
+                      · fixed in <span className="font-mono">{summary.fixedIn}</span>
+                    </>
+                  )}
+                  {location && <span className="font-mono"> · {location}</span>}
+                </p>
+              ) : (
+                location && <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">{location}</p>
+              )}
               {!open && finding.description && (
                 <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{finding.description}</p>
               )}
@@ -160,6 +189,7 @@ export function FindingsTab() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [severity, setSeverity] = useState<string | null>(null);
+  const [check, setCheck] = useState<FindingCheck>("cwe");
   const { canWrite } = useWorkspaceAccess();
   const [fixes, setFixes] = useState<Map<string, SystemMapFindingFix>>(() => new Map());
   const [fixingRefs, setFixingRefs] = useState<Set<string>>(() => new Set());
@@ -255,19 +285,35 @@ export function FindingsTab() {
   );
 
   const findings = useMemo(() => (data?.status === "ready" ? data.findings : []), [data]);
+  const summaries = useMemo(() => new Map(findings.map((f) => [f.refId, summarizeFinding(f)])), [findings]);
+
+  const byCheck = useMemo(() => {
+    const out: Record<FindingCheck, SystemMapFinding[]> = { cwe: [], cve: [] };
+    for (const finding of findings) out[summaries.get(finding.refId)!.check].push(finding);
+    return out;
+  }, [findings, summaries]);
+  const checkFindings = byCheck[check];
 
   const counts = useMemo(() => {
     const out = new Map<string, number>();
-    for (const finding of findings) out.set(severityOf(finding), (out.get(severityOf(finding)) ?? 0) + 1);
+    for (const finding of checkFindings) out.set(severityOf(finding), (out.get(severityOf(finding)) ?? 0) + 1);
     return [...out.entries()];
-  }, [findings]);
+  }, [checkFindings]);
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return findings.filter(
-      (finding) => (!severity || severityOf(finding) === severity) && (!query || matches(finding, query)),
+    return checkFindings.filter(
+      (finding) =>
+        (!severity || severityOf(finding) === severity) &&
+        (!query || matches(finding, summaries.get(finding.refId)!, query)),
     );
-  }, [findings, search, severity]);
+  }, [checkFindings, summaries, search, severity]);
+
+  const switchCheck = (next: string) => {
+    setCheck(next as FindingCheck);
+    setSeverity(null);
+    setSelected(new Set());
+  };
 
   const select = useCallback((refId: string, on: boolean) => {
     setSelected((prev) => {
@@ -300,6 +346,19 @@ export function FindingsTab() {
         <span className="font-mono">infosec</span>), most severe first.
       </p>
 
+      <Tabs value={check} onValueChange={switchCheck}>
+        <TabsList data-testid="findings-check-tabs">
+          {(["cwe", "cve"] as const).map((value) => (
+            <TabsTrigger key={value} value={value} data-testid={`findings-check-${value}`}>
+              {CHECK_LABEL[value]}
+              {data?.status === "ready" && (
+                <span className="ml-1.5 text-xs text-muted-foreground">{byCheck[value].length}</span>
+              )}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
@@ -318,7 +377,7 @@ export function FindingsTab() {
               className="h-7 text-xs"
               onClick={() => setSeverity(null)}
             >
-              All · {findings.length}
+              All · {checkFindings.length}
             </Button>
             {counts.map(([value, count]) => (
               <Button
@@ -338,7 +397,7 @@ export function FindingsTab() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Filter by title, CWE, file…"
+            placeholder={check === "cve" ? "Filter by title, CVE, package…" : "Filter by title, CWE, file…"}
             className="h-8 pl-8 text-sm"
             data-testid="findings-search"
           />
@@ -397,6 +456,7 @@ export function FindingsTab() {
             <FindingCard
               key={finding.refId}
               finding={finding}
+              summary={summaries.get(finding.refId)!}
               selected={selected.has(finding.refId)}
               onSelect={(on) => select(finding.refId, on)}
               checksVersion={checksVersion}
@@ -412,7 +472,10 @@ export function FindingsTab() {
               No Finding nodes in this workspace&apos;s infosec namespace yet.
             </p>
           )}
-          {findings.length > 0 && visible.length === 0 && (
+          {findings.length > 0 && checkFindings.length === 0 && (
+            <p className="text-sm text-muted-foreground">No findings from the {CHECK_LABEL[check]} yet.</p>
+          )}
+          {checkFindings.length > 0 && visible.length === 0 && (
             <p className="text-sm text-muted-foreground">Nothing matches.</p>
           )}
         </div>
