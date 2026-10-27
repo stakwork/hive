@@ -40,6 +40,16 @@ export function callAgentName(): string {
   return process.env.LIVEKIT_AGENT_NAME || "jamie";
 }
 
+/** The strut workflow that takes a call's transcript, or null when the feature is off. */
+export function callTranscriptWorkflowName(): string | null {
+  return process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME?.trim() || null;
+}
+
+/** Whether a call in this org gets a transcript: the workflow is set AND the call has an org. */
+export function callTranscriptWanted(orgId: string | null | undefined): boolean {
+  return callTranscriptWorkflowName() !== null && Boolean(orgId);
+}
+
 /** Store `hiveToken` behind a fresh opaque callKey and return the key. */
 export async function storeCallToken(hiveToken: string): Promise<string> {
   const callKey = randomBytes(12).toString("hex"); // 24-char hex
@@ -72,7 +82,11 @@ export function callRoomName(callUrl: string): string {
  * metadata. LiveKit creates the room if it does not exist yet. Throws when
  * LiveKit is not configured or refuses the dispatch.
  */
-export async function dispatchCallAgent(roomName: string, callKey: string): Promise<void> {
+export async function dispatchCallAgent(
+  roomName: string,
+  callKey: string,
+  opts: { transcript?: boolean } = {},
+): Promise<void> {
   if (!roomName) throw new Error("No room to dispatch Jamie into");
   // The server-side URL of the LiveKit project the calls run on — the one
   // sphinx-voice registers with. The SDK turns a ws(s) URL into http(s).
@@ -84,7 +98,7 @@ export async function dispatchCallAgent(roomName: string, callKey: string): Prom
   }
   const client = new AgentDispatchClient(host, apiKey, apiSecret);
   await client.createDispatch(roomName, callAgentName(), {
-    metadata: JSON.stringify({ callKey }),
+    metadata: JSON.stringify(opts.transcript ? { callKey, transcript: true } : { callKey }),
   });
 }
 
