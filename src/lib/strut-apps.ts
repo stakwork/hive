@@ -97,8 +97,8 @@ export function workspaceAppOfKey(key: unknown): { app: string; version?: string
   return match[2] ? { app, version: match[2] } : { app };
 }
 
-/** The deep-link params strut reads (its `web/src/embed.ts` vocabulary). */
-const STRUT_LINK_PARAMS = new Set(["wf", "run", "v", "job", "app", "chat"]);
+/** The deep-link params strut reads (its `web/src/embed.ts` vocabulary); `input` rides with `app`. */
+const STRUT_LINK_PARAMS = new Set(["wf", "run", "v", "job", "app", "input", "chat"]);
 const MAX_LINK_VALUE = 512;
 
 /**
@@ -116,4 +116,39 @@ export function strutDeepLinkOf(url: unknown): string | null {
   }
   const query = out.toString();
   return query || null;
+}
+
+/**
+ * A strut deep link (`strutDeepLinkOf`) that names a workspace APP: its name
+ * and the `input` it is opened with — the app's own query, carried whole
+ * (strut plans/apps.md §7.1, "Deep links"). Null for a link to anything
+ * else, or to an app hive cannot route to by name (a peer's `@<peer>/…`, a
+ * pinned `…@vN`).
+ */
+export function strutAppLinkOf(deepLink: string): { app: string; input?: string } | null {
+  const query = new URLSearchParams(deepLink);
+  const app = query.get("app");
+  if (!isStrutAppName(app)) return null;
+  const input = query.get("input");
+  return input ? { app, input } : { app };
+}
+
+/**
+ * What a link's `input` opens an app with: the app's query read back as
+ * flat strings (`view=%2Fruns&run=12` is `{ view: "/runs", run: "12" }`),
+ * which the frame sends as `ui/notifications/tool-input`. Hive copies the
+ * value and never reads the keys: they are the app's. Undefined for none,
+ * or one with no keys.
+ */
+export function strutAppInputOf(input: string | null | undefined): Record<string, string> | undefined {
+  if (!input) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of new URLSearchParams(input)) out[k] = v;
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** A pinned app's page in a workspace (`/w/<slug>/apps/<name>`), opened with `input` when there is one. */
+export function workspaceAppPath(workspaceSlug: string, app: string, input?: string): string {
+  const path = `/w/${encodeURIComponent(workspaceSlug)}/apps/${encodeStrutPath(app)}`;
+  return input ? `${path}?${new URLSearchParams({ input })}` : path;
 }
