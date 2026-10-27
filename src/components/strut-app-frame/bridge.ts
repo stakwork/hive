@@ -33,13 +33,17 @@ export interface StrutAppHostOptions {
   relayUrl: string;
   hostContext: McpUiHostContext;
   handlers: StrutAppHostHandlers;
-  /** `ui/notifications/tool-input`: what the app was opened with (`{ runId, … }`). */
-  toolInput?: Record<string, unknown>;
 }
 
 export interface StrutAppHostConnection {
   /** A theme change → `ui/notifications/host-context-changed`. */
   setHostContext: (context: McpUiHostContext) => void;
+  /**
+   * What the app is opened with (`{ runId, … }`, a link's `input`) →
+   * `ui/notifications/tool-input`, sent once the page has initialized.
+   * Called again it is sent in place, `{}` for none.
+   */
+  setToolInput: (args: Record<string, unknown> | undefined) => void;
   close: () => Promise<void>;
 }
 
@@ -82,8 +86,13 @@ export async function connectStrutAppHost(opts: StrutAppHostOptions): Promise<St
     }
   };
   bridge.onopenlink = async ({ url }) => (handlers.onOpenLink(url) ? {} : { isError: true });
-  const { toolInput } = opts;
-  if (toolInput) bridge.oninitialized = () => void bridge.sendToolInput({ arguments: toolInput });
+  // `tool-input` goes after the page's `initialized`, as the spec orders it.
+  let initialized = false;
+  let toolInput: Record<string, unknown> | undefined;
+  bridge.oninitialized = () => {
+    initialized = true;
+    if (toolInput) void bridge.sendToolInput({ arguments: toolInput });
+  };
   const win = opts.frame.contentWindow;
   if (!win) {
     await client.close().catch(() => undefined);
@@ -92,6 +101,10 @@ export async function connectStrutAppHost(opts: StrutAppHostOptions): Promise<St
   await bridge.connect(new PostMessageTransport(win, win));
   return {
     setHostContext: (context) => bridge.setHostContext(context),
+    setToolInput(args) {
+      toolInput = args;
+      if (initialized) void bridge.sendToolInput({ arguments: args ?? {} });
+    },
     async close() {
       await bridge.close().catch(() => undefined);
       await client.close().catch(() => undefined);
