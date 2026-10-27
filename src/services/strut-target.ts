@@ -57,7 +57,8 @@ export type StrutPurpose =
   | "system_map"
   | "workspace_embed"
   | "job"
-  | "orchestrator";
+  | "orchestrator"
+  | "call_transcript";
 
 /** Where each purpose runs. `org-default` = the org's default workspace swarm. */
 const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
@@ -78,6 +79,9 @@ const POLICY: Record<StrutPurpose, "org-default" | "workspace"> = {
   // session, so a turn runs where `chat` and `job` do — the org default —
   // and follows them if they move.
   orchestrator: "org-default",
+  // A finished call's transcript: the org default, like the rest of Jamie's
+  // strut work. Switching to a strut per workspace is `"workspace"` here.
+  call_transcript: "org-default",
   benchmark: "workspace",
   // `/w/[slug]/strut`'s embed: the workspace's OWN swarm, never the org
   // default. `benchmark` already resolves to `"workspace"`, but a named
