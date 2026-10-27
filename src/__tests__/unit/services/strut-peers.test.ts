@@ -100,6 +100,8 @@ function routeFetch(overrides: Record<string, () => Response | Promise<Response>
     const mint = url.match(/^https:\/\/(\w+)\.sphinx\.chat:3355\/mint-token$/);
     if (mint) return json(200, { token: `peer-tok-${mint[1]}`, expires_in: "60d", scope: "lab:peer" });
     if (url.includes(".sphinx.chat:3355/lab/peers/") || url.endsWith("/lab/self")) return json(200, { ok: true });
+    // The org strut has published nothing: no key, so nobody subscribes.
+    if (url === `${ORG_LAB}/publisher`) return json(404, { error: "this strut has no publisher key yet" });
     throw new Error(`unexpected fetch ${url}`);
   });
 }
@@ -327,5 +329,58 @@ describe("runStrutPeersReconcile — the org strut's users' delegations on each 
     const out = await runStrutPeersReconcile({ now: NOW });
     expect(out).toMatchObject({ success: false, delegationsPushed: 1 });
     expect(out.errors).toEqual([{ org: "acme", peer: "acme-api", actor: "alice-u1", error: "PUT returned 400" }]);
+  });
+});
+
+describe("runStrutPeersReconcile — subscriptions to the org strut's catalog", () => {
+  const KEY = "47pjoycnsrfmxikm95jh13y88e8qnhzu5kungjpxyepgt7a8krpy";
+  // Matched by prefix in this order, so the token route comes before /publisher.
+  const published = (more: Record<string, () => Response | Promise<Response>> = {}) => ({
+    [`${ORG_LAB}/publisher/tokens`]: async () => json(201, { key: KEY, subscriber: "x", token: "strut-catalog.tok", exp: 0 }),
+    [`${ORG_LAB}/publisher`]: () => json(200, { key: KEY, host: "self", createdAt: "2026-10-27T00:00:00.000Z" }),
+    "https://b.sphinx.chat:3355/lab/packages/subscriptions/": () => json(200, { id: "acme" }),
+    "https://c.sphinx.chat:3355/lab/packages/subscriptions/": () => json(200, { id: "acme" }),
+    ...more,
+  });
+
+  it("subscribes every other workspace's strut, with its own key, once the org strut has published", async () => {
+    routeFetch(published());
+    const out = await runStrutPeersReconcile({ now: NOW });
+    expect(out).toMatchObject({ success: true, subscriptionsPushed: 2, subscriptionsUnsupported: 0, errors: [] });
+
+    const mints = calls((u) => u === `${ORG_LAB}/publisher/tokens`);
+    expect(mints.map(([, init]) => JSON.parse(init.body).subscriber).sort()).toEqual(["acme-api", "acme-web"]);
+    for (const [, init] of mints) {
+      expect(init.method).toBe("POST");
+      expect(init.headers["x-api-token"]).toBe("org-key");
+    }
+    const [put] = calls((u) => u === "https://b.sphinx.chat:3355/lab/packages/subscriptions/acme");
+    expect(put[1].method).toBe("PUT");
+    expect(put[1].headers["x-api-token"]).toBe("b-key");
+    expect(put[1].headers.Authorization).toBe("Bearer b-key");
+    expect(JSON.parse(put[1].body)).toEqual({ key: KEY, url: ORG_LAB, channel: "stable", token: "strut-catalog.tok" });
+    expect(calls((u) => u.startsWith("https://org.sphinx.chat:3355/lab/packages/subscriptions/"))).toHaveLength(0);
+  });
+
+  it("subscribes nobody while the org strut has published nothing", async () => {
+    const out = await runStrutPeersReconcile({ now: NOW });
+    expect(out).toMatchObject({ success: true, subscriptionsPushed: 0, subscriptionsUnsupported: 0, errors: [] });
+    expect(calls((u) => u.includes("/publisher/tokens") || u.includes("/packages/subscriptions/"))).toHaveLength(0);
+  });
+
+  it("a strut without the subscriptions route is unsupported, not an error", async () => {
+    routeFetch(published({ "https://c.sphinx.chat:3355/lab/packages/subscriptions/": () => json(404, {}) }));
+    const out = await runStrutPeersReconcile({ now: NOW });
+    expect(out).toMatchObject({ success: true, subscriptionsPushed: 1, subscriptionsUnsupported: 1, errors: [] });
+  });
+
+  it("a token the org strut will not mint is an error for that workspace, and the pass goes on", async () => {
+    routeFetch(published({ [`${ORG_LAB}/publisher/tokens`]: () => json(500, {}) }));
+    const out = await runStrutPeersReconcile({ now: NOW });
+    expect(out).toMatchObject({ success: false, subscriptionsPushed: 0, peersPushed: 2 });
+    expect(out.errors.map((e) => [e.peer, e.error]).sort()).toEqual([
+      ["acme-api", "POST /publisher/tokens returned 500"],
+      ["acme-web", "POST /publisher/tokens returned 500"],
+    ]);
   });
 });

@@ -54,6 +54,8 @@ export async function GET(request: NextRequest) {
       peersPushed: result.peersPushed,
       peersUnsupported: result.peersUnsupported,
       delegationsPushed: result.delegationsPushed,
+      subscriptionsPushed: result.subscriptionsPushed,
+      subscriptionsUnsupported: result.subscriptionsUnsupported,
       errorCount: result.errors.length,
       errors: result.errors,
       timestamp: result.timestamp.toISOString(),
