@@ -267,6 +267,8 @@ function ChatRow({
   actions: { label: string; Icon: typeof Archive; onSelect: "rename" | ((item: ControlPanelItem) => void) }[];
 }) {
   const [editing, setEditing] = useState(false);
+  // Radix returns focus to the menu trigger on close, which would blur the rename input and end editing.
+  const renameRequestedRef = useRef(false);
   const [jobsExpanded, setJobsExpanded] = useState(false);
   const jobs = jobsExpanded ? item.jobs : item.jobs.slice(0, 1);
   const hiddenJobs = item.jobs.length - jobs.length;
@@ -298,11 +300,24 @@ function ChatRow({
                 <MoreHorizontal className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent
+              align="end"
+              onCloseAutoFocus={(e) => {
+                if (renameRequestedRef.current) {
+                  e.preventDefault();
+                  renameRequestedRef.current = false;
+                }
+              }}
+            >
               {actions.map((action) => (
                 <DropdownMenuItem
                   key={action.label}
-                  onSelect={() => (action.onSelect === "rename" ? setEditing(true) : action.onSelect(item))}
+                  onSelect={() => {
+                    if (action.onSelect === "rename") {
+                      renameRequestedRef.current = true;
+                      setEditing(true);
+                    } else action.onSelect(item);
+                  }}
                 >
                   <action.Icon />
                   {action.label}
@@ -419,6 +434,11 @@ function Row({
 function RenameInput({ initial, onDone }: { initial: string; onDone: (title: string | null) => void }) {
   const [value, setValue] = useState(initial);
   const doneRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
   const finish = (save: boolean) => {
     if (doneRef.current) return;
     doneRef.current = true;
@@ -427,6 +447,7 @@ function RenameInput({ initial, onDone }: { initial: string; onDone: (title: str
   };
   return (
     <input
+      ref={inputRef}
       autoFocus
       aria-label="Chat title"
       value={value}
