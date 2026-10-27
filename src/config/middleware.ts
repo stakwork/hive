@@ -193,6 +193,8 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/strut-devices/pair", strategy: "exact", access: "webhook", methods: ["POST"] },
   { path: "/api/strut-devices/pair/token", strategy: "exact", access: "webhook", methods: ["POST"] },
   { path: "/api/strut-devices/peers", strategy: "exact", access: "webhook", methods: ["GET"] },
+  // A paired device starts a Jamie call: its device credential, checked in the handler.
+  { path: "/api/strut-devices/calls", strategy: "exact", access: "webhook", methods: ["POST"] },
   // The approve page: public so a signed-out visitor is sent to sign-in with the code kept (the page checks the session).
   { path: "/pair", strategy: "exact", access: "public" },
   { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },
