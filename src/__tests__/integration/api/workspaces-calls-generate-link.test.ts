@@ -55,14 +55,20 @@ async function createOrgWorkspaceScenario(
 // The call base as production sets it: meet's `/rooms/` path plus the room
 // prefix, so the LiveKit room is `sphinx.call.-<swarm>.sphinx.chat-.<ts>`.
 // Pinned here because `optionalEnvVars` is read once at import.
-const { CALL_BASE } = vi.hoisted(() => ({
-  CALL_BASE: "https://call.example.com/rooms/sphinx.call.-",
-}));
+const { CALL_BASE, callBaseState } = vi.hoisted(() => {
+  const base = "https://call.example.com/rooms/sphinx.call.-";
+  return { CALL_BASE: base, callBaseState: { value: base as string | undefined } };
+});
 vi.mock("@/config/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/config/env")>();
   return {
     ...actual,
-    optionalEnvVars: { ...actual.optionalEnvVars, LIVEKIT_CALL_BASE_URL: CALL_BASE },
+    optionalEnvVars: {
+      ...actual.optionalEnvVars,
+      get LIVEKIT_CALL_BASE_URL() {
+        return callBaseState.value;
+      },
+    },
   };
 });
 
@@ -97,6 +103,7 @@ describe("Generate Call Link API - Integration Tests", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    callBaseState.value = CALL_BASE;
     // Reset redis.set to default OK behaviour before each test
     const { redis } = await import("@/lib/redis");
     vi.mocked(redis.set).mockResolvedValue("OK");
@@ -167,6 +174,38 @@ describe("Generate Call Link API - Integration Tests", () => {
     });
 
     describe("Authorization Tests", () => {
+      test("dispatch metadata carries transcript:true only when the workflow env is set", async () => {
+        const saved = process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+        try {
+          for (const [wf, expected] of [
+            [undefined, undefined],
+            ["call-transcript", true],
+          ] as const) {
+            if (wf === undefined) delete process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+            else process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME = wf;
+            mockCreateDispatch.mockClear();
+            const { owner, workspace } = await createOrgWorkspaceScenario({
+              withSwarm: true,
+              swarm: { status: "ACTIVE", name: `swarm-${generateUniqueId()}` },
+            });
+            const response = await POST(
+              createAuthenticatedPostRequest(
+                `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+                {},
+                owner,
+              ),
+              { params: Promise.resolve({ slug: workspace.slug }) },
+            );
+            expect(response.status).toBe(200);
+            const meta = JSON.parse(mockCreateDispatch.mock.calls[0][2].metadata);
+            expect(meta.transcript).toBe(expected);
+          }
+        } finally {
+          if (saved === undefined) delete process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+          else process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME = saved;
+        }
+      });
+
       test("allows workspace owner to generate call link", async () => {
         const { owner, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,
@@ -649,6 +688,30 @@ describe("Generate Call Link API - Integration Tests", () => {
         });
 
         await expectError(response, "Could not start Jamie for the call", 502);
+        expect(mockCreateDispatch).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("LiveKit not configured", () => {
+      test("returns 500 when the call base URL is not configured", async () => {
+        callBaseState.value = undefined;
+
+        const { owner, workspace } = await createOrgWorkspaceScenario({
+          withSwarm: true,
+          swarm: { status: "ACTIVE", name: "swarm42" },
+        });
+
+        const request = createAuthenticatedPostRequest(
+          `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+          {},
+          owner,
+        );
+
+        const response = await POST(request, {
+          params: Promise.resolve({ slug: workspace.slug }),
+        });
+
+        await expectError(response, "LiveKit call service not configured", 500);
         expect(mockCreateDispatch).not.toHaveBeenCalled();
       });
     });

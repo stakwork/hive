@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
-import { config, optionalEnvVars } from "@/config/env";
-import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
-import { callRoomName, dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
-import { dropCallRecord, storeCallRecord } from "@/lib/calls/callRecord";
-import jwt from "jsonwebtoken";
+import { startCall } from "@/lib/calls/startCall";
 
 export async function POST(
   request: NextRequest,
@@ -39,172 +35,13 @@ export async function POST(
       );
     }
 
-    // Get workspace with swarm info
-    const workspace = await db.workspace.findFirst({
-      where: {
-        slug,
-        deleted: false,
-      },
-      include: {
-        swarm: {
-          select: {
-            name: true,
-            status: true,
-          },
-        },
-        members: {
-          where: {
-            userId: userOrResponse.id,
-            leftAt: null,
-          },
-        },
-      },
+    const result = await startCall({
+      userId: userOrResponse.id,
+      slug,
+      scope: request.nextUrl.searchParams.get("scope") === "workspace" ? "workspace" : "org",
     });
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 },
-      );
-    }
-
-    // Check user has access (owner or member)
-    if (workspace.ownerId !== userOrResponse.id && workspace.members.length === 0) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 },
-      );
-    }
-
-    // Validate swarm exists and is active
-    if (!workspace.swarm || workspace.swarm.status !== "ACTIVE") {
-      return NextResponse.json(
-        { error: "Swarm not configured or not active" },
-        { status: 400 },
-      );
-    }
-
-    if (!workspace.swarm.name || workspace.swarm.name.trim() === "") {
-      return NextResponse.json(
-        { error: "Swarm name not found" },
-        { status: 400 },
-      );
-    }
-
-    // Get LiveKit base URL from environment
-    const liveKitBaseUrl = optionalEnvVars.LIVEKIT_CALL_BASE_URL;
-    if (!liveKitBaseUrl) {
-      return NextResponse.json(
-        { error: "LiveKit call service not configured" },
-        { status: 500 },
-      );
-    }
-
-    // Mint a short-lived JWT for the agent to authenticate with the Hive API.
-    //
-    // Default scope is "org": the token is keyed to the workspace's
-    // SourceControlOrg so the call agent can drive the org-wide `org_agent`
-    // tool across every workspace in the org. Pass `?scope=workspace` to fall
-    // back to a single-workspace token (the legacy swarm-tool surface).
-    //
-    // Both shapes carry `userId` so `verifyJwt`/`verifyOrgJwt` can re-check
-    // membership at use time (memberships can be revoked between mint and use).
-    const scope =
-      request.nextUrl.searchParams.get("scope") === "workspace"
-        ? "workspace"
-        : "org";
-
-    let hiveToken: string;
-    if (scope === "workspace") {
-      const jwtSecret = process.env.JWT_SECRET;
-      if (!jwtSecret) {
-        return NextResponse.json(
-          { error: "JWT secret not configured" },
-          { status: 500 },
-        );
-      }
-      hiveToken = jwt.sign(
-        { slug, userId: userOrResponse.id },
-        jwtSecret,
-        { expiresIn: "4h" },
-      );
-    } else {
-      if (!workspace.sourceControlOrgId) {
-        return NextResponse.json(
-          { error: "Workspace is not linked to a source-control org" },
-          { status: 400 },
-        );
-      }
-
-      const outcome = await mintOrgToken({
-        orgId: workspace.sourceControlOrgId,
-        userId: userOrResponse.id,
-        requestedPermissions: ["read", "write"],
-        purpose: "call-link",
-      });
-
-      if (!outcome.ok) {
-        switch (outcome.error) {
-          case "JWT_SECRET_MISSING":
-            return NextResponse.json(
-              { error: "JWT secret not configured" },
-              { status: 500 },
-            );
-          case "ORG_MEMBERSHIP_REQUIRED":
-            return NextResponse.json(
-              { error: "Access denied" },
-              { status: 403 },
-            );
-          case "INVALID_PERMISSIONS":
-            return NextResponse.json(
-              { error: "Invalid permission value" },
-              { status: 400 },
-            );
-          default:
-            return NextResponse.json(
-              { error: "Failed to mint org token" },
-              { status: 500 },
-            );
-        }
-      }
-
-      hiveToken = outcome.token;
-    }
-
-    const timestamp = Math.floor(Date.now() / 1000);
-    const callUrl = `${liveKitBaseUrl}${workspace.swarm.name}.sphinx.chat-.${timestamp}`;
-
-    // The token never goes in the URL: the link is pasted to whoever is
-    // invited. It is stored behind an opaque callKey, and Jamie is
-    // dispatched into the link's room with that key in its dispatch
-    // metadata (`lib/calls/callAgent.ts`). The same key names the call's
-    // record, which the call endpoints act on (`lib/calls/callRecord.ts`):
-    // its turns run as this user. Mock mode has no LiveKit to dispatch to.
-    if (!config.USE_MOCKS) {
-      const roomName = callRoomName(callUrl);
-      let callKey: string;
-      try {
-        callKey = await storeCallToken(hiveToken);
-        await storeCallRecord(callKey, {
-          userId: userOrResponse.id,
-          orgId: workspace.sourceControlOrgId ?? null,
-          workspaceSlug: slug,
-          roomName,
-        });
-      } catch (err) {
-        console.error("[generate-link] Redis write failed:", err);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-      }
-      try {
-        await dispatchCallAgent(roomName, callKey);
-      } catch (err) {
-        console.error("[generate-link] Jamie dispatch failed:", err);
-        await Promise.all([dropCallToken(callKey), dropCallRecord(callKey)]).catch(() => undefined);
-        return NextResponse.json({ error: "Could not start Jamie for the call" }, { status: 502 });
-      }
-    }
-
-    return NextResponse.json({ url: callUrl });
+    if ("url" in result) return NextResponse.json({ url: result.url });
+    return NextResponse.json({ error: result.error }, { status: result.status });
   } catch (error) {
     console.error("Error generating call link:", error);
     return NextResponse.json(
