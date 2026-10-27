@@ -203,6 +203,16 @@ describe("ControlPanelList", () => {
     expect(onRename).toHaveBeenCalledWith(chat, "Blur save");
   });
 
+  test("rename: the input is present and focused after choosing Rename", () => {
+    const chat = item("a", { title: "Old title" });
+    render(<ControlPanelList {...props({ groups: group(chat), totalCount: 1 })} />);
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rename/ }));
+    const input = screen.getByLabelText("Chat title") as HTMLInputElement;
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe("Old title".length);
+  });
+
   test("empty states: loading, nothing yet, no match; Show more only when there are more", () => {
     const { rerender } = render(<ControlPanelList {...props({ loading: true })} />);
     expect(screen.getByLabelText("Loading chats")).toBeTruthy();

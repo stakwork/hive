@@ -6,7 +6,15 @@
  * plans/chained-orchestrators.md §6).
  */
 import { describe, it, expect } from "vitest";
-import { strutAppDocumentUrl, workspaceAppDocumentKey, workspaceAppOfKey } from "@/lib/strut-apps";
+import {
+  strutAppDocumentUrl,
+  strutAppInputOf,
+  strutAppLinkOf,
+  strutDeepLinkOf,
+  workspaceAppDocumentKey,
+  workspaceAppOfKey,
+  workspaceAppPath,
+} from "@/lib/strut-apps";
 
 const JOB = "6f1c0d3e-1111-4222-8333-444455556666";
 
@@ -58,5 +66,36 @@ describe("strutAppDocumentUrl", () => {
     expect(strutAppDocumentUrl({ githubLogin: "acme-org", swarmId: "swarm-1", app: "visits" })).toBe(
       "/api/orgs/acme-org/strut/apps/document?swarmId=swarm-1&app=visits",
     );
+  });
+});
+
+describe("app deep links (strut plans/apps.md §7.1)", () => {
+  // What strut's kit writes: appLink("acme/invoices", { view: "/unpaid", run: 12 }).
+  const LINK = `?${new URLSearchParams({ app: "acme/invoices", input: "view=%2Funpaid&run=12" })}`;
+
+  it("strutDeepLinkOf keeps an app's input beside it", () => {
+    expect(strutDeepLinkOf(`${LINK}&key=leak`)).toBe(new URLSearchParams({ app: "acme/invoices", input: "view=%2Funpaid&run=12" }).toString());
+  });
+
+  it("strutAppLinkOf names the app and carries its input whole; null for a link to anything else or an app hive cannot route to", () => {
+    expect(strutAppLinkOf(strutDeepLinkOf(LINK)!)).toEqual({ app: "acme/invoices", input: "view=%2Funpaid&run=12" });
+    expect(strutAppLinkOf("app=bench")).toEqual({ app: "bench" });
+    expect(strutAppLinkOf("wf=bench&run=1")).toBeNull();
+    expect(strutAppLinkOf("app=%40acme%2Fbench")).toBeNull(); // a peer's
+    expect(strutAppLinkOf("app=bench%40v3")).toBeNull(); // a pinned version
+  });
+
+  it("strutAppInputOf reads the input back as flat strings — what the page gets as its tool input", () => {
+    expect(strutAppInputOf("view=%2Funpaid&run=12")).toEqual({ view: "/unpaid", run: "12" });
+    expect(strutAppInputOf(null)).toBeUndefined();
+    expect(strutAppInputOf("")).toBeUndefined();
+    expect(strutAppInputOf("&")).toBeUndefined();
+  });
+
+  it("workspaceAppPath is the pinned app's page, its input one param of it, read back as it went in", () => {
+    expect(workspaceAppPath("openhealth", "acme/invoices")).toBe("/w/openhealth/apps/acme/invoices");
+    const path = workspaceAppPath("openhealth", "acme/invoices", "view=%2Funpaid&run=12");
+    expect(path.split("?")[0]).toBe("/w/openhealth/apps/acme/invoices");
+    expect(strutAppInputOf(new URLSearchParams(path.split("?")[1]).get("input"))).toEqual({ view: "/unpaid", run: "12" });
   });
 });
