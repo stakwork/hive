@@ -40,6 +40,21 @@
  * description?, repos? }`, authenticated with that swarm's own key. A strut
  * without `/self` (404/405/501) is skipped; a failure never blocks the above.
  *
+ * And once the org strut PUBLISHES packages (it has a publisher key: strut
+ * plans/marketplace.md §12.1), every other workspace's strut **follows its
+ * catalog**, so a workflow the org strut releases reaches every workspace:
+ *
+ *     GET  {org lab}/publisher                       → { key }   (404: nothing published)
+ *     POST {org lab}/publisher/tokens                { subscriber: slug }  → { token }
+ *     PUT  {its lab}/packages/subscriptions/{org}    { key, url: {org lab}, channel, token }
+ *
+ * The token is a read of the org strut's catalog and its archives, nothing
+ * else, re-minted every pass like a `lab:peer` token. The subscription is
+ * written with the workspace's own key — the operator's act; its strut then
+ * applies each release on its own (at the PUT, on the org strut's ping
+ * after a publish, and every ten minutes). A strut without the route
+ * (404/405/501) is skipped.
+ *
  * Nothing here runs on a request: a job turn, a builder dispatch and the
  * embed only use what the last pass left. A new swarm, or a person's first
  * use of the org strut, is picked up by the next pass; a swarm that is down
@@ -88,6 +103,10 @@ export interface StrutPeersReconcileResult {
   selfUnsupported: number;
   /** Self pushes that failed (also listed in `errors`). */
   selfFailed: number;
+  /** Workspaces' struts subscribed to the org strut's catalog. */
+  subscriptionsPushed: number;
+  /** Struts with no subscriptions route yet, or an org strut with no token route. */
+  subscriptionsUnsupported: number;
   errors: StrutPeersReconcileError[];
   timestamp: Date;
 }
@@ -141,6 +160,8 @@ export async function runStrutPeersReconcile(options: StrutPeersReconcileOptions
     selfPushed: 0,
     selfUnsupported: 0,
     selfFailed: 0,
+    subscriptionsPushed: 0,
+    subscriptionsUnsupported: 0,
     errors: [],
     timestamp: now,
   };
@@ -182,6 +203,8 @@ export async function runStrutPeersReconcile(options: StrutPeersReconcileOptions
     selfPushed: result.selfPushed,
     selfUnsupported: result.selfUnsupported,
     selfFailed: result.selfFailed,
+    subscriptionsPushed: result.subscriptionsPushed,
+    subscriptionsUnsupported: result.subscriptionsUnsupported,
     errors: result.errors.length,
   });
   return result;
@@ -222,7 +245,11 @@ async function reconcileOrg(
   ]);
   if (peers.length === 0) return;
 
-  // 2. The users' delegations, through the org strut's gateway — behind the
+  // 2. Every other workspace's strut following the org strut's catalog,
+  // once the org strut publishes.
+  await pushSubscriptions(org.githubLogin, home, peers, result);
+
+  // 3. The users' delegations, through the org strut's gateway — behind the
   // ORG workspace's gates, the one gateway that bills these calls.
   if (!isBifrostEnabledForWorkspace(home.slug) || !isBifrostEnabledForAgent(STRUT_DELEGATION_AGENT)) return;
   const users = await orgStrutUsers(home.workspaceId);
@@ -374,6 +401,71 @@ async function pushSelfRecord(
   } catch (err) {
     return { status: "failed", error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** The channel every workspace's strut follows on the org strut's catalog. */
+export const STRUT_SUBSCRIPTION_CHANNEL = "stable";
+
+/** Subscribe every peer's strut to the org strut's catalog — when it has one. */
+async function pushSubscriptions(orgLogin: string, home: StrutSwarm, peers: StrutSwarm[], result: StrutPeersReconcileResult): Promise<void> {
+  const headers = (target: StrutLabTarget) => ({
+    "Content-Type": "application/json",
+    "x-api-token": target.swarmApiKey,
+    Authorization: `Bearer ${target.swarmApiKey}`,
+  });
+  let key: string;
+  try {
+    const res = await fetch(`${home.lab.labBase}/publisher`, {
+      headers: headers(home.lab),
+      cache: "no-store",
+      signal: AbortSignal.timeout(STRUT_DELEGATION_HTTP_TIMEOUT_MS),
+    });
+    // No key yet (nothing published), or a strut older than publishing.
+    if (res.status === 404 || res.status === 405 || res.status === 501) return;
+    if (!res.ok) throw new Error(`GET /publisher returned ${res.status}`);
+    const body = (await res.json().catch(() => ({}))) as { key?: unknown };
+    if (typeof body.key !== "string" || !body.key) throw new Error("GET /publisher answered no key");
+    key = body.key;
+  } catch (err) {
+    result.errors.push({ org: orgLogin, error: `the org strut's publisher: ${err instanceof Error ? err.message : String(err)}` });
+    return;
+  }
+  await Promise.all(
+    peers.map(async (peer) => {
+      try {
+        const minted = await fetch(`${home.lab.labBase}/publisher/tokens`, {
+          method: "POST",
+          headers: headers(home.lab),
+          body: JSON.stringify({ subscriber: peer.slug }),
+          cache: "no-store",
+          signal: AbortSignal.timeout(STRUT_DELEGATION_HTTP_TIMEOUT_MS),
+        });
+        if (minted.status === 404 || minted.status === 405 || minted.status === 501) {
+          result.subscriptionsUnsupported++;
+          return;
+        }
+        if (!minted.ok) throw new Error(`POST /publisher/tokens returned ${minted.status}`);
+        const { token } = (await minted.json().catch(() => ({}))) as { token?: unknown };
+        if (typeof token !== "string" || !token) throw new Error("POST /publisher/tokens answered no token");
+        const put = await fetch(`${peer.lab.labBase}/packages/subscriptions/${encodeURIComponent(orgLogin)}`, {
+          method: "PUT",
+          headers: headers(peer.lab),
+          body: JSON.stringify({ key, url: home.lab.labBase, channel: STRUT_SUBSCRIPTION_CHANNEL, token }),
+          cache: "no-store",
+          signal: AbortSignal.timeout(STRUT_DELEGATION_HTTP_TIMEOUT_MS),
+        });
+        if (put.status === 404 || put.status === 405 || put.status === 501) {
+          logger.info("Strut has no subscriptions route yet; not subscribed", LOG_TAG, { peer: peer.slug, org: orgLogin });
+          result.subscriptionsUnsupported++;
+          return;
+        }
+        if (!put.ok) throw new Error(`PUT /packages/subscriptions/${orgLogin} on ${peer.slug} returned ${put.status}`);
+        result.subscriptionsPushed++;
+      } catch (err) {
+        result.errors.push({ org: orgLogin, peer: peer.slug, error: err instanceof Error ? err.message : String(err) });
+      }
+    }),
+  );
 }
 
 /** The org strut's users' delegations on one peer's strut, through the org strut's gateway. */
