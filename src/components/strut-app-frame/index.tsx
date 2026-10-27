@@ -20,6 +20,13 @@
  * lift its own sandbox. No popups, forms, modals or top navigation either;
  * a link goes through `ui/open-link`, which this component opens.
  *
+ * A deep link (strut plans/apps.md §7.1) is `?app=<name>&input=<the app's
+ * own query>`: `toolInput` is that input as the page is opened with it, sent
+ * again in place whenever it changes. A link the page opens to ITSELF is its
+ * input now — resent even when unchanged, as the page may have moved —
+ * with the host's address following (`appLinkHref`, replaced); a
+ * link to another app is that app's page when the host has one.
+ *
  * The document comes from the document route (`strutAppDocumentUrl`), which
  * reads it from the swarm with the swarm key; the token strut writes into it
  * is the app's file token, worth that app's files only. A loading overlay
@@ -30,7 +37,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/use-theme";
-import { strutAppDocumentUrl, strutAppRelayUrl, strutDeepLinkOf, type StrutAppSource } from "@/lib/strut-apps";
+import { strutAppDocumentUrl, strutAppInputOf, strutAppLinkOf, strutAppRelayUrl, strutDeepLinkOf, type StrutAppSource } from "@/lib/strut-apps";
 import { isAllowedArtifactNavPath } from "@/lib/utils/html-artifact-nav";
 import { connectStrutAppHost, type StrutAppHostConnection } from "./bridge";
 import { hostContextFor, readHostStyles } from "./host-context";
@@ -43,7 +50,7 @@ export interface StrutAppFrameProps {
   source: StrutAppSource;
   title?: string;
   className?: string;
-  /** What the app is opened with (`ui/notifications/tool-input`), e.g. `{ runId }`. */
+  /** What the app is opened with (`ui/notifications/tool-input`), e.g. `{ runId }` or a link's `input`; sent again when it changes. */
   toolInput?: Record<string, unknown>;
   /**
    * `ui/message`: the conversation the app sits in (a job's). Absent where
@@ -52,6 +59,8 @@ export interface StrutAppFrameProps {
   onMessage?: (text: string) => void | Promise<void>;
   /** Hive's own view for a strut deep link (`wf=…&run=…`), or null when Hive has none here. */
   strutLinkHref?: (deepLink: string) => string | null;
+  /** Hive's page for a link to an app (`?app=<name>&input=…`), or null when it has none for that app (then `strutLinkHref`). */
+  appLinkHref?: (app: string, input?: string) => string | null;
   /** Changes when the app is rebuilt, so an open frame reloads. */
   reloadKey?: string | number;
 }
@@ -76,7 +85,7 @@ async function fetchDocument(url: string): Promise<string> {
   return res.text();
 }
 
-export function StrutAppFrame({ source, title, className, toolInput, onMessage, strutLinkHref, reloadKey }: StrutAppFrameProps) {
+export function StrutAppFrame({ source, title, className, toolInput, onMessage, strutLinkHref, appLinkHref, reloadKey }: StrutAppFrameProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const connRef = useRef<StrutAppHostConnection | null>(null);
   const [state, setState] = useState<FrameState>({ status: "loading" });
@@ -86,8 +95,11 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
   const { resolvedTheme } = useTheme();
 
   // Read at connect time without reconnecting when the caller re-renders.
-  const latest = useRef({ onMessage, strutLinkHref, router, resolvedTheme, toolInput });
-  latest.current = { onMessage, strutLinkHref, router, resolvedTheme, toolInput };
+  const latest = useRef({ onMessage, strutLinkHref, appLinkHref, router, resolvedTheme, toolInput, app: source.app });
+  latest.current = { onMessage, strutLinkHref, appLinkHref, router, resolvedTheme, toolInput, app: source.app };
+  /** The input the open connection has, as a key (null before one connects). */
+  const sentInput = useRef<string | null>(null);
+  const inputKey = toolInput ? JSON.stringify(toolInput) : "";
 
   const documentUrl = strutAppDocumentUrl(source);
   const relayUrl = strutAppRelayUrl(source);
@@ -105,7 +117,16 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
     const openLink = (url: string): boolean => {
       const deepLink = strutDeepLinkOf(url);
       if (deepLink) {
-        const href = latest.current.strutLinkHref?.(deepLink);
+        const target = strutAppLinkOf(deepLink);
+        if (target && target.app === latest.current.app) {
+          const args = strutAppInputOf(target.input);
+          sentInput.current = args ? JSON.stringify(args) : "";
+          connRef.current?.setToolInput(args);
+          const here = latest.current.appLinkHref?.(target.app, target.input);
+          if (here && isAllowedArtifactNavPath(here)) latest.current.router.replace(here, { scroll: false });
+          return true;
+        }
+        const href = (target && latest.current.appLinkHref?.(target.app, target.input)) || latest.current.strutLinkHref?.(deepLink);
         if (!href || !isAllowedArtifactNavPath(href)) return false;
         latest.current.router.push(href);
         return true;
@@ -129,7 +150,6 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
           frame,
           relayUrl,
           hostContext: hostContextFor(latest.current.resolvedTheme === "dark" ? "dark" : "light", readHostStyles()),
-          toolInput: latest.current.toolInput,
           handlers: {
             onSize: ({ height: h }) => {
               if (cancelled) return;
@@ -148,6 +168,9 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
           return;
         }
         connRef.current = conn;
+        // What initialize is followed by: the input as it is NOW.
+        conn.setToolInput(latest.current.toolInput);
+        sentInput.current = latest.current.toolInput ? JSON.stringify(latest.current.toolInput) : "";
         // Never a blob URL, never `src`: see the header.
         frame.srcdoc = html;
       } catch (e) {
@@ -158,6 +181,7 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
     return () => {
       cancelled = true;
       connRef.current = null;
+      sentInput.current = null;
       void conn?.close();
       frame.removeAttribute("srcdoc");
     };
@@ -171,6 +195,14 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
     const id = requestAnimationFrame(() => conn.setHostContext(hostContextFor(resolvedTheme === "dark" ? "dark" : "light", readHostStyles())));
     return () => cancelAnimationFrame(id);
   }, [resolvedTheme]);
+
+  // A new input for the page already open: sent in place, no reload.
+  useEffect(() => {
+    const conn = connRef.current;
+    if (!conn || sentInput.current === inputKey) return;
+    sentInput.current = inputKey;
+    conn.setToolInput(latest.current.toolInput);
+  }, [inputKey]);
 
   // As tall as the page says it is, and never shorter than its area: a page
   // that fills the viewport then measures the area, so the two agree.
