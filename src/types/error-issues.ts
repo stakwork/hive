@@ -1,6 +1,6 @@
-import type { ErrorIssueStatus } from "@prisma/client";
+import type { ErrorIssueStatus, ErrorFixStatus } from "@prisma/client";
 
-export type { ErrorIssueStatus };
+export type { ErrorIssueStatus, ErrorFixStatus };
 
 /** A single candidate in a "likely" multi-match correlation result. */
 export interface CorrelationCandidate {
@@ -38,6 +38,11 @@ export interface ErrorIssueRecord {
   impactScoredAt: string | null;
   /** Top contributing node breakdown: name, type, pagerank, nodeCount. */
   impactMeta: Record<string, unknown> | null;
+  /** Strut fix job state. fixStatus null = no fix dispatched. */
+  fixStatus?: ErrorFixStatus | null;
+  fixJobId?: string | null;
+  fixPrUrl?: string | null;
+  fixDispatchedAt?: string | null;
 }
 
 export interface ErrorEventRecord {

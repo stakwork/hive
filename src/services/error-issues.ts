@@ -93,6 +93,10 @@ export async function listErrorIssues({
         impactScore: true,
         impactScoredAt: true,
         impactMeta: true,
+        fixStatus: true,
+        fixJobId: true,
+        fixPrUrl: true,
+        fixDispatchedAt: true,
       },
     }),
     db.errorIssue.count({ where }),
@@ -135,6 +139,10 @@ export async function getErrorIssueDetail(
       impactScore: true,
       impactScoredAt: true,
       impactMeta: true,
+      fixStatus: true,
+      fixJobId: true,
+      fixPrUrl: true,
+      fixDispatchedAt: true,
     },
   });
 
