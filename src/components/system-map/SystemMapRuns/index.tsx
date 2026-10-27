@@ -44,6 +44,12 @@ const COPY: Record<SystemMapWorkflowKey, { description: string; button: string; 
     empty: "Not checked yet. Run the check to flag vulnerable packages.",
     started: "Package CVE check started",
   },
+  security_audit: {
+    description: "Audits repositories for vulnerabilities by class.",
+    button: "Run security audit",
+    empty: "No audits yet. Launch one above.",
+    started: "Security audit started",
+  },
 };
 
 /** Poll cadence while a run is in flight. */
@@ -242,9 +248,21 @@ export function RunCard({
               · {run.findingRefIds.length} findings
             </span>
           )}
+          {run.repos && (
+            <span
+              className="max-w-xs truncate font-mono text-xs text-muted-foreground"
+              title={run.repos.join(", ")}
+              data-testid="system-map-run-repos"
+            >
+              ·{" "}
+              {run.repos.length > 2
+                ? `${run.repos.slice(0, 2).join(", ")} +${run.repos.length - 2}`
+                : run.repos.join(", ")}
+            </span>
+          )}
           {run.apply !== null && (
             <span className="text-xs text-muted-foreground" data-testid="system-map-run-apply">
-              · {run.apply ? "writes verdict" : "dry run"}
+              · {run.apply ? (run.repos ? "writes findings" : "writes verdict") : "dry run"}
             </span>
           )}
           {run.strutUrl && (

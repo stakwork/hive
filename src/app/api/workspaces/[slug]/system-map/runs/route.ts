@@ -11,6 +11,8 @@
  *      { workflow: "finding_verify", findingRefIds: string[], apply?: boolean }
  *      (up to 50 `Finding` ref_ids, sent as `input.finding_ref_ids`; `apply`
  *      writes the verdicts, else a dry run)
+ *      { workflow: "security_audit", repos: ["owner/name"], classes?, apply?, maxAgentCalls? }
+ *      (`swarm-security-hunt`; `apply` writes Findings, else a dry run)
  *      — launch that workflow on the org strut. One run in flight per
  *      workspace per workflow (per finding for the finding check); DEVELOPER and up.
  */
@@ -32,6 +34,7 @@ import {
   parseComponents,
   parseCweIds,
   parseFindingInput,
+  parseSecurityAuditInput,
   SYSTEM_MAP_WORKFLOWS,
   type SystemMapWorkflowKey,
 } from "@/services/strut-runs/system-map";
@@ -97,6 +100,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       components?: unknown;
       findingRefIds?: unknown;
       apply?: unknown;
+      repos?: unknown;
+      classes?: unknown;
+      maxAgentCalls?: unknown;
     };
     const key = parseKey(payload.workflow);
     if (!key) return NextResponse.json({ error: "Unknown workflow" }, { status: 400 });
@@ -111,6 +117,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const findings = parseFindingInput(key, payload.findingRefIds, payload.apply);
     if (findings && "error" in findings) return NextResponse.json({ error: findings.error }, { status: 400 });
+
+    const audit = parseSecurityAuditInput(key, payload);
+    if (audit && "error" in audit) return NextResponse.json({ error: audit.error }, { status: 400 });
 
     if (await hasPendingSystemMapRun(member.workspaceId, key, findings?.findingRefIds)) {
       const error = findings
@@ -136,6 +145,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       cweIds,
       components,
       findings,
+      audit,
     });
     return NextResponse.json(
       { success: true, key, runId: dispatched.runId, strutRunId: dispatched.strutRunId, strutUrl: dispatched.strutUrl },
