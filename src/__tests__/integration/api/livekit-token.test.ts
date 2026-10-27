@@ -195,6 +195,39 @@ describe("POST /api/livekit-token", () => {
     expect(JSON.parse(write![1] as string)).toMatchObject({ userId: owner.id, orgId: org.id });
   });
 
+  it("asks Jamie for a transcript only when the env is set AND the workspace has an org", async () => {
+    const saved = process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+    const dispatchMeta = async (owner: Awaited<ReturnType<typeof createOwnerAndWorkspace>>["owner"], slug: string) => {
+      mockCreateDispatch.mockClear();
+      const res = await POST(createAuthenticatedPostRequest("http://localhost:3000/api/livekit-token", owner, { slug }));
+      expect(res.status).toBe(200);
+      return JSON.parse(mockCreateDispatch.mock.calls[0][2].metadata);
+    };
+    try {
+      const { owner, workspace } = await createOwnerAndWorkspace();
+      const withOrg = await createOwnerAndWorkspace();
+      const org = await db.sourceControlOrg.create({
+        data: {
+          id: generateUniqueId("lk-org"),
+          githubLogin: `lk-org-${generateUniqueId()}`,
+          githubInstallationId: Math.floor(Math.random() * 1_000_000_000),
+          type: "ORG",
+        },
+      });
+      await db.workspace.update({ where: { id: withOrg.workspace.id }, data: { sourceControlOrgId: org.id } });
+
+      delete process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+      expect((await dispatchMeta(withOrg.owner, withOrg.workspace.slug)).transcript).toBeUndefined();
+
+      process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME = "call-transcript";
+      expect((await dispatchMeta(owner, workspace.slug)).transcript).toBeUndefined();
+      expect((await dispatchMeta(withOrg.owner, withOrg.workspace.slug)).transcript).toBe(true);
+    } finally {
+      if (saved === undefined) delete process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+      else process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME = saved;
+    }
+  });
+
   it("returns 502 and drops the callKey when the dispatch fails", async () => {
     mockCreateDispatch.mockRejectedValueOnce(new Error("twirp error: unavailable"));
     const { owner, workspace } = await createOwnerAndWorkspace();

@@ -1,7 +1,7 @@
 import { config, optionalEnvVars } from "@/config/env";
 import { db } from "@/lib/db";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
-import { callRoomName, dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
+import { callRoomName, callTranscriptWanted, dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
 import { dropCallRecord, storeCallRecord } from "@/lib/calls/callRecord";
 import jwt from "jsonwebtoken";
 
@@ -147,7 +147,9 @@ export async function startCall({
       return { status: 500, error: "Internal server error" };
     }
     try {
-      await dispatchCallAgent(roomName, callKey);
+      await dispatchCallAgent(roomName, callKey, {
+        transcript: callTranscriptWanted(workspace.sourceControlOrgId),
+      });
     } catch (err) {
       console.error("[startCall] Jamie dispatch failed:", err);
       await Promise.all([dropCallToken(callKey), dropCallRecord(callKey)]).catch(() => undefined);

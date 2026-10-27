@@ -140,6 +140,28 @@ describe("POST /api/strut-devices/calls", () => {
     });
   });
 
+  test("dispatch metadata carries transcript:true only when the workflow env is set", async () => {
+    const { workspace, credential } = await setup();
+    const saved = process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+    try {
+      for (const [wf, expected] of [
+        [undefined, undefined],
+        ["call-transcript", true],
+      ] as const) {
+        if (wf === undefined) delete process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+        else process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME = wf;
+        mockCreateDispatch.mockClear();
+        const res = await POST(callRequest(credential, { workspace: workspace.slug }));
+        expect(res.status).toBe(200);
+        const meta = JSON.parse(mockCreateDispatch.mock.calls[0][2].metadata);
+        expect(meta.transcript).toBe(expected);
+      }
+    } finally {
+      if (saved === undefined) delete process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+      else process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME = saved;
+    }
+  });
+
   test("400 when workspace is missing from the body", async () => {
     const { credential } = await setup();
     const res = await POST(callRequest(credential, {}));

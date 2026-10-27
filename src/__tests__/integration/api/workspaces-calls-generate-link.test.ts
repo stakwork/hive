@@ -174,6 +174,38 @@ describe("Generate Call Link API - Integration Tests", () => {
     });
 
     describe("Authorization Tests", () => {
+      test("dispatch metadata carries transcript:true only when the workflow env is set", async () => {
+        const saved = process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+        try {
+          for (const [wf, expected] of [
+            [undefined, undefined],
+            ["call-transcript", true],
+          ] as const) {
+            if (wf === undefined) delete process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+            else process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME = wf;
+            mockCreateDispatch.mockClear();
+            const { owner, workspace } = await createOrgWorkspaceScenario({
+              withSwarm: true,
+              swarm: { status: "ACTIVE", name: `swarm-${generateUniqueId()}` },
+            });
+            const response = await POST(
+              createAuthenticatedPostRequest(
+                `http://localhost:3000/api/workspaces/${workspace.slug}/calls/generate-link`,
+                {},
+                owner,
+              ),
+              { params: Promise.resolve({ slug: workspace.slug }) },
+            );
+            expect(response.status).toBe(200);
+            const meta = JSON.parse(mockCreateDispatch.mock.calls[0][2].metadata);
+            expect(meta.transcript).toBe(expected);
+          }
+        } finally {
+          if (saved === undefined) delete process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME;
+          else process.env.CALL_TRANSCRIPT_STRUT_WORKFLOW_NAME = saved;
+        }
+      });
+
       test("allows workspace owner to generate call link", async () => {
         const { owner, workspace } = await createOrgWorkspaceScenario({
           withSwarm: true,

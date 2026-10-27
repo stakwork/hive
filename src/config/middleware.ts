@@ -222,6 +222,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/calls/turn", strategy: "exact", access: "webhook", methods: ["POST"] },
   { path: "/api/calls/messages", strategy: "exact", access: "webhook", methods: ["GET"] },
   { path: "/api/calls/cancel", strategy: "exact", access: "webhook", methods: ["POST"] },
+  { path: "/api/calls/transcript", strategy: "exact", access: "webhook", methods: ["POST"] },
   { path: "/api/workers", strategy: "prefix", access: "webhook" }, // machine-to-machine; each worker validates INTERNAL_WORKER_SECRET
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
   { path: "/api/features/*/title", strategy: "pattern", access: "webhook" },
