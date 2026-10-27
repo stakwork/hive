@@ -38,6 +38,7 @@ vi.mock("@/app/org/[githubLogin]/_components/control-panel/useControlPanel", () 
     onToggleArchived: vi.fn(),
     onArchive: vi.fn(),
     onRestore: vi.fn(),
+    onRename: vi.fn(),
     onNewChat: vi.fn(),
   }),
 }));
