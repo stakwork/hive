@@ -55,8 +55,8 @@ describe("SecurityAuditTab", () => {
     fireEvent.click(screen.getByRole("switch"));
     fireEvent.click(screen.getByTestId("security-audit-launch"));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const [url, init] = fetchMock.mock.calls[0];
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, i]) => i?.method === "POST")).toBe(true));
+    const [url, init] = fetchMock.mock.calls.find(([, i]) => i?.method === "POST")!;
     expect(url).toBe("/api/workspaces/acme/system-map/runs");
     expect(JSON.parse(init.body)).toEqual({
       workflow: "security_audit",
@@ -65,5 +65,30 @@ describe("SecurityAuditTab", () => {
       apply: true,
       maxAgentCalls: 120,
     });
+  });
+
+  it("shows built-in descriptions with a note when the live read fails", async () => {
+    fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) });
+    render(<SecurityAuditTab />);
+    expect(screen.getByText(/untrusted input reaches an interpreter/i)).toBeInTheDocument();
+    expect(await screen.findByTestId("security-audit-fallback-note")).toBeInTheDocument();
+  });
+
+  it("shows live classes, descriptions and the hunt text", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        classes: [
+          { name: "Prompt Abuse", description: "Live description.", hunt: "Look at prompts.", fallback: false },
+        ],
+      }),
+    });
+    render(<SecurityAuditTab />);
+    expect(await screen.findByText("Live description.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Class Prompt Abuse")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Class Injection")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("security-audit-fallback-note")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("What Prompt Abuse hunts"));
+    expect(await screen.findByText("Look at prompts.")).toBeInTheDocument();
   });
 });

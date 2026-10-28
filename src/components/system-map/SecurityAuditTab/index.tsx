@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
-import { Loader2, Play, ShieldAlert } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Info, Loader2, Play, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
-import { SECURITY_AUDIT_CLASSES } from "@/lib/system-map/security-audit";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { fallbackSecurityAuditClasses, type SecurityAuditClassInfo } from "@/lib/system-map/security-audit";
 import { SystemMapRuns } from "@/components/system-map/SystemMapRuns";
 import type { SystemMapRun } from "@/types/system-map";
 
@@ -48,7 +49,20 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
   const [callsInput, setCallsInput] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [runsKey, setRunsKey] = useState(0);
+  const [classInfos, setClassInfos] = useState<SecurityAuditClassInfo[]>(fallbackSecurityAuditClasses);
   const [latest, setLatest] = useState<SystemMapRun | null>(null);
+
+  useEffect(() => {
+    if (!slug) return;
+    const controller = new AbortController();
+    fetch(`/api/workspaces/${slug}/system-map/security-audit/classes`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { classes?: SecurityAuditClassInfo[] } | null) => {
+        if (body?.classes?.length) setClassInfos(body.classes);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [slug]);
 
   const toggle = (set: Set<string>, setter: (s: Set<string>) => void, value: string) => {
     const next = new Set(set);
@@ -61,7 +75,7 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
   const callsValue = callsInput ?? String(defaultCalls);
   const calls = Number(callsValue);
   const callsValid = Number.isInteger(calls) && calls >= 1 && calls <= MAX_CALLS;
-  const classCount = classes.size || SECURITY_AUDIT_CLASSES.length;
+  const classCount = classes.size || classInfos.length;
   const estCalls = selected.size * classCount * 10;
   const estCost = (estCalls * 2) / 30;
 
@@ -124,18 +138,41 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
               Classes <span className="font-normal text-muted-foreground">(none selected = all)</span>
             </Label>
             <div className="grid gap-1.5 sm:grid-cols-2">
-              {SECURITY_AUDIT_CLASSES.map((c) => (
-                <label key={c} className="flex items-center gap-2 text-sm">
+              {classInfos.map((c) => (
+                <div key={c.name} className="flex items-start gap-2 text-sm">
                   <Checkbox
-                    checked={classes.has(c)}
-                    onCheckedChange={() => toggle(classes, setClasses, c)}
-                    aria-label={`Class ${c}`}
+                    id={`audit-class-${c.name}`}
+                    className="mt-0.5"
+                    checked={classes.has(c.name)}
+                    onCheckedChange={() => toggle(classes, setClasses, c.name)}
+                    aria-label={`Class ${c.name}`}
                     disabled={!canWrite}
                   />
-                  {c}
-                </label>
+                  <div className="min-w-0">
+                    <label htmlFor={`audit-class-${c.name}`}>{c.name}</label>
+                    {c.description && <p className="text-xs text-muted-foreground">{c.description}</p>}
+                  </div>
+                  {c.hunt && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button" aria-label={`What ${c.name} hunts`} className="text-muted-foreground">
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80 text-xs">
+                        <p className="mb-1 font-medium">What it hunts</p>
+                        {c.hunt}
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
               ))}
             </div>
+            {classInfos.some((c) => c.fallback) && (
+              <p className="text-xs text-muted-foreground" data-testid="security-audit-fallback-note">
+                Some descriptions are built-in text; the live ones could not be read.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-start gap-6">
