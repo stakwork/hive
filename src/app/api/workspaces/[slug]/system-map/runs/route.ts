@@ -118,7 +118,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const findings = parseFindingInput(key, payload.findingRefIds, payload.apply);
     if (findings && "error" in findings) return NextResponse.json({ error: findings.error }, { status: 400 });
 
-    const audit = parseSecurityAuditInput(key, payload);
+    const audit = await parseSecurityAuditInput(key, payload, {
+      workspaceId: member.workspaceId,
+      userId: member.userId,
+    });
     if (audit && "error" in audit) return NextResponse.json({ error: audit.error }, { status: 400 });
 
     if (await hasPendingSystemMapRun(member.workspaceId, key, findings?.findingRefIds)) {

@@ -44,8 +44,11 @@ vi.mock("@/services/strut-runs", () => ({
   StrutDispatchError: FakeDispatchError,
   STRUT_RUN_LOG_TAG: "STRUT_RUN",
 }));
+const { mockClasses } = vi.hoisted(() => ({ mockClasses: vi.fn() }));
+vi.mock("@/lib/system-map/security-audit-classes", () => ({ getSecurityAuditClasses: mockClasses }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
+import { fallbackSecurityAuditClasses } from "@/lib/system-map/security-audit";
 import {
   hasPendingSystemMapRun,
   launchSystemMapRun,
@@ -576,36 +579,70 @@ describe("security_audit", () => {
 });
 
 describe("parseSecurityAuditInput", () => {
-  it("is undefined for other workflows without the fields, and rejects them with", () => {
-    expect(parseSecurityAuditInput("cwe_check", {})).toBeUndefined();
-    expect(parseSecurityAuditInput("cwe_check", { apply: true })).toBeUndefined();
-    expect(parseSecurityAuditInput("cwe_check", { repos: ["a/b"] })).toHaveProperty("error");
-    expect(parseSecurityAuditInput("cwe_check", { classes: ["Injection"] })).toHaveProperty("error");
-    expect(parseSecurityAuditInput("cwe_check", { maxAgentCalls: 5 })).toHaveProperty("error");
+  const who = { workspaceId: "ws-1", userId: "user-1" };
+  const parse = (key: string, fields: Record<string, unknown>) => parseSecurityAuditInput(key as never, fields, who);
+  const builtIn = fallbackSecurityAuditClasses();
+  const live = [
+    { name: "Injection", description: "d", hunt: "", fallback: false },
+    { name: "Prompt Abuse", description: "d", hunt: "", fallback: false },
+  ];
+  beforeEach(() => mockClasses.mockResolvedValue(builtIn));
+
+  it("is undefined for other workflows without the fields, and rejects them with", async () => {
+    expect(await parse("cwe_check", {})).toBeUndefined();
+    expect(await parse("cwe_check", { apply: true })).toBeUndefined();
+    expect(await parse("cwe_check", { repos: ["a/b"] })).toHaveProperty("error");
+    expect(await parse("cwe_check", { classes: ["Injection"] })).toHaveProperty("error");
+    expect(await parse("cwe_check", { maxAgentCalls: 5 })).toHaveProperty("error");
   });
 
-  it("requires repos for the audit and dedupes", () => {
-    expect(parseSecurityAuditInput("security_audit", {})).toHaveProperty("error");
-    expect(parseSecurityAuditInput("security_audit", { repos: [] })).toHaveProperty("error");
-    expect(parseSecurityAuditInput("security_audit", { repos: ["bad"] })).toHaveProperty("error");
-    expect(
-      parseSecurityAuditInput("security_audit", { repos: Array.from({ length: 51 }, (_, i) => `a/r${i}`) }),
-    ).toHaveProperty("error");
-    expect(parseSecurityAuditInput("security_audit", { repos: ["a/b", "a/b"] })).toEqual({
-      repos: ["a/b"],
-      apply: false,
+  it("requires repos for the audit and dedupes", async () => {
+    expect(await parse("security_audit", {})).toHaveProperty("error");
+    expect(await parse("security_audit", { repos: [] })).toHaveProperty("error");
+    expect(await parse("security_audit", { repos: ["bad"] })).toHaveProperty("error");
+    expect(await parse("security_audit", { repos: Array.from({ length: 51 }, (_, i) => `a/r${i}`) })).toHaveProperty(
+      "error",
+    );
+    expect(await parse("security_audit", { repos: ["a/b", "a/b"] })).toEqual({ repos: ["a/b"], apply: false });
+  });
+
+  it("validates classes, apply and maxAgentCalls", async () => {
+    const repos = ["a/b"];
+    const unknown = await parse("security_audit", { repos, classes: ["Nope"] });
+    expect(unknown).toEqual({ error: expect.stringContaining("classes must be among: Injection, Access Control") });
+    expect(await parse("security_audit", { repos, classes: [3] })).toHaveProperty("error");
+    expect(await parse("security_audit", { repos, apply: 1 })).toHaveProperty("error");
+    expect(await parse("security_audit", { repos, maxAgentCalls: 0 })).toHaveProperty("error");
+    expect(await parse("security_audit", { repos, maxAgentCalls: 2001 })).toHaveProperty("error");
+    expect(await parse("security_audit", { repos, maxAgentCalls: 1.5 })).toHaveProperty("error");
+    expect(await parse("security_audit", { repos, classes: ["Wildcard"], apply: true, maxAgentCalls: 2000 })).toEqual({
+      repos,
+      classes: ["Wildcard"],
+      apply: true,
+      maxAgentCalls: 2000,
     });
   });
 
-  it("validates classes, apply and maxAgentCalls", () => {
+  it("accepts live-only classes, and trims, case-folds and canonicalizes names", async () => {
+    mockClasses.mockResolvedValue(live);
     const repos = ["a/b"];
-    expect(parseSecurityAuditInput("security_audit", { repos, classes: ["Nope"] })).toHaveProperty("error");
-    expect(parseSecurityAuditInput("security_audit", { repos, apply: 1 })).toHaveProperty("error");
-    expect(parseSecurityAuditInput("security_audit", { repos, maxAgentCalls: 0 })).toHaveProperty("error");
-    expect(parseSecurityAuditInput("security_audit", { repos, maxAgentCalls: 2001 })).toHaveProperty("error");
-    expect(parseSecurityAuditInput("security_audit", { repos, maxAgentCalls: 1.5 })).toHaveProperty("error");
+    expect(mockClasses).not.toHaveBeenCalled();
+    expect(await parse("security_audit", { repos, classes: ["Prompt Abuse"] })).toMatchObject({
+      classes: ["Prompt Abuse"],
+    });
     expect(
-      parseSecurityAuditInput("security_audit", { repos, classes: ["Wildcard"], apply: true, maxAgentCalls: 2000 }),
-    ).toEqual({ repos, classes: ["Wildcard"], apply: true, maxAgentCalls: 2000 });
+      await parse("security_audit", { repos, classes: ["  prompt ABUSE ", "injection", "Injection"] }),
+    ).toMatchObject({
+      classes: ["Prompt Abuse", "Injection"],
+    });
+    expect(mockClasses).toHaveBeenCalledWith("ws-1", "user-1");
+    // a built-in class missing from the live list is unknown
+    expect(await parse("security_audit", { repos, classes: ["Wildcard"] })).toHaveProperty("error");
+  });
+
+  it("accepts the built-in classes when the live read fell back", async () => {
+    expect(await parse("security_audit", { repos: ["a/b"], classes: ["business logic"] })).toMatchObject({
+      classes: ["Business Logic"],
+    });
   });
 });

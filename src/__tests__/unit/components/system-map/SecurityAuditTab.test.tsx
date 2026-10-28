@@ -91,4 +91,30 @@ describe("SecurityAuditTab", () => {
     fireEvent.click(screen.getByLabelText("What Prompt Abuse hunts"));
     expect(await screen.findByText("Look at prompts.")).toBeInTheDocument();
   });
+
+  it("posts the Concept names of live classes, and drops a stale built-in selection", async () => {
+    let resolveClasses: (v: unknown) => void = () => {};
+    fetchMock.mockImplementation((_url: string, init?: { method?: string }) =>
+      init?.method === "POST"
+        ? Promise.resolve({ ok: true, json: async () => ({}) })
+        : new Promise((resolve) => (resolveClasses = resolve)),
+    );
+    render(<SecurityAuditTab />);
+    fireEvent.click(screen.getByLabelText("Class Wildcard")); // chosen on the built-in list
+    resolveClasses({
+      ok: true,
+      json: async () => ({
+        classes: [
+          { name: "Prompt Abuse", description: "Live.", hunt: "", fallback: false },
+          { name: "Injection", description: "Live.", hunt: "", fallback: false },
+        ],
+      }),
+    });
+    fireEvent.click(await screen.findByLabelText("Class Prompt Abuse"));
+    fireEvent.click(screen.getByLabelText("Select acme/api"));
+    fireEvent.click(screen.getByTestId("security-audit-launch"));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, i]) => i?.method === "POST")).toBe(true));
+    const [, init] = fetchMock.mock.calls.find(([, i]) => i?.method === "POST")!;
+    expect(JSON.parse(init.body).classes).toEqual(["Prompt Abuse"]);
+  });
 });
