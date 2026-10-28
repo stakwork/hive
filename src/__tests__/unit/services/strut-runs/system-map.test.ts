@@ -53,6 +53,7 @@ import {
   parseComponents,
   parseCweIds,
   parseFindingInput,
+  parseSecurityAuditInput,
 } from "@/services/strut-runs/system-map";
 
 const NOW = new Date("2026-09-25T12:00:00Z");
@@ -410,6 +411,9 @@ describe("listSystemMapRuns", () => {
         components: null,
         findingRefIds: null,
         apply: null,
+        repos: null,
+        classes: null,
+        maxAgentCalls: null,
       },
     ]);
     expect(mockStrutRun.findMany).toHaveBeenCalledWith(
@@ -518,5 +522,90 @@ describe("listSystemMapRuns", () => {
 
     expect(runs[0].strutUrl).toBeNull();
     expect(runs[0].error).toBe("nope");
+  });
+});
+
+describe("security_audit", () => {
+  const base = { workspaceId: "ws-1", workspaceSlug: "s", userId: "u", publicBaseUrl: "https://hive.example" };
+
+  it("dispatches swarm-security-hunt with swarm id, target_filter and no workspace", async () => {
+    mockWorkspace.findUnique.mockResolvedValue({
+      swarm: { name: "swarmPExsmg", swarmUrl: "https://swarmPExsmg.sphinx.chat/api", swarmSecretAlias: "{{A}}" },
+    });
+    mockDispatch.mockResolvedValue({ runId: "r", strutRunId: "1", swarmId: "x" });
+    await launchSystemMapRun({
+      ...base,
+      key: "security_audit",
+      audit: { repos: ["a/b"], classes: ["Injection"], apply: false, maxAgentCalls: 60 },
+    });
+    const arg = mockDispatch.mock.calls[0][0];
+    expect(arg.kind).toBe("system_map_security_audit");
+    expect(arg.workflow).toBe("swarm-security-hunt");
+    expect(arg.input).toEqual({
+      swarm: "swarmPExsmg",
+      target_filter: { repos: ["a/b"] },
+      classes: ["Injection"],
+      apply: false,
+      max_agent_calls: 60,
+      swarm_url: "https://swarmPExsmg.sphinx.chat:3355",
+      swarm_secret_alias: "{{A}}",
+    });
+    expect(arg.input).not.toHaveProperty("workspace");
+  });
+
+  it("omits classes when not given and falls back to the URL host for the swarm id", async () => {
+    mockWorkspace.findUnique.mockResolvedValue({
+      swarm: { name: null, swarmUrl: "https://swarmAbc.sphinx.chat", swarmSecretAlias: "{{A}}" },
+    });
+    mockDispatch.mockResolvedValue({ runId: "r", strutRunId: "1", swarmId: "x" });
+    await launchSystemMapRun({ ...base, key: "security_audit", audit: { repos: ["a/b"], apply: true } });
+    const input = mockDispatch.mock.calls[0][0].input;
+    expect(input.swarm).toBe("swarmabc");
+    expect(input).not.toHaveProperty("classes");
+    expect(input).not.toHaveProperty("max_agent_calls");
+  });
+
+  it("throws no_target when the swarm id cannot be determined", async () => {
+    mockWorkspace.findUnique.mockResolvedValue({
+      swarm: { name: null, swarmUrl: "not a url", swarmSecretAlias: "{{A}}" },
+    });
+    await expect(
+      launchSystemMapRun({ ...base, key: "security_audit", audit: { repos: ["a/b"], apply: false } }),
+    ).rejects.toMatchObject({ code: "no_target" });
+  });
+});
+
+describe("parseSecurityAuditInput", () => {
+  it("is undefined for other workflows without the fields, and rejects them with", () => {
+    expect(parseSecurityAuditInput("cwe_check", {})).toBeUndefined();
+    expect(parseSecurityAuditInput("cwe_check", { apply: true })).toBeUndefined();
+    expect(parseSecurityAuditInput("cwe_check", { repos: ["a/b"] })).toHaveProperty("error");
+    expect(parseSecurityAuditInput("cwe_check", { classes: ["Injection"] })).toHaveProperty("error");
+    expect(parseSecurityAuditInput("cwe_check", { maxAgentCalls: 5 })).toHaveProperty("error");
+  });
+
+  it("requires repos for the audit and dedupes", () => {
+    expect(parseSecurityAuditInput("security_audit", {})).toHaveProperty("error");
+    expect(parseSecurityAuditInput("security_audit", { repos: [] })).toHaveProperty("error");
+    expect(parseSecurityAuditInput("security_audit", { repos: ["bad"] })).toHaveProperty("error");
+    expect(
+      parseSecurityAuditInput("security_audit", { repos: Array.from({ length: 51 }, (_, i) => `a/r${i}`) }),
+    ).toHaveProperty("error");
+    expect(parseSecurityAuditInput("security_audit", { repos: ["a/b", "a/b"] })).toEqual({
+      repos: ["a/b"],
+      apply: false,
+    });
+  });
+
+  it("validates classes, apply and maxAgentCalls", () => {
+    const repos = ["a/b"];
+    expect(parseSecurityAuditInput("security_audit", { repos, classes: ["Nope"] })).toHaveProperty("error");
+    expect(parseSecurityAuditInput("security_audit", { repos, apply: 1 })).toHaveProperty("error");
+    expect(parseSecurityAuditInput("security_audit", { repos, maxAgentCalls: 0 })).toHaveProperty("error");
+    expect(parseSecurityAuditInput("security_audit", { repos, maxAgentCalls: 2001 })).toHaveProperty("error");
+    expect(parseSecurityAuditInput("security_audit", { repos, maxAgentCalls: 1.5 })).toHaveProperty("error");
+    expect(
+      parseSecurityAuditInput("security_audit", { repos, classes: ["Wildcard"], apply: true, maxAgentCalls: 2000 }),
+    ).toEqual({ repos, classes: ["Wildcard"], apply: true, maxAgentCalls: 2000 });
   });
 });

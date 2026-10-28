@@ -9,10 +9,11 @@ import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { CweListsTab } from "@/components/system-map/CweListsTab";
 import { DomainNodesTab } from "@/components/system-map/DomainNodesTab";
+import { SecurityAuditTab } from "@/components/system-map/SecurityAuditTab";
 import { FindingsTab } from "@/components/system-map/FindingsTab";
 import { SystemMapRuns } from "@/components/system-map/SystemMapRuns";
 
-const TABS = ["overview", "cwe-lists", "findings", "nodes"] as const;
+const TABS = ["overview", "cwe-lists", "security-audit", "findings", "nodes"] as const;
 type SystemMapTab = (typeof TABS)[number];
 
 function parseTab(value: string | null): SystemMapTab {
@@ -47,6 +48,9 @@ function SystemMapTabs() {
         <TabsTrigger value="cwe-lists" data-testid="system-map-tab-cwe-lists">
           CWE lists
         </TabsTrigger>
+        <TabsTrigger value="security-audit" data-testid="system-map-tab-security-audit">
+          Security audit
+        </TabsTrigger>
         <TabsTrigger value="findings" data-testid="system-map-tab-findings">
           Findings
         </TabsTrigger>
@@ -59,6 +63,9 @@ function SystemMapTabs() {
       </TabsContent>
       <TabsContent value="cwe-lists" className="mt-4">
         <CweListsTab />
+      </TabsContent>
+      <TabsContent value="security-audit" className="mt-4">
+        <SecurityAuditTab onShowFindings={() => onTabChange("findings")} />
       </TabsContent>
       <TabsContent value="findings" className="mt-4">
         <FindingsTab />
