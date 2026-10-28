@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { swarmCypherRunner } from "@/lib/strut-run-graph/hydrate";
+import { records, swarmCypherRunner } from "@/lib/strut-run-graph/hydrate";
 import { labForRow } from "@/services/strut-runs";
 import { resolveStrutTarget } from "@/services/strut-target";
 import {
@@ -10,6 +10,8 @@ import {
 
 /** The "Security Audit" Concept in the org strut's graph; its PARENT_OF children are the classes. */
 const SECURITY_AUDIT_CONCEPT_REF = "33ac6244-a068-4e56-a385-cc7943465ae4";
+/** A Concept's ref_id is a UUID; anything else read from the graph is not trusted as an id. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const HUNT_MAX_CHARS = 400;
 
@@ -49,12 +51,13 @@ async function readLiveClasses(workspaceId: string, userId: string): Promise<Sec
   if ("unread" in result) return null;
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   const classes: SecurityAuditClassInfo[] = [];
-  for (const row of result.rows) {
-    const [ref_id, name, description, docs] = row.map(str);
-    if (!name || !ref_id) continue;
+  // By column name: upstream orders the columns its own way, not as RETURNed.
+  for (const row of records(result)) {
+    const [ref_id, name, description, docs] = [row.ref_id, row.name, row.description, row.docs].map(str);
+    if (!name) continue;
     const builtIn = (SECURITY_AUDIT_CLASS_FALLBACK as Record<string, string | undefined>)[name];
     classes.push({
-      ref_id,
+      ref_id: UUID_RE.test(ref_id) ? ref_id : null,
       name,
       description: description || builtIn || "",
       hunt: huntExcerpt(docs),

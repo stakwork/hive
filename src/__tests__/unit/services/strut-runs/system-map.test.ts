@@ -671,6 +671,9 @@ describe("parseSecurityAuditInput", () => {
     expect(await parse("security_audit", { repos: ["a/b"], classIds: ["r-pa", "nope"] })).toEqual({
       error: "classIds must be among: r-inj, r-pa",
     });
+    expect(
+      await parse("security_audit", { repos: ["a/b"], classIds: ["Attack class: a literal checklist."] }),
+    ).toHaveProperty("error");
     expect(await parse("security_audit", { repos: ["a/b"], classIds: "r-pa" })).toHaveProperty("error");
     expect(await parse("security_audit", { repos: ["a/b"], classIds: [] })).toHaveProperty("error");
   });
