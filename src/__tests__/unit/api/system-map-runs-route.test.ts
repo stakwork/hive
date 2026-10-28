@@ -7,6 +7,10 @@ vi.mock("@/lib/feature-flags", () => ({
   canAccessServerFeature: vi.fn(() => true),
   FEATURE_FLAGS: { CODEBASE_RECOMMENDATION: "x" },
 }));
+vi.mock("@/lib/system-map/security-audit-classes", async () => {
+  const { fallbackSecurityAuditClasses } = await import("@/lib/system-map/security-audit");
+  return { getSecurityAuditClasses: vi.fn(async () => fallbackSecurityAuditClasses()) };
+});
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: vi.fn(async () => ({ allowed: true })) }));
 vi.mock("@/lib/utils", () => ({ getBaseUrl: () => "https://hive.test" }));
 vi.mock("@/services/strut-runs", () => ({
