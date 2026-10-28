@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Info, Loader2, Play, ShieldAlert } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Info, Loader2, Play, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +17,9 @@ import { SystemMapRuns } from "@/components/system-map/SystemMapRuns";
 import type { SystemMapRun } from "@/types/system-map";
 
 const MAX_CALLS = 2000;
+
+/** What a class is selected by: its Concept ref_id, or its name for built-in text. */
+const classKey = (c: SecurityAuditClassInfo) => c.ref_id ?? c.name;
 
 /** `owner/name` of a GitHub repository URL, or null. */
 export function repoFullName(url: string): string | null {
@@ -50,6 +53,11 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
   const [launching, setLaunching] = useState(false);
   const [runsKey, setRunsKey] = useState(0);
   const [classInfos, setClassInfos] = useState<SecurityAuditClassInfo[]>(fallbackSecurityAuditClasses);
+  // The selection emptied because its classes left the list when the live one loaded.
+  const [staleSelection, setStaleSelection] = useState(false);
+  const [confirmAll, setConfirmAll] = useState(false);
+  const classesRef = useRef(classes);
+  classesRef.current = classes;
   const [latest, setLatest] = useState<SystemMapRun | null>(null);
 
   useEffect(() => {
@@ -58,7 +66,12 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
     fetch(`/api/workspaces/${slug}/system-map/security-audit/classes`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((body: { classes?: SecurityAuditClassInfo[] } | null) => {
-        if (body?.classes?.length) setClassInfos(body.classes);
+        if (!body?.classes?.length) return;
+        const keys = new Set(body.classes.map(classKey));
+        const kept = [...classesRef.current].filter((k) => keys.has(k));
+        if (classesRef.current.size > 0 && kept.length === 0) setStaleSelection(true);
+        setClasses(new Set(kept));
+        setClassInfos(body.classes);
       })
       .catch(() => {});
     return () => controller.abort();
@@ -75,17 +88,14 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
   const callsValue = callsInput ?? String(defaultCalls);
   const calls = Number(callsValue);
   const callsValid = Number.isInteger(calls) && calls >= 1 && calls <= MAX_CALLS;
-  // Only classes the picker lists: a selection made on the built-in list may not survive the live one swapping in.
-  const chosenClasses = useMemo(
-    () => classInfos.map((c) => c.name).filter((name) => classes.has(name)),
-    [classInfos, classes],
-  );
+  const chosenClasses = useMemo(() => classInfos.filter((c) => classes.has(classKey(c))), [classInfos, classes]);
   const classCount = chosenClasses.length || classInfos.length;
+  const blockedByStale = staleSelection && chosenClasses.length === 0 && !confirmAll;
   const estCalls = selected.size * classCount * 10;
   const estCost = (estCalls * 2) / 30;
 
   const launch = useCallback(async () => {
-    if (!slug || launching || selected.size === 0 || !callsValid) return;
+    if (!slug || launching || selected.size === 0 || !callsValid || blockedByStale) return;
     setLaunching(true);
     try {
       const response = await fetch(`/api/workspaces/${slug}/system-map/runs`, {
@@ -94,7 +104,11 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
         body: JSON.stringify({
           workflow: "security_audit",
           repos: [...selected],
-          ...(chosenClasses.length > 0 ? { classes: chosenClasses } : {}),
+          ...(chosenClasses.length > 0
+            ? chosenClasses.every((c) => c.ref_id)
+              ? { classIds: chosenClasses.map((c) => c.ref_id) }
+              : { classes: chosenClasses.map((c) => c.name) }
+            : {}),
           apply: !dryRun,
           maxAgentCalls: calls,
         }),
@@ -110,7 +124,7 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
     } finally {
       setLaunching(false);
     }
-  }, [slug, launching, selected, chosenClasses, dryRun, calls, callsValid]);
+  }, [slug, launching, selected, chosenClasses, dryRun, calls, callsValid, blockedByStale]);
 
   return (
     <div className="max-w-6xl space-y-4" data-testid="security-audit-tab">
@@ -144,12 +158,15 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
             </Label>
             <div className="grid gap-1.5 sm:grid-cols-2">
               {classInfos.map((c) => (
-                <div key={c.name} className="flex items-start gap-2 text-sm">
+                <div key={classKey(c)} className="flex items-start gap-2 text-sm">
                   <Checkbox
                     id={`audit-class-${c.name}`}
                     className="mt-0.5"
-                    checked={classes.has(c.name)}
-                    onCheckedChange={() => toggle(classes, setClasses, c.name)}
+                    checked={classes.has(classKey(c))}
+                    onCheckedChange={() => {
+                      toggle(classes, setClasses, classKey(c));
+                      setStaleSelection(false);
+                    }}
                     aria-label={`Class ${c.name}`}
                     disabled={!canWrite}
                   />
@@ -173,6 +190,25 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
                 </div>
               ))}
             </div>
+            {staleSelection && chosenClasses.length === 0 && (
+              <div
+                className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs"
+                data-testid="security-audit-stale-warning"
+              >
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <div className="space-y-1.5">
+                  <p>The classes you picked are no longer listed, so the selection was cleared. Pick classes again.</p>
+                  <label className="flex items-center gap-2">
+                    <Checkbox
+                      checked={confirmAll}
+                      onCheckedChange={(v) => setConfirmAll(v === true)}
+                      aria-label="Run all classes"
+                    />
+                    Run all classes instead
+                  </label>
+                </div>
+              </div>
+            )}
             {classInfos.some((c) => c.fallback) && (
               <p className="text-xs text-muted-foreground" data-testid="security-audit-fallback-note">
                 Some descriptions are built-in text; the live ones could not be read.
@@ -213,7 +249,7 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
 
           <Button
             onClick={() => void launch()}
-            disabled={!canWrite || !slug || launching || selected.size === 0 || !callsValid}
+            disabled={!canWrite || !slug || launching || selected.size === 0 || !callsValid || blockedByStale}
             data-testid="security-audit-launch"
           >
             {launching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
