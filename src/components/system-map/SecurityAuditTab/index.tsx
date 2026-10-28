@@ -75,7 +75,12 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
   const callsValue = callsInput ?? String(defaultCalls);
   const calls = Number(callsValue);
   const callsValid = Number.isInteger(calls) && calls >= 1 && calls <= MAX_CALLS;
-  const classCount = classes.size || classInfos.length;
+  // Only classes the picker lists: a selection made on the built-in list may not survive the live one swapping in.
+  const chosenClasses = useMemo(
+    () => classInfos.map((c) => c.name).filter((name) => classes.has(name)),
+    [classInfos, classes],
+  );
+  const classCount = chosenClasses.length || classInfos.length;
   const estCalls = selected.size * classCount * 10;
   const estCost = (estCalls * 2) / 30;
 
@@ -89,7 +94,7 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
         body: JSON.stringify({
           workflow: "security_audit",
           repos: [...selected],
-          ...(classes.size > 0 ? { classes: [...classes] } : {}),
+          ...(chosenClasses.length > 0 ? { classes: chosenClasses } : {}),
           apply: !dryRun,
           maxAgentCalls: calls,
         }),
@@ -105,7 +110,7 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
     } finally {
       setLaunching(false);
     }
-  }, [slug, launching, selected, classes, dryRun, calls, callsValid]);
+  }, [slug, launching, selected, chosenClasses, dryRun, calls, callsValid]);
 
   return (
     <div className="max-w-6xl space-y-4" data-testid="security-audit-tab">

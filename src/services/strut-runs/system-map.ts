@@ -58,7 +58,7 @@ import {
   type StrutRunHandler,
   type StrutRunRow,
 } from "@/services/strut-runs";
-import { SECURITY_AUDIT_CLASSES } from "@/lib/system-map/security-audit";
+import { getSecurityAuditClasses } from "@/lib/system-map/security-audit-classes";
 import type { SystemMapRun } from "@/types/system-map";
 
 /** The workflows the page can run, keyed by tab. Names as published in the org strut view. */
@@ -184,12 +184,15 @@ export interface SecurityAuditInput {
 /**
  * A request's `repos` / `classes` / `apply` / `maxAgentCalls` for workflow
  * `key`: undefined for a workflow that takes none, the validated input for
- * the security audit, or an error message.
+ * the security audit, or an error message. `classes` are matched (trimmed,
+ * case-insensitively) against the live Security Audit Concepts — the list
+ * the picker shows, built-in when unreadable — and sent by their canonical name.
  */
-export function parseSecurityAuditInput(
+export async function parseSecurityAuditInput(
   key: SystemMapWorkflowKey,
   fields: { repos?: unknown; classes?: unknown; apply?: unknown; maxAgentCalls?: unknown },
-): SecurityAuditInput | undefined | { error: string } {
+  who: { workspaceId: string; userId: string },
+): Promise<SecurityAuditInput | undefined | { error: string }> {
   const { repos, classes, apply, maxAgentCalls } = fields;
   if (key !== SECURITY_AUDIT_KEY) {
     return repos === undefined && classes === undefined && maxAgentCalls === undefined
@@ -205,11 +208,16 @@ export function parseSecurityAuditInput(
   }
   let uniqueClasses: string[] | undefined;
   if (classes !== undefined) {
-    const valid: readonly string[] = SECURITY_AUDIT_CLASSES;
-    if (!Array.isArray(classes) || !classes.every((c): c is string => typeof c === "string" && valid.includes(c))) {
-      return { error: "classes must be among: " + SECURITY_AUDIT_CLASSES.join(", ") };
+    const known = (await getSecurityAuditClasses(who.workspaceId, who.userId)).map((c) => c.name);
+    const canonical = new Map(known.map((name) => [name.toLowerCase(), name]));
+    const names =
+      Array.isArray(classes) && classes.every((c): c is string => typeof c === "string")
+        ? classes.map((c) => canonical.get(c.trim().toLowerCase()))
+        : [];
+    if (!Array.isArray(classes) || names.length !== classes.length || names.some((n) => n === undefined)) {
+      return { error: "classes must be among: " + known.join(", ") };
     }
-    uniqueClasses = [...new Set(classes)];
+    uniqueClasses = [...new Set(names as string[])];
     if (uniqueClasses.length === 0) return { error: "classes must not be empty" };
   }
   if (apply !== undefined && typeof apply !== "boolean") return { error: "apply must be a boolean" };
