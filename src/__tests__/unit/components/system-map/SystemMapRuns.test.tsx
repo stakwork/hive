@@ -30,6 +30,9 @@ function run(id: string, overrides: Partial<SystemMapRun> = {}): SystemMapRun {
     components: null,
     findingRefIds: null,
     apply: null,
+    repos: null,
+    classes: null,
+    maxAgentCalls: null,
     ...overrides,
   };
 }
@@ -60,7 +63,10 @@ describe("SystemMapRuns (compact)", () => {
     expect(screen.getAllByTestId("system-map-run-cwes")[0]).toHaveTextContent("CWE-79");
     expect(screen.queryByTestId("system-map-run-button")).not.toBeInTheDocument();
     expect(screen.queryByTestId("system-map-run-report")).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith("/api/workspaces/acme/system-map/runs?workflow=cwe_check", expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspaces/acme/system-map/runs?workflow=cwe_check",
+      expect.anything(),
+    );
   });
 
   it("shows three runs, the rest behind Show all", async () => {

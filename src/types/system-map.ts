@@ -22,9 +22,15 @@ export interface SystemMapRun {
   findingRefIds: string[] | null;
   /** Whether a finding check wrote its verdict (`input.apply`); null for other workflows. */
   apply: boolean | null;
+  /** The repos a security audit covered (`input.target_filter.repos`); null for other workflows. */
+  repos: string[] | null;
+  /** The vulnerability classes a security audit was limited to (`input.classes`); null when all. */
+  classes: string[] | null;
+  /** A security audit's agent-call cap (`input.max_agent_calls`). */
+  maxAgentCalls: number | null;
 }
 
-export type SystemMapWorkflowKey = "system_map" | "cwe_check" | "finding_verify" | "package_cves";
+export type SystemMapWorkflowKey = "system_map" | "cwe_check" | "finding_verify" | "package_cves" | "security_audit";
 
 export interface SystemMapRunsResponse {
   /** Which workflow these runs belong to. */
