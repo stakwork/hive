@@ -96,8 +96,8 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
   return (
     <div className="max-w-6xl space-y-4" data-testid="security-audit-tab">
       <p className="text-sm text-muted-foreground">
-        Audits the chosen repositories for vulnerabilities by class. With Dry run off, the results are written as
-        Findings.
+        Audits the chosen repositories for vulnerabilities by class. With Dry run off, the workflow writes the results
+        as Findings (kind "code") itself.
       </p>
       <Card>
         <CardContent className="space-y-5 py-4">
@@ -145,7 +145,9 @@ export function SecurityAuditTab({ onShowFindings }: { onShowFindings?: () => vo
                 <Label htmlFor="audit-dry-run">Dry run</Label>
               </div>
               <p className="max-w-xs text-xs text-muted-foreground">
-                {dryRun ? "Nothing is written." : "Turned off: the run writes Findings to the graph."}
+                {dryRun
+                  ? "Nothing is written."
+                  : 'Turned off: the workflow writes Findings (kind "code") to the graph itself.'}
               </p>
             </div>
             <div className="space-y-1">
