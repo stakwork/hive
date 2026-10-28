@@ -124,11 +124,11 @@ export function SettingsTabs({ workspaceId, workspaceName, workspaceSlug, isOwne
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange}>
       <TabsList>
+        <TabsTrigger value="developer">Developer</TabsTrigger>
         <TabsTrigger value="general">General</TabsTrigger>
-        <TabsTrigger value="pool">Pool</TabsTrigger>
         <TabsTrigger value="graph">Graph</TabsTrigger>
         <TabsTrigger value="integrations">Integrations</TabsTrigger>
-        <TabsTrigger value="developer">Developer</TabsTrigger>
+        <TabsTrigger value="pool">Pool</TabsTrigger>
       </TabsList>
 
       <TabsContent value="general">

@@ -115,6 +115,12 @@ describe("SettingsTabs", () => {
     mockLoadSettings.mockClear();
   });
 
+  it("renders tab triggers in alphabetical order", () => {
+    render(<SettingsTabs {...defaultProps} />);
+    const names = screen.getAllByRole("tab").map((t) => t.textContent);
+    expect(names).toEqual(["Developer", "General", "Graph", "Integrations", "Pool"]);
+  });
+
   it("defaults to the General tab when no ?tab param is present", () => {
     render(<SettingsTabs {...defaultProps} />);
     expect(screen.getByTestId("workspace-settings")).toBeInTheDocument();
