@@ -110,7 +110,7 @@ export function swarmCypherRunner(swarm: { name: string; apiKey: string }): Cyph
 }
 
 /** Rows as records keyed by column — upstream orders columns its own way. */
-function records(result: CypherResult | CypherUnread): Array<Record<string, unknown>> {
+export function records(result: CypherResult | CypherUnread): Array<Record<string, unknown>> {
   if (isUnread(result)) return [];
   return result.rows.map((row) => Object.fromEntries(result.columns.map((column, i) => [column, row[i]])));
 }

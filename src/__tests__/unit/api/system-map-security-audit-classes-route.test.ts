@@ -9,7 +9,10 @@ vi.mock("@/lib/feature-flags", () => ({
 }));
 vi.mock("@/services/strut-target", () => ({ resolveStrutTarget: vi.fn() }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: vi.fn() }));
-vi.mock("@/lib/strut-run-graph/hydrate", () => ({ swarmCypherRunner: vi.fn() }));
+vi.mock("@/lib/strut-run-graph/hydrate", async (importActual) => ({
+  ...(await importActual<typeof import("@/lib/strut-run-graph/hydrate")>()),
+  swarmCypherRunner: vi.fn(),
+}));
 
 import { canAccessServerFeature } from "@/lib/feature-flags";
 import { requireProtectMemberAccess } from "@/lib/protect/access";
@@ -21,6 +24,7 @@ import { GET } from "@/app/api/workspaces/[slug]/system-map/security-audit/class
 
 const params = { params: Promise.resolve({ slug: "ws" }) };
 const req = () => new NextRequest("http://localhost/api/workspaces/ws/system-map/security-audit/classes");
+const UUID1 = "ea5be6f2-c2c6-43fc-ac4d-1a484a4cf799";
 const docs =
   "## When it applies\nAlways.\n## What to hunt\n- **Raw** SQL in [queries](http://x)\n- `exec` calls\n## Proof rule\nProve it.";
 
@@ -42,22 +46,52 @@ describe("security-audit classes GET", () => {
     const run = vi.fn().mockResolvedValue({
       columns: ["ref_id", "name", "description", "docs"],
       rows: [
-        ["r-1", "Injection", "Live injection.", docs],
-        ["r-2", "New Class", "", ""],
+        [UUID1, "Injection", "Live injection.", docs],
+        ["not-a-uuid", "New Class", "", ""],
       ],
     });
     vi.mocked(swarmCypherRunner).mockReturnValue(run);
     const body = await (await GET(req(), params)).json();
     expect(body.classes[0]).toEqual({
-      ref_id: "r-1",
+      ref_id: UUID1,
       name: "Injection",
       description: "Live injection.",
       hunt: "Raw SQL in queries exec calls",
       fallback: false,
     });
-    expect(body.classes[1]).toMatchObject({ ref_id: "r-2", name: "New Class", fallback: true });
+    expect(body.classes[1]).toMatchObject({ ref_id: null, name: "New Class", fallback: true });
     await GET(req(), params);
     expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps rows by column name, whatever order or extra columns upstream returns", async () => {
+    vi.mocked(swarmCypherRunner).mockReturnValue(
+      vi.fn().mockResolvedValue({
+        columns: ["description", "extra", "docs", "name", "ref_id"],
+        rows: [["Attack class: a literal checklist.", 42, docs, "Obvious Things", UUID1]],
+      }),
+    );
+    const { classes } = await (await GET(req(), params)).json();
+    expect(classes).toEqual([
+      expect.objectContaining({
+        ref_id: UUID1,
+        name: "Obvious Things",
+        description: "Attack class: a literal checklist.",
+      }),
+    ]);
+  });
+
+  it("treats a ref_id that is not a UUID as no id", async () => {
+    vi.mocked(swarmCypherRunner).mockReturnValue(
+      vi
+        .fn()
+        .mockResolvedValue({
+          columns: ["ref_id", "name", "description", "docs"],
+          rows: [["Attack class: x.", "Wildcard", "d", ""]],
+        }),
+    );
+    const { classes } = await (await GET(req(), params)).json();
+    expect(classes[0]).toMatchObject({ name: "Wildcard", ref_id: null });
   });
 
   it("falls back to the built-in classes when the read fails", async () => {
