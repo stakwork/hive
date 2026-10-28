@@ -530,7 +530,12 @@ describe("security_audit", () => {
 
   it("dispatches swarm-security-hunt with swarm id, target_filter and no workspace", async () => {
     mockWorkspace.findUnique.mockResolvedValue({
-      swarm: { name: "swarmPExsmg", swarmUrl: "https://swarmPExsmg.sphinx.chat/api", swarmSecretAlias: "{{A}}" },
+      swarm: {
+        name: "vanity",
+        swarmId: "swarmPExsmg",
+        swarmUrl: "https://swarmPExsmg.sphinx.chat/api",
+        swarmSecretAlias: "{{A}}",
+      },
     });
     mockDispatch.mockResolvedValue({ runId: "r", strutRunId: "1", swarmId: "x" });
     await launchSystemMapRun({
@@ -553,21 +558,26 @@ describe("security_audit", () => {
     expect(arg.input).not.toHaveProperty("workspace");
   });
 
-  it("omits classes when not given and falls back to the URL host for the swarm id", async () => {
+  it("omits classes when not given", async () => {
     mockWorkspace.findUnique.mockResolvedValue({
-      swarm: { name: null, swarmUrl: "https://swarmAbc.sphinx.chat", swarmSecretAlias: "{{A}}" },
+      swarm: {
+        name: "x",
+        swarmId: "swarmAFbN4c",
+        swarmUrl: "https://swarmAFbN4c.sphinx.chat",
+        swarmSecretAlias: "{{A}}",
+      },
     });
     mockDispatch.mockResolvedValue({ runId: "r", strutRunId: "1", swarmId: "x" });
     await launchSystemMapRun({ ...base, key: "security_audit", audit: { repos: ["a/b"], apply: true } });
     const input = mockDispatch.mock.calls[0][0].input;
-    expect(input.swarm).toBe("swarmabc");
+    expect(input.swarm).toBe("swarmAFbN4c");
     expect(input).not.toHaveProperty("classes");
     expect(input).not.toHaveProperty("max_agent_calls");
   });
 
-  it("throws no_target when the swarm id cannot be determined", async () => {
+  it("throws no_target when the swarm id is missing", async () => {
     mockWorkspace.findUnique.mockResolvedValue({
-      swarm: { name: null, swarmUrl: "not a url", swarmSecretAlias: "{{A}}" },
+      swarm: { name: "swarmabc", swarmId: null, swarmUrl: "https://swarmabc.sphinx.chat", swarmSecretAlias: "{{A}}" },
     });
     await expect(
       launchSystemMapRun({ ...base, key: "security_audit", audit: { repos: ["a/b"], apply: false } }),

@@ -230,16 +230,6 @@ export function parseSecurityAuditInput(
   };
 }
 
-/** The swarm id the audit workflow derives its URL and secret from: `Swarm.name`, else the `swarmUrl` host's first label. */
-function swarmIdOf(swarm: { name?: string | null; swarmUrl?: string | null }): string | null {
-  if (swarm.name) return swarm.name;
-  try {
-    return new URL(swarm.swarmUrl ?? "").hostname.split(".")[0] || null;
-  } catch {
-    return null;
-  }
-}
-
 function auditFromInput(input: unknown): Record<string, unknown> {
   const i = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const tf = i.target_filter && typeof i.target_filter === "object" ? (i.target_filter as Record<string, unknown>) : {};
@@ -447,7 +437,7 @@ export async function launchSystemMapRun(
   const workspace = await db.workspace.findUnique({
     where: { id: args.workspaceId },
     select: {
-      swarm: { select: { name: true, swarmUrl: true, swarmSecretAlias: true } },
+      swarm: { select: { swarmId: true, swarmUrl: true, swarmSecretAlias: true } },
       sourceControlOrg: { select: { githubLogin: true } },
     },
   });
@@ -458,9 +448,11 @@ export async function launchSystemMapRun(
   const key = args.key ?? "system_map";
   if (FINDING_WORKFLOWS[key] && !args.findings?.findingRefIds.length) throw new Error("A finding check needs findings");
   if (key === SECURITY_AUDIT_KEY && !args.audit?.repos.length) throw new Error("A security audit needs repos");
-  const swarmId = key === SECURITY_AUDIT_KEY ? swarmIdOf(swarm) : null;
+  // The workflow derives the swarm's host and secret from this id, case-sensitively
+  // (`swarmPExsmg`): `Swarm.swarmId`, as stored from swarm creation — never `name`, which may be a vanity name.
+  const swarmId = key === SECURITY_AUDIT_KEY ? (swarm.swarmId ?? null) : null;
   if (key === SECURITY_AUDIT_KEY && !swarmId) {
-    throw new StrutDispatchError("no_target", "Could not determine this workspace's swarm id.");
+    throw new StrutDispatchError("no_target", "This workspace's swarm has no swarm id (e.g. swarmAbc123) to audit.");
   }
   const { kind, workflow } = SYSTEM_MAP_WORKFLOWS[key];
   const dispatched = await dispatchStrutRun({
