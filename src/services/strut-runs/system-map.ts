@@ -13,6 +13,10 @@
  *   finding_verify `finding-verify-pod-batch`          kind `system_map_finding_verify`
  *                checks some infosec `Finding`s on the workspace's pods; with
  *                `apply` it writes the verdict as `finding_status`
+ *   security_audit `swarm-security-hunt`               kind `system_map_security_audit`
+ *                audits repos by vulnerability class (`input.swarm` = the swarm
+ *                id, `target_filter.repos`, `classes`, `apply`, `max_agent_calls`);
+ *                with `apply` it writes Findings, else a dry run
  *
  * All are authored in the org strut view (`/org/<login>/strut`), so the
  * launch targets that strut (`purpose: "system_map"` → the org default
@@ -54,6 +58,7 @@ import {
   type StrutRunHandler,
   type StrutRunRow,
 } from "@/services/strut-runs";
+import { SECURITY_AUDIT_CLASSES } from "@/lib/system-map/security-audit";
 import type { SystemMapRun } from "@/types/system-map";
 
 /** The workflows the page can run, keyed by tab. Names as published in the org strut view. */
@@ -62,6 +67,7 @@ export const SYSTEM_MAP_WORKFLOWS = {
   cwe_check: { kind: "system_map_cwe_check", workflow: "swarm-systemmap-cwe-check-templates", label: "CWE check" },
   finding_verify: { kind: "system_map_finding_verify", workflow: "finding-verify-pod-batch", label: "Finding check" },
   package_cves: { kind: "system_map_package_cves", workflow: "swarm-package-cve-findings", label: "Package CVEs" },
+  security_audit: { kind: "system_map_security_audit", workflow: "swarm-security-hunt", label: "Security audit" },
 } as const;
 export type SystemMapWorkflowKey = keyof typeof SYSTEM_MAP_WORKFLOWS;
 
@@ -131,7 +137,9 @@ function cweInput(cweIds: string[] | undefined, components: string[] | undefined
 }
 
 /** The workflows that check some `Finding`s; their runs carry `input.finding_ref_ids`. */
-export const FINDING_WORKFLOWS: Partial<Record<SystemMapWorkflowKey, { max: number }>> = { finding_verify: { max: 50 } };
+export const FINDING_WORKFLOWS: Partial<Record<SystemMapWorkflowKey, { max: number }>> = {
+  finding_verify: { max: 50 },
+};
 const REF_ID_RE = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
@@ -146,6 +154,9 @@ export function parseFindingInput(
 ): { findingRefIds: string[]; apply: boolean } | undefined | { error: string } {
   const scope = FINDING_WORKFLOWS[key];
   if (!scope) {
+    // The security audit takes `apply` too, validated by `parseSecurityAuditInput`.
+    if (key === "security_audit")
+      return refIds === undefined ? undefined : { error: "This workflow does not take findings" };
     return refIds === undefined && apply === undefined ? undefined : { error: "This workflow does not take findings" };
   }
   if (!Array.isArray(refIds) || !refIds.every((id): id is string => typeof id === "string" && REF_ID_RE.test(id))) {
@@ -155,6 +166,90 @@ export function parseFindingInput(
   if (ids.length === 0 || ids.length > scope.max) return { error: `findingRefIds must hold 1–${scope.max} ids` };
   if (apply !== undefined && typeof apply !== "boolean") return { error: "apply must be a boolean" };
   return { findingRefIds: ids, apply: apply === true };
+}
+
+/** The workflow that audits repos by vulnerability class. */
+export const SECURITY_AUDIT_KEY = "security_audit" as const satisfies SystemMapWorkflowKey;
+const MAX_AUDIT_REPOS = 50;
+const MAX_AUDIT_CALLS = 2000;
+const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
+export interface SecurityAuditInput {
+  repos: string[];
+  classes?: string[];
+  apply: boolean;
+  maxAgentCalls?: number;
+}
+
+/**
+ * A request's `repos` / `classes` / `apply` / `maxAgentCalls` for workflow
+ * `key`: undefined for a workflow that takes none, the validated input for
+ * the security audit, or an error message.
+ */
+export function parseSecurityAuditInput(
+  key: SystemMapWorkflowKey,
+  fields: { repos?: unknown; classes?: unknown; apply?: unknown; maxAgentCalls?: unknown },
+): SecurityAuditInput | undefined | { error: string } {
+  const { repos, classes, apply, maxAgentCalls } = fields;
+  if (key !== SECURITY_AUDIT_KEY) {
+    return repos === undefined && classes === undefined && maxAgentCalls === undefined
+      ? undefined
+      : { error: "This workflow does not take repos, classes or maxAgentCalls" };
+  }
+  if (!Array.isArray(repos) || !repos.every((r): r is string => typeof r === "string" && REPO_RE.test(r))) {
+    return { error: 'repos must be repositories like "owner/name"' };
+  }
+  const uniqueRepos = [...new Set(repos)];
+  if (uniqueRepos.length === 0 || uniqueRepos.length > MAX_AUDIT_REPOS) {
+    return { error: `repos must hold 1–${MAX_AUDIT_REPOS} repositories` };
+  }
+  let uniqueClasses: string[] | undefined;
+  if (classes !== undefined) {
+    const valid: readonly string[] = SECURITY_AUDIT_CLASSES;
+    if (!Array.isArray(classes) || !classes.every((c): c is string => typeof c === "string" && valid.includes(c))) {
+      return { error: "classes must be among: " + SECURITY_AUDIT_CLASSES.join(", ") };
+    }
+    uniqueClasses = [...new Set(classes)];
+    if (uniqueClasses.length === 0) return { error: "classes must not be empty" };
+  }
+  if (apply !== undefined && typeof apply !== "boolean") return { error: "apply must be a boolean" };
+  if (
+    maxAgentCalls !== undefined &&
+    (typeof maxAgentCalls !== "number" ||
+      !Number.isInteger(maxAgentCalls) ||
+      maxAgentCalls < 1 ||
+      maxAgentCalls > MAX_AUDIT_CALLS)
+  ) {
+    return { error: `maxAgentCalls must be an integer 1–${MAX_AUDIT_CALLS}` };
+  }
+  return {
+    repos: uniqueRepos,
+    ...(uniqueClasses ? { classes: uniqueClasses } : {}),
+    apply: apply === true,
+    ...(maxAgentCalls !== undefined ? { maxAgentCalls } : {}),
+  };
+}
+
+/** The swarm id the audit workflow derives its URL and secret from: `Swarm.name`, else the `swarmUrl` host's first label. */
+function swarmIdOf(swarm: { name?: string | null; swarmUrl?: string | null }): string | null {
+  if (swarm.name) return swarm.name;
+  try {
+    return new URL(swarm.swarmUrl ?? "").hostname.split(".")[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+function auditFromInput(input: unknown): Record<string, unknown> {
+  const i = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const tf = i.target_filter && typeof i.target_filter === "object" ? (i.target_filter as Record<string, unknown>) : {};
+  const strs = (v: unknown) =>
+    Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string") ? (v as string[]) : null;
+  return {
+    repos: strs(tf.repos),
+    classes: strs(i.classes),
+    maxAgentCalls: typeof i.max_agent_calls === "number" ? i.max_agent_calls : null,
+  };
 }
 
 function applyOf(input: unknown): boolean | null {
@@ -233,6 +328,7 @@ export function serializeSystemMapRun(row: StrutRunRow, orgGithubLogin: string |
     components: stringsFromInput(row.input, "components"),
     findingRefIds: stringsFromInput(row.input, "finding_ref_ids"),
     apply: applyOf(row.input),
+    ...(auditFromInput(row.input) as Pick<SystemMapRun, "repos" | "classes" | "maxAgentCalls">),
   };
 }
 
@@ -336,6 +432,8 @@ export interface LaunchSystemMapRunArgs {
   components?: string[];
   /** The findings a finding check (`FINDING_WORKFLOWS`) runs on; validate with `parseFindingInput`. */
   findings?: { findingRefIds: string[]; apply: boolean };
+  /** The security audit's repos and options; validate with `parseSecurityAuditInput`. */
+  audit?: SecurityAuditInput;
 }
 
 /**
@@ -349,7 +447,7 @@ export async function launchSystemMapRun(
   const workspace = await db.workspace.findUnique({
     where: { id: args.workspaceId },
     select: {
-      swarm: { select: { swarmUrl: true, swarmSecretAlias: true } },
+      swarm: { select: { name: true, swarmUrl: true, swarmSecretAlias: true } },
       sourceControlOrg: { select: { githubLogin: true } },
     },
   });
@@ -359,6 +457,11 @@ export async function launchSystemMapRun(
   }
   const key = args.key ?? "system_map";
   if (FINDING_WORKFLOWS[key] && !args.findings?.findingRefIds.length) throw new Error("A finding check needs findings");
+  if (key === SECURITY_AUDIT_KEY && !args.audit?.repos.length) throw new Error("A security audit needs repos");
+  const swarmId = key === SECURITY_AUDIT_KEY ? swarmIdOf(swarm) : null;
+  if (key === SECURITY_AUDIT_KEY && !swarmId) {
+    throw new StrutDispatchError("no_target", "Could not determine this workspace's swarm id.");
+  }
   const { kind, workflow } = SYSTEM_MAP_WORKFLOWS[key];
   const dispatched = await dispatchStrutRun({
     workspaceId: args.workspaceId,
@@ -368,11 +471,20 @@ export async function launchSystemMapRun(
     purpose: "system_map",
     input: {
       // `swarm-systemmap` and the package CVE check read the swarm alone; the CWE workflows still take the slug.
-      ...(key === "system_map" || key === "package_cves" || FINDING_WORKFLOWS[key]
+      ...(key === "system_map" || key === "package_cves" || key === SECURITY_AUDIT_KEY || FINDING_WORKFLOWS[key]
         ? {}
         : { workspace: args.workspaceSlug }),
       ...(FINDING_WORKFLOWS[key] && args.findings
         ? { finding_ref_ids: args.findings.findingRefIds, workspace_id: args.workspaceId, apply: args.findings.apply }
+        : {}),
+      ...(key === SECURITY_AUDIT_KEY && args.audit
+        ? {
+            swarm: swarmId,
+            target_filter: { repos: args.audit.repos },
+            ...(args.audit.classes?.length ? { classes: args.audit.classes } : {}),
+            apply: args.audit.apply,
+            ...(args.audit.maxAgentCalls !== undefined ? { max_agent_calls: args.audit.maxAgentCalls } : {}),
+          }
         : {}),
       swarm_url: transformSwarmUrlToRepo2Graph(swarm.swarmUrl),
       swarm_secret_alias: swarm.swarmSecretAlias,
