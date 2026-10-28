@@ -43,17 +43,18 @@ async function readLiveClasses(workspaceId: string, userId: string): Promise<Sec
   const run = swarmCypherRunner({ name: lab.swarmName, apiKey: lab.swarmApiKey });
   const result = await run(
     `MATCH (:Data_Bank {ref_id: '${SECURITY_AUDIT_CONCEPT_REF}'})-[:PARENT_OF]->(c:Data_Bank) ` +
-      `RETURN c.name AS name, c.description AS description, c.docs AS docs`,
+      `RETURN c.ref_id AS ref_id, c.name AS name, c.description AS description, c.docs AS docs`,
     100,
   );
   if ("unread" in result) return null;
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   const classes: SecurityAuditClassInfo[] = [];
   for (const row of result.rows) {
-    const [name, description, docs] = row.map(str);
-    if (!name) continue;
+    const [ref_id, name, description, docs] = row.map(str);
+    if (!name || !ref_id) continue;
     const builtIn = (SECURITY_AUDIT_CLASS_FALLBACK as Record<string, string | undefined>)[name];
     classes.push({
+      ref_id,
       name,
       description: description || builtIn || "",
       hunt: huntExcerpt(docs),

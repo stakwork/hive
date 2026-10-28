@@ -27,6 +27,8 @@ export const SECURITY_AUDIT_CLASS_FALLBACK: Record<(typeof SECURITY_AUDIT_CLASSE
 };
 
 export interface SecurityAuditClassInfo {
+  /** The Concept's ref_id; null for built-in text (live read failed). */
+  ref_id: string | null;
   name: string;
   description: string;
   /** Plain-text excerpt of the class's "What to hunt" section; empty when unknown. */
@@ -38,6 +40,7 @@ export interface SecurityAuditClassInfo {
 /** The built-in classes, for when the live ones can't be read. */
 export function fallbackSecurityAuditClasses(): SecurityAuditClassInfo[] {
   return SECURITY_AUDIT_CLASSES.map((name) => ({
+    ref_id: null,
     name,
     description: SECURITY_AUDIT_CLASS_FALLBACK[name],
     hunt: "",

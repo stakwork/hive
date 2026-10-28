@@ -79,7 +79,13 @@ describe("SecurityAuditTab", () => {
       ok: true,
       json: async () => ({
         classes: [
-          { name: "Prompt Abuse", description: "Live description.", hunt: "Look at prompts.", fallback: false },
+          {
+            ref_id: "r-pa",
+            name: "Prompt Abuse",
+            description: "Live description.",
+            hunt: "Look at prompts.",
+            fallback: false,
+          },
         ],
       }),
     });
@@ -90,5 +96,84 @@ describe("SecurityAuditTab", () => {
     expect(screen.queryByTestId("security-audit-fallback-note")).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("What Prompt Abuse hunts"));
     expect(await screen.findByText("Look at prompts.")).toBeInTheDocument();
+  });
+
+  const liveClasses = {
+    ok: true,
+    json: async () => ({
+      classes: [
+        { ref_id: "r-pa", name: "Prompt Abuse", description: "Live.", hunt: "", fallback: false },
+        { ref_id: "r-inj", name: "Injection", description: "Live.", hunt: "", fallback: false },
+      ],
+    }),
+  };
+  const postBody = () => {
+    const [, init] = fetchMock.mock.calls.find(([, i]) => i?.method === "POST")!;
+    return JSON.parse(init.body);
+  };
+  const withClasses = (response: unknown) => {
+    let resolveClasses: (v: unknown) => void = () => {};
+    fetchMock.mockImplementation((_url: string, init?: { method?: string }) =>
+      init?.method === "POST"
+        ? Promise.resolve({ ok: true, json: async () => ({}) })
+        : new Promise((resolve) => (resolveClasses = resolve)),
+    );
+    return () => resolveClasses(response);
+  };
+
+  it("posts classIds (Concept ref_ids) for live classes", async () => {
+    fetchMock.mockImplementation((_url: string, init?: { method?: string }) =>
+      Promise.resolve(init?.method === "POST" ? { ok: true, json: async () => ({}) } : liveClasses),
+    );
+    render(<SecurityAuditTab />);
+    fireEvent.click(await screen.findByLabelText("Class Prompt Abuse"));
+    fireEvent.click(screen.getByLabelText("Select acme/api"));
+    fireEvent.click(screen.getByTestId("security-audit-launch"));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, i]) => i?.method === "POST")).toBe(true));
+    const body = postBody();
+    expect(body.classIds).toEqual(["r-pa"]);
+    expect(body).not.toHaveProperty("classes");
+  });
+
+  it("warns, clears the selection and blocks launch when the selected classes disappear", async () => {
+    const load = withClasses(liveClasses);
+    render(<SecurityAuditTab />);
+    fireEvent.click(screen.getByLabelText("Class Wildcard")); // chosen on the built-in list
+    fireEvent.click(screen.getByLabelText("Select acme/api"));
+    load();
+    expect(await screen.findByTestId("security-audit-stale-warning")).toBeInTheDocument();
+    expect(screen.getByTestId("security-audit-launch")).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText("Run all classes"));
+    expect(screen.getByTestId("security-audit-launch")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("security-audit-launch"));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, i]) => i?.method === "POST")).toBe(true));
+    const body = postBody();
+    expect(body).not.toHaveProperty("classIds");
+    expect(body).not.toHaveProperty("classes");
+  });
+
+  it("clears the warning when classes are picked again", async () => {
+    const load = withClasses(liveClasses);
+    render(<SecurityAuditTab />);
+    fireEvent.click(screen.getByLabelText("Class Wildcard"));
+    fireEvent.click(screen.getByLabelText("Select acme/api"));
+    load();
+    await screen.findByTestId("security-audit-stale-warning");
+    fireEvent.click(screen.getByLabelText("Class Injection"));
+    expect(screen.queryByTestId("security-audit-stale-warning")).not.toBeInTheDocument();
+    expect(screen.getByTestId("security-audit-launch")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("security-audit-launch"));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, i]) => i?.method === "POST")).toBe(true));
+    expect(postBody().classIds).toEqual(["r-inj"]);
+  });
+
+  it("does not warn when nothing was selected", async () => {
+    fetchMock.mockResolvedValue(liveClasses);
+    render(<SecurityAuditTab />);
+    await screen.findByLabelText("Class Prompt Abuse");
+    fireEvent.click(screen.getByLabelText("Select acme/api"));
+    expect(screen.queryByTestId("security-audit-stale-warning")).not.toBeInTheDocument();
+    expect(screen.getByTestId("security-audit-launch")).toBeEnabled();
   });
 });
