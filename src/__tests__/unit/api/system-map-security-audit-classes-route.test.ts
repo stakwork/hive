@@ -40,21 +40,22 @@ describe("security-audit classes GET", () => {
 
   it("returns the live classes, with the hunt excerpt, and caches them", async () => {
     const run = vi.fn().mockResolvedValue({
-      columns: ["name", "description", "docs"],
+      columns: ["ref_id", "name", "description", "docs"],
       rows: [
-        ["Injection", "Live injection.", docs],
-        ["New Class", "", ""],
+        ["r-1", "Injection", "Live injection.", docs],
+        ["r-2", "New Class", "", ""],
       ],
     });
     vi.mocked(swarmCypherRunner).mockReturnValue(run);
     const body = await (await GET(req(), params)).json();
     expect(body.classes[0]).toEqual({
+      ref_id: "r-1",
       name: "Injection",
       description: "Live injection.",
       hunt: "Raw SQL in queries exec calls",
       fallback: false,
     });
-    expect(body.classes[1]).toMatchObject({ name: "New Class", fallback: true });
+    expect(body.classes[1]).toMatchObject({ ref_id: "r-2", name: "New Class", fallback: true });
     await GET(req(), params);
     expect(run).toHaveBeenCalledTimes(1);
   });
@@ -65,7 +66,7 @@ describe("security-audit classes GET", () => {
     expect(res.status).toBe(200);
     const { classes } = await res.json();
     expect(classes).toHaveLength(9);
-    expect(classes[0]).toMatchObject({ name: "Injection", fallback: true, hunt: "" });
+    expect(classes[0]).toMatchObject({ ref_id: null, name: "Injection", fallback: true, hunt: "" });
   });
 
   it("falls back when the strut target cannot be resolved", async () => {

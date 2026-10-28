@@ -11,7 +11,7 @@
  *      { workflow: "finding_verify", findingRefIds: string[], apply?: boolean }
  *      (up to 50 `Finding` ref_ids, sent as `input.finding_ref_ids`; `apply`
  *      writes the verdicts, else a dry run)
- *      { workflow: "security_audit", repos: ["owner/name"], classes?, apply?, maxAgentCalls? }
+ *      { workflow: "security_audit", repos: ["owner/name"], classIds? | classes?, apply?, maxAgentCalls? }
  *      (`swarm-security-hunt`; `apply` writes Findings, else a dry run)
  *      — launch that workflow on the org strut. One run in flight per
  *      workspace per workflow (per finding for the finding check); DEVELOPER and up.
@@ -101,6 +101,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       findingRefIds?: unknown;
       apply?: unknown;
       repos?: unknown;
+      classIds?: unknown;
       classes?: unknown;
       maxAgentCalls?: unknown;
     };
@@ -118,7 +119,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const findings = parseFindingInput(key, payload.findingRefIds, payload.apply);
     if (findings && "error" in findings) return NextResponse.json({ error: findings.error }, { status: 400 });
 
-    const audit = parseSecurityAuditInput(key, payload);
+    const audit = await parseSecurityAuditInput(key, payload, {
+      workspaceId: member.workspaceId,
+      userId: member.userId,
+    });
     if (audit && "error" in audit) return NextResponse.json({ error: audit.error }, { status: 400 });
 
     if (await hasPendingSystemMapRun(member.workspaceId, key, findings?.findingRefIds)) {
