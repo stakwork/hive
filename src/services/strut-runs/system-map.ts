@@ -15,7 +15,7 @@
  *                `apply` it writes the verdict as `finding_status`
  *   security_audit `swarm-security-hunt`               kind `system_map_security_audit`
  *                audits repos by vulnerability class (`input.swarm` = the swarm
- *                id, `target_filter.repos`, `classes`, `apply`, `max_agent_calls`);
+ *                id, `target_filter.repos`, `class_ids` / `classes`, `apply`, `max_agent_calls`);
  *                with `apply` it writes Findings, else a dry run
  *
  * All are authored in the org strut view (`/org/<login>/strut`), so the
@@ -177,27 +177,30 @@ const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 export interface SecurityAuditInput {
   repos: string[];
   classes?: string[];
+  /** Concept ref_ids of the classes; the workflow prefers them over `classes`. */
+  classIds?: string[];
   apply: boolean;
   maxAgentCalls?: number;
 }
 
 /**
- * A request's `repos` / `classes` / `apply` / `maxAgentCalls` for workflow
+ * A request's `repos` / `classIds` / `classes` / `apply` / `maxAgentCalls` for workflow
  * `key`: undefined for a workflow that takes none, the validated input for
  * the security audit, or an error message. `classes` are matched (trimmed,
  * case-insensitively) against the live Security Audit Concepts — the list
  * the picker shows, built-in when unreadable — and sent by their canonical name.
+ * `classIds` must be ref_ids of those Concepts, and take precedence over `classes`.
  */
 export async function parseSecurityAuditInput(
   key: SystemMapWorkflowKey,
-  fields: { repos?: unknown; classes?: unknown; apply?: unknown; maxAgentCalls?: unknown },
+  fields: { repos?: unknown; classIds?: unknown; classes?: unknown; apply?: unknown; maxAgentCalls?: unknown },
   who: { workspaceId: string; userId: string },
 ): Promise<SecurityAuditInput | undefined | { error: string }> {
-  const { repos, classes, apply, maxAgentCalls } = fields;
+  const { repos, classIds, classes, apply, maxAgentCalls } = fields;
   if (key !== SECURITY_AUDIT_KEY) {
-    return repos === undefined && classes === undefined && maxAgentCalls === undefined
+    return repos === undefined && classIds === undefined && classes === undefined && maxAgentCalls === undefined
       ? undefined
-      : { error: "This workflow does not take repos, classes or maxAgentCalls" };
+      : { error: "This workflow does not take repos, classes, classIds or maxAgentCalls" };
   }
   if (!Array.isArray(repos) || !repos.every((r): r is string => typeof r === "string" && REPO_RE.test(r))) {
     return { error: 'repos must be repositories like "owner/name"' };
@@ -207,7 +210,20 @@ export async function parseSecurityAuditInput(
     return { error: `repos must hold 1–${MAX_AUDIT_REPOS} repositories` };
   }
   let uniqueClasses: string[] | undefined;
-  if (classes !== undefined) {
+  let uniqueClassIds: string[] | undefined;
+  if (classIds !== undefined) {
+    const ids = (await getSecurityAuditClasses(who.workspaceId, who.userId)).flatMap((c) =>
+      c.ref_id ? [c.ref_id] : [],
+    );
+    if (ids.length === 0) {
+      return { error: "classIds cannot be checked while the live classes are unavailable; send class names instead" };
+    }
+    if (!Array.isArray(classIds) || !classIds.every((id): id is string => typeof id === "string" && ids.includes(id))) {
+      return { error: "classIds must be among: " + ids.join(", ") };
+    }
+    uniqueClassIds = [...new Set(classIds)];
+    if (uniqueClassIds.length === 0) return { error: "classIds must not be empty" };
+  } else if (classes !== undefined) {
     const known = (await getSecurityAuditClasses(who.workspaceId, who.userId)).map((c) => c.name);
     const canonical = new Map(known.map((name) => [name.toLowerCase(), name]));
     const names =
@@ -232,6 +248,7 @@ export async function parseSecurityAuditInput(
   }
   return {
     repos: uniqueRepos,
+    ...(uniqueClassIds ? { classIds: uniqueClassIds } : {}),
     ...(uniqueClasses ? { classes: uniqueClasses } : {}),
     apply: apply === true,
     ...(maxAgentCalls !== undefined ? { maxAgentCalls } : {}),
@@ -489,6 +506,7 @@ export async function launchSystemMapRun(
         ? {
             swarm: swarmId,
             target_filter: { repos: args.audit.repos },
+            ...(args.audit.classIds?.length ? { class_ids: args.audit.classIds } : {}),
             ...(args.audit.classes?.length ? { classes: args.audit.classes } : {}),
             apply: args.audit.apply,
             ...(args.audit.maxAgentCalls !== undefined ? { max_agent_calls: args.audit.maxAgentCalls } : {}),
