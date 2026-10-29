@@ -205,7 +205,10 @@ device as it is.
    and comes back on the next poll; after 3 failures it is acked and
    dropped.
 3. **A job's wake** three hours later lands on the same conversation, so the
-   same loop posts it. Nobody needs to be online.
+   same loop posts it. Nobody needs to be online. The post carries the job's
+   deliverables, read from the job's row (the card Hive's chat draws; the
+   wake turn's own run holds none of the job's work): its cards but Hive's
+   own (claims, trace) as links, and strut's entries as `metadata`.
 4. A failed turn is an `error` message ("I couldn't finish that: …"). A
    proposal is "Waiting for <linker> to approve: <title>". The linker decides
    it in Hive.
