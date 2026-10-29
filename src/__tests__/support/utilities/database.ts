@@ -117,6 +117,8 @@ export async function resetDatabase() {
     await db.account.deleteMany();
     await db.gitHubAuth.deleteMany();
     await db.sourceControlToken.deleteMany();
+    // Tribe links and their mentions go with their org; the outbox is keyed by tribe, not link.
+    await db.tribeOutboxEntry.deleteMany();
     await db.sourceControlOrg.deleteMany();
     await db.user.deleteMany();
   } catch {
@@ -168,6 +170,7 @@ const RESET_TABLES = [
   "github_auth",
   "users",
   "source_control_tokens",
+  "tribe_outbox_entries",
   "source_control_orgs",
   "prompt_versions",
   "prompt_daily_runs",
