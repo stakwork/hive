@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { parseStrutArtifactKey, strutArtifactReaderUrl } from "@/lib/strut-jobs";
 import { listArtifacts, type ArtifactRef } from "../_state/canvasChatArtifacts";
 import { selectActiveMessages, useCanvasChatStore } from "../_state/canvasChatStore";
-import { liveItemsToShow, useJobLiveStore, type JobLiveItem } from "../_state/jobLiveStore";
+import { liveItemsToShow, liveStatus, useJobLiveStore, type JobLiveItem } from "../_state/jobLiveStore";
 import { plural } from "./artifacts/lines";
 import { useChatOrgLogin } from "./artifacts/useArtifactPanel";
 import { useWalkthrough } from "./artifacts/viewers/walkthrough";
@@ -18,10 +18,12 @@ import { useWalkthrough } from "./artifacts/viewers/walkthrough";
  * frame) or the shot it just took — which opens on the artifact panel, and
  * one line counting the rest: recordings and how many stopped, shots, what
  * it holds, the checks' verdicts. A job retries a recording that stopped,
- * so earlier ones are counted, never drawn. Fed by the job's live updates
- * (`jobLiveStore`); only what arrived since the card appeared, and nothing
- * the conversation already shows under the same link — the turn's own
- * cards take over when its row lands.
+ * so earlier ones are counted, never drawn. Above them, the job's own line
+ * of what it is doing now (strut `job/status`), the newest. Fed by the
+ * job's live updates (`jobLiveStore`); only what came since the turn was
+ * launched (or, when that is not known on strut's clock, since the card
+ * appeared), and nothing the conversation already shows under the same
+ * link — the turn's own cards take over when its row lands.
  */
 
 const EMPTY: JobLiveItem[] = [];
@@ -79,7 +81,7 @@ export function liveTally(items: readonly JobLiveItem[]): { text: string; href?:
   return parts;
 }
 
-export function JobLiveStrip({ jobId, since }: { jobId: string; since: number }) {
+export function JobLiveStrip({ jobId, since, launchedAt }: { jobId: string; since: number; launchedAt?: number }) {
   const items = useJobLiveStore((s) => s.byJob[jobId] ?? EMPTY);
   const messages = useCanvasChatStore(selectActiveMessages);
   // What the conversation already shows, by link: a live item for the same file is not shown twice.
@@ -87,17 +89,24 @@ export function JobLiveStrip({ jobId, since }: { jobId: string; since: number })
     () => new Set(listArtifacts(messages).flatMap((a: ArtifactRef) => (a.source.type === "graph" ? [a.source.key] : []))),
     [messages],
   );
-  const shown = liveItemsToShow(items, { since, delivered });
-  if (shown.length === 0) return null;
+  const shown = liveItemsToShow(items, { since, launchedAt, delivered });
+  const status = liveStatus(shown);
+  const things = shown.filter((i) => i.kind !== "status");
 
   // The store moves a thing to the end on each update, so the last visual is the one that changed most recently.
-  const visuals = shown.filter(isVisual);
+  const visuals = things.filter(isVisual);
   const now = visuals[visuals.length - 1];
-  const tally = now && shown.length === 1 ? [] : liveTally(shown);
-  const verdicts = shown.filter((i) => i.kind === "evidence").map((i) => `${i.state ?? "evidence"}: ${i.title ?? "a claim"}`);
+  const tally = now && things.length === 1 ? [] : liveTally(things);
+  if (!status && !now && tally.length === 0) return null;
+  const verdicts = things.filter((i) => i.kind === "evidence").map((i) => `${i.state ?? "evidence"}: ${i.title ?? "a claim"}`);
 
   return (
     <div data-testid="job-live-strip" className="space-y-1.5 border-t px-3 py-2">
+      {status && (
+        <div data-testid="job-live-status" title={status.title} className="truncate text-xs text-foreground/80">
+          {status.title}
+        </div>
+      )}
       {now &&
         (now.kind === "walkthrough" ? <WalkthroughTile key={now.key} item={now} /> : <ShotTile key={now.key} item={now} />)}
       {tally.length > 0 && (

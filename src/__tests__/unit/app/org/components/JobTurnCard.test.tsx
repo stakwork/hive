@@ -335,7 +335,7 @@ describe("getPendingJobTurnsFromMessages — jobs the strut orchestrator launche
   test("each job on the reply is a pending turn anchored on it, settled by its job row", () => {
     const r = reply("orchestrator-orch-1", [{ jobId: JOB, title: "Dark mode plan", runId: "row-2" }]);
     expect(getPendingJobTurnsFromMessages([r])).toEqual([
-      { jobId: JOB, title: "Dark mode plan", anchorMessageId: "orchestrator-orch-1" },
+      { jobId: JOB, title: "Dark mode plan", anchorMessageId: "orchestrator-orch-1", launchedAt: 1790000000000 },
     ]);
     expect(getPendingJobTurnsFromMessages([r, row("job-row-2")])).toEqual([]);
   });
@@ -346,16 +346,16 @@ describe("getPendingJobTurnsFromMessages — jobs the strut orchestrator launche
     ).toEqual([]);
     expect(
       getPendingJobTurnsFromMessages([row("job-row-1"), reply("o1", [{ jobId: JOB, title: "", runId: "row-3" }])]),
-    ).toEqual([{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "o1" }]);
+    ).toEqual([{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "o1", launchedAt: 1790000000000 }]);
   });
 
   test("a build on another strut carries its @slug: the launch's, else the job's last seen (a continue names none)", () => {
     expect(getPendingJobTurnsFromMessages([reply("o1", [{ jobId: JOB, title: "Digest", runId: "row-2", peer: "acme-web" }])])).toEqual([
-      { jobId: JOB, title: "Digest", anchorMessageId: "o1", peer: "acme-web" },
+      { jobId: JOB, title: "Digest", anchorMessageId: "o1", peer: "acme-web", launchedAt: 1790000000000 },
     ]);
     expect(
       getPendingJobTurnsFromMessages([row("job-row-1", { workflow: "builder", peer: "acme-web" }), reply("o2", [{ jobId: JOB, title: "", runId: "row-3" }])]),
-    ).toEqual([{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "o2", peer: "acme-web" }]);
+    ).toEqual([{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "o2", peer: "acme-web", launchedAt: 1790000000000 }]);
     // A job that runs here has none.
     expect(getPendingJobTurnsFromMessages([row("job-row-1"), reply("o2", [{ jobId: JOB, title: "", runId: "row-3" }])])[0]).not.toHaveProperty("peer");
   });
@@ -472,6 +472,46 @@ describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-a
       live: { id: url, kind: "image", title: "shots/001.png", label: "Screenshot", source: { type: "graph", swarmId: SWARM, key: url } },
     });
     useCanvasChatStore.setState({ artifactPanel: null });
+  });
+
+  test("the job's line of what it is doing now sits on top, the newest; status and graph writes are never counted (strut plans/live-feeds.md)", () => {
+    useJobLiveStore.setState({ byJob: {}, verifying: {} });
+    render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Brainstorm", anchorMessageId: "m1" }} />);
+    act(() => {
+      const { apply } = useJobLiveStore.getState();
+      apply({ jobId: JOB, swarmId: SWARM, at, kind: "status", id: "r1", runId: "r1", title: "Drafting round 1 of 4" });
+      apply({ jobId: JOB, swarmId: SWARM, at, kind: "graph", id: "r2", runId: "r2", state: "written", detail: { writes: 7 } });
+    });
+    expect(screen.getByTestId("job-live-status").textContent).toBe("Drafting round 1 of 4");
+    expect(screen.queryByTestId("job-live-tally")).toBeNull();
+    expect(screen.queryByTestId("job-live-now")).toBeNull();
+    act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: SWARM, at, kind: "status", id: "r2", runId: "r2", title: "Writing 6 cards" }));
+    expect(screen.getByTestId("job-live-status").textContent).toBe("Writing 6 cards");
+  });
+
+  test("graph writes alone draw nothing: the canvas reads them, the card does not", () => {
+    useJobLiveStore.setState({ byJob: {}, verifying: {} });
+    render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Brainstorm", anchorMessageId: "m1" }} />);
+    act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: SWARM, at, kind: "graph", id: "r1", state: "written" }));
+    expect(screen.queryByTestId("job-live-strip")).toBeNull();
+  });
+
+  test("a turn the orchestrator launched shows what the job reported before its card appeared, and not an earlier turn's", () => {
+    useJobLiveStore.setState({ byJob: {}, verifying: {} });
+    const launchedAt = Date.parse("2026-10-29T16:15:43.587Z");
+    const { apply } = useJobLiveStore.getState();
+    apply({ jobId: JOB, swarmId: SWARM, at: "2026-10-29T16:01:00.000Z", kind: "pod", id: "pod-1", state: "held", url: "https://pod-1.example.com" });
+    apply({ jobId: JOB, swarmId: SWARM, at: "2026-10-29T16:15:58.000Z", kind: "pod", id: "pod-2", state: "held", url: "https://pod-2.example.com" });
+    apply({ jobId: JOB, swarmId: SWARM, at: "2026-10-29T16:16:02.000Z", kind: "status", id: "r1", title: "Checking out the repo" });
+    vi.useFakeTimers({ now: Date.now() + 60_000, toFake: ["Date"] });
+    try {
+      render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Brainstorm", anchorMessageId: "o1", launchedAt }} />);
+      expect(screen.getByTestId("job-live-status").textContent).toBe("Checking out the repo");
+      expect(screen.getByTestId("job-live-tally").textContent).toBe("pod held");
+      expect(screen.getByTestId("job-live-tally").querySelector("a")?.getAttribute("href")).toBe("https://pod-2.example.com");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("what arrived before the card appeared — an earlier turn's — is not this turn's", () => {
