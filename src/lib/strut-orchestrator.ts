@@ -17,7 +17,7 @@
  */
 
 import { z } from "zod";
-import type { GraphEdgeEndpoint, ProposalOutput } from "@/lib/proposals/types";
+import type { ConceptKind, GraphEdgeEndpoint, ProposalOutput } from "@/lib/proposals/types";
 import { JOB_WORKFLOW, isStrutPeerId } from "@/lib/strut-jobs";
 
 /** `StrutRun.kind` of an orchestrator turn — the completion handler's discriminator. */
@@ -417,6 +417,15 @@ const triplet = (t: Record<string, unknown>) => {
   };
 };
 
+/** The knowledge kinds a `concept/create` input may name: hive's `ConceptKind`. */
+const CONCEPT_KINDS = new Set<string>([
+  "preference",
+  "best_practice",
+  "gotcha",
+  "process",
+  "general",
+] satisfies ConceptKind[]);
+
 /**
  * A strut proposal's step + input as the hive proposal kind whose card body
  * draws the same fields (strut's flat `source_ref_id` / `source_type` +
@@ -429,6 +438,31 @@ export function strutProposalToOutput(step: string, input: unknown, workspaceSlu
   const proposalId = "strut";
   const scope = { workspaceId: "", workspaceSlug };
   switch (step) {
+    case "concept/create": {
+      // The lab's Concept step (stakgraph `mcp/src/lab/orchestrator`): hive's
+      // own Concept card body. Its `docs` is the body hive's payload calls
+      // `documentation`; `parent` is a ref_id or an exact name on strut.
+      if (typeof input.name !== "string" || !input.name) return null;
+      const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+      const description = str(input.description);
+      const repo = str(input.repo);
+      const parent = str(input.parent);
+      const kind = str(input.kind);
+      return {
+        kind: "conceptCreate",
+        proposalId,
+        payload: {
+          ...scope,
+          name: input.name,
+          documentation: typeof input.docs === "string" ? input.docs : "",
+          ...(description ? { description } : {}),
+          ...(repo ? { repo } : {}),
+          ...(parent ? { parent } : {}),
+          ...(kind && CONCEPT_KINDS.has(kind) ? { kind: kind as ConceptKind } : {}),
+        },
+        meta: { workspaceSlug, ...(kind ? { kind } : {}) },
+      };
+    }
     case "graph/create-node":
       return typeof input.node_type === "string"
         ? {
@@ -499,6 +533,8 @@ export function strutProposalToOutput(step: string, input: unknown, workspaceSlu
 /** The card's label for a step: `graph/create-node` → "Proposed graph node". */
 export function strutProposalStepLabel(step: string): string {
   switch (step) {
+    case "concept/create":
+      return "Proposed new Concept";
     case "graph/create-node":
       return "Proposed new graph node";
     case "graph/edit-node":
