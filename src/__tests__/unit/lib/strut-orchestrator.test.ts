@@ -17,10 +17,12 @@ import {
   orchestratorPrompt,
   orchestratorRowId,
   parseOrchestratorJobCalls,
+  parseStrutArtifactEnvelope,
   parseStrutProposalBriefs,
   strutProposalRowId,
   strutProposalStepLabel,
   strutProposalToOutput,
+  strutReferenceEntries,
 } from "@/lib/strut-orchestrator";
 
 const NOW = new Date("2026-10-19T13:02:00Z");
@@ -302,5 +304,39 @@ describe("strutProposalToOutput — a strut step's input as a hive card body", (
     expect(strutProposalStepLabel("graph/create-node")).toBe("Proposed new graph node");
     expect(strutProposalStepLabel("graph/delete-node")).toBe("Proposed node delete");
     expect(strutProposalStepLabel("sphinx/send")).toBe("Proposed sphinx/send");
+  });
+});
+
+describe("strut's artifact entries for a call", () => {
+  it("keeps the entries that are references, as they came, and leaves out errors and inline content", () => {
+    const url = { id: "a", title: "A", url: "/jobs/j/files/a.md", extra: { kept: true } };
+    const path = { id: "b", title: "B", peer: "web", via: "billing", job: "peer/j", path: "b.png" };
+    const app = { id: "c", title: "C", kind: "app", peer: "web", app: { name: "bench" } };
+    const entries = [
+      url,
+      path,
+      app,
+      { id: "d", title: "D", url: "/x", error: "not found" },
+      { id: "e", title: "E", content: { text: "inline" } },
+      { id: "f", title: "F", url: "" },
+      "not an entry",
+      null,
+      [url],
+    ];
+    expect(strutReferenceEntries(entries)).toEqual([url, path, app]);
+    expect(strutReferenceEntries(entries)[0]).toBe(url);
+    expect(strutReferenceEntries(undefined)).toEqual([]);
+    expect(strutReferenceEntries(Array.from({ length: 25 }, (_, i) => ({ id: `${i}`, url: `/u/${i}` }))).length).toBe(
+      20,
+    );
+  });
+
+  it("reads a stored envelope only with a workspace and entries", () => {
+    const envelope = { workspace: "acme", artifacts: [{ id: "a", url: "/u" }] };
+    expect(parseStrutArtifactEnvelope(envelope)).toBe(envelope);
+    expect(parseStrutArtifactEnvelope({ workspace: "", artifacts: [{}] })).toBeUndefined();
+    expect(parseStrutArtifactEnvelope({ workspace: "acme", artifacts: [] })).toBeUndefined();
+    expect(parseStrutArtifactEnvelope({ workspace: "acme", artifacts: "x" })).toBeUndefined();
+    expect(parseStrutArtifactEnvelope(null)).toBeUndefined();
   });
 });

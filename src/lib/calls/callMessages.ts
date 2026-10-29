@@ -8,6 +8,9 @@
  *     failed, was stopped or was lost;
  *   - a proposal the turn made (`source.kind: "proposal"`) → `proposal`.
  *
+ * A reply also carries the row's `strut` (strut's own entries and the
+ * workspace they are relative to), untouched, when it has one.
+ *
  * Everything else is left out: user rows, launch markers (the chat's
  * working card), job rows (a job's card; its wake reply is what is said),
  * proposal decisions, and silent replies. Fields come from the row's
@@ -24,7 +27,7 @@ import {
   parseArtifactRefs,
   type ArtifactRef,
 } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
-import { orchestratorAskLine } from "@/lib/strut-orchestrator";
+import { orchestratorAskLine, parseStrutArtifactEnvelope, type StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
 
 export type CallMessageKind = "reply" | "proposal" | "error";
 
@@ -37,6 +40,12 @@ export interface CallMessage {
   /** A proposal's title. */
   title?: string;
   artifacts?: Array<{ title: string; url: string }>;
+  /**
+   * strut's own entries for the reply and the workspace they are relative
+   * to, as the row keeps them: for a reader that opens them on that
+   * workspace's strut (Peel). `artifacts` above is the same list as links.
+   */
+  strut?: StrutArtifactEnvelope;
 }
 
 export interface CallMessagesPage {
@@ -50,6 +59,7 @@ type Row = {
   content?: unknown;
   timestamp?: unknown;
   artifacts?: unknown;
+  strut?: unknown;
   source?: { kind?: unknown; status?: unknown; ask?: unknown; title?: unknown } | null;
 };
 
@@ -74,12 +84,14 @@ export function callMessageOf(row: Row, artifactUrl: (ref: ArtifactRef) => strin
   if (source.kind !== "orchestrator" || source.status === "silent") return null;
   const ask = source.status === "success" && typeof source.ask === "string" && source.ask ? source.ask : undefined;
   const refs = parseArtifactRefs(row.artifacts) ?? [];
+  const strut = parseStrutArtifactEnvelope(row.strut);
   return {
     id: row.id,
     kind: source.status === "success" ? "reply" : "error",
     text: replyText(content, ask),
     ...(ask ? { ask } : {}),
     ...(refs.length > 0 ? { artifacts: refs.map((ref) => ({ title: ref.title, url: artifactUrl(ref) })) } : {}),
+    ...(strut ? { strut } : {}),
   };
 }
 
