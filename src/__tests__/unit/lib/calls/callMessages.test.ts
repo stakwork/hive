@@ -118,6 +118,29 @@ describe("callMessagesSince", () => {
       { title: "Plan", url: "https://hive.example.com/org/acme?chat=conv-1&artifact=id%3Aplan" },
     ]);
   });
+
+  it("the row's strut entries ride along untouched; a malformed envelope is left out", () => {
+    const strut = {
+      workspace: "acme",
+      artifacts: [
+        { id: "plan", kind: "markdown", title: "Plan", url: "/jobs/j-1/files/plan.md" },
+        { id: "shot", kind: "image", title: "Shot", peer: "web", via: "billing", job: "peer/j-7", path: "a.png" },
+      ],
+    };
+    const [kept, noWorkspace, empty, none] = callMessagesSince(
+      [
+        { ...reply("orchestrator-r6", T1, "Here."), strut },
+        { ...reply("orchestrator-r7", T1, "Here."), strut: { artifacts: strut.artifacts } },
+        { ...reply("orchestrator-r8", T1, "Here."), strut: { workspace: "acme", artifacts: [] } },
+        reply("orchestrator-r9", T1, "Here."),
+      ],
+      null,
+      url,
+    ).messages;
+    expect(kept.strut).toEqual(strut);
+    expect([noWorkspace.strut, empty.strut, none.strut]).toEqual([undefined, undefined, undefined]);
+    expect("strut" in none).toBe(false);
+  });
 });
 
 describe("callArtifactUrl", () => {
