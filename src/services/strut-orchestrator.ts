@@ -36,6 +36,7 @@ import {
   orchestratorLaunchRowId,
   orchestratorPrompt,
   orchestratorRowId,
+  orchestratorTribeLine,
 } from "@/lib/strut-orchestrator";
 import type { StoredAttachment, StoredMessage } from "@/services/canvas-turn-persistence";
 import { skippedAttachmentsNote, strutAttachments } from "@/services/strut-attachments";
@@ -90,6 +91,11 @@ export interface OrchestratorTurnArgs {
    * (`ORCHESTRATOR_CALL_LINE`) ends `context.line`.
    */
   call?: boolean;
+  /**
+   * Asked in a Sphinx tribe (`/api/tribes/messages`): the tribe line
+   * (`orchestratorTribeLine`) ends `context.line`.
+   */
+  tribe?: { name: string | null; alias: string; owner?: boolean };
 }
 
 export type OrchestratorLaunchResult =
@@ -149,7 +155,8 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
             orchestratorContextLine(args.now ?? new Date(), args.timeZone) +
             (args.focus ? canvasFocusContextLine(args.focus) : "") +
             pageContextLine(args.pageContext) +
-            (args.call ? ORCHESTRATOR_CALL_LINE : ""),
+            (args.call ? ORCHESTRATOR_CALL_LINE : "") +
+            (args.tribe ? orchestratorTribeLine(args.tribe) : ""),
         },
       },
       ...(args.focus ? { rowInput: { focus: args.focus } } : {}),
