@@ -1,6 +1,7 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { validateApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
+import { validateUserBelongsToOrg } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -56,11 +57,9 @@ export async function GET(
     // matching the share POST's auth check. Skipped for trusted
     // API_TOKEN callers (the token itself is the authority).
     if (!isApiToken) {
-      const token = await db.sourceControlToken.findFirst({
-        where: { userId: userId!, sourceControlOrgId: org.id },
-      });
+      const isOrgMember = await validateUserBelongsToOrg(githubLogin, userId!);
 
-      if (!token) {
+      if (!isOrgMember) {
         return NextResponse.json(
           { error: "Access denied. You must be an organization member." },
           { status: 403 },

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { type ModelMessage } from "ai";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { extractFeatureFromTranscript } from "@/lib/ai/extract-feature";
-import { db } from "@/lib/db";
+import { validateWorkspaceAccess } from "@/services/workspace";
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,15 +34,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get workspace ID from slug
-    const workspace = await db.workspace.findUnique({
-      where: { slug: workspaceSlug },
-      select: { id: true },
-    });
-
-    if (!workspace) {
+    // Caller must be an active member (or owner) of the workspace; a
+    // non-member gets the same 404 as a missing workspace.
+    const access = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
+    if (!access.hasAccess || !access.canWrite) {
       return NextResponse.json(
-        { error: "Workspace not found" },
+        { error: "Workspace not found or access denied" },
         { status: 404 }
       );
     }

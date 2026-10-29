@@ -1,5 +1,6 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { validateUserBelongsToOrg } from "@/services/workspace";
 import { CreateSharedConversationRequest, SharedConversationResponse } from "@/types/shared-conversation";
 import { generateTitle } from "@/lib/ai/conversationHelpers";
 import { getServerSession } from "next-auth/next";
@@ -42,11 +43,9 @@ export async function POST(
     }
 
     // Verify user has access to this org via SourceControlToken
-    const token = await db.sourceControlToken.findFirst({
-      where: { userId, sourceControlOrgId: org.id },
-    });
+    const isOrgMember = await validateUserBelongsToOrg(githubLogin, userId);
 
-    if (!token) {
+    if (!isOrgMember) {
       return NextResponse.json(
         { error: "Access denied. You must be an organization member." },
         { status: 403 }
