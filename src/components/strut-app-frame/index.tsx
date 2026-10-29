@@ -14,7 +14,9 @@
  *  - **Its bridge is ext-apps' `AppBridge`** (`./bridge`), relaying the
  *    page's `tools/call` to Hive's relay route as it is.
  *
- * The sandbox grants `allow-scripts` ONLY. Never `allow-same-origin`: a
+ * The sandbox grants `allow-scripts` and `allow-downloads` (a file the page
+ * was handed, saved to the viewer's disk), and `allow="microphone"` lets it
+ * record; neither sends anything past the bridge. Never `allow-same-origin`: a
  * srcdoc document inherits its parent's origin, so together with scripts it
  * would run as Hive itself — Hive's cookies, storage and DOM — and could
  * lift its own sandbox. No popups, forms, modals or top navigation either;
@@ -44,7 +46,7 @@ import { hostContextFor, readHostStyles } from "./host-context";
 
 export type { StrutAppSource };
 
-export const STRUT_APP_FRAME_SANDBOX = "allow-scripts";
+export const STRUT_APP_FRAME_SANDBOX = "allow-scripts allow-downloads";
 
 export interface StrutAppFrameProps {
   source: StrutAppSource;
@@ -214,6 +216,7 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
         ref={frameRef}
         title={title || "App"}
         sandbox={STRUT_APP_FRAME_SANDBOX}
+        allow="microphone"
         referrerPolicy="no-referrer"
         className="block w-full border-0 bg-background"
         style={frameStyle}
