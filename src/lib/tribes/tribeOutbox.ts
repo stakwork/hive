@@ -22,19 +22,18 @@
  * started the job, read from the conversation's own rows (the wake's launch
  * marker names the job row, the launching turn's reply lists the job).
  *
- * A job's wake reply also carries that job's deliverables: the reader skips
- * the job row (a job's card), and the wake turn's own run holds none of the
- * job's work. So the job row's cards (all but hive's own, its claims and its
- * trace) become link lines, and its `strut` entries the post's metadata.
+ * A job's wake reply carries that job's deliverables (the reader adds them
+ * from the job row): its cards as link lines, its strut entries as the
+ * post's metadata.
  *
  * A conversation is read only once its `updatedAt` passes the link's
  * `readAt`: the stamp of a read that left nothing after the cursor.
  */
 
-import { parseArtifactRefs, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
-import { callArtifactUrl, callMessagesSince, type CallMessage } from "@/lib/calls/callMessages";
+import type { ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
+import { callArtifactUrl, callMessagesSince, wakeJobRows, type CallMessage } from "@/lib/calls/callMessages";
 import { db } from "@/lib/db";
-import { parseStrutArtifactEnvelope, type StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
+import type { StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
 
 export interface TribeOutboxPost {
   id: string;
@@ -58,8 +57,6 @@ export const MAX_TRIBE_TEXT_CHARS = 4_000;
 const MAX_QUEUED_PER_POLL = 100;
 /** How far a wake's reply is followed back to the mention that started the job. */
 const MAX_THREAD_DEPTH = 10;
-/** A job row's cards that are hive's view of the work, not what it made: never posted as deliverables. */
-const HIVE_JOB_CARDS = new Set(["claims", "run_graph"]);
 
 export const tribeMessageId = (linkId: string, rowId: string): string => `${linkId}:${rowId}`;
 
@@ -86,58 +83,13 @@ type Source = { kind?: unknown; runId?: unknown; wakeId?: unknown; jobs?: unknow
 const sourceOf = (row: unknown): Source =>
   row && typeof row === "object" ? ((row as { source?: Source }).source ?? null) : null;
 
-/** For each wake turn, the job row it woke on (its launch marker's `wakeId` is that row's id). */
-function wakeRows(rows: unknown[]): Map<string, string> {
-  const wakes = new Map<string, string>();
-  for (const row of rows) {
-    const source = sourceOf(row);
-    if (source?.kind === "orchestrator_launch" && typeof source.runId === "string" && typeof source.wakeId === "string" && source.wakeId.startsWith("job-")) {
-      wakes.set(source.runId, source.wakeId);
-    }
-  }
-  return wakes;
-}
-
-/**
- * A wake reply with its job's deliverables added: the job row's cards but
- * hive's own as link lines after the reply's own (one per link), and its
- * strut entries after the reply's own when both name one workspace (else
- * the reply's alone). A row that is not a job's adds nothing.
- */
-export function withJobDeliverables(
-  message: CallMessage,
-  jobRow: unknown,
-  artifactUrl: (ref: ArtifactRef) => string,
-): CallMessage {
-  if (message.kind === "proposal" || sourceOf(jobRow)?.kind !== "job") return message;
-  const row = jobRow as { artifacts?: unknown; strut?: unknown };
-  const artifacts = [...(message.artifacts ?? [])];
-  const seen = new Set(artifacts.map((a) => a.url));
-  for (const ref of parseArtifactRefs(row.artifacts) ?? []) {
-    if (HIVE_JOB_CARDS.has(ref.kind)) continue;
-    const url = artifactUrl(ref);
-    if (seen.has(url)) continue;
-    seen.add(url);
-    artifacts.push({ title: ref.title, url });
-  }
-
-  const job = parseStrutArtifactEnvelope(row.strut);
-  let strut = message.strut;
-  if (job && !strut) strut = job;
-  else if (job && strut && job.workspace === strut.workspace) {
-    const kept = new Set(strut.artifacts.map((e) => JSON.stringify(e)));
-    strut = { workspace: strut.workspace, artifacts: [...strut.artifacts, ...job.artifacts.filter((e) => !kept.has(JSON.stringify(e)))] };
-  }
-  return { ...message, ...(artifacts.length > 0 ? { artifacts } : {}), ...(strut ? { strut } : {}) };
-}
-
 /**
  * For a turn, the turns its reply may thread under, nearest first: the turn
  * itself, then — for a job's wake — the turn whose reply started the job,
  * and so on back. The first with a mention wins.
  */
 export function threadChain(rows: unknown[]): (runId: string) => string[] {
-  const wakeOf = new Map([...wakeRows(rows)].map(([wake, jobRow]) => [wake, jobRow.slice("job-".length)])); // wake turn → the job turn it woke on
+  const wakeOf = new Map([...wakeJobRows(rows)].map(([wake, jobRow]) => [wake, jobRow.slice("job-".length)])); // wake turn → the job turn it woke on
   const launcherOf = new Map<string, string>(); // job turn → the turn that started it
   for (const row of rows) {
     const source = sourceOf(row);
@@ -200,7 +152,6 @@ export async function pendingTribeMessages(
     if (typeof id === "string") byId.set(id, row);
   }
   const chainOf = threadChain(rows);
-  const wakes = wakeRows(rows);
   const runOf = (message: CallMessage): string | null => {
     const runId = sourceOf(byId.get(message.id))?.runId;
     return typeof runId === "string" ? runId : null;
@@ -218,10 +169,8 @@ export async function pendingTribeMessages(
   const mentionOf = new Map(mentions.map((m) => [m.runId, m.mentionId]));
 
   const approver = link.user.name?.trim() || "the person who linked this tribe";
-  return messages.map((said) => {
-    const runId = runOf(said);
-    const jobRow = runId ? wakes.get(runId) : undefined;
-    const message = jobRow ? withJobDeliverables(said, byId.get(jobRow), artifactUrl) : said;
+  return messages.map((message) => {
+    const runId = runOf(message);
     const replyTo = runId ? chainOf(runId).map((r) => mentionOf.get(r)).find(Boolean) : undefined;
     const text = tribeText(message, { approver, conversationUrl });
     const id = tribeMessageId(link.id, message.id);
