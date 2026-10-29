@@ -1,6 +1,7 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { validateApiToken } from "@/lib/auth/api-token";
 import { db } from "@/lib/db";
+import { validateUserBelongsToOrg } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -8,8 +9,8 @@ import { NextRequest, NextResponse } from "next/server";
  * GET a single org-scoped shared conversation. Mirrors the
  * workspace-scoped variant at
  * `/api/workspaces/[slug]/chat/shared/[shareId]/route.ts` but auths
- * via `SourceControlToken` against the org instead of workspace
- * membership.
+ * against the org (owner or active member of any workspace in it)
+ * instead of a single workspace's membership.
  *
  * Used by the org canvas page to client-side preload a conversation
  * when the URL has `?chat=<shareId>`. The standalone server-rendered
@@ -52,15 +53,13 @@ export async function GET(
       );
     }
 
-    // Verify caller has access to this org via SourceControlToken,
-    // matching the share POST's auth check. Skipped for trusted
+    // Verify caller owns or is an active member of a workspace in this
+    // org, matching the share POST's auth check. Skipped for trusted
     // API_TOKEN callers (the token itself is the authority).
     if (!isApiToken) {
-      const token = await db.sourceControlToken.findFirst({
-        where: { userId: userId!, sourceControlOrgId: org.id },
-      });
+      const isOrgMember = await validateUserBelongsToOrg(githubLogin, userId!);
 
-      if (!token) {
+      if (!isOrgMember) {
         return NextResponse.json(
           { error: "Access denied. You must be an organization member." },
           { status: 403 },
