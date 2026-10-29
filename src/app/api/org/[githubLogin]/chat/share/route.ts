@@ -42,7 +42,7 @@ export async function POST(
       );
     }
 
-    // Verify user has access to this org via SourceControlToken
+    // Verify user owns or is an active member of a workspace in this org
     const isOrgMember = await validateUserBelongsToOrg(githubLogin, userId);
 
     if (!isOrgMember) {

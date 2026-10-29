@@ -34,10 +34,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Caller must be an active member (or owner) of the workspace; a
-    // non-member gets the same 404 as a missing workspace.
+    // Caller must be an active member (or owner) of the workspace, the
+    // same bar createFeature sets; a non-member gets the same 404 as a
+    // missing workspace.
     const access = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
-    if (!access.hasAccess || !access.canWrite) {
+    if (!access.hasAccess) {
       return NextResponse.json(
         { error: "Workspace not found or access denied" },
         { status: 404 }

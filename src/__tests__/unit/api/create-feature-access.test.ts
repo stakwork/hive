@@ -31,8 +31,8 @@ describe("POST /api/features/create-feature workspace access", () => {
     expect(extractMock).not.toHaveBeenCalled();
   });
 
-  test("allows a member with write access", async () => {
-    accessMock.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: true, canAdmin: false });
+  test("allows a read-only member (createFeature's bar)", async () => {
+    accessMock.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: false, canAdmin: false });
     const res = await POST(req());
     expect(res.status).toBe(200);
     expect(extractMock).toHaveBeenCalled();
