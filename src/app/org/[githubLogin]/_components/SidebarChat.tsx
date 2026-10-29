@@ -1,7 +1,7 @@
 "use client";
 
+import { JamieWorkingIndicator } from "@/components/chat/JamieWorkingIndicator";
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowUp,
   FileIcon,
@@ -578,45 +578,11 @@ export function SidebarChat({ githubLogin, wide = false }: SidebarChatProps) {
                   </div>
                 );
               })}
-              <AnimatePresence>
-                {agentTurnsInProgress > 0 && activeToolCalls.length === 0 && (
-                  <motion.div
-                    key="thinking-dots"
-                    data-testid="thinking-dots"
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex justify-start"
-                  >
-                    <div className="rounded-2xl px-3 py-2 bg-muted/40 shadow-sm">
-                      <div className="flex gap-1 items-center h-4">
-                        <motion.span
-                          animate={{ opacity: [0.3, 1, 0.3] }}
-                          transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
-                          className="text-sm text-foreground/60"
-                        >
-                          .
-                        </motion.span>
-                        <motion.span
-                          animate={{ opacity: [0.3, 1, 0.3] }}
-                          transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
-                          className="text-sm text-foreground/60"
-                        >
-                          .
-                        </motion.span>
-                        <motion.span
-                          animate={{ opacity: [0.3, 1, 0.3] }}
-                          transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
-                          className="text-sm text-foreground/60"
-                        >
-                          .
-                        </motion.span>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {(agentTurnsInProgress > 0 || isLoading) && activeToolCalls.length === 0 && (
+                <div data-testid="thinking-dots">
+                  <JamieWorkingIndicator />
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           </div>

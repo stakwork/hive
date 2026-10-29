@@ -1605,3 +1605,22 @@ describe("SidebarChat — header & composer layout", () => {
     expect(screen.queryByLabelText("Send")).toBeNull();
   });
 });
+
+describe("SidebarChat — Jamie working indicator", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockIsActive = false;
+  });
+
+  it("shows 'Jamie is working…' status while a turn is in flight", async () => {
+    mockStoreState = buildAgentTurnsStoreState(1, []);
+    const { getByRole } = await renderSidebarChat();
+    expect(getByRole("status").textContent).toContain("Jamie is working");
+  });
+
+  it("hides on reply/error (turn settled)", async () => {
+    mockStoreState = buildAgentTurnsStoreState(0, []);
+    const { queryByTestId } = await renderSidebarChat();
+    expect(queryByTestId("jamie-working-indicator")).toBeNull();
+  });
+});
