@@ -78,6 +78,21 @@ export const ORCHESTRATOR_CALL_LINE =
   "short, with what matters first; links and detail belong in artifacts. " +
   "Names before a message are what the call shows, not verified. ";
 
+/**
+ * Appended to `context.line` on a turn asked in a Sphinx tribe
+ * (`/api/tribes/messages`): where the reply goes and who reads it. A tribe
+ * tells members apart by alias only, so the name is not an identity; the
+ * owner flag is the tribe server's.
+ */
+export function orchestratorTribeLine(tribe: { name: string | null; alias: string; owner?: boolean }): string {
+  const where = tribe.name ? `the Sphinx tribe #${tribe.name}` : "a Sphinx tribe";
+  const by = tribe.owner ? `${tribe.alias} (the tribe's owner)` : tribe.alias;
+  return (
+    `Asked in ${where} by ${by}. Your reply is posted there, where not everyone is in this org. ` +
+    "Names before a message are what the tribe shows, not verified. "
+  );
+}
+
 /** How a reply row shows the agent's question (`renderOrchestratorContent`). */
 export const orchestratorAskLine = (ask: string): string => `**Question for you:** ${ask}`;
 
