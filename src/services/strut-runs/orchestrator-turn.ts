@@ -61,6 +61,8 @@ import {
   parseOrchestratorJobCalls,
   parseStrutProposalBriefs,
   strutProposalRowId,
+  strutReferenceEntries,
+  type StrutArtifactEnvelope,
   type OrchestratorJobLaunch,
   type OrchestratorLaunchRowSource,
   type OrchestratorRowSource,
@@ -159,6 +161,8 @@ export interface OrchestratorMessageRow {
   timestamp: string;
   source: OrchestratorMessageSource;
   artifacts?: ArtifactRef[];
+  /** strut's own entries for the reply, as they came (`StrutArtifactEnvelope`). */
+  strut?: StrutArtifactEnvelope;
 }
 
 /** A row to append: everything but the stamp. */
@@ -307,6 +311,7 @@ export function orchestratorRowsFor(
   dropped: Array<{ title: string; reason: string }>,
   proposals: StrutProposalBrief[],
   jobs: OrchestratorJobLaunch[] = [],
+  strut?: StrutArtifactEnvelope,
 ): OrchestratorRowDraft[] {
   const main: OrchestratorRowDraft = {
     id: orchestratorRowId(row.id),
@@ -320,6 +325,7 @@ export function orchestratorRowsFor(
       ...(jobs.length > 0 ? { jobs } : {}),
     },
     ...(refs.length > 0 ? { artifacts: refs } : {}),
+    ...(strut ? { strut } : {}),
   };
   const cards: OrchestratorRowDraft[] = proposals.map((p) => ({
     id: strutProposalRowId(row.id, p.id),
@@ -339,6 +345,21 @@ export function orchestratorRowsFor(
   return [main, ...cards];
 }
 
+/**
+ * strut's entries that are references, with the slug of the workspace whose
+ * strut ran the turn (the ROW's: the org strut names its peers by workspace
+ * slug, and Peel its orgs). None when there are no such entries.
+ */
+async function strutEnvelopeFor(
+  row: Pick<StrutRunRow, "workspaceId">,
+  raw: unknown,
+): Promise<StrutArtifactEnvelope | undefined> {
+  const artifacts = strutReferenceEntries(raw);
+  if (artifacts.length === 0) return undefined;
+  const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
+  return workspace?.slug ? { workspace: workspace.slug, artifacts } : undefined;
+}
+
 /** The `StrutRunHandler` for `orchestrator_turn`. Throws to be retried. */
 export async function handleOrchestratorTurnSettled(row: StrutRunRow, _ctx?: StrutRunHandlerContext): Promise<void> {
   if (row.status === StrutRunStatus.PENDING) return;
@@ -348,6 +369,7 @@ export async function handleOrchestratorTurnSettled(row: StrutRunRow, _ctx?: Str
   let dropped: Array<{ title: string; reason: string }> = [];
   let proposals: StrutProposalBrief[] = [];
   let jobs: OrchestratorJobLaunch[] = [];
+  let strut: StrutArtifactEnvelope | undefined;
   // A silent turn may still have produced cards or proposals: read them
   // too, and the row shows as nothing only when it carries none.
   if (reply.outcome === "success" || reply.outcome === "silent") {
@@ -359,6 +381,7 @@ export async function handleOrchestratorTurnSettled(row: StrutRunRow, _ctx?: Str
     jobs = launched;
     if (artifacts.ok) {
       ({ refs, dropped } = mapStrutArtifacts(artifacts.artifacts, row.swarmId, await peerSwarmsFor(row, artifacts.artifacts)));
+      strut = await strutEnvelopeFor(row, artifacts.raw);
     } else if (artifacts.permanent) {
       logger.warn("Orchestrator turn artifacts unavailable — delivering the text alone", LOG_TAG, {
         runId: row.id,
@@ -380,7 +403,7 @@ export async function handleOrchestratorTurnSettled(row: StrutRunRow, _ctx?: Str
     }
   }
 
-  const result = await appendOrchestratorRows(row, orchestratorRowsFor(row, reply, refs, dropped, proposals, jobs));
+  const result = await appendOrchestratorRows(row, orchestratorRowsFor(row, reply, refs, dropped, proposals, jobs, strut));
   logger.info("Orchestrator turn delivered", LOG_TAG, {
     runId: row.id,
     status: reply.outcome,

@@ -614,7 +614,8 @@ type JobMessageRow = {
 // ─── Reading strut ────────────────────────────────────────────────────────
 
 export type ArtifactsRead =
-  | { ok: true; artifacts: StrutArtifact[] }
+  /** `raw`: the list as strut sent it, for a reader that keeps it as it came. */
+  | { ok: true; artifacts: StrutArtifact[]; raw: unknown[] }
   /** The run is gone from strut (404): deliver without artifacts. */
   | { ok: false; permanent: true; reason: string }
   /** Transient (unreachable, 5xx): throw so strut re-posts. */
@@ -633,7 +634,8 @@ export async function readRunArtifacts(row: StrutRunRow): Promise<ArtifactsRead>
     if (res.status === 404) return { ok: false, permanent: true, reason: "run not found on strut" };
     if (!res.ok) return { ok: false, permanent: false, reason: `HTTP ${res.status}` };
     const body = (await res.json()) as { artifacts?: unknown };
-    return { ok: true, artifacts: parseStrutArtifacts(body.artifacts) };
+    const raw = Array.isArray(body.artifacts) ? body.artifacts : [];
+    return { ok: true, artifacts: parseStrutArtifacts(raw), raw };
   } catch (err) {
     return { ok: false, permanent: false, reason: err instanceof Error ? err.message : String(err) };
   }
