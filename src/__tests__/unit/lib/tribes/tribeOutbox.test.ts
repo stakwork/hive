@@ -116,9 +116,9 @@ describe("threadChain", () => {
 });
 
 describe("ids", () => {
-  it("a post's id names its link and row; a queued entry's does not", () => {
-    const id = tribeMessageId("cmlink", "orchestrator-run-1-proposal-p1");
-    expect(parseTribeMessageId(id)).toEqual({ linkId: "cmlink", rowId: "orchestrator-run-1-proposal-p1" });
+  it("a post's id names its thread and row; a queued entry's does not", () => {
+    const id = tribeMessageId("cmthread", "orchestrator-run-1-proposal-p1");
+    expect(parseTribeMessageId(id)).toEqual({ threadId: "cmthread", rowId: "orchestrator-run-1-proposal-p1" });
     expect(parseTribeMessageId("cmentry")).toBeNull();
     expect(parseTribeMessageId(":x")).toBeNull();
     expect(parseTribeMessageId("x:")).toBeNull();

@@ -8,7 +8,7 @@ import { queueTribeLeave } from "@/lib/tribes/tribeLinks";
  * DELETE /api/strut-devices/tribes/<pubkey> — "No Jamie": the device's
  * person unlinks a tribe they linked (`/api/strut-devices/tribes`). The link
  * goes, so the tribe's mentions are refused from now on, and Jamie is told
- * to leave. The tribe's conversation stays in Hive.
+ * to leave. The tribe's conversations stay in Hive.
  *
  * Header: Authorization: Bearer hivedev_…
  * 200 { unlinked: true }
