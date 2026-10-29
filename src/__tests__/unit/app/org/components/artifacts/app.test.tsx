@@ -126,7 +126,7 @@ describe("an app beside a page", () => {
     });
     expect(documentCalls()).toEqual([VISITS_DOCUMENT_ROUTE]);
     expect(frame.hasAttribute("src")).toBe(false);
-    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
   });
 
   test("a page still renders in HtmlArtifactFrame: read through the reader, framed from a blob, never srcdoc", async () => {
@@ -150,7 +150,7 @@ describe("an app beside a page", () => {
     });
     expect(documentCalls()).toEqual([DOCUMENT_ROUTE]);
     expect(frame.hasAttribute("src")).toBe(false);
-    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
 
     const win = frame.contentWindow!;
     const received: Array<Record<string, unknown>> = [];
