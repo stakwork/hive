@@ -1,6 +1,8 @@
 # Jamie in Sphinx tribes
 
-Status: **proposed** 2026-10-29.
+Status: **proposed** 2026-10-29. The Sphinx side is built as `wasm/daemon`
+(stakwork/sphinx#401) and was tested live in a tribe the same day, in echo
+mode, with no Hive behind it ("Step 0", below).
 
 A tribe owner links their tribe to one of their orgs in Peel. From then on
 anyone in the tribe can write `@jamie …`, and Jamie, the org's orchestrator,
@@ -26,13 +28,18 @@ the call record.
 
 ```
 Peel (owner) ── link ──► Hive
-                          │
-tribe ◄── member ──► Jamie account ◄── mentions / replies ──► Hive ──► org's strut: orchestrator
+                          ▲
+                          │ mentions, the outbox (every call Jamie's)
+tribe ◄── member ──► Jamie (wasm/daemon)          Hive ──► org's strut: orchestrator
 ```
 
-- **Jamie is an ordinary member account**, one for every tribe of every org:
-  Hive's existing v2 bot account (`V2_BOT_URL`, the `wasm/bot` image in
-  stakwork/sphinx), extended. It knows nothing about orgs.
+- **Jamie is an ordinary member account**, one for every tribe of every org.
+  `wasm/daemon` runs it: sphinx-chat's account and code, kept connected. It
+  knows nothing about orgs.
+- **It's a new account, not Hive's DM bot** (`V2_BOT_URL`). An account holds
+  one live connection: the broker knows a connection by the account's key
+  and drops the older one when the same key connects again. So the DM bot
+  stays as it is.
 - **Hive keeps the links and runs the turns**, as it does for a call. A
   mention becomes a turn of the org's orchestrator, run as the person who
   linked the tribe. Jamie reads the replies from Hive and posts them.
@@ -57,7 +64,8 @@ tribe ◄── member ──► Jamie account ◄── mentions / replies ─�
      Hive, so no home-server tribes;
    - it would send Hive every message of every tribe on that server;
    - the bot server it would be built on, stakwork/sphinx-bots-v2 (behind
-     bots.v2.sphinx.chat), has had no commits since 2024-08.
+     bots.v2.sphinx.chat), had no commits from 2024-08 until a security fix
+     (stakwork/sphinx-bots-v2#9).
 
    As a member, Jamie works on any tribe server, home ones included. The
    owner decides it is there, and can remove it like any member. Only linked
@@ -84,6 +92,12 @@ tribe ◄── member ──► Jamie account ◄── mentions / replies ─�
    so Jamie keeps the room's thread across turns and the linker sees it in
    Hive.
 
+6. **Hive never calls Jamie.** Jamie makes every call, as voice does: it
+   posts mentions and long-polls an outbox. So the daemon runs anywhere with
+   outbound internet and needs no route to it. A join or a leave reaches it
+   the same way, as an outbox entry. Its admin API listens on 127.0.0.1, for
+   whoever runs it.
+
 ## How it works
 
 ### Linking
@@ -92,18 +106,23 @@ tribe ◄── member ──► Jamie account ◄── mentions / replies ─�
    `POST /api/strut-devices/tribes { workspace, tribe: { pubkey, host } }`
    with the device credential (`hivedev_…`).
 2. Hive does the checks `startCall` does (`lib/calls/startCall.ts`): the
-   person, the workspace, its org. It stores the link and asks the Jamie
-   account to join (`POST {V2_BOT_URL}/join_tribe`). It answers
-   `{ jamie: { pubkey, alias } }`.
-3. The Jamie account reads the tribe's info from the tribe's own host
-   (`GET https://<host>/tribes/<pubkey>`: route hint, prices, private), so
-   nothing Peel sends sets a price. It joins: `GroupJoin` for a public tribe,
-   `MemberRequest` for a private one.
+   person, the workspace, its org. It stores the link, and puts a join for
+   Jamie in the outbox: `{ id, join: "<tribe link>" }`. It answers
+   `{ jamie: { pubkey, alias } }`, from its config (`JAMIE_SPHINX_PUBKEY`,
+   which the daemon prints when it starts).
+3. Jamie takes the join on its next poll, within seconds. It reads the
+   tribe's info from the tribe's own host (`GET https://<host>/tribes/<pubkey>`:
+   route hint, prices, private), so nothing Peel sends sets a price. It
+   joins: `GroupJoin` for a public tribe, `MemberRequest` for a private one.
 4. For a private tribe, Jamie shows up in the owner's pending members.
    Peel matches the `jamie.pubkey` Hive returned and approves it
    (`Engine.answerJoinRequest(in:_:approve: true)`, `PeelCore/Engine+Tribes.swift`).
+   Jamie answers in that tribe only from the approval on.
 5. **No Jamie** → `DELETE /api/strut-devices/tribes/<pubkey>`. Hive drops the
-   link and the account leaves the tribe.
+   link, and refuses that tribe's mentions from then on (a 4xx, which Jamie
+   drops). It also puts `{ id, leave: "<tribe pubkey>" }` in the outbox.
+   Leaving isn't built in sphinx-chat yet; until it is, the owner removes
+   Jamie like any member.
 
 `GET /api/strut-devices/tribes` lists the person's links, so their Mac and
 iPhone show the same pick. The calls pick (`Setting.callJamie`) stays per
@@ -111,28 +130,51 @@ device as it is.
 
 ### A mention
 
-1. **Jamie forwards it.** As a member, the Jamie account receives every
-   message of the tribes it is in. For a text message (type 0, or chunks put
-   back together) that mentions Jamie (`(?i)(^|\s)@jamie\b`, the pattern
-   Peel's call chat and voice use), it calls
-   `POST /api/tribes/messages { tribe, uuid, alias, role, date, text, recent }`
-   with its own token. `recent` is the room since Jamie last spoke: the last
-   messages of that tribe, capped (say 30 lines, 8 KB).
+1. **Jamie forwards it.** As a member, Jamie receives every message of the
+   tribes it is in. A text message mentions it when it has `@jamie` at the
+   start or after whitespace, in any case. `@jamie_2` counts too: a tribe
+   whose members already use the alias renames the account that way. The
+   daemon passes over:
+   - its own messages;
+   - what came before it could answer there (its join, or the owner's
+     approval), judged by each message's own `date`. A tribe's history
+     replay arrives stamped with the replay's time;
+   - anything over a day old.
+
+   It takes each mention once, across restarts, and calls
+   `POST /api/tribes/messages` with its token:
+
+   ```json
+   {
+     "id": "<the message id members hold>",
+     "tribe": { "pubkey": "02…", "name": "Builders", "host": "tribes.v2.sphinx.chat" },
+     "alias": "Alice",
+     "owner": false,
+     "time": "2026-10-29T18:02:11Z",
+     "text": "@jamie what did we decide about the launch?",
+     "recent": [{ "alias": "Bob", "time": "…", "text": "…" }]
+   }
+   ```
+
+   `recent` is the room since Jamie last spoke there, oldest first: up to
+   30 lines and 8 KB, the newest that fit. `owner` is whether the tribe's
+   owner wrote it; the tribe server marks the owner's messages.
 2. **Hive takes the turn.** It is the call turn route's `takeTurn`, with the
    link in place of the call record:
-   - drop a message dated before the link (the 35-message history a joiner
-     is replayed) and a `uuid` already seen;
-   - check the linker can still use the workspace (403 otherwise; Jamie says
-     so once in the tribe);
-   - refuse with 409 `busy` while a turn is live, as calls do. Jamie keeps a
-     queue per tribe and sends the next mention once the reply has landed;
+   - drop an `id` already seen, a retry whose first answer was lost (2xx);
+   - check the linker can still use the workspace. If not, refuse with a
+     403, which Jamie drops, and put one line saying so in the outbox;
+   - refuse with 409 `busy` while a turn is live, as calls do. Jamie keeps
+     that tribe's mentions in order, and offers them again once a reply to
+     the tribe lands, or every 15 s. A 429 or 5xx is a retry the same way;
+     any other 4xx is dropped;
    - save `"<alias>: <text>"` on the tribe's conversation
-     (`persistCanvasUserMessage`), with `recent` as a text attachment, as
-     calls attach their transcript excerpt;
+     (`persistCanvasUserMessage`). `recent` goes with it as a text
+     attachment, as calls attach their transcript excerpt;
    - `launchOrchestratorTurn({ …, tribe: { name } })`. A tribe line goes
      beside `ORCHESTRATOR_CALL_LINE`: *"Asked in the Sphinx tribe #<name> by
      <alias>. Your reply is posted there, where not everyone is in this org."*
-   - record the mention's `uuid` against the turn, so the reply threads on
+   - record the mention's `id` against the turn, so the reply threads under
      it.
 
 ### The reply
@@ -141,16 +183,27 @@ device as it is.
    `GET /api/tribes/outbox?wait=25`. Hive answers with the new messages of
    every linked conversation updated since that link's cursor. It reads them
    with `callMessagesSince` (`lib/calls/callMessages.ts`), the reader voice
-   uses, unchanged. Each comes with `{ tribe, replyTo? }`.
+   uses, unchanged:
+
+   ```json
+   { "messages": [{ "id": "…", "tribe": "02…", "text": "…", "replyTo": "…", "metadata": { "strut": { … } } }] }
+   ```
+
+   The `id` is Hive's, unique and stable: for example `<link>:<row id>`, so
+   an ack moves that link's cursor.
 2. **Jamie posts each one** into its tribe:
    - the text, then the deliverables as links;
-   - `metadata: { strut: { workspace, artifacts } }`, the field the call chat
-     carries (voice PR #20);
-   - threaded on the mention, and split into type-34 chunks past 869 bytes.
+   - `metadata`, as its JSON in the message's own `metadata` field:
+     `{ strut: { workspace, artifacts } }`, the field the call chat carries
+     (voice PR #20);
+   - threaded under `replyTo`, and split into type-34 chunks past 869 bytes.
+     The whole message, metadata included, is what is chunked.
 
-   Then it acks with `POST /api/tribes/outbox/ack { tribe, cursor }`, and
-   Hive moves the link's cursor. Delivery is at least once: Jamie keeps the
-   ids it posted, so a retry is never posted twice.
+   Then it acks with `POST /api/tribes/outbox/ack { ids }`. Delivery is at
+   least once: Jamie keeps the ids it posted, so one handed out again is
+   acked again, never posted twice. A message that fails to post isn't acked
+   and comes back on the next poll; after 3 failures it is acked and
+   dropped.
 3. **A job's wake** three hours later lands on the same conversation, so the
    same loop posts it. Nobody needs to be online.
 4. A failed turn is an `error` message ("I couldn't finish that: …"). A
@@ -175,8 +228,39 @@ device as it is.
 ### Money
 
 The core refuses a tribe message without sats (`sphinx/src/bindings/send.rs`).
-So Jamie pays each tribe's join price, and its price per message on every
-reply, from the account's balance. Hive keeps the account funded.
+So every message Jamie sends costs at least 1 sat, even in a free tribe.
+That includes every chunk of a long one: about 325 bytes of room per chunk
+with the alias "Jamie". Measured in a free tribe in step 0:
+
+| | Sats |
+|---|---|
+| Joining | 1 |
+| A short reply | 1 |
+| A 3.2 KB reply | 11 (11 chunks) |
+
+Replies that carry deliverables in `metadata` run long, so expect 5–15 sats
+a reply. In a priced tribe, sphinx-chat pays the full price on every chunk,
+while the tribe server checks the price only on whole messages (it exempts
+chunks, `tribes/src/forward.rs`). So Jamie overpays there; that wasn't
+tested. Jamie pays from one balance for every org. Whoever runs it tops it
+up with an invoice from the daemon's `POST /invoice`.
+
+### Step 0, 2026-10-29
+
+The daemon ran in echo mode (it answers a mention itself, no Hive) on
+broker.v2.sphinx.chat, in a public free tribe:
+- it joined;
+- it answered `@Jamie hello` threaded under the message, with the owner
+  flagged;
+- it left a plain `hello` alone;
+- it sent a 3.2 KB reply as 11 chunks.
+
+Both replies showed threaded, and the long one as one message, in Peel and
+in the official app. Two fixes came out of it, both in #401:
+- the committed wasm core predated the chunk message type, so no long
+  message could be sent (sphinx-chat 0.1.1 has the same bug);
+- a tribe's history replay looks new unless it is judged by each message's
+  own `date`.
 
 ## Work, by repo
 
@@ -197,37 +281,40 @@ reply, from the account's balance. Hive keeps the account funded.
    One migration.
 2. **`GET/POST/DELETE /api/strut-devices/tribes`**: the device credential,
    a `webhook` route in the middleware like `/api/strut-devices/calls`. POST
-   asks the Jamie account to join and answers its pubkey.
+   queues Jamie's join and answers its pubkey. DELETE queues its leave.
 3. **`POST /api/tribes/messages`**: Jamie's token. The call turn route's flow
-   on a link: dedupe, link date, busy, persist, launch with the tribe line,
-   record the mention uuid.
+   on a link: dedupe by `id`, the linker's access, busy, persist, launch with
+   the tribe line, record the mention's `id`.
 4. **`GET /api/tribes/outbox` and `POST /api/tribes/outbox/ack`**:
    `callMessagesSince` over each link's conversation, reading only
-   conversations updated after the link's cursor.
-5. **Config:** Jamie's routes on the existing `V2_BOT_URL` / `V2_BOT_TOKEN`,
-   and a new token for Jamie's calls into Hive.
+   conversations updated after the link's cursor. Also the queued joins and
+   leaves, and the one-line notices (a linker who lost access).
+5. **Config:** `JAMIE_SERVICE_TOKEN`, the token Jamie sends (the daemon's
+   `DAEMON_SERVICE_TOKEN`), and `JAMIE_SPHINX_PUBKEY`. `V2_BOT_URL` stays the
+   DM bot's.
 6. **Tests:** route tests shaped like the calls ones.
 
-### stakwork/sphinx (`wasm/bot`)
+### stakwork/sphinx
 
-The image stays a generic Sphinx account. What follows only switches on
-when the Hive URL is set.
+Built in #401:
+- **`wasm/daemon`**: the account kept connected, mentions to the service,
+  the outbox, the per-tribe queue for `busy`, and the ids already taken and
+  posted. Its README documents the contract.
+- **The rebuilt wasm core.**
+- **sphinx-chat 0.1.2**, whose code it runs: `metadata` on a send, and a
+  tribe message's owner flag and first `date`.
 
-1. **Receive.** `extra_handler` (`wasm/bot/utils.ts`) drops incoming messages
-   today. Decode them and put chunks back together, reusing `wasm/chat`'s
-   (`src/session.ts`, `src/chunk.ts`). Keep each joined tribe's recent
-   messages, and forward a mention to Hive with `recent`.
-2. **Send** (`routes.ts`, `send`):
-   - `metadata` on a message;
-   - type-34 chunks past `MAX_MSG_LEN`, ported from `wasm/chat/src/chunk.ts`;
-   - the tribe's price per message, read from the tribe.
-3. **Join and leave:**
-   - `join_tribe` takes `private` (a `MemberRequest`, the core's
-     `join_tribe(…, is_private)`) and reads the tribe's info from its host;
-   - a `leave_tribe` route.
-4. **Outbox:** the long-poll loop, the per-tribe queue for `busy`, and the
-   ids already posted.
-5. Alias `Jamie`.
+Still to add:
+1. **Outbox `join` and `leave` entries.** The daemon joins by link today
+   only through its admin API.
+2. **Leaving a tribe.** sphinx-chat has no leave yet.
+3. **Deployment.** One container, beside Hive's other services:
+   - a volume for `SPHINX_HOME`;
+   - `DAEMON_ALIAS=Jamie`;
+   - `DAEMON_SERVICE_URL=https://hive.sphinx.chat/api/tribes`;
+   - `DAEMON_SERVICE_TOKEN`.
+
+   It needs outbound internet only, and one process serves every tribe.
 
 ### stakwork/peel
 
@@ -258,8 +345,9 @@ The tribe server, the Sphinx core, strut, sphinx-voice.
 3. **What Jamie says in a mixed room.** The tribe line tells the orchestrator
    that not everyone is in the org. Is that enough, or do tribe turns need a
    narrower set of tools?
-4. **Funding.** How Jamie's balance is topped up, and a cap on the prices of
-   tribes it joins.
+4. **Funding.** Who tops up Jamie's balance, and whether Hive refuses to
+   link a tribe whose prices are over a cap. At 5–15 sats a reply in a free
+   tribe, a busy tribe spends a few thousand sats a month.
 5. **One Jamie, or one per org.** One account for every org is simplest. A
    Jamie per org (its own name and photo) means more accounts, and Hive
    assigns each tribe to one; nothing else changes.
@@ -268,14 +356,16 @@ The tribe server, the Sphinx core, strut, sphinx-voice.
    `User.lightningPubkey`. Peel users then count as themselves; anyone else
    falls back to the linker. No tribe-server change. Hive's lookup by
    pubkey is a linear decrypt-and-compare today, so it needs an index.
-7. **Do chunks pay the price per message?** The tribe server exempts chunks
-   (`tribes/src/forward.rs`, the price check), while `docs/sphinx-chat.md`
-   says every chunk pays. This decides what a long reply costs.
+7. **Chunks in a priced tribe.** In a free tribe, every chunk costs 1 sat
+   (step 0). In a priced one, should sphinx-chat pay the price on the first
+   chunk only, since the server exempts the rest? It needs a test against a
+   priced tribe first.
 
 ## Rollout
 
-1. stakwork/sphinx: the `wasm/bot` changes, and a new image.
-2. Hive: the model and routes. Off until the Jamie account's token is set.
+1. stakwork/sphinx#401 (step 0 passed), then the outbox `join` / `leave`
+   entries and the container. Publish sphinx-chat 0.1.2 after the merge.
+2. Hive: the model and routes. Off until `JAMIE_SERVICE_TOKEN` is set.
 3. Peel: the picker, the approval and the rendering.
 4. One private test tribe on the v2 broker: link it, mention Jamie, close the
    phone, and check a job's result lands in the tribe.
