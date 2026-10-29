@@ -19,18 +19,24 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  * (`docs/plans/jamie-in-tribes.md`, "A mention"). Machine-to-machine:
  * Jamie's token (`lib/tribes/jamie.ts`).
  *
- * The call turn route's flow (`/api/calls/turn`) on the tribe's link: the
- * message is saved on the tribe's conversation as `"<alias>: <text>"` — the
- * first turn creates it — with the room before it (`recent`) as a text
- * attachment, and one orchestrator turn is launched as the person who
- * linked the tribe, with the tribe line on its context. The mention's id is
- * recorded against the turn, so the reply, which Jamie reads from
- * `/api/tribes/outbox`, threads under it.
+ * The call turn route's flow (`/api/calls/turn`) on one of the tribe's
+ * conversations: the message is saved as `"<alias>: <text>"` with the room
+ * before it (`recent`) as a text attachment, and one orchestrator turn is
+ * launched as the person who linked the tribe, with the tribe line on its
+ * context. The mention's id is recorded against the turn, so the reply,
+ * which Jamie reads from `/api/tribes/outbox`, threads under it.
+ *
+ * Which conversation (`TribeThread`), and so which orchestrator session: a
+ * message that replies to one of Jamie's posts carries that post's `thread`,
+ * and continues that conversation. A mention with no `thread`, or one that
+ * is not this tribe's, starts a new conversation, and its `thread` comes
+ * back on every post from it. A retry of a mention lands on the
+ * conversation it started.
  *
  * Answers, as the daemon reads them:
- *   202 { turn }       taken
+ *   202 { turn, thread }  taken
  *   200 { duplicate }  a mention already taken (a retry whose answer was lost)
- *   409 { busy }       a turn of the tribe is still live; Jamie offers it again
+ *   409 { busy }       a turn of that conversation is still live; Jamie offers it again
  *   403                the linker can no longer use the workspace (a notice goes to the tribe)
  *   404                the tribe is not linked (any more)
  *   400                not a mention
@@ -53,6 +59,8 @@ interface RecentLine {
 
 interface Mention {
   id: string;
+  /** The conversation it replies in: a post's `thread`, as Jamie holds it. */
+  thread: string | null;
   tribe: { pubkey: string; name: string | null };
   alias: string;
   owner: boolean;
@@ -83,8 +91,11 @@ function parseMention(raw: unknown): Mention | string {
     if (typeof l?.text !== "string" || !l.text.trim()) continue;
     recent.push({ alias: oneLine(l.alias, MAX_ALIAS_CHARS) || "?", time: oneLine(l.time, 64), text: l.text.trim() });
   }
+  const thread = typeof b.thread === "string" ? b.thread.trim() : "";
   return {
     id,
+    // One Hive never handed out is a thread it does not know: a new conversation.
+    thread: thread && thread.length <= MAX_ID_CHARS ? thread : null,
     tribe: { pubkey, name: tribeName(tribe?.name) },
     // A tribe tells members apart by alias, and may have none for one.
     alias: oneLine(b.alias, MAX_ALIAS_CHARS) || "A member",
@@ -122,12 +133,19 @@ async function storeRecent(workspaceId: string, lines: RecentLine[]): Promise<St
 }
 
 type Link = NonNullable<Awaited<ReturnType<typeof loadLink>>>;
+type Thread = { id: string; conversationId: string };
 
 const loadLink = (pubkey: string) =>
   db.tribeLink.findUnique({
     where: { tribePubkey: pubkey },
-    select: { id: true, tribePubkey: true, name: true, orgId: true, workspaceSlug: true, userId: true, conversationId: true },
+    select: { id: true, tribePubkey: true, name: true, orgId: true, workspaceSlug: true, userId: true },
   });
+
+/** The conversation the message replies in, when its `thread` is one of this tribe's. */
+const repliedThread = (link: Pick<Link, "id">, mention: Mention): Promise<Thread | null> =>
+  mention.thread
+    ? db.tribeThread.findFirst({ where: { id: mention.thread, tribeLinkId: link.id }, select: { id: true, conversationId: true } })
+    : Promise.resolve(null);
 
 async function takeTurn(request: NextRequest, link: Link, mention: Mention): Promise<NextResponse> {
   const { userId, workspaceSlug, orgId } = link;
@@ -146,9 +164,18 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
     return NextResponse.json({ error: "The person who linked this tribe can no longer use its workspace." }, { status: 403 });
   }
 
+  // The conversation it replies in; else the one this mention started on an
+  // earlier try (strut refused the launch); else a new one, below.
+  const thread =
+    (await repliedThread(link, mention)) ??
+    (await db.tribeThread.findUnique({
+      where: { tribeLinkId_mentionId: { tribeLinkId: link.id, mentionId: mention.id } },
+      select: { id: true, conversationId: true },
+    }));
+
   // Refused before anything is written: a message strut never gets would
   // sit in the conversation unanswered.
-  if (link.conversationId && (await orchestratorHasLiveTurn(link.conversationId))) {
+  if (thread && (await orchestratorHasLiveTurn(thread.conversationId))) {
     return NextResponse.json({ busy: ORCHESTRATOR_BUSY_NOTE }, { status: 409 });
   }
 
@@ -162,15 +189,15 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
   const conversationId = await persistCanvasUserMessage({
     orgId,
     userId,
-    existingRowId: link.conversationId,
+    existingRowId: thread?.conversationId ?? null,
     turnId: randomUUID(),
     content: message,
     attachments,
     workspaceSlugs: [workspaceSlug],
   });
-  if (!link.conversationId) {
-    await db.tribeLink.update({ where: { id: link.id }, data: { conversationId, cursor: null, readAt: null } });
-  }
+  const threadId =
+    thread?.id ??
+    (await db.tribeThread.create({ data: { tribeLinkId: link.id, conversationId, mentionId: mention.id }, select: { id: true } })).id;
 
   const [user, model] = await Promise.all([
     db.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
@@ -190,8 +217,8 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
   switch (launched.status) {
     case "started":
       await db.tribeMention.create({ data: { tribeLinkId: link.id, mentionId: mention.id, runId: launched.runId } });
-      console.log("[tribes/messages] launched", { conversationId, turn: launched.runId });
-      return NextResponse.json({ turn: launched.runId }, { status: 202 });
+      console.log("[tribes/messages] launched", { conversationId, thread: threadId, turn: launched.runId });
+      return NextResponse.json({ turn: launched.runId, thread: threadId }, { status: 202 });
     case "busy":
       return NextResponse.json({ busy: launched.note }, { status: 409 });
     case "error":
@@ -207,17 +234,21 @@ export async function POST(request: NextRequest) {
   if (typeof mention === "string") return NextResponse.json({ error: mention }, { status: 400 });
 
   // Unlinked tribes are refused for good: Jamie drops the mention.
-  if (!(await loadLink(mention.tribe.pubkey))) {
+  const linked = await loadLink(mention.tribe.pubkey);
+  if (!linked) {
     return NextResponse.json({ error: "This tribe is not linked to an org." }, { status: 404 });
   }
 
-  // One turn of a tribe at a time, from the dedupe to the launch: two first
-  // turns at once would otherwise each create a conversation.
+  // From the dedupe to the launch, one turn at a time per conversation a
+  // reply continues, and per tribe for mentions that start one: a retry
+  // racing its first try would otherwise launch twice, or start a second
+  // conversation. Turns of different conversations run side by side.
+  const replied = await repliedThread(linked, mention);
   try {
     return await withLock(
-      `tribe-turn:${mention.tribe.pubkey}`,
+      `tribe-turn:${mention.tribe.pubkey}:${replied ? replied.id : "new"}`,
       async () => {
-        // Another turn may have created the conversation, or the owner unlinked, since.
+        // The owner may have unlinked since.
         const link = await loadLink(mention.tribe.pubkey);
         if (!link) return NextResponse.json({ error: "This tribe is not linked to an org." }, { status: 404 });
         return takeTurn(request, link, mention);

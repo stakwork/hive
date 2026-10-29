@@ -88,9 +88,12 @@ tribe ◄── member ──► Jamie (wasm/daemon)          Hive ──► org
    check ownership otherwise: the public tribe record names the owner's
    alias, not their key.
 
-5. **One conversation per tribe**, a `SharedConversation` of the linker's,
-   so Jamie keeps the room's thread across turns and the linker sees it in
-   Hive.
+5. **One conversation per mention**, a `SharedConversation` of the
+   linker's, and so one orchestrator session: each `@jamie` starts one, and
+   a reply to one of Jamie's posts continues the conversation that post came
+   from (its `thread`), with no `@jamie` needed. The linker sees each one in
+   Hive. (Until 2026-10-29 a tribe had one conversation, so every mention
+   landed in one session.)
 
 6. **Hive never calls Jamie.** Jamie makes every call, as voice does: it
    posts mentions and long-polls an outbox. So the daemon runs anywhere with
@@ -164,11 +167,14 @@ device as it is.
    - drop an `id` already seen, a retry whose first answer was lost (2xx);
    - check the linker can still use the workspace. If not, refuse with a
      403, which Jamie drops, and put one line saying so in the outbox;
-   - refuse with 409 `busy` while a turn is live, as calls do. Jamie keeps
-     that tribe's mentions in order, and offers them again once a reply to
-     the tribe lands, or every 15 s. A 429 or 5xx is a retry the same way;
-     any other 4xx is dropped;
-   - save `"<alias>: <text>"` on the tribe's conversation
+   - pick the conversation (`TribeThread`): the one the message's `thread`
+     names, when it is this tribe's; else the one this mention started on an
+     earlier try; else a new one;
+   - refuse with 409 `busy` while that conversation has a turn live, as calls
+     do. Turns of different conversations run side by side. Jamie keeps the
+     refused mention, and offers it again once a reply lands, or every 15 s.
+     A 429 or 5xx is a retry the same way; any other 4xx is dropped;
+   - save `"<alias>: <text>"` on that conversation
      (`persistCanvasUserMessage`). `recent` goes with it as a text
      attachment, as calls attach their transcript excerpt;
    - `launchOrchestratorTurn({ …, tribe: { name } })`. A tribe line goes
@@ -181,16 +187,19 @@ device as it is.
 
 1. **Jamie long-polls Hive** with one loop for every tribe:
    `GET /api/tribes/outbox?wait=25`. Hive answers with the new messages of
-   every linked conversation updated since that link's cursor. It reads them
-   with `callMessagesSince` (`lib/calls/callMessages.ts`), the reader voice
-   uses, unchanged:
+   every tribe conversation updated since that conversation's cursor. It
+   reads them with `callMessagesSince` (`lib/calls/callMessages.ts`), the
+   reader voice uses:
 
    ```json
-   { "messages": [{ "id": "…", "tribe": "02…", "text": "…", "replyTo": "…", "metadata": { "strut": { … } } }] }
+   { "messages": [{ "id": "…", "tribe": "02…", "thread": "…", "text": "…", "replyTo": "…", "metadata": { "strut": { … } } }] }
    ```
 
-   The `id` is Hive's, unique and stable: for example `<link>:<row id>`, so
-   an ack moves that link's cursor.
+   The `id` is Hive's, unique and stable, `<thread>:<row id>`, so an ack
+   moves that conversation's cursor. `thread` is the conversation's key
+   (the `TribeThread` id): Jamie keeps it against the message it posts, and
+   sends it back on `POST /api/tribes/messages` when a member replies to
+   that message.
 2. **Jamie posts each one** into its tribe:
    - the text, then the deliverables as links;
    - `metadata`, as its JSON in the message's own `metadata` field:
@@ -217,7 +226,7 @@ device as it is.
 
 - **Everyone sees text and links.** A deliverable with an address of its
   own (a pull request, a page) links there. Anything else links into the
-  tribe's conversation in Hive (`callArtifactUrl`), which opens for org
+  post's conversation in Hive (`callArtifactUrl`), which opens for org
   members.
 - **In Peel**, the `strut` field is resolved against the viewer's own
   pairing with that workspace, as the call chat does (`CallChat.artifacts`,
@@ -277,11 +286,22 @@ in the official app. Two fixes came out of it, both in #401:
    | `tribeHost`, `name` | |
    | `orgId`, `workspaceSlug` | |
    | `userId` | the linker |
-   | `conversationId?` | |
-   | `cursor?` | what Jamie has posted |
    | `createdAt` | |
 
-   One migration.
+   And one `TribeThread` per conversation of a tribe:
+
+   | Field | Note |
+   |---|---|
+   | `id` | the `thread` Jamie holds |
+   | `tribeLinkId` | |
+   | `conversationId` | unique |
+   | `mentionId?` | the mention that started it, so its retry lands there |
+   | `cursor?` | what Jamie has posted |
+   | `readAt?` | the conversation's `updatedAt` at a read that left nothing |
+   | `createdAt` | |
+
+   A relink to another org drops the link's threads; the conversations stay
+   in Hive.
 2. **`GET/POST/DELETE /api/strut-devices/tribes`**: the device credential,
    a `webhook` route in the middleware like `/api/strut-devices/calls`. POST
    queues Jamie's join and answers its pubkey. DELETE queues its leave.
@@ -289,8 +309,8 @@ in the official app. Two fixes came out of it, both in #401:
    on a link: dedupe by `id`, the linker's access, busy, persist, launch with
    the tribe line, record the mention's `id`.
 4. **`GET /api/tribes/outbox` and `POST /api/tribes/outbox/ack`**:
-   `callMessagesSince` over each link's conversation, reading only
-   conversations updated after the link's cursor. Also the queued joins and
+   `callMessagesSince` over each tribe conversation, reading only
+   conversations updated after their own `readAt`. Also the queued joins and
    leaves, and the one-line notices (a linker who lost access).
 5. **Config:** `JAMIE_SERVICE_TOKEN`, the token Jamie sends (the daemon's
    `DAEMON_SERVICE_TOKEN`), and `JAMIE_SPHINX_PUBKEY`. `V2_BOT_URL` stays the

@@ -24,8 +24,9 @@ import { linkableWorkspace, parseTribeRef, queueTribeJoin, tribeLinkView, tribeN
  *   → 200 { jamie: { pubkey, alias }, tribe: { … } }
  *   Stores the link and tells Jamie to join (a member request in a private
  *   tribe, which the owner's Peel approves when its pubkey is `jamie.pubkey`).
- *   Linking a tribe again moves it to the workspace named; to another org,
- *   it starts a new conversation.
+ *   Linking a tribe again moves it to the workspace named and keeps its
+ *   conversations; to another org, it drops them, so every message there
+ *   starts a new one.
  * 400: no workspace, a bad tribe, a workspace with no org
  * 401: unknown or revoked credential
  * 403: no access to the workspace
@@ -106,8 +107,9 @@ export async function POST(request: NextRequest) {
       create: { tribePubkey: tribe.pubkey, userId, ...fields },
       update: {
         ...fields,
-        // Another org's turns cannot go on this org's conversation.
-        ...(existing && existing.orgId !== workspace.orgId ? { conversationId: null, cursor: null, readAt: null } : {}),
+        // Another org's turns cannot go on this org's conversations: a
+        // reply to an earlier post starts a new one.
+        ...(existing && existing.orgId !== workspace.orgId ? { threads: { deleteMany: {} } } : {}),
       },
       select: {
         tribePubkey: true,
