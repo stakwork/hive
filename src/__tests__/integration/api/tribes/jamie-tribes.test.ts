@@ -62,6 +62,7 @@ import { POST as postAck } from "@/app/api/tribes/outbox/ack/route";
 import { canReadKey } from "@/lib/ai/resolveMessageAttachments";
 import { ORCHESTRATOR_TURN_KIND } from "@/lib/strut-orchestrator";
 import { appendOrchestratorRows, orchestratorRowsFor } from "@/services/strut-runs/orchestrator-turn";
+import { appendJobRow } from "@/services/strut-runs/job-turn";
 
 const TOKEN = "test-jamie-service-token";
 const JAMIE = "03" + "b".repeat(64);
@@ -575,6 +576,46 @@ describe("Jamie in Sphinx tribes", () => {
       await answered(scenario, "wake-1", "The launch plan is ready.", { wakeId: "job-jobturn-1" });
 
       expect((await outbox()).map((m) => [m.text, m.replyTo])).toEqual([["The launch plan is ready.", "msg-1"]]);
+    });
+
+    it("a job's wake reply carries the job's deliverables: links for everyone, strut's entries as metadata", async () => {
+      const scenario = await linked();
+      await mention(aMention());
+      const conversationId = await answered(scenario, "run-1", "On it.", { jobs: [{ jobId: "job-a", title: "Marketplace report", runId: "jobturn-1" }] });
+      await ack((await outbox()).map((m) => m.id as string));
+
+      // The job's row, as the job turn's handler lands it: the report and
+      // hive's own cards (claims, trace), and strut's entries as they came.
+      await new Promise((r) => setTimeout(r, 5));
+      const strut = { workspace: scenario.workspace.slug, artifacts: [{ id: "report", kind: "markdown", title: "Report", path: "report.md" }] };
+      const inline = { type: "inline" as const, content: {} };
+      await appendJobRow(
+        { id: "jobturn-1", workspaceId: scenario.workspace.id, userId: scenario.owner.id, conversationId },
+        {
+          content: "**Job · job-a · Marketplace report**\n\nWrote the report.",
+          source: { kind: "job", jobId: "job-a", strutRunId: "s-jobturn-1", workflow: "job", status: "success", title: "Marketplace report" },
+          artifacts: [
+            { id: "report", kind: "markdown", title: "Report", source: { type: "graph", swarmId: "swarm-1", key: "/jobs/job-a/files/report.md" } },
+            { id: "claims-job-a", kind: "claims", title: "Marketplace report", source: inline },
+            { id: "run-graph-job-a", kind: "run_graph", title: "Marketplace report", source: inline },
+          ],
+          strut,
+        },
+      );
+      // The job row alone is a card, not something Jamie says.
+      expect(await outbox()).toEqual([]);
+
+      await answered(scenario, "wake-1", "The marketplace report is ready.", { wakeId: "job-jobturn-1" });
+      const link = (await tribeLink())!;
+      expect(await outbox()).toEqual([
+        {
+          id: `${link.id}:orchestrator-wake-1`,
+          tribe: TRIBE,
+          text: `The marketplace report is ready.\n\nReport: ${BASE}/org/${scenario.org.githubLogin}?chat=${conversationId}&artifact=${encodeURIComponent("graph:swarm-1:/jobs/job-a/files/report.md")}`,
+          replyTo: "msg-1",
+          metadata: { strut },
+        },
+      ]);
     });
 
     it("a reply to no mention — a turn the linker took in Hive — is posted unthreaded", async () => {

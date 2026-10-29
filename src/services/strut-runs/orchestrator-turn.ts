@@ -61,7 +61,6 @@ import {
   parseOrchestratorJobCalls,
   parseStrutProposalBriefs,
   strutProposalRowId,
-  strutReferenceEntries,
   type StrutArtifactEnvelope,
   type OrchestratorJobLaunch,
   type OrchestratorLaunchRowSource,
@@ -75,7 +74,7 @@ import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/serv
 import { fetchStrutJobWorkflow, fetchStrutRunEvents } from "@/services/strut-runs/lab";
 import { nudgeCanvasCardJob } from "@/services/canvas-jobs";
 import { adoptOrchestratorJobRun, recordedJobWorkflow } from "@/services/strut-runs/orchestrator-jobs";
-import { jobTurnOutputSchema, mapStrutArtifacts, peerSwarmsFor, readRunArtifacts } from "@/services/strut-runs/job-turn";
+import { jobTurnOutputSchema, mapStrutArtifacts, peerSwarmsFor, readRunArtifacts, strutEnvelopeFor } from "@/services/strut-runs/job-turn";
 
 export { ORCHESTRATOR_TURN_KIND, ORCHESTRATOR_WORKFLOW };
 
@@ -343,21 +342,6 @@ export function orchestratorRowsFor(
     },
   }));
   return [main, ...cards];
-}
-
-/**
- * strut's entries that are references, with the slug of the workspace whose
- * strut ran the turn (the ROW's: the org strut names its peers by workspace
- * slug, and Peel its orgs). None when there are no such entries.
- */
-async function strutEnvelopeFor(
-  row: Pick<StrutRunRow, "workspaceId">,
-  raw: unknown,
-): Promise<StrutArtifactEnvelope | undefined> {
-  const artifacts = strutReferenceEntries(raw);
-  if (artifacts.length === 0) return undefined;
-  const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
-  return workspace?.slug ? { workspace: workspace.slug, artifacts } : undefined;
 }
 
 /** The `StrutRunHandler` for `orchestrator_turn`. Throws to be retried. */

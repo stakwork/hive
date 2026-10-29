@@ -22,12 +22,16 @@
  * started the job, read from the conversation's own rows (the wake's launch
  * marker names the job row, the launching turn's reply lists the job).
  *
+ * A job's wake reply carries that job's deliverables (the reader adds them
+ * from the job row): its cards as link lines, its strut entries as the
+ * post's metadata.
+ *
  * A conversation is read only once its `updatedAt` passes the link's
  * `readAt`: the stamp of a read that left nothing after the cursor.
  */
 
 import type { ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
-import { callArtifactUrl, callMessagesSince, type CallMessage } from "@/lib/calls/callMessages";
+import { callArtifactUrl, callMessagesSince, wakeJobRows, type CallMessage } from "@/lib/calls/callMessages";
 import { db } from "@/lib/db";
 import type { StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
 
@@ -85,14 +89,11 @@ const sourceOf = (row: unknown): Source =>
  * and so on back. The first with a mention wins.
  */
 export function threadChain(rows: unknown[]): (runId: string) => string[] {
-  const wakeOf = new Map<string, string>(); // wake turn → the job turn it woke on
+  const wakeOf = new Map([...wakeJobRows(rows)].map(([wake, jobRow]) => [wake, jobRow.slice("job-".length)])); // wake turn → the job turn it woke on
   const launcherOf = new Map<string, string>(); // job turn → the turn that started it
   for (const row of rows) {
     const source = sourceOf(row);
     if (!source || typeof source.runId !== "string") continue;
-    if (source.kind === "orchestrator_launch" && typeof source.wakeId === "string" && source.wakeId.startsWith("job-")) {
-      wakeOf.set(source.runId, source.wakeId.slice("job-".length));
-    }
     if (source.kind === "orchestrator" && Array.isArray(source.jobs)) {
       for (const job of source.jobs) {
         const jobRun = (job as { runId?: unknown } | null)?.runId;
