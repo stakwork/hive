@@ -679,6 +679,21 @@ describe("handleJobTurnSettled", () => {
     expect(mockNotifyRunActive).toHaveBeenCalledWith("conv-1", false);
   });
 
+  it("keeps strut's reference entries on the row, beside the workspace whose strut ran the turn", async () => {
+    mockFetch.mockResolvedValue(json(200, artifactsBody));
+    await handleJobTurnSettled(row());
+    const messages = mockTx.sharedConversation.update.mock.calls[0][0].data.messages as Array<Record<string, unknown>>;
+    expect(messages[0].strut).toEqual({ workspace: "acme", artifacts: artifactsBody.artifacts });
+    expect(mockWorkspaceFindUnique).toHaveBeenCalledWith({ where: { id: "ws-1" }, select: { slug: true } });
+
+    // No workspace to name them against: no envelope.
+    mockTx.sharedConversation.update.mockClear();
+    mockFetch.mockResolvedValue(json(200, artifactsBody));
+    mockWorkspaceFindUnique.mockResolvedValue(null);
+    await handleJobTurnSettled(row());
+    expect(mockTx.sharedConversation.update.mock.calls[0][0].data.messages[0]).not.toHaveProperty("strut");
+  });
+
   it("tells the job's canvas card it settled: done on success, failed otherwise", async () => {
     mockFetch.mockResolvedValue(json(200, artifactsBody));
     await handleJobTurnSettled(row());
