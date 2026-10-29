@@ -129,6 +129,49 @@ export type OrchestratorRowSource = {
   jobs?: OrchestratorJobLaunch[];
 };
 
+/**
+ * A reply's deliverables as strut answered them (`GET …/runs/<runId>/artifacts`,
+ * strut `specs/CALLBACKS.md` §4), beside the workspace whose strut ran the
+ * turn: what a reader that knows strut (Peel) opens them against. Kept on
+ * the reply row as it came and handed on to a call untouched — hive's own
+ * `ArtifactRef`s stay the canvas's (sphinx-voice `plans/call-artifacts.md`).
+ */
+export interface StrutArtifactEnvelope {
+  workspace: string;
+  artifacts: Record<string, unknown>[];
+}
+
+/** The most entries an envelope keeps (the canvas keeps as many refs). */
+const MAX_STRUT_ENTRIES = 20;
+
+/**
+ * Strut's entries that are references, as they came: an entry with an
+ * `error` (strut could not resolve it) and one that is only inline
+ * `content` (no `url`, `path` or `app`) are left out, never rewritten.
+ */
+export function strutReferenceEntries(raw: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(raw)) return [];
+  const isRef = (e: Record<string, unknown>) =>
+    e.error === undefined &&
+    ((typeof e.url === "string" && e.url !== "") ||
+      (typeof e.path === "string" && e.path !== "") ||
+      (typeof e.app === "object" && e.app !== null));
+  return raw
+    .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null && !Array.isArray(e))
+    .filter(isRef)
+    .slice(0, MAX_STRUT_ENTRIES);
+}
+
+/** A stored envelope, when it has a workspace and entries; its entries are not looked into. */
+export function parseStrutArtifactEnvelope(value: unknown): StrutArtifactEnvelope | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const v = value as Record<string, unknown>;
+  if (typeof v.workspace !== "string" || !v.workspace || !Array.isArray(v.artifacts) || v.artifacts.length === 0) {
+    return undefined;
+  }
+  return value as StrutArtifactEnvelope;
+}
+
 /** A job turn an orchestrator turn launched inside strut. */
 export type OrchestratorJobLaunch = {
   jobId: string;
