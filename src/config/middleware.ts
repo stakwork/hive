@@ -195,6 +195,9 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/strut-devices/peers", strategy: "exact", access: "webhook", methods: ["GET"] },
   // A paired device starts a Jamie call: its device credential, checked in the handler.
   { path: "/api/strut-devices/calls", strategy: "exact", access: "webhook", methods: ["POST"] },
+  // A paired device links or unlinks a Sphinx tribe for Jamie: its device credential, checked in the handler.
+  { path: "/api/strut-devices/tribes", strategy: "exact", access: "webhook", methods: ["GET", "POST"] },
+  { path: "/api/strut-devices/tribes/*", strategy: "pattern", access: "webhook", methods: ["DELETE"] },
   // The approve page: public so a signed-out visitor is sent to sign-in with the code kept (the page checks the session).
   { path: "/pair", strategy: "exact", access: "public" },
   { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },
@@ -223,6 +226,10 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/calls/messages", strategy: "exact", access: "webhook", methods: ["GET"] },
   { path: "/api/calls/cancel", strategy: "exact", access: "webhook", methods: ["POST"] },
   { path: "/api/calls/transcript", strategy: "exact", access: "webhook", methods: ["POST"] },
+  // Jamie in Sphinx tribes (`lib/tribes/jamie.ts`): each route checks JAMIE_SERVICE_TOKEN.
+  { path: "/api/tribes/messages", strategy: "exact", access: "webhook", methods: ["POST"] },
+  { path: "/api/tribes/outbox", strategy: "exact", access: "webhook", methods: ["GET"] },
+  { path: "/api/tribes/outbox/ack", strategy: "exact", access: "webhook", methods: ["POST"] },
   { path: "/api/workers", strategy: "prefix", access: "webhook" }, // machine-to-machine; each worker validates INTERNAL_WORKER_SECRET
   { path: "/api/workspaces", strategy: "exact", access: "webhook" },
   { path: "/api/features/*/title", strategy: "pattern", access: "webhook" },

@@ -128,6 +128,7 @@ model User {
   featurePresence          UserFeaturePresence[]
   voiceCorrectionLearnings VoiceCorrectionLearning[]
   strutDevices             StrutDevice[]
+  tribeLinks               TribeLink[]
   strutDevicePairings      StrutDevicePairing[]
 
   @@index([createdAt])
@@ -216,6 +217,7 @@ model SourceControlOrg {
   urnEdges             UrnEdge[]
   mcpServers           OrgMcpServer[]
   apiKeys              OrgApiKey[]
+  tribeLinks           TribeLink[]
   // Keyset cursors for canvas-mirror-cron (per-entity {at,id} + canvas watermarks).
   // Mirrors Workspace.jarvisSyncState — staggered schedule so writes don't race.
   jarvisSyncState      Json?                @map("jarvis_sync_state")
@@ -290,6 +292,75 @@ model StrutDevicePairing {
 
   @@index([expiresAt])
   @@map("strut_device_pairings")
+}
+
+// A Sphinx tribe linked to one of its owner's orgs (`docs/plans/jamie-in-tribes.md`):
+// `@jamie` there is a turn of the org's orchestrator, run as the person who
+// linked it, on the tribe's one conversation. Jamie (a Sphinx account,
+// stakwork/sphinx `wasm/daemon`) posts the mentions and reads the replies
+// back from the outbox (`lib/tribes/tribeOutbox.ts`).
+model TribeLink {
+  id             String              @id @default(cuid())
+  tribePubkey    String              @unique @map("tribe_pubkey")
+  tribeHost      String              @map("tribe_host")
+  // The tribe's name as the last mention gave it.
+  name           String?
+  orgId          String              @map("org_id")
+  workspaceSlug  String              @map("workspace_slug")
+  // Who linked it; every turn runs as them.
+  userId         String              @map("user_id")
+  // The tribe's conversation, made by its first turn.
+  conversationId String?             @map("conversation_id")
+  // The stamp of the last reply row Jamie acked: what it has posted.
+  cursor         String?
+  // The conversation's `updatedAt` as of a read that left nothing after the
+  // cursor: the outbox reads the conversation again only once it moves.
+  readAt         DateTime?           @map("read_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org            SourceControlOrg    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  conversation   SharedConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  mentions       TribeMention[]
+
+  @@index([userId])
+  @@map("tribe_links")
+}
+
+// A mention Jamie handed over that started a turn: a retry of it is
+// dropped, and the turn's reply threads under it (`runId`: the turn's
+// StrutRun id).
+model TribeMention {
+  id          String    @id @default(cuid())
+  tribeLinkId String    @map("tribe_link_id")
+  // The message id tribe members hold.
+  mentionId   String    @map("mention_id")
+  runId       String    @map("run_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  link        TribeLink @relation(fields: [tribeLinkId], references: [id], onDelete: Cascade)
+
+  @@unique([tribeLinkId, mentionId])
+  @@index([tribeLinkId, runId])
+  @@map("tribe_mentions")
+}
+
+// What Jamie has to do besides post a reply: join a tribe (`link`), leave
+// one, or post a notice (`text`). Keyed by the tribe's pubkey, not the
+// link, so a leave outlives the link it ends. Kept once acked, so a notice
+// is not repeated too often.
+model TribeOutboxEntry {
+  id          String    @id @default(cuid())
+  tribePubkey String    @map("tribe_pubkey")
+  // "join" | "leave" | "notice"
+  kind        String
+  link        String?
+  text        String?
+  replyTo     String?   @map("reply_to")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  ackedAt     DateTime? @map("acked_at")
+
+  @@index([ackedAt, createdAt])
+  @@index([tribePubkey, kind, createdAt])
+  @@map("tribe_outbox_entries")
 }
 
 // External MCP server registered for an org's canvas agent (Jamie).
@@ -856,6 +927,7 @@ model SharedConversation {
   user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
+  tribeLinks         TribeLink[]
 
   @@index([workspaceId])
   @@index([sourceControlOrgId])
