@@ -59,6 +59,27 @@ beforeEach(() => {
 });
 
 describe("StrutProposalBody", () => {
+  it("draws concept/create with the Concept body: description, where it files, and the docs", () => {
+    render(
+      <StrutProposalBody
+        step="concept/create"
+        input={{
+          name: "Rate limits",
+          docs: "Per-token buckets refill every minute.",
+          description: "How limits are enforced",
+          parent: "p-1",
+          kind: "best_practice",
+        }}
+        workspaceSlug="acme"
+      />,
+    );
+    expect(screen.getByTestId("strut-proposal-concept-body")).toBeTruthy();
+    expect(screen.getByText("How limits are enforced")).toBeTruthy();
+    expect(screen.getByText("p-1")).toBeTruthy();
+    expect(screen.getByText(/best practice/)).toBeTruthy();
+    expect(screen.getByText("Per-token buckets refill every minute.")).toBeTruthy();
+  });
+
   it("draws graph/create-node with hive's node-create body, the input as pairs for an unknown step", () => {
     const { unmount } = render(
       <StrutProposalBody step="graph/create-node" input={RECORD.input} workspaceSlug="acme" />,
@@ -72,6 +93,34 @@ describe("StrutProposalBody", () => {
 });
 
 describe("StrutProposalCard", () => {
+  it("an applied concept/create links to the new Concept in the workspace learn UI, by the id the step returned", async () => {
+    mockFetch.mockResolvedValueOnce(
+      json(200, {
+        proposal: {
+          ...RECORD,
+          step: "concept/create",
+          input: { name: "Rate limits", docs: "Per-token buckets." },
+          status: "applied",
+          decision: { action: "accept", at: "x" },
+          result: { output: { status: "Success", ref_id: "n1", id: "acme/api/rate-limits" }, at: "y" },
+        },
+      }),
+    );
+    render(<StrutProposalCard source={{ ...SOURCE, step: "concept/create" }} githubLogin="acme-org" />);
+    expect(screen.getByText("Proposed new Concept")).toBeTruthy();
+    const link = await screen.findByTestId("strut-proposal-open-learn");
+    expect(link.getAttribute("href")).toBe("/w/acme/learn?concept=acme%2Fapi%2Frate-limits");
+  });
+
+  it("a pending concept/create draws the Concept body and no learn link yet", async () => {
+    mockFetch.mockResolvedValueOnce(
+      json(200, { proposal: { ...RECORD, step: "concept/create", input: { name: "Rate limits", docs: "x" } } }),
+    );
+    render(<StrutProposalCard source={{ ...SOURCE, step: "concept/create" }} githubLogin="acme-org" />);
+    await screen.findByTestId("strut-proposal-concept-body");
+    expect(screen.queryByTestId("strut-proposal-open-learn")).toBeNull();
+  });
+
   it("reads the record for the turn, draws the step's input, the rationale and the status, and decides on strut", async () => {
     render(<StrutProposalCard source={SOURCE} githubLogin="acme-org" />);
     expect(screen.getByText("Proposed new graph node")).toBeTruthy();

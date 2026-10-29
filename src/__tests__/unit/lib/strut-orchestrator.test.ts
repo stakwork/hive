@@ -189,6 +189,41 @@ describe("parseStrutProposalBriefs", () => {
 });
 
 describe("strutProposalToOutput — a strut step's input as a hive card body", () => {
+  it("concept/create ↔ conceptCreate: docs is the documentation, parent and kind ride along, an unknown kind is dropped", () => {
+    expect(
+      strutProposalToOutput(
+        "concept/create",
+        {
+          name: "Rate limits",
+          docs: "# Rate limits\nPer-token buckets.",
+          description: "How limits are enforced",
+          parent: "p-1",
+          kind: "gotcha",
+          repo: "acme/api",
+        },
+        "acme",
+      ),
+    ).toEqual({
+      kind: "conceptCreate",
+      proposalId: "strut",
+      payload: {
+        workspaceId: "",
+        workspaceSlug: "acme",
+        name: "Rate limits",
+        documentation: "# Rate limits\nPer-token buckets.",
+        description: "How limits are enforced",
+        repo: "acme/api",
+        parent: "p-1",
+        kind: "gotcha",
+      },
+      meta: { workspaceSlug: "acme", kind: "gotcha" },
+    });
+    const rumor = strutProposalToOutput("concept/create", { name: "Retries", docs: "x", kind: "rumor" }, "acme");
+    expect(rumor).toMatchObject({ kind: "conceptCreate", payload: { name: "Retries", documentation: "x" } });
+    expect(rumor?.payload).not.toHaveProperty("kind");
+    expect(strutProposalToOutput("concept/create", { docs: "no name" })).toBeNull();
+  });
+
   it("graph/create-node ↔ graphNodeCreate", () => {
     expect(
       strutProposalToOutput(
@@ -301,6 +336,7 @@ describe("strutProposalToOutput — a strut step's input as a hive card body", (
   });
 
   it("labels each step for the card", () => {
+    expect(strutProposalStepLabel("concept/create")).toBe("Proposed new Concept");
     expect(strutProposalStepLabel("graph/create-node")).toBe("Proposed new graph node");
     expect(strutProposalStepLabel("graph/delete-node")).toBe("Proposed node delete");
     expect(strutProposalStepLabel("sphinx/send")).toBe("Proposed sphinx/send");
