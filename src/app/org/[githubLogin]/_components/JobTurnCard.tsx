@@ -103,6 +103,16 @@ export interface PendingJobTurn {
   anchorMessageId: string;
   /** The workspace whose strut the job builds on, when it is another one (a slug). */
   peer?: string;
+  /**
+   * When the turn was launched, on STRUT's clock (ms): the strut run id of
+   * the orchestrator turn that launched it — strut's run ids are millisecond
+   * timestamps, and the job started inside that turn. The live strip shows
+   * what came since then, matched against each update's `at` (strut's own
+   * stamp), so what the job reported before its card appeared — the card
+   * waits for the orchestrator's reply — still shows. Absent for a launch
+   * whose card appears with it (a tool call, an event row).
+   */
+  launchedAt?: number;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
@@ -134,9 +144,9 @@ export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): P
   const titles = new Map<string, string>();
   /** The last peer seen for each job — a `job/continue` names none, and a job keeps its strut. */
   const peers = new Map<string, string>();
-  const turn = (jobId: string, title: string, anchorMessageId: string): PendingJobTurn => {
+  const turn = (jobId: string, title: string, anchorMessageId: string, launchedAt?: number): PendingJobTurn => {
     const peer = peers.get(jobId);
-    return { jobId, title, anchorMessageId, ...(peer ? { peer } : {}) };
+    return { jobId, title, anchorMessageId, ...(peer ? { peer } : {}), ...(launchedAt !== undefined ? { launchedAt } : {}) };
   };
   /** Every job row's id (`job-<StrutRun.id>`), for an event row whose turn has already settled. */
   const rows = new Set(messages.filter((m) => m.source?.kind === "job").map((m) => m.id));
@@ -161,12 +171,14 @@ export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): P
     // read off its run when the reply landed, each with the row minted for
     // it — so a job that ended before the reply did draws nothing.
     if (message.source?.kind === "orchestrator") {
+      const started = Number(message.source.strutRunId);
+      const launchedAt = Number.isSafeInteger(started) && started > 0 ? started : undefined;
       for (const launch of message.source.jobs ?? []) {
         const title = launch.title || titles.get(launch.jobId) || "";
         if (title) titles.set(launch.jobId, title);
         if (launch.peer) peers.set(launch.jobId, launch.peer);
         if (!rows.has(`job-${launch.runId}`)) {
-          pending.set(launch.jobId, turn(launch.jobId, title, message.id));
+          pending.set(launch.jobId, turn(launch.jobId, title, message.id, launchedAt));
         }
       }
       continue;
@@ -272,8 +284,10 @@ export function JobEventRow({ message, source }: { message: Pick<CanvasChatMessa
 /**
  * A turn strut is working on: its title and a running pill, and under them
  * what the job is doing as it does it — shots, a recording, a pod, a
- * verdict (`JobLiveStrip`, strut plans/live-artifacts.md) — from the moment
- * the card appeared.
+ * verdict, its line of what it is doing now (`JobLiveStrip`, strut
+ * plans/live-artifacts.md, plans/live-feeds.md) — from the turn's launch
+ * when strut's clock says when that was, else from the moment the card
+ * appeared.
  */
 export function PendingJobTurnCard({ turn }: { turn: PendingJobTurn }) {
   const [since] = useState(() => Date.now());
@@ -289,7 +303,7 @@ export function PendingJobTurnCard({ turn }: { turn: PendingJobTurn }) {
         <JobTitle title={turn.title || "Job"} peer={turn.peer} />
         <StatusPill look={RUNNING_LOOK} />
       </div>
-      <JobLiveStrip jobId={turn.jobId} since={since} />
+      <JobLiveStrip jobId={turn.jobId} since={since} launchedAt={turn.launchedAt} />
     </div>
   );
 }
