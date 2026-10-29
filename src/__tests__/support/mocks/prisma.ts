@@ -89,6 +89,7 @@ function createDbMock() {
     strutDevicePairing: model(),
     tribeLink: model(),
     tribeMention: model(),
+    tribeThread: model(),
     tribeOutboxEntry: model(),
     $transaction,
     $queryRaw,
