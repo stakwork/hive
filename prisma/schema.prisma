@@ -308,22 +308,38 @@ model TribeLink {
   orgId          String              @map("org_id")
   workspaceSlug  String              @map("workspace_slug")
   // Who linked it; every turn runs as them.
-  userId         String              @map("user_id")
-  // The tribe's conversation, made by its first turn.
-  conversationId String?             @map("conversation_id")
+  userId        String           @map("user_id")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org           SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  threads       TribeThread[]
+  mentions      TribeMention[]
+
+  @@index([userId])
+  @@map("tribe_links")
+}
+
+// One conversation of a linked tribe, and so one orchestrator session: a
+// mention starts one, and a reply to one of Jamie's posts continues it.
+// Its id is the `thread` Jamie holds against every post from it.
+model TribeThread {
+  id             String             @id @default(cuid())
+  tribeLinkId    String             @map("tribe_link_id")
+  conversationId String             @unique @map("conversation_id")
+  // The mention that started it: a retry of that mention lands here again.
+  // Null for the conversation a link had before threads.
+  mentionId      String?            @map("mention_id")
   // The stamp of the last reply row Jamie acked: what it has posted.
   cursor         String?
   // The conversation's `updatedAt` as of a read that left nothing after the
   // cursor: the outbox reads the conversation again only once it moves.
-  readAt         DateTime?           @map("read_at")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  org            SourceControlOrg    @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  conversation   SharedConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  mentions       TribeMention[]
+  readAt         DateTime?          @map("read_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  link           TribeLink          @relation(fields: [tribeLinkId], references: [id], onDelete: Cascade)
+  conversation   SharedConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  @@map("tribe_links")
+  @@unique([tribeLinkId, mentionId])
+  @@map("tribe_threads")
 }
 
 // A mention Jamie handed over that started a turn: a retry of it is
@@ -927,7 +943,7 @@ model SharedConversation {
   user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace          Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sourceControlOrg   SourceControlOrg? @relation(fields: [sourceControlOrgId], references: [id], onDelete: Cascade)
-  tribeLinks         TribeLink[]
+  tribeThreads       TribeThread[]
 
   @@index([workspaceId])
   @@index([sourceControlOrgId])
