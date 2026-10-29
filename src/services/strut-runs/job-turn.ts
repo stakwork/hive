@@ -108,6 +108,7 @@ import {
   type ArtifactEvent,
 } from "@/lib/strut-jobs";
 import { isStrutAppName, isStrutAppVersion, workspaceAppDocumentKey, workspaceAppOfKey } from "@/lib/strut-apps";
+import { strutReferenceEntries, type StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
 import { getBaseUrl } from "@/lib/utils";
 import { canvasJobStateOf, nudgeCanvasCardJob } from "@/services/canvas-jobs";
 import { labForRow, type StrutRunHandlerContext, type StrutRunRow } from "@/services/strut-runs";
@@ -609,6 +610,13 @@ type JobMessageRow = {
   timestamp: string;
   source: JobRowSource | JobEventRowSource | JobClaimsRowSource;
   artifacts?: ArtifactRef[];
+  /**
+   * strut's own entries for the turn, as they came (`StrutArtifactEnvelope`),
+   * as the orchestrator's reply row keeps them: what a reader that knows
+   * strut opens the job's deliverables against (Peel, through a tribe post
+   * of the job's wake reply, `lib/tribes/tribeOutbox.ts`).
+   */
+  strut?: StrutArtifactEnvelope;
 };
 
 // ─── Reading strut ────────────────────────────────────────────────────────
@@ -657,6 +665,21 @@ export async function peerSwarmsFor(row: Pick<StrutRunRow, "workspaceId">, entri
     select: { slug: true, swarm: { select: { id: true } } },
   });
   return new Map(workspaces.flatMap((w): Array<[string, string]> => (w.swarm ? [[w.slug, w.swarm.id]] : [])));
+}
+
+/**
+ * strut's entries that are references, with the slug of the workspace whose
+ * strut ran the turn (the ROW's: the org strut names its peers by workspace
+ * slug, and Peel its orgs). None when there are no such entries.
+ */
+export async function strutEnvelopeFor(
+  row: Pick<StrutRunRow, "workspaceId">,
+  raw: unknown,
+): Promise<StrutArtifactEnvelope | undefined> {
+  const artifacts = strutReferenceEntries(raw);
+  if (artifacts.length === 0) return undefined;
+  const workspace = await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } });
+  return workspace?.slug ? { workspace: workspace.slug, artifacts } : undefined;
 }
 
 // ─── The brainstorm card ──────────────────────────────────────────────────
@@ -906,6 +929,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
   let trace: ArtifactRef | null = null;
   let claimsCard: ArtifactRef | null = null;
   let collected: ArtifactRef[] = [];
+  let strut: StrutArtifactEnvelope | undefined;
   let brainstormLog: { found: number; launches: number; replaced: string | null; reason: string } | null = null;
   if (reply.outcome === "success") {
     const [read, turnTrace, brainstorm, claims] = await Promise.all([
@@ -918,6 +942,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
     claimsCard = claims;
     if (read.ok) {
       ({ refs, dropped } = mapStrutArtifacts(read.artifacts, row.swarmId, await peerSwarmsFor(row, read.artifacts)));
+      strut = await strutEnvelopeFor(row, read.raw);
     } else if (read.permanent) {
       logger.warn("Job turn artifacts unavailable — delivering the text alone", LOG_TAG, { runId: row.id, reason: read.reason });
       dropped = [{ title: "the turn's artifacts", reason: read.reason }];
@@ -971,6 +996,7 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       ...(peer ? { peer } : {}),
     },
     ...(cards.length > 0 ? { artifacts: cards } : {}),
+    ...(strut ? { strut } : {}),
   });
   logger.info("Job turn delivered", LOG_TAG, {
     runId: row.id,

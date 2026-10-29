@@ -11,9 +11,14 @@
  * A reply also carries the row's `strut` (strut's own entries and the
  * workspace they are relative to), untouched, when it has one.
  *
+ * A job's wake reply also carries that job's deliverables, read from the job
+ * row its launch marker names (`wakeId`): the wake turn's own run holds none
+ * of the job's work. The job row's cards but Hive's own (its claims and its
+ * trace) are added to `artifacts`, its strut entries to `strut`.
+ *
  * Everything else is left out: user rows, launch markers (the chat's
- * working card), job rows (a job's card; its wake reply is what is said),
- * proposal decisions, and silent replies. Fields come from the row's
+ * working card), job rows (a job's card; its wake reply is what is said,
+ * with the job's deliverables), proposal decisions, and silent replies. Fields come from the row's
  * `source`, never its rendered text: `ask` is the question verbatim.
  *
  * The cursor is the timestamp of the last row delivered, not an index: a
@@ -65,6 +70,58 @@ type Row = {
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
+/** A job row's cards that are hive's view of the work, not what it made: never handed on as deliverables. */
+const HIVE_JOB_CARDS = new Set(["claims", "run_graph"]);
+
+type SourceShape = { kind?: unknown; runId?: unknown; wakeId?: unknown } | null | undefined;
+const sourceOf = (row: unknown): SourceShape =>
+  row && typeof row === "object" ? ((row as { source?: SourceShape }).source ?? null) : null;
+
+/** For each wake turn (its run id), the id of the job row it woke on: its launch marker's `wakeId`. */
+export function wakeJobRows(rows: unknown[]): Map<string, string> {
+  const wakes = new Map<string, string>();
+  for (const row of rows) {
+    const source = sourceOf(row);
+    if (source?.kind === "orchestrator_launch" && typeof source.runId === "string" && typeof source.wakeId === "string" && source.wakeId.startsWith("job-")) {
+      wakes.set(source.runId, source.wakeId);
+    }
+  }
+  return wakes;
+}
+
+/**
+ * A wake reply with its job's deliverables added: the job row's cards but
+ * hive's own after the reply's own (each link once), and its strut entries
+ * after the reply's own when both name one workspace (else the reply's
+ * alone). A row that is not a job's adds nothing.
+ */
+export function withJobDeliverables(
+  message: CallMessage,
+  jobRow: unknown,
+  artifactUrl: (ref: ArtifactRef) => string,
+): CallMessage {
+  if (message.kind === "proposal" || sourceOf(jobRow)?.kind !== "job") return message;
+  const row = jobRow as { artifacts?: unknown; strut?: unknown };
+  const artifacts = [...(message.artifacts ?? [])];
+  const seen = new Set(artifacts.map((a) => a.url));
+  for (const ref of parseArtifactRefs(row.artifacts) ?? []) {
+    if (HIVE_JOB_CARDS.has(ref.kind)) continue;
+    const url = artifactUrl(ref);
+    if (seen.has(url)) continue;
+    seen.add(url);
+    artifacts.push({ title: ref.title, url });
+  }
+
+  const job = parseStrutArtifactEnvelope(row.strut);
+  let strut = message.strut;
+  if (job && !strut) strut = job;
+  else if (job && strut && job.workspace === strut.workspace) {
+    const kept = new Set(strut.artifacts.map((e) => JSON.stringify(e)));
+    strut = { workspace: strut.workspace, artifacts: [...strut.artifacts, ...job.artifacts.filter((e) => !kept.has(JSON.stringify(e)))] };
+  }
+  return { ...message, ...(artifacts.length > 0 ? { artifacts } : {}), ...(strut ? { strut } : {}) };
+}
+
 /** The reply's own words: the rendered question taken back out (`renderOrchestratorContent`). */
 function replyText(content: string, ask: string | undefined): string {
   if (!ask) return content.trim();
@@ -108,13 +165,22 @@ export function callMessagesSince(
   const after = since ? Date.parse(since) : Number.NEGATIVE_INFINITY;
   let cursor = since;
   const messages: CallMessage[] = [];
+  const wakes = wakeJobRows(rows);
+  const byId = new Map<string, unknown>();
+  for (const raw of rows) {
+    const id = raw && typeof raw === "object" ? (raw as Row).id : undefined;
+    if (typeof id === "string") byId.set(id, raw);
+  }
   for (const raw of rows) {
     if (!raw || typeof raw !== "object") continue;
     const row = raw as Row;
     const at = Date.parse(str(row.timestamp));
     if (!(at > after)) continue;
-    const message = callMessageOf(row, artifactUrl);
-    if (!message) continue;
+    const said = callMessageOf(row, artifactUrl);
+    if (!said) continue;
+    const runId = sourceOf(row)?.runId;
+    const jobRow = typeof runId === "string" ? wakes.get(runId) : undefined;
+    const message = jobRow ? withJobDeliverables(said, byId.get(jobRow), artifactUrl) : said;
     messages.push(message);
     cursor = str(row.timestamp);
   }

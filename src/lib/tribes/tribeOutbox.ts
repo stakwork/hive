@@ -7,10 +7,12 @@
  * Two sources, in this order:
  *   - the queued entries (`TribeOutboxEntry`): joins, leaves and notices,
  *     oldest first; an ack marks one done;
- *   - each linked tribe's conversation, read with `callMessagesSince` (the
- *     reader voice uses) after the link's cursor: Jamie's replies, errors
- *     and proposals, as one post each. Its id is `<link id>:<row id>`, so an
- *     ack names the link whose cursor it moves.
+ *   - each conversation of a linked tribe (`TribeThread`), read with
+ *     `callMessagesSince` (the reader voice uses) after the thread's cursor:
+ *     Jamie's replies, errors and proposals, as one post each. Its id is
+ *     `<thread id>:<row id>`, so an ack names the thread whose cursor it
+ *     moves, and its `thread` is the thread's id, which Jamie sends back on
+ *     a message that replies to the post.
  *
  * Delivery is at least once. The cursor moves only past a run of rows that
  * are all acked, a turn's rows (they share a stamp) together; an entry
@@ -22,12 +24,16 @@
  * started the job, read from the conversation's own rows (the wake's launch
  * marker names the job row, the launching turn's reply lists the job).
  *
- * A conversation is read only once its `updatedAt` passes the link's
+ * A job's wake reply carries that job's deliverables (the reader adds them
+ * from the job row): its cards as link lines, its strut entries as the
+ * post's metadata.
+ *
+ * A conversation is read only once its `updatedAt` passes the thread's
  * `readAt`: the stamp of a read that left nothing after the cursor.
  */
 
 import type { ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
-import { callArtifactUrl, callMessagesSince, type CallMessage } from "@/lib/calls/callMessages";
+import { callArtifactUrl, callMessagesSince, wakeJobRows, type CallMessage } from "@/lib/calls/callMessages";
 import { db } from "@/lib/db";
 import type { StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
 
@@ -35,6 +41,12 @@ export interface TribeOutboxPost {
   id: string;
   /** The tribe's pubkey. */
   tribe: string;
+  /**
+   * The conversation it came from (its `TribeThread`): a message replying
+   * to it continues that conversation. None on a notice, which is no
+   * conversation's.
+   */
+  thread?: string;
   text: string;
   /** The message id to thread under. */
   replyTo?: string;
@@ -54,13 +66,13 @@ const MAX_QUEUED_PER_POLL = 100;
 /** How far a wake's reply is followed back to the mention that started the job. */
 const MAX_THREAD_DEPTH = 10;
 
-export const tribeMessageId = (linkId: string, rowId: string): string => `${linkId}:${rowId}`;
+export const tribeMessageId = (threadId: string, rowId: string): string => `${threadId}:${rowId}`;
 
-/** The link and row a post's id names; null for a queued entry's id (a cuid has no colon). */
-export function parseTribeMessageId(id: string): { linkId: string; rowId: string } | null {
+/** The thread and row a post's id names; null for a queued entry's id (a cuid has no colon). */
+export function parseTribeMessageId(id: string): { threadId: string; rowId: string } | null {
   const at = id.indexOf(":");
   if (at <= 0 || at === id.length - 1) return null;
-  return { linkId: id.slice(0, at), rowId: id.slice(at + 1) };
+  return { threadId: id.slice(0, at), rowId: id.slice(at + 1) };
 }
 
 /** What Jamie posts for a message: its words, the agent's question, then the deliverables as links. */
@@ -85,14 +97,11 @@ const sourceOf = (row: unknown): Source =>
  * and so on back. The first with a mention wins.
  */
 export function threadChain(rows: unknown[]): (runId: string) => string[] {
-  const wakeOf = new Map<string, string>(); // wake turn → the job turn it woke on
+  const wakeOf = new Map([...wakeJobRows(rows)].map(([wake, jobRow]) => [wake, jobRow.slice("job-".length)])); // wake turn → the job turn it woke on
   const launcherOf = new Map<string, string>(); // job turn → the turn that started it
   for (const row of rows) {
     const source = sourceOf(row);
     if (!source || typeof source.runId !== "string") continue;
-    if (source.kind === "orchestrator_launch" && typeof source.wakeId === "string" && source.wakeId.startsWith("job-")) {
-      wakeOf.set(source.runId, source.wakeId.slice("job-".length));
-    }
     if (source.kind === "orchestrator" && Array.isArray(source.jobs)) {
       for (const job of source.jobs) {
         const jobRun = (job as { runId?: unknown } | null)?.runId;
@@ -123,26 +132,29 @@ export interface PendingTribeMessage {
   post: TribeOutboxPost | null;
 }
 
-interface LinkForOutbox {
+interface ThreadForOutbox {
   id: string;
-  tribePubkey: string;
-  conversationId: string | null;
+  conversationId: string;
   cursor: string | null;
   readAt: Date | null;
-  org: { githubLogin: string };
-  user: { name: string | null };
+  link: {
+    id: string;
+    tribePubkey: string;
+    org: { githubLogin: string };
+    user: { name: string | null };
+  };
 }
 
-/** What a link has not had acked yet, oldest first. */
+/** What a thread has not had acked yet, oldest first. */
 export async function pendingTribeMessages(
-  link: LinkForOutbox,
+  thread: ThreadForOutbox,
   rows: unknown[],
   base: string,
 ): Promise<PendingTribeMessage[]> {
-  if (!link.conversationId) return [];
-  const conversationUrl = `${base}/org/${encodeURIComponent(link.org.githubLogin)}?chat=${encodeURIComponent(link.conversationId)}`;
+  const { link } = thread;
+  const conversationUrl = `${base}/org/${encodeURIComponent(link.org.githubLogin)}?chat=${encodeURIComponent(thread.conversationId)}`;
   const artifactUrl = (ref: ArtifactRef) => callArtifactUrl(ref, { base, conversationUrl });
-  const { messages } = callMessagesSince(rows, link.cursor, artifactUrl);
+  const { messages } = callMessagesSince(rows, thread.cursor, artifactUrl);
   if (messages.length === 0) return [];
 
   const byId = new Map<string, unknown>();
@@ -172,7 +184,7 @@ export async function pendingTribeMessages(
     const runId = runOf(message);
     const replyTo = runId ? chainOf(runId).map((r) => mentionOf.get(r)).find(Boolean) : undefined;
     const text = tribeText(message, { approver, conversationUrl });
-    const id = tribeMessageId(link.id, message.id);
+    const id = tribeMessageId(thread.id, message.id);
     const at = String((byId.get(message.id) as { timestamp?: unknown }).timestamp);
     if (!text.trim()) return { id, at, post: null };
     return {
@@ -181,6 +193,7 @@ export async function pendingTribeMessages(
       post: {
         id,
         tribe: link.tribePubkey,
+        thread: thread.id,
         text,
         ...(replyTo ? { replyTo } : {}),
         ...(message.strut ? { metadata: { strut: message.strut } } : {}),
@@ -210,43 +223,66 @@ export function advanceTribeCursor(
   return { cursor, drained: true };
 }
 
-const LINK_SELECT = {
+const THREAD_SELECT = {
   id: true,
-  tribePubkey: true,
   conversationId: true,
   cursor: true,
   readAt: true,
-  org: { select: { githubLogin: true } },
-  user: { select: { name: true } },
+  link: {
+    select: {
+      id: true,
+      tribePubkey: true,
+      org: { select: { githubLogin: true } },
+      user: { select: { name: true } },
+    },
+  },
 } as const;
 
 /**
- * The link's pending messages after moving its cursor past `done` ones
+ * The thread's pending messages after moving its cursor past `done` ones
  * (and past the ones with nothing to post), saving the move. A cursor
  * another request moved meanwhile is left as it is.
  */
-async function settleLink(
-  link: LinkForOutbox,
+async function settleThread(
+  thread: ThreadForOutbox,
   base: string,
   done: (id: string) => boolean,
 ): Promise<PendingTribeMessage[]> {
-  if (!link.conversationId) return [];
   const conversation = await db.sharedConversation.findUnique({
-    where: { id: link.conversationId },
+    where: { id: thread.conversationId },
     select: { messages: true, updatedAt: true },
   });
   if (!conversation) return [];
   const rows = Array.isArray(conversation.messages) ? (conversation.messages as unknown[]) : [];
-  const pending = await pendingTribeMessages(link, rows, base);
-  const moved = advanceTribeCursor(pending, (m) => m.post === null || done(m.id), link.cursor);
-  const readAt = moved.drained ? conversation.updatedAt : link.readAt;
-  if (moved.cursor !== link.cursor || readAt?.getTime() !== link.readAt?.getTime()) {
-    await db.tribeLink.updateMany({ where: { id: link.id, cursor: link.cursor }, data: { cursor: moved.cursor, readAt } });
+  const pending = await pendingTribeMessages(thread, rows, base);
+  const moved = advanceTribeCursor(pending, (m) => m.post === null || done(m.id), thread.cursor);
+  const readAt = moved.drained ? conversation.updatedAt : thread.readAt;
+  if (moved.cursor !== thread.cursor || readAt?.getTime() !== thread.readAt?.getTime()) {
+    await db.tribeThread.updateMany({ where: { id: thread.id, cursor: thread.cursor }, data: { cursor: moved.cursor, readAt } });
   }
   return moved.drained ? [] : pending.filter((m) => m.post && !done(m.id));
 }
 
-/** Everything Jamie has to do now: the queued entries, then each tribe's new messages. */
+/**
+ * The threads whose conversation moved since their last read, oldest
+ * first: a tribe keeps every conversation it started, so the ones nothing
+ * happened in are left in the database.
+ */
+async function movedThreads(): Promise<ThreadForOutbox[]> {
+  const moved = await db.$queryRaw<{ id: string }[]>`
+    SELECT t.id FROM tribe_threads t
+    JOIN shared_conversations c ON c.id = t.conversation_id
+    WHERE t.read_at IS NULL OR c.updated_at > t.read_at
+  `;
+  if (moved.length === 0) return [];
+  return db.tribeThread.findMany({
+    where: { id: { in: moved.map((t) => t.id) } },
+    select: THREAD_SELECT,
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+/** Everything Jamie has to do now: the queued entries, then each conversation's new messages. */
 export async function readTribeOutbox(base: string): Promise<TribeOutboxItem[]> {
   const entries = await db.tribeOutboxEntry.findMany({
     where: { ackedAt: null },
@@ -262,34 +298,27 @@ export async function readTribeOutbox(base: string): Promise<TribeOutboxItem[]> 
     }
   }
 
-  const links = await db.tribeLink.findMany({
-    where: { conversationId: { not: null } },
-    select: { ...LINK_SELECT, conversation: { select: { updatedAt: true } } },
-    orderBy: { createdAt: "asc" },
-  });
-  for (const link of links) {
-    const updatedAt = link.conversation?.updatedAt;
-    if (!updatedAt || (link.readAt && updatedAt <= link.readAt)) continue;
-    const pending = await settleLink(link, base, () => false);
+  for (const thread of await movedThreads()) {
+    const pending = await settleThread(thread, base, () => false);
     for (const m of pending) if (m.post) items.push(m.post);
   }
   return items;
 }
 
-/** Mark what Jamie did: the queued entries it names, and each tribe's cursor past its posts. */
+/** Mark what Jamie did: the queued entries it names, and each thread's cursor past its posts. */
 export async function ackTribeOutbox(ids: string[], base: string): Promise<void> {
   const queued: string[] = [];
-  const posts = new Map<string, Set<string>>(); // link id → acked post ids
+  const posts = new Map<string, Set<string>>(); // thread id → acked post ids
   for (const id of ids) {
     const parsed = parseTribeMessageId(id);
     if (!parsed) queued.push(id);
-    else posts.set(parsed.linkId, (posts.get(parsed.linkId) ?? new Set()).add(id));
+    else posts.set(parsed.threadId, (posts.get(parsed.threadId) ?? new Set()).add(id));
   }
   if (queued.length) {
     await db.tribeOutboxEntry.updateMany({ where: { id: { in: queued }, ackedAt: null }, data: { ackedAt: new Date() } });
   }
-  for (const [linkId, acked] of posts) {
-    const link = await db.tribeLink.findUnique({ where: { id: linkId }, select: LINK_SELECT });
-    if (link) await settleLink(link, base, (id) => acked.has(id));
+  for (const [threadId, acked] of posts) {
+    const thread = await db.tribeThread.findUnique({ where: { id: threadId }, select: THREAD_SELECT });
+    if (thread) await settleThread(thread, base, (id) => acked.has(id));
   }
 }

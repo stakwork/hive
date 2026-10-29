@@ -62,6 +62,7 @@ import { POST as postAck } from "@/app/api/tribes/outbox/ack/route";
 import { canReadKey } from "@/lib/ai/resolveMessageAttachments";
 import { ORCHESTRATOR_TURN_KIND } from "@/lib/strut-orchestrator";
 import { appendOrchestratorRows, orchestratorRowsFor } from "@/services/strut-runs/orchestrator-turn";
+import { appendJobRow } from "@/services/strut-runs/job-turn";
 
 const TOKEN = "test-jamie-service-token";
 const JAMIE = "03" + "b".repeat(64);
@@ -152,9 +153,19 @@ async function linked() {
 
 const tribeLink = () => db.tribeLink.findUnique({ where: { tribePubkey: TRIBE } });
 
-async function conversation() {
-  const l = await tribeLink();
-  return l?.conversationId ? db.sharedConversation.findUnique({ where: { id: l.conversationId } }) : null;
+/** The tribe's conversations, oldest first. */
+const threads = () => db.tribeThread.findMany({ orderBy: { createdAt: "asc" } });
+
+/** The conversation a mention started (the first mention's by default). */
+async function threadOf(mentionId = "msg-1") {
+  const thread = await db.tribeThread.findFirst({ where: { mentionId } });
+  expect(thread).not.toBeNull();
+  return thread!;
+}
+
+async function conversation(mentionId = "msg-1") {
+  const thread = await db.tribeThread.findFirst({ where: { mentionId } });
+  return thread ? db.sharedConversation.findUnique({ where: { id: thread.conversationId } }) : null;
 }
 
 /** A reply landing the way the completion handler writes it. */
@@ -191,9 +202,15 @@ async function landReply(
   );
 }
 
-/** Mention once and land the turn's reply. */
-async function answered(scenario: Awaited<ReturnType<typeof linked>>, runId: string, text: string, extra: Parameters<typeof landReply>[3] = {}) {
-  const conversationId = (await tribeLink())!.conversationId!;
+/** Land a turn's reply on the conversation a mention started (the first mention's by default). */
+async function answered(
+  scenario: Awaited<ReturnType<typeof linked>>,
+  runId: string,
+  text: string,
+  extra: Parameters<typeof landReply>[3] = {},
+  mentionId = "msg-1",
+) {
+  const { conversationId } = await threadOf(mentionId);
   await landReply({ workspaceId: scenario.workspace.id, userId: scenario.owner.id, conversationId }, runId, { outcome: "success", text }, extra);
   return conversationId;
 }
@@ -269,7 +286,8 @@ describe("Jamie in Sphinx tribes", () => {
       expect(res.status).toBe(200);
       const tribe = { pubkey: TRIBE, host: HOST, name: "Builders", workspace: workspace.slug, org: org.githubLogin, createdAt: expect.any(String) };
       expect(await res.json()).toEqual({ jamie: { pubkey: JAMIE, alias: "Jamie" }, tribe });
-      expect(await tribeLink()).toMatchObject({ userId: owner.id, orgId: org.id, workspaceSlug: workspace.slug, conversationId: null });
+      expect(await tribeLink()).toMatchObject({ userId: owner.id, orgId: org.id, workspaceSlug: workspace.slug });
+      expect(await threads()).toEqual([]);
 
       const messages = await outbox();
       expect(messages).toEqual([{ id: expect.any(String), join: `sphinx.chat://?action=tribeV2&pubkey=${TRIBE}&host=${HOST}` }]);
@@ -314,20 +332,25 @@ describe("Jamie in Sphinx tribes", () => {
       expect(await outbox()).toEqual([]);
     });
 
-    it("linking again keeps the conversation within the org, and starts a new one for another org", async () => {
+    it("linking again keeps the conversations within the org, and drops them for another org", async () => {
       const scenario = await linked();
       await mention(aMention());
-      const conversationId = (await tribeLink())!.conversationId;
-      expect(conversationId).toBeTruthy();
+      const thread = await threadOf();
 
       await link(scenario.credential, { workspace: scenario.workspace.slug, tribe: { pubkey: TRIBE, host: HOST } });
-      expect((await tribeLink())!.conversationId).toBe(conversationId);
+      expect(await threads()).toEqual([thread]);
 
       const otherOrg = await createOrg();
       const elsewhere = await createTestWorkspace({ ownerId: scenario.owner.id, sourceControlOrgId: otherOrg.id });
       const res = await link(scenario.credential, { workspace: elsewhere.slug, tribe: { pubkey: TRIBE, host: HOST } });
       expect(res.status).toBe(200);
-      expect(await tribeLink()).toMatchObject({ orgId: otherOrg.id, workspaceSlug: elsewhere.slug, conversationId: null, cursor: null });
+      expect(await tribeLink()).toMatchObject({ orgId: otherOrg.id, workspaceSlug: elsewhere.slug });
+      expect(await threads()).toEqual([]);
+      // The conversation stays in Hive; a reply to an earlier post starts a new one.
+      expect(await db.sharedConversation.count({ where: { id: thread.conversationId } })).toBe(1);
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-2", strutRunId: "s-2" });
+      expect((await mention(aMention({ id: "msg-2", thread: thread.id }))).status).toBe(202);
+      expect((await threadOf("msg-2")).conversationId).not.toBe(thread.conversationId);
     });
 
     it("unlinking drops the link and tells Jamie to leave; the tribe's mentions are refused from then on", async () => {
@@ -352,14 +375,15 @@ describe("Jamie in Sphinx tribes", () => {
   });
 
   describe("POST /api/tribes/messages", () => {
-    it("the first mention creates the tribe's conversation and launches as the linker, with the tribe line", async () => {
+    it("a mention starts a conversation of its own and launches as the linker, with the tribe line", async () => {
       const { owner, org, workspace } = await linked();
       await db.user.update({ where: { id: owner.id }, data: { timezone: "Europe/London" } });
 
       const res = await mention(aMention({ owner: true }));
 
       expect(res.status).toBe(202);
-      expect(await res.json()).toEqual({ turn: "run-1" });
+      const thread = await threadOf();
+      expect(await res.json()).toEqual({ turn: "run-1", thread: thread.id });
       const conv = await conversation();
       expect(conv).toMatchObject({ userId: owner.id, sourceControlOrgId: org.id, source: "org-canvas" });
       const rows = conv!.messages as Array<{ role: string; content: string }>;
@@ -380,6 +404,46 @@ describe("Jamie in Sphinx tribes", () => {
       expect(workspace.sourceControlOrgId).toBe(org.id);
     });
 
+    it("each mention is a new conversation, and so a new session; a reply to Jamie's post continues its own", async () => {
+      await linked();
+      await mention(aMention());
+      const first = await threadOf();
+
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-2", strutRunId: "s-2" });
+      const second = await mention(aMention({ id: "msg-2", text: "@jamie something else" }));
+      expect(second.status).toBe(202);
+      const other = await threadOf("msg-2");
+      expect(other.conversationId).not.toBe(first.conversationId);
+      expect(mockLaunch.mock.calls[1][0].conversationId).toBe(other.conversationId);
+
+      // A reply to a post from the first conversation, with no @jamie in it.
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-3", strutRunId: "s-3" });
+      const reply = await mention(aMention({ id: "msg-3", text: "and Thursday?", thread: first.id }));
+      expect(reply.status).toBe(202);
+      expect(await reply.json()).toEqual({ turn: "run-3", thread: first.id });
+      expect(mockLaunch.mock.calls[2][0]).toMatchObject({ conversationId: first.conversationId, message: "Alice: and Thursday?" });
+      expect((await conversation())!.messages).toHaveLength(2);
+      expect(await threads()).toHaveLength(2);
+    });
+
+    it("a thread Hive does not know, or another tribe's, starts a new conversation", async () => {
+      const scenario = await linked();
+      // Another tribe, linked by the same person, with a conversation of its own.
+      const elsewhere = "02" + "d".repeat(64);
+      await link(scenario.credential, { workspace: scenario.workspace.slug, tribe: { pubkey: elsewhere, host: HOST } });
+      await mention(aMention({ tribe: { pubkey: elsewhere, name: "Other", host: HOST } }));
+      const theirs = await threadOf();
+
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-2", strutRunId: "s-2" });
+      expect((await mention(aMention({ id: "msg-2", thread: theirs.id }))).status).toBe(202);
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-3", strutRunId: "s-3" });
+      expect((await mention(aMention({ id: "msg-3", thread: "no-such-thread" }))).status).toBe(202);
+
+      const conversations = new Set((await threads()).map((t) => t.conversationId));
+      expect(conversations.size).toBe(3);
+      expect((await threadOf("msg-2")).tribeLinkId).not.toBe(theirs.tribeLinkId);
+    });
+
     it("a mention taken before is dropped: no second turn", async () => {
       await linked();
       await mention(aMention());
@@ -392,9 +456,10 @@ describe("Jamie in Sphinx tribes", () => {
       expect((await conversation())!.messages).toHaveLength(1);
     });
 
-    it("409 busy while the tribe has a turn in flight, or another holds the lock — nothing written", async () => {
+    it("409 busy for a reply while its conversation has a turn in flight; a new mention runs beside it", async () => {
       const { owner, workspace } = await linked();
       await mention(aMention());
+      const thread = await threadOf();
       await db.strutRun.create({
         data: {
           tokenHash: "h",
@@ -403,21 +468,35 @@ describe("Jamie in Sphinx tribes", () => {
           userId: owner.id,
           kind: ORCHESTRATOR_TURN_KIND,
           workflow: "orchestrator",
-          conversationId: (await tribeLink())!.conversationId,
+          conversationId: thread.conversationId,
         },
       });
       mockLaunch.mockClear();
 
-      const busy = await mention(aMention({ id: "msg-2", text: "@jamie and now?" }));
+      const busy = await mention(aMention({ id: "msg-2", text: "and now?", thread: thread.id }));
       expect(busy.status).toBe(409);
       expect(await busy.json()).toHaveProperty("busy");
+      expect(mockLaunch).not.toHaveBeenCalled();
+      expect((await conversation())!.messages).toHaveLength(1);
 
-      store.set(`tribe-turn:${TRIBE}`, "someone-else");
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-2", strutRunId: "s-2" });
+      expect((await mention(aMention({ id: "msg-3", text: "@jamie another thing" }))).status).toBe(202);
+      expect(await db.tribeMention.count()).toBe(2);
+    });
+
+    it("409 while another request holds the lock: a conversation's for a reply, the tribe's for a new mention", async () => {
+      await linked();
+      await mention(aMention());
+      const thread = await threadOf();
+      mockLaunch.mockClear();
+
+      store.set(`tribe-turn:${TRIBE}:${thread.id}`, "someone-else");
+      expect((await mention(aMention({ id: "msg-2", thread: thread.id }))).status).toBe(409);
+      store.set(`tribe-turn:${TRIBE}:new`, "someone-else");
       expect((await mention(aMention({ id: "msg-3" }))).status).toBe(409);
 
       expect(mockLaunch).not.toHaveBeenCalled();
-      expect((await conversation())!.messages).toHaveLength(1);
-      expect(await db.tribeMention.count()).toBe(1);
+      expect(await threads()).toHaveLength(1);
     });
 
     it("a launch strut refused is a 502 and is not recorded, so Jamie's retry takes it", async () => {
@@ -429,8 +508,11 @@ describe("Jamie in Sphinx tribes", () => {
       expect((await res.json()).error).toContain("Organization not found.");
       expect(await db.tribeMention.count()).toBe(0);
 
+      // The retry lands on the conversation the first try started.
       expect((await mention(aMention())).status).toBe(202);
       expect(mockLaunch).toHaveBeenCalledTimes(2);
+      expect(await threads()).toHaveLength(1);
+      expect(mockLaunch.mock.calls[1][0].conversationId).toBe(mockLaunch.mock.calls[0][0].conversationId);
     });
 
     it("the room before the mention is a text attachment: on S3, on the user row and on the launch", async () => {
@@ -516,14 +598,15 @@ describe("Jamie in Sphinx tribes", () => {
         ],
         strut,
       });
-      const link = (await tribeLink())!;
+      const thread = await threadOf();
 
       const messages = await outbox();
 
       expect(messages).toEqual([
         {
-          id: `${link.id}:orchestrator-run-1`,
+          id: `${thread.id}:orchestrator-run-1`,
           tribe: TRIBE,
+          thread: thread.id,
           text: expect.stringMatching(
             new RegExp(
               `^We picked Wednesday\\.\\n\\nPlan: ${BASE}/org/${scenario.org.githubLogin}\\?chat=${conversationId}&artifact=id%3Aplan\\nFix login: https://github\\.com/acme/app/pull/7$`,
@@ -538,7 +621,7 @@ describe("Jamie in Sphinx tribes", () => {
 
       expect((await ack([messages[0].id as string])).status).toBe(200);
       expect(await outbox()).toEqual([]);
-      expect((await tribeLink())!.cursor).toBeTruthy();
+      expect((await threadOf()).cursor).toBeTruthy();
     });
 
     it("a turn's rows move the cursor together: one acked without the other is handed out again", async () => {
@@ -577,6 +660,77 @@ describe("Jamie in Sphinx tribes", () => {
       expect((await outbox()).map((m) => [m.text, m.replyTo])).toEqual([["The launch plan is ready.", "msg-1"]]);
     });
 
+    it("a job's wake reply carries the job's deliverables: links for everyone, strut's entries as metadata", async () => {
+      const scenario = await linked();
+      await mention(aMention());
+      const conversationId = await answered(scenario, "run-1", "On it.", { jobs: [{ jobId: "job-a", title: "Marketplace report", runId: "jobturn-1" }] });
+      await ack((await outbox()).map((m) => m.id as string));
+
+      // The job's row, as the job turn's handler lands it: the report and
+      // hive's own cards (claims, trace), and strut's entries as they came.
+      await new Promise((r) => setTimeout(r, 5));
+      const strut = { workspace: scenario.workspace.slug, artifacts: [{ id: "report", kind: "markdown", title: "Report", path: "report.md" }] };
+      const inline = { type: "inline" as const, content: {} };
+      await appendJobRow(
+        { id: "jobturn-1", workspaceId: scenario.workspace.id, userId: scenario.owner.id, conversationId },
+        {
+          content: "**Job · job-a · Marketplace report**\n\nWrote the report.",
+          source: { kind: "job", jobId: "job-a", strutRunId: "s-jobturn-1", workflow: "job", status: "success", title: "Marketplace report" },
+          artifacts: [
+            { id: "report", kind: "markdown", title: "Report", source: { type: "graph", swarmId: "swarm-1", key: "/jobs/job-a/files/report.md" } },
+            { id: "claims-job-a", kind: "claims", title: "Marketplace report", source: inline },
+            { id: "run-graph-job-a", kind: "run_graph", title: "Marketplace report", source: inline },
+          ],
+          strut,
+        },
+      );
+      // The job row alone is a card, not something Jamie says.
+      expect(await outbox()).toEqual([]);
+
+      await answered(scenario, "wake-1", "The marketplace report is ready.", { wakeId: "job-jobturn-1" });
+      const thread = await threadOf();
+      expect(await outbox()).toEqual([
+        {
+          id: `${thread.id}:orchestrator-wake-1`,
+          tribe: TRIBE,
+          thread: thread.id,
+          text: `The marketplace report is ready.\n\nReport: ${BASE}/org/${scenario.org.githubLogin}?chat=${conversationId}&artifact=${encodeURIComponent("graph:swarm-1:/jobs/job-a/files/report.md")}`,
+          replyTo: "msg-1",
+          metadata: { strut },
+        },
+      ]);
+    });
+
+    it("each conversation is read after its own cursor, and an ack moves only its own; a continued one threads under the reply", async () => {
+      const scenario = await linked();
+      await mention(aMention());
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-2", strutRunId: "s-2" });
+      await mention(aMention({ id: "msg-2", text: "@jamie other" }));
+      const [a, b] = [await threadOf(), await threadOf("msg-2")];
+      await answered(scenario, "run-1", "First.");
+      await answered(scenario, "run-2", "Second.", {}, "msg-2");
+
+      const messages = await outbox();
+      expect(messages.map((m) => [m.id, m.thread, m.text, m.replyTo])).toEqual([
+        [`${a.id}:orchestrator-run-1`, a.id, "First.", "msg-1"],
+        [`${b.id}:orchestrator-run-2`, b.id, "Second.", "msg-2"],
+      ]);
+
+      await ack([messages[1].id as string]);
+      expect((await outbox()).map((m) => m.text)).toEqual(["First."]);
+      expect((await threadOf("msg-2")).cursor).toBeTruthy();
+      expect((await threadOf()).cursor).toBeNull();
+      await ack([messages[0].id as string]);
+      expect(await outbox()).toEqual([]);
+
+      // A reply to "First." continues that conversation; its answer threads under the reply.
+      await new Promise((r) => setTimeout(r, 5));
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-3", strutRunId: "s-3" });
+      await mention(aMention({ id: "msg-3", text: "and then?", thread: a.id }));
+      await answered(scenario, "run-3", "Then Thursday.");
+      expect((await outbox()).map((m) => [m.thread, m.text, m.replyTo])).toEqual([[a.id, "Then Thursday.", "msg-3"]]);
+    });
+
     it("a reply to no mention — a turn the linker took in Hive — is posted unthreaded", async () => {
       const scenario = await linked();
       await mention(aMention());
@@ -592,12 +746,12 @@ describe("Jamie in Sphinx tribes", () => {
       await answered(scenario, "run-1", "");
 
       expect(await outbox()).toEqual([]);
-      const link = (await tribeLink())!;
-      expect(link.cursor).toBeTruthy();
-      expect(link.readAt).toBeTruthy();
+      const thread = await threadOf();
+      expect(thread.cursor).toBeTruthy();
+      expect(thread.readAt).toBeTruthy();
 
       // A row written without moving `updatedAt` is not seen: the conversation was not read again…
-      const conversationId = link.conversationId!;
+      const { conversationId } = thread;
       const row = {
         id: "orchestrator-run-2",
         role: "assistant",
@@ -623,14 +777,14 @@ describe("Jamie in Sphinx tribes", () => {
       const messages = await outbox();
       expect(messages.map((m) => ("join" in m ? "join" : "text" in m ? m.text : m))).toEqual(["join", "Hello."]);
 
-      await ack([messages[0].id as string, "unknown-id", "nolink:orchestrator-x"]);
+      await ack([messages[0].id as string, "unknown-id", "nothread:orchestrator-x"]);
       expect((await outbox()).map((m) => m.text)).toEqual(["Hello."]);
     });
 
     it("a long poll returns as soon as a reply lands", async () => {
       const scenario = await linked();
       await mention(aMention());
-      const conversationId = (await tribeLink())!.conversationId!;
+      const { conversationId } = await threadOf();
 
       const started = Date.now();
       const pending = outbox("?wait=10");
