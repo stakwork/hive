@@ -41,6 +41,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { STRUT_ACTOR_HEADER, ensureStrutDelegation, strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
+import { ensureSwarmSchemaSynced } from "@/services/strut-schema-sync";
 import { ensureStrutActorSecrets } from "@/services/strut-actor-secret";
 import type { StrutAttachment } from "@/services/strut-attachments";
 import { describeStrutTargetError, resolveStrutTarget, type StrutPurpose } from "@/services/strut-target";
@@ -352,6 +353,9 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
     { swarmUrl: target.swarmUrl, swarmApiKey: target.swarmApiKey },
     { actor: target.actor },
   );
+  // Keep the swarm's Jarvis schema current before a graph-writing workflow.
+  // Never throws; bounded; at most hourly per swarm.
+  await ensureSwarmSchemaSynced(target, workflow);
   if (args.actorSecrets) {
     await ensureStrutActorSecrets(
       { labBase: target.labBase, swarmApiKey: target.swarmApiKey },

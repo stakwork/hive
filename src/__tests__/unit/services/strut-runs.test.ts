@@ -35,7 +35,9 @@ const {
   mockHandler,
   mockSystemMapHandler,
   mockDecrypt,
+  mockSchemaSync,
 } = vi.hoisted(() => ({
+  mockSchemaSync: vi.fn(),
   mockStrutRun: {
     create: vi.fn(),
     update: vi.fn(),
@@ -63,6 +65,10 @@ vi.mock("@/services/bifrost/strut-delegation", () => ({
   strutLabBaseUrl: (u: string) => `${u.replace("/api", ":3355")}/lab`,
 }));
 vi.mock("@/services/strut-actor-secret", () => ({ ensureStrutActorSecrets: mockEnsureStrutActorSecrets }));
+vi.mock("@/services/strut-schema-sync", async (orig) => {
+  const actual = await orig<typeof import("@/services/strut-schema-sync")>();
+  return { ...actual, ensureSwarmSchemaSynced: mockSchemaSync };
+});
 vi.mock("@/services/strut-runs/job-turn", () => ({ handleJobTurnSettled: mockHandler }));
 vi.mock("@/services/strut-runs/system-map", () => ({ handleSystemMapSettled: mockSystemMapHandler }));
 vi.mock("@/lib/encryption", () => ({ EncryptionService: { getInstance: () => ({ decryptField: mockDecrypt }) } }));
@@ -78,6 +84,10 @@ import {
   StrutDispatchError,
   type StrutRunRow,
 } from "@/services/strut-runs";
+import {
+  SCHEMA_SYNC_PARAMS,
+  resetSwarmSchemaSyncState,
+} from "@/services/strut-schema-sync";
 
 const TARGET = {
   swarmId: "swarm-1",
@@ -136,6 +146,9 @@ const dispatchArgs = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockFetch.mockReset();
+  resetSwarmSchemaSyncState();
+  mockSchemaSync.mockResolvedValue(undefined);
   vi.stubGlobal("fetch", mockFetch);
   mockResolveStrutTarget.mockResolvedValue({ ok: true, target: TARGET });
   mockEnsureStrutDelegation.mockResolvedValue({ status: "skipped-gate" });
@@ -588,5 +601,63 @@ describe("probeStrutRun / reconcileStrutRuns", () => {
     const stats = await reconcileStrutRuns();
     expect(stats).toMatchObject({ swept: 1, lost: 1 });
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("dispatchStrutRun — swarm schema sync", () => {
+  const SYNC_URL = "https://acme.sphinx.chat:3355/lab/workflows/swarm-systemmap-schema-sync";
+  const syncCalls = () => mockFetch.mock.calls.filter((c) => String(c[0]).startsWith(SYNC_URL));
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import("@/services/strut-schema-sync")>("@/services/strut-schema-sync");
+    mockSchemaSync.mockImplementation(actual.ensureSwarmSchemaSynced);
+    mockSwarmFindUnique.mockResolvedValue({ swarmSecretAlias: "{{SWARM_1}}" });
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url === `${SYNC_URL}/run`) return json(202, { runId: "42" });
+      if (url === `${SYNC_URL}/runs/42`) return json(200, { status: "success" });
+      return json(202, { runId: "1790000000000", callback: true });
+    });
+  });
+
+  it("syncs on the first dispatch of an eligible workflow, with the widened params", async () => {
+    await dispatchStrutRun(dispatchArgs);
+    const calls = syncCalls();
+    expect(calls).toHaveLength(2);
+    const init = calls[0][1] as RequestInit;
+    expect(init.headers).toMatchObject({ "x-api-token": "swarm-key", "x-strut-actor": "alice-user-1" });
+    expect(JSON.parse(init.body as string)).toEqual({
+      input: { swarm_url: TARGET.mcpBase, swarm_secret_alias: "{{SWARM_1}}" },
+      params: SCHEMA_SYNC_PARAMS,
+    });
+    // and it ran before the launch
+    expect(String(mockFetch.mock.calls[mockFetch.mock.calls.length - 1][0])).toBe(
+      "https://acme.sphinx.chat:3355/lab/workflows/job/run",
+    );
+  });
+
+  it("is skipped within the hour", async () => {
+    await dispatchStrutRun(dispatchArgs);
+    mockFetch.mockClear();
+    await dispatchStrutRun(dispatchArgs);
+    expect(syncCalls()).toHaveLength(0);
+  });
+
+  it("does not run for an ineligible workflow", async () => {
+    await dispatchStrutRun({ ...dispatchArgs, workflow: "openhealth-improve" });
+    expect(syncCalls()).toHaveLength(0);
+  });
+
+  it("a sync failure does not stop the launch, and is retried next time", async () => {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).startsWith(SYNC_URL)) throw new Error("boom");
+      return json(202, { runId: "1790000000000", callback: true });
+    });
+    await expect(dispatchStrutRun(dispatchArgs)).resolves.toMatchObject({ strutRunId: "1790000000000" });
+
+    mockFetch.mockImplementation(async (url: string) =>
+      String(url).startsWith(SYNC_URL) ? json(500, {}) : json(202, { runId: "1790000000000", callback: true }),
+    );
+    await expect(dispatchStrutRun(dispatchArgs)).resolves.toBeDefined();
+    expect(syncCalls().length).toBeGreaterThan(0);
   });
 });
