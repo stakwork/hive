@@ -9,6 +9,7 @@ import {
   applyJobUpdate,
   liveItemsToShow,
   liveKey,
+  liveStatus,
   useJobLiveStore,
   type JobLiveItem,
 } from "@/app/org/[githubLogin]/_state/jobLiveStore";
@@ -48,6 +49,32 @@ describe("liveItemsToShow", () => {
   });
   it("matched to a delivered artifact BY URL: the conversation's card wins", () => {
     expect(liveItemsToShow(items, { delivered: new Set([MANIFEST]) }).map((i) => i.kind)).toEqual(["image"]);
+  });
+  it("a run's graph writes are a signal, never a thing to show (strut plans/live-feeds.md §2)", () => {
+    const graph = applyJobUpdate([], u({ kind: "graph", url: undefined, id: "1790000000001", state: "written", detail: { writes: 3 } }), 40)[0];
+    expect(liveItemsToShow([...items, graph]).map((i) => i.kind)).toEqual(["image", "walkthrough"]);
+  });
+  it("with launchedAt (strut's clock), each update's own `at` decides, whenever it was received", () => {
+    const launched = Date.parse("2026-10-29T16:15:43.587Z");
+    const before = applyJobUpdate([], u({ kind: "pod", url: undefined, id: "pod-1", state: "released", at: "2026-10-29T16:10:00.000Z" }), 99)[0];
+    const after = applyJobUpdate([], u({ kind: "pod", url: undefined, id: "pod-2", state: "held", at: "2026-10-29T16:16:01.000Z" }), 1)[0];
+    expect(liveItemsToShow([before, after], { since: 50, launchedAt: launched }).map((i) => i.id)).toEqual(["pod-2"]);
+    // An `at` that does not parse falls back to when it was received.
+    const odd = applyJobUpdate([], u({ kind: "pod", url: undefined, id: "pod-3", state: "held", at: "t" }), 60)[0];
+    expect(liveItemsToShow([odd], { since: 50, launchedAt: launched }).map((i) => i.id)).toEqual(["pod-3"]);
+  });
+});
+
+describe("liveStatus", () => {
+  it("is the newest status line among the items, if any", () => {
+    let items: JobLiveItem[] = [];
+    expect(liveStatus(items)).toBeUndefined();
+    items = applyJobUpdate(items, u({ kind: "status", url: undefined, id: "r1", title: "Drafting round 1" }), 1);
+    items = applyJobUpdate(items, u({ kind: "image", url: `/jobs/${JOB}/files/shots/001.png` }), 2);
+    items = applyJobUpdate(items, u({ kind: "status", url: undefined, id: "r2", title: "Writing the cards" }), 3);
+    expect(liveStatus(items)?.title).toBe("Writing the cards");
+    items = applyJobUpdate(items, u({ kind: "status", url: undefined, id: "r1", title: "Drafting round 2" }), 4);
+    expect(liveStatus(items)?.title).toBe("Drafting round 2");
   });
 });
 
