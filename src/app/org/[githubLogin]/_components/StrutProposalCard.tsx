@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Lightbulb, Loader2, Network, RotateCcw, X } from "lucide-react";
+import { Check, ExternalLink, Lightbulb, Loader2, Network, RotateCcw, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { useCanvasChatStore, type CanvasChatMessage } from "../_state/canvasChatStore";
 import { proposalGraphArtifact } from "../_state/proposalGraphArtifacts";
 import {
@@ -10,7 +11,9 @@ import {
   type StrutProposalRecord,
   type StrutProposalStatus,
 } from "@/lib/strut-orchestrator";
+import type { ProposalOutput } from "@/lib/proposals/types";
 import {
+  ConceptCreateMeta,
   GraphBatchTripletCreateMeta,
   GraphEdgeDeleteMeta,
   GraphNodeCreateMeta,
@@ -28,8 +31,10 @@ import {
  * decides at its `/decide`, which forwards to strut as the clicking user
  * and writes the result row. The body is drawn per `step`: hive's own
  * graph card bodies where the input has the same fields
- * (`strutProposalToOutput`), a key/value table for anything else. Status
- * is strut's, never derived from the transcript.
+ * (`strutProposalToOutput`; the Concept card for the lab's `concept/create`
+ * among them), a key/value table for anything else. Status is strut's,
+ * never derived from the transcript. An applied `concept/create` links to
+ * the new Concept in the workspace learn UI by the slug id the step returns.
  */
 
 export type StrutProposalSource = Extract<NonNullable<CanvasChatMessage["source"]>, { kind: "proposal" }>;
@@ -74,6 +79,32 @@ export function GenericInputBody({ input }: { input: unknown }) {
           <span className="break-all">{typeof v === "string" ? v : JSON.stringify(v)}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** `concept/create`: the Concept's description, where it files (parent, kind), and its docs. */
+function ConceptCreateBody({ proposal }: { proposal: Extract<ProposalOutput, { kind: "conceptCreate" }> }) {
+  const { payload } = proposal;
+  return (
+    <div className="mt-0.5 space-y-1" data-testid="strut-proposal-concept-body">
+      <ConceptCreateMeta payload={payload} meta={proposal.meta} />
+      {(payload.parent || payload.kind) && (
+        <div className="text-[11px] text-muted-foreground">
+          {payload.parent && (
+            <>
+              under <span className="font-mono">{payload.parent}</span>
+            </>
+          )}
+          {payload.parent && payload.kind && " · "}
+          {payload.kind && payload.kind.replace(/_/g, " ")}
+        </div>
+      )}
+      {payload.documentation && (
+        <div className="prose prose-sm dark-os:prose-invert max-h-48 max-w-none min-w-0 overflow-y-auto break-words [overflow-wrap:anywhere] rounded border border-border/50 bg-muted/30 px-2 py-1 text-[11px]">
+          <ReactMarkdown>{payload.documentation}</ReactMarkdown>
+        </div>
+      )}
     </div>
   );
 }
@@ -149,6 +180,8 @@ export function StrutProposalBody({
         return <GraphEdgeDeleteMeta proposal={output} />;
       case "graphNodeMove":
         return <GraphNodeMoveMeta proposal={output} />;
+      case "conceptCreate":
+        return <ConceptCreateBody proposal={output} />;
       default:
         break;
     }
@@ -235,6 +268,15 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
     const output = strutProposalToOutput(proposal.step, proposal.input, proposal.workspaceSlug ?? "");
     return output ? proposalGraphArtifact({ ...output, proposalId: proposal.id, rationale: proposal.rationale }) : null;
   }, [proposal]);
+  // An applied `concept/create`: the new Concept's page in the workspace
+  // learn UI, by the slug id the step returns (the same link hive's own
+  // Concept approvals opened).
+  const learnHref = useMemo(() => {
+    if (!proposal || proposal.step !== "concept/create" || status !== "applied") return null;
+    const out = isRecord(proposal.result?.output) ? proposal.result.output : null;
+    const id = typeof out?.id === "string" ? out.id : null;
+    return id && proposal.workspaceSlug ? `/w/${proposal.workspaceSlug}/learn?concept=${encodeURIComponent(id)}` : null;
+  }, [proposal, status]);
   const dimmed = status === "rejected" || status === "applied";
 
   return (
@@ -279,6 +321,17 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
             <p className="mt-1 text-[11px] text-rose-700 dark-os:text-rose-300" data-testid="strut-proposal-error">
               {proposal.result.error}
             </p>
+          )}
+          {learnHref && (
+            <a
+              href={learnHref}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+              data-testid="strut-proposal-open-learn"
+            >
+              Open in Learn <ExternalLink className="h-3 w-3" />
+            </a>
           )}
           {notice && <p className="mt-1 text-[11px] text-amber-800 dark-os:text-amber-300">{notice}</p>}
           {(canDecide || graphArtifact) && (

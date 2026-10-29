@@ -1465,7 +1465,7 @@ function PromptDiffDialog({
 }
 
 /** Compact body for a new-concept proposal: repo/workspace + doc size. */
-function ConceptCreateMeta({
+export function ConceptCreateMeta({
   payload,
   meta,
 }: {
