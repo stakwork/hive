@@ -30,6 +30,7 @@ const {
   mockAdopt,
   mockRecorded,
   mockJobWorkflow,
+  mockWorkspace,
 } = vi.hoisted(() => {
     const mockTx = {
       workspace: { findUnique: vi.fn() },
@@ -48,10 +49,11 @@ const {
       mockAdopt: vi.fn(),
       mockRecorded: vi.fn(),
       mockJobWorkflow: vi.fn(),
+      mockWorkspace: vi.fn(),
     };
   });
 
-vi.mock("@/lib/db", () => ({ db: { $transaction: mockTransaction } }));
+vi.mock("@/lib/db", () => ({ db: { $transaction: mockTransaction, workspace: { findUnique: mockWorkspace } } }));
 vi.mock("@/lib/pusher", () => ({ notifyCanvasConversationUpdated: mockNotify }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/strut-runs", () => ({ labForRow: mockLab }));
@@ -146,6 +148,7 @@ beforeEach(() => {
   mockAdopt.mockImplementation(async (_parent: unknown, run: { runId: string }) => ({ id: `jobrow-${run.runId}` }));
   mockRecorded.mockResolvedValue(null);
   mockJobWorkflow.mockResolvedValue(null);
+  mockWorkspace.mockResolvedValue({ slug: "acme" });
 });
 
 describe("replyForOrchestratorRow", () => {
@@ -280,6 +283,30 @@ describe("handleOrchestratorTurnSettled", () => {
     // The Stop button: the run is done.
     expect(mockClearActiveRun).toHaveBeenCalledWith("conv-1", "row-1");
     expect(mockNotifyRunActive).toHaveBeenCalledWith("conv-1", false);
+  });
+
+  it("keeps strut's reference entries on the reply row as they came, with the row's workspace", async () => {
+    const plan = { id: "plan", kind: "markdown", title: "Plan", url: "/jobs/j-1/files/plan.md", hash: "later-field" };
+    const shot = { id: "shot", kind: "image", title: "Shot", peer: "web", via: "billing", job: "peer/j-7", path: "a.png" };
+    const app = { id: "ui", kind: "app", title: "Bench", peer: "web", app: { name: "bench" } };
+    const raw = [
+      plan,
+      shot,
+      app,
+      { id: "gone", kind: "markdown", title: "Gone", error: "not found" },
+      { id: "tree", kind: "json", title: "Tree", content: { focus: "x" } },
+    ];
+    mockReadArtifacts.mockResolvedValue({ ok: true, artifacts: [], raw });
+    await handleOrchestratorTurnSettled(row());
+    expect(mockWorkspace).toHaveBeenCalledWith({ where: { id: "ws-1" }, select: { slug: true } });
+    expect(written()[0].strut).toEqual({ workspace: "acme", artifacts: [plan, shot, app] });
+  });
+
+  it("a reply with no reference entries carries no strut", async () => {
+    mockReadArtifacts.mockResolvedValue({ ok: true, artifacts: [], raw: [{ id: "t", title: "T", content: "x" }] });
+    await handleOrchestratorTurnSettled(row());
+    expect("strut" in written()[0]).toBe(false);
+    expect(mockWorkspace).not.toHaveBeenCalled();
   });
 
   it("a job the turn launched gets its row minted and rides the reply as source.jobs", async () => {
