@@ -5,6 +5,7 @@ import { ChatMessage } from "@/components/dashboard/DashboardChat/ChatMessage";
 import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
 import { StreamingMessage } from "@/components/streaming";
 import { db } from "@/lib/db";
+import { validateUserBelongsToOrg } from "@/services/workspace";
 import { SharedConversationData } from "@/types/shared-conversation";
 import type { StreamTimelineItem } from "@/types/streaming";
 import { Badge } from "@/components/ui/badge";
@@ -49,11 +50,9 @@ async function getOrgSharedConversation(
     }
 
     // Check if user has access to this org
-    const token = await db.sourceControlToken.findFirst({
-      where: { userId, sourceControlOrgId: org.id },
-    });
+    const isOrgMember = await validateUserBelongsToOrg(githubLogin, userId);
 
-    if (!token) {
+    if (!isOrgMember) {
       return {
         error: "Access denied. You must be an organization member to view shared conversations.",
         status: 403,
