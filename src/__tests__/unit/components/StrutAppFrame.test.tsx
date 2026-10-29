@@ -10,7 +10,7 @@
  *
  * Asserts:
  *   - the document is read from the document route and framed as `srcdoc`
- *     — never a blob URL, never `src` — in `sandbox="allow-scripts"` only;
+ *     — never a blob URL, never `src` — in `sandbox="allow-scripts allow-downloads"`, with the microphone;
  *   - `ui/initialize` is answered with the theme and the style variables;
  *   - a `tools/call` from the page reaches the RELAY route as it was sent,
  *     and its result comes back to the page;
@@ -114,7 +114,7 @@ afterEach(() => {
 });
 
 describe("StrutAppFrame", () => {
-  test("frames the document from the document route as srcdoc — no blob, no src — sandboxed to scripts only", async () => {
+  test("frames the document from the document route as srcdoc — no blob, no src — sandboxed to scripts and downloads, with the microphone", async () => {
     // jsdom has no blob URLs; a stub that would see one being made.
     const createObjectURL = vi.fn(() => "blob:http://localhost/x");
     URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
@@ -123,7 +123,8 @@ describe("StrutAppFrame", () => {
     expect(mockFetch.mock.calls[0][0]).toBe(DOCUMENT_URL);
     expect(mockFetch.mock.calls[0][1]).toMatchObject({ credentials: "include", cache: "no-cache" });
     expect(frame.getAttribute("sandbox")).toBe(STRUT_APP_FRAME_SANDBOX);
-    expect(STRUT_APP_FRAME_SANDBOX).toBe("allow-scripts");
+    expect(STRUT_APP_FRAME_SANDBOX).toBe("allow-scripts allow-downloads");
+    expect(frame.getAttribute("allow")).toBe("microphone");
     expect(frame.getAttribute("sandbox")).not.toContain("allow-same-origin");
     expect(frame.hasAttribute("src")).toBe(false);
     expect(createObjectURL).not.toHaveBeenCalled();
