@@ -88,6 +88,8 @@ export async function persistCanvasUserMessage(args: {
   turnId: string;
   content: string;
   attachments?: StoredAttachment[];
+  /** Where the message came from, on the row (a call's request: `CallRequestSource`). */
+  source?: StoredMessage["source"];
   workspaceSlugs: string[];
   isShared?: boolean;
 }): Promise<string> {
@@ -98,6 +100,7 @@ export async function persistCanvasUserMessage(args: {
     turnId,
     content,
     attachments,
+    source,
     workspaceSlugs,
     isShared = true,
   } = args;
@@ -108,6 +111,7 @@ export async function persistCanvasUserMessage(args: {
     content,
     timestamp: new Date().toISOString(),
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
+    ...(source ? { source } : {}),
   };
 
   if (existingRowId) {

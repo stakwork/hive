@@ -195,7 +195,11 @@ describe("the call endpoints", () => {
       expect(conversation).toMatchObject({ userId: owner.id, sourceControlOrgId: org.id, source: "org-canvas" });
       const rows = conversation!.messages as Array<{ role: string; content: string }>;
       expect(rows).toHaveLength(1);
-      expect(rows[0]).toMatchObject({ role: "user", content: "Alice: what are we working on?" });
+      expect(rows[0]).toMatchObject({
+        role: "user",
+        content: "Alice: what are we working on?",
+        source: { kind: "call_request", speaker: "Alice", via: "voice" },
+      });
 
       expect(mockLaunch).toHaveBeenCalledTimes(1);
       expect(mockLaunch).toHaveBeenCalledWith({
@@ -436,6 +440,32 @@ describe("the call endpoints", () => {
       const next = await (await messages(call("GET", `/api/calls/messages?since=${encodeURIComponent(page.cursor)}`))).json();
       expect(next.messages).toEqual([{ id: "orchestrator-run-3", kind: "error", text: "The turn did not complete: boom" }]);
       expect(Date.parse(next.cursor)).toBeGreaterThan(Date.parse(page.cursor));
+    });
+
+    it("requests=1 adds what was asked, with who asked, how and when, among Jamie's replies", async () => {
+      const { owner, workspace } = await createCall();
+      await say({ speaker: "Alice", text: "status?", source: "voice" });
+      const conversationId = (await conversationOf())!.id;
+      const ctx = { workspaceId: workspace.id, userId: owner.id, conversationId };
+      await landReply(ctx, "run-1", { outcome: "success", text: "All green." });
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-2", strutRunId: "s-2" });
+      await say({ speaker: "Bob", text: "and the deploy?", source: "chat" });
+      await landReply(ctx, "run-2", { outcome: "success", text: "Out an hour ago." });
+
+      const page = await (await messages(call("GET", "/api/calls/messages?requests=1"))).json();
+      const rows = (await conversationOf())!.messages as Array<{ id: string; timestamp: string }>;
+      const at = (id: string) => rows.find((r) => r.id === id)!.timestamp;
+      const [alice, bob] = rows.filter((r) => r.id.endsWith("-u")).map((r) => r.id);
+      expect(page.messages).toEqual([
+        { id: alice, kind: "request", text: "status?", speaker: "Alice", via: "voice", at: at(alice!) },
+        { id: "orchestrator-run-1", kind: "reply", text: "All green." },
+        { id: bob, kind: "request", text: "and the deploy?", speaker: "Bob", via: "chat", at: at(bob!) },
+        { id: "orchestrator-run-2", kind: "reply", text: "Out an hour ago." },
+      ]);
+
+      // Without it, Jamie's side alone, as the reply loop reads it.
+      const plain = await (await messages(call("GET", "/api/calls/messages"))).json();
+      expect(plain.messages.map((m: { id: string }) => m.id)).toEqual(["orchestrator-run-1", "orchestrator-run-2"]);
     });
 
     it("a long poll returns as soon as a reply lands", async () => {
