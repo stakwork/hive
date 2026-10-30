@@ -11,6 +11,9 @@ import { getBaseUrl } from "@/lib/utils";
  * for voice to post in the call's chat and say. Machine-to-machine, gated
  * like `/api/calls/turn`.
  *
+ * `requests=1` adds what was asked of Jamie on the call, with who asked:
+ * for the replay to someone who joins, who sees both sides.
+ *
  * A long poll: with `wait`, the request is held until something new lands
  * or the wait is over, so one loop for the whole call delivers a reply
  * twenty minutes later — a job's wake — like any other. It waits through a
@@ -47,6 +50,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: `wait must be 0–${MAX_WAIT_SECONDS} seconds` }, { status: 400 });
   }
   const deadline = Date.now() + Math.min(wait, MAX_WAIT_SECONDS) * 1000;
+  const requests = params.get("requests") === "1";
 
   // An artifact with no address of its own opens in the conversation in Hive.
   const base = getBaseUrl(request.headers.get("host"));
@@ -58,8 +62,11 @@ export async function GET(request: NextRequest) {
     if (!record.conversationId) record = (await peekCallRecord(callKey)) ?? record;
     if (record.conversationId) {
       const conversationUrl = `${base}/org/${encodeURIComponent(org?.githubLogin ?? "")}?chat=${encodeURIComponent(record.conversationId)}`;
-      const page = callMessagesSince(await conversationRows(record.conversationId), since, (ref) =>
-        callArtifactUrl(ref, { base, conversationUrl }),
+      const page = callMessagesSince(
+        await conversationRows(record.conversationId),
+        since,
+        (ref) => callArtifactUrl(ref, { base, conversationUrl }),
+        { requests },
       );
       if (page.messages.length > 0) return NextResponse.json(page);
     }
