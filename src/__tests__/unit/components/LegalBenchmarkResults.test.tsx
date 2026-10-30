@@ -109,10 +109,12 @@ vi.mock("@/components/legal/StakworkRunLink", () => ({
 }));
 
 const mockWorkspaceSlug = { value: "openlaw" };
+const mockWorkspaceAdmin = { value: false };
 
 vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: () => ({
     workspace: { id: "workspace-123", slug: mockWorkspaceSlug.value },
+    isAdmin: mockWorkspaceAdmin.value,
   }),
 }));
 
@@ -1898,7 +1900,43 @@ describe("LegalBenchmarkResults in a strut legal workspace", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockWorkspaceSlug.value = "openlaw-1";
+    mockWorkspaceAdmin.value = false;
     mockUseProposedFixes.mockReturnValue({ fixes: [], isLoading: false, error: null, refetch: vi.fn() });
+  });
+
+  it("links an admin to the run in the workspace's strut view", () => {
+    mockWorkspaceAdmin.value = true;
+    complete({ deliverables: [], strutRunId: "1792552899038", strutWorkflow: "harvey-lab-run" });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    const link = screen.getByTestId("strut-run-view-link");
+    expect(link).toHaveTextContent("Open in strut");
+    expect(link).toHaveAttribute("href", "/w/openlaw-1/strut?strut=wf%3Dharvey-lab-run%26run%3D1792552899038");
+  });
+
+  it("shows no strut link to a member the strut view would refuse", () => {
+    complete({ deliverables: [], strutRunId: "1792552899038", strutWorkflow: "harvey-lab-run" });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.queryByTestId("strut-run-view-link")).toBeNull();
+  });
+
+  it("links a failed run to strut, where its error is", () => {
+    mockWorkspaceAdmin.value = true;
+    mockUseLegalBenchmarkRun.mockReturnValue({
+      run: makeMockRun({
+        status: "failed",
+        errorMessage: "boom",
+        runnerRun: makeRunnerRow({
+          status: "FAILED",
+          result: { taskSlug: "banking/x", taskTitle: "Compliance", runner: "strut", strutRunId: "9", strutWorkflow: "harvey-lab-run" },
+        }),
+      }),
+      isLoading: false,
+      isStale: false,
+      refetch: vi.fn(),
+    });
+    render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
+    expect(screen.getByText("Run failed")).toBeInTheDocument();
+    expect(screen.getByTestId("strut-run-view-link")).toHaveAttribute("href", "/w/openlaw-1/strut?strut=wf%3Dharvey-lab-run%26run%3D9");
   });
 
   it("offers the deliverables and the shared sheet instead of a text output", () => {
