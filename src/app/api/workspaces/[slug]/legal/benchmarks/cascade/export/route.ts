@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveCascadeAccess } from "@/lib/legal-cascade/server";
 import { assembleCascadeExport } from "@/lib/legal-cascade/export/assemble";
-import {
-  assembleCascadeOfflineHtml,
-  CascadeBundleMissingError,
-} from "@/lib/legal-cascade/export/offline-html";
-import { buildContentDisposition } from "@/lib/run-report/export/content-disposition";
+import { CascadeBundleMissingError } from "@/lib/legal-cascade/export/offline-html";
+import { CASCADE_EXPORT_NO_STORE as NO_STORE, cascadeExportResponse } from "@/lib/legal-cascade/export/response";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 
@@ -18,7 +15,6 @@ export const maxDuration = 60;
 type RouteParams = { params: Promise<{ slug: string }> };
 
 const LOG_SERVICE = "legal-cascade/export";
-const NO_STORE = { "Cache-Control": "private, no-store" } as const;
 
 /**
  * GET /api/workspaces/[slug]/legal/benchmarks/cascade/export?runId=...
@@ -43,28 +39,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const payload = await assembleCascadeExport(access);
-    const filename = `run-trace-${access.runId}.html`;
-    const html = assembleCascadeOfflineHtml(payload, `Run trace · ${access.runId}`);
-    const bytes = Buffer.byteLength(html, "utf8");
-
-    logger.info("Cascade export built", LOG_SERVICE, {
-      runId: access.runId,
-      agents: payload.model.summary.agents,
-      peeks: Object.keys(payload.peeks).length,
-      skippedPeeks: payload.meta.skippedPeeks.length,
-      bytes,
-    });
-
-    return new NextResponse(html, {
-      status: 200,
-      headers: {
-        ...NO_STORE,
-        "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": buildContentDisposition(filename, filename),
-        "Content-Length": String(bytes),
-      },
-    });
+    return cascadeExportResponse(await assembleCascadeExport(access), LOG_SERVICE);
   } catch (error) {
     logger.error("Cascade export failed", LOG_SERVICE, { error: String(error) });
     // A document without its bundle is a blank page — refuse to serve one.

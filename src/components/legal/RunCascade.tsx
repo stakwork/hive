@@ -14,9 +14,10 @@ import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 // offline HTML export); re-exported here so existing imports keep working.
 export { CascadeTrace } from "@/components/legal/CascadeTrace";
 
-/** The single-file HTML snapshot of one run's trace. */
+/** The single-file HTML snapshot of one run's trace (a strut legal workspace's from its strut log). */
 export function cascadeExportUrl(workspaceSlug: string, runId: string): string {
-  return `/api/workspaces/${encodeURIComponent(workspaceSlug)}/legal/benchmarks/cascade/export?runId=${encodeURIComponent(runId)}`;
+  const base = isLegalStrutWorkspace(workspaceSlug) ? "legal/benchmarks/strut/cascade" : "legal/benchmarks/cascade";
+  return `/api/workspaces/${encodeURIComponent(workspaceSlug)}/${base}/export?runId=${encodeURIComponent(runId)}`;
 }
 
 // ── Pill + panel wired to the polling hook ───────────────────────────────────
@@ -83,8 +84,7 @@ export function BenchmarkRunCascade({ runId, runStatus }: BenchmarkRunCascadePro
           model={model}
           workspaceSlug={slug}
           headerAction={
-            // The HTML export reads stakgraph's sessions; a strut run has none there.
-            slug && !isLegalStrutWorkspace(slug) ? (
+            slug ? (
               <DownloadReportButton
                 exportUrl={cascadeExportUrl(slug, runId)}
                 label="Download HTML"

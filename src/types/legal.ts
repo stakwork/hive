@@ -28,6 +28,8 @@ export interface BenchmarkRunResult {
   runner?: "strut";
   /** strut lab run id (the run's identity when runner === "strut"; there is no Stakwork project). */
   strutRunId?: string;
+  /** The strut workflow the run ran (`harvey-lab-run`): with `strutRunId`, the strut view's deep link. */
+  strutWorkflow?: string;
   /** strut lab UI link for the run — rendered in place of the Stakwork admin link. */
   strutRunUrl?: string;
   /**
