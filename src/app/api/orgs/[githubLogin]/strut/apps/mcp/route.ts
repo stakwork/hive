@@ -18,7 +18,11 @@
  *     `step_run` by the app's grants, so code a model wrote must never
  *     reach anything else through Hive's credential. Strut checks the
  *     app's token (`step_run`'s `app` argument) and its grants itself.
- *  3. On `initialize` — the member opening the app — Hive also makes sure
+ *  3. ROLE FLOOR (`relayStepRefusal`): a `step_run` of `run/launch` or
+ *     `run/cancel` needs DEVELOPER or above, and a workspace's apps launch
+ *     at most 20 runs an hour — a JSON-RPC error the app shows, never
+ *     forwarded. Strut knows nothing of Hive roles; this is where they hold.
+ *  4. On `initialize` — the member opening the app — Hive also makes sure
  *     the swarm holds the member's standing delegation
  *     (`ensureStrutDelegation`, never throws), so what the app launches is
  *     billed to them as Hive's other strut launches are.
@@ -35,6 +39,7 @@ import {
   MAX_RELAY_BODY_BYTES,
   refusalResponse,
   relayRefusal,
+  relayStepRefusal,
   relayToStrutMcp,
 } from "@/services/strut-apps";
 
@@ -69,7 +74,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch {
     return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400 });
   }
-  const refusal = relayRefusal(message);
+  const refusal = relayRefusal(message) ?? (await relayStepRefusal(message, swarm));
   if (refusal) return refusalResponse(refusal);
 
   let actor: string;
