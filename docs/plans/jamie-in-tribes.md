@@ -171,17 +171,23 @@ device as it is.
      names, when it is this tribe's; else the one this mention started on an
      earlier try; else a new one;
    - refuse with 409 `busy` while that conversation has a turn live, as calls
-     do. Turns of different conversations run side by side. Jamie keeps the
-     refused mention, and offers it again once a reply lands, or every 15 s.
-     A 429 or 5xx is a retry the same way; any other 4xx is dropped;
+     do. Turns of different conversations run side by side. Jamie holds
+     every new message of that conversation's thread, and offers them again
+     once a reply lands, or every 15 s, as ONE mention: the newest as the
+     mention, and the ones that waited before it as `earlier` (`[{ id,
+     alias, owner, time, text }]`, oldest first; at most 20, and 20k chars
+     with the newest, else a 400). A 429 or 5xx is a retry the same way; any
+     other 4xx is dropped;
    - save `"<alias>: <text>"` on that conversation
-     (`persistCanvasUserMessage`). `recent` goes with it as a text
+     (`persistCanvasUserMessage`), one line per message of a burst, the
+     newest last, in one user row. `recent` goes with it as a text
      attachment, as calls attach their transcript excerpt;
    - `launchOrchestratorTurn({ …, tribe: { name } })`. A tribe line goes
      beside `ORCHESTRATOR_CALL_LINE`: *"Asked in the Sphinx tribe #<name> by
      <alias>. Your reply is posted there, where not everyone is in this org."*
    - record the mention's `id` against the turn, so the reply threads under
-     it.
+     it, and each `earlier` id as taken too (`folded`), so a retry of any of
+     them is a duplicate; one a turn already took is left out of the burst.
 
 ### The reply
 
