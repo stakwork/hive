@@ -351,6 +351,10 @@ model TribeMention {
   // The message id tribe members hold.
   mentionId   String    @map("mention_id")
   runId       String    @map("run_id")
+  // A message that waited while its conversation was busy, folded into the
+  // turn of the newest one (`earlier`): taken, but the reply threads under
+  // the newest.
+  folded      Boolean   @default(false)
   createdAt   DateTime  @default(now()) @map("created_at")
   link        TribeLink @relation(fields: [tribeLinkId], references: [id], onDelete: Cascade)
 

@@ -173,7 +173,8 @@ export async function pendingTribeMessages(
   }));
   const mentions = runs.size
     ? await db.tribeMention.findMany({
-        where: { tribeLinkId: link.id, runId: { in: [...runs] } },
+        // A burst's earlier messages share its turn: the reply threads under the newest.
+        where: { tribeLinkId: link.id, runId: { in: [...runs] }, folded: false },
         select: { runId: true, mentionId: true },
       })
     : [];
