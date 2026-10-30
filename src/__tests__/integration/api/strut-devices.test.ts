@@ -3,11 +3,12 @@
  * `services/strut-device-peers.ts`, `/api/strut-devices/*`): a device starts
  * a pairing, the person approves it, the device's poll collects its
  * credential and one peer record per org the person belongs to — each with
- * a `lab:peer` token minted for the person (`sub` = their strut actor) on
- * that org's central strut — then renews with the credential until the
- * device is revoked. The swarms' mcps are a stubbed `fetch`.
+ * a `lab:peer` token for the person (`sub` = their strut actor), signed with
+ * that org's central swarm's key — then renews with the credential until the
+ * device is revoked. No swarm is asked anything: `fetch` throws.
  */
 import { describe, test, expect, vi, beforeEach } from "vitest";
+import jwt from "jsonwebtoken";
 import { POST as START } from "@/app/api/strut-devices/pair/route";
 import { POST as POLL } from "@/app/api/strut-devices/pair/token/route";
 import { GET as LOOKUP, POST as DECIDE } from "@/app/api/strut-devices/pair/approve/route";
@@ -49,16 +50,22 @@ const session = (user: { id: string; email: string | null; name: string | null }
   name: user.name ?? "",
 });
 
-/** Every mcp mints a `lab:peer` token echoing the sub it was asked for. */
-const mockFetch = vi.fn(async (url: string, init?: RequestInit) => {
-  const mint = url.match(/^https:\/\/([\w-]+)\.sphinx\.chat:3355\/mint-token$/);
-  if (!mint) throw new Error(`unexpected fetch ${url}`);
-  const body = JSON.parse(String(init?.body));
-  return new Response(
-    JSON.stringify({ token: `tok-${mint[1]}-${body.sub}`, expires_in: body.expires_in, scope: body.scope, sub: body.sub }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  );
+/** Pairing and renewal reach no swarm: a request to one fails the test. */
+const mockFetch = vi.fn(async (url: string) => {
+  throw new Error(`unexpected fetch ${url}`);
 });
+
+/**
+ * A peer token as the swarm's mcp checks it (stakgraph `verifyApiToken`):
+ * an HS256 JWT under the swarm's API key, `lab:peer` with the person's
+ * `sub`, good for a week.
+ */
+function expectPersonToken(token: string, swarmKey: string, actor: string) {
+  const payload = jwt.verify(token, swarmKey, { algorithms: ["HS256"] }) as jwt.JwtPayload;
+  expect(payload).toMatchObject({ scope: "lab:peer", sub: actor });
+  expect(payload.exp! - payload.iat!).toBe(7 * 24 * 3600);
+  expect(() => jwt.verify(token, "another-swarm-key")).toThrow();
+}
 
 async function startPairing(name = "Evan's MacBook") {
   const res = await START(createPostRequest(`${BASE}/pair`, { name }));
@@ -149,25 +156,17 @@ describe("strut device pairing", () => {
     expect(byId[homeA.slug]).toEqual({
       id: homeA.slug,
       baseUrl: "https://acme-central.sphinx.chat:3355/lab",
-      token: `tok-acme-central-${actor}`,
+      token: expect.any(String),
       label: "acme Org",
       description: `Workspaces: ${homeA.slug}, ${spokeA.slug}.`,
       repos: ["https://github.com/acme/hive", "https://github.com/acme/web"],
     });
-    expect(byId[homeB.slug]).toMatchObject({ baseUrl: "https://globex-central.sphinx.chat:3355/lab", token: `tok-globex-central-${actor}`, label: "globex Org" });
+    expect(byId[homeB.slug]).toMatchObject({ baseUrl: "https://globex-central.sphinx.chat:3355/lab", label: "globex Org" });
     expect(byId[homeB.slug]).not.toHaveProperty("repos");
-    // Each token was minted on that org's central mcp, with its own key, for alice, for a week.
-    const mints = mockFetch.mock.calls.map(([url, init]) => ({
-      url,
-      key: (init?.headers as Record<string, string>)["x-api-token"],
-      body: JSON.parse(String(init?.body)),
-    }));
-    expect(mints).toHaveLength(2);
-    expect(mints).toContainEqual({
-      url: "https://acme-central.sphinx.chat:3355/mint-token",
-      key: "acme-central-key",
-      body: { scope: "lab:peer", sub: actor, expires_in: "7d" },
-    });
+    // Each token is signed with that org's central swarm's own key, for alice, for a week — no swarm asked.
+    expectPersonToken(byId[homeA.slug].token, "acme-central-key", actor);
+    expectPersonToken(byId[homeB.slug].token, "globex-central-key", actor);
+    expect(mockFetch).not.toHaveBeenCalled();
 
     // 6. The code is spent: the credential is handed out once.
     expect(await (await poll(started.deviceCode)).json()).toEqual({ error: "expired_token" });
@@ -182,7 +181,8 @@ describe("strut device pairing", () => {
     const fresh = await renewed.json();
     expect(fresh.actor).toBe(actor);
     expect(fresh.peers.map((p: { id: string }) => p.id)).toEqual([homeA.slug]);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expectPersonToken(fresh.peers[0].token, "acme-central-key", actor);
+    expect(mockFetch).not.toHaveBeenCalled();
     expect((await db.strutDevice.findUniqueOrThrow({ where: { id: device.id } })).lastUsedAt).not.toBeNull();
 
     // 8. The settings list, then revoke: the renewal stops.
@@ -223,18 +223,21 @@ describe("strut device pairing", () => {
     expect(await db.strutDevicePairing.findUnique({ where: { userCode: started.userCode } })).toBeNull();
   });
 
-  test("an org whose mcp mints without the person's sub gets no record — the device is still paired", async () => {
+  test("an org with no usable swarm gets no record — the device is still paired, the other orgs get theirs", async () => {
     const erin = await createTestUser({ name: "Erin", withGitHubAuth: true, githubUsername: "erin" });
-    const org = await createOrg("oldswarm");
-    await orgWorkspace(org.id, erin.id, "old-central", { isDefault: true });
-    mockFetch.mockImplementationOnce(async () =>
-      new Response(JSON.stringify({ token: "strut-held", expires_in: "7d", scope: "lab:peer" }), { status: 200 }),
-    );
+    const actor = `erin-${erin.id}`;
+    const broken = await createOrg("nourl");
+    const brokenHome = await createTestWorkspace({ ownerId: erin.id, sourceControlOrgId: broken.id, slug: `nourl-${generateUniqueId()}`.slice(0, 40) });
+    await createTestSwarm({ workspaceId: brokenHome.id, name: `nourl-${generateUniqueId()}`, swarmUrl: "", swarmApiKey: "nourl-key", status: "ACTIVE" });
+    const fine = await createOrg("fine");
+    const fineHome = await orgWorkspace(fine.id, erin.id, "fine-central", { isDefault: true });
     const started = await startPairing("Laptop");
     await decide(erin, started.userCode, "approve");
     const paired = await (await poll(started.deviceCode)).json();
     expect(paired.credential).toMatch(/^hivedev_/);
-    expect(paired.peers).toEqual([]);
-    expect(paired.errors).toEqual([{ org: org.githubLogin, error: "this swarm's mcp cannot mint a person's lab:peer token yet" }]);
+    expect(paired.peers.map((p: { id: string }) => p.id)).toEqual([fineHome.slug]);
+    expectPersonToken(paired.peers[0].token, "fine-central-key", actor);
+    expect(paired.errors).toEqual([{ org: broken.githubLogin, error: "The workspace has no swarm configured, so it has no strut." }]);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });
