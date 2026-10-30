@@ -16,7 +16,11 @@
  * of the job's work. The job row's cards but Hive's own (its claims and its
  * trace) are added to `artifacts`, its strut entries to `strut`.
  *
- * Everything else is left out: user rows, launch markers (the chat's
+ * Asked for (`requests`, the replay to someone who joins), the requests
+ * too: a user row a call's turn wrote (`source.kind: "call_request"`) →
+ * `request`, with who said it, how (`voice` | `chat`) and when.
+ *
+ * Everything else is left out: other user rows, launch markers (the chat's
  * working card), job rows (a job's card; its wake reply is what is said,
  * with the job's deliverables), proposal decisions, and silent replies. Fields come from the row's
  * `source`, never its rendered text: `ask` is the question verbatim.
@@ -34,7 +38,7 @@ import {
 } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { orchestratorAskLine, parseStrutArtifactEnvelope, type StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
 
-export type CallMessageKind = "reply" | "proposal" | "error";
+export type CallMessageKind = "reply" | "proposal" | "error" | "request";
 
 export interface CallMessage {
   id: string;
@@ -51,6 +55,21 @@ export interface CallMessage {
    * workspace's strut (Peel). `artifacts` above is the same list as links.
    */
   strut?: StrutArtifactEnvelope;
+  /** A request's speaker, as the call shows them. */
+  speaker?: string;
+  /** How a request reached Jamie: said aloud, or typed in the call's chat. */
+  via?: CallRequestVia;
+  /** When a request was taken, ISO. */
+  at?: string;
+}
+
+export type CallRequestVia = "voice" | "chat";
+
+/** The marker on the user row a call's turn writes (`/api/calls/turn`): who asked, and how. */
+export interface CallRequestSource {
+  kind: "call_request";
+  speaker: string;
+  via: CallRequestVia;
 }
 
 export interface CallMessagesPage {
@@ -65,7 +84,7 @@ type Row = {
   timestamp?: unknown;
   artifacts?: unknown;
   strut?: unknown;
-  source?: { kind?: unknown; status?: unknown; ask?: unknown; title?: unknown } | null;
+  source?: { kind?: unknown; status?: unknown; ask?: unknown; title?: unknown; speaker?: unknown; via?: unknown } | null;
 };
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -152,15 +171,34 @@ export function callMessageOf(row: Row, artifactUrl: (ref: ArtifactRef) => strin
   };
 }
 
+/** A request a call's turn wrote, as voice replays it; null for any other row. Its text without the `"<speaker>: "` the row is saved with. */
+export function callRequestOf(row: Row): CallMessage | null {
+  if (row.role !== "user" || typeof row.id !== "string") return null;
+  const source = row.source ?? {};
+  const speaker = str(source.speaker);
+  if (source.kind !== "call_request" || !speaker || (source.via !== "voice" && source.via !== "chat")) return null;
+  const content = str(row.content);
+  const prefix = `${speaker}: `;
+  return {
+    id: row.id,
+    kind: "request",
+    text: (content.startsWith(prefix) ? content.slice(prefix.length) : content).trim(),
+    speaker,
+    via: source.via,
+    at: str(row.timestamp),
+  };
+}
+
 /**
  * The messages that landed after `since` (null: from the start), oldest
  * first, and the cursor to ask from next — `since` itself when nothing new
- * landed.
+ * landed. `requests` adds the call's requests among them.
  */
 export function callMessagesSince(
   rows: unknown[],
   since: string | null,
   artifactUrl: (ref: ArtifactRef) => string,
+  opts: { requests?: boolean } = {},
 ): CallMessagesPage {
   const after = since ? Date.parse(since) : Number.NEGATIVE_INFINITY;
   let cursor = since;
@@ -176,7 +214,7 @@ export function callMessagesSince(
     const row = raw as Row;
     const at = Date.parse(str(row.timestamp));
     if (!(at > after)) continue;
-    const said = callMessageOf(row, artifactUrl);
+    const said = callMessageOf(row, artifactUrl) ?? (opts.requests ? callRequestOf(row) : null);
     if (!said) continue;
     const runId = sourceOf(row)?.runId;
     const jobRow = typeof runId === "string" ? wakes.get(runId) : undefined;

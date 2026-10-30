@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
+import type { CallRequestSource } from "@/lib/calls/callMessages";
 import { peekCallRecord, setCallConversation, type CallRecord } from "@/lib/calls/callRecord";
 import { authorizeCallRequest } from "@/lib/calls/callRequest";
 import { LockAcquireTimeoutError, withLock } from "@/lib/locks/redis-lock";
@@ -21,7 +22,9 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  *
  * The message is saved on the call's conversation as `"<speaker>: <text>"`
  * — the first turn creates it and records it on the call — with the
- * transcript excerpt, when there is one, as an ordinary chat attachment.
+ * transcript excerpt, when there is one, as an ordinary chat attachment,
+ * and who asked and how on the row (`CallRequestSource`), for the replay
+ * to someone who joins (`/api/calls/messages?requests=1`).
  * Then one orchestrator turn is launched as the person who started the
  * call, with the call line on its context. The answer is at once: the reply
  * lands as rows, which voice reads from `/api/calls/messages`.
@@ -98,6 +101,7 @@ async function takeTurn(
 
   const attachments = body.transcript ? [await storeTranscript(access.workspace.id, body.transcript)] : [];
   const message = `${body.speaker}: ${body.text}`;
+  const source: CallRequestSource = { kind: "call_request", speaker: body.speaker, via: body.source };
   const conversationId = await persistCanvasUserMessage({
     orgId,
     userId,
@@ -105,6 +109,7 @@ async function takeTurn(
     turnId: randomUUID(),
     content: message,
     attachments,
+    source,
     workspaceSlugs: [workspaceSlug],
   });
   if (!record.conversationId) await setCallConversation(callKey, record, conversationId);
