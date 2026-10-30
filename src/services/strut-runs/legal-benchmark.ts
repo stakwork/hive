@@ -163,7 +163,7 @@ export function toLegalRunResult(row: StrutRunRow): BenchmarkRunResult {
     taskSlug,
     taskTitle: str(input.task_title) ?? taskSlug,
     runner: "strut",
-    ...(row.strutRunId ? { strutRunId: row.strutRunId } : {}),
+    ...(row.strutRunId ? { strutRunId: row.strutRunId, strutWorkflow: row.workflow } : {}),
     ...(errorMessage ? { errorMessage } : {}),
     // The Runs tab's Report cell reads this as "a report is on its way".
     ...(row.status === StrutRunStatus.PENDING ? { generateRunReport: true } : {}),

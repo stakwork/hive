@@ -24,6 +24,7 @@ import {
 } from "../fixtures";
 import type { CascadeSession, CascadeTurn, RunCascadeModel } from "../types";
 import { prefetchNodePeeks } from "@/lib/run-report/export/peek-prefetch";
+import type { WorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
 import type { NodePeek } from "@/components/run-report/NodePeek";
 import type { CascadeExportPayload } from "./payload";
 
@@ -35,7 +36,8 @@ export const CASCADE_EXPORT_PEEK_BUDGET_MS = 20_000;
 /** Turn pages per session — a 1000-turn page each, so 25 is ample. */
 const MAX_TURN_PAGES = 25;
 
-interface SessionSource {
+/** Where a trace's sessions come from: stakgraph's sessions API, the mocks, or a strut run's log. */
+export interface SessionSource {
   listSessions(): Promise<{ identifier: string | null; sessions: CascadeSession[] }>;
   descendantsOf(session: CascadeSession): Promise<CascadeSession[]>;
   turnsPage(sessionId: string, after: number): Promise<CascadeTurn[] | null>;
@@ -111,8 +113,28 @@ export async function assembleCascadeExport(
   access: CascadeAccess,
   now: () => Date = () => new Date(),
 ): Promise<CascadeExportPayload> {
-  const source = access.useMocks ? mockSource(access) : liveSource(access);
+  return assembleCascadeExportFrom(
+    access.useMocks ? mockSource(access) : liveSource(access),
+    {
+      runId: access.runId,
+      peekAccess: access.useMocks ? null : { swarmName: access.swarmName, swarmApiKey: access.apiKey },
+    },
+    now,
+  );
+}
 
+export interface CascadeExportOptions {
+  /** The hive run id the export is named for. */
+  runId: string;
+  /** Swarm credentials for the Concept peeks; null captures none. */
+  peekAccess: Pick<WorkspaceSwarmAccess, "swarmName" | "swarmApiKey"> | null;
+}
+
+export async function assembleCascadeExportFrom(
+  source: SessionSource,
+  { runId, peekAccess }: CascadeExportOptions,
+  now: () => Date = () => new Date(),
+): Promise<CascadeExportPayload> {
   const { identifier, sessions: tops } = await source.listSessions();
 
   const byId = new Map<string, CascadeSession>();
@@ -135,12 +157,11 @@ export async function assembleCascadeExport(
   const refIds = collectPeekRefIds(model);
   const peeks: Record<string, NodePeek> = {};
   let skippedPeeks: string[] = [];
-  if (refIds.length > 0 && !access.useMocks) {
-    const result = await prefetchNodePeeks(
-      refIds,
-      { swarmName: access.swarmName, swarmApiKey: access.apiKey },
-      { maxIds: CASCADE_EXPORT_MAX_PEEKS, budgetMs: CASCADE_EXPORT_PEEK_BUDGET_MS },
-    );
+  if (refIds.length > 0 && peekAccess) {
+    const result = await prefetchNodePeeks(refIds, peekAccess, {
+      maxIds: CASCADE_EXPORT_MAX_PEEKS,
+      budgetMs: CASCADE_EXPORT_PEEK_BUDGET_MS,
+    });
     for (const [id, peek] of result.peeks) peeks[id] = peek;
     skippedPeeks = result.skipped;
   }
@@ -149,7 +170,7 @@ export async function assembleCascadeExport(
     model,
     peeks,
     meta: {
-      runId: access.runId,
+      runId,
       identifier,
       exportedAt: now().toISOString(),
       skippedPeeks,

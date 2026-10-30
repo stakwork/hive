@@ -43,6 +43,7 @@ import { LegalBenchmarkResults } from "@/components/legal/LegalBenchmarkResults"
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
 import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
 import { HillClimbChart } from "@/components/legal/HillClimbChart";
+import { StrutRunViewLink, useCanOpenStrutView } from "@/components/legal/StrutRunViewLink";
 import { isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 import { WorkflowStatus } from "@prisma/client";
 import type { EvalTriggerOutput } from "@/lib/harvey-lab/eval-normalizers";
@@ -214,6 +215,9 @@ export function BenchmarkRunsHistory({
   // A strut legal workspace: manual `harvey-lab-run` runs only — no recursion,
   // no report bundles, no Stakwork projects, and the workflow scores itself.
   const strut = isLegalStrutWorkspace(workspaceSlug);
+  // The strut twin of the super-admin Stakwork column: each run in the
+  // workspace's strut view, for those the view lets in.
+  const strutColumn = useCanOpenStrutView() && strut;
 
   // When a runList prop is supplied, pass undefined to the hook so it never
   // fetches, polls, or binds Pusher — all state comes from the prop.
@@ -557,8 +561,8 @@ export function BenchmarkRunsHistory({
 
   // colSpan: Task + Type + Started + Runner Status + Pass + Fail + Contested +
   // Disputed + Total + Report + (Stakwork if super admin). Strut: no Type or
-  // Stakwork.
-  const colSpan = strut ? 9 : isSuperAdmin ? 11 : 10;
+  // Stakwork, and Strut for an owner or admin.
+  const colSpan = strut ? (strutColumn ? 10 : 9) : isSuperAdmin ? 11 : 10;
 
   return (
     <div className="space-y-3">
@@ -666,6 +670,9 @@ export function BenchmarkRunsHistory({
               {isSuperAdmin && !strut && (
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Stakwork</th>
               )}
+              {strutColumn && (
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Strut</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -770,6 +777,11 @@ export function BenchmarkRunsHistory({
                           <ExternalLink className="h-3 w-3" />
                         </a>
                       )}
+                    </td>
+                  )}
+                  {strutColumn && (
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <StrutRunViewLink strutRunId={run.strutRunId} workflow={run.strutWorkflow} iconOnly />
                     </td>
                   )}
                 </tr>

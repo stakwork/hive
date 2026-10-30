@@ -11,7 +11,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { StrutRunStatus } from "@prisma/client";
-import { authorizeBenchmark } from "@/lib/benchmarks/access";
+import { authorizeBenchmark, type BenchmarkMember } from "@/lib/benchmarks/access";
+import type { SessionSource } from "@/lib/legal-cascade/export/assemble";
 import {
   buildStrutTrace,
   descendantsOf,
@@ -109,16 +110,44 @@ export async function strutTraceTurns(
   };
 }
 
+/** strut did not answer for the run's log. */
+export class StrutTraceUnavailableError extends Error {
+  constructor() {
+    super("Could not read the run from strut");
+  }
+}
+
+/** The run's whole trace for the offline HTML export, read through the same cache as the live panel. */
+export function strutTraceExportSource(row: StrutRunRow): SessionSource {
+  return {
+    listSessions: async () => {
+      const sessions = await strutTraceSessions(row);
+      if (!sessions) throw new StrutTraceUnavailableError();
+      return { identifier: row.strutRunId, sessions };
+    },
+    descendantsOf: async (session) => (await strutTraceSessionDetail(row, session.id))?.descendants ?? [],
+    turnsPage: async (sessionId, after) => (await strutTraceTurns(row, sessionId, after))?.turns ?? null,
+  };
+}
+
 /** The routes' gate: the `harvey-lab` benchmark in this workspace, and the run by its hive id. */
-export async function resolveStrutTraceRow(
+export async function resolveStrutTraceAccess(
   request: NextRequest,
   slug: string,
-): Promise<StrutRunRow | NextResponse> {
+): Promise<{ row: StrutRunRow; member: BenchmarkMember } | NextResponse> {
   const auth = await authorizeBenchmark(request, slug, HARVEY_LAB_BENCHMARK_SLUG);
   if (auth instanceof NextResponse) return auth;
   const runId = request.nextUrl.searchParams.get("runId")?.trim();
   if (!runId) return NextResponse.json({ error: "runId query param is required" }, { status: 400 });
   const row = await findLegalStrutRunRow(auth.member.workspaceId, runId);
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return row;
+  return { row, member: auth.member };
+}
+
+export async function resolveStrutTraceRow(
+  request: NextRequest,
+  slug: string,
+): Promise<StrutRunRow | NextResponse> {
+  const access = await resolveStrutTraceAccess(request, slug);
+  return access instanceof NextResponse ? access : access.row;
 }
