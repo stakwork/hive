@@ -14,18 +14,32 @@
  *     `x-strut-actor`, the Streamable HTTP `Accept`, the protocol version
  *     header — and strut's answer streamed back as it came;
  *   - `initialize` also makes sure of the member's delegation; a swarm that
- *     refuses the key is a 502, not the member's 401; GET is 405.
+ *     refuses the key is a 502, not the member's 401; GET is 405;
+ *   - the ROLE FLOOR: `run/launch` and `run/cancel` (pinned or not) refused
+ *     below Developer with a JSON-RPC error, never forwarded; Developer and
+ *     up pass; reads pass for a Viewer; the 21st launch in a workspace's
+ *     hour is refused (cancels and other workspaces don't count), and a
+ *     limiter that is down lets the launch through.
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
-const { mockDecrypt, mockActor, mockEnsure } = vi.hoisted(() => ({
-  mockDecrypt: vi.fn((_f: string, v: string) => `dec(${v})`),
-  mockActor: vi.fn(async (userId: string) => `actor-of-${userId}`),
-  mockEnsure: vi.fn(async () => ({ status: "fresh" })),
-}));
+const { mockDecrypt, mockActor, mockEnsure, redisCounts, mockIncr } = vi.hoisted(() => {
+  const redisCounts = new Map<string, number>();
+  return {
+    mockDecrypt: vi.fn((_f: string, v: string) => `dec(${v})`),
+    mockActor: vi.fn(async (userId: string) => `actor-of-${userId}`),
+    mockEnsure: vi.fn(async () => ({ status: "fresh" })),
+    redisCounts,
+    mockIncr: vi.fn(async (key: string) => {
+      const n = (redisCounts.get(key) ?? 0) + 1;
+      redisCounts.set(key, n);
+      return n;
+    }),
+  };
+});
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -42,6 +56,8 @@ vi.mock("@/services/bifrost/strut-delegation", () => ({
   resolveStrutActor: mockActor,
   ensureStrutDelegation: mockEnsure,
 }));
+// The real checkRateLimit / checkRateLimitSafe over an in-memory counter.
+vi.mock("@/lib/redis", () => ({ redis: { incr: mockIncr, expire: vi.fn(async () => 1), ttl: vi.fn(async () => 1800) } }));
 
 const { db } = await import("@/lib/db");
 const { resolveAuthorizedOrgId } = await import("@/lib/auth/org-access");
@@ -71,8 +87,15 @@ function request(body: string, opts: { authed?: boolean; swarmId?: string; heade
   return req;
 }
 
-const call = (name: string, id = 7) =>
-  JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: { type: "run/list", config: { workflow: "wfbench-run" }, app: "app:bench@v2.tok" } } });
+const call = (name: string, id = 7, type = "run/list") =>
+  JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: { type, config: { workflow: "wfbench-run" }, app: "app:bench@v2.tok" } } });
+const step = (type: string, id = 7) => call("step_run", id, type);
+
+/** The caller holds `role` in the swarm's workspace, as validateWorkspaceAccess answers it. */
+function as(role: "VIEWER" | "STAKEHOLDER" | "DEVELOPER" | "PM" | "ADMIN" | "OWNER") {
+  const level = ["VIEWER", "STAKEHOLDER", "DEVELOPER", "PM", "ADMIN", "OWNER"].indexOf(role);
+  mockAccess.mockResolvedValue({ hasAccess: true, userRole: role, canRead: true, canWrite: level >= 2, canAdmin: level >= 4 });
+}
 
 const SWARM = {
   swarmUrl: "https://acme.sphinx.chat/api",
@@ -82,6 +105,7 @@ const SWARM = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  redisCounts.clear();
   vi.stubGlobal("fetch", mockFetch);
   mockResolveOrg.mockResolvedValue("org-1");
   mockSwarmFind.mockResolvedValue(SWARM);
@@ -201,5 +225,90 @@ describe("POST /api/orgs/[githubLogin]/strut/apps/mcp", () => {
     const res = await GET();
     expect(res.status).toBe(405);
     expect(res.headers.get("allow")).toBe("POST");
+  });
+});
+
+describe("POST /api/orgs/[githubLogin]/strut/apps/mcp — the role floor", () => {
+  it("refuses run/launch and run/cancel below Developer with a JSON-RPC error the app can show, and forwards nothing", async () => {
+    for (const role of ["VIEWER", "STAKEHOLDER"] as const) {
+      as(role);
+      for (const type of ["run/launch", "run/cancel", "run/launch@v1"]) {
+        const res = await POST(request(step(type, 21)), params);
+        expect(res.status, `${role} ${type}`).toBe(200);
+        const body = await res.json();
+        expect(body, `${role} ${type}`).toMatchObject({ jsonrpc: "2.0", id: 21, error: { code: -32003 } });
+        expect(body.error.message).toContain("Developer");
+      }
+    }
+    expect(mockFetch).not.toHaveBeenCalled();
+    // A refused launch never counts against the workspace's limit.
+    expect(mockIncr).not.toHaveBeenCalled();
+  });
+
+  it("a member Hive has no role for is refused a launch (fails closed)", async () => {
+    mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: false, canAdmin: false });
+    const body = await (await POST(request(step("run/launch")), params)).json();
+    expect(body).toMatchObject({ error: { code: -32003 } });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("lets a Developer and up launch and cancel, forwarding the call as it came", async () => {
+    for (const role of ["DEVELOPER", "PM", "ADMIN", "OWNER"] as const) {
+      as(role);
+      for (const type of ["run/launch", "run/cancel"]) {
+        mockFetch.mockClear();
+        const raw = step(type);
+        const res = await POST(request(raw), params);
+        expect(res.status, `${role} ${type}`).toBe(200);
+        expect(mockFetch, `${role} ${type}`).toHaveBeenCalledTimes(1);
+        expect((mockFetch.mock.calls[0] as [string, RequestInit])[1].body).toBe(raw);
+      }
+    }
+  });
+
+  it("leaves reads as they were: a Viewer's run/list, run/get, run/workflow and graph/find pass, uncounted", async () => {
+    as("VIEWER");
+    for (const type of ["run/list", "run/get", "run/workflow", "run/events", "graph/find"]) {
+      const res = await POST(request(step(type)), params);
+      expect(res.status, type).toBe(200);
+      expect(await res.text(), type).toContain('"result"');
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(5);
+    expect(mockIncr).not.toHaveBeenCalled();
+  });
+
+  it("refuses the 21st launch in a workspace's hour; cancels and other workspaces are not counted", async () => {
+    as("DEVELOPER");
+    for (let i = 0; i < 20; i++) {
+      const res = await POST(request(step("run/launch", i)), params);
+      expect(await res.text(), `launch ${i + 1}`).toContain('"result"');
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(20);
+
+    const res = await POST(request(step("run/launch", 99)), params);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ jsonrpc: "2.0", id: 99, error: { code: -32029 } });
+    expect(body.error.message).toContain("20 an hour");
+    expect(body.error.message).toContain("30 min");
+    expect(mockFetch).toHaveBeenCalledTimes(20);
+    expect(mockIncr).toHaveBeenCalledWith("strut-app:launch:ws-1");
+
+    // Stopping a run is never rate limited.
+    await POST(request(step("run/cancel")), params);
+    expect(mockFetch).toHaveBeenCalledTimes(21);
+
+    // Another workspace's apps have their own hour.
+    mockSwarmFind.mockResolvedValueOnce({ ...SWARM, workspace: { ...SWARM.workspace, id: "ws-2", slug: "other" } });
+    await POST(request(step("run/launch"), { swarmId: "swarm-2" }), params);
+    expect(mockFetch).toHaveBeenCalledTimes(22);
+  });
+
+  it("lets the launch through when the limiter is down (fails open)", async () => {
+    as("DEVELOPER");
+    mockIncr.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    const res = await POST(request(step("run/launch")), params);
+    expect(await res.text()).toContain('"result"');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
