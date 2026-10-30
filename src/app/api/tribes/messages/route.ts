@@ -33,6 +33,14 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  * back on every post from it. A retry of a mention lands on the
  * conversation it started.
  *
+ * A burst: while a conversation is busy, Jamie holds the new messages of
+ * its thread, then offers them as one — the newest as the mention, and the
+ * ones that waited before it as `earlier`, oldest first. They are one turn:
+ * one user row, each line `"<alias>: <text>"` in order, the newest last.
+ * Every id in it is recorded as taken, so a retry of any of them is a
+ * duplicate; one already taken is left out. The reply threads under the
+ * newest.
+ *
  * Answers, as the daemon reads them:
  *   202 { turn, thread }  taken
  *   200 { duplicate }  a mention already taken (a retry whose answer was lost)
@@ -47,6 +55,8 @@ export const maxDuration = 60;
 const MAX_ID_CHARS = 200;
 const MAX_ALIAS_CHARS = 200;
 const MAX_TEXT_CHARS = 20_000;
+/** The most messages a burst folds in before the newest (`earlier`). */
+const MAX_EARLIER = 20;
 /** The daemon sends 30 lines and 8 KB at most; this is the room for a wider one. */
 const MAX_RECENT_LINES = 200;
 const MAX_RECENT_BYTES = 64 * 1024;
@@ -54,6 +64,13 @@ const MAX_RECENT_BYTES = 64 * 1024;
 interface RecentLine {
   alias: string;
   time: string;
+  text: string;
+}
+
+/** A message that waited while its conversation was busy: folded into the newest one's turn. */
+interface Earlier {
+  id: string;
+  alias: string;
   text: string;
 }
 
@@ -65,6 +82,8 @@ interface Mention {
   alias: string;
   owner: boolean;
   text: string;
+  /** The burst's earlier messages, oldest first; empty for a message alone. */
+  earlier: Earlier[];
   recent: RecentLine[];
 }
 
@@ -84,6 +103,22 @@ function parseMention(raw: unknown): Mention | string {
   const text = typeof b.text === "string" ? b.text.trim() : "";
   if (!text) return "text is required";
   if (text.length > MAX_TEXT_CHARS) return `text is over ${MAX_TEXT_CHARS} characters`;
+  if (b.earlier !== undefined && b.earlier !== null && !Array.isArray(b.earlier)) return "earlier must be a list";
+  const rawEarlier = Array.isArray(b.earlier) ? b.earlier : [];
+  if (rawEarlier.length > MAX_EARLIER) return `earlier is over ${MAX_EARLIER} messages`;
+  const earlier: Earlier[] = [];
+  for (const [i, raw] of rawEarlier.entries()) {
+    const e = raw as Record<string, unknown> | null;
+    const eid = typeof e?.id === "string" ? e.id.trim() : "";
+    if (!eid || eid.length > MAX_ID_CHARS) return `earlier[${i}].id is required`;
+    const etext = typeof e?.text === "string" ? e.text.trim() : "";
+    if (!etext) return `earlier[${i}].text is required`;
+    if (eid === id || earlier.some((x) => x.id === eid)) continue;
+    earlier.push({ id: eid, alias: oneLine(e?.alias, MAX_ALIAS_CHARS) || "A member", text: etext });
+  }
+  if (earlier.reduce((n, e) => n + e.text.length, text.length) > MAX_TEXT_CHARS) {
+    return `text and earlier are over ${MAX_TEXT_CHARS} characters`;
+  }
   if (b.recent !== undefined && b.recent !== null && !Array.isArray(b.recent)) return "recent must be a list";
   const recent: RecentLine[] = [];
   for (const line of Array.isArray(b.recent) ? b.recent.slice(-MAX_RECENT_LINES) : []) {
@@ -101,6 +136,7 @@ function parseMention(raw: unknown): Mention | string {
     alias: oneLine(b.alias, MAX_ALIAS_CHARS) || "A member",
     owner: b.owner === true,
     text,
+    earlier,
     recent,
   };
 }
@@ -150,11 +186,15 @@ const repliedThread = (link: Pick<Link, "id">, mention: Mention): Promise<Thread
 async function takeTurn(request: NextRequest, link: Link, mention: Mention): Promise<NextResponse> {
   const { userId, workspaceSlug, orgId } = link;
 
-  const seen = await db.tribeMention.findUnique({
-    where: { tribeLinkId_mentionId: { tribeLinkId: link.id, mentionId: mention.id } },
-    select: { runId: true },
+  const ids = [mention.id, ...mention.earlier.map((e) => e.id)];
+  const taken = await db.tribeMention.findMany({
+    where: { tribeLinkId: link.id, mentionId: { in: ids } },
+    select: { mentionId: true, runId: true },
   });
+  const seen = taken.find((t) => t.mentionId === mention.id);
   if (seen) return NextResponse.json({ duplicate: true, turn: seen.runId });
+  // A message of the burst a turn already took is not said again.
+  const earlier = mention.earlier.filter((e) => !taken.some((t) => t.mentionId === e.id));
 
   // Turns run as the person who linked the tribe, so they must still be
   // able to use its workspace — a link outlives a membership change.
@@ -164,12 +204,13 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
     return NextResponse.json({ error: "The person who linked this tribe can no longer use its workspace." }, { status: 403 });
   }
 
-  // The conversation it replies in; else the one this mention started on an
-  // earlier try (strut refused the launch); else a new one, below.
+  // The conversation it replies in; else the one this mention (or one of
+  // its burst) started on an earlier try (strut refused the launch); else a
+  // new one, below.
   const thread =
     (await repliedThread(link, mention)) ??
-    (await db.tribeThread.findUnique({
-      where: { tribeLinkId_mentionId: { tribeLinkId: link.id, mentionId: mention.id } },
+    (await db.tribeThread.findFirst({
+      where: { tribeLinkId: link.id, mentionId: { in: ids } },
       select: { id: true, conversationId: true },
     }));
 
@@ -185,7 +226,7 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
   }
 
   const attachments = mention.recent.length > 0 ? [await storeRecent(access.workspace.id, mention.recent)] : [];
-  const message = `${mention.alias}: ${mention.text}`;
+  const message = [...earlier, mention].map((m) => `${m.alias}: ${m.text}`).join("\n");
   const conversationId = await persistCanvasUserMessage({
     orgId,
     userId,
@@ -216,7 +257,13 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
   });
   switch (launched.status) {
     case "started":
-      await db.tribeMention.create({ data: { tribeLinkId: link.id, mentionId: mention.id, runId: launched.runId } });
+      await db.tribeMention.createMany({
+        data: [
+          { tribeLinkId: link.id, mentionId: mention.id, runId: launched.runId },
+          ...earlier.map((e) => ({ tribeLinkId: link.id, mentionId: e.id, runId: launched.runId, folded: true })),
+        ],
+        skipDuplicates: true,
+      });
       console.log("[tribes/messages] launched", { conversationId, thread: threadId, turn: launched.runId });
       return NextResponse.json({ turn: launched.runId, thread: threadId }, { status: 202 });
     case "busy":
