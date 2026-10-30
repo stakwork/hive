@@ -416,12 +416,12 @@ describe("Jamie in Sphinx tribes", () => {
       expect(other.conversationId).not.toBe(first.conversationId);
       expect(mockLaunch.mock.calls[1][0].conversationId).toBe(other.conversationId);
 
-      // A reply to a post from the first conversation, with no @jamie in it.
+      // A mention replying to a post from the first conversation.
       mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-3", strutRunId: "s-3" });
-      const reply = await mention(aMention({ id: "msg-3", text: "and Thursday?", thread: first.id }));
+      const reply = await mention(aMention({ id: "msg-3", text: "@jamie and Thursday?", thread: first.id }));
       expect(reply.status).toBe(202);
       expect(await reply.json()).toEqual({ turn: "run-3", thread: first.id });
-      expect(mockLaunch.mock.calls[2][0]).toMatchObject({ conversationId: first.conversationId, message: "Alice: and Thursday?" });
+      expect(mockLaunch.mock.calls[2][0]).toMatchObject({ conversationId: first.conversationId, message: "Alice: @jamie and Thursday?" });
       expect((await conversation())!.messages).toHaveLength(2);
       expect(await threads()).toHaveLength(2);
     });
@@ -798,10 +798,10 @@ describe("Jamie in Sphinx tribes", () => {
       await ack([messages[0].id as string]);
       expect(await outbox()).toEqual([]);
 
-      // A reply to "First." continues that conversation; its answer threads under the reply.
+      // A mention replying to "First." continues that conversation; its answer threads under it.
       await new Promise((r) => setTimeout(r, 5));
       mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-3", strutRunId: "s-3" });
-      await mention(aMention({ id: "msg-3", text: "and then?", thread: a.id }));
+      await mention(aMention({ id: "msg-3", text: "@jamie and then?", thread: a.id }));
       await answered(scenario, "run-3", "Then Thursday.");
       expect((await outbox()).map((m) => [m.thread, m.text, m.replyTo])).toEqual([[a.id, "Then Thursday.", "msg-3"]]);
     });
