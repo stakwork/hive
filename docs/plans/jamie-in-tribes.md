@@ -89,10 +89,13 @@ tribe ◄── member ──► Jamie (wasm/daemon)          Hive ──► org
    alias, not their key.
 
 5. **One conversation per mention**, a `SharedConversation` of the
-   linker's, and so one orchestrator session: each `@jamie` starts one, and
-   a reply to one of Jamie's posts continues the conversation that post came
-   from (its `thread`), with no `@jamie` needed. The linker sees each one in
-   Hive. (Until 2026-10-29 a tribe had one conversation, so every mention
+   linker's, and so one orchestrator session: each `@jamie` starts one,
+   unless it replies to one of Jamie's posts or is posted in a thread one of
+   them went into; then it continues the conversation that post came from
+   (its `thread`). Every message to Jamie needs the `@jamie`, in its threads
+   too: one without it is the members talking among themselves, and Jamie
+   leaves it alone. (Until 2026-10-30 any message in Jamie's thread went to
+   it.) The linker sees each one in Hive. (Until 2026-10-29 a tribe had one conversation, so every mention
    landed in one session.)
 
 6. **Hive never calls Jamie.** Jamie makes every call, as voice does: it
@@ -172,7 +175,7 @@ device as it is.
      earlier try; else a new one;
    - refuse with 409 `busy` while that conversation has a turn live, as calls
      do. Turns of different conversations run side by side. Jamie holds
-     every new message of that conversation's thread, and offers them again
+     every new mention in that conversation's thread, and offers them again
      once a reply lands, or every 15 s, as ONE mention: the newest as the
      mention, and the ones that waited before it as `earlier` (`[{ id,
      alias, owner, time, text }]`, oldest first; at most 20, and 20k chars
@@ -204,8 +207,8 @@ device as it is.
    The `id` is Hive's, unique and stable, `<thread>:<row id>`, so an ack
    moves that conversation's cursor. `thread` is the conversation's key
    (the `TribeThread` id): Jamie keeps it against the message it posts, and
-   sends it back on `POST /api/tribes/messages` when a member replies to
-   that message.
+   sends it back on `POST /api/tribes/messages` with a mention that replies
+   to that message or is posted in its thread.
 2. **Jamie posts each one** into its tribe:
    - the text, then the deliverables as links;
    - `metadata`, as its JSON in the message's own `metadata` field:
