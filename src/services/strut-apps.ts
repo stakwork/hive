@@ -23,11 +23,19 @@
  *   tool set on `/mcp` (`ask_workflow_builder`, `run_workflow`, …) and strut
  *   can gate only `step_run` by the app's grants, so code a model wrote must
  *   never reach anything else through hive's credential.
+ * - **The role floor** (`relayStepRefusal`): strut records the actor but
+ *   knows nothing of Hive roles, so the relay is the only place they hold.
+ *   A `step_run` that launches or cancels a run needs DEVELOPER or above,
+ *   and a workspace's apps launch at most 20 runs an hour between them —
+ *   as Hive's own benchmark launches. Every other step passes on read access.
  */
 
 import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
+import { WorkspaceRole } from "@/lib/auth/roles";
+import { checkRateLimitSafe } from "@/lib/benchmarks/access";
+import { WORKSPACE_PERMISSION_LEVELS } from "@/lib/constants";
 import { EncryptionService } from "@/lib/encryption";
 import { isStrutAppName, isStrutAppRelease, isStrutAppVersion, STRUT_APP_DOCUMENT, type PinnedStrutApp } from "@/lib/strut-apps";
 import { strutLabBaseUrl } from "@/services/bifrost/strut-delegation";
@@ -50,6 +58,8 @@ export interface AppSwarm {
   orgId: string;
   /** The workspace the swarm is (one per swarm): where its pinned apps are tabs. */
   workspace: { id: string; slug: string; name: string };
+  /** The caller's role in `workspace` (null only if Hive could not say: then nothing role-gated passes). */
+  role: WorkspaceRole | null;
 }
 
 /** The org, the swarm in it, the member's read access to the swarm's workspace — then the key. */
@@ -88,6 +98,7 @@ export async function authorizeAppSwarm(
       swarmApiKey,
       orgId,
       workspace: { id: swarm.workspace.id, slug: swarm.workspace.slug, name: swarm.workspace.name },
+      role: access.userRole ?? null,
     },
   };
 }
@@ -204,6 +215,8 @@ export interface RelayRefusal {
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const idOf = (message: Record<string, unknown>): JsonRpcId =>
+  typeof message.id === "string" || typeof message.id === "number" ? message.id : null;
 
 /**
  * Why hive refuses to forward a JSON-RPC message from an app's frame, or
@@ -212,11 +225,11 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
  */
 export function relayRefusal(message: unknown): RelayRefusal | null {
   if (!isRecord(message) || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
-    const id = isRecord(message) && (typeof message.id === "string" || typeof message.id === "number") ? message.id : null;
+    const id = isRecord(message) ? idOf(message) : null;
     return { id, isRequest: id !== null, code: -32600, message: "Invalid Request: hive relays one JSON-RPC request or notification at a time" };
   }
   const isRequest = "id" in message;
-  const id: JsonRpcId = typeof message.id === "string" || typeof message.id === "number" ? message.id : null;
+  const id = idOf(message);
   if (!RELAY_METHODS.has(message.method)) {
     return { id, isRequest, code: -32601, message: `Method not found: hive relays only ${[...RELAY_METHODS].join(", ")} for a strut app` };
   }
@@ -227,6 +240,60 @@ export function relayRefusal(message: unknown): RelayRefusal | null {
     }
   }
   return null;
+}
+
+/** The `step_run` types that start a paid workflow run or stop one: DEVELOPER and up. */
+export const RELAY_LAUNCH_STEPS: ReadonlySet<string> = new Set(["run/launch", "run/cancel"]);
+/** `run/launch`es from one workspace's apps, all apps together, per window — as Hive's own benchmark launches. */
+export const RELAY_LAUNCH_RATE_LIMIT = 20;
+export const RELAY_LAUNCH_WINDOW_SECS = 60 * 60;
+/** Implementation-defined JSON-RPC codes (-32000…-32099) for the role floor, after HTTP's 403 and 429. */
+export const RELAY_FORBIDDEN = -32003;
+export const RELAY_RATE_LIMITED = -32029;
+
+/** Strut's step reference: `run/launch@v1` is a pinned `run/launch` (strut `src/step-ref.ts`). */
+const STEP_PIN = /^(.+)@([^@/]+)$/;
+
+/**
+ * The step type of a `tools/call` of `step_run`, bare as strut matches it
+ * (`run/launch@v1` → `run/launch`); null for any other message.
+ */
+export function relayStepType(message: unknown): string | null {
+  if (!isRecord(message) || message.method !== "tools/call" || !isRecord(message.params) || message.params.name !== RELAY_TOOL) return null;
+  const args = message.params.arguments;
+  const type = isRecord(args) ? args.type : undefined;
+  if (typeof type !== "string") return null;
+  return STEP_PIN.exec(type)?.[1] ?? type;
+}
+
+/**
+ * Why hive refuses a `step_run` the allowlist passed, by the member's role
+ * in the swarm's workspace, or null when it may pass. `run/launch` and
+ * `run/cancel` need DEVELOPER or above; a `run/launch` also counts against
+ * the workspace's limit (`checkRateLimitSafe`, which fails open). Every
+ * other step passes.
+ */
+export async function relayStepRefusal(
+  message: unknown,
+  swarm: Pick<AppSwarm, "role" | "workspace">,
+): Promise<RelayRefusal | null> {
+  const type = relayStepType(message);
+  if (!type || !RELAY_LAUNCH_STEPS.has(type) || !isRecord(message)) return null;
+  const isRequest = "id" in message;
+  const id = idOf(message);
+  if (!swarm.role || WORKSPACE_PERMISSION_LEVELS[swarm.role] < WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER]) {
+    return { id, isRequest, code: RELAY_FORBIDDEN, message: `Developer access required: ${type} needs the Developer role or above in this workspace` };
+  }
+  if (type !== "run/launch") return null;
+  const rate = await checkRateLimitSafe(`strut-app:launch:${swarm.workspace.id}`, RELAY_LAUNCH_RATE_LIMIT, RELAY_LAUNCH_WINDOW_SECS);
+  if (rate.allowed) return null;
+  const wait = rate.retryAfter ? `in ${Math.ceil(rate.retryAfter / 60)} min` : "later";
+  return {
+    id,
+    isRequest,
+    code: RELAY_RATE_LIMITED,
+    message: `Too many runs: this workspace's apps launch at most ${RELAY_LAUNCH_RATE_LIMIT} an hour. Try again ${wait}.`,
+  };
 }
 
 /** The answer hive gives for a refused message, in the Streamable HTTP shape the frame's MCP client reads. */
