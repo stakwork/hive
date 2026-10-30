@@ -42,8 +42,8 @@ export interface TribeOutboxPost {
   /** The tribe's pubkey. */
   tribe: string;
   /**
-   * The conversation it came from (its `TribeThread`): a message replying
-   * to it continues that conversation. None on a notice, which is no
+   * The conversation it came from (its `TribeThread`): a mention replying
+   * to it, or posted in its thread, continues that conversation. None on a notice, which is no
    * conversation's.
    */
   thread?: string;

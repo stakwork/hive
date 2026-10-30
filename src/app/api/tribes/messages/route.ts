@@ -27,13 +27,14 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  * which Jamie reads from `/api/tribes/outbox`, threads under it.
  *
  * Which conversation (`TribeThread`), and so which orchestrator session: a
- * message that replies to one of Jamie's posts carries that post's `thread`,
- * and continues that conversation. A mention with no `thread`, or one that
- * is not this tribe's, starts a new conversation, and its `thread` comes
- * back on every post from it. A retry of a mention lands on the
+ * mention that replies to one of Jamie's posts, or is posted in a thread one
+ * went into, carries that post's `thread`, and continues that conversation.
+ * Jamie hands on only mentions, in its threads too. A mention with no
+ * `thread`, or one that is not this tribe's, starts a new conversation, and
+ * its `thread` comes back on every post from it. A retry of a mention lands on the
  * conversation it started.
  *
- * A burst: while a conversation is busy, Jamie holds the new messages of
+ * A burst: while a conversation is busy, Jamie holds the new mentions in
  * its thread, then offers them as one — the newest as the mention, and the
  * ones that waited before it as `earlier`, oldest first. They are one turn:
  * one user row, each line `"<alias>: <text>"` in order, the newest last.
