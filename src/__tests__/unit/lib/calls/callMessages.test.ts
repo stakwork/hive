@@ -1,9 +1,9 @@
 /**
  * What voice reads off a call's conversation (`lib/calls/callMessages.ts`):
  * replies (wake replies too), proposals and failed turns, from the row's
- * `source`; never user rows, launch markers, job rows, decisions or silent
- * replies; a wake reply with its job's deliverables; the cursor is the last
- * delivered row's timestamp.
+ * `source`; the call's requests only when asked for; never other user rows,
+ * launch markers, job rows, decisions or silent replies; a wake reply with
+ * its job's deliverables; the cursor is the last delivered row's timestamp.
  */
 import { describe, expect, it } from "vitest";
 import type { ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
@@ -58,6 +58,36 @@ describe("callMessagesSince", () => {
       title: "Billing retries",
     });
     expect(page.cursor).toBe(T3);
+  });
+
+  it("asked for, the call's requests too: who, how and when, the text without the speaker", () => {
+    const request = {
+      id: "t2-u",
+      role: "user",
+      content: "Bob: and the billing page?",
+      timestamp: T1,
+      source: { kind: "call_request", speaker: "Bob", via: "chat" },
+    };
+    const withRequest = [rows[0], { ...rows[0], id: "t0-u", source: { kind: "call_request", speaker: "Alice", via: "voice" } }, request, ...rows.slice(1)];
+
+    expect(callMessagesSince(withRequest, null, url).messages.map((m) => m.kind)).not.toContain("request");
+    const page = callMessagesSince(withRequest, null, url, { requests: true });
+    expect(page.messages.map((m) => [m.id, m.kind])).toEqual([
+      ["t0-u", "request"],
+      ["t2-u", "request"],
+      ["orchestrator-r1", "reply"],
+      ["orchestrator-r1-proposal-p1", "proposal"],
+      ["orchestrator-r3", "reply"],
+    ]);
+    expect(page.messages[0]).toEqual({
+      id: "t0-u",
+      kind: "request",
+      text: "what are we working on?",
+      speaker: "Alice",
+      via: "voice",
+      at: T0,
+    });
+    expect(page.messages[1]).toMatchObject({ text: "and the billing page?", speaker: "Bob", via: "chat" });
   });
 
   it("after a cursor: only what landed later, and the cursor moves to it", () => {
