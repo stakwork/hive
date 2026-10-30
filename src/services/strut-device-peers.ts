@@ -8,9 +8,14 @@
  *
  * Per org, the central strut is the one Jamie's orchestrator turns run on
  * for this person (`resolveStrutTarget`, purpose `orchestrator`), and the
- * token is minted on that swarm's mcp:
- *
- *     POST {mcp}/mint-token  { scope: "lab:peer", sub: <actor>, expires_in: "7d" }
+ * token is signed HERE, with that swarm's API key, exactly as its mcp signs
+ * one at `POST {mcp}/mint-token { scope: "lab:peer", sub }`: an HS256 JWT
+ * `{ scope: "lab:peer", sub }` under the swarm's `API_TOKEN`, which the
+ * mint route only checks the caller holds (stakgraph `mcp/src/repo/events.ts`,
+ * `signApiToken`). So pairing and renewal ask no swarm anything: an org whose
+ * swarm is slow or down still gets its record, and its token works once the
+ * swarm is back — before, its mint timed out and the device dropped the org
+ * until the next day's renewal.
  *
  * `sub` is the person's strut actor (`resolveStrutActor`), the same id hive
  * sends as `x-strut-actor` on its own launches. Since stakgraph#1811 the lab
@@ -18,18 +23,18 @@
  * launch the `orchestrator` (`peer: person`), open sessions under `<actor>/…`
  * as they are (`<actor>/<peer id>` is the laptop's own thread with the org —
  * one more conversation beside the person's Jamie conversations, each on
- * its own session), and join the person's room at `/lab/rooms`.
- * A swarm whose mcp answers without the `sub` gets no record: a token
- * without one is a strut's, never a person's.
+ * its own session), and join the person's room at `/lab/rooms`. A swarm
+ * whose mcp predates #1811 reads the token as a strut's `peer`, which may
+ * not launch the orchestrator: narrower, never wider.
  *
  * The record is strut's `PUT /peers/:id` body plus its id — the
  * `STRUT_PEERS` entry shape — so the desktop writes each as it comes. The
  * cron's strut-to-strut records (`services/strut-peers.ts`) are untouched.
  */
 
+import jwt from "jsonwebtoken";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { STRUT_DELEGATION_HTTP_TIMEOUT_MS } from "@/services/bifrost/constants";
 import { resolveStrutActor } from "@/services/bifrost/strut-delegation";
 import { describeStrutTargetError, resolveStrutTarget, type StrutTarget } from "@/services/strut-target";
 
@@ -106,7 +111,7 @@ export async function strutPeersForUser(userId: string, now: Date = new Date()):
           return null;
         }
         const target = resolved.target;
-        const token = await mintPersonPeerToken(target, actor);
+        const token = signPersonPeerToken(target, actor);
         const repos = [...new Set(org.workspaces.flatMap((w) => w.repositories.map((r) => r.repositoryUrl)))];
         const description = [org.description?.trim(), `Workspaces: ${org.workspaces.map((w) => w.slug).join(", ")}.`]
           .filter(Boolean)
@@ -131,19 +136,14 @@ export async function strutPeersForUser(userId: string, now: Date = new Date()):
   return { actor, peers, expiresAt: new Date(now.getTime() + DEVICE_PEER_TOKEN_TTL_MS).toISOString(), errors };
 }
 
-/** A `lab:peer` token for `actor` on the target's swarm, with the swarm's own key. */
-async function mintPersonPeerToken(target: StrutTarget, actor: string): Promise<string> {
-  const res = await fetch(`${target.mcpBase}/mint-token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-token": target.swarmApiKey },
-    body: JSON.stringify({ scope: "lab:peer", sub: actor, expires_in: DEVICE_PEER_TOKEN_TTL }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(STRUT_DELEGATION_HTTP_TIMEOUT_MS),
+/**
+ * A `lab:peer` token for `actor` on the target's swarm, signed with the
+ * swarm's own key as its mcp's `/mint-token` would sign it (the header
+ * comment): no request to the swarm.
+ */
+function signPersonPeerToken(target: StrutTarget, actor: string): string {
+  return jwt.sign({ scope: "lab:peer", sub: actor }, target.swarmApiKey, {
+    algorithm: "HS256",
+    expiresIn: DEVICE_PEER_TOKEN_TTL,
   });
-  if (!res.ok) throw new Error(`POST /mint-token returned ${res.status}`);
-  const body = (await res.json().catch(() => ({}))) as { token?: unknown; scope?: unknown; sub?: unknown };
-  if (body.scope !== "lab:peer" || body.sub !== actor || typeof body.token !== "string" || !body.token) {
-    throw new Error("this swarm's mcp cannot mint a person's lab:peer token yet");
-  }
-  return body.token;
 }
