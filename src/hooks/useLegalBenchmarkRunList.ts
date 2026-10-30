@@ -80,6 +80,9 @@ export interface BenchmarkRunListRow {
   runner?: "strut";
   /** strut lab UI link (runner === "strut" only). */
   strutRunUrl?: string;
+  /** A strut legal workspace's run: its strut run id and workflow, for the strut view's deep link. */
+  strutRunId?: string;
+  strutWorkflow?: string;
 }
 
 interface UseLegalBenchmarkRunListResult {
@@ -227,6 +230,8 @@ export function useLegalBenchmarkRunList(
           generateRunReport: parsed?.generateRunReport,
           // Derived server-side; the bundle URL never reaches this response.
           hasReport: r.hasReport === true,
+          strutRunId: parsed?.strutRunId,
+          strutWorkflow: parsed?.strutWorkflow,
           // Unified judge precedence: operator choice takes priority over runner-echoed value.
           // Format mirrors stakwork-run.ts — if the server-side format string changes, update this line to match.
           judgeNotes:

@@ -1,14 +1,28 @@
 /**
  * The Legal Benchmarks routes of a strut workspace (`LEGAL_STRUT_SLUGS`):
- * launch `harvey-lab-run`, list its runs, download a deliverable.
+ * launch `harvey-lab-run`, list its runs, download a deliverable, read and
+ * export its trace.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { StrutRunStatus } from "@prisma/client";
 
-const { mockResolve, mockStrutRun, mockDispatch, mockArtifact, mockEvents, mockTranscript } = vi.hoisted(() => ({
+const {
+  mockResolve,
+  mockStrutRun,
+  mockDispatch,
+  mockArtifact,
+  mockEvents,
+  mockTranscript,
+  mockSwarmAccess,
+  mockPrefetch,
+  mockHtml,
+} = vi.hoisted(() => ({
   mockResolve: vi.fn(),
+  mockSwarmAccess: vi.fn(),
+  mockPrefetch: vi.fn(),
+  mockHtml: vi.fn(),
   mockStrutRun: { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
   mockDispatch: vi.fn(),
   mockArtifact: vi.fn(),
@@ -30,6 +44,12 @@ vi.mock("@/services/strut-runs/lab", () => ({
   fetchStrutTranscript: mockTranscript,
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/helpers/swarm-access", () => ({ getWorkspaceSwarmAccess: mockSwarmAccess }));
+vi.mock("@/lib/run-report/export/peek-prefetch", () => ({ prefetchNodePeeks: mockPrefetch }));
+vi.mock("@/lib/legal-cascade/export/offline-html", async (orig) => ({
+  ...(await orig<typeof import("@/lib/legal-cascade/export/offline-html")>()),
+  assembleCascadeOfflineHtml: mockHtml,
+}));
 
 import { POST as launch } from "@/app/api/workspaces/[slug]/legal/benchmarks/strut/run/route";
 import { GET as list } from "@/app/api/workspaces/[slug]/legal/benchmarks/strut/runs/route";
@@ -37,6 +57,8 @@ import { GET as deliverable } from "@/app/api/workspaces/[slug]/legal/benchmarks
 import { GET as traceSessions } from "@/app/api/workspaces/[slug]/legal/benchmarks/strut/cascade/sessions/route";
 import { GET as traceSession } from "@/app/api/workspaces/[slug]/legal/benchmarks/strut/cascade/session/route";
 import { GET as traceTurns } from "@/app/api/workspaces/[slug]/legal/benchmarks/strut/cascade/turns/route";
+import { GET as traceExport } from "@/app/api/workspaces/[slug]/legal/benchmarks/strut/cascade/export/route";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { StrutDispatchError } from "@/services/strut-runs";
 import { clearStrutTraceCache } from "@/services/strut-runs/legal-trace";
 
@@ -254,5 +276,84 @@ describe("GET legal/benchmarks/strut/cascade/*", () => {
   it("says when strut could not be read", async () => {
     mockEvents.mockResolvedValue(null);
     expect((await get(traceSessions, "runId=row-1")).status).toBe(502);
+  });
+});
+
+describe("GET legal/benchmarks/strut/cascade/export", () => {
+  const T = (sec: number) => new Date(Date.UTC(2026, 9, 21, 3, 0, sec)).toISOString();
+  const log = [
+    { type: "step.start", path: "harvey-lab-run/drafter", stepType: "agent", ts: T(1), input: { prompt: "Draft it." } },
+    { type: "step.start", path: "harvey-lab-run/drafter/001-graph_get", stepType: "tool:graph_graph_get", toolCallId: "c1", ts: T(2), input: { ref_id: "c-1" } },
+    {
+      type: "step.end",
+      path: "harvey-lab-run/drafter/001-graph_get",
+      stepType: "tool:graph_graph_get",
+      toolCallId: "c1",
+      ts: T(3),
+      output: { name: "Cap" },
+      nodes: [{ ref_id: "c-1", node_type: "Concept", name: "Cap" }],
+    },
+    { type: "step.start", path: "harvey-lab-run/drafter/002-agent", stepType: "tool:agent", toolCallId: "c2", ts: T(4), input: { prompt: "Check." } },
+  ];
+  const get = (query = "runId=row-1", slug = "openlaw-1") =>
+    traceExport(new NextRequest(`http://localhost/x?${query}`), { params: Promise.resolve({ slug }) });
+
+  beforeEach(() => {
+    clearStrutTraceCache();
+    mockResolve.mockResolvedValue(member("VIEWER"));
+    mockStrutRun.findFirst.mockResolvedValue({ ...finished, status: StrutRunStatus.PENDING });
+    mockEvents.mockResolvedValue(log);
+    mockSwarmAccess.mockResolvedValue({ success: true, data: { swarmName: "swarm-1", swarmApiKey: "key-1" } });
+    mockPrefetch.mockResolvedValue({ peeks: new Map([["c-1", { state: "done", payload: {} }]]), skipped: [] });
+    mockHtml.mockReturnValue("<!DOCTYPE html><html>trace</html>");
+  });
+
+  it("builds the trace file from the run's strut log, with the Concepts it read", async () => {
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("content-disposition")).toContain("run-trace-row-1.html");
+    expect(await res.text()).toBe("<!DOCTYPE html><html>trace</html>");
+
+    const [payload, title] = mockHtml.mock.calls[0];
+    expect(title).toBe("Run trace · row-1");
+    expect(payload.meta).toMatchObject({ runId: "row-1", identifier: "179", skippedPeeks: [] });
+    expect(payload.model.summary).toMatchObject({ agents: 1, subAgents: 1, running: false });
+    expect(Object.keys(payload.peeks)).toEqual(["c-1"]);
+    expect(mockSwarmAccess).toHaveBeenCalledWith("openlaw-1", "user-1");
+    expect(mockPrefetch).toHaveBeenCalledWith(["c-1"], { swarmName: "swarm-1", swarmApiKey: "key-1" }, expect.any(Object));
+  });
+
+  it("still exports the trace without swarm access, with no peeks", async () => {
+    mockSwarmAccess.mockResolvedValue({ success: false, error: { type: "SWARM_NOT_ACTIVE" } });
+    expect((await get()).status).toBe(200);
+    expect(mockPrefetch).not.toHaveBeenCalled();
+    expect(mockHtml.mock.calls[0][0].peeks).toEqual({});
+  });
+
+  it("is not there for openlaw, and refuses another workspace's run", async () => {
+    expect((await get("runId=row-1", "openlaw")).status).toBe(404);
+    expect((await get("")).status).toBe(400);
+    mockStrutRun.findFirst.mockResolvedValue(null);
+    expect((await get("runId=other")).status).toBe(404);
+    expect(mockEvents).not.toHaveBeenCalled();
+    expect(mockHtml).not.toHaveBeenCalled();
+  });
+
+  it("limits exports per user", async () => {
+    vi.mocked(checkRateLimit).mockResolvedValueOnce({ allowed: false, retryAfter: 30 } as never);
+    const res = await get();
+    expect(res.status).toBe(429);
+    expect(vi.mocked(checkRateLimit).mock.calls[0][0]).toBe("legal-cascade-export:user-1");
+    expect(mockEvents).not.toHaveBeenCalled();
+  });
+
+  it("says when strut could not be read, and builds no file", async () => {
+    mockEvents.mockResolvedValue(null);
+    const res = await get();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Could not read the run from strut" });
+    expect(mockHtml).not.toHaveBeenCalled();
   });
 });
