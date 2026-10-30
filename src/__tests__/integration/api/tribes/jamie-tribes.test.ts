@@ -426,6 +426,76 @@ describe("Jamie in Sphinx tribes", () => {
       expect(await threads()).toHaveLength(2);
     });
 
+    it("a burst is one turn: the earlier lines first, the newest last; every id is taken; the reply threads under the newest", async () => {
+      const scenario = await linked();
+      await mention(aMention());
+      const thread = await threadOf();
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-2", strutRunId: "s-2" });
+
+      const res = await mention(
+        aMention({
+          id: "msg-4",
+          alias: "Carol",
+          text: "and Friday?",
+          thread: thread.id,
+          earlier: [
+            { id: "msg-2", alias: "Bob", owner: false, time: "2026-10-29T18:03:00Z", text: "what about Thursday?" },
+            { id: "msg-3", alias: "Alice", owner: true, time: "2026-10-29T18:03:05Z", text: "or Wednesday\nafter lunch" },
+          ],
+        }),
+      );
+
+      expect(res.status).toBe(202);
+      const folded = "Bob: what about Thursday?\nAlice: or Wednesday\nafter lunch\nCarol: and Friday?";
+      expect(mockLaunch.mock.calls[1][0]).toMatchObject({ conversationId: thread.conversationId, message: folded });
+      const rows = (await conversation())!.messages as Array<{ role: string; content: string }>;
+      expect(rows.filter((r) => r.role === "user").map((r) => r.content)).toEqual([
+        "Alice: @jamie what did we decide about the launch?",
+        folded,
+      ]);
+      expect(await db.tribeMention.findMany({ where: { runId: "run-2" }, select: { mentionId: true, folded: true }, orderBy: { mentionId: "asc" } })).toEqual([
+        { mentionId: "msg-2", folded: true },
+        { mentionId: "msg-3", folded: true },
+        { mentionId: "msg-4", folded: false },
+      ]);
+
+      // A retry of any message in it is a duplicate.
+      for (const id of ["msg-2", "msg-3", "msg-4"]) {
+        const again = await mention(aMention({ id, thread: thread.id }));
+        expect(again.status).toBe(200);
+        expect(await again.json()).toEqual({ duplicate: true, turn: "run-2" });
+      }
+      expect(mockLaunch).toHaveBeenCalledTimes(2);
+
+      await ack((await outbox()).map((m) => m.id as string));
+      await answered(scenario, "run-2", "Friday it is.");
+      expect((await outbox()).map((m) => [m.text, m.replyTo])).toEqual([["Friday it is.", "msg-4"]]);
+    });
+
+    it("a burst leaves out a message a turn already took", async () => {
+      await linked();
+      await mention(aMention());
+      const thread = await threadOf();
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-2", strutRunId: "s-2" });
+
+      await mention(
+        aMention({
+          id: "msg-3",
+          alias: "Carol",
+          text: "and Friday?",
+          thread: thread.id,
+          earlier: [
+            { id: "msg-1", alias: "Alice", text: "@jamie what did we decide about the launch?" },
+            { id: "msg-2", alias: "Bob", text: "what about Thursday?" },
+            { id: "msg-2", alias: "Bob", text: "what about Thursday?" },
+          ],
+        }),
+      );
+
+      expect(mockLaunch.mock.calls[1][0].message).toBe("Bob: what about Thursday?\nCarol: and Friday?");
+      expect(await db.tribeMention.findMany({ where: { mentionId: "msg-1" }, select: { runId: true } })).toEqual([{ runId: "run-1" }]);
+    });
+
     it("a thread Hive does not know, or another tribe's, starts a new conversation", async () => {
       const scenario = await linked();
       // Another tribe, linked by the same person, with a conversation of its own.
@@ -563,6 +633,11 @@ describe("Jamie in Sphinx tribes", () => {
         aMention({ tribe: { pubkey: "nope" } }),
         aMention({ text: "   " }),
         aMention({ recent: "Bob: hi" }),
+        aMention({ earlier: "Bob: hi" }),
+        aMention({ earlier: [{ id: "msg-0", alias: "Bob" }] }),
+        aMention({ earlier: [{ alias: "Bob", text: "hi" }] }),
+        aMention({ earlier: Array.from({ length: 21 }, (_, i) => ({ id: `e-${i}`, alias: "Bob", text: "hi" })) }),
+        aMention({ text: "x".repeat(10_001), earlier: [{ id: "msg-0", alias: "Bob", text: "y".repeat(10_000) }] }),
       ]) {
         expect((await mention(body)).status).toBe(400);
       }
