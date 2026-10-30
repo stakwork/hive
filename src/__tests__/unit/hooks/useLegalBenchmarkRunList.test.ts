@@ -161,6 +161,19 @@ describe("useLegalBenchmarkRunList", () => {
     expect(row.all_pass).toBe(true);
   });
 
+  it("mapper carries a strut run's id and workflow, for its strut link", async () => {
+    mockFetchOk([
+      makeRow({
+        result: JSON.stringify({ taskSlug: "t", taskTitle: "T", runner: "strut", strutRunId: "179", strutWorkflow: "harvey-lab-run" }),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useLegalBenchmarkRunList("ws-cuid-123"));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.runs[0]).toMatchObject({ strutRunId: "179", strutWorkflow: "harvey-lab-run" });
+  });
+
   it("score fields are undefined for rows without score data (pre-collapse history)", async () => {
     mockFetchOk([
       makeRow({

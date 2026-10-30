@@ -31,6 +31,8 @@ const makeRun = (overrides: Partial<{
   jamieChatPath: string;
   generateRunReport: boolean;
   hasReport: boolean;
+  strutRunId: string;
+  strutWorkflow: string;
 }> = {}) => ({
   id: "runner-1",
   workspaceId: WORKSPACE_ID,
@@ -942,6 +944,56 @@ describe("BenchmarkRunsHistory", () => {
 
     await user.click(screen.getByText("Analyze Antitrust Strategy").closest("tr")!);
     expect(screen.getByTestId("results-runner-1").closest("td")!.getAttribute("colspan")).toBe("9");
+  });
+
+  it("a strut legal workspace gives its owners and admins a Strut column, linking each run there", async () => {
+    const { useWorkspace } = await import("@/hooks/useWorkspace");
+    (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
+      workspace: { id: WORKSPACE_ID, slug: "openlaw-1" },
+      isSuperAdmin: false,
+      isOwner: true,
+    });
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ strutRunId: "1792552899038", strutWorkflow: "harvey-lab-run" })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    const user = userEvent.setup();
+    render(React.createElement(BenchmarkRunsHistory));
+
+    expect(screen.getByRole("columnheader", { name: "Strut" })).toBeInTheDocument();
+    const link = screen.getByTestId("strut-run-view-link");
+    expect(link).toHaveAttribute("href", "/w/openlaw-1/strut?strut=wf%3Dharvey-lab-run%26run%3D1792552899038");
+    expect(link).toHaveAttribute("aria-label", "Open in strut");
+
+    // The link's cell opens strut; it does not toggle the row.
+    await user.click(link.closest("td")!);
+    expect(screen.queryByTestId("results-runner-1")).toBeNull();
+    await user.click(screen.getByText("Analyze Antitrust Strategy").closest("tr")!);
+    expect(screen.getByTestId("results-runner-1").closest("td")!.getAttribute("colspan")).toBe("10");
+  });
+
+  it("a strut legal workspace's developer sees no Strut column", async () => {
+    const { useWorkspace } = await import("@/hooks/useWorkspace");
+    (useWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
+      workspace: { id: WORKSPACE_ID, slug: "openlaw-1" },
+      isSuperAdmin: true,
+      isDeveloper: true,
+    });
+    mockUseList.mockReturnValue({
+      runs: [makeRun({ strutRunId: "1792552899038", strutWorkflow: "harvey-lab-run" })],
+      total: 1,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+      setExpandedId: mockSetExpandedId,
+    });
+    render(React.createElement(BenchmarkRunsHistory));
+    expect(screen.queryByRole("columnheader", { name: "Strut" })).toBeNull();
+    expect(screen.queryByTestId("strut-run-view-link")).toBeNull();
   });
 
   it("shows dash (not Pending) for a FAILED run with generateJamieChat (report will never fire)", () => {

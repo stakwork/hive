@@ -150,6 +150,7 @@ describe("legal benchmark runs on strut", () => {
       taskTitle: input.task_title,
       runner: "strut",
       strutRunId: "1792552899038",
+      strutWorkflow: "harvey-lab-run",
       generateRunReport: true,
     });
     expect(running.hasReport).toBe(false);

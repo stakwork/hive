@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { CascadeTrace } from "@/components/legal/RunCascade";
+import { CascadeTrace, cascadeExportUrl } from "@/components/legal/RunCascade";
 import { assembleRunCascade } from "@/lib/legal-cascade/derive";
 import {
   buildMockSessionMap,
@@ -219,5 +219,14 @@ describe("CascadeTrace", () => {
     expect(
       screen.queryByTestId(`cascade-row-detail-${MOCK_REPAIR_SESSION_ID}-1`),
     ).toBeNull();
+  });
+});
+
+describe("cascadeExportUrl", () => {
+  it("exports openlaw's trace from stakgraph's sessions and a strut workspace's from its strut log", () => {
+    expect(cascadeExportUrl("openlaw", "run 1")).toBe("/api/workspaces/openlaw/legal/benchmarks/cascade/export?runId=run%201");
+    expect(cascadeExportUrl("openlaw-1", "run-1")).toBe(
+      "/api/workspaces/openlaw-1/legal/benchmarks/strut/cascade/export?runId=run-1",
+    );
   });
 });

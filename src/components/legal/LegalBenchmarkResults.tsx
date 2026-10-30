@@ -15,6 +15,8 @@ import { useLegalBenchmarkRun } from "@/hooks/useLegalBenchmarkRun";
 import { useProposedFixes } from "@/hooks/useProposedFixes";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { StakworkRunLink } from "@/components/legal/StakworkRunLink";
+import { StrutRunViewLink } from "@/components/legal/StrutRunViewLink";
+import type { BenchmarkRunResult } from "@/types/legal";
 import { EvalRunsBox } from "@/components/legal/EvalRunsBox";
 import { BenchmarkRunAgentLogs } from "@/components/legal/BenchmarkRunAgentLogs";
 import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
@@ -62,18 +64,19 @@ function SpinnerMessage({ message }: { message: string }) {
 function StrutRunOutput({
   slug,
   runId,
-  deliverables,
-  spreadsheetUrl,
+  result,
 }: {
   slug: string;
   runId: string;
-  deliverables: string[];
-  spreadsheetUrl?: string;
+  result: BenchmarkRunResult | null | undefined;
 }) {
+  const deliverables = result?.deliverables ?? [];
+  const spreadsheetUrl = result?.spreadsheetUrl;
   return (
     <div className="rounded-lg border bg-card" data-testid="strut-run-output">
-      <div className="px-4 py-3 border-b">
+      <div className="flex items-center justify-between px-4 py-3 border-b">
         <h3 className="font-semibold text-sm">Task Output</h3>
+        <StrutRunViewLink strutRunId={result?.strutRunId} workflow={result?.strutWorkflow} />
       </div>
       <div className="p-4 space-y-2">
         {deliverables.length === 0 && (
@@ -262,6 +265,10 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
             }
           />
           <StakworkRunLink projectId={run.runnerRun.projectId} isSuperAdmin={isSuperAdmin} />
+          <StrutRunViewLink
+            strutRunId={run.runnerRun.result?.strutRunId}
+            workflow={run.runnerRun.result?.strutWorkflow}
+          />
         </div>
         {/* Live trace — rows appear as the agents work; the pill pops in once
             the run's first session exists. */}
@@ -282,6 +289,10 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
             {run.errorMessage && (
               <p className="text-sm text-muted-foreground">{run.errorMessage}</p>
             )}
+            <StrutRunViewLink
+              strutRunId={run.runnerRun.result?.strutRunId}
+              workflow={run.runnerRun.result?.strutWorkflow}
+            />
             <Button size="sm" variant="outline" onClick={onReset}>
               Try again
             </Button>
@@ -363,14 +374,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
         </div>
 
         {/* A strut run's output is files: the deliverables and the shared sheet. */}
-        {strut && (
-          <StrutRunOutput
-            slug={slug}
-            runId={run.id}
-            deliverables={result?.deliverables ?? []}
-            spreadsheetUrl={result?.spreadsheetUrl}
-          />
-        )}
+        {strut && <StrutRunOutput slug={slug} runId={run.id} result={result} />}
 
         {/* Output document section */}
         {!strut && (
