@@ -209,6 +209,22 @@ Where the user is: Org › Workspace "hive" (`ws:…`) › Initiative "Self-serv
 The last path step is what "this" / "here" mean. Optional tags: `selected: …`
 (graph node), `open question: …` (brainstorm board).
 
+A fourth part ends the line when the reply is read somewhere other than
+Hive's chat — **where the reply is read**, and how to write for it: the
+call line (`ORCHESTRATOR_CALL_LINE`) on a voice call (out loud, short), the
+tribe line (`orchestratorTribeLine`) in a Sphinx tribe (a text message read
+on a phone, short, detail in artifacts; past `MAX_TRIBE_TEXT_CHARS` the
+outbox cuts it). Hive's own chat gets no such line, so a reply there keeps
+its length. The person's turns pass it from the route that knows
+(`/api/calls/turn` → `call`, `/api/tribes/messages` → `tribe` with the
+asker's alias); a job's wake has no person, so it reads it off the
+conversation (`conversationMedium` in `strut-orchestrator-wake.ts`: a
+`call_request` row, the `TribeThread` — the tribe's name, no asker) and
+passes the same, so the summary of a job's result is written for the room
+the question was asked in. The line is part of each turn's message, not the
+session's system prompt, so a change to it reaches every live conversation
+on its next turn.
+
 - **Client** (`OrgCanvasView`): publishes `pageContext` `{ surface, view, tab,
   path: [{ kind, name, ref }], selected?, question? }` into the chat
   conversation's context and `useSendCanvasChatMessage` sends it to

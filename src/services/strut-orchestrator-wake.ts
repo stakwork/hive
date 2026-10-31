@@ -39,8 +39,15 @@
  * retried a bounded number of times inside the callback's after-response
  * budget, then dropped with a log: the orchestrator reads the job back
  * through `job/get` on its next turn anyway.
+ *
+ * Where the conversation is read — a voice call, a Sphinx tribe — the
+ * person's own turns tell the launch (`call`, `tribe`); a wake has no
+ * person, so it reads it off the conversation (`conversationMedium`) and
+ * passes the same, so the summary is written for the room the question was
+ * asked in — a tribe's as a text message, not a page.
  */
 
+import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { describeArtifactEvent, type ArtifactEvent } from "@/lib/strut-jobs";
 import { ORCHESTRATOR_SILENT_MARKER, countTrailingJobRows } from "@/lib/strut-orchestrator";
@@ -187,6 +194,39 @@ function buildEventWakeText(args: OrchestratorJobWakeArgs, event: ArtifactEvent)
 }
 
 /**
+ * Where the conversation is read, for a turn no person asked (the wake):
+ * `call` for a call's conversation — one of its rows is a `call_request`
+ * (`lib/calls/callMessages.ts`) — and `tribe` for a tribe's, its
+ * `TribeThread` (the tribe's name off the link; nobody asked, so no alias).
+ * Neither for a web conversation. A tribe read that fails is logged and
+ * the wake goes without the line: a summary in the wrong register beats
+ * none.
+ */
+export async function conversationMedium(
+  conversationId: string,
+  messages: ReadonlyArray<{ source?: { kind?: string } | null }>,
+): Promise<Pick<OrchestratorTurnArgs, "call" | "tribe">> {
+  if (messages.some((m) => m.source?.kind === "call_request")) return { call: true };
+  try {
+    const thread = await db.tribeThread.findUnique({
+      where: { conversationId },
+      select: { link: { select: { name: true } } },
+    });
+    return thread ? { tribe: { name: thread.link.name } } : {};
+  } catch (err) {
+    logger.warn(
+      "Orchestrator wake: the conversation's tribe could not be read; launching without the tribe line",
+      LOG_TAG,
+      {
+        conversationId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+    return {};
+  }
+}
+
+/**
  * Wake the orchestrator on the job row that just landed. Never throws;
  * every outcome is logged. `deps` is for tests.
  */
@@ -213,6 +253,7 @@ export async function invokeOrchestratorOnJobTurn(
     },
     async (conversation) => {
       const message = buildOrchestratorJobWakeText(args);
+      const medium = await conversationMedium(conversationId, conversation.messages);
       for (let attempt = 0; ; attempt++) {
         const launched = await launch({
           userId: conversation.userId,
@@ -221,6 +262,7 @@ export async function invokeOrchestratorOnJobTurn(
           message,
           publicBaseUrl: args.publicBaseUrl,
           wakeId,
+          ...medium,
         });
         if (launched.status === "started") {
           logger.info("Orchestrator woken on a job turn", LOG_TAG, {
