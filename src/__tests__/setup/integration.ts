@@ -2,24 +2,13 @@ import "./global";
 import { beforeEach, afterEach } from "vitest";
 import { resetDatabase } from "../support/utilities/database";
 import { ensureTestEnv } from "./env";
+import { assertTestDatabaseUrl } from "../support/utilities/test-database-guard";
 
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
 
-if (!TEST_DATABASE_URL) {
-  throw new Error(
-    "TEST_DATABASE_URL or DATABASE_URL environment variable is required for integration tests",
-  );
-}
-
-if (
-  !TEST_DATABASE_URL.includes("test") &&
-  !process.env.NODE_ENV?.includes("test")
-) {
-  console.warn(
-    "WARNING: DATABASE_URL does not contain 'test' - ensure you're using a test database",
-  );
-}
+// Throws unless the database name contains "test" — resetDatabase() below
+// empties every table before each test.
+assertTestDatabaseUrl(TEST_DATABASE_URL);
 
 // Set environment variables for integration tests using shared helper.
 ensureTestEnv();
@@ -42,6 +31,8 @@ const RESET_TIMEOUT_MS = 60_000;
 
 beforeEach(async () => {
   fetchState.push(globalThis.fetch);
+  // Re-checked here in case a test file repointed DATABASE_URL after setup.
+  assertTestDatabaseUrl(process.env.DATABASE_URL);
   await resetDatabase();
 }, RESET_TIMEOUT_MS);
 
@@ -49,5 +40,3 @@ afterEach(() => {
   const previousFetch = fetchState.pop();
   globalThis.fetch = previousFetch ?? initialFetch;
 });
-
-

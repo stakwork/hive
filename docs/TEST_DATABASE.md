@@ -31,12 +31,20 @@ npm run test:db:setup
 ### 3. Run Integration Tests
 
 ```bash
-# Run all integration tests
-npm run test:integration
+# Run all integration tests against the Docker test database
+TEST_DATABASE_URL=postgresql://test:test@localhost:5433/hive_test npm run test:integration
 
 # Or run with the full setup (start DB, setup data, run tests, stop DB)
 npm run test:integration:full
 ```
+
+> **Integration tests only run against a test database.** Before every test,
+> `resetDatabase()` deletes every row in every table. The integration setup
+> (`src/__tests__/setup/integration.ts`) uses `TEST_DATABASE_URL`, falling back
+> to `DATABASE_URL`, and throws before any test runs unless the database
+> **name** (the URL path, e.g. `hive_test`) contains `test`. A `test` in the
+> user, host or query string doesn't count. Without `TEST_DATABASE_URL`, the
+> fallback is usually your dev database from `.env` (`hive_db`), which is refused.
 
 ### 4. Clean Up
 
@@ -52,7 +60,9 @@ npm run test:db:cleanup
 
 ### Environment Variables
 
-Copy `env.test.example` to `.env.test` and configure:
+Integration tests read `TEST_DATABASE_URL` from the environment (Vitest only
+loads `.env`, not `.env.test`), so export it or prefix the command. For reference,
+`env.test.example` lists the test values:
 
 ```bash
 # Test Database URL
@@ -169,22 +179,9 @@ If port 5433 is already in use:
 
 ## CI/CD Integration
 
-For continuous integration, you can use:
-
-```yaml
-# Example GitHub Actions workflow
-- name: Start Test Database
-  run: npm run test:db:start
-
-- name: Setup Test Data
-  run: npm run test:db:setup
-
-- name: Run Integration Tests
-  run: npm run test:integration
-
-- name: Stop Test Database
-  run: npm run test:db:stop
-```
+`.github/workflows/test.yml` runs the integration job against a Postgres service
+container whose database is named `hive_test`, so it passes the same guard.
+Keep a `test` in that name if you change it.
 
 ## Security Notes
 
