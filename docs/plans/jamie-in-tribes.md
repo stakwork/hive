@@ -277,10 +277,14 @@ history the tribe replays to a new member. It is the call transcript's flow
   first, about a minute or 50 messages at a time, with its own cursor per
   tribe. A batch carries an id the daemon makes, so a retry is the same
   batch: `{ batch, tribe: { pubkey, name }, messages: [{ id, time, alias,
-  owner, mine, text, replyTo?, thread? }] }`. A message deleted after a
-  batch carried it (by its sender, or the owner) goes again as `{ id, …,
-  text: "", deleted: true }`: what the workflow kept under that `id` goes.
-  One deleted while it still waited in the daemon never goes.
+  owner, mine, text, replyTo?, thread?, kind?, sats? }] }`. A line that is
+  not words carries `kind` — `call`, `join`, `leave`, `boost` (with `sats`
+  as declared and `replyTo` the boosted message), `file` — and a `text`
+  that says what happened (`(joined)`, `(started a call: …)`, `(boosted
+  Carol's message, 100 sats)`). A message deleted after a batch carried it
+  (by its sender, or the owner) goes again as `{ id, …, text: "", deleted:
+  true }`: what the workflow kept under that `id` goes. One deleted while
+  it still waited in the daemon never goes.
 - **Hive** looks up the link and checks the linker can still use the
   workspace. It then launches the workflow `TRIBE_MESSAGES_STRUT_WORKFLOW_NAME`
   names, on the org default, as the linker (`dispatchStrutRun`, kind and

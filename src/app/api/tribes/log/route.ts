@@ -29,12 +29,14 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  *
  * Body:
  *   { batch, tribe: { pubkey, name? }, messages: [{ id, time, alias?, owner?,
- *     mine?, text, replyTo?, thread?, deleted? }] }
+ *     mine?, text, replyTo?, thread?, kind?, sats?, deleted? }] }
  * `batch` is the daemon's id for it: a retry carries the same one and gets
  * the first answer. A message's `id` is the one members hold, so the
- * workflow can key what it keeps by it. A line with `deleted: true` (and no
- * text) says a message an earlier batch carried was deleted since: what the
- * workflow kept under that `id` goes.
+ * workflow can key what it keeps by it. `kind` marks a line that is not
+ * words — `call`, `join`, `leave`, `boost` (with `sats` and `replyTo`, the
+ * boosted message), `file` — whose `text` says what happened. A line with
+ * `deleted: true` (and no text) says a message an earlier batch carried was
+ * deleted since: what the workflow kept under that `id` goes.
  *
  * Answers, as the daemon reads them (2xx: done; 429, 5xx: retry; other 4xx: drop):
  *   202 { run }           launched
