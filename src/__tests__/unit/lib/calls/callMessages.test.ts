@@ -210,6 +210,107 @@ describe("callMessagesSince", () => {
   });
 });
 
+describe("proposals and their decisions in the envelope", () => {
+  const card = {
+    v: 1,
+    title: "Install acme/board",
+    fields: [{ label: "package", value: "acme/board" }],
+    actions: { accept: "Install", reject: "Don't install" },
+    full: true,
+  };
+  const proposalRow = (extra: Record<string, unknown> = {}) => ({
+    id: "orchestrator-r1-proposal-p9",
+    role: "assistant",
+    content: "Proposed: Install acme/board (`package/install`)",
+    timestamp: T1,
+    source: {
+      kind: "proposal",
+      runId: "r1",
+      proposalId: "p9",
+      url: "/proposals/p9",
+      step: "package/install",
+      status: "pending",
+      title: "Install acme/board",
+      summary: "Listed by the Stakwork index.",
+      card,
+      rationale: "Asked for a board.",
+      createdAt: T0,
+      workspace: "acme",
+      ...extra,
+    },
+  });
+  const decisionRow = (extra: Record<string, unknown> = {}) => ({
+    id: "orchestrator-r1-proposal-p9-failed-x",
+    role: "assistant",
+    content: "Failed: Install acme/board — no such package",
+    timestamp: T2,
+    source: {
+      kind: "proposal_result",
+      runId: "r1",
+      proposalId: "p9",
+      status: "failed",
+      title: "Install acme/board",
+      step: "package/install",
+      error: "no such package",
+      workspace: "acme",
+      ...extra,
+    },
+  });
+
+  it("a proposal carries itself in strut.proposals, strut's card as it came, beside no artifacts", () => {
+    const [message] = callMessagesSince([proposalRow()], null, url).messages;
+    expect(message.strut).toEqual({
+      workspace: "acme",
+      artifacts: [],
+      proposals: [
+        {
+          id: "p9",
+          step: "package/install",
+          title: "Install acme/board",
+          summary: "Listed by the Stakwork index.",
+          card,
+          status: "pending",
+          url: "/proposals/p9",
+          rationale: "Asked for a board.",
+          createdAt: T0,
+        },
+      ],
+    });
+    expect(message.strut?.proposals?.[0].card).toBe(card);
+  });
+
+  it("a proposal row from before rows named their workspace carries none; one with no card carries no card", () => {
+    const [old] = callMessagesSince([proposalRow({ workspace: undefined })], null, url).messages;
+    expect("strut" in old).toBe(false);
+    const [plain] = callMessagesSince([proposalRow({ card: undefined, summary: undefined })], null, url).messages;
+    expect(plain.strut?.proposals?.[0]).not.toHaveProperty("card");
+    expect(plain.strut?.proposals?.[0]).not.toHaveProperty("summary");
+  });
+
+  it("a decision is said only when asked for: its line, and the new status in strut.proposals without a card", () => {
+    expect(callMessagesSince([decisionRow()], null, url).messages).toEqual([]);
+    expect(callMessagesSince([decisionRow()], null, url, { decisions: true }).messages).toEqual([
+      {
+        id: "orchestrator-r1-proposal-p9-failed-x",
+        kind: "decision",
+        text: "Failed: Install acme/board — no such package",
+        title: "Install acme/board",
+        strut: {
+          workspace: "acme",
+          artifacts: [],
+          proposals: [
+            { id: "p9", status: "failed", title: "Install acme/board", step: "package/install", error: "no such package" },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("a decision row from before rows named their step is left out, asked for or not", () => {
+    expect(callMessagesSince([decisionRow({ step: undefined })], null, url, { decisions: true }).messages).toEqual([]);
+  });
+});
+
 describe("callArtifactUrl", () => {
   it("a file on a swarm opens in the conversation, by its identity", () => {
     expect(

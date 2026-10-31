@@ -167,6 +167,22 @@ describe("readStrutProposal", () => {
     expect(JSON.stringify(out)).not.toContain("alice-user-1");
   });
 
+  it("passes strut's summary and card through; a card hive cannot draw is left out", async () => {
+    const card = {
+      v: 1,
+      title: "Create a node.",
+      fields: [{ label: "node_type", value: "Concept" }],
+      actions: { accept: "Create", reject: "Don't" },
+      full: true,
+    };
+    mockFetch.mockResolvedValueOnce(json(200, { ...RECORD, summary: "A Concept for retries.", card }));
+    expect(await readStrutProposal(TURN, "p1")).toEqual(
+      expect.objectContaining({ summary: "A Concept for retries.", card }),
+    );
+    mockFetch.mockResolvedValueOnce(json(200, { ...RECORD, card: { ...card, v: 2 } }));
+    expect(await readStrutProposal(TURN, "p1")).not.toHaveProperty("card");
+  });
+
   it("a record another run proposed is not this run's (null); 404 is null; strut down is a 502", async () => {
     mockFetch.mockResolvedValueOnce(json(200, { ...RECORD, by: { ...RECORD.by, runId: "other-run" } }));
     expect(await readStrutProposal(TURN, "p1")).toBeNull();
@@ -270,8 +286,22 @@ describe("the result row", () => {
           proposalId: "p1",
           status: "applied",
           title: "Create a node.",
+          step: "graph/create-node",
+          workspace: "acme",
         },
       }),
     ]);
+  });
+
+  it("names a failed one's error, for the tribe's outcome line", async () => {
+    await appendProposalResultRow(TURN, {
+      ...RECORD,
+      status: "failed",
+      result: { error: "schema mismatch", at: "2026-10-19T13:03:00Z" },
+      by: { workflow: "orchestrator", runId: "1790000000000" },
+    } as never);
+    expect(mockAppendRows.mock.calls[0][1][0].source).toEqual(
+      expect.objectContaining({ status: "failed", error: "schema mismatch", step: "graph/create-node" }),
+    );
   });
 });
