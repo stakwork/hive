@@ -8,6 +8,8 @@ import { proposalGraphArtifact } from "../_state/proposalGraphArtifacts";
 import {
   strutProposalStepLabel,
   strutProposalToOutput,
+  type StrutProposalCard as StrutCard,
+  type StrutProposalCardField,
   type StrutProposalRecord,
   type StrutProposalStatus,
 } from "@/lib/strut-orchestrator";
@@ -32,9 +34,13 @@ import {
  * and writes the result row. The body is drawn per `step`: hive's own
  * graph card bodies where the input has the same fields
  * (`strutProposalToOutput`; the Concept card for the lab's `concept/create`
- * among them), a key/value table for anything else. Status is strut's,
- * never derived from the transcript. An applied `concept/create` links to
- * the new Concept in the workspace learn UI by the slug id the step returns.
+ * among them), else strut's CARD (API.md §12: its fields, the dangerous
+ * ones tinted, its button words, and the full input behind a disclosure
+ * when the fields are not all of it), else, for a record from before
+ * cards, a key/value table of the input. The step's `summary` shows under
+ * the title. Status is strut's, never derived from the transcript. An
+ * applied `concept/create` links to the new Concept in the workspace learn
+ * UI by the slug id the step returns.
  */
 
 export type StrutProposalSource = Extract<NonNullable<CanvasChatMessage["source"]>, { kind: "proposal" }>;
@@ -58,8 +64,60 @@ const TONE_CLASSES: Record<Tone, string> = {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** The input as key/value pairs — the body for a step hive has no card for. */
-export function GenericInputBody({ input }: { input: unknown }) {
+const FIELD_VALUE_CLASSES: Record<NonNullable<StrutProposalCardField["kind"]>, string> = {
+  text: "whitespace-pre-wrap break-words",
+  code: "font-mono whitespace-pre-wrap break-all",
+  ref: "font-mono break-all",
+  markdown: "prose prose-sm dark-os:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] text-[11px]",
+};
+
+/** One of strut's fields: its label, its value drawn by kind, tinted when it is dangerous. */
+function CardFieldRow({ field }: { field: StrutProposalCardField }) {
+  const kind = field.kind ?? "text";
+  return (
+    <div
+      data-testid="strut-proposal-card-field"
+      data-kind={kind}
+      data-danger={field.danger ? "true" : undefined}
+      className={`rounded px-1.5 py-0.5 ${field.danger ? "bg-rose-500/10 text-rose-800 ring-1 ring-inset ring-rose-500/30 dark-os:text-rose-200" : ""}`}
+    >
+      <div className={`text-[10px] ${field.danger ? "font-medium" : "text-muted-foreground"}`}>{field.label}</div>
+      <div className={FIELD_VALUE_CLASSES[kind]}>
+        {kind === "markdown" ? <ReactMarkdown>{field.value}</ReactMarkdown> : field.value}
+      </div>
+    </div>
+  );
+}
+
+/** Strut's card: its fields, and the whole input behind a disclosure when they are not all of it. */
+function StrutCardBody({ card, input }: { card: StrutCard; input: unknown }) {
+  return (
+    <div data-testid="strut-proposal-card-body" className="mt-1 space-y-1">
+      {card.fields.length > 0 && (
+        <div className="space-y-0.5 rounded border border-border/50 bg-muted/30 px-1 py-1 text-[11px]">
+          {card.fields.map((field, i) => (
+            <CardFieldRow key={`${i}-${field.label}`} field={field} />
+          ))}
+        </div>
+      )}
+      {!card.full && (
+        <details className="text-[11px] text-muted-foreground" data-testid="strut-proposal-full-input">
+          <summary className="cursor-pointer select-none">Not everything is shown · the full input</summary>
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded border border-border/50 bg-muted/30 px-2 py-1 font-mono text-foreground">
+            {input === undefined ? "No input." : JSON.stringify(input, null, 2)}
+          </pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The body for a step hive has no card of its own for: strut's card when
+ * the record has one, else the input as key/value pairs.
+ */
+export function GenericInputBody({ input, card }: { input: unknown; card?: StrutCard }) {
+  if (card) return <StrutCardBody card={card} input={input} />;
   const entries = isRecord(input) ? Object.entries(input) : [];
   if (entries.length === 0) {
     return (
@@ -157,15 +215,17 @@ function DeleteNodeBody({ input }: { input: unknown }) {
   );
 }
 
-/** The step's input, drawn per step. Exported for the test. */
+/** The step's input, drawn per step; strut's card for a step hive draws no other way. Exported for the test. */
 export function StrutProposalBody({
   step,
   input,
   workspaceSlug,
+  card,
 }: {
   step: string;
   input: unknown;
   workspaceSlug?: string;
+  card?: StrutCard;
 }) {
   const output = useMemo(() => strutProposalToOutput(step, input, workspaceSlug ?? ""), [step, input, workspaceSlug]);
   if (output) {
@@ -188,7 +248,7 @@ export function StrutProposalBody({
   }
   if (step === "graph/edit-node") return <EditNodeBody input={input} />;
   if (step === "graph/delete-node") return <DeleteNodeBody input={input} />;
-  return <GenericInputBody input={input} />;
+  return <GenericInputBody input={input} card={card} />;
 }
 
 interface StrutProposalCardProps {
@@ -259,6 +319,8 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
   const title = proposal?.title ?? source.title;
   const step = proposal?.step ?? source.step;
   const rationale = proposal?.rationale ?? source.rationale;
+  const summary = proposal ? (proposal.summary ?? proposal.card?.summary) : source.summary;
+  const words = proposal?.card?.actions;
   const look = STATUS[status] ?? STATUS.pending;
   const canDecide = load.state === "ready" && (status === "pending" || status === "failed");
   // A graph change is looked at on the graph: the same artifact the in-process
@@ -302,6 +364,14 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
             </span>
           </div>
           <div className="mt-0.5 break-words text-sm font-medium">{title}</div>
+          {summary && (
+            <p
+              className="mt-0.5 whitespace-pre-wrap break-words text-[11px] text-muted-foreground"
+              data-testid="strut-proposal-summary"
+            >
+              {summary}
+            </p>
+          )}
           {load.state === "loading" && (
             <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" /> Reading the proposal…
@@ -311,7 +381,12 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
             <div className="mt-1 text-[11px] text-rose-700 dark-os:text-rose-300">{load.error}</div>
           )}
           {proposal && (
-            <StrutProposalBody step={proposal.step} input={proposal.input} workspaceSlug={proposal.workspaceSlug} />
+            <StrutProposalBody
+              step={proposal.step}
+              input={proposal.input}
+              workspaceSlug={proposal.workspaceSlug}
+              card={proposal.card}
+            />
           )}
           {rationale && <p className="mt-1 text-[11px] italic text-muted-foreground">{rationale}</p>}
           {proposal?.decision?.reason && status === "rejected" && (
@@ -354,8 +429,8 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
                     type="button"
                     onClick={() => void decide("accept")}
                     disabled={deciding !== null}
-                    title={status === "failed" ? "Accept again" : "Approve"}
-                    aria-label={status === "failed" ? "Accept again" : "Approve"}
+                    title={status === "failed" ? "Accept again" : (words?.accept ?? "Approve")}
+                    aria-label={status === "failed" ? "Accept again" : (words?.accept ?? "Approve")}
                     className="flex h-6 items-center justify-center gap-1 rounded px-1 text-emerald-600 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark-os:text-emerald-400"
                   >
                     {deciding === "accept" ? (
@@ -365,22 +440,27 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
                     ) : (
                       <Check className="h-3.5 w-3.5" />
                     )}
-                    {status === "failed" && <span className="text-[11px]">Accept again</span>}
+                    {status === "failed" ? (
+                      <span className="text-[11px]">Accept again</span>
+                    ) : (
+                      words && <span className="text-[11px]">{words.accept}</span>
+                    )}
                   </button>
                   {status === "pending" && (
                     <button
                       type="button"
                       onClick={() => void decide("reject")}
                       disabled={deciding !== null}
-                      title="Reject"
-                      aria-label="Reject"
-                      className="flex h-6 w-6 items-center justify-center rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark-os:text-rose-400"
+                      title={words?.reject ?? "Reject"}
+                      aria-label={words?.reject ?? "Reject"}
+                      className={`flex h-6 items-center justify-center gap-1 rounded text-rose-600 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40 dark-os:text-rose-400 ${words ? "px-1" : "w-6"}`}
                     >
                       {deciding === "reject" ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <X className="h-3.5 w-3.5" />
                       )}
+                      {words && <span className="text-[11px]">{words.reject}</span>}
                     </button>
                   )}
                 </>
