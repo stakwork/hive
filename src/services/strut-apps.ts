@@ -26,8 +26,8 @@
  * - **The role floor** (`relayStepRefusal`): strut records the actor but
  *   knows nothing of Hive roles, so the relay is the only place they hold.
  *   A `step_run` that launches or cancels a run needs DEVELOPER or above,
- *   and a workspace's apps launch at most 20 runs an hour between them —
- *   as Hive's own benchmark launches. Every other step passes on read access.
+ *   and a workspace's apps launch at most 60 runs a minute between them
+ *   (`STRUT_APP_LAUNCHES_PER_MINUTE`). Every other step passes on read access.
  */
 
 import { createHash } from "node:crypto";
@@ -244,9 +244,15 @@ export function relayRefusal(message: unknown): RelayRefusal | null {
 
 /** The `step_run` types that start a paid workflow run or stop one: DEVELOPER and up. */
 export const RELAY_LAUNCH_STEPS: ReadonlySet<string> = new Set(["run/launch", "run/cancel"]);
-/** `run/launch`es from one workspace's apps, all apps together, per window — as Hive's own benchmark launches. */
-export const RELAY_LAUNCH_RATE_LIMIT = 20;
-export const RELAY_LAUNCH_WINDOW_SECS = 60 * 60;
+/** `run/launch`es from one workspace's apps, all apps together, per window, when `STRUT_APP_LAUNCHES_PER_MINUTE` is unset. */
+export const RELAY_LAUNCH_RATE_LIMIT = 60;
+export const RELAY_LAUNCH_WINDOW_SECS = 60;
+
+/** The launch limit in force: `STRUT_APP_LAUNCHES_PER_MINUTE` when it is a positive integer, else the default. */
+export function relayLaunchRateLimit(): number {
+  const n = Number(process.env.STRUT_APP_LAUNCHES_PER_MINUTE);
+  return Number.isInteger(n) && n > 0 ? n : RELAY_LAUNCH_RATE_LIMIT;
+}
 /** Implementation-defined JSON-RPC codes (-32000…-32099) for the role floor, after HTTP's 403 and 429. */
 export const RELAY_FORBIDDEN = -32003;
 export const RELAY_RATE_LIMITED = -32029;
@@ -285,14 +291,15 @@ export async function relayStepRefusal(
     return { id, isRequest, code: RELAY_FORBIDDEN, message: `Developer access required: ${type} needs the Developer role or above in this workspace` };
   }
   if (type !== "run/launch") return null;
-  const rate = await checkRateLimitSafe(`strut-app:launch:${swarm.workspace.id}`, RELAY_LAUNCH_RATE_LIMIT, RELAY_LAUNCH_WINDOW_SECS);
+  const limit = relayLaunchRateLimit();
+  const rate = await checkRateLimitSafe(`strut-app:launch-minute:${swarm.workspace.id}`, limit, RELAY_LAUNCH_WINDOW_SECS);
   if (rate.allowed) return null;
-  const wait = rate.retryAfter ? `in ${Math.ceil(rate.retryAfter / 60)} min` : "later";
+  const wait = rate.retryAfter ? `in ${rate.retryAfter} s` : "shortly";
   return {
     id,
     isRequest,
     code: RELAY_RATE_LIMITED,
-    message: `Too many runs: this workspace's apps launch at most ${RELAY_LAUNCH_RATE_LIMIT} an hour. Try again ${wait}.`,
+    message: `Too many runs: this workspace's apps launch at most ${limit} a minute. Try again ${wait}.`,
   };
 }
 
