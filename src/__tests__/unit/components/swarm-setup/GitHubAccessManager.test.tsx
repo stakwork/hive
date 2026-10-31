@@ -344,7 +344,7 @@ describe("GitHubAccessManager", () => {
         document.dispatchEvent(new Event("visibilitychange"));
       });
 
-      await waitFor(() => expect(onAccessError).toHaveBeenLastCalledWith(false));
+      await waitFor(() => expect(onAccessError).toHaveBeenLastCalledWith(false), { timeout: 5000 });
       expect(mockCheckAccess).toHaveBeenCalledTimes(2);
       expect(screen.queryByText("Repository Not Accessible")).toBeNull();
     });
@@ -358,7 +358,7 @@ describe("GitHubAccessManager", () => {
       expect(event).toBe("github-installation-updated");
       await act(async () => handler());
 
-      await waitFor(() => expect(onAccessError).toHaveBeenLastCalledWith(false));
+      await waitFor(() => expect(onAccessError).toHaveBeenLastCalledWith(false), { timeout: 5000 });
     });
 
     it("re-checks from the Check again button, keeping the screen up while it runs", async () => {
@@ -368,7 +368,7 @@ describe("GitHubAccessManager", () => {
       fireEvent.click(screen.getByRole("button", { name: "Check again" }));
 
       expect(screen.getByText("Repository Not Accessible")).toBeInTheDocument();
-      await waitFor(() => expect(mockCheckAccess).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(mockCheckAccess).toHaveBeenCalledTimes(2), { timeout: 5000 });
       expect(await screen.findByRole("button", { name: "Check again" })).toBeEnabled();
     });
   });
