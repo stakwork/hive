@@ -91,6 +91,7 @@ vi.mock("@/lib/ai/resolveMessageAttachments", () => ({ canReadKey: mockCanReadKe
 vi.mock("@/services/s3", () => ({ getS3Service: () => ({ getObject: mockGetObject }) }));
 
 import { logger } from "@/lib/logger";
+import { orchestratorTribeLine } from "@/lib/strut-orchestrator";
 import { awaitOrchestratorReply, launchOrchestratorTurn, runOrchestratorTurn } from "@/services/strut-orchestrator";
 
 const TARGET = {
@@ -273,6 +274,24 @@ describe("launchOrchestratorTurn", () => {
           "Names before a message are what the call shows, not verified. ",
       },
     });
+  });
+
+  it("a turn asked in a Sphinx tribe ends the context line with the tribe line — a text message, read on a phone; a wake on the tribe's conversation names no asker", async () => {
+    await launchOrchestratorTurn({ ...args, message: "Alice: what are we working on?", tribe: { name: "Builders", alias: "Alice" } });
+    let body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.input).toEqual({
+      prompt: "@acme-default\nAlice: what are we working on?",
+      session: "conv-1",
+      context: { line: "Mon 19 Oct, 14:02, Europe/London. " + orchestratorTribeLine({ name: "Builders", alias: "Alice" }) },
+    });
+    expect(body.input.context.line).toMatch(
+      /^Mon 19 Oct, 14:02, Europe\/London\. Asked in the Sphinx tribe #Builders by Alice\. Your reply is posted there, where not everyone is in this org, and read on a phone: say it the way you would in a text message, short/,
+    );
+
+    await launchOrchestratorTurn({ ...args, wakeId: "job-row-7", tribe: { name: "Builders" } });
+    body = JSON.parse((mockFetch.mock.calls[1] as [string, RequestInit])[1].body as string);
+    expect(body.input.context.line).toMatch(/^Mon 19 Oct, 14:02, Europe\/London\. In the Sphinx tribe #Builders\. Your reply is posted there/);
+    expect(body.input.context.line).not.toContain("Names before a message");
   });
 
   it("a turn of the conversation still PENDING is busy — nothing is launched", async () => {
