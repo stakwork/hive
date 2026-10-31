@@ -17,12 +17,13 @@
  *     refuses the key is a 502, not the member's 401; GET is 405;
  *   - the ROLE FLOOR: `run/launch` and `run/cancel` (pinned or not) refused
  *     below Developer with a JSON-RPC error, never forwarded; Developer and
- *     up pass; reads pass for a Viewer; the 21st launch in a workspace's
- *     hour is refused (cancels and other workspaces don't count), and a
- *     limiter that is down lets the launch through.
+ *     up pass; reads pass for a Viewer; the 61st launch in a workspace's
+ *     minute is refused (cancels and other workspaces don't count),
+ *     `STRUT_APP_LAUNCHES_PER_MINUTE` sets another limit, and a limiter
+ *     that is down lets the launch through.
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
@@ -57,7 +58,7 @@ vi.mock("@/services/bifrost/strut-delegation", () => ({
   ensureStrutDelegation: mockEnsure,
 }));
 // The real checkRateLimit / checkRateLimitSafe over an in-memory counter.
-vi.mock("@/lib/redis", () => ({ redis: { incr: mockIncr, expire: vi.fn(async () => 1), ttl: vi.fn(async () => 1800) } }));
+vi.mock("@/lib/redis", () => ({ redis: { incr: mockIncr, expire: vi.fn(async () => 1), ttl: vi.fn(async () => 42) } }));
 
 const { db } = await import("@/lib/db");
 const { resolveAuthorizedOrgId } = await import("@/lib/auth/org-access");
@@ -277,31 +278,58 @@ describe("POST /api/orgs/[githubLogin]/strut/apps/mcp — the role floor", () =>
     expect(mockIncr).not.toHaveBeenCalled();
   });
 
-  it("refuses the 21st launch in a workspace's hour; cancels and other workspaces are not counted", async () => {
+  it("refuses the 61st launch in a workspace's minute; cancels and other workspaces are not counted", async () => {
     as("DEVELOPER");
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 60; i++) {
       const res = await POST(request(step("run/launch", i)), params);
       expect(await res.text(), `launch ${i + 1}`).toContain('"result"');
     }
-    expect(mockFetch).toHaveBeenCalledTimes(20);
+    expect(mockFetch).toHaveBeenCalledTimes(60);
 
     const res = await POST(request(step("run/launch", 99)), params);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({ jsonrpc: "2.0", id: 99, error: { code: -32029 } });
-    expect(body.error.message).toContain("20 an hour");
-    expect(body.error.message).toContain("30 min");
-    expect(mockFetch).toHaveBeenCalledTimes(20);
-    expect(mockIncr).toHaveBeenCalledWith("strut-app:launch:ws-1");
+    expect(body.error.message).toContain("60 a minute");
+    expect(body.error.message).toContain("in 42 s");
+    expect(mockFetch).toHaveBeenCalledTimes(60);
+    expect(mockIncr).toHaveBeenCalledWith("strut-app:launch-minute:ws-1");
 
     // Stopping a run is never rate limited.
     await POST(request(step("run/cancel")), params);
-    expect(mockFetch).toHaveBeenCalledTimes(21);
+    expect(mockFetch).toHaveBeenCalledTimes(61);
 
-    // Another workspace's apps have their own hour.
+    // Another workspace's apps have their own minute.
     mockSwarmFind.mockResolvedValueOnce({ ...SWARM, workspace: { ...SWARM.workspace, id: "ws-2", slug: "other" } });
     await POST(request(step("run/launch"), { swarmId: "swarm-2" }), params);
-    expect(mockFetch).toHaveBeenCalledTimes(22);
+    expect(mockFetch).toHaveBeenCalledTimes(62);
+  });
+
+  describe("STRUT_APP_LAUNCHES_PER_MINUTE", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("sets the limit", async () => {
+      vi.stubEnv("STRUT_APP_LAUNCHES_PER_MINUTE", "3");
+      as("DEVELOPER");
+      for (let i = 0; i < 3; i++) {
+        expect(await (await POST(request(step("run/launch", i)), params)).text(), `launch ${i + 1}`).toContain('"result"');
+      }
+      const body = await (await POST(request(step("run/launch", 99)), params)).json();
+      expect(body).toMatchObject({ id: 99, error: { code: -32029 } });
+      expect(body.error.message).toContain("3 a minute");
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it("falls back to 60 when it is not a positive integer", async () => {
+      as("DEVELOPER");
+      for (const value of ["", "0", "-5", "2.5", "lots"]) {
+        vi.stubEnv("STRUT_APP_LAUNCHES_PER_MINUTE", value);
+        redisCounts.clear();
+        mockFetch.mockClear();
+        for (let i = 0; i < 61; i++) await POST(request(step("run/launch", i)), params);
+        expect(mockFetch, `"${value}"`).toHaveBeenCalledTimes(60);
+      }
+    });
   });
 
   it("lets the launch through when the limiter is down (fails open)", async () => {
