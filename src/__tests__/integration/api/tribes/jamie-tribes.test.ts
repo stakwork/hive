@@ -738,7 +738,7 @@ describe("Jamie in Sphinx tribes", () => {
   });
 
   describe("the outbox", () => {
-    it("a reply threads under its mention, with deliverables as links and strut's entries as metadata; an ack moves the cursor", async () => {
+    it("a reply threads under its mention, a link for the deliverable with an address of its own, strut's entries as metadata — a Hive card gets no link line; an ack moves the cursor", async () => {
       const scenario = await linked();
       await mention(aMention());
       const strut = { workspace: scenario.workspace.slug, artifacts: [{ id: "plan", kind: "markdown", title: "Plan", path: "plan.md" }] };
@@ -763,11 +763,8 @@ describe("Jamie in Sphinx tribes", () => {
           id: `${thread.id}:orchestrator-run-1`,
           tribe: TRIBE,
           thread: thread.id,
-          text: expect.stringMatching(
-            new RegExp(
-              `^We picked Wednesday\\.\\n\\nPlan: ${BASE}/org/${scenario.org.githubLogin}\\?chat=${conversationId}&artifact=id%3Aplan\\nFix login: https://github\\.com/acme/app/pull/7$`,
-            ),
-          ),
+          // The plan would only open this conversation in Hive: in Peel it is the card the metadata draws, so no line; the PR has an address of its own.
+          text: "We picked Wednesday.\n\nFix login: https://github.com/acme/app/pull/7",
           replyTo: "msg-1",
           metadata: { strut },
         },
@@ -850,7 +847,8 @@ describe("Jamie in Sphinx tribes", () => {
           id: `${thread.id}:orchestrator-wake-1`,
           tribe: TRIBE,
           thread: thread.id,
-          text: `The marketplace report is ready.\n\nReport: ${BASE}/org/${scenario.org.githubLogin}?chat=${conversationId}&artifact=${encodeURIComponent("graph:swarm-1:/jobs/job-a/files/report.md")}`,
+          // The report is a job's file: a link into this conversation in Hive gets no line, the metadata carries it.
+          text: "The marketplace report is ready.",
           replyTo: "msg-1",
           metadata: { strut },
         },
