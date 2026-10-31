@@ -51,9 +51,19 @@
  * The summary is the orchestrator's own posture (strut's template: say
  * what is new, a line when the result confirms, the answer when it adds),
  * not a checklist — "what it produced, its question and the next step"
- * made every wake reply relay the job's caveats and end on an offer.
+ * made every wake reply relay the job's caveats and end on an offer. The
+ * job's reply is framed as its note to the orchestrator, never a draft of
+ * the message: shortened line by line, a five-point report came back as a
+ * five-point report.
+ *
+ * The wake runs on the conversation owner's model pick
+ * (`User.chatAgentModel`), the one the person's own turns launch with (the
+ * tribe, call and ask routes pass it as `params.model`), so one
+ * conversation runs on one model; before this the wake fell to the
+ * template's default while the turn before it ran on the person's pick.
  */
 
+import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { describeArtifactEvent, type ArtifactEvent } from "@/lib/strut-jobs";
@@ -180,7 +190,7 @@ function renderJobReply(args: OrchestratorJobWakeArgs, readIn?: WakeReadIn): str
   const text = args.text.trim() ? cap(args.text.trim(), MAX_WAKE_TEXT_CHARS) : "(no reply text)";
   return (
     `${cards}\n\n` +
-    "Its reply, verbatim:\n" +
+    "Its reply to you, verbatim:\n" +
     "<<<job reply\n" +
     `${text}\n` +
     ">>>\n" +
@@ -202,8 +212,9 @@ export function buildOrchestratorJobWakeText(args: OrchestratorJobWakeArgs, read
     whereRead(readIn) +
     `${renderJobReply(args, readIn)}\n` +
     "Follow the user's standing instructions in this conversation. Decide one of:\n" +
-    "- **Summarize** (the default): say what is NEW against what you already told the person — a line when the result confirms it, " +
-    "the answer when it adds to it — in your own words, as a message in this conversation, never the whole story again. " +
+    "- **Summarize** (the default): the job's reply is its note to YOU, not a draft of your message — never shorten it line by line " +
+    "or keep its sections. Say what is NEW against what you already told the person — a line when the result confirms it, what it " +
+    "adds when it adds — in your own words, as a message in this conversation, never the whole story again; the detail is in the cards. " +
     "Leave out how the job worked: where it looked, what it could not reach, what it did not open or verify — unless one of those " +
     "changes the answer, and then in a clause. Do not restate the entry, do not list files, functions or line numbers, and do not " +
     "describe the cards — the person sees them. Ask only what the job asked the person, if it asked; otherwise stop when the answer " +
@@ -274,6 +285,24 @@ export async function conversationMedium(
 }
 
 /**
+ * The model the wake runs on: the conversation owner's pick
+ * (`User.chatAgentModel`, healed), the one their own turns launch with, so
+ * one conversation runs on one model. No pick, or a read that fails
+ * (logged), and the template's default serves.
+ */
+async function ownerModel(userId: string, conversationId: string): Promise<string | undefined> {
+  try {
+    return await loadUserChatAgentModel(userId);
+  } catch (err) {
+    logger.warn("Orchestrator wake: the owner's model pick could not be read; launching on the template's default", LOG_TAG, {
+      conversationId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return undefined;
+  }
+}
+
+/**
  * Wake the orchestrator on the job row that just landed. Never throws;
  * every outcome is logged. `deps` is for tests.
  */
@@ -300,6 +329,7 @@ export async function invokeOrchestratorOnJobTurn(
     },
     async (conversation) => {
       const medium = await conversationMedium(conversationId, conversation.messages);
+      const model = await ownerModel(conversation.userId, conversationId);
       const message = buildOrchestratorJobWakeText(args, readInOf(medium));
       for (let attempt = 0; ; attempt++) {
         const launched = await launch({
@@ -309,6 +339,7 @@ export async function invokeOrchestratorOnJobTurn(
           message,
           publicBaseUrl: args.publicBaseUrl,
           wakeId,
+          ...(model ? { model } : {}),
           ...medium,
         });
         if (launched.status === "started") {

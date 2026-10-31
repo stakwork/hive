@@ -147,9 +147,13 @@ and its resolved artifacts.
    agent cannot read hive's rows; capped), its question, the cards the user
    already sees, and three choices — summarize (the default: what is NEW
    against what it already told the person, a line when the result confirms
-   it, the answer when it adds; never the job's caveats about how it worked,
-   never an offered next step), continue through its own `job/continue`, or
-   stay silent. The reply lands as a normal orchestrator row. The wake runs behind `runGatedAutoTurn` in
+   it, what it adds when it adds; the job's reply is framed as a note to the
+   orchestrator, never a draft to shorten line by line; never the job's
+   caveats about how it worked, never an offered next step), continue
+   through its own `job/continue`, or stay silent. The reply lands as a
+   normal orchestrator row. The wake launches with the conversation owner's
+   model pick (`chatAgentModel`), as the person's own turns do, so one
+   conversation runs on one model. The wake runs behind `runGatedAutoTurn` in
    `canvas-strut-autoturn.ts`: the master kill switch, the
    per-conversation claim, idempotency — the launch marker row carries the
    job row's id as `wakeId` — and a loop breaker that counts job rows
