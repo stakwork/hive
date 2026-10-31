@@ -173,6 +173,10 @@ device as it is.
    }
    ```
 
+   A reply to one of Jamie's posts carries its `thread`, and may carry
+   `replyTo`: the post's outbox id, `<thread>:<row id>` (not sent by the
+   daemon yet; see "A proposal").
+
    `recent` is the room since Jamie last spoke there, oldest first: up to
    30 lines and 8 KB, the newest that fit. `owner` is whether the tribe's
    owner wrote it; the tribe server marks the owner's messages.
@@ -240,8 +244,9 @@ device as it is.
 2. **Jamie posts each one** into its tribe:
    - the text, then the deliverables as links;
    - `metadata`, as its JSON in the message's own `metadata` field:
-     `{ strut: { workspace, artifacts } }`, the field the call chat carries
-     (voice PR #20);
+     `{ strut: { workspace, artifacts, proposals? } }`, the field the call
+     chat carries (voice PR #20); `proposals` on a proposal's post and on
+     a decision's (below, "A proposal");
    - threaded under `replyTo`, and split into type-34 chunks past 869 bytes.
      The whole message, metadata included, is what is chunked.
 
@@ -256,8 +261,72 @@ device as it is.
    wake turn's own run holds none of the job's work): its cards but Hive's
    own (claims, trace) as links, and strut's entries as `metadata`.
 4. A failed turn is an `error` message ("I couldn't finish that: …"). A
-   proposal is "Waiting for <linker> to approve: <title>". The linker decides
-   it in Hive.
+   proposal is "Waiting for <linker> to approve: <title>", with the
+   proposal in its `metadata` (below).
+
+### A proposal
+
+Added 2026-10-31. A tool call the turn's agent made that a person must
+approve (strut `specs/API.md` §12): strut records it and runs it on the
+accept. Strut writes the CARD a person decides on (strut#404, at or past
+`c23756a`): `{ v: 1, title, summary?, fields: [{ label, value, kind?,
+danger? }], actions: { accept, reject }, full }`. Hive, strut's UI and Peel
+each have one renderer for it.
+
+- **The post.** Its line stays "Waiting for <linker> to approve: <title>",
+  which everyone reads. Its `metadata` carries the proposal, beside an
+  `artifacts` list that may be empty:
+
+  ```json
+  { "strut": { "workspace": "<slug>", "artifacts": [],
+    "proposals": [{ "id": "…", "step": "package/install", "title": "…", "summary": "…",
+                    "card": { "v": 1, … }, "status": "pending", "url": "/proposals/<id>",
+                    "rationale": "…", "createdAt": "…" }] } }
+  ```
+
+  `card` is strut's card as the run reported it, none from an older strut;
+  `url` is strut-relative; `workspace` is the one whose strut ran the turn.
+  Hive keeps `summary`, `card` and the workspace on the proposal's row when
+  the turn lands (`orchestrator-turn.ts`). Peel draws the card on the post.
+  The card can be most of a post's size: up to 12 fields of 500
+  characters, so a long one is a few dozen sats in chunks ("Money").
+- **The owner decides by replying.** A reply to the post whose words are
+  the card's own button word (`actions.accept` / `actions.reject`, what Peel
+  sends), or one of accept, approve, yes, ok / reject, decline, no — in any
+  case, a leading `@jamie` and a closing `.` or `!` aside, nothing else — is
+  a decision (`decideByReply`, `/api/tribes/messages`), and runs no turn.
+  - The tribe's OWNER decides (`owner`, the tribe server's flag), as the
+    person who linked the tribe, whom every tribe turn runs as: Hive decides
+    on the turn's strut as them, as its own card does
+    (`decideStrutProposal`), and only a proposal of a turn that ran as them.
+    Other members later, once the daemon forwards a sender's pubkey (open
+    question 6).
+  - Anyone else gets a reply under their message, "Only the tribe's owner
+    can decide this one.", and nothing is decided.
+  - Any other reply to the post (a question about it) is a turn, as any
+    reply to Jamie is.
+  - Which proposal: the post the reply names in `replyTo`, Hive's id for
+    it (`<thread>:<row id>`, the outbox id). The daemon does not send that
+    yet (it sends the conversation, `thread`, alone); until it does, a
+    reply is about the one proposal the conversation's newest turn left
+    open, and with none, or two, it is a turn. A newer turn after the
+    proposal ends that: decide it in Hive then.
+  - A burst (`earlier`) is never a decision.
+  - Taken once, like a mention: the reply's id is recorded before strut is
+    asked, so a retry is a duplicate. A decide strut could not answer drops
+    the record again and answers 502, so Jamie retries. Already decided
+    (409): the outcome from strut's record, unless the conversation has it,
+    then "Already decided. <outcome>" under the reply.
+- **The outcome is posted.** A decision writes its row in the conversation
+  ("Applied: <title>", "Rejected: …", "Failed: … — <error>"), and the
+  outbox posts that row like a reply: in the proposal's thread (under the
+  mention its turn answered), with the new status in `metadata`
+  (`proposals: [{ id, status, title, step, error? }]`, no card), so Peel
+  moves the card on. That holds for a decision made in Hive's own card too.
+  A decision row from before rows named their step is not posted.
+
+  The outcome cannot quote the proposal post itself: Hive never learns the
+  Sphinx id Jamie posted it under. It lands in the same thread.
 
 ### Deliverables
 
@@ -399,6 +468,11 @@ Built in #401:
 Still to add:
 1. **Outbox `join` and `leave` entries.** The daemon joins by link today
    only through its admin API.
+1. **`replyTo` on a reply to a post.** Keep each post's outbox id against
+   the Sphinx id it went out under (beside `rememberThread`), and send it as
+   the mention's `replyTo` when a message replies to that post (or the
+   tribe's copy of it). Hive then decides the proposal the reply names,
+   rather than the one the conversation left open.
 2. **Leaving a tribe.** sphinx-chat has no leave yet.
 3. **Deployment.** One container, beside Hive's other services:
    - a volume for `SPHINX_HOME`;
@@ -420,6 +494,9 @@ Still to add:
 4. **Rendering.** Show Jamie's replies' `strut` field in tribes as the call
    chat does. This is a new, narrow rule beside "control lines are never shown
    in a tribe": deliverables only, apps behind a confirm.
+5. **Proposal cards** (stakwork/peel#464). Draw `strut.proposals[].card` on
+   Jamie's post; for the tribe's owner, send the card's button word as a
+   reply to the post; move the card on from a decision's post.
 
 ### No change
 

@@ -3,14 +3,39 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
 import { LockAcquireTimeoutError, withLock } from "@/lib/locks/redis-lock";
+import { notifyInitiativeUpdated } from "@/lib/pusher";
 import { ORCHESTRATOR_BUSY_NOTE } from "@/lib/strut-orchestrator";
-import { authorizeJamieRequest, SPHINX_PUBKEY_RE } from "@/lib/tribes/jamie";
-import { queueTribeNotice, TRIBE_ACCESS_LOST_NOTICE, tribeName } from "@/lib/tribes/tribeLinks";
+import { authorizeJamieRequest, jamieAccount, SPHINX_PUBKEY_RE } from "@/lib/tribes/jamie";
+import {
+  decisionOfText,
+  hasDecisionRow,
+  lastOpenProposal,
+  proposalOfRow,
+  type PostedProposal,
+} from "@/lib/tribes/tribeDecisions";
+import {
+  queueTribeNotice,
+  queueTribeReply,
+  TRIBE_ACCESS_LOST_NOTICE,
+  TRIBE_DECIDED_IN_HIVE,
+  TRIBE_OWNER_DECIDES,
+  tribeName,
+} from "@/lib/tribes/tribeLinks";
+import { parseTribeMessageId } from "@/lib/tribes/tribeOutbox";
 import { getBaseUrl } from "@/lib/utils";
 import type { StoredAttachment } from "@/services/canvas-turn-persistence";
 import { persistCanvasUserMessage } from "@/services/org-canvas-conversation";
 import { getS3Service } from "@/services/s3";
 import { launchOrchestratorTurn, orchestratorHasLiveTurn } from "@/services/strut-orchestrator";
+import {
+  appendProposalResultRow,
+  decideStrutProposal,
+  renderProposalResult,
+  resolveProposalTurn,
+  StrutProposalError,
+  type DecideOutcome,
+  type ProposalTurnRow,
+} from "@/services/strut-proposals";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
 /**
@@ -55,8 +80,15 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  * unopened one is said after the message, so the agent knows a file was
  * sent.
  *
+ * A decision: a reply to Jamie's proposal post that is only the card's
+ * button word, or a plain accept / reject (`decideByReply`), decides the
+ * proposal when the tribe's owner wrote it, and runs no turn; anyone else
+ * is told only the owner can.
+ *
  * Answers, as the daemon reads them:
  *   202 { turn, thread }  taken
+ *   200 { decided }    a reply that decided a proposal (its status now)
+ *   200 { refused }    a decision that was not this sender's to make, or strut refused (a reply says so)
  *   200 { duplicate }  a mention already taken (a retry whose answer was lost)
  *   409 { busy }       a turn of that conversation is still live; Jamie offers it again
  *   403                the linker can no longer use the workspace (a notice goes to the tribe)
@@ -125,6 +157,8 @@ interface Mention {
   id: string;
   /** The conversation it replies in: a post's `thread`, as Jamie holds it. */
   thread: string | null;
+  /** The post it replies to, by the id Hive handed it out under (`<thread>:<row id>`), when the daemon says. */
+  replyTo: string | null;
   tribe: { pubkey: string; name: string | null };
   alias: string;
   owner: boolean;
@@ -203,10 +237,12 @@ function parseMention(raw: unknown): Mention | string {
     images.push({ name, mediaType, bytes });
   }
   const thread = typeof b.thread === "string" ? b.thread.trim() : "";
+  const replyTo = typeof b.replyTo === "string" ? b.replyTo.trim() : "";
   return {
     id,
     // One Hive never handed out is a thread it does not know: a new conversation.
     thread: thread && thread.length <= MAX_ID_CHARS ? thread : null,
+    replyTo: replyTo && replyTo.length <= 2 * MAX_ID_CHARS ? replyTo : null,
     tribe: { pubkey, name: tribeName(tribe?.name) },
     // A tribe tells members apart by alias, and may have none for one.
     alias: oneLine(b.alias, MAX_ALIAS_CHARS) || "A member",
@@ -273,11 +309,127 @@ const loadLink = (pubkey: string) =>
     select: { id: true, tribePubkey: true, name: true, orgId: true, workspaceSlug: true, userId: true },
   });
 
-/** The conversation the message replies in, when its `thread` is one of this tribe's. */
-const repliedThread = (link: Pick<Link, "id">, mention: Mention): Promise<Thread | null> =>
-  mention.thread
-    ? db.tribeThread.findFirst({ where: { id: mention.thread, tribeLinkId: link.id }, select: { id: true, conversationId: true } })
+/** The conversation the message replies in, when its `thread` (else its post's) is one of this tribe's. */
+const repliedThread = (link: Pick<Link, "id">, mention: Mention): Promise<Thread | null> => {
+  const id = mention.thread ?? (mention.replyTo ? parseTribeMessageId(mention.replyTo)?.threadId : undefined);
+  return id
+    ? db.tribeThread.findFirst({ where: { id, tribeLinkId: link.id }, select: { id: true, conversationId: true } })
     : Promise.resolve(null);
+};
+
+const conversationRows = async (conversationId: string): Promise<unknown[]> => {
+  const conversation = await db.sharedConversation.findUnique({
+    where: { id: conversationId },
+    select: { messages: true },
+  });
+  return Array.isArray(conversation?.messages) ? (conversation.messages as unknown[]) : [];
+};
+
+/**
+ * The proposal a reply is about: the post `replyTo` names, when it is a
+ * proposal's in this conversation; with no `replyTo` (the daemon sends the
+ * conversation alone), the one proposal its newest turn left open. A
+ * `replyTo` that is not an id Hive handed out is as none.
+ */
+function repliedProposal(rows: unknown[], thread: Thread, mention: Mention): PostedProposal | null {
+  const post = mention.replyTo ? parseTribeMessageId(mention.replyTo) : null;
+  if (!post) return lastOpenProposal(rows);
+  return post.threadId === thread.id ? proposalOfRow(rows, post.rowId) : null;
+}
+
+/**
+ * A reply to Jamie's proposal post that decides it
+ * (`docs/plans/jamie-in-tribes.md`, "A proposal"), or null for any other
+ * message, which takes a turn. Its words must be the card's own button
+ * word or a plain accept / reject, and nothing else (`decisionOfText`);
+ * a burst (`earlier`) is never one.
+ *
+ * The tribe's OWNER decides, as the person who linked the tribe, whom
+ * every tribe turn runs as — on the turn's strut, as the card in Hive
+ * does (`decideStrutProposal`), and only a turn that ran as them. The
+ * decision row it writes is what tells the tribe the outcome (the
+ * outbox posts it). Anyone else, or a proposal of someone else's turn,
+ * gets a reply saying so, and no turn runs. A linker who can no longer
+ * read the turn is the turn's to say (null).
+ *
+ * Taken once: the reply's id is recorded (`TribeMention`, folded under the
+ * proposing turn) before strut is asked, so Jamie's retry is a duplicate;
+ * a decide strut could not answer drops the record again and answers 502,
+ * so Jamie retries. Already decided (409): the outcome, from strut's
+ * record, unless the conversation has it.
+ */
+async function decideByReply(link: Link, mention: Mention): Promise<NextResponse | null> {
+  if (mention.earlier.length > 0) return null;
+  const thread = await repliedThread(link, mention);
+  if (!thread) return null;
+  const proposal = repliedProposal(await conversationRows(thread.conversationId), thread, mention);
+  if (!proposal) return null;
+  const action = decisionOfText(mention.text, { actions: proposal.actions, alias: jamieAccount()?.alias });
+  if (!action) return null;
+
+  const key = { tribeLinkId_mentionId: { tribeLinkId: link.id, mentionId: mention.id } };
+  const taken = await db.tribeMention.findUnique({ where: key, select: { runId: true } });
+  if (taken) return NextResponse.json({ duplicate: true, turn: taken.runId });
+  const take = () =>
+    db.tribeMention.create({
+      data: { tribeLinkId: link.id, mentionId: mention.id, runId: proposal.runId, folded: true },
+    });
+  // A line under the reply, and the reply taken, together; `say`, once it is taken.
+  const refuse = async (text: string) => {
+    await db.$transaction([take(), queueTribeReply(link.tribePubkey, text, mention.id)]);
+    return NextResponse.json({ refused: text });
+  };
+  const say = async (text: string, answer: Record<string, unknown> = { refused: text }) => {
+    await queueTribeReply(link.tribePubkey, text, mention.id);
+    return NextResponse.json(answer);
+  };
+  if (!mention.owner) return refuse(TRIBE_OWNER_DECIDES);
+
+  const org = await db.sourceControlOrg.findUnique({ where: { id: link.orgId }, select: { githubLogin: true } });
+  if (!org) return null;
+  let row: ProposalTurnRow;
+  try {
+    row = await resolveProposalTurn({ githubLogin: org.githubLogin, userId: link.userId, runId: proposal.runId });
+  } catch (err) {
+    if (err instanceof StrutProposalError) return null;
+    throw err;
+  }
+  if (row.userId !== link.userId) return refuse(TRIBE_DECIDED_IN_HIVE);
+
+  await take();
+  let outcome: DecideOutcome;
+  try {
+    outcome = await decideStrutProposal(row, proposal.proposalId, { action }, link.userId);
+  } catch (err) {
+    await db.tribeMention.delete({ where: key }).catch(() => undefined);
+    if (err instanceof StrutProposalError) return NextResponse.json({ error: err.message }, { status: 502 });
+    throw err;
+  }
+  console.log("[tribes/messages] decided", { proposal: proposal.proposalId, action, status: outcome.status });
+  switch (outcome.status) {
+    case 200:
+      await appendProposalResultRow(row, outcome.proposal);
+      // An accepted step wrote the graph: open canvases on that workspace read its plans again.
+      if (action === "accept" && outcome.proposal.workspaceSlug) {
+        notifyInitiativeUpdated(org.githubLogin, { workspaceSlug: outcome.proposal.workspaceSlug });
+      }
+      return NextResponse.json({ decided: outcome.proposal.status });
+    case 409: {
+      const record = outcome.proposal;
+      // Still pending: strut's own words say what it waits for.
+      if (!record || record.status === "pending") return say(outcome.error);
+      // The conversation has the outcome (the tribe was told it): said again under this reply.
+      if (hasDecisionRow(await conversationRows(thread.conversationId), record.id, record.status)) {
+        const line = renderProposalResult(record.title, record.status, record.result?.error);
+        return say(`Already decided. ${line}`, { decided: record.status });
+      }
+      await appendProposalResultRow(row, record);
+      return NextResponse.json({ decided: record.status });
+    }
+    default:
+      return say(`I couldn't decide that one: ${outcome.error}`);
+  }
+}
 
 async function takeTurn(request: NextRequest, link: Link, mention: Mention): Promise<NextResponse> {
   const { userId, workspaceSlug, orgId } = link;
@@ -397,7 +549,7 @@ export async function POST(request: NextRequest) {
         // The owner may have unlinked since.
         const link = await loadLink(mention.tribe.pubkey);
         if (!link) return NextResponse.json({ error: "This tribe is not linked to an org." }, { status: 404 });
-        return takeTurn(request, link, mention);
+        return (await decideByReply(link, mention)) ?? takeTurn(request, link, mention);
       },
       { ttlMs: 60_000, acquireTimeoutMs: 0 },
     );

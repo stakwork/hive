@@ -48,6 +48,12 @@ describe("tribeText", () => {
     );
   });
 
+  it("a decision posts its outcome line as it is", () => {
+    expect(tribeText({ id: "d", kind: "decision", text: "Applied: Login bug", title: "Login bug" }, opts)).toBe(
+      "Applied: Login bug",
+    );
+  });
+
   it("a long reply is cut and points at the conversation; its links are kept", () => {
     const text = tribeText(
       { id: "r", kind: "reply", text: "x".repeat(MAX_TRIBE_TEXT_CHARS + 500), artifacts: [{ title: "PR", url: "https://pr" }] },

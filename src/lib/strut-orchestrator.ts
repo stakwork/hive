@@ -160,6 +160,30 @@ export type OrchestratorRowSource = {
 export interface StrutArtifactEnvelope {
   workspace: string;
   artifacts: Record<string, unknown>[];
+  /**
+   * Proposals the message is about: on a proposal's post, the one it asks
+   * for (with strut's `card`); on a decision's, the outcome (no card). The
+   * ids are that workspace's strut's, the `url` strut-relative. A reader
+   * that knows only `artifacts` reads the envelope as before.
+   */
+  proposals?: StrutProposalEntry[];
+}
+
+/** A proposal in an envelope (`StrutArtifactEnvelope.proposals`). */
+export interface StrutProposalEntry {
+  id: string;
+  step: string;
+  title: string;
+  status: StrutProposalStatus;
+  summary?: string;
+  /** strut's card as the run reported it (`StrutProposalCard` at `v: 1`); none from an older strut. */
+  card?: Record<string, unknown>;
+  /** Strut-relative: `/proposals/<id>`. */
+  url?: string;
+  rationale?: string;
+  createdAt?: string;
+  /** A failed one: what went wrong. */
+  error?: string;
 }
 
 /** The most entries an envelope keeps (the canvas keeps as many refs). */
@@ -183,13 +207,17 @@ export function strutReferenceEntries(raw: unknown): Record<string, unknown>[] {
     .slice(0, MAX_STRUT_ENTRIES);
 }
 
-/** A stored envelope, when it has a workspace and entries; its entries are not looked into. */
+/**
+ * A stored envelope, when it has a workspace and entries — deliverables, or
+ * proposals beside an `artifacts` list that may be empty; its entries are
+ * not looked into.
+ */
 export function parseStrutArtifactEnvelope(value: unknown): StrutArtifactEnvelope | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const v = value as Record<string, unknown>;
-  if (typeof v.workspace !== "string" || !v.workspace || !Array.isArray(v.artifacts) || v.artifacts.length === 0) {
-    return undefined;
-  }
+  if (typeof v.workspace !== "string" || !v.workspace || !Array.isArray(v.artifacts)) return undefined;
+  const proposals = Array.isArray(v.proposals) && v.proposals.length > 0;
+  if (v.artifacts.length === 0 && !proposals) return undefined;
   return value as StrutArtifactEnvelope;
 }
 
@@ -321,8 +349,14 @@ export type StrutProposalRowSource = {
   step: string;
   status: StrutProposalStatus;
   title: string;
+  /** What the step's `describe` read for the card at proposal time. */
+  summary?: string;
+  /** strut's card as the run reported it (read with `strutProposalCardOf`); none from an older strut. */
+  card?: Record<string, unknown>;
   rationale?: string;
   createdAt?: string;
+  /** The slug of the workspace whose strut ran the turn: what the proposal's id is relative to. */
+  workspace?: string;
 };
 
 /** A person's decision on a proposal, as the decide route recorded it. */
@@ -332,7 +366,35 @@ export type StrutProposalResultRowSource = {
   proposalId: string;
   status: StrutProposalStatus;
   title: string;
+  /** The proposal's step; none on a row from before tribes were told the outcome. */
+  step?: string;
+  /** A failed one: what went wrong. */
+  error?: string;
+  /** As on the proposal's row. */
+  workspace?: string;
 };
+
+/**
+ * What a person decides on (strut API.md §12, `src/proposal-card.ts`):
+ * computed by strut once, at proposal time, for a host to draw without
+ * knowing the step. `full` is true when `fields` cover everything that will
+ * run.
+ */
+export interface StrutProposalCard {
+  v: 1;
+  title: string;
+  summary?: string;
+  fields: StrutProposalCardField[];
+  actions: { accept: string; reject: string };
+  full: boolean;
+}
+
+export interface StrutProposalCardField {
+  label: string;
+  value: string;
+  kind?: "text" | "code" | "markdown" | "ref";
+  danger?: boolean;
+}
 
 /** The slim form strut reports a run's proposals in (`run.end { proposals }`, `GET …/runs/:runId/proposals`). */
 export interface StrutProposalBrief {
@@ -341,6 +403,9 @@ export interface StrutProposalBrief {
   title: string;
   status: StrutProposalStatus;
   url: string;
+  summary?: string;
+  /** strut's card as it came, a plain object under `MAX_CARD_CHARS` of JSON. */
+  card?: Record<string, unknown>;
   rationale?: string;
   createdAt?: string;
   decidedAt?: string;
@@ -349,9 +414,60 @@ export interface StrutProposalBrief {
 const MAX_ID = 200;
 const MAX_TITLE = 300;
 const MAX_RATIONALE = 2_000;
+const MAX_SUMMARY = 4_000;
+/** strut caps a card at 12 fields of 500 characters; this is the room for its labels and the JSON. */
+const MAX_CARD_CHARS = 16_000;
+const CARD_MAX_FIELDS = 12;
+const CARD_MAX_VALUE = 500;
+const CARD_FIELD_KINDS = new Set(["text", "code", "markdown", "ref"]);
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown, max: number): string | undefined =>
   typeof v === "string" && v.length > 0 && v.length <= max ? v : undefined;
+const cut = (v: unknown, max: number): string | undefined =>
+  typeof v === "string" && v.trim() ? (v.length > max ? `${v.slice(0, max - 1).trimEnd()}…` : v) : undefined;
+
+/** A card kept as it came: a plain object small enough to store and hand on; anything else is none. */
+function keptCard(v: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(v)) return undefined;
+  try {
+    return JSON.stringify(v).length <= MAX_CARD_CHARS ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A card hive can draw: strut's `v: 1`, its fields under strut's own caps.
+ * Null for none, or one hive cannot read (another version, a field that is
+ * not label and value): the host then draws what it drew before cards.
+ */
+export function strutProposalCardOf(raw: unknown): StrutProposalCard | null {
+  if (!isRecord(raw) || raw.v !== 1 || typeof raw.title !== "string" || !Array.isArray(raw.fields)) return null;
+  const actions = isRecord(raw.actions) ? raw.actions : null;
+  const word = (v: unknown) => typeof v === "string" && v.trim() !== "";
+  if (!actions || !word(actions.accept) || !word(actions.reject)) return null;
+  const fields: StrutProposalCardField[] = [];
+  for (const f of raw.fields.slice(0, CARD_MAX_FIELDS)) {
+    if (!isRecord(f) || typeof f.label !== "string" || typeof f.value !== "string") return null;
+    fields.push({
+      label: f.label,
+      value: f.value.length > CARD_MAX_VALUE ? `${f.value.slice(0, CARD_MAX_VALUE - 1)}…` : f.value,
+      ...(typeof f.kind === "string" && CARD_FIELD_KINDS.has(f.kind)
+        ? { kind: f.kind as StrutProposalCardField["kind"] }
+        : {}),
+      ...(f.danger === true ? { danger: true } : {}),
+    });
+  }
+  return {
+    v: 1,
+    title: raw.title,
+    ...(typeof raw.summary === "string" && raw.summary.trim() ? { summary: raw.summary } : {}),
+    fields,
+    actions: { accept: String(actions.accept).trim(), reject: String(actions.reject).trim() },
+    // Anything left out here, or not said, is not everything.
+    full: raw.full === true && raw.fields.length <= CARD_MAX_FIELDS,
+  };
+}
 
 export function parseStrutProposalStatus(v: unknown): StrutProposalStatus {
   return typeof v === "string" && (STRUT_PROPOSAL_STATUSES as readonly string[]).includes(v)
@@ -368,12 +484,16 @@ export function parseStrutProposalBriefs(raw: unknown): StrutProposalBrief[] {
     const id = str(entry.id, MAX_ID);
     const step = str(entry.step, MAX_ID);
     if (!id || !step) continue;
+    const summary = cut(entry.summary, MAX_SUMMARY);
+    const card = keptCard(entry.card);
     out.push({
       id,
       step,
       title: str(entry.title, MAX_TITLE) ?? step,
       status: parseStrutProposalStatus(entry.status),
       url: str(entry.url, 1_024) ?? `/proposals/${id}`,
+      ...(summary ? { summary } : {}),
+      ...(card ? { card } : {}),
       ...(str(entry.rationale, MAX_RATIONALE) ? { rationale: str(entry.rationale, MAX_RATIONALE) } : {}),
       ...(str(entry.createdAt, 64) ? { createdAt: str(entry.createdAt, 64) } : {}),
       ...(str(entry.decidedAt, 64) ? { decidedAt: str(entry.decidedAt, 64) } : {}),
@@ -393,6 +513,9 @@ export interface StrutProposalRecord {
   input: unknown;
   rationale?: string;
   title: string;
+  summary?: string;
+  /** strut's card, when it has one hive can draw (`strutProposalCardOf`). */
+  card?: StrutProposalCard;
   status: StrutProposalStatus;
   createdAt: string;
   by: { workflow: string; runId: string; path?: string; job?: string; session?: string };
