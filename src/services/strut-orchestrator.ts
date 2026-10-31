@@ -87,15 +87,17 @@ export interface OrchestratorTurnArgs {
    */
   wakeId?: string;
   /**
-   * Asked on a voice call (`/api/calls/turn`): the call line
+   * On a voice call — asked there (`/api/calls/turn`), or a wake on the
+   * call's conversation (`strut-orchestrator-wake.ts`): the call line
    * (`ORCHESTRATOR_CALL_LINE`) ends `context.line`.
    */
   call?: boolean;
   /**
-   * Asked in a Sphinx tribe (`/api/tribes/messages`): the tribe line
-   * (`orchestratorTribeLine`) ends `context.line`.
+   * In a Sphinx tribe — asked there (`/api/tribes/messages`, the asker's
+   * alias), or a wake on the tribe's conversation (no asker): the tribe
+   * line (`orchestratorTribeLine`) ends `context.line`.
    */
-  tribe?: { name: string | null; alias: string; owner?: boolean };
+  tribe?: { name: string | null; alias?: string; owner?: boolean };
 }
 
 export type OrchestratorLaunchResult =

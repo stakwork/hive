@@ -148,12 +148,22 @@ describe("tribe links", () => {
 });
 
 describe("orchestratorTribeLine", () => {
-  it("names the tribe and who asked, and says who reads the reply", () => {
+  it("names the tribe and who asked, says who reads the reply, and that it is read on a phone as a text message", () => {
     expect(orchestratorTribeLine({ name: "Builders", alias: "Alice" })).toBe(
-      "Asked in the Sphinx tribe #Builders by Alice. Your reply is posted there, where not everyone is in this org. " +
+      "Asked in the Sphinx tribe #Builders by Alice. Your reply is posted there, where not everyone is in this org, and read on a phone: " +
+        "say it the way you would in a text message, short, with what matters first; links and detail belong in artifacts, and a long reply is cut. " +
         "Names before a message are what the tribe shows, not verified. ",
     );
     expect(orchestratorTribeLine({ name: null, alias: "Bob", owner: true })).toMatch(/^Asked in a Sphinx tribe by Bob \(the tribe's owner\)\. /);
+  });
+
+  it("a wake's turn, which nobody asked: the tribe alone, the same posture, nothing about names", () => {
+    const line = orchestratorTribeLine({ name: "Builders" });
+    expect(line).toMatch(/^In the Sphinx tribe #Builders\. Your reply is posted there, where not everyone is in this org, and read on a phone: /);
+    expect(line).toContain("say it the way you would in a text message");
+    expect(line).not.toContain("Names before a message");
+    expect(line).not.toContain("undefined");
+    expect(orchestratorTribeLine({ name: null })).toMatch(/^In a Sphinx tribe\. /);
   });
 });
 
