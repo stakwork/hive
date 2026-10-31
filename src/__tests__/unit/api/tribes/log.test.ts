@@ -266,3 +266,16 @@ describe("the batch file", () => {
     expect(batchAliases(batch.messages)).toEqual([]);
   });
 });
+
+describe("parseBatch: a deleted line", () => {
+  const line = { id: "m1", time: "2026-10-31T14:03:12Z", alias: "Bob", owner: false, mine: false };
+
+  it("carries no text and keeps `deleted`; a line with no text and no `deleted` is refused", () => {
+    const ok = parseBatch({ batch: "b1", tribe: { pubkey: "02" + "a".repeat(64) }, messages: [{ ...line, text: "", deleted: true }] });
+    expect(typeof ok).not.toBe("string");
+    expect((ok as { messages: unknown[] }).messages[0]).toEqual({ ...line, time: "2026-10-31T14:03:12.000Z", text: "", deleted: true });
+    expect(parseBatch({ batch: "b1", tribe: { pubkey: "02" + "a".repeat(64) }, messages: [{ ...line, text: "" }] })).toBe(
+      "messages[0].text is required",
+    );
+  });
+});

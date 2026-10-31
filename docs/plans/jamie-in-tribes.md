@@ -166,15 +166,23 @@ device as it is.
    `recent` is the room since Jamie last spoke there, oldest first: up to
    30 lines and 8 KB, the newest that fit. `owner` is whether the tribe's
    owner wrote it; the tribe server marks the owner's messages.
-   `attachments` is there when the mention carried a photo (or the member
+   `attachments` is there when the mention carried a file (or the member
    posted captionless ones just before it): the daemon downloads and
-   decrypts each from the memes server as an app does, shrinks it to what a
-   vision model reads, and sends it as base64 — at most four and 3 MB
-   together, so the request stays under Vercel's 4.5 MB body limit — or
-   with `error` saying why it could not be opened. Hive stores each image
-   under the workspace's canvas uploads like `recent`, puts it on the user
-   row and the launch (strut shows an image to the agent as a file part),
-   and names an unopened file after the message.
+   decrypts each from the memes server as an app does and sends it as
+   base64 — an image shrunk to what a vision model reads, a PDF, a text
+   file or a Word document as it is, under the sender's name for it; at most
+   four and 3 MB together, so the request stays under Vercel's 4.5 MB body
+   limit — or with `error` saying why it could not be opened (a video, a
+   recording). Hive stores each under the workspace's canvas uploads like
+   `recent`, puts it on the user row and the launch (strut shows an image
+   or a PDF to the agent as a file part, text and Word inline), and names
+   an unopened file after the message.
+
+   **Removed from the tribe.** The owner may kick Jamie, or delete the
+   tribe. The daemon leaves it and calls `POST /api/tribes/left { tribe,
+   reason: "kicked" | "deleted" }` once; Hive drops the link as an unlink
+   does, so the tribe shows unlinked in Peel and its mentions and log are
+   refused. A 404 (not linked any more) is done for the daemon too.
 2. **Hive takes the turn.** It is the call turn route's `takeTurn`, with the
    link in place of the call record:
    - drop an `id` already seen, a retry whose first answer was lost (2xx);
@@ -269,7 +277,10 @@ history the tribe replays to a new member. It is the call transcript's flow
   first, about a minute or 50 messages at a time, with its own cursor per
   tribe. A batch carries an id the daemon makes, so a retry is the same
   batch: `{ batch, tribe: { pubkey, name }, messages: [{ id, time, alias,
-  owner, mine, text, replyTo?, thread? }] }`.
+  owner, mine, text, replyTo?, thread? }] }`. A message deleted after a
+  batch carried it (by its sender, or the owner) goes again as `{ id, …,
+  text: "", deleted: true }`: what the workflow kept under that `id` goes.
+  One deleted while it still waited in the daemon never goes.
 - **Hive** looks up the link and checks the linker can still use the
   workspace. It then launches the workflow `TRIBE_MESSAGES_STRUT_WORKFLOW_NAME`
   names, on the org default, as the linker (`dispatchStrutRun`, kind and

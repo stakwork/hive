@@ -42,14 +42,16 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  * duplicate; one already taken is left out. The reply threads under the
  * newest.
  *
- * Images: a photo posted with the mention (or just before it by the same
- * member) comes as `attachments`, each shrunk by the daemon to what a vision
- * model reads, as base64 — small enough for the request to stay inside the
+ * Files: a photo or a document posted with the mention (or just before it
+ * by the same member) comes as `attachments`, as base64 — an image shrunk by
+ * the daemon to what a vision model reads, a PDF, a text file or a Word
+ * document as it is; small enough for the request to stay inside the
  * platform's body limit — or with `error` saying why it could not be opened.
- * Each image is stored under the workspace's canvas uploads like `recent`
- * and goes on the user row and the launch, so the agent sees it (strut puts
- * an image on its prompt as a file part); an unopened one is said after the
- * message, so the agent knows a file was sent.
+ * Each file is stored under the workspace's canvas uploads like `recent` and
+ * goes on the user row and the launch, so the agent sees it (strut puts an
+ * image or a PDF on its prompt as a file part, text and Word inline); an
+ * unopened one is said after the message, so the agent knows a file was
+ * sent.
  *
  * Answers, as the daemon reads them:
  *   202 { turn, thread }  taken
@@ -70,7 +72,7 @@ const MAX_EARLIER = 20;
 /** The daemon sends 30 lines and 8 KB at most; this is the room for a wider one. */
 const MAX_RECENT_LINES = 200;
 const MAX_RECENT_BYTES = 64 * 1024;
-/** A mention's images: the daemon shrinks each for a vision model and sends at most four. */
+/** A mention's files: the daemon shrinks an image for a vision model and sends at most four. */
 const MAX_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 /** Together, decoded: the request must stay under the platform's body limit (4.5 MB on Vercel). */
@@ -79,6 +81,17 @@ const MAX_ATTACHMENT_NAME_CHARS = 200;
 const MAX_ATTACHMENT_ERROR_CHARS = 300;
 /** What strut puts on a prompt as an image (its `attachments.ts`); `image/jpg` is read as JPEG. */
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+/** What strut shows or inlines besides: a PDF (a file part), Word (its text), and text of any kind. */
+const DOCUMENT_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/json",
+  "application/yaml",
+  "application/x-yaml",
+  "application/xml",
+]);
+const takesType = (t: string) => IMAGE_TYPES.has(t) || DOCUMENT_TYPES.has(t) || t.startsWith("text/");
 
 interface RecentLine {
   alias: string;
@@ -86,7 +99,7 @@ interface RecentLine {
   text: string;
 }
 
-/** An image the mention carried, decoded. */
+/** A file the mention carried, decoded. */
 interface MentionImage {
   name: string;
   mediaType: string;
@@ -177,7 +190,7 @@ function parseMention(raw: unknown): Mention | string {
       continue;
     }
     if (typeof a?.data !== "string" || !a.data) return `attachments[${i}] needs data (base64) or error`;
-    if (!IMAGE_TYPES.has(mediaType)) return `attachments[${i}].mediaType must be an image's (png, jpeg, gif, webp)`;
+    if (!takesType(mediaType)) return `attachments[${i}].mediaType must be an image's (png, jpeg, gif, webp) or a document's (pdf, text, Word)`;
     const data = a.data.replace(/\s/g, "");
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(data)) return `attachments[${i}].data is not base64`;
     const bytes = Buffer.from(data, "base64");
@@ -231,7 +244,7 @@ async function storeRecent(workspaceId: string, lines: RecentLine[]): Promise<St
   return { path, filename, mimeType: "text/plain", size: bytes.length };
 }
 
-/** The mention's images, stored where `recent` is, each as it came. */
+/** The mention's files, stored where `recent` is, each as it came. */
 async function storeImages(workspaceId: string, images: MentionImage[]): Promise<StoredAttachment[]> {
   const s3 = getS3Service();
   return Promise.all(

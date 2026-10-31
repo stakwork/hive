@@ -26,6 +26,8 @@ export interface LogLine {
   text: string;
   replyTo?: string;
   thread?: string;
+  /** The message was deleted after an earlier batch carried it: `text` is empty, and what was kept under `id` goes. */
+  deleted?: true;
 }
 
 export interface Batch {
@@ -59,8 +61,9 @@ export function parseBatch(raw: unknown): Batch | string {
     const id = idOf(m.id);
     if (!id) return `messages[${i}].id is required`;
     if (!isIso(m.time)) return `messages[${i}].time must be an ISO date`;
-    const text = typeof m.text === "string" ? m.text : "";
-    if (!text.trim()) return `messages[${i}].text is required`;
+    const deleted = m.deleted === true;
+    const text = deleted ? "" : typeof m.text === "string" ? m.text : "";
+    if (!deleted && !text.trim()) return `messages[${i}].text is required`;
     if (text.length > MAX_TEXT_CHARS) return `messages[${i}].text is over ${MAX_TEXT_CHARS} characters`;
     const alias = typeof m.alias === "string" ? m.alias.replace(/\s+/g, " ").trim().slice(0, MAX_ALIAS_CHARS) : "";
     const replyTo = idOf(m.replyTo);
@@ -73,6 +76,7 @@ export function parseBatch(raw: unknown): Batch | string {
       owner: m.owner === true,
       mine: m.mine === true,
       text,
+      ...(deleted ? { deleted: true as const } : {}),
       ...(replyTo ? { replyTo } : {}),
       ...(thread ? { thread } : {}),
     });
