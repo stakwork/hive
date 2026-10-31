@@ -12,13 +12,22 @@
  *     dropped; an error is not retried; nothing throws;
  *   - the gate: the wake runs through `runGatedAutoTurn` with the launch
  *     marker as its idempotency mark, job rows as its loop count, and the
- *     owner's opt-in waived.
+ *     owner's opt-in waived;
+ *   - the medium: a tribe's conversation (its `TribeThread`) launches with
+ *     `tribe` (the name, no asker), a call's (a `call_request` row) with
+ *     `call`, a web conversation with neither; a tribe read that fails
+ *     launches without the line.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockGate, mockLaunch } = vi.hoisted(() => ({ mockGate: vi.fn(), mockLaunch: vi.fn() }));
+const { mockGate, mockLaunch, mockTribeThread } = vi.hoisted(() => ({
+  mockGate: vi.fn(),
+  mockLaunch: vi.fn(),
+  mockTribeThread: vi.fn(),
+}));
 
+vi.mock("@/lib/db", () => ({ db: { tribeThread: { findUnique: mockTribeThread } } }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/canvas-strut-autoturn", () => ({ runGatedAutoTurn: mockGate }));
 vi.mock("@/services/strut-orchestrator", () => ({ launchOrchestratorTurn: mockLaunch }));
@@ -52,6 +61,7 @@ const conversation = { userId: "user-1", orgId: "org-1", workspaceSlug: "home", 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockTribeThread.mockResolvedValue(null); // a web conversation
   // The gate lets the turn through with the conversation as found.
   mockGate.mockImplementation(async (_gate, run) => run(conversation));
   mockLaunch.mockResolvedValue({ status: "started", runId: "orch-row-2", strutRunId: "1790000000002" });
@@ -148,6 +158,48 @@ describe("invokeOrchestratorOnJobTurn", () => {
     mockGate.mockResolvedValue(undefined);
     await invokeOrchestratorOnJobTurn(args());
     expect(mockLaunch).not.toHaveBeenCalled();
+  });
+
+  it("a wake on a tribe's conversation launches with the tribe — its name off the link, no asker — so the summary is written for the room", async () => {
+    mockTribeThread.mockResolvedValue({ link: { name: "Builders" } });
+    await invokeOrchestratorOnJobTurn(args());
+    expect(mockTribeThread).toHaveBeenCalledWith({
+      where: { conversationId: "conv-1" },
+      select: { link: { select: { name: true } } },
+    });
+    expect(mockLaunch).toHaveBeenCalledTimes(1);
+    expect(mockLaunch).toHaveBeenCalledWith(
+      expect.objectContaining({ wakeId: "job-row-1", tribe: { name: "Builders" } }),
+    );
+    expect(mockLaunch.mock.calls[0][0]).not.toHaveProperty("call");
+  });
+
+  it("a wake on a call's conversation (a call_request row) launches with `call`, and reads no tribe", async () => {
+    mockGate.mockImplementation(async (_gate, run) =>
+      run({
+        ...conversation,
+        messages: [
+          {
+            id: "u1",
+            role: "user",
+            content: "Alice: what are we on?",
+            source: { kind: "call_request", speaker: "Alice", via: "voice" },
+          },
+        ],
+      }),
+    );
+    await invokeOrchestratorOnJobTurn(args());
+    expect(mockLaunch).toHaveBeenCalledWith(expect.objectContaining({ wakeId: "job-row-1", call: true }));
+    expect(mockLaunch.mock.calls[0][0]).not.toHaveProperty("tribe");
+    expect(mockTribeThread).not.toHaveBeenCalled();
+  });
+
+  it("a tribe read that fails launches the wake without the line, never drops it", async () => {
+    mockTribeThread.mockRejectedValue(new Error("db down"));
+    await invokeOrchestratorOnJobTurn(args());
+    expect(mockLaunch).toHaveBeenCalledTimes(1);
+    expect(mockLaunch.mock.calls[0][0]).not.toHaveProperty("tribe");
+    expect(mockLaunch.mock.calls[0][0]).not.toHaveProperty("call");
   });
 
   it("busy is retried after each wait, then launched; the waits are the configured ones", async () => {
