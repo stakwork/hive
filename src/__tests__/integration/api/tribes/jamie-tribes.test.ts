@@ -610,6 +610,50 @@ describe("Jamie in Sphinx tribes", () => {
       expect(await canReadKey(path, owner.id)).toBe(true);
     });
 
+    it("an image on the mention is stored like the room file, goes on the user row and the launch; an unopened file is said after the message", async () => {
+      const { owner, workspace } = await linked();
+      const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+
+      const res = await mention(
+        aMention({
+          attachments: [
+            // the daemon's name and type; strut reads image/jpg as JPEG
+            { name: "image.jpg", mediaType: "image/jpg", data: png.toString("base64") },
+            { name: "video.mov", mediaType: "video/mov", error: "not an image" },
+          ],
+        }),
+      );
+
+      expect(res.status).toBe(202);
+      const [path, bytes, contentType] = mockPutObject.mock.calls[0];
+      expect(path).toBe(`uploads/${workspace.id}/canvas/1790000000000_abc_image.jpg`);
+      expect(Buffer.compare(bytes as Buffer, png)).toBe(0);
+      expect(contentType).toBe("image/jpeg");
+      const attachment = { path, filename: "image.jpg", mimeType: "image/jpeg", size: png.length };
+      expect(mockLaunch.mock.calls[0][0]).toMatchObject({
+        message: "Alice: @jamie what did we decide about the launch?\n(Alice sent video.mov, which could not be opened: not an image.)",
+        attachments: [attachment],
+      });
+      expect(((await conversation())!.messages as Array<{ attachments?: unknown }>)[0].attachments).toEqual([attachment]);
+      expect(await canReadKey(path, owner.id)).toBe(true);
+    });
+
+    it("400 for an attachment that is not an image, has no data, or is not base64 — nothing written", async () => {
+      await linked();
+      for (const attachments of [
+        [{ name: "a.pdf", mediaType: "application/pdf", data: "AAAA" }],
+        [{ name: "a.png", mediaType: "image/png" }],
+        [{ name: "a.png", mediaType: "image/png", data: "not base64!" }],
+        [{ name: "", mediaType: "image/png", data: "AAAA" }],
+        "image.jpg",
+      ]) {
+        const res = await mention(aMention({ attachments }));
+        expect(res.status).toBe(400);
+      }
+      expect(mockLaunch).not.toHaveBeenCalled();
+      expect(mockPutObject).not.toHaveBeenCalled();
+    });
+
     it("403 once the linker can no longer use the workspace, with one notice to the tribe a day", async () => {
       const { owner, workspace } = await linked();
       await db.workspace.update({ where: { id: workspace.id }, data: { deleted: true } });

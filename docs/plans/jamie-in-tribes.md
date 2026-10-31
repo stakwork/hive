@@ -158,13 +158,23 @@ device as it is.
      "owner": false,
      "time": "2026-10-29T18:02:11Z",
      "text": "@jamie what did we decide about the launch?",
-     "recent": [{ "alias": "Bob", "time": "…", "text": "…" }]
+     "recent": [{ "alias": "Bob", "time": "…", "text": "…" }],
+     "attachments": [{ "name": "image.jpg", "mediaType": "image/jpeg", "data": "<base64>" }]
    }
    ```
 
    `recent` is the room since Jamie last spoke there, oldest first: up to
    30 lines and 8 KB, the newest that fit. `owner` is whether the tribe's
    owner wrote it; the tribe server marks the owner's messages.
+   `attachments` is there when the mention carried a photo (or the member
+   posted captionless ones just before it): the daemon downloads and
+   decrypts each from the memes server as an app does, shrinks it to what a
+   vision model reads, and sends it as base64 — at most four and 3 MB
+   together, so the request stays under Vercel's 4.5 MB body limit — or
+   with `error` saying why it could not be opened. Hive stores each image
+   under the workspace's canvas uploads like `recent`, puts it on the user
+   row and the launch (strut shows an image to the agent as a file part),
+   and names an unopened file after the message.
 2. **Hive takes the turn.** It is the call turn route's `takeTurn`, with the
    link in place of the call record:
    - drop an `id` already seen, a retry whose first answer was lost (2xx);
