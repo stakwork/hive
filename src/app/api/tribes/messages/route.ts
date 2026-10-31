@@ -15,7 +15,8 @@ import { validateWorkspaceAccess } from "@/services/workspace";
 
 /**
  * POST /api/tribes/messages — Jamie, a member of a linked Sphinx tribe
- * (stakwork/sphinx `wasm/daemon`), hands Hive a message that mentions it
+ * (stakwork/sphinx `wasm/daemon`), hands Hive a message that is to it: one
+ * that mentions it, or a reply to one of its posts
  * (`docs/plans/jamie-in-tribes.md`, "A mention"). Machine-to-machine:
  * Jamie's token (`lib/tribes/jamie.ts`).
  *
@@ -27,10 +28,11 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  * which Jamie reads from `/api/tribes/outbox`, threads under it.
  *
  * Which conversation (`TribeThread`), and so which orchestrator session: a
- * mention that replies to one of Jamie's posts, or is posted in a thread one
- * went into, carries that post's `thread`, and continues that conversation.
- * Jamie hands on only mentions, in its threads too. A mention with no
- * `thread`, or one that is not this tribe's, starts a new conversation, and
+ * reply to one of Jamie's posts (`@jamie` or not), or a mention posted in a
+ * thread one went into, carries that post's `thread`, and continues that
+ * conversation. Anything else in Jamie's threads stays with the members:
+ * Jamie hands on mentions and replies to its posts, nothing more. A mention
+ * with no `thread`, or one that is not this tribe's, starts a new conversation, and
  * its `thread` comes back on every post from it. A retry of a mention lands on the
  * conversation it started.
  *
