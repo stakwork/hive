@@ -24,9 +24,19 @@ export interface LogLine {
   owner: boolean;
   mine: boolean;
   text: string;
+  /** The message it quotes; for a boost, the message it boosts. */
   replyTo?: string;
   thread?: string;
+  /** Not words: a call, a member joining or leaving, a boost, a file; `text` says what happened. Absent: a text message. */
+  kind?: LineKind;
+  /** A boost's sats, as its sender declared them. */
+  sats?: number;
+  /** The message was deleted after an earlier batch carried it: `text` is empty, and what was kept under `id` goes. */
+  deleted?: true;
 }
+
+export type LineKind = "call" | "join" | "leave" | "boost" | "file";
+const LINE_KINDS = new Set<string>(["call", "join", "leave", "boost", "file"]);
 
 export interface Batch {
   batch: string;
@@ -59,12 +69,21 @@ export function parseBatch(raw: unknown): Batch | string {
     const id = idOf(m.id);
     if (!id) return `messages[${i}].id is required`;
     if (!isIso(m.time)) return `messages[${i}].time must be an ISO date`;
-    const text = typeof m.text === "string" ? m.text : "";
-    if (!text.trim()) return `messages[${i}].text is required`;
+    const deleted = m.deleted === true;
+    const text = deleted ? "" : typeof m.text === "string" ? m.text : "";
+    if (!deleted && !text.trim()) return `messages[${i}].text is required`;
     if (text.length > MAX_TEXT_CHARS) return `messages[${i}].text is over ${MAX_TEXT_CHARS} characters`;
     const alias = typeof m.alias === "string" ? m.alias.replace(/\s+/g, " ").trim().slice(0, MAX_ALIAS_CHARS) : "";
     const replyTo = idOf(m.replyTo);
     const thread = idOf(m.thread);
+    if (m.kind !== undefined && m.kind !== null && !(typeof m.kind === "string" && LINE_KINDS.has(m.kind))) {
+      return `messages[${i}].kind must be call, join, leave, boost or file`;
+    }
+    const kind = typeof m.kind === "string" ? (m.kind as LineKind) : undefined;
+    if (m.sats !== undefined && m.sats !== null && !(Number.isInteger(m.sats) && (m.sats as number) >= 0)) {
+      return `messages[${i}].sats must be a whole number of sats`;
+    }
+    const sats = typeof m.sats === "number" && m.sats > 0 ? m.sats : undefined;
     messages.push({
       id,
       time: new Date(m.time).toISOString(),
@@ -73,6 +92,9 @@ export function parseBatch(raw: unknown): Batch | string {
       owner: m.owner === true,
       mine: m.mine === true,
       text,
+      ...(kind ? { kind } : {}),
+      ...(sats ? { sats } : {}),
+      ...(deleted ? { deleted: true as const } : {}),
       ...(replyTo ? { replyTo } : {}),
       ...(thread ? { thread } : {}),
     });

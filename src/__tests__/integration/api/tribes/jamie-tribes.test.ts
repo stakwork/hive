@@ -57,6 +57,7 @@ vi.mock("@/services/strut-orchestrator", async (importOriginal) => ({
 import { GET as listTribes, POST as linkTribe } from "@/app/api/strut-devices/tribes/route";
 import { DELETE as unlinkTribe } from "@/app/api/strut-devices/tribes/[pubkey]/route";
 import { POST as postMessage } from "@/app/api/tribes/messages/route";
+import { POST as postLeft } from "@/app/api/tribes/left/route";
 import { GET as getOutbox } from "@/app/api/tribes/outbox/route";
 import { POST as postAck } from "@/app/api/tribes/outbox/ack/route";
 import { canReadKey } from "@/lib/ai/resolveMessageAttachments";
@@ -97,6 +98,7 @@ const outbox = async (query = "") => {
   return (await res.json()).messages as Array<Record<string, unknown>>;
 };
 const ack = (ids: string[], bearer: string | null = TOKEN) => postAck(request("POST", "/api/tribes/outbox/ack", bearer, { ids }));
+const left = (body: unknown, bearer: string | null = TOKEN) => postLeft(request("POST", "/api/tribes/left", bearer, body));
 
 const aMention = (extra: Record<string, unknown> = {}) => ({
   id: "msg-1",
@@ -366,6 +368,23 @@ describe("Jamie in Sphinx tribes", () => {
       expect(mockLaunch).not.toHaveBeenCalled();
     });
 
+    it("Jamie removed by the owner (a kick, or the tribe deleted) drops the link; no leave is queued; the tribe's mentions are refused", async () => {
+      await linked();
+
+      const res = await left({ tribe: TRIBE.toUpperCase(), reason: "kicked", time: "2026-10-31T14:03:12Z" });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ unlinked: true });
+      expect(await tribeLink()).toBeNull();
+      expect(await outbox()).toEqual([]);
+      expect((await left({ tribe: TRIBE, reason: "deleted" })).status).toBe(404);
+      expect((await mention(aMention())).status).toBe(404);
+      expect(mockLaunch).not.toHaveBeenCalled();
+      expect((await left({ tribe: TRIBE, reason: "bored" })).status).toBe(400);
+      expect((await left({ tribe: "nope", reason: "kicked" })).status).toBe(400);
+      expect((await left({ tribe: TRIBE, reason: "kicked" }, null)).status).toBe(401);
+    });
+
     it("only the linker unlinks", async () => {
       const scenario = await linked();
       const memberCredential = await createDevice(scenario.members[0].id);
@@ -608,6 +627,68 @@ describe("Jamie in Sphinx tribes", () => {
       expect(((await conversation())!.messages as Array<{ attachments?: unknown }>)[0].attachments).toEqual([attachment]);
       expect(mockLaunch.mock.calls[0][0].attachments).toEqual([attachment]);
       expect(await canReadKey(path, owner.id)).toBe(true);
+    });
+
+    it("an image on the mention is stored like the room file, goes on the user row and the launch; an unopened file is said after the message", async () => {
+      const { owner, workspace } = await linked();
+      const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+
+      const res = await mention(
+        aMention({
+          attachments: [
+            // the daemon's name and type; strut reads image/jpg as JPEG
+            { name: "image.jpg", mediaType: "image/jpg", data: png.toString("base64") },
+            { name: "video.mov", mediaType: "video/mov", error: "not an image" },
+          ],
+        }),
+      );
+
+      expect(res.status).toBe(202);
+      const [path, bytes, contentType] = mockPutObject.mock.calls[0];
+      expect(path).toBe(`uploads/${workspace.id}/canvas/1790000000000_abc_image.jpg`);
+      expect(Buffer.compare(bytes as Buffer, png)).toBe(0);
+      expect(contentType).toBe("image/jpeg");
+      const attachment = { path, filename: "image.jpg", mimeType: "image/jpeg", size: png.length };
+      expect(mockLaunch.mock.calls[0][0]).toMatchObject({
+        message: "Alice: @jamie what did we decide about the launch?\n(Alice sent video.mov, which could not be opened: not an image.)",
+        attachments: [attachment],
+      });
+      expect(((await conversation())!.messages as Array<{ attachments?: unknown }>)[0].attachments).toEqual([attachment]);
+      expect(await canReadKey(path, owner.id)).toBe(true);
+    });
+
+    it("a document on the mention is stored as it came, under the name the sender gave it", async () => {
+      const { workspace } = await linked();
+      const pdf = Buffer.from("%PDF-1.4\n%fake\n", "utf8");
+
+      const res = await mention(
+        aMention({ attachments: [{ name: "Plan Q4.pdf", mediaType: "application/pdf", data: pdf.toString("base64") }] }),
+      );
+
+      expect(res.status).toBe(202);
+      const [path, bytes, contentType] = mockPutObject.mock.calls[0];
+      expect(path).toBe(`uploads/${workspace.id}/canvas/1790000000000_abc_Plan Q4.pdf`);
+      expect(Buffer.compare(bytes as Buffer, pdf)).toBe(0);
+      expect(contentType).toBe("application/pdf");
+      expect(mockLaunch.mock.calls[0][0].attachments).toEqual([
+        { path, filename: "Plan Q4.pdf", mimeType: "application/pdf", size: pdf.length },
+      ]);
+    });
+
+    it("400 for an attachment the agent cannot read, with no data, or not base64 — nothing written", async () => {
+      await linked();
+      for (const attachments of [
+        [{ name: "a.mov", mediaType: "video/mov", data: "AAAA" }],
+        [{ name: "a.png", mediaType: "image/png" }],
+        [{ name: "a.png", mediaType: "image/png", data: "not base64!" }],
+        [{ name: "", mediaType: "image/png", data: "AAAA" }],
+        "image.jpg",
+      ]) {
+        const res = await mention(aMention({ attachments }));
+        expect(res.status).toBe(400);
+      }
+      expect(mockLaunch).not.toHaveBeenCalled();
+      expect(mockPutObject).not.toHaveBeenCalled();
     });
 
     it("403 once the linker can no longer use the workspace, with one notice to the tribe a day", async () => {
