@@ -246,6 +246,31 @@ device as it is.
   against the viewer's own org with their own token, so a forged one shows
   nothing they couldn't already open. Apps open behind a confirm.
 
+### The log
+
+Added 2026-10-30. A linked tribe's messages also go to the org's strut, so
+the org's graph holds what was said there. Linking a tribe is the consent;
+there is no separate switch. Everything is sent from the link on, never the
+history the tribe replays to a new member. It is the call transcript's flow
+(`/api/calls/transcript`):
+
+- **The daemon** (`DAEMON_LOG=on`) sends every message in a tribe it is in,
+  members' and its own, to `POST /api/tribes/log`. It sends them oldest
+  first, about a minute or 50 messages at a time, with its own cursor per
+  tribe. A batch carries an id the daemon makes, so a retry is the same
+  batch: `{ batch, tribe: { pubkey, name }, messages: [{ id, time, alias,
+  owner, mine, text, replyTo?, thread? }] }`.
+- **Hive** looks up the link and checks the linker can still use the
+  workspace. It then launches the workflow `TRIBE_MESSAGES_STRUT_WORKFLOW_NAME`
+  names, on the org default, as the linker (`dispatchStrutRun`, kind and
+  purpose `tribe_messages`). The batch is the run's attachment,
+  `tribe-messages.jsonl`, and Hive keeps no copy. With the env unset the
+  answer is `{ status: "off" }`. A retry of a batch gets the first answer.
+- **The swarm** has `tribe-messages`, seeded by the lab (stakwork/stakgraph
+  `mcp/src/lab/tribes/`). It is a placeholder that returns what arrived, as
+  `call-transcript` is. What it keeps should be keyed by the message `id`,
+  so a batch sent twice changes nothing.
+
 ### Money
 
 The core refuses a tribe message without sats (`sphinx/src/bindings/send.rs`).
