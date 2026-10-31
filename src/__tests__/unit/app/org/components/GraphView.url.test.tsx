@@ -17,17 +17,16 @@ vi.mock("next/navigation", () => ({
 
 import { GraphView } from "@/app/org/[githubLogin]/_components/GraphView";
 
-describe("GraphView gnode URL sync", () => {
+describe("GraphView URL sync", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/org/acme?view=graph");
     selectionChange = undefined;
   });
 
-  test("replaces gnode on focus, keeps other params, removes it on clear", () => {
-    const replace = vi.spyOn(window.history, "replaceState");
-    const push = vi.spyOn(window.history, "pushState");
+  const renderView = () =>
     render(
       <GraphView
+        githubLogin="acme"
         workspaces={[{ slug: "ws", name: "WS", isDefault: true } as never]}
         loading={false}
         chatOpen={false}
@@ -36,16 +35,29 @@ describe("GraphView gnode URL sync", () => {
       />,
     );
 
+  test("replaces ref_id on focus, keeps other params, removes it on clear", () => {
+    const replace = vi.spyOn(window.history, "replaceState");
+    const push = vi.spyOn(window.history, "pushState");
+    renderView();
+
     selectionChange!(null); // still loading: no change
     expect(window.location.search).toBe("?view=graph");
 
     selectionChange!({ id: "ref-9", name: "N", type: "Concept" });
-    expect(new URLSearchParams(window.location.search).get("gnode")).toBe("ref-9");
-    expect(new URLSearchParams(window.location.search).get("view")).toBe("graph");
+    expect(window.location.search).toBe("?view=graph&workspace=ws&ref_id=ref-9");
 
     selectionChange!(null);
-    expect(window.location.search).toBe("?view=graph");
+    expect(window.location.search).toBe("?view=graph&workspace=ws");
     expect(replace).toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
+  });
+
+  test("names a type other than the default tree's, and drops the old gnode param", () => {
+    window.history.replaceState(null, "", "/org/acme?view=graph&gnode=old");
+    renderView();
+
+    selectionChange!({ id: "d-1", name: "Users", type: "Datamodel" });
+
+    expect(window.location.search).toBe("?view=graph&workspace=ws&type=Datamodel&ref_id=d-1");
   });
 });

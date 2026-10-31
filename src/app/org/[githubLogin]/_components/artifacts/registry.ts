@@ -48,6 +48,7 @@ import { PullRequestPanel, PullRequestRowMeta } from "./viewers/pullRequest";
 import { RunGraphPanel, RunGraphThumb } from "./viewers/runGraph";
 import { UrlPanel, UrlRowMeta } from "./viewers/url";
 import { WalkthroughPanel, WalkthroughThumb } from "./viewers/walkthrough";
+import { orgGraphHref } from "../graphHref";
 
 /**
  * Where an artifact shows in the chat, under the message that reported it:
@@ -189,15 +190,11 @@ export const ARTIFACT_KINDS: { [K in ArtifactKind]: ArtifactKindSpec<K> } = {
     Icon: Network,
     chat: { place: "media", Thumb: GraphThumb },
     Panel: GraphPanel,
-    // The org page's graph view, on the same workspace and node.
-    address: (content, githubLogin) => {
-      // A brainstorm tree opens on the Brainstorm tab, at the card it's about.
-      if (content.layout === "tree" && content.focus)
-        return brainstormHref(githubLogin, content.workspace, content.focus);
-      const params = new URLSearchParams({ view: "graph", workspace: content.workspace });
-      if (content.focus) params.set("gnode", content.focus);
-      return `/org/${githubLogin}?${params.toString()}`;
-    },
+    // The org page's graph view on the same workspace and node; a brainstorm tree opens on the Brainstorm tab.
+    address: (content, githubLogin) =>
+      content.layout === "tree" && content.focus
+        ? brainstormHref(githubLogin, content.workspace, content.focus)
+        : orgGraphHref(githubLogin, { workspace: content.workspace, refId: content.focus }),
   },
   run_graph: {
     label: "Graph trace",
