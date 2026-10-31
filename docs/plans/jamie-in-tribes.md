@@ -238,7 +238,9 @@ device as it is.
    sends it back on `POST /api/tribes/messages` with a reply to that
    message, or a mention posted in its thread.
 2. **Jamie posts each one** into its tribe:
-   - the text, then the deliverables as links;
+   - the text, then a link for each deliverable with an address of its own
+     (a pull request); a deliverable that would only open the conversation
+     in Hive gets no line — it is the card `metadata` draws in Peel;
    - `metadata`, as its JSON in the message's own `metadata` field:
      `{ strut: { workspace, artifacts } }`, the field the call chat carries
      (voice PR #20);
@@ -253,18 +255,22 @@ device as it is.
 3. **A job's wake** three hours later lands on the same conversation, so the
    same loop posts it. Nobody needs to be online. The post carries the job's
    deliverables, read from the job's row (the card Hive's chat draws; the
-   wake turn's own run holds none of the job's work): its cards but Hive's
-   own (claims, trace) as links, and strut's entries as `metadata`.
+   wake turn's own run holds none of the job's work): strut's entries as
+   `metadata`, and a link for each card with an address of its own.
 4. A failed turn is an `error` message ("I couldn't finish that: …"). A
    proposal is "Waiting for <linker> to approve: <title>". The linker decides
    it in Hive.
 
 ### Deliverables
 
-- **Everyone sees text and links.** A deliverable with an address of its
-  own (a pull request, a page) links there. Anything else links into the
-  post's conversation in Hive (`callArtifactUrl`), which opens for org
-  members.
+- **Everyone sees the text, and a link where the deliverable has an
+  address of its own** (a pull request, a page). Anything else — a job's
+  file, a page it wrote — gets no link line: the link would open the post's
+  conversation in Hive (`callArtifactUrl`), for org members alone, and in
+  Peel those members open the card the `metadata` draws, so the line was
+  the same thing twice under the reply (2026-10-31). The one link into Hive
+  a post keeps is a cut reply's "The rest is in Hive", since the rest of its
+  words are nowhere else.
 - **In Peel**, the `strut` field is resolved against the viewer's own
   pairing with that workspace, as the call chat does (`CallChat.artifacts`,
   `PeelCore/CallChat.swift`). Org members open the file in Peel; everyone

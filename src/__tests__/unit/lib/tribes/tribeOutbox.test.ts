@@ -10,6 +10,7 @@ import { parseTribeRef, tribeJoinLink, tribeName } from "@/lib/tribes/tribeLinks
 import {
   advanceTribeCursor,
   MAX_TRIBE_TEXT_CHARS,
+  opensInConversation,
   parseTribeMessageId,
   threadChain,
   tribeMessageId,
@@ -20,8 +21,19 @@ import {
 const PUBKEY = "02" + "a".repeat(64);
 const opts = { approver: "Evan", conversationUrl: "https://hive.example.com/org/acme?chat=c1" };
 
+describe("opensInConversation", () => {
+  it("is the conversation's own deep link: same origin and path, the same chat; another chat, another page or no link is not", () => {
+    const conversation = "https://hive.example.com/org/acme?chat=c1";
+    expect(opensInConversation("https://hive.example.com/org/acme?chat=c1&artifact=id%3Aplan", conversation)).toBe(true);
+    expect(opensInConversation("https://hive.example.com/org/acme?chat=c2&artifact=id%3Aplan", conversation)).toBe(false);
+    expect(opensInConversation("https://hive.example.com/org/other?chat=c1", conversation)).toBe(false);
+    expect(opensInConversation("https://github.com/acme/app/pull/7", conversation)).toBe(false);
+    expect(opensInConversation("not a url", conversation)).toBe(false);
+  });
+});
+
 describe("tribeText", () => {
-  it("a reply: its words, the question, then each deliverable as a link", () => {
+  it("a reply: its words, the question, then a link for each deliverable with an address of its own — one that only opens the conversation in Hive gets no line", () => {
     expect(
       tribeText(
         {
@@ -36,10 +48,22 @@ describe("tribeText", () => {
         },
         opts,
       ),
-    ).toBe(
-      "Started on it.\n\nMain or the release branch?\n\n" +
-        "Plan: https://hive.example.com/org/acme?chat=c1&artifact=id%3Aplan\nFix login: https://github.com/acme/app/pull/7",
-    );
+    ).toBe("Started on it.\n\nMain or the release branch?\n\nFix login: https://github.com/acme/app/pull/7");
+  });
+
+  it("a reply whose only deliverable is a Hive card posts its words alone: Peel draws the card from the metadata", () => {
+    expect(
+      tribeText(
+        {
+          id: "r",
+          kind: "reply",
+          text: "The page is attached.",
+          artifacts: [{ title: "Plan & status", url: "https://hive.example.com/org/acme?chat=c1&artifact=graph%3Ax%3A%2Fjobs%2Fj%2Ffiles%2Findex.html" }],
+          strut: { workspace: "acme", artifacts: [{ id: "index", kind: "html", title: "Plan & status", url: "/jobs/j/files/index.html" }] },
+        },
+        opts,
+      ),
+    ).toBe("The page is attached.");
   });
 
   it("a proposal waits for the linker", () => {

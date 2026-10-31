@@ -145,9 +145,11 @@ and its resolved artifacts.
    turn of strut's orchestrator on the same conversation and session, with
    a wake prompt: the job's outcome, its reply text **inline** (strut's
    agent cannot read hive's rows; capped), its question, the cards the user
-   already sees, and three choices — summarize (the default), continue
-   through its own `job/continue`, or stay silent. The reply lands as a
-   normal orchestrator row. The wake runs behind `runGatedAutoTurn` in
+   already sees, and three choices — summarize (the default: what is NEW
+   against what it already told the person, a line when the result confirms
+   it, the answer when it adds; never the job's caveats about how it worked,
+   never an offered next step), continue through its own `job/continue`, or
+   stay silent. The reply lands as a normal orchestrator row. The wake runs behind `runGatedAutoTurn` in
    `canvas-strut-autoturn.ts`: the master kill switch, the
    per-conversation claim, idempotency — the launch marker row carries the
    job row's id as `wakeId` — and a loop breaker that counts job rows
@@ -221,9 +223,11 @@ asker's alias); a job's wake has no person, so it reads it off the
 conversation (`conversationMedium` in `strut-orchestrator-wake.ts`: a
 `call_request` row, the `TribeThread` — the tribe's name, no asker) and
 passes the same, so the summary of a job's result is written for the room
-the question was asked in. The line is part of each turn's message, not the
-session's system prompt, so a change to it reaches every live conversation
-on its next turn.
+the question was asked in — and the wake prompt says so too (`readIn`): there
+the job's entry is never shown, the reply is all the person reads, and what
+the job produced reaches them as cards. The line is part of each turn's
+message, not the session's system prompt, so a change to it reaches every
+live conversation on its next turn.
 
 - **Client** (`OrgCanvasView`): publishes `pageContext` `{ surface, view, tab,
   path: [{ kind, name, ref }], selected?, question? }` into the chat
