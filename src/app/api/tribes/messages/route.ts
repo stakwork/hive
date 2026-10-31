@@ -42,6 +42,17 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  * duplicate; one already taken is left out. The reply threads under the
  * newest.
  *
+ * Files: a photo or a document posted with the mention (or just before it
+ * by the same member) comes as `attachments`, as base64 — an image shrunk by
+ * the daemon to what a vision model reads, a PDF, a text file or a Word
+ * document as it is; small enough for the request to stay inside the
+ * platform's body limit — or with `error` saying why it could not be opened.
+ * Each file is stored under the workspace's canvas uploads like `recent` and
+ * goes on the user row and the launch, so the agent sees it (strut puts an
+ * image or a PDF on its prompt as a file part, text and Word inline); an
+ * unopened one is said after the message, so the agent knows a file was
+ * sent.
+ *
  * Answers, as the daemon reads them:
  *   202 { turn, thread }  taken
  *   200 { duplicate }  a mention already taken (a retry whose answer was lost)
@@ -61,11 +72,44 @@ const MAX_EARLIER = 20;
 /** The daemon sends 30 lines and 8 KB at most; this is the room for a wider one. */
 const MAX_RECENT_LINES = 200;
 const MAX_RECENT_BYTES = 64 * 1024;
+/** A mention's files: the daemon shrinks an image for a vision model and sends at most four. */
+const MAX_ATTACHMENTS = 4;
+const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+/** Together, decoded: the request must stay under the platform's body limit (4.5 MB on Vercel). */
+const MAX_ATTACHMENTS_TOTAL_BYTES = 3 * 1024 * 1024;
+const MAX_ATTACHMENT_NAME_CHARS = 200;
+const MAX_ATTACHMENT_ERROR_CHARS = 300;
+/** What strut puts on a prompt as an image (its `attachments.ts`); `image/jpg` is read as JPEG. */
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+/** What strut shows or inlines besides: a PDF (a file part), Word (its text), and text of any kind. */
+const DOCUMENT_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/json",
+  "application/yaml",
+  "application/x-yaml",
+  "application/xml",
+]);
+const takesType = (t: string) => IMAGE_TYPES.has(t) || DOCUMENT_TYPES.has(t) || t.startsWith("text/");
 
 interface RecentLine {
   alias: string;
   time: string;
   text: string;
+}
+
+/** A file the mention carried, decoded. */
+interface MentionImage {
+  name: string;
+  mediaType: string;
+  bytes: Buffer;
+}
+
+/** A file the daemon could not open: named after the message, so the agent knows it was sent. */
+interface UnopenedFile {
+  name: string;
+  reason: string;
 }
 
 /** A message that waited while its conversation was busy: folded into the newest one's turn. */
@@ -86,6 +130,8 @@ interface Mention {
   /** The burst's earlier messages, oldest first; empty for a message alone. */
   earlier: Earlier[];
   recent: RecentLine[];
+  images: MentionImage[];
+  unopened: UnopenedFile[];
 }
 
 /** A name shown before a message on one line. */
@@ -127,6 +173,33 @@ function parseMention(raw: unknown): Mention | string {
     if (typeof l?.text !== "string" || !l.text.trim()) continue;
     recent.push({ alias: oneLine(l.alias, MAX_ALIAS_CHARS) || "?", time: oneLine(l.time, 64), text: l.text.trim() });
   }
+  if (b.attachments !== undefined && b.attachments !== null && !Array.isArray(b.attachments)) return "attachments must be a list";
+  const rawAttachments = Array.isArray(b.attachments) ? b.attachments : [];
+  if (rawAttachments.length > MAX_ATTACHMENTS) return `attachments is over ${MAX_ATTACHMENTS} files`;
+  const images: MentionImage[] = [];
+  const unopened: UnopenedFile[] = [];
+  let imageBytes = 0;
+  for (const [i, raw] of rawAttachments.entries()) {
+    const a = raw as Record<string, unknown> | null;
+    const name = oneLine(a?.name, MAX_ATTACHMENT_NAME_CHARS).split(/[\\/]/).pop() ?? "";
+    if (!name) return `attachments[${i}].name is required`;
+    const given = typeof a?.mediaType === "string" ? a.mediaType.trim().toLowerCase() : "";
+    const mediaType = given === "image/jpg" ? "image/jpeg" : given;
+    if (typeof a?.error === "string" && a.error.trim()) {
+      unopened.push({ name, reason: oneLine(a.error, MAX_ATTACHMENT_ERROR_CHARS) });
+      continue;
+    }
+    if (typeof a?.data !== "string" || !a.data) return `attachments[${i}] needs data (base64) or error`;
+    if (!takesType(mediaType)) return `attachments[${i}].mediaType must be an image's (png, jpeg, gif, webp) or a document's (pdf, text, Word)`;
+    const data = a.data.replace(/\s/g, "");
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(data)) return `attachments[${i}].data is not base64`;
+    const bytes = Buffer.from(data, "base64");
+    if (!bytes.length) return `attachments[${i}].data is empty`;
+    if (bytes.length > MAX_ATTACHMENT_BYTES) return `attachments[${i}] is over ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`;
+    imageBytes += bytes.length;
+    if (imageBytes > MAX_ATTACHMENTS_TOTAL_BYTES) return `attachments are over ${MAX_ATTACHMENTS_TOTAL_BYTES / 1024 / 1024} MB together`;
+    images.push({ name, mediaType, bytes });
+  }
   const thread = typeof b.thread === "string" ? b.thread.trim() : "";
   return {
     id,
@@ -139,6 +212,8 @@ function parseMention(raw: unknown): Mention | string {
     text,
     earlier,
     recent,
+    images,
+    unopened,
   };
 }
 
@@ -167,6 +242,24 @@ async function storeRecent(workspaceId: string, lines: RecentLine[]): Promise<St
   const bytes = Buffer.from(recentText(lines), "utf8");
   await s3.putObject(path, bytes, "text/plain; charset=utf-8");
   return { path, filename, mimeType: "text/plain", size: bytes.length };
+}
+
+/** The mention's files, stored where `recent` is, each as it came. */
+async function storeImages(workspaceId: string, images: MentionImage[]): Promise<StoredAttachment[]> {
+  const s3 = getS3Service();
+  return Promise.all(
+    images.map(async (image) => {
+      const path = s3.generateCanvasUploadPath(workspaceId, image.name);
+      await s3.putObject(path, image.bytes, image.mediaType);
+      return { path, filename: image.name, mimeType: image.mediaType, size: image.bytes.length };
+    }),
+  );
+}
+
+/** What the agent is told about a file the daemon could not open; "" when none. */
+function unopenedNote(alias: string, unopened: UnopenedFile[]): string {
+  if (!unopened.length) return "";
+  return `\n(${alias} sent ${unopened.map((u) => `${u.name}, which could not be opened: ${u.reason}`).join("; ")}.)`;
 }
 
 type Link = NonNullable<Awaited<ReturnType<typeof loadLink>>>;
@@ -226,8 +319,11 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
     await db.tribeLink.update({ where: { id: link.id }, data: { name: mention.tribe.name } });
   }
 
-  const attachments = mention.recent.length > 0 ? [await storeRecent(access.workspace.id, mention.recent)] : [];
-  const message = [...earlier, mention].map((m) => `${m.alias}: ${m.text}`).join("\n");
+  const attachments = [
+    ...(await storeImages(access.workspace.id, mention.images)),
+    ...(mention.recent.length > 0 ? [await storeRecent(access.workspace.id, mention.recent)] : []),
+  ];
+  const message = [...earlier, mention].map((m) => `${m.alias}: ${m.text}`).join("\n") + unopenedNote(mention.alias, mention.unopened);
   const conversationId = await persistCanvasUserMessage({
     orgId,
     userId,
