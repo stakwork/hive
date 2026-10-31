@@ -960,8 +960,35 @@ describe("POST /api/upload/presigned-url Integration Tests", () => {
         },
       });
 
-      // Not a known prefix (e.g. `uploads/`, `whiteboards/`, etc.)
+      // Not a known prefix (e.g. `uploads/`, etc.)
       const s3Key = "arbitrary/path/file.png";
+
+      const request = createAuthenticatedGetRequest(
+        "http://localhost:3000/api/upload/presigned-url",
+        { id: user.id, email: user.email, name: user.name },
+        { s3Key },
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(404);
+      expect(mockS3Service.generatePresignedDownloadUrl).not.toHaveBeenCalled();
+    });
+
+    test("GET returns 404 for a whiteboards/<id>/x.png key (feature removed)", async () => {
+      const user = await db.user.create({
+        data: {
+          id: generateUniqueId("user-wb"),
+          email: `user-wb-${generateUniqueId()}@example.com`,
+          name: "User",
+        },
+      });
+
+      // The `whiteboards/` prefix was removed from WORKSPACE_PREFIXES when the
+      // Excalidraw Whiteboards feature was retired, so this now resolves to
+      // null (unrecognized prefix) and must fail closed with a 404 — even
+      // though matching S3 objects may still exist from before the removal.
+      const s3Key = "whiteboards/ws-2/x.png";
 
       const request = createAuthenticatedGetRequest(
         "http://localhost:3000/api/upload/presigned-url",
