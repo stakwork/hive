@@ -344,7 +344,9 @@ model TribeThread {
 
 // A mention Jamie handed over that started a turn: a retry of it is
 // dropped, and the turn's reply threads under it (`runId`: the turn's
-// StrutRun id).
+// StrutRun id). A reply that decided a proposal instead (or was told only
+// the owner may) is kept `folded`, under the proposing turn's id: taken,
+// and nothing threads under it.
 model TribeMention {
   id          String    @id @default(cuid())
   tribeLinkId String    @map("tribe_link_id")
@@ -370,7 +372,8 @@ model TribeMention {
 model TribeOutboxEntry {
   id          String    @id @default(cuid())
   tribePubkey String    @map("tribe_pubkey")
-  // "join" | "leave" | "notice"
+  // "join" | "leave" | "notice" | "reply" (a line under one member's
+  // message, e.g. a proposal only the owner decides)
   kind        String
   link        String?
   text        String?

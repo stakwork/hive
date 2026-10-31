@@ -27,7 +27,9 @@
  *     cannot serve delivers the reply without them: the job lands whole;
  *   - ONE row per proposal, `orchestrator-<id>-proposal-<proposalId>`,
  *     `source.kind: "proposal"` — the card (`StrutProposalCard`) reads the
- *     record live and decides it on strut.
+ *     record live and decides it on strut. The brief's `summary` and
+ *     strut's `card` are kept on it as they came, with the workspace whose
+ *     strut ran the turn, for a reader outside hive (a tribe's post).
  * `error` / `cancelled` / LOST rows append a reply row saying so; a run
  * strut refused because the session was still on the previous message
  * (`session_busy:`) says "still working", not "failed". A reply that is
@@ -311,6 +313,8 @@ export function orchestratorRowsFor(
   proposals: StrutProposalBrief[],
   jobs: OrchestratorJobLaunch[] = [],
   strut?: StrutArtifactEnvelope,
+  /** The slug of the workspace whose strut ran the turn, kept on each proposal row. */
+  workspace?: string,
 ): OrchestratorRowDraft[] {
   const main: OrchestratorRowDraft = {
     id: orchestratorRowId(row.id),
@@ -337,8 +341,11 @@ export function orchestratorRowsFor(
       step: p.step,
       status: p.status,
       title: p.title,
+      ...(p.summary ? { summary: p.summary } : {}),
+      ...(p.card ? { card: p.card } : {}),
       ...(p.rationale ? { rationale: p.rationale } : {}),
       ...(p.createdAt ? { createdAt: p.createdAt } : {}),
+      ...(workspace ? { workspace } : {}),
     },
   }));
   return [main, ...cards];
@@ -387,7 +394,17 @@ export async function handleOrchestratorTurnSettled(row: StrutRunRow, _ctx?: Str
     }
   }
 
-  const result = await appendOrchestratorRows(row, orchestratorRowsFor(row, reply, refs, dropped, proposals, jobs, strut));
+  // A proposal's id is its strut's: a reader outside hive (a tribe's post) opens it on that workspace.
+  const workspace =
+    proposals.length > 0
+      ? (strut?.workspace ??
+        (await db.workspace.findUnique({ where: { id: row.workspaceId }, select: { slug: true } }))?.slug ??
+        undefined)
+      : undefined;
+  const result = await appendOrchestratorRows(
+    row,
+    orchestratorRowsFor(row, reply, refs, dropped, proposals, jobs, strut, workspace),
+  );
   logger.info("Orchestrator turn delivered", LOG_TAG, {
     runId: row.id,
     status: reply.outcome,

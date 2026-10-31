@@ -173,6 +173,10 @@ device as it is.
    }
    ```
 
+   A reply to one of Jamie's posts carries its `thread`, and may carry
+   `replyTo`: the post's outbox id, `<thread>:<row id>` (not sent by the
+   daemon yet; see "A proposal").
+
    `recent` is the room since Jamie last spoke there, oldest first: up to
    30 lines and 8 KB, the newest that fit. `owner` is whether the tribe's
    owner wrote it; the tribe server marks the owner's messages.
@@ -238,10 +242,13 @@ device as it is.
    sends it back on `POST /api/tribes/messages` with a reply to that
    message, or a mention posted in its thread.
 2. **Jamie posts each one** into its tribe:
-   - the text, then the deliverables as links;
+   - the text, then a link for each deliverable with an address of its own
+     (a pull request); a deliverable that would only open the conversation
+     in Hive gets no line — it is the card `metadata` draws in Peel;
    - `metadata`, as its JSON in the message's own `metadata` field:
-     `{ strut: { workspace, artifacts } }`, the field the call chat carries
-     (voice PR #20);
+     `{ strut: { workspace, artifacts, proposals? } }`, the field the call
+     chat carries (voice PR #20); `proposals` on a proposal's post and on
+     a decision's (below, "A proposal");
    - threaded under `replyTo`, and split into type-34 chunks past 869 bytes.
      The whole message, metadata included, is what is chunked.
 
@@ -253,18 +260,86 @@ device as it is.
 3. **A job's wake** three hours later lands on the same conversation, so the
    same loop posts it. Nobody needs to be online. The post carries the job's
    deliverables, read from the job's row (the card Hive's chat draws; the
-   wake turn's own run holds none of the job's work): its cards but Hive's
-   own (claims, trace) as links, and strut's entries as `metadata`.
+   wake turn's own run holds none of the job's work): strut's entries as
+   `metadata`, and a link for each card with an address of its own.
 4. A failed turn is an `error` message ("I couldn't finish that: …"). A
-   proposal is "Waiting for <linker> to approve: <title>". The linker decides
-   it in Hive.
+   proposal is "Waiting for <linker> to approve: <title>", with the
+   proposal in its `metadata` (below).
+
+### A proposal
+
+Added 2026-10-31. A tool call the turn's agent made that a person must
+approve (strut `specs/API.md` §12): strut records it and runs it on the
+accept. Strut writes the CARD a person decides on (strut#404, at or past
+`c23756a`): `{ v: 1, title, summary?, fields: [{ label, value, kind?,
+danger? }], actions: { accept, reject }, full }`. Hive, strut's UI and Peel
+each have one renderer for it.
+
+- **The post.** Its line stays "Waiting for <linker> to approve: <title>",
+  which everyone reads. Its `metadata` carries the proposal, beside an
+  `artifacts` list that may be empty:
+
+  ```json
+  { "strut": { "workspace": "<slug>", "artifacts": [],
+    "proposals": [{ "id": "…", "step": "package/install", "title": "…", "summary": "…",
+                    "card": { "v": 1, … }, "status": "pending", "url": "/proposals/<id>",
+                    "rationale": "…", "createdAt": "…" }] } }
+  ```
+
+  `card` is strut's card as the run reported it, none from an older strut;
+  `url` is strut-relative; `workspace` is the one whose strut ran the turn.
+  Hive keeps `summary`, `card` and the workspace on the proposal's row when
+  the turn lands (`orchestrator-turn.ts`). Peel draws the card on the post.
+  The card can be most of a post's size: up to 12 fields of 500
+  characters, so a long one is a few dozen sats in chunks ("Money").
+- **The owner decides by replying.** A reply to the post whose words are
+  the card's own button word (`actions.accept` / `actions.reject`, what Peel
+  sends), or one of accept, approve, yes, ok / reject, decline, no — in any
+  case, a leading `@jamie` and a closing `.` or `!` aside, nothing else — is
+  a decision (`decideByReply`, `/api/tribes/messages`), and runs no turn.
+  - The tribe's OWNER decides (`owner`, the tribe server's flag), as the
+    person who linked the tribe, whom every tribe turn runs as: Hive decides
+    on the turn's strut as them, as its own card does
+    (`decideStrutProposal`), and only a proposal of a turn that ran as them.
+    Other members later, once the daemon forwards a sender's pubkey (open
+    question 6).
+  - Anyone else gets a reply under their message, "Only the tribe's owner
+    can decide this one.", and nothing is decided.
+  - Any other reply to the post (a question about it) is a turn, as any
+    reply to Jamie is.
+  - Which proposal: the post the reply names in `replyTo`, Hive's id for
+    it (`<thread>:<row id>`, the outbox id). The daemon does not send that
+    yet (it sends the conversation, `thread`, alone); until it does, a
+    reply is about the one proposal the conversation's newest turn left
+    open, and with none, or two, it is a turn. A newer turn after the
+    proposal ends that: decide it in Hive then.
+  - A burst (`earlier`) is never a decision.
+  - Taken once, like a mention: the reply's id is recorded before strut is
+    asked, so a retry is a duplicate. A decide strut could not answer drops
+    the record again and answers 502, so Jamie retries. Already decided
+    (409): the outcome from strut's record, unless the conversation has it,
+    then "Already decided. <outcome>" under the reply.
+- **The outcome is posted.** A decision writes its row in the conversation
+  ("Applied: <title>", "Rejected: …", "Failed: … — <error>"), and the
+  outbox posts that row like a reply: in the proposal's thread (under the
+  mention its turn answered), with the new status in `metadata`
+  (`proposals: [{ id, status, title, step, error? }]`, no card), so Peel
+  moves the card on. That holds for a decision made in Hive's own card too.
+  A decision row from before rows named their step is not posted.
+
+  The outcome cannot quote the proposal post itself: Hive never learns the
+  Sphinx id Jamie posted it under. It lands in the same thread.
 
 ### Deliverables
 
-- **Everyone sees text and links.** A deliverable with an address of its
-  own (a pull request, a page) links there. Anything else links into the
-  post's conversation in Hive (`callArtifactUrl`), which opens for org
-  members.
+- **Everyone sees the text, and a link where the deliverable has an
+  address of its own** (a pull request, a page). Anything else — a job's
+  file, a page it wrote — gets no link line: the link would open the post's
+  conversation in Hive (`callArtifactUrl`), for org members alone, and in
+  Peel those members open the card the `metadata` draws, so the line was
+  the same thing twice under the reply (2026-10-31). The one link into Hive
+  a post keeps is a cut reply's "The rest is in Hive", since the rest of its
+  words are nowhere else.
 - **In Peel**, the `strut` field is resolved against the viewer's own
   pairing with that workspace, as the call chat does (`CallChat.artifacts`,
   `PeelCore/CallChat.swift`). Org members open the file in Peel; everyone
@@ -399,6 +474,11 @@ Built in #401:
 Still to add:
 1. **Outbox `join` and `leave` entries.** The daemon joins by link today
    only through its admin API.
+1. **`replyTo` on a reply to a post.** Keep each post's outbox id against
+   the Sphinx id it went out under (beside `rememberThread`), and send it as
+   the mention's `replyTo` when a message replies to that post (or the
+   tribe's copy of it). Hive then decides the proposal the reply names,
+   rather than the one the conversation left open.
 2. **Leaving a tribe.** sphinx-chat has no leave yet.
 3. **Deployment.** One container, beside Hive's other services:
    - a volume for `SPHINX_HOME`;
@@ -420,6 +500,9 @@ Still to add:
 4. **Rendering.** Show Jamie's replies' `strut` field in tribes as the call
    chat does. This is a new, narrow rule beside "control lines are never shown
    in a tribe": deliverables only, apps behind a confirm.
+5. **Proposal cards** (stakwork/peel#464). Draw `strut.proposals[].card` on
+   Jamie's post; for the tribe's owner, send the card's button word as a
+   reply to the post; move the card on from a decision's post.
 
 ### No change
 

@@ -276,6 +276,7 @@ describe("handleOrchestratorTurnSettled", () => {
           title: "Assert several facts at once.",
           rationale: "The Concept is missing.",
           createdAt: "2026-10-19T13:02:30Z",
+          workspace: "acme",
         },
       }),
     );
@@ -303,10 +304,31 @@ describe("handleOrchestratorTurnSettled", () => {
   });
 
   it("a reply with no reference entries carries no strut", async () => {
+    mockFetch.mockResolvedValue(json(200, { workflow: "orchestrator", runId: "1790000000000", proposals: [] }));
     mockReadArtifacts.mockResolvedValue({ ok: true, artifacts: [], raw: [{ id: "t", title: "T", content: "x" }] });
     await handleOrchestratorTurnSettled(row());
     expect("strut" in written()[0]).toBe(false);
     expect(mockWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("a proposal row keeps strut's summary and card as they came, and the workspace whose strut ran the turn", async () => {
+    const card = {
+      v: 1,
+      title: "Install acme/board",
+      fields: [{ label: "package", value: "acme/board" }],
+      actions: { accept: "Install", reject: "Don't install" },
+      full: true,
+    };
+    mockFetch.mockResolvedValue(
+      json(200, { proposals: [{ ...BRIEF, step: "package/install", summary: "Listed by the Stakwork index.", card }] }),
+    );
+    await handleOrchestratorTurnSettled(row());
+    expect(mockWorkspace).toHaveBeenCalledWith({ where: { id: "ws-1" }, select: { slug: true } });
+    expect(written()[1].source).toEqual(
+      expect.objectContaining({ summary: "Listed by the Stakwork index.", card, workspace: "acme" }),
+    );
+    // The row's text is as it was.
+    expect(written()[1].content).toBe(renderProposalContent({ ...BRIEF, step: "package/install" }));
   });
 
   it("a job the turn launched gets its row minted and rides the reply as source.jobs", async () => {

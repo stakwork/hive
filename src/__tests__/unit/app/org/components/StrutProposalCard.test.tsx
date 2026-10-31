@@ -206,6 +206,110 @@ describe("StrutProposalCard", () => {
     expect(screen.getByText("already decided")).toBeTruthy();
   });
 
+  it("draws strut's card for a step hive has no body for: its fields by kind, danger tinted, its words on the buttons", async () => {
+    const card = {
+      v: 1,
+      title: "Install acme/board",
+      summary: "Listed by the Stakwork index: board, by acme.",
+      fields: [
+        { label: "package", value: "acme/board", kind: "ref" },
+        { label: "spends", value: "model calls", danger: true },
+        { label: "workflows", value: '["board-sync"]', kind: "code" },
+        { label: "readme", value: "**A board** for the team.", kind: "markdown" },
+      ],
+      actions: { accept: "Install", reject: "Don't install" },
+      full: true,
+    };
+    mockFetch.mockResolvedValueOnce(
+      json(200, {
+        proposal: {
+          ...RECORD,
+          step: "package/install",
+          title: "Install acme/board",
+          summary: card.summary,
+          input: { package: "acme/board" },
+          card,
+        },
+      }),
+    );
+    render(<StrutProposalCard source={{ ...SOURCE, step: "package/install" }} githubLogin="acme-org" />);
+    await screen.findByTestId("strut-proposal-card-body");
+    expect(screen.queryByTestId("strut-proposal-generic-body")).toBeNull();
+    expect(screen.getByTestId("strut-proposal-summary").textContent).toBe(card.summary);
+
+    const fields = screen.getAllByTestId("strut-proposal-card-field");
+    expect(fields.map((f) => [f.getAttribute("data-kind"), f.getAttribute("data-danger")])).toEqual([
+      ["ref", null],
+      ["text", "true"],
+      ["code", null],
+      ["markdown", null],
+    ]);
+    expect(fields[1].className).toContain("rose");
+    expect(fields[2].querySelector(".font-mono")?.textContent).toBe('["board-sync"]');
+    expect(fields[3].querySelector("strong")?.textContent).toBe("A board");
+    // Everything is shown: no disclosure.
+    expect(screen.queryByTestId("strut-proposal-full-input")).toBeNull();
+
+    expect(screen.getByText("Install")).toBeTruthy();
+    expect(screen.getByText("Don't install")).toBeTruthy();
+    mockFetch.mockResolvedValueOnce(
+      json(200, { proposal: { ...RECORD, step: "package/install", card, status: "rejected" } }),
+    );
+    fireEvent.click(screen.getByLabelText("Don't install"));
+    await waitFor(() => expect(screen.getByText("Rejected")).toBeTruthy());
+    expect(JSON.parse((mockFetch.mock.calls[1] as [string, RequestInit])[1].body as string)).toEqual({
+      runId: "row-1",
+      action: "reject",
+    });
+  });
+
+  it("a card that is not all of it says so, with the full input behind a disclosure", async () => {
+    const card = {
+      v: 1,
+      title: "Remember",
+      fields: [{ label: "text", value: "x… (see full input)" }],
+      actions: { accept: "Accept", reject: "Reject" },
+      full: false,
+    };
+    mockFetch.mockResolvedValueOnce(
+      json(200, {
+        proposal: { ...RECORD, step: "memory/remember", input: { text: "x".repeat(600), tags: ["a"] }, card },
+      }),
+    );
+    render(<StrutProposalCard source={{ ...SOURCE, step: "memory/remember" }} githubLogin="acme-org" />);
+    const disclosure = await screen.findByTestId("strut-proposal-full-input");
+    expect(disclosure.textContent).toContain("Not everything is shown");
+    expect(disclosure.querySelector("pre")?.textContent).toContain('"tags"');
+  });
+
+  it("a graph step keeps hive's own body when the record has a card too; the card's words go on the buttons", async () => {
+    const card = {
+      v: 1,
+      title: "Create a node.",
+      fields: [{ label: "node_type", value: "Concept" }],
+      actions: { accept: "Create", reject: "Don't create" },
+      full: true,
+    };
+    mockFetch.mockResolvedValueOnce(json(200, { proposal: { ...RECORD, card } }));
+    render(<StrutProposalCard source={SOURCE} githubLogin="acme-org" />);
+    await waitFor(() => expect(screen.getByText('"Rate limits"')).toBeTruthy());
+    expect(screen.queryByTestId("strut-proposal-card-body")).toBeNull();
+    expect(screen.getByLabelText("Create")).toBeTruthy();
+    expect(screen.getByLabelText("Don't create")).toBeTruthy();
+  });
+
+  it("a record without a card draws as before: the input as pairs, icon buttons", async () => {
+    mockFetch.mockResolvedValueOnce(
+      json(200, { proposal: { ...RECORD, step: "memory/remember", input: { text: "remember this" } } }),
+    );
+    render(<StrutProposalCard source={{ ...SOURCE, step: "memory/remember" }} githubLogin="acme-org" />);
+    await screen.findByTestId("strut-proposal-generic-body");
+    expect(screen.getByText("remember this")).toBeTruthy();
+    expect(screen.queryByTestId("strut-proposal-summary")).toBeNull();
+    expect(screen.getByLabelText("Approve").textContent).toBe("");
+    expect(screen.getByLabelText("Reject").textContent).toBe("");
+  });
+
   it("a record hive cannot read still shows the brief, with the error", async () => {
     mockFetch.mockResolvedValueOnce(json(502, { error: "Could not reach strut" }));
     render(<StrutProposalCard source={SOURCE} githubLogin="acme-org" />);

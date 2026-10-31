@@ -54,15 +54,25 @@ vi.mock("@/services/strut-orchestrator", async (importOriginal) => ({
   launchOrchestratorTurn: mockLaunch,
 }));
 
+// A decision goes to strut: the decide is mocked; the turn is resolved, and the result row written, for real.
+const { mockDecide } = vi.hoisted(() => ({ mockDecide: vi.fn() }));
+vi.mock("@/services/strut-proposals", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/strut-proposals")>()),
+  decideStrutProposal: mockDecide,
+}));
+
 import { GET as listTribes, POST as linkTribe } from "@/app/api/strut-devices/tribes/route";
 import { DELETE as unlinkTribe } from "@/app/api/strut-devices/tribes/[pubkey]/route";
 import { POST as postMessage } from "@/app/api/tribes/messages/route";
 import { POST as postLeft } from "@/app/api/tribes/left/route";
 import { GET as getOutbox } from "@/app/api/tribes/outbox/route";
 import { POST as postAck } from "@/app/api/tribes/outbox/ack/route";
+import { StrutRunStatus } from "@prisma/client";
 import { canReadKey } from "@/lib/ai/resolveMessageAttachments";
 import { ORCHESTRATOR_TURN_KIND } from "@/lib/strut-orchestrator";
+import { StrutProposalError } from "@/services/strut-proposals";
 import { appendOrchestratorRows, orchestratorRowsFor } from "@/services/strut-runs/orchestrator-turn";
+import { appendProposalResultRow } from "@/services/strut-proposals";
 import { appendJobRow } from "@/services/strut-runs/job-turn";
 
 const TOKEN = "test-jamie-service-token";
@@ -110,6 +120,38 @@ const aMention = (extra: Record<string, unknown> = {}) => ({
   recent: [],
   ...extra,
 });
+
+// ── A proposal ───────────────────────────────────────────────────────────────
+
+const CARD = {
+  v: 1,
+  title: "Install acme/board",
+  summary: "Listed by the Stakwork index.",
+  fields: [{ label: "package", value: "acme/board" }],
+  actions: { accept: "Install", reject: "Don't install" },
+  full: true,
+};
+const INSTALL = {
+  id: "p1",
+  step: "package/install",
+  title: "Install acme/board",
+  status: "pending" as const,
+  url: "/proposals/p1",
+  summary: "Listed by the Stakwork index.",
+};
+
+/** Strut's record of it, as hive hands it on. */
+const record = (extra: Record<string, unknown> = {}) =>
+  ({
+    id: "p1",
+    step: "package/install",
+    input: { package: "acme/board" },
+    title: "Install acme/board",
+    status: "pending",
+    createdAt: "2026-10-31T10:00:00Z",
+    by: { workflow: "orchestrator", runId: "s-run" },
+    ...extra,
+  }) as never;
 
 // ── Scenario ─────────────────────────────────────────────────────────────────
 
@@ -180,6 +222,7 @@ async function landReply(
     proposals?: Parameters<typeof orchestratorRowsFor>[4];
     jobs?: Parameters<typeof orchestratorRowsFor>[5];
     strut?: Parameters<typeof orchestratorRowsFor>[6];
+    workspace?: string;
     wakeId?: string;
   } = {},
 ) {
@@ -200,6 +243,7 @@ async function landReply(
       extra.proposals ?? [],
       extra.jobs ?? [],
       extra.strut,
+      extra.workspace,
     ),
   );
 }
@@ -737,8 +781,153 @@ describe("Jamie in Sphinx tribes", () => {
     });
   });
 
+  describe("a reply to a proposal post", () => {
+    /** A mention, its turn settled on strut with one proposal: the post a reply decides. */
+    async function proposed(card: Record<string, unknown> | undefined = CARD) {
+      const scenario = await linked();
+      const runId = generateUniqueId("turn");
+      mockLaunch.mockResolvedValue({ status: "started", runId, strutRunId: `s-${runId}` });
+      await mention(aMention());
+      const thread = await threadOf();
+      await db.strutRun.create({
+        data: {
+          id: runId,
+          tokenHash: "h",
+          workspaceId: scenario.workspace.id,
+          swarmId: "swarm-1",
+          userId: scenario.owner.id,
+          kind: ORCHESTRATOR_TURN_KIND,
+          workflow: "orchestrator",
+          strutRunId: `s-${runId}`,
+          conversationId: thread.conversationId,
+          status: StrutRunStatus.SUCCESS,
+        },
+      });
+      await answered(scenario, runId, "I've proposed it.", {
+        proposals: [{ ...INSTALL, ...(card ? { card } : {}) }],
+        workspace: scenario.workspace.slug,
+      });
+      await ack((await outbox()).map((m) => m.id as string));
+      mockLaunch.mockClear();
+      await new Promise((r) => setTimeout(r, 5));
+      const post = `${thread.id}:orchestrator-${runId}-proposal-p1`;
+      const reply = (extra: Record<string, unknown>) =>
+        mention(aMention({ id: "msg-2", owner: true, thread: thread.id, replyTo: post, ...extra }));
+      return { scenario, runId, thread, post, reply };
+    }
+
+    it("the owner's reply with the card's own word accepts it, as the linker, with no turn; the outcome is posted", async () => {
+      const { scenario, runId, thread, reply } = await proposed();
+      mockDecide.mockResolvedValue({ status: 200, proposal: record({ status: "applied" }) });
+
+      const res = await reply({ text: "Install" });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ decided: "applied" });
+      expect(mockLaunch).not.toHaveBeenCalled();
+      expect(mockDecide).toHaveBeenCalledWith(
+        expect.objectContaining({ id: runId, userId: scenario.owner.id, conversationId: thread.conversationId }),
+        "p1",
+        { action: "accept" },
+        scenario.owner.id,
+      );
+      expect(await outbox()).toEqual([
+        expect.objectContaining({
+          thread: thread.id,
+          text: "Applied: Install acme/board",
+          replyTo: "msg-1",
+          metadata: {
+            strut: {
+              workspace: scenario.workspace.slug,
+              artifacts: [],
+              proposals: [{ id: "p1", status: "applied", title: "Install acme/board", step: "package/install" }],
+            },
+          },
+        }),
+      ]);
+
+      // Jamie's retry of the same reply decides nothing again.
+      const again = await reply({ text: "Install" });
+      expect(await again.json()).toMatchObject({ duplicate: true });
+      expect(mockDecide).toHaveBeenCalledTimes(1);
+    });
+
+    it("the card's reject word rejects it", async () => {
+      const { reply } = await proposed();
+      mockDecide.mockResolvedValue({ status: 200, proposal: record({ status: "rejected" }) });
+      expect(await (await reply({ text: "don't install" })).json()).toEqual({ decided: "rejected" });
+      expect(mockDecide.mock.calls[0][2]).toEqual({ action: "reject" });
+      expect((await outbox()).map((m) => m.text)).toEqual(["Rejected: Install acme/board"]);
+    });
+
+    it("a plain word decides one from an older strut, with no card; and with no post named, the one the turn left open", async () => {
+      const { reply } = await proposed(undefined);
+      mockDecide.mockResolvedValue({ status: 200, proposal: record({ status: "rejected" }) });
+      // Today's daemon sends the conversation alone: the turn's one open proposal.
+      expect(await (await reply({ text: "No", replyTo: undefined })).json()).toEqual({ decided: "rejected" });
+      expect(mockDecide.mock.calls[0][1]).toBe("p1");
+      expect(mockDecide.mock.calls[0][2]).toEqual({ action: "reject" });
+      expect(mockLaunch).not.toHaveBeenCalled();
+    });
+
+    it("anyone but the owner is told only the owner decides: nothing is decided, no turn, once", async () => {
+      const { reply } = await proposed();
+
+      const res = await reply({ owner: false, text: "approve" });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ refused: "Only the tribe's owner can decide this one." });
+      expect(mockDecide).not.toHaveBeenCalled();
+      expect(mockLaunch).not.toHaveBeenCalled();
+      const messages = await outbox();
+      expect(messages).toEqual([
+        { id: expect.any(String), tribe: TRIBE, text: "Only the tribe's owner can decide this one.", replyTo: "msg-2" },
+      ]);
+      await reply({ owner: false, text: "approve" });
+      await ack(messages.map((m) => m.id as string));
+      expect(await outbox()).toEqual([]);
+    });
+
+    it("a reply to the post that is not a decision takes a turn, as any reply to Jamie does", async () => {
+      const { thread, reply } = await proposed();
+
+      const res = await reply({ text: "What would it install?" });
+
+      expect(res.status).toBe(202);
+      expect(await res.json()).toMatchObject({ thread: thread.id });
+      expect(mockLaunch).toHaveBeenCalledTimes(1);
+      expect(mockDecide).not.toHaveBeenCalled();
+    });
+
+    it("already decided (409): the outcome from strut's record, once; a later reply hears it again", async () => {
+      const { reply } = await proposed();
+      mockDecide.mockResolvedValue({ status: 409, proposal: record({ status: "rejected" }), error: "already decided" });
+
+      expect(await (await reply({ text: "Install" })).json()).toEqual({ decided: "rejected" });
+      const [outcome] = await outbox();
+      expect(outcome).toMatchObject({ text: "Rejected: Install acme/board", replyTo: "msg-1" });
+      await ack([outcome.id as string]);
+
+      expect(await (await reply({ id: "msg-3", text: "Install" })).json()).toEqual({ decided: "rejected" });
+      expect(await outbox()).toEqual([
+        expect.objectContaining({ text: "Already decided. Rejected: Install acme/board", replyTo: "msg-3" }),
+      ]);
+    });
+
+    it("strut not answering is a 502 and keeps nothing, so Jamie's retry decides", async () => {
+      const { reply } = await proposed();
+      mockDecide.mockRejectedValueOnce(new StrutProposalError(502, "Could not reach strut on the workspace swarm."));
+      expect((await reply({ text: "Install" })).status).toBe(502);
+      expect(await outbox()).toEqual([]);
+
+      mockDecide.mockResolvedValueOnce({ status: 200, proposal: record({ status: "applied" }) });
+      expect(await (await reply({ text: "Install" })).json()).toEqual({ decided: "applied" });
+      expect(mockDecide).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("the outbox", () => {
-    it("a reply threads under its mention, with deliverables as links and strut's entries as metadata; an ack moves the cursor", async () => {
+    it("a reply threads under its mention, a link for the deliverable with an address of its own, strut's entries as metadata — a Hive card gets no link line; an ack moves the cursor", async () => {
       const scenario = await linked();
       await mention(aMention());
       const strut = { workspace: scenario.workspace.slug, artifacts: [{ id: "plan", kind: "markdown", title: "Plan", path: "plan.md" }] };
@@ -763,11 +952,8 @@ describe("Jamie in Sphinx tribes", () => {
           id: `${thread.id}:orchestrator-run-1`,
           tribe: TRIBE,
           thread: thread.id,
-          text: expect.stringMatching(
-            new RegExp(
-              `^We picked Wednesday\\.\\n\\nPlan: ${BASE}/org/${scenario.org.githubLogin}\\?chat=${conversationId}&artifact=id%3Aplan\\nFix login: https://github\\.com/acme/app/pull/7$`,
-            ),
-          ),
+          // The plan would only open this conversation in Hive: in Peel it is the card the metadata draws, so no line; the PR has an address of its own.
+          text: "We picked Wednesday.\n\nFix login: https://github.com/acme/app/pull/7",
           replyTo: "msg-1",
           metadata: { strut },
         },
@@ -802,6 +988,104 @@ describe("Jamie in Sphinx tribes", () => {
       expect(await outbox()).toHaveLength(2);
       await ack(messages.map((m) => m.id as string));
       expect(await outbox()).toEqual([]);
+    });
+
+    it("a proposal's post carries it in metadata.strut.proposals, strut's card as it came; an older strut's has no card", async () => {
+      const scenario = await linked();
+      await mention(aMention());
+      await answered(scenario, "run-1", "I've proposed it.", {
+        proposals: [
+          { ...INSTALL, card: CARD },
+          { id: "p2", step: "graph/create-node", title: "Login bug", status: "pending", url: "/proposals/p2" },
+        ],
+        workspace: scenario.workspace.slug,
+      });
+      const { name } = await db.user.findUniqueOrThrow({ where: { id: scenario.owner.id }, select: { name: true } });
+      const approver = name || "the person who linked this tribe";
+
+      const [reply, install, plain] = await outbox();
+      expect(reply).not.toHaveProperty("metadata");
+      expect(install).toMatchObject({
+        text: `Waiting for ${approver} to approve: Install acme/board`,
+        replyTo: "msg-1",
+      });
+      expect(install.metadata).toEqual({
+        strut: {
+          workspace: scenario.workspace.slug,
+          artifacts: [],
+          proposals: [
+            {
+              id: "p1",
+              step: "package/install",
+              title: "Install acme/board",
+              summary: "Listed by the Stakwork index.",
+              card: CARD,
+              status: "pending",
+              url: "/proposals/p1",
+            },
+          ],
+        },
+      });
+      expect(plain.metadata).toEqual({
+        strut: {
+          workspace: scenario.workspace.slug,
+          artifacts: [],
+          proposals: [
+            { id: "p2", step: "graph/create-node", title: "Login bug", status: "pending", url: "/proposals/p2" },
+          ],
+        },
+      });
+    });
+
+    it("a decision made in Hive is posted too: its outcome line, where the proposal was, with the new status", async () => {
+      const scenario = await linked();
+      await mention(aMention());
+      const conversationId = await answered(scenario, "run-1", "I've proposed it.", {
+        proposals: [{ ...INSTALL, card: CARD }],
+        workspace: scenario.workspace.slug,
+      });
+      await ack((await outbox()).map((m) => m.id as string));
+
+      await new Promise((r) => setTimeout(r, 5));
+      await appendProposalResultRow(
+        {
+          id: "run-1",
+          workspaceId: scenario.workspace.id,
+          swarmId: "swarm-1",
+          userId: scenario.owner.id,
+          workflow: "orchestrator",
+          strutRunId: "s-run-1",
+          conversationId,
+          workspaceSlug: scenario.workspace.slug,
+        },
+        record({ status: "failed", result: { error: "no such package", at: "x" } }),
+      );
+      const thread = await threadOf();
+
+      expect(await outbox()).toEqual([
+        {
+          id: expect.stringMatching(new RegExp(`^${thread.id}:orchestrator-run-1-proposal-p1-failed-`)),
+          tribe: TRIBE,
+          thread: thread.id,
+          text: "Failed: Install acme/board — no such package",
+          replyTo: "msg-1",
+          metadata: {
+            strut: {
+              workspace: scenario.workspace.slug,
+              artifacts: [],
+              proposals: [
+                {
+                  id: "p1",
+                  status: "failed",
+                  title: "Install acme/board",
+                  step: "package/install",
+                  error: "no such package",
+                },
+              ],
+            },
+          },
+        },
+      ]);
     });
 
     it("a job's wake reply threads under the mention that started the job", async () => {
@@ -850,7 +1134,8 @@ describe("Jamie in Sphinx tribes", () => {
           id: `${thread.id}:orchestrator-wake-1`,
           tribe: TRIBE,
           thread: thread.id,
-          text: `The marketplace report is ready.\n\nReport: ${BASE}/org/${scenario.org.githubLogin}?chat=${conversationId}&artifact=${encodeURIComponent("graph:swarm-1:/jobs/job-a/files/report.md")}`,
+          // The report is a job's file: a link into this conversation in Hive gets no line, the metadata carries it.
+          text: "The marketplace report is ready.",
           replyTo: "msg-1",
           metadata: { strut },
         },

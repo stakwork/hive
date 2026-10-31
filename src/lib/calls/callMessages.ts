@@ -6,7 +6,13 @@
  *   - an orchestrator reply (`source.kind: "orchestrator"`), including the
  *     reply to a job's wake turn → `reply`, or `error` for a turn that
  *     failed, was stopped or was lost;
- *   - a proposal the turn made (`source.kind: "proposal"`) → `proposal`.
+ *   - a proposal the turn made (`source.kind: "proposal"`) → `proposal`,
+ *     with the proposal in `strut.proposals` (its card as strut made it)
+ *     when the row names its workspace;
+ *   - asked for (`decisions`, a tribe's outbox), a person's decision on one
+ *     (`source.kind: "proposal_result"`) → `decision`: the outcome line,
+ *     and the proposal's new status in `strut.proposals`. A decision row
+ *     from before rows named their step is left out.
  *
  * A reply also carries the row's `strut` (strut's own entries and the
  * workspace they are relative to), untouched, when it has one.
@@ -22,7 +28,8 @@
  *
  * Everything else is left out: other user rows, launch markers (the chat's
  * working card), job rows (a job's card; its wake reply is what is said,
- * with the job's deliverables), proposal decisions, and silent replies. Fields come from the row's
+ * with the job's deliverables), proposal decisions unless asked for, and
+ * silent replies. Fields come from the row's
  * `source`, never its rendered text: `ask` is the question verbatim.
  *
  * The cursor is the timestamp of the last row delivered, not an index: a
@@ -36,9 +43,15 @@ import {
   parseArtifactRefs,
   type ArtifactRef,
 } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
-import { orchestratorAskLine, parseStrutArtifactEnvelope, type StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
+import {
+  orchestratorAskLine,
+  parseStrutArtifactEnvelope,
+  parseStrutProposalStatus,
+  type StrutArtifactEnvelope,
+  type StrutProposalEntry,
+} from "@/lib/strut-orchestrator";
 
-export type CallMessageKind = "reply" | "proposal" | "error" | "request";
+export type CallMessageKind = "reply" | "proposal" | "decision" | "error" | "request";
 
 export interface CallMessage {
   id: string;
@@ -46,7 +59,7 @@ export interface CallMessage {
   text: string;
   /** The agent stopped for a decision: its question, verbatim. */
   ask?: string;
-  /** A proposal's title. */
+  /** A proposal's title, or a decided one's. */
   title?: string;
   artifacts?: Array<{ title: string; url: string }>;
   /**
@@ -84,10 +97,75 @@ type Row = {
   timestamp?: unknown;
   artifacts?: unknown;
   strut?: unknown;
-  source?: { kind?: unknown; status?: unknown; ask?: unknown; title?: unknown; speaker?: unknown; via?: unknown } | null;
+  source?: {
+    kind?: unknown;
+    status?: unknown;
+    ask?: unknown;
+    title?: unknown;
+    speaker?: unknown;
+    via?: unknown;
+    proposalId?: unknown;
+    step?: unknown;
+    url?: unknown;
+    summary?: unknown;
+    card?: unknown;
+    rationale?: unknown;
+    createdAt?: unknown;
+    error?: unknown;
+    workspace?: unknown;
+  } | null;
 };
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * A proposal row's proposal as an envelope carries it: everything strut
+ * reported of it, its card as it came. Null without its workspace (a row
+ * from before rows named it) or its id.
+ */
+function proposalEnvelope(source: NonNullable<Row["source"]>): StrutArtifactEnvelope | null {
+  const workspace = str(source.workspace);
+  const id = str(source.proposalId);
+  if (!workspace || !id) return null;
+  const optional = (key: "summary" | "rationale" | "createdAt") =>
+    str(source[key]) ? { [key]: str(source[key]) } : {};
+  const entry: StrutProposalEntry = {
+    id,
+    step: str(source.step),
+    title: str(source.title),
+    ...optional("summary"),
+    ...(isObject(source.card) ? { card: source.card } : {}),
+    status: parseStrutProposalStatus(source.status),
+    url: str(source.url) || `/proposals/${id}`,
+    ...optional("rationale"),
+    ...optional("createdAt"),
+  };
+  return { workspace, artifacts: [], proposals: [entry] };
+}
+
+/** A decision row as a message: its outcome line, and the proposal's new status. Null for a row that names no step. */
+function decisionOf(id: string, content: string, source: NonNullable<Row["source"]>): CallMessage | null {
+  const step = str(source.step);
+  const proposalId = str(source.proposalId);
+  if (!step || !proposalId) return null;
+  const workspace = str(source.workspace);
+  const error = str(source.error);
+  const entry: StrutProposalEntry = {
+    id: proposalId,
+    status: parseStrutProposalStatus(source.status),
+    title: str(source.title),
+    step,
+    ...(error ? { error } : {}),
+  };
+  return {
+    id,
+    kind: "decision",
+    text: content.trim(),
+    title: str(source.title),
+    ...(workspace ? { strut: { workspace, artifacts: [], proposals: [entry] } } : {}),
+  };
+}
 
 /** A job row's cards that are hive's view of the work, not what it made: never handed on as deliverables. */
 const HIVE_JOB_CARDS = new Set(["claims", "run_graph"]);
@@ -119,7 +197,7 @@ export function withJobDeliverables(
   jobRow: unknown,
   artifactUrl: (ref: ArtifactRef) => string,
 ): CallMessage {
-  if (message.kind === "proposal" || sourceOf(jobRow)?.kind !== "job") return message;
+  if (message.kind === "proposal" || message.kind === "decision" || sourceOf(jobRow)?.kind !== "job") return message;
   const row = jobRow as { artifacts?: unknown; strut?: unknown };
   const artifacts = [...(message.artifacts ?? [])];
   const seen = new Set(artifacts.map((a) => a.url));
@@ -136,7 +214,7 @@ export function withJobDeliverables(
   if (job && !strut) strut = job;
   else if (job && strut && job.workspace === strut.workspace) {
     const kept = new Set(strut.artifacts.map((e) => JSON.stringify(e)));
-    strut = { workspace: strut.workspace, artifacts: [...strut.artifacts, ...job.artifacts.filter((e) => !kept.has(JSON.stringify(e)))] };
+    strut = { ...strut, artifacts: [...strut.artifacts, ...job.artifacts.filter((e) => !kept.has(JSON.stringify(e)))] };
   }
   return { ...message, ...(artifacts.length > 0 ? { artifacts } : {}), ...(strut ? { strut } : {}) };
 }
@@ -149,14 +227,26 @@ function replyText(content: string, ask: string | undefined): string {
   return (content.includes(paragraph) ? content.replace(paragraph, "") : content.replace(line, "")).trim();
 }
 
-/** The row as voice reads it, or null for a row that is not said on the call. */
-export function callMessageOf(row: Row, artifactUrl: (ref: ArtifactRef) => string): CallMessage | null {
+/** The row as voice reads it, or null for a row that is not said on the call. `decisions`: a decision row too. */
+export function callMessageOf(
+  row: Row,
+  artifactUrl: (ref: ArtifactRef) => string,
+  opts: { decisions?: boolean } = {},
+): CallMessage | null {
   if (row.role !== "assistant" || typeof row.id !== "string") return null;
   const source = row.source ?? {};
   const content = str(row.content);
   if (source.kind === "proposal") {
-    return { id: row.id, kind: "proposal", text: content.trim(), title: str(source.title) };
+    const strut = proposalEnvelope(source);
+    return {
+      id: row.id,
+      kind: "proposal",
+      text: content.trim(),
+      title: str(source.title),
+      ...(strut ? { strut } : {}),
+    };
   }
+  if (source.kind === "proposal_result") return opts.decisions ? decisionOf(row.id, content, source) : null;
   if (source.kind !== "orchestrator" || source.status === "silent") return null;
   const ask = source.status === "success" && typeof source.ask === "string" && source.ask ? source.ask : undefined;
   const refs = parseArtifactRefs(row.artifacts) ?? [];
@@ -192,13 +282,14 @@ export function callRequestOf(row: Row): CallMessage | null {
 /**
  * The messages that landed after `since` (null: from the start), oldest
  * first, and the cursor to ask from next — `since` itself when nothing new
- * landed. `requests` adds the call's requests among them.
+ * landed. `requests` adds the call's requests among them, `decisions` the
+ * decisions on its proposals.
  */
 export function callMessagesSince(
   rows: unknown[],
   since: string | null,
   artifactUrl: (ref: ArtifactRef) => string,
-  opts: { requests?: boolean } = {},
+  opts: { requests?: boolean; decisions?: boolean } = {},
 ): CallMessagesPage {
   const after = since ? Date.parse(since) : Number.NEGATIVE_INFINITY;
   let cursor = since;
@@ -214,7 +305,7 @@ export function callMessagesSince(
     const row = raw as Row;
     const at = Date.parse(str(row.timestamp));
     if (!(at > after)) continue;
-    const said = callMessageOf(row, artifactUrl) ?? (opts.requests ? callRequestOf(row) : null);
+    const said = callMessageOf(row, artifactUrl, opts) ?? (opts.requests ? callRequestOf(row) : null);
     if (!said) continue;
     const runId = sourceOf(row)?.runId;
     const jobRow = typeof runId === "string" ? wakes.get(runId) : undefined;
