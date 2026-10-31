@@ -266,3 +266,42 @@ describe("the batch file", () => {
     expect(batchAliases(batch.messages)).toEqual([]);
   });
 });
+
+describe("parseBatch: a deleted line", () => {
+  const line = { id: "m1", time: "2026-10-31T14:03:12Z", alias: "Bob", owner: false, mine: false };
+
+  it("carries no text and keeps `deleted`; a line with no text and no `deleted` is refused", () => {
+    const ok = parseBatch({ batch: "b1", tribe: { pubkey: "02" + "a".repeat(64) }, messages: [{ ...line, text: "", deleted: true }] });
+    expect(typeof ok).not.toBe("string");
+    expect((ok as { messages: unknown[] }).messages[0]).toEqual({ ...line, time: "2026-10-31T14:03:12.000Z", text: "", deleted: true });
+    expect(parseBatch({ batch: "b1", tribe: { pubkey: "02" + "a".repeat(64) }, messages: [{ ...line, text: "" }] })).toBe(
+      "messages[0].text is required",
+    );
+  });
+});
+
+describe("parseBatch: a line that is not words", () => {
+  const tribe = { pubkey: "02" + "a".repeat(64) };
+  const line = { id: "b1", time: "2026-10-31T14:03:12Z", alias: "Bob", owner: false, mine: false };
+
+  it("keeps its kind, and a boost's sats and the message it boosts; an unknown kind or odd sats is refused", () => {
+    const ok = parseBatch({ batch: "b1", tribe, messages: [{ ...line, text: "(boosted Carol's message, 100 sats)", kind: "boost", sats: 100, replyTo: "c1" }] });
+    expect((ok as { messages: unknown[] }).messages[0]).toEqual({
+      ...line,
+      time: "2026-10-31T14:03:12.000Z",
+      text: "(boosted Carol's message, 100 sats)",
+      kind: "boost",
+      sats: 100,
+      replyTo: "c1",
+    });
+    const join = parseBatch({ batch: "b2", tribe, messages: [{ ...line, text: "(joined)", kind: "join" }] });
+    expect((join as { messages: Array<{ kind?: string; sats?: number }> }).messages[0]).toMatchObject({ kind: "join" });
+    expect((join as { messages: Array<{ sats?: number }> }).messages[0].sats).toBeUndefined();
+    expect(parseBatch({ batch: "b3", tribe, messages: [{ ...line, text: "x", kind: "dance" }] })).toBe(
+      "messages[0].kind must be call, join, leave, boost or file",
+    );
+    expect(parseBatch({ batch: "b4", tribe, messages: [{ ...line, text: "x", kind: "boost", sats: 1.5 }] })).toBe(
+      "messages[0].sats must be a whole number of sats",
+    );
+  });
+});
