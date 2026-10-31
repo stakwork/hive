@@ -5,14 +5,14 @@
  * (`docs/plans/jamie-in-tribes.md`, "The reply").
  *
  * Two sources, in this order:
- *   - the queued entries (`TribeOutboxEntry`): joins, leaves and notices,
- *     oldest first; an ack marks one done;
+ *   - the queued entries (`TribeOutboxEntry`): joins, leaves, notices and
+ *     replies to one member's message, oldest first; an ack marks one done;
  *   - each conversation of a linked tribe (`TribeThread`), read with
  *     `callMessagesSince` (the reader voice uses) after the thread's cursor:
- *     Jamie's replies, errors and proposals, as one post each. Its id is
- *     `<thread id>:<row id>`, so an ack names the thread whose cursor it
- *     moves, and its `thread` is the thread's id, which Jamie sends back on
- *     a message that replies to the post.
+ *     Jamie's replies, errors, proposals and the decisions on them, as one
+ *     post each. Its id is `<thread id>:<row id>`, so an ack names the
+ *     thread whose cursor it moves, and its `thread` is the thread's id,
+ *     which Jamie sends back on a message that replies to the post.
  *
  * Delivery is at least once. The cursor moves only past a run of rows that
  * are all acked, a turn's rows (they share a stamp) together; an entry
@@ -25,8 +25,19 @@
  * marker names the job row, the launching turn's reply lists the job).
  *
  * A job's wake reply carries that job's deliverables (the reader adds them
- * from the job row): its cards as link lines, its strut entries as the
- * post's metadata.
+ * from the job row): its strut entries as the post's metadata, and a link
+ * line for each deliverable with an address of its own (a pull request). A
+ * deliverable that would only open the conversation in Hive gets no line:
+ * that link opens for org members alone, and in Peel the metadata draws it
+ * as a card they open in place — the line was the same thing twice, as a
+ * long URL under a short reply.
+ *
+ * A proposal is one line, "Waiting for <linker> to approve: <title>", with
+ * the proposal (strut's card on it) in the metadata's `strut.proposals`, so
+ * Peel draws the card on the post. A decision on it — the owner's reply to
+ * the post (`/api/tribes/messages`), or the linker's click in Hive — is
+ * posted too, as its outcome line ("Applied: <title>") with the new status
+ * in `strut.proposals`; it threads where the proposal did.
  *
  * A conversation is read only once its `updatedAt` passes the thread's
  * `readAt`: the stamp of a read that left nothing after the cursor.
@@ -50,7 +61,11 @@ export interface TribeOutboxPost {
   text: string;
   /** The message id to thread under. */
   replyTo?: string;
-  /** The message's own metadata field: strut's entries, for Peel to open against the viewer's own pairing. */
+  /**
+   * The message's own metadata field: strut's entries, for Peel to open
+   * against the viewer's own pairing — deliverables (`artifacts`), and a
+   * proposal or a decision on one (`proposals`).
+   */
   metadata?: { strut: StrutArtifactEnvelope };
 }
 
@@ -75,14 +90,44 @@ export function parseTribeMessageId(id: string): { threadId: string; rowId: stri
   return { threadId: id.slice(0, at), rowId: id.slice(at + 1) };
 }
 
-/** What Jamie posts for a message: its words, the agent's question, then the deliverables as links. */
+/**
+ * A link that opens the post's conversation in Hive — `callArtifactUrl`'s
+ * form for a deliverable with no address of its own (`?chat=…&artifact=…`):
+ * the same origin and path, the same `chat`. Not a link, or another page:
+ * false.
+ */
+export function opensInConversation(url: string, conversationUrl: string): boolean {
+  try {
+    const link = new URL(url);
+    const conversation = new URL(conversationUrl);
+    return (
+      link.origin === conversation.origin &&
+      link.pathname === conversation.pathname &&
+      link.searchParams.get("chat") === conversation.searchParams.get("chat")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What Jamie posts for a message: its words, the agent's question, then a
+ * link for each deliverable with an address of its own. One that would only
+ * open the conversation in Hive is left out — it is the card the post's
+ * metadata draws in Peel (a cut reply still points at the conversation: the
+ * rest of its words are nowhere else).
+ */
 export function tribeText(message: CallMessage, opts: { approver: string; conversationUrl: string }): string {
   if (message.kind === "proposal") return `Waiting for ${opts.approver} to approve: ${message.title || message.text}`;
+  if (message.kind === "decision") return message.text;
   let body = [message.text, message.ask ?? ""].filter(Boolean).join("\n\n");
   if (body.length > MAX_TRIBE_TEXT_CHARS) {
     body = `${body.slice(0, MAX_TRIBE_TEXT_CHARS).trimEnd()}… The rest is in Hive: ${opts.conversationUrl}`;
   }
-  const links = (message.artifacts ?? []).map((a) => `${a.title}: ${a.url}`).join("\n");
+  const links = (message.artifacts ?? [])
+    .filter((a) => !opensInConversation(a.url, opts.conversationUrl))
+    .map((a) => `${a.title}: ${a.url}`)
+    .join("\n");
   return [body, links].filter(Boolean).join("\n\n");
 }
 
@@ -154,7 +199,7 @@ export async function pendingTribeMessages(
   const { link } = thread;
   const conversationUrl = `${base}/org/${encodeURIComponent(link.org.githubLogin)}?chat=${encodeURIComponent(thread.conversationId)}`;
   const artifactUrl = (ref: ArtifactRef) => callArtifactUrl(ref, { base, conversationUrl });
-  const { messages } = callMessagesSince(rows, thread.cursor, artifactUrl);
+  const { messages } = callMessagesSince(rows, thread.cursor, artifactUrl, { decisions: true });
   if (messages.length === 0) return [];
 
   const byId = new Map<string, unknown>();
@@ -294,7 +339,7 @@ export async function readTribeOutbox(base: string): Promise<TribeOutboxItem[]> 
   for (const entry of entries) {
     if (entry.kind === "join" && entry.link) items.push({ id: entry.id, join: entry.link });
     else if (entry.kind === "leave") items.push({ id: entry.id, leave: entry.tribePubkey });
-    else if (entry.kind === "notice" && entry.text) {
+    else if ((entry.kind === "notice" || entry.kind === "reply") && entry.text) {
       items.push({ id: entry.id, tribe: entry.tribePubkey, text: entry.text, ...(entry.replyTo ? { replyTo: entry.replyTo } : {}) });
     }
   }

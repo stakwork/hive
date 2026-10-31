@@ -125,6 +125,21 @@ export async function queueTribeNotice(pubkey: string, text: string, replyTo?: s
   return true;
 }
 
+/**
+ * A line Jamie posts under one member's message, answering it (`kind:
+ * "reply"`): not held to the notices' once a day, nor counted in it, since
+ * the caller takes each message once.
+ */
+export function queueTribeReply(pubkey: string, text: string, replyTo: string) {
+  return db.tribeOutboxEntry.create({ data: { tribePubkey: pubkey, kind: "reply", text, replyTo } });
+}
+
+/** The reply a member gets for a decision on a proposal: the tribe's owner decides. */
+export const TRIBE_OWNER_DECIDES = "Only the tribe's owner can decide this one.";
+
+/** The reply the owner gets for a proposal a turn made as someone else (in Hive): theirs to decide. */
+export const TRIBE_DECIDED_IN_HIVE = "This one was asked for in Hive, and is decided there.";
+
 /** The notice a tribe gets when the person who linked it can no longer use its workspace. */
 export const TRIBE_ACCESS_LOST_NOTICE =
   "I can't answer here any more: the person who linked this tribe can no longer use its workspace in Hive. " +
