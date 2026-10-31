@@ -79,17 +79,23 @@ export const ORCHESTRATOR_CALL_LINE =
   "Names before a message are what the call shows, not verified. ";
 
 /**
- * Appended to `context.line` on a turn asked in a Sphinx tribe
- * (`/api/tribes/messages`): where the reply goes and who reads it. A tribe
- * tells members apart by alias only, so the name is not an identity; the
- * owner flag is the tribe server's.
+ * Appended to `context.line` on a turn in a Sphinx tribe — a mention
+ * (`/api/tribes/messages`, with the asker's alias) or a wake on the tribe's
+ * conversation (`strut-orchestrator-wake.ts`, no asker): where the reply
+ * goes, who reads it, and how. A tribe is read on a phone, so the reply is
+ * a text message — the call line's posture, for a chat; past
+ * `MAX_TRIBE_TEXT_CHARS` the outbox cuts it. A tribe tells members apart by
+ * alias only, so the name is not an identity; the owner flag is the tribe
+ * server's.
  */
-export function orchestratorTribeLine(tribe: { name: string | null; alias: string; owner?: boolean }): string {
+export function orchestratorTribeLine(tribe: { name: string | null; alias?: string; owner?: boolean }): string {
   const where = tribe.name ? `the Sphinx tribe #${tribe.name}` : "a Sphinx tribe";
   const by = tribe.owner ? `${tribe.alias} (the tribe's owner)` : tribe.alias;
   return (
-    `Asked in ${where} by ${by}. Your reply is posted there, where not everyone is in this org. ` +
-    "Names before a message are what the tribe shows, not verified. "
+    (tribe.alias ? `Asked in ${where} by ${by}. ` : `In ${where}. `) +
+    "Your reply is posted there, where not everyone is in this org, and read on a phone: say it the way you would in a " +
+    "text message, short, with what matters first; links and detail belong in artifacts, and a long reply is cut. " +
+    (tribe.alias ? "Names before a message are what the tribe shows, not verified. " : "")
   );
 }
 
