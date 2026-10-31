@@ -19,6 +19,7 @@ import {
   parseOrchestratorJobCalls,
   parseStrutArtifactEnvelope,
   parseStrutProposalBriefs,
+  strutProposalCardOf,
   strutProposalRowId,
   strutProposalStepLabel,
   strutProposalToOutput,
@@ -185,6 +186,80 @@ describe("parseStrutProposalBriefs", () => {
     ]);
     expect(parseStrutProposalBriefs(undefined)).toEqual([]);
     expect(parseStrutProposalBriefs({ proposals: [] })).toEqual([]);
+  });
+
+  it("keeps strut's summary and card as they came (strut#404); a card that is no object, or too big, is none", () => {
+    const card = {
+      v: 1,
+      title: "Install acme/board",
+      summary: "Listed by the Stakwork index.",
+      fields: [
+        { label: "package", value: "acme/board" },
+        { label: "spends", value: "model calls", danger: true },
+      ],
+      actions: { accept: "Install", reject: "Don't install" },
+      full: true,
+    };
+    const [brief, noCard, huge] = parseStrutProposalBriefs([
+      {
+        id: "p1",
+        step: "package/install",
+        title: "Install acme/board",
+        summary: "Listed by the Stakwork index.",
+        card,
+      },
+      { id: "p2", step: "package/install", card: "not a card" },
+      { id: "p3", step: "package/install", card: { v: 1, fields: [{ label: "x", value: "y".repeat(20_000) }] } },
+    ]);
+    expect(brief.summary).toBe("Listed by the Stakwork index.");
+    expect(brief.card).toBe(card);
+    expect(noCard).not.toHaveProperty("card");
+    expect(huge).not.toHaveProperty("card");
+  });
+});
+
+describe("strutProposalCardOf — a card hive can draw", () => {
+  const card = {
+    v: 1,
+    title: "Grant the board app",
+    summary: "It reads and writes the team's notes.",
+    fields: [
+      { label: "app", value: "board", kind: "ref" },
+      { label: "scopes", value: '["notes:write"]', kind: "code", danger: true },
+      { label: "odd", value: "x", kind: "chart", danger: "yes" },
+    ],
+    actions: { accept: " Grant ", reject: "Don't grant" },
+    full: true,
+  };
+
+  it("reads v1: the fields with a kind it knows, danger only when true, the button words trimmed", () => {
+    expect(strutProposalCardOf(card)).toEqual({
+      v: 1,
+      title: "Grant the board app",
+      summary: "It reads and writes the team's notes.",
+      fields: [
+        { label: "app", value: "board", kind: "ref" },
+        { label: "scopes", value: '["notes:write"]', kind: "code", danger: true },
+        { label: "odd", value: "x" },
+      ],
+      actions: { accept: "Grant", reject: "Don't grant" },
+      full: true,
+    });
+  });
+
+  it("not full unless strut says so, and never past twelve fields", () => {
+    expect(strutProposalCardOf({ ...card, full: undefined })?.full).toBe(false);
+    const many = Array.from({ length: 14 }, (_, i) => ({ label: `k${i}`, value: "v" }));
+    const read = strutProposalCardOf({ ...card, fields: many });
+    expect(read?.fields).toHaveLength(12);
+    expect(read?.full).toBe(false);
+  });
+
+  it("none for another version, no actions, or a field that is not label and value", () => {
+    expect(strutProposalCardOf({ ...card, v: 2 })).toBeNull();
+    expect(strutProposalCardOf({ ...card, actions: { accept: "Grant" } })).toBeNull();
+    expect(strutProposalCardOf({ ...card, fields: [{ label: "x", value: 3 }] })).toBeNull();
+    expect(strutProposalCardOf(undefined)).toBeNull();
   });
 });
 
@@ -374,5 +449,18 @@ describe("strut's artifact entries for a call", () => {
     expect(parseStrutArtifactEnvelope({ workspace: "acme", artifacts: [] })).toBeUndefined();
     expect(parseStrutArtifactEnvelope({ workspace: "acme", artifacts: "x" })).toBeUndefined();
     expect(parseStrutArtifactEnvelope(null)).toBeUndefined();
+  });
+
+  it("an envelope about a proposal: its artifacts may be empty, but are still there", () => {
+    const proposals = [
+      { id: "p1", step: "package/install", title: "Install", status: "pending", url: "/proposals/p1" },
+    ];
+    const envelope = { workspace: "acme", artifacts: [], proposals };
+    expect(parseStrutArtifactEnvelope(envelope)).toBe(envelope);
+    // An older envelope, deliverables alone, reads as it did.
+    const older = { workspace: "acme", artifacts: [{ id: "a", url: "/u" }] };
+    expect(parseStrutArtifactEnvelope(older)).toBe(older);
+    expect(parseStrutArtifactEnvelope({ workspace: "acme", proposals })).toBeUndefined();
+    expect(parseStrutArtifactEnvelope({ workspace: "acme", artifacts: [], proposals: [] })).toBeUndefined();
   });
 });

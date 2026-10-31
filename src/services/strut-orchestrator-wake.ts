@@ -44,9 +44,26 @@
  * person's own turns tell the launch (`call`, `tribe`); a wake has no
  * person, so it reads it off the conversation (`conversationMedium`) and
  * passes the same, so the summary is written for the room the question was
- * asked in — a tribe's as a text message, not a page.
+ * asked in — a tribe's as a text message, not a page. The prompt says it
+ * too (`readIn`): there the job's entry is never shown, the reply is all
+ * the person reads, and what the job produced reaches them as cards.
+ *
+ * The summary is the orchestrator's own posture (strut's template: say
+ * what is new, a line when the result confirms, the answer when it adds),
+ * not a checklist — "what it produced, its question and the next step"
+ * made every wake reply relay the job's caveats and end on an offer. The
+ * job's reply is framed as its note to the orchestrator, never a draft of
+ * the message: shortened line by line, a five-point report came back as a
+ * five-point report.
+ *
+ * The wake runs on the conversation owner's model pick
+ * (`User.chatAgentModel`), the one the person's own turns launch with (the
+ * tribe, call and ask routes pass it as `params.model`), so one
+ * conversation runs on one model; before this the wake fell to the
+ * template's default while the turn before it ran on the person's pick.
  */
 
+import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { describeArtifactEvent, type ArtifactEvent } from "@/lib/strut-jobs";
@@ -69,6 +86,17 @@ export const MAX_WAKE_TEXT_CHARS = 6_000;
  * person's turn or the launching turn's own end is usually seconds away.
  */
 export const ORCHESTRATOR_WAKE_RETRY_DELAYS_MS: readonly number[] = [15_000, 15_000];
+
+/**
+ * Where the conversation is read when it is not Hive's chat
+ * (`conversationMedium`): a voice call or a Sphinx tribe. The person never
+ * sees the job's entry there, and the prompt says so.
+ */
+export type WakeReadIn = "call" | "tribe";
+
+/** The medium the launch carries, as the prompt names it. */
+export const readInOf = (medium: Pick<OrchestratorTurnArgs, "call" | "tribe">): WakeReadIn | undefined =>
+  medium.call ? "call" : medium.tribe ? "tribe" : undefined;
 
 export interface OrchestratorJobWakeArgs {
   /** `SharedConversation.id` the job replies into. */
@@ -125,18 +153,44 @@ function describeOutcome(args: OrchestratorJobWakeArgs): string {
   }
 }
 
+/**
+ * Where the reply lands and what of the job's the person sees there: in
+ * Hive's chat the collapsed entry with its cards; on a call or in a tribe
+ * nothing of the entry — the reply is all they get, the cards beside it.
+ */
+function whereRead(readIn: WakeReadIn | undefined): string {
+  switch (readIn) {
+    case "tribe":
+      return (
+        "Where this conversation is read — a Sphinx tribe — the job's entry is NOT shown: your reply is all the person reads, " +
+        "and what the job produced is posted beside it as cards they can open. "
+      );
+    case "call":
+      return (
+        "Where this conversation is read — a voice call — the job's entry is NOT shown: your reply is read out, all the person hears, " +
+        "and what the job produced reaches the call's chat as cards they can open. "
+      );
+    default:
+      return (
+        "Hive has already written the job's entry into this conversation for the user, COLLAPSED: it is written in detail " +
+        "(a code change lists files, functions and line numbers) and the user expands it only to check. Your reply is what they read. "
+      );
+  }
+}
+
 /** The job's reply and cards, as the prompt carries them. Pure. */
-function renderJobReply(args: OrchestratorJobWakeArgs): string {
+function renderJobReply(args: OrchestratorJobWakeArgs, readIn?: WakeReadIn): string {
+  const list = args.artifacts.map((a) => `${a.title} (${a.label ?? a.kind})`).join(", ");
   const cards =
     args.artifacts.length > 0
-      ? "What it produced is attached to that entry as cards the user can open: " +
-        args.artifacts.map((a) => `${a.title} (${a.label ?? a.kind})`).join(", ") +
-        "."
+      ? readIn
+        ? `What it produced goes to the person as cards they can open: ${list}.`
+        : `What it produced is attached to that entry as cards the user can open: ${list}.`
       : "Nothing is attached to it.";
   const text = args.text.trim() ? cap(args.text.trim(), MAX_WAKE_TEXT_CHARS) : "(no reply text)";
   return (
     `${cards}\n\n` +
-    "Its reply, verbatim:\n" +
+    "Its reply to you, verbatim:\n" +
     "<<<job reply\n" +
     `${text}\n` +
     ">>>\n" +
@@ -150,17 +204,21 @@ function renderJobReply(args: OrchestratorJobWakeArgs): string {
  * orchestrator's own means: `job/continue`, `job/get`, and the silent
  * marker in place of a tool. Pure.
  */
-export function buildOrchestratorJobWakeText(args: OrchestratorJobWakeArgs): string {
-  if (args.event) return buildEventWakeText(args, args.event);
+export function buildOrchestratorJobWakeText(args: OrchestratorJobWakeArgs, readIn?: WakeReadIn): string {
+  if (args.event) return buildEventWakeText(args, args.event, readIn);
   return (
     `You were invoked because job \`${args.jobId}\` ("${args.title}") on workspace \`${args.workspaceSlug}\` ` +
     `— ${args.startedByOrchestrator ? "which you started with job/start" : "which was started from this conversation"} — has ${describeOutcome(args)}. ` +
-    "Hive has already written the job's entry into this conversation for the user, COLLAPSED: it is written in detail " +
-    "(a code change lists files, functions and line numbers) and the user expands it only to check. Your reply is what they read. " +
-    `${renderJobReply(args)}\n` +
+    whereRead(readIn) +
+    `${renderJobReply(args, readIn)}\n` +
     "Follow the user's standing instructions in this conversation. Decide one of:\n" +
-    "- **Summarize** (the default): write one short paragraph in your own words — what the job produced, the question it asked if it asked one, " +
-    "and the next step. Do not restate the entry, do not list files, functions or line numbers, and do not describe the cards — the user sees them.\n" +
+    "- **Summarize** (the default): the job's reply is its note to YOU, not a draft of your message — never shorten it line by line " +
+    "or keep its sections. Say what is NEW against what you already told the person — a line when the result confirms it, what it " +
+    "adds when it adds — in your own words, as a message in this conversation, never the whole story again; the detail is in the cards. " +
+    "Leave out how the job worked: where it looked, what it could not reach, what it did not open or verify — unless one of those " +
+    "changes the answer, and then in a clause. Do not restate the entry, do not list files, functions or line numbers, and do not " +
+    "describe the cards — the person sees them. Ask only what the job asked the person, if it asked; otherwise stop when the answer " +
+    "stops, offering no next step — the person asks for one.\n" +
     `- **Continue:** call job/continue with job \`${args.jobId}\` — ONLY when the user's request is not yet met and the next step ` +
     "is clearly within what they asked for (the job's question is one their instructions already answer, or they asked for a result this turn did not reach). " +
     "Say in one line that you did.\n" +
@@ -177,13 +235,13 @@ export function buildOrchestratorJobWakeText(args: OrchestratorJobWakeArgs): str
  * reported. One line or silence; never continue — the event asked nothing
  * of the job.
  */
-function buildEventWakeText(args: OrchestratorJobWakeArgs, event: ArtifactEvent): string {
+function buildEventWakeText(args: OrchestratorJobWakeArgs, event: ArtifactEvent, readIn?: WakeReadIn): string {
   return (
     `You were invoked because job \`${args.jobId}\` ("${args.title}") on workspace \`${args.workspaceSlug}\` has ${describeOutcome(args)}. ` +
     "This turn was started by neither you nor the user: hive started it for an event about an artifact the job had reported — " +
     `${describeArtifactEvent(event)} (${event.url}) — and the job's reply to that event is what you are reacting to now. ` +
-    "Hive has already written the job's entry into this conversation for the user, COLLAPSED; your reply is what they read. " +
-    `${renderJobReply(args)}\n` +
+    whereRead(readIn) +
+    `${renderJobReply(args, readIn)}\n` +
     "Follow the user's standing instructions in this conversation. Decide one of:\n" +
     "- **Tell the user** (the default): ONE line in your own words — what happened to the artifact and what the job did about it " +
     "(released its pod, pushed a fix, kept the pod and why). Do not restate the entry.\n" +
@@ -227,6 +285,24 @@ export async function conversationMedium(
 }
 
 /**
+ * The model the wake runs on: the conversation owner's pick
+ * (`User.chatAgentModel`, healed), the one their own turns launch with, so
+ * one conversation runs on one model. No pick, or a read that fails
+ * (logged), and the template's default serves.
+ */
+async function ownerModel(userId: string, conversationId: string): Promise<string | undefined> {
+  try {
+    return await loadUserChatAgentModel(userId);
+  } catch (err) {
+    logger.warn("Orchestrator wake: the owner's model pick could not be read; launching on the template's default", LOG_TAG, {
+      conversationId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return undefined;
+  }
+}
+
+/**
  * Wake the orchestrator on the job row that just landed. Never throws;
  * every outcome is logged. `deps` is for tests.
  */
@@ -252,8 +328,9 @@ export async function invokeOrchestratorOnJobTurn(
       trailingLaunches: countTrailingJobRows,
     },
     async (conversation) => {
-      const message = buildOrchestratorJobWakeText(args);
       const medium = await conversationMedium(conversationId, conversation.messages);
+      const model = await ownerModel(conversation.userId, conversationId);
+      const message = buildOrchestratorJobWakeText(args, readInOf(medium));
       for (let attempt = 0; ; attempt++) {
         const launched = await launch({
           userId: conversation.userId,
@@ -262,6 +339,7 @@ export async function invokeOrchestratorOnJobTurn(
           message,
           publicBaseUrl: args.publicBaseUrl,
           wakeId,
+          ...(model ? { model } : {}),
           ...medium,
         });
         if (launched.status === "started") {

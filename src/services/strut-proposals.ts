@@ -25,6 +25,7 @@ import { logger } from "@/lib/logger";
 import {
   ORCHESTRATOR_TURN_KIND,
   parseStrutProposalStatus,
+  strutProposalCardOf,
   type StrutProposalRecord,
   type StrutProposalStatus,
 } from "@/lib/strut-orchestrator";
@@ -113,18 +114,24 @@ export async function resolveProposalTurn(args: {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** Strut's record → what the card gets: the proposer's identity dropped, the workspace added. */
+/**
+ * Strut's record → what the card gets: the proposer's identity dropped, the
+ * workspace added, strut's `card` kept when hive can draw it.
+ */
 export function publicProposal(raw: unknown, workspaceSlug: string): StrutProposalRecord | null {
   if (!isRecord(raw) || typeof raw.id !== "string" || typeof raw.step !== "string") return null;
   const by = isRecord(raw.by) ? raw.by : {};
   const decision = isRecord(raw.decision) ? raw.decision : undefined;
   const result = isRecord(raw.result) ? raw.result : undefined;
+  const card = strutProposalCardOf(raw.card);
   return {
     id: raw.id,
     step: raw.step,
     input: raw.input,
     ...(typeof raw.rationale === "string" ? { rationale: raw.rationale } : {}),
     title: typeof raw.title === "string" ? raw.title : raw.step,
+    ...(typeof raw.summary === "string" && raw.summary.trim() ? { summary: raw.summary } : {}),
+    ...(card ? { card } : {}),
     status: parseStrutProposalStatus(raw.status),
     createdAt: typeof raw.createdAt === "string" ? raw.createdAt : "",
     by: {
@@ -280,7 +287,9 @@ export function renderProposalResult(title: string, status: StrutProposalStatus,
  * Write the decision into the conversation — "Applied: <title>" /
  * "Rejected: <title>" / the error — with the turn rows' discipline. One row
  * per decision (a failed proposal may be accepted again), never a reason
- * to fail the decision itself.
+ * to fail the decision itself. The row names the step and the workspace,
+ * so a tribe the conversation is in is told the outcome
+ * (`lib/tribes/tribeOutbox.ts`).
  */
 export async function appendProposalResultRow(row: ProposalTurnRow, proposal: StrutProposalRecord): Promise<void> {
   try {
@@ -296,6 +305,9 @@ export async function appendProposalResultRow(row: ProposalTurnRow, proposal: St
             proposalId: proposal.id,
             status: proposal.status,
             title: proposal.title,
+            step: proposal.step,
+            ...(proposal.result?.error ? { error: proposal.result.error } : {}),
+            ...(row.workspaceSlug ? { workspace: row.workspaceSlug } : {}),
           },
         },
       ],

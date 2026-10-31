@@ -21,13 +21,15 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockGate, mockLaunch, mockTribeThread } = vi.hoisted(() => ({
+const { mockGate, mockLaunch, mockTribeThread, mockModel } = vi.hoisted(() => ({
   mockGate: vi.fn(),
   mockLaunch: vi.fn(),
   mockTribeThread: vi.fn(),
+  mockModel: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ db: { tribeThread: { findUnique: mockTribeThread } } }));
+vi.mock("@/lib/ai/resolve-model", () => ({ loadUserChatAgentModel: mockModel }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/services/canvas-strut-autoturn", () => ({ runGatedAutoTurn: mockGate }));
 vi.mock("@/services/strut-orchestrator", () => ({ launchOrchestratorTurn: mockLaunch }));
@@ -62,6 +64,7 @@ const conversation = { userId: "user-1", orgId: "org-1", workspaceSlug: "home", 
 beforeEach(() => {
   vi.clearAllMocks();
   mockTribeThread.mockResolvedValue(null); // a web conversation
+  mockModel.mockResolvedValue(undefined); // no pick: the template's default
   // The gate lets the turn through with the conversation as found.
   mockGate.mockImplementation(async (_gate, run) => run(conversation));
   mockLaunch.mockResolvedValue({ status: "started", runId: "orch-row-2", strutRunId: "1790000000002" });
@@ -76,10 +79,41 @@ describe("buildOrchestratorJobWakeText", () => {
     expect(text).toContain("<<<job reply\nWrote the plan to plan.md.\n>>>");
     expect(text).toContain("Its question for the user: Which repo?");
     expect(text).toContain("Plan (plan)");
+    expect(text).toContain("COLLAPSED");
     expect(text).toContain("**Summarize**");
     expect(text).toContain(`call job/continue with job \`${JOB}\``);
     expect(text).toContain("reply with exactly `[silent]` and nothing else");
     expect(text).toContain("job/get");
+  });
+
+  it("the summary is a posture, not a checklist: what is new, the job's caveats left out, no next step offered", () => {
+    const text = buildOrchestratorJobWakeText(args());
+    expect(text).toContain("Its reply to you, verbatim:");
+    expect(text).toContain("its note to YOU, not a draft of your message — never shorten it line by line");
+    expect(text).toContain("Say what is NEW against what you already told the person");
+    expect(text).toContain("a line when the result confirms it, what it adds when it adds");
+    expect(text).toContain("the detail is in the cards");
+    expect(text).toContain("Leave out how the job worked");
+    expect(text).toContain("offering no next step");
+    expect(text).not.toContain("one short paragraph");
+    expect(text).not.toContain("the question it asked if it asked one, and the next step.");
+  });
+
+  it("read in a tribe or on a call, the prompt says the entry is not shown there and the cards go to the person; the event wake the same", () => {
+    const tribe = buildOrchestratorJobWakeText(args(), "tribe");
+    expect(tribe).toContain("a Sphinx tribe — the job's entry is NOT shown: your reply is all the person reads");
+    expect(tribe).toContain("What it produced goes to the person as cards they can open: Plan (plan).");
+    expect(tribe).not.toContain("COLLAPSED");
+    expect(tribe).not.toContain("attached to that entry");
+    const call = buildOrchestratorJobWakeText(args(), "call");
+    expect(call).toContain("a voice call — the job's entry is NOT shown: your reply is read out");
+    expect(call).not.toContain("COLLAPSED");
+    const event = buildOrchestratorJobWakeText(
+      args({ event: { kind: "pull_request", url: "https://github.com/acme/app/pull/7", what: "merged" } }),
+      "tribe",
+    );
+    expect(event).toContain("a Sphinx tribe — the job's entry is NOT shown");
+    expect(event).not.toContain("COLLAPSED");
   });
 
   it("a job hive started (a card, an older conversation) is not called the orchestrator's own", () => {
@@ -172,6 +206,9 @@ describe("invokeOrchestratorOnJobTurn", () => {
       expect.objectContaining({ wakeId: "job-row-1", tribe: { name: "Builders" } }),
     );
     expect(mockLaunch.mock.calls[0][0]).not.toHaveProperty("call");
+    // The prompt is written for the room too: nothing of the entry is shown there.
+    expect(mockLaunch.mock.calls[0][0].message).toContain("a Sphinx tribe — the job's entry is NOT shown");
+    expect(mockLaunch.mock.calls[0][0].message).not.toContain("COLLAPSED");
   });
 
   it("a wake on a call's conversation (a call_request row) launches with `call`, and reads no tribe", async () => {
@@ -192,6 +229,23 @@ describe("invokeOrchestratorOnJobTurn", () => {
     expect(mockLaunch).toHaveBeenCalledWith(expect.objectContaining({ wakeId: "job-row-1", call: true }));
     expect(mockLaunch.mock.calls[0][0]).not.toHaveProperty("tribe");
     expect(mockTribeThread).not.toHaveBeenCalled();
+    expect(mockLaunch.mock.calls[0][0].message).toContain("a voice call — the job's entry is NOT shown");
+  });
+
+  it("the wake runs on the conversation owner's model, as the person's turns do; a failed read launches on the template's default", async () => {
+    mockModel.mockResolvedValue("anthropic/claude-opus-5-5");
+    await invokeOrchestratorOnJobTurn(args());
+    expect(mockModel).toHaveBeenCalledWith("user-1");
+    expect(mockLaunch).toHaveBeenCalledWith(expect.objectContaining({ wakeId: "job-row-1", model: "anthropic/claude-opus-5-5" }));
+
+    vi.clearAllMocks();
+    mockGate.mockImplementation(async (_gate, run) => run(conversation));
+    mockLaunch.mockResolvedValue({ status: "started", runId: "orch-row-3", strutRunId: "1790000000003" });
+    mockTribeThread.mockResolvedValue(null);
+    mockModel.mockRejectedValue(new Error("db down"));
+    await invokeOrchestratorOnJobTurn(args());
+    expect(mockLaunch).toHaveBeenCalledTimes(1);
+    expect(mockLaunch.mock.calls[0][0]).not.toHaveProperty("model");
   });
 
   it("a tribe read that fails launches the wake without the line, never drops it", async () => {
@@ -200,6 +254,7 @@ describe("invokeOrchestratorOnJobTurn", () => {
     expect(mockLaunch).toHaveBeenCalledTimes(1);
     expect(mockLaunch.mock.calls[0][0]).not.toHaveProperty("tribe");
     expect(mockLaunch.mock.calls[0][0]).not.toHaveProperty("call");
+    expect(mockLaunch.mock.calls[0][0].message).toContain("COLLAPSED");
   });
 
   it("busy is retried after each wait, then launched; the waits are the configured ones", async () => {
