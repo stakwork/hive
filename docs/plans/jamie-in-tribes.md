@@ -92,10 +92,18 @@ tribe ◄── member ──► Jamie (wasm/daemon)          Hive ──► org
    linker's, and so one orchestrator session: each `@jamie` starts one,
    unless it replies to one of Jamie's posts or is posted in a thread one of
    them went into; then it continues the conversation that post came from
-   (its `thread`). Every message to Jamie needs the `@jamie`, in its threads
-   too: one without it is the members talking among themselves, and Jamie
-   leaves it alone. (Until 2026-10-30 any message in Jamie's thread went to
-   it.) The linker sees each one in Hive. (Until 2026-10-29 a tribe had one conversation, so every mention
+   (its `thread`). A **reply to one of Jamie's posts** is to Jamie with or
+   without the `@jamie`, and continues that post's conversation: in the
+   apps a reply sets `reply_uuid` to the message replied to and
+   `thread_uuid` to its thread's first message, so a reply to Jamie inside
+   a thread and one quoting its lone answer are the same message. Anything
+   else in a thread Jamie answered in is the members talking among
+   themselves, and Jamie leaves it alone: a message typed in the thread
+   with nothing quoted, a reply to the asker's question (the thread's
+   first message), a reply to another member. (Until 2026-10-30 any
+   message in Jamie's thread went to it; until 2026-10-31 a reply to
+   Jamie without `@jamie` did not.) The linker sees each one in Hive.
+   (Until 2026-10-29 a tribe had one conversation, so every mention
    landed in one session.)
 
 6. **Hive never calls Jamie.** Jamie makes every call, as voice does: it
@@ -139,8 +147,10 @@ device as it is.
 1. **Jamie forwards it.** As a member, Jamie receives every message of the
    tribes it is in. A text message mentions it when it has `@jamie` at the
    start or after whitespace, in any case. `@jamie_2` counts too: a tribe
-   whose members already use the alias renames the account that way. The
-   daemon passes over:
+   whose members already use the alias renames the account that way. A
+   reply to one of Jamie's posts (`reply_uuid` naming it) is to Jamie too,
+   `@jamie` or not, and comes through the same call. The daemon passes
+   over:
    - its own messages;
    - what came before it could answer there (its join, or the owner's
      approval), judged by each message's own `date`. A tribe's history
@@ -225,8 +235,8 @@ device as it is.
    The `id` is Hive's, unique and stable, `<thread>:<row id>`, so an ack
    moves that conversation's cursor. `thread` is the conversation's key
    (the `TribeThread` id): Jamie keeps it against the message it posts, and
-   sends it back on `POST /api/tribes/messages` with a mention that replies
-   to that message or is posted in its thread.
+   sends it back on `POST /api/tribes/messages` with a reply to that
+   message, or a mention posted in its thread.
 2. **Jamie posts each one** into its tribe:
    - the text, then the deliverables as links;
    - `metadata`, as its JSON in the message's own `metadata` field:
