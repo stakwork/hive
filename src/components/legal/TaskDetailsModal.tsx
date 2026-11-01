@@ -36,6 +36,9 @@ import {
   type LlmModelOption,
 } from "@/lib/ai/models";
 
+import Link from "next/link";
+import type { LatestRunSummary } from "@/lib/run-report/types";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface TaskDetails {
@@ -43,6 +46,8 @@ interface TaskDetails {
   instructions: string | null;
   criteria: Array<{ id: string; title: string; match_criteria: string }> | null;
   documents: Array<{ name: string; url: string; download_url: string }>;
+  /** The task's latest settled strut run, when there is one. */
+  latestRun?: LatestRunSummary | null;
 }
 
 interface FileSizeData {
@@ -402,6 +407,13 @@ export function TaskDetailsModal({
                   )}
                 </section>
 
+                {details.latestRun && (
+                  <>
+                    <Separator className="my-4" />
+                    <LatestRunSummarySection run={details.latestRun} slug={slug} />
+                  </>
+                )}
+
                 <Separator className="my-4" />
 
                 {/* Section 2: Documents */}
@@ -679,5 +691,58 @@ export function TaskDetailsModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const NOT_RECORDED = "not recorded";
+
+/** A compact view of the task's latest settled run: what it did, and the way into its full report. */
+function LatestRunSummarySection({ run, slug }: { run: LatestRunSummary; slug: string }) {
+  const count = (n: number | null | undefined) => (n === null || n === undefined ? NOT_RECORDED : String(n));
+  const ingestion = run.ingestion;
+  return (
+    <section data-testid="latest-run-summary">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold">
+          Latest run{run.status === "ERROR" ? " (failed)" : ""}
+        </h3>
+        <Link
+          href={`/w/${slug}/legal/benchmarks/runs/${run.runId}/report`}
+          className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground"
+          data-testid="latest-run-report-link"
+        >
+          Run report
+        </Link>
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        <dt className="text-muted-foreground">Concepts read</dt>
+        <dd>{count(ingestion?.conceptsRead)}</dd>
+        <dt className="text-muted-foreground">Nodes created</dt>
+        <dd>{count(ingestion?.nodesCreated)}</dd>
+        <dt className="text-muted-foreground">Edges created</dt>
+        <dd>{count(ingestion?.edgesCreated)}</dd>
+        <dt className="text-muted-foreground">Checklist</dt>
+        <dd>{run.checklist ? `${run.checklist.done} of ${run.checklist.total} done` : NOT_RECORDED}</dd>
+        <dt className="text-muted-foreground">Spreadsheet</dt>
+        <dd>
+          {run.spreadsheets.length > 0 ? (
+            <a
+              href={run.spreadsheets[0].url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2"
+            >
+              {run.spreadsheets[0].label}
+            </a>
+          ) : (
+            NOT_RECORDED
+          )}
+        </dd>
+        <dt className="text-muted-foreground">Top concepts</dt>
+        <dd data-testid="latest-run-concepts">
+          {run.topConcepts.length > 0 ? run.topConcepts.map((c) => c.name).join(", ") : NOT_RECORDED}
+        </dd>
+      </dl>
+    </section>
   );
 }

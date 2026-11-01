@@ -20,10 +20,12 @@ import {
   type StrutReportDeliverable,
   type StrutReportSource,
 } from "@/lib/run-report/strut-bundle";
-import type { RunReportPayload } from "@/lib/run-report/types";
+import { checklistProgress, rankConcepts } from "@/lib/run-report/process";
+import type { LatestRunSummary, RunReportPayload } from "@/lib/run-report/types";
 import type { StrutRunEvent } from "@/lib/legal-cascade/strut";
 import { STRUT_RUN_LOG_TAG, type StrutRunRow } from "@/services/strut-runs";
 import { fetchStrutArtifact, fetchStrutArtifactList, fetchStrutRunEvents } from "@/services/strut-runs/lab";
+import { readStrutRunGraph } from "@/services/strut-runs/run-graph";
 import { deliverablesOf, hasStrutReport } from "@/services/strut-runs/legal-benchmark";
 
 const CACHE_TTL_MS = 10 * 60_000;
@@ -92,6 +94,9 @@ export async function loadStrutRunReport(row: StrutRunRow, now = Date.now()): Pr
     if (file) workfiles.push({ name: path, text: decode(file.body) });
   });
 
+  // Best effort: the graph only adds the edges the Process graphs draw.
+  const graphTrace = await readStrutRunGraph(row).catch(() => null);
+
   const bundle = buildStrutReportBundle({
     workflow: row.workflow,
     strutRunId: row.strutRunId as string,
@@ -102,6 +107,7 @@ export async function loadStrutRunReport(row: StrutRunRow, now = Date.now()): Pr
     sources,
     deliverables: deliverableFiles.flatMap((d) => (d.deliverable ? [d.deliverable] : [])),
     workfiles,
+    graphTrace,
   });
   const outcome = projectBundle(JSON.stringify(bundle));
   if (outcome.status !== "ok") {
@@ -113,6 +119,7 @@ export async function loadStrutRunReport(row: StrutRunRow, now = Date.now()): Pr
   // A partial read is not kept: the next view tries the missing files again.
   const complete =
     files !== null &&
+    graphTrace !== null &&
     sourceFiles.every(Boolean) &&
     workfileFiles.every(Boolean) &&
     deliverableFiles.every((d) => d.fetched);
@@ -122,4 +129,24 @@ export async function loadStrutRunReport(row: StrutRunRow, now = Date.now()): Pr
     while (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value as string);
   }
   return payload;
+}
+
+const TOP_CONCEPTS = 5;
+
+/** The row as the task modal's compact summary; built from the (cached) report, so a failed run shows what it recorded. */
+export async function summarizeLatestRun(row: StrutRunRow): Promise<LatestRunSummary> {
+  const payload = await loadStrutRunReport(row);
+  const projection = payload.projection && !("consolidated" in payload.projection) ? payload.projection : null;
+  const process = projection?.process ?? null;
+  const score = projection?.pageData.score;
+  return {
+    runId: row.id,
+    status: row.status === "SUCCESS" ? "SUCCESS" : "ERROR",
+    settledAt: (row.settledAt ?? null)?.toISOString() ?? null,
+    score: score ? { passed: score.n_passed, total: score.n_criteria } : null,
+    ingestion: process?.ingestion ?? null,
+    checklist: checklistProgress(process),
+    spreadsheets: process?.spreadsheets ?? [],
+    topConcepts: rankConcepts(process?.steps).slice(0, TOP_CONCEPTS),
+  };
 }

@@ -222,6 +222,67 @@ export interface ToolActivityProjection {
   topConceptsMismatch?: boolean;
 }
 
+// ── Process projection (strut legal runs) ────────────────────────────────────
+
+/** A concept (or written node) a step touched; `calls` is how many calls touched it. */
+export interface ProcessConcept {
+  ref_id: string;
+  name: string;
+  access: "read" | "write";
+  calls: number;
+}
+
+export interface ProcessCreatedNode {
+  ref_id: string;
+  name: string;
+  node_type?: string;
+}
+
+export interface ProcessEdge {
+  source: string;
+  target: string;
+  edge_type?: string;
+}
+
+export interface ProcessStep {
+  /** The workflow step the calls ran under (`ingest`, `checklist`, `drafter`); a loop's `#n` is folded. */
+  step: string;
+  concepts: ProcessConcept[];
+  created: { nodes: ProcessCreatedNode[]; edges: ProcessEdge[] };
+  /** Graph edges between the nodes this step touched, for drawing. Context, not a record of writes. */
+  links: ProcessEdge[];
+}
+
+/**
+ * What a strut legal run followed, derived at read time from its event log,
+ * lab files and graph trace. A `null` field is "not recorded" — never zero.
+ */
+export interface ProcessProjection {
+  ingestion: {
+    /** Distinct Concepts the run read (search hits are not reads). */
+    conceptsRead: number;
+    nodesCreated: number | null;
+    edgesCreated: number | null;
+  };
+  checklist: { items: Array<{ text: string; done: boolean }>; raw?: string } | null;
+  spreadsheets: Array<{ url: string; label: string }>;
+  /** Null when no graph call could be placed under a workflow step. */
+  steps: ProcessStep[] | null;
+}
+
+/** The latest settled strut run of a task, as the task modal summarises it. Every field may be "not recorded". */
+export interface LatestRunSummary {
+  runId: string;
+  status: "SUCCESS" | "ERROR";
+  settledAt: string | null;
+  score: { passed: number | null; total: number | null } | null;
+  /** Null when the run's report could not be built. */
+  ingestion: ProcessProjection["ingestion"] | null;
+  checklist: { done: number; total: number } | null;
+  spreadsheets: ProcessProjection["spreadsheets"];
+  topConcepts: Array<{ ref_id: string; name: string; steps: string[]; calls: number }>;
+}
+
 // ── Persisted projection ─────────────────────────────────────────────────────
 
 export interface ProjectedSourceDoc {
@@ -286,6 +347,8 @@ export interface RunReportProjection {
    * Empty when the bundle lacks the section (v1 / no-concepts fixtures).
    */
   toolActivity: ToolActivityProjection;
+  /** Strut legal runs only. Absent (Stakwork reports) => the Process section is not rendered. */
+  process?: ProcessProjection | null;
   stats: RunReportStats;
   /**
    * Drift diagnostic. Unknown bundle keys land here (key names only, never
