@@ -22,6 +22,8 @@ import type {
   NodeIdentityRow,
 } from "@/lib/run-report/types";
 import { buildNodeIdentities } from "@/lib/run-report/tool-activity";
+import { checklistProgress, rankConcepts } from "@/lib/run-report/process";
+import { ProcessStepGraph, CREATED_COLOR, READ_COLOR } from "./ProcessStepGraph";
 import {
   anchorId,
   Section,
@@ -1072,3 +1074,152 @@ export function HealthSection({ projection }: { projection: RunReportProjection 
 }
 
 export { formatDuration };
+
+// ── Process ──────────────────────────────────────────────────────────────────
+
+const NOT_RECORDED = "not recorded";
+
+function ProcessStat({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 px-4 py-3" data-testid={`process-stat-${label}`}>
+      <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">{label}</div>
+      <div className={value === null ? "text-sm italic text-muted-foreground mt-1" : "text-2xl font-semibold mt-0.5"}>
+        {value === null ? NOT_RECORDED : value}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What the strut followed to do the task: ingestion counts, checklist,
+ * spreadsheet, the concepts it used (the key point) and a small graph per
+ * step. Built at read time from the run's log and files, so a failed run
+ * shows whatever it recorded. Absent `process` (a Stakwork report) renders nothing.
+ */
+export function ProcessSection({ projection }: { projection: RunReportProjection }) {
+  const process = projection.process;
+  if (!process) return null;
+  const { ingestion, checklist, spreadsheets, steps } = process;
+  const ranked = rankConcepts(steps);
+  const progress = checklistProgress(process);
+  const edgesRecorded = ingestion.edgesCreated !== null;
+
+  return (
+    <Section
+      id="process"
+      kicker="Process"
+      title="How the run got there"
+      lede="Ingestion, checklist, spreadsheet and the concepts the run used, from what the run recorded. Anything it did not record is marked so."
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-testid="process-ingestion">
+        <ProcessStat label="concepts read" value={ingestion.conceptsRead} />
+        <ProcessStat label="nodes created" value={ingestion.nodesCreated} />
+        <ProcessStat label="edges created" value={ingestion.edgesCreated} />
+      </div>
+
+      <MiniHeading>Checklist</MiniHeading>
+      <div data-testid="process-checklist">
+        {!checklist ? (
+          <p className="text-sm italic text-muted-foreground">Checklist {NOT_RECORDED}.</p>
+        ) : checklist.items.length > 0 ? (
+          <>
+            <p className="text-[13px] text-muted-foreground mb-1.5">
+              {progress?.done} of {progress?.total} done
+            </p>
+            <ul className="space-y-1 text-[13px]">
+              {checklist.items.map((item, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className={item.done ? "text-emerald-500" : "text-muted-foreground/60"} aria-hidden>
+                    {item.done ? "☑" : "☐"}
+                  </span>
+                  <span className={item.done ? "text-muted-foreground line-through" : ""}>{item.text}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <>
+            <p className="text-sm italic text-muted-foreground">Progress {NOT_RECORDED}: the checklist has no checkbox items.</p>
+            {checklist.raw && (
+              <Fold summary="checklist.md" monospace>
+                <pre className="whitespace-pre-wrap px-3 pb-3 text-[12px] text-muted-foreground">{checklist.raw}</pre>
+              </Fold>
+            )}
+          </>
+        )}
+      </div>
+
+      <MiniHeading>Spreadsheet</MiniHeading>
+      <div data-testid="process-spreadsheets">
+        {spreadsheets.length === 0 ? (
+          <p className="text-sm italic text-muted-foreground">Spreadsheet link {NOT_RECORDED}.</p>
+        ) : (
+          <ul className="space-y-1 text-[13px]">
+            {spreadsheets.map((s) => (
+              <li key={s.url}>
+                <a href={s.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
+                  {s.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <MiniHeading>Concept graph per step</MiniHeading>
+      <div data-testid="process-steps">
+        {steps === null ? (
+          <p className="text-sm italic text-muted-foreground">
+            Per-step graph {NOT_RECORDED}: the run&apos;s graph calls could not be placed under a workflow step.
+          </p>
+        ) : steps.length === 0 ? (
+          <p className="text-sm italic text-muted-foreground">No concepts or created nodes were recorded in any step.</p>
+        ) : (
+          <>
+            <p className="flex flex-wrap items-center gap-4 text-[12px] text-muted-foreground mb-2">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: READ_COLOR }} /> concept read
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: CREATED_COLOR }} /> created
+              </span>
+              {!edgesRecorded && <span className="italic">created edges {NOT_RECORDED}</span>}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {steps.map((step) => (
+                <div key={step.step} data-testid={`process-step-${step.step}`}>
+                  <div className="font-mono text-[12px] mb-1">
+                    {step.step}{" "}
+                    <span className="text-muted-foreground/70">
+                      · {step.concepts.filter((c) => c.access === "read").length} read · {step.created.nodes.length} created
+                    </span>
+                  </div>
+                  <ProcessStepGraph step={step} />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      <MiniHeading>Concepts used</MiniHeading>
+      <div data-testid="process-concepts">
+        {ranked.length === 0 ? (
+          <p className="text-sm italic text-muted-foreground">No concepts {NOT_RECORDED}.</p>
+        ) : (
+          <ol className="space-y-1 text-[13px]">
+            {ranked.map((c, i) => (
+              <li key={c.ref_id} className="flex flex-wrap items-baseline gap-x-2" data-testid="process-concept-row">
+                <span className="font-mono text-[11px] text-muted-foreground/60 w-6">{i + 1}.</span>
+                <span className="font-medium">{c.name}</span>
+                <span className="text-muted-foreground">
+                  {c.calls} {c.calls === 1 ? "call" : "calls"} · {c.steps.join(", ")}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </Section>
+  );
+}

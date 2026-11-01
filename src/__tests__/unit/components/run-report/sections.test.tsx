@@ -570,3 +570,90 @@ describe("CopyableId", () => {
     }
   });
 });
+
+// ── ProcessSection ───────────────────────────────────────────────────────────
+
+import { ProcessSection } from "@/components/run-report/sections";
+import type { ProcessProjection } from "@/lib/run-report/types";
+
+const processOf = (over: Partial<ProcessProjection> = {}): ProcessProjection => ({
+  ingestion: { conceptsRead: 3, nodesCreated: 12, edgesCreated: null },
+  checklist: { items: [{ text: "Check leverage", done: true }, { text: "Check EBITDA", done: false }] },
+  spreadsheets: [{ url: "https://docs.google.com/spreadsheets/d/x/edit", label: "Run spreadsheet" }],
+  steps: [
+    {
+      step: "checklist",
+      concepts: [
+        { ref_id: "c1", name: "Playbook", access: "read", calls: 3 },
+        { ref_id: "c2", name: "Tone", access: "read", calls: 1 },
+      ],
+      created: { nodes: [], edges: [] },
+      links: [],
+    },
+    {
+      step: "drafter",
+      concepts: [{ ref_id: "c1", name: "Playbook", access: "read", calls: 2 }],
+      created: { nodes: [{ ref_id: "n1", name: "Memo", node_type: "Document" }], edges: [] },
+      links: [],
+    },
+  ],
+  ...over,
+});
+
+describe("ProcessSection", () => {
+  it("renders nothing without a process (Stakwork reports)", () => {
+    const { container } = render(<ProcessSection projection={baseProjection()} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders counts, checklist, spreadsheet link and a graph per step", () => {
+    render(<ProcessSection projection={baseProjection({ process: processOf() })} />);
+    expect(screen.getByTestId("process-stat-concepts read")).toHaveTextContent("3");
+    expect(screen.getByTestId("process-stat-nodes created")).toHaveTextContent("12");
+    expect(screen.getByTestId("process-stat-edges created")).toHaveTextContent("not recorded");
+    expect(screen.getByTestId("process-checklist")).toHaveTextContent("1 of 2 done");
+    const link = screen.getByRole("link", { name: "Run spreadsheet" });
+    expect(link).toHaveAttribute("href", "https://docs.google.com/spreadsheets/d/x/edit");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    expect(screen.getByTestId("process-graph-checklist")).toBeInTheDocument();
+    expect(screen.getByTestId("process-graph-drafter")).toBeInTheDocument();
+  });
+
+  it("ranks concepts with the steps that used each", () => {
+    render(<ProcessSection projection={baseProjection({ process: processOf() })} />);
+    const rows = screen.getAllByTestId("process-concept-row");
+    expect(rows[0]).toHaveTextContent("Playbook");
+    expect(rows[0]).toHaveTextContent("5 calls · checklist, drafter");
+    expect(rows[1]).toHaveTextContent("Tone");
+  });
+
+  it("shows 'not recorded' for a failed run that left almost nothing, with no whole-run graph", () => {
+    render(
+      <ProcessSection
+        projection={baseProjection({
+          process: {
+            ingestion: { conceptsRead: 0, nodesCreated: null, edgesCreated: null },
+            checklist: null,
+            spreadsheets: [],
+            steps: null,
+          },
+        })}
+      />,
+    );
+    expect(screen.getByTestId("process-stat-nodes created")).toHaveTextContent("not recorded");
+    expect(screen.getByTestId("process-checklist")).toHaveTextContent("not recorded");
+    expect(screen.getByTestId("process-spreadsheets")).toHaveTextContent("not recorded");
+    expect(screen.getByTestId("process-steps")).toHaveTextContent("Per-step graph not recorded");
+    expect(screen.queryByTestId(/^process-graph-/)).toBeNull();
+    expect(screen.getByTestId("process-concepts")).toHaveTextContent("not recorded");
+  });
+
+  it("explains a checklist without checkbox items", () => {
+    render(
+      <ProcessSection
+        projection={baseProjection({ process: processOf({ checklist: { items: [], raw: "# CHECKLIST" } }) })}
+      />,
+    );
+    expect(screen.getByTestId("process-checklist")).toHaveTextContent("Progress not recorded");
+  });
+});

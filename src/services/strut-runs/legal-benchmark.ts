@@ -217,6 +217,21 @@ export async function findLegalStrutRunRow(workspaceId: string, runId: string): 
   });
 }
 
+/** A task's newest run that settled (SUCCESS or ERROR) — the one whose process the task modal summarises. */
+export async function findLatestSettledLegalRunRow(workspaceId: string, taskSlug: string): Promise<StrutRunRow | null> {
+  return db.strutRun.findFirst({
+    where: {
+      workspaceId,
+      kind: benchmarkKind(HARVEY_LAB_BENCHMARK_SLUG),
+      status: { in: [StrutRunStatus.SUCCESS, StrutRunStatus.ERROR] },
+      strutRunId: { not: null },
+      input: { path: ["task_slug"], equals: taskSlug },
+    },
+    orderBy: { createdAt: "desc" },
+    select: ROW_SELECT,
+  });
+}
+
 export async function getLegalStrutRun(workspaceId: string, runId: string, now = new Date()): Promise<LegalRunWireRow | null> {
   const row = await findLegalStrutRunRow(workspaceId, runId);
   return row ? toLegalRunWireRow(await settleFromStrut(row, now)) : null;
