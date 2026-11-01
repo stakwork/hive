@@ -168,11 +168,11 @@ describe("GET /api/admin/voice-corrections/aggregate", () => {
     mockUserFindUnique.mockResolvedValue({ role: "SUPER_ADMIN" });
     mockGroupBy.mockResolvedValue([]);
 
-    const req = makeRequest("http://localhost/api/admin/voice-corrections/aggregate?surface=whiteboard");
+    const req = makeRequest("http://localhost/api/admin/voice-corrections/aggregate?surface=sidebar");
     await GETAggregate(req);
 
     expect(mockGroupBy).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { surface: "whiteboard" } }),
+      expect.objectContaining({ where: { surface: "sidebar" } }),
     );
   });
 });
