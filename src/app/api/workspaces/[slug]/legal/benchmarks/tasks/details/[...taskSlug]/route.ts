@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
-import { isLegalBenchmarksWorkspace } from "@/lib/eval-capture-slugs";
+import { isLegalBenchmarksWorkspace, isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
+import { findLatestSettledLegalRunRow } from "@/services/strut-runs/legal-benchmark";
+import { summarizeLatestRun } from "@/services/strut-runs/legal-report";
+import type { LatestRunSummary } from "@/lib/run-report/types";
 
 // GITHUB_TOKEN must be set in the deployment environment.
 // Unauthenticated GitHub API calls still work but have lower rate limits.
@@ -116,7 +119,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    // Strut legal workspaces: the task's latest settled run, summarised. Best effort —
+    // the modal is unchanged without one.
+    let latestRun: LatestRunSummary | null = null;
+    if (isLegalStrutWorkspace(slug)) {
+      try {
+        const row = await findLatestSettledLegalRunRow(swarmResult.data.workspaceId, taskSlug);
+        latestRun = row ? await summarizeLatestRun(row) : null;
+      } catch (error) {
+        console.error("[legal/benchmarks/tasks/details GET] latest run summary failed:", error);
+      }
+    }
+
     return NextResponse.json({
+      latestRun,
       title: taskData.title ?? null,
       instructions: taskData.instructions ?? null,
       criteria: taskData.criteria ?? null,

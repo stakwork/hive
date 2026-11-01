@@ -17,6 +17,7 @@ import {
   TracesSection,
   ToolActivitySection,
   ConceptsSection,
+  ProcessSection,
   SourcesSection,
   HealthSection,
 } from "./sections";
@@ -169,6 +170,9 @@ export function RunReportView({
         </SectionErrorBoundary>
         <SectionErrorBoundary>
           <ChecklistMap chain={chain} />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary>
+          <ProcessSection projection={runProjection} />
         </SectionErrorBoundary>
 
         {/* Debugging context, demoted below the review surface */}
