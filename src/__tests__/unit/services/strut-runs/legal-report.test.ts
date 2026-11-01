@@ -4,7 +4,8 @@ import { StrutRunStatus } from "@prisma/client";
 import fixture from "@/lib/run-report/fixtures/strut-harvey-lab-run.fixture.json";
 import type { RunReportProjection } from "@/lib/run-report/types";
 
-const { mockEvents, mockList, mockArtifact } = vi.hoisted(() => ({
+const { mockEvents, mockList, mockArtifact, mockGraph } = vi.hoisted(() => ({
+  mockGraph: vi.fn(),
   mockEvents: vi.fn(),
   mockList: vi.fn(),
   mockArtifact: vi.fn(),
@@ -18,9 +19,10 @@ vi.mock("@/services/strut-runs/lab", () => ({
   fetchStrutArtifactList: mockList,
   fetchStrutArtifact: mockArtifact,
 }));
+vi.mock("@/services/strut-runs/run-graph", () => ({ readStrutRunGraph: mockGraph }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { clearStrutReportCache, loadStrutRunReport } from "@/services/strut-runs/legal-report";
+import { clearStrutReportCache, loadStrutRunReport, summarizeLatestRun } from "@/services/strut-runs/legal-report";
 
 const MEMO = "output/compliance-certificate-issue-memo.docx";
 
@@ -53,6 +55,7 @@ let memoDocx: ArrayBuffer;
 beforeEach(async () => {
   vi.clearAllMocks();
   clearStrutReportCache();
+  mockGraph.mockResolvedValue({ calls: [], nodes: [], edges: [] });
   const zip = new JSZip();
   zip.file(
     "word/document.xml",
@@ -133,5 +136,28 @@ describe("loadStrutRunReport", () => {
     const projection = (await loadStrutRunReport(row())).projection as RunReportProjection;
     expect(projection.pageData.timeline.length).toBeGreaterThan(0);
     expect(projection.sourceDocs.map((d) => d.id)).toEqual(["deliverable-compliance-certificate-issue-memo.docx"]);
+  });
+});
+
+describe("summarizeLatestRun", () => {
+  it("summarises a settled run from its process, with unrecorded counts left null", async () => {
+    const summary = await summarizeLatestRun(row());
+    expect(summary).toMatchObject({
+      runId: "row1",
+      status: "SUCCESS",
+      score: { passed: 2, total: 4 },
+      ingestion: { conceptsRead: 1, nodesCreated: null, edgesCreated: null },
+      checklist: null,
+    });
+    expect(summary.topConcepts.map((c) => c.name)).toEqual(["Job"]);
+    expect(summary.spreadsheets.length).toBeGreaterThan(0);
+  });
+
+  it("still summarises a failed run, and leaves everything unrecorded when its log is gone", async () => {
+    expect((await summarizeLatestRun(row({ status: StrutRunStatus.ERROR }))).status).toBe("ERROR");
+    clearStrutReportCache();
+    mockEvents.mockResolvedValue(null);
+    const gone = await summarizeLatestRun(row({ status: StrutRunStatus.ERROR }));
+    expect(gone).toMatchObject({ ingestion: null, checklist: null, spreadsheets: [], topConcepts: [] });
   });
 });

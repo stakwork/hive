@@ -16,6 +16,7 @@
  */
 
 import { z } from "zod";
+import { sanitizeProcess } from "./process";
 import { sanitizeDocumentHtml } from "./sanitize";
 import { redactSensitiveKeys } from "./redact";
 import {
@@ -86,6 +87,7 @@ const KNOWN_BUNDLE_ROOT_KEYS = new Set([
   "source_docs",
   "workfiles",
   "rubric_links",
+  "process",
   // ── Consolidated report keys ─────────────────────────────────────────────
   // These are only present when `consolidated: true`. Without registering them
   // here, every consolidated bundle load would fire drift-diagnostic warnings
@@ -482,6 +484,7 @@ export function projectBundle(rawText: string): ProjectOutcome {
     rubricLinks,
     rubricRows,
     toolActivity,
+    ...(parsed.process !== undefined ? { process: sanitizeProcess(parsed.process) } : {}),
     stats: computeStats({
       sourceDocs,
       workfiles,
