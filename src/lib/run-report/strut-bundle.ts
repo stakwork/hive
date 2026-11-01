@@ -17,12 +17,16 @@
  *    deliverables; workfiles: the checklist, facts, case law and critiques.
  *  - rubric_links: each criterion's distinctive terms (`rubricTokens`, the
  *    chain's own) found in each document's text.
+ *  - process: what the run followed (concepts read, nodes written, checklist,
+ *    spreadsheets, per-step concepts), derived at read time (`./process`).
  * The run has no analysis pass and no security scan: `analysis`, the
  * concept synthesis and `security` are empty.
  */
 
 import type { StrutRunEvent } from "@/lib/legal-cascade/strut";
 import { rubricTokens } from "./chain";
+import { buildProcess } from "./process";
+import type { RunGraphTrace } from "@/lib/strut-run-graph/types";
 
 export interface StrutReportSource {
   /** The original file name (`credit-agreement-excerpts.docx`). */
@@ -48,6 +52,8 @@ export interface StrutReportInput {
   sources: StrutReportSource[];
   deliverables: StrutReportDeliverable[];
   workfiles: Array<{ name: string; text: string }>;
+  /** The run's graph trace when the graph answered; its edges draw the Process section's graphs. */
+  graphTrace?: Pick<RunGraphTrace, "edges" | "nodes"> | null;
 }
 
 /** Working files a report shows, besides `critiques/*.md`. Never `work/` (privileged drafts, internal notes). */
@@ -447,5 +453,12 @@ export function buildStrutReportBundle(run: StrutReportInput): Record<string, un
     source_docs: docs.map(({ id, title, html }) => ({ id, title, html })),
     workfiles: run.workfiles,
     rubric_links: rubricLinks,
+    process: buildProcess({
+      workflow,
+      events,
+      output: run.output,
+      workfiles: run.workfiles,
+      trace: run.graphTrace,
+    }),
   };
 }
