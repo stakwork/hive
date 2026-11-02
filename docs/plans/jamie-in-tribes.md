@@ -250,6 +250,21 @@ device as it is.
    device credential and the token the Sphinx apps sign; `GET
    /api/strut-devices/peers` says `sphinx: true` once it is known).
 
+   **Jamie's mark** (2026-11-01). The tribe server sends `sender` only once
+   the owner marks Jamie to see who speaks (`ShowSenders`, stakwork/sphinx
+   `docs/tribe-sender-identity.md`), and its member list cannot tell "never
+   marked" from "turned off". So the link keeps it: `sendersMarkedAt` on
+   `TribeLink`, `sendersMarked` on each link `GET
+   /api/strut-devices/tribes` lists, set by `PATCH
+   /api/strut-devices/tribes/<pubkey> { sendersMarked }` (the linker's
+   device credential; someone else's link is a 404). Peel sets it after a
+   mark succeeds and clears it when the owner switches it off. Its
+   first-launch sweep of tribes an older Peel linked skips a link with the
+   flag set, and sets it after marking; a link with the flag unset and Jamie
+   unmarked on the server is marked once. Every device of the owner reads
+   the same flag, so another device's first launch, or a restore, never
+   marks Jamie again after it was turned off.
+
 ### The reply
 
 1. **Jamie long-polls Hive** with one loop for every tribe:
@@ -477,6 +492,7 @@ in the official app. Two fixes came out of it, both in #401:
    | `tribeHost`, `name` | |
    | `orgId`, `workspaceSlug` | |
    | `userId` | the linker |
+   | `sendersMarkedAt?` | when the linker's device marked Jamie to see who speaks; null = never, or turned off ("Jamie's mark") |
    | `createdAt` | |
 
    And one `TribeThread` per conversation of a tribe:
@@ -493,9 +509,10 @@ in the official app. Two fixes came out of it, both in #401:
 
    A relink to another org drops the link's threads; the conversations stay
    in Hive.
-2. **`GET/POST/DELETE /api/strut-devices/tribes`**: the device credential,
-   a `webhook` route in the middleware like `/api/strut-devices/calls`. POST
-   queues Jamie's join and answers its pubkey. DELETE queues its leave.
+2. **`GET/POST/PATCH/DELETE /api/strut-devices/tribes`**: the device
+   credential, a `webhook` route in the middleware like
+   `/api/strut-devices/calls`. POST queues Jamie's join and answers its
+   pubkey. PATCH records Jamie's mark. DELETE queues its leave.
 3. **`POST /api/tribes/messages`**: Jamie's token. The call turn route's flow
    on a link: dedupe by `id`, the linker's access, busy, persist, launch with
    the tribe line, record the mention's `id`.
@@ -558,6 +575,14 @@ Still to add:
    `plans/proposal-links.md` §2; a post from an older Hive still carries
    `strut.proposals[].card`); for the tribe's owner, send the card's button
    word as a reply to the post; move the card on from a decision's post.
+6. **Jamie's mark** (stakwork/peel#472). Mark Jamie to see who speaks in a
+   linked tribe (`ShowSenders`), and keep the mark on Hive's link, not the
+   device: `PATCH /api/strut-devices/tribes/<pubkey> { sendersMarked: true }`
+   after a mark succeeds, `false` when the owner switches it off. The
+   first-launch sweep skips a link whose `sendersMarked` is set, and sets it
+   after marking; a link with the flag unset and Jamie unmarked on the
+   server is marked once. Peel reads and writes the flag (peel#472
+   follow-up).
 
 ### No change
 
