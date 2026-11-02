@@ -1231,6 +1231,78 @@ describe('Sidebar - Legal Section', () => {
   });
 });
 
+describe('Sidebar - Benchmarks parent (openlaw-1)', () => {
+  const mockUser = { name: 'Test User', email: 'test@example.com', image: null };
+  const makeWorkspaceMock = (slug: string) => ({
+    workspace: { id: 'workspace-1', name: slug, slug, poolState: 'COMPLETE' },
+    slug,
+    loading: false,
+    error: null,
+    waitingForInputCount: 0,
+    refreshTaskNotifications: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue(false);
+    vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+      poolStatus: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(useWorkspaceAccessModule.useWorkspaceAccess).mockReturnValue({
+      canRead: true,
+      canWrite: true,
+      canAdmin: false,
+      isOwner: false,
+      hasAccess: true,
+      role: 'DEVELOPER',
+    } as any);
+    vi.mocked(useUnresolvedErrorCountModule.useUnresolvedErrorCount).mockReturnValue({ count: 0 });
+    vi.mocked(runtimeModule.isDevelopmentMode).mockReturnValue(false);
+  });
+
+  it('replaces Legal with a Benchmarks parent for openlaw-1', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('openlaw-1') as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.getAllByTestId('nav-benchmarks').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Legal Benchmarks')).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByTestId('nav-benchmarks')[0]);
+    await waitFor(() => {
+      expect(screen.getAllByTestId('nav-legal').length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId('nav-longmemory').length).toBeGreaterThan(0);
+    });
+    expect(screen.getAllByTestId('nav-longmemory')[0].closest('a')?.getAttribute('href')).toBe(
+      '/w/openlaw-1/longmemory/benchmarks',
+    );
+    expect(screen.getAllByTestId('nav-legal')[0].closest('a')?.getAttribute('href')).toBe(
+      '/w/openlaw-1/legal/benchmarks',
+    );
+  });
+
+  it.each(['openlaw', 'stakwork', 'some-other-workspace'])('has no Benchmarks parent or LongMemory for %s', (slug) => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock(slug) as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.queryByTestId('nav-benchmarks')).not.toBeInTheDocument();
+    expect(screen.queryByText('LongMemory')).not.toBeInTheDocument();
+  });
+
+  it('keeps the openlaw (Stakwork) Legal parent with Legal Benchmarks', () => {
+    vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue(makeWorkspaceMock('openlaw') as any);
+
+    render(<Sidebar user={mockUser} />);
+
+    expect(screen.getAllByTestId('nav-legal').length).toBeGreaterThan(0);
+  });
+});
+
 describe('Sidebar - Protect "Review" child link', () => {
   const mockUser = {
     name: 'Test User',

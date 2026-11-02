@@ -6,11 +6,12 @@ import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { EncryptionService } from "@/lib/encryption";
 import { decode } from "next-auth/jwt";
 import * as sphinxVerify from "@/lib/auth/sphinx-verify";
+import { lightningPubkeyFields, lightningPubkeyHash } from "@/lib/auth/lightning-pubkey";
 
 const encryptionService = EncryptionService.getInstance();
 
 describe("POST /api/auth/sphinx/token Integration Tests", () => {
-  const testPubkey = "02a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890";
+  const testPubkey = "02a1b2c3d4e5f67890123456789012345678901234567890123456789012345678";
   const testToken = "valid-signed-token";
   const testTimestamp = Math.floor(Date.now() / 1000);
   let testUserId: string;
@@ -229,10 +230,58 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
       expect(data.token).toBeDefined();
     });
 
+    it("should find a user written before the lookup hash, and give the row its hash", async () => {
+      await db.user.update({
+        where: { id: testUserId },
+        data: {
+          lightningPubkey: JSON.stringify(encryptionService.encryptField("lightningPubkey", testPubkey)),
+          lightningPubkeyHash: null,
+        },
+      });
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        body: {
+          token: testToken,
+          pubkey: testPubkey,
+          timestamp: testTimestamp,
+        },
+      });
+
+      expect(result.status).toBe(200);
+      const data = await result.json<{ token: string }>();
+      const decoded = await decode({ token: data.token, secret: process.env.NEXTAUTH_SECRET! });
+      expect(decoded?.id).toBe(testUserId);
+
+      const row = await db.user.findUnique({ where: { id: testUserId } });
+      expect(row?.lightningPubkeyHash).toBe(lightningPubkeyHash(testPubkey));
+    });
+
+    it("should find a user by the lookup hash", async () => {
+      await db.user.update({ where: { id: testUserId }, data: lightningPubkeyFields(testPubkey) });
+      const user = await db.user.findUnique({ where: { id: testUserId } });
+
+      const result = await invokeRoute(POST, {
+        method: "POST",
+        body: {
+          token: testToken,
+          pubkey: testPubkey,
+          timestamp: testTimestamp,
+        },
+      });
+
+      expect(result.status).toBe(200);
+      const data = await result.json<{ token: string }>();
+      const decoded = await decode({ token: data.token, secret: process.env.NEXTAUTH_SECRET! });
+      expect(decoded?.id).toBe(testUserId);
+      expect(decoded?.email).toBe(user?.email);
+      expect(decoded?.name).toBe(user?.name);
+    });
+
     it("should handle multiple users and find correct one", async () => {
       // Create another user with different pubkey
       const otherUser = await createTestUser();
-      const otherPubkey = "03b1c2d3e4f5678901234567890123456789012345678901234567890123456789ab";
+      const otherPubkey = "03b1c2d3e4f5678901234567890123456789012345678901234567890123456789";
 
       const otherEncryptedPubkey = encryptionService.encryptField(
         "lightningPubkey",
