@@ -32,11 +32,13 @@
  * as a card they open in place — the line was the same thing twice, as a
  * long URL under a short reply.
  *
- * A proposal is one line, "Waiting for <linker> to approve: <title>", with
- * a stub of the proposal in the metadata's `strut.proposals`: Peel reads the
- * card from the record on the org's strut with the member's own token. A
- * decision on it — the owner's reply to the post (`/api/tribes/messages`),
- * or the linker's click in Hive — is posted too, as its outcome line
+ * A proposal is one line, "Waiting for <person> to approve: <title>" —
+ * the person its turn ran as (`StrutRun.userId`): the member who asked,
+ * when the tribe named them, else the linker — with a stub of the proposal
+ * in the metadata's `strut.proposals`: Peel reads the card from the record
+ * on the org's strut with the member's own token. A decision on it — that
+ * person's (or the owner's) reply to the post (`/api/tribes/messages`), or
+ * a click in Hive — is posted too, as its outcome line
  * ("Applied: <title>") with the new status in `strut.proposals`; it threads
  * where the proposal did.
  *
@@ -53,6 +55,7 @@ import type { ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtif
 import { callArtifactUrl, callMessagesSince, wakeJobRows, type CallMessage } from "@/lib/calls/callMessages";
 import { db } from "@/lib/db";
 import type { StrutArtifactEnvelope, StrutProposalEntry } from "@/lib/strut-orchestrator";
+import { tribePersonName } from "@/lib/tribes/tribeLinks";
 
 export interface TribeOutboxPost {
   id: string;
@@ -292,8 +295,32 @@ interface ThreadForOutbox {
   link: {
     id: string;
     tribePubkey: string;
+    /** The linker. */
+    userId: string;
     org: { githubLogin: string };
-    user: { name: string | null };
+    user: { name: string | null; sphinxAlias?: string | null };
+  };
+}
+
+/**
+ * Who a proposal's post says it waits for, by its turn: the person the turn
+ * ran as — the linker, or a member the tribe named (`/api/tribes/messages`).
+ */
+async function approversOf(link: ThreadForOutbox["link"], runIds: string[]): Promise<(runId: string | null) => string> {
+  const linker = tribePersonName(link.user) ?? "the person who linked this tribe";
+  if (runIds.length === 0) return () => linker;
+  const runs = await db.strutRun.findMany({ where: { id: { in: runIds } }, select: { id: true, userId: true } });
+  const userOf = new Map(runs.filter((r) => r.userId !== link.userId).map((r) => [r.id, r.userId]));
+  const users = userOf.size
+    ? await db.user.findMany({
+        where: { id: { in: [...new Set(userOf.values())] } },
+        select: { id: true, name: true, sphinxAlias: true },
+      })
+    : [];
+  const nameOf = new Map(users.map((u) => [u.id, tribePersonName(u)]));
+  return (runId) => {
+    const userId = runId ? userOf.get(runId) : undefined;
+    return userId ? (nameOf.get(userId) ?? "the person who asked") : linker;
   };
 }
 
@@ -332,11 +359,14 @@ export async function pendingTribeMessages(
     : [];
   const mentionOf = new Map(mentions.map((m) => [m.runId, m.mentionId]));
 
-  const approver = link.user.name?.trim() || "the person who linked this tribe";
+  const approverOf = await approversOf(
+    link,
+    [...new Set(messages.filter((m) => m.kind === "proposal").map(runOf).filter((r): r is string => r !== null))],
+  );
   return messages.map((message) => {
     const runId = runOf(message);
     const replyTo = runId ? chainOf(runId).map((r) => mentionOf.get(r)).find(Boolean) : undefined;
-    const text = tribeText(message, { approver, conversationUrl });
+    const text = tribeText(message, { approver: approverOf(runId), conversationUrl });
     const id = tribeMessageId(thread.id, message.id);
     const at = String((byId.get(message.id) as { timestamp?: unknown }).timestamp);
     if (!text.trim()) return { id, at, post: null };
@@ -386,8 +416,9 @@ const THREAD_SELECT = {
     select: {
       id: true,
       tribePubkey: true,
+      userId: true,
       org: { select: { githubLogin: true } },
-      user: { select: { name: true } },
+      user: { select: { name: true, sphinxAlias: true } },
     },
   },
 } as const;

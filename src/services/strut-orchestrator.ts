@@ -94,10 +94,11 @@ export interface OrchestratorTurnArgs {
   call?: boolean;
   /**
    * In a Sphinx tribe — asked there (`/api/tribes/messages`, the asker's
-   * alias), or a wake on the tribe's conversation (no asker): the tribe
-   * line (`orchestratorTribeLine`) ends `context.line`.
+   * alias; `asker` when the turn runs as them, `userId` theirs), or a wake
+   * on the tribe's conversation (no asker): the tribe line
+   * (`orchestratorTribeLine`) ends `context.line`.
    */
-  tribe?: { name: string | null; alias?: string; owner?: boolean };
+  tribe?: { name: string | null; alias?: string; owner?: boolean; asker?: boolean };
 }
 
 export type OrchestratorLaunchResult =

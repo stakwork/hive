@@ -1,3 +1,4 @@
+import { lightningPubkeyFields, userByLightningPubkey } from "@/lib/auth/lightning-pubkey";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
@@ -389,34 +390,8 @@ export const authOptions: NextAuthOptions = {
             return false;
           }
 
-          // Check if Lightning pubkey already exists in database
-          const existingUserWithPubkey = await db.user.findFirst({
-            where: {
-              lightningPubkey: {
-                not: null,
-              },
-            },
-          });
-
-          // We need to decrypt and compare Lightning pubkeys to find existing user
-          let existingSphinxUser = null;
-          if (existingUserWithPubkey) {
-            try {
-              const decryptedPubkey = encryptionService.decryptField(
-                "lightningPubkey",
-                existingUserWithPubkey.lightningPubkey!
-              );
-              if (decryptedPubkey === lightningPubkey) {
-                existingSphinxUser = existingUserWithPubkey;
-              }
-            } catch (error) {
-              logger.authWarn(
-                "Failed to decrypt existing Lightning pubkey during comparison",
-                "SIGNIN_SPHINX_DECRYPT_COMPARE",
-                { error }
-              );
-            }
-          }
+          // The user this Lightning pubkey already belongs to, by its lookup hash.
+          const existingSphinxUser = await userByLightningPubkey(lightningPubkey);
 
           // Scenario 1: Existing Sphinx user - log in to existing account
           if (existingSphinxUser) {
@@ -444,13 +419,11 @@ export const authOptions: NextAuthOptions = {
           if (isLinkingToExisting) {
             const existingUserId = user.id;
 
-            // Encrypt and store Lightning pubkey on existing user
-            const encryptedPubkey = encryptionService.encryptField("lightningPubkey", lightningPubkey);
-
+            // Encrypt and store Lightning pubkey (and its lookup hash) on existing user
             await db.user.update({
               where: { id: existingUserId },
               data: {
-                lightningPubkey: JSON.stringify(encryptedPubkey),
+                ...lightningPubkeyFields(lightningPubkey),
                 lastLoginAt: new Date(),
               },
             });
@@ -473,11 +446,9 @@ export const authOptions: NextAuthOptions = {
           }
 
           // Scenario 3: New Sphinx user - create new account
-          const encryptedPubkey = encryptionService.encryptField("lightningPubkey", lightningPubkey);
-
           const newUser = await db.user.create({
             data: {
-              lightningPubkey: JSON.stringify(encryptedPubkey),
+              ...lightningPubkeyFields(lightningPubkey),
               name: `Sphinx User`, // Default name, can be updated later
               emailVerified: new Date(), // Lightning auth is verified
               lastLoginAt: new Date(),

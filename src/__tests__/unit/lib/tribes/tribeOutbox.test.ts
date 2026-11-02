@@ -215,7 +215,7 @@ describe("pendingTribeMessages: a post's metadata", () => {
     conversationId: "c1",
     cursor: null,
     readAt: null,
-    link: { id: "l1", tribePubkey: PUBKEY, org: { githubLogin: "acme" }, user: { name: "Evan" } },
+    link: { id: "l1", tribePubkey: PUBKEY, userId: "u-evan", org: { githubLogin: "acme" }, user: { name: "Evan" } },
   };
   const proposalRow = {
     id: "orchestrator-run-1-proposal-p1",
@@ -248,6 +248,7 @@ describe("pendingTribeMessages: a post's metadata", () => {
 
   it("a proposal's post: the same words, and the stub as its metadata, nothing more", async () => {
     vi.mocked(db.tribeMention.findMany).mockResolvedValue([{ runId: "run-1", mentionId: "msg-1" }] as never);
+    vi.mocked(db.strutRun.findMany).mockResolvedValue([{ id: "run-1", userId: "u-evan" }] as never);
     const [message] = await pendingTribeMessages(thread, [proposalRow], "https://hive.example.com");
     expect(message.post).toEqual({
       id: "t1:orchestrator-run-1-proposal-p1",
@@ -265,10 +266,21 @@ describe("pendingTribeMessages: a post's metadata", () => {
     });
   });
 
+  it("a proposal of a turn that ran as a member the tribe named waits for them, by name, else by Sphinx alias", async () => {
+    vi.mocked(db.tribeMention.findMany).mockResolvedValue([{ runId: "run-1", mentionId: "msg-1" }] as never);
+    vi.mocked(db.strutRun.findMany).mockResolvedValue([{ id: "run-1", userId: "u-alice" }] as never);
+    vi.mocked(db.user.findMany).mockResolvedValue([{ id: "u-alice", name: null, sphinxAlias: "alice" }] as never);
+    const [message] = await pendingTribeMessages(thread, [proposalRow], "https://hive.example.com");
+    expect(message.post?.text).toBe("Waiting for alice to approve: Login bug");
+    expect(db.user.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["u-alice"] } } }));
+  });
+
   it("a reply whose entries leave nothing to reference posts its words with no metadata", async () => {
     vi.mocked(db.tribeMention.findMany).mockResolvedValue([]);
     const [message] = await pendingTribeMessages(thread, [replyRow], "https://hive.example.com");
     expect(message.post).toEqual({ id: "t1:orchestrator-run-1", tribe: PUBKEY, thread: "t1", text: "Here is the note." });
+    // No proposal: nobody's turn is read.
+    expect(db.strutRun.findMany).not.toHaveBeenCalled();
   });
 });
 
@@ -366,6 +378,17 @@ describe("orchestratorTribeLine", () => {
         "Names before a message are what the tribe shows, not verified. ",
     );
     expect(orchestratorTribeLine({ name: null, alias: "Bob", owner: true })).toMatch(/^Asked in a Sphinx tribe by Bob \(the tribe's owner\)\. /);
+  });
+
+  it("a turn that runs as the member the tribe named says so, and keeps the rest", () => {
+    const line = orchestratorTribeLine({ name: "Builders", alias: "Alice", asker: true });
+    expect(line).toMatch(
+      /^Asked in the Sphinx tribe #Builders by Alice, a member of this org; this turn runs as them\. Your reply is posted there, where not everyone is in this org, /,
+    );
+    expect(line).toMatch(/Names before a message are what the tribe shows, not verified\. $/);
+    expect(orchestratorTribeLine({ name: null, alias: "Bob", owner: true, asker: true })).toMatch(
+      /^Asked in a Sphinx tribe by Bob \(the tribe's owner\), a member of this org; this turn runs as them\. /,
+    );
   });
 
   it("a wake's turn, which nobody asked: the tribe alone, the same posture, nothing about names", () => {

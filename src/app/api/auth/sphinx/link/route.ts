@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
+import { lightningPubkeyFields } from "@/lib/auth/lightning-pubkey";
 import { logger } from "@/lib/logger";
 import { createSphinxToken } from "@/lib/auth/sphinx-token";
 import { sendDirectMessage, isDirectMessageConfigured } from "@/lib/sphinx/direct-message";
-
-const encryptionService = EncryptionService.getInstance();
 
 /**
  * POST /api/auth/sphinx/link
@@ -117,11 +115,10 @@ export async function POST(request: NextRequest) {
 
     const { pubkey, alias, routeHint } = sphinxChallenge;
 
-    // Encrypt pubkey before storing
-    let encryptedPubkey: string;
+    // Encrypt pubkey before storing, with its lookup hash
+    let pubkeyFields: ReturnType<typeof lightningPubkeyFields>;
     try {
-      const encrypted = encryptionService.encryptField("lightningPubkey", pubkey);
-      encryptedPubkey = JSON.stringify(encrypted);
+      pubkeyFields = lightningPubkeyFields(pubkey);
     } catch (encryptError) {
       logger.error("Failed to encrypt pubkey", "SPHINX_AUTH", { 
         error: encryptError, 
@@ -140,7 +137,7 @@ export async function POST(request: NextRequest) {
         await tx.user.update({
           where: { id: userId },
           data: {
-            lightningPubkey: encryptedPubkey,
+            ...pubkeyFields,
             sphinxAlias: alias || undefined,
             sphinxRouteHint: routeHint || undefined,
           },
