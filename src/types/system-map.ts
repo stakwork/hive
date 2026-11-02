@@ -176,6 +176,8 @@ export interface SystemMapFinding {
   /** Lower-cased: critical / high / medium / low / info, or whatever the node says. */
   severity: string | null;
   status: string | null;
+  /** `properties.kind`, lower-cased: code / dependency / config; absent on older findings. */
+  kind?: string | null;
   cweId: string | null;
   file: string | null;
   line: number | null;

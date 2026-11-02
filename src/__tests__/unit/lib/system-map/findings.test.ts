@@ -21,6 +21,11 @@ function finding(refId: string, properties: Record<string, unknown>, dateAdded?:
 }
 
 describe("parseFinding", () => {
+  it("passes kind through, lower-cased, and null when absent", () => {
+    expect(parseFinding(finding("k1", { title: "t", kind: "Dependency" }))?.kind).toBe("dependency");
+    expect(parseFinding(finding("k2", { title: "t" }))?.kind).toBeNull();
+  });
+
   it("reads the fix tracking written on the node", () => {
     const parsed = parseFinding(
       finding("f9", {
@@ -48,6 +53,7 @@ describe("parseFinding", () => {
       title: "XSS in search",
       severity: "high",
       status: null,
+      kind: null,
       cweId: "CWE-79",
       file: "src/a.ts",
       line: 12,
