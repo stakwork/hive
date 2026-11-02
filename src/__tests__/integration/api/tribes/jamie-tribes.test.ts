@@ -990,10 +990,10 @@ describe("Jamie in Sphinx tribes", () => {
       expect(await outbox()).toEqual([]);
     });
 
-    it("a proposal's post carries it in metadata.strut.proposals, strut's card as it came; an older strut's has no card", async () => {
+    it("a proposal's post carries its stub in metadata.strut.proposals, card or none: Peel reads the card from the record", async () => {
       const scenario = await linked();
       await mention(aMention());
-      await answered(scenario, "run-1", "I've proposed it.", {
+      const conversationId = await answered(scenario, "run-1", "I've proposed it.", {
         proposals: [
           { ...INSTALL, card: CARD },
           { id: "p2", step: "graph/create-node", title: "Login bug", status: "pending", url: "/proposals/p2" },
@@ -1013,17 +1013,7 @@ describe("Jamie in Sphinx tribes", () => {
         strut: {
           workspace: scenario.workspace.slug,
           artifacts: [],
-          proposals: [
-            {
-              id: "p1",
-              step: "package/install",
-              title: "Install acme/board",
-              summary: "Listed by the Stakwork index.",
-              card: CARD,
-              status: "pending",
-              url: "/proposals/p1",
-            },
-          ],
+          proposals: [{ id: "p1", step: "package/install", title: "Install acme/board", status: "pending", url: "/proposals/p1" }],
         },
       });
       expect(plain.metadata).toEqual({
@@ -1035,6 +1025,10 @@ describe("Jamie in Sphinx tribes", () => {
           ],
         },
       });
+      // The conversation's row keeps the card: the canvas draws it, and the owner's reply is matched to its words.
+      const { messages: rows } = await db.sharedConversation.findUniqueOrThrow({ where: { id: conversationId }, select: { messages: true } });
+      const row = (rows as Array<{ source?: { proposalId?: string; card?: unknown } }>).find((r) => r.source?.proposalId === "p1");
+      expect(row?.source?.card).toEqual(CARD);
     });
 
     it("a decision made in Hive is posted too: its outcome line, where the proposal was, with the new status", async () => {
