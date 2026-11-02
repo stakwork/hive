@@ -88,6 +88,9 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/strut-devices/pair", "POST")).toBe("webhook");
       expect(resolveRouteAccess("/api/strut-devices/pair/token", "POST")).toBe("webhook");
       expect(resolveRouteAccess("/api/strut-devices/peers", "GET")).toBe("webhook");
+      // Its person's Sphinx pubkey, registered with the device credential.
+      expect(resolveRouteAccess("/api/strut-devices/sphinx", "POST")).toBe("webhook");
+      expect(resolveRouteAccess("/api/strut-devices/sphinx", "GET")).toBe("protected");
       // Approving, listing and revoking need the person's session.
       expect(resolveRouteAccess("/api/strut-devices/pair/approve", "GET")).toBe("protected");
       expect(resolveRouteAccess("/api/strut-devices/pair/approve", "POST")).toBe("protected");

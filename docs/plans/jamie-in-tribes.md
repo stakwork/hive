@@ -41,9 +41,12 @@ tribe ◄── member ──► Jamie (wasm/daemon)          Hive ──► org
   and drops the older one when the same key connects again. So the DM bot
   stays as it is.
 - **Hive keeps the links and runs the turns**, as it does for a call. A
-  mention becomes a turn of the org's orchestrator, run as the person who
-  linked the tribe. Jamie reads the replies from Hive and posts them.
-- **No change** to the tribe server, the Sphinx core, strut or sphinx-voice.
+  mention becomes a turn of the org's orchestrator, run as the member who
+  asked when the tribe names them, else as the person who linked the tribe
+  ("Who is speaking", below). Jamie reads the replies from Hive and posts
+  them.
+- **No change** to the tribe server, the Sphinx core, strut or sphinx-voice
+  for the rest. Naming the sender is the tribe server's (stakwork/sphinx#417).
 
 ## Decisions
 
@@ -80,7 +83,8 @@ tribe ◄── member ──► Jamie (wasm/daemon)          Hive ──► org
    server knows who wrote a message. It re-signs every forwarded message with
    the tribe's key and keeps only the alias
    (`tribes/src/forward.rs`, `mutate_msg_to_forward`). Jamie passes the alias
-   on as the speaker.
+   on as the speaker. Since 2026-11-01 a mention may name its sender, and a
+   member Hive knows runs the turn as themselves ("Who is speaking").
 
 4. **Only the owner links.** In a private tribe, Jamie's join is a member
    request, and the owner's Peel approves it without asking. That keeps setup
@@ -166,6 +170,7 @@ device as it is.
      "tribe": { "pubkey": "02…", "name": "Builders", "host": "tribes.v2.sphinx.chat" },
      "alias": "Alice",
      "owner": false,
+     "sender": "03…",
      "time": "2026-10-29T18:02:11Z",
      "text": "@jamie what did we decide about the launch?",
      "recent": [{ "alias": "Bob", "time": "…", "text": "…" }],
@@ -179,7 +184,11 @@ device as it is.
 
    `recent` is the room since Jamie last spoke there, oldest first: up to
    30 lines and 8 KB, the newest that fit. `owner` is whether the tribe's
-   owner wrote it; the tribe server marks the owner's messages.
+   owner wrote it; the tribe server marks the owner's messages. `sender` is
+   the Sphinx pubkey of who wrote it, when the tribe server told Jamie
+   (stakwork/sphinx#417, `docs/tribe-sender-identity.md`; not sent yet);
+   each `earlier` line may carry its own. Anything but 66 hex characters is
+   a 400.
    `attachments` is there when the mention carried a file (or the member
    posted captionless ones just before it): the daemon downloads and
    decrypts each from the memes server as an app does and sends it as
@@ -202,6 +211,7 @@ device as it is.
    - drop an `id` already seen, a retry whose first answer was lost (2xx);
    - check the linker can still use the workspace. If not, refuse with a
      403, which Jamie drops, and put one line saying so in the outbox;
+   - pick who the turn runs as ("Who is speaking", below);
    - pick the conversation (`TribeThread`): the one the message's `thread`
      names, when it is this tribe's; else the one this mention started on an
      earlier try; else a new one;
@@ -220,9 +230,25 @@ device as it is.
    - `launchOrchestratorTurn({ …, tribe: { name } })`. A tribe line goes
      beside `ORCHESTRATOR_CALL_LINE`: *"Asked in the Sphinx tribe #<name> by
      <alias>. Your reply is posted there, where not everyone is in this org."*
+     A turn that runs as the asker says *"…by <alias>, a member of this org;
+     this turn runs as them."*
    - record the mention's `id` against the turn, so the reply threads under
      it, and each `earlier` id as taken too (`folded`), so a retry of any of
      them is a duplicate; one a turn already took is left out of the burst.
+
+   **Who is speaking** (2026-11-01). A mention whose `sender` is a pubkey
+   Hive knows (`User.lightningPubkey`, found by its `lightningPubkeyHash`),
+   held by someone who can use the linked workspace, runs as that member:
+   the launch's `userId` is theirs — their actor on strut, their delegation
+   (`dispatchStrutRun` ensures it per user), their credentials and their
+   model pick. Anyone else runs as the linker, as
+   before: no `sender`, a pubkey nobody in Hive holds, a member without the
+   workspace. The conversation stays the linker's either way, and a burst
+   runs as its newest message's sender. A person's pubkey is known when they
+   signed in to Hive with Sphinx or linked it, or when their Peel registered
+   it at pairing (`POST /api/strut-devices/sphinx { pubkey, token }`, the
+   device credential and the token the Sphinx apps sign; `GET
+   /api/strut-devices/peers` says `sphinx: true` once it is known).
 
 ### The reply
 
@@ -276,8 +302,9 @@ accept. Strut writes the CARD a person decides on (strut#404, at or past
 danger? }], actions: { accept, reject }, full }`. Hive, strut's UI and Peel
 each have one renderer for it.
 
-- **The post.** Its line stays "Waiting for <linker> to approve: <title>",
-  which everyone reads. Its `metadata` carries a stub of the proposal,
+- **The post.** Its line stays "Waiting for <person> to approve: <title>",
+  which everyone reads: the person the turn ran as, the linker or the
+  member who asked. Its `metadata` carries a stub of the proposal,
   beside an `artifacts` list that may be empty (2026-11-01, strut
   `plans/proposal-links.md`):
 
@@ -303,14 +330,14 @@ each have one renderer for it.
   sends), or one of accept, approve, yes, ok / reject, decline, no — in any
   case, a leading `@jamie` and a closing `.` or `!` aside, nothing else — is
   a decision (`decideByReply`, `/api/tribes/messages`), and runs no turn.
-  - The tribe's OWNER decides (`owner`, the tribe server's flag), as the
-    person who linked the tribe, whom every tribe turn runs as: Hive decides
-    on the turn's strut as them, as its own card does
-    (`decideStrutProposal`), and only a proposal of a turn that ran as them.
-    Other members later, once the daemon forwards a sender's pubkey (open
-    question 6).
-  - Anyone else gets a reply under their message, "Only the tribe's owner
-    can decide this one.", and nothing is decided.
+  - The person the turn ran as decides (the turn's `StrutRun.userId`): a
+    reply whose `sender` is them, decided on the turn's strut as them, as
+    Hive's own card does (`decideStrutProposal`). A reply that names no
+    sender Hive knows decides only as the tribe's OWNER (`owner`, the tribe
+    server's flag) on a turn that ran as the linker, as before senders.
+  - Anyone else gets a reply under their message, "<name>'s to decide." (on
+    a linker's turn, an unnamed member gets "Only the tribe's owner can
+    decide this one."), and nothing is decided.
   - Any other reply to the post (a question about it) is a turn, as any
     reply to Jamie is.
   - Which proposal: the post the reply names in `replyTo`, Hive's id for
@@ -480,6 +507,12 @@ in the official app. Two fixes came out of it, both in #401:
    `DAEMON_SERVICE_TOKEN`), and `JAMIE_SPHINX_PUBKEY`. `V2_BOT_URL` stays the
    DM bot's.
 6. **Tests:** route tests shaped like the calls ones.
+7. **Who is speaking** (built 2026-11-01, inert until the daemon sends
+   `sender`): `User.lightningPubkeyHash` (HMAC-SHA256 of the pubkey under
+   the field-encryption key, written wherever the pubkey is, backfilled by
+   `npm run backfill:lightning-pubkey-hash`), `sender` on a mention and its
+   `earlier` lines, the turn as the identified member, a proposal decided by
+   its turn's person, and `POST /api/strut-devices/sphinx`.
 
 ### stakwork/sphinx
 
@@ -548,15 +581,13 @@ The tribe server, the Sphinx core, strut, sphinx-voice.
 5. **One Jamie, or one per org.** One account for every org is simplest. A
    Jamie per org (its own name and photo) means more accounts, and Hive
    assigns each tribe to one; nothing else changes.
-6. **Each asker as themselves, later.** Item two of strut
-   `plans/proposal-links.md` (§3): the tribe server tells Jamie, and only
-   Jamie, who is speaking, as the sender's pubkey on Jamie's copy of the
-   message, once the owner grants it. Hive maps it to
-   `User.lightningPubkey` and runs the turn as that member, so their
-   proposals are theirs and a reply decides one only from the proposal's
-   own actor. Anyone unidentified falls back to the linker. Hive's lookup
-   by pubkey is a linear decrypt-and-compare today, so it needs a hashed
-   column. Its own plan belongs in stakwork/sphinx.
+6. **Each asker as themselves.** Hive's half is built ("Who is speaking"):
+   a `sender` it knows runs the turn as that member, so their proposals are
+   theirs, and anyone unidentified falls back to the linker. The tribe
+   server's half — telling Jamie, and only Jamie, who sent each message,
+   once the owner grants it — is stakwork/sphinx
+   `docs/tribe-sender-identity.md` (#417). Open there: refuse an
+   unidentified asker instead of falling back; the words that tell the room.
 7. **Chunks in a priced tribe.** In a free tribe, every chunk costs 1 sat
    (step 0). In a priced one, should sphinx-chat pay the price on the first
    chunk only, since the server exempts the rest? It needs a test against a

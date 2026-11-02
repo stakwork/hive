@@ -86,11 +86,20 @@ export const ORCHESTRATOR_CALL_LINE =
  * a text message — the call line's posture, for a chat; past
  * `MAX_TRIBE_TEXT_CHARS` the outbox cuts it. A tribe tells members apart by
  * alias only, so the name is not an identity; the owner flag is the tribe
- * server's.
+ * server's. `asker`: the tribe named who sent the message (its `sender`),
+ * Hive knows them as a member of this org, and the turn runs as them — their
+ * actor, their credentials — rather than as the person who linked the tribe.
  */
-export function orchestratorTribeLine(tribe: { name: string | null; alias?: string; owner?: boolean }): string {
+export function orchestratorTribeLine(tribe: {
+  name: string | null;
+  alias?: string;
+  owner?: boolean;
+  asker?: boolean;
+}): string {
   const where = tribe.name ? `the Sphinx tribe #${tribe.name}` : "a Sphinx tribe";
-  const by = tribe.owner ? `${tribe.alias} (the tribe's owner)` : tribe.alias;
+  const by =
+    (tribe.owner ? `${tribe.alias} (the tribe's owner)` : tribe.alias) +
+    (tribe.asker ? ", a member of this org; this turn runs as them" : "");
   return (
     (tribe.alias ? `Asked in ${where} by ${by}. ` : `In ${where}. `) +
     "Your reply is posted there, where not everyone is in this org, and read on a phone: say it the way you would in a " +
