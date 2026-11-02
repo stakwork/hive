@@ -211,6 +211,46 @@ describe("chatMessagesToParsedMessages", () => {
     expect(chatMessagesToParsedMessages(stored)[0].isError).toBe(true);
   });
 
+  it("marks assistant rows with source.kind=stopped as isStopped, not isError", () => {
+    const stored: StoredChatMessage[] = [
+      {
+        id: "turn-1-astopped",
+        role: "assistant",
+        content: "Stopped by user.",
+        source: { kind: "stopped" },
+      },
+    ];
+    const out = chatMessagesToParsedMessages(stored)[0];
+    expect(out.isStopped).toBe(true);
+    expect(out.isError).toBeUndefined();
+  });
+
+  it("does not mark user rows with source.kind=stopped as isStopped", () => {
+    const stored: StoredChatMessage[] = [
+      {
+        id: "row-1",
+        role: "user",
+        content: "irrelevant",
+        source: { kind: "stopped" },
+      },
+    ];
+    expect(chatMessagesToParsedMessages(stored)[0].isStopped).toBeUndefined();
+  });
+
+  it("isStopped survives the JSON.stringify → parseAgentLogStats round-trip", () => {
+    const stored: StoredChatMessage[] = [
+      {
+        id: "turn-9-astopped",
+        role: "assistant",
+        content: "Stopped by user.",
+        source: { kind: "stopped" },
+      },
+    ];
+    const parsed = chatMessagesToParsedMessages(stored);
+    const { conversation } = parseAgentLogStats(JSON.stringify(parsed));
+    expect(conversation[0].isStopped).toBe(true);
+  });
+
   it("does not mark normal rows as isError (user rows even with error-suffixed ids)", () => {
     const stored: StoredChatMessage[] = [
       { id: "row-1", role: "assistant", content: "healthy answer" },
