@@ -138,6 +138,11 @@ describe("POST /api/strut-devices/calls", () => {
       orgId: org.id,
       workspaceSlug: workspace.slug,
     });
+    // The room names its call, for a device that joins with a Hive ticket
+    // (`/api/strut-devices/calls/ticket`), for the call's 12 h.
+    const callKey = (record![0] as string).replace(/^call:/, "");
+    const room = decodeURIComponent(new URL(data.url).pathname.split("/").pop()!);
+    expect(writes.find(([k]) => k === `call-room:${room}`)).toEqual([`call-room:${room}`, callKey, "EX", 12 * 3600]);
   });
 
   test("dispatch metadata carries transcript:true only when the workflow env is set", async () => {
@@ -237,5 +242,7 @@ describe("POST /api/strut-devices/calls", () => {
     const storedKey = vi.mocked(redis.set).mock.calls[0][0] as string;
     expect(vi.mocked(redis.del)).toHaveBeenCalledWith(storedKey);
     expect(vi.mocked(redis.del)).toHaveBeenCalledWith(`call:${storedKey.replace(/^call-token:/, "")}`);
+    const roomKey = vi.mocked(redis.set).mock.calls.find(([k]) => /^call-room:/.test(k as string))![0];
+    expect(vi.mocked(redis.del)).toHaveBeenCalledWith(roomKey);
   });
 });
