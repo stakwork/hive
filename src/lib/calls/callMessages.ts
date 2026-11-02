@@ -83,6 +83,12 @@ export interface CallRequestSource {
   kind: "call_request";
   speaker: string;
   via: CallRequestVia;
+  /**
+   * The Hive user the turn ran as, when Hive knew the speaker (their ticket
+   * was Hive's, `/api/strut-devices/calls/ticket`). Absent: the turn ran as
+   * the person who started the call, whoever spoke.
+   */
+  userId?: string;
 }
 
 export interface CallMessagesPage {

@@ -42,6 +42,7 @@ const {
   mockCanReadKey,
   mockGetObject,
   mockConversationFindUnique,
+  mockGetGithubPat,
 } = vi.hoisted(() => ({
   mockStrutRun: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
   mockOrgFindUnique: vi.fn(),
@@ -55,6 +56,7 @@ const {
   mockCanReadKey: vi.fn(),
   mockGetObject: vi.fn(),
   mockConversationFindUnique: vi.fn(),
+  mockGetGithubPat: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -89,6 +91,7 @@ vi.mock("@/lib/encryption", () => ({
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/ai/resolveMessageAttachments", () => ({ canReadKey: mockCanReadKey }));
 vi.mock("@/services/s3", () => ({ getS3Service: () => ({ getObject: mockGetObject }) }));
+vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: mockGetGithubPat }));
 
 import { logger } from "@/lib/logger";
 import { orchestratorTribeLine } from "@/lib/strut-orchestrator";
@@ -136,6 +139,7 @@ beforeEach(() => {
   mockAppendRows.mockResolvedValue({ appended: ["orchestrator-launch-row-1"], duplicate: [], skipped: false });
   mockFetch.mockResolvedValue(json(202, { runId: "1790000000001", callback: true }));
   mockCanReadKey.mockResolvedValue(true);
+  mockGetGithubPat.mockResolvedValue(null);
 });
 
 describe("launchOrchestratorTurn", () => {
@@ -274,6 +278,49 @@ describe("launchOrchestratorTurn", () => {
           "Names before a message are what the call shows, not verified. ",
       },
     });
+  });
+
+  it("a call turn Hive knows the speaker of says it runs as them", async () => {
+    await launchOrchestratorTurn({ ...args, message: "Bob: make a PR", call: { asker: "Bob" } });
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.input.context.line).toBe(
+      "Mon, 19 Oct 2026, 14:02, Europe/London. On a voice call. Your reply goes to the call's chat and may be read aloud: " +
+        "say it the way you would out loud, short, with what matters first; links and detail belong in artifacts. " +
+        "Names before a message are what the call shows, not verified. Bob is a member of this org; this turn runs as them. ",
+    );
+  });
+
+  it("pushes the turn user's GitHub token as their actor secret before the launch, never in the body", async () => {
+    mockGetGithubPat.mockResolvedValue({ username: "alice", token: "ghp_alice_token" });
+
+    const out = await launchOrchestratorTurn(args);
+
+    expect(out.status).toBe("started");
+    expect(mockGetGithubPat).toHaveBeenCalledWith("user-1", "acme-default");
+    expect(mockEnsureStrutActorSecrets).toHaveBeenCalledWith(
+      { labBase: TARGET.labBase, swarmApiKey: TARGET.swarmApiKey },
+      TARGET.actor,
+      { GITHUB_TOKEN: "ghp_alice_token" },
+    );
+    expect(mockEnsureStrutActorSecrets.mock.invocationCallOrder[0]).toBeLessThan(mockFetch.mock.invocationCallOrder[0]);
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(init.body as string).not.toContain("ghp_alice_token");
+  });
+
+  it("no GitHub token pushes nothing and still launches", async () => {
+    expect((await launchOrchestratorTurn(args)).status).toBe("started");
+    expect(mockEnsureStrutActorSecrets).not.toHaveBeenCalled();
+  });
+
+  it("a GitHub token lookup that fails pushes nothing and still launches, with a warning", async () => {
+    mockGetGithubPat.mockRejectedValueOnce(new Error("token decrypt failed"));
+    expect((await launchOrchestratorTurn(args)).status).toBe("started");
+    expect(mockEnsureStrutActorSecrets).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Orchestrator turn: GitHub token lookup failed; launching without it",
+      "STRUT_ORCHESTRATOR",
+      expect.objectContaining({ conversationId: "conv-1", error: "token decrypt failed" }),
+    );
   });
 
   it("a turn asked in a Sphinx tribe ends the context line with the tribe line — a text message, read on a phone; a wake on the tribe's conversation names no asker", async () => {
