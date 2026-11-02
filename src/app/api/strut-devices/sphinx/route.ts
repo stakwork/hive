@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { lightningPubkeyFields, normalizeLightningPubkey, userByLightningPubkey } from "@/lib/auth/lightning-pubkey";
-import { verifySphinxToken } from "@/lib/auth/sphinx-verify";
+import { acceptSphinxToken, sphinxTokenHost } from "@/lib/auth/sphinx-token-accept";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { validateDeviceCredential } from "@/lib/strut-devices";
@@ -9,11 +9,13 @@ import { validateDeviceCredential } from "@/lib/strut-devices";
 /**
  * POST /api/strut-devices/sphinx — "this is my Sphinx account"
  *
- * A paired device (Peel) registers its person's Sphinx pubkey, proved with
- * the token the Sphinx apps sign (`verifySphinxToken`: a 4-byte timestamp and
- * the node key's signature over it, five minutes old at most). From then on
- * a tribe mention whose `sender` is that pubkey runs as this person
- * (`/api/tribes/messages`; stakwork/sphinx `docs/tribe-sender-identity.md`).
+ * A paired device (Peel) registers its person's Sphinx pubkey, proved with a
+ * token its node key signed, five minutes old at most: the bound form
+ * (purpose `register`, no challenge) or, until `SPHINX_TOKEN_REQUIRE_BOUND`,
+ * the bare one the Sphinx apps sign (`acceptSphinxToken`;
+ * docs/plans/sphinx-token-binding.md). From then on a tribe mention whose
+ * `sender` is that pubkey runs as this person (`/api/tribes/messages`;
+ * stakwork/sphinx `docs/tribe-sender-identity.md`).
  * It is stored as Hive's own Sphinx link stores it (`User.lightningPubkey`
  * and its lookup hash). Authenticated by the device credential alone (a
  * `webhook` route in the middleware).
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "pubkey must be a Sphinx pubkey (66 hex characters)" }, { status: 400 });
   const token = typeof body?.token === "string" ? body.token.trim() : "";
   if (!token) return NextResponse.json({ error: "token is required" }, { status: 400 });
-  const verified = verifySphinxToken(token, pubkey);
+  const verified = acceptSphinxToken(token, pubkey, { host: sphinxTokenHost(request), purpose: "register", challenge: "" });
   if (!verified.valid) return NextResponse.json({ error: verified.reason }, { status: 400 });
 
   try {
