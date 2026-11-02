@@ -12,10 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 import { requireProtectMemberAccess } from "@/lib/protect/access";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
-import { getJarvisConfigForWorkspace } from "@/lib/helpers/jarvis-config";
-import { listSystemMapDomainNodes } from "@/lib/system-map/domain-nodes";
-import { listSystemMapDomainNodesCypher } from "@/lib/system-map/domain-nodes-cypher";
-import { logger } from "@/lib/logger";
+import { readSystemMapNodes } from "@/lib/system-map/read-nodes";
 import { parseNodeTypesParam } from "@/lib/system-map/node-types";
 import type { SystemMapDomainNodesResponse } from "@/types/system-map";
 
@@ -33,7 +30,8 @@ export async function handleSystemMapNodesRoute(
     const member = requireProtectMemberAccess(access);
     if (member instanceof NextResponse) return member;
 
-    if (!canAccessServerFeature(FEATURE_FLAGS.CODEBASE_RECOMMENDATION, member.role)) {
+    // Under mocks the flag is not required: the org canvas's System view reads this too, and the mock pod has it off.
+    if (process.env.USE_MOCKS !== "true" && !canAccessServerFeature(FEATURE_FLAGS.CODEBASE_RECOMMENDATION, member.role)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
@@ -42,21 +40,13 @@ export async function handleSystemMapNodesRoute(
       return NextResponse.json({ error: "types must be a comma-separated list of node type names" }, { status: 400 });
     }
 
-    let listed =
-      process.env.USE_MOCKS === "true"
-        ? null
-        : await listSystemMapDomainNodesCypher({ slug: member.slug, userId: member.userId, namespace, types });
-    if (listed && !listed.ok) {
-      logger.warn("[SystemMap] cypher read failed, falling back to jarvis", "system-map", {
-        slug: member.slug,
-        error: listed.error,
-      });
-    }
-    if (!listed?.ok) {
-      const jarvisConfig = await getJarvisConfigForWorkspace(member.workspaceId);
-      if (!jarvisConfig) return NextResponse.json(errorBody("Workspace swarm is not configured"));
-      listed = await listSystemMapDomainNodes(jarvisConfig, namespace, { types });
-    }
+    const listed = await readSystemMapNodes({
+      slug: member.slug,
+      userId: member.userId,
+      workspaceId: member.workspaceId,
+      namespace,
+      types: types ?? undefined,
+    });
     if (!listed.ok) return NextResponse.json(errorBody(listed.error));
 
     const body: SystemMapDomainNodesResponse = {

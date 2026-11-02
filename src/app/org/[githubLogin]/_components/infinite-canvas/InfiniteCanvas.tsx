@@ -17,6 +17,7 @@ import {
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
+import type { FocusResult } from "@/lib/canvas/focus-target";
 import { useQueryClient } from "@tanstack/react-query";
 import { stageLine } from "@/lib/initiative-plan";
 import { useCanvasChatStore, type InitiativeFocus } from "../../_state/canvasChatStore";
@@ -94,6 +95,7 @@ import {
   zoomAbout,
 } from "./scene";
 import { PAPER_CSS } from "./paper";
+import { SystemView } from "./system/SystemView";
 import { CANVAS_THEME, a, deskStyle, themeVars, v } from "./theme";
 import { type Pencil, withProposals } from "./proposals";
 import { useCanvasBoard } from "./useCanvasBoard";
@@ -211,6 +213,59 @@ export function InfiniteCanvas({
   /** The org page's chat, for the full-chat size. */
   renderChat: (onCollapse: () => void) => ReactNode;
 }) {
+  // Plan (today's canvas) or System (the map under it), mirrored in the URL as `?v=system` (and `at`, `lvl`, `m`).
+  const urlParams = useSearchParams();
+  const [view, setViewState] = useState<"plan" | "system">(() => (urlParams.get("v") === "system" ? "system" : "plan"));
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const [sysAt, setSysAtState] = useState<string | null>(() =>
+    urlParams.get("v") === "system" ? urlParams.get("at") : null,
+  );
+  const [sysDeep, setSysDeep] = useState(() => urlParams.get("lvl") === "4");
+  const [sysMode, setSysModeState] = useState<"map" | "list">(() => (urlParams.get("m") === "list" ? "list" : "map"));
+  /** The System view's "pull up X" resolver (set while it's up). */
+  const sysResolver = useRef<((name: string) => FocusResult | undefined) | null>(null);
+  const sysRef = useRef({ at: sysAt, deep: sysDeep, mode: sysMode });
+  sysRef.current = { at: sysAt, deep: sysDeep, mode: sysMode };
+  /** The System view's level, kept in the URL as `at` (+ `lvl=4` for a tier's detail). */
+  const setSystemAt = useCallback((at: string | null, deep = false) => {
+    sysRef.current = { ...sysRef.current, at, deep };
+    setSysAtState(at);
+    setSysDeep(deep);
+    if (viewRef.current !== "system") return;
+    replaceParams((p) => {
+      if (at) p.set("at", at);
+      else p.delete("at");
+      if (deep) p.set("lvl", "4");
+      else p.delete("lvl");
+    });
+  }, []);
+  const setSystemMode = useCallback((mode: "map" | "list") => {
+    setSysModeState(mode);
+    replaceParams((p) => (mode === "list" ? p.set("m", "list") : p.delete("m")));
+  }, []);
+  /** Switch between the Plan and the System view; each keeps its own level in `at`. */
+  const setView = useCallback((next: "plan" | "system") => {
+    if (next === viewRef.current) return;
+    viewRef.current = next;
+    setViewState(next);
+    if (next === "system") {
+      const { at, deep, mode } = sysRef.current;
+      replaceParams((p) => {
+        p.set("v", "system");
+        for (const k of ["tree", "ws", "root", "node"]) p.delete(k);
+        if (at) p.set("at", at);
+        else p.delete("at");
+        if (deep) p.set("lvl", "4");
+        else p.delete("lvl");
+        if (mode === "list") p.set("m", "list");
+        else p.delete("m");
+      });
+    } else {
+      replaceParams((p) => ["v", "lvl", "m"].forEach((k) => p.delete(k)));
+      writeAt(levelRef.current);
+    }
+  }, []);
   const [initiative, setInitiative] = useState<string | null>(null);
   // The desk: the latest initiatives by `updated_at`, plus any pulled in from the stack or ⌘K this session.
   const [pulled, setPulled] = useState<string[]>([]);
@@ -221,7 +276,7 @@ export function InfiniteCanvas({
   /** Looking for a card that may be under an initiative off the desk: the level in the URL, or a "pull up …". */
   const [seek, setSeek] = useState<Seek | null>(() => {
     const at = readAt();
-    return at ? { at } : null;
+    return at && new URLSearchParams(window.location.search).get("v") !== "system" ? { at } : null;
   });
   const {
     board: graphBoard,
@@ -233,7 +288,8 @@ export function InfiniteCanvas({
     choose,
   } = useCanvasBoard(githubLogin, workspaceSlugs, {
     // Plans are read for what's on the desk; all of them while ⌘K or the full list is open, or while seeking.
-    read: (ids) => (palette || showAll || seek ? ids : [...new Set([...ids.slice(0, DESK_SIZE), ...pulled])]),
+    // The System view stands every feature on the map, so it reads every plan.
+    read: (ids) => (palette || showAll || seek || view === "system" ? ids : [...new Set([...ids.slice(0, DESK_SIZE), ...pulled])]),
     openInitiative: initiative,
   });
   // Strut's pending proposals, drawn in where they'd go (pencil cards).
@@ -694,6 +750,24 @@ export function InfiniteCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `reach` reads this render's board and desk
   }, [seek, vp, scene, board, desk, loading, reading, go, askJamie]);
 
+  // The chat agent's `focus_canvas` ("pull up X"): switch to the view that shows it, fly there, light it up.
+  const pendingFocus = useCanvasChatStore((s) => s.pendingCanvasFocus);
+  useEffect(() => {
+    if (!pendingFocus) return;
+    const f = pendingFocus;
+    useCanvasChatStore.getState().clearCanvasFocus();
+    const target = f.view ?? (f.kind === "component" || f.kind === "zone" ? "system" : viewRef.current);
+    if (target === "system") {
+      setView("system");
+      setSystemAt(f.ref, false);
+      flashOn(f.ref);
+    } else {
+      setView("plan");
+      reach(f.ref);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `reach` reads this render's board and desk
+  }, [pendingFocus, setView, setSystemAt]);
+
   // ── What Jamie is pointed at ──────────────────────────────────────────────
   const focusFor = useCallback(
     (id: string): InitiativeFocus | null => {
@@ -749,6 +823,18 @@ export function InfiniteCanvas({
   const talk = useCallback(
     async (text: string) => {
       const nav = text.match(NAVIGATE);
+      if (nav && viewRef.current === "system") {
+        // On the System view "pull up …" looks at districts, zones and tiers first, then the plan's own cards.
+        const hit = sysResolver.current?.(nav[1]);
+        if (hit) {
+          setSystemAt(hit.ref, false);
+          flashOn(hit.ref);
+          return true;
+        }
+        setView("plan");
+        setSeek({ name: nav[1], text });
+        return true;
+      }
       if (nav) {
         // The best match may be under an initiative whose plan isn't read yet: read them all, then look.
         setSeek({ name: nav[1], text });
@@ -756,6 +842,7 @@ export function InfiniteCanvas({
       }
       return askJamie(text, focusRef.current);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSystemAt / setView are stable
     [askJamie],
   );
 
@@ -864,6 +951,8 @@ export function InfiniteCanvas({
   // ── Input ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // The System view has its own keys.
+      if (viewRef.current === "system") return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         e.stopPropagation();
@@ -891,6 +980,7 @@ export function InfiniteCanvas({
   useEffect(() => {
     const el = rootRef.current!;
     const onWheel = (e: WheelEvent) => {
+      if (viewRef.current === "system") return;
       // A list on a card that can scroll scrolls; everywhere else the wheel zooms.
       const list = (e.target as HTMLElement).closest?.("[data-wheel-scroll]") as HTMLElement | null;
       if (list && list.scrollHeight > list.clientHeight + 1 && !e.ctrlKey) return;
@@ -915,11 +1005,13 @@ export function InfiniteCanvas({
   }, [dropPending, finishBlend, nudge, setCamera]);
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (viewRef.current === "system") return;
     if ((e.target as HTMLElement).closest("button,input,textarea,a,[data-canvas-chrome]")) return;
     drag.current = { x: e.clientX, y: e.clientY };
     moved.current = 0;
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    if (viewRef.current === "system") return;
     const d = drag.current;
     if (!d || !camRef.current) return;
     const dx = e.clientX - d.x;
@@ -1084,6 +1176,8 @@ export function InfiniteCanvas({
                   ...deskStyle(CANVAS_THEME, null, null),
                 }}
               >
+                {/* The Plan's layers: hidden (not unmounted) while the System view is up, so the plan stays as it was. */}
+                <div data-plan-layer style={{ display: view === "system" ? "none" : "contents" }}>
                 {framedOnce && vp ? (
                   <Links lines={lines} blend={blend} u={u} camRef={camRef} vp={vp} drawRef={drawLinks} />
                 ) : null}
@@ -1321,6 +1415,26 @@ export function InfiniteCanvas({
                     </button>
                   ))}
                 </div>
+
+                </div>
+
+                {view === "system" ? (
+                  <SystemView
+                    githubLogin={githubLogin}
+                    workspaceSlugs={workspaceSlugs}
+                    board={graphBoard}
+                    at={sysAt}
+                    deep={sysDeep}
+                    setAt={setSystemAt}
+                    mode={sysMode}
+                    setMode={setSystemMode}
+                    flash={flash}
+                    resolver={sysResolver}
+                    planLoading={loading || reading}
+                  />
+                ) : null}
+
+                <ViewToggle view={view} setView={setView} />
 
                 {mode === "full" ? null : <Bar mode={mode} setMode={setMode} send={talk} />}
 
@@ -1633,6 +1747,56 @@ const SceneCard = memo(function SceneCard({
 });
 
 /** In world units like its frame; its type is held between 11 and 22 px on screen (at the settled zoom). */
+/** Plan | System: today's canvas, or the map under it. Both read the same graph. */
+function ViewToggle({ view, setView }: { view: "plan" | "system"; setView: (v: "plan" | "system") => void }) {
+  return (
+    <div
+      data-canvas-chrome
+      data-view-toggle
+      role="group"
+      aria-label="View"
+      onPointerDown={(e) => e.stopPropagation()}
+      style={{
+        position: "absolute",
+        right: 16,
+        top: 16,
+        zIndex: 25,
+        display: "flex",
+        gap: 2,
+        padding: 3,
+        height: 34,
+        boxSizing: "border-box",
+        borderRadius: 99,
+        background: v("chrome"),
+        border: `1px solid ${v("chromeBorder")}`,
+        boxShadow: v("shadow"),
+      }}
+    >
+      {(["plan", "system"] as const).map((k) => (
+        <button
+          key={k}
+          type="button"
+          data-view={k}
+          aria-pressed={view === k}
+          onClick={() => setView(k)}
+          style={{
+            fontFamily: TYPE,
+            fontSize: 13,
+            padding: "0 14px",
+            borderRadius: 99,
+            border: "none",
+            cursor: "pointer",
+            background: view === k ? v("ink") : "transparent",
+            color: view === k ? v("onInk") : v("muted"),
+          }}
+        >
+          {k === "plan" ? "Plan" : "System"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function EmptyHint({ node, rect }: { node: PlanNode; rect: Rect }) {
   const z = useContext(SettledZoom);
   const what = node.type === "initiative" ? "milestones" : "features";

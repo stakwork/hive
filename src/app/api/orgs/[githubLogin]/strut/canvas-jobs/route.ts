@@ -1,5 +1,7 @@
 /**
- * GET /api/orgs/[githubLogin]/strut/canvas-jobs?initiative=<ref_id>
+ * GET /api/orgs/[githubLogin]/strut/canvas-jobs?initiative=<ref_id>|all
+ *
+ * `all` reads the jobs on every initiative of the org (the System view).
  *
  * The strut jobs on one initiative's infinite-canvas cards, for any member
  * of the org (`useCanvasJobs`; `services/canvas-jobs.ts`):
@@ -17,6 +19,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { logger } from "@/lib/logger";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { ALL_INITIATIVES } from "@/lib/canvas/canvas-jobs";
 import { isRunGraphRefId } from "@/lib/strut-run-graph/hydrate";
 import { listCanvasJobs } from "@/services/canvas-jobs";
 
@@ -31,8 +34,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { githubLogin } = await params;
 
   const initiative = request.nextUrl.searchParams.get("initiative") ?? "";
-  if (!isRunGraphRefId(initiative)) {
-    return NextResponse.json({ error: "initiative (a ref_id) is required" }, { status: 400 });
+  // `initiative=all`: every initiative's jobs, for the System view.
+  if (initiative !== ALL_INITIATIVES && !isRunGraphRefId(initiative)) {
+    return NextResponse.json({ error: "initiative (a ref_id, or all) is required" }, { status: 400 });
   }
 
   const orgId = await resolveAuthorizedOrgId(githubLogin, userId, false);

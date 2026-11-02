@@ -52,6 +52,7 @@ import {
 } from "@/lib/constants/prompt";
 import type { CanvasScopeHint } from "@/lib/constants/prompt";
 import { getCanvasSystemPrompt } from "@/lib/ai/canvas-system-prompt";
+import { buildCanvasFocusTools, CANVAS_FOCUS_PROMPT_LINE } from "@/lib/ai/canvasFocusTool";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
 import { isConceptSeedingEnabled } from "@/lib/ai/concepts";
 import { askToolsMulti } from "@/lib/ai/askToolsMulti";
@@ -924,7 +925,7 @@ export async function runCanvasAgent(
   // The prompt suffix is the matching snippet concatenation.
   const orgCapabilities = await resolveOrgCapabilities(capabilities, orgId);
   const orgPromptSuffix = orgId
-    ? composeCapabilityPromptSuffix(orgCapabilities, { slimPrompt })
+    ? composeCapabilityPromptSuffix(orgCapabilities, { slimPrompt }) + (userId ? CANVAS_FOCUS_PROMPT_LINE : "")
     : undefined;
   // `graph_walker` is core (read tools always composed), so its four
   // graph-write propose tools cannot ride an `orgGate` on the capability
@@ -1225,6 +1226,11 @@ export async function runCanvasAgent(
     // `undefined`. Member requests carry the real NextAuth user id.
     primaryUserId = ws.userId;
     primaryRepoUrls = ws.repoUrls ?? [];
+  }
+
+  // `focus_canvas`: "pull up X" flies the infinite canvas there (read-only; the client acts on the result).
+  if (orgId && userId) {
+    tools = { ...tools, ...buildCanvasFocusTools({ userId, workspaceSlugs }) };
   }
 
   // ------------------------------------------------------------------

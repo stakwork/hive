@@ -744,6 +744,18 @@ interface CanvasChatState {
   triggerDeeplink: (dl: { nodeId: string; canvasRef: string; label: string; x?: number; y?: number }) => void;
   clearDeeplink: () => void;
 
+  // ─── Infinite canvas focus ───────────────────────────────────────────
+  /**
+   * A pending "fly the infinite canvas there" request, from the chat agent's
+   * `focus_canvas` tool result. `InfiniteCanvas` consumes it like
+   * `pendingDeeplink`: switches to `view` if needed (null keeps the view
+   * the user is on), flies to `ref`,
+   * highlights it, and calls `clearCanvasFocus()`.
+   */
+  pendingCanvasFocus: { kind: string; ref: string; name: string; view: "plan" | "system" | null } | null;
+  triggerCanvasFocus: (f: { kind: string; ref: string; name: string; view: "plan" | "system" | null }) => void;
+  clearCanvasFocus: () => void;
+
   // ─── Artifact actions ────────────────────────────────────────────────
   /**
    * Register a `CanvasArtifact` by id in `state.artifacts`. Nothing
@@ -779,6 +791,7 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       pendingInputDraft: null,
       pendingInputAppend: null,
       pendingDeeplink: null,
+      pendingCanvasFocus: null,
       canvasViewport: null,
       proposals: {},
       subAgentRuns: {},
@@ -1240,6 +1253,10 @@ export const useCanvasChatStore = create<CanvasChatState>()(
       triggerDeeplink: (dl) => set({ pendingDeeplink: dl }, false, "triggerDeeplink"),
 
       clearDeeplink: () => set({ pendingDeeplink: null }, false, "clearDeeplink"),
+
+      triggerCanvasFocus: (f) => set({ pendingCanvasFocus: f }, false, "triggerCanvasFocus"),
+
+      clearCanvasFocus: () => set({ pendingCanvasFocus: null }, false, "clearCanvasFocus"),
 
       setCanvasViewport: (v) => set({ canvasViewport: v }, false, "setCanvasViewport"),
     }),

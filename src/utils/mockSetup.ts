@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";
+import { MOCK_SYS } from "@/app/api/mock/graph/system-map-fixture";
+import { upsertEdge } from "@/lib/urn/edges";
+import { graphUrn } from "@/app/org/[githubLogin]/_components/infinite-canvas/system/edges";
 import { mockPoolState } from "@/lib/mock/pool-manager-state";
 import { EncryptionService } from "@/lib/encryption";
 import { HTML_PAGE_FIXTURES, htmlPageFixtureS3Key } from "@/lib/mock/html-fixtures";
@@ -579,6 +582,7 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
       }
     }
     await ensureMockConnectionData(existing.id, userId);
+    await ensureMockSystemEdges(existing.id);
     await ensureMockOrgInitiatives(existing.id, userId);
     await ensureMockHtmlPages(existing.id, userId);
     await ensureMockConversationsForUser(existing.id, userId);
@@ -729,9 +733,28 @@ export async function ensureMockOrgData(userId: string): Promise<void> {
   }
 
   await ensureMockConnectionData(workspace.orgId, userId);
+  await ensureMockSystemEdges(workspace.orgId);
   await ensureMockOrgInitiatives(workspace.orgId, userId);
   await ensureMockHtmlPages(workspace.orgId, userId);
   await ensureMockConversationsForUser(workspace.orgId, userId);
+}
+
+/**
+ * The System view's stored edges for the mock plan (`UrnEdge`: IN_AREA, EXTENDS): the planned features
+ * the repo fallback can't place stand in a district, and one feature extends another so a stack has two
+ * tiers. Idempotent (`upsertEdge`).
+ */
+async function ensureMockSystemEdges(orgId: string): Promise<void> {
+  const f = (id: string) => graphUrn("mock-org", "mock-org-frontend", "InitiativeFeature", id);
+  const sys = (id: string) => graphUrn("mock-org", "mock-org-frontend", "SysComponent", id);
+  try {
+    await upsertEdge(orgId, f("mock-f-name"), sys(MOCK_SYS.auth), "IN_AREA");
+    await upsertEdge(orgId, f("mock-f-rank"), sys(MOCK_SYS.janitor), "IN_AREA");
+    await upsertEdge(orgId, f("mock-f-mute"), sys(MOCK_SYS.janitor), "IN_AREA");
+    await upsertEdge(orgId, f("mock-f-link"), f("mock-f-gh"), "EXTENDS");
+  } catch (error) {
+    console.error("[MockSetup] Failed to seed mock System view edges:", error);
+  }
 }
 
 async function ensureMockConnectionData(orgId: string, userId: string): Promise<void> {

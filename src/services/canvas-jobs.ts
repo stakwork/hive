@@ -17,7 +17,7 @@ import { mockCanvasJobs } from "@/app/api/mock/graph/canvas-jobs";
 import { mockLatency } from "@/app/api/mock/graph/latency";
 import { MOCK_STRUT_SWARM_ID } from "@/app/api/mock/graph/strut-artifacts";
 import { parseArtifactRefs, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
-import { canvasFocusOfInput, type CanvasJob, type CanvasJobState } from "@/lib/canvas/canvas-jobs";
+import { ALL_INITIATIVES, canvasFocusOfInput, type CanvasJob, type CanvasJobState } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { notifyCanvasCardJob } from "@/lib/pusher";
@@ -27,8 +27,9 @@ import { getWorkspaceOrgGithubLogin, validateWorkspaceAccess } from "@/services/
 const LOG_TAG = "CANVAS_JOBS";
 /** How far back the canvas looks for a card's jobs. */
 const WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-/** Turns read per initiative, newest first. */
+/** Turns read per initiative, newest first (the org-wide read takes more: it spans every initiative). */
 const MAX_ROWS = 200;
+const MAX_ROWS_ALL = 600;
 
 const useMocks = () => process.env.USE_MOCKS === "true";
 
@@ -96,6 +97,8 @@ export interface CanvasJobsRead {
 /**
  * The jobs on one initiative's cards that `userId` may see: rows whose
  * focus names the initiative, in workspaces of the org the caller can read.
+ * `ALL_INITIATIVES` reads every initiative's jobs of the org (rows with any
+ * canvas focus, in the org's readable workspaces) for the System view.
  * Chats stay personal; the jobs and their artifacts are the canvas's.
  */
 export async function listCanvasJobs(orgId: string, userId: string, initiativeRefId: string): Promise<CanvasJobsRead> {
@@ -112,10 +115,12 @@ export async function listCanvasJobs(orgId: string, userId: string, initiativeRe
       kind: JOB_TURN_KIND,
       jobId: { not: null },
       createdAt: { gte: new Date(Date.now() - WINDOW_MS) },
-      input: { path: ["focus", "initiativeRefId"], equals: initiativeRefId },
+      ...(initiativeRefId === ALL_INITIATIVES
+        ? { input: { path: ["focus", "initiativeRefId"], string_starts_with: "" } }
+        : { input: { path: ["focus", "initiativeRefId"], equals: initiativeRefId } }),
     },
     orderBy: { createdAt: "desc" },
-    take: MAX_ROWS,
+    take: initiativeRefId === ALL_INITIATIVES ? MAX_ROWS_ALL : MAX_ROWS,
     select: {
       id: true,
       jobId: true,

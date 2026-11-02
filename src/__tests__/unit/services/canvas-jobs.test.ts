@@ -133,6 +133,14 @@ describe("listCanvasJobs", () => {
     });
   });
 
+  it("reads every initiative's jobs with `all`", async () => {
+    mockFindMany.mockResolvedValue([]);
+    await listCanvasJobs("org-1", "u-2", "all");
+    const args = mockFindMany.mock.calls.at(-1)![0];
+    expect(args.where.input).toEqual({ path: ["focus", "initiativeRefId"], string_starts_with: "" });
+    expect(args.take).toBeGreaterThan(200);
+  });
+
   it("one job per id: the newest turn's state, the first turn's title and starter, its card", async () => {
     mockFindMany.mockResolvedValue([
       turn({

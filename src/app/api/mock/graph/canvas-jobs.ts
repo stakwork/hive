@@ -8,7 +8,7 @@
  */
 
 import type { ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
-import type { CanvasJob, CanvasJobState } from "@/lib/canvas/canvas-jobs";
+import { ALL_INITIATIVES, type CanvasJob, type CanvasJobState } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { notifyCanvasCardJob } from "@/lib/pusher";
@@ -36,14 +36,16 @@ export function resetMockCanvasJobs() {
  * module stays free of the server's job-turn code).
  */
 export function mockCanvasJobs(
+  /** One initiative's ref_id, or `ALL_INITIATIVES` for every initiative's jobs (the System view's org-wide read). */
   initiativeRefId: string,
   map: (entries: StrutArtifact[]) => ArtifactRef[] = () => [],
 ): {
   jobs: CanvasJob[];
   artifactsByRef: Record<string, ArtifactRef[]>;
 } {
+  const all = initiativeRefId === ALL_INITIATIVES;
   const mine = [...seededJobs(initiativeRefId), ...jobs().values()]
-    .filter((j) => j.job.initiativeRefId === initiativeRefId)
+    .filter((j) => all || j.job.initiativeRefId === initiativeRefId)
     .sort((a, b) => b.job.updatedAt - a.job.updatedAt);
   const artifactsByRef: Record<string, ArtifactRef[]> = {};
   for (const j of mine) {
@@ -58,7 +60,7 @@ const LOADED_AT = Date.now();
 
 /** The mock strut jobs on this initiative's cards (`strut-artifacts.ts`), as of a few hours ago. */
 function seededJobs(initiativeRefId: string): MockJob[] {
-  return MOCK_STRUT_JOBS.filter((j) => j.initiativeRefId === initiativeRefId).map((j) => ({
+  return MOCK_STRUT_JOBS.filter((j) => initiativeRefId === ALL_INITIATIVES || j.initiativeRefId === initiativeRefId).map((j) => ({
     job: {
       jobId: j.jobId,
       runId: j.jobId,
@@ -66,7 +68,7 @@ function seededJobs(initiativeRefId: string): MockJob[] {
       state: j.state,
       startedBy: { id: "mock-user", name: "Dev User" },
       refId: j.refId,
-      initiativeRefId,
+      initiativeRefId: j.initiativeRefId,
       updatedAt: LOADED_AT - j.hoursAgo * HOUR,
       ...(j.error ? { error: j.error } : {}),
     },

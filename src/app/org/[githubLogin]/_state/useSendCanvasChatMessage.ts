@@ -166,6 +166,21 @@ export async function stopCanvasChatTurn(conversationId: string): Promise<boolea
   }
 }
 
+/** Tool calls whose `focus_canvas` result the canvas has been handed (the stream re-delivers a call as it grows). */
+const handledFocusCalls = new Set<string>();
+
+/** A `focus_canvas` result that found something, as the store's slot takes it. */
+export function focusOf(output: unknown) {
+  const o = output as { kind?: unknown; ref?: unknown; name?: unknown; view?: unknown } | null;
+  if (!o || typeof o.ref !== "string" || typeof o.kind !== "string") return null;
+  return {
+    kind: o.kind,
+    ref: o.ref,
+    name: typeof o.name === "string" ? o.name : o.ref,
+    view: o.view === "system" ? ("system" as const) : o.view === "plan" ? ("plan" as const) : null,
+  };
+}
+
 export function useSendCanvasChatMessage() {
   const { processStream } = useStreamProcessor();
 
@@ -444,6 +459,13 @@ export function useSendCanvasChatMessage() {
                     );
                   }
                 }
+              }
+
+              // `focus_canvas` (the agent's "pull up X"): hand its result to the infinite canvas, once per call.
+              const focus = toolCall.toolName === "focus_canvas" ? focusOf(toolCall.output) : null;
+              if (focus && !handledFocusCalls.has(toolCall.id)) {
+                handledFocusCalls.add(toolCall.id);
+                useCanvasChatStore.getState().triggerCanvasFocus(focus);
               }
 
               // Local repo_agent run-active detection for instant Stop feedback.

@@ -84,6 +84,22 @@ export interface Tokens {
   flash: string;
   focus: string;
 
+  /**
+   * The System view (`system/`): the map under the plan. Zone plates and district cells; the three tier looks
+   * (built: solid, in progress: dashed in the accent, planned: a faint dotted ghost); the Unmapped box.
+   */
+  sysPlate: string;
+  sysPlateBorder: string;
+  sysCell: string;
+  sysCellBorder: string;
+  sysBuilt: string;
+  sysOnBuilt: string;
+  sysBuilding: string;
+  sysBuildingBg: string;
+  sysPlanned: string;
+  sysUnmapped: string;
+  sysUnmappedBg: string;
+
   shadow: string;
   shadowBig: string;
   shadowPop: string;
@@ -136,6 +152,17 @@ export const PAPER: Tokens = {
   dropped: "#8f8571",
   flash: "rgba(250,204,21,.38)",
   focus: "#2563a8",
+  sysPlate: "rgba(236,227,207,.55)",
+  sysPlateBorder: "#cdbf9c",
+  sysCell: "rgba(253,251,244,.82)",
+  sysCellBorder: "#d8cba8",
+  sysBuilt: "#2f7d4f",
+  sysOnBuilt: "#ffffff",
+  sysBuilding: "#2563a8",
+  sysBuildingBg: "rgba(227,237,248,.55)",
+  sysPlanned: "#a49a82",
+  sysUnmapped: "#8a877f",
+  sysUnmappedBg: "rgba(240,238,232,.6)",
   shadow: "0 1px 1px rgba(80,60,20,.08), 0 6px 16px rgba(80,60,20,.12)",
   shadowBig: "0 2px 2px rgba(80,60,20,.08), 0 24px 60px rgba(80,60,20,.16)",
   shadowPop: "0 2px 4px rgba(80,60,20,.1), 0 24px 60px rgba(80,60,20,.25)",

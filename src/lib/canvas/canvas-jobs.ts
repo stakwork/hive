@@ -17,6 +17,13 @@
 import { z } from "zod";
 import type { InitiativeFocusHint } from "@/lib/canvas/graph-focus";
 
+/**
+ * `initiative=all` on the read route: the jobs on every initiative of the org
+ * (the System view's org-wide read; old jobs show up with no migration, a job is
+ * on the card in `input.focus.refId` whichever initiative it names).
+ */
+export const ALL_INITIATIVES = "all";
+
 /** The card a job is on — `StrutRun.input.focus`. */
 export type CanvasFocus = {
   workspaceSlug: string;
