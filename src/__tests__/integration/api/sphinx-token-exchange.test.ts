@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "@/app/api/auth/sphinx/token/route";
 import { db } from "@/lib/db";
 import { invokeRoute } from "@/__tests__/harness/route";
@@ -7,6 +7,9 @@ import { EncryptionService } from "@/lib/encryption";
 import { decode } from "next-auth/jwt";
 import * as sphinxVerify from "@/lib/auth/sphinx-verify";
 import { lightningPubkeyFields, lightningPubkeyHash } from "@/lib/auth/lightning-pubkey";
+import { BARE_TOKEN_REFUSED } from "@/lib/auth/sphinx-token-accept";
+import type { SphinxTokenBinding } from "@/lib/auth/sphinx-verify";
+import { bareSphinxToken, boundSphinxToken, sphinxKey, testHiveHost } from "@/__tests__/support/helpers/sphinx-token";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -596,6 +599,98 @@ describe("POST /api/auth/sphinx/token Integration Tests", () => {
 
       // Verify that signature verification was called
       expect(verifySpy).toHaveBeenCalled();
+    });
+  });
+
+  describe("Bound tokens (docs/plans/sphinx-token-binding.md)", () => {
+    const node = sphinxKey();
+    const K1 = "ab".repeat(32);
+    const login = (challenge = K1): SphinxTokenBinding => ({ host: testHiveHost(), purpose: "login", challenge });
+    const issue = (k1: string, expiresAt = new Date(Date.now() + 5 * 60 * 1000)) =>
+      db.sphinxChallenge.create({ data: { k1, used: false, expiresAt } });
+    const exchange = (body: Record<string, unknown>) =>
+      invokeRoute(POST, { method: "POST", body: { pubkey: node.pubkey, timestamp: testTimestamp, ...body } });
+    const issued = (k1 = K1) => db.sphinxChallenge.findUnique({ where: { k1 }, select: { used: true, pubkey: true } });
+    const savedFlag = process.env.SPHINX_TOKEN_REQUIRE_BOUND;
+    // The real bare verifier, read before any test spies on it: these tokens are signed.
+    const realVerifySphinxToken = sphinxVerify.verifySphinxToken;
+
+    beforeEach(async () => {
+      vi.mocked(sphinxVerify.verifySphinxToken).mockImplementation(realVerifySphinxToken);
+      await db.sphinxChallenge.deleteMany({});
+      await db.user.update({ where: { id: testUserId }, data: lightningPubkeyFields(node.pubkey) });
+      await issue(K1);
+    });
+
+    afterEach(async () => {
+      if (savedFlag === undefined) delete process.env.SPHINX_TOKEN_REQUIRE_BOUND;
+      else process.env.SPHINX_TOKEN_REQUIRE_BOUND = savedFlag;
+      await db.sphinxChallenge.deleteMany({});
+    });
+
+    it("the bare token still exchanges, and says so", async () => {
+      const result = await exchange({ token: await bareSphinxToken(node.priv) });
+      expect(result.status).toBe(200);
+      const data = await result.json<{ token: string; tokenFormat: string }>();
+      expect(data.token).toBeDefined();
+      expect(data.tokenFormat).toBe("bare");
+    });
+
+    it("takes a token bound to a challenge Hive issued, and spends it: no pubkey on it, no second exchange", async () => {
+      const token = await boundSphinxToken(node.priv, login());
+      const result = await exchange({ token, challenge: K1 });
+      expect(result.status).toBe(200);
+      const data = await result.json<{ token: string; tokenFormat: string }>();
+      const decoded = await decode({ token: data.token, secret: process.env.NEXTAUTH_SECRET! });
+      expect(decoded?.id).toBe(testUserId);
+      expect(data.tokenFormat).toBe("bound");
+      expect(await issued()).toEqual({ used: true, pubkey: null });
+
+      const again = await exchange({ token, challenge: K1 });
+      expect(again.status).toBe(400);
+      expect((await again.json<{ error: string }>()).error).toBe("Challenge already used");
+    });
+
+    it("refuses a bound token without its challenge, for another one, or for another host", async () => {
+      await issue("cd".repeat(32));
+      for (const body of [
+        { token: await boundSphinxToken(node.priv, login()) },
+        { token: await boundSphinxToken(node.priv, login()), challenge: "cd".repeat(32) },
+        { token: await boundSphinxToken(node.priv, { ...login(), host: "hive-staging.sphinx.chat" }), challenge: K1 },
+        { token: await boundSphinxToken(node.priv, { ...login(), purpose: "register" }), challenge: K1 },
+      ]) {
+        const result = await exchange(body);
+        expect(result.status).toBe(401);
+        expect((await result.json<{ error: string }>()).error).toBe("Invalid signature");
+      }
+      expect(await issued()).toEqual({ used: false, pubkey: null });
+      expect(await issued("cd".repeat(32))).toEqual({ used: false, pubkey: null });
+    });
+
+    it("a challenge Hive never issued, one that expired, or one that is not a string is refused before the signature", async () => {
+      await issue("ef".repeat(32), new Date(Date.now() - 1000));
+      const token = await boundSphinxToken(node.priv, login());
+      expect((await exchange({ token, challenge: "12".repeat(32) })).status).toBe(404);
+      const expired = await exchange({ token: await boundSphinxToken(node.priv, login("ef".repeat(32))), challenge: "ef".repeat(32) });
+      expect(expired.status).toBe(400);
+      expect((await expired.json<{ error: string }>()).error).toBe("Challenge expired");
+      const notString = await exchange({ token, challenge: 42 });
+      expect(notString.status).toBe(400);
+      expect((await notString.json<{ error: string }>()).error).toBe("Invalid challenge");
+    });
+
+    it("with SPHINX_TOKEN_REQUIRE_BOUND, refuses the bare token, challenge or not, and takes the bound one", async () => {
+      process.env.SPHINX_TOKEN_REQUIRE_BOUND = "true";
+      for (const body of [{}, { challenge: K1 }]) {
+        const result = await exchange({ token: await bareSphinxToken(node.priv), ...body });
+        expect(result.status).toBe(401);
+        expect((await result.json<{ error: string }>()).error).toBe(BARE_TOKEN_REFUSED);
+      }
+      expect(await issued()).toEqual({ used: false, pubkey: null });
+
+      const bound = await exchange({ token: await boundSphinxToken(node.priv, login()), challenge: K1 });
+      expect(bound.status).toBe(200);
+      expect((await bound.json<{ tokenFormat: string }>()).tokenFormat).toBe("bound");
     });
   });
 });
