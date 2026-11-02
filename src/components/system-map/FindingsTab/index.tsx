@@ -11,6 +11,15 @@ import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { toast } from "sonner";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  countByKind,
+  FINDING_KIND_FILTERS,
+  FINDING_KIND_LABELS,
+  matchesKind,
+  parseKindFilter,
+  type FindingKindFilter,
+} from "@/lib/system-map/finding-kind";
 import { fixDisabledReason, isActiveFixStatus, MAX_FIX_BATCH } from "@/lib/system-map/finding-fix";
 import type { SystemMapFinding, SystemMapFindingFix, SystemMapFindingsResponse } from "@/types/system-map";
 import { FixBadge, FixButton } from "./FindingFixStatus";
@@ -95,6 +104,11 @@ function FindingCard({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <SeverityBadge severity={severityOf(finding)} />
+                {finding.kind && (
+                  <Badge variant="outline" className="text-[11px] capitalize" data-testid="finding-kind-badge">
+                    {finding.kind}
+                  </Badge>
+                )}
                 {finding.cweId && (
                   <Badge variant="secondary" className="font-mono text-[11px]">
                     {finding.cweId}
@@ -160,6 +174,20 @@ export function FindingsTab() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [severity, setSeverity] = useState<string | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const kind = parseKindFilter(searchParams?.get("kind"));
+  const setKind = useCallback(
+    (next: FindingKindFilter) => {
+      const params = new URLSearchParams(searchParams?.toString() ?? "");
+      if (next === "all") params.delete("kind");
+      else params.set("kind", next);
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
   const { canWrite } = useWorkspaceAccess();
   const [fixes, setFixes] = useState<Map<string, SystemMapFindingFix>>(() => new Map());
   const [fixingRefs, setFixingRefs] = useState<Set<string>>(() => new Set());
@@ -262,12 +290,16 @@ export function FindingsTab() {
     return [...out.entries()];
   }, [findings]);
 
+  const kindCounts = useMemo(() => countByKind(findings), [findings]);
+
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
     return findings.filter(
-      (finding) => (!severity || severityOf(finding) === severity) && (!query || matches(finding, query)),
+      (finding) => matchesKind(finding, kind) &&
+        (!severity || severityOf(finding) === severity) &&
+        (!query || matches(finding, query)),
     );
-  }, [findings, search, severity]);
+  }, [findings, search, severity, kind]);
 
   const select = useCallback((refId: string, on: boolean) => {
     setSelected((prev) => {
@@ -329,6 +361,22 @@ export function FindingsTab() {
                 onClick={() => setSeverity(severity === value ? null : value)}
               >
                 {value} · {count}
+              </Button>
+            ))}
+          </div>
+        )}
+        {findings.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1" data-testid="findings-kind-filter">
+            {FINDING_KIND_FILTERS.map((value) => (
+              <Button
+                key={value}
+                variant={kind === value ? "secondary" : "ghost"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setKind(value)}
+                data-testid={`findings-kind-${value}`}
+              >
+                {FINDING_KIND_LABELS[value]} · {kindCounts[value]}
               </Button>
             ))}
           </div>
