@@ -45,8 +45,9 @@ export function orchestratorPrompt(workspaceSlug: string, message: string): stri
 
 /**
  * `context.line`: what the host knows about the turn, put before the prompt
- * — the time and the person's time zone (`"Sun 19 Oct 14:02, Europe/London. "`).
- * An unknown zone falls back to UTC.
+ * — the time and the person's time zone (`"Mon, 19 Oct 2026, 14:02, Europe/London. "`).
+ * An unknown zone falls back to UTC. The year is in it: it is the only date
+ * the orchestrator is told, and without one the model guesses the year.
  */
 export function orchestratorContextLine(now: Date, timeZone: string | undefined): string {
   const zone = timeZone?.trim() || "UTC";
@@ -55,6 +56,7 @@ export function orchestratorContextLine(now: Date, timeZone: string | undefined)
       weekday: "short",
       day: "numeric",
       month: "short",
+      year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
       hourCycle: "h23",
