@@ -247,8 +247,9 @@ device as it is.
      in Hive gets no line — it is the card `metadata` draws in Peel;
    - `metadata`, as its JSON in the message's own `metadata` field:
      `{ strut: { workspace, artifacts, proposals? } }`, the field the call
-     chat carries (voice PR #20); `proposals` on a proposal's post and on
-     a decision's (below, "A proposal");
+     chat carries (voice PR #20), references only and at most 2 KB
+     ("Deliverables"); `proposals` on a proposal's post and on a decision's
+     (below, "A proposal");
    - threaded under `replyTo`, and split into type-34 chunks past 869 bytes.
      The whole message, metadata included, is what is chunked.
 
@@ -276,22 +277,27 @@ danger? }], actions: { accept, reject }, full }`. Hive, strut's UI and Peel
 each have one renderer for it.
 
 - **The post.** Its line stays "Waiting for <linker> to approve: <title>",
-  which everyone reads. Its `metadata` carries the proposal, beside an
-  `artifacts` list that may be empty:
+  which everyone reads. Its `metadata` carries a stub of the proposal,
+  beside an `artifacts` list that may be empty (2026-11-01, strut
+  `plans/proposal-links.md`):
 
   ```json
   { "strut": { "workspace": "<slug>", "artifacts": [],
-    "proposals": [{ "id": "…", "step": "package/install", "title": "…", "summary": "…",
-                    "card": { "v": 1, … }, "status": "pending", "url": "/proposals/<id>",
-                    "rationale": "…", "createdAt": "…" }] } }
+    "proposals": [{ "id": "…", "step": "package/install", "title": "…",
+                    "status": "pending", "url": "/proposals/<id>" }] } }
   ```
 
-  `card` is strut's card as the run reported it, none from an older strut;
   `url` is strut-relative; `workspace` is the one whose strut ran the turn.
-  Hive keeps `summary`, `card` and the workspace on the proposal's row when
-  the turn lands (`orchestrator-turn.ts`). Peel draws the card on the post.
-  The card can be most of a post's size: up to 12 fields of 500
-  characters, so a long one is a few dozen sats in chunks ("Money").
+  No card, summary or rationale (`tribeEnvelope`): a card is up to 12
+  fields of 500 characters, which went to every member, in the org or not,
+  as a few dozen sats in chunks. Peel reads the card from the record on the
+  org's strut, `GET /proposals/<id>`, with the member's own person token
+  (strut#407: a person token reads any proposal on its strut by id), and
+  draws it with the full input. A member who is not paired to the org, or
+  whose Peel is paired to another, sees the title. Hive keeps `summary`,
+  `card` and the workspace on the proposal's row when the turn lands
+  (`orchestrator-turn.ts`): the canvas draws the card, and the owner's
+  reply is matched to its button words.
 - **The owner decides by replying.** A reply to the post whose words are
   the card's own button word (`actions.accept` / `actions.reject`, what Peel
   sends), or one of accept, approve, yes, ok / reject, decline, no — in any
@@ -344,6 +350,16 @@ each have one renderer for it.
   pairing with that workspace, as the call chat does (`CallChat.artifacts`,
   `PeelCore/CallChat.swift`). Org members open the file in Peel; everyone
   else sees the titles.
+- **References only** (2026-11-01, `tribeEnvelope`). Nothing large rides
+  in a Sphinx message: each entry is its name (`id`, `kind`, `title`) and
+  its address (an app, else a `url`, else a `path`; a peer's file also its
+  `peer`, `via` and `job`, which Peel opens it by). Never inline `content`,
+  `summary` or `label`, whatever the row holds beside the address. The
+  metadata is at most 2 KB of JSON (`MAX_TRIBE_METADATA_BYTES`): the
+  proposals first, then the deliverables in order, the rest left out; the
+  text's links and the conversation in Hive stand for them. The daemon is
+  to refuse metadata over the same cap (strut `plans/proposal-links.md`
+  §2), so no later change in Hive puts a card back into a tribe.
 - **Forged entries.** A tribe message's sender can't be verified (alias
   only), so any member could forge a `strut` field. An entry only opens
   against the viewer's own org with their own token, so a forged one shows
@@ -394,9 +410,13 @@ with the alias "Jamie". Measured in a free tribe in step 0:
 | A short reply | 1 |
 | A 3.2 KB reply | 11 (11 chunks) |
 
-Replies that carry deliverables in `metadata` run long, so expect 5–15 sats
-a reply. In a priced tribe, sphinx-chat pays the full price on every chunk,
-while the tribe server checks the price only on whole messages (it exempts
+Replies that carry deliverables in `metadata` run longer; the metadata is
+at most 2 KB, about six chunks, so expect 5–15 sats a reply. A proposal's
+post is its line and about 200 bytes of stub: a sat or two, where the
+card it carried before 2026-11-01 was up to a few dozen.
+
+In a priced tribe, sphinx-chat pays the full price on every chunk, while
+the tribe server checks the price only on whole messages (it exempts
 chunks, `tribes/src/forward.rs`). So Jamie overpays there; that wasn't
 tested. Jamie pays from one balance for every org. Whoever runs it tops it
 up with an invoice from the daemon's `POST /invoice`.
@@ -500,9 +520,11 @@ Still to add:
 4. **Rendering.** Show Jamie's replies' `strut` field in tribes as the call
    chat does. This is a new, narrow rule beside "control lines are never shown
    in a tribe": deliverables only, apps behind a confirm.
-5. **Proposal cards** (stakwork/peel#464). Draw `strut.proposals[].card` on
-   Jamie's post; for the tribe's owner, send the card's button word as a
-   reply to the post; move the card on from a decision's post.
+5. **Proposal cards** (stakwork/peel#464). Draw the proposal's card on
+   Jamie's post, read from the org's strut by the stub's id (strut
+   `plans/proposal-links.md` §2; a post from an older Hive still carries
+   `strut.proposals[].card`); for the tribe's owner, send the card's button
+   word as a reply to the post; move the card on from a decision's post.
 
 ### No change
 
@@ -526,11 +548,15 @@ The tribe server, the Sphinx core, strut, sphinx-voice.
 5. **One Jamie, or one per org.** One account for every org is simplest. A
    Jamie per org (its own name and photo) means more accounts, and Hive
    assigns each tribe to one; nothing else changes.
-6. **Each asker as themselves, later.** Peel can sign a mention with the
-   sender's key in `metadata`, and Hive checks it against
-   `User.lightningPubkey`. Peel users then count as themselves; anyone else
-   falls back to the linker. No tribe-server change. Hive's lookup by
-   pubkey is a linear decrypt-and-compare today, so it needs an index.
+6. **Each asker as themselves, later.** Item two of strut
+   `plans/proposal-links.md` (§3): the tribe server tells Jamie, and only
+   Jamie, who is speaking, as the sender's pubkey on Jamie's copy of the
+   message, once the owner grants it. Hive maps it to
+   `User.lightningPubkey` and runs the turn as that member, so their
+   proposals are theirs and a reply decides one only from the proposal's
+   own actor. Anyone unidentified falls back to the linker. Hive's lookup
+   by pubkey is a linear decrypt-and-compare today, so it needs a hashed
+   column. Its own plan belongs in stakwork/sphinx.
 7. **Chunks in a priced tribe.** In a free tribe, every chunk costs 1 sat
    (step 0). In a priced one, should sphinx-chat pay the price on the first
    chunk only, since the server exempts the rest? It needs a test against a
