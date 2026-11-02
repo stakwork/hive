@@ -81,6 +81,16 @@ export const ORCHESTRATOR_CALL_LINE =
   "Names before a message are what the call shows, not verified. ";
 
 /**
+ * The call line, saying whose turn it is when Hive knew the speaker
+ * (`asker`: their name as the call shows it) and the turn runs as them —
+ * the tribe line's `asker`.
+ */
+export function orchestratorCallLine(call: true | { asker: string }): string {
+  if (call === true) return ORCHESTRATOR_CALL_LINE;
+  return ORCHESTRATOR_CALL_LINE + `${call.asker} is a member of this org; this turn runs as them. `;
+}
+
+/**
  * Appended to `context.line` on a turn in a Sphinx tribe — a mention
  * (`/api/tribes/messages`, with the asker's alias) or a wake on the tribe's
  * conversation (`strut-orchestrator-wake.ts`, no asker): where the reply

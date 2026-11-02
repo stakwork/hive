@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
 import type { CallRequestSource } from "@/lib/calls/callMessages";
-import { peekCallRecord, setCallConversation, type CallRecord } from "@/lib/calls/callRecord";
+import { callMemberOf, peekCallRecord, setCallConversation, type CallRecord } from "@/lib/calls/callRecord";
 import { authorizeCallRequest } from "@/lib/calls/callRequest";
 import { LockAcquireTimeoutError, withLock } from "@/lib/locks/redis-lock";
 import { ORCHESTRATOR_BUSY_NOTE } from "@/lib/strut-orchestrator";
@@ -25,15 +25,21 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  * transcript excerpt, when there is one, as an ordinary chat attachment,
  * and who asked and how on the row (`CallRequestSource`), for the replay
  * to someone who joins (`/api/calls/messages?requests=1`).
- * Then one orchestrator turn is launched as the person who started the
- * call, with the call line on its context. The answer is at once: the reply
- * lands as rows, which voice reads from `/api/calls/messages`.
+ * Then one orchestrator turn is launched with the call line on its
+ * context, as the speaker when voice names an identity Hive minted their
+ * ticket under (`/api/strut-devices/calls/ticket`) and they can use the
+ * workspace, else as the person who started the call
+ * (`docs/plans/call-speaker-identity.md`). The conversation is the call's
+ * either way, kept under the person who started it. The answer is at once:
+ * the reply lands as rows, which voice reads from `/api/calls/messages`.
  */
 export const maxDuration = 60;
 
 const MAX_SPEAKER_CHARS = 200;
 const MAX_TEXT_CHARS = 20_000;
 const MAX_FILENAME_CHARS = 200;
+/** A LiveKit identity: meet's are a typed name and 6 characters, Hive's 37. */
+const MAX_IDENTITY_CHARS = 256;
 /** An excerpt is minutes of talk; strut's own cap on a file is 10 MB. */
 const MAX_TRANSCRIPT_BYTES = 1024 * 1024;
 
@@ -42,6 +48,8 @@ interface TurnBody {
   text: string;
   source: "voice" | "chat";
   transcript?: { name: string; text: string };
+  /** The speaker's LiveKit identity, as LiveKit told voice. */
+  identity?: string;
 }
 
 /** The body, or what is wrong with it. */
@@ -55,13 +63,21 @@ function parseTurnBody(raw: unknown): TurnBody | string {
   if (!text) return "text is required";
   if (text.length > MAX_TEXT_CHARS) return `text is over ${MAX_TEXT_CHARS} characters`;
   if (b.source !== "voice" && b.source !== "chat") return 'source must be "voice" or "chat"';
-  if (b.transcript === undefined || b.transcript === null) return { speaker, text, source: b.source };
+  let identity: string | undefined;
+  if (b.identity !== undefined && b.identity !== null) {
+    if (typeof b.identity !== "string" || !b.identity || b.identity.length > MAX_IDENTITY_CHARS) {
+      return "identity must be a LiveKit identity";
+    }
+    identity = b.identity;
+  }
+  const turn: TurnBody = { speaker, text, source: b.source, ...(identity ? { identity } : {}) };
+  if (b.transcript === undefined || b.transcript === null) return turn;
   const t = b.transcript as Record<string, unknown>;
   const name = typeof t?.name === "string" ? t.name.trim() : "";
   if (!name || name.length > MAX_FILENAME_CHARS || /[/\\]/.test(name)) return "transcript.name must be a file name";
   if (typeof t.text !== "string" || !t.text.trim()) return "transcript.text is required";
   if (Buffer.byteLength(t.text, "utf8") > MAX_TRANSCRIPT_BYTES) return "transcript.text is over 1 MB";
-  return { speaker, text, source: b.source, transcript: { name, text: t.text } };
+  return { ...turn, transcript: { name, text: t.text } };
 }
 
 /**
@@ -77,6 +93,29 @@ async function storeTranscript(workspaceId: string, transcript: { name: string; 
   return { path, filename: transcript.name, mimeType: "text/plain", size: bytes.length };
 }
 
+/**
+ * Who a turn runs as, with their access to the call's workspace: the
+ * speaker when Hive minted the identity voice named for them and they can
+ * still use the workspace, else the person who started the call. Null when
+ * neither can — a call outlives a membership change.
+ */
+async function turnUser(
+  callKey: string,
+  record: CallRecord,
+  identity: string | undefined,
+): Promise<{ userId: string; identified: boolean; workspaceId: string } | null> {
+  const speakerId = identity ? await callMemberOf(callKey, identity) : null;
+  if (speakerId) {
+    const access = await validateWorkspaceAccess(record.workspaceSlug, speakerId);
+    if (access.hasAccess && access.canRead && access.workspace) {
+      return { userId: speakerId, identified: true, workspaceId: access.workspace.id };
+    }
+  }
+  const access = await validateWorkspaceAccess(record.workspaceSlug, record.userId);
+  if (!access.hasAccess || !access.canRead || !access.workspace) return null;
+  return { userId: record.userId, identified: false, workspaceId: access.workspace.id };
+}
+
 async function takeTurn(
   request: NextRequest,
   callKey: string,
@@ -84,14 +123,13 @@ async function takeTurn(
   orgId: string,
   body: TurnBody,
 ): Promise<NextResponse> {
-  const { userId, workspaceSlug } = record;
+  const { workspaceSlug } = record;
 
-  // Turns run as the person who started the call, so they must still be
-  // able to use its workspace — a call outlives a membership change.
-  const access = await validateWorkspaceAccess(workspaceSlug, userId);
-  if (!access.hasAccess || !access.canRead || !access.workspace) {
+  const runAs = await turnUser(callKey, record, body.identity);
+  if (!runAs) {
     return NextResponse.json({ error: "The person who started this call can no longer use its workspace." }, { status: 403 });
   }
+  const { userId } = runAs;
 
   // Refused before anything is written: a message strut never gets would
   // sit in the conversation unanswered.
@@ -99,12 +137,18 @@ async function takeTurn(
     return NextResponse.json({ busy: ORCHESTRATOR_BUSY_NOTE }, { status: 409 });
   }
 
-  const attachments = body.transcript ? [await storeTranscript(access.workspace.id, body.transcript)] : [];
+  const attachments = body.transcript ? [await storeTranscript(runAs.workspaceId, body.transcript)] : [];
   const message = `${body.speaker}: ${body.text}`;
-  const source: CallRequestSource = { kind: "call_request", speaker: body.speaker, via: body.source };
+  const source: CallRequestSource = {
+    kind: "call_request",
+    speaker: body.speaker,
+    via: body.source,
+    ...(runAs.identified ? { userId } : {}),
+  };
+  // The call's conversation, whoever speaks first: its starter's row.
   const conversationId = await persistCanvasUserMessage({
     orgId,
-    userId,
+    userId: record.userId,
     existingRowId: record.conversationId,
     turnId: randomUUID(),
     content: message,
@@ -127,7 +171,7 @@ async function takeTurn(
     publicBaseUrl: getBaseUrl(request.headers.get("host")),
     timeZone: user?.timezone ?? undefined,
     ...(model ? { model } : {}),
-    call: true,
+    call: runAs.identified ? { asker: body.speaker } : true,
   });
   switch (launched.status) {
     case "started":
