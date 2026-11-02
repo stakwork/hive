@@ -314,6 +314,10 @@ model TribeLink {
   workspaceSlug  String              @map("workspace_slug")
   // Who linked it; every turn runs as them.
   userId        String           @map("user_id")
+  // When the linker's device last marked Jamie to see who speaks in the
+  // tribe (stakwork/sphinx `docs/tribe-sender-identity.md`); null = never,
+  // or turned off. Kept here so every device of theirs reads the same.
+  sendersMarkedAt DateTime?      @map("senders_marked_at")
   createdAt     DateTime         @default(now()) @map("created_at")
   user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   org           SourceControlOrg @relation(fields: [orgId], references: [id], onDelete: Cascade)

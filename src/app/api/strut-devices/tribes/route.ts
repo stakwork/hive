@@ -3,7 +3,14 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { validateDeviceCredential } from "@/lib/strut-devices";
 import { jamieAccount } from "@/lib/tribes/jamie";
-import { linkableWorkspace, parseTribeRef, queueTribeJoin, tribeLinkView, tribeName } from "@/lib/tribes/tribeLinks";
+import {
+  linkableWorkspace,
+  parseTribeRef,
+  queueTribeJoin,
+  TRIBE_LINK_VIEW_SELECT,
+  tribeLinkView,
+  tribeName,
+} from "@/lib/tribes/tribeLinks";
 
 /**
  * /api/strut-devices/tribes — a paired device (Peel) links a Sphinx tribe
@@ -17,13 +24,17 @@ import { linkableWorkspace, parseTribeRef, queueTribeJoin, tribeLinkView, tribeN
  *
  * Header: Authorization: Bearer hivedev_…
  *
- * GET → 200 { jamie: { pubkey, alias }, tribes: [{ pubkey, host, name, workspace, org, createdAt }] }
- *   The person's links, so each of their devices shows the same pick.
+ * GET → 200 { jamie: { pubkey, alias }, tribes: [{ pubkey, host, name, workspace, org, sendersMarked, createdAt }] }
+ *   The person's links, so each of their devices shows the same pick, and
+ *   whether Jamie is marked to see who speaks there (`sendersMarked`, set by
+ *   `PATCH /api/strut-devices/tribes/<pubkey>`).
  *
  * POST { workspace: "<slug>", tribe: { pubkey, host, name? } }
  *   → 200 { jamie: { pubkey, alias }, tribe: { … } }
  *   Stores the link and tells Jamie to join (a member request in a private
  *   tribe, which the owner's Peel approves when its pubkey is `jamie.pubkey`).
+ *   A new link is not marked (`sendersMarked: false`); linking again keeps
+ *   the mark, since Jamie stays in the tribe.
  *   Linking a tribe again moves it to the workspace named and keeps its
  *   conversations; to another org, it drops them, so every message there
  *   starts a new one.
@@ -50,14 +61,7 @@ export async function GET(request: NextRequest) {
     if (auth instanceof NextResponse) return auth;
     const links = await db.tribeLink.findMany({
       where: { userId: auth.device.userId },
-      select: {
-        tribePubkey: true,
-        tribeHost: true,
-        name: true,
-        workspaceSlug: true,
-        createdAt: true,
-        org: { select: { githubLogin: true } },
-      },
+      select: TRIBE_LINK_VIEW_SELECT,
       orderBy: { createdAt: "asc" },
     });
     return NextResponse.json({ jamie: auth.jamie, tribes: links.map(tribeLinkView) });
@@ -111,14 +115,7 @@ export async function POST(request: NextRequest) {
         // reply to an earlier post starts a new one.
         ...(existing && existing.orgId !== workspace.orgId ? { threads: { deleteMany: {} } } : {}),
       },
-      select: {
-        tribePubkey: true,
-        tribeHost: true,
-        name: true,
-        workspaceSlug: true,
-        createdAt: true,
-        org: { select: { githubLogin: true } },
-      },
+      select: TRIBE_LINK_VIEW_SELECT,
     });
     // Already in it is done on Jamie's side, so a link made again joins again.
     await queueTribeJoin(tribe);
