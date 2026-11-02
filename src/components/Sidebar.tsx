@@ -59,7 +59,7 @@ import { isDevelopmentMode } from "@/lib/runtime";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { BugReportSlideout } from "./BugReportSlideout";
-import { STAK_TOOLKIT_SLUGS, OPENHEALTH_SLUGS, isLegalBenchmarksWorkspace } from "@/lib/eval-capture-slugs";
+import { STAK_TOOLKIT_SLUGS, OPENHEALTH_SLUGS, isLegalBenchmarksWorkspace, isLegalStrutWorkspace } from "@/lib/eval-capture-slugs";
 import { encodeStrutPath } from "@/lib/strut-apps";
 
 
@@ -611,7 +611,20 @@ export function Sidebar({ user }: SidebarProps) {
 
   // Create Legal items in a legal benchmarks workspace (Stakwork or strut) or dev mode
   const showLegal = isLegalBenchmarksWorkspace(workspaceSlug) || devMode;
-  const legalItems: NavigationItem[] = showLegal
+  // The strut workspace (openlaw-1) groups its Legal and LongMemory benchmark pages under "Benchmarks".
+  const legalItems: NavigationItem[] = isLegalStrutWorkspace(workspaceSlug)
+    ? [
+        {
+          icon: FlaskConical,
+          label: "Benchmarks",
+          href: "/benchmarks",
+          children: [
+            { icon: Scale, label: "Legal", href: "/legal/benchmarks" },
+            { icon: Brain, label: "LongMemory", href: "/longmemory/benchmarks" },
+          ],
+        },
+      ]
+    : showLegal
     ? [
         {
           icon: Scale,

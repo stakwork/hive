@@ -31,6 +31,17 @@ export function isLegalBenchmarksWorkspace(slug: string | null | undefined): boo
 }
 
 /**
+ * Workspaces with the LongMemory benchmark page (`longmemory-run` /
+ * `longmemory-batch` on the swarm's strut). Kept apart from LEGAL_SLUGS.
+ */
+export const LONGMEMORY_SLUGS: ReadonlyArray<string> = ["openlaw-1"];
+
+/** Does the workspace have the LongMemory benchmark page? */
+export function isLongMemoryWorkspace(slug: string | null | undefined): boolean {
+  return !!slug && LONGMEMORY_SLUGS.includes(slug);
+}
+
+/**
  * Workspaces where the OpenHealth Benchmarks section is visible.
  *
  * Gated to the `hive` workspace only — kept SEPARATE from LEGAL_SLUGS — do
