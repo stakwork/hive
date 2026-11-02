@@ -57,7 +57,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const list = await getOpenHealthTasks(resolved.target, split, benchmark);
-    if (!list) return NextResponse.json({ error: "Could not load the task list from strut" }, { status: 502 });
+    if (!list) return NextResponse.json({ error: "Could not load the task list from the strut server" }, { status: 502 });
     return NextResponse.json(list);
   } catch (error) {
     console.error("[OpenHealth] tasks GET error:", error);

@@ -41,7 +41,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if ("calls" in read) return NextResponse.json({ calls: read.calls, nodes: read.nodes, edges: read.edges });
     if ("denied" in read) return NextResponse.json({ error: `Not readable here: ${read.denied}` }, { status: 403 });
     if ("notFound" in read) return NextResponse.json({ error: "No run was launched there" }, { status: 404 });
-    return NextResponse.json({ error: "Could not read the run from strut" }, { status: 502 });
+    return NextResponse.json({ error: "Could not read the run from the strut server" }, { status: 502 });
   } catch (error) {
     logger.error("Could not answer a strut run's child calls", "STRUT_RUN_GRAPH", {
       error: error instanceof Error ? error.message : String(error),

@@ -153,7 +153,7 @@ function RunOutput({ run, workflowKey }: { run: SystemMapRun; workflowKey: Syste
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Strut is running the workflow…
+        Running the workflow on the strut server…
       </p>
     );
   }
@@ -271,7 +271,7 @@ export function RunCard({
               className="ml-auto inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
               data-testid="system-map-run-link"
             >
-              Open in strut
+              Open on the strut server
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
           )}
@@ -438,7 +438,7 @@ export function SystemMapRuns({
             {data?.workflow && (
               <>
                 {" "}
-                Strut workflow <code>{data.workflow}</code>.
+                Workflow <code>{data.workflow}</code>.
               </>
             )}
           </p>

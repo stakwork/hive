@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const trace = await readStrutRunGraph(row, peerAccessFor(request));
-    if (!trace) return NextResponse.json({ error: "Could not read the run from strut" }, { status: 502 });
+    if (!trace) return NextResponse.json({ error: "Could not read the run from the strut server" }, { status: 502 });
     return NextResponse.json(trace);
   } catch (error) {
     logger.error("Could not answer a strut run's graph trace", "STRUT_RUN_GRAPH", {

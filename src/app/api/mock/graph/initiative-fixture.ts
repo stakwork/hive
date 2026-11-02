@@ -590,7 +590,7 @@ export function startMockInitiativeBuild(
     steps.push(() =>
       strutWrite(
         "Brief",
-        { text: `Why ${name}: drafted by strut from the conversation so far.` },
+        { text: `Why ${name}: drafted by Jamie from the conversation so far.` },
         { id: root, edge: "HAS_BRIEF" },
       ),
     );

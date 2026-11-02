@@ -434,7 +434,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       if (!resolved.ok) {
         await db.stakworkRun.delete({ where: { id: run.id } });
         return NextResponse.json(
-          { error: `Strut is unavailable for this workspace: ${describeStrutTargetError(resolved.error)}` },
+          { error: `The strut server is unavailable for this workspace: ${describeStrutTargetError(resolved.error)}` },
           { status: 503 },
         );
       }
@@ -466,7 +466,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       if (!strutResponse.ok) {
         await db.stakworkRun.delete({ where: { id: run.id } });
         return NextResponse.json(
-          { error: "Failed to dispatch job to strut" },
+          { error: "Failed to dispatch job to the strut server" },
           { status: 502 },
         );
       }

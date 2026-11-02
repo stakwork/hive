@@ -161,7 +161,7 @@ describe("legal benchmark runs on strut", () => {
     expect(failed.hasReport).toBe(true);
     expect(parseBenchmarkRunResult(failed.result)?.generateRunReport).toBeUndefined();
     const lost = toLegalRunWireRow(row({ status: StrutRunStatus.LOST, output: null }) as never);
-    expect(parseBenchmarkRunResult(lost.result)?.errorMessage).toBe("Strut never reported this run back");
+    expect(parseBenchmarkRunResult(lost.result)?.errorMessage).toBe("The strut server never reported this run back");
     expect(lost.hasReport).toBe(false);
     expect(toLegalRunWireRow(row({ status: StrutRunStatus.ERROR, strutRunId: null }) as never).hasReport).toBe(false);
   });

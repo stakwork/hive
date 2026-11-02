@@ -60,7 +60,7 @@ describe("renderStrutContent", () => {
   });
 
   test("an unsettled turn is marked interim", () => {
-    expect(renderStrutContent(payload({ settled: false }))).toContain("Strut is still working");
+    expect(renderStrutContent(payload({ settled: false }))).toContain("The builder is still working");
   });
 
   test("parked, error, and bare-settled forms", () => {

@@ -358,7 +358,7 @@ export async function POST(request: NextRequest) {
         ...(chatAgentModel ? { model: chatAgentModel } : {}),
       });
       if (launched.status === "busy") throw conflictError(launched.note);
-      if (launched.status === "error") throw serverError(`The message could not be sent to strut: ${launched.error}`);
+      if (launched.status === "error") throw serverError(`The message could not be sent to the strut server: ${launched.error}`);
       const rows = await awaitOrchestratorReply({ conversationId: rowId, runId: launched.runId });
       const title =
         (await db.sharedConversation.findUnique({ where: { id: rowId }, select: { title: true } }))?.title ??
