@@ -12,10 +12,10 @@ export async function DELETE() {
     }
 
     await db.$transaction(async (tx) => {
-      // Clear lightningPubkey from user
+      // Clear lightningPubkey (and its lookup hash) from user
       await tx.user.update({
         where: { id: session.user.id },
-        data: { lightningPubkey: null },
+        data: { lightningPubkey: null, lightningPubkeyHash: null },
       });
       
       // Delete sphinx account record

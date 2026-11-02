@@ -9,9 +9,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { createTestWorkspace, createTestWorkspaceScenario } from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace, createTestWorkspaceScenario } from "@/__tests__/support/fixtures";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
+import { getPublicKey, signAsync, utils } from "@noble/secp256k1";
+import { sha256 } from "@noble/hashes/sha256";
 import { hashApiKey } from "@/lib/api-keys";
+import { lightningPubkeyFields, lightningPubkeyHash } from "@/lib/auth/lightning-pubkey";
+import { EncryptionService } from "@/lib/encryption";
 import { generateDeviceCredential } from "@/lib/strut-devices";
 
 // ── Redis: the per-tribe turn lock ───────────────────────────────────────────
@@ -62,6 +66,8 @@ vi.mock("@/services/strut-proposals", async (importOriginal) => ({
 }));
 
 import { GET as listTribes, POST as linkTribe } from "@/app/api/strut-devices/tribes/route";
+import { POST as registerSphinx } from "@/app/api/strut-devices/sphinx/route";
+import { GET as devicePeers } from "@/app/api/strut-devices/peers/route";
 import { DELETE as unlinkTribe } from "@/app/api/strut-devices/tribes/[pubkey]/route";
 import { POST as postMessage } from "@/app/api/tribes/messages/route";
 import { POST as postLeft } from "@/app/api/tribes/left/route";
@@ -196,6 +202,24 @@ async function linked() {
 }
 
 const tribeLink = () => db.tribeLink.findUnique({ where: { tribePubkey: TRIBE } });
+
+/** A Sphinx node key: its pubkey, and the token its app signs (`verifySphinxToken`). */
+function sphinxNode() {
+  const priv = utils.randomPrivateKey();
+  const pubkey = Buffer.from(getPublicKey(priv, true)).toString("hex");
+  const token = async (at = Math.floor(Date.now() / 1000)) => {
+    const stamp = Buffer.alloc(4);
+    stamp.writeUInt32BE(at);
+    const signed = await signAsync(sha256(sha256(Buffer.concat([Buffer.from("Lightning Signed Message:"), stamp]))), priv);
+    return Buffer.concat([stamp, Buffer.from([27 + signed.recovery]), Buffer.from(signed.toCompactRawBytes())]).toString("base64");
+  };
+  return { pubkey, token };
+}
+
+/** A person Hive knows by this Sphinx pubkey, as a Sphinx link stores it. */
+const identify = (userId: string, pubkey: string) => db.user.update({ where: { id: userId }, data: lightningPubkeyFields(pubkey) });
+
+const register = (credential: string, body: unknown) => registerSphinx(request("POST", "/api/strut-devices/sphinx", credential, body));
 
 /** The tribe's conversations, oldest first. */
 const threads = () => db.tribeThread.findMany({ orderBy: { createdAt: "asc" } });
@@ -434,6 +458,68 @@ describe("Jamie in Sphinx tribes", () => {
       const memberCredential = await createDevice(scenario.members[0].id);
       expect((await unlink(memberCredential)).status).toBe(404);
       expect(await tribeLink()).not.toBeNull();
+    });
+  });
+
+  describe("/api/strut-devices/sphinx (a paired device registers its person's Sphinx pubkey)", () => {
+    const stored = async (userId: string) => {
+      const user = await db.user.findUnique({ where: { id: userId }, select: { lightningPubkey: true, lightningPubkeyHash: true } });
+      return {
+        pubkey: user?.lightningPubkey ? EncryptionService.getInstance().decryptField("lightningPubkey", user.lightningPubkey) : null,
+        hash: user?.lightningPubkeyHash ?? null,
+      };
+    };
+
+    it("a person with none: stored with its hash; the same again is done; the peers renewal says so", async () => {
+      const { owner, credential } = await createScenario();
+      const node = sphinxNode();
+      const renew = async () =>
+        (await (await devicePeers(request("GET", "/api/strut-devices/peers", credential))).json()) as { sphinx: boolean };
+      expect((await renew()).sphinx).toBe(false);
+
+      const res = await register(credential, { pubkey: node.pubkey.toUpperCase(), token: await node.token() });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ linked: true });
+      expect(await stored(owner.id)).toEqual({ pubkey: node.pubkey, hash: lightningPubkeyHash(node.pubkey) });
+
+      expect(await (await register(credential, { pubkey: node.pubkey, token: await node.token() })).json()).toEqual({ linked: true });
+      expect((await renew()).sphinx).toBe(true);
+    });
+
+    it("a pubkey another person holds is a 409, and so is a person who holds another; nothing changes", async () => {
+      const { owner, members, credential } = await createScenario();
+      const node = sphinxNode();
+      await identify(members[0].id, node.pubkey);
+
+      const taken = await register(credential, { pubkey: node.pubkey, token: await node.token() });
+      expect(taken.status).toBe(409);
+      expect(await taken.json()).toEqual({ error: "This Sphinx account is linked to another Hive user." });
+      expect(await stored(owner.id)).toEqual({ pubkey: null, hash: null });
+
+      const mine = sphinxNode();
+      await identify(owner.id, mine.pubkey);
+      const other = sphinxNode();
+      const res = await register(credential, { pubkey: other.pubkey, token: await other.token() });
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toMatch(/^This Hive user is linked to another Sphinx account/);
+      expect(await stored(owner.id)).toEqual({ pubkey: mine.pubkey, hash: lightningPubkeyHash(mine.pubkey) });
+    });
+
+    it("a token that is not that key's, or is stale, is a 400; a bad pubkey too; no credential is a 401", async () => {
+      const { owner, credential } = await createScenario();
+      const node = sphinxNode();
+      const someoneElse = sphinxNode();
+
+      for (const body of [
+        { pubkey: node.pubkey, token: await someoneElse.token() },
+        { pubkey: node.pubkey, token: await node.token(Math.floor(Date.now() / 1000) - 600) },
+        { pubkey: node.pubkey },
+        { pubkey: "02ab", token: await node.token() },
+      ]) {
+        expect((await register(credential, body)).status).toBe(400);
+      }
+      expect((await register("hivedev_nope", { pubkey: node.pubkey, token: await node.token() })).status).toBe(401);
+      expect(await stored(owner.id)).toEqual({ pubkey: null, hash: null });
     });
   });
 
@@ -781,9 +867,53 @@ describe("Jamie in Sphinx tribes", () => {
     });
   });
 
+  describe("who is speaking: a mention's `sender`", () => {
+    const ALICE = "03" + "a1".repeat(32);
+
+    it("a member Hive knows by the sender's pubkey: the turn runs as them, the conversation stays the linker's", async () => {
+      const scenario = await linked();
+      const member = scenario.members[0];
+      await identify(member.id, ALICE);
+
+      const res = await mention(aMention({ sender: ALICE }));
+
+      expect(res.status).toBe(202);
+      expect(mockLaunch).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: member.id, tribe: { name: "Builders", alias: "Alice", asker: true } }),
+      );
+      expect(await conversation()).toMatchObject({ userId: scenario.owner.id });
+    });
+
+    it("a pubkey nobody in Hive holds: the linker's turn, as before senders", async () => {
+      const scenario = await linked();
+
+      expect((await mention(aMention({ sender: ALICE }))).status).toBe(202);
+      expect(mockLaunch).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: scenario.owner.id, tribe: { name: "Builders", alias: "Alice" } }),
+      );
+    });
+
+    it("a Hive user who cannot use the workspace: the linker's turn", async () => {
+      const scenario = await linked();
+      const outsider = await createTestUser({ name: "Mallory" });
+      await identify(outsider.id, ALICE);
+
+      expect((await mention(aMention({ sender: ALICE }))).status).toBe(202);
+      expect(mockLaunch.mock.calls[0][0]).toMatchObject({ userId: scenario.owner.id, tribe: { name: "Builders", alias: "Alice" } });
+    });
+
+    it("a sender that is not a pubkey is refused like any other bad field", async () => {
+      await linked();
+      const res = await mention(aMention({ sender: "alice" }));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "sender must be a Sphinx pubkey (66 hex characters)" });
+      expect(mockLaunch).not.toHaveBeenCalled();
+    });
+  });
+
   describe("a reply to a proposal post", () => {
     /** A mention, its turn settled on strut with one proposal: the post a reply decides. */
-    async function proposed(card: Record<string, unknown> | undefined = CARD) {
+    async function proposed(card: Record<string, unknown> | undefined = CARD, turnUser?: (s: Awaited<ReturnType<typeof linked>>) => string) {
       const scenario = await linked();
       const runId = generateUniqueId("turn");
       mockLaunch.mockResolvedValue({ status: "started", runId, strutRunId: `s-${runId}` });
@@ -795,7 +925,7 @@ describe("Jamie in Sphinx tribes", () => {
           tokenHash: "h",
           workspaceId: scenario.workspace.id,
           swarmId: "swarm-1",
-          userId: scenario.owner.id,
+          userId: turnUser ? turnUser(scenario) : scenario.owner.id,
           kind: ORCHESTRATOR_TURN_KIND,
           workflow: "orchestrator",
           strutRunId: `s-${runId}`,
@@ -807,13 +937,14 @@ describe("Jamie in Sphinx tribes", () => {
         proposals: [{ ...INSTALL, ...(card ? { card } : {}) }],
         workspace: scenario.workspace.slug,
       });
-      await ack((await outbox()).map((m) => m.id as string));
+      const posted = await outbox();
+      await ack(posted.map((m) => m.id as string));
       mockLaunch.mockClear();
       await new Promise((r) => setTimeout(r, 5));
       const post = `${thread.id}:orchestrator-${runId}-proposal-p1`;
       const reply = (extra: Record<string, unknown>) =>
         mention(aMention({ id: "msg-2", owner: true, thread: thread.id, replyTo: post, ...extra }));
-      return { scenario, runId, thread, post, reply };
+      return { scenario, runId, thread, post, reply, posted };
     }
 
     it("the owner's reply with the card's own word accepts it, as the linker, with no turn; the outcome is posted", async () => {
@@ -886,6 +1017,34 @@ describe("Jamie in Sphinx tribes", () => {
       await reply({ owner: false, text: "approve" });
       await ack(messages.map((m) => m.id as string));
       expect(await outbox()).toEqual([]);
+    });
+
+    it("a member's proposal: theirs to decide by reply, as them; another member, or the owner unnamed, is told whose it is", async () => {
+      const BOB = "03" + "b2".repeat(32);
+      const CAROL = "03" + "c3".repeat(32);
+      const { scenario, runId, reply, posted } = await proposed(CARD, (s) => s.members[0].id);
+      const bob = scenario.members[0];
+      // The post says whom it waits for: the person the turn ran as, not the linker.
+      expect(posted.map((m) => m.text)).toEqual(["I've proposed it.", `Waiting for ${bob.name} to approve: Install acme/board`]);
+      await identify(bob.id, BOB);
+      await identify(scenario.owner.id, CAROL);
+
+      // The owner, unnamed (an older tribe server), and the linker named by their pubkey: neither decides Bob's.
+      expect(await (await reply({ text: "Install" })).json()).toEqual({ refused: `${bob.name}'s to decide.` });
+      expect(await (await reply({ id: "msg-3", owner: false, sender: CAROL, text: "Install" })).json()).toEqual({
+        refused: `${bob.name}'s to decide.`,
+      });
+      expect(mockDecide).not.toHaveBeenCalled();
+      expect((await outbox()).map((m) => [m.text, m.replyTo])).toEqual([
+        [`${bob.name}'s to decide.`, "msg-2"],
+        [`${bob.name}'s to decide.`, "msg-3"],
+      ]);
+
+      mockDecide.mockResolvedValue({ status: 200, proposal: record({ status: "applied" }) });
+      const res = await reply({ id: "msg-4", owner: false, alias: "Bob", sender: BOB, text: "Install" });
+      expect(await res.json()).toEqual({ decided: "applied" });
+      expect(mockDecide).toHaveBeenCalledWith(expect.objectContaining({ id: runId, userId: bob.id }), "p1", { action: "accept" }, bob.id);
+      expect(mockLaunch).not.toHaveBeenCalled();
     });
 
     it("a reply to the post that is not a decision takes a turn, as any reply to Jamie does", async () => {
@@ -990,10 +1149,10 @@ describe("Jamie in Sphinx tribes", () => {
       expect(await outbox()).toEqual([]);
     });
 
-    it("a proposal's post carries it in metadata.strut.proposals, strut's card as it came; an older strut's has no card", async () => {
+    it("a proposal's post carries its stub in metadata.strut.proposals, card or none: Peel reads the card from the record", async () => {
       const scenario = await linked();
       await mention(aMention());
-      await answered(scenario, "run-1", "I've proposed it.", {
+      const conversationId = await answered(scenario, "run-1", "I've proposed it.", {
         proposals: [
           { ...INSTALL, card: CARD },
           { id: "p2", step: "graph/create-node", title: "Login bug", status: "pending", url: "/proposals/p2" },
@@ -1013,17 +1172,7 @@ describe("Jamie in Sphinx tribes", () => {
         strut: {
           workspace: scenario.workspace.slug,
           artifacts: [],
-          proposals: [
-            {
-              id: "p1",
-              step: "package/install",
-              title: "Install acme/board",
-              summary: "Listed by the Stakwork index.",
-              card: CARD,
-              status: "pending",
-              url: "/proposals/p1",
-            },
-          ],
+          proposals: [{ id: "p1", step: "package/install", title: "Install acme/board", status: "pending", url: "/proposals/p1" }],
         },
       });
       expect(plain.metadata).toEqual({
@@ -1035,6 +1184,10 @@ describe("Jamie in Sphinx tribes", () => {
           ],
         },
       });
+      // The conversation's row keeps the card: the canvas draws it, and the owner's reply is matched to its words.
+      const { messages: rows } = await db.sharedConversation.findUniqueOrThrow({ where: { id: conversationId }, select: { messages: true } });
+      const row = (rows as Array<{ source?: { proposalId?: string; card?: unknown } }>).find((r) => r.source?.proposalId === "p1");
+      expect(row?.source?.card).toEqual(CARD);
     });
 
     it("a decision made in Hive is posted too: its outcome line, where the proposal was, with the new status", async () => {
