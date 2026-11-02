@@ -6,8 +6,10 @@ import { NextRequest } from "next/server";
 vi.mock("@/lib/db", () => ({
   db: {
     user: {
+      findUnique: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));
@@ -23,7 +25,7 @@ vi.mock("@/lib/logger", () => ({
 const mockDecryptField = vi.fn();
 vi.mock("@/lib/encryption", () => ({
   EncryptionService: {
-    getInstance: vi.fn(() => ({ decryptField: mockDecryptField })),
+    getInstance: vi.fn(() => ({ decryptField: mockDecryptField, lookupHash: vi.fn(() => "hash") })),
   },
 }));
 
@@ -41,7 +43,7 @@ import { db } from "@/lib/db";
 
 // --- Helpers ---
 
-const TEST_PUBKEY = "02a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890";
+const TEST_PUBKEY = "02a1b2c3d4e5f67890123456789012345678901234567890123456789012345678";
 
 function makeRequest(body: unknown) {
   return new NextRequest("http://localhost/person", {
@@ -56,6 +58,9 @@ function makeRequest(body: unknown) {
 describe("POST /person", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // No row holds the pubkey's hash yet, so the lookup falls back to the unhashed rows.
+    (db.user.findUnique as Mock).mockResolvedValue(undefined);
+    (db.user.updateMany as Mock).mockResolvedValue({ count: 1 });
   });
 
   it("returns 400 when owner_pubkey is missing", async () => {
@@ -101,6 +106,26 @@ describe("POST /person", () => {
     expect(db.user.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
       data: { sphinxAlias: "alice", sphinxRouteHint: "hint123" },
+    });
+    // The row found by the fallback is given its hash.
+    expect(db.user.updateMany).toHaveBeenCalledWith({
+      where: { id: "user-1", lightningPubkeyHash: null },
+      data: { lightningPubkeyHash: "hash" },
+    });
+  });
+
+  it("finds a user through the hash read, without reading the unhashed rows", async () => {
+    (db.user.findUnique as Mock).mockResolvedValue({ id: "user-hashed" });
+    (db.user.update as Mock).mockResolvedValue({});
+
+    const res = await POST(makeRequest({ owner_pubkey: TEST_PUBKEY, owner_alias: "bob", owner_route_hint: "hint456" }));
+
+    expect(res.status).toBe(200);
+    expect(db.user.findUnique).toHaveBeenCalledWith({ where: { lightningPubkeyHash: "hash" }, select: { id: true } });
+    expect(db.user.findMany).not.toHaveBeenCalled();
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "user-hashed" },
+      data: { sphinxAlias: "bob", sphinxRouteHint: "hint456" },
     });
   });
 
