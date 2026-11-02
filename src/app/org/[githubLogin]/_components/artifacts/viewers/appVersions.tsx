@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowUp, Check, ChevronDown, FastForward, Lock, RefreshCw, Undo2 } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, ExternalLink, FastForward, Lock, RefreshCw, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { STRUT_APPS_CHANGED_EVENT } from "@/lib/strut-apps";
+import { STRUT_APPS_CHANGED_EVENT, strutAppStandalonePath } from "@/lib/strut-apps";
 import {
   appVersionToastId,
   appVersionsKey,
@@ -104,8 +104,14 @@ export function AppActions(props: ArtifactViewerProps<"app">) {
       ? `Everyone who opens the app sees ${shown}, with its workflows as they are now`
       : `Everyone who opens the app sees ${shown}`;
 
+  const openInNewWindow = () =>
+    window.open(strutAppStandalonePath({ githubLogin, swarmId, app, version: shown }), "_blank", "noopener,noreferrer");
+
   return (
     <>
+      <Button variant="ghost" size="sm" aria-label="Open in new window" title="Open in new window" onClick={openInNewWindow}>
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+      </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" className="text-xs tabular-nums" aria-label={`Version ${shown}${status ? `, ${status}` : ""}`}>
