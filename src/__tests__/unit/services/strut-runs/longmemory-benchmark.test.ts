@@ -144,6 +144,34 @@ describe("run shaping", () => {
     expect(JSON.stringify(result)).not.toContain("SECRET");
   });
 
+  it("passes through task score/hypothesis and per-task records", () => {
+    const result = toLongMemoryRunResult(
+      row({
+        workflow: "longmemory-batch",
+        output: {
+          n: 2,
+          misses: [{ question_id: "q2", score: 0, hypothesis: "Mon", gold: "SECRET" }],
+          results: [
+            "ignored",
+            { id: "q1", questionType: "a", score: 1, hypothesis: "Tue", gold: "SECRET" },
+            { question_id: "q2", score: 0, missCause: "x" },
+          ],
+        },
+      }),
+    );
+    expect(result.misses).toEqual([{ question_id: "q2", score: 0, hypothesis: "Mon" }]);
+    expect(result.tasks).toEqual([
+      { question_id: "q1", questionType: "a", score: 1, hypothesis: "Tue" },
+      { question_id: "q2", score: 0, missCause: "x" },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("SECRET");
+  });
+
+  it("omits tasks when the batch has no per-task array", () => {
+    const result = toLongMemoryRunResult(row({ workflow: "longmemory-batch", output: { n: 1 } }));
+    expect(result.tasks).toBeUndefined();
+  });
+
   it("wire rows carry a parseable result and a report flag", () => {
     const wire = toLongMemoryRunWireRow(row({ status: StrutRunStatus.PENDING, strutRunId: "s-1" }));
     expect(wire.status).toBe("IN_PROGRESS");

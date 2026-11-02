@@ -5,9 +5,77 @@ import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BenchmarkRunCascade } from "@/components/legal/RunCascade";
 import { StrutRunViewLink } from "@/components/legal/StrutRunViewLink";
+import type { LongMemoryRunResult } from "@/types/longmemory";
 import { isActiveStatus, type LongMemoryRunRow } from "@/hooks/useLongMemoryRuns";
 
 const pct = (v: number | undefined) => (v === undefined ? "—" : `${Math.round(v * 100)}%`);
+
+const HYPOTHESIS_PREVIEW = 120;
+
+interface TaskRow {
+  question_id: string;
+  questionType?: string;
+  pass: boolean;
+  missCause?: string;
+  hypothesis?: string;
+}
+
+function TasksSection({ r }: { r: LongMemoryRunResult }) {
+  const misses = r.misses ?? [];
+  const missIds = new Set(misses.map((m) => m.question_id));
+  const rows: TaskRow[] = r.tasks
+    ? r.tasks.map((t) => ({
+        question_id: t.question_id,
+        questionType: t.questionType,
+        pass: t.score !== undefined ? t.score === 1 : !t.missCause && !missIds.has(t.question_id),
+        missCause: t.missCause,
+        hypothesis: t.hypothesis,
+      }))
+    : misses.map((m) => ({ question_id: m.question_id, questionType: m.questionType, pass: false, missCause: m.missCause, hypothesis: m.hypothesis }));
+  const otherPassed = !r.tasks && r.n !== undefined && r.n > misses.length ? r.n - misses.length : 0;
+  if (rows.length === 0 && otherPassed === 0) return null;
+  const passed = rows.filter((x) => x.pass).length;
+  const failed = rows.length - passed;
+  return (
+    <div data-testid="tasks">
+      <p className="font-medium">
+        Tasks ({r.tasks ? rows.length : (r.n ?? rows.length)}) · {passed + otherPassed} passed · {failed} failed
+      </p>
+      {rows.length > 0 && (
+        <table className="mt-1 w-full text-xs">
+          <thead>
+            <tr className="text-left text-muted-foreground">
+              <th className="pr-4">Question ID</th><th className="pr-4">Type</th><th className="pr-4">Score</th><th className="pr-4">Miss cause</th><th>Hypothesis</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((x) => (
+              <tr key={x.question_id} className="align-top">
+                <td className="pr-4"><code>{x.question_id}</code></td>
+                <td className="pr-4">{x.questionType ?? "—"}</td>
+                <td className={x.pass ? "pr-4 text-green-600" : "pr-4 text-destructive"}>{x.pass ? "✓" : "✗"}</td>
+                <td className="pr-4">{x.missCause ?? "—"}</td>
+                <td>
+                  {!x.hypothesis ? "—" : x.hypothesis.length <= HYPOTHESIS_PREVIEW ? (
+                    <span className="whitespace-pre-wrap">{x.hypothesis}</span>
+                  ) : (
+                    <details>
+                      <summary className="cursor-pointer">{x.hypothesis.slice(0, HYPOTHESIS_PREVIEW)}…</summary>
+                      <p className="whitespace-pre-wrap">{x.hypothesis}</p>
+                    </details>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {otherPassed > 0 && (
+        <p className="mt-1 text-muted-foreground">{otherPassed} other tasks passed (per-task detail not recorded for this run)</p>
+      )}
+    </div>
+  );
+}
 
 function RunDetail({ run }: { run: LongMemoryRunRow }) {
   const r = run.result;
@@ -44,20 +112,7 @@ function RunDetail({ run }: { run: LongMemoryRunRow }) {
               </tbody>
             </table>
           )}
-          {r.misses && r.misses.length > 0 && (
-            <div>
-              <p className="font-medium">Misses ({r.misses.length})</p>
-              <ul className="list-disc pl-5">
-                {r.misses.map((m) => (
-                  <li key={m.question_id}>
-                    <code>{m.question_id}</code>
-                    {m.questionType ? ` · ${m.questionType}` : ""}
-                    {m.missCause ? ` · ${m.missCause}` : ""}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <TasksSection r={r} />
         </div>
       )}
       <div className="flex items-center gap-4">
