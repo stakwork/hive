@@ -25,6 +25,7 @@ import type {
   LongMemoryQuestion,
   LongMemoryRunResult,
   LongMemoryRunWireRow,
+  LongMemoryTask,
   LongMemoryTaskList,
   LongMemoryTypeAccuracy,
 } from "@/types/longmemory";
@@ -85,8 +86,29 @@ function missesOf(value: unknown): LongMemoryMiss[] | undefined {
         question_id: id,
         ...(str(m.questionType) ? { questionType: str(m.questionType) } : {}),
         ...(str(m.missCause) ? { missCause: str(m.missCause) } : {}),
+        ...(num(m.score) !== undefined ? { score: num(m.score) } : {}),
+        ...(str(m.hypothesis) ? { hypothesis: str(m.hypothesis) } : {}),
       });
     }
+  }
+  return out;
+}
+
+/** Per-task records (pass or fail) reduced to id, type, score, cause and hypothesis; strings are ignored. */
+function tasksOf(value: unknown): LongMemoryTask[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: LongMemoryTask[] = [];
+  for (const t of value) {
+    if (!isRecord(t)) continue;
+    const id = str(t.question_id) ?? str(t.id);
+    if (!id) continue;
+    out.push({
+      question_id: id,
+      ...(str(t.questionType) ? { questionType: str(t.questionType) } : {}),
+      ...(num(t.score) !== undefined ? { score: num(t.score) } : {}),
+      ...(str(t.missCause) ? { missCause: str(t.missCause) } : {}),
+      ...(str(t.hypothesis) ? { hypothesis: str(t.hypothesis) } : {}),
+    });
   }
   return out;
 }
@@ -113,6 +135,8 @@ export function toLongMemoryRunResult(row: StrutRunRow): LongMemoryRunResult {
   if (batch) {
     const byType = byTypeOf(body.byType);
     const misses = missesOf(body.misses);
+    const tasks = [body.tasks, body.results, body.perTask].find(Array.isArray) as unknown;
+    const parsedTasks = tasksOf(tasks);
     return {
       mode: "batch",
       ...common,
@@ -122,6 +146,7 @@ export function toLongMemoryRunResult(row: StrutRunRow): LongMemoryRunResult {
       ...(byType ? { byType } : {}),
       ...(num(body.abstentionAccuracy) !== undefined ? { abstentionAccuracy: num(body.abstentionAccuracy) } : {}),
       ...(misses ? { misses } : {}),
+      ...(parsedTasks ? { tasks: parsedTasks } : {}),
       ...(num(body.totalCost) !== undefined ? { totalCost: num(body.totalCost) } : {}),
       ...(str(body.summary) ? { summary: str(body.summary) } : {}),
     };
