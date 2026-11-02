@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
+import { userByLightningPubkey } from "@/lib/auth/lightning-pubkey";
 import { createSphinxToken } from "@/lib/auth/sphinx-token";
 import { verifySphinxToken } from "@/lib/auth/sphinx-verify";
-
-const encryptionService = EncryptionService.getInstance();
 
 /**
  * POST /api/auth/sphinx/token
@@ -63,51 +61,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find user by decrypting and comparing lightningPubkey fields
+    // By the pubkey's lookup hash, then the fields the JWT carries.
     let matchedUser: { id: string; email: string | null; name: string | null } | null = null;
-    
+
     try {
-      // Get all users with a lightningPubkey set
-      const usersWithPubkey = await db.user.findMany({
-        where: {
-          lightningPubkey: { not: null },
-        },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          lightningPubkey: true,
-        },
-      });
-
-      // Decrypt and compare each pubkey to find a match
-      for (const user of usersWithPubkey) {
-        if (!user.lightningPubkey) continue;
-
-        try {
-          // Parse the JSON string first
-          const encryptedData = JSON.parse(user.lightningPubkey);
-          const decryptedPubkey = encryptionService.decryptField(
-            "lightningPubkey",
-            encryptedData
-          );
-
-          if (decryptedPubkey === pubkey) {
-            matchedUser = {
-              id: user.id,
-              email: user.email,
-              name: user.name,
-            };
-            break;
-          }
-        } catch (decryptError) {
-          // Log decryption error but continue checking other users
-          logger.error("Failed to decrypt user pubkey", "SPHINX_AUTH", {
-            error: decryptError,
-            userId: user.id,
-          });
-          continue;
-        }
+      const found = await userByLightningPubkey(pubkey);
+      if (found) {
+        matchedUser = await db.user.findUnique({
+          where: { id: found.id },
+          select: { id: true, email: true, name: true },
+        });
       }
     } catch (dbError) {
       logger.error("Database error while finding user", "SPHINX_AUTH", { error: dbError });
