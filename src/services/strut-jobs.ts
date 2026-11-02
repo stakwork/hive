@@ -28,6 +28,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { JOB_TURN_KIND, JOB_WORKFLOW, jobModelOf, jobTurnViaOrchestrator } from "@/lib/strut-jobs";
 import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
+import { withNoPodsNote } from "@/services/strut-jobs/pod-note";
 import { describeStrutTargetError, resolveStrutTarget } from "@/services/strut-target";
 
 const LOG_TAG = "STRUT_JOB";
@@ -157,7 +158,7 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
       // pod routes take a slug or an id). Every turn, since every launch
       // is validated on its own. `model` rides along like `title`, so the
       // row records what the turn ran on; strut reads `params.model`.
-      input: { prompt, title, workspace: strut.workspaceSlug, ...(model ? { model } : {}), ...via },
+      input: { prompt: await withNoPodsNote(prompt), title, workspace: strut.workspaceSlug, ...(model ? { model } : {}), ...via },
       ...(focus ? { rowInput: { focus } } : {}),
       job: jobId,
       title,
