@@ -620,7 +620,7 @@ export function Sidebar({ user }: SidebarProps) {
           href: "/benchmarks",
           children: [
             { icon: Scale, label: "Legal", href: "/legal/benchmarks" },
-            { icon: Brain, label: "LongMemory", href: "/longmemory/benchmarks" },
+            { icon: Brain, label: "LongMemory", href: "/apps/longmemory-benchmarks" },
           ],
         },
       ]

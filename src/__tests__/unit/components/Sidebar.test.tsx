@@ -1278,7 +1278,7 @@ describe('Sidebar - Benchmarks parent (openlaw-1)', () => {
       expect(screen.getAllByTestId('nav-longmemory').length).toBeGreaterThan(0);
     });
     expect(screen.getAllByTestId('nav-longmemory')[0].closest('a')?.getAttribute('href')).toBe(
-      '/w/openlaw-1/longmemory/benchmarks',
+      '/w/openlaw-1/apps/longmemory-benchmarks',
     );
     expect(screen.getAllByTestId('nav-legal')[0].closest('a')?.getAttribute('href')).toBe(
       '/w/openlaw-1/legal/benchmarks',
