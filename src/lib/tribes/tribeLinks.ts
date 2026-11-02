@@ -80,12 +80,28 @@ export async function linkableWorkspace(userId: string, slug: string): Promise<L
   return { ok: true, workspaceSlug: workspace.slug, orgId: workspace.sourceControlOrgId };
 }
 
-/** The link as the person's devices see it. */
+/** What `tribeLinkView` reads of a link. */
+export const TRIBE_LINK_VIEW_SELECT = {
+  tribePubkey: true,
+  tribeHost: true,
+  name: true,
+  workspaceSlug: true,
+  sendersMarkedAt: true,
+  createdAt: true,
+  org: { select: { githubLogin: true } },
+} as const;
+
+/**
+ * The link as the person's devices see it. `sendersMarked`: the linker's
+ * device marked Jamie to see who speaks there, and it was not turned off
+ * since — shared, so another device of theirs does not mark it again.
+ */
 export function tribeLinkView(link: {
   tribePubkey: string;
   tribeHost: string;
   name: string | null;
   workspaceSlug: string;
+  sendersMarkedAt: Date | null;
   createdAt: Date;
   org: { githubLogin: string };
 }) {
@@ -95,6 +111,7 @@ export function tribeLinkView(link: {
     name: link.name,
     workspace: link.workspaceSlug,
     org: link.org.githubLogin,
+    sendersMarked: link.sendersMarkedAt != null,
     createdAt: link.createdAt.toISOString(),
   };
 }

@@ -197,9 +197,9 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/strut-devices/sphinx", strategy: "exact", access: "webhook", methods: ["POST"] },
   // A paired device starts a Jamie call: its device credential, checked in the handler.
   { path: "/api/strut-devices/calls", strategy: "exact", access: "webhook", methods: ["POST"] },
-  // A paired device links or unlinks a Sphinx tribe for Jamie: its device credential, checked in the handler.
+  // A paired device links or unlinks a Sphinx tribe for Jamie, or records Jamie's mark there: its device credential, checked in the handler.
   { path: "/api/strut-devices/tribes", strategy: "exact", access: "webhook", methods: ["GET", "POST"] },
-  { path: "/api/strut-devices/tribes/*", strategy: "pattern", access: "webhook", methods: ["DELETE"] },
+  { path: "/api/strut-devices/tribes/*", strategy: "pattern", access: "webhook", methods: ["PATCH", "DELETE"] },
   // The approve page: public so a signed-out visitor is sent to sign-in with the code kept (the page checks the session).
   { path: "/pair", strategy: "exact", access: "public" },
   { path: "/api/webhook/agent-logs", strategy: "prefix", access: "webhook" },
