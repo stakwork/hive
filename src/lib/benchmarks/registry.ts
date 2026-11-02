@@ -5,7 +5,7 @@
  * a benchmark with its own UI is a strut app the workspace pins as a tab.
  */
 
-import { LEGAL_STRUT_SLUGS } from "@/lib/eval-capture-slugs";
+import { LEGAL_STRUT_SLUGS, LONGMEMORY_SLUGS } from "@/lib/eval-capture-slugs";
 
 export interface Benchmark {
   /** The suffix of the `StrutRun.kind` (`benchmark:<slug>`). */
@@ -28,6 +28,15 @@ export const BENCHMARKS: readonly Benchmark[] = [
     runWorkflow: "harvey-lab-run",
     taskIdKey: "task_slug",
     workspaceSlugs: LEGAL_STRUT_SLUGS,
+  },
+  {
+    slug: "longmemory",
+    name: "LongMemory",
+    // One question per `longmemory-run`; the same kind also holds the
+    // `longmemory-batch` runs (`services/strut-runs/longmemory-benchmark`).
+    runWorkflow: "longmemory-run",
+    taskIdKey: "question_id",
+    workspaceSlugs: LONGMEMORY_SLUGS,
   },
 ];
 
