@@ -2,7 +2,7 @@ import { config, optionalEnvVars } from "@/config/env";
 import { db } from "@/lib/db";
 import { mintOrgToken } from "@/lib/mcp/orgTokenMint";
 import { callRoomName, callTranscriptWanted, dispatchCallAgent, dropCallToken, storeCallToken } from "@/lib/calls/callAgent";
-import { dropCallRecord, storeCallRecord } from "@/lib/calls/callRecord";
+import { dropCallRecord, dropCallRoom, storeCallRecord, storeCallRoom } from "@/lib/calls/callRecord";
 import jwt from "jsonwebtoken";
 
 export type StartCallResult =
@@ -130,7 +130,9 @@ export async function startCall({
   // dispatched into the link's room with that key in its dispatch
   // metadata (`lib/calls/callAgent.ts`). The same key names the call's
   // record, which the call endpoints act on (`lib/calls/callRecord.ts`):
-  // its turns run as this user. Mock mode has no LiveKit to dispatch to.
+  // its turns run as this user, unless the speaker joined with a ticket
+  // Hive minted for them (`/api/strut-devices/calls/ticket`), which finds
+  // the call by its room. Mock mode has no LiveKit to dispatch to.
   if (!config.USE_MOCKS) {
     const roomName = callRoomName(callUrl);
     let callKey: string;
@@ -142,6 +144,7 @@ export async function startCall({
         workspaceSlug: slug,
         roomName,
       });
+      await storeCallRoom(roomName, callKey);
     } catch (err) {
       console.error("[startCall] Redis write failed:", err);
       return { status: 500, error: "Internal server error" };
@@ -152,7 +155,7 @@ export async function startCall({
       });
     } catch (err) {
       console.error("[startCall] Jamie dispatch failed:", err);
-      await Promise.all([dropCallToken(callKey), dropCallRecord(callKey)]).catch(() => undefined);
+      await Promise.all([dropCallToken(callKey), dropCallRecord(callKey), dropCallRoom(roomName)]).catch(() => undefined);
       return { status: 502, error: "Could not start Jamie for the call" };
     }
   }
