@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { verifySphinxToken } from "@/lib/auth/sphinx-verify";
+import { acceptSphinxToken, sphinxTokenHost } from "@/lib/auth/sphinx-token-accept";
 
 /**
  * POST /verify/[challenge]?token=...
@@ -11,6 +11,9 @@ import { verifySphinxToken } from "@/lib/auth/sphinx-verify";
  * This endpoint must match the format expected by the Sphinx iOS/Android app:
  * - URL: https://{host}/verify/{challenge}?token={token}
  * - Body: JSON with pubkey, alias, photo_url, route_hint, price_to_meet (snake_case)
+ *
+ * The token is the bound form (purpose `login`, this k1) or, until
+ * `SPHINX_TOKEN_REQUIRE_BOUND`, the bare one (docs/plans/sphinx-token-binding.md).
  *
  * @param request - NextRequest with token as query param and body containing user info
  * @param params - Route params containing the challenge k1 value
@@ -121,7 +124,11 @@ export async function POST(
     }
 
     // Verify the Lightning signature token
-    const verifyResult = verifySphinxToken(token, pubkey);
+    const verifyResult = acceptSphinxToken(token, pubkey, {
+      host: sphinxTokenHost(request),
+      purpose: "login",
+      challenge,
+    });
     if (!verifyResult.valid) {
       logger.warn("Sphinx signature verification failed", "SPHINX_AUTH", {
         challenge,
@@ -169,6 +176,7 @@ export async function POST(
       pubkey,
       alias: alias || "",
       photo_url: photo_url || "",
+      tokenFormat: verifyResult.format,
     });
   } catch (error) {
     logger.error("Error in Sphinx verify endpoint", "SPHINX_AUTH", { error });
