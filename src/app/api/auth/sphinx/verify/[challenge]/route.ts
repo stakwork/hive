@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { verifySphinxToken } from "@/lib/auth/sphinx-verify";
+import { acceptSphinxToken, sphinxTokenHost } from "@/lib/auth/sphinx-token-accept";
 
 interface VerifyRequestBody {
   token: string;
@@ -15,11 +15,13 @@ interface VerifyRequestBody {
  * POST /api/auth/sphinx/verify/[challenge]
  * 
  * Verifies a Lightning signature against a challenge and marks it as used.
- * Called by the Sphinx app after user signs the challenge.
+ * Called by the Sphinx app after user signs the challenge. The token is the
+ * bound form (purpose `login`, this k1) or, until
+ * `SPHINX_TOKEN_REQUIRE_BOUND`, the bare one (docs/plans/sphinx-token-binding.md).
  * 
  * @param request - NextRequest with body containing token, pubkey, and optional profile data
  * @param params - Route params containing the challenge k1 value
- * @returns JSON with success status and error message if applicable
+ * @returns JSON with success status (and which token form was used) or an error message
  */
 export async function POST(
   request: NextRequest,
@@ -48,7 +50,7 @@ export async function POST(
       );
     }
 
-    const { token, pubkey, alias, photoUrl, routeHint } = body;
+    const { token, pubkey, alias, routeHint } = body;
 
     // Validate required fields
     if (!token || typeof token !== "string") {
@@ -104,7 +106,11 @@ export async function POST(
     }
 
     // Verify the Lightning signature (timestamp is extracted from token internally)
-    const verifyResult = verifySphinxToken(token, pubkey);
+    const verifyResult = acceptSphinxToken(token, pubkey, {
+      host: sphinxTokenHost(request),
+      purpose: "login",
+      challenge,
+    });
 
     if (!verifyResult.valid) {
       logger.warn("Sphinx signature verification failed", "SPHINX_AUTH", { challenge, pubkey, reason: verifyResult.reason });
@@ -141,6 +147,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
+      tokenFormat: verifyResult.format,
     });
   } catch (error) {
     logger.error("Error in Sphinx verify endpoint", "SPHINX_AUTH", { error });

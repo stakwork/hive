@@ -200,6 +200,17 @@ export function isGeminiConfigured(): boolean {
 }
 
 /**
+ * Whether the Sphinx token routes refuse the BARE token (a signature over a
+ * 4-byte timestamp alone) and take only the bound one, which names Hive, the
+ * purpose and the challenge (`docs/plans/sphinx-token-binding.md`).
+ * `SPHINX_TOKEN_REQUIRE_BOUND=true`; off by default while the official
+ * Sphinx apps still sign the bare form.
+ */
+export function isSphinxBoundTokenRequired(): boolean {
+  return (process.env.SPHINX_TOKEN_REQUIRE_BOUND || "").trim().toLowerCase() === "true";
+}
+
+/**
  * Checks if a GitHub username is a superadmin
  * @param githubUsername - GitHub username to check
  * @returns true if the username is in the POOL_SUPERADMINS list

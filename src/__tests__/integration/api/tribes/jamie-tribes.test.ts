@@ -17,6 +17,8 @@ import { hashApiKey } from "@/lib/api-keys";
 import { lightningPubkeyFields, lightningPubkeyHash } from "@/lib/auth/lightning-pubkey";
 import { EncryptionService } from "@/lib/encryption";
 import { generateDeviceCredential } from "@/lib/strut-devices";
+import { BARE_TOKEN_REFUSED } from "@/lib/auth/sphinx-token-accept";
+import { bareSphinxToken, boundSphinxToken, sphinxKey, testHiveHost } from "@/__tests__/support/helpers/sphinx-token";
 
 // ── Redis: the per-tribe turn lock ───────────────────────────────────────────
 const { store } = vi.hoisted(() => ({ store: new Map<string, string>() }));
@@ -520,6 +522,52 @@ describe("Jamie in Sphinx tribes", () => {
       }
       expect((await register("hivedev_nope", { pubkey: node.pubkey, token: await node.token() })).status).toBe(401);
       expect(await stored(owner.id)).toEqual({ pubkey: null, hash: null });
+    });
+
+    it("takes a token bound to Hive's host and `register` (docs/plans/sphinx-token-binding.md)", async () => {
+      const { owner, credential } = await createScenario();
+      const node = sphinxKey();
+      const token = await boundSphinxToken(node.priv, { host: testHiveHost(), purpose: "register", challenge: "" });
+      const res = await register(credential, { pubkey: node.pubkey, token });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ linked: true });
+      expect(await stored(owner.id)).toEqual({ pubkey: node.pubkey, hash: lightningPubkeyHash(node.pubkey) });
+    });
+
+    it("refuses a bound token for signing in, for another host, or naming a challenge: 400", async () => {
+      const { owner, credential } = await createScenario();
+      const node = sphinxKey();
+      const registration = { host: testHiveHost(), purpose: "register" as const, challenge: "" };
+      for (const binding of [
+        { ...registration, purpose: "login" as const },
+        { ...registration, host: "hive-staging.sphinx.chat" },
+        { ...registration, challenge: "ab".repeat(32) },
+      ]) {
+        const res = await register(credential, { pubkey: node.pubkey, token: await boundSphinxToken(node.priv, binding) });
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toBe("Invalid signature");
+      }
+      expect(await stored(owner.id)).toEqual({ pubkey: null, hash: null });
+    });
+
+    it("with SPHINX_TOKEN_REQUIRE_BOUND, the bare token is a 400 and the bound one links", async () => {
+      const saved = process.env.SPHINX_TOKEN_REQUIRE_BOUND;
+      process.env.SPHINX_TOKEN_REQUIRE_BOUND = "true";
+      try {
+        const { owner, credential } = await createScenario();
+        const node = sphinxKey();
+        const bare = await register(credential, { pubkey: node.pubkey, token: await bareSphinxToken(node.priv) });
+        expect(bare.status).toBe(400);
+        expect(await bare.json()).toEqual({ error: BARE_TOKEN_REFUSED });
+        expect(await stored(owner.id)).toEqual({ pubkey: null, hash: null });
+
+        const token = await boundSphinxToken(node.priv, { host: testHiveHost(), purpose: "register", challenge: "" });
+        expect((await register(credential, { pubkey: node.pubkey, token })).status).toBe(200);
+        expect(await stored(owner.id)).toEqual({ pubkey: node.pubkey, hash: lightningPubkeyHash(node.pubkey) });
+      } finally {
+        if (saved === undefined) delete process.env.SPHINX_TOKEN_REQUIRE_BOUND;
+        else process.env.SPHINX_TOKEN_REQUIRE_BOUND = saved;
+      }
     });
   });
 
