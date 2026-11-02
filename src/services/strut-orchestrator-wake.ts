@@ -149,7 +149,7 @@ function describeOutcome(args: OrchestratorJobWakeArgs): string {
     case "cancelled":
       return "been stopped by the user";
     case "lost":
-      return "been lost: strut restarted before recording it, so its prompt would have to be sent again";
+      return "been lost: the strut server restarted before recording it, so its prompt would have to be sent again";
   }
 }
 

@@ -15,6 +15,17 @@ export interface LongMemoryMiss {
   question_id: string;
   questionType?: string;
   missCause?: string;
+  score?: number;
+  hypothesis?: string;
+}
+
+/** One task of a batch run (pass or fail). */
+export interface LongMemoryTask {
+  question_id: string;
+  questionType?: string;
+  score?: number;
+  missCause?: string;
+  hypothesis?: string;
 }
 
 export interface LongMemoryTypeAccuracy {
@@ -48,6 +59,7 @@ export interface LongMemoryRunResult {
   byType?: Record<string, LongMemoryTypeAccuracy>;
   abstentionAccuracy?: number;
   misses?: LongMemoryMiss[];
+  tasks?: LongMemoryTask[];
   totalCost?: number;
 }
 

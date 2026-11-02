@@ -176,7 +176,7 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
         status: "error",
         error:
           err.code === "workflow_missing"
-            ? "This swarm's strut has no `job` workflow yet (its lab is not on a build that seeds it). Tell the user; a workspace admin updates the swarm."
+            ? "This swarm's strut server has no `job` workflow yet (its lab is not on a build that seeds it). Tell the user; a workspace admin updates the swarm."
             : err.message,
       };
     }
@@ -228,7 +228,7 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
     title,
     runId: dispatched.runId,
     note:
-      "Strut is working on it in the background. The reply — and what it produced, as artifact cards — lands in this conversation as a **Job** entry; " +
+      "The job is working on it in the background. The reply — and what it produced, as artifact cards — lands in this conversation as a **Job** entry; " +
       "tell the user it's underway and stop. Do not call this tool again for the same request.",
   };
 }

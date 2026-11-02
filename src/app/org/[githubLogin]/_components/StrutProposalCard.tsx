@@ -304,7 +304,7 @@ export function StrutProposalCard({ source, githubLogin }: StrutProposalCardProp
           error?: string;
         } | null;
         if (body?.proposal) setLoad({ state: "ready", proposal: body.proposal });
-        if (!res.ok) setNotice(body?.error ?? `Strut answered ${res.status}.`);
+        if (!res.ok) setNotice(body?.error ?? `The strut server answered ${res.status}.`);
       } catch (err) {
         setNotice(err instanceof Error ? err.message : String(err));
       } finally {

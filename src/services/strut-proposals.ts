@@ -188,10 +188,10 @@ export async function readStrutProposal(row: ProposalTurnRow, proposalId: string
       runId: row.id,
       error: err instanceof Error ? err.message : String(err),
     });
-    throw new StrutProposalError(502, "Could not reach strut on the workspace swarm.");
+    throw new StrutProposalError(502, "Could not reach the strut server on the workspace swarm.");
   }
   if (res.status === 404) return null;
-  if (!res.ok) throw new StrutProposalError(502, `Strut answered ${res.status}`);
+  if (!res.ok) throw new StrutProposalError(502, `The strut server answered ${res.status}`);
   return ownedBy(publicProposal(await res.json().catch(() => null), row.workspaceSlug), row);
 }
 
@@ -244,12 +244,12 @@ export async function decideStrutProposal(
       proposalId,
       error: err instanceof Error ? err.message : String(err),
     });
-    throw new StrutProposalError(502, "Could not reach strut on the workspace swarm.");
+    throw new StrutProposalError(502, "Could not reach the strut server on the workspace swarm.");
   }
   const body: unknown = await res.json().catch(() => null);
   if (res.status === 200) {
     const proposal = publicProposal(body, row.workspaceSlug);
-    if (!proposal) throw new StrutProposalError(502, "Strut answered without the record");
+    if (!proposal) throw new StrutProposalError(502, "The strut server answered without the record");
     return { status: 200, proposal };
   }
   const detail = isRecord(body) && typeof body.error === "string" ? body.error : undefined;
@@ -262,9 +262,9 @@ export async function decideStrutProposal(
       error: detail ?? "This proposal has already been decided.",
     };
   }
-  if (res.status === 400) return { status: 400, error: detail ?? "Strut refused the decision (400)." };
+  if (res.status === 400) return { status: 400, error: detail ?? "The strut server refused the decision (400)." };
   if (res.status === 404) return { status: 404, error: "Not found" };
-  throw new StrutProposalError(502, detail ?? `Strut answered ${res.status}`);
+  throw new StrutProposalError(502, detail ?? `The strut server answered ${res.status}`);
 }
 
 /** The result row's text for a decided proposal. */

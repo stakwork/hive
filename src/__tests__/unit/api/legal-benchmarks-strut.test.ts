@@ -353,7 +353,7 @@ describe("GET legal/benchmarks/strut/cascade/export", () => {
     mockEvents.mockResolvedValue(null);
     const res = await get();
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ error: "Could not read the run from strut" });
+    expect(await res.json()).toEqual({ error: "Could not read the run from the strut server" });
     expect(mockHtml).not.toHaveBeenCalled();
   });
 });

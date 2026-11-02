@@ -144,7 +144,7 @@ export function describeStrutTargetError(error: StrutTargetError): string {
     case "ACCESS_DENIED":
       return "You do not have access to this workspace.";
     case "SWARM_NOT_CONFIGURED":
-      return "The workspace has no swarm configured, so it has no strut.";
+      return "The workspace has no swarm configured, so it has no strut server.";
     case "SWARM_NOT_ACTIVE":
       return `The workspace swarm is not active (${error.status}).`;
     case "NO_ORG_SWARM":

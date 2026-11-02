@@ -184,7 +184,7 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
         status: "error",
         error:
           err.code === "workflow_missing"
-            ? "This swarm's strut has no `orchestrator` workflow yet (its lab is not on a build that seeds it). Update the swarm."
+            ? "This swarm's strut server has no `orchestrator` workflow yet (its lab is not on a build that seeds it). Update the swarm."
             : err.message,
       };
     }
@@ -192,7 +192,7 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
       conversationId,
       error: err instanceof Error ? err.message : String(err),
     });
-    return { status: "error", error: "The turn could not be started on strut." };
+    return { status: "error", error: "The turn could not be started on the strut server." };
   }
 
   // The Stop button: register the run (keyed by the StrutRun id) so Stop
@@ -359,6 +359,6 @@ export async function runOrchestratorTurn(args: OrchestratorTurnArgs): Promise<R
     case "busy":
       return syntheticTurnResponse(launched.note, headers);
     case "error":
-      return syntheticTurnResponse(`The message could not be sent to strut: ${launched.error}`, headers);
+      return syntheticTurnResponse(`The message could not be sent to the strut server: ${launched.error}`, headers);
   }
 }

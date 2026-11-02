@@ -511,7 +511,7 @@ export function replyForRow(row: StrutRunRow): JobTurnReply {
     case StrutRunStatus.LOST:
       return {
         outcome: "lost",
-        text: "Strut lost track of this turn (it restarted before recording it). Send the message again.",
+        text: "The strut server lost track of this turn (it restarted before recording it). Send the message again.",
       };
     case StrutRunStatus.ERROR: {
       const error = cap(row.error || "The run failed.", MAX_ERROR_CHARS);

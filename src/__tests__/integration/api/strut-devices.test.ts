@@ -237,7 +237,7 @@ describe("strut device pairing", () => {
     expect(paired.credential).toMatch(/^hivedev_/);
     expect(paired.peers.map((p: { id: string }) => p.id)).toEqual([fineHome.slug]);
     expectPersonToken(paired.peers[0].token, "fine-central-key", actor);
-    expect(paired.errors).toEqual([{ org: broken.githubLogin, error: "The workspace has no swarm configured, so it has no strut." }]);
+    expect(paired.errors).toEqual([{ org: broken.githubLogin, error: "The workspace has no swarm configured, so it has no strut server." }]);
     expect(mockFetch).not.toHaveBeenCalled();
   });
 });

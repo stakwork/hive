@@ -163,7 +163,7 @@ describe("launchOrchestratorTurn", () => {
           input: {
             prompt: "@acme-default\nAdd a Concept for billing retries",
             session: "conv-1",
-            context: { line: "Mon 19 Oct, 14:02, Europe/London. " },
+            context: { line: "Mon, 19 Oct 2026, 14:02, Europe/London. " },
           },
         }),
       }),
@@ -185,7 +185,7 @@ describe("launchOrchestratorTurn", () => {
     expect(body.input).toEqual({
       prompt: "@acme-default\nAdd a Concept for billing retries",
       session: "conv-1",
-      context: { line: "Mon 19 Oct, 14:02, Europe/London. " },
+      context: { line: "Mon, 19 Oct 2026, 14:02, Europe/London. " },
     });
     expect(body.callback.url).toMatch(
       /^https:\/\/hive\.example\.com\/api\/strut-runs\/webhook\?id=row-1&token=[0-9a-f]{64}$/,
@@ -255,7 +255,7 @@ describe("launchOrchestratorTurn", () => {
     };
     await launchOrchestratorTurn({ ...args, focus });
     const line =
-      'Mon 19 Oct, 14:02, Europe/London. On the canvas: initiative "Self-serve onboarding" (`init-1`), feature "Repo picker" (`feat-1`) in workspace `acme`. ';
+      'Mon, 19 Oct 2026, 14:02, Europe/London. On the canvas: initiative "Self-serve onboarding" (`init-1`), feature "Repo picker" (`feat-1`) in workspace `acme`. ';
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
     expect(body.input).toEqual({ prompt: "@acme-default\nAdd a Concept for billing retries", session: "conv-1", context: { line } });
     expect(mockStrutRun.create.mock.calls[0][0].data.input).toEqual({ ...body.input, focus });
@@ -269,7 +269,7 @@ describe("launchOrchestratorTurn", () => {
       session: "conv-1",
       context: {
         line:
-          "Mon 19 Oct, 14:02, Europe/London. On a voice call. Your reply goes to the call's chat and may be read aloud: " +
+          "Mon, 19 Oct 2026, 14:02, Europe/London. On a voice call. Your reply goes to the call's chat and may be read aloud: " +
           "say it the way you would out loud, short, with what matters first; links and detail belong in artifacts. " +
           "Names before a message are what the call shows, not verified. ",
       },
@@ -282,15 +282,15 @@ describe("launchOrchestratorTurn", () => {
     expect(body.input).toEqual({
       prompt: "@acme-default\nAlice: what are we working on?",
       session: "conv-1",
-      context: { line: "Mon 19 Oct, 14:02, Europe/London. " + orchestratorTribeLine({ name: "Builders", alias: "Alice" }) },
+      context: { line: "Mon, 19 Oct 2026, 14:02, Europe/London. " + orchestratorTribeLine({ name: "Builders", alias: "Alice" }) },
     });
     expect(body.input.context.line).toMatch(
-      /^Mon 19 Oct, 14:02, Europe\/London\. Asked in the Sphinx tribe #Builders by Alice\. Your reply is posted there, where not everyone is in this org, and read on a phone: say it the way you would in a text message, short/,
+      /^Mon, 19 Oct 2026, 14:02, Europe\/London\. Asked in the Sphinx tribe #Builders by Alice\. Your reply is posted there, where not everyone is in this org, and read on a phone: say it the way you would in a text message, short/,
     );
 
     await launchOrchestratorTurn({ ...args, wakeId: "job-row-7", tribe: { name: "Builders" } });
     body = JSON.parse((mockFetch.mock.calls[1] as [string, RequestInit])[1].body as string);
-    expect(body.input.context.line).toMatch(/^Mon 19 Oct, 14:02, Europe\/London\. In the Sphinx tribe #Builders\. Your reply is posted there/);
+    expect(body.input.context.line).toMatch(/^Mon, 19 Oct 2026, 14:02, Europe\/London\. In the Sphinx tribe #Builders\. Your reply is posted there/);
     expect(body.input.context.line).not.toContain("Names before a message");
   });
 

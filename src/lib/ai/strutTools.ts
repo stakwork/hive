@@ -115,8 +115,8 @@ async function resolveStrut(
         type === "WORKSPACE_NOT_FOUND" || type === "ACCESS_DENIED"
           ? `Workspace '${workspaceSlug}' not found, or you do not have access to it.`
           : type === "NO_ORG_SWARM"
-            ? `No workspace in the org of '${workspaceSlug}' has an active swarm you can reach, so it has no strut.`
-            : `Workspace '${workspaceSlug}' has no active swarm, so it has no strut.`,
+            ? `No workspace in the org of '${workspaceSlug}' has an active swarm you can reach, so it has no strut server.`
+            : `Workspace '${workspaceSlug}' has no active swarm, so it has no strut server.`,
     };
   }
   if (resolved.target.orgId !== ctx.orgId) {
@@ -217,7 +217,7 @@ export function lastAssistantText(messages: unknown): string | null {
 /** Where a job's replies land: the canvas conversation this turn is in, owned by the caller, and a public Hive URL for strut to post to. */
 async function jobDelivery(ctx: CapabilityContext): Promise<{ conversationId: string; publicBaseUrl: string } | { status: "error"; error: string }> {
   if (!ctx.publicBaseUrl) {
-    return { status: "error", error: "Jobs need a public Hive URL for strut to post replies to; none is configured here." };
+    return { status: "error", error: "Jobs need a public Hive URL for the strut server to post replies to; none is configured here." };
   }
   if (!ctx.currentCanvasConversationId) {
     return { status: "error", error: "A job replies into a canvas conversation, and this turn is not in one." };
@@ -235,28 +235,28 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
   return {
     [DISPATCH_STRUT_TOOL]: tool({
       description:
-        "Dispatch the org's strut AI builder — the workflow-authoring agent on the org's default swarm (one strut per org). " +
-        "It builds and revises strut workflows and custom steps, runs them, and evaluates their runs (run logs, outputs, claims/evidence). " +
+        "Dispatch the org's workflow BUILDER — the workflow-authoring agent on the org's strut server, on its default swarm (one per org). " +
+        "It builds and revises workflows (struts) and custom steps, runs them, and evaluates their runs (run logs, outputs, claims/evidence). " +
         "This is where a 'workflow' request goes by default: unless the user explicitly names Stakwork, a workflow to build, change, run, or evaluate is a strut workflow — not a Stakwork one. " +
-        "Omit `chatId` to start a NEW strut conversation; pass a `chatId` to CONTINUE one — strut keeps the whole transcript, so a follow-up can be short. " +
-        "Runs in the BACKGROUND: this returns at once with the `chatId`, and strut's replies are posted into this conversation as they land — seconds to hours later, and possibly several (a long workflow run ends one reply with 'I'll report back' and the verdict arrives as a later one). " +
+        "Omit `chatId` to start a NEW builder conversation; pass a `chatId` to CONTINUE one — the builder keeps the whole transcript, so a follow-up can be short. " +
+        "Runs in the BACKGROUND: this returns at once with the `chatId`, and the builder's replies are posted into this conversation as they land — seconds to hours later, and possibly several (a long workflow run ends one reply with 'I'll report back' and the verdict arrives as a later one). " +
         "Tell the user it's underway; do NOT re-dispatch to fetch results and do NOT invent findings. " +
         "`status: 'busy'` means that chat is mid-turn — not a failure; wait for its reply, then continue. " +
-        "Strut has a shell and can publish and run code on the swarm: dispatch only what the user asked for.",
+        "The builder has a shell and can publish and run code on the swarm: dispatch only what the user asked for.",
       inputSchema: z.object({
-        workspace: z.string().describe("Slug of the workspace the work is for — any workspace in the active org; it selects that org's strut."),
+        workspace: z.string().describe("Slug of the workspace the work is for — any workspace in the active org; it selects that org's strut server."),
         title: z.string().min(1).describe("Short label for this dispatch, shown on the result in this conversation."),
         prompt: z
           .string()
           .min(1)
           .describe(
-            "The message for strut. For a NEW chat it must be self-contained — strut cannot see this conversation: state the goal, inputs/outputs, and any workflow names or run ids. When continuing, strut already has the earlier turns.",
+            "The message for the builder. For a NEW chat it must be self-contained — the builder cannot see this conversation: state the goal, inputs/outputs, and any workflow names or run ids. When continuing, the builder already has the earlier turns.",
           ),
         chatId: z
           .string()
           .optional()
           .describe(
-            "Continue this strut chat (from an earlier dispatch or `list_strut_chats`). Omit to start a new one.",
+            "Continue this builder chat (from an earlier dispatch or `list_strut_chats`). Omit to start a new one.",
           ),
       }),
       execute: async ({ workspace, title, prompt, chatId }) => {
@@ -305,7 +305,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
             workspace,
             error: e instanceof Error ? e.message : String(e),
           });
-          return { status: "error", error: `Could not reach strut on workspace '${workspace}'.` };
+          return { status: "error", error: `Could not reach the strut server of workspace '${workspace}'.` };
         }
 
         if (res.status === 409) {
@@ -313,7 +313,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
           return {
             status: "busy",
             chatId,
-            note: "That strut chat has a turn in progress. Its reply will be posted here when it ends — continue the chat after that.",
+            note: "That builder chat has a turn in progress. Its reply will be posted here when it ends — continue the chat after that.",
           };
         }
         if (!res.ok) {
@@ -323,8 +323,8 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
             status: "error",
             error:
               res.status === 404 && chatId
-                ? `Strut chat '${chatId}' not found on workspace '${workspace}'.`
-                : detail || `Strut returned HTTP ${res.status}.`,
+                ? `Builder chat '${chatId}' not found on workspace '${workspace}'.`
+                : detail || `The strut server returned HTTP ${res.status}.`,
           };
         }
 
@@ -344,7 +344,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
           return {
             status: "dispatched_without_callback",
             chatId: strutChatId,
-            note: "Strut accepted the message, but this swarm's strut is too old to post replies back here. Tell the user, and read the reply later with check_strut_chat.",
+            note: "The builder accepted the message, but this swarm's strut server is too old to post replies back here. Tell the user, and read the reply later with check_strut_chat.",
           };
         }
         if (!callback) {
@@ -385,25 +385,25 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         return {
           status: "dispatched",
           chatId: strutChatId,
-          note: "Strut is working in the background. Its replies will be posted into this conversation; do not call this tool again for the same request.",
+          note: "The builder is working in the background. Its replies will be posted into this conversation; do not call this tool again for the same request.",
         };
       },
     }),
 
     check_strut_chat: tool({
       description:
-        "Read a strut chat's current status and its latest reply. A fallback — strut's replies are normally posted into this conversation on their own. Use it when the user asks how a dispatch is going, or when a reply seems overdue (a swarm restart drops it).",
+        "Read a builder chat's current status and its latest reply. A fallback — the builder's replies are normally posted into this conversation on their own. Use it when the user asks how a dispatch is going, or when a reply seems overdue (a swarm restart drops it).",
       inputSchema: z.object({
-        workspace: z.string().describe("The workspace slug from the chat's header line (any workspace in the active org reaches the same strut)."),
-        chatId: z.string().describe("The strut chat id."),
+        workspace: z.string().describe("The workspace slug from the chat's header line (any workspace in the active org reaches the same strut server)."),
+        chatId: z.string().describe("The builder chat id."),
       }),
       execute: async ({ workspace, chatId }) => {
         const target = await resolveStrut(ctx, workspace);
         if ("error" in target) return { status: "error", error: target.error };
         try {
           const res = await strutFetch(target, `/chat/${encodeURIComponent(chatId)}`);
-          if (res.status === 404) return { status: "error", error: `Strut chat '${chatId}' not found.` };
-          if (!res.ok) return { status: "error", error: `Strut returned HTTP ${res.status}.` };
+          if (res.status === 404) return { status: "error", error: `Builder chat '${chatId}' not found.` };
+          if (!res.ok) return { status: "error", error: `The strut server returned HTTP ${res.status}.` };
           const { meta, messages } = (await res.json()) as {
             meta?: { title?: string; status?: string; currentTurn?: number; updatedAt?: string };
             messages?: unknown;
@@ -420,22 +420,22 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
           };
         } catch (e) {
           console.error("[check_strut_chat] failed", { workspace, error: e instanceof Error ? e.message : String(e) });
-          return { status: "error", error: `Could not reach strut on workspace '${workspace}'.` };
+          return { status: "error", error: `Could not reach the strut server of workspace '${workspace}'.` };
         }
       },
     }),
 
     list_strut_chats: tool({
-      description: "List the org's strut chats (newest first) — to find a chat id to continue or check.",
+      description: "List the org's builder chats (newest first) — to find a chat id to continue or check.",
       inputSchema: z.object({
-        workspace: z.string().describe("Slug of a workspace in the active org (it selects that org's strut)."),
+        workspace: z.string().describe("Slug of a workspace in the active org (it selects that org's strut server)."),
       }),
       execute: async ({ workspace }) => {
         const target = await resolveStrut(ctx, workspace);
         if ("error" in target) return { status: "error", error: target.error };
         try {
           const res = await strutFetch(target, "/chats");
-          if (!res.ok) return { status: "error", error: `Strut returned HTTP ${res.status}.` };
+          if (!res.ok) return { status: "error", error: `The strut server returned HTTP ${res.status}.` };
           const chats = (await res.json()) as Array<{
             id: string;
             title?: string;
@@ -452,24 +452,24 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
           };
         } catch (e) {
           console.error("[list_strut_chats] failed", { workspace, error: e instanceof Error ? e.message : String(e) });
-          return { status: "error", error: `Could not reach strut on workspace '${workspace}'.` };
+          return { status: "error", error: `Could not reach the strut server of workspace '${workspace}'.` };
         }
       },
     }),
 
     [START_JOB_TOOL]: tool({
       description:
-        "Start a JOB on the org's strut: an agent that works on something the user will ITERATE on — a plan, a document, a page, or a CODE CHANGE delivered as a pull request — over many turns, " +
+        "Start a JOB on the org's strut server: an agent that works on something the user will ITERATE on — a plan, a document, a page, or a CODE CHANGE delivered as a pull request — over many turns, " +
         "in one directory it keeps for the job, with a thread that remembers every earlier turn. It writes its deliverables as files and they land in this conversation as artifact cards. " +
-        "Name the workspaces the work is about as `@<slug>` in the prompt: the job runs on the org's strut, which reads the org's default workspace itself and every other workspace through that workspace's own strut, by slug. " +
+        "Name the workspaces the work is about as `@<slug>` in the prompt: the job runs on the org's strut server, which reads the org's default workspace itself and every other workspace through that workspace's own strut server, by slug. " +
         "A question heading toward a change is a job too: start it with the question, and the job explores, keeps what it found as a note (a card here), and builds from that note on the next turn. " +
         "For a code change, name the workspace and, when you know it, the repository URL (https://github.com/owner/repo): the job's agent runs the swarm's code-change workflow as the user and the pull request lands here as a card; a follow-up revises that same pull request. " +
         "Runs in the BACKGROUND: this returns at once with the `jobId`; the reply is posted into this conversation as a **Job** entry — seconds to minutes later. " +
         "Tell the user it's underway and stop; do NOT call this again for the same request and do NOT invent results. " +
         "To revise what a job produced, use `continue_job` with its `jobId` (in the reply's header line) — not a new job. " +
-        "For building strut WORKFLOWS, use `dispatch_strut` instead.",
+        "For building WORKFLOWS (struts), use `dispatch_strut` instead.",
       inputSchema: z.object({
-        workspace: z.string().describe("Slug of the workspace the work is for — any workspace in the active org; it selects that org's strut."),
+        workspace: z.string().describe("Slug of the workspace the work is for — any workspace in the active org; it selects that org's strut server."),
         title: z.string().min(1).max(120).describe("Short label for the job, shown on every reply of it."),
         prompt: z
           .string()
@@ -498,7 +498,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         "`status: 'busy'` means the job's previous turn is still running — not a failure; wait for its reply, then continue. " +
         "Only the person who started a job can continue it.",
       inputSchema: z.object({
-        workspace: z.string().describe("Slug of a workspace in the active org (it selects the org's strut)."),
+        workspace: z.string().describe("Slug of a workspace in the active org (it selects the org's strut server)."),
         jobId: z.string().min(1).max(120).describe("The job id from the reply's header line (**Job · <jobId> · …**)."),
         prompt: z.string().min(1).describe("This turn's message, in the user's own words. The agent remembers the earlier turns, so it can be short."),
       }),
@@ -525,7 +525,7 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
         // The job's directory and thread live on the strut that ran its
         // first turn; a turn elsewhere would start cold.
         if (first.swarmId !== target.swarmId) {
-          return { status: "error", error: "That job lives on another swarm's strut, so it cannot be continued from here." };
+          return { status: "error", error: "That job lives on another swarm's strut server, so it cannot be continued from here." };
         }
         const live = await db.strutRun.findFirst({
           where: { jobId, kind: JOB_TURN_KIND, status: StrutRunStatus.PENDING },
@@ -547,33 +547,33 @@ export function buildStrutTools(ctx: CapabilityContext): ToolSet {
 export function getStrutCapabilitySnippet(): string {
   return `
 
-## Strut (workflow builder sub-agent)
+## Workflow builder (sub-agent)
 
-Each org's default swarm hosts **strut**, a workflow engine with its own AI builder — an agent that authors strut workflows (YAML) and custom steps, runs them, and evaluates their runs (run logs, outputs, claims and evidence). You dispatch that builder; you do not write strut workflows yourself.
+Each org's default swarm hosts a **strut server**, a workflow engine with its own AI builder — an agent that authors workflows (YAML; the team calls them struts) and custom steps, runs them, and evaluates their runs (run logs, outputs, claims and evidence). You dispatch that builder; you do not write workflows yourself.
 
 **"Workflow" means strut by default.** Unless the user explicitly names Stakwork, a workflow to build, revise, run, or evaluate — and a workflow run to check on — is a strut workflow and goes through these tools: not the Stakwork workflow library (\`workflow_explorer_agent\`), not the stakwork workspace's \`stakwork__*\` tools, and not a feature in the stakwork workspace.
 
 ### Tools
 
-- **\`dispatch_strut({ workspace, title, prompt, chatId? })\`** — Send a message to the org's strut builder (\`workspace\` is the workspace the work is for; every workspace in the org reaches the same strut). Omit \`chatId\` to start a NEW strut chat; pass one to CONTINUE it (strut keeps the whole transcript). Returns immediately with the \`chatId\`.
+- **\`dispatch_strut({ workspace, title, prompt, chatId? })\`** — Send a message to the org's builder (\`workspace\` is the workspace the work is for; every workspace in the org reaches the same strut server). Omit \`chatId\` to start a NEW builder chat; pass one to CONTINUE it (the builder keeps the whole transcript). Returns immediately with the \`chatId\`.
 - **\`check_strut_chat({ workspace, chatId })\`** — Read a chat's status and latest reply. A fallback, not the normal path.
 - **\`list_strut_chats({ workspace })\`** — Find a chat id again.
 
 ### How replies arrive
 
-\`dispatch_strut\` runs in the BACKGROUND — a strut turn takes seconds or hours. Strut's replies are posted into this conversation on their own, as assistant entries headed **Strut · <workspace> · chat \`<chatId>\`**. One dispatch can produce SEVERAL replies: a long workflow run ends a reply with "I'll report back", and the verdict arrives as a later one. An entry that ends with "Strut is still working" is interim — more is coming; do not act on it as the final answer.
+\`dispatch_strut\` runs in the BACKGROUND — a builder turn takes seconds or hours. The builder's replies are posted into this conversation on their own, as assistant entries headed **Strut · <workspace> · chat \`<chatId>\`**. One dispatch can produce SEVERAL replies: a long workflow run ends a reply with "I'll report back", and the verdict arrives as a later one. An entry that ends with "The builder is still working" is interim — more is coming; do not act on it as the final answer.
 
 After dispatching, tell the user it's underway and stop. Do NOT call \`dispatch_strut\` again for the same request, do NOT poll \`check_strut_chat\` in a loop, and do NOT invent results.
 
 ### Continuing a chat
 
-Prefer continuing an existing chat (\`chatId\` from its header line) over starting a new one when the follow-up is about the same workflow — strut already has the context, so the message can be short. \`status: "busy"\` means that chat is mid-turn: not a failure. Wait for its reply to land, then continue.
+Prefer continuing an existing chat (\`chatId\` from its header line) over starting a new one when the follow-up is about the same workflow — the builder already has the context, so the message can be short. \`status: "busy"\` means that chat is mid-turn: not a failure. Wait for its reply to land, then continue.
 
 ### Prompting tips
 
-- A NEW chat's prompt must be self-contained — strut cannot see this conversation. State the goal, the input and output shapes, and how to test it.
+- A NEW chat's prompt must be self-contained — the builder cannot see this conversation. State the goal, the input and output shapes, and how to test it.
 - To evaluate a run, name the workflow and the run id (e.g. from a workflow-benchmark run) and say what you want judged.
-- Strut can list the secret NAMES its swarm has but cannot add one. If it reports a missing secret, relay that to the user — adding it is theirs to do.
+- The builder can list the secret NAMES its swarm has but cannot add one. If it reports a missing secret, relay that to the user — adding it is theirs to do.
 
 ### Jobs
 
@@ -584,14 +584,14 @@ For something the user will ITERATE on — a plan, a document, a page, a code ch
 - **A Job entry is the record; your words are the reply.** The entry is written in detail (a code change lists files, functions and line numbers) and the chat shows it collapsed — the user expands it only to check. When one lands (you may be woken for it) or the user asks about it, answer with ONE short paragraph in your own words: what the job produced, the question it asked if any, and the next step. Never restate the entry, never list files, functions or line numbers, never describe the cards — the user sees them.
 - A Job entry that carries a **Question for you** is the agent stopping for a decision; the user's answer goes back as the next \`continue_job\` prompt.
 - \`status: "busy"\` means the job's previous turn is still running — wait for its reply, then continue.
-- **Name workspaces as \`@<slug>\`.** The job runs on the org's strut, which sits on the org's default workspace and reaches every other workspace's graph and repositories through that workspace's own strut, by slug. You know how the org's workspaces fit together; the job does not. When the request is about code in a workspace, write \`@<slug>\` in the prompt so the job looks there.
+- **Name workspaces as \`@<slug>\`.** The job runs on the org's strut server, which sits on the org's default workspace and reaches every other workspace's graph and repositories through that workspace's own strut server, by slug. You know how the org's workspaces fit together; the job does not. When the request is about code in a workspace, write \`@<slug>\` in the prompt so the job looks there.
 - **Let the job explore.** When a question is heading toward a change ("how does billing retry? we want to change it"), start the job with the question instead of answering it with \`repo_agent\` first. The job explores, keeps what it found as a note in the job (a card here), and the change starts from that note on the next turn. Never paste your own findings into a job prompt: the note is the record. \`repo_agent\` stays for a quick answer the user will not build on.
 - **A code change is a job.** Name the workspace the code lives in as \`@<slug>\`, and the repository URL when you know it (the user named it, or you found it). If you are guessing between workspaces, ask the user first. The job's agent runs the swarm's code-change workflow with the user's own GitHub token; the pull request lands here as a card, and "also rename the helper" is a \`continue_job\` that revises the same pull request. Work across several repositories, or a schema migration, goes through \`propose_feature\` instead.
-- \`dispatch_strut\` stays for building and running strut WORKFLOWS; \`start_job\` is for producing something.
+- \`dispatch_strut\` stays for building and running WORKFLOWS (struts); \`start_job\` is for producing something.
 
 ### Caveats
 
-- Strut has a shell and publishes and runs real code on the swarm. Dispatch only what the user asked for; never widen the task on your own.
+- The builder has a shell and publishes and runs real code on the swarm. Dispatch only what the user asked for; never widen the task on your own.
 - \`check_strut_chat\` is for when the user asks how a dispatch is going, or a reply seems overdue (a swarm restart can drop one).
 `;
 }
