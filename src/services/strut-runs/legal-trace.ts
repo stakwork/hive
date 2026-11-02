@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { StrutRunStatus } from "@prisma/client";
+import { isLongMemoryWorkspace } from "@/lib/eval-capture-slugs";
 import { authorizeBenchmark, type BenchmarkMember } from "@/lib/benchmarks/access";
 import type { SessionSource } from "@/lib/legal-cascade/export/assemble";
 import {
@@ -26,6 +27,7 @@ import type { CascadeSession, CascadeSessionDetail, CascadeTurnsPage } from "@/l
 import type { StrutRunRow } from "@/services/strut-runs";
 import { fetchStrutRunEvents, fetchStrutTranscript } from "@/services/strut-runs/lab";
 import { HARVEY_LAB_BENCHMARK_SLUG, findLegalStrutRunRow } from "@/services/strut-runs/legal-benchmark";
+import { findLongMemoryRunRow } from "@/services/strut-runs/longmemory-benchmark";
 
 /** A live run's log is re-read at most this often. */
 const LIVE_TTL_MS = 10_000;
@@ -130,7 +132,11 @@ export function strutTraceExportSource(row: StrutRunRow): SessionSource {
   };
 }
 
-/** The routes' gate: the `harvey-lab` benchmark in this workspace, and the run by its hive id. */
+/**
+ * The routes' gate: the `harvey-lab` benchmark in this workspace, and the run
+ * by its hive id — a Harvey LAB run, or in a LongMemory workspace a LongMemory
+ * one (same trace reader; both are strut runs on the workspace's swarm).
+ */
 export async function resolveStrutTraceAccess(
   request: NextRequest,
   slug: string,
@@ -139,7 +145,9 @@ export async function resolveStrutTraceAccess(
   if (auth instanceof NextResponse) return auth;
   const runId = request.nextUrl.searchParams.get("runId")?.trim();
   if (!runId) return NextResponse.json({ error: "runId query param is required" }, { status: 400 });
-  const row = await findLegalStrutRunRow(auth.member.workspaceId, runId);
+  const row =
+    (await findLegalStrutRunRow(auth.member.workspaceId, runId)) ??
+    (isLongMemoryWorkspace(slug) ? await findLongMemoryRunRow(auth.member.workspaceId, runId) : null);
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return { row, member: auth.member };
 }

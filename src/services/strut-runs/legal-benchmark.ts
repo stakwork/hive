@@ -31,7 +31,7 @@ export function harveyLabBenchmark(): Benchmark {
   return benchmark;
 }
 
-const ROW_SELECT = {
+export const ROW_SELECT = {
   id: true,
   workspaceId: true,
   swarmId: true,
@@ -87,7 +87,7 @@ export function paramsFor(models: LegalRunModels): Record<string, unknown> {
   };
 }
 
-const STATUS: Record<StrutRunStatus, WorkflowStatus> = {
+export const STATUS: Record<StrutRunStatus, WorkflowStatus> = {
   PENDING: WorkflowStatus.IN_PROGRESS,
   SUCCESS: WorkflowStatus.COMPLETED,
   ERROR: WorkflowStatus.FAILED,
