@@ -40,10 +40,10 @@ describe("the launch's input", () => {
     );
   });
 
-  it("context.line is the time in the person's zone, then the zone; UTC when the zone is unknown", () => {
-    expect(orchestratorContextLine(NOW, "Europe/London")).toBe("Mon 19 Oct, 14:02, Europe/London. ");
-    expect(orchestratorContextLine(NOW, undefined)).toBe("Mon 19 Oct, 13:02, UTC. ");
-    expect(orchestratorContextLine(NOW, "Nowhere/Zone")).toBe("Mon 19 Oct, 13:02, UTC. ");
+  it("context.line is the date and time in the person's zone, then the zone; UTC when the zone is unknown", () => {
+    expect(orchestratorContextLine(NOW, "Europe/London")).toBe("Mon, 19 Oct 2026, 14:02, Europe/London. ");
+    expect(orchestratorContextLine(NOW, undefined)).toBe("Mon, 19 Oct 2026, 13:02, UTC. ");
+    expect(orchestratorContextLine(NOW, "Nowhere/Zone")).toBe("Mon, 19 Oct 2026, 13:02, UTC. ");
   });
 });
 

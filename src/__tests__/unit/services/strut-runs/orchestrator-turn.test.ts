@@ -95,7 +95,7 @@ function row(over: Record<string, unknown> = {}): StrutRunRow {
     input: {
       prompt: "@acme\nAdd a Concept",
       session: "conv-1",
-      context: { line: "Mon 19 Oct, 14:02, Europe/London. " },
+      context: { line: "Mon, 19 Oct 2026, 14:02, Europe/London. " },
     },
     output: { text: "I proposed a Concept for billing retries.", artifacts: [], cost: 0.01, session: "conv-1" },
     error: null,
