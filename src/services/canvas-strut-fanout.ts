@@ -76,7 +76,7 @@ export function renderStrutContent(p: StrutFanOutPayload): string {
   const footer = p.parked
     ? "\n\n_Strut paused its own follow-ups (auto-turn cap reached) — it continues when the chat is dispatched again._"
     : !p.settled
-      ? "\n\n_Strut is still working — another reply will follow._"
+      ? "\n\n_The builder is still working — another reply will follow._"
       : "";
   if (p.event === "settled") {
     return `${header}\n\nStrut finished its background work with nothing further to report.${footer}`;

@@ -115,7 +115,7 @@ function tasksOf(value: unknown): LongMemoryTask[] | undefined {
 
 function errorMessageOf(row: Pick<StrutRunRow, "status" | "error">): string | undefined {
   if (row.status === StrutRunStatus.CANCELLED) return row.error ?? "The run was cancelled";
-  if (row.status === StrutRunStatus.LOST) return row.error ?? "Strut never reported this run back";
+  if (row.status === StrutRunStatus.LOST) return row.error ?? "The strut server never reported this run back";
   if (row.status === StrutRunStatus.ERROR) return row.error ?? "The run failed";
   return undefined;
 }

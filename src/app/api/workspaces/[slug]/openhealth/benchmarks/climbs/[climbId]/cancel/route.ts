@@ -26,7 +26,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "The climb is not in progress" }, { status: 409 });
     }
     if (!(await cancelStrutRun(row))) {
-      return NextResponse.json({ error: "Strut did not acknowledge the cancel" }, { status: 502 });
+      return NextResponse.json({ error: "The strut server did not acknowledge the cancel" }, { status: 502 });
     }
     return NextResponse.json({ success: true }, { status: 202 });
   } catch (error) {

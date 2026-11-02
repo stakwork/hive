@@ -71,7 +71,7 @@ export function useCanvasProposals(githubLogin: string) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         // Already decided elsewhere (409) is decided too: the card goes either way.
         if (!res.ok && res.status !== 409) {
-          toast.error(body?.error ?? `Strut answered ${res.status}.`);
+          toast.error(body?.error ?? `The strut server answered ${res.status}.`);
           return false;
         }
         setDecided((d) => new Set([...d, proposalId]));

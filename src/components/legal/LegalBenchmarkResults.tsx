@@ -260,7 +260,7 @@ export function LegalBenchmarkResults({ runId, onReset, isSuperAdmin = false }: 
           <SpinnerMessage
             message={
               strut
-                ? "Running task on strut… (a task takes about an hour and a half)"
+                ? "Running task on the strut server… (a task takes about an hour and a half)"
                 : "Running task… (document ingestion & analysis)"
             }
           />

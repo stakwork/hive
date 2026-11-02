@@ -1909,7 +1909,7 @@ describe("LegalBenchmarkResults in a strut legal workspace", () => {
     complete({ deliverables: [], strutRunId: "1792552899038", strutWorkflow: "harvey-lab-run" });
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
     const link = screen.getByTestId("strut-run-view-link");
-    expect(link).toHaveTextContent("Open in strut");
+    expect(link).toHaveTextContent("Open on the strut server");
     expect(link).toHaveAttribute("href", "/w/openlaw-1/strut?strut=wf%3Dharvey-lab-run%26run%3D1792552899038");
   });
 
@@ -1965,6 +1965,6 @@ describe("LegalBenchmarkResults in a strut legal workspace", () => {
   it("says a running task takes a while", () => {
     mockUseLegalBenchmarkRun.mockReturnValue({ run: makeMockRun(), isLoading: false, isStale: false, refetch: vi.fn() });
     render(React.createElement(LegalBenchmarkResults, { runId: "run-abc", onReset }));
-    expect(screen.getByText(/Running task on strut/)).toBeInTheDocument();
+    expect(screen.getByText(/Running task on the strut server/)).toBeInTheDocument();
   });
 });

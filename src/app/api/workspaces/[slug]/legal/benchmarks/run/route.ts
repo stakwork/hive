@@ -730,7 +730,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       if (delegation.status !== "fresh" && delegation.status !== "pushed") {
         await deletePendingRun(runnerRun.id);
         return NextResponse.json(
-          { error: "Strut delegation unavailable" },
+          { error: "Strut server delegation unavailable" },
           { status: 503 },
         );
       }
@@ -768,7 +768,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       if (!strutResponse.ok) {
         await deletePendingRun(runnerRun.id);
         return NextResponse.json(
-          { error: "Failed to dispatch job to strut" },
+          { error: "Failed to dispatch job to the strut server" },
           { status: 502 },
         );
       }

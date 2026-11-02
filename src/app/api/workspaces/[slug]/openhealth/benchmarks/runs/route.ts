@@ -94,7 +94,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const catalogue = await getOpenHealthTasks(resolved.target, split, benchmark);
     if (!catalogue) {
-      return NextResponse.json({ error: "Could not load the task list from strut" }, { status: 502 });
+      return NextResponse.json({ error: "Could not load the task list from the strut server" }, { status: 502 });
     }
     if (!catalogue.tasks.some((task) => task.gtId === gtId)) {
       return NextResponse.json({ error: `No task ${gtId} in the ${split} split` }, { status: 400 });

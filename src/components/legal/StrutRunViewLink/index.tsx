@@ -29,15 +29,15 @@ export function StrutRunViewLink({ strutRunId, workflow, iconOnly = false }: Str
   return (
     <a
       href={workspaceStrutViewPath(workspace.slug, strutRunDeepLink(workflow, strutRunId))}
-      title="Open in strut"
-      aria-label={iconOnly ? "Open in strut" : undefined}
+      title="Open on the strut server"
+      aria-label={iconOnly ? "Open on the strut server" : undefined}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
       data-testid="strut-run-view-link"
     >
       <ExternalLink className={iconOnly ? "h-3 w-3" : "h-3.5 w-3.5"} />
-      {!iconOnly && "Open in strut"}
+      {!iconOnly && "Open on the strut server"}
     </a>
   );
 }

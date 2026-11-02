@@ -117,7 +117,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!launched) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-    return NextResponse.json({ error: "The swarm has no strut" }, { status: 404 });
+    return NextResponse.json({ error: "The swarm has no strut server" }, { status: 404 });
   }
   let apiKey: string;
   try {

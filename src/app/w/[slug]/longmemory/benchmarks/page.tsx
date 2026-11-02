@@ -28,7 +28,7 @@ export default function LongMemoryBenchmarksPage() {
       <PageHeader
         icon={Brain}
         title="LongMemory"
-        description="Long-term conversational memory QA, run on this workspace's strut"
+        description="Long-term conversational memory QA, run on this workspace's strut server"
       />
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)} className="flex min-h-0 flex-1 flex-col">
         <div className="px-4 pb-3">

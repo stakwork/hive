@@ -34,7 +34,7 @@ function StrutRunLink({ url }: { url: string | undefined }) {
   return (
     <a
       href={url}
-      title="View on strut (lab)"
+      title="View on the strut server (lab)"
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
