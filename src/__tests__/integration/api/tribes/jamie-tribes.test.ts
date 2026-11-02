@@ -68,7 +68,7 @@ vi.mock("@/services/strut-proposals", async (importOriginal) => ({
 import { GET as listTribes, POST as linkTribe } from "@/app/api/strut-devices/tribes/route";
 import { POST as registerSphinx } from "@/app/api/strut-devices/sphinx/route";
 import { GET as devicePeers } from "@/app/api/strut-devices/peers/route";
-import { DELETE as unlinkTribe } from "@/app/api/strut-devices/tribes/[pubkey]/route";
+import { DELETE as unlinkTribe, PATCH as markTribe } from "@/app/api/strut-devices/tribes/[pubkey]/route";
 import { POST as postMessage } from "@/app/api/tribes/messages/route";
 import { POST as postLeft } from "@/app/api/tribes/left/route";
 import { GET as getOutbox } from "@/app/api/tribes/outbox/route";
@@ -103,6 +103,10 @@ const link = (credential: string, body: unknown) => linkTribe(request("POST", "/
 const list = (credential: string) => listTribes(request("GET", "/api/strut-devices/tribes", credential));
 const unlink = (credential: string, pubkey = TRIBE) =>
   unlinkTribe(request("DELETE", `/api/strut-devices/tribes/${pubkey}`, credential), {
+    params: Promise.resolve({ pubkey }),
+  });
+const mark = (credential: string | null, body: unknown, pubkey = TRIBE) =>
+  markTribe(request("PATCH", `/api/strut-devices/tribes/${pubkey}`, credential, body), {
     params: Promise.resolve({ pubkey }),
   });
 
@@ -336,6 +340,7 @@ describe("Jamie in Sphinx tribes", () => {
       expect((await link("hivedev_nope", body)).status).toBe(401);
       expect((await list("hivedev_nope")).status).toBe(401);
       expect((await unlink("hivedev_nope")).status).toBe(401);
+      expect((await mark("hivedev_nope", { sendersMarked: true })).status).toBe(401);
 
       delete process.env.JAMIE_SPHINX_PUBKEY;
       expect((await link(credential, body)).status).toBe(503);
@@ -354,7 +359,15 @@ describe("Jamie in Sphinx tribes", () => {
       const res = await link(credential, { workspace: workspace.slug, tribe: { pubkey: TRIBE.toUpperCase(), host: HOST, name: "Builders" } });
 
       expect(res.status).toBe(200);
-      const tribe = { pubkey: TRIBE, host: HOST, name: "Builders", workspace: workspace.slug, org: org.githubLogin, createdAt: expect.any(String) };
+      const tribe = {
+        pubkey: TRIBE,
+        host: HOST,
+        name: "Builders",
+        workspace: workspace.slug,
+        org: org.githubLogin,
+        sendersMarked: false,
+        createdAt: expect.any(String),
+      };
       expect(await res.json()).toEqual({ jamie: { pubkey: JAMIE, alias: "Jamie" }, tribe });
       expect(await tribeLink()).toMatchObject({ userId: owner.id, orgId: org.id, workspaceSlug: workspace.slug });
       expect(await threads()).toEqual([]);
@@ -458,6 +471,65 @@ describe("Jamie in Sphinx tribes", () => {
       const memberCredential = await createDevice(scenario.members[0].id);
       expect((await unlink(memberCredential)).status).toBe(404);
       expect(await tribeLink()).not.toBeNull();
+    });
+
+    it("Jamie's mark is kept on the link, so every device of the linker reads it; linking again keeps it", async () => {
+      const scenario = await linked();
+      const otherDevice = await createDevice(scenario.owner.id);
+      const marked = async (credential: string) =>
+        ((await (await list(credential)).json()).tribes as Array<{ sendersMarked: boolean }>).map((t) => t.sendersMarked);
+      expect(await marked(otherDevice)).toEqual([false]);
+
+      const on = await mark(scenario.credential, { sendersMarked: true }, TRIBE.toUpperCase());
+      expect(on.status).toBe(200);
+      expect((await on.json()).tribe).toEqual({
+        pubkey: TRIBE,
+        host: HOST,
+        name: null,
+        workspace: scenario.workspace.slug,
+        org: scenario.org.githubLogin,
+        sendersMarked: true,
+        createdAt: expect.any(String),
+      });
+      expect((await tribeLink())!.sendersMarkedAt).toBeInstanceOf(Date);
+      expect(await marked(otherDevice)).toEqual([true]);
+
+      // Jamie stays in the tribe, and so does its mark.
+      await link(scenario.credential, { workspace: scenario.workspace.slug, tribe: { pubkey: TRIBE, host: HOST } });
+      expect(await marked(otherDevice)).toEqual([true]);
+
+      const off = await mark(otherDevice, { sendersMarked: false });
+      expect(off.status).toBe(200);
+      expect((await off.json()).tribe.sendersMarked).toBe(false);
+      expect((await tribeLink())!.sendersMarkedAt).toBeNull();
+      expect(await marked(scenario.credential)).toEqual([false]);
+    });
+
+    it("the mark: 404 for someone else's link, 400 for anything but a boolean, 401 without a live credential", async () => {
+      const scenario = await linked();
+      const memberCredential = await createDevice(scenario.members[0].id);
+      expect((await mark(memberCredential, { sendersMarked: true })).status).toBe(404);
+      expect((await mark(scenario.credential, { sendersMarked: true }, "02" + "f".repeat(64))).status).toBe(404);
+
+      for (const body of [{}, { sendersMarked: "true" }, { sendersMarked: 1 }, { sendersMarked: null }, [true], null]) {
+        expect((await mark(scenario.credential, body)).status).toBe(400);
+      }
+      const notJson = await markTribe(
+        new NextRequest(`${BASE}/api/strut-devices/tribes/${TRIBE}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${scenario.credential}`, "Content-Type": "application/json" },
+          body: "sendersMarked=true",
+        }),
+        { params: Promise.resolve({ pubkey: TRIBE }) },
+      );
+      expect(notJson.status).toBe(400);
+
+      expect((await mark(null, { sendersMarked: true })).status).toBe(401);
+      const revoked = await createDevice(scenario.owner.id);
+      await db.strutDevice.update({ where: { credentialHash: hashApiKey(revoked) }, data: { revokedAt: new Date() } });
+      expect((await mark(revoked, { sendersMarked: true })).status).toBe(401);
+
+      expect((await tribeLink())!.sendersMarkedAt).toBeNull();
     });
   });
 
