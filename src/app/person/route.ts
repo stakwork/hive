@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { EncryptionService } from "@/lib/encryption";
+import { userByLightningPubkey } from "@/lib/auth/lightning-pubkey";
 
 export async function POST(request: NextRequest) {
-  const encryptionService = EncryptionService.getInstance();
   try {
     const body = await request.json();
     const { owner_pubkey, owner_alias, owner_route_hint } = body;
@@ -14,32 +13,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "owner_pubkey is required" }, { status: 400 });
     }
 
-    // Find user by decrypting and comparing lightningPubkey fields
-    const usersWithPubkey = await db.user.findMany({
-      where: { lightningPubkey: { not: null } },
-      select: { id: true, lightningPubkey: true },
-    });
-
-    let matchedUserId: string | null = null;
-
-    for (const user of usersWithPubkey) {
-      if (!user.lightningPubkey) continue;
-
-      try {
-        const encryptedData = JSON.parse(user.lightningPubkey);
-        const decryptedPubkey = encryptionService.decryptField("lightningPubkey", encryptedData);
-
-        if (decryptedPubkey === owner_pubkey) {
-          matchedUserId = user.id;
-          break;
-        }
-      } catch (decryptError) {
-        logger.error("Failed to decrypt user pubkey", "SPHINX_PERSON", {
-          error: decryptError,
-          userId: user.id,
-        });
-      }
-    }
+    // By the pubkey's lookup hash. A string that is not a Sphinx pubkey finds no one: 404, as before.
+    const matchedUserId = (await userByLightningPubkey(owner_pubkey))?.id ?? null;
 
     if (!matchedUserId) {
       logger.warn("No user found for pubkey in /person", "SPHINX_PERSON", { owner_pubkey });
