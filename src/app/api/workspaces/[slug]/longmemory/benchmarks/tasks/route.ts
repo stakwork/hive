@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const list = await getLongMemoryTasks(resolved.target);
-    if (!list) return NextResponse.json({ error: "Could not load the question list from strut" }, { status: 502 });
+    if (!list) return NextResponse.json({ error: "Could not load the question list from the strut server" }, { status: 502 });
     return NextResponse.json(list);
   } catch (error) {
     console.error("[longmemory/benchmarks/tasks] GET error:", error);

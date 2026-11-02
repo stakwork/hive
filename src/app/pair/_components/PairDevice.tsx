@@ -89,7 +89,7 @@ export function PairDevice({ initialCode }: { initialCode: string }) {
           Connect a device to strut
         </CardTitle>
         <CardDescription>
-          A strut desktop app pairs with your account to reach your orgs&apos; strut as you.
+          A strut desktop app pairs with your account to reach your orgs&apos; strut servers as you.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -129,7 +129,7 @@ export function PairDevice({ initialCode }: { initialCode: string }) {
             <p className="text-center font-mono text-2xl tracking-widest">{pairing.userCode}</p>
             {lookup.orgs.length > 0 ? (
               <div className="text-sm">
-                <p>It will get a token for the strut of each of your orgs, renewed daily until you revoke it in Settings:</p>
+                <p>It will get a token for the strut server of each of your orgs, renewed daily until you revoke it in Settings:</p>
                 <ul className="mt-2 list-disc pl-5">
                   {lookup.orgs.map((org) => (
                     <li key={org.githubLogin}>{org.name}</li>

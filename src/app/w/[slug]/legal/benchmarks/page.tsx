@@ -66,7 +66,7 @@ export default function LegalBenchmarksPage() {
         title="Legal Benchmarks"
         description={
           strut
-            ? "Harvey LAB — 1,749 real legal tasks across 25 practice areas, run on this workspace's strut"
+            ? "Harvey LAB — 1,749 real legal tasks across 25 practice areas, run on this workspace's strut server"
             : "Harvey LAB — 1,749 real legal tasks across 25 practice areas"
         }
       />

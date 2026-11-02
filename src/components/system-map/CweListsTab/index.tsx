@@ -347,7 +347,7 @@ export function CweListsTab() {
             response.status === 409
               ? `A ${label} run is already in progress`
               : body.code === "workflow_missing"
-                ? `${label} workflow is not on this strut yet`
+                ? `${label} workflow is not on this workspace's strut server yet`
                 : `Could not start ${label}`;
           toast.error(title, { description: body.error });
           return;

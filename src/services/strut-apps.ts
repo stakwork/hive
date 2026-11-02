@@ -82,7 +82,7 @@ export async function authorizeAppSwarm(
   if (!swarm || swarm.workspace.deleted || swarm.workspace.sourceControlOrgId !== orgId) return fail(403, "Forbidden");
   const access = await validateWorkspaceAccess(swarm.workspace.slug, userId);
   if (!access.canRead) return fail(403, "Forbidden");
-  if (!swarm.swarmUrl || !swarm.swarmApiKey) return fail(404, "The swarm has no strut");
+  if (!swarm.swarmUrl || !swarm.swarmApiKey) return fail(404, "The swarm has no strut server");
   let swarmApiKey: string;
   try {
     swarmApiKey = EncryptionService.getInstance().decryptField("swarmApiKey", swarm.swarmApiKey);

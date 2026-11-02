@@ -217,7 +217,7 @@ async function reconcileOrg(
 ): Promise<void> {
   const home = org.defaultWorkspace ? toStrutSwarm(org.defaultWorkspace) : null;
   if (!home) {
-    result.errors.push({ org: org.githubLogin, error: "the org strut's swarm has no usable URL or key" });
+    result.errors.push({ org: org.githubLogin, error: "the swarm of the org's strut server has no usable URL or key" });
     return;
   }
   const peers = await otherSwarms(org.id, home, org.githubLogin, result);
@@ -427,7 +427,7 @@ async function pushSubscriptions(orgLogin: string, home: StrutSwarm, peers: Stru
     if (typeof body.key !== "string" || !body.key) throw new Error("GET /publisher answered no key");
     key = body.key;
   } catch (err) {
-    result.errors.push({ org: orgLogin, error: `the org strut's publisher: ${err instanceof Error ? err.message : String(err)}` });
+    result.errors.push({ org: orgLogin, error: `the publisher of the org's strut server: ${err instanceof Error ? err.message : String(err)}` });
     return;
   }
   await Promise.all(

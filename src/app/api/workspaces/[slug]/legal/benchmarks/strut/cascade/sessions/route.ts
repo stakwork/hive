@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const row = await resolveStrutTraceRow(request, (await params).slug);
     if (row instanceof NextResponse) return row;
     const sessions = await strutTraceSessions(row);
-    if (!sessions) return NextResponse.json({ error: "Could not read the run from strut" }, { status: 502 });
+    if (!sessions) return NextResponse.json({ error: "Could not read the run from the strut server" }, { status: 502 });
     return NextResponse.json({ success: true, data: { sessions } });
   } catch (error) {
     console.error("[legal/benchmarks/strut/cascade/sessions] GET error:", error);
