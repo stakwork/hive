@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
+import { backfillLightningPubkeyHashes } from "@/lib/auth/lightning-pubkey";
 import { config as dotenvConfig } from "dotenv";
 dotenvConfig({ path: ".env.local" });
 
@@ -378,9 +379,12 @@ async function main() {
   await rotateSwarms(encryption, stats);
   await rotateRepositories(encryption, stats);
   await rotateWorkspaces(encryption, stats);
+  // The pubkey lookup hash is keyed by the active key: taken again under the new one.
+  const hashes = await backfillLightningPubkeyHashes(prisma, { dryRun: false, all: true, log: (msg) => console.log(msg) });
 
   console.log("\nRotation complete:");
   console.log(stats);
+  console.log("Lightning pubkey hashes:", { ...hashes, conflicts: hashes.conflicts.length });
 
   await prisma.$disconnect();
 }

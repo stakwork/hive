@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { userByLightningPubkey } from "@/lib/auth/lightning-pubkey";
 import { db } from "@/lib/db";
 import { loadUserChatAgentModel } from "@/lib/ai/resolve-model";
 import { LockAcquireTimeoutError, withLock } from "@/lib/locks/redis-lock";
@@ -17,9 +18,10 @@ import {
   queueTribeNotice,
   queueTribeReply,
   TRIBE_ACCESS_LOST_NOTICE,
-  TRIBE_DECIDED_IN_HIVE,
   TRIBE_OWNER_DECIDES,
+  tribeDecidedBy,
   tribeName,
+  tribePersonName,
 } from "@/lib/tribes/tribeLinks";
 import { parseTribeMessageId } from "@/lib/tribes/tribeOutbox";
 import { getBaseUrl } from "@/lib/utils";
@@ -48,9 +50,17 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  * The call turn route's flow (`/api/calls/turn`) on one of the tribe's
  * conversations: the message is saved as `"<alias>: <text>"` with the room
  * before it (`recent`) as a text attachment, and one orchestrator turn is
- * launched as the person who linked the tribe, with the tribe line on its
- * context. The mention's id is recorded against the turn, so the reply,
- * which Jamie reads from `/api/tribes/outbox`, threads under it.
+ * launched with the tribe line on its context. The mention's id is recorded
+ * against the turn, so the reply, which Jamie reads from
+ * `/api/tribes/outbox`, threads under it.
+ *
+ * Who the turn runs as: the member who asked, when the mention names its
+ * `sender` (the Sphinx pubkey the tribe server tells Jamie, stakwork/sphinx
+ * `docs/tribe-sender-identity.md`), Hive knows that pubkey
+ * (`User.lightningPubkey`), and they can use the linked workspace — their
+ * actor, their delegation, their credentials on strut. Anyone else runs as
+ * the person who linked the tribe, as every turn did before senders. The
+ * conversation is the linker's either way.
  *
  * Which conversation (`TribeThread`), and so which orchestrator session: a
  * reply to one of Jamie's posts (`@jamie` or not), or a mention posted in a
@@ -82,8 +92,8 @@ import { validateWorkspaceAccess } from "@/services/workspace";
  *
  * A decision: a reply to Jamie's proposal post that is only the card's
  * button word, or a plain accept / reject (`decideByReply`), decides the
- * proposal when the tribe's owner wrote it, and runs no turn; anyone else
- * is told only the owner can.
+ * proposal when the person the proposing turn ran as wrote it, and runs no
+ * turn; anyone else is told whose it is.
  *
  * Answers, as the daemon reads them:
  *   202 { turn, thread }  taken
@@ -151,6 +161,8 @@ interface Earlier {
   id: string;
   alias: string;
   text: string;
+  /** Its sender's Sphinx pubkey, when the tribe named it. The turn runs as the newest message's sender. */
+  sender: string | null;
 }
 
 interface Mention {
@@ -162,6 +174,12 @@ interface Mention {
   tribe: { pubkey: string; name: string | null };
   alias: string;
   owner: boolean;
+  /**
+   * The sender's Sphinx pubkey (33 bytes, lower-case hex), when the tribe
+   * server told Jamie who sent it; null from a tribe server or daemon that
+   * does not.
+   */
+  sender: string | null;
   text: string;
   /** The burst's earlier messages, oldest first; empty for a message alone. */
   earlier: Earlier[];
@@ -173,6 +191,13 @@ interface Mention {
 /** A name shown before a message on one line. */
 const oneLine = (raw: unknown, max: number): string =>
   typeof raw === "string" ? raw.replace(/\s+/g, " ").trim().slice(0, max) : "";
+
+/** A message's `sender`: absent (null), a Sphinx pubkey, or wrong (undefined). */
+function senderOf(raw: unknown): string | null | undefined {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const pubkey = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return SPHINX_PUBKEY_RE.test(pubkey) ? pubkey : undefined;
+}
 
 /** The body, or what is wrong with it. */
 function parseMention(raw: unknown): Mention | string {
@@ -186,6 +211,8 @@ function parseMention(raw: unknown): Mention | string {
   const text = typeof b.text === "string" ? b.text.trim() : "";
   if (!text) return "text is required";
   if (text.length > MAX_TEXT_CHARS) return `text is over ${MAX_TEXT_CHARS} characters`;
+  const sender = senderOf(b.sender);
+  if (sender === undefined) return "sender must be a Sphinx pubkey (66 hex characters)";
   if (b.earlier !== undefined && b.earlier !== null && !Array.isArray(b.earlier)) return "earlier must be a list";
   const rawEarlier = Array.isArray(b.earlier) ? b.earlier : [];
   if (rawEarlier.length > MAX_EARLIER) return `earlier is over ${MAX_EARLIER} messages`;
@@ -196,8 +223,10 @@ function parseMention(raw: unknown): Mention | string {
     if (!eid || eid.length > MAX_ID_CHARS) return `earlier[${i}].id is required`;
     const etext = typeof e?.text === "string" ? e.text.trim() : "";
     if (!etext) return `earlier[${i}].text is required`;
+    const esender = senderOf(e?.sender);
+    if (esender === undefined) return `earlier[${i}].sender must be a Sphinx pubkey (66 hex characters)`;
     if (eid === id || earlier.some((x) => x.id === eid)) continue;
-    earlier.push({ id: eid, alias: oneLine(e?.alias, MAX_ALIAS_CHARS) || "A member", text: etext });
+    earlier.push({ id: eid, alias: oneLine(e?.alias, MAX_ALIAS_CHARS) || "A member", text: etext, sender: esender });
   }
   if (earlier.reduce((n, e) => n + e.text.length, text.length) > MAX_TEXT_CHARS) {
     return `text and earlier are over ${MAX_TEXT_CHARS} characters`;
@@ -247,6 +276,7 @@ function parseMention(raw: unknown): Mention | string {
     // A tribe tells members apart by alias, and may have none for one.
     alias: oneLine(b.alias, MAX_ALIAS_CHARS) || "A member",
     owner: b.owner === true,
+    sender,
     text,
     earlier,
     recent,
@@ -338,19 +368,45 @@ function repliedProposal(rows: unknown[], thread: Thread, mention: Mention): Pos
 }
 
 /**
+ * The user a message's `sender` is, when it names one Hive knows; null for
+ * none, or a pubkey no one in Hive holds.
+ */
+const senderUser = (mention: Pick<Mention, "sender">): Promise<{ id: string } | null> =>
+  mention.sender ? userByLightningPubkey(mention.sender) : Promise.resolve(null);
+
+/**
+ * The member a mention's turn runs as: its sender, when Hive knows them
+ * and they can use the linked workspace; else null, and the turn runs as
+ * the linker.
+ */
+async function askerOf(link: Link, mention: Mention): Promise<string | null> {
+  const user = await senderUser(mention);
+  if (!user) return null;
+  const access = await validateWorkspaceAccess(link.workspaceSlug, user.id);
+  return access.hasAccess && access.canRead ? user.id : null;
+}
+
+/** "<name>'s to decide.", for the person a turn ran as. */
+async function decidedByLine(userId: string): Promise<string> {
+  const user = await db.user.findUnique({ where: { id: userId }, select: { name: true, sphinxAlias: true } });
+  return tribeDecidedBy(tribePersonName(user));
+}
+
+/**
  * A reply to Jamie's proposal post that decides it
  * (`docs/plans/jamie-in-tribes.md`, "A proposal"), or null for any other
  * message, which takes a turn. Its words must be the card's own button
  * word or a plain accept / reject, and nothing else (`decisionOfText`);
  * a burst (`earlier`) is never one.
  *
- * The tribe's OWNER decides, as the person who linked the tribe, whom
- * every tribe turn runs as — on the turn's strut, as the card in Hive
- * does (`decideStrutProposal`), and only a turn that ran as them. The
- * decision row it writes is what tells the tribe the outcome (the
- * outbox posts it). Anyone else, or a proposal of someone else's turn,
- * gets a reply saying so, and no turn runs. A linker who can no longer
- * read the turn is the turn's to say (null).
+ * The person the proposing turn ran as decides — the proposal is theirs —
+ * on the turn's strut, as the card in Hive does (`decideStrutProposal`):
+ * a reply whose `sender` is that person, or, when the reply names no
+ * sender Hive knows, the tribe's OWNER on a turn that ran as the person
+ * who linked the tribe (as before senders). The decision row it writes is
+ * what tells the tribe the outcome (the outbox posts it). Anyone else gets
+ * a reply saying whose it is, and no turn runs. A turn's person who can no
+ * longer read it in Hive is the turn's to say (null).
  *
  * Taken once: the reply's id is recorded (`TribeMention`, folded under the
  * proposing turn) before strut is asked, so Jamie's retry is a duplicate;
@@ -383,23 +439,37 @@ async function decideByReply(link: Link, mention: Mention): Promise<NextResponse
     await queueTribeReply(link.tribePubkey, text, mention.id);
     return NextResponse.json(answer);
   };
-  if (!mention.owner) return refuse(TRIBE_OWNER_DECIDES);
 
   const org = await db.sourceControlOrg.findUnique({ where: { id: link.orgId }, select: { githubLogin: true } });
   if (!org) return null;
+  // Read as the linker, whose conversation it is; its `userId` is whom the turn ran as.
+  const turnOf = (userId: string) => resolveProposalTurn({ githubLogin: org.githubLogin, userId, runId: proposal.runId });
   let row: ProposalTurnRow;
   try {
-    row = await resolveProposalTurn({ githubLogin: org.githubLogin, userId: link.userId, runId: proposal.runId });
+    row = await turnOf(link.userId);
   } catch (err) {
     if (err instanceof StrutProposalError) return null;
     throw err;
   }
-  if (row.userId !== link.userId) return refuse(TRIBE_DECIDED_IN_HIVE);
+  const replier = await senderUser(mention);
+  const decides = replier ? replier.id === row.userId : mention.owner && row.userId === link.userId;
+  if (!decides) {
+    return refuse(!replier && row.userId === link.userId ? TRIBE_OWNER_DECIDES : await decidedByLine(row.userId));
+  }
+  if (row.userId !== link.userId) {
+    // A member's: decided only while they can still read the turn, as Hive's own card checks its clicker.
+    try {
+      await turnOf(row.userId);
+    } catch (err) {
+      if (err instanceof StrutProposalError) return null;
+      throw err;
+    }
+  }
 
   await take();
   let outcome: DecideOutcome;
   try {
-    outcome = await decideStrutProposal(row, proposal.proposalId, { action }, link.userId);
+    outcome = await decideStrutProposal(row, proposal.proposalId, { action }, row.userId);
   } catch (err) {
     await db.tribeMention.delete({ where: key }).catch(() => undefined);
     if (err instanceof StrutProposalError) return NextResponse.json({ error: err.message }, { status: 502 });
@@ -432,7 +502,7 @@ async function decideByReply(link: Link, mention: Mention): Promise<NextResponse
 }
 
 async function takeTurn(request: NextRequest, link: Link, mention: Mention): Promise<NextResponse> {
-  const { userId, workspaceSlug, orgId } = link;
+  const { workspaceSlug, orgId } = link;
 
   const ids = [mention.id, ...mention.earlier.map((e) => e.id)];
   const taken = await db.tribeMention.findMany({
@@ -444,13 +514,18 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
   // A message of the burst a turn already took is not said again.
   const earlier = mention.earlier.filter((e) => !taken.some((t) => t.mentionId === e.id));
 
-  // Turns run as the person who linked the tribe, so they must still be
-  // able to use its workspace — a link outlives a membership change.
-  const access = await validateWorkspaceAccess(workspaceSlug, userId);
+  // The conversation is the linker's, and a turn the tribe names no member
+  // for runs as them, so they must still be able to use its workspace — a
+  // link outlives a membership change.
+  const access = await validateWorkspaceAccess(workspaceSlug, link.userId);
   if (!access.hasAccess || !access.canRead || !access.workspace) {
     await queueTribeNotice(link.tribePubkey, TRIBE_ACCESS_LOST_NOTICE, mention.id);
     return NextResponse.json({ error: "The person who linked this tribe can no longer use its workspace." }, { status: 403 });
   }
+  // Whom the turn runs as: the member who sent it, when the tribe names them
+  // and they can use the workspace; else the linker. A burst runs as its newest message's.
+  const asker = await askerOf(link, mention);
+  const userId = asker ?? link.userId;
 
   // The conversation it replies in; else the one this mention (or one of
   // its burst) started on an earlier try (strut refused the launch); else a
@@ -480,7 +555,7 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
   const message = [...earlier, mention].map((m) => `${m.alias}: ${m.text}`).join("\n") + unopenedNote(mention.alias, mention.unopened);
   const conversationId = await persistCanvasUserMessage({
     orgId,
-    userId,
+    userId: link.userId,
     existingRowId: thread?.conversationId ?? null,
     turnId: randomUUID(),
     content: message,
@@ -504,7 +579,7 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
     publicBaseUrl: getBaseUrl(request.headers.get("host")),
     timeZone: user?.timezone ?? undefined,
     ...(model ? { model } : {}),
-    tribe: { name, alias: mention.alias, ...(mention.owner ? { owner: true } : {}) },
+    tribe: { name, alias: mention.alias, ...(mention.owner ? { owner: true } : {}), ...(asker ? { asker: true } : {}) },
   });
   switch (launched.status) {
     case "started":
@@ -515,7 +590,7 @@ async function takeTurn(request: NextRequest, link: Link, mention: Mention): Pro
         ],
         skipDuplicates: true,
       });
-      console.log("[tribes/messages] launched", { conversationId, thread: threadId, turn: launched.runId });
+      console.log("[tribes/messages] launched", { conversationId, thread: threadId, turn: launched.runId, asker: Boolean(asker) });
       return NextResponse.json({ turn: launched.runId, thread: threadId }, { status: 202 });
     case "busy":
       return NextResponse.json({ busy: launched.note }, { status: 409 });

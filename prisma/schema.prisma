@@ -73,6 +73,11 @@ model User {
   lastLoginAt              DateTime?                @map("last_login_at")
   poolApiKey               String?                  @map("pool_api_key")
   lightningPubkey          String?                  @unique @map("lightning_pubkey")
+  // The lookup for `lightningPubkey`, which is encrypted (a fresh IV each
+  // write, so its own @unique says nothing): HMAC-SHA256 of the lower-case
+  // hex pubkey under the field-encryption key (`lib/auth/lightning-pubkey.ts`).
+  // Written wherever the pubkey is, cleared with it.
+  lightningPubkeyHash      String?                  @unique @map("lightning_pubkey_hash")
   sphinxAlias              String?                  @map("sphinx_alias")
   voiceSignatureKey        String?                  @map("voice_signature_key")
   sphinxRouteHint          String?                  @map("sphinx_route_hint")
