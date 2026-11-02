@@ -40,6 +40,7 @@ export function parseFinding(node: JarvisGraphNode): SystemMapFinding | null {
     title: pick(p, ["title", "name", "summary"]) ?? node.ref_id,
     severity: pick(p, ["severity", "risk", "risk_level"])?.toLowerCase() ?? null,
     status: pick(p, ["status", "state"]),
+    kind: pick(p, ["kind"])?.toLowerCase() ?? null,
     cweId: pick(p, ["cwe_id", "cwe"]),
     file: pick(p, ["file", "file_path", "path", "location"]),
     line: line ? Number(line) || null : null,
