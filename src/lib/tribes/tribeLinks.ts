@@ -1,7 +1,8 @@
 /**
  * Tribe links (`docs/plans/jamie-in-tribes.md`): a Sphinx tribe linked by
  * its owner to one of their orgs, so `@jamie` there is a turn of that
- * org's orchestrator, run as the person who linked it.
+ * org's orchestrator, run as the member who asked when the tribe names them
+ * (a mention's `sender`), else as the person who linked it.
  *
  * Peel links and unlinks with the device credential
  * (`/api/strut-devices/tribes`); every change is told to Jamie as an entry
@@ -134,11 +135,22 @@ export function queueTribeReply(pubkey: string, text: string, replyTo: string) {
   return db.tribeOutboxEntry.create({ data: { tribePubkey: pubkey, kind: "reply", text, replyTo } });
 }
 
-/** The reply a member gets for a decision on a proposal: the tribe's owner decides. */
+/** A person as the tribe is told of them: their name in Hive, else their Sphinx alias; null with neither. */
+export function tribePersonName(user: { name: string | null; sphinxAlias?: string | null } | null | undefined): string | null {
+  return user?.name?.trim() || user?.sphinxAlias?.trim() || null;
+}
+
+/**
+ * The reply a member the tribe does not name gets for a decision on a
+ * proposal of a turn that ran as the person who linked it: the tribe's
+ * owner decides.
+ */
 export const TRIBE_OWNER_DECIDES = "Only the tribe's owner can decide this one.";
 
-/** The reply the owner gets for a proposal a turn made as someone else (in Hive): theirs to decide. */
-export const TRIBE_DECIDED_IN_HIVE = "This one was asked for in Hive, and is decided there.";
+/** The reply anyone else gets for a decision on a proposal: the person the turn ran as decides. */
+export function tribeDecidedBy(name: string | null): string {
+  return name ? `${name}'s to decide.` : "This one is the asker's to decide.";
+}
 
 /** The notice a tribe gets when the person who linked it can no longer use its workspace. */
 export const TRIBE_ACCESS_LOST_NOTICE =

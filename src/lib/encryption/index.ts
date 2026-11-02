@@ -93,6 +93,25 @@ export class EncryptionService {
 
     throw new Error("Invalid encrypted data format");
   }
+
+  /**
+   * A field's LOOKUP hash: HMAC-SHA256 of `value` under the active key, the
+   * field's name as its domain — an encrypted field's twin column, found by
+   * an index where the ciphertext (a fresh IV each write) cannot be. A plain
+   * hash would let anyone who reads the table test a known value. It moves
+   * with the active key: after a rotation, write every hash again
+   * (`npm run backfill:lightning-pubkey-hash -- --all --apply`).
+   */
+  lookupHash(fieldName: EncryptableField, value: string): string {
+    this.getFieldEncryption();
+    const keyId = this.activeKeyId || "default";
+    const keyBuffer = this.keyRegistry.get(keyId);
+    if (!keyBuffer) {
+      throw new Error(`Active encryption key '${keyId}' not found in registry`);
+    }
+    return crypto.createHmac("sha256", keyBuffer).update(`${fieldName}\0${value}`).digest("hex");
+  }
+
   static generateKey(): string {
     return bufferToHex(generateKey());
   }
