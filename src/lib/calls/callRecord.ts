@@ -98,3 +98,56 @@ export async function setCallConversation(
 export async function dropCallRecord(callKey: string): Promise<void> {
   await redis.del(key(callKey));
 }
+
+// ─── Who is on the call ──────────────────────────────────────────────────
+//
+// A paired device joins a Hive call with a ticket Hive minted
+// (`/api/strut-devices/calls/ticket`), under an identity Hive chose and
+// recorded here against the device's person; voice names the speaker's
+// identity on each turn, and the turn runs as them
+// (`docs/plans/call-speaker-identity.md`). Two keys beside the record:
+// the room's callKey, so a device that knows only the room finds the call,
+// and the members. Both live until the record's last possible moment, never
+// on its sliding 4 h: voice keeps the record alive on a busy call, and the
+// members must last as long.
+
+const CALL_ROOM_PREFIX = "call-room:";
+const CALL_MEMBERS_PREFIX = "call-members:";
+
+/** Seconds until 12 h after the call started: how long the call's other keys live. */
+export function callMaxTtl(record: Pick<CallRecord, "createdAt">, now = Date.now()): number {
+  const left = Math.floor((Date.parse(record.createdAt) + CALL_RECORD_MAX_AGE_SECONDS * 1000 - now) / 1000);
+  return Number.isFinite(left) ? left : 0;
+}
+
+/** Record which call a room is (a new call: its 12 h start now). */
+export async function storeCallRoom(roomName: string, callKey: string): Promise<void> {
+  await redis.set(CALL_ROOM_PREFIX + roomName, callKey, "EX", CALL_RECORD_MAX_AGE_SECONDS);
+}
+
+/** The callKey of the call in `roomName`, or null when Hive made no call there (or it is over). */
+export async function callKeyForRoom(roomName: string): Promise<string | null> {
+  return redis.get(CALL_ROOM_PREFIX + roomName);
+}
+
+/** Forget a room's call (a dispatch that failed leaves nothing behind). */
+export async function dropCallRoom(roomName: string): Promise<void> {
+  await redis.del(CALL_ROOM_PREFIX + roomName);
+}
+
+/** Record that `identity`, a ticket Hive minted for this call, is `userId`. */
+export async function storeCallMember(
+  callKey: string,
+  record: Pick<CallRecord, "createdAt">,
+  identity: string,
+  userId: string,
+): Promise<void> {
+  const members = CALL_MEMBERS_PREFIX + callKey;
+  await redis.hset(members, identity, userId);
+  await redis.expire(members, Math.max(1, callMaxTtl(record)));
+}
+
+/** The person Hive minted `identity` for on this call, or null for an identity it did not mint. */
+export async function callMemberOf(callKey: string, identity: string): Promise<string | null> {
+  return redis.hget(CALL_MEMBERS_PREFIX + callKey, identity);
+}

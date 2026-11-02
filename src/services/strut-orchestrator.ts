@@ -29,9 +29,9 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
   ORCHESTRATOR_BUSY_NOTE,
-  ORCHESTRATOR_CALL_LINE,
   ORCHESTRATOR_TURN_KIND,
   ORCHESTRATOR_WORKFLOW,
+  orchestratorCallLine,
   orchestratorContextLine,
   orchestratorLaunchRowId,
   orchestratorPrompt,
@@ -89,9 +89,10 @@ export interface OrchestratorTurnArgs {
   /**
    * On a voice call — asked there (`/api/calls/turn`), or a wake on the
    * call's conversation (`strut-orchestrator-wake.ts`): the call line
-   * (`ORCHESTRATOR_CALL_LINE`) ends `context.line`.
+   * (`orchestratorCallLine`) ends `context.line`. `asker`: Hive knew the
+   * speaker and the turn runs as them (`userId` theirs).
    */
-  call?: boolean;
+  call?: boolean | { asker: string };
   /**
    * In a Sphinx tribe — asked there (`/api/tribes/messages`, the asker's
    * alias; `asker` when the turn runs as them, `userId` theirs), or a wake
@@ -133,6 +134,21 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
   if (!resolved.ok) return { status: "error", error: describeStrutTargetError(resolved.error) };
   const strut = resolved.target;
 
+  // The user's GitHub token, pushed to strut as THIS actor's secret before
+  // the launch, as a job turn does (`strut-jobs.ts`): a PR a job of this
+  // turn opens is opened as the turn's user, whoever it is — on a call, the
+  // speaker. No token → nothing pushed, and the run reads what strut holds.
+  let githubToken: string | null = null;
+  try {
+    const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+    githubToken = (await getGithubUsernameAndPAT(userId, strut.workspaceSlug))?.token ?? null;
+  } catch (err) {
+    logger.warn("Orchestrator turn: GitHub token lookup failed; launching without it", LOG_TAG, {
+      conversationId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   const files = args.attachments?.length ? await strutAttachments(userId, args.attachments) : null;
   if (files?.skipped.length) {
     logger.warn("Orchestrator turn: files left out of the launch", LOG_TAG, { conversationId, skipped: files.skipped });
@@ -158,13 +174,14 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
             orchestratorContextLine(args.now ?? new Date(), args.timeZone) +
             (args.focus ? canvasFocusContextLine(args.focus) : "") +
             pageContextLine(args.pageContext) +
-            (args.call ? ORCHESTRATOR_CALL_LINE : "") +
+            (args.call ? orchestratorCallLine(args.call) : "") +
             (args.tribe ? orchestratorTribeLine(args.tribe) : ""),
         },
       },
       ...(args.focus ? { rowInput: { focus: args.focus } } : {}),
       ...(args.model ? { params: { model: args.model } } : {}),
       ...(files?.attachments.length ? { attachments: files.attachments } : {}),
+      ...(githubToken ? { actorSecrets: { GITHUB_TOKEN: githubToken } } : {}),
       publicBaseUrl,
       conversationId,
       // The jobs this turn starts report their live updates (shots,

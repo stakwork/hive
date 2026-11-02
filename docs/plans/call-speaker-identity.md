@@ -1,6 +1,10 @@
 # Who is speaking on a call
 
-Status: **proposed** 2026-11-02. Nothing built.
+Status: **proposed** 2026-11-02. Step 1, Hive's side, is built (the same
+PR): the room index and members (`lib/calls/callRecord.ts`), the ticket
+(`lib/calls/callTicket.ts`, `/api/strut-devices/calls/ticket`), the turn
+and the cancel, and the GitHub token on every orchestrator turn. Voice,
+Peel and meet are not, so every call still runs as its starter.
 
 When Jamie hears a request on a call, the turn runs as the person who
 STARTED the call, whoever said it. Tom starts a call from Peel, Evan asks
@@ -162,8 +166,12 @@ Body: { room, participantName, metadata? }
   identified: what a later view of the call's contributors reads.
 - The call line says whose turn it is, as the tribe line does
   (`orchestratorTribeLine`'s `asker`): when the turn runs as the speaker,
-  `ORCHESTRATOR_CALL_LINE` adds "<name> is a member of this org; this turn
-  runs as them."
+  `orchestratorCallLine({ asker })` adds "<name> is a member of this org;
+  this turn runs as them." to `ORCHESTRATOR_CALL_LINE`.
+
+**`/api/calls/cancel`** ("Jamie, stop") cancels the live turn's runs by
+that turn's own user. It used the starter's, which would miss a turn that
+runs as another speaker.
 
 ## sphinx-voice
 
@@ -200,9 +208,12 @@ Body: { room, participantName, metadata? }
 
 Each step stands alone; until the next lands, the call runs as its starter.
 
-1. **Hive:** the room index in `startCall`, the members hash, the ticket
-   route, the middleware line, `/api/calls/turn` reading `identity`, and the
-   GitHub token pushed with every orchestrator turn.
+1. **Hive (built):** the room index in `startCall`, the members hash, the
+   ticket route, the middleware line, `/api/calls/turn` reading `identity`,
+   the cancel by the live turn's user, and the GitHub token pushed with
+   every orchestrator turn. `LIVEKIT_PUBLIC_URL` must be set where it is
+   deployed (`wss://livekit.sphinx.chat`, meet's `LIVEKIT_URL`); unset, the
+   route answers 503 and devices join through meet.
 2. **sphinx-voice:** `identity` on the turn.
 3. **Peel:** ask Hive for the ticket on a Hive room.
 4. **Live check:** Tom starts a call from Peel, Evan joins from Peel and
@@ -222,9 +233,12 @@ Each step stands alone; until the next lands, the call runs as its starter.
 - `launchOrchestratorTurn` pushes the turn user's `GITHUB_TOKEN`, and
   pushes nothing when the user has no token.
 - Turn: an identified speaker runs as themselves; an unknown identity, no
-  identity, or a speaker who lost access runs as the starter; the
-  conversation is created under the starter when someone else speaks first;
-  the call line says whose turn it is.
+  identity, an identity from another call, or a speaker who lost access
+  runs as the starter; the conversation is created under the starter when
+  someone else speaks first; two speakers share one conversation; the call
+  line says whose turn it is.
+- Cancel: a turn running as another speaker is stopped by that speaker's
+  runs.
 - Voice: `identity` on the turn for speech and for chat.
 - Peel: a Hive room asks Hive first and falls back to meet on 403 / 404 /
   failure; a plain room never asks Hive; Hive's answer passes the ticket

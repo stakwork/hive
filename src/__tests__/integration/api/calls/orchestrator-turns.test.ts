@@ -13,11 +13,21 @@ import { db } from "@/lib/db";
 import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 
-// ── Redis: the call record, the per-call turn lock ────────────────────────────
-const { store } = vi.hoisted(() => ({ store: new Map<string, string>() }));
+// ── Redis: the call record, its members, the per-call turn lock ───────────────
+const { store, hashes } = vi.hoisted(() => ({
+  store: new Map<string, string>(),
+  hashes: new Map<string, Map<string, string>>(),
+}));
 vi.mock("@/lib/redis", () => ({
   redis: {
     get: vi.fn(async (key: string) => store.get(key) ?? null),
+    hset: vi.fn(async (key: string, field: string, value: string) => {
+      const hash = hashes.get(key) ?? new Map<string, string>();
+      hashes.set(key, hash);
+      hash.set(field, value);
+      return 1;
+    }),
+    hget: vi.fn(async (key: string, field: string) => hashes.get(key)?.get(field) ?? null),
     set: vi.fn(async (key: string, value: string, ...rest: unknown[]) => {
       if (rest.includes("NX") && store.has(key)) return null;
       store.set(key, value);
@@ -62,7 +72,7 @@ import { POST as turn } from "@/app/api/calls/turn/route";
 import { GET as messages } from "@/app/api/calls/messages/route";
 import { POST as cancel } from "@/app/api/calls/cancel/route";
 import { canReadKey } from "@/lib/ai/resolveMessageAttachments";
-import { peekCallRecord, storeCallRecord } from "@/lib/calls/callRecord";
+import { peekCallRecord, storeCallMember, storeCallRecord } from "@/lib/calls/callRecord";
 import { ORCHESTRATOR_TURN_KIND } from "@/lib/strut-orchestrator";
 import { appendOrchestratorRows, orchestratorRowsFor } from "@/services/strut-runs/orchestrator-turn";
 
@@ -138,6 +148,7 @@ describe("the call endpoints", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     store.clear();
+    hashes.clear();
     process.env.VOICE_AGENT_API_KEY = VOICE_KEY;
     mockLaunch.mockResolvedValue({ status: "started", runId: "run-1", strutRunId: "s-1" });
     mockCancel.mockResolvedValue({ rows: [], cancelled: 0 });
@@ -358,6 +369,102 @@ describe("the call endpoints", () => {
     });
   });
 
+  describe("POST /api/calls/turn — who is speaking", () => {
+    /** A ticket Hive minted for `userId` on this call (`/api/strut-devices/calls/ticket`). */
+    async function joinAs(userId: string, identity: string) {
+      const record = (await peekCallRecord(CALL_KEY))!;
+      await storeCallMember(CALL_KEY, record, identity, userId);
+    }
+
+    it("a speaker Hive gave the ticket runs the turn as them, in the call's conversation, kept under its starter", async () => {
+      const { owner, members, org } = await createCall();
+      const bob = members[0];
+      await db.user.update({ where: { id: bob.id }, data: { timezone: "America/New_York" } });
+      await joinAs(bob.id, "hive_0123456789abcdef0123456789abcdef");
+
+      const res = await say({
+        speaker: "Bob",
+        text: "make a PR for the login bug",
+        source: "voice",
+        identity: "hive_0123456789abcdef0123456789abcdef",
+      });
+
+      expect(res.status).toBe(202);
+      // Bob spoke first, and the conversation is still the call's: its starter's row.
+      const conversation = await conversationOf();
+      expect(conversation).toMatchObject({ userId: owner.id, sourceControlOrgId: org.id, isShared: true });
+      const rows = conversation!.messages as Array<{ source?: unknown }>;
+      expect(rows[0].source).toEqual({ kind: "call_request", speaker: "Bob", via: "voice", userId: bob.id });
+      expect(mockLaunch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: bob.id,
+          conversationId: conversation!.id,
+          message: "Bob: make a PR for the login bug",
+          timeZone: "America/New_York",
+          call: { asker: "Bob" },
+        }),
+      );
+    });
+
+    it("a turn by another speaker then goes into the same conversation, as them", async () => {
+      const { owner, members } = await createCall();
+      await joinAs(owner.id, "hive_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+      await joinAs(members[0].id, "hive_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+
+      await say({ speaker: "Alice", text: "first", source: "voice", identity: "hive_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" });
+      const first = await conversationOf();
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-2", strutRunId: "s-2" });
+      await say({ speaker: "Bob", text: "@jamie second", source: "chat", identity: "hive_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" });
+
+      expect((await conversationOf())!.id).toBe(first!.id);
+      expect(mockLaunch.mock.calls.map(([a]) => a.userId)).toEqual([owner.id, members[0].id]);
+      expect(await db.sharedConversation.count()).toBe(1);
+    });
+
+    it("an identity Hive did not mint, or none, runs as the call's starter, as before", async () => {
+      const { owner } = await createCall();
+      await say({ speaker: "Mallory", text: "hi", source: "voice", identity: "Mallory__ab12" });
+      mockLaunch.mockResolvedValueOnce({ status: "started", runId: "run-2", strutRunId: "s-2" });
+      await say({ speaker: "Mallory", text: "hi again", source: "chat" });
+
+      for (const [args] of mockLaunch.mock.calls) {
+        expect(args).toMatchObject({ userId: owner.id, call: true });
+      }
+      const rows = (await conversationOf())!.messages as Array<{ source?: Record<string, unknown> }>;
+      expect(rows.map((r) => r.source?.userId)).toEqual([undefined, undefined]);
+    });
+
+    it("a speaker who can no longer use the workspace falls back to the starter", async () => {
+      const { owner, members, memberships } = await createCall();
+      await joinAs(members[0].id, "hive_cccccccccccccccccccccccccccccccc");
+      await db.workspaceMember.update({ where: { id: memberships[0].id }, data: { leftAt: new Date() } });
+
+      const res = await say({ speaker: "Bob", text: "hi", source: "voice", identity: "hive_cccccccccccccccccccccccccccccccc" });
+
+      expect(res.status).toBe(202);
+      expect(mockLaunch).toHaveBeenCalledWith(expect.objectContaining({ userId: owner.id, call: true }));
+    });
+
+    it("an identity on another call's members means nothing on this one", async () => {
+      const { owner, members } = await createCall();
+      const other = (await peekCallRecord(CALL_KEY))!;
+      await storeCallMember("another-call-key", other, "hive_dddddddddddddddddddddddddddddddd", members[0].id);
+
+      await say({ speaker: "Bob", text: "hi", source: "voice", identity: "hive_dddddddddddddddddddddddddddddddd" });
+
+      expect(mockLaunch).toHaveBeenCalledWith(expect.objectContaining({ userId: owner.id }));
+    });
+
+    it("400 for an identity that is not a string", async () => {
+      await createCall();
+      for (const identity of [42, "", "x".repeat(257)]) {
+        const res = await say({ speaker: "Bob", text: "hi", source: "voice", identity });
+        expect(res.status).toBe(400);
+      }
+      expect(mockLaunch).not.toHaveBeenCalled();
+    });
+  });
+
   describe("GET /api/calls/messages", () => {
     it("no conversation yet: no cursor, no messages", async () => {
       await createCall();
@@ -533,6 +640,28 @@ describe("the call endpoints", () => {
 
       expect(await res.json()).toEqual({ cancelled: true });
       expect(mockCancel).toHaveBeenCalledWith(conversationId, { userId: owner.id, since: live.createdAt });
+    });
+
+    it("stops a turn that runs as another speaker: the live turn's user's runs", async () => {
+      const { members, workspace } = await createCall();
+      await say({ speaker: "Alice", text: "hi", source: "voice" });
+      const conversationId = (await conversationOf())!.id;
+      const live = await db.strutRun.create({
+        data: {
+          tokenHash: "h",
+          workspaceId: workspace.id,
+          swarmId: "swarm-1",
+          userId: members[0].id,
+          kind: ORCHESTRATOR_TURN_KIND,
+          workflow: "orchestrator",
+          conversationId,
+          status: StrutRunStatus.PENDING,
+        },
+      });
+      mockCancel.mockResolvedValueOnce({ rows: [{ id: live.id, kind: ORCHESTRATOR_TURN_KIND }], cancelled: 1 });
+
+      expect(await (await cancel(call("POST", "/api/calls/cancel"))).json()).toEqual({ cancelled: true });
+      expect(mockCancel).toHaveBeenCalledWith(conversationId, { userId: members[0].id, since: live.createdAt });
     });
   });
 });
