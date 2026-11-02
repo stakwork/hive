@@ -67,7 +67,7 @@ export function PackageCvesBar({ onResult }: { onResult: (result: PackageCvesRes
           response.status === 409
             ? `A ${LABEL} is already in progress`
             : body.code === "workflow_missing"
-              ? `${LABEL} workflow is not on this strut yet`
+              ? `${LABEL} workflow is not on this workspace's strut server yet`
               : `Could not start the ${LABEL}`;
         toast.error(title, { description: body.error });
         return;

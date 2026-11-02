@@ -967,7 +967,7 @@ describe("BenchmarkRunsHistory", () => {
     expect(screen.getByRole("columnheader", { name: "Strut" })).toBeInTheDocument();
     const link = screen.getByTestId("strut-run-view-link");
     expect(link).toHaveAttribute("href", "/w/openlaw-1/strut?strut=wf%3Dharvey-lab-run%26run%3D1792552899038");
-    expect(link).toHaveAttribute("aria-label", "Open in strut");
+    expect(link).toHaveAttribute("aria-label", "Open on the strut server");
 
     // The link's cell opens strut; it does not toggle the row.
     await user.click(link.closest("td")!);

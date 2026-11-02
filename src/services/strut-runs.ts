@@ -416,7 +416,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
     const detail = e instanceof Error ? e.message : String(e);
     await failRow(row.id, `initiation_failed: ${detail}`);
     logger.error("Strut unreachable at dispatch", STRUT_RUN_LOG_TAG, { runId: row.id, workflow, swarmId: target.swarmId, error: detail });
-    throw new StrutDispatchError("unreachable", "Could not reach strut on the workspace swarm.");
+    throw new StrutDispatchError("unreachable", "Could not reach the strut server on the workspace swarm.");
   }
 
   if (!res.ok) {
@@ -425,7 +425,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
     if (res.status === 404) {
       throw new StrutDispatchError(
         "workflow_missing",
-        `Strut on this swarm has no "${workflow}" workflow (not seeded yet).`,
+        `The strut server on this swarm has no "${workflow}" workflow (not seeded yet).`,
       );
     }
     if (res.status === 400) {
@@ -435,10 +435,10 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
       // and settles through the callback like any error.)
       throw new StrutDispatchError(
         job && /\bjob\b/i.test(detail ?? "") ? "bad_job" : "bad_callback_url",
-        detail || "Strut refused the launch (400).",
+        detail || "The strut server refused the launch (400).",
       );
     }
-    throw new StrutDispatchError("strut_http", detail || `Strut returned HTTP ${res.status}.`);
+    throw new StrutDispatchError("strut_http", detail || `The strut server returned HTTP ${res.status}.`);
   }
 
   const accepted = (await res.json().catch(() => ({}))) as {
@@ -458,12 +458,12 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
     await failRow(row.id, "strut_callbacks_unsupported");
     throw new StrutDispatchError(
       "callbacks_unsupported",
-      "This swarm's strut is too old to post results back; the change cannot be tracked.",
+      "This swarm's strut server is too old to post results back; the change cannot be tracked.",
     );
   }
   if (!strutRunId) {
     await failRow(row.id, "no_run_id");
-    throw new StrutDispatchError("no_run_id", "Strut accepted the launch but returned no run id.");
+    throw new StrutDispatchError("no_run_id", "The strut server accepted the launch but returned no run id.");
   }
 
   if (attachments?.length && accepted.attachments !== true) {
@@ -752,7 +752,7 @@ async function applyProbe(row: StrutRunRow, probe: StrutRunSummaryProbe, stats: 
       logger.warn("Strut run summary unavailable", STRUT_RUN_LOG_TAG, { runId: row.id, reason: probe.reason });
       return "done";
     case "missing": {
-      const outcome = await loseRow(row, "strut has no record of the run (restart before it was written)");
+      const outcome = await loseRow(row, "the strut server has no record of the run (restart before it was written)");
       if (outcome === "retry") stats.retry++;
       else stats.lost++;
       return "done";
@@ -819,7 +819,7 @@ export async function reconcileStrutRuns(
     for (const row of stale) {
       try {
         if ((await applyProbe(row, await probeStrutRun(row), stats)) !== "stale") continue;
-        const outcome = await loseRow(row, "no live run on strut (it restarted and did not resume this run)");
+        const outcome = await loseRow(row, "no live run on the strut server (it restarted and did not resume this run)");
         if (outcome === "retry") stats.retry++;
         else stats.lost++;
       } catch (err) {

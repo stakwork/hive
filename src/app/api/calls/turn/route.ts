@@ -136,7 +136,7 @@ async function takeTurn(
     case "busy":
       return NextResponse.json({ busy: launched.note }, { status: 409 });
     case "error":
-      return NextResponse.json({ error: `The message could not be sent to strut: ${launched.error}` }, { status: 502 });
+      return NextResponse.json({ error: `The message could not be sent to the strut server: ${launched.error}` }, { status: 502 });
   }
 }
 

@@ -172,7 +172,7 @@ function TaskCard({ task, onSelect, onViewDetails, isStarted, showRunnerToggle =
               <ToggleGroupItem
                 value="strut"
                 className="h-8 px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
-                aria-label="Run on strut"
+                aria-label="Run on the strut server"
               >
                 strut
               </ToggleGroupItem>

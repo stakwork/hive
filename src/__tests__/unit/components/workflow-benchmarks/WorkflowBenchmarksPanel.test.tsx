@@ -124,7 +124,7 @@ describe("WorkflowBenchmarksPanel", () => {
     render(<WorkflowBenchmarksPanel />);
     const toggle = screen.getAllByTestId(/^wf-runner-toggle-/)[0];
     expect(within(toggle).getByLabelText("Run on Stakwork")).toHaveAttribute("data-state", "on");
-    expect(within(toggle).getByLabelText("Run on strut")).toHaveAttribute("data-state", "off");
+    expect(within(toggle).getByLabelText("Run on the strut server")).toHaveAttribute("data-state", "off");
 
     fireEvent.click(screen.getAllByText("Run Benchmark")[0]);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -138,8 +138,8 @@ describe("WorkflowBenchmarksPanel", () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ run_id: "run-2", runner: "strut" }) } as Response);
     render(<WorkflowBenchmarksPanel />);
     const toggle = screen.getAllByTestId(/^wf-runner-toggle-/)[0];
-    fireEvent.click(within(toggle).getByLabelText("Run on strut"));
-    expect(within(toggle).getByLabelText("Run on strut")).toHaveAttribute("data-state", "on");
+    fireEvent.click(within(toggle).getByLabelText("Run on the strut server"));
+    expect(within(toggle).getByLabelText("Run on the strut server")).toHaveAttribute("data-state", "on");
 
     fireEvent.click(screen.getAllByText("Run Benchmark")[0]);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());

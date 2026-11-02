@@ -143,17 +143,17 @@ export function scriptedJamieReply(messages: MockMessage[]): string | null {
           mockMarkdownArtifact(
             `initiative-build-${focus.ref}`,
             `Plan for ${focus.name}`,
-            `strut wrote ${written} cards on **${focus.name}**: the brief, user stories and requirements (proposed, for you to accept or drop), milestones, and features under them.`,
+            `The job wrote ${written} cards on **${focus.name}**: the brief, user stories and requirements (proposed, for you to accept or drop), milestones, and features under them.`,
           ),
         ]),
     });
     if (started) job = canvasJob(focus, `Build out ${focus.name}`, focus.ref);
     if (!started)
       return tree.building
-        ? `strut is still writing **${focus.name}**. The cards appear as it goes.`
+        ? `Still writing **${focus.name}**. The cards appear as it goes.`
         : `**${focus.name}** already has a plan (${stage}). Open a milestone or a feature and tell me what to change.`;
     return [
-      `On it. I've started strut's **initiative-build** job on **${focus.name}**.`,
+      `On it. I've started the **initiative-build** job on **${focus.name}**.`,
       "",
       "It writes in order: the brief if there isn't one, then the user stories and their requirements, milestones, and features under them. Watch the cards appear on the canvas. Requirements land as **proposed** for you to accept or drop.",
     ].join("\n");

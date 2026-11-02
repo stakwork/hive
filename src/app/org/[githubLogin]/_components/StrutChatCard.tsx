@@ -176,7 +176,7 @@ export function StrutChatCard({ chat, githubLogin }: { chat: StrutChat; githubLo
     >
       <div className="flex items-center gap-2 px-3 py-2.5">
         <Blocks className="h-3.5 w-3.5 flex-shrink-0 text-violet-500" aria-hidden="true" />
-        <span className="min-w-0 truncate text-sm font-medium">{chat.title || "Strut chat"}</span>
+        <span className="min-w-0 truncate text-sm font-medium">{chat.title || "Builder chat"}</span>
         <StatusPill look={CHAT_STATUS[chat.status]} />
         <a
           href={strutViewPath(githubLogin, strutChatDeepLink(chat.chatId))}

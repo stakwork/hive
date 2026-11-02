@@ -115,7 +115,7 @@ export async function strutTraceTurns(
 /** strut did not answer for the run's log. */
 export class StrutTraceUnavailableError extends Error {
   constructor() {
-    super("Could not read the run from strut");
+    super("Could not read the run from the strut server");
   }
 }
 
