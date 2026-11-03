@@ -138,6 +138,23 @@ describe("parseOrchestratorJobCalls — the jobs a turn launched, from its event
     ]);
   });
 
+  it("reads the template's own job/start STEP too (the job a reply's `start` asked for), never its launch journal", () => {
+    expect(
+      parseOrchestratorJobCalls([
+        { type: "run.start", path: "orchestrator" },
+        start("orchestrator/started", { prompt: "p", title: "Digest", workflow: "builder", peer: "acme-web" }, "job/start"),
+        // job/start journals its launch (no stepType), so a resume launches once.
+        { type: "step.end", path: "orchestrator/started#launch", output: { job: "j-1", runId: "r-1", callback: true } },
+        end("orchestrator/started", { job: "j-1", runId: "r-1", callback: true }, "job/start"),
+        start("orchestrator/plain", { prompt: "p", title: "Flights" }, "job/start"),
+        end("orchestrator/plain", { job: "j-2", runId: "r-2", callback: true }, "job/start"),
+      ]),
+    ).toEqual([
+      { job: "j-1", runId: "r-1", title: "Digest", workflow: "builder", peer: "acme-web" },
+      { job: "j-2", runId: "r-2", title: "Flights", workflow: "job" },
+    ]);
+  });
+
   it("skips a call that failed, other tools, the journal's own record and junk; a job launched twice keeps its last turn", () => {
     expect(
       parseOrchestratorJobCalls([
