@@ -69,7 +69,7 @@ export function DashboardLayout({ children, user, isPublicWorkspace = false }: D
   const pathname = usePathname();
   const router = useRouter();
   const isDocumentsPage = pathname.endsWith("/documents");
-  const isStrutPage = pathname.endsWith("/strut");
+  const isStrutPage = pathname.endsWith("/strut") || /\/w\/[^/]+\/apps\/./.test(pathname);
   const isFullscreenPage = isDocumentsPage || pathname.includes("/task/") || pathname.includes("/plan/");
   const sidebarCollapsed = useSidebarStore((s) => s.collapsed);
   const [workspaceLogoUrl, setWorkspaceLogoUrl] = useState<string | null>(null);
