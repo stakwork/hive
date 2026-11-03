@@ -2,8 +2,7 @@
 
 import React, { use, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { AppWindow, Loader2 } from "lucide-react";
-import { PageHeader } from "@/components/ui/page-header";
+import { Loader2 } from "lucide-react";
 import { StrutAppFrame } from "@/components/strut-app-frame";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceStrutApps } from "@/hooks/useWorkspaceStrutApps";
@@ -57,7 +56,7 @@ export default function WorkspaceAppPage({ params }: { params: Promise<{ name: s
     body = <p className="m-4 text-sm text-muted-foreground">No app {name ? `"${name}" ` : ""}is pinned in this workspace.</p>;
   } else {
     body = (
-      <div className="flex-1 min-h-0 m-4 overflow-hidden rounded-md border">
+      <div className="flex-1 min-h-0 w-full overflow-hidden">
         <StrutAppFrame
           source={{ githubLogin: data.githubLogin, swarmId: data.swarmId, app: app.name }}
           title={app.title}
@@ -70,9 +69,6 @@ export default function WorkspaceAppPage({ params }: { params: Promise<{ name: s
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <PageHeader icon={AppWindow} title={app?.title ?? name ?? "App"} />
-      {body}
-    </div>
+    <div className="flex flex-col h-full min-h-0 w-full">{body}</div>
   );
 }
