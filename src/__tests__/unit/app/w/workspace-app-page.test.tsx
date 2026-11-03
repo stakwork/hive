@@ -51,7 +51,7 @@ describe("WorkspaceAppPage", () => {
     await open(["acme", "invoices"]);
     expect(await screen.findByTestId("app-frame")).toBeInTheDocument();
     expect(frame.mock.calls[0][0]).toMatchObject({ source: { githubLogin: "stakwork", swarmId: "swarm-oh", app: "acme/invoices" }, title: "Invoices" });
-    expect(screen.getByRole("heading")).toHaveTextContent("Invoices");
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
     expect(useWorkspaceStrutApps).toHaveBeenCalledWith("openhealth");
   });
 
