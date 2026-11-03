@@ -47,7 +47,7 @@ function isFullscreenPage(pathname: string): boolean {
 /** Mirrors the <main> className logic in DashboardLayout.tsx */
 function mainClassName(pathname: string): string {
   const docs = isDocumentsPage(pathname);
-  const strut = pathname.endsWith("/strut");
+  const strut = pathname.endsWith("/strut") || /\/w\/[^/]+\/apps\/./.test(pathname);
   const fullscreen = isFullscreenPage(pathname);
   return `flex-1 flex flex-col min-h-0 ${docs || strut ? "overflow-hidden p-0" : fullscreen ? "overflow-hidden p-1 md:p-3" : "overflow-auto p-4 md:p-6"}`;
 }
@@ -137,6 +137,12 @@ describe("DashboardLayout — <main> overflow class", () => {
     expect(cls).not.toContain("overflow-auto");
     expect(cls).not.toContain("md:p-6");
     expect(sidebarOffsetClass("/w/slug/strut")).toBe("md:pl-64");
+  });
+
+  it("applies overflow-hidden and p-0 on a pinned app page", () => {
+    const cls = mainClassName("/w/slug/apps/acme/invoices");
+    expect(cls).toContain("overflow-hidden p-0");
+    expect(mainClassName("/w/slug/apps")).toContain("overflow-auto");
   });
 
   it("does NOT apply documents styles to /w/slug/documents-archive", () => {
