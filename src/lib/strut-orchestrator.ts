@@ -268,9 +268,13 @@ export interface OrchestratorJobCall {
   peer?: string;
 }
 
-/** The tool names strut's agent gives the two steps (`job/start` → `job_start`). */
-const JOB_START_TOOL = "tool:job_start";
-const JOB_LAUNCH_TOOLS: ReadonlySet<string> = new Set([JOB_START_TOOL, "tool:job_continue"]);
+/**
+ * The two steps as the log names them: an agent's tool call (`job/start` →
+ * `tool:job_start`), or the orchestrator's own `job/start` step after its
+ * turn, which starts the job its reply's `start` asked for (strut#457).
+ */
+const JOB_START_STEPS: ReadonlySet<string> = new Set(["tool:job_start", "job/start"]);
+const JOB_LAUNCH_STEPS: ReadonlySet<string> = new Set([...JOB_START_STEPS, "tool:job_continue", "job/continue"]);
 
 const parseMaybeJson = (v: unknown): unknown => {
   if (typeof v !== "string") return v;
@@ -288,7 +292,9 @@ const nonEmpty = (v: unknown): string | undefined => (typeof v === "string" && v
  * event log (`GET …/runs/<runId>/events`): each agent tool call is a
  * `step.start` (`stepType: "tool:job_start"`, the call's input) and a
  * `step.end` at the same path (the step's `{ job, runId, callback }`,
- * JSON-encoded). A call that failed has no `step.end` and draws nothing; a
+ * JSON-encoded). The template's own `job/start` step (`stepType:
+ * "job/start"`, at `orchestrator/started`) is the same pair, its input the
+ * step's config. A call that failed has no `step.end` and draws nothing; a
  * job launched twice keeps its last turn (one turn at a time per job). A
  * `job/start` carries the workflow its input named, and its `peer`.
  */
@@ -298,7 +304,7 @@ export function parseOrchestratorJobCalls(events: unknown[]): OrchestratorJobCal
   for (const raw of events) {
     if (!raw || typeof raw !== "object") continue;
     const e = raw as { type?: unknown; path?: unknown; stepType?: unknown; input?: unknown; output?: unknown };
-    if (typeof e.path !== "string" || typeof e.stepType !== "string" || !JOB_LAUNCH_TOOLS.has(e.stepType)) continue;
+    if (typeof e.path !== "string" || typeof e.stepType !== "string" || !JOB_LAUNCH_STEPS.has(e.stepType)) continue;
     if (e.type === "step.start") {
       const input = parseMaybeJson(e.input);
       if (input && typeof input === "object") inputs.set(e.path, input as Record<string, unknown>);
@@ -312,9 +318,10 @@ export function parseOrchestratorJobCalls(events: unknown[]): OrchestratorJobCal
     const input = inputs.get(e.path);
     const title = nonEmpty(input?.title);
     // What `job/start` launches when its input names no workflow is strut's `job`.
-    const workflow = e.stepType === JOB_START_TOOL ? (nonEmpty(input?.workflow) ?? JOB_WORKFLOW) : undefined;
+    const isStart = JOB_START_STEPS.has(e.stepType);
+    const workflow = isStart ? (nonEmpty(input?.workflow) ?? JOB_WORKFLOW) : undefined;
     const named = input?.peer;
-    const peer = e.stepType === JOB_START_TOOL && isStrutPeerId(named) ? named : undefined;
+    const peer = isStart && isStrutPeerId(named) ? named : undefined;
     calls.delete(job);
     calls.set(job, { job, runId, ...(title ? { title } : {}), ...(workflow ? { workflow } : {}), ...(peer ? { peer } : {}) });
   }

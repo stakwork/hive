@@ -360,6 +360,27 @@ describe("handleOrchestratorTurnSettled", () => {
     );
   });
 
+  it("a job the reply's `start` asked for (the template's own job/start STEP after the turn) gets the same row and card", async () => {
+    mockFetch.mockResolvedValue(json(200, { workflow: "orchestrator", runId: "1790000000000", proposals: [] }));
+    mockEvents.mockResolvedValue([
+      { type: "step.start", path: "orchestrator/started", stepType: "job/start", input: { prompt: "Research", title: "Flights to Lisbon" } },
+      { type: "step.end", path: "orchestrator/started#launch", output: { job: "j-1", runId: "1790000000500", callback: true } },
+      { type: "step.end", path: "orchestrator/started", stepType: "job/start", output: { job: "j-1", runId: "1790000000500", callback: true } },
+    ]);
+    await handleOrchestratorTurnSettled(row({ output: { text: "Looking into flights.", artifacts: [], job: "j-1", runId: "1790000000500" } }));
+
+    expect(mockAdopt).toHaveBeenCalledTimes(1);
+    expect(mockAdopt).toHaveBeenCalledWith(expect.objectContaining({ id: "row-1" }), {
+      job: "j-1",
+      runId: "1790000000500",
+      title: "Flights to Lisbon",
+      workflow: "job",
+    });
+    expect(written()[0].source).toEqual(
+      expect.objectContaining({ jobs: [{ jobId: "j-1", title: "Flights to Lisbon", runId: "jobrow-1790000000500" }] }),
+    );
+  });
+
   it("each job's row is minted under the workflow its turn runs: job/start's, else the job's own (hive's row, then strut's record)", async () => {
     mockFetch.mockResolvedValue(json(200, { workflow: "orchestrator", runId: "1790000000000", proposals: [] }));
     const call = (n: string, tool: "job_start" | "job_continue", input: Record<string, unknown>, job: string) => [
