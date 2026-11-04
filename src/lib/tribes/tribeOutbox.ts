@@ -292,6 +292,8 @@ interface ThreadForOutbox {
   conversationId: string;
   cursor: string | null;
   readAt: Date | null;
+  /** The mention that started the thread: where a post replies when its run chain has no mention. */
+  mentionId?: string | null;
   link: {
     id: string;
     tribePubkey: string;
@@ -365,7 +367,8 @@ export async function pendingTribeMessages(
   );
   return messages.map((message) => {
     const runId = runOf(message);
-    const replyTo = runId ? chainOf(runId).map((r) => mentionOf.get(r)).find(Boolean) : undefined;
+    // The run chain's mention is preferred; a chain that misses falls back to the thread's first mention.
+    const replyTo = (runId ? chainOf(runId).map((r) => mentionOf.get(r)).find(Boolean) : undefined) ?? thread.mentionId ?? undefined;
     const text = tribeText(message, { approver: approverOf(runId), conversationUrl });
     const id = tribeMessageId(thread.id, message.id);
     const at = String((byId.get(message.id) as { timestamp?: unknown }).timestamp);
@@ -412,6 +415,7 @@ const THREAD_SELECT = {
   conversationId: true,
   cursor: true,
   readAt: true,
+  mentionId: true,
   link: {
     select: {
       id: true,
