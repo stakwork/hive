@@ -282,6 +282,36 @@ describe("pendingTribeMessages: a post's metadata", () => {
     // No proposal: nobody's turn is read.
     expect(db.strutRun.findMany).not.toHaveBeenCalled();
   });
+
+  describe("replyTo of a job result from a later wake run", () => {
+    const row = (id: string, source: Record<string, unknown>, content = "") => ({ id, role: "assistant", content, timestamp: at, source });
+    const rows = [
+      row("orchestrator-launch-run-1", { kind: "orchestrator_launch", runId: "run-1" }),
+      row("orchestrator-run-1", { kind: "orchestrator", runId: "run-1", status: "success", jobs: [{ jobId: "j-1", title: "t", runId: "jobrun" }] }),
+      row("orchestrator-launch-wake-1", { kind: "orchestrator_launch", runId: "wake-1", wakeId: "job-jobrun" }),
+      row("orchestrator-wake-1", { kind: "orchestrator", runId: "wake-1", status: "success" }, "The job finished."),
+    ];
+    const resultOf = (messages: Awaited<ReturnType<typeof pendingTribeMessages>>) =>
+      messages.find((m) => m.id === "t1:orchestrator-wake-1")!.post!;
+
+    it("falls back to the thread's mentionId when no mention is recorded for the chain", async () => {
+      vi.mocked(db.tribeMention.findMany).mockResolvedValue([]);
+      const out = await pendingTribeMessages({ ...thread, mentionId: "msg-first" }, rows, "https://hive.example.com");
+      expect(resultOf(out).replyTo).toBe("msg-first");
+    });
+
+    it("a mention resolved through the chain wins over the thread's mentionId", async () => {
+      vi.mocked(db.tribeMention.findMany).mockResolvedValue([{ runId: "run-1", mentionId: "msg-chain" }] as never);
+      const out = await pendingTribeMessages({ ...thread, mentionId: "msg-first" }, rows, "https://hive.example.com");
+      expect(resultOf(out).replyTo).toBe("msg-chain");
+    });
+
+    it("with no mentionId and no mention, there is no replyTo", async () => {
+      vi.mocked(db.tribeMention.findMany).mockResolvedValue([]);
+      const out = await pendingTribeMessages({ ...thread, mentionId: null }, rows, "https://hive.example.com");
+      expect(resultOf(out)).not.toHaveProperty("replyTo");
+    });
+  });
 });
 
 describe("advanceTribeCursor", () => {
