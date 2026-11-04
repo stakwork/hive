@@ -1445,13 +1445,12 @@ describe("Jamie in Sphinx tribes", () => {
       expect((await outbox()).map((m) => [m.thread, m.text, m.replyTo])).toEqual([[a.id, "Then Thursday.", "msg-3"]]);
     });
 
-    it("a reply to no mention — a turn the linker took in Hive — is posted unthreaded", async () => {
+    it("a reply to no mention is posted in the thread, under its first mention", async () => {
       const scenario = await linked();
       await mention(aMention());
       await answered(scenario, "run-other", "Done.");
       const [message] = await outbox();
-      expect(message).toMatchObject({ text: "Done." });
-      expect(message).not.toHaveProperty("replyTo");
+      expect(message).toMatchObject({ text: "Done.", replyTo: "msg-1" });
     });
 
     it("a reply with nothing to post is passed over, and the conversation is not read again until it moves", async () => {
