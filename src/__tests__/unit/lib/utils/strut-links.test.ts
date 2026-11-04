@@ -16,6 +16,7 @@ import {
   strutChatDeepLink,
   strutRunDeepLink,
   strutViewPath,
+  strutJobDeepLink,
   strutWorkflowDeepLink,
 } from "@/lib/utils/strut-links";
 
@@ -27,7 +28,9 @@ function readAsStrutView(path: string): Record<string, string> | null {
 
 describe("strutRunDeepLink", () => {
   it("is strut's own query for a run: wf + run", () => {
-    expect(strutRunDeepLink("swarm-systemmap-schema-sync", "1790000000000")).toBe("wf=swarm-systemmap-schema-sync&run=1790000000000");
+    expect(strutRunDeepLink("swarm-systemmap-schema-sync", "1790000000000")).toBe(
+      "wf=swarm-systemmap-schema-sync&run=1790000000000",
+    );
   });
 
   it("escapes a run id that would otherwise break the query", () => {
@@ -92,5 +95,12 @@ describe("strutViewPath", () => {
     expect(strutViewPath("test-org", strutRunDeepLink("clip", "123"))).toBe(
       `/org/test-org/strut?strut=${encodeURIComponent(packed)}`,
     );
+  });
+});
+
+describe("strutJobDeepLink", () => {
+  it("builds job=<id>, encoding the id", () => {
+    expect(strutJobDeepLink("abc-123")).toBe("job=abc-123");
+    expect(strutJobDeepLink("a&b")).toBe("job=a%26b");
   });
 });

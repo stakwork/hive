@@ -31,6 +31,11 @@ export function strutWorkflowDeepLink(workflow: string): string {
   return new URLSearchParams({ wf: workflow }).toString();
 }
 
+/** Strut's deep link to a job: `job=<id>`. */
+export function strutJobDeepLink(jobId: string): string {
+  return new URLSearchParams({ job: jobId }).toString();
+}
+
 /**
  * The org strut view opened on a deep link, root-relative:
  * `/org/<githubLogin>/strut?strut=wf%3Dclip%26run%3D1`. An empty link is

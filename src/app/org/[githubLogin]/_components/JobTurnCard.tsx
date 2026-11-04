@@ -2,9 +2,29 @@
 
 import React, { useState } from "react";
 import { JobLiveStrip } from "./JobLiveStrip";
-import { Ban, Bot, Check, ChevronRight, CircleDashed, HelpCircle, Loader2, XCircle, Zap } from "lucide-react";
+import { useParams } from "next/navigation";
+import {
+  Ban,
+  Bot,
+  Check,
+  ChevronRight,
+  CircleDashed,
+  ExternalLink,
+  HelpCircle,
+  Loader2,
+  XCircle,
+  Zap,
+} from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
-import { CAPTCHA_ANSWER_PREFIX, describeArtifactEvent, describeCaptchaAnswer, parseArtifactEvent, parseCaptchaAnswer, parseClaimEvent } from "@/lib/strut-jobs";
+import {
+  CAPTCHA_ANSWER_PREFIX,
+  describeArtifactEvent,
+  describeCaptchaAnswer,
+  parseArtifactEvent,
+  parseCaptchaAnswer,
+  parseClaimEvent,
+} from "@/lib/strut-jobs";
+import { strutJobDeepLink, strutViewPath } from "@/lib/utils/strut-links";
 import type { CanvasChatMessage } from "../_state/canvasChatStore";
 
 /**
@@ -146,7 +166,13 @@ export function getPendingJobTurnsFromMessages(messages: CanvasChatMessage[]): P
   const peers = new Map<string, string>();
   const turn = (jobId: string, title: string, anchorMessageId: string, launchedAt?: number): PendingJobTurn => {
     const peer = peers.get(jobId);
-    return { jobId, title, anchorMessageId, ...(peer ? { peer } : {}), ...(launchedAt !== undefined ? { launchedAt } : {}) };
+    return {
+      jobId,
+      title,
+      anchorMessageId,
+      ...(peer ? { peer } : {}),
+      ...(launchedAt !== undefined ? { launchedAt } : {}),
+    };
   };
   /** Every job row's id (`job-<StrutRun.id>`), for an event row whose turn has already settled. */
   const rows = new Set(messages.filter((m) => m.source?.kind === "job").map((m) => m.id));
@@ -220,13 +246,36 @@ function Disclosure({ open }: { open?: boolean }) {
 
 const HEADER_CLASSES = "flex items-center gap-2 py-2.5 pl-2 pr-3";
 
+/** Opens the job in the embedded strut view; a sibling of the card's toggle, never inside it. */
+function OpenJobLink({ jobId }: { jobId: string }) {
+  const login = useParams()?.githubLogin as string | undefined;
+  if (!login) return null;
+  return (
+    <a
+      href={strutViewPath(login, strutJobDeepLink(jobId))}
+      target="_blank"
+      rel="noreferrer"
+      title="Open job"
+      aria-label="Open job"
+      data-testid="job-turn-link"
+      className="flex flex-shrink-0 items-center self-center pr-3 text-muted-foreground hover:text-foreground"
+    >
+      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+    </a>
+  );
+}
+
 /** The job's title, then the workspace whose strut it builds on when that is another one. */
 function JobTitle({ title, peer }: { title: string; peer?: string }) {
   return (
     <span className="flex min-w-0 flex-1 items-baseline gap-1.5 text-left">
       <span className="min-w-0 truncate text-sm font-medium">{title}</span>
       {peer && (
-        <span data-testid="job-turn-peer" title={`Built on @${peer}`} className="flex-shrink-0 text-xs text-muted-foreground">
+        <span
+          data-testid="job-turn-peer"
+          title={`Built on @${peer}`}
+          className="flex-shrink-0 text-xs text-muted-foreground"
+        >
           @{peer}
         </span>
       )}
@@ -254,11 +303,25 @@ function StatusPill({ look }: { look: JobTurnLook }) {
  * then `pull request acme/app#12 merged` linked to the artifact. The
  * working card hangs under it until the job row lands.
  */
-export function JobEventRow({ message, source }: { message: Pick<CanvasChatMessage, "content">; source: JobEventSource }) {
+export function JobEventRow({
+  message,
+  source,
+}: {
+  message: Pick<CanvasChatMessage, "content">;
+  source: JobEventSource;
+}) {
   const event = parseArtifactEvent(message.content);
   const refuted = event ? null : parseClaimEvent(message.content);
   const captcha = event || refuted ? null : parseCaptchaAnswer(message.content);
-  const text = event ? describeArtifactEvent(event) : captcha ? `Captcha answer: ${describeCaptchaAnswer(captcha)}` : refuted ? `you rejected "${refuted.claim}": ${refuted.note}` : message.content.startsWith(CAPTCHA_ANSWER_PREFIX) ? "Captcha answer" : message.content.split("\n")[0];
+  const text = event
+    ? describeArtifactEvent(event)
+    : captcha
+      ? `Captcha answer: ${describeCaptchaAnswer(captcha)}`
+      : refuted
+        ? `you rejected "${refuted.claim}": ${refuted.note}`
+        : message.content.startsWith(CAPTCHA_ANSWER_PREFIX)
+          ? "Captcha answer"
+          : message.content.split("\n")[0];
   return (
     <div
       data-testid="job-event-row"
@@ -297,11 +360,14 @@ export function PendingJobTurnCard({ turn }: { turn: PendingJobTurn }) {
       data-job-id={turn.jobId}
       className="rounded-lg border bg-card text-card-foreground"
     >
-      <div className={HEADER_CLASSES}>
-        <Disclosure />
-        <JobIcon />
-        <JobTitle title={turn.title || "Job"} peer={turn.peer} />
-        <StatusPill look={RUNNING_LOOK} />
+      <div className="flex items-center">
+        <div className={`min-w-0 flex-1 ${HEADER_CLASSES}`}>
+          <Disclosure />
+          <JobIcon />
+          <JobTitle title={turn.title || "Job"} peer={turn.peer} />
+          <StatusPill look={RUNNING_LOOK} />
+        </div>
+        <OpenJobLink jobId={turn.jobId} />
       </div>
       <JobLiveStrip jobId={turn.jobId} since={since} launchedAt={turn.launchedAt} />
     </div>
@@ -339,19 +405,22 @@ export function JobTurnCard({
       data-expanded={expanded ? "true" : "false"}
       className={`rounded-lg border bg-card text-card-foreground ${collapsible ? "transition-[border-color,box-shadow] hover:border-foreground/25 hover:shadow-sm motion-reduce:transition-none" : ""}`}
     >
-      {collapsible ? (
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          data-testid="job-turn-toggle"
-          className={`group w-full rounded-lg ${HEADER_CLASSES}`}
-        >
-          {header}
-        </button>
-      ) : (
-        <div className={HEADER_CLASSES}>{header}</div>
-      )}
+      <div className="flex items-center">
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            data-testid="job-turn-toggle"
+            className={`group min-w-0 flex-1 rounded-lg ${HEADER_CLASSES}`}
+          >
+            {header}
+          </button>
+        ) : (
+          <div className={`min-w-0 flex-1 ${HEADER_CLASSES}`}>{header}</div>
+        )}
+        <OpenJobLink jobId={source.jobId} />
+      </div>
 
       {!expanded && source.ask && (
         <div data-testid="job-turn-ask" className={`${INDENTED_CLASSES} text-xs text-foreground/90`}>

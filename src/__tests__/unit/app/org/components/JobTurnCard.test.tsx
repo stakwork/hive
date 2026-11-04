@@ -26,6 +26,8 @@ vi.mock("@/components/MarkdownRenderer", () => ({
   MarkdownRenderer: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
 }));
 
+vi.mock("next/navigation", () => ({ useParams: () => ({ githubLogin: "acme" }) }));
+
 const JOB = "6f1c0d3e-1111-4222-8333-444455556666";
 
 function source(over: Partial<JobTurnSource> = {}): JobTurnSource {
@@ -187,7 +189,10 @@ function eventRow(id: string, over: Partial<JobEventSource> & { content?: string
 describe("JobTurnCard — a build on another strut", () => {
   test("the reply's peer is named after the title as @slug; a job that ran here names none", () => {
     const { unmount } = render(
-      <JobTurnCard message={{ content: content("Built it.") }} source={source({ workflow: "builder", peer: "acme-web" })} />,
+      <JobTurnCard
+        message={{ content: content("Built it.") }}
+        source={source({ workflow: "builder", peer: "acme-web" })}
+      />,
     );
     expect(screen.getByText("Dark mode plan")).toBeInTheDocument();
     expect(screen.getByTestId("job-turn-peer")).toHaveTextContent("@acme-web");
@@ -324,7 +329,10 @@ describe("getPendingJobTurnsFromMessages — turns an event started", () => {
 
 describe("getPendingJobTurnsFromMessages — jobs the strut orchestrator launched", () => {
   /** An orchestrator reply row (Jamie on strut) carrying the jobs its turn launched. */
-  const reply = (id: string, jobs: Array<{ jobId: string; title: string; runId: string; peer?: string }>): CanvasChatMessage => ({
+  const reply = (
+    id: string,
+    jobs: Array<{ jobId: string; title: string; runId: string; peer?: string }>,
+  ): CanvasChatMessage => ({
     id,
     role: "assistant",
     content: "Started a job for that.",
@@ -350,14 +358,23 @@ describe("getPendingJobTurnsFromMessages — jobs the strut orchestrator launche
   });
 
   test("a build on another strut carries its @slug: the launch's, else the job's last seen (a continue names none)", () => {
-    expect(getPendingJobTurnsFromMessages([reply("o1", [{ jobId: JOB, title: "Digest", runId: "row-2", peer: "acme-web" }])])).toEqual([
-      { jobId: JOB, title: "Digest", anchorMessageId: "o1", peer: "acme-web", launchedAt: 1790000000000 },
-    ]);
     expect(
-      getPendingJobTurnsFromMessages([row("job-row-1", { workflow: "builder", peer: "acme-web" }), reply("o2", [{ jobId: JOB, title: "", runId: "row-3" }])]),
-    ).toEqual([{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "o2", peer: "acme-web", launchedAt: 1790000000000 }]);
+      getPendingJobTurnsFromMessages([
+        reply("o1", [{ jobId: JOB, title: "Digest", runId: "row-2", peer: "acme-web" }]),
+      ]),
+    ).toEqual([{ jobId: JOB, title: "Digest", anchorMessageId: "o1", peer: "acme-web", launchedAt: 1790000000000 }]);
+    expect(
+      getPendingJobTurnsFromMessages([
+        row("job-row-1", { workflow: "builder", peer: "acme-web" }),
+        reply("o2", [{ jobId: JOB, title: "", runId: "row-3" }]),
+      ]),
+    ).toEqual([
+      { jobId: JOB, title: "Dark mode plan", anchorMessageId: "o2", peer: "acme-web", launchedAt: 1790000000000 },
+    ]);
     // A job that runs here has none.
-    expect(getPendingJobTurnsFromMessages([row("job-row-1"), reply("o2", [{ jobId: JOB, title: "", runId: "row-3" }])])[0]).not.toHaveProperty("peer");
+    expect(
+      getPendingJobTurnsFromMessages([row("job-row-1"), reply("o2", [{ jobId: JOB, title: "", runId: "row-3" }])])[0],
+    ).not.toHaveProperty("peer");
   });
 });
 
@@ -379,7 +396,10 @@ describe("JobEventRow", () => {
   });
 
   test("a captcha answer is a short row — the count of taps, or the length of the text, never the text", () => {
-    const taps = eventRow("e1", { content: '[captcha-answer] {"round":1,"site":"a.com","taps":[{"nx":0.1,"ny":0.1},{"nx":0.5,"ny":0.5},{"nx":0.9,"ny":0.9}]}' });
+    const taps = eventRow("e1", {
+      content:
+        '[captcha-answer] {"round":1,"site":"a.com","taps":[{"nx":0.1,"ny":0.1},{"nx":0.5,"ny":0.5},{"nx":0.9,"ny":0.9}]}',
+    });
     const { unmount } = render(<JobEventRow message={taps} source={taps.source as JobEventSource} />);
     expect(screen.getByTestId("job-event-row").textContent).toBe("Dark mode plan · Captcha answer: 3 taps");
     unmount();
@@ -403,16 +423,58 @@ describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-a
     render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />);
     act(() => {
       const { apply } = useJobLiveStore.getState();
-      apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url: `/jobs/${JOB}/files/shots/001.png`, state: "done", title: "shots/001.png" });
-      apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url: `/jobs/${JOB}/files/shots/002.png`, state: "done", title: "shots/002.png" });
-      apply({ jobId: JOB, swarmId: SWARM, at, kind: "pod", id: "pod-7", url: "https://pod-7.example.com", state: "held" });
-      apply({ jobId: JOB, swarmId: SWARM, at, kind: "evidence", id: "ev-1", title: "The settings page renders", state: "refuted" });
-      apply({ jobId: JOB, swarmId: SWARM, at, kind: "evidence", id: "ev-2", title: "The toggle saves", state: "supported" });
+      apply({
+        jobId: JOB,
+        swarmId: SWARM,
+        at,
+        kind: "image",
+        url: `/jobs/${JOB}/files/shots/001.png`,
+        state: "done",
+        title: "shots/001.png",
+      });
+      apply({
+        jobId: JOB,
+        swarmId: SWARM,
+        at,
+        kind: "image",
+        url: `/jobs/${JOB}/files/shots/002.png`,
+        state: "done",
+        title: "shots/002.png",
+      });
+      apply({
+        jobId: JOB,
+        swarmId: SWARM,
+        at,
+        kind: "pod",
+        id: "pod-7",
+        url: "https://pod-7.example.com",
+        state: "held",
+      });
+      apply({
+        jobId: JOB,
+        swarmId: SWARM,
+        at,
+        kind: "evidence",
+        id: "ev-1",
+        title: "The settings page renders",
+        state: "refuted",
+      });
+      apply({
+        jobId: JOB,
+        swarmId: SWARM,
+        at,
+        kind: "evidence",
+        id: "ev-2",
+        title: "The toggle saves",
+        state: "supported",
+      });
       apply({ jobId: "j-other", swarmId: SWARM, at, kind: "image", url: "/jobs/j-other/files/shots/003.png" });
     });
     const tiles = screen.getAllByTestId("job-live-now");
     expect(tiles).toHaveLength(1);
-    expect(tiles[0].querySelector("img")?.getAttribute("src")).toContain(encodeURIComponent(`/jobs/${JOB}/files/shots/002.png`));
+    expect(tiles[0].querySelector("img")?.getAttribute("src")).toContain(
+      encodeURIComponent(`/jobs/${JOB}/files/shots/002.png`),
+    );
     expect(tiles[0].textContent).toBe("Screenshotshots/002.png");
     const tally = screen.getByTestId("job-live-tally");
     expect(tally.textContent).toBe("2 shots · pod held · 2 checks: 1 supported, 1 refuted");
@@ -423,34 +485,56 @@ describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-a
   test("a job that records again and again: one tile for the newest recording's newest frame, the earlier and stopped ones only counted", async () => {
     useJobLiveStore.setState({ byJob: {}, verifying: {} });
     const manifest = (n: string) => `/jobs/${JOB}/files/walkthroughs/${n}/walkthrough.json`;
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          title: "Settings flow",
-          status: "recording",
-          frames: [
-            { file: "01.png", caption: "Open settings" },
-            { file: "02.png", caption: "Click Billing" },
-          ],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            title: "Settings flow",
+            status: "recording",
+            frames: [
+              { file: "01.png", caption: "Open settings" },
+              { file: "02.png", caption: "Click Billing" },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
     );
     vi.stubGlobal("fetch", fetchMock);
     try {
       render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />);
       act(() => {
         const { apply } = useJobLiveStore.getState();
-        apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url: `/jobs/${JOB}/files/shots/001.png`, state: "done" });
+        apply({
+          jobId: JOB,
+          swarmId: SWARM,
+          at,
+          kind: "image",
+          url: `/jobs/${JOB}/files/shots/001.png`,
+          state: "done",
+        });
         apply({ jobId: JOB, swarmId: SWARM, at, kind: "walkthrough", url: manifest("001"), state: "stopped" });
         apply({ jobId: JOB, swarmId: SWARM, at, kind: "walkthrough", url: manifest("002"), state: "stopped" });
-        apply({ jobId: JOB, swarmId: SWARM, at, kind: "walkthrough", url: manifest("003"), state: "recording", title: "Settings flow" });
+        apply({
+          jobId: JOB,
+          swarmId: SWARM,
+          at,
+          kind: "walkthrough",
+          url: manifest("003"),
+          state: "recording",
+          title: "Settings flow",
+        });
       });
       const tile = screen.getByTestId("job-live-now");
-      await waitFor(() => expect(tile.querySelector("img")?.getAttribute("src")).toContain(encodeURIComponent(`/jobs/${JOB}/files/walkthroughs/003/02.png`)));
+      await waitFor(() =>
+        expect(tile.querySelector("img")?.getAttribute("src")).toContain(
+          encodeURIComponent(`/jobs/${JOB}/files/walkthroughs/003/02.png`),
+        ),
+      );
       expect(screen.getAllByTestId("job-live-now")).toHaveLength(1);
       expect(screen.queryByTestId("walkthrough")).toBeNull();
-      expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([expect.stringContaining(encodeURIComponent(manifest("003")))]);
+      expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+        expect.stringContaining(encodeURIComponent(manifest("003"))),
+      ]);
       expect(tile.textContent).toBe("Recording · Settings flowClick Billing · 2 frames");
       expect(screen.getByTestId("job-live-tally").textContent).toBe("3 recordings, 2 stopped · 1 shot");
     } finally {
@@ -463,13 +547,23 @@ describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-a
     useCanvasChatStore.setState({ artifactPanel: null });
     const url = `/jobs/${JOB}/files/shots/001.png`;
     render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Settings page", anchorMessageId: "m1" }} />);
-    act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url, state: "done", title: "shots/001.png" }));
+    act(() =>
+      useJobLiveStore
+        .getState()
+        .apply({ jobId: JOB, swarmId: SWARM, at, kind: "image", url, state: "done", title: "shots/001.png" }),
+    );
     expect(screen.queryByTestId("job-live-tally")).toBeNull();
     fireEvent.click(screen.getByTestId("job-live-now"));
     expect(useCanvasChatStore.getState().artifactPanel).toEqual({
       identity: `graph:${SWARM}:${url}`,
       version: null,
-      live: { id: url, kind: "image", title: "shots/001.png", label: "Screenshot", source: { type: "graph", swarmId: SWARM, key: url } },
+      live: {
+        id: url,
+        kind: "image",
+        title: "shots/001.png",
+        label: "Screenshot",
+        source: { type: "graph", swarmId: SWARM, key: url },
+      },
     });
     useCanvasChatStore.setState({ artifactPanel: null });
   });
@@ -480,19 +574,34 @@ describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-a
     act(() => {
       const { apply } = useJobLiveStore.getState();
       apply({ jobId: JOB, swarmId: SWARM, at, kind: "status", id: "r1", runId: "r1", title: "Drafting round 1 of 4" });
-      apply({ jobId: JOB, swarmId: SWARM, at, kind: "graph", id: "r2", runId: "r2", state: "written", detail: { writes: 7 } });
+      apply({
+        jobId: JOB,
+        swarmId: SWARM,
+        at,
+        kind: "graph",
+        id: "r2",
+        runId: "r2",
+        state: "written",
+        detail: { writes: 7 },
+      });
     });
     expect(screen.getByTestId("job-live-status").textContent).toBe("Drafting round 1 of 4");
     expect(screen.queryByTestId("job-live-tally")).toBeNull();
     expect(screen.queryByTestId("job-live-now")).toBeNull();
-    act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: SWARM, at, kind: "status", id: "r2", runId: "r2", title: "Writing 6 cards" }));
+    act(() =>
+      useJobLiveStore
+        .getState()
+        .apply({ jobId: JOB, swarmId: SWARM, at, kind: "status", id: "r2", runId: "r2", title: "Writing 6 cards" }),
+    );
     expect(screen.getByTestId("job-live-status").textContent).toBe("Writing 6 cards");
   });
 
   test("graph writes alone draw nothing: the canvas reads them, the card does not", () => {
     useJobLiveStore.setState({ byJob: {}, verifying: {} });
     render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Brainstorm", anchorMessageId: "m1" }} />);
-    act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: SWARM, at, kind: "graph", id: "r1", state: "written" }));
+    act(() =>
+      useJobLiveStore.getState().apply({ jobId: JOB, swarmId: SWARM, at, kind: "graph", id: "r1", state: "written" }),
+    );
     expect(screen.queryByTestId("job-live-strip")).toBeNull();
   });
 
@@ -500,15 +609,40 @@ describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-a
     useJobLiveStore.setState({ byJob: {}, verifying: {} });
     const launchedAt = Date.parse("2026-10-29T16:15:43.587Z");
     const { apply } = useJobLiveStore.getState();
-    apply({ jobId: JOB, swarmId: SWARM, at: "2026-10-29T16:01:00.000Z", kind: "pod", id: "pod-1", state: "held", url: "https://pod-1.example.com" });
-    apply({ jobId: JOB, swarmId: SWARM, at: "2026-10-29T16:15:58.000Z", kind: "pod", id: "pod-2", state: "held", url: "https://pod-2.example.com" });
-    apply({ jobId: JOB, swarmId: SWARM, at: "2026-10-29T16:16:02.000Z", kind: "status", id: "r1", title: "Checking out the repo" });
+    apply({
+      jobId: JOB,
+      swarmId: SWARM,
+      at: "2026-10-29T16:01:00.000Z",
+      kind: "pod",
+      id: "pod-1",
+      state: "held",
+      url: "https://pod-1.example.com",
+    });
+    apply({
+      jobId: JOB,
+      swarmId: SWARM,
+      at: "2026-10-29T16:15:58.000Z",
+      kind: "pod",
+      id: "pod-2",
+      state: "held",
+      url: "https://pod-2.example.com",
+    });
+    apply({
+      jobId: JOB,
+      swarmId: SWARM,
+      at: "2026-10-29T16:16:02.000Z",
+      kind: "status",
+      id: "r1",
+      title: "Checking out the repo",
+    });
     vi.useFakeTimers({ now: Date.now() + 60_000, toFake: ["Date"] });
     try {
       render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Brainstorm", anchorMessageId: "o1", launchedAt }} />);
       expect(screen.getByTestId("job-live-status").textContent).toBe("Checking out the repo");
       expect(screen.getByTestId("job-live-tally").textContent).toBe("pod held");
-      expect(screen.getByTestId("job-live-tally").querySelector("a")?.getAttribute("href")).toBe("https://pod-2.example.com");
+      expect(screen.getByTestId("job-live-tally").querySelector("a")?.getAttribute("href")).toBe(
+        "https://pod-2.example.com",
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -524,5 +658,24 @@ describe("PendingJobTurnCard — what the job is doing, live (strut plans/live-a
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("open-job link", () => {
+  const href = `/org/acme/strut?strut=job%3D${JOB}`;
+
+  test("settled card links to the job and does not toggle the card", () => {
+    render(<JobTurnCard message={{ content: content("Wrote the plan.") }} source={source()} />);
+    const link = screen.getByTestId("job-turn-link");
+    expect(link.getAttribute("href")).toBe(href);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(screen.getByTestId("job-turn-card").getAttribute("data-expanded")).toBe("false");
+    fireEvent.click(link);
+    expect(screen.getByTestId("job-turn-card").getAttribute("data-expanded")).toBe("false");
+  });
+
+  test("pending card links to the job", () => {
+    render(<PendingJobTurnCard turn={{ jobId: JOB, title: "Dark mode plan", anchorMessageId: "m1" }} />);
+    expect(screen.getByTestId("job-turn-link").getAttribute("href")).toBe(href);
   });
 });
