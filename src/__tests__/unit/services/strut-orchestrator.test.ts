@@ -94,7 +94,7 @@ vi.mock("@/services/s3", () => ({ getS3Service: () => ({ getObject: mockGetObjec
 vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: mockGetGithubPat }));
 
 import { logger } from "@/lib/logger";
-import { orchestratorTribeLine } from "@/lib/strut-orchestrator";
+import { ORCHESTRATOR_CALL_LINE, ORCHESTRATOR_CALL_WHERE, ORCHESTRATOR_TRIBE_WHERE, ORCHESTRATOR_WEB_WHERE, orchestratorTribeLine } from "@/lib/strut-orchestrator";
 import { awaitOrchestratorReply, launchOrchestratorTurn, runOrchestratorTurn } from "@/services/strut-orchestrator";
 
 const TARGET = {
@@ -167,7 +167,7 @@ describe("launchOrchestratorTurn", () => {
           input: {
             prompt: "@acme-default\nAdd a Concept for billing retries",
             session: "conv-1",
-            context: { line: "Mon, 19 Oct 2026, 14:02, Europe/London. " },
+            context: { line: "Mon, 19 Oct 2026, 14:02, Europe/London. ", timeZone: "Europe/London", where: ORCHESTRATOR_WEB_WHERE },
           },
         }),
       }),
@@ -185,11 +185,11 @@ describe("launchOrchestratorTurn", () => {
       "x-strut-actor": "alice-user-1",
     });
     const body = JSON.parse(init.body as string);
-    expect(Object.keys(body).sort()).toEqual(["callback", "input", "jobCallback"]);
+    expect(Object.keys(body).sort()).toEqual(["callback", "input", "jobCallback", "wake"]);
     expect(body.input).toEqual({
       prompt: "@acme-default\nAdd a Concept for billing retries",
       session: "conv-1",
-      context: { line: "Mon, 19 Oct 2026, 14:02, Europe/London. " },
+      context: { line: "Mon, 19 Oct 2026, 14:02, Europe/London. ", timeZone: "Europe/London", where: ORCHESTRATOR_WEB_WHERE },
     });
     expect(body.callback.url).toMatch(
       /^https:\/\/hive\.example\.com\/api\/strut-runs\/webhook\?id=row-1&token=[0-9a-f]{64}$/,
@@ -213,6 +213,32 @@ describe("launchOrchestratorTurn", () => {
     );
   });
 
+  it("asks strut to wake the conversation: `wake: true` on the launch, the zone and where beside the line", async () => {
+    await launchOrchestratorTurn(args);
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.wake).toBe(true);
+    expect(body).not.toHaveProperty("conversation");
+    expect(body.input.context.timeZone).toBe("Europe/London");
+    expect(body.input.context.where).toBe(ORCHESTRATOR_WEB_WHERE);
+  });
+
+  it("without a known zone no timeZone is sent", async () => {
+    await launchOrchestratorTurn({ ...args, timeZone: undefined });
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.input.context).not.toHaveProperty("timeZone");
+  });
+
+  it("STRUT_ORCHESTRATOR_WAKE=false sends no wake", async () => {
+    vi.stubEnv("STRUT_ORCHESTRATOR_WAKE", "false");
+    try {
+      await launchOrchestratorTurn(args);
+      const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
+      expect(body).not.toHaveProperty("wake");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("the person's model pick goes to strut as params.model, beside the input", async () => {
     await launchOrchestratorTurn({ ...args, model: "anthropic/claude-sonnet-5-5" });
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
@@ -232,8 +258,8 @@ describe("launchOrchestratorTurn", () => {
     expect(await launchOrchestratorTurn(args)).toEqual({ status: "started", runId: "row-1", strutRunId: "1790000000002" });
     const bodies = mockFetch.mock.calls.map((c) => JSON.parse((c[1] as RequestInit).body as string));
     expect(bodies.map((b) => Object.keys(b).sort())).toEqual([
-      ["callback", "input", "jobCallback"],
-      ["callback", "input"],
+      ["callback", "input", "jobCallback", "wake"],
+      ["callback", "input", "wake"],
     ]);
     expect(mockStrutRun.update.mock.calls.at(-1)?.[0].data).toEqual({ strutRunId: "1790000000002" });
     expect(mockStrutRun.updateMany).not.toHaveBeenCalled();
@@ -261,7 +287,11 @@ describe("launchOrchestratorTurn", () => {
     const line =
       'Mon, 19 Oct 2026, 14:02, Europe/London. On the canvas: initiative "Self-serve onboarding" (`init-1`), feature "Repo picker" (`feat-1`) in workspace `acme`. ';
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
-    expect(body.input).toEqual({ prompt: "@acme-default\nAdd a Concept for billing retries", session: "conv-1", context: { line } });
+    expect(body.input).toEqual({
+      prompt: "@acme-default\nAdd a Concept for billing retries",
+      session: "conv-1",
+      context: { line, timeZone: "Europe/London", where: ORCHESTRATOR_WEB_WHERE },
+    });
     expect(mockStrutRun.create.mock.calls[0][0].data.input).toEqual({ ...body.input, focus });
   });
 
@@ -272,10 +302,9 @@ describe("launchOrchestratorTurn", () => {
       prompt: "@acme-default\nAlice: what are we working on?",
       session: "conv-1",
       context: {
-        line:
-          "Mon, 19 Oct 2026, 14:02, Europe/London. On a voice call. Your reply goes to the call's chat and may be read aloud: " +
-          "say it the way you would out loud, short, with what matters first; links and detail belong in artifacts. " +
-          "Names before a message are what the call shows, not verified. ",
+        line: "Mon, 19 Oct 2026, 14:02, Europe/London. " + ORCHESTRATOR_CALL_LINE,
+        timeZone: "Europe/London",
+        where: ORCHESTRATOR_CALL_WHERE,
       },
     });
   });
@@ -284,10 +313,9 @@ describe("launchOrchestratorTurn", () => {
     await launchOrchestratorTurn({ ...args, message: "Bob: make a PR", call: { asker: "Bob" } });
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
     expect(body.input.context.line).toBe(
-      "Mon, 19 Oct 2026, 14:02, Europe/London. On a voice call. Your reply goes to the call's chat and may be read aloud: " +
-        "say it the way you would out loud, short, with what matters first; links and detail belong in artifacts. " +
-        "Names before a message are what the call shows, not verified. Bob is a member of this org; this turn runs as them. ",
+      "Mon, 19 Oct 2026, 14:02, Europe/London. " + ORCHESTRATOR_CALL_LINE + "Bob is a member of this org; this turn runs as them. ",
     );
+    expect(body.input.context.where).toBe(ORCHESTRATOR_CALL_WHERE);
   });
 
   it("pushes the turn user's GitHub token as their actor secret before the launch, never in the body", async () => {
@@ -329,11 +357,16 @@ describe("launchOrchestratorTurn", () => {
     expect(body.input).toEqual({
       prompt: "@acme-default\nAlice: what are we working on?",
       session: "conv-1",
-      context: { line: "Mon, 19 Oct 2026, 14:02, Europe/London. " + orchestratorTribeLine({ name: "Builders", alias: "Alice" }) },
+      context: {
+        line: "Mon, 19 Oct 2026, 14:02, Europe/London. " + orchestratorTribeLine({ name: "Builders", alias: "Alice" }),
+        timeZone: "Europe/London",
+        where: ORCHESTRATOR_TRIBE_WHERE,
+      },
     });
     expect(body.input.context.line).toMatch(
       /^Mon, 19 Oct 2026, 14:02, Europe\/London\. Asked in the Sphinx tribe #Builders by Alice\. Your reply is posted there, where not everyone is in this org, and read on a phone: say it the way you would in a text message, short/,
     );
+    expect(body.input.context.where).toMatch(/read on a phone[\s\S]*job's entry is not shown/);
 
     await launchOrchestratorTurn({ ...args, wakeId: "job-row-7", tribe: { name: "Builders" } });
     body = JSON.parse((mockFetch.mock.calls[1] as [string, RequestInit])[1].body as string);
@@ -391,7 +424,7 @@ describe("launchOrchestratorTurn", () => {
     expect(mockCanReadKey).toHaveBeenCalledWith(notes.path, "user-1");
 
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
-    expect(Object.keys(body).sort()).toEqual(["attachments", "callback", "input", "jobCallback"]);
+    expect(Object.keys(body).sort()).toEqual(["attachments", "callback", "input", "jobCallback", "wake"]);
     expect(body.attachments).toEqual([
       { name: "shot.png", mediaType: "image/png", data: Buffer.from("PNG!!").toString("base64") },
       { name: "notes.md", mediaType: "text/markdown", data: Buffer.from("# notes").toString("base64") },

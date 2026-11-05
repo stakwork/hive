@@ -115,7 +115,7 @@ describe("POST …/captcha", () => {
     expect(await res.json()).toEqual({ runId: "row-2" });
     expect(mockLaunch).toHaveBeenCalledWith(
       { userId: "user-1", workspaceId: "ws-1", conversationId: "conv-1", publicBaseUrl: "https://hive.test" },
-      { jobId: JOB, title: "Login", prompt: `[captcha-answer] ${JSON.stringify(TAPS)}`, started: false, event: true },
+      { jobId: JOB, title: "Login", prompt: `[captcha-answer] ${JSON.stringify(TAPS)}`, started: false, event: true, wake: true },
     );
   });
 
