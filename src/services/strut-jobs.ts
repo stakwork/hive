@@ -25,6 +25,7 @@
 import { StrutRunStatus } from "@prisma/client";
 import { canvasFocusOfInput } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
+import { isStrutOrchestratorWakeEnabled } from "@/config/env";
 import { logger } from "@/lib/logger";
 import { JOB_TURN_KIND, JOB_WORKFLOW, jobModelOf, jobTurnViaOrchestrator } from "@/lib/strut-jobs";
 import { cancelStrutRun, dispatchStrutRun, StrutDispatchError } from "@/services/strut-runs";
@@ -52,6 +53,13 @@ export interface JobTurnLaunch {
   started: boolean;
   /** No person asked for this turn: the prompt is an `[artifact-event]`, written into the conversation as the turn's origin. */
   event?: boolean;
+  /**
+   * Ask strut to wake the conversation when this turn ends (job wake,
+   * CALLBACKS.md §9). Set by the doors a person's action opens (claim
+   * answers, captcha answers, a card's PR fix); never the artifact-event
+   * delivery (`strut-jobs/artifact-events.ts`), which keeps hive's own event wake.
+   */
+  wake?: boolean;
   /** The model the job workflow runs with (`params.model`); omitted → the model the job's first turn ran on, else strut's default. */
   model?: string;
 }
@@ -162,6 +170,7 @@ export async function launchJobTurn(target: JobLaunchTarget, turn: JobTurnLaunch
       job: jobId,
       title,
       ...(model ? { params: { model } } : {}),
+      ...(turn.wake && isStrutOrchestratorWakeEnabled() ? { wake: true, conversation: conversationId } : {}),
       publicBaseUrl,
       conversationId,
       actorSecrets: { GITHUB_TOKEN: pat },

@@ -43,6 +43,7 @@ import { StrutRunStatus } from "@prisma/client";
 import { canvasFocusOfInput } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
 import { JOB_TURN_KIND, JOB_WORKFLOW } from "@/lib/strut-jobs";
+import { ORCHESTRATOR_TURN_KIND, ORCHESTRATOR_WORKFLOW, orchestratorLaunchRowId } from "@/lib/strut-orchestrator";
 import { hashStrutRunToken } from "@/services/strut-runs";
 import { firstJobTurn } from "@/services/strut-jobs";
 
@@ -177,4 +178,65 @@ export async function orchestratorJobTurnFor(
   if (!turn) return null;
   if (turn.swarmId !== parent.swarmId || turn.conversationId !== parent.conversationId) return "foreign";
   return { id: turn.id, input: turn.input };
+}
+
+/**
+ * The orchestrator turn strut launched on its own to wake a conversation
+ * when a job ended (job wake, strut CALLBACKS.md §9). Its `run.end` is
+ * posted to the callback of the person's latest orchestrator turn
+ * (`parent`), carrying a `wake` naming the job run it woke on — so, as a
+ * job run is, it is ADOPTED: a new `orchestrator_turn` row of the same
+ * conversation, found or minted for (swarm, `orchestrator`, run id), then
+ * settled through the normal handler.
+ *
+ * Before the reply, the launch marker hive's own wake writes
+ * (`launchOrchestratorTurn`): `orchestrator_launch` carrying `wakeId` — the
+ * job row's id (`job-<StrutRun.id>`, the row whose run is `wake.runId`; the
+ * first, when the turn woke on several) — so the working card shows and
+ * hive's own wake sees the job as handled. Both writes are idempotent: a
+ * redelivery finds the row and the marker.
+ *
+ * `"pending"`: the job's row is not there yet (the callbacks came out of
+ * order) — the caller answers 5xx so strut posts again.
+ */
+export async function adoptOrchestratorWakeRun(
+  parent: OrchestratorJobParent,
+  run: { runId: string; jobRunId: string },
+): Promise<Awaited<ReturnType<typeof mintWakeRow>> | "pending"> {
+  const job = await db.strutRun.findFirst({
+    where: { swarmId: parent.swarmId, kind: JOB_TURN_KIND, strutRunId: run.jobRunId, conversationId: parent.conversationId },
+    select: { id: true },
+  });
+  if (!job) return "pending";
+  const row = await mintWakeRow(parent, run.runId);
+  const { appendOrchestratorRows } = await import("@/services/strut-runs/orchestrator-turn");
+  await appendOrchestratorRows(row, [
+    {
+      id: orchestratorLaunchRowId(row.id),
+      content: "",
+      source: { kind: "orchestrator_launch", runId: row.id, wakeId: `job-${job.id}` },
+    },
+  ]);
+  return row;
+}
+
+async function mintWakeRow(parent: OrchestratorJobParent, runId: string) {
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  return db.strutRun.upsert({
+    where: { swarmId_workflow_strutRunId: { swarmId: parent.swarmId, workflow: ORCHESTRATOR_WORKFLOW, strutRunId: runId } },
+    create: {
+      tokenHash: hashStrutRunToken(rawToken),
+      workspaceId: parent.workspaceId,
+      swarmId: parent.swarmId,
+      userId: parent.userId,
+      kind: ORCHESTRATOR_TURN_KIND,
+      workflow: ORCHESTRATOR_WORKFLOW,
+      strutRunId: runId,
+      status: StrutRunStatus.PENDING,
+      input: { prompt: "", session: parent.conversationId, wake: true, parentRunId: parent.id },
+      conversationId: parent.conversationId,
+    },
+    update: {},
+    select: STRUT_RUN_WEBHOOK_SELECT,
+  });
 }

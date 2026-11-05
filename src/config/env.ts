@@ -27,6 +27,15 @@ export function validateEnvVars(): void {
 
 export const env = requiredEnvVars;
 
+/**
+ * Strut's "job wake" (strut CALLBACKS.md §9): ask strut to wake the
+ * conversation when a job ends. On unless `STRUT_ORCHESTRATOR_WAKE=false`;
+ * read at call time. Off sends none of the wake fields.
+ */
+export function isStrutOrchestratorWakeEnabled(): boolean {
+  return (process.env.STRUT_ORCHESTRATOR_WAKE || "").trim().toLowerCase() !== "false";
+}
+
 // Optional environment variables with defaults
 // URLs resolve to mock endpoints when USE_MOCKS=true
 export const optionalEnvVars = {

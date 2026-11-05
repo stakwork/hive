@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
-import { orchestratorTribeLine, type StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
+import { ORCHESTRATOR_TRIBE_WHERE, orchestratorTribeLine, type StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
 import { jamieAccount } from "@/lib/tribes/jamie";
 import { parseTribeRef, tribeJoinLink, tribeName } from "@/lib/tribes/tribeLinks";
 import {
@@ -428,6 +428,16 @@ describe("orchestratorTribeLine", () => {
     expect(line).not.toContain("Names before a message");
     expect(line).not.toContain("undefined");
     expect(orchestratorTribeLine({ name: null })).toMatch(/^In a Sphinx tribe\. /);
+  });
+
+  it("the tribe's `where` is the medium, never who asked: a phone, a text message, links in artifacts, a long reply cut, the job's entry not shown, cards beside the reply", () => {
+    expect(ORCHESTRATOR_TRIBE_WHERE).toMatch(/read on a phone/);
+    expect(ORCHESTRATOR_TRIBE_WHERE).toContain("text message");
+    expect(ORCHESTRATOR_TRIBE_WHERE).toContain("links and detail belong in artifacts");
+    expect(ORCHESTRATOR_TRIBE_WHERE).toContain("a long reply is cut");
+    expect(ORCHESTRATOR_TRIBE_WHERE).toContain("job's entry is not shown");
+    expect(ORCHESTRATOR_TRIBE_WHERE).toContain("beside your reply as cards");
+    expect(ORCHESTRATOR_TRIBE_WHERE).not.toContain("Asked in");
   });
 });
 

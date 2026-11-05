@@ -1030,7 +1030,20 @@ export async function handleJobTurnSettled(row: StrutRunRow, ctx?: StrutRunHandl
       publicBaseUrl: ctx?.publicBaseUrl ?? getBaseUrl(null),
       ...(event ? { event } : {}),
     };
-    scheduleOrchestratorWake(row, { ...wake, text: reply.text, startedByOrchestrator: jobTurnViaOrchestrator(row) });
+    if (ctx?.jobWake === "launched") {
+      // Strut wakes the conversation itself; its reply follows (adopted by the webhook).
+      logger.info("Job turn: strut wakes the conversation — hive's wake skipped", LOG_TAG, { runId: row.id, jobId });
+    } else if (ctx?.jobWake === "capped") {
+      // Strut's own cap: stop here, as hive's loop breaker does at its cap
+      // (`runGatedAutoTurn`: an error log, no wake).
+      logger.error("Job turn: strut's wake hit its cap — skipping the wake (loop breaker)", LOG_TAG, {
+        conversationId: row.conversationId,
+        wakeId: wake.wakeId,
+        jobId,
+      });
+    } else {
+      scheduleOrchestratorWake(row, { ...wake, text: reply.text, startedByOrchestrator: jobTurnViaOrchestrator(row) });
+    }
   }
 
   // Events that arrived while this turn ran go now, as the next turn, one
