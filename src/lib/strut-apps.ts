@@ -63,6 +63,18 @@ export function strutAppRelayUrl(source: Pick<StrutAppSource, "githubLogin" | "s
   return `/api/orgs/${encodeURIComponent(source.githubLogin)}/strut/apps/mcp?${new URLSearchParams({ swarmId: source.swarmId })}`;
 }
 
+/** Same-origin URL of the channel-ticket route for an app's swarm. */
+export function strutAppChannelTicketUrl(source: Pick<StrutAppSource, "githubLogin" | "swarmId">): string {
+  return `/api/orgs/${encodeURIComponent(source.githubLogin)}/strut/apps/channel-ticket?${new URLSearchParams({ swarmId: source.swarmId })}`;
+}
+
+/** `https://h/lab` → `wss://h/lab/channels` (`http` → `ws`); no ticket in it. */
+export function strutChannelSocketUrl(labBase: string): string {
+  const url = new URL(`${labBase}/channels`);
+  url.protocol = url.protocol === "http:" ? "ws:" : "wss:";
+  return url.toString();
+}
+
 /**
  * A workspace app's document as strut links it (strut CALLBACKS.md §4, the
  * builder's deliverable): `/apps/<name, encoded>/<vN>/files/dist/index.html`.
