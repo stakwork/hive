@@ -94,7 +94,7 @@ vi.mock("@/services/s3", () => ({ getS3Service: () => ({ getObject: mockGetObjec
 vi.mock("@/lib/auth/nextauth", () => ({ getGithubUsernameAndPAT: mockGetGithubPat }));
 
 import { logger } from "@/lib/logger";
-import { ORCHESTRATOR_CALL_WHERE, ORCHESTRATOR_TRIBE_WHERE, ORCHESTRATOR_WEB_WHERE, orchestratorTribeLine } from "@/lib/strut-orchestrator";
+import { ORCHESTRATOR_CALL_LINE, ORCHESTRATOR_CALL_WHERE, ORCHESTRATOR_TRIBE_WHERE, ORCHESTRATOR_WEB_WHERE, orchestratorTribeLine } from "@/lib/strut-orchestrator";
 import { awaitOrchestratorReply, launchOrchestratorTurn, runOrchestratorTurn } from "@/services/strut-orchestrator";
 
 const TARGET = {
@@ -213,14 +213,13 @@ describe("launchOrchestratorTurn", () => {
     );
   });
 
-  it("asks strut to wake the conversation: `wake: true` on the launch, the zone and where beside the line, and no sentence in both", async () => {
+  it("asks strut to wake the conversation: `wake: true` on the launch, the zone and where beside the line", async () => {
     await launchOrchestratorTurn(args);
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
     expect(body.wake).toBe(true);
     expect(body).not.toHaveProperty("conversation");
     expect(body.input.context.timeZone).toBe("Europe/London");
     expect(body.input.context.where).toBe(ORCHESTRATOR_WEB_WHERE);
-    expect(body.input.context.line).not.toContain(body.input.context.where);
   });
 
   it("without a known zone no timeZone is sent", async () => {
@@ -303,7 +302,7 @@ describe("launchOrchestratorTurn", () => {
       prompt: "@acme-default\nAlice: what are we working on?",
       session: "conv-1",
       context: {
-        line: "Mon, 19 Oct 2026, 14:02, Europe/London. ",
+        line: "Mon, 19 Oct 2026, 14:02, Europe/London. " + ORCHESTRATOR_CALL_LINE,
         timeZone: "Europe/London",
         where: ORCHESTRATOR_CALL_WHERE,
       },
@@ -313,7 +312,9 @@ describe("launchOrchestratorTurn", () => {
   it("a call turn Hive knows the speaker of says it runs as them", async () => {
     await launchOrchestratorTurn({ ...args, message: "Bob: make a PR", call: { asker: "Bob" } });
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string);
-    expect(body.input.context.line).toBe("Mon, 19 Oct 2026, 14:02, Europe/London. Bob is a member of this org; this turn runs as them. ");
+    expect(body.input.context.line).toBe(
+      "Mon, 19 Oct 2026, 14:02, Europe/London. " + ORCHESTRATOR_CALL_LINE + "Bob is a member of this org; this turn runs as them. ",
+    );
     expect(body.input.context.where).toBe(ORCHESTRATOR_CALL_WHERE);
   });
 
@@ -362,14 +363,14 @@ describe("launchOrchestratorTurn", () => {
         where: ORCHESTRATOR_TRIBE_WHERE,
       },
     });
-    expect(body.input.context.line).toBe(
-      "Mon, 19 Oct 2026, 14:02, Europe/London. Asked in the Sphinx tribe #Builders by Alice. Names before a message are what the tribe shows, not verified. ",
+    expect(body.input.context.line).toMatch(
+      /^Mon, 19 Oct 2026, 14:02, Europe\/London\. Asked in the Sphinx tribe #Builders by Alice\. Your reply is posted there, where not everyone is in this org, and read on a phone: say it the way you would in a text message, short/,
     );
     expect(body.input.context.where).toMatch(/read on a phone[\s\S]*job's entry is not shown/);
 
     await launchOrchestratorTurn({ ...args, wakeId: "job-row-7", tribe: { name: "Builders" } });
     body = JSON.parse((mockFetch.mock.calls[1] as [string, RequestInit])[1].body as string);
-    expect(body.input.context.line).toMatch(/^Mon, 19 Oct 2026, 14:02, Europe\/London\. In the Sphinx tribe #Builders\. $/);
+    expect(body.input.context.line).toMatch(/^Mon, 19 Oct 2026, 14:02, Europe\/London\. In the Sphinx tribe #Builders\. Your reply is posted there/);
     expect(body.input.context.line).not.toContain("Names before a message");
   });
 
