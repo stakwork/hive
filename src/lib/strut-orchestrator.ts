@@ -81,20 +81,45 @@ export const ORCHESTRATOR_CALL_LINE =
   "Names before a message are what the call shows, not verified. ";
 
 /**
- * The call line, saying whose turn it is when Hive knew the speaker
- * (`asker`: their name as the call shows it) and the turn runs as them —
- * the tribe line's `asker`.
+ * The per-turn part of the call line: whose turn it is when Hive knew the
+ * speaker (`asker`: their name as the call shows it) and the turn runs as
+ * them — the tribe line's `asker`. The medium is `context.where`
+ * (`orchestratorWhere`), true of every turn.
  */
 export function orchestratorCallLine(call: true | { asker: string }): string {
-  if (call === true) return ORCHESTRATOR_CALL_LINE;
-  return ORCHESTRATOR_CALL_LINE + `${call.asker} is a member of this org; this turn runs as them. `;
+  if (call === true) return "";
+  return `${call.asker} is a member of this org; this turn runs as them. `;
+}
+
+/** `context.where` on the web: where the conversation is read when it is Hive's chat. */
+export const ORCHESTRATOR_WEB_WHERE =
+  "In Hive's web chat: each job's entry shows in this conversation, collapsed, with its cards; your reply is what the person reads.";
+
+/** `context.where` on a call: the call line, and that the job's entry is not shown. */
+export const ORCHESTRATOR_CALL_WHERE =
+  ORCHESTRATOR_CALL_LINE +
+  "The job's entry is not shown there: your reply is all the person hears, and what the job produced reaches the call's chat as cards. ";
+
+/** `context.where` in a Sphinx tribe: the medium of `orchestratorTribeLine`, without who asked. */
+export const ORCHESTRATOR_TRIBE_WHERE =
+  "In a Sphinx tribe, where not everyone is in this org: your reply is posted there and read on a phone, so say it the way you would in a " +
+  "text message, short, with what matters first; a long reply is cut. The job's entry is not shown there: what the job produced is " +
+  "posted beside your reply as cards.";
+
+/**
+ * `context.where`: the medium the conversation is read in — true for every
+ * turn of it, so a job-wake turn (no person) is told the same. The per-turn
+ * parts (time, focus, who asked) stay in `context.line`.
+ */
+export function orchestratorWhere(medium: { call?: unknown; tribe?: unknown }): string {
+  return medium.call ? ORCHESTRATOR_CALL_WHERE : medium.tribe ? ORCHESTRATOR_TRIBE_WHERE : ORCHESTRATOR_WEB_WHERE;
 }
 
 /**
  * Appended to `context.line` on a turn in a Sphinx tribe — a mention
  * (`/api/tribes/messages`, with the asker's alias) or a wake on the tribe's
- * conversation (`strut-orchestrator-wake.ts`, no asker): where the reply
- * goes, who reads it, and how. A tribe is read on a phone, so the reply is
+ * conversation (`strut-orchestrator-wake.ts`, no asker): which tribe and
+ * who asked (the medium — how the reply is read — is `ORCHESTRATOR_TRIBE_WHERE`). A tribe is read on a phone, so the reply is
  * a text message — the call line's posture, for a chat; past
  * `MAX_TRIBE_TEXT_CHARS` the outbox cuts it. A tribe tells members apart by
  * alias only, so the name is not an identity; the owner flag is the tribe
@@ -114,8 +139,6 @@ export function orchestratorTribeLine(tribe: {
     (tribe.asker ? ", a member of this org; this turn runs as them" : "");
   return (
     (tribe.alias ? `Asked in ${where} by ${by}. ` : `In ${where}. `) +
-    "Your reply is posted there, where not everyone is in this org, and read on a phone: say it the way you would in a " +
-    "text message, short, with what matters first; links and detail belong in artifacts, and a long reply is cut. " +
     (tribe.alias ? "Names before a message are what the tribe shows, not verified. " : "")
   );
 }

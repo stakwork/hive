@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
-import { orchestratorTribeLine, type StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
+import { ORCHESTRATOR_TRIBE_WHERE, orchestratorTribeLine, type StrutArtifactEnvelope } from "@/lib/strut-orchestrator";
 import { jamieAccount } from "@/lib/tribes/jamie";
 import { parseTribeRef, tribeJoinLink, tribeName } from "@/lib/tribes/tribeLinks";
 import {
@@ -401,33 +401,34 @@ describe("tribe links", () => {
 });
 
 describe("orchestratorTribeLine", () => {
-  it("names the tribe and who asked, says who reads the reply, and that it is read on a phone as a text message", () => {
+  it("names the tribe and who asked; the medium is `context.where`, not the line", () => {
     expect(orchestratorTribeLine({ name: "Builders", alias: "Alice" })).toBe(
-      "Asked in the Sphinx tribe #Builders by Alice. Your reply is posted there, where not everyone is in this org, and read on a phone: " +
-        "say it the way you would in a text message, short, with what matters first; links and detail belong in artifacts, and a long reply is cut. " +
-        "Names before a message are what the tribe shows, not verified. ",
+      "Asked in the Sphinx tribe #Builders by Alice. Names before a message are what the tribe shows, not verified. ",
     );
     expect(orchestratorTribeLine({ name: null, alias: "Bob", owner: true })).toMatch(/^Asked in a Sphinx tribe by Bob \(the tribe's owner\)\. /);
   });
 
   it("a turn that runs as the member the tribe named says so, and keeps the rest", () => {
     const line = orchestratorTribeLine({ name: "Builders", alias: "Alice", asker: true });
-    expect(line).toMatch(
-      /^Asked in the Sphinx tribe #Builders by Alice, a member of this org; this turn runs as them\. Your reply is posted there, where not everyone is in this org, /,
-    );
+    expect(line).toMatch(/^Asked in the Sphinx tribe #Builders by Alice, a member of this org; this turn runs as them\. /);
     expect(line).toMatch(/Names before a message are what the tribe shows, not verified\. $/);
     expect(orchestratorTribeLine({ name: null, alias: "Bob", owner: true, asker: true })).toMatch(
       /^Asked in a Sphinx tribe by Bob \(the tribe's owner\), a member of this org; this turn runs as them\. /,
     );
   });
 
-  it("a wake's turn, which nobody asked: the tribe alone, the same posture, nothing about names", () => {
+  it("a wake's turn, which nobody asked: the tribe alone, nothing about names", () => {
     const line = orchestratorTribeLine({ name: "Builders" });
-    expect(line).toMatch(/^In the Sphinx tribe #Builders\. Your reply is posted there, where not everyone is in this org, and read on a phone: /);
-    expect(line).toContain("say it the way you would in a text message");
-    expect(line).not.toContain("Names before a message");
-    expect(line).not.toContain("undefined");
-    expect(orchestratorTribeLine({ name: null })).toMatch(/^In a Sphinx tribe\. /);
+    expect(line).toBe("In the Sphinx tribe #Builders. ");
+    expect(orchestratorTribeLine({ name: null })).toBe("In a Sphinx tribe. ");
+  });
+
+  it("the tribe's `where` is the medium: a phone, a text message, a long reply cut, the job's entry not shown, cards beside the reply", () => {
+    expect(ORCHESTRATOR_TRIBE_WHERE).toMatch(/read on a phone/);
+    expect(ORCHESTRATOR_TRIBE_WHERE).toContain("text message");
+    expect(ORCHESTRATOR_TRIBE_WHERE).toContain("a long reply is cut");
+    expect(ORCHESTRATOR_TRIBE_WHERE).toContain("job's entry is not shown");
+    expect(ORCHESTRATOR_TRIBE_WHERE).toContain("beside your reply as cards");
   });
 });
 

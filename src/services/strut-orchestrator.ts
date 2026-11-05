@@ -23,6 +23,7 @@
  */
 
 import { StrutRunStatus } from "@prisma/client";
+import { isStrutOrchestratorWakeEnabled } from "@/config/env";
 import { pageContextLine, type PageContext } from "@/lib/jamie-page-context";
 import { canvasFocusContextLine, type CanvasFocus } from "@/lib/canvas/canvas-jobs";
 import { db } from "@/lib/db";
@@ -37,6 +38,7 @@ import {
   orchestratorPrompt,
   orchestratorRowId,
   orchestratorTribeLine,
+  orchestratorWhere,
 } from "@/lib/strut-orchestrator";
 import type { StoredAttachment, StoredMessage } from "@/services/canvas-turn-persistence";
 import { skippedAttachmentsNote, strutAttachments } from "@/services/strut-attachments";
@@ -170,6 +172,11 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
         prompt: orchestratorPrompt(strut.workspaceSlug, message + skippedAttachmentsNote(files?.skipped ?? [])),
         session: conversationId,
         context: {
+          // The person's zone and the medium, beside `line`: strut reuses
+          // the latest turn's when it builds a wake (CALLBACKS.md §9). `line`
+          // keeps what is per-turn; `where` is true of every turn.
+          ...(args.timeZone?.trim() ? { timeZone: args.timeZone.trim() } : {}),
+          where: orchestratorWhere(args),
           line:
             orchestratorContextLine(args.now ?? new Date(), args.timeZone) +
             (args.focus ? canvasFocusContextLine(args.focus) : "") +
@@ -189,6 +196,10 @@ export async function launchOrchestratorTurn(args: OrchestratorTurnArgs): Promis
       // it on to each (CALLBACKS.md §5); `/api/strut-jobs/events` routes
       // them by the payload's `job`.
       inheritJobCallback: true,
+      // Strut wakes this conversation when a job the turn starts ends
+      // (CALLBACKS.md §9); older strut ignores it. Hive's own wake skips a
+      // job whose `run.end` says strut did (`job-turn.ts`).
+      ...(isStrutOrchestratorWakeEnabled() ? { wake: true } : {}),
     });
   } catch (err) {
     if (err instanceof StrutDispatchError) {

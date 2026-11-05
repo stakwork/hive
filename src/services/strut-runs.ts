@@ -126,6 +126,13 @@ export interface StrutRunHandlerContext {
    * reconcile path (no request).
    */
   publicBaseUrl?: string;
+  /**
+   * A job turn's `run.end` `wake` (strut CALLBACKS.md §9): "launched" — strut
+   * woke the conversation itself; "capped" — it would have, but hit its
+   * cap; "none" — it did not. Absent: an older strut, or no callback
+   * (reconcile). Only "none" and absent leave the wake to hive.
+   */
+  jobWake?: "launched" | "capped" | "none";
 }
 
 /** A kind's completion handler: idempotent, throws to ask for a retry. */
@@ -254,6 +261,14 @@ export interface DispatchStrutRunArgs {
    * `job` and `runId`. A launch with `job` always carries its own.
    */
   inheritJobCallback?: boolean;
+  /**
+   * Strut's job wake (CALLBACKS.md §9), launch-level fields: `wake: true`
+   * asks strut to wake the conversation when the jobs this run starts (an
+   * orchestrator turn), or this job turn, end; `conversation` names the
+   * session a hive-launched job turn wakes. Older strut ignores both.
+   */
+  wake?: boolean;
+  conversation?: string;
   /** Launch-level `params` (e.g. `{ model }`), a sibling of `input`; sent only when non-empty. */
   params?: Record<string, unknown>;
   /**
@@ -311,7 +326,7 @@ async function failRow(id: string, error: string): Promise<void> {
  * if created, is marked ERROR with the reason).
  */
 export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<DispatchStrutRunResult> {
-  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title, params, inheritJobCallback, attachments } = args;
+  const { workspaceId, userId, kind, workflow, purpose, publicBaseUrl, conversationId, proposalId, job, title, params, inheritJobCallback, attachments, wake, conversation } = args;
   if (!handlerFor(kind)) throw new Error(`No strut-run handler for kind "${kind}"`);
 
   const resolved = await resolveStrutTarget({ purpose, userId, workspaceId });
@@ -383,6 +398,7 @@ export async function dispatchStrutRun(args: DispatchStrutRunArgs): Promise<Disp
         input,
         callback: { url: callbackUrl },
         ...(job ? { job, ...(title ? { title } : {}) } : {}),
+        ...(wake ? { wake: true, ...(conversation ? { conversation } : {}) } : {}),
         ...(jobCallback ? { jobCallback: { url: jobCallback } } : {}),
         ...(params && Object.keys(params).length ? { params } : {}),
         ...(attachments?.length ? { attachments } : {}),
