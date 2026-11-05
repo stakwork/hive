@@ -92,7 +92,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       conversationId: first.conversationId,
       publicBaseUrl: getBaseUrl(request.headers.get("host")),
     },
-    { jobId, title: jobTitleOf(first), prompt, started: false, event: true },
+    { jobId, title: jobTitleOf(first), prompt, started: false, event: true, wake: true },
   );
   if (result.status === "busy") return NextResponse.json({ error: result.note, busy: true }, { status: 409 });
   if (result.status === "error") return NextResponse.json({ error: result.error }, { status: 502 });

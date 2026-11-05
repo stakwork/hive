@@ -44,8 +44,8 @@ import { timingSafeEqual } from "@/lib/encryption";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { ORCHESTRATOR_TURN_KIND } from "@/lib/strut-orchestrator";
 import { getBaseUrl } from "@/lib/utils";
-import { completeStrutRun, hashStrutRunToken, type StrutRunTerminalStatus } from "@/services/strut-runs";
-import { STRUT_RUN_WEBHOOK_SELECT, adoptOrchestratorJobRun } from "@/services/strut-runs/orchestrator-jobs";
+import { completeStrutRun, hashStrutRunToken, type StrutRunHandlerContext, type StrutRunTerminalStatus } from "@/services/strut-runs";
+import { STRUT_RUN_WEBHOOK_SELECT, adoptOrchestratorJobRun, adoptOrchestratorWakeRun } from "@/services/strut-runs/orchestrator-jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -143,6 +143,32 @@ export async function POST(request: NextRequest) {
     row = await adoptOrchestratorJobRun(authed, { job, runId, title, workflow });
     console.log("[strut-runs-webhook] adopted a job the orchestrator started", { id, jobRow: row.id, job, workflow, status: row.status });
   }
+  // The orchestrator turn strut launched itself to wake the conversation on
+  // a job (CALLBACKS.md §9): its `run.end` reaches the callback of the
+  // person's latest turn, with a `wake` naming the job run. Adopted as a new
+  // orchestrator-turn row of the conversation; without a `wake` it is a
+  // mismatch like any other.
+  const wake = payload.wake !== null && typeof payload.wake === "object" ? (payload.wake as Record<string, unknown>) : null;
+  if (
+    wake &&
+    authed.kind === ORCHESTRATOR_TURN_KIND &&
+    payload.workflow === authed.workflow &&
+    authed.strutRunId &&
+    authed.strutRunId !== runId
+  ) {
+    const jobRunId = typeof wake.runId === "string" && wake.runId.length > 0 && wake.runId.length <= 200 ? wake.runId : null;
+    if (!jobRunId || !authed.conversationId) {
+      return NextResponse.json({ error: "Malformed payload" }, { status: 400 });
+    }
+    const adopted = await adoptOrchestratorWakeRun(authed, { runId, jobRunId });
+    if (adopted === "pending") {
+      // The job's row is not here yet (callbacks out of order): strut posts again.
+      console.warn("[strut-runs-webhook] wake turn before its job's row — retry", { id, jobRunId });
+      return NextResponse.json({ error: "Job not recorded yet" }, { status: 503 });
+    }
+    row = adopted;
+    console.log("[strut-runs-webhook] adopted a wake turn strut launched", { id, wakeRow: row.id, jobRunId, status: row.status });
+  }
   if (payload.workflow !== row.workflow) {
     return NextResponse.json({ error: "Malformed payload" }, { status: 400 });
   }
@@ -158,7 +184,10 @@ export async function POST(request: NextRequest) {
 
   // Strut reached us on this host, so it is swarm-reachable: a handler that
   // wakes the canvas agent hands it on for the launches that turn makes.
-  const ctx = { publicBaseUrl: getBaseUrl(request.headers.get("host")) };
+  // A job turn's `run.end` says whether strut woke the conversation itself
+  // (`wake`, CALLBACKS.md §9): the job handler then leaves the wake to strut.
+  const jobWake: StrutRunHandlerContext["jobWake"] = payload.wake === "launched" || payload.wake === "capped" || payload.wake === "none" ? payload.wake : undefined;
+  const ctx = { publicBaseUrl: getBaseUrl(request.headers.get("host")), ...(jobWake ? { jobWake } : {}) };
 
   if (row.status !== StrutRunStatus.PENDING) {
     // Already settled (a replay, or reconcile got there first). The handler

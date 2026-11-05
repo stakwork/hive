@@ -138,7 +138,7 @@ describe("POST /api/orgs/[githubLogin]/strut/jobs/[jobId]/claims", () => {
     expect(await res.json()).toEqual({ runId: "row-9" });
     expect(mockLaunch).toHaveBeenCalledWith(
       { userId: "user-1", workspaceId: "ws-1", conversationId: "conv-1", publicBaseUrl: expect.any(String) },
-      { jobId: JOB, title: "Settings page", prompt: '[claim-event] refuted "x": It unticks after a reload.', started: false, event: true },
+      { jobId: JOB, title: "Settings page", prompt: '[claim-event] refuted "x": It unticks after a reload.', started: false, event: true, wake: true },
     );
   });
 

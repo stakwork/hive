@@ -799,6 +799,18 @@ describe("handleJobTurnSettled — the wake (a job hive launched)", () => {
     ],
   };
 
+  it("strut's run.end says it wakes the conversation itself (`launched`) or hit its cap (`capped`): hive does not wake; `none` or absent: it does", async () => {
+    mockFetch.mockResolvedValue(json(200, artifactsBody));
+    for (const [jobWake, woke] of [["launched", false], ["capped", false], ["none", true], [undefined, true]] as const) {
+      vi.clearAllMocks();
+      mockFetch.mockResolvedValue(json(200, artifactsBody));
+      mockOrchestratorWake.mockResolvedValue(undefined);
+      await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com", ...(jobWake ? { jobWake } : {}) });
+      await flushAfter();
+      expect(mockOrchestratorWake).toHaveBeenCalledTimes(woke ? 1 : 0);
+    }
+  });
+
   it("once the row is appended: after the response, with the outcome, the cards and the callback's host", async () => {
     mockFetch.mockResolvedValue(json(200, artifactsBody));
     await handleJobTurnSettled(row(), { publicBaseUrl: "https://hive.example.com" });

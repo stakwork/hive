@@ -141,7 +141,7 @@ describe("POST /api/orgs/[githubLogin]/strut/jobs/[jobId]/events", () => {
     expect(mockCompose).toHaveBeenCalledWith(JOB, PR, "checks failed", ["head: a1b2c3d", "- lint — https://ci.test/1"]);
     expect(mockLaunch).toHaveBeenCalledWith(
       { userId: "user-1", workspaceId: "ws-1", conversationId: "conv-1", publicBaseUrl: "https://hive.test" },
-      { jobId: JOB, title: "Dark mode plan", prompt: LINE, started: false, event: true },
+      { jobId: JOB, title: "Dark mode plan", prompt: LINE, started: false, event: true, wake: true },
     );
   });
 

@@ -107,7 +107,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       conversationId: first.conversationId,
       publicBaseUrl: getBaseUrl(request.headers.get("host")),
     },
-    { jobId, title: jobTitleOf(first), prompt, started: false, event: true },
+    { jobId, title: jobTitleOf(first), prompt, started: false, event: true, wake: true },
   );
   if (result.status === "busy") {
     log("busy");

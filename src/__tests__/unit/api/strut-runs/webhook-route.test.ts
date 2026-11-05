@@ -27,7 +27,9 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 import crypto from "crypto";
 import { NextRequest } from "next/server";
 
-const { mockFindUnique, mockFindMany, mockUpdate, mockUpdateMany, mockUpsert, mockWorkspaceFindUnique, mockRateLimit, mockComplete } = vi.hoisted(() => ({
+const { mockFindFirst, mockAppendRows, mockFindUnique, mockFindMany, mockUpdate, mockUpdateMany, mockUpsert, mockWorkspaceFindUnique, mockRateLimit, mockComplete } = vi.hoisted(() => ({
+  mockFindFirst: vi.fn(),
+  mockAppendRows: vi.fn(),
   mockFindUnique: vi.fn(),
   mockFindMany: vi.fn(),
   mockUpdate: vi.fn(),
@@ -42,7 +44,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     strutRun: {
       findUnique: mockFindUnique,
-      findFirst: async () => null,
+      findFirst: mockFindFirst,
       findMany: mockFindMany,
       update: mockUpdate,
       updateMany: mockUpdateMany,
@@ -57,6 +59,8 @@ vi.mock("@/services/strut-runs", () => ({
   completeStrutRun: mockComplete,
   hashStrutRunToken: (t: string) => crypto.createHash("sha256").update(t).digest("hex"),
 }));
+
+vi.mock("@/services/strut-runs/orchestrator-turn", () => ({ appendOrchestratorRows: mockAppendRows }));
 
 import { POST } from "@/app/api/strut-runs/webhook/route";
 
@@ -106,6 +110,8 @@ describe("POST /api/strut-runs/webhook", () => {
     mockFindMany.mockResolvedValue([]);
     mockWorkspaceFindUnique.mockResolvedValue({ slug: "acme" });
     mockComplete.mockResolvedValue("claimed");
+    mockFindFirst.mockResolvedValue(null);
+    mockAppendRows.mockResolvedValue({ appended: [], duplicate: [], skipped: false });
   });
 
   test("rejects missing id / token, an unknown row, and a wrong token", async () => {
@@ -350,6 +356,93 @@ describe("POST /api/strut-runs/webhook", () => {
       expect((await post(jobEnd())).status).toBe(400);
       expect(mockUpsert).not.toHaveBeenCalled();
       expect(mockComplete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("an orchestrator turn strut launched to wake the conversation (CALLBACKS.md §9)", () => {
+    const orchestrator = () => row({ kind: "orchestrator_turn", workflow: "orchestrator", status: "SUCCESS", strutRunId: "1790000000000" });
+    const wakeEnd = (over: Record<string, unknown> = {}) =>
+      body({
+        workflow: "orchestrator",
+        runId: "1790000000999",
+        output: { text: "Shipped." },
+        wake: { job: "job-1", runId: "1790000000777", also: [{ job: "job-2", runId: "1790000000778" }] },
+        ...over,
+      });
+    const wakeRow = (over: Record<string, unknown> = {}) =>
+      row({ id: "wake-row-1", tokenHash: "f".repeat(64), kind: "orchestrator_turn", workflow: "orchestrator", strutRunId: "1790000000999", ...over });
+
+    beforeEach(() => {
+      mockFindUnique.mockResolvedValue(orchestrator());
+      mockFindFirst.mockResolvedValue({ id: "job-row-9" });
+      mockUpsert.mockResolvedValue(wakeRow());
+    });
+
+    test("adopts the run as a new orchestrator turn of the conversation: the marker keyed on the first job's row, then settled", async () => {
+      const res = await post(wakeEnd());
+      expect(res.status).toBe(200);
+
+      expect(mockFindFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { swarmId: "swarm-1", kind: "job_turn", strutRunId: "1790000000777", conversationId: "conv-1" } }),
+      );
+      const call = mockUpsert.mock.calls[0][0];
+      expect(call.where).toEqual({ swarmId_workflow_strutRunId: { swarmId: "swarm-1", workflow: "orchestrator", strutRunId: "1790000000999" } });
+      expect(call.update).toEqual({});
+      expect(call.create).toMatchObject({
+        kind: "orchestrator_turn",
+        workflow: "orchestrator",
+        strutRunId: "1790000000999",
+        status: "PENDING",
+        conversationId: "conv-1",
+        userId: "user-1",
+        workspaceId: "ws-1",
+        swarmId: "swarm-1",
+      });
+      expect(call.create).not.toHaveProperty("jobId");
+      expect(call.create.tokenHash).not.toBe(HASH);
+
+      expect(mockAppendRows).toHaveBeenCalledWith(expect.objectContaining({ id: "wake-row-1" }), [
+        { id: "orchestrator-launch-wake-row-1", content: "", source: { kind: "orchestrator_launch", runId: "wake-row-1", wakeId: "job-job-row-9" } },
+      ]);
+      // The marker lands before the reply is settled.
+      expect(mockAppendRows.mock.invocationCallOrder[0]).toBeLessThan(mockComplete.mock.invocationCallOrder[0]);
+      expect(mockComplete).toHaveBeenCalledWith(
+        wakeRow(),
+        { status: "success", output: { text: "Shipped." }, error: null, durationMs: 4200 },
+        expect.anything(),
+      );
+    });
+
+    test("a redelivery finds the same row (the upsert's key) and the marker's id is the same, so nothing doubles", async () => {
+      mockUpsert.mockResolvedValue(wakeRow({ status: "SUCCESS" }));
+      expect((await post(wakeEnd())).status).toBe(200);
+      expect((await post(wakeEnd())).status).toBe(200);
+      expect(mockUpsert.mock.calls[0][0].where).toEqual(mockUpsert.mock.calls[1][0].where);
+      expect(mockAppendRows.mock.calls[0][1][0].id).toBe(mockAppendRows.mock.calls[1][1][0].id);
+    });
+
+    test("the job's row not there yet (callbacks out of order) is a 503 so strut posts again; nothing is minted", async () => {
+      mockFindFirst.mockResolvedValue(null);
+      expect((await post(wakeEnd())).status).toBe(503);
+      expect(mockUpsert).not.toHaveBeenCalled();
+      expect(mockAppendRows).not.toHaveBeenCalled();
+      expect(mockComplete).not.toHaveBeenCalled();
+    });
+
+    test("the same mismatch WITHOUT a wake object stays a 400 Run mismatch", async () => {
+      const res = await post(wakeEnd({ wake: undefined }));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "Run mismatch" });
+      expect((await post(wakeEnd({ wake: "none" }))).status).toBe(400);
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+
+    test("a job run.end's `wake` string rides to the handler as ctx.jobWake; anything else is absent", async () => {
+      mockFindUnique.mockResolvedValue(row({ kind: "job_turn", workflow: "job" }));
+      await post(body({ workflow: "job", wake: "launched" }));
+      expect(mockComplete.mock.calls[0][2]).toMatchObject({ jobWake: "launched" });
+      await post(body({ workflow: "job", wake: "bogus" }));
+      expect(mockComplete.mock.calls[1][2]).not.toHaveProperty("jobWake");
     });
   });
 });

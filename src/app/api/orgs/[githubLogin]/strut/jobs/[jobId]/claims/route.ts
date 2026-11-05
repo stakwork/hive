@@ -103,7 +103,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           if (!conversationId) return { error: "no conversation" };
           const launched = await launchJobTurn(
             { userId, workspaceId: first.workspaceId, conversationId, publicBaseUrl: getBaseUrl(request.headers.get("host")) },
-            { jobId, title: jobTitleOf(first), prompt, started: false, event: true },
+            { jobId, title: jobTitleOf(first), prompt, started: false, event: true, wake: true },
           );
           if (launched.status === "busy") return { busy: launched.note };
           if (launched.status === "error") return { error: launched.error };
