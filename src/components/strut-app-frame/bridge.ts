@@ -10,6 +10,9 @@
 import { AppBridge, PostMessageTransport, type McpUiHostContext } from "@modelcontextprotocol/ext-apps/app-bridge";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
+import { CHANNELS_CAPABILITY, type ChannelsCapability } from "./channels/protocol";
+import { relayChannels, type ChannelRelayBridge } from "./channels/relay";
+
 const HOST_INFO = { name: "hive", version: "1" };
 
 export interface StrutAppHostHandlers {
@@ -32,6 +35,11 @@ export interface StrutAppHostOptions {
   /** Same-origin URL of the relay for the app's swarm. */
   relayUrl: string;
   hostContext: McpUiHostContext;
+  /**
+   * Channels (strut#487): where to mint a socket ticket for this app. Absent
+   * where the app has no viewer to speak for (nothing is advertised then).
+   */
+  channels?: { ticketUrl: string; app: string; version?: string };
   handlers: StrutAppHostHandlers;
 }
 
@@ -45,6 +53,21 @@ export interface StrutAppHostConnection {
    */
   setToolInput: (args: Record<string, unknown> | undefined) => void;
   close: () => Promise<void>;
+}
+
+/** A fresh ticket from Hive's route (never reused: it lives a minute), then the socket to strut. */
+async function openChannelSocket(channels: { ticketUrl: string; app: string; version?: string }, client?: string): Promise<WebSocket> {
+  const res = await fetch(new URL(channels.ticketUrl, window.location.href), {
+    method: "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ app: channels.app, ...(channels.version ? { version: channels.version } : {}) }),
+  });
+  const answer = (await res.json().catch(() => null)) as { ticket?: unknown; url?: unknown; error?: unknown } | null;
+  if (!res.ok) throw new Error(typeof answer?.error === "string" ? answer.error : `channel ticket: ${res.status}`);
+  if (typeof answer?.ticket !== "string" || typeof answer.url !== "string") throw new Error("channel ticket: unexpected answer");
+  return new WebSocket(`${answer.url}?ticket=${encodeURIComponent(answer.ticket)}${client ? `&client=${encodeURIComponent(client)}` : ""}`);
 }
 
 const textOf = (content: ReadonlyArray<{ type: string; text?: unknown }> | undefined): string =>
@@ -67,7 +90,12 @@ export async function connectStrutAppHost(opts: StrutAppHostOptions): Promise<St
   const bridge = new AppBridge(
     client,
     HOST_INFO,
-    { serverTools: {}, openLinks: {}, ...(handlers.onMessage ? { message: { text: {} } } : {}) },
+    {
+      serverTools: {},
+      openLinks: {},
+      ...(handlers.onMessage ? { message: { text: {} } } : {}),
+      ...(opts.channels ? { experimental: { [CHANNELS_CAPABILITY]: { v: 1 } satisfies ChannelsCapability } } : {}),
+    },
     { hostContext: opts.hostContext },
   );
   bridge.onsizechange = (size) => handlers.onSize(size);
@@ -93,8 +121,13 @@ export async function connectStrutAppHost(opts: StrutAppHostOptions): Promise<St
     initialized = true;
     if (toolInput) void bridge.sendToolInput({ arguments: toolInput });
   };
+  const channels = opts.channels;
+  const channelRelay = channels
+    ? relayChannels({ bridge: bridge as unknown as ChannelRelayBridge, open: (peer) => openChannelSocket(channels, peer) })
+    : undefined;
   const win = opts.frame.contentWindow;
   if (!win) {
+    channelRelay?.close();
     await client.close().catch(() => undefined);
     throw new Error("the frame has no window");
   }
@@ -106,6 +139,7 @@ export async function connectStrutAppHost(opts: StrutAppHostOptions): Promise<St
       if (initialized) void bridge.sendToolInput({ arguments: args ?? {} });
     },
     async close() {
+      channelRelay?.close();
       await bridge.close().catch(() => undefined);
       await client.close().catch(() => undefined);
     },
