@@ -39,7 +39,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/use-theme";
-import { strutAppDocumentUrl, strutAppInputOf, strutAppLinkOf, strutAppRelayUrl, strutDeepLinkOf, type StrutAppSource } from "@/lib/strut-apps";
+import { strutAppChannelTicketUrl, strutAppDocumentUrl, strutAppInputOf, strutAppLinkOf, strutAppRelayUrl, strutDeepLinkOf, type StrutAppSource } from "@/lib/strut-apps";
 import { isAllowedArtifactNavPath } from "@/lib/utils/html-artifact-nav";
 import { connectStrutAppHost, type StrutAppHostConnection } from "./bridge";
 import { hostContextFor, readHostStyles } from "./host-context";
@@ -106,6 +106,8 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
   const documentUrl = strutAppDocumentUrl(source);
   const relayUrl = strutAppRelayUrl(source);
   const canMessage = !!onMessage;
+  const channelTicketUrl = strutAppChannelTicketUrl(source);
+  const { app, version } = source;
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -151,6 +153,8 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
         conn = await connectStrutAppHost({
           frame,
           relayUrl,
+          // No version: the ticket route resolves the live one, as the document route does.
+          channels: { ticketUrl: channelTicketUrl, app, ...(version ? { version } : {}) },
           hostContext: hostContextFor(latest.current.resolvedTheme === "dark" ? "dark" : "light", readHostStyles()),
           handlers: {
             onSize: ({ height: h }) => {
@@ -187,7 +191,7 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
       void conn?.close();
       frame.removeAttribute("srcdoc");
     };
-  }, [documentUrl, relayUrl, canMessage, reloadKey]);
+  }, [documentUrl, relayUrl, canMessage, reloadKey, channelTicketUrl, app, version]);
 
   // A theme change: hand the page the new context. Read on the next frame —
   // the provider re-themes the document in its own effect, after this one.

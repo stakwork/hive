@@ -86,6 +86,25 @@ describe("launchJobTurn", () => {
     expect(mockAppendEvent).not.toHaveBeenCalled();
   });
 
+  it("a turn that asks for strut's wake sends wake + the conversation; one that does not sends neither (artifact events)", async () => {
+    await launchJobTurn(target, { jobId: JOB, title: "T", prompt: "p", started: false, wake: true });
+    expect(mockDispatch.mock.calls[0][0]).toMatchObject({ wake: true, conversation: "conv-1" });
+    await launchJobTurn(target, { jobId: JOB, title: "T", prompt: LINE, started: false, event: true });
+    expect(mockDispatch.mock.calls[1][0]).not.toHaveProperty("wake");
+    expect(mockDispatch.mock.calls[1][0]).not.toHaveProperty("conversation");
+  });
+
+  it("STRUT_ORCHESTRATOR_WAKE=false sends neither", async () => {
+    vi.stubEnv("STRUT_ORCHESTRATOR_WAKE", "false");
+    try {
+      await launchJobTurn(target, { jobId: JOB, title: "T", prompt: "p", started: false, wake: true });
+      expect(mockDispatch.mock.calls[0][0]).not.toHaveProperty("wake");
+      expect(mockDispatch.mock.calls[0][0]).not.toHaveProperty("conversation");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("a turn with a model launches with params.model, and records it on the input", async () => {
     await launchJobTurn(target, { jobId: JOB, title: "T", prompt: "p", started: true, model: "claude-opus-4-1" });
     expect(mockDispatch.mock.calls[0][0]).toMatchObject({ params: { model: "claude-opus-4-1" }, input: { model: "claude-opus-4-1" } });

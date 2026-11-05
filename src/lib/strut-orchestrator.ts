@@ -90,6 +90,31 @@ export function orchestratorCallLine(call: true | { asker: string }): string {
   return ORCHESTRATOR_CALL_LINE + `${call.asker} is a member of this org; this turn runs as them. `;
 }
 
+/** `context.where` on the web: where the conversation is read when it is Hive's chat. */
+export const ORCHESTRATOR_WEB_WHERE =
+  "In Hive's web chat: each job's entry shows in this conversation, collapsed, with its cards; your reply is what the person reads.";
+
+/** `context.where` on a call: the call line, and that the job's entry is not shown. */
+export const ORCHESTRATOR_CALL_WHERE =
+  ORCHESTRATOR_CALL_LINE +
+  "The job's entry is not shown there: your reply is all the person hears, and what the job produced reaches the call's chat as cards. ";
+
+/** `context.where` in a Sphinx tribe: the medium of `orchestratorTribeLine`, without who asked. */
+export const ORCHESTRATOR_TRIBE_WHERE =
+  "In a Sphinx tribe, where not everyone is in this org: your reply is posted there and read on a phone, so say it the way you would in a " +
+  "text message, short, with what matters first; links and detail belong in artifacts, and a long reply is cut. The job's entry is not shown there: what the job produced is " +
+  "posted beside your reply as cards.";
+
+/**
+ * `context.where`: the medium the conversation is read in — true for every
+ * turn of it, so a job-wake turn (no person) is told the same. `line` still
+ * carries the medium too — a person's turn reads `line` alone — plus the
+ * per-turn parts (time, focus, who asked); `where` never says who asked.
+ */
+export function orchestratorWhere(medium: { call?: unknown; tribe?: unknown }): string {
+  return medium.call ? ORCHESTRATOR_CALL_WHERE : medium.tribe ? ORCHESTRATOR_TRIBE_WHERE : ORCHESTRATOR_WEB_WHERE;
+}
+
 /**
  * Appended to `context.line` on a turn in a Sphinx tribe — a mention
  * (`/api/tribes/messages`, with the asker's alias) or a wake on the tribe's
