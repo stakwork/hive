@@ -9,6 +9,8 @@ import {
   createTestWorkspace,
   createTestSwarm,
 } from "@/__tests__/support/fixtures";
+import { upsertTestPlatformConfig } from "@/__tests__/support/factories";
+import { POD_SCALER_CONFIG_KEYS, POD_SCALER_MAX_VM_CEILING } from "@/lib/constants/pod-scaler";
 
 const mockFetch = vi.fn();
 globalThis.fetch = mockFetch;
@@ -59,6 +61,7 @@ describe("pool-scaler API", () => {
     process.env.POOL_MANAGER_BASE_URL = "https://pool-manager.example.com";
 
     await resetDatabase();
+    await db.platformConfig.deleteMany({ where: { key: POD_SCALER_CONFIG_KEYS.maxVmCeiling } });
     vi.clearAllMocks();
     mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => "OK" });
 
@@ -83,6 +86,17 @@ describe("pool-scaler API", () => {
   describe("GET /swarms", () => {
     it("401 without token", async () => {
       expect((await GET(req("/api/pool-scaler/swarms", { token: null }))).status).toBe(401);
+    });
+
+    it("returns default ceiling in limits", async () => {
+      const body = await (await GET(req("/api/pool-scaler/swarms"))).json();
+      expect(body.limits).toEqual({ maxVmsCeiling: POD_SCALER_MAX_VM_CEILING });
+    });
+
+    it("reflects PlatformConfig ceiling override", async () => {
+      await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.maxVmCeiling, "8");
+      const body = await (await GET(req("/api/pool-scaler/swarms"))).json();
+      expect(body.limits.maxVmsCeiling).toBe(8);
     });
 
     it("200 with API_TOKEN, no poolApiKey leaked", async () => {
@@ -110,10 +124,72 @@ describe("pool-scaler API", () => {
       expect((await scale(swarmId, { minimumVms: 5 }, null)).status).toBe(401);
     });
 
-    it.each([0, 21, 1.5])("400 for %s", async (v) => {
+    it.each([1.5, "5", null])("400 for non-integer %s", async (v) => {
       const res = await scale(swarmId, { minimumVms: v });
       expect(res.status).toBe(400);
-      expect((await res.json()).error).toContain("1 and 20");
+      expect((await res.json()).error).toContain("integer");
+    });
+
+    it("400 for 0 (below floor)", async () => {
+      expect((await scale(swarmId, { minimumVms: 0 })).status).toBe(400);
+    });
+
+    it("400 above default ceiling", async () => {
+      const res = await scale(swarmId, { minimumVms: POD_SCALER_MAX_VM_CEILING + 1 });
+      expect(res.status).toBe(400);
+      const err = (await res.json()).error;
+      expect(err).toContain(`cap of ${POD_SCALER_MAX_VM_CEILING}`);
+      expect(err).toContain("Hive ceiling");
+    });
+
+    it("400 above a PlatformConfig ceiling", async () => {
+      await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.maxVmCeiling, "8");
+      const res = await scale(swarmId, { minimumVms: 9 });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("cap of 8");
+    });
+
+    it("maxVms lower than ceiling caps it", async () => {
+      const res = await scale(swarmId, { minimumVms: 6, maxVms: 5 });
+      expect(res.status).toBe(400);
+      const err = (await res.json()).error;
+      expect(err).toContain("cap of 5");
+      expect(err).toContain("maxVms");
+    });
+
+    it("maxVms higher than ceiling does not raise it", async () => {
+      await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.maxVmCeiling, "8");
+      const res = await scale(swarmId, { minimumVms: 9, maxVms: 50 });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("Hive ceiling");
+    });
+
+    it.each([0, -1, 2.5, "3"])("400 for invalid maxVms %s", async (v) => {
+      const res = await scale(swarmId, { minimumVms: 5, maxVms: v });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("maxVms");
+    });
+
+    it("raised ceiling of 30 allows minimumVms 25", async () => {
+      await upsertTestPlatformConfig(POD_SCALER_CONFIG_KEYS.maxVmCeiling, "30");
+      const res = await scale(swarmId, { minimumVms: 25 });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ applied: 25, maxVms: 30, changed: true });
+    });
+
+    it("400 when floor exceeds the cap", async () => {
+      const res = await scale(swarmId, { minimumVms: 2, maxVms: 1 });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("floor of 2");
+    });
+
+    it("uses minimumVms as floor when minimumPods is null (matches GET)", async () => {
+      await db.swarm.update({ where: { id: swarmId }, data: { minimumPods: null } });
+      const list = await (await GET(req("/api/pool-scaler/swarms"))).json();
+      expect(list.swarms[0].floor).toBe(3);
+      const res = await scale(swarmId, { minimumVms: 2 });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("floor of 3");
     });
 
     it("404 for unknown swarm", async () => {
@@ -137,14 +213,14 @@ describe("pool-scaler API", () => {
     it("200 unchanged without calling Pool Manager", async () => {
       const res = await scale(swarmId, { minimumVms: 3 });
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ swarmId, previous: 3, applied: 3, changed: false });
+      expect(await res.json()).toEqual({ swarmId, previous: 3, applied: 3, maxVms: POD_SCALER_MAX_VM_CEILING, changed: false });
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it("200 changed: calls Pool Manager and updates DB", async () => {
       const res = await scale(swarmId, { minimumVms: 6 });
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ swarmId, previous: 3, applied: 6, changed: true });
+      expect(await res.json()).toEqual({ swarmId, previous: 3, applied: 6, maxVms: POD_SCALER_MAX_VM_CEILING, changed: true });
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, init] = mockFetch.mock.calls[0];
       expect(url).toMatch(new RegExp(`/pools/${swarmId}/scale$`));
@@ -166,7 +242,7 @@ describe("pool-scaler API", () => {
       const res = await scale(swarmId, { minimumVms: 6, dryRun: true });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({
-        swarmId, previous: 3, applied: 6, changed: false, dryRun: true,
+        swarmId, previous: 3, applied: 6, maxVms: POD_SCALER_MAX_VM_CEILING, changed: false, dryRun: true,
       });
       expect(mockFetch).not.toHaveBeenCalled();
       const row = await db.swarm.findUniqueOrThrow({ where: { id: swarmId } });

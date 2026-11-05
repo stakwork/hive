@@ -1,12 +1,31 @@
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
+import { POD_SCALER_CONFIG_KEYS, POD_SCALER_MAX_VM_CEILING } from "@/lib/constants/pod-scaler";
 import { PodStatus, PodUsageStatus } from "@prisma/client";
 
 const encryptionService = EncryptionService.getInstance();
 
-/** Hard ceiling on minimum_vms for externally-driven scaling. */
-export const POD_SCALER_MAX_PODS = 20;
+/**
+ * Effective Hive ceiling on minimum_vms: the PlatformConfig value (same key the
+ * admin page edits), falling back to the default in the constants file.
+ */
+export async function getPodScalerCeiling(): Promise<number> {
+  const record = await db.platformConfig.findUnique({
+    where: { key: POD_SCALER_CONFIG_KEYS.maxVmCeiling },
+  });
+  const raw = record?.value;
+  if (raw !== undefined && raw !== null && /^\d+$/.test(raw.trim())) {
+    const parsed = parseInt(raw, 10);
+    if (parsed > 0) return parsed;
+  }
+  return POD_SCALER_MAX_VM_CEILING;
+}
+
+/** Minimum number of pods a swarm may be scaled to. */
+export function getSwarmFloor(swarm: { minimumPods: number | null; minimumVms: number }): number {
+  return swarm.minimumPods ?? swarm.minimumVms;
+}
 
 export interface PodUsage {
   usedVms: number;

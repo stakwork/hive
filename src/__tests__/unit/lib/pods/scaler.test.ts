@@ -1,9 +1,37 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { findMany, taskCount } = vi.hoisted(() => ({ findMany: vi.fn(), taskCount: vi.fn() }));
-vi.mock("@/lib/db", () => ({ db: { pod: { findMany }, task: { count: taskCount } } }));
+const { findMany, taskCount, findUnique } = vi.hoisted(() => ({
+  findMany: vi.fn(),
+  taskCount: vi.fn(),
+  findUnique: vi.fn(),
+}));
+vi.mock("@/lib/db", () => ({
+  db: { pod: { findMany }, task: { count: taskCount }, platformConfig: { findUnique } },
+}));
 
-import { getPodUsage } from "@/lib/pods/scaler";
+import { getPodUsage, getPodScalerCeiling, getSwarmFloor } from "@/lib/pods/scaler";
+import { POD_SCALER_MAX_VM_CEILING } from "@/lib/constants/pod-scaler";
+
+describe("getPodScalerCeiling", () => {
+  it.each([
+    [null, POD_SCALER_MAX_VM_CEILING],
+    [{ value: "8" }, 8],
+    [{ value: "0" }, POD_SCALER_MAX_VM_CEILING],
+    [{ value: "-3" }, POD_SCALER_MAX_VM_CEILING],
+    [{ value: "abc" }, POD_SCALER_MAX_VM_CEILING],
+    [{ value: "2.5" }, POD_SCALER_MAX_VM_CEILING],
+  ])("%j -> %s", async (record, expected) => {
+    findUnique.mockResolvedValue(record);
+    expect(await getPodScalerCeiling()).toBe(expected);
+  });
+});
+
+describe("getSwarmFloor", () => {
+  it("prefers minimumPods, else minimumVms", () => {
+    expect(getSwarmFloor({ minimumPods: 4, minimumVms: 2 })).toBe(4);
+    expect(getSwarmFloor({ minimumPods: null, minimumVms: 3 })).toBe(3);
+  });
+});
 
 describe("getPodUsage", () => {
   beforeEach(() => vi.clearAllMocks());

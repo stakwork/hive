@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { classifyCallerToken } from "@/lib/auth/caller-token";
-import { applyPoolScale, getPodUsage, POD_SCALER_MAX_PODS } from "@/lib/pods/scaler";
+import { applyPoolScale, getPodScalerCeiling, getPodUsage, getSwarmFloor } from "@/lib/pods/scaler";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function POST(
 
   const { swarmId } = await params;
 
-  let body: { minimumVms?: unknown; dryRun?: unknown };
+  let body: { minimumVms?: unknown; maxVms?: unknown; dryRun?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -25,16 +25,15 @@ export async function POST(
   }
 
   const target = body?.minimumVms;
+  if (typeof target !== "number" || !Number.isInteger(target)) {
+    return NextResponse.json({ error: "minimumVms must be an integer" }, { status: 400 });
+  }
+  const requestedMax = body.maxVms;
   if (
-    typeof target !== "number" ||
-    !Number.isInteger(target) ||
-    target < 1 ||
-    target > POD_SCALER_MAX_PODS
+    requestedMax !== undefined &&
+    (typeof requestedMax !== "number" || !Number.isInteger(requestedMax) || requestedMax <= 0)
   ) {
-    return NextResponse.json(
-      { error: `minimumVms must be an integer between 1 and ${POD_SCALER_MAX_PODS}` },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "maxVms must be a positive integer" }, { status: 400 });
   }
   const dryRun = body.dryRun === true;
 
@@ -45,7 +44,24 @@ export async function POST(
     });
     if (!swarm) return NextResponse.json({ error: "Swarm not found" }, { status: 404 });
 
-    const floor = swarm.minimumPods ?? 1;
+    const ceiling = await getPodScalerCeiling();
+    const maxVms = requestedMax === undefined ? ceiling : Math.min(ceiling, requestedMax);
+    const capSource =
+      requestedMax !== undefined && requestedMax < ceiling ? "maxVms" : "Hive ceiling";
+
+    const floor = getSwarmFloor(swarm);
+    if (floor > maxVms) {
+      return NextResponse.json(
+        { error: `swarm floor of ${floor} exceeds the cap of ${maxVms} (${capSource})` },
+        { status: 400 },
+      );
+    }
+    if (target > maxVms) {
+      return NextResponse.json(
+        { error: `minimumVms ${target} exceeds the cap of ${maxVms} (${capSource})` },
+        { status: 400 },
+      );
+    }
     if (target < floor) {
       return NextResponse.json(
         { error: `minimumVms ${target} is below the swarm floor of ${floor}` },
@@ -63,10 +79,10 @@ export async function POST(
 
     const previous = swarm.minimumVms;
     if (dryRun) {
-      return NextResponse.json({ swarmId, previous, applied: target, changed: false, dryRun: true });
+      return NextResponse.json({ swarmId, previous, applied: target, maxVms, changed: false, dryRun: true });
     }
     if (target === previous) {
-      return NextResponse.json({ swarmId, previous, applied: previous, changed: false });
+      return NextResponse.json({ swarmId, previous, applied: previous, maxVms, changed: false });
     }
 
     try {
@@ -78,7 +94,7 @@ export async function POST(
     }
 
     console.log(`${LOG_PREFIX} Scaled swarm ${swarmId}: ${previous} -> ${target}`);
-    return NextResponse.json({ swarmId, previous, applied: target, changed: true });
+    return NextResponse.json({ swarmId, previous, applied: target, maxVms, changed: true });
   } catch (error) {
     console.error(`${LOG_PREFIX} Unexpected error scaling swarm ${swarmId}:`, error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { classifyCallerToken } from "@/lib/auth/caller-token";
-import { getPodUsage } from "@/lib/pods/scaler";
+import { getPodScalerCeiling, getPodUsage, getSwarmFloor } from "@/lib/pods/scaler";
 
 export const dynamic = "force-dynamic";
 
@@ -24,18 +24,19 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const maxVmsCeiling = await getPodScalerCeiling();
     const result = await Promise.all(
       swarms.map(async (s) => ({
         swarmId: s.id,
         workspaceId: s.workspaceId,
         workspaceSlug: s.workspace.slug,
-        floor: s.minimumPods ?? s.minimumVms,
+        floor: getSwarmFloor(s),
         current: s.minimumVms,
         ...(await getPodUsage(s.id)),
       })),
     );
 
-    return NextResponse.json({ swarms: result });
+    return NextResponse.json({ limits: { maxVmsCeiling }, swarms: result });
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to list swarms:`, error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
