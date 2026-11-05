@@ -186,6 +186,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/agent-runs/webhook", strategy: "prefix", access: "webhook" }, // session-less swarm callback; has its own token auth
   { path: "/api/strut-runs/webhook", strategy: "prefix", access: "webhook" }, // strut run.end callback; token in the query string, checked in the handler
   { path: "/api/strut-jobs/events", strategy: "prefix", access: "webhook" }, // strut job.update (live artifacts); a job turn's row token in the query string, checked in the handler
+  { path: "/api/pool-scaler", strategy: "prefix", access: "webhook" }, // Strut pod-scaling workflow; handlers require the system API_TOKEN (x-api-token)
   // Strut device pairing (`lib/strut-devices.ts`): the device has no session.
   // Starting a pairing needs nothing, the poll its device code, the renewal
   // its device credential — each checked in the handler. Approving, listing
