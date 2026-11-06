@@ -4,7 +4,7 @@ import { useMemo, useEffect, useState, useCallback, useRef, type ReactNode } fro
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Artifact, ArtifactType, HtmlContent } from "@/lib/chat";
 import { HtmlArtifactFrame } from "@/components/html-artifact/HtmlArtifactFrame";
@@ -91,6 +91,7 @@ export function ArtifactsPanel({
     setActiveTab(tab);
   }, [setActiveTab, hasAttachments]);
 
+  const [htmlRefreshKey, setHtmlRefreshKey] = useState(0);
   const [isApiCalling, setIsApiCalling] = useState(false);
   const [hasInitiatedGeneration, setHasInitiatedGeneration] = useState(false);
   const toastedRunIdRef = useRef<string | null>(null);
@@ -412,7 +413,31 @@ export function ArtifactsPanel({
             availableArtifacts={availableTabs}
             activeArtifact={activeTab}
             onArtifactChange={handleUserTabSelect}
-            headerAction={renderGenerateTasksButton()}
+            headerAction={
+              <>
+                {renderGenerateTasksButton()}
+                {activeTab === "HTML" && htmlArtifacts.length > 0 && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setHtmlRefreshKey((k) => k + 1)}
+                          className="h-8 w-8 p-0"
+                          aria-label="Refresh"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>Refresh</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </>
+            }
             disabledTabs={hasAttachments ? [] : ["VERIFY"]}
             isPlanMode={!!planData}
           />
@@ -524,6 +549,7 @@ export function ArtifactsPanel({
           {htmlArtifacts.length > 0 && (
             <div className="h-full" hidden={activeTab !== "HTML"}>
               <HtmlArtifactFrame
+                key={htmlRefreshKey}
                 source={{ taskId: taskId!, artifactId: htmlArtifacts[htmlArtifacts.length - 1].id }}
                 title={(htmlArtifacts[htmlArtifacts.length - 1].content as HtmlContent | undefined)?.title}
                 className="h-full w-full"
