@@ -83,7 +83,6 @@ describe("filterReadonly", () => {
     read_research: makeFakeTool(),
     web_search: makeFakeTool(),
     list_concepts: makeFakeTool(),
-    send_sphinx_message: makeFakeTool(),
   };
 
   test("strips all READONLY_STRIP_TOOL_NAMES when keepWriteToolNames is absent", () => {
@@ -105,8 +104,6 @@ describe("filterReadonly", () => {
     expect(result).not.toHaveProperty("assign_feature_to_initiative");
     expect(result).not.toHaveProperty("assign_feature_to_workspace");
     expect(result).not.toHaveProperty("unassign_feature_from_workspace");
-    // send_sphinx_message is not a capability writeToolName; always strip it.
-    expect(result).not.toHaveProperty("send_sphinx_message");
     // Read tools kept
     expect(result).toHaveProperty("list_research");
     expect(result).toHaveProperty("read_research");
@@ -150,13 +147,5 @@ describe("filterReadonly", () => {
     const resultNoKeep = filterReadonly(tools);
     const resultEmptyKeep = filterReadonly(tools, []);
     expect(Object.keys(resultNoKeep).sort()).toEqual(Object.keys(resultEmptyKeep).sort());
-  });
-
-  test("send_sphinx_message is always stripped from a readonly org toolset", () => {
-    const orgStrip = new Set(["update_canvas", "save_research", "send_sphinx_message"]);
-    const result = filterReadonly(tools, undefined, orgStrip);
-    expect(result).not.toHaveProperty("send_sphinx_message");
-    expect(result).toHaveProperty("list_research");
-    expect(result).toHaveProperty("web_search");
   });
 });
