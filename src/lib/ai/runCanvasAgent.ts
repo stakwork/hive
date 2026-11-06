@@ -92,12 +92,6 @@ import {
   startCanvasSessionIngest,
   type CanvasSessionIngest,
 } from "@/services/stakgraph-session-ingest";
-import {
-  buildSphinxTools,
-  resolveSphinxToolTarget,
-  SEND_SPHINX_MESSAGE_TOOL,
-} from "@/lib/ai/sphinxTools";
-import type { WorkspaceConfig } from "@/lib/ai/types";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 
@@ -126,7 +120,6 @@ export function filterReadonly(
   stripToolNames?: ReadonlySet<string>,
 ): ToolSet {
   const strip = new Set(stripToolNames ?? getDefaultReadonlyStrip());
-  strip.add(SEND_SPHINX_MESSAGE_TOOL);
   const out: ToolSet = {};
   for (const [name, def] of Object.entries(tools)) {
     if (strip.has(name)) {
@@ -136,49 +129,6 @@ export function filterReadonly(
     out[name] = def;
   }
   return out;
-}
-
-/**
- * Merge `send_sphinx_message` when the in-scope workspace is Sphinx-connected.
- * Destination is bound at merge time; the model never chooses a workspace.
- */
-async function mergeSphinxTools(
-  tools: ToolSet,
-  args: {
-    userId: string | null;
-    readonly: boolean;
-    silentPusher: boolean;
-    publicViewer: boolean;
-    workspaceConfigs: Array<
-      Pick<WorkspaceConfig, "workspaceId" | "slug" | "currentUserGithubUsername">
-    >;
-    currentCanvasRef?: string;
-  },
-): Promise<ToolSet> {
-  const targets = await resolveSphinxToolTarget({
-    readonly: args.readonly,
-    silentPusher: args.silentPusher,
-    userId: args.userId,
-    publicViewer: args.publicViewer,
-    workspaceConfigs: args.workspaceConfigs,
-    currentCanvasRef: args.currentCanvasRef,
-  });
-  if (targets.length === 0 || !args.userId) {
-    return tools;
-  }
-  // Same acting user across every bound target — take the first
-  // non-empty GitHub handle among the conversation's workspace configs.
-  const actorLabel = args.workspaceConfigs.find(
-    (c) => typeof c.currentUserGithubUsername === "string" && c.currentUserGithubUsername,
-  )?.currentUserGithubUsername;
-  return {
-    ...tools,
-    ...buildSphinxTools({
-      userId: args.userId,
-      targets,
-      actorLabel,
-    }),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1013,17 +963,6 @@ export async function runCanvasAgent(
       };
     }
 
-    const tSphinxMerge = Date.now();
-    tools = await mergeSphinxTools(tools, {
-      userId,
-      readonly,
-      silentPusher,
-      publicViewer: isPublicViewer,
-      workspaceConfigs,
-      currentCanvasRef: scope?.currentCanvasRef,
-    });
-    console.log("[runCanvasAgent] timing", { stage: "mergeSphinxTools (multi)", ms: Date.now() - tSphinxMerge, merged: SEND_SPHINX_MESSAGE_TOOL in tools, workspaces: workspaceSlugs, orgId: orgId ?? null });
-
     features = [];
     for (const ws of workspaceConfigs) {
       features.push(...(conceptsByWorkspace[ws.slug] || []));
@@ -1175,20 +1114,6 @@ export async function runCanvasAgent(
       };
     }
 
-    // Do not gate Sphinx merge on `orgId` — the dashboard chat never
-    // passes one. Destination is the bound workspace, not an org-level
-    // tribe.
-    const tSphinxMergeSingle = Date.now();
-    tools = await mergeSphinxTools(tools, {
-      userId,
-      readonly,
-      silentPusher,
-      publicViewer: isPublicViewer,
-      workspaceConfigs: [ws],
-      currentCanvasRef: scope?.currentCanvasRef,
-    });
-    console.log("[runCanvasAgent] timing", { stage: "mergeSphinxTools (single)", ms: Date.now() - tSphinxMergeSingle, merged: SEND_SPHINX_MESSAGE_TOOL in tools, workspaces: workspaceSlugs, orgId: orgId ?? null });
-
     canvasScope = orgId ? buildScopeHint(scope, []) : undefined;
 
     // Scope-free by design — see the multi-workspace branch above.
@@ -1254,16 +1179,11 @@ export async function runCanvasAgent(
   if (readonly) {
     // Strip set derived from the composed capabilities — a tool family
     // we never merged contributes nothing, so the strip always matches
-    // what's actually present. `send_sphinx_message` is not a registered
-    // capability, so always union it in explicitly.
+    // what's actually present.
     const capabilityStrip = orgId
       ? composeWriteToolNames(orgCapabilities)
       : getDefaultReadonlyStrip();
-    tools = filterReadonly(
-      tools,
-      keepWriteToolNames,
-      new Set([...capabilityStrip, SEND_SPHINX_MESSAGE_TOOL]),
-    );
+    tools = filterReadonly(tools, keepWriteToolNames, capabilityStrip);
   }
 
   // Merge caller-supplied extra tools AFTER the readonly strip so they
