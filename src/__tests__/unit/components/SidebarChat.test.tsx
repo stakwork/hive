@@ -71,6 +71,11 @@ vi.mock("@/app/org/[githubLogin]/_state/useSendCanvasChatMessage", () => ({
   stopCanvasChatTurn: (...args: unknown[]) => mockStopTurn(...args),
 }));
 
+// The graph focus chip reads a conversation's context, which these fixtures leave out.
+vi.mock("@/app/org/[githubLogin]/_components/GraphFocusChip", () => ({
+  GraphFocusChip: () => null,
+}));
+
 // ── Sub-component mocks ───────────────────────────────────────────────────────
 vi.mock("@/app/org/[githubLogin]/_components/CanvasHistoryPopover", () => ({
   CanvasHistoryPopover: () => null,
