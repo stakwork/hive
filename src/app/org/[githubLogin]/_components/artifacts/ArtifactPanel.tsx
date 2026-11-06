@@ -239,7 +239,7 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {content && Actions && <Actions artifact={artifact} content={content} jobId={jobId} />}
-          {artifact.kind === "app" && (
+          {(artifact.kind === "app" || artifact.kind === "html") && (
             <ToolbarButton label="Refresh" onClick={() => setReloads((n) => n + 1)}>
               <RefreshCw className="h-4 w-4" />
             </ToolbarButton>
