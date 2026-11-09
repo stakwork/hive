@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import CapacityPage from "@/app/w/[slug]/capacity/page";
 import { mergeMetricsIntoVmData } from "@/lib/pods/capacity-utils";
 import * as workspaceHook from "@/hooks/useWorkspace";
 import * as poolStatusHook from "@/hooks/usePoolStatus";
+import { toast } from "sonner";
 
 // Mock the hooks
 vi.mock("@/hooks/useWorkspace");
 vi.mock("@/hooks/usePoolStatus");
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 // Mock fetch
 global.fetch = vi.fn();
@@ -596,5 +598,99 @@ describe("mergeMetricsIntoVmData", () => {
     expect(result[0].assignedTask).toEqual(assignedTask);
     expect(result[0].state).toBe("running");
     expect(result[0].resource_usage.usage.cpu).toBe("250m");
+  });
+});
+
+describe("CapacityPage - Used pods", () => {
+  const usedVm = (overrides: Record<string, unknown> = {}) => ({
+    id: "vm-1",
+    subdomain: "pod-1",
+    state: "running",
+    usage_status: "used",
+    user_info: null,
+    marked_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    resource_usage: { available: false },
+    ...overrides,
+  });
+
+  const setup = (vm: Record<string, unknown>, dropOk = true) => {
+    mockUseWorkspace.mockReturnValue({
+      workspace: { poolState: "COMPLETE" },
+      slug: "test-workspace",
+      isAdmin: true,
+      isOwner: false,
+    } as any);
+    mockUsePoolStatus.mockReturnValue({ error: null, refetch: vi.fn() } as any);
+    (global.fetch as any).mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/pool-manager/drop-pod")) {
+        return { ok: dropOk, text: async () => "boom", json: async () => ({ success: dropOk }) };
+      }
+      if (url.endsWith("/basic-workspaces")) {
+        return { ok: true, json: async () => ({ success: true, data: { workspaces: [vm] } }) };
+      }
+      if (url.endsWith("/pool/workspaces")) {
+        return { ok: true, json: async () => ({ success: true, data: { workspaces: [vm] } }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+  };
+
+  it("shows since text, creator and user_info holder when no task/job", async () => {
+    setup(usedVm({ user_info: "alice@example.com" }));
+    render(<CapacityPage />);
+    expect(await screen.findByText("alice@example.com")).toBeTruthy();
+    expect((await screen.findByTestId("pod-since")).textContent).toMatch(/^since /);
+  });
+
+  it("shows task creator name", async () => {
+    setup(usedVm({ assignedTask: { id: "t1", title: "My task", creator: { name: "Bob", image: null } } }));
+    render(<CapacityPage />);
+    expect(await screen.findByText("My task")).toBeTruthy();
+    expect((await screen.findByTestId("pod-creator")).textContent).toContain("Bob");
+  });
+
+  it("does not show Release for available pods", async () => {
+    setup(usedVm({ usage_status: "available" }));
+    render(<CapacityPage />);
+    await screen.findByText("pod-1");
+    expect(screen.queryByRole("button", { name: /release/i })).toBeNull();
+  });
+
+  it("releases a pod after confirming, with job param, and refetches", async () => {
+    setup(usedVm({ assignedJob: { id: "job-9", title: "J", creator: { name: null, image: null } } }));
+    const user = userEvent.setup();
+    render(<CapacityPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Release" }));
+    const dialog = await screen.findByTestId("release-pod-dialog");
+    expect(dialog.textContent).toContain("pod-1");
+    expect((global.fetch as any).mock.calls.some((c: any[]) => c[0].startsWith("/api/pool-manager"))).toBe(false);
+
+    await user.click(within(dialog).getByRole("button", { name: "Release" }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/pool-manager/drop-pod/test-workspace?podId=vm-1&job=job-9",
+        { method: "POST" },
+      );
+    });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Pod released"));
+    const basicCalls = (global.fetch as any).mock.calls.filter((c: any[]) => c[0].endsWith("/basic-workspaces"));
+    expect(basicCalls.length).toBe(2);
+  });
+
+  it("toasts an error when release fails", async () => {
+    setup(usedVm(), false);
+    const user = userEvent.setup();
+    render(<CapacityPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Release" }));
+    const dialog = await screen.findByTestId("release-pod-dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Release" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Failed to release pod"));
+    expect(global.fetch).toHaveBeenCalledWith("/api/pool-manager/drop-pod/test-workspace?podId=vm-1", {
+      method: "POST",
+    });
   });
 });

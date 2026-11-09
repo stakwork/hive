@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Circle, MoreVertical, Copy, ExternalLink, Globe, Trash2, Loader2, User } from "lucide-react";
+import { Circle, MoreVertical, Copy, ExternalLink, Globe, Trash2, Loader2, User, LogOut } from "lucide-react";
 import { VMData } from "@/types/pool-manager";
 import {
   DropdownMenu,
@@ -12,6 +12,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useUserTimezone } from "@/hooks/useUserTimezone";
+import { formatRelativeOrDateInTz } from "@/lib/date-utils";
 import Link from "next/link";
 import React, { useState } from "react";
 
@@ -21,6 +24,7 @@ interface VMGridProps {
   metricsError?: boolean;
   isAdmin?: boolean;
   onDeletePod?: (vm: VMData) => void;
+  onReleasePod?: (vm: VMData) => void | Promise<void>;
   workspaceSlug?: string;
   currentPath?: string;
 }
@@ -38,12 +42,22 @@ function getStatusIndicator(state: string, usage_status: string) {
   return <Circle className="h-2 w-2 fill-muted-foreground text-muted-foreground" />;
 }
 
+function SinceText({ markedAt }: { markedAt: string }) {
+  const { timezone } = useUserTimezone();
+  return (
+    <p className="text-xs text-muted-foreground" data-testid="pod-since">
+      since {formatRelativeOrDateInTz(markedAt, timezone)}
+    </p>
+  );
+}
+
 function VMCard({
   vm,
   metricsLoading,
   metricsError,
   isAdmin,
   onDeletePod,
+  onReleasePod,
   workspaceSlug,
   currentPath,
 }: {
@@ -52,11 +66,28 @@ function VMCard({
   metricsError?: boolean;
   isAdmin?: boolean;
   onDeletePod?: (vm: VMData) => void;
+  onReleasePod?: (vm: VMData) => void | Promise<void>;
   workspaceSlug?: string;
   currentPath?: string;
 }) {
   const [copySuccess, setCopySuccess] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isReleasing, setIsReleasing] = useState(false);
+  const [confirmReleaseOpen, setConfirmReleaseOpen] = useState(false);
+
+  const isUsed = vm.usage_status === "used";
+  const creatorName = vm.assignedTask?.creator.name ?? vm.assignedJob?.creator.name ?? null;
+  const canRelease = !!isAdmin && !!onReleasePod && isUsed && vm.state === "running";
+
+  const handleConfirmRelease = async () => {
+    if (!onReleasePod) return;
+    setIsReleasing(true);
+    try {
+      await onReleasePod(vm);
+    } finally {
+      setIsReleasing(false);
+    }
+  };
 
   const cpuPercent = vm.resource_usage.available
     ? (parseFloat(vm.resource_usage.usage.cpu) / parseFloat(vm.resource_usage.requests.cpu)) * 100
@@ -222,7 +253,52 @@ function VMCard({
             </Avatar>
             <span className="text-xs text-muted-foreground truncate">Job · {vm.assignedJob.title}</span>
           </div>
+        ) : isUsed && vm.user_info ? (
+          <div className="flex items-center gap-1.5 min-w-0" title={vm.user_info}>
+            <User className="w-3 h-3 flex-shrink-0 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground truncate">{vm.user_info}</span>
+          </div>
         ) : null}
+
+        {vm.state !== "pending" && isUsed && (
+          <>
+            {creatorName && (
+              <p className="text-xs text-muted-foreground truncate" data-testid="pod-creator">
+                by {creatorName}
+              </p>
+            )}
+            {vm.marked_at && <SinceText markedAt={vm.marked_at} />}
+          </>
+        )}
+
+        {canRelease && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              disabled={isReleasing}
+              onClick={() => setConfirmReleaseOpen(true)}
+            >
+              {isReleasing ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <LogOut className="h-3 w-3 mr-1" />
+              )}
+              {isReleasing ? "Releasing..." : "Release"}
+            </Button>
+            <ConfirmDialog
+              open={confirmReleaseOpen}
+              onOpenChange={setConfirmReleaseOpen}
+              title="Release pod"
+              description={`Are you sure you want to release ${vm.subdomain}? It will be returned to the pool and its current work will lose access to it.`}
+              confirmText="Release"
+              variant="destructive"
+              onConfirm={handleConfirmRelease}
+              testId="release-pod-dialog"
+            />
+          </>
+        )}
 
         {/* Resources */}
         {vm.resource_usage.available ? (
@@ -289,7 +365,7 @@ function VMCard({
   );
 }
 
-export function VMGrid({ vms, metricsLoading, metricsError, isAdmin, onDeletePod, workspaceSlug, currentPath }: VMGridProps) {
+export function VMGrid({ vms, metricsLoading, metricsError, isAdmin, onDeletePod, onReleasePod, workspaceSlug, currentPath }: VMGridProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
       {vms.map((vm) => (
@@ -300,6 +376,7 @@ export function VMGrid({ vms, metricsLoading, metricsError, isAdmin, onDeletePod
           metricsError={metricsError}
           isAdmin={isAdmin}
           onDeletePod={onDeletePod}
+          onReleasePod={onReleasePod}
           workspaceSlug={workspaceSlug}
           currentPath={currentPath}
         />

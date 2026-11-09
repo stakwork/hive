@@ -8,7 +8,7 @@ import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { AlertCircle, Server, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 
@@ -44,41 +44,41 @@ export default function CapacityPage() {
   };
 
   // Progressive loading: Step 1 - Fetch basic VM data from database
-  useEffect(() => {
-    async function fetchBasicVMData() {
-      if (!slug) {
-        setBasicDataLoading(false);
-        return;
-      }
-
-      try {
-        setBasicDataLoading(true);
-        const response = await fetch(`/api/w/${slug}/pool/basic-workspaces`);
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch basic VM data");
-        }
-
-        const result = await response.json();
-
-        if (result.success && result.data) {
-          setVmData(result.data.workspaces || []);
-        } else {
-          throw new Error(result.message || "Failed to load VM details");
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load VM details");
-      } finally {
-        setBasicDataLoading(false);
-      }
+  const fetchBasicVMData = useCallback(async () => {
+    if (!slug) {
+      setBasicDataLoading(false);
+      return;
     }
 
+    try {
+      setBasicDataLoading(true);
+      const response = await fetch(`/api/w/${slug}/pool/basic-workspaces`);
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch basic VM data");
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.data) {
+        setVmData(result.data.workspaces || []);
+      } else {
+        throw new Error(result.message || "Failed to load VM details");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load VM details");
+    } finally {
+      setBasicDataLoading(false);
+    }
+  }, [slug]);
+
+  useEffect(() => {
     if (isPoolActive) {
       fetchBasicVMData();
     } else {
       setBasicDataLoading(false);
     }
-  }, [slug, isPoolActive]);
+  }, [fetchBasicVMData, isPoolActive]);
 
   // Reset metricsFetched ref when slug or pool status changes
   useEffect(() => {
@@ -136,6 +136,24 @@ export default function CapacityPage() {
       setVmData((prev) => prev.filter((v) => v.id !== vm.id));
     } catch {
       toast.error("Failed to delete pod");
+    }
+  };
+
+  const handleReleasePod = async (vm: VMData) => {
+    try {
+      const params = new URLSearchParams({ podId: vm.id });
+      if (vm.assignedJob) params.set("job", vm.assignedJob.id);
+      const res = await fetch(`/api/pool-manager/drop-pod/${encodeURIComponent(slug)}?${params.toString()}`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast.success("Pod released");
+      // Refetch basic data and let metrics re-merge
+      metricsFetched.current = false;
+      setMetricsError(false);
+      await fetchBasicVMData();
+    } catch {
+      toast.error("Failed to release pod");
     }
   };
 
@@ -268,6 +286,7 @@ export default function CapacityPage() {
               metricsError={metricsError}
               isAdmin={isAdmin || isOwner}
               onDeletePod={handleDeletePod}
+              onReleasePod={handleReleasePod}
               workspaceSlug={slug}
               currentPath={pathname}
             />
