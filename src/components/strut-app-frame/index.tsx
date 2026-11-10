@@ -14,13 +14,20 @@
  *  - **Its bridge is ext-apps' `AppBridge`** (`./bridge`), relaying the
  *    page's `tools/call` to Hive's relay route as it is.
  *
- * The sandbox grants `allow-scripts` and `allow-downloads` (a file the page
- * was handed, saved to the viewer's disk), and `allow="microphone"` lets it
- * record; neither sends anything past the bridge. Never `allow-same-origin`: a
- * srcdoc document inherits its parent's origin, so together with scripts it
- * would run as Hive itself — Hive's cookies, storage and DOM — and could
- * lift its own sandbox. No popups, forms, modals or top navigation either;
- * a link goes through `ui/open-link`, which this component opens.
+ * The sandbox grants `allow-scripts`, `allow-downloads` (a file the page
+ * was handed, saved to the viewer's disk) and `allow-forms`, and
+ * `allow="microphone"` lets it record; none of them sends anything past the
+ * bridge. `allow-forms` because without it the browser refuses a form
+ * submission BEFORE it fires the `submit` event, so a `<form onSubmit>`
+ * handler never runs: Save and Enter do nothing in every form an app has
+ * (the kit ships react-hook-form and shadcn's form). With it, the
+ * document's own CSP (`form-action 'none'`, written by strut's app build)
+ * still refuses any real submission, so nothing leaves the page. Never
+ * `allow-same-origin`: a srcdoc document inherits its parent's origin, so
+ * together with scripts it would run as Hive itself — Hive's cookies,
+ * storage and DOM — and could lift its own sandbox. No popups, modals or top
+ * navigation either; a link goes through `ui/open-link`, which this
+ * component opens.
  *
  * A deep link (strut plans/apps.md §7.1) is `?app=<name>&input=<the app's
  * own query>`: `toolInput` is that input as the page is opened with it, sent
@@ -46,7 +53,7 @@ import { hostContextFor, readHostStyles } from "./host-context";
 
 export type { StrutAppSource };
 
-export const STRUT_APP_FRAME_SANDBOX = "allow-scripts allow-downloads";
+export const STRUT_APP_FRAME_SANDBOX = "allow-scripts allow-downloads allow-forms";
 
 export interface StrutAppFrameProps {
   source: StrutAppSource;
