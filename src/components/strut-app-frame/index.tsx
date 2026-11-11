@@ -39,9 +39,12 @@
  * The document comes from the document route (`strutAppDocumentUrl`), which
  * reads it from the swarm with the swarm key; the token strut writes into it
  * is the app's file token, worth that app's files only. A loading overlay
- * covers the frame until the page's first `ui/notifications/size-changed`.
+ * covers the frame until the page's first `ui/notifications/size-changed`;
+ * that report only ends the overlay. The frame always fills its container
+ * (the app scrolls inside its own document), so parents must give it a
+ * definite height.
  */
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -98,7 +101,6 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const connRef = useRef<StrutAppHostConnection | null>(null);
   const [state, setState] = useState<FrameState>({ status: "loading" });
-  const [height, setHeight] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const router = useRouter();
   const { resolvedTheme } = useTheme();
@@ -122,7 +124,6 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
     let cancelled = false;
     let conn: StrutAppHostConnection | null = null;
     setState({ status: "loading" });
-    setHeight(null);
     setNotice(null);
 
     const openLink = (url: string): boolean => {
@@ -164,9 +165,9 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
           channels: { ticketUrl: channelTicketUrl, app, ...(version ? { version } : {}) },
           hostContext: hostContextFor(latest.current.resolvedTheme === "dark" ? "dark" : "light", readHostStyles()),
           handlers: {
-            onSize: ({ height: h }) => {
+            onSize: () => {
+              // The first report means the app is ready; its payload is ignored.
               if (cancelled) return;
-              if (typeof h === "number" && h > 0) setHeight(Math.ceil(h));
               setState((s) => (s.status === "loading" ? { status: "ready" } : s));
             },
             onMessage: canMessage ? (text) => latest.current.onMessage?.(text) : undefined,
@@ -217,20 +218,15 @@ export function StrutAppFrame({ source, title, className, toolInput, onMessage, 
     conn.setToolInput(latest.current.toolInput);
   }, [inputKey]);
 
-  // As tall as the page says it is, and never shorter than its area: a page
-  // that fills the viewport then measures the area, so the two agree.
-  const frameStyle: CSSProperties = { height: height ? `${height}px` : "100%", minHeight: "100%" };
-
   return (
-    <div className={cn("relative h-full w-full overflow-auto", className)}>
+    <div className={cn("relative h-full w-full overflow-hidden", className)}>
       <iframe
         ref={frameRef}
         title={title || "App"}
         sandbox={STRUT_APP_FRAME_SANDBOX}
         allow="microphone"
         referrerPolicy="no-referrer"
-        className="block w-full border-0 bg-background"
-        style={frameStyle}
+        className="block h-full w-full border-0 bg-background"
       />
       {state.status === "loading" && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted/30 text-muted-foreground">
