@@ -8,6 +8,7 @@ import {
 import {
   createTestUser,
   createTestWorkspace,
+  createTestMembership,
 } from "@/__tests__/support/fixtures";
 import {
   createAuthenticatedSession,
@@ -189,6 +190,86 @@ describe("Workspace API - Integration Tests", () => {
       const data = await expectSuccess(response, 201);
 
       expect(data.workspace.workspaceKind).toBeNull();
+    });
+
+    describe("with orgGithubLogin", () => {
+      async function setupOrg() {
+        const org = await db.sourceControlOrg.create({
+          data: {
+            githubLogin: generateUniqueSlug("org"),
+            githubInstallationId: Math.floor(Math.random() * 2_000_000_000),
+          },
+        });
+        const owner = await createTestUser();
+        const orgWs = await createTestWorkspace({
+          ownerId: owner.id,
+          slug: generateUniqueSlug("org-ws"),
+          sourceControlOrgId: org.id,
+        });
+        return { org, owner, orgWs };
+      }
+      const url = "http://localhost:3000/api/workspaces";
+
+      test("org owner creates workspace linked to org", async () => {
+        const { org, owner } = await setupOrg();
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+        const slug = generateUniqueSlug("new-org-ws");
+        const res = await POST(
+          createPostRequest(url, { name: "New", slug, orgGithubLogin: org.githubLogin }),
+        );
+        const data = await expectSuccess(res, 201);
+        expect(data.workspace.sourceControlOrgId).toBe(org.id);
+        expect(data.workspace.slug).toBe(slug);
+      });
+
+      test("org ADMIN member creates workspace", async () => {
+        const { org, orgWs } = await setupOrg();
+        const admin = await createTestUser();
+        await createTestMembership({ workspaceId: orgWs.id, userId: admin.id, role: "ADMIN" });
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(admin));
+        const res = await POST(
+          createPostRequest(url, {
+            name: "New",
+            slug: generateUniqueSlug("admin-ws"),
+            orgGithubLogin: org.githubLogin,
+          }),
+        );
+        await expectSuccess(res, 201);
+      });
+
+      test.each(["DEVELOPER", "none"])("rejects %s with 403 and creates nothing", async (kind) => {
+        const { org, orgWs } = await setupOrg();
+        const user = await createTestUser();
+        if (kind === "DEVELOPER") {
+          await createTestMembership({ workspaceId: orgWs.id, userId: user.id, role: "DEVELOPER" });
+        }
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+        const slug = generateUniqueSlug("denied");
+        const res = await POST(
+          createPostRequest(url, { name: "Nope", slug, orgGithubLogin: org.githubLogin }),
+        );
+        await expectError(res, "Only org admins can create workspaces in this organization", 403);
+        expect(await db.workspace.findUnique({ where: { slug } })).toBeNull();
+      });
+
+      test("duplicate slug returns 409", async () => {
+        const { org, owner, orgWs } = await setupOrg();
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+        const res = await POST(
+          createPostRequest(url, { name: "Dup", slug: orgWs.slug, orgGithubLogin: org.githubLogin }),
+        );
+        await expectError(res, WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS, 409);
+      });
+
+      test("without orgGithubLogin sourceControlOrgId stays null", async () => {
+        const user = await createTestUser();
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+        const res = await POST(
+          createPostRequest(url, { name: "Plain", slug: generateUniqueSlug("plain") }),
+        );
+        const data = await expectSuccess(res, 201);
+        expect(data.workspace.sourceControlOrgId).toBeNull();
+      });
     });
   });
 });

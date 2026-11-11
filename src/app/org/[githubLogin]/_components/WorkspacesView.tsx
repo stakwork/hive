@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Building2, Calendar, Pencil, Star, Users } from "lucide-react";
+import { Building2, Calendar, Pencil, Plus, Star, Users } from "lucide-react";
 import Link from "next/link";
 import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
-import type { WorkspaceWithRole } from "@/types/workspace";
+import { CreateWorkspaceDialog } from "@/components/CreateWorkspaceDialog";
+import type { WorkspaceResponse, WorkspaceWithRole } from "@/types/workspace";
 
 interface OrgWorkspace extends WorkspaceWithRole {
   hasSwarm?: boolean;
@@ -207,6 +208,7 @@ interface WorkspacesViewProps {
 export function WorkspacesView({ githubLogin }: WorkspacesViewProps) {
   const [workspaces, setWorkspaces] = useState<OrgWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
   const { logoUrls } = useWorkspaceLogos(workspaces);
   const canAccessLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
 
@@ -217,6 +219,46 @@ export function WorkspacesView({ githubLogin }: WorkspacesViewProps) {
       .catch(() => setWorkspaces([]))
       .finally(() => setLoading(false));
   }, [githubLogin]);
+
+  const isOrgAdmin = workspaces.some(
+    (w) => w.userRole === "OWNER" || w.userRole === "ADMIN",
+  );
+
+  const onWorkspaceCreated = (created: WorkspaceResponse) => {
+    setWorkspaces((prev) => [
+      ...prev,
+      {
+        ...created,
+        userRole: "OWNER",
+        memberCount: 1,
+        hasSwarm: false,
+        isDefault: false,
+      } as OrgWorkspace,
+    ]);
+    fetch(`/api/orgs/${githubLogin}/workspaces`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setWorkspaces(data);
+      })
+      .catch(() => {});
+  };
+
+  const newWorkspaceControls = isOrgAdmin ? (
+    <>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Plus className="w-4 h-4 mr-1" />
+          New workspace
+        </Button>
+      </div>
+      <CreateWorkspaceDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={onWorkspaceCreated}
+        orgGithubLogin={githubLogin}
+      />
+    </>
+  ) : null;
 
   const onDescriptionSaved = (id: string, description: string) => {
     setWorkspaces((prev) =>
@@ -258,14 +300,18 @@ export function WorkspacesView({ githubLogin }: WorkspacesViewProps) {
 
   if (workspaces.length === 0) {
     return (
-      <p className="text-muted-foreground text-center py-12">
-        No workspaces found in this organization.
-      </p>
+      <div className="space-y-3">
+        {newWorkspaceControls}
+        <p className="text-muted-foreground text-center py-12">
+          No workspaces found in this organization.
+        </p>
+      </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {newWorkspaceControls}
       {workspaces.map((workspace) => (
         <WorkspaceCard
           key={workspace.id}

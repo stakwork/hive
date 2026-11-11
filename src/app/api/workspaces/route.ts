@@ -2,6 +2,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { WORKSPACE_ERRORS, WORKSPACE_LIMITS } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { findUserByGitHubUsername } from "@/lib/helpers/workspace-member-queries";
+import { resolveAuthorizedOrgId } from "@/lib/auth/org-access";
 import { getErrorMessage } from "@/lib/utils/error";
 import {
   createWorkspace,
@@ -153,6 +154,7 @@ export async function POST(request: NextRequest) {
   const apiToken = request.headers.get("x-api-token");
   const body = await request.json();
   let ownerId: string;
+  let sourceControlOrgId: string | undefined;
 
   if (apiToken) {
     if (apiToken !== process.env.API_TOKEN) {
@@ -178,6 +180,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     ownerId = (session.user as { id: string }).id;
+
+    if (typeof body.orgGithubLogin === "string" && body.orgGithubLogin) {
+      const orgId = await resolveAuthorizedOrgId(body.orgGithubLogin, ownerId, true);
+      if (!orgId) {
+        return NextResponse.json(
+          { error: "Only org admins can create workspaces in this organization" },
+          { status: 403 },
+        );
+      }
+      sourceControlOrgId = orgId;
+    }
   }
 
   const { name, description, slug, repositoryUrl, workspaceKind } = body;
@@ -199,7 +212,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Always ensure slug is unique (handles both reserved slugs and duplicates)
-  if (finalSlug) {
+  // (skipped for org creation, where an explicit slug conflict is reported as 409)
+  if (finalSlug && !(sourceControlOrgId && slug)) {
     finalSlug = await ensureUniqueSlug(finalSlug);
   }
 
@@ -260,10 +274,14 @@ export async function POST(request: NextRequest) {
       ownerId,
       repositoryUrl,
       workspaceKind,
+      sourceControlOrgId,
     });
     return NextResponse.json({ workspace }, { status: 201 });
   } catch (error: unknown) {
     const message = getErrorMessage(error, "Failed to create workspace.");
+    if (sourceControlOrgId && message === WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS) {
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
