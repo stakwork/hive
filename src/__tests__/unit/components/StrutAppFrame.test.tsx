@@ -14,7 +14,7 @@
  *   - `ui/initialize` is answered with the theme and the style variables;
  *   - a `tools/call` from the page reaches the RELAY route as it was sent,
  *     and its result comes back to the page;
- *   - loading until the first `size-changed`, which sizes the frame;
+ *   - loading until the first `size-changed`, which does not size the frame;
  *   - `ui/message` goes to `onMessage`, and with none it is shown as
  *     unavailable and answered with an error — never dropped silently;
  *   - `ui/open-link` opens a strut deep link in Hive's own view;
@@ -153,7 +153,7 @@ describe("StrutAppFrame", () => {
     expect(new URL(String(relayCall[0])).searchParams.get("swarmId")).toBe("swarm-1");
   });
 
-  test("loading until the first size-changed, which sizes the frame", async () => {
+  test("loading until the first size-changed, which does not size the frame", async () => {
     render(<StrutAppFrame source={SOURCE} title="Bench" />);
     const frame = await connected();
     const app = playApp(frame);
@@ -161,7 +161,11 @@ describe("StrutAppFrame", () => {
     await initialize(app);
     await app.post({ method: "ui/notifications/size-changed", params: { width: 800, height: 1234 } });
     await waitFor(() => expect(screen.queryByLabelText("Loading app")).toBeNull());
-    expect(frame.style.height).toBe("1234px");
+    expect(frame.style.height).toBe("");
+    expect(frame.classList.contains("h-full")).toBe(true);
+    expect(frame.classList.contains("w-full")).toBe(true);
+    expect(frame.parentElement?.classList.contains("overflow-hidden")).toBe(true);
+    expect(frame.parentElement?.classList.contains("overflow-auto")).toBe(false);
   });
 
   test("with no conversation, ui/message is shown as unavailable and answered with an error", async () => {
