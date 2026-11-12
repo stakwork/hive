@@ -511,8 +511,10 @@ async function desiredProviders(
  * any existing config missing from the request is DELETED. So every
  * existing config is re-sent verbatim alongside the new ones. Budgets
  * and rate limits are omitted, which Bifrost treats as "unchanged".
+ *
+ * Exported for `scripts/bifrost-backfill-vk-provider-grants.ts`.
  */
-async function topUpProviderGrants(
+export async function topUpProviderGrants(
   client: BifrostClient,
   vk: BifrostVirtualKey,
   desired: BifrostProvider[],
