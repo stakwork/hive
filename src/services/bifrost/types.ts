@@ -214,7 +214,8 @@ export type BifrostProvider =
   | "openai"
   | "openrouter"
   | "gemini"
-  | "xai";
+  | "xai"
+  | "openrouter-images";
 
 // ─── Phase-5 trust registry wire shapes ────────────────────────────────
 //
