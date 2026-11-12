@@ -16,18 +16,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import type { WorkspaceResponse } from "@/types/workspace";
+import { slugify } from "@/utils/slugify";
 import { ErrorDisplay } from "@/components/ui/error-display";
 
 interface CreateWorkspaceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: (workspace: WorkspaceResponse) => void;
+  /** When set, the workspace is created inside this GitHub org (admins only). */
+  orgGithubLogin?: string;
 }
 
 export function CreateWorkspaceDialog({
   open,
   onOpenChange,
   onCreated,
+  orgGithubLogin,
 }: CreateWorkspaceDialogProps) {
   const { data: session } = useSession();
   const [formData, setFormData] = useState({
@@ -36,12 +40,14 @@ export function CreateWorkspaceDialog({
     slug: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [slugTouched, setSlugTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setApiError(null);
+    setErrors({});
     // Validation
     const newErrors: Record<string, string> = {};
     if (!formData.name.trim()) newErrors.name = "Name is required";
@@ -62,13 +68,20 @@ export function CreateWorkspaceDialog({
           name: formData.name.trim(),
           description: formData.description.trim(),
           slug: formData.slug.trim(),
+          ...(orgGithubLogin ? { orgGithubLogin } : {}),
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create workspace");
+      if (!res.ok) {
+        if (res.status === 409) {
+          setErrors({ slug: data.error || "This slug is already taken" });
+        }
+        throw new Error(data.error || "Failed to create workspace");
+      }
       onCreated?.(data.workspace);
       toast.success("Workspace created");
       setFormData({ name: "", description: "", slug: "" });
+      setSlugTouched(false);
       setErrors({});
       onOpenChange(false);
     } catch (err: unknown) {
@@ -84,6 +97,7 @@ export function CreateWorkspaceDialog({
 
   const handleCancel = () => {
     setFormData({ name: "", description: "", slug: "" });
+    setSlugTouched(false);
     setErrors({});
     setApiError(null);
     onOpenChange(false);
@@ -95,7 +109,9 @@ export function CreateWorkspaceDialog({
         <DialogHeader>
           <DialogTitle>Create New Workspace</DialogTitle>
           <DialogDescription>
-            Set up a new workspace. You can add more details later.
+            {orgGithubLogin
+              ? `Set up a new workspace in ${orgGithubLogin}. You can add more details later.`
+              : "Set up a new workspace. You can add more details later."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -109,6 +125,7 @@ export function CreateWorkspaceDialog({
                 setFormData({
                   ...formData,
                   name: e.target.value,
+                  ...(slugTouched ? {} : { slug: slugify(e.target.value) }),
                 })
               }
               className={errors.name ? "border-destructive" : ""}
@@ -124,12 +141,13 @@ export function CreateWorkspaceDialog({
               id="slug"
               placeholder="e.g., my-team"
               value={formData.slug}
-              onChange={(e) =>
+              onChange={(e) => {
+                setSlugTouched(true);
                 setFormData({
                   ...formData,
                   slug: e.target.value,
-                })
-              }
+                });
+              }}
               className={errors.slug ? "border-destructive" : ""}
               disabled={loading}
             />

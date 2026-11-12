@@ -7,6 +7,7 @@ export interface CreateWorkspaceRequest {
   ownerId: string;
   repositoryUrl?: string;
   workspaceKind?: string;
+  sourceControlOrgId?: string;
 }
 
 export interface WorkspaceResponse {

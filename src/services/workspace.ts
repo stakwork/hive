@@ -91,6 +91,7 @@ export async function createWorkspace(
         ownerId: data.ownerId,
         repositoryDraft: data.repositoryUrl,
         workspaceKind: data.workspaceKind,
+        ...(data.sourceControlOrgId ? { sourceControlOrgId: data.sourceControlOrgId } : {}),
       },
     });
     return {
