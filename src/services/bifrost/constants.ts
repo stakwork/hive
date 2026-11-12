@@ -53,6 +53,15 @@ export const DEFAULT_CUSTOMER_RATE_LIMIT: BifrostRateLimit = {
  * the gateway lacks, and swarm gateways pick up new providers (xai
  * via stakgraph#1673) on their own deploy cadence. The order here is
  * the order of the VK's provider_configs.
+ *
+ * `openrouter-images` is a custom provider on the gateway (OpenAI-type,
+ * pointed at OpenRouter's `/v1/images`), because Bifrost's built-in
+ * openrouter provider has no image generation. Only strut's `image`
+ * step calls it, as `openrouter-images/<org>/<model>`; no aieo provider
+ * maps to it. A VK reaches only the providers listed in its
+ * provider_configs, so it has to be granted here. Existing VKs get it
+ * through the 24h refresh, or now with
+ * `scripts/bifrost-backfill-vk-provider-grants.ts`.
  */
 export const DEFAULT_PROVIDERS: BifrostProvider[] = [
   "anthropic",
@@ -60,6 +69,7 @@ export const DEFAULT_PROVIDERS: BifrostProvider[] = [
   "openrouter",
   "gemini",
   "xai",
+  "openrouter-images",
 ];
 
 /**

@@ -58,7 +58,14 @@ vi.mock("@/services/bifrost/resolve", () => ({
   BifrostConfigError: class BifrostConfigError extends Error {},
 }));
 
-const ALL_PROVIDERS = ["anthropic", "openai", "openrouter", "gemini", "xai"];
+const ALL_PROVIDERS = [
+  "anthropic",
+  "openai",
+  "openrouter",
+  "gemini",
+  "xai",
+  "openrouter-images",
+];
 
 /** `GET /api/providers` body for a gateway with exactly these configured. */
 function providersResponse(names: string[]) {
@@ -792,6 +799,10 @@ describe("provider grants", () => {
   function fourConfigs() {
     return FOUR.map((provider, i) => hydratedConfig(i + 1, provider));
   }
+  /** A VK that already carries every default provider. */
+  function allConfigs() {
+    return ALL_PROVIDERS.map((provider, i) => hydratedConfig(i + 1, provider));
+  }
   const createdVk = {
     message: "ok",
     virtual_key: {
@@ -931,7 +942,7 @@ describe("provider grants", () => {
       uncachedMember();
       const updateVirtualKey = vi.fn().mockResolvedValue({
         message: "ok",
-        virtual_key: existingVk([...fourConfigs(), hydratedConfig(5, "xai")]),
+        virtual_key: existingVk(allConfigs()),
       });
       const client = makeClientStub({
         listCustomers: vi.fn().mockResolvedValue(customers),
@@ -962,12 +973,15 @@ describe("provider grants", () => {
           key_ids: ["*"],
         })),
       );
-      // …and the missing one is appended as a fresh, id-less grant.
-      expect(input.provider_configs[4]).toEqual({
-        provider: "xai",
-        allowed_models: ["*"],
-        key_ids: ["*"],
-      });
+      // …and the missing ones are appended as fresh, id-less grants.
+      expect(input.provider_configs.slice(4)).toEqual(
+        ["xai", "openrouter-images"].map((provider) => ({
+          provider,
+          allowed_models: ["*"],
+          key_ids: ["*"],
+        })),
+      );
+      expect(result.providers).toEqual(ALL_PROVIDERS);
     });
 
     it("leaves a VK alone when it already carries every desired provider", async () => {
@@ -975,7 +989,7 @@ describe("provider grants", () => {
       const client = makeClientStub({
         listCustomers: vi.fn().mockResolvedValue(customers),
         listVirtualKeys: vi.fn().mockResolvedValue(
-          vkList([existingVk([...fourConfigs(), hydratedConfig(5, "xai")])]),
+          vkList([existingVk(allConfigs())]),
         ),
       });
 
@@ -1131,7 +1145,7 @@ describe("provider grants", () => {
       cachedMember(null);
       const client = makeClientStub({
         getVirtualKey: vi.fn().mockResolvedValue({
-          virtual_key: existingVk([...fourConfigs(), hydratedConfig(5, "xai")]),
+          virtual_key: existingVk(allConfigs()),
         }),
       });
 
@@ -1290,7 +1304,7 @@ describe("provider grants", () => {
       cachedMember(new Date(Date.now() - 20 * MIN_MS));
       const later = makeClientStub({
         getVirtualKey: vi.fn().mockResolvedValue({
-          virtual_key: existingVk([...fourConfigs(), hydratedConfig(5, "xai")]),
+          virtual_key: existingVk(allConfigs()),
         }),
       });
       const second = await reconcileBifrostVK(WORKSPACE_ID, USER_ID, {
