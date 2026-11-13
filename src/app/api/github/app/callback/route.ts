@@ -328,6 +328,7 @@ export async function GET(request: NextRequest) {
           name: installationAccount?.name || installationAccount?.display_name || githubOwner,
           avatarUrl: installationAccount?.avatar_url || null,
           description: installationAccount?.description || installationAccount?.bio || null,
+          needsBifrost: true,
         },
       });
       console.log(`✅ Created SourceControlOrg for ${githubOwner}`);
