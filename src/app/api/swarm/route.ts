@@ -253,6 +253,16 @@ export async function POST(request: NextRequest) {
       ...graphmindsetEnv,
     };
 
+    // New orgs get Bifrost on their first swarm only
+    const orgForBifrost = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { sourceControlOrg: { select: { id: true, needsBifrost: true } } },
+    });
+    const bifrostOrgId = orgForBifrost?.sourceControlOrg?.needsBifrost ? orgForBifrost.sourceControlOrg.id : null;
+    if (bifrostOrgId) {
+      mergedEnv.ADD_BIFROST = "true";
+    }
+
     try {
       console.log(`[SWARM_CREATE] Calling external SwarmService.createSwarm()`);
       const startTime = Date.now();
@@ -295,6 +305,18 @@ export async function POST(request: NextRequest) {
       });
 
       console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm?.id} to ACTIVE status with swarmId: ${swarm_id}`);
+
+      // Clear the flag only after successful creation (idempotent)
+      if (bifrostOrgId) {
+        try {
+          await db.sourceControlOrg.updateMany({
+            where: { id: bifrostOrgId, needsBifrost: true },
+            data: { needsBifrost: false },
+          });
+        } catch (bifrostError) {
+          console.error("[SWARM_CREATE] Failed to clear needsBifrost:", bifrostError);
+        }
+      }
 
       // Best-effort: make this the org's default workspace if none is set
       try {

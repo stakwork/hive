@@ -208,6 +208,7 @@ model SourceControlOrg {
   macaroonOrgId        String?              @unique @map("macaroon_org_id")
   macaroonOrgPubkey    String?              @map("macaroon_org_pubkey") // hex compressed secp256k1 (33 bytes / 66 hex chars)
   macaroonOrgPrivkey   String?              @map("macaroon_org_privkey") // encrypted; custodial in phase 1
+  needsBifrost         Boolean              @default(false) @map("needs_bifrost")
   defaultWorkspaceId   String?              @unique @map("default_workspace_id")
   defaultWorkspace     Workspace?           @relation("OrgDefaultWorkspace", fields: [defaultWorkspaceId], references: [id])
   tokens               SourceControlToken[]
