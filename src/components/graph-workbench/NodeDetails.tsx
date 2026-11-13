@@ -238,7 +238,7 @@ function DocsEditor({ refId, type, docs, onDone }: { refId: string; type: string
 
 /** One node, whichever type: where it sits, what it says, how it connects. */
 export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }) {
-  const { slug, graph, pending, select } = useWorkbench();
+  const { slug, graph, pending, select, nodeLink } = useWorkbench();
   const node = graph?.nodes[id];
   const isNew = node?.proposed === "new";
   const edit = node?.edit;
@@ -274,13 +274,13 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
     </button>
   );
 
-  // Deep link: the current org graph page URL with this node as `gnode`, which the page reads on load.
+  // A link to this node from the host (the org graph view's, wherever the panel is). A node a proposal
+  // would create has nowhere to link to yet.
+  const shareLink = nodeLink && !isNew && (node || data) ? nodeLink({ id, type }) : null;
   const copyLink = async () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("view", "graph");
-    url.searchParams.set("gnode", id);
+    if (!shareLink) return;
     try {
-      await navigator.clipboard.writeText(url.toString());
+      await navigator.clipboard.writeText(shareLink);
       toast.success("Link copied to clipboard");
     } catch {
       toast.error("Couldn't copy the link");
@@ -292,7 +292,7 @@ export function NodeDetails({ id, onClose }: { id: string; onClose: () => void }
       <div className="flex items-center gap-2">
         <TypeBadge type={type} />
         <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{name}</h2>
-        {!isNew && (
+        {shareLink && (
           <button
             type="button"
             onClick={copyLink}
