@@ -91,6 +91,7 @@ vi.mock("@/lib/db", () => ({
     },
     sourceControlOrg: {
       findUnique: vi.fn(),
+      updateMany: vi.fn(),
     },
     swarm: {
       findFirst: vi.fn(),
@@ -486,6 +487,58 @@ describe("POST /api/swarm - Unit Tests", () => {
           swarmSecretAlias: "{{swarm2bCar4_API_KEY}}",
         })
       );
+    });
+  });
+
+  describe("Bifrost for new orgs", () => {
+    const okResponse = {
+      data: { swarm_id: "swarm2bCar4", address: "swarm2bCar4.sphinx.chat", x_api_key: "key" },
+    };
+
+    test("adds ADD_BIFROST and clears flag after success when org needsBifrost", async () => {
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
+      mockSwarmServiceInstance.createSwarm.mockResolvedValue(okResponse);
+      mockDb.workspace.findUnique.mockResolvedValue({
+        id: "workspace-123",
+        sourceControlOrg: { id: "org-1", needsBifrost: true },
+      });
+
+      await POST(createMockRequest({ ...validSwarmData, workspace_type: "standard" }));
+
+      expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalledWith(
+        expect.objectContaining({ env: expect.objectContaining({ ADD_BIFROST: "true" }) }),
+      );
+      expect(mockDb.sourceControlOrg.updateMany).toHaveBeenCalledWith({
+        where: { id: "org-1", needsBifrost: true },
+        data: { needsBifrost: false },
+      });
+    });
+
+    test("omits ADD_BIFROST and does not clear when flag is false", async () => {
+      mockSaveOrUpdateSwarm.mockResolvedValue({ id: "final-swarm", swarmId: "swarm2bCar4" });
+      mockSwarmServiceInstance.createSwarm.mockResolvedValue(okResponse);
+      mockDb.workspace.findUnique.mockResolvedValue({
+        id: "workspace-123",
+        sourceControlOrg: { id: "org-1", needsBifrost: false },
+      });
+
+      await POST(createMockRequest(validSwarmData));
+
+      const arg = mockSwarmServiceInstance.createSwarm.mock.calls[0][0];
+      expect(arg.env?.ADD_BIFROST).toBeUndefined();
+      expect(mockDb.sourceControlOrg.updateMany).not.toHaveBeenCalled();
+    });
+
+    test("does not clear flag when swarm creation fails", async () => {
+      mockSwarmServiceInstance.createSwarm.mockRejectedValue(new Error("boom"));
+      mockDb.workspace.findUnique.mockResolvedValue({
+        id: "workspace-123",
+        sourceControlOrg: { id: "org-1", needsBifrost: true },
+      });
+
+      await POST(createMockRequest(validSwarmData));
+
+      expect(mockDb.sourceControlOrg.updateMany).not.toHaveBeenCalled();
     });
   });
 
