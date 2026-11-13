@@ -22,6 +22,9 @@
  *     `run/cancel` needs DEVELOPER or above, and a workspace's apps launch
  *     at most 20 runs an hour — a JSON-RPC error the app shows, never
  *     forwarded. Strut knows nothing of Hive roles; this is where they hold.
+ *     An app whose manifest says `admin: true` answers 403 to a caller
+ *     below OWNER / ADMIN (`adminAppRefusal`, by the app named in the
+ *     `step_run` token).
  *  4. On `initialize` — the member opening the app — Hive also makes sure
  *     the swarm holds the member's standing delegation
  *     (`ensureStrutDelegation`, never throws), so what the app launches is
@@ -35,9 +38,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { ensureStrutDelegation, resolveStrutActor } from "@/services/bifrost/strut-delegation";
 import {
+  adminAppRefusal,
   authorizeAppSwarm,
   MAX_RELAY_BODY_BYTES,
   refusalResponse,
+  relayAppOf,
   relayRefusal,
   relayStepRefusal,
   relayToStrutMcp,
@@ -74,7 +79,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch {
     return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400 });
   }
-  const refusal = relayRefusal(message) ?? (await relayStepRefusal(message, swarm));
+  const refusal0 = relayRefusal(message);
+  if (!refusal0) {
+    // An ADMIN app (manifest `admin: true`) is for OWNER / ADMIN: the app is named by the step's token.
+    const app = relayAppOf(message);
+    const denied = app ? await adminAppRefusal(swarm, app) : null;
+    if (denied) return NextResponse.json({ error: denied.error }, { status: denied.status });
+  }
+  const refusal = refusal0 ?? (await relayStepRefusal(message, swarm));
   if (refusal) return refusalResponse(refusal);
 
   let actor: string;

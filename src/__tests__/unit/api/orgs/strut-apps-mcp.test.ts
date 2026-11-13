@@ -63,6 +63,9 @@ vi.mock("@/lib/redis", () => ({ redis: { incr: mockIncr, expire: vi.fn(async () 
 const { db } = await import("@/lib/db");
 const { resolveAuthorizedOrgId } = await import("@/lib/auth/org-access");
 const { validateWorkspaceAccess } = await import("@/services/workspace");
+const { resetStrutAppAccessCache } = await import("@/services/strut-apps");
+const APPS = { apps: [{ name: "bench", pinned: true }, { name: "secret", pinned: true, admin: true }] };
+const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 const { POST, GET } = await import("@/app/api/orgs/[githubLogin]/strut/apps/mcp/route");
 
 const mockSwarmFind = db.swarm.findUnique as Mock;
@@ -107,10 +110,13 @@ const SWARM = {
 beforeEach(() => {
   vi.clearAllMocks();
   redisCounts.clear();
-  vi.stubGlobal("fetch", mockFetch);
+  // Strut's app list (the admin flag) is answered apart, so mockFetch counts only the relay's own calls.
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
+    !init?.method && String(url).endsWith("/apps") ? Promise.resolve(json(APPS)) : mockFetch(url, init));
   mockResolveOrg.mockResolvedValue("org-1");
   mockSwarmFind.mockResolvedValue(SWARM);
-  mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: false, canAdmin: false });
+  mockAccess.mockResolvedValue({ hasAccess: true, userRole: "ADMIN", canRead: true, canWrite: false, canAdmin: false });
+  resetStrutAppAccessCache();
   mockFetch.mockImplementation(
     async () =>
       new Response('event: message\ndata: {"jsonrpc":"2.0","id":7,"result":{"content":[]}}\n\n', {
@@ -226,6 +232,34 @@ describe("POST /api/orgs/[githubLogin]/strut/apps/mcp", () => {
     const res = await GET();
     expect(res.status).toBe(405);
     expect(res.headers.get("allow")).toBe("POST");
+  });
+});
+
+describe("POST /api/orgs/[githubLogin]/strut/apps/mcp — admin apps", () => {
+  const secretStep = JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "step_run", arguments: { type: "run/list", app: "app:secret@v1.tok" } } });
+
+  it("refuses an admin app to Viewer and Developer with 403 and forwards nothing", async () => {
+    for (const role of ["VIEWER", "DEVELOPER"] as const) {
+      as(role);
+      const res = await POST(request(secretStep), params);
+      expect(res.status, role).toBe(403);
+      expect(await res.json()).toEqual({ error: "Forbidden" });
+    }
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("lets Owner and Admin use it", async () => {
+    for (const role of ["ADMIN", "OWNER"] as const) {
+      as(role);
+      expect((await POST(request(secretStep), params)).status, role).toBe(200);
+    }
+  });
+
+  it("leaves a non-admin app to every role", async () => {
+    for (const role of ["VIEWER", "DEVELOPER", "ADMIN"] as const) {
+      as(role);
+      expect((await POST(request(step("run/list")), params)).status, role).toBe(200);
+    }
   });
 });
 

@@ -28,6 +28,12 @@
  *   A `step_run` that launches or cancels a run needs DEVELOPER or above,
  *   and a workspace's apps launch at most 60 runs a minute between them
  *   (`STRUT_APP_LAUNCHES_PER_MINUTE`). Every other step passes on read access.
+ * - **Admin apps** (`canUseAdminStrutApps`, `adminAppRefusal`): an app whose
+ *   strut manifest says `admin: true` (as `GET /apps` reports it) is for
+ *   workspace OWNER and ADMIN only. Below that role it is left out of the
+ *   tab list, and its document, relay (`step_run` carrying its app token),
+ *   channel ticket, versions and pin answer 403. A failed read of strut's
+ *   app list is passed on (502 / 404), never read as "not admin".
  */
 
 import { createHash } from "node:crypto";
@@ -101,6 +107,27 @@ export async function authorizeAppSwarm(
       role: access.userRole ?? null,
     },
   };
+}
+
+// ─── Admin apps ─────────────────────────────────────────────────────────
+
+/** Only a workspace OWNER or ADMIN may see or use an app whose manifest says `admin: true`. */
+export function canUseAdminStrutApps(role: WorkspaceRole | null | undefined): boolean {
+  return role === WorkspaceRole.OWNER || role === WorkspaceRole.ADMIN;
+}
+
+/** What strut's `GET /apps` says of one app that hive gates on. */
+export interface StrutAppAccess {
+  admin: boolean;
+  pinned: boolean;
+}
+
+const ACCESS_CACHE_TTL_MS = 30_000;
+const accessCache = new Map<string, { at: number; apps: Map<string, StrutAppAccess> }>();
+
+/** Forget the cached app lists (tests). */
+export function resetStrutAppAccessCache(): void {
+  accessCache.clear();
 }
 
 /** Which app: a workspace app, its active version unless `version` names one. */
@@ -367,32 +394,80 @@ export async function relayToStrutMcp(opts: {
  * The apps the swarm's strut has pinned as tabs: `GET /apps`, the entries
  * with `pinned: true`, in strut's order. The flag is the app record's, set
  * by a person (`PUT /apps/:name/pin`) or the builder (`app/pin`); the swarm
- * IS one workspace's, so a pinned app is a tab of that workspace.
+ * IS one workspace's, so a pinned app is a tab of that workspace. Admin
+ * apps (`admin: true`) are listed only when `role` is OWNER or ADMIN.
  */
 export async function listPinnedStrutApps(
   swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
+  role: WorkspaceRole | null,
 ): Promise<{ ok: true; apps: PinnedStrutApp[] } | AppRouteFailure> {
   const listed = await labJson(swarm, "/apps");
   if (!listed.ok) return listed;
   const entries = Array.isArray(listed.body.apps) ? listed.body.apps : [];
   const apps = entries.flatMap((entry): PinnedStrutApp[] => {
     if (!isRecord(entry) || entry.pinned !== true || !isStrutAppName(entry.name)) return [];
+    if (entry.admin === true && !canUseAdminStrutApps(role)) return [];
     const title = typeof entry.title === "string" && entry.title.trim() ? entry.title.trim() : entry.name;
     return [{ name: entry.name, title }];
   });
   return { ok: true, apps };
 }
 
-/** Whether one app is pinned, read off `GET /apps`; 404 when the swarm's strut has no such app. */
-export async function readStrutAppPin(
+/**
+ * What `GET /apps` says of one app — its `admin` and `pinned` flags; 404 when
+ * the swarm's strut has no such app. The list is kept per swarm for 30 s
+ * (`fresh` reads it again).
+ */
+export async function readStrutAppAccess(
   swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
   app: string,
-): Promise<{ ok: true; pinned: boolean } | AppRouteFailure> {
-  const listed = await labJson(swarm, "/apps");
-  if (!listed.ok) return listed;
-  const entries = Array.isArray(listed.body.apps) ? listed.body.apps : [];
-  const entry = entries.find((e) => isRecord(e) && e.name === app);
-  return entry && isRecord(entry) ? { ok: true, pinned: entry.pinned === true } : fail(404, "No such app on the swarm");
+  opts: { fresh?: boolean } = {},
+): Promise<({ ok: true } & StrutAppAccess) | AppRouteFailure> {
+  let apps = !opts.fresh ? accessCache.get(swarm.swarmId) : undefined;
+  if (apps && Date.now() - apps.at >= ACCESS_CACHE_TTL_MS) apps = undefined;
+  if (!apps) {
+    const listed = await labJson(swarm, "/apps");
+    if (!listed.ok) return listed;
+    const entries = Array.isArray(listed.body.apps) ? listed.body.apps : [];
+    const map = new Map<string, StrutAppAccess>();
+    for (const e of entries) {
+      if (isRecord(e) && typeof e.name === "string") map.set(e.name, { admin: e.admin === true, pinned: e.pinned === true });
+    }
+    apps = { at: Date.now(), apps: map };
+    accessCache.set(swarm.swarmId, apps);
+  }
+  const entry = apps.apps.get(app);
+  return entry ? { ok: true, ...entry } : fail(404, "No such app on the swarm");
+}
+
+/** Whether one app is pinned (and admin-only), read fresh off `GET /apps`; 404 when the swarm's strut has no such app. */
+export function readStrutAppPin(
+  swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId">,
+  app: string,
+): Promise<({ ok: true } & StrutAppAccess) | AppRouteFailure> {
+  return readStrutAppAccess(swarm, app, { fresh: true });
+}
+
+/**
+ * The refusal (403) when `app` is an admin app and the caller is below
+ * OWNER / ADMIN, else null. OWNER / ADMIN are not checked at all; a failed
+ * read of strut's list is returned as it is, so nothing passes unchecked.
+ */
+export async function adminAppRefusal(
+  swarm: Pick<AppSwarm, "labBase" | "swarmApiKey" | "swarmId" | "role">,
+  app: string,
+): Promise<AppRouteFailure | null> {
+  if (canUseAdminStrutApps(swarm.role)) return null;
+  const access = await readStrutAppAccess(swarm, app);
+  if (!access.ok) return access;
+  return access.admin ? fail(403, "Forbidden") : null;
+}
+
+/** The app a `step_run`'s token (`app:<name>@<vN>.<sig>`) names; null for a message without one. */
+export function relayAppOf(message: unknown): string | null {
+  if (relayStepType(message) === null || !isRecord(message) || !isRecord(message.params) || !isRecord(message.params.arguments)) return null;
+  const token = message.params.arguments.app;
+  return typeof token === "string" ? (/^app:(.+)@v\d+(?:\.|$)/.exec(token)?.[1] ?? null) : null;
 }
 
 /**

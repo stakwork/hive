@@ -63,13 +63,14 @@ const APPS = [
   { name: "openhealth-benchmark", activeVersion: "v1", title: "OpenHealth Benchmark", grants: {}, pinned: true },
   { name: "acme/invoices", activeVersion: "v3", title: "  ", grants: {}, pinned: true },
   { name: "bad name", activeVersion: "v1", title: "Bad", grants: {}, pinned: true },
+  { name: "secret-admin", activeVersion: "v1", title: "Secret", grants: {}, pinned: true, admin: true },
   { name: "half", activeVersion: "v1", title: "Half", grants: {}, pinned: "yes" },
 ];
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("fetch", mockFetch);
-  mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: false, canAdmin: false });
+  mockAccess.mockResolvedValue({ hasAccess: true, userRole: "ADMIN", canRead: true, canWrite: false, canAdmin: false });
   mockWorkspaceFind.mockResolvedValue({ swarm: { id: "swarm-oh" }, sourceControlOrg: { githubLogin: "stakwork" } });
   mockResolveOrg.mockResolvedValue("org-1");
   mockSwarmFind.mockResolvedValue({
@@ -110,12 +111,25 @@ describe("GET /api/workspaces/[slug]/strut/apps", () => {
       apps: [
         { name: "openhealth-benchmark", title: "OpenHealth Benchmark" },
         { name: "acme/invoices", title: "acme/invoices" },
+        { name: "secret-admin", title: "Secret" },
       ],
     });
     expect(text).not.toContain("enc-key");
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe(`${LAB}/apps`);
     expect((init as RequestInit).headers).toMatchObject({ "x-api-token": "dec(enc-key)" });
+  });
+
+  it("leaves admin apps out for every role below Owner and Admin, lists them for those two", async () => {
+    const names = async () => ((await (await GET(request(), params)).json()).apps as { name: string }[]).map((a) => a.name);
+    for (const userRole of ["VIEWER", "STAKEHOLDER", "DEVELOPER", "PM"]) {
+      mockAccess.mockResolvedValue({ hasAccess: true, userRole, canRead: true, canWrite: false, canAdmin: false });
+      expect(await names(), userRole).toEqual(["openhealth-benchmark", "acme/invoices"]);
+    }
+    for (const userRole of ["ADMIN", "OWNER"]) {
+      mockAccess.mockResolvedValue({ hasAccess: true, userRole, canRead: true, canWrite: true, canAdmin: true });
+      expect(await names(), userRole).toContain("secret-admin");
+    }
   });
 
   it("a swarm that does not answer is a 502", async () => {

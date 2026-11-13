@@ -28,6 +28,7 @@ vi.mock("@/services/bifrost/strut-delegation", () => ({
 const { db } = await import("@/lib/db");
 const { resolveAuthorizedOrgId } = await import("@/lib/auth/org-access");
 const { validateWorkspaceAccess } = await import("@/services/workspace");
+const { resetStrutAppAccessCache } = await import("@/services/strut-apps");
 const { POST } = await import("@/app/api/orgs/[githubLogin]/strut/apps/channel-ticket/route");
 
 const mockSwarmFind = db.swarm.findUnique as Mock;
@@ -56,14 +57,16 @@ function request(body: unknown, opts: { authed?: boolean; swarmId?: string; raw?
   }
   return req;
 }
+const adminApps = () => Response.json({ apps: [{ name: "bench", pinned: true }, { name: "secret", pinned: true, admin: true }] });
 const ok = { app: "bench", version: "v3" };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetStrutAppAccessCache();
   vi.stubGlobal("fetch", mockFetch);
   mockResolveOrg.mockResolvedValue("org-1");
   mockSwarmFind.mockResolvedValue(SWARM);
-  mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: false, canAdmin: false });
+  mockAccess.mockResolvedValue({ hasAccess: true, userRole: "ADMIN", canRead: true, canWrite: false, canAdmin: false });
   mockFetch.mockImplementation(async () => Response.json({ ticket: "tk.1", exp: 1234 }));
 });
 
@@ -146,5 +149,33 @@ describe("POST /api/orgs/[githubLogin]/strut/apps/channel-ticket", () => {
     expect((await POST(request(ok), params)).status).toBe(502);
     mockFetch.mockResolvedValueOnce(Response.json({}));
     expect((await POST(request(ok), params)).status).toBe(502);
+  });
+});
+
+describe("channel-ticket — admin apps", () => {
+  const forApps = () =>
+    mockFetch.mockImplementation(async (url: string) => (String(url).endsWith("/apps") ? adminApps() : Response.json({ ticket: "tk.1", exp: 1 })));
+
+  it("403 for Viewer and Developer on an admin app, no ticket asked for", async () => {
+    forApps();
+    for (const userRole of ["VIEWER", "DEVELOPER"]) {
+      mockAccess.mockResolvedValue({ hasAccess: true, userRole, canRead: true, canWrite: true, canAdmin: false });
+      const res = await POST(request({ app: "secret", version: "v1" }), params);
+      expect(res.status, userRole).toBe(403);
+      expect(await res.json()).toEqual({ error: "Forbidden" });
+    }
+    expect(mockFetch.mock.calls.some(([u]) => String(u).endsWith("/channel-ticket"))).toBe(false);
+  });
+
+  it("Owner and Admin get a ticket; a non-admin app is open to every role", async () => {
+    forApps();
+    for (const userRole of ["OWNER", "ADMIN"]) {
+      mockAccess.mockResolvedValue({ hasAccess: true, userRole, canRead: true, canWrite: true, canAdmin: true });
+      expect((await POST(request({ app: "secret", version: "v1" }), params)).status, userRole).toBe(200);
+    }
+    for (const userRole of ["VIEWER", "DEVELOPER"]) {
+      mockAccess.mockResolvedValue({ hasAccess: true, userRole, canRead: true, canWrite: false, canAdmin: false });
+      expect((await POST(request({ app: "bench", version: "v1" }), params)).status, userRole).toBe(200);
+    }
   });
 });

@@ -11,13 +11,14 @@
  *
  * Gate: `authorizeAppSwarm` (a member of the org, a reader of the swarm's
  * workspace) for both; a pin changes the sidebar for everyone in that
- * workspace, so POST also needs its ADMIN. The swarm key stays here.
+ * workspace, so POST also needs its ADMIN. An app whose manifest says
+ * `admin: true` answers GET 403 below OWNER / ADMIN. The swarm key stays here.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { isStrutAppName } from "@/lib/strut-apps";
-import { authorizeAppSwarm, readStrutAppPin, setStrutAppPin } from "@/services/strut-apps";
+import { authorizeAppSwarm, canUseAdminStrutApps, readStrutAppPin, setStrutAppPin } from "@/services/strut-apps";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
 export const runtime = "nodejs";
@@ -41,6 +42,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const [read, access] = await Promise.all([readStrutAppPin(swarm, app), validateWorkspaceAccess(swarm.workspace.slug, userId)]);
   if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });
+  if (read.admin && !canUseAdminStrutApps(swarm.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   return NextResponse.json({
     pinned: read.pinned,
     workspace: { slug: swarm.workspace.slug, name: swarm.workspace.name },
