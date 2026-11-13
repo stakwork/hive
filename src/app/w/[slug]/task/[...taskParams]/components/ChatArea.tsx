@@ -4,13 +4,13 @@ import { InvitePopover } from "@/components/plan/InvitePopover";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
+import { CollaboratorAvatars } from "@/components/collaboration/CollaboratorAvatars";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Artifact, ChatMessage as ChatMessageType, Option, WorkflowStatus } from "@/lib/chat";
 
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
-import type { CollaboratorInfo } from "@/types/whiteboard-collaboration";
+import type { CollaboratorInfo } from "@/types/collaboration";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,

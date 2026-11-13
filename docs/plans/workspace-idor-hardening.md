@@ -309,7 +309,7 @@ proof-of-exploit, and suggested fix.
     with `canWrite` before issuing the upload URL.
   - GET: parses the owning `workspaceId` out of the `s3Key` with an
     allow-list of known prefixes (`uploads/`, `workspace-logos/`,
-    `whiteboards/`, `screenshots/`, `features/`, `diagrams/`) and
+    `screenshots/`, `features/`, `diagrams/`) and
     requires `canRead` membership before minting the download URL.
     Unknown prefixes return 404.
   - Tests: `src/__tests__/integration/api/upload-presigned-url.test.ts`

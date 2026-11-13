@@ -8,7 +8,6 @@ const VALID_SURFACES = [
   "plan_chat",
   "plan_start",
   "task_start",
-  "whiteboard",
   "sidebar",
 ] as const;
 

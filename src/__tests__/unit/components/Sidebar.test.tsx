@@ -153,9 +153,6 @@ describe('Sidebar - Navigation Links', () => {
 
       const planLinks = screen.getAllByTestId('nav-plan');
       expect(planLinks[0]).toHaveAttribute('href', '/w/test-workspace/plan');
-
-      const whiteboardsLinks = screen.getAllByTestId('nav-whiteboards');
-      expect(whiteboardsLinks[0]).toHaveAttribute('href', '/w/test-workspace/whiteboards');
     });
   });
 
@@ -214,7 +211,7 @@ describe('Sidebar - Navigation Links', () => {
     await user.click(buildButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getAllByTestId('nav-whiteboards').length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId('nav-plan').length).toBeGreaterThan(0);
     });
     expect(screen.queryByTestId('nav-strut')).toBeNull();
   });
@@ -244,7 +241,7 @@ describe('Sidebar - Navigation Links', () => {
     await user.click(buildButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getAllByTestId('nav-whiteboards').length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId('nav-plan').length).toBeGreaterThan(0);
     });
     expect(screen.queryByTestId('nav-strut')).toBeNull();
   });
@@ -274,7 +271,7 @@ describe('Sidebar - Navigation Links', () => {
     await user.click(buildButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getAllByTestId('nav-whiteboards').length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId('nav-plan').length).toBeGreaterThan(0);
     });
     expect(screen.queryByTestId('nav-strut')).toBeNull();
   });

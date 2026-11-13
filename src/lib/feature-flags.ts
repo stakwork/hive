@@ -6,7 +6,6 @@ export const FEATURE_FLAGS = {
   WORKSPACE_LOGO: 'WORKSPACE_LOGO',
   BOUNTY_REQUEST: 'BOUNTY_REQUEST',
   CHAT_CODE_FORMATTING: 'CHAT_CODE_FORMATTING',
-  WHITEBOARD_STAKWORK_POSITIONING: 'WHITEBOARD_STAKWORK_POSITIONING',
   TASK_AGENT_MODE: 'TASK_AGENT_MODE',
 } as const;
 
@@ -30,9 +29,6 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
     case FEATURE_FLAGS.CHAT_CODE_FORMATTING:
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_CHAT_CODE_FORMATTING === 'true';
       break;
-    case FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING:
-      isEnabled = process.env.FEATURE_WHITEBOARD_STAKWORK_POSITIONING === 'true';
-      break;
     case FEATURE_FLAGS.TASK_AGENT_MODE:
       isEnabled = process.env.NEXT_PUBLIC_FEATURE_TASK_AGENT_MODE === 'true';
       break;
@@ -47,7 +43,6 @@ export function canAccessFeature(feature: FeatureFlag, userRole?: WorkspaceRole)
     [FEATURE_FLAGS.WORKSPACE_LOGO]: [],
     [FEATURE_FLAGS.BOUNTY_REQUEST]: [],
     [FEATURE_FLAGS.CHAT_CODE_FORMATTING]: [],
-    [FEATURE_FLAGS.WHITEBOARD_STAKWORK_POSITIONING]: [],
     [FEATURE_FLAGS.TASK_AGENT_MODE]: [],
   };
 

@@ -223,7 +223,7 @@ describe("useVoiceCorrectionCapture", () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
 
     const { result } = renderHook(() =>
-      useVoiceCorrectionCapture({ surface: "whiteboard" })
+      useVoiceCorrectionCapture({ surface: "sidebar" })
     );
 
     // Should not throw

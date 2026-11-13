@@ -1805,7 +1805,7 @@ async function seedVoiceCorrections(users: Array<{ id: string; email: string }>)
     return;
   }
 
-  const surfaces = ["task_chat", "plan_chat", "plan_start", "task_start", "whiteboard", "sidebar"] as const;
+  const surfaces = ["task_chat", "plan_chat", "plan_start", "task_start", "sidebar"] as const;
 
   // Repeated pairs for meaningful aggregate data
   const repeatedPairs = [

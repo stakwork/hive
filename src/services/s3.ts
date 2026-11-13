@@ -269,15 +269,6 @@ export class S3Service {
     return `orgs/${orgId}/canvas/${timestamp}_${randomId}_${sanitized}`
   }
 
-  generateWhiteboardImagePath(
-    workspaceId: string,
-    whiteboardId: string,
-    fileId: string,
-    mimeType: string
-  ): string {
-    const ext = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'bin'
-    return `whiteboards/${workspaceId}/${whiteboardId}/${fileId}.${ext}`
-  }
 }
 
 // S3 service with lazy initialization to avoid build-time errors
