@@ -7,7 +7,8 @@
  *
  * A reader of the workspace only, then the app routes' own gate
  * (`authorizeAppSwarm`: a member of the org, the swarm a workspace of it).
- * A workspace with no swarm has no tabs.
+ * A workspace with no swarm has no tabs. Apps whose manifest says
+ * `admin: true` are listed only to the workspace's OWNER and ADMIN.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const authorized = await authorizeAppSwarm(userId, githubLogin, workspace.swarm.id);
   if (!authorized.ok) return NextResponse.json({ error: authorized.error }, { status: authorized.status });
 
-  const listed = await listPinnedStrutApps(authorized.swarm);
+  const listed = await listPinnedStrutApps(authorized.swarm, authorized.swarm.role);
   if (!listed.ok) return NextResponse.json({ error: listed.error }, { status: listed.status });
   return NextResponse.json({ githubLogin, swarmId: workspace.swarm.id, apps: listed.apps });
 }

@@ -29,6 +29,7 @@ vi.mock("@/services/bifrost/strut-delegation", () => ({
 const { db } = await import("@/lib/db");
 const { resolveAuthorizedOrgId } = await import("@/lib/auth/org-access");
 const { validateWorkspaceAccess } = await import("@/services/workspace");
+const { resetStrutAppAccessCache } = await import("@/services/strut-apps");
 const { GET, POST } = await import("@/app/api/orgs/[githubLogin]/strut/apps/pin/route");
 
 const mockSwarmFind = db.swarm.findUnique as Mock;
@@ -57,6 +58,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetStrutAppAccessCache();
   vi.stubGlobal("fetch", mockFetch);
   mockResolveOrg.mockResolvedValue("org-1");
   mockSwarmFind.mockResolvedValue({
@@ -64,9 +66,9 @@ beforeEach(() => {
     swarmApiKey: "enc-key",
     workspace: { id: "ws-oh", slug: "openhealth", name: "Open Health", sourceControlOrgId: "org-1", deleted: false },
   });
-  mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: true, canAdmin: true });
+  mockAccess.mockResolvedValue({ hasAccess: true, userRole: "ADMIN", canRead: true, canWrite: true, canAdmin: true });
   mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
-    if (url === `${LAB}/apps`) return json({ apps: [{ name: "acme/bench", title: "Bench", pinned: true }, { name: "other", title: "Other" }] });
+    if (url === `${LAB}/apps`) return json({ apps: [{ name: "acme/bench", title: "Bench", pinned: true }, { name: "other", title: "Other" }, { name: "secret", title: "S", pinned: true, admin: true }] });
     if (url === `${LAB}/apps/${encodeURIComponent("acme/bench")}/pin` && init?.method === "PUT") {
       return json({ ok: true, name: "acme/bench", pinned: JSON.parse(init.body as string).pinned });
     }
@@ -84,9 +86,20 @@ describe("GET /api/orgs/[githubLogin]/strut/apps/pin", () => {
     const res = await GET(get({ swarmId: "swarm-oh", app: "acme/bench" }), params);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ pinned: true, workspace: { slug: "openhealth", name: "Open Health" }, canPin: true });
-    mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: false, canAdmin: false });
+    mockAccess.mockResolvedValue({ hasAccess: true, userRole: "ADMIN", canRead: true, canWrite: false, canAdmin: false });
     const other = await GET(get({ swarmId: "swarm-oh", app: "other" }), params);
     expect(await other.json()).toMatchObject({ pinned: false, canPin: false });
+  });
+
+  it("403 on an admin app below Owner / Admin; Owner and Admin read it", async () => {
+    for (const userRole of ["VIEWER", "DEVELOPER"]) {
+      mockAccess.mockResolvedValue({ hasAccess: true, userRole, canRead: true, canWrite: true, canAdmin: false });
+      expect((await GET(get({ swarmId: "swarm-oh", app: "secret" }), params)).status, userRole).toBe(403);
+    }
+    for (const userRole of ["OWNER", "ADMIN"]) {
+      mockAccess.mockResolvedValue({ hasAccess: true, userRole, canRead: true, canWrite: true, canAdmin: true });
+      expect(await (await GET(get({ swarmId: "swarm-oh", app: "secret" }), params)).json()).toMatchObject({ pinned: true });
+    }
   });
 
   it("404 for an app the swarm does not have", async () => {
@@ -101,7 +114,7 @@ describe("POST /api/orgs/[githubLogin]/strut/apps/pin", () => {
   });
 
   it("403 for a non-admin of the swarm's workspace, before strut is called", async () => {
-    mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: true, canAdmin: false });
+    mockAccess.mockResolvedValue({ hasAccess: true, userRole: "ADMIN", canRead: true, canWrite: true, canAdmin: false });
     const res = await POST(post({ swarmId: "swarm-oh", app: "acme/bench", pinned: true }), params);
     expect(res.status).toBe(403);
     expect((await res.json()).error).toContain("Open Health");

@@ -11,12 +11,13 @@
  *
  * Same session auth and `authorizeAppSwarm` as the MCP relay (404 / 403).
  * Role floor: READ access, what `authorizeAppSwarm` gives — in strut a
- * channel needs only read access, so no further Hive role is asked for.
+ * channel needs only read access, so no further Hive role is asked for —
+ * except an app whose manifest says `admin: true`, for OWNER / ADMIN only (403).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { resolveStrutActor } from "@/services/bifrost/strut-delegation";
-import { authorizeAppSwarm, readStrutAppVersions } from "@/services/strut-apps";
+import { adminAppRefusal, authorizeAppSwarm, readStrutAppVersions } from "@/services/strut-apps";
 import { isStrutAppName, isStrutAppVersion, strutChannelSocketUrl } from "@/lib/strut-apps";
 
 export const runtime = "nodejs";
@@ -45,6 +46,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
   const app = body?.app;
   if (!isStrutAppName(app)) return json({ error: "app is required" }, 400);
+  const denied = await adminAppRefusal(swarm, app);
+  if (denied) return json({ error: denied.error }, denied.status);
   let version: string;
   if (body?.version === undefined || body.version === null) {
     // The frame was opened without one: strut serves the live version, so that is the room.

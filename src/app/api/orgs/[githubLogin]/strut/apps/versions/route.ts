@@ -18,6 +18,7 @@
  * Viewing another version is the reader's own; making one live changes the
  * app for everyone, so POST needs an ADMIN of the swarm's workspace — the
  * same rule as pinning it as a tab. Gate: `authorizeAppSwarm` for both.
+ * An app whose manifest says `admin: true` answers GET 403 below OWNER / ADMIN.
  * The swarm key stays here.
  */
 
@@ -25,7 +26,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { isStrutAppName, isStrutAppRelease, isStrutAppVersion } from "@/lib/strut-apps";
 import { resolveStrutActor } from "@/services/bifrost/strut-delegation";
-import { authorizeAppSwarm, readStrutAppVersions, setStrutAppLive, type StrutAppLiveTarget } from "@/services/strut-apps";
+import { adminAppRefusal, authorizeAppSwarm, readStrutAppVersions, setStrutAppLive, type StrutAppLiveTarget } from "@/services/strut-apps";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
 export const runtime = "nodejs";
@@ -46,6 +47,9 @@ export async function GET(request: NextRequest, { params }: Params) {
   const authorized = await authorizeAppSwarm(userId, githubLogin, query.get("swarmId") ?? "");
   if (!authorized.ok) return NextResponse.json({ error: authorized.error }, { status: authorized.status });
   const { swarm } = authorized;
+
+  const denied = await adminAppRefusal(swarm, app);
+  if (denied) return NextResponse.json({ error: denied.error }, { status: denied.status });
 
   const [read, access] = await Promise.all([readStrutAppVersions(swarm, app), validateWorkspaceAccess(swarm.workspace.slug, userId)]);
   if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });

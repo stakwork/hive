@@ -36,6 +36,7 @@ vi.mock("@/services/bifrost/strut-delegation", () => ({
 const { db } = await import("@/lib/db");
 const { resolveAuthorizedOrgId } = await import("@/lib/auth/org-access");
 const { validateWorkspaceAccess } = await import("@/services/workspace");
+const { resetStrutAppAccessCache } = await import("@/services/strut-apps");
 const { GET } = await import("@/app/api/orgs/[githubLogin]/strut/apps/document/route");
 
 const mockSwarmFind = db.swarm.findUnique as Mock;
@@ -72,6 +73,8 @@ function strut(opts: { token?: string | null } = {}) {
   const token = opts.token === undefined ? "tok" : opts.token;
   mockFetch.mockImplementation(async (url: string) => {
     const path = url.slice(LAB.length);
+    if (path === "/apps") return json({ apps: [{ name: "bench", pinned: true }, { name: "secret", pinned: true, admin: true }] });
+    if (path === "/apps/secret/v1/files") return json({ files: ["dist/index.html"], token: "tok" });
     if (path === "/apps/bench/versions") return json({ name: "bench", active: "v3", versions: [] });
     if (path === "/apps/bench/v3/files" || path === "/apps/bench/v1/files") return json({ files: ["app.yaml", "dist/index.html"], ...(token ? { token } : {}) });
     if (path.includes("/dist/index.html")) return new Response(DOC, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": "sandbox allow-scripts" } });
@@ -83,10 +86,11 @@ const calls = () => mockFetch.mock.calls.map(([url, init]) => ({ path: (url as s
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetStrutAppAccessCache();
   vi.stubGlobal("fetch", mockFetch);
   mockResolveOrg.mockResolvedValue("org-1");
   mockSwarmFind.mockResolvedValue(SWARM);
-  mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: false, canAdmin: false });
+  mockAccess.mockResolvedValue({ hasAccess: true, userRole: "ADMIN", canRead: true, canWrite: false, canAdmin: false });
   strut();
 });
 
@@ -218,5 +222,40 @@ describe("GET /api/orgs/[githubLogin]/strut/apps/document", () => {
     expect((await GET(request({ swarmId: "swarm-1", app: "bench" }), params)).status).toBe(502);
     mockFetch.mockResolvedValue(new Response("boom", { status: 500 }));
     expect((await GET(request({ swarmId: "swarm-1", app: "bench" }), params)).status).toBe(502);
+  });
+});
+
+describe("GET document — admin apps", () => {
+  const as = (userRole: string) =>
+    mockAccess.mockResolvedValue({ hasAccess: true, userRole, canRead: true, canWrite: false, canAdmin: false });
+
+  it("403 for Viewer and Developer on an admin app; the page is never read", async () => {
+    for (const role of ["VIEWER", "DEVELOPER"]) {
+      as(role);
+      const res = await GET(request({ swarmId: "swarm-1", app: "secret", version: "v1" }), params);
+      expect(res.status, role).toBe(403);
+      expect(await res.json()).toEqual({ error: "Forbidden" });
+    }
+    expect(calls().some((c) => c.path.startsWith("/apps/secret"))).toBe(false);
+  });
+
+  it("Owner and Admin read it", async () => {
+    for (const role of ["OWNER", "ADMIN"]) {
+      as(role);
+      expect((await GET(request({ swarmId: "swarm-1", app: "secret", version: "v1" }), params)).status, role).toBe(200);
+    }
+  });
+
+  it("a non-admin app opens for every role", async () => {
+    for (const role of ["VIEWER", "DEVELOPER", "ADMIN"]) {
+      as(role);
+      expect((await GET(request({ swarmId: "swarm-1", app: "bench", version: "v1" }), params)).status, role).toBe(200);
+    }
+  });
+
+  it("an unreadable app list is passed on (502), not read as non-admin", async () => {
+    as("VIEWER");
+    mockFetch.mockRejectedValue(new Error("down"));
+    expect((await GET(request({ swarmId: "swarm-1", app: "bench", version: "v1" }), params)).status).toBe(502);
   });
 });

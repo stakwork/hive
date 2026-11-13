@@ -17,6 +17,8 @@
  *     document. The token is the app's, worth its files only and its
  *     identity to `step_run`; it is meant to be in the page.
  *
+ * An app whose manifest says `admin: true` is served to OWNER / ADMIN only (403).
+ *
  * The bytes go back as an opaque download (`htmlBodyProxyHeaders`): a
  * cookie-authenticated HTML response on Hive's origin would be stored XSS
  * the moment something navigated to it. The frame fetches them and frames
@@ -31,7 +33,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { isStrutAppName, isStrutAppVersion } from "@/lib/strut-apps";
 import { htmlBodyProxyHeaders } from "@/lib/utils/html-body-proxy";
-import { authorizeAppSwarm, etagMatches, fetchStrutAppDocument, type StrutAppAddress } from "@/services/strut-apps";
+import { adminAppRefusal, authorizeAppSwarm, etagMatches, fetchStrutAppDocument, type StrutAppAddress } from "@/services/strut-apps";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +61,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const authorized = await authorizeAppSwarm(userId, githubLogin, query.get("swarmId") ?? "");
   if (!authorized.ok) return NextResponse.json({ error: authorized.error }, { status: authorized.status });
   const { swarm } = authorized;
+
+  const denied = await adminAppRefusal(swarm, at.app);
+  if (denied) return NextResponse.json({ error: denied.error }, { status: denied.status });
 
   const ifNoneMatch = request.headers.get("if-none-match");
   const doc = await fetchStrutAppDocument(swarm, at, { ifNoneMatch });
