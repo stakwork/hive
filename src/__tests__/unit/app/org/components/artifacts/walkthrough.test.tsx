@@ -2,12 +2,14 @@
 /**
  * The walkthrough viewer (strut browser/walkthrough, plans/live-artifacts.md
  * §4): the manifest read through the reader route, the frames scrubbed, and
- * the manifest read again when the job reports the recording changed.
+ * the manifest read again when the job reports the recording changed —
+ * once, however many views of the recording are on screen.
  */
 import React from "react";
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { WalkthroughPanel } from "@/app/org/[githubLogin]/_components/artifacts/viewers/walkthrough";
+import { act, fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { WalkthroughInline, WalkthroughPanel } from "@/app/org/[githubLogin]/_components/artifacts/viewers/walkthrough";
 import { artifactKind } from "@/app/org/[githubLogin]/_components/artifacts/registry";
 import { parseArtifactContent, type ArtifactRef } from "@/app/org/[githubLogin]/_state/canvasChatArtifacts";
 import { useJobLiveStore } from "@/app/org/[githubLogin]/_state/jobLiveStore";
@@ -31,6 +33,10 @@ beforeEach(() => {
   useJobLiveStore.setState({ byJob: {}, verifying: {} });
 });
 afterEach(() => vi.unstubAllGlobals());
+const render = (ui: React.ReactElement) =>
+  rtlRender(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } })}>{ui}</QueryClientProvider>);
+const newFrame = (frames: number) =>
+  act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: "swarm-1", at: "t", kind: "walkthrough", url: KEY, state: "recording", detail: { frames } }));
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
 describe("walkthrough", () => {
@@ -59,6 +65,36 @@ describe("walkthrough", () => {
     act(() => useJobLiveStore.getState().apply({ jobId: JOB, swarmId: "swarm-1", at: "t", kind: "walkthrough", url: KEY, state: "done", detail: { frames: 3 } }));
     await waitFor(() => expect(screen.getByTestId("walkthrough-count").textContent).toBe("1 / 3"));
     expect(screen.getByText("Done")).toBeTruthy();
+  });
+
+  test("the card and the panel share one read of the manifest, and one more per new frame", async () => {
+    mockFetch.mockImplementation(async () => json(manifest(2)));
+    render(
+      <>
+        <WalkthroughInline artifact={artifact} content={content} />
+        <WalkthroughPanel artifact={artifact} content={content} />
+      </>,
+    );
+    await waitFor(() => expect(screen.getAllByTestId("walkthrough-count")).toHaveLength(2));
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    mockFetch.mockImplementation(async () => json(manifest(3)));
+    newFrame(3);
+    await waitFor(() => expect(screen.getAllByTestId("walkthrough-count").map((c) => c.textContent)).toEqual(["3 / 3", "3 / 3"]));
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  test("a failed re-read keeps the last good manifest", async () => {
+    mockFetch.mockResolvedValueOnce(json(manifest(2)));
+    render(<WalkthroughPanel artifact={artifact} content={content} />);
+    expect(await screen.findByTestId("walkthrough-count")).toHaveProperty("textContent", "2 / 2");
+
+    mockFetch.mockResolvedValueOnce(new Response("nope", { status: 502 }));
+    newFrame(3);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(screen.getByTestId("walkthrough-count").textContent).toBe("2 / 2");
+    expect(screen.queryByText("This recording could not be loaded.")).toBeNull();
   });
 
   test("every frame is mounted, hidden but the one showing, so scrubbing never waits on a load", async () => {

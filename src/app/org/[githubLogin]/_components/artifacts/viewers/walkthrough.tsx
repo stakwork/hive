@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { strutArtifactReaderUrl } from "@/lib/strut-jobs";
@@ -22,28 +23,35 @@ import { parseWalkthroughManifest, type WalkthroughManifest } from "../walkthrou
 
 type Loaded = { status: "loading" } | { status: "failed" } | { status: "ready"; manifest: WalkthroughManifest };
 
-/** The manifest at `key`, read again on each update the job reports for it. Key the caller by `key`: a failed re-read keeps what it had. */
+/**
+ * The manifest at `key`, read again on each update the job reports for it.
+ * Read through React Query, keyed by the update tick, so every view of the
+ * same recording (the chat card, the panel, a claim's evidence, the live
+ * strip) shares one read per new frame.
+ */
 export function useWalkthrough(swarmId: string, key: string): Loaded {
   const githubLogin = useChatOrgLogin();
   // A new frame on this recording: read the manifest again.
   const tick = useLatestUpdateFor(key)?.receivedAt ?? 0;
-  const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
-  useEffect(() => {
-    let cancelled = false;
-    fetch(strutArtifactReaderUrl(githubLogin, swarmId, key), { credentials: "same-origin", cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((raw) => {
-        const manifest = parseWalkthroughManifest(raw, key);
-        if (!cancelled) setLoaded(manifest ? { status: "ready", manifest } : { status: "failed" });
-      })
-      .catch(() => {
-        if (!cancelled) setLoaded((prev) => (prev.status === "ready" ? prev : { status: "failed" }));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [githubLogin, swarmId, key, tick]);
-  return loaded;
+  const query = useQuery({
+    queryKey: ["walkthrough-manifest", githubLogin, swarmId, key, tick],
+    queryFn: async () => {
+      const r = await fetch(strutArtifactReaderUrl(githubLogin, swarmId, key), { credentials: "same-origin", cache: "no-store" });
+      if (!r.ok) throw new Error(String(r.status));
+      const manifest = parseWalkthroughManifest(await r.json(), key);
+      if (!manifest) throw new Error("unreadable manifest");
+      return manifest;
+    },
+    // A new frame is a new key; views that mount together share the read.
+    retry: false,
+  });
+  // While a new tick's read is in flight, or after it fails: the last good manifest.
+  const recording = `${swarmId}:${key}`;
+  const [lastGood, setLastGood] = useState<{ recording: string; manifest: WalkthroughManifest } | null>(null);
+  if (query.data && lastGood?.manifest !== query.data) setLastGood({ recording, manifest: query.data });
+  const manifest = query.data ?? (lastGood?.recording === recording ? lastGood.manifest : undefined);
+  if (manifest) return { status: "ready", manifest };
+  return query.isError ? { status: "failed" } : { status: "loading" };
 }
 
 const STATUS_WORDS: Record<string, string> = { recording: "Recording…", done: "Done", stopped: "Stopped" };
