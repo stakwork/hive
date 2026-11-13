@@ -116,7 +116,7 @@ beforeEach(() => {
     swarmApiKey: "enc-key",
     workspace: { id: "ws-oh", slug: "openhealth", name: "Open Health", sourceControlOrgId: "org-1", deleted: false },
   });
-  mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: true, canAdmin: true });
+  mockAccess.mockResolvedValue({ hasAccess: true, userRole: "ADMIN", canRead: true, canWrite: true, canAdmin: true });
   mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
     if (url === `${LAB}/apps/${BENCH}/versions`) return json(record);
     if (url === `${LAB}/apps/${BENCH}/active` && init?.method === "PUT") return putActive(JSON.parse(init.body as string));
@@ -149,7 +149,7 @@ describe("GET /api/orgs/[githubLogin]/strut/apps/versions", () => {
     });
     expect(text).not.toContain("enc-key");
     expect((mockFetch.mock.calls[0][1] as RequestInit).headers).toMatchObject({ "x-api-token": "dec(enc-key)" });
-    mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: true, canAdmin: false });
+    mockAccess.mockResolvedValue({ hasAccess: true, userRole: "ADMIN", canRead: true, canWrite: true, canAdmin: false });
     expect(await (await GET(get({ swarmId: "swarm-oh", app: "acme/bench" }), params)).json()).toMatchObject({ canSetLive: false });
   });
 
@@ -194,7 +194,7 @@ describe("POST /api/orgs/[githubLogin]/strut/apps/versions", () => {
   });
 
   it("403 for a non-admin of the swarm's workspace, before strut is called", async () => {
-    mockAccess.mockResolvedValue({ hasAccess: true, canRead: true, canWrite: true, canAdmin: false });
+    mockAccess.mockResolvedValue({ hasAccess: true, userRole: "ADMIN", canRead: true, canWrite: true, canAdmin: false });
     for (const target of [{ version: "v2" }, { release: "r2" }, { version: "latest" }]) {
       const res = await POST(post({ swarmId: "swarm-oh", app: "acme/bench", ...target }), params);
       expect(res.status).toBe(403);
