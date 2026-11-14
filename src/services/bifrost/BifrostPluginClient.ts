@@ -2,6 +2,7 @@ import { BIFROST_HTTP_TIMEOUT_MS } from "./constants";
 import { BifrostHttpError } from "./BifrostClient";
 import type {
   AgentCatalogManifest,
+  EnforcementStatusResponse,
   HiveCallbackPayload,
   HiveCallbackResponse,
   SeedAgentsResponse,
@@ -166,6 +167,38 @@ export class BifrostPluginClient {
       "/_plugin/hive-callback",
       payload,
     );
+  }
+
+  /**
+   * GET /_plugin/enforcement/status — is the gateway really enforcing?
+   *
+   * EXPECTED endpoint and shape (no such route exists in the client
+   * today; the gateway job must supply it — see `EnforcementStatusResponse`):
+   *   { macaroon_enforcement: boolean, budget_enforcement: boolean,
+   *     redis_healthy: boolean }
+   * Callers (pod-budget) fail CLOSED unless all three are `true`.
+   */
+  async getEnforcementStatus(): Promise<EnforcementStatusResponse> {
+    return this.request<EnforcementStatusResponse>(
+      "GET",
+      "/_plugin/enforcement/status",
+    );
+  }
+
+  /**
+   * POST /_plugin/revocations — revoke every macaroon carrying `run_id`.
+   * The trust entry already carries `revocation_poll_seconds`
+   * (see `DEFAULT_REVOCATION_POLL_SECONDS`), so a revocation list is
+   * planned, but no write route exists yet: the gateway job must supply
+   * this one.
+   *
+   * EXPECTED request  { run_id: string }
+   * EXPECTED response { ok: boolean } (an unknown run id is not an error)
+   */
+  async revokeRun(runId: string): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>("POST", "/_plugin/revocations", {
+      run_id: runId,
+    });
   }
 
   private async request<T>(

@@ -6,6 +6,7 @@
  */
 
 import { db } from "@/lib/db";
+import { isPodMothershipBudgetConfigured } from "@/config/env";
 import { Prisma, PodStatus, PodUsageStatus } from "@prisma/client";
 import type { Pod } from "@prisma/client";
 import { markPodAsUnused } from "./karpenter";
@@ -318,6 +319,9 @@ export async function getPodDetails(
  * @returns The released pod or null if not found
  */
 export async function releasePodById(podId: string): Promise<Pod | null> {
+  // Claim time, read before the release clears it: the pod-budget run id
+  // is derived from it (see services/bifrost/pod-budget.ts).
+  let claimedAt = null as Date | null;
   const released = await db.$transaction(async (tx) => {
     // First, find the pod to ensure it exists
     const existingPod = await tx.pod.findFirst({
@@ -330,6 +334,7 @@ export async function releasePodById(podId: string): Promise<Pod | null> {
     if (!existingPod) {
       return null;
     }
+    claimedAt = existingPod.usageStatusMarkedAt;
 
     // Clear task associations
     await tx.task.updateMany({
@@ -358,6 +363,16 @@ export async function releasePodById(podId: string): Promise<Pod | null> {
 
     return updatedPod;
   });
+
+  // Pod budget (flag off: skipped entirely). Fire-and-forget and
+  // best-effort: revoking the per-claim permission never blocks a release.
+  // Every release path (releaseTaskPod, drop-pod, claim rollbacks, crons)
+  // ends here.
+  if (released && isPodMothershipBudgetConfigured()) {
+    void import("@/services/bifrost/pod-budget")
+      .then((m) => m.revokePodClaimPermission(released.swarmId, released.podId, claimedAt))
+      .catch(() => {});
+  }
 
   // Fire-and-forget: allow Karpenter to consolidate node after release
   if (released) {

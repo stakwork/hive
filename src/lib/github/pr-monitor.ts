@@ -27,6 +27,7 @@ import { fetchCIStatus, inferFailedCommand } from "./pr-ci";
 // Deep import — see comment in services/task-workflow.ts.
 import { getBifrostForLLM } from "@/services/bifrost/orchestrator";
 import { releaseTaskPod } from "@/lib/pods/utils";
+import { isPodMothershipBudgetEnabled } from "@/config/env";
 
 const LOG_PREFIX = "[PRMonitor]";
 const encryptionService = EncryptionService.getInstance();
@@ -1625,19 +1626,40 @@ export async function triggerAgentModeFix(
     }
 
     const bifrostUserId = task.createdById ?? task.workspace.ownerId;
-    const bifrost = await getBifrostForLLM(
-      {
-        workspaceId: task.workspaceId,
-        workspaceSlug: task.workspace.slug,
-        userId: bifrostUserId,
-      },
-      { agentName: "coding-agent" },
-    );
+    // Pod budget (POD_MOTHERSHIP_BUDGET_ENABLED, off by default): the pod
+    // gets the per-claim gateway credential, never ANTHROPIC_API_KEY; no
+    // credential means the fix attempt fails (no fallback).
+    const podBudgetOn = !!task.podId && isPodMothershipBudgetEnabled(task.workspace.slug);
+    let bifrost;
+    if (podBudgetOn) {
+      try {
+        const { acquirePodGatewayCredential } = await import("@/services/bifrost/pod-budget");
+        bifrost = await acquirePodGatewayCredential(
+          { workspaceId: task.workspaceId, workspaceSlug: task.workspace.slug, userId: bifrostUserId },
+          task.podId!,
+        );
+      } catch (err) {
+        log.error("Pod budget credential unavailable; not starting agent session", {
+          taskId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return { success: false, error: err instanceof Error ? err.message : "Pod budget credential unavailable" };
+      }
+    } else {
+      bifrost = await getBifrostForLLM(
+        {
+          workspaceId: task.workspaceId,
+          workspaceSlug: task.workspace.slug,
+          userId: bifrostUserId,
+        },
+        { agentName: "coding-agent" },
+      );
+    }
 
     const sessionBody: Record<string, unknown> = {
       sessionId: taskId,
       webhookUrl,
-      apiKey: bifrost?.apiKey ?? process.env.ANTHROPIC_API_KEY,
+      apiKey: bifrost?.apiKey ?? (podBudgetOn ? undefined : process.env.ANTHROPIC_API_KEY),
     };
     if (bifrost) {
       sessionBody.baseUrl = bifrost.baseUrl;

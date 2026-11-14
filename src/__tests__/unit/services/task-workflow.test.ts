@@ -25,6 +25,8 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/config/env", () => ({
+  isPodMothershipBudgetEnabled: () => false,
+  isPodMothershipBudgetConfigured: () => false,
   config: {
     STAKWORK_API_KEY: "test-api-key",
     STAKWORK_BASE_URL: "https://test-stakwork.com",

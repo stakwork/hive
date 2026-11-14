@@ -34,6 +34,12 @@ export const BIFROST_AGENT_NAMES = [
   // `strut-assistant` is the leaf a strut chat turn is billed as.
   "strut-agent",
   "strut-assistant",
+  // Pod budget (POD_MOTHERSHIP_BUDGET_ENABLED). Pod-specific identities so
+  // pod spend is never mixed into the shared `coding-agent` budget line:
+  // `pod-agent` = goose / workflow sessions on a claimed pod,
+  // `pod-repair-agent` = the pod repair cron and its frontend validation.
+  "pod-agent",
+  "pod-repair-agent",
 ] as const;
 
 export type BifrostAgentName = (typeof BIFROST_AGENT_NAMES)[number];

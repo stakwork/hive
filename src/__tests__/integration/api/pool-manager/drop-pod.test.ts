@@ -19,6 +19,8 @@ import { db } from "@/lib/db";
 
 // Mock environment config
 vi.mock("@/config/env", () => ({
+  isPodMothershipBudgetEnabled: () => false,
+  isPodMothershipBudgetConfigured: () => false,
   config: {
     POOL_MANAGER_BASE_URL: "https://pool-manager.test.com",
   },
