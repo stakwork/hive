@@ -164,3 +164,10 @@ export function workspaceAppPath(workspaceSlug: string, app: string, input?: str
   const path = `/w/${encodeURIComponent(workspaceSlug)}/apps/${encodeStrutPath(app)}`;
   return input ? `${path}?${new URLSearchParams({ input })}` : path;
 }
+
+/** An app's standalone, chrome-less page (`/strut-app/<org>`), at `version` when one is named: what "Open in new window" opens. */
+export function strutAppStandalonePath(source: StrutAppSource): string {
+  const query = new URLSearchParams({ swarmId: source.swarmId, app: source.app });
+  if (source.version) query.set("version", source.version);
+  return `/strut-app/${encodeURIComponent(source.githubLogin)}?${query}`;
+}

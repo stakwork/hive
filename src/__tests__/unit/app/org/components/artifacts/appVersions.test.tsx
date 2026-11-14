@@ -142,6 +142,14 @@ describe("AppActions, following latest", () => {
     expect(screen.queryByRole("menuitem", { name: /Follow latest/ })).not.toBeInTheDocument();
   });
 
+  it("'Open in new window' opens the app's standalone page at the shown version", async () => {
+    await show(following());
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    fireEvent.click(screen.getByRole("button", { name: "Open in new window" }));
+    expect(open).toHaveBeenCalledWith("/strut-app/stakwork?swarmId=swarm-oh&app=acme%2Fbench&version=v3", "_blank", "noopener,noreferrer");
+    open.mockRestore();
+  });
+
   it("'Hold at vN' promotes the live version, re-reads, and tells the tabs", async () => {
     await show(following());
     const changed = vi.fn();
