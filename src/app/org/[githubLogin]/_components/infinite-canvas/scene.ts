@@ -116,11 +116,11 @@ function brainstorms(ctx: Ctx, f: Rect, id: string, scale: number): Rect {
   if (!roots.length) return f;
   const openId = openTree(b, id, ctx.open);
   const u = { w: f.w * scale, h: (f.w * scale) / 1.6 };
-  const qw = u.w * 0.34;
+  const qw = u.w * 0.46; // was 0.34
   const qh = u.h * 0.42;
-  const ow = u.w * 0.34;
+  const ow = u.w * 0.46; // was 0.34
   const oh = u.h * 0.3;
-  const og = u.h * 0.04;
+  const og = u.h * 0.02; // was 0.04
   const gx = u.w * 0.08;
   // A root keeps room for three answers and a follow-up for two, so answers arriving one by one don't move the tree.
   const treeH = (q: PlanNode, min: number): number => {
@@ -157,7 +157,7 @@ function brainstorms(ctx: Ctx, f: Rect, id: string, scale: number): Rect {
     }
     if (depth === 0) group = union(group, { x, y: top, w: 1, h });
   };
-  const gap = u.h * 0.08;
+  const gap = u.h * 0.03; // was 0.08
   // Every root takes the same slot (room for three answers), open or folded, so opening one never moves another.
   // A taller open tree just spills down to the right of the roots below it; their cards sit in the question column.
   const slot = 3 * (oh + og) - og;
