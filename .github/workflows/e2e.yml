@@ -11,7 +11,7 @@ on:
 jobs:
   playwright-shards:
     name: Playwright (shard ${{ matrix.shard }}/3)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -132,7 +132,7 @@ jobs:
           retention-days: 30
 
   playwright:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: always()
     needs: playwright-shards
 
