@@ -234,18 +234,27 @@ async function ownerLab(first: JobClaimsOwner): Promise<{ lab: Lab; headers: Rec
 
 /** A lab write; its error message when it is refused. */
 async function labWrite(lab: Lab, headers: Record<string, string>, path: string, body: unknown, timeoutMs: number): Promise<Record<string, unknown>> {
-  let res: Response;
-  try {
-    res = await fetch(`${lab.labBase}${path}`, { method: "POST", headers, body: JSON.stringify(body), cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
-  } catch (err) {
-    throw new JobClaimsError(502, `The job's swarm did not answer: ${err instanceof Error ? err.message : String(err)}`);
+  const MAX_ATTEMPTS = 3;
+  const RETRY_DELAY_MS = 500;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) await new Promise<void>((resolve) => setTimeout(resolve, RETRY_DELAY_MS * Math.pow(2, attempt - 1)));
+    let res: Response;
+    try {
+      res = await fetch(`${lab.labBase}${path}`, { method: "POST", headers, body: JSON.stringify(body), cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
+    } catch (err) {
+      lastErr = err;
+      continue;
+    }
+    const parsed = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (res.ok && !("error" in parsed)) return parsed;
+    const error = typeof parsed.error === "string" ? parsed.error : `HTTP ${res.status}`;
+    if (res.status === 409 && /claims/i.test(error)) throw new JobClaimsError(409, "This job's swarm has no claims layer.");
+    if (res.status === 404) throw new JobClaimsError(404, "The job is not on its swarm.");
+    throw new JobClaimsError(res.status >= 500 ? 502 : 400, error);
   }
-  const parsed = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  if (res.ok && !("error" in parsed)) return parsed;
-  const error = typeof parsed.error === "string" ? parsed.error : `HTTP ${res.status}`;
-  if (res.status === 409 && /claims/i.test(error)) throw new JobClaimsError(409, "This job's swarm has no claims layer.");
-  if (res.status === 404) throw new JobClaimsError(404, "The job is not on its swarm.");
-  throw new JobClaimsError(res.status >= 500 ? 502 : 400, error);
+  logger.warn("labWrite failed after retries", LOG_TAG, { path, error: lastErr instanceof Error ? lastErr.message : String(lastErr) });
+  throw new JobClaimsError(502, "The job's swarm is not responding — please retry.");
 }
 
 /** The job's newest turn hive launched — what a version made without a Verify is of. */
