@@ -116,7 +116,7 @@ function StatusPill({ pill }: { pill: Pill }) {
 
 // ─── The panel ────────────────────────────────────────────────────────────
 
-type ActionState = { status: "idle" } | { status: "busy"; what: string } | { status: "done"; note: string } | { status: "failed"; error: string };
+type ActionState = { status: "idle" } | { status: "busy"; what: string } | { status: "done"; note: string } | { status: "failed"; error: string; retry: () => void };
 
 /** One POST to the job's claims route; the new card's content when it published one, or `started` for a Verify the job runs detached. */
 async function act(githubLogin: string, job: string, body: Record<string, unknown>): Promise<{ note: string; content?: ClaimsContent; started?: true }> {
@@ -163,7 +163,8 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
       after?.();
       setState({ status: "done", note: out.note });
     } catch (err) {
-      setState({ status: "failed", error: err instanceof Error ? err.message : String(err) });
+      const retryFn = () => run(what, body, after);
+      setState({ status: "failed", error: err instanceof Error ? err.message : String(err), retry: retryFn });
     }
   };
 
@@ -183,7 +184,20 @@ export function ClaimsPanel({ content: given }: ArtifactViewerProps<"claims">) {
             </span>
           )}
           {state.status === "done" && <span data-testid="claims-note">{state.note}</span>}
-          {state.status === "failed" && <span className="text-amber-600 dark-os:text-amber-400">{state.error}</span>}
+          {state.status === "failed" && (
+            <>
+              <span className="text-amber-600 dark-os:text-amber-400">{state.error}</span>
+              <button
+                type="button"
+                data-testid="claims-retry"
+                disabled={busy}
+                onClick={() => state.retry()}
+                className="rounded-md border bg-background px-2 py-0.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+              >
+                Retry
+              </button>
+            </>
+          )}
           <button
             type="button"
             data-testid="claims-verify"
