@@ -207,6 +207,36 @@ describe("parseArtifactContent", () => {
     expect(parseArtifactContent("run_graph", { run: "row-1" })).toBeNull();
     expect(parseArtifactContent("run_graph", { workspace: "", run: "row-1" })).toBeNull();
   });
+
+  const traceLink = { toolName: "billing/sum-invoices", excerpt: "$12,338.84", match: "exact" as const };
+  const whole_trace = {
+    selection: "$12,338.84",
+    origin: { kind: "jamie" as const, conversationId: "conv-1", messageId: "m-2" },
+    upstream: [{ ...traceLink, toolCallId: "call-2", nodes: [{ ref_id: "acct_1", node_type: "Account" }] }],
+    downstream: [{ ...traceLink, toolName: "report/write-summary", path: "3", match: "exact" as const }],
+  };
+
+  test("a trace keeps a whole link, with or without nodes", () => {
+    expect(parseArtifactContent("trace", whole_trace)).toEqual(whole_trace);
+  });
+
+  test("a trace needs a selection and an origin; upstream and downstream default to empty", () => {
+    expect(parseArtifactContent("trace", { selection: "x", origin: { kind: "strut", workspace: "acme", run: "row-1" } })).toEqual(
+      { selection: "x", origin: { kind: "strut", workspace: "acme", run: "row-1" }, upstream: [], downstream: [] },
+    );
+    expect(parseArtifactContent("trace", { origin: whole_trace.origin, upstream: [] })).toBeNull();
+    expect(parseArtifactContent("trace", { selection: "x", origin: { kind: "elsewhere" } })).toBeNull();
+    expect(parseArtifactContent("trace", { selection: "x", origin: null })).toBeNull();
+  });
+
+  test("a trace drops a link missing its tool name, excerpt or match, or with a node missing its ref_id", () => {
+    expect(parseArtifactContent("trace", { ...whole_trace, upstream: [{ excerpt: "x", match: "exact" }] })).toBeNull();
+    expect(parseArtifactContent("trace", { ...whole_trace, upstream: [{ toolName: "x", match: "exact" }] })).toBeNull();
+    expect(parseArtifactContent("trace", { ...whole_trace, upstream: [{ toolName: "x", excerpt: "x", match: "sort-of" }] })).toBeNull();
+    expect(
+      parseArtifactContent("trace", { ...whole_trace, upstream: [{ toolName: "x", excerpt: "x", match: "exact", nodes: [{}] }] }),
+    ).toBeNull();
+  });
 });
 
 describe("parseArtifactContent — graph, brainstorm tree", () => {
