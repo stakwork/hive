@@ -28,6 +28,7 @@ import { artifactAsks, artifactHref, artifactKind } from "./registry";
 import { useArtifactContent } from "./useArtifactContent";
 import { useOpenArtifact } from "./openArtifact";
 import { artifactShareUrl } from "./shareLink";
+import { pdfFilename, pdfModeOf } from "./artifactPdf";
 import { useActiveArtifacts, useArtifactJobId, useArtifactJobs, useChatOrgLogin } from "./useArtifactPanel";
 
 /**
@@ -166,6 +167,33 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
       () => toast.error("Couldn't copy the link"),
     );
   };
+  const pdfMode = pdfModeOf(artifact.kind);
+  const downloadPdf = async () => {
+    if (!content || !pdfMode) return;
+    const id = toast.loading("Making the PDF…");
+    try {
+      const c = content as Record<string, unknown>;
+      const { buildArtifactPdf } = await import("./artifactPdfBuild");
+      const blob = await buildArtifactPdf({
+        mode: pdfMode,
+        title: artifact.title,
+        text: typeof copyText === "string" ? copyText : undefined,
+        url: typeof c.url === "string" ? c.url : undefined,
+        htmlSource:
+          pdfMode === "html"
+            ? "slug" in c
+              ? { githubLogin, slug: c.slug as string }
+              : { githubLogin, swarmId: c.swarmId as string, key: c.key as string }
+            : undefined,
+      });
+      const url = URL.createObjectURL(blob);
+      saveFile({ filename: pdfFilename(artifact.title), url });
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      toast.success("PDF downloaded", { id });
+    } catch {
+      toast.error("Couldn't make the PDF", { id });
+    }
+  };
   const showVersion = (next: number) => openArtifactPanel(identity, next === versions.length - 1 ? null : next);
 
   return (
@@ -252,9 +280,23 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
               <Download className="h-4 w-4" />
             </ToolbarButton>
           )}
-          <ToolbarButton label="Share" onClick={share}>
-            <Share2 className="h-4 w-4" />
-          </ToolbarButton>
+          <DropdownMenu>
+            <ActionTip label="Share">
+              <DropdownMenuTrigger asChild>
+                <button type="button" aria-label="Share" className={ICON_BUTTON_CLASS}>
+                  <Share2 className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+            </ActionTip>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={share}>Copy Link</DropdownMenuItem>
+              {pdfMode && (
+                <DropdownMenuItem disabled={!content} onSelect={() => void downloadPdf()}>
+                  Download PDF
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           {href && (
             <ActionTip label="Open in new tab">
               <a
