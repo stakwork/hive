@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { z } from "zod";
-import { getOrCreateJanitorConfig, updateJanitorConfig } from "@/services/janitor";
+import {
+  getOrCreateJanitorConfig,
+  updateJanitorConfig,
+  getOrCreateJanitorConfigForWorkspace,
+  updateJanitorConfigForWorkspace,
+} from "@/services/janitor";
+import { resolvePodCaller } from "@/lib/auth/pod-access";
+
+const orgKeyRequired = () => NextResponse.json({ error: "Org API key required" }, { status: 403 });
 
 const updateJanitorConfigSchema = z.object({
   unitTestsEnabled: z.boolean().optional(),
@@ -32,6 +40,15 @@ const updateJanitorConfigSchema = z.object({
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
+    if (request.headers.get("x-api-token")) {
+      const { slug } = await params;
+      const caller = await resolvePodCaller(request, { slug });
+      if (caller instanceof NextResponse) return caller;
+      if (caller.kind !== "org") return orgKeyRequired();
+      const config = await getOrCreateJanitorConfigForWorkspace(caller.workspaceId);
+      return NextResponse.json({ config });
+    }
+
     const session = await getServerSession(authOptions);
     const userId = (session?.user as { id?: string })?.id;
 
@@ -56,6 +73,31 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
+    if (request.headers.get("x-api-token")) {
+      const { slug } = await params;
+      const caller = await resolvePodCaller(request, { slug });
+      if (caller instanceof NextResponse) return caller;
+      if (caller.kind !== "org") return orgKeyRequired();
+
+      const body = await request.json();
+      const validatedData = updateJanitorConfigSchema.parse(body);
+      const config = await updateJanitorConfigForWorkspace(caller.workspaceId, slug, validatedData);
+
+      console.log(
+        JSON.stringify({
+          event: "api_token_write",
+          endpoint: "PUT /api/workspaces/[slug]/janitors/config",
+          actor: "org-key",
+          apiKeyId: caller.apiKeyId,
+          orgId: caller.orgId,
+          workspaceSlug: slug,
+          changedFields: Object.keys(validatedData),
+        }),
+      );
+
+      return NextResponse.json({ success: true, config });
+    }
+
     const session = await getServerSession(authOptions);
     const userId = (session?.user as { id?: string })?.id;
 

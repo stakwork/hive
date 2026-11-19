@@ -57,6 +57,44 @@ export async function isLegalBenchmarkRecursionEnabledForCron(): Promise<boolean
 }
 
 /**
+ * Get or create janitor configuration by workspaceId.
+ * Skips user access validation — the caller must already be authorized.
+ */
+export async function getOrCreateJanitorConfigForWorkspace(workspaceId: string) {
+  const config = await db.janitorConfig.findUnique({
+    where: { workspaceId }
+  });
+
+  if (config) return config;
+
+  return await db.janitorConfig.create({
+    data: { workspaceId }
+  });
+}
+
+/**
+ * Update janitor configuration by workspaceId.
+ * Skips user access validation — the caller must already be authorized.
+ */
+export async function updateJanitorConfigForWorkspace(
+  workspaceId: string,
+  workspaceSlug: string,
+  data: JanitorConfigUpdate
+) {
+  const config = await getOrCreateJanitorConfigForWorkspace(workspaceId);
+
+  // Tenant guard: legalBenchmarkRecursionEnabled may only be written for the openlaw workspace
+  if ('legalBenchmarkRecursionEnabled' in data && workspaceSlug !== 'openlaw') {
+    delete (data as Partial<typeof data>).legalBenchmarkRecursionEnabled;
+  }
+
+  return await db.janitorConfig.update({
+    where: { id: config.id },
+    data,
+  });
+}
+
+/**
  * Get or create janitor configuration for a workspace
  */
 export async function getOrCreateJanitorConfig(workspaceSlug: string, userId: string) {
@@ -65,18 +103,7 @@ export async function getOrCreateJanitorConfig(workspaceSlug: string, userId: st
     throw new Error(JANITOR_ERRORS.WORKSPACE_NOT_FOUND);
   }
 
-  const workspaceId = validation.workspace!.id;
-  let config = await db.janitorConfig.findUnique({
-    where: { workspaceId }
-  });
-
-  if (!config) {
-    config = await db.janitorConfig.create({
-      data: { workspaceId }
-    });
-  }
-
-  return config;
+  return await getOrCreateJanitorConfigForWorkspace(validation.workspace!.id);
 }
 
 /**
@@ -92,26 +119,7 @@ export async function updateJanitorConfig(
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
 
-  const workspaceId = validation.workspace!.id;
-  let config = await db.janitorConfig.findUnique({
-    where: { workspaceId }
-  });
-
-  if (!config) {
-    config = await db.janitorConfig.create({
-      data: { workspaceId }
-    });
-  }
-
-  // Tenant guard: legalBenchmarkRecursionEnabled may only be written for the openlaw workspace
-  if ('legalBenchmarkRecursionEnabled' in data && workspaceSlug !== 'openlaw') {
-    delete (data as Partial<typeof data>).legalBenchmarkRecursionEnabled;
-  }
-
-  return await db.janitorConfig.update({
-    where: { id: config.id },
-    data,
-  });
+  return await updateJanitorConfigForWorkspace(validation.workspace!.id, workspaceSlug, data);
 }
 
 /**
