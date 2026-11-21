@@ -282,10 +282,8 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
           )}
           <DropdownMenu>
             <ActionTip label="Share">
-              <DropdownMenuTrigger asChild>
-                <button type="button" aria-label="Share" className={ICON_BUTTON_CLASS}>
-                  <Share2 className="h-4 w-4" />
-                </button>
+              <DropdownMenuTrigger aria-label="Share" className={ICON_BUTTON_CLASS}>
+                <Share2 className="h-4 w-4" />
               </DropdownMenuTrigger>
             </ActionTip>
             <DropdownMenuContent align="end">
