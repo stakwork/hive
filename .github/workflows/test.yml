@@ -50,7 +50,7 @@ jobs:
         env:
           POSTGRES_USER: hive_user
           POSTGRES_PASSWORD: hive_password
-          POSTGRES_DB: hive_db
+          POSTGRES_DB: hive_test
         ports:
           - 5432:5432
         options: >-
@@ -81,15 +81,15 @@ jobs:
 
       - name: Run Prisma migrations
         env:
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
-          DIRECT_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_test
+          DIRECT_URL: postgresql://hive_user:hive_password@localhost:5432/hive_test
         run: npx prisma migrate deploy
 
       - name: Run integration tests
         env:
           TEST_SUITE: integration
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
-          DIRECT_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_test
+          DIRECT_URL: postgresql://hive_user:hive_password@localhost:5432/hive_test
           NEXTAUTH_URL: http://localhost:3000
           NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
