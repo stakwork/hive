@@ -212,10 +212,18 @@ describe("POST /api/orgs/[githubLogin]/strut/apps/mcp", () => {
       { actor: "actor-of-user-1" },
     );
     mockFetch.mockResolvedValue(new Response(null, { status: 202 }));
-    expect((await POST(request(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })), params)).status).toBe(202);
+    expect((await POST(request(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })), params)).status).toBe(200);
     await POST(request(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" })), params);
     expect(mockFetch).toHaveBeenCalledTimes(3);
     expect(mockEnsure).toHaveBeenCalledTimes(1);
+  });
+
+  it("converts a 202 from strut to 200 to prevent the MCP client opening a GET SSE stream", async () => {
+    mockFetch.mockResolvedValue(new Response(null, { status: 202 }));
+    const res = await POST(request(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })), params);
+    expect(res.status).toBe(200);
+    // 202 → 200: the client will not attempt GET SSE (which the relay returns 405 for)
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("a swarm that refuses hive's key is a 502, never the member's 401", async () => {

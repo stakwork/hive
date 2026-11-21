@@ -385,6 +385,14 @@ export async function relayToStrutMcp(opts: {
     const value = upstream.headers.get(name);
     if (value) out.set(name, value);
   }
+  // Hive's relay is stateless and does not support GET SSE (GET → 405).
+  // If strut returns 202 — the Streamable HTTP spec's signal that the server
+  // will push via GET SSE — downgrade to 200 so the MCP client never opens
+  // a GET SSE stream that would instantly fail.
+  if (upstream.status === 202) {
+    await upstream.body?.cancel().catch(() => {});
+    return new Response(null, { status: 200, headers: out });
+  }
   return new Response(upstream.body, { status: upstream.status, headers: out });
 }
 
