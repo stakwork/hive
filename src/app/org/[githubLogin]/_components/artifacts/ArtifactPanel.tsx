@@ -22,6 +22,7 @@ import {
   type ResolvedArtifactPanel,
 } from "../../_state/canvasChatArtifacts";
 import { ActionTip } from "../ActionTip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isTypingTarget } from "../control-panel/ControlPanelList";
 import { ICON_BUTTON_CLASS, MissingContentPanel, ToolbarButton, ViewerBoundary } from "./chrome";
 import { artifactAsks, artifactHref, artifactKind } from "./registry";
@@ -281,11 +282,16 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
             </ToolbarButton>
           )}
           <DropdownMenu>
-            <ActionTip label="Share">
-              <DropdownMenuTrigger aria-label="Share" className={ICON_BUTTON_CLASS}>
-                <Share2 className="h-4 w-4" />
-              </DropdownMenuTrigger>
-            </ActionTip>
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" aria-label="Share" className={ICON_BUTTON_CLASS}>
+                    <Share2 className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Share</TooltipContent>
+            </Tooltip>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={share}>Copy Link</DropdownMenuItem>
               {pdfMode && (
