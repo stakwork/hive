@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { GraphWorkbench } from "@/components/graph-workbench";
@@ -9,6 +9,8 @@ import { getProposalStatus } from "@/lib/proposals/types";
 import type { ArtifactViewerProps } from "../../../_state/canvasChatArtifacts";
 import { brainstormCardOf, ChoiceTree, choiceTreeQuery, isTreeArtifact } from "./ChoiceTree";
 import { selectActiveMessages, useCanvasChatStore } from "../../../_state/canvasChatStore";
+import { orgGraphNodeLink } from "../../graphHref";
+import { useChatOrgLogin } from "../useArtifactPanel";
 import { MiniGraph, type MiniGraphEdge, type MiniGraphNode } from "./miniGraph";
 
 const NOTICE = {
@@ -65,6 +67,12 @@ function TreeWithCanvasLink({ workspace, focus, label }: { workspace: string; fo
 export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) {
   const tree = isTreeArtifact(artifact, content);
   const decided = useProposalDecision(content);
+  const githubLogin = useChatOrgLogin();
+  // A node shared from here opens on the org page's graph view.
+  const nodeLink = useMemo(
+    () => (githubLogin ? orgGraphNodeLink(githubLogin, content.workspace) : undefined),
+    [githubLogin, content.workspace],
+  );
   const created = content.changes?.find((c) => c.kind === "node")?.name;
   // An approval lands on what it created, else where the proposal was centred.
   const approvedFocus = [created, content.focus].filter((ref): ref is string => !!ref);
@@ -78,6 +86,7 @@ export function GraphPanel({ artifact, content }: ArtifactViewerProps<"graph">) 
         initialFocusId={decided === "approved" ? approvedFocus : content.focus}
         changes={decided ? undefined : content.changes}
         notice={decided ? NOTICE[decided] : undefined}
+        nodeLink={nodeLink}
       />
     </div>
   );

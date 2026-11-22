@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { orgGraphHref } from "../_components/graphHref";
 
 interface GraphPageProps {
   params: Promise<{ githubLogin: string }>;
@@ -8,9 +9,11 @@ interface GraphPageProps {
 /** The graph is a view of the org page now (`?view=graph`); old links land there. */
 export default async function GraphPage({ params, searchParams }: GraphPageProps) {
   const { githubLogin } = await params;
-  const query = await searchParams;
-  const next = new URLSearchParams({ view: "graph" });
-  if (typeof query.workspace === "string") next.set("workspace", query.workspace);
-  if (typeof query.node === "string") next.set("gnode", query.node);
-  redirect(`/org/${githubLogin}?${next.toString()}`);
+  const { workspace, node } = await searchParams;
+  redirect(
+    orgGraphHref(githubLogin, {
+      workspace: typeof workspace === "string" ? workspace : null,
+      refId: typeof node === "string" ? node : null,
+    }),
+  );
 }
