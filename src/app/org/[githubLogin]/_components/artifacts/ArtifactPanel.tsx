@@ -191,7 +191,8 @@ function OpenArtifact({ shown, others }: { shown: ResolvedArtifactPanel; others:
       saveFile({ filename: pdfFilename(artifact.title), url });
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
       toast.success("PDF downloaded", { id });
-    } catch {
+    } catch (err) {
+      console.error("[artifact-pdf] failed", err);
       toast.error("Couldn't make the PDF", { id });
     }
   };
