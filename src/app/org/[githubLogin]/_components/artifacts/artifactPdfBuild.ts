@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
 import { htmlArtifactProxyUrl, type HtmlArtifactSource } from "@/lib/utils/html-body-proxy";
-import { injectHtmlArtifactCsp } from "@/lib/utils/html-artifact-csp";
+import { injectHtmlArtifactCsp, HTML_ARTIFACT_CSP } from "@/lib/utils/html-artifact-csp";
 import {
   capturePlan,
   chunkIndexOf,
@@ -162,6 +162,31 @@ export async function buildImagePdf(url: string): Promise<jsPDF> {
 }
 
 const HTML_WIDTH = 1024;
+
+/**
+ * The page as a static, script-less document for html2canvas. The viewer CSP has
+ * `frame-src 'none'` / `default-src 'none'`, which blocks the scratch iframe html2canvas
+ * clones the page into — so the capture frame gets the same policy minus that, with
+ * scripts off entirely (the frame is also sandboxed without allow-scripts).
+ */
+const CAPTURE_CSP = HTML_ARTIFACT_CSP.split("; ")
+  .filter((d) => !d.startsWith("frame-src") && !d.startsWith("script-src"))
+  .concat("script-src 'none'", "frame-src about: blob: data:")
+  .join("; ");
+
+function toCaptureHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll('meta[http-equiv]').forEach((m) => {
+    if (/content-security-policy/i.test(m.getAttribute("http-equiv") ?? "")) m.remove();
+  });
+  doc.querySelectorAll("script").forEach((el) => el.remove());
+  const meta = doc.createElement("meta");
+  meta.setAttribute("http-equiv", "Content-Security-Policy");
+  meta.setAttribute("content", CAPTURE_CSP);
+  doc.head.insertBefore(meta, doc.head.firstChild);
+  const dt = doc.doctype ? `<!DOCTYPE ${doc.doctype.name}>` : "";
+  return dt + doc.documentElement.outerHTML;
+}
 const SNAPSHOT_TIMEOUT_MS = 15_000;
 const SNAPSHOT_NUDGE_MS = 8_000;
 
@@ -240,7 +265,11 @@ export async function buildHtmlPdf(source: HtmlArtifactSource): Promise<jsPDF> {
   if (!res.ok) throw new Error(`Page ${res.status}`);
   const fetched = injectHtmlArtifactCsp(await res.text());
   const snapshot = await snapshotRenderedPage(fetched).catch(() => null);
-  const staticHtml = snapshot ? injectHtmlArtifactCsp(snapshot.html) : fetched;
+  return buildPdfFromStaticHtml(snapshot ? snapshot.html : fetched);
+}
+
+async function buildPdfFromStaticHtml(html: string): Promise<jsPDF> {
+  const staticHtml = toCaptureHtml(html);
 
   const blobUrl = URL.createObjectURL(new Blob([staticHtml], { type: "text/html; charset=utf-8" }));
   const frame = offscreenFrame("allow-same-origin");
@@ -259,6 +288,7 @@ export async function buildHtmlPdf(source: HtmlArtifactSource): Promise<jsPDF> {
             }),
       ),
     );
+    // Capture the frame's own document, never the Hive UI around it.
     const root = doc.documentElement;
     // Let the frame grow to the whole page so nothing is clipped by the viewport.
     frame.style.height = `${Math.max(root.scrollHeight, doc.body.scrollHeight)}px`;
@@ -286,6 +316,7 @@ export async function buildHtmlPdf(source: HtmlArtifactSource): Promise<jsPDF> {
           windowWidth: HTML_WIDTH,
           windowHeight: height,
           useCORS: true,
+          allowTaint: true,
           logging: false,
         });
         chunkAt = ci;
