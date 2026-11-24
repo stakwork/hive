@@ -13,7 +13,7 @@ import {
 
 /**
  * Builds the PDF for an artifact, client-side. Only ever imported
- * dynamically, so jspdf and html2canvas stay out of the initial bundle.
+ * dynamically, so jspdf and html2canvas-pro stay out of the initial bundle.
  */
 
 const MARGIN = 15; // mm
@@ -295,7 +295,7 @@ async function buildPdfFromStaticHtml(html: string): Promise<jsPDF> {
     await new Promise((r) => setTimeout(r, 100));
     const height = Math.max(root.scrollHeight, doc.body.scrollHeight);
 
-    const { default: html2canvas } = await import("html2canvas");
+    const { default: html2canvas } = await import("html2canvas-pro");
     const plan = capturePlan(height, HTML_WIDTH);
     const pages = pageRanges(height, HTML_WIDTH);
     const pdf = await newPdf();

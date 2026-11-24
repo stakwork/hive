@@ -124,9 +124,20 @@ if(document.readyState==="complete")settle();else window.addEventListener("load"
 })();`;
 }
 
-/** The page with the snapshot script added at the end of its body. */
+/**
+ * Runs before the page's own scripts. The snapshot frame has an opaque origin, so
+ * `localStorage`/`sessionStorage` throw SecurityError there and a page that reads them on
+ * load (a saved EN/ES choice) would stop before rendering. In-memory stand-ins keep it going.
+ */
+export const STORAGE_SHIM_SOURCE = `(function(){function mk(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}
+["localStorage","sessionStorage"].forEach(function(n){try{Object.defineProperty(window,n,{value:mk(),configurable:true})}catch(e){}})})();`;
+
+/** The page with the storage shim before its first script and the snapshot script at the end of its body. */
 export function injectSnapshotScript(html: string, nonce: string): string {
   const tag = `<script>${snapshotScriptSource(nonce).replace(/<\/script/gi, "<\\/script")}</script>`;
-  const at = html.toLowerCase().lastIndexOf("</body>");
-  return at === -1 ? html + tag : html.slice(0, at) + tag + html.slice(at);
+  const shim = `<script>${STORAGE_SHIM_SOURCE}</script>`;
+  const first = html.search(/<script[\s>]/i);
+  const withShim = first === -1 ? html : html.slice(0, first) + shim + html.slice(first);
+  const at = withShim.toLowerCase().lastIndexOf("</body>");
+  return at === -1 ? withShim + tag : withShim.slice(0, at) + tag + withShim.slice(at);
 }
