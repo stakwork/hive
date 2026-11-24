@@ -22,19 +22,19 @@ export async function generateMetadata({
         allowPublicViewer: true,
       });
       if (workspace) {
-        return { title: workspace.name };
+        return { title: { default: workspace.name, template: '%s — ' + workspace.name } };
       }
     } else {
       const workspace = await getPublicWorkspaceBySlug(slug);
       if (workspace) {
-        return { title: workspace.name };
+        return { title: { default: workspace.name, template: '%s — ' + workspace.name } };
       }
     }
   } catch (error) {
     console.error("Error fetching workspace for metadata:", error);
   }
 
-  return { title: "Hive" };
+  return { title: { default: "Hive", template: "%s — Hive" } };
 }
 
 export default async function DashboardRootLayout({

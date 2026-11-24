@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { LingoExplorer } from "./components/LingoExplorer";
 
 interface LingoPageProps {
   params: Promise<{ slug: string }>;
 }
+
+export const metadata: Metadata = { title: "Lingo" };
 
 export default async function LingoPage({ params }: LingoPageProps) {
   const { slug } = await params;

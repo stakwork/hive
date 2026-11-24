@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
 
@@ -8,6 +9,8 @@ import { getWorkspaceBySlug } from "@/services/workspace";
 interface StrutPageProps {
   params: Promise<{ slug: string }>;
 }
+
+export const metadata: Metadata = { title: "Strut" };
 
 /**
  * `/w/[slug]/strut` — embeds THIS workspace's own swarm's strut lab (never
