@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { SettingsTabs } from "@/components/settings/SettingsTabs";
 import { PageHeader } from "@/components/ui/page-header";
 import { authOptions } from "@/lib/auth/nextauth";
@@ -5,6 +6,8 @@ import { checkIsSuperAdmin } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
+
+export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage({ params }: { params: Promise<{ slug: string }> }) {
   const session = await getServerSession(authOptions);

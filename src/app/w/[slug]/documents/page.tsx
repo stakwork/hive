@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/nextauth";
 import DocxEditorPage from "@/components/docx-editor/DocxEditorPage";
+
+export const metadata: Metadata = { title: "Documents" };
 
 export default async function DocumentsPage({
   params,

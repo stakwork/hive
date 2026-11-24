@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { LearnViewer } from "./components/LearnViewer";
 
 interface LearnPageProps {
@@ -5,6 +6,8 @@ interface LearnPageProps {
     slug: string;
   }>;
 }
+
+export const metadata: Metadata = { title: "Learn" };
 
 export default async function LearnPage({ params }: LearnPageProps) {
   const { slug } = await params;

@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { GraphAdminClient } from "./client";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
+
+export const metadata: Metadata = { title: "Graph Admin" };
 
 export default async function GraphAdminPage({ params }: { params: Promise<{ slug: string }> }) {
   const session = await getServerSession(authOptions);

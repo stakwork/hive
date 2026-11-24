@@ -12,7 +12,7 @@ export function getMetadata(): Metadata {
   const manifestPath = isDevMode ? "/dev/dev.webmanifest" : "/site.webmanifest";
 
   return {
-    title: "Hive",
+    title: { default: "Hive", template: "%s — Hive" },
     description: "AI-first PM toolkit",
     icons: {
       icon: [
