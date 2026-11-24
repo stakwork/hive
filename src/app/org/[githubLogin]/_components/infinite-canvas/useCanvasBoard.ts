@@ -78,7 +78,10 @@ export function applyLocally(tree: InitiativeTreeData, ops: PlanOp[]): Initiativ
     added.forEach((o, i) =>
       next.edges.push({ source: o.parent!, target: next.nodes[tree.nodes.length + i].ref_id, type: ADD_EDGE[o.type]! }),
     );
-    return applyLocally(next, ops.filter((o) => o.op !== "add"));
+    return applyLocally(
+      next,
+      ops.filter((o) => o.op !== "add"),
+    );
   }
   const edits = new Map(ops.flatMap((o) => (o.op === "edit" ? [[o.ref, o.fields] as const] : [])));
   // A deleted card hides everything under it, as the read does.
@@ -119,7 +122,16 @@ const combineChoices = (results: Array<{ data?: ChoiceTreeData }>) => results.ma
 export function useCanvasBoard(
   githubLogin: string,
   slugs: string[],
-  { read, openInitiative }: { read: (ids: string[]) => string[]; openInitiative: string | null },
+  {
+    read,
+    openInitiative,
+    onCreated,
+  }: {
+    read: (ids: string[]) => string[];
+    openInitiative: string | null;
+    /** The ref_ids of cards this user's own save just created (they aren't live arrivals). */
+    onCreated?: (ids: string[]) => void;
+  },
 ) {
   const qc = useQueryClient();
   const lists = useQueries({
@@ -191,6 +203,8 @@ export function useCanvasBoard(
   );
 
   const board: Board = useMemo(() => toBoard(entries, brainstorms), [entries, brainstorms]);
+  /** Brainstorm roots whose tree hasn't been read yet. */
+  const unreadRoots = useMemo(() => roots.filter((_, i) => !choices[i]).map((r) => r.root), [roots, choices]);
 
   // A save anywhere (the desk, a teammate's canvas) re-reads that brainstorm, or that plan and the list.
   const channel = usePusherChannel(getOrgChannelName(githubLogin));
@@ -264,10 +278,12 @@ export function useCanvasBoard(
         toast.error(typeof res.body.error === "string" ? res.body.error : "Couldn't save that change.");
         return null;
       }
+      const created = (res.body.created as Record<string, string> | undefined) ?? {};
+      onCreated?.(Object.values(created));
       await qc.invalidateQueries({ queryKey: key });
-      return (res.body.created as Record<string, string> | undefined) ?? {};
+      return created;
     },
-    [entries, qc],
+    [entries, qc, onCreated],
   );
 
   /**
@@ -289,6 +305,7 @@ export function useCanvasBoard(
 
   return {
     board,
+    unreadRoots,
     entries,
     loading: slugs.length === 0 || lists.loading,
     /** Some of the plans asked for haven't been read yet. */

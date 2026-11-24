@@ -98,6 +98,8 @@ import { CANVAS_THEME, a, deskStyle, themeVars, v } from "./theme";
 import { type Pencil, withProposals } from "./proposals";
 import { useCanvasBoard } from "./useCanvasBoard";
 import { useCanvasProposals } from "./useCanvasProposals";
+import { arrivalNodesOf, unloadedScopes } from "./arrivals";
+import { useLiveArrivals, type Arriving } from "./useLiveArrivals";
 
 /** Design widths: each card is laid out at this width, then scaled to its screen size. */
 const FACE_W: Partial<Record<string, number>> = {
@@ -132,6 +134,15 @@ const KEYFRAMES = `
 .icb-spin { width: 10px; height: 10px; border-radius: 99px; border: 2px solid color-mix(in srgb, var(--ic-job) 25%, transparent); border-top-color: var(--ic-job); animation: icb-spin .8s linear infinite; flex-shrink: 0 }
 @keyframes icb-bloom { from { opacity: 0; transform: scale(.9) } to { opacity: 1; transform: none } }
 .icb-bloom { animation: icb-bloom .6s cubic-bezier(.2,.8,.2,1) both }
+/* A card the feed just added: it fades and settles in, then a highlight over it fades out, leaving the solid card.
+   Only opacity and transform animate (the ring is a static shadow on a layer whose opacity fades). */
+@keyframes icb-arrive-in { from { opacity: 0; transform: translateY(calc(14 * var(--icb-px, 1px))) scale(.94) } to { opacity: 1; transform: none } }
+@keyframes icb-arrive-ring { 0% { opacity: 0 } 12% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes icb-arrive-fade { from { opacity: 1 } to { opacity: 0 } }
+.icb-arrive { animation: icb-arrive-in .4s cubic-bezier(.2,.8,.2,1) var(--icb-delay, 0ms) both }
+.icb-arrive::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 6; opacity: 0; will-change: opacity;
+  box-shadow: 0 0 0 calc(3 * var(--icb-px, 1px)) color-mix(in srgb, var(--ic-job) 85%, transparent), 0 0 calc(40 * var(--icb-px, 1px)) calc(8 * var(--icb-px, 1px)) color-mix(in srgb, var(--ic-job) 40%, transparent);
+  animation: icb-arrive-ring 2.2s ease-out calc(var(--icb-delay, 0ms) + .4s) both }
 @keyframes icb-listen { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ic-job) 50%, transparent) } 100% { box-shadow: 0 0 0 16px transparent } }
 .icb-listen { animation: icb-listen 1.1s ease-out infinite }
 @keyframes icb-flash { 0%,60% { background-color: var(--ic-flash) } 100% { background-color: transparent } }
@@ -141,7 +152,9 @@ const KEYFRAMES = `
 .icb-editable:hover { background: color-mix(in srgb, var(--ic-road) 10%, transparent) }
 .icb-root :focus-visible { outline: 2px solid var(--ic-focus); outline-offset: 2px }
 .icb-root ::placeholder { color: var(--ic-faint) }
-@media (prefers-reduced-motion: reduce) { .icb-glow::after { opacity: 0 } .icb-glow::after, .icb-pulse, .icb-bloom, .icb-listen { animation: none } }
+@media (prefers-reduced-motion: reduce) { .icb-glow::after { opacity: 0 } .icb-glow::after, .icb-pulse, .icb-bloom, .icb-listen { animation: none }
+  /* No movement: the card is simply there, with the highlight fading out. */
+  .icb-arrive { animation: none } .icb-arrive::before { animation: icb-arrive-fade 2.2s ease-out var(--icb-delay, 0ms) both } }
 `;
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -223,6 +236,7 @@ export function InfiniteCanvas({
     const at = readAt();
     return at ? { at } : null;
   });
+  const ownAdds = useRef(new Set<string>());
   const {
     board: graphBoard,
     entries,
@@ -231,7 +245,10 @@ export function InfiniteCanvas({
     failed,
     savePlan,
     choose,
+    unreadRoots,
   } = useCanvasBoard(githubLogin, workspaceSlugs, {
+    // Cards this user's own save created are theirs, not live arrivals.
+    onCreated: (ids) => ids.forEach((id) => ownAdds.current.add(id)),
     // Plans are read for what's on the desk; all of them while ⌘K or the full list is open, or while seeking.
     read: (ids) => (palette || showAll || seek ? ids : [...new Set([...ids.slice(0, DESK_SIZE), ...pulled])]),
     openInitiative: initiative,
@@ -972,6 +989,20 @@ export function InfiniteCanvas({
     return name.length > 56 ? `${name.slice(0, 54)}…` : name;
   };
 
+  // Cards the feed adds while they're on screen arrive with a highlight; the rest just appear.
+  const arrivalNodes = useMemo(
+    () => arrivalNodesOf(board, scene, (id) => blend.vis(id, 1) > 0.3),
+    [board, scene, blend],
+  );
+  const unloaded = useMemo(() => unloadedScopes(board, unreadRoots), [board, unreadRoots]);
+  const arriving = useLiveArrivals({
+    nodes: arrivalNodes,
+    unloaded,
+    ready: !loading && framedOnce,
+    camRef,
+    vp,
+    own: ownAdds,
+  });
   const ordered = useMemo(
     () => [...scene.values()].sort((a, b) => Number(FORK_KINDS.includes(a.type)) - Number(FORK_KINDS.includes(b.type))),
     [scene],
@@ -1126,6 +1157,7 @@ export function InfiniteCanvas({
                               folded={!!q?.about && !q.follows && openTree(board, q.about, openTrees) !== n.id}
                               jobs={markersOf.get(n.id)}
                               register={register}
+                              arrival={arriving.get(n.id)}
                             />
                           );
                         })
@@ -1407,6 +1439,8 @@ type SceneItemProps = {
   /** A job on this card, running or just settled. */
   jobs?: CanvasJob[];
   register: (id: string, el: HTMLElement | null) => void;
+  /** The feed just added this card: it plays its arrival, after this delay. */
+  arrival?: ReturnType<Arriving["get"]>;
 };
 
 /**
@@ -1440,7 +1474,9 @@ const SceneCard = memo(function SceneCard({
   desk,
   jobs,
   register,
+  arrival,
 }: SceneItemProps & { hidden: boolean }) {
+  const zoom = useContext(SettledZoom);
   // A frame or face once drawn stays, hidden, while the level shows the other.
   const drewFrame = useRef(false);
   const drewFace = useRef(false);
@@ -1598,7 +1634,21 @@ const SceneCard = memo(function SceneCard({
         ...extra,
       }}
     >
-      {body}
+      {/* Always a wrapper, so a card's state survives its arrival ending; only the cards the feed adds animate. */}
+      <div
+        className={arrival ? "icb-arrive" : undefined}
+        style={
+          {
+            position: "absolute",
+            inset: 0,
+            borderRadius: n.type === "initiative" ? 28 : 14,
+            "--icb-px": `${1 / zoom}px`,
+            "--icb-delay": `${arrival?.delayMs ?? 0}ms`,
+          } as CSSProperties
+        }
+      >
+        {body}
+      </div>
       {jobs && vis >= 0.3 ? (
         <div
           style={{
