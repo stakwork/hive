@@ -78,6 +78,18 @@ import {
 
 const LOG_TAG = "STRUT_PEERS";
 
+/**
+ * Life, in days, asked of a catalog token at mint (`days` in the body of
+ * `POST /publisher/tokens`). The strut default is 60; the token rides in a
+ * subscriber's URL query string and so lands in access logs, and this cron
+ * re-mints every pass, so a short life costs nothing. Override with
+ * `STRUT_CATALOG_TOKEN_DAYS`. A publisher that ignores `days` keeps its default.
+ */
+const DEFAULT_CATALOG_TOKEN_DAYS = 7;
+const parsedCatalogDays = Number(process.env.STRUT_CATALOG_TOKEN_DAYS);
+export const CATALOG_TOKEN_DAYS =
+  Number.isFinite(parsedCatalogDays) && parsedCatalogDays > 0 ? Math.floor(parsedCatalogDays) || DEFAULT_CATALOG_TOKEN_DAYS : DEFAULT_CATALOG_TOKEN_DAYS;
+
 export interface StrutPeersReconcileError {
   /** The org's `githubLogin`. */
   org: string;
@@ -436,7 +448,7 @@ async function pushSubscriptions(orgLogin: string, home: StrutSwarm, peers: Stru
         const minted = await fetch(`${home.lab.labBase}/publisher/tokens`, {
           method: "POST",
           headers: headers(home.lab),
-          body: JSON.stringify({ subscriber: peer.slug }),
+          body: JSON.stringify({ subscriber: peer.slug, days: CATALOG_TOKEN_DAYS }),
           cache: "no-store",
           signal: AbortSignal.timeout(STRUT_DELEGATION_HTTP_TIMEOUT_MS),
         });

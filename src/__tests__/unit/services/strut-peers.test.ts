@@ -350,6 +350,7 @@ describe("runStrutPeersReconcile — subscriptions to the org strut's catalog", 
 
     const mints = calls((u) => u === `${ORG_LAB}/publisher/tokens`);
     expect(mints.map(([, init]) => JSON.parse(init.body).subscriber).sort()).toEqual(["acme-api", "acme-web"]);
+    expect(mints.every(([, init]) => JSON.parse(init.body).days === 7)).toBe(true);
     for (const [, init] of mints) {
       expect(init.method).toBe("POST");
       expect(init.headers["x-api-token"]).toBe("org-key");
