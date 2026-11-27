@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 import { requireProtectMemberAccess } from "@/lib/protect/access";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
-import { searchCwes } from "@/lib/system-map/cwe-catalogue";
+import { catalogueResponse, searchCwes } from "@/lib/system-map/cwe-catalogue";
 import type { CweSearchResponse } from "@/types/system-map";
 
 export const runtime = "nodejs";
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const body: CweSearchResponse = found.ok
       ? { status: "ready", results: found.results }
       : { status: "error", error: found.error };
-    return NextResponse.json(body);
+    return catalogueResponse(found, body);
   } catch (error) {
     console.error("[SystemMap] cwe-search GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
