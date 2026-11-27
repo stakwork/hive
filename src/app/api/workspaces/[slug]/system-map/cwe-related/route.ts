@@ -1,7 +1,7 @@
 /**
  * GET /api/workspaces/:slug/system-map/cwe-related?refId=<CWE ref_id>
  *      — one CWE's test templates, mitigations, detection methods and
- *      platforms from the shared infosec graph, loaded when its row is opened
+ *      platforms from the shared infosec catalogue, loaded when its row is opened
  *      on the Infosec page's CWE lists tab.
  */
 
@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveWorkspaceAccess } from "@/lib/auth/workspace-access";
 import { requireProtectMemberAccess } from "@/lib/protect/access";
 import { canAccessServerFeature, FEATURE_FLAGS } from "@/lib/feature-flags";
-import { loadCweRelated } from "@/lib/system-map/cwe-catalogue";
+import { catalogueResponse, loadCweRelated } from "@/lib/system-map/cwe-catalogue";
 import type { CweRelatedResponse } from "@/types/system-map";
 
 export const runtime = "nodejs";
@@ -31,13 +31,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const refId = request.nextUrl.searchParams.get("refId");
     if (!refId || !REF_ID_RE.test(refId)) return NextResponse.json({ error: "Invalid refId" }, { status: 400 });
 
-    let body: CweRelatedResponse;
-    try {
-      body = await loadCweRelated(refId);
-    } catch (error) {
-      body = { status: "error", error: `Infosec graph: ${error instanceof Error ? error.message : String(error)}` };
-    }
-    return NextResponse.json(body);
+    const loaded = await loadCweRelated(refId);
+    const body: CweRelatedResponse = loaded.ok ? loaded.related : { status: "error", error: loaded.error };
+    return catalogueResponse(loaded, body);
   } catch (error) {
     console.error("[SystemMap] cwe-related GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

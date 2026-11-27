@@ -47,8 +47,9 @@ export function RelatedPanel({ cwe }: { cwe: CweEntry }) {
       signal: controller.signal,
     })
       .then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return (await response.json()) as CweRelatedResponse;
+        const body = (await response.json().catch(() => null)) as (CweRelatedResponse & { error?: string }) | null;
+        if (!response.ok || !body) throw new Error(body?.error ?? `HTTP ${response.status}`);
+        return body;
       })
       .catch((error: unknown): CweRelatedResponse => ({
         status: "error",

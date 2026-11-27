@@ -282,8 +282,9 @@ export function CweListsTab() {
           signal,
         },
       );
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      setData((await response.json()) as CweListResponse);
+      const body = (await response.json().catch(() => null)) as (CweListResponse & { error?: string }) | null;
+      if (!response.ok || !body) throw new Error(body?.error ?? `HTTP ${response.status}`);
+      setData(body);
     } catch (error) {
       if (signal?.aborted) return;
       setData({ status: "error", error: error instanceof Error ? error.message : "Request failed" });
