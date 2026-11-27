@@ -1,7 +1,7 @@
 /**
  * GET /api/workspaces/:slug/system-map/cwe-list?view=CWE-1435
- *      — a curated CWE view (`CWE_LISTS`) from the shared infosec graph's
- *      CWE catalogue: its members, and the usable children of the ones
+ *      — a curated CWE view (`CWE_LISTS`) from the shared infosec
+ *      CWE catalogue (public cwe-catalog workflow): its members, and the usable children of the ones
  *      MITRE says not to map to directly. Backs the Infosec page's CWE lists
  *      tab, which launches the CWE workflows per CWE.
  */
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const body: CweListResponse = listed.ok
       ? { status: "ready", view: listed.view, members: listed.members }
       : { status: "error", error: listed.error };
-    return NextResponse.json(body);
+    return NextResponse.json(body, { status: listed.ok ? 200 : listed.status });
   } catch (error) {
     console.error("[SystemMap] cwe-list GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
