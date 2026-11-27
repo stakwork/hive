@@ -159,6 +159,29 @@ export interface CweRelatedNode {
   details: string[];
 }
 
+/** A CAPEC attack pattern linked from a CWE. */
+export interface CweCapec {
+  refId: string;
+  id: string;
+  name: string;
+  abstraction: string | null;
+  severity: string | null;
+  likelihood: string | null;
+  status: string | null;
+  url: string | null;
+}
+
+/** A CVE linked from a CWE. */
+export interface CweCve {
+  refId: string;
+  id: string;
+  published: string | null;
+  cvss: number | null;
+  severity: string | null;
+  description: string;
+  url: string | null;
+}
+
 export type CweRelatedResponse =
   | {
       status: "ready";
@@ -166,6 +189,8 @@ export type CweRelatedResponse =
       mitigations: CweRelatedNode[];
       detection: CweRelatedNode[];
       platforms: CweRelatedNode[];
+      capec?: CweCapec[];
+      cves?: { total: number; recent: CweCve[] };
     }
   | { status: "error"; error: string };
 

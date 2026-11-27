@@ -1,240 +1,78 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { listCweView, loadCweRelated, searchCwes } from "@/lib/system-map/cwe-catalogue";
-import * as infosec from "@/lib/system-map/infosec-graph";
+import { listCweView, loadCweRelated, searchCwes, InfosecDoorError } from "@/lib/system-map/cwe-catalogue";
+import { runCweCatalog } from "@/lib/system-map/infosec-door";
 
-vi.mock("@/lib/system-map/infosec-graph", () => ({
-  findInfosecNode: vi.fn(),
-  expandInfosecNode: vi.fn(),
-  searchInfosecNodes: vi.fn(),
+vi.mock("@/lib/system-map/infosec-door", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/system-map/infosec-door")>()),
+  runCweCatalog: vi.fn(),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-function cwe(id: string, props: Record<string, unknown> = {}) {
-  return {
-    ref_id: `ref-${id}`,
-    node_type: "CWE",
-    properties: { cwe_id: id, name: `name ${id}`, kind: "weakness", mapping_usage: "Allowed", ...props },
-  };
-}
+const run = vi.mocked(runCweCatalog);
 
-const CATALOGUE = Object.fromEntries(
-  [
-    cwe("CWE-1435", { kind: "view", name: "Top 25" }),
-    cwe("CWE-1344", { kind: "view", name: "OWASP" }),
-    cwe("CWE-1345", { kind: "category", name: "A01" }),
-    cwe("CWE-79"),
-    cwe("CWE-284", { mapping_usage: "Discouraged", abstraction: "Pillar" }),
-    cwe("CWE-285", { mapping_usage: "Discouraged" }),
-    cwe("CWE-862", { mapping_usage: "Allowed-with-Review" }),
-    cwe("CWE-863"),
-    cwe("CWE-999", { cwe_status: "Deprecated" }),
-  ].map((node) => [node.ref_id, node]),
-);
-
-/**
- * edges[refId] → what `expandInfosecNode(refId, edgeTypes)` returns: the
- * matching edges plus the node itself and its neighbours, like jarvis' expand.
- */
-function edgesFor(map: Record<string, Array<[string, string, string]>>) {
-  vi.mocked(infosec.expandInfosecNode).mockImplementation(async (refId, edgeTypes) => {
-    const edges = (map[refId] ?? [])
-      .filter(([, type]) => edgeTypes.includes(type))
-      .map(([source, edge_type, target]) => ({ source, edge_type, target }));
-    const refs = new Set([refId, ...edges.flatMap((e) => [e.source, e.target])]);
-    return { edges, nodes: [...refs].map((ref) => CATALOGUE[ref]).filter(Boolean) };
-  });
-}
+beforeEach(() => run.mockReset());
 
 describe("listCweView", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(infosec.findInfosecNode).mockImplementation(async (_type, key) =>
-      CATALOGUE[`ref-${key}`] ? `ref-${key}` : null,
-    );
+  it("sends the view op and returns members", async () => {
+    run.mockResolvedValue({ status: "ready", view: { id: "CWE-1435", name: "Top 25" }, members: [{ id: "CWE-79" }] });
+    const out = await listCweView("CWE-1435");
+    expect(run).toHaveBeenCalledWith({ op: "view", view: "CWE-1435" });
+    expect(out).toEqual({ ok: true, view: { id: "CWE-1435", name: "Top 25" }, members: [{ id: "CWE-79" }] });
   });
 
-  it("looks the view up and lists its members, walking unusable ones for usable children", async () => {
-    edgesFor({
-      "ref-CWE-1435": [
-        ["ref-CWE-79", "MEMBER_OF", "ref-CWE-1435"],
-        ["ref-CWE-284", "MEMBER_OF", "ref-CWE-1435"],
-      ],
-      "ref-CWE-284": [["ref-CWE-284", "PARENT_OF", "ref-CWE-285"], ["ref-CWE-284", "PARENT_OF", "ref-CWE-999"]],
-      "ref-CWE-285": [["ref-CWE-285", "PARENT_OF", "ref-CWE-862"], ["ref-CWE-285", "PARENT_OF", "ref-CWE-863"]],
-    });
-
-    const result = await listCweView("CWE-1435");
-
-    expect(infosec.findInfosecNode).toHaveBeenCalledWith("CWE", "CWE-1435");
-    expect(infosec.expandInfosecNode).toHaveBeenCalledWith("ref-CWE-1435", ["MEMBER_OF"], 1000);
-    expect(infosec.expandInfosecNode).toHaveBeenCalledWith("ref-CWE-284", ["PARENT_OF"], 1000);
-    if (!result.ok) throw new Error(result.error);
-    expect(result.view).toEqual({ id: "CWE-1435", name: "Top 25" });
-    expect(result.members.map((m) => [m.id, m.usableChildren.map((c) => [c.id, c.via])])).toEqual([
-      ["CWE-79", []],
-      [
-        "CWE-284",
-        [
-          ["CWE-862", ["CWE-285"]],
-          ["CWE-863", ["CWE-285"]],
-        ],
-      ],
-    ]);
+  it("maps not-found to 404 and other errors to 502", async () => {
+    run.mockResolvedValueOnce({ status: "error", error: "CWE not found: CWE-1" });
+    expect(await listCweView("CWE-1")).toEqual({ ok: false, error: "CWE not found: CWE-1", status: 404 });
+    run.mockResolvedValueOnce({ status: "error", error: "boom" });
+    expect(await listCweView("CWE-1")).toMatchObject({ ok: false, status: 502 });
   });
 
-  it("flattens an OWASP view's categories into their weaknesses", async () => {
-    edgesFor({
-      "ref-CWE-1344": [["ref-CWE-1345", "MEMBER_OF", "ref-CWE-1344"]],
-      "ref-CWE-1345": [
-        ["ref-CWE-862", "MEMBER_OF", "ref-CWE-1345"],
-        ["ref-CWE-863", "MEMBER_OF", "ref-CWE-1345"],
-      ],
-    });
-
-    const result = await listCweView("CWE-1344");
-
-    if (!result.ok) throw new Error(result.error);
-    expect(result.members.map((m) => [m.id, m.category?.id])).toEqual([
-      ["CWE-862", "CWE-1345"],
-      ["CWE-863", "CWE-1345"],
-    ]);
+  it("maps the door's unknown-view message to 404", async () => {
+    const error = "CWE-1 is not a view or category with members in the CWE catalogue";
+    run.mockResolvedValueOnce({ status: "error", error });
+    expect(await listCweView("CWE-1")).toEqual({ ok: false, error, status: 404 });
   });
 
-  it("reads each node's children once even when members share it", async () => {
-    edgesFor({
-      "ref-CWE-1435": [
-        ["ref-CWE-284", "MEMBER_OF", "ref-CWE-1435"],
-        ["ref-CWE-285", "MEMBER_OF", "ref-CWE-1435"],
-      ],
-      "ref-CWE-284": [["ref-CWE-284", "PARENT_OF", "ref-CWE-285"]],
-      "ref-CWE-285": [["ref-CWE-285", "PARENT_OF", "ref-CWE-862"]],
-    });
-
-    await listCweView("CWE-1435");
-
-    const reads = vi.mocked(infosec.expandInfosecNode).mock.calls.filter(([ref]) => ref === "ref-CWE-285");
-    expect(reads).toHaveLength(1);
-  });
-
-  it("says so when the view is not on the infosec graph", async () => {
-    vi.mocked(infosec.findInfosecNode).mockResolvedValue(null);
-
-    expect(await listCweView("CWE-1435")).toEqual({
-      ok: false,
-      error: "CWE-1435 is not in the infosec graph's CWE catalogue",
-    });
-  });
-
-  it("reports a failed lookup as the infosec graph's", async () => {
-    vi.mocked(infosec.findInfosecNode).mockRejectedValue(new Error("402 Payment required"));
-
-    expect(await listCweView("CWE-1435")).toEqual({ ok: false, error: "Infosec graph: 402 Payment required" });
-  });
-
-  it("keeps the member but reports a failed children walk", async () => {
-    vi.mocked(infosec.expandInfosecNode).mockImplementation(async (refId) => {
-      if (refId !== "ref-CWE-1435") throw new Error("timeout");
-      return {
-        edges: [{ source: "ref-CWE-284", edge_type: "MEMBER_OF", target: "ref-CWE-1435" }],
-        nodes: [CATALOGUE["ref-CWE-1435"], CATALOGUE["ref-CWE-284"]],
-      };
-    });
-
-    const result = await listCweView("CWE-1435");
-
-    expect(result.ok && result.members[0]).toMatchObject({
-      id: "CWE-284",
-      usableChildren: [],
-      childrenError: "Infosec graph: timeout",
-    });
-  });
-});
-
-describe("loadCweRelated", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("sorts a CWE's outgoing related edges into buckets with their facts, in one filtered expand", async () => {
-    vi.mocked(infosec.expandInfosecNode).mockResolvedValue({
-      nodes: [
-        { ref_id: "cwe", node_type: "CWE", properties: { cwe_id: "CWE-79" } },
-        { ref_id: "m1", node_type: "Mitigation", properties: { name: "Encode output", phases: ["Implementation"], description: "d" } },
-        { ref_id: "d1", node_type: "DetectionMethod", properties: { name: "Automated Static Analysis" } },
-        { ref_id: "p1", node_type: "SysTechnology", properties: { name: "JavaScript" } },
-        { ref_id: "x", node_type: "CWE", properties: { cwe_id: "CWE-80" } },
-      ],
-      edges: [
-        { source: "cwe", target: "m1", edge_type: "MITIGATED_BY", properties: { ordinal: 1 } },
-        { source: "cwe", target: "d1", edge_type: "DETECTABLE_BY", properties: { effectiveness: "High" } },
-        { source: "cwe", target: "p1", edge_type: "APPLIES_TO", properties: { prevalence: "Often" } },
-        { source: "x", target: "cwe", edge_type: "MITIGATED_BY", properties: {} },
-      ],
-    });
-
-    const related = await loadCweRelated("cwe");
-
-    expect(infosec.expandInfosecNode).toHaveBeenCalledWith("cwe", [
-      "HAS_TEST_TEMPLATE",
-      "MITIGATED_BY",
-      "DETECTABLE_BY",
-      "APPLIES_TO",
-    ]);
-    expect(related).toEqual({
-      status: "ready",
-      templates: [],
-      mitigations: [
-        { refId: "m1", nodeType: "Mitigation", name: "Encode output", description: "d", details: ["Implementation", "primary"] },
-      ],
-      detection: [
-        { refId: "d1", nodeType: "DetectionMethod", name: "Automated Static Analysis", description: null, details: ["effectiveness High"] },
-      ],
-      platforms: [{ refId: "p1", nodeType: "SysTechnology", name: "JavaScript", description: null, details: ["Often"] }],
-    });
+  it("maps door errors by kind", async () => {
+    run.mockRejectedValueOnce(new InfosecDoorError("busy", "busy"));
+    expect(await listCweView("x")).toEqual({ ok: false, error: "busy", status: 503 });
+    run.mockRejectedValueOnce(new InfosecDoorError("slow", "timeout"));
+    expect(await listCweView("x")).toMatchObject({ status: 504 });
+    run.mockRejectedValueOnce(new InfosecDoorError("down", "unavailable"));
+    expect(await listCweView("x")).toMatchObject({ status: 502 });
   });
 });
 
 describe("searchCwes", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(infosec.findInfosecNode).mockImplementation(async (_type, key) =>
-      CATALOGUE[`ref-${key}`] ? `ref-${key}` : null,
-    );
-    edgesFor({});
+  it("returns empty for a blank query without calling", async () => {
+    expect(await searchCwes("  ")).toEqual({ ok: true, results: [] });
+    expect(run).not.toHaveBeenCalled();
   });
 
-  it.each(["CWE-79", "cwe79", "79", " CWE 79 "])("finds %j by id", async (q) => {
-    const found = await searchCwes(q);
-    expect(found).toEqual({ ok: true, results: [expect.objectContaining({ id: "CWE-79", name: "name CWE-79" })] });
-    expect(infosec.findInfosecNode).toHaveBeenCalledWith("CWE", "CWE-79");
-    expect(infosec.searchInfosecNodes).not.toHaveBeenCalled();
+  it("sends the trimmed query and returns results", async () => {
+    run.mockResolvedValue({ status: "ready", results: [{ id: "CWE-79" }] });
+    expect(await searchCwes(" 79 ")).toEqual({ ok: true, results: [{ id: "CWE-79" }] });
+    expect(run).toHaveBeenCalledWith({ op: "search", q: "79" });
   });
 
-  it("returns nothing for an id the catalogue lacks", async () => {
-    expect(await searchCwes("CWE-4242")).toEqual({ ok: true, results: [] });
+  it("maps an error result", async () => {
+    run.mockResolvedValue({ status: "error", error: "bad" });
+    expect(await searchCwes("x")).toEqual({ ok: false, error: "bad", status: 502 });
+  });
+});
+
+describe("loadCweRelated", () => {
+  it("passes ref_id and returns buckets including capec and cves", async () => {
+    const capec = [{ id: "CAPEC-63" }];
+    const cves = { total: 3, recent: [{ id: "CVE-1" }] };
+    run.mockResolvedValue({ status: "ready", templates: [], mitigations: [], detection: [], platforms: [], capec, cves });
+    const out = await loadCweRelated("abc");
+    expect(run).toHaveBeenCalledWith({ op: "related", ref_id: "abc" });
+    expect(out).toEqual({ status: "ready", templates: [], mitigations: [], detection: [], platforms: [], capec, cves });
   });
 
-  it("searches names and loads each hit, categories and unusable ones included", async () => {
-    vi.mocked(infosec.searchInfosecNodes).mockResolvedValue([
-      { ref_id: "ref-CWE-284", node_type: "CWE", title: "name CWE-284" },
-      { ref_id: "ref-CWE-1345", node_type: "CWE", title: "A01" },
-      { ref_id: "ref-missing", node_type: "CWE", title: "gone" },
-    ]);
-
-    const found = await searchCwes("access");
-
-    expect(infosec.searchInfosecNodes).toHaveBeenCalledWith("CWE", "access", 20);
-    expect(found.ok && found.results.map((r) => [r.id, r.usage, r.kind])).toEqual([
-      ["CWE-284", "Discouraged", "weakness"],
-      ["CWE-1345", "Allowed", "category"],
-    ]);
-  });
-
-  it("reports a failed graph read", async () => {
-    vi.mocked(infosec.searchInfosecNodes).mockRejectedValue(new Error("503"));
-    expect(await searchCwes("xss")).toEqual({ ok: false, error: "Infosec graph: 503" });
-  });
-
-  it("returns nothing for a blank query without calling the graph", async () => {
-    expect(await searchCwes("   ")).toEqual({ ok: true, results: [] });
-    expect(infosec.findInfosecNode).not.toHaveBeenCalled();
+  it("throws not_found for an unknown CWE", async () => {
+    run.mockResolvedValue({ status: "error", error: "CWE not found: abc" });
+    await expect(loadCweRelated("abc")).rejects.toMatchObject({ kind: "not_found" });
   });
 });
