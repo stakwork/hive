@@ -369,7 +369,9 @@ describe("resolveRouteAccess", () => {
       expect(resolveRouteAccess("/api/workspaces/my-ws/settings/neo4j", "GET")).toBe("protected");
       expect(resolveRouteAccess("/api/workspaces/my-ws/api-keys", "GET")).toBe("protected");
       expect(resolveRouteAccess("/api/workspaces/my-ws/git-leaks", "GET")).toBe("protected");
-      expect(resolveRouteAccess("/api/workspaces/my-ws/janitors/config", "GET")).toBe("protected");
+      // janitors/config is a webhook-policy route: org API key (x-api-token) is authenticated in the handler
+      expect(resolveRouteAccess("/api/workspaces/my-ws/janitors/config", "GET")).toBe("webhook");
+      expect(resolveRouteAccess("/api/workspaces/my-ws/janitors/runs", "GET")).toBe("protected");
       expect(resolveRouteAccess("/api/workspaces/my-ws/chat/recent", "GET")).toBe("protected");
       expect(resolveRouteAccess("/api/workspaces/my-ws/chat/conversations", "GET")).toBe("protected");
       expect(resolveRouteAccess("/api/workspaces/my-ws/logs-agent", "GET")).toBe("protected");

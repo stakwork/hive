@@ -180,6 +180,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/w/*/pool/workspaces", strategy: "pattern", access: "webhook" },
   { path: "/api/workspaces/*/workflows/*/summarise/callback", strategy: "pattern", access: "webhook" },
   { path: "/api/workspaces/*/stakgraph", strategy: "pattern", access: "webhook" },
+  { path: "/api/workspaces/*/janitors/config", strategy: "pattern", access: "webhook" }, // org API key (x-api-token) or session; handler authenticates
   { path: "/api/workspaces/*/members", strategy: "pattern", access: "webhook" },
   { path: "/api/workspaces/*/members/*", strategy: "pattern", access: "webhook" },
   { path: "/api/agent/webhook", strategy: "prefix", access: "webhook" }, // has its own auth check
